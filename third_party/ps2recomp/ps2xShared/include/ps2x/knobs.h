@@ -57,7 +57,7 @@
     X("PS2X_FPU_TRAP", Dev, Float, "-1", "Seconds after which EE divisions by zero and saturated square roots are reported with their pc.") \
     X("PS2X_FRAME_DUMP", Dev, Path, "", "Directory: a PPM every 60 presents plus the VU1 trace dumps; forces a pixel readback per present.") \
     X("PS2X_GIF_DUMP", Dev, Spec, "", "<file>[:<seconds>]: record the GIF stream and a VRAM snapshot in PCSX2-dump shape.") \
-    X("PS2X_GIF_PRIORITY_SORT", Dev, Presence, "", "Restore the GIF arbiter priority sort (A/B of the 2026-09-08 change).") \
+    X("PS2X_GIF_PRIORITY_SORT", Dev, Flag, "0", "Restore the GIF arbiter priority sort (A/B of the 2026-09-08 change).") \
     X("PS2X_GIF_TRACE", Dev, Int, "0", "Print the first n GIF submissions with their path and BITBLTBUF.") \
     X("PS2X_GS_BACKEND", Dev, Text, "gpu", "cpu selects the CPU rasteriser; the GL probe falls back to it by itself (exit 65).") \
     X("PS2X_GS_DEPTH_LEGACY", Dev, Int, "0", "1 forces the legacy depth mapping instead of clip control.") \
@@ -71,9 +71,9 @@
     X("PS2X_GS_GL_DEBUG_PSM", Dev, Int, "-1", "Print the first batches drawn with this texture format (native coordinates; wrong above scale 1).") \
     X("PS2X_GS_GL_FORCE_FAIL", Dev, Text, "", "Make the GL capability probe fail (the only way to reach exit 65 on a machine that works).") \
     X("PS2X_GS_MAX_PENDING_FRAMES", Dev, Int, "3", "Back-pressure: presents the render thread may fall behind; 0 = unbounded.") \
-    X("PS2X_GS_NO_DIRTY_REFRESH", Dev, Presence, "", "Drop pending dirty rows instead of re-reading them (A/B).") \
-    X("PS2X_GS_NO_TEX_REVALIDATE", Dev, Presence, "", "Restore decode-on-every-invalidation instead of content-hash revalidation (A/B of R117-R125).") \
-    X("PS2X_GS_NO_ZTEST", Dev, Presence, "", "Every draw passes the depth test (A/B).") \
+    X("PS2X_GS_NO_DIRTY_REFRESH", Dev, Flag, "0", "Drop pending dirty rows instead of re-reading them (A/B).") \
+    X("PS2X_GS_NO_TEX_REVALIDATE", Dev, Flag, "0", "Restore decode-on-every-invalidation instead of content-hash revalidation (A/B of R117-R125).") \
+    X("PS2X_GS_NO_ZTEST", Dev, Flag, "0", "Every draw passes the depth test (A/B).") \
     X("PS2X_GS_PENDING_CAP_MB", Dev, Int, "64", "Soft ceiling on pending render bytes.") \
     X("PS2X_GS_PENDING_HARD_CAP_MB", Dev, Int, "1024", "Hard ceiling on pending render bytes (R124).") \
     X("PS2X_GS_RT_TEXTURE", Dev, Int, "1", "0 restores the readback + decode for render targets used as textures.") \
@@ -148,7 +148,7 @@
     X("PS2X_SOCOM2_NET_TRACE", Dev, Presence, "", "Verbose libnetb: every RPC, socket and datagram header.") \
     X("PS2X_SOCOM2_NET_TRACE_ALL", Dev, Flag, "0", "With NET_TRACE: hex-dump datagrams on every port, not only the peer ports.") \
     X("PS2X_SOCOM2_NET_TRACE_PEERS", Dev, Int, "16", "With NET_TRACE: peer packets to hex-dump in each direction.") \
-    X("PS2X_SOCOM2_PAD", Shipping, Presence, "", "The libpad2 HLE and host input path; opt-in by presence today, on by default after Task 7 (R160).") \
+    X("PS2X_SOCOM2_PAD", Shipping, Flag, "1", "The libpad2 HLE and host input path; 0 boots with no controller.") \
     X("PS2X_SOCOM2_PAD_TRACE", Dev, Presence, "", "Log the scePad2 socket lifecycle and reads.") \
     X("PS2X_SOCOM2_RSA_KEY", Shipping, Text, "a", "b selects the second precomputed RSA pair (a second instance on one host).") \
     X("PS2X_SOCOM2_SERVER", Shipping, Text, "127.0.0.1", "Address or name every Medius/DNAS host name resolves to.") \
@@ -161,19 +161,19 @@
     X("PS2X_TRACE_VU_FLAGS", Dev, Presence, "", "Log what the VU flag readers see.") \
     X("PS2X_TRACE_VU_STEPS", Dev, Int, "1200", "With TRACE_VU: instruction budget per traced program.") \
     X("PS2X_TRIGGER", Dev, Spec, "", "lo:hi: arm the trig trace modes when the first PEEK word, as a float, lies in the range.") \
-    X("PS2X_VIF1_NO_IRQ_STALL", Dev, Presence, "", "Restore VIF1 without the i-bit stall (A/B).") \
+    X("PS2X_VIF1_NO_IRQ_STALL", Dev, Flag, "0", "Restore VIF1 without the i-bit stall (A/B).") \
     X("PS2X_VU0_FAST", Dev, Int, "1", "0 keeps VU0 micro programs on the cycle-exact scheduler.") \
     X("PS2X_VU1_BAILHIST", Dev, Presence, "", "Histogram of where generated VU1 code bails to the interpreter.") \
     X("PS2X_VU1_DUMP", Dev, Path, "", "Dump VU1 program state at each run for vu1_replay (armed by TRIGGER or VU1_DUMP_AFTER).") \
     X("PS2X_VU1_DUMP_AFTER", Dev, Float, "0", "With VU1_DUMP: arm after this many seconds.") \
     X("PS2X_VU1_FAST", Dev, Int, "1", "0 selects the cycle-exact VU1 scheduler.") \
-    X("PS2X_VU1_FMAC_CHECK", Dev, Presence, "", "Cross-check the SIMD MAC-flag classifier against the long double path.") \
+    X("PS2X_VU1_FMAC_CHECK", Dev, Flag, "0", "Cross-check the SIMD MAC-flag classifier against the long double path.") \
     X("PS2X_VU1_GEN", Dev, Int, "1", "0 disables the generated VU1 programs.") \
     X("PS2X_VU1_HOST_DRAW", Dev, Int, "0", "1 draws the native dispatcher triangles in host space instead of kicking GIF packets.") \
     X("PS2X_VU1_NATIVE", Dev, Int, "1", "0 reverts the hand-written native VU1 programs to the generated/interpreted path.") \
     X("PS2X_VU1_NATIVE_TEST_CEILING", Dev, Int, "", "Test hook: lower the native dispatcher vertex and triangle ceilings.") \
     X("PS2X_VU1_NATIVE_TEST_CLIP_CEILING", Dev, Int, "", "Test hook: lower the native dispatcher clipped-vertex ceiling.") \
-    X("PS2X_VU1_XGKICK_CYCLE_EXACT", Dev, Presence, "", "Restore the per-cycle XGKICK transfer model (drops SOCOM II object geometry).") \
+    X("PS2X_VU1_XGKICK_CYCLE_EXACT", Dev, Flag, "0", "Restore the per-cycle XGKICK transfer model (drops SOCOM II object geometry).") \
     X("PS2X_VU_STATS", Dev, Presence, "", "Once a second: VU1 programs, cycles and host time.") \
     X("PS2X_WATCH", Dev, Spec, "", "0xADDR[,...]: poll guest words every ~0.5 ms and print each change with pc/ra.") \
     X("PS2X_WATCH_HUGE", Dev, Spec, "", "0xADDR:words: report floats in the range that turn huge or NaN.") \
@@ -182,10 +182,10 @@
 
 namespace ps2x
 {
-    // The value of a registered knob, or nullptr. While enforcement is off this is std::getenv(name). With it
-    // on: nullptr when the variable is unset or empty, when the name is not in the table, or when the knob is
-    // Dev and the process is not in developer mode, or when it is a Path outside the game folder for a stranger
-    // (pathInsideHome). Never caches -- tests and BareRun::applyEnvironment change
+    // The value of a registered knob, or nullptr: when the variable is unset or empty, when the name is not in
+    // the table, when the knob is Dev and the process is not in developer mode, or when it is a Path outside
+    // the game folder for a stranger (pathInsideHome). With enforcement off (the Knobs suite only) this is a
+    // plain std::getenv(name). Never caches -- tests and BareRun::applyEnvironment change
     // the environment while the process runs -- so a site on a hot path reads once into its own static.
     const char *knob(const char *name);
 
@@ -229,7 +229,7 @@ namespace ps2x
         void setDevMode(bool on);
         void resetDevModeForTests();   // forget the decision so the next devMode() reads PS2X_DEV again
 
-        // Off until Sprint 9 Goal 3 Task 7: while off, knob() is a plain getenv and nothing is hidden.
+        // On. setEnforcement(false) exists for the Knobs suite, which proves what off meant.
         bool enforcement();
         void setEnforcement(bool on);
 
@@ -238,7 +238,8 @@ namespace ps2x
 
         // One line for the log: what is set and honoured, what was set and ignored, what was refused. `set` is the non-empty
         // PS2X_* variables in table order. A Shipping value equal to its default is not news; a Path is cut to
-        // its last component (the diagnostics zip must not carry a home directory); 40 characters a value.
+        // its last component (the diagnostics zip must not carry a home directory); 40 characters a value; a
+        // credential (PS2X_SOCOM2_LOGIN_PASS) is written as [redacted], whoever is asking (R208).
         using Pairs = std::vector<std::pair<std::string, std::string>>;
         std::string describe(const Pairs &set, bool honourDev);
         std::string startupLine();     // describe() over this process's environment

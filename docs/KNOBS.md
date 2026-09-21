@@ -25,7 +25,7 @@ Player-facing. Each is a field of `config.json` that the launcher (and a bare ru
 | `PS2X_SOCOM2_LOGIN_PASS` | Text | unset | The password the login keyboard opens with (R179: plain in the player's config.json, blanked from reports). |
 | `PS2X_SOCOM2_MOUSE` | Int | `0` | 1 maps the mouse to the right stick. |
 | `PS2X_SOCOM2_MOUSE_SENS` | Float | `4` | Mouse-look sensitivity (the launcher sends its own value, default 1). |
-| `PS2X_SOCOM2_PAD` | Presence | unset | The libpad2 HLE and host input path; opt-in by presence today, on by default after Task 7 (R160). |
+| `PS2X_SOCOM2_PAD` | Flag | `1` | The libpad2 HLE and host input path; 0 boots with no controller. |
 | `PS2X_SOCOM2_RSA_KEY` | Text | `a` | b selects the second precomputed RSA pair (a second instance on one host). |
 | `PS2X_SOCOM2_SERVER` | Text | `127.0.0.1` | Address or name every Medius/DNAS host name resolves to. |
 | `PS2X_SOCOM2_UDP_SHIFT` | Int | `0` | Shift the fixed UDP ports 3658.. by n (a second instance on one host). |
@@ -65,7 +65,7 @@ Probes, traces, dumps and A/B switches. **Ignored unless the process is in devel
 | `PS2X_FPU_TRAP` | Float | `-1` | Seconds after which EE divisions by zero and saturated square roots are reported with their pc. |
 | `PS2X_FRAME_DUMP` | Path | unset | Directory: a PPM every 60 presents plus the VU1 trace dumps; forces a pixel readback per present. |
 | `PS2X_GIF_DUMP` | Spec | unset | <file>[:<seconds>]: record the GIF stream and a VRAM snapshot in PCSX2-dump shape. |
-| `PS2X_GIF_PRIORITY_SORT` | Presence | unset | Restore the GIF arbiter priority sort (A/B of the 2026-09-08 change). |
+| `PS2X_GIF_PRIORITY_SORT` | Flag | `0` | Restore the GIF arbiter priority sort (A/B of the 2026-09-08 change). |
 | `PS2X_GIF_TRACE` | Int | `0` | Print the first n GIF submissions with their path and BITBLTBUF. |
 | `PS2X_GS_BACKEND` | Text | `gpu` | cpu selects the CPU rasteriser; the GL probe falls back to it by itself (exit 65). |
 | `PS2X_GS_DEPTH_LEGACY` | Int | `0` | 1 forces the legacy depth mapping instead of clip control. |
@@ -79,9 +79,9 @@ Probes, traces, dumps and A/B switches. **Ignored unless the process is in devel
 | `PS2X_GS_GL_DEBUG_PSM` | Int | `-1` | Print the first batches drawn with this texture format (native coordinates; wrong above scale 1). |
 | `PS2X_GS_GL_FORCE_FAIL` | Text | unset | Make the GL capability probe fail (the only way to reach exit 65 on a machine that works). |
 | `PS2X_GS_MAX_PENDING_FRAMES` | Int | `3` | Back-pressure: presents the render thread may fall behind; 0 = unbounded. |
-| `PS2X_GS_NO_DIRTY_REFRESH` | Presence | unset | Drop pending dirty rows instead of re-reading them (A/B). |
-| `PS2X_GS_NO_TEX_REVALIDATE` | Presence | unset | Restore decode-on-every-invalidation instead of content-hash revalidation (A/B of R117-R125). |
-| `PS2X_GS_NO_ZTEST` | Presence | unset | Every draw passes the depth test (A/B). |
+| `PS2X_GS_NO_DIRTY_REFRESH` | Flag | `0` | Drop pending dirty rows instead of re-reading them (A/B). |
+| `PS2X_GS_NO_TEX_REVALIDATE` | Flag | `0` | Restore decode-on-every-invalidation instead of content-hash revalidation (A/B of R117-R125). |
+| `PS2X_GS_NO_ZTEST` | Flag | `0` | Every draw passes the depth test (A/B). |
 | `PS2X_GS_PENDING_CAP_MB` | Int | `64` | Soft ceiling on pending render bytes. |
 | `PS2X_GS_PENDING_HARD_CAP_MB` | Int | `1024` | Hard ceiling on pending render bytes (R124). |
 | `PS2X_GS_RT_TEXTURE` | Int | `1` | 0 restores the readback + decode for render targets used as textures. |
@@ -150,19 +150,19 @@ Probes, traces, dumps and A/B switches. **Ignored unless the process is in devel
 | `PS2X_TRACE_VU_FLAGS` | Presence | unset | Log what the VU flag readers see. |
 | `PS2X_TRACE_VU_STEPS` | Int | `1200` | With TRACE_VU: instruction budget per traced program. |
 | `PS2X_TRIGGER` | Spec | unset | lo:hi: arm the trig trace modes when the first PEEK word, as a float, lies in the range. |
-| `PS2X_VIF1_NO_IRQ_STALL` | Presence | unset | Restore VIF1 without the i-bit stall (A/B). |
+| `PS2X_VIF1_NO_IRQ_STALL` | Flag | `0` | Restore VIF1 without the i-bit stall (A/B). |
 | `PS2X_VU0_FAST` | Int | `1` | 0 keeps VU0 micro programs on the cycle-exact scheduler. |
 | `PS2X_VU1_BAILHIST` | Presence | unset | Histogram of where generated VU1 code bails to the interpreter. |
 | `PS2X_VU1_DUMP` | Path | unset | Dump VU1 program state at each run for vu1_replay (armed by TRIGGER or VU1_DUMP_AFTER). |
 | `PS2X_VU1_DUMP_AFTER` | Float | `0` | With VU1_DUMP: arm after this many seconds. |
 | `PS2X_VU1_FAST` | Int | `1` | 0 selects the cycle-exact VU1 scheduler. |
-| `PS2X_VU1_FMAC_CHECK` | Presence | unset | Cross-check the SIMD MAC-flag classifier against the long double path. |
+| `PS2X_VU1_FMAC_CHECK` | Flag | `0` | Cross-check the SIMD MAC-flag classifier against the long double path. |
 | `PS2X_VU1_GEN` | Int | `1` | 0 disables the generated VU1 programs. |
 | `PS2X_VU1_HOST_DRAW` | Int | `0` | 1 draws the native dispatcher triangles in host space instead of kicking GIF packets. |
 | `PS2X_VU1_NATIVE` | Int | `1` | 0 reverts the hand-written native VU1 programs to the generated/interpreted path. |
 | `PS2X_VU1_NATIVE_TEST_CEILING` | Int | unset | Test hook: lower the native dispatcher vertex and triangle ceilings. |
 | `PS2X_VU1_NATIVE_TEST_CLIP_CEILING` | Int | unset | Test hook: lower the native dispatcher clipped-vertex ceiling. |
-| `PS2X_VU1_XGKICK_CYCLE_EXACT` | Presence | unset | Restore the per-cycle XGKICK transfer model (drops SOCOM II object geometry). |
+| `PS2X_VU1_XGKICK_CYCLE_EXACT` | Flag | `0` | Restore the per-cycle XGKICK transfer model (drops SOCOM II object geometry). |
 | `PS2X_VU_STATS` | Presence | unset | Once a second: VU1 programs, cycles and host time. |
 | `PS2X_WATCH` | Spec | unset | 0xADDR[,...]: poll guest words every ~0.5 ms and print each change with pc/ra. |
 | `PS2X_WATCH_HUGE` | Spec | unset | 0xADDR:words: report floats in the range that turn huge or NaN. |

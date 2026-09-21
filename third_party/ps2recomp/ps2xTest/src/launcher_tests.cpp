@@ -606,6 +606,30 @@ void register_launcher_tests()
             t.Equals(launcher::mergeEnvironment(base, {}).size(), static_cast<size_t>(2), "no knobs is just the base");
         });
 
+        // Sprint 9 Goal 3 Task 7 (R156): the launcher stops handing the game its whole inherited environment.
+        // A stale PS2X_GS_BACKEND=cpu, or a PS2X_SOCOM2_UDP_SHIFT=2 left over from a two-instance session,
+        // must not reach a stranger's game; a developer who started the launcher with PS2X_DEV=1 keeps it all.
+        tc.Run("mergeEnvironment: an inherited PS2X_* variable reaches the game only when the launcher is in developer mode (R156)", [](TestCase &t)
+        {
+            const char *base[] = {"PATH=/bin", "PS2X_GS_BACKEND=cpu", "ps2x_peek=0x100:4", "PS2X_GS_SCALE=4", "PS2XX=kept", nullptr};
+            const std::vector<std::string> ours = {"PS2X_GS_SCALE=2"};
+            auto has = [](const std::vector<std::string> &env, const char *kv)
+            { return std::find(env.begin(), env.end(), std::string(kv)) != env.end(); };
+
+            const std::vector<std::string> stranger = launcher::mergeEnvironment(base, ours, false);
+            t.Equals(static_cast<int>(stranger.size()), 3, "PATH, the near-miss name, and ours");
+            t.IsTrue(has(stranger, "PATH=/bin") && has(stranger, "PS2XX=kept") && has(stranger, "PS2X_GS_SCALE=2"), "what belongs there");
+            t.IsFalse(has(stranger, "PS2X_GS_BACKEND=cpu"), "a forgotten probe does not reach the game");
+            t.IsFalse(has(stranger, "ps2x_peek=0x100:4"), "Windows variable names are case-insensitive, so the filter is too");
+
+            const std::vector<std::string> developer = launcher::mergeEnvironment(base, ours, true);
+            t.Equals(static_cast<int>(developer.size()), 5, "everything inherited, ours winning by key as before");
+            t.IsTrue(has(developer, "PS2X_GS_BACKEND=cpu") && has(developer, "PS2X_GS_SCALE=2") && !has(developer, "PS2X_GS_SCALE=4"), "as before");
+
+            t.IsTrue(launcher::isKnobKey("PS2X_MC_DIR") && launcher::isKnobKey("ps2x_mc_dir"), "the prefix, either case");
+            t.IsFalse(launcher::isKnobKey("PS2XX") || launcher::isKnobKey("PS2") || launcher::isKnobKey(""), "and nothing shorter or different");
+        });
+
 
         // ---- Sprint 8 Goal 9: the redesigned launcher -----------------------------------------------------
 

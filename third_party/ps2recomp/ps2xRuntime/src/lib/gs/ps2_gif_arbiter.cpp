@@ -23,7 +23,7 @@ bool GifArbiter::isImagePacket(const uint8_t *data, uint32_t sizeBytes)
 // Read on first use, not while the process is still initialising its statics: main() has not seen --dev by then.
 static bool prioritySort()
 {
-    static const bool s_on = ps2x::knob("PS2X_GIF_PRIORITY_SORT") != nullptr;
+    static const bool s_on = ps2x::knobOn("PS2X_GIF_PRIORITY_SORT");
     return s_on;
 }
 

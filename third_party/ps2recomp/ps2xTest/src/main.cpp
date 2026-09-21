@@ -62,20 +62,16 @@ int main()
     // paths this fork added for the game. Each is chosen per process from the environment and
     // read once, before any test runs, so select the reference ones here. An A/B run can
     // override the value-tested ones from the environment (setEnvDefault yields to a value
-    // that is already set); PS2X_VU1_XGKICK_CYCLE_EXACT is the exception, see below.
+    // that is already set).
     //   PS2X_GS_BACKEND: the OpenGL backend (gs_frontend.cpp) is the default and needs a real
     //     GL context, which a console test process has none of; the GS tests read back the CPU
     //     rasterizer's framebuffer.
     //   PS2X_VU1_FAST: the non-cycle-exact VU1 path (ps2_vu1_core.cpp) is the default and
     //     commits FMAC results immediately; the VU1 tests assert the architectural four-cycle
     //     writeback latency of the cycle-exact scheduler.
-    //   PS2X_VU1_XGKICK_CYCLE_EXACT: XGKICK copies the whole packet at kick time by default;
-    //     the PATH1 test asserts the per-cycle model, in which a store can still reach a qword
-    //     that has not been transferred yet. This one is presence-tested, not value-tested
-    //     (ps2_vu1_core.cpp:1073 takes the immediate path only when getenv returns nullptr),
-    //     so once it is set here the per-cycle model is on for the whole process: setting it
-    //     to 0 in the environment does NOT turn it back off, and there is no way to select
-    //     the immediate copy for this test binary from the environment.
+    //   PS2X_VU1_XGKICK_CYCLE_EXACT: XGKICK copies the whole packet at kick time by default; the PATH1 test
+    //     asserts the per-cycle model. A Flag since Sprint 9 Goal 3: 0 in the environment selects the
+    //     immediate copy for an A/B.
     setEnvDefault("PS2X_GS_BACKEND", "cpu");
     setEnvDefault("PS2X_VU1_FAST", "0");
     setEnvDefault("PS2X_VU1_XGKICK_CYCLE_EXACT", "1");

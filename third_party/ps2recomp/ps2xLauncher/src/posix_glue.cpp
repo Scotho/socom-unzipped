@@ -13,6 +13,7 @@
 #ifndef _WIN32
 
 #include "win32_glue.h"
+#include "ps2x/knobs.h"
 
 #include <cctype>
 #include <cerrno>
@@ -238,8 +239,9 @@ namespace win32glue
         fs::create_directories(dir / "cards", ec);
 
         // The environment: this process's block plus our knobs, ours winning by key -- the same pure rule
-        // the Windows glue applies to its own block.
-        const std::vector<std::string> merged = launcher::mergeEnvironment(environ, launcher::environmentFor(config));
+        // the Windows glue applies to its own block. Sprint 9 Goal 3 (R156): an inherited PS2X_* variable
+        // reaches the game only when this launcher was itself started in developer mode (PS2X_DEV=1).
+        const std::vector<std::string> merged = launcher::mergeEnvironment(environ, launcher::environmentFor(config), ps2x::knobs::devMode());
         std::vector<char *> envp;
         envp.reserve(merged.size() + 1);
         for (const std::string &kv : merged)

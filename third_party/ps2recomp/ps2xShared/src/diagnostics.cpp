@@ -147,6 +147,15 @@ namespace launcher::diagnostics
         return linesStartingWith(logText, {"[crash]", "[terminate]", "[main] fatal", "[oom]", "[preflight] exit", "[gs-gl] FATAL"});
     }
 
+    // Sprint 9 Goal 3 Task 7: the runner's one [knobs] line -- what was set and honoured, what was ignored without
+    // --dev, what was refused -- so a report answers "it ignored my setting" by itself. The line holds no directory
+    // (describe() cuts a Path to its file name) and versions.txt is scrubbed like every other entry.
+    std::string knobsLine(const std::string &logText)
+    {
+        const std::string lines = linesStartingWith(logText, {"[knobs]"});
+        return lines.empty() ? std::string("no [knobs] line in this log\n") : lines;
+    }
+
     std::string joinClipped(const std::string &head, const std::string &tail, uint64_t omittedBytes)
     {
         return head + "\n[diagnostics] " + std::to_string(omittedBytes) + " bytes omitted here\n" + tail;
@@ -166,6 +175,7 @@ namespace launcher::diagnostics
         out += "launcher: " + (in.version.empty() ? std::string("development build") : in.version) + "\n";
         out += "platform: " + (in.platform.empty() ? std::string("unknown") : in.platform) + "\n";
         out += "exit codes known: " + std::to_string(ExitCodes::kTableSize) + " (ps2x/exit_codes.h)\n";
+        out += "knobs: " + knobsLine(in.logText);
         if (!in.haveLastExit)
         {
             out += "last exit: no run in this launcher session\n";

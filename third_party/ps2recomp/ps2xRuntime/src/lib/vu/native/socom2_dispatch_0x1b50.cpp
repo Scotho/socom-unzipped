@@ -924,7 +924,7 @@ namespace
     // command 0x28's per-triangle kicks.
     bool xgkickIsImmediate()
     {
-        static const bool immediate = ps2x::knob("PS2X_VU1_XGKICK_CYCLE_EXACT") == nullptr;
+        static const bool immediate = !ps2x::knobOn("PS2X_VU1_XGKICK_CYCLE_EXACT");
         return immediate;
     }
 

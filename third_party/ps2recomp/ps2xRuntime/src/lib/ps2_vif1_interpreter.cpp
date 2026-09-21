@@ -24,7 +24,7 @@ static bool g_vif1IrqPending = false;
 static std::vector<uint8_t> g_vif1StallBuffer;
 static bool vif1NoIrqStall()   // on first use, not before main()
 {
-    static const bool s_on = ps2x::knob("PS2X_VIF1_NO_IRQ_STALL") != nullptr;
+    static const bool s_on = ps2x::knobOn("PS2X_VIF1_NO_IRQ_STALL");
     return s_on;
 }
 static bool vif1TraceFifo()    // was a getenv at each of the four stall and resume sites

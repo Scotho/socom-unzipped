@@ -179,10 +179,20 @@ namespace launcher
     // the second instance gets PS2X_SOCOM2_UDP_SHIFT=2, PS2X_SOCOM2_RSA_KEY=b and its own card directory).
     std::vector<std::string> environmentFor(const Config &config);
 
+    // Sprint 9 Goal 3 (R156): is this environment key one of ours? "PS2X_" as a prefix, either case (Windows
+    // variable names are case-insensitive).
+    bool isKnobKey(const std::string &key);
     // Sprint 8 Task 4: the child's environment, as both glues build it. `base` is a NULL-terminated KEY=VALUE
     // array (the Windows block widened, or POSIX `environ`); `ours` is environmentFor()'s knobs. Ours win by
     // key: an overridden base entry is dropped rather than duplicated, the rest of the base keeps its order,
     // and ours follow in theirs. Entries with no '=' are not environment entries and are skipped on both
     // sides (a bare key in `ours`, and Windows' "=C:"-style drive entries in `base`). Pure; both platforms.
-    std::vector<std::string> mergeEnvironment(const char *const *base, const std::vector<std::string> &ours);
+    // With keepInheritedKnobs false an inherited PS2X_* variable the launcher did not itself choose is dropped,
+    // so a stranger's forgotten variable cannot reach the game; the launcher passes true only when it was
+    // itself started in developer mode (Sprint 9 Goal 3 Task 7, R156).
+    std::vector<std::string> mergeEnvironment(const char *const *base, const std::vector<std::string> &ours, bool keepInheritedKnobs);
+    inline std::vector<std::string> mergeEnvironment(const char *const *base, const std::vector<std::string> &ours)
+    {
+        return mergeEnvironment(base, ours, true);   // the pure merge, as the existing cases test it
+    }
 }
