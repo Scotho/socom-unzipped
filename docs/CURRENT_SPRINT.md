@@ -21,7 +21,7 @@ sprint 10:    OPENED 2026-09-20 on the owner's instruction ("proceed on with the
               develop deleted, this branch opened. Q0b, Q1b-Q7 carry into Sprint 10 as filler unless the owner reorders;
               no GitHub release (Sprint 11 / D2, owner-only).
 git strategy: docs/GIT_STRATEGY.md     contributing: CONTRIBUTING.md
-next ruling:  R184 (R181-R183 are the 2026-09-20 hardening rulings -- below, under "Sprint 10, reorganized"; R179-R180 are Sprint 10 Goal 9's, recorded in its plan: the password plain in config.json, and prefill-never-submit; R178 is Q0's conductor grains -- child sounds, registers, markers, from the open reference -- below; R177 is Q0's mix device buffer, 20 ms x 4, measured -- below; R176 is P4's ADVANCED section -- what went in it and what did not; R175 is P6's: the preset switch needs no launch and the server keeps advertising its IP -- below. R174 is Goal 12's split -- the mapping data path lands in Sprint 9 Q3, the UI is Sprint 10; R152-R168 are reserved by the Goal 3 plan; R169-R171 are Goal 10's music fixes, COMMITTED in `eca5450`; R172 is Goal 10's declined proposal -- the concurrency cap, not taken, waiting on Q1's instrument; R173 is P3's, the pad display staying live while the game runs)
+next ruling:  R185 (R184 is the mid-sprint merge to main, below; R181-R183 are the 2026-09-20 hardening rulings -- below, under "Sprint 10, reorganized"; R179-R180 are Sprint 10 Goal 9's, recorded in its plan: the password plain in config.json, and prefill-never-submit; R178 is Q0's conductor grains -- child sounds, registers, markers, from the open reference -- below; R177 is Q0's mix device buffer, 20 ms x 4, measured -- below; R176 is P4's ADVANCED section -- what went in it and what did not; R175 is P6's: the preset switch needs no launch and the server keeps advertising its IP -- below. R174 is Goal 12's split -- the mapping data path lands in Sprint 9 Q3, the UI is Sprint 10; R152-R168 are reserved by the Goal 3 plan; R169-R171 are Goal 10's music fixes, COMMITTED in `eca5450`; R172 is Goal 10's declined proposal -- the concurrency cap, not taken, waiting on Q1's instrument; R173 is P3's, the pad display staying live while the game runs)
 baselines:    C++ 686/686, Python 1457 OK, `PS2X_TEST_REPEAT=3 ./build.sh test` exit 0, CI green at `7de8492`; last gates: `s9_q0_children_gate` (3/3 on the runtime as merged, exe sha256 b3abebd5...), `s9_q0_prefill_gate`, `s9_q0_device_gate`, `s9_q0_trace_gate`, `s9_p7_playtest_gate`; audio parity `s9_q1_parity_ours2` 31/48 (the check's first PASS is Sprint 10's to earn)
 ```
 
@@ -114,6 +114,27 @@ check the job fails and creates nothing (harmless, but four red runs and no draf
 one-line `if:` on the tag's commit date, or with the workflow disabled for the four pushes, when a release is next
 tagged. Deleting the merged `sprint-1`..`sprint-9` and `fix/*` remote branches -- the `sprint-*` ruleset now forbids
 deletion (R182); lift it for the sweep, then put it back. Neither touches a stranger's first hour.
+
+**The chunks after H (2026-09-21 ~04:30 UTC, the owner: "kick off Sprint 10 and any remaining goals ... break the
+sprint into sizeable chunks and use as many workflows or opus agents as needed").** Four Opus agents work in their own
+worktrees off `sprint-10` (`C:\projects\wt-<name>`, branches `agent/<name>`, the toolchain junctioned in, every build
+under the one machine-wide lock via `LOOP_LOCK_PATH`); each does the lock-free and library-build half of its item
+test-first and reports; the controller merges each branch into `sprint-10` in the main tree and pays the gate, the
+runtime rebuild or the online round the item needs. No agent runs the game. **R184: the mid-sprint merge to `main`** --
+the owner asked for the hardening and the developer setup on `main` as soon as possible (PR #5, `sprint-10` -> `main`,
+validated locally first: the full Python suite, ps2x_tests 701/0, `leakcheck all`, both scanners clean; CI's three
+required checks on the PR head). What else the branch carries (Goal 3's mixed match, Goal 1's first row, the music
+round four) was gated when it landed. The sprint stays open on `sprint-10`; `v0.10.0` waits for its close.
+
+| Chunk | Agent / branch | Scope | State |
+|---|---|---|---|
+| Goal 9 credentials | `agent/goal9` | plan tasks 1, 3, 4, 5, 7 (+ 2's pure part); the controller does 2's recompile and 6's driven logins | running |
+| Q3b + Goal 8 mapping | `agent/input` | the mapping data path (inert defaults, `mappingHash()`), then the CONTROLLER page's remapping UI; the controller pays the gate + control round | running |
+| Q1b gate pins | `agent/gatepin` | `PIN` lines in summary.txt, a committed pins file, refuse-to-score on drift, `--accept-pins`; the controller runs the proving gate | running |
+| Q6 stall bound | `agent/stall` | the latched-stall working set bounded under a test; the controller gates the rebuilt exe | running |
+| Goal 1 ladder | controller | `ladder_job.sh 4` by hand whenever the lock is free and the host quiet (streak 1 of 7 -> 7) | run 2 in flight (`ladder_20260921_010147`) |
+| Goal 2 the box | controller | done on the box's side (row 2 above); the build id on /api/stats left | done |
+| Next chunks, in order | -- | Q2 knob retirement (an agent for the nine tasks' code; the controller's full generated rebuild + three gates + a round), then Q3 on top of Q2's developer mode, Q4/Q5 launcher and voice, Goal 4 kill routes (controller, two instances, owner away), Goal 3's tasks 5 and 7, Q7 and Goal 6 as filler | queued |
 
 **Rulings (R181-R183):**
 
