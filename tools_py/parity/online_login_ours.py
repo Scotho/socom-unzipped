@@ -7,6 +7,8 @@ waits: the shell eats presses that land during a transition, and transition time
 Usage: python -m tools_py.parity.online_login_ours [--existing] [--name socomc] [--password socom]
        [--out logs/parity/ours_host] [--seconds 500] [--host] [--then cross:3,...] [--hold 30]
        [--instance B]   (second exe instance: own window title, memory card dir and UDP ports)
+       [--prefilled]    (Sprint 10 Goal 9: the name and password go to the game as PS2X_SOCOM2_LOGIN_NAME /
+                         _PASS, its keyboards open already holding them, and the harness presses ENTER)
 """
 import argparse
 import contextlib
@@ -61,6 +63,35 @@ OSK_TITLE = (202, 222, 24, 400)
 OSK_TITLE_LUMA = 140.0
 OSK_TITLE_NAME_MAX_EDGE = 180                   # midway between the two measured edges
 
+# Sprint 10 Goal 9 (--prefilled): the runtime opens the login's two keyboards already holding PS2X_SOCOM2_LOGIN_NAME /
+# _PASS (game_overrides_socom2.cpp installOskPrefill, research/38; R180: it prefills, never submits), so the harness
+# reads the field back and presses ENTER instead of typing -- the dead-reckoned typing walk ('ocom', '', 'xmfû';
+# research/28 §5 item 4) leaves the driven login. The caps are the two keyboards' own MaxChars and the character set
+# is the keyboard's (OSK_ROWS: printable ASCII without the space; the name keyboard refuses '"', NoDQuote) -- the set
+# the launcher's normalizeLoginName / normalizeLoginPassword keep. The harness REFUSES a value outside it rather than
+# cutting it as the launcher does: the runtime would cut it too, the keyboard would read back short, and the run
+# would stop as login:prefill-missing 90 s in instead of before the launch.
+PREFILL_ENV_NAME, PREFILL_ENV_PASS = "PS2X_SOCOM2_LOGIN_NAME", "PS2X_SOCOM2_LOGIN_PASS"
+PREFILL_NAME_CAP, PREFILL_PASSWORD_CAP = 14, 12  # research/38: _455_EnterPlayerName_MSG / _604_EnterPassword_MSG
+
+
+def prefill_text(value, cap, what, double_quote=True):
+    """`value` as the game's keyboard could hold it, or a ValueError saying why it could not."""
+    if not value:
+        raise ValueError(f"{what} is empty (the keyboard refuses an empty field, AllowEmpty=0)")
+    for ch in value:
+        if not 0x20 < ord(ch) < 0x7F or (ch == '"' and not double_quote):
+            raise ValueError(f"{what} holds {ch!r}, which is not a key of the game's keyboard")
+    if len(value) > cap:
+        raise ValueError(f"{what} is {len(value)} characters; the keyboard holds {cap}")
+    return value
+
+
+def prefill_env(name, password):
+    """The two variables for the launched game, checked against the keyboards' caps and character set."""
+    return {PREFILL_ENV_NAME: prefill_text(name, PREFILL_NAME_CAP, "the persona name", double_quote=False),
+            PREFILL_ENV_PASS: prefill_text(password, PREFILL_PASSWORD_CAP, "the password")}
+
 # Per-instance environment: window title tag (the harness finds windows by title substring),
 # memory-card directory and the UDP port shift (two clients on one host must not both bind the
 # game's fixed 3658/3659, like PCSX2 client B's 0F6FC6CF.clientB.pnach).
@@ -76,12 +107,15 @@ INSTANCES = {
 }
 
 
-def launch(seconds, instance=None):
-    """Start the exe; returns (proc, title substring to find its window)."""
+def launch(seconds, instance=None, prefill=None):
+    """Start the exe; returns (proc, title substring to find its window). `prefill` (prefill_env's dict, --prefilled)
+    goes into the game's environment; None adds nothing, the environment is what it was."""
     env = dict(os.environ, PS2X_SOCOM2_PAD="1")
     title = keys.WINDOW_TITLES[T]
     latest = os.path.abspath(os.path.join("logs", "parity", f"latest_frame_{instance or 'A'}.png"))
     env["PS2X_HOST_SCREENSHOT_LATEST"] = latest
+    if prefill:
+        env.update(prefill)
     if instance:
         env.update(INSTANCES[instance])
         write_pad_file(INSTANCES[instance]["PS2X_SOCOM2_INPUT_FILE"])   # neutral before the exe starts
@@ -304,6 +338,7 @@ CLASS_CONNECT_FOCUS = "login:connect-focus"  # CONNECT never read lit after the 
 CLASS_CONNECT_PRESS = "login:connect-press"  # the form stayed up with CONNECT lit after the CROSS and its re-sends
 CLASS_OSK_ENTER = "login:keyboard-enter"     # the keyboard stayed up after ENTER and OSK_ENTER_RETRIES re-presses
 CLASS_PERSONA = "login:persona"              # + ":list" / ":password-keyboard" / ":name-keyboard": that CROSS never registered
+CLASS_OSK_PREFILL = "login:prefill-missing"  # --prefilled: the keyboard opened holding a different count than the string's
 
 # Title band of the four screens the CREATE GAME / JOIN GAME presses move between (full-res 640x448:
 # x 20-360, y 18-58), compared as a text mask (map_mask_distance's measure) against
@@ -999,13 +1034,16 @@ class Shell:
                      f"(accent-box distance {self.osk_refs()})")
         return False
 
-    def type(self, text, shots=None, tag=""):
+    def type(self, text, shots=None, tag="", prefilled=False):
         if not self.wait_osk():
             self.shot("osk_never_opened")
             stage = self.stages[-1][0] if self.stages else "none"
             raise lobby_fail(self, CLASS_KEYBOARD, f"on-screen keyboard never opened for {text!r} (stage {stage}): "
                                                    f"refusing to type into whatever menu is on screen")
         self.osk_normal_mode()
+        if prefilled:
+            self.osk_enter_prefilled(text)                       # Sprint 10 Goal 9: the runtime typed it; ENTER only
+            return
         if self.pad_file:
             self.osk_type_pad_verified(text, shots, tag)     # reads the field and the ENTER back; fails with a class
             return
@@ -1066,6 +1104,23 @@ class Shell:
             slow = True
             cur = self.osk_clear(cur, n, len(text), slow=slow)
         cur = self.osk_type_pad("", None, "", cur=cur, enter=True, slow=slow)    # the walk to ENTER and its CROSS
+        self.osk_enter_verified(text, cur)
+
+    def osk_enter_prefilled(self, text):
+        """Sprint 10 Goal 9 (--prefilled): the keyboard opened already holding `text` -- the runtime's prefill from
+        PS2X_SOCOM2_LOGIN_NAME / _PASS (research/38) -- so read the count back and, only on a match, walk to ENTER
+        from the opening cursor (OSK_START, as a fresh keyboard's) and press it, read back like a typed ENTER
+        (osk_enter_verified: a lost step is re-pressed). Nothing is typed here (R180: the harness presses, the
+        runtime never submits). A count that is not len(text) -- the exe predates the prefill, the variable never
+        reached it, or another keyboard opened -- is login:prefill-missing with the count in the detail: typing on
+        top of a prefilled field would double it, and ENTER on an empty one puts CONNECT 120 s from a timeout."""
+        n = self.osk_typed()
+        if n != len(text):
+            self.log(f"[osk] prefilled: {n} of {len(text)} in the field")
+            raise lobby_fail(self, CLASS_OSK_PREFILL, f"{n} of {len(text)} characters in the field before ENTER "
+                                                      f"(the runtime's prefill did not reach this keyboard?)")
+        self.log(f"[osk] prefilled: {n} of {len(text)} in the field -> ENTER")
+        cur = self.osk_press_key(OSK_START, "ENTER", slow=False)
         self.osk_enter_verified(text, cur)
 
     def osk_press_key(self, cur, label, slow=True):
@@ -1279,8 +1334,9 @@ def press_online(sh):
 
 
 @staged("login")
-def login(sh, name, password, existing):
-    """LOGIN -> universe -> persona -> password -> CONNECT -> prompts -> EULA -> lobby (news closed)."""
+def login(sh, name, password, existing, prefilled=False):
+    """LOGIN -> universe -> persona -> password -> CONNECT -> prompts -> EULA -> lobby (news closed).
+    `prefilled` (--prefilled): the game was launched with the two variables, so each keyboard is ENTERed, not typed."""
     sh.press_until_gone("cross", "login")                        # LOGIN
     sh.wait_for("universe", 60)
     sh.shot("01_universe")
@@ -1293,14 +1349,14 @@ def login(sh, name, password, existing):
     sh.shot("02_persona")
     mode, listed = persona_form_mode(sh, existing)
     if mode == "create":
-        sh.log(f"[login] persona: none saved -> creating {name}")
-        create_persona(sh, name, listed)
+        sh.log(f"[login] persona: none saved -> creating {name}" + (" (prefilled)" if prefilled else ""))
+        create_persona(sh, name, listed, prefilled)
     else:
         sh.log("[login] persona: prefilled -> the saved-persona path")
         press_persona(sh, True, listed)
         sh.shot("03_name")
         sh.shot("04_pw_kbd")
-    sh.type(password)
+    sh.type(password, prefilled=prefilled)
     sh.shot("05_password")
     press_connect(sh)
     login_prompts(sh)
@@ -1376,7 +1432,7 @@ def persona_form_mode(sh, existing):
     return ("saved" if existing else "create"), True
 
 
-def create_persona(sh, name, listed=False):
+def create_persona(sh, name, listed=False, prefilled=False):
     """The first login on a server that keeps no persona for this card: PLAYER NAME is empty and focused and
     the header reads "Choose a different persona or create a new one." (s8_hosted_control A_02_persona).
 
@@ -1384,14 +1440,15 @@ def create_persona(sh, name, listed=False):
     typed and ENTERed by the same verified walk as the password, and then READ BACK OFF THE FORM -- the
     keyboard's own text row can only say what it holds, not that ENTER committed it to the field. A DOWN
     verified on the PASSWORD row's fill and a CROSS verified on the keyboard leave the caller exactly where
-    the saved-persona path leaves it: the password keyboard open."""
+    the saved-persona path leaves it: the password keyboard open. `prefilled`: the name keyboard opens holding
+    the name (Sprint 10 Goal 9) and is ENTERed, not typed; the form read-back after it is the same."""
     press_persona(sh, False, listed)                             # -> the name keyboard
     gray = lobby_gray(sh)
     edge = osk_title_edge(gray)
     sh.log(f"[login] persona: keyboard title edge {edge} -> "
            f"{'Enter Player Name' if osk_title_is_name(gray) else 'NOT Enter Player Name'}")
     sh.shot("03_name_kbd")
-    sh.type(name, sh.out, sh.tag + "name")
+    sh.type(name, sh.out, sh.tag + "name", prefilled=prefilled)
     n = login_name_glyphs(lobby_gray(sh))
     sh.log(f"[login] persona: PLAYER NAME reads {n} glyphs, expected {len(name)}")
     if n != len(name):
@@ -2023,16 +2080,26 @@ def main():
     ap.add_argument("--play", type=int, default=4, help="with --join: 3 s W bursts after the hold")
     ap.add_argument("--instance", default="", help="A or B: window title, memory card dir and UDP ports of that instance")
     ap.add_argument("--then", default="", help="extra presses after the lobby, e.g. cross:3,type:test")
+    # Sprint 10 Goal 9: the name and password reach the game as the launcher's ONLINE fields would (PS2X_SOCOM2_LOGIN_NAME
+    # / _PASS), its keyboards open already holding them, and the login presses ENTER on each instead of typing.
+    ap.add_argument("--prefilled", action="store_true",
+                    help="export --name / --password to the game and ENTER the prefilled keyboards instead of typing")
     a = ap.parse_args()
+    prefill = None
+    if a.prefilled:
+        try:
+            prefill = prefill_env(a.name, a.password)
+        except ValueError as e:
+            ap.error(f"--prefilled: {e}")                        # before any game starts: the runtime would cut it
     os.makedirs(a.out, exist_ok=True)
     if not a.instance and hostplatform.process_running("socom2"):
         raise SystemExit(f"{hostplatform.exe_name('socom2')} is already running; "
                          "refusing to start a second game instance")
-    proc, title = launch(a.seconds, a.instance or None)
+    proc, title = launch(a.seconds, a.instance or None, prefill)
     try:
         sh = attach(proc, title, a.out)
         boot_to_online(sh)
-        login(sh, a.name, a.password, a.existing)
+        login(sh, a.name, a.password, a.existing, a.prefilled)
         if a.host:
             to_briefing_room(sh)
             host_game(sh)
