@@ -96,6 +96,34 @@ void register_diagnostics_tests()
             t.IsTrue(bad.find("\"error\"") != std::string::npos, "it is replaced by a note that says so");
         });
 
+        // Sprint 10 Goal 9, R179: the persona password lives in config.json and nowhere else. The zip's config copy
+        // is toJson of the parsed file, so a new field is copied through unless it is blanked here -- and a short
+        // password ("socom") is under the credential scrubber's six-character floor, so only the blank protects it.
+        tc.Run("the diagnostics zip's config copy has the password blanked, the name kept", [](TestCase &t)
+        {
+            launcher::Config c;
+            c.loginName = "socomc";
+            c.loginPassword = "hunter2";
+            const std::string copy = diag::sanitizedConfigJson(launcher::toJson(c));
+            t.IsTrue(copy.find("hunter2") == std::string::npos, "the password is not in the zip's config.json");
+            t.IsTrue(copy.find("\"loginPassword\": \"\"") != std::string::npos, "the key is there, empty, so a reader sees it was blanked");
+            t.IsTrue(copy.find("\"loginName\": \"socomc\"") != std::string::npos, "the name stays: it is what the player sees on screen");
+
+            // The whole bundle, with a short password the scrubber's floor would let through and one it would not.
+            for (const char *planted : {"zq9pw", "hunter2hunter2"})   // one under the scrubber's six-character floor, one over
+            {
+                c.loginPassword = planted;
+                diag::Inputs in = inputs();
+                in.configText = launcher::toJson(c);
+                const std::vector<ZipStore::Entry> entries = diag::entries(in);
+                const std::string zip = ZipStore::build(entries);
+                t.IsTrue(zip.find(planted) == std::string::npos, std::string("the archive's bytes do not contain the planted password ") + planted);
+                for (const ZipStore::Entry &e : entries)
+                    t.IsTrue(e.data.find(planted) == std::string::npos, e.name + " does not contain " + planted);
+                t.IsTrue(zip.find("socomc") != std::string::npos, "while the persona name is in it");
+            }
+        });
+
         tc.Run("scrub: the home directory becomes ~ in either slash style, and a short one is left alone", [](TestCase &t)
         {
             t.Equals(diag::scrub("at C:\\Users\\bob\\x and C:/Users/bob/y", "C:\\Users\\bob"), std::string("at ~\\x and ~/y"), "both styles");

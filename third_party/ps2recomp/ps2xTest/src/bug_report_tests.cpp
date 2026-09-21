@@ -201,6 +201,27 @@ void register_bug_report_tests()
             t.IsTrue(!has(pj, "secretuser") && !has(pj, "\"iso\":\"/"), "the same on a POSIX path");
         });
 
+        // Sprint 10 Goal 9, R179: the payload adds named fields from Config rather than the whole file, so the
+        // password is out unless someone adds it. This is the guard that says so, with a planted value -- and the
+        // persona name, which the server already knows, is likewise not on the allowlist.
+        tc.Run("a bug report never carries the password", [](TestCase &t)
+        {
+            launcher::Config c = config();
+            c.loginName = "socomc";
+            c.loginPassword = "hunter2";
+            br::Form form;
+            form.title = "the lobby";
+            form.description = "a description long enough to pass the form check, with detail";
+            form.attachLog = true;
+            br::Inputs in = inputs();
+            in.logText += "[launcher] env PS2X_SOCOM2_LOGIN_PASS=hunter2 (a line a future launcher might log)\r\n";
+            const std::string json = br::build(c, form, in).json;
+            t.IsTrue(!has(json, "hunter2"), "the password is not in the payload");
+            t.IsTrue(!has(json, "loginPassword"), "nor its key");
+            for (const auto &kv : br::contextPairs(c, in))
+                t.IsTrue(kv.first != "loginName" && kv.first != "loginPassword", "no context pair for either -- the name is the server's to know, not the site's (" + kv.first + ")");
+        });
+
         tc.Run("the log attachment: scrubbed, the last 65,536 bytes, cut on a line boundary", [](TestCase &t)
         {
             std::string log;

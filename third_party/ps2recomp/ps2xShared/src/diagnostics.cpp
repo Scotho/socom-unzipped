@@ -62,6 +62,10 @@ namespace launcher::diagnostics
         const size_t slash = config.isoPath.find_last_of("/\\");
         if (slash != std::string::npos)
             config.isoPath = config.isoPath.substr(slash + 1);
+        // Sprint 10 Goal 9, R179: the password stays in the player's own file and nowhere else. The key is
+        // written empty, so a reader of the zip sees the field was blanked rather than absent. (The credential
+        // scrubber over the text is no substitute: it has a six-character floor, and "socom" is five.)
+        config.loginPassword.clear();
         return toJson(config);
     }
 
