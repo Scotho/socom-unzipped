@@ -60,7 +60,6 @@ RAW_GETENV_PENDING = {
     "third_party/ps2recomp/ps2xRuntime/src/lib/Kernel/Stubs/MemoryCard.cpp",
     "third_party/ps2recomp/ps2xRuntime/src/lib/Kernel/Stubs/Pad.cpp",
     "third_party/ps2recomp/ps2xRuntime/src/lib/Kernel/Syscalls/FileIO.cpp",
-    "third_party/ps2recomp/ps2xRuntime/src/lib/game_overrides_socom2.cpp",
     "third_party/ps2recomp/ps2xRuntime/src/lib/host_mic.cpp",
     "third_party/ps2recomp/ps2xRuntime/src/lib/ps2_audio.cpp",
     "third_party/ps2recomp/ps2xRuntime/src/lib/ps2_memory.cpp",

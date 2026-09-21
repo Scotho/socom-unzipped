@@ -61,6 +61,7 @@ std::atomic<bool> g_ps2xTraceArmed{false};
 #include <iomanip>
 #include "runtime/socom2_lum_readback.h"
 #include "runtime/socom2_cull_trace.h"
+#include "ps2x/knobs.h"
 #include <iostream>
 #include <sstream>
 #include <algorithm>
@@ -80,7 +81,7 @@ namespace ps2_stubs
         // PS2X_SOCOM2_RSA_KEY=b selects the second precomputed pair: two instances of the exe on
         // one host otherwise publish the *same* public key in their DME 0x18 client record, while
         // two PCSX2 clients publish distinct random keys (server/logs/console-DME.log).
-        const char *keyEnv = std::getenv("PS2X_SOCOM2_RSA_KEY");
+        const char *keyEnv = ps2x::knob("PS2X_SOCOM2_RSA_KEY");
         const bool keyB = keyEnv && (*keyEnv == 'b' || *keyEnv == 'B' || *keyEnv == '1');
         std::memcpy(rdram + (nAddr & PS2_RAM_MASK), keyB ? kSocom2RsaNb : kSocom2RsaN, sizeof(kSocom2RsaN));
         std::memcpy(rdram + (dAddr & PS2_RAM_MASK), keyB ? kSocom2RsaDb : kSocom2RsaD, sizeof(kSocom2RsaD));
@@ -190,7 +191,8 @@ namespace ps2_stubs
     void socom2LibnetbCall(uint8_t *rdram, uint32_t fno, uint32_t send, uint32_t sendSize,
                            uint32_t recv, uint32_t recvSize)
     {
-        if (std::getenv("PS2X_SOCOM2_NET_TRACE"))
+        static const bool s_netTrace = ps2x::knob("PS2X_SOCOM2_NET_TRACE") != nullptr;   // was a getenv on every libnetb RPC
+        if (s_netTrace)
             std::cout << "[socom2/msifrpc] libnetb fno=0x" << std::hex << fno << std::dec << " send=" << sendSize << " recv=" << recvSize << std::endl;
         socom2_libnetb::call(rdram, fno, send, sendSize, recv, recvSize);
     }
@@ -280,7 +282,7 @@ namespace ps2_stubs
     // loop. When disabled these behave like the previous ret0 stubs (no controller).
     bool socom2PadEnabled()
     {
-        static const bool on = (std::getenv("PS2X_SOCOM2_PAD") != nullptr);
+        static const bool on = (ps2x::knob("PS2X_SOCOM2_PAD") != nullptr);
         return on;
     }
 
@@ -299,7 +301,7 @@ namespace ps2_stubs
     {
         const uint32_t descriptor = GPR_U32(ctx, 4);
         const uint32_t socket = g_socom2NextSocket++;
-        if (std::getenv("PS2X_SOCOM2_PAD_TRACE"))
+        if (ps2x::knob("PS2X_SOCOM2_PAD_TRACE"))
         {
             uint32_t words[2] = {0u, 0u};
             if (descriptor != 0u)
@@ -348,7 +350,7 @@ namespace ps2_stubs
             report[9 + field] = socom2PressureOf(g_socom2Pad, field);   // R139: Triangle's may be light
         std::memcpy(rdram + buf, report, sizeof(report));
         // PS2X_SOCOM2_PAD_TRACE=1: log the first non-neutral reports the game reads.
-        static const bool s_padTrace = std::getenv("PS2X_SOCOM2_PAD_TRACE") != nullptr;
+        static const bool s_padTrace = ps2x::knob("PS2X_SOCOM2_PAD_TRACE") != nullptr;
         if (s_padTrace && (report[3] != 0xFFu || report[4] != 0xFFu))
         {
             static uint32_t s_lines = 0;
@@ -375,7 +377,7 @@ namespace ps2_stubs
         else
             value = 0u;
         // PS2X_SOCOM2_PAD_TRACE=1: which ids does the game poll, and what did it get for pressed ones?
-        static const bool s_padTrace = std::getenv("PS2X_SOCOM2_PAD_TRACE") != nullptr;
+        static const bool s_padTrace = ps2x::knob("PS2X_SOCOM2_PAD_TRACE") != nullptr;
         if (s_padTrace)
         {
             static uint32_t s_seenMask = 0u;
@@ -557,7 +559,7 @@ namespace
         PS2Runtime::IoPaths paths = PS2Runtime::getIoPaths();
         if (!paths.cdImage.empty())
             return;
-        if (const char *env = std::getenv("PS2X_CD_IMAGE"); env && *env)
+        if (const char *env = ps2x::knob("PS2X_CD_IMAGE"); env && *env)
         {
             paths.cdImage = env;
         }
@@ -591,7 +593,7 @@ namespace
         // PS2X_WATCH="0xADDR[,0xADDR...]": poll guest words every ~0.5 ms and print every change with
         // the host time, the new value and the live guest pc/ra — a poor man's write watchpoint
         // (which code cuts a linked list, at what moment relative to the call trace).
-        if (const char *watch = std::getenv("PS2X_WATCH"))
+        if (const char *watch = ps2x::knob("PS2X_WATCH"))
         {
             std::vector<uint32_t> addrs;
             std::string spec(watch);
@@ -608,7 +610,7 @@ namespace
             // words that turn from a sane float (|x| < 1e9) into a huge one (|x| >= 1e15 or NaN),
             // with the host time and the word's offset — where an object's state first explodes.
             std::vector<std::pair<uint32_t, uint32_t>> hugeRanges;
-            if (const char *hw = std::getenv("PS2X_WATCH_HUGE"))
+            if (const char *hw = ps2x::knob("PS2X_WATCH_HUGE"))
             {
                 std::string hs(hw);
                 size_t p = 0;
@@ -680,7 +682,7 @@ namespace
                 }
             }).detach();
         }
-        const char *env = std::getenv("PS2X_PC_SAMPLER");
+        const char *env = ps2x::knob("PS2X_PC_SAMPLER");
         if (!env || !*env)
             return;
         const double period = std::max(0.01, std::atof(env));   // fractional seconds allowed (0.05 = 20 Hz profile)
@@ -718,7 +720,7 @@ namespace
                       << " wait=" << static_cast<int>(t.waitReason) << "/" << t.waitId << "]";
                 std::cout << o.str() << std::endl;
                 // PS2X_PEEK="0xADDR[:words][,...]": dump guest words (hex + float) with each sample.
-                if (const char *peek = std::getenv("PS2X_PEEK"))
+                if (const char *peek = ps2x::knob("PS2X_PEEK"))
                 {
                     std::string spec(peek);
                     size_t pos = 0;
@@ -811,7 +813,7 @@ namespace
                             // PS2X_TRIGGER="lo:hi": when the first word of the first PS2X_PEEK item, read as
                             // a float, lies in [lo, hi], arm the "trig" mode of PS2X_GS_TRACE_CMDS /
                             // PS2X_TRACE_VIF (traces of the exact game state, e.g. the gameplay camera).
-                            static const char *s_trig = std::getenv("PS2X_TRIGGER");
+                            static const char *s_trig = ps2x::knob("PS2X_TRIGGER");
                             if (s_trig && w == 0u && itemIndex == 0u && !g_ps2xTraceArmed.load())
                             {
                                 const double lo = std::atof(s_trig);
@@ -848,7 +850,7 @@ namespace
     uint32_t g_dumpAtCount = 0;
     void initRdramDumpAt()
     {
-        const char *env = std::getenv("PS2X_RDRAM_DUMP_AT");
+        const char *env = ps2x::knob("PS2X_RDRAM_DUMP_AT");
         if (!env || !*env)
             return;
         std::string spec(env);
@@ -864,7 +866,7 @@ namespace
     void startRdramDump(PS2Runtime &runtime)
     {
         initRdramDumpAt();
-        const char *env = std::getenv("PS2X_RDRAM_DUMP");
+        const char *env = ps2x::knob("PS2X_RDRAM_DUMP");
         if (!env || !*env)
             return;
         std::string spec(env);
@@ -1139,7 +1141,7 @@ namespace
     {
         // PS2X_CALL_TRACE_EVERY=<k>: after the first 300 calls log every k-th (default 500; 1 = all).
         static const uint32_t s_every = [] {
-            const char *e = std::getenv("PS2X_CALL_TRACE_EVERY");
+            const char *e = ps2x::knob("PS2X_CALL_TRACE_EVERY");
             const uint32_t v = e ? static_cast<uint32_t>(std::strtoul(e, nullptr, 0)) : 500u;
             return v == 0u ? 500u : v;
         }();
@@ -1221,7 +1223,7 @@ namespace
             // function returns, follow the chain from the entry value of argument k and print
             // <words> guest words (hex + float) — e.g. the collision query object's ray and hit
             // records for every GroundQuery call ("GroundQuery:a1:20,GroundQuery:a1+0x48*:16").
-            static const char *const dumpSpec = std::getenv("PS2X_CALL_TRACE_DUMP");
+            static const char *const dumpSpec = ps2x::knob("PS2X_CALL_TRACE_DUMP");
             if (dumpSpec && *dumpSpec)
             {
                 std::string spec(dumpSpec);
@@ -1294,7 +1296,7 @@ namespace
 
     void installCallTrace(PS2Runtime &runtime)
     {
-        const char *env = std::getenv("PS2X_CALL_TRACE");
+        const char *env = ps2x::knob("PS2X_CALL_TRACE");
         if (!env || !*env)
             return;
         static const auto thunks = makeCallTraceThunks(std::make_integer_sequence<int, kCallTraceSlots>{});
@@ -1405,7 +1407,7 @@ namespace
 
     void installMusicTrace(PS2Runtime &runtime)
     {
-        if (!std::getenv("PS2X_SOCOM2_MUSIC_TRACE"))
+        if (!ps2x::knob("PS2X_SOCOM2_MUSIC_TRACE"))
             return;
         constexpr uint32_t kManager = 0x0034afd0u;   // FUN_0034afd0: the per-frame music manager
         constexpr uint32_t kPush = 0x0034b6c0u;      // FUN_0034b6c0: the cue push
@@ -1436,7 +1438,7 @@ namespace
     int32_t socom2UdpShift()
     {
         static const int32_t s_shift = [] {
-            const char *e = std::getenv("PS2X_SOCOM2_UDP_SHIFT");
+            const char *e = ps2x::knob("PS2X_SOCOM2_UDP_SHIFT");
             return e ? static_cast<int32_t>(std::atoi(e)) : 0;
         }();
         return s_shift;
@@ -1503,7 +1505,7 @@ namespace
         float m[16] = {};
         uint32_t planeMask = 0;
         float lodScale[2] = {0.0f, 0.0f};
-        static const float s_forceLod = std::getenv("PS2X_LOD_SCALE") ? static_cast<float>(std::atof(std::getenv("PS2X_LOD_SCALE"))) : 0.0f;
+        static const float s_forceLod = ps2x::knob("PS2X_LOD_SCALE") ? static_cast<float>(std::atof(ps2x::knob("PS2X_LOD_SCALE"))) : 0.0f;
         if (s_forceLod > 0.0f)
         {
             if (uint8_t *pw = rdram + (camera & PS2_RAM_MASK) + 0x2c8u; camera != 0)
@@ -1525,7 +1527,7 @@ namespace
         // (OR mask nonzero) that the guest then judged 'inside the guard band' (result 1) is answered 0, the
         // 'needs clipping' verdict the hardware's flag latency gives FUN_00294a30 -- the clipped VU1 family.
         {
-            static const bool s_partialClip = std::getenv("PS2X_CULL_PARTIAL_CLIP") && std::atoi(std::getenv("PS2X_CULL_PARTIAL_CLIP")) != 0;
+            static const bool s_partialClip = ps2x::knob("PS2X_CULL_PARTIAL_CLIP") && std::atoi(ps2x::knob("PS2X_CULL_PARTIAL_CLIP")) != 0;
             if (s_partialClip && GPR_U32(ctx, 2) == 1u)
             {
                 uint32_t andMaskX = 0, orMaskX = 0;
@@ -1652,7 +1654,7 @@ namespace
     void socom2_DetailTrace(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         const uint32_t comp = GPR_U32(ctx, 4);
-        static const bool s_forceFar = std::getenv("PS2X_DETAIL_FAR") && std::atoi(std::getenv("PS2X_DETAIL_FAR")) != 0;
+        static const bool s_forceFar = ps2x::knob("PS2X_DETAIL_FAR") && std::atoi(ps2x::knob("PS2X_DETAIL_FAR")) != 0;
         if (s_forceFar)
             rdram[0x4b4a88u & PS2_RAM_MASK] = 0;
         g_detailOriginal(rdram, ctx, runtime);
@@ -1757,7 +1759,7 @@ namespace
 
     void installPackTrace(PS2Runtime &runtime)
     {
-        const char *path = std::getenv("PS2X_PACK_TRACE");
+        const char *path = ps2x::knob("PS2X_PACK_TRACE");
         if (!path || !*path || !runtime.hasFunction(0x0025a5d0u))
             return;
         g_packTraceFile = std::fopen(path, "w");
@@ -1816,10 +1818,10 @@ namespace
 
     void installCullTrace(PS2Runtime &runtime)
     {
-        const char *spec = std::getenv("PS2X_CULL_TRACE");
+        const char *spec = ps2x::knob("PS2X_CULL_TRACE");
         if (!spec || !*spec)
         {
-            if (std::getenv("PS2X_CULL_PARTIAL_CLIP") && runtime.hasFunction(0x00290c30u))
+            if (ps2x::knob("PS2X_CULL_PARTIAL_CLIP") && runtime.hasFunction(0x00290c30u))
             {
                 g_cullTraceStart = std::chrono::steady_clock::now();
                 g_cullOriginal = runtime.lookupFunction(0x00290c30u);
@@ -2144,18 +2146,18 @@ namespace
 void ps2HostProfStart(std::thread::native_handle_type nativeHandle)
 {
 #ifdef _WIN32
-    const char *env = std::getenv("PS2X_HOST_PROF");
+    const char *env = ps2x::knob("PS2X_HOST_PROF");
     if (!env || !*env)
         return;
     const double periodMs = std::max(0.2, std::atof(env));
-    const char *outEnv = std::getenv("PS2X_HOST_PROF_OUT");
+    const char *outEnv = ps2x::knob("PS2X_HOST_PROF_OUT");
     const std::string outPath = outEnv && *outEnv ? outEnv : "logs/hostprof.txt";
     // PS2X_HOST_PROF_ALL=1: sample every thread of the process (the game thread alone may show only
     // part of the work). Samples are merged into one histogram plus a per-thread table; addresses
     // outside the exe are written with their module name ("ext <module>+off").
-    const bool allThreads = std::getenv("PS2X_HOST_PROF_ALL") != nullptr;
+    const bool allThreads = ps2x::knob("PS2X_HOST_PROF_ALL") != nullptr;
     // PS2X_HOST_PROF_MAIN=1: sample the calling (main / GL render) thread instead of the game thread.
-    const bool mainThread = std::getenv("PS2X_HOST_PROF_MAIN") != nullptr;
+    const bool mainThread = ps2x::knob("PS2X_HOST_PROF_MAIN") != nullptr;
     HANDLE dup = nullptr;
     if (!DuplicateHandle(GetCurrentProcess(), mainThread ? GetCurrentThread() : static_cast<HANDLE>(nativeHandle), GetCurrentProcess(), &dup,
                          THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, 0))
@@ -2171,7 +2173,7 @@ void ps2HostProfStart(std::thread::native_handle_type nativeHandle)
         std::unordered_map<uint64_t, uint32_t> counts;
         // PS2X_HOST_PROF_STACKS=1: also record the call stack of every sample ("stack <n> a;b;c"
         // lines, leaf first, raw addresses; tools_py/hostprof_stacks.py folds and symbolizes).
-        const bool stacks = std::getenv("PS2X_HOST_PROF_STACKS") != nullptr;
+        const bool stacks = ps2x::knob("PS2X_HOST_PROF_STACKS") != nullptr;
         constexpr uint32_t kMaxFrames = 24u;
         std::unordered_map<std::string, uint32_t> stackCounts;
         std::unordered_map<DWORD, uint64_t> perThread;
@@ -2353,15 +2355,15 @@ void ps2HostProfStart(std::thread::native_handle_type nativeHandle)
 #elif defined(__linux__) && defined(__x86_64__)
     // The Linux half (Sprint 8 Goal 1 design item 3). Same environment knobs, same [host-prof] line,
     // same hostprof.txt shape, so tools_py/hostprof_symbolize.py reads either platform's file.
-    const char *env = std::getenv("PS2X_HOST_PROF");
+    const char *env = ps2x::knob("PS2X_HOST_PROF");
     if (!env || !*env)
         return;
     const double periodMs = std::max(0.2, std::atof(env));
-    const char *outEnv = std::getenv("PS2X_HOST_PROF_OUT");
+    const char *outEnv = ps2x::knob("PS2X_HOST_PROF_OUT");
     const std::string outPath = outEnv && *outEnv ? outEnv : "logs/hostprof.txt";
-    const bool allThreads = std::getenv("PS2X_HOST_PROF_ALL") != nullptr;
-    const bool mainThread = std::getenv("PS2X_HOST_PROF_MAIN") != nullptr;
-    const bool stacks = std::getenv("PS2X_HOST_PROF_STACKS") != nullptr;
+    const bool allThreads = ps2x::knob("PS2X_HOST_PROF_ALL") != nullptr;
+    const bool mainThread = ps2x::knob("PS2X_HOST_PROF_MAIN") != nullptr;
+    const bool stacks = ps2x::knob("PS2X_HOST_PROF_STACKS") != nullptr;
     // nativeHandle is the game thread pthread_t, which no call turns into a kernel tid; the tid was
     // recorded on the thread itself when it named itself GameThread (include/ThreadNaming.h), which
     // is where the Windows path duplicates the thread handle.
@@ -2500,7 +2502,7 @@ void ps2HostProfStart(std::thread::native_handle_type nativeHandle)
     // Any other UNIX (no ucontext gregs / no POSIX timers we can point at one thread): a no-op that
     // says so once, rather than a silent knob.
     (void)nativeHandle;
-    if (const char *env = std::getenv("PS2X_HOST_PROF"); env && *env)
+    if (const char *env = ps2x::knob("PS2X_HOST_PROF"); env && *env)
         std::cout << "[host-prof] not supported on this platform; PS2X_HOST_PROF ignored" << std::endl;
 #endif
 }
