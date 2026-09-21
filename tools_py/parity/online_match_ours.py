@@ -3935,6 +3935,21 @@ class AimLead:
                 "bursts_since_damage": self.bursts_since_damage, "pending": len(self.pending)}
 
 
+SIDE_JOIN_POLL_S = 0.05          # the endgames' join on a side thread, taken as wait() polls of this length
+
+
+def join_in(thread, timeout, clock, wait):
+    """`thread.join(timeout)` taken in the injected time: the side loops sleep through `wait`, so their exit is
+    awaited through it too. A native join blocks OUTSIDE the clock -- live, that is only a poll made coarser; under
+    the tests' lockstep Clock (tools_py/tests/online_rows.py) every thread on the clock has to be in a wait() before
+    time moves, and a joiner standing outside it froze the side thread it was waiting for (Sprint 10, the CI flake
+    KNOWN §4 records). -> True when the thread ended."""
+    end = None if timeout is None else clock() + timeout
+    while thread.is_alive() and (end is None or clock() < end):
+        wait(SIDE_JOIN_POLL_S)
+    return not thread.is_alive()
+
+
 def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, fight_s=None, clock=time.time,
                   wait=time.sleep, spawns=None, live_spawns=None, route_path=None, route_join="start",
                   round_start=None):
@@ -4108,7 +4123,7 @@ def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, figh
             out["stop_reason"] = str(e)
     finally:
         stop.set()
-        ts.join(timeout=RULE_LEG_S + 2.0)
+        join_in(ts, RULE_LEG_S + 2.0, clock, wait)
         out["t_end"] = clock()
         out["lead"] = lead.summary()
     if out["stop_reason"]:
@@ -4365,9 +4380,9 @@ def endgame_cooperative(sides, duel, watch, log, map_name=None, route=None, figh
     ts = threading.Thread(target=shooter_guarded, daemon=True)
     tv.start()
     ts.start()
-    ts.join()
+    join_in(ts, None, clock, wait)
     stop.set()
-    tv.join(timeout=RULE_LEG_S + 5.0)
+    join_in(tv, RULE_LEG_S + 5.0, clock, wait)
     out["t_end"] = clock()
     if out["stop_reason"]:
         log(f"ENDGAME STOP: {out['stop_reason']}")
