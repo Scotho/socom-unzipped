@@ -116,7 +116,7 @@ KEYNAME_PATH_RE = re.compile(r"(?i)(^|/)(id_(?:rsa|dsa|ecdsa|ed25519)(?![\w.-]*\
 # it the word boundary sits in the wrong place in every camelCase and every SCREAMING_SNAKE key.
 ASSIGN_RE = re.compile(
     r"(?i)(?<![\w])([\w-]{0,24}?(?:token|secret|password|passwd|pwd|api[_-]?key|access[_-]?key"
-    r"|secret[_-]?key|private[_-]?key|auth|bearer|session[_-]?id|credential)s?)[\"']?\s*[:=]\s*"
+    r"|secret[_-]?key|private[_-]?key|auth|bearer|session[_-]?id|credential|login[_-]?pass)s?)[\"']?\s*[:=]\s*"
     r"([\"']?)([^\s\"',;]{6,})")
 VENDOR_RE = re.compile(r"(?<![\w])(AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|AGPA[0-9A-Z]{16}|AIDA[0-9A-Z]{16}"
                        r"|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}"

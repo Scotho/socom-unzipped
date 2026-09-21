@@ -69,3 +69,8 @@ secret-assignment  .gitleaks.toml  0x1122334455667788   # gitleaks's allowance f
 email           LICENSES/*.txt   # a licence's own contact line
 street-address  LICENSES/*.txt   # the FSF's address in the GPL/LGPL texts
 postcode        LICENSES/*.txt   # same
+
+# -- the launcher scrubber's planted controls (Sprint 10 H6): a lower-cased home, an 8.3 short name, another account's
+#    directory, a peer's address -- each must survive in the TEST so the test can prove it does not survive the scrub
+home-directory-path  third_party/ps2recomp/ps2xTest/src/diagnostics_tests.cpp   # planted: SECRET~1, Otheruser, /home/otheruser
+ip-address           third_party/ps2recomp/ps2xTest/src/diagnostics_tests.cpp  86.21.44.190   # planted: a peer's address
