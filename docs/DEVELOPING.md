@@ -133,17 +133,27 @@ under `tools/` (sha256-verified, ~245 MB once; `--check` says what is there), th
 builds the runtime library and the launcher and `./build.sh test --no-runner` runs both suites and the VU1 fixture
 verify. That is what the `windows` and `linux` workflows do. **With a disc,** the five commands below.
 
+**How long the whole thing takes, measured.** On 2026-09-21 the entire newcomer path was run from a genuine `git clone`
+of this repository into an empty directory on a 28-core Windows machine, nothing pre-existing, and every step passed:
+clone 5 s (115 MB) · `install_hooks.sh` 1 s · `bootstrap_windows.sh` **16 s** from no cache at all (the real download;
+1126 MB of toolchain on disk) · `--check` 1 s · `build.sh runtime --no-runner` **392 s** · `build.sh test --no-runner`
+**339 s** (764/764) · the Python suite **280 s** · `disc_to_elf.sh` **415 s** · `build.sh recomp` **352 s** ·
+`build.sh runtime` **624 s** → `dist/socom2.exe`, 236,852,224 bytes. **42 minutes from `git clone` to the game**, and
+about 15 GB of disk for the clone, the toolchain, the disc tree, the generated code and the build trees.
+
 Five commands, in this order, on a clean checkout with the tools under `tools/` on the PATH
 (`export PATH="$PWD/tools/llvm-mingw/bin:$PWD/tools/cmake/bin:$PWD/tools/ninja:$PATH"`; `build.sh` does this itself) and the disc image at
-`game/SOCOM II - U.S. Navy SEALs (USA).iso`. The expected lines are the ones to look for; the counts are as of
-2026-09-17 and only ever grow.
+your own ISO (the command in the previous section puts the disc tree and the overlays where these expect them). The
+expected lines are the ones to look for; **every count below was measured on 2026-09-21 from a genuine `git clone` of
+this repository into an empty directory**, and the test counts only ever grow, so more than the number here is fine
+and fewer is a regression to report.
 
 | # | command | the line that says it worked |
 |---|---|---|
 | 1 | `./build.sh recomp` | `recomp: 14882 files, unhandled=114399` — and `Recompilation completed successfully` at the end of `recomp/recomp_run.log`. **That second number is not a failure and `unhandled=0` (what this row claimed until 2026-09-21) has not been true for a long time:** it counts `unhandled-instruction` lines in the log, which the recompiler emits and carries on from, and the exe built from exactly this generated code is the one the gate passes 3/3 on. Measured twice on 2026-09-21, identically, in two working trees. What would be a failure is a non-zero exit (the last 20 log lines are printed then) or a file count that fell |
 | 2 | `./build.sh runtime` | `built dist/socom2.exe` (the launcher lands beside it) |
-| 3 | `./build.sh test` | `Total Tests: 500` / `Passed: 500` / `Failed: 0`, then `vu1_replay` with `checked=15 skipped=0` |
-| 4 | `python -m unittest discover -s tools_py/tests -t .` | `Ran 1104 tests ...` / `OK (skipped=63)` |
+| 3 | `./build.sh test` | `Total Tests: 764` / `Passed: 764` / `Failed: 0`, then `PASS: vram diff against 1.00% tolerance, checked=15 skipped=0` (this row said 500 until 2026-09-21, three sprints of cases after it stopped being true) |
+| 4 | `python -m unittest discover -s tools_py/tests -t .` | `Ran 1723 tests ...` / `OK` (1712 on the fresh clone an hour before the eleven bootstrap cases landed). The **skip** count is not a constant and is not worth matching — 100 on that clone, 85 once a disc had been extracted into `game/`, 109 in a worktree with neither — because cases skip on what you have. `OK`, with no failures, is the bar. (This row said 1104 / `skipped=63` until 2026-09-21.) |
 | 5 | `python -m tools_py.parity.gate --stamp first_run` | `GATE PASS (3/3) -> logs\parity\gate\first_run` (about 15 min; the game window opens and closes three times; do not touch the keyboard) |
 
 `python -m tools_py.parity.gate --baseline first_run` re-scores that saved run without launching, which is the
