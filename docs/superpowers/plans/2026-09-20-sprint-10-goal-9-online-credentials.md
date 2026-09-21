@@ -40,7 +40,7 @@ crypto path) and file the Ghidra notes in research/38 for the next attempt.
   sees the keyboards empty, as today. Cost if wrong: two ENTER presses per login that a later sprint can remove.
 
 **Proposed rulings from the lock-free pass (2026-09-21, the Goal 9 agent; the controller numbers them):**
-- **P-A -- the override is a runtime `replaceFunction` wrap, not a `recomp/socom2.toml` stub; no recompile.** A
+- **R200 -- the override is a runtime `replaceFunction` wrap, not a `recomp/socom2.toml` stub; no recompile.** A
   toml `stubs=` entry makes the recompiler emit ONLY the stub for that address and drop the original body
   (`recomp/output/FUN_003b24c0_0x3b24c0.cpp` is the shape), so a "prefill, then let the game's routine run" override
   cannot be one -- it would have to re-implement the keyboard's activation. `PS2Runtime::replaceFunction` +
@@ -49,14 +49,14 @@ crypto path) and file the Ghidra notes in research/38 for the next attempt.
   Task 2 Step 5 are therefore not done, on purpose. Cost if wrong: none found -- the wrap runs on every call of
   the same function the stub would have bound. The owner can overturn it (a toml stub plus a hand-written
   activation, a day's work).
-- **P-B -- the persona name keeps every character the game's keyboard has, not only letters and digits.** The
+- **R201 -- the persona name keeps every character the game's keyboard has, not only letters and digits.** The
   plan's `normalizeLoginName` kept `[A-Za-z0-9]`; the keyboard (`tools_py/parity/online_login.py:OSK_ROWS`) has the
   whole printable ASCII set but the space, and the name keyboard refuses `"` (`NoDQuote`, research/38). A persona
   `Sgt_Rock` typed on ONLINE would have become `SgtRock` and logged in as a stranger. So: printable ASCII 0x21-0x7E,
   no space, no `"` for the name; the same set with `"` for the password; caps 14 and 12 (research/38), applied
   in the launcher AND re-applied from the live `MaxChars` in the runtime. Cost if wrong: a character the keyboard
   cannot type reaches the wire -- the runtime's own cap and the game's own login refusal are behind it.
-- **P-C -- the password is capped at 12 in the launcher (the plan drew its field at 32).** The password keyboard's
+- **R202 -- the password is capped at 12 in the launcher (the plan drew its field at 32).** The password keyboard's
   `MaxChars` is 12; a longer one typed on ONLINE would be cut by the prefill and the login would fail with no
   message. The field stops at 12 and says so. Cost if wrong: a 13+-character password from some other client --
   the same game made every password, on the same keyboard.
@@ -66,7 +66,7 @@ crypto path) and file the Ghidra notes in research/38 for the next attempt.
 - The runtime override is bound at recompile time through `recomp/socom2.toml` (`"<name>@0x<addr>"`), which
   means `./build.sh recomp` and a runtime rebuild -- **lock-bound** (`scripts/loop_lock.sh run <owner> -- <cmd>`),
   and the built exe's sha goes in the gate record.
-  > Superseded 2026-09-21 (proposed ruling P-A above): the override is a runtime `replaceFunction` wrap with
+  > Superseded 2026-09-21 (R200 above): the override is a runtime `replaceFunction` wrap with
   > the original kept; no toml line, no recompile. Only the runner rebuild (`./build.sh runtime`) is
   > lock-bound, and its exe's sha still goes in the gate record.
 - The variables are unset when the ONLINE fields are empty: an empty field sends nothing, and the runtime with
@@ -137,7 +137,7 @@ EOF
 the persona-list object's range is the name buffer; note its guest address in research/38 next to the static
 findings. If the static and dynamic addresses disagree, the static reading is wrong -- go back to Step 1.
 
-- [x] **Step 3: Bind the name in the recompiler's table** -- NOT DONE, on purpose (proposed ruling P-A above): the toml stub would drop the original body; the binding is `installOskPrefill` (`replaceFunction`) in Task 2 instead, and `recomp/socom2.toml` is untouched
+- [x] **Step 3: Bind the name in the recompiler's table** -- NOT DONE, on purpose (R200 above): the toml stub would drop the original body; the binding is `installOskPrefill` (`replaceFunction`) in Task 2 instead, and `recomp/socom2.toml` is untouched
 
 Append to the override list in `recomp/socom2.toml`, next to `"socom2_RsaGenerateKeyPair@0x0062B168"`:
 
@@ -170,7 +170,7 @@ git commit -m "research(osk): the keyboard-open routine, its buffer and caps, bo
 - Produces: `socom2_osk::prefillFor(fieldKind, nameEnv, passEnv, cap) -> std::string` (pure: which string
   goes in, cut to the cap, empty when the variable is unset) and the stub `ps2_stubs::socom2_OskOpen`.
 
-**Result (2026-09-21, the Goal 9 agent):** done as a runtime wrap (proposed ruling P-A), not a toml stub, so
+**Result (2026-09-21, the Goal 9 agent):** done as a runtime wrap (R200), not a toml stub, so
 there is no `ps2_call_list.h` entry and no `_original` continuation: `installOskPrefill` (called from
 `applySocom2` after `installRtNetPortShift`, only when `PS2X_SOCOM2_LOGIN_NAME` or `_PASS` is set) keeps the
 original through `lookupFunction(0x38d770)` and `replaceFunction`s it with `socom2_OskOpenPrefill`, which reads
@@ -237,7 +237,7 @@ namespace socom2_osk
 }
 ```
 
-- [x] **Step 4: The stub** -- as a `replaceFunction` wrap with the original kept (P-A); the field comes from the Purpose key and SkbName, the cap from the live MaxChars/MaxBytes
+- [x] **Step 4: The stub** -- as a `replaceFunction` wrap with the original kept (R200); the field comes from the Purpose key and SkbName, the cap from the live MaxChars/MaxBytes
 
 In `game_overrides_socom2.cpp`, after `socom2_RsaGenerateKeyPair`:
 
@@ -274,7 +274,7 @@ Task 1's table gives (the recompiler emits the original body under a name the to
 same shape `socom2_LumReadPixel` uses to fall through when it does not handle a call -- read that function
 before writing this one). The three `CHECK` comments are removed once the registers match research/38.
 
-- [ ] **Step 5: Rebuild the runner, run the suite -- THE CONTROLLER'S (lock-bound); no recompile is needed (P-A)**
+- [ ] **Step 5: Rebuild the runner, run the suite -- THE CONTROLLER'S (lock-bound); no recompile is needed (R200)**
 
 The library half is done: `./build.sh runtime --no-runner` and `./build.sh test --no-runner` are green in the
 agent's worktree (ps2x_tests 709/0 -- the count after Tasks 2-5; Python untouched). What is left is the game
@@ -317,7 +317,7 @@ git commit -m "feat(runtime): the on-screen keyboard opens holding the launcher'
 - Produces: `Config::loginName`, `Config::loginPassword` (both `std::string`, default empty);
   `launcher::normalizeLoginName(const std::string&) -> std::string`; the two environment entries.
 
-**Result (2026-09-21):** as written, with P-B/P-C: `kLoginNameCap = 14`, `kLoginPasswordCap = 12`,
+**Result (2026-09-21):** as written, with R201/R202: `kLoginNameCap = 14`, `kLoginPasswordCap = 12`,
 `normalizeLoginName` (printable ASCII, no space, no `"`, cut to 14) and `normalizeLoginPassword` (printable
 ASCII, no space, cut to 12), both applied in `environmentFor` so what reaches the game is what the keyboard
 could have typed; `toJson`/`fromJson` carry `loginName` / `loginPassword`. RED:
@@ -365,7 +365,7 @@ reach the game only when set" passes; the `bare_run` environment case still pass
 Run (under the lock, the test target only): `scripts/loop_lock.sh run <owner> --purpose "Goal 9 config tests" -- bash -c 'cd third_party/ps2recomp && cmake --build build-clang --target ps2x_tests -j 8'`
 Expected: compile error, `loginName` is not a member of `launcher::Config`.
 
-- [x] **Step 3: The config fields and the normaliser** (caps 14/12, the keyboard's character set -- P-B, P-C)
+- [x] **Step 3: The config fields and the normaliser** (caps 14/12, the keyboard's character set -- R201, R202)
 
 In `launcher_config.h`, after `std::string profile = "player";`:
 
@@ -736,7 +736,7 @@ git commit -m "feat(harness): --prefilled -- ours logs in from the launcher's va
 
 **Split (2026-09-21):** the agent's half is this file and research/38 (the controller owns CURRENT_SPRINT,
 HUMAN_TASKS, KNOWN, PLAYTEST and the message to the story session); those rows are written when Task 6's two
-logins are in, and they need from here: the three proposed rulings (P-A, P-B, P-C -- to number), the KNOWN
+logins are in, and they need from here: the three proposed rulings (P-A, R201, R202 -- to number), the KNOWN
 addition (a launcher-typed name that differs from the card's saved persona is a create-persona login, which
 is correct; and a name the keyboard cannot type -- a space, an accent -- is silently reduced to what it can,
 so a persona with such a character does not exist and cannot be typed on ONLINE either), and the HUMAN_TASKS
@@ -764,13 +764,13 @@ git commit -m "docs: Sprint 10 Goal 9 recorded -- the ONLINE tab's name and pass
 Suite sizes after the pass: `ps2x_tests` 709 / 0 (was 700-701 before this goal); the Python suite unchanged
 by this goal: 1571 OK (93 skipped), run lock-free after the last commit. Builds: `./build.sh runtime --no-runner` (the library and
 the launcher), the `ps2x_tests` target and the screenshot walk, each under the machine lock; `./build.sh
-recomp` NOT run (P-A), `./build.sh runtime` with the runner NOT run (the controller's, Task 2 Step 5). Logs in
+recomp` NOT run (R200), `./build.sh runtime` with the runner NOT run (the controller's, Task 2 Step 5). Logs in
 the worktree's git-ignored `logs/osk/` (`build2.log` RED, `build3.log` Tasks 2-3 GREEN / 4-5 RED,
 `build4.log` the pitch failure, `build5.log` GREEN) and `logs/launcher_shots_g9/`.
 
 **What is left, in order, all the controller's:** Task 2 Step 5 (rebuild the runner, suite, a gate with the
 variables unset); Task 6 (`--prefilled`, two driven logins, `logs/parity/s10_g9_prefill_gate`); Task 7 Step 1
-(the rows, the numbering of P-A/P-B/P-C, the story message); the owner's login (HUMAN_TASKS).
+(the rows, the numbering of P-A/R201/R202, the story message); the owner's login (HUMAN_TASKS).
 
 ## Self-review against research/37
 
