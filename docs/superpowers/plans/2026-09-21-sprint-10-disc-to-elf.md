@@ -92,6 +92,33 @@ have been ~8 GB of reading for a check the game's own CD reads and the gate alre
 **Cost, measured:** the tree and the overlays are 4184 MB; the toolchain 1.2 GB; `recomp/output` 576 MB (14882 files);
 the two build trees 1377 MB (`build-tools`) and 2107 MB (`build-clang`), plus 283 MB in `dist/`. Free space on C: fell from 22 GB to 9.1 GB (the disc tree, two dependency clones, the generated code, the objects and a 226 MB exe) over the run.
 
+### 2.1 Done again, from a genuine clone of the public repository (19:14-19:56)
+
+The run above was in a worktree: it shared `.git` with the main tree, so it proved the chain but not that the
+**published** repository holds everything the chain needs. With the owner away and the machine free, the whole
+newcomer path was run again under the lock, this time from `git clone https://github.com/Scotho/socom-unzipped.git`
+into an empty `/c/fc` (a short root on purpose: Windows still has a 260-character path limit and the generated tree
+is deep). Every step is one the documentation tells a newcomer to type, in that order, with no cache seeded:
+
+| step | wall | result |
+|---|---|---|
+| `git clone` | 5 s | `d0a4f56`, branch `main`, 115 MB |
+| `scripts/install_hooks.sh` | 1 s | ok |
+| `scripts/bootstrap_windows.sh` | **16 s** | the real 245 MB download from an empty cache, 1126 MB extracted — and the first run of `67ff2e8` on a path it had never taken (§5 finding 1's repair) |
+| `scripts/bootstrap_windows.sh --check` | 1 s, exit 0 | three "present" |
+| `./build.sh runtime --no-runner` | 392 s | `built the runtime library and dist/socom_unzipped_launcher.exe (no generated code: no game)` |
+| `./build.sh test --no-runner` | 339 s | `Total Tests: 764` / `Passed: 764` / `Failed: 0`; `PASS: vram diff ... checked=15 skipped=0` |
+| the Python suite | 280 s | `Ran 1712 tests ... OK (skipped=100)` |
+| `scripts/disc_to_elf.sh "<the ISO>"` | **415 s** | `ftscore.bin` `cf09a7fa...`, `zsealetc.bin` `cdb3fa8e...`, `socom2_game.elf` `06b83684...` — **identical to the recorded digests for the third time** |
+| `./build.sh recomp` | 352 s | `recomp: 14882 files, unhandled=114399` — the same pair for the third time (§5 finding 2) |
+| `./build.sh runtime` | 624 s | `dist/socom2.exe`, 236852224 bytes, sha256 `c2b9bf2b...` |
+
+**42 minutes from `git clone` to the game**, about 15 GB of disk, nothing hand-held — in particular the bootstrap
+step, which had to be repaired by hand in the first run, now goes through untouched. What this adds over §2: the
+public repository is complete (no needed file is git-ignored), the toolchain **download** half is exercised (which
+R235 had left open), and the disc chain reproduced the same bytes from a tree that shares nothing with the
+maintainer's.
+
 ## 3. Tests
 
 `python -m unittest tools_py.tests.test_disc_to_elf` — 43 cases, 0.3 s, no Unicorn and no disc. The reader cases build
@@ -161,6 +188,8 @@ re-hashes every archive and refuses a mismatch, so the installed toolchain is bi
 the step is still a real test of the extraction half. Cost: the *download* half (the URLs, the retries) was not
 exercised by this run; it was exercised on this machine at 01:56 the same day. The owner can overturn this by asking
 for a run with an empty cache.
+> Closed the same evening, without needing the owner: §2.1's clone run fetched all three archives from an empty cache
+> in 16 s and verified them. The cost this ruling accepted no longer stands open.
 
 ## 5. Findings for the controller
 
