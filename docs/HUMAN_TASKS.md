@@ -4,6 +4,16 @@ Things only the owner can do: hands-on checks on the real machine with real ears
 adds items here when it reaches a step it cannot verify itself, and moves on. Report back in one line each; the
 loop picks the answer up from the next session's prompt or from a note in `docs/STATUS.md`.
 
+## Start here (2026-09-21 evening)
+
+**TONIGHT'S BUILD IS READY, and it is not `playtest-1`.** `dist-release/portable/socom2-portable.zip`, 56,581,263
+bytes, sha256 `c3058d28...` (`dist-release/portable/SHA256SUMS` beside it), built at -O1 from `acbc693`; the
+three-stage gate passed **3/3 on the exe inside that zip** (`s10_playtest2_gate`, exe sha256 `098cf126...`) and the
+release leak check found nothing in the staged folder. **Unzip it to a NEW folder and play from there** --
+`docs/PLAYTEST.md` is the sitting, and its step 0 now folds in tonight's new checks (the BUTTONS page, the menu
+sounds, the guide-button switch, the prefilled login). About two hours without the two-machine step; protect step 6
+(the music -- this is the first listen on the stereo fix) and step 11 (online).
+
 ## Start here (2026-09-20)
 
 **THE OWNER GATE ON THE AUDIO LISTEN IS BYPASSED (your instruction, 2026-09-20 evening).** The music thread no longer

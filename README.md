@@ -73,9 +73,11 @@ bash scripts/bootstrap_windows.sh      # llvm-mingw, CMake and Ninja into tools/
 ./build.sh test --no-runner            # both suites and the VU1 replay goldens
 ```
 
-With the ISO under `game/`, the game itself:
+With your own ISO, the game itself:
 
 ```
+pip install unicorn                        # the two decryption stages emulate R5900 code
+bash scripts/disc_to_elf.sh "<your ISO>"   # the disc tree and the decrypted overlays (eight minutes, 4.2 GB)
 ./build.sh recomp      # build the merged ELF from the disc and run the recompiler
 ./build.sh runtime     # cmake + ninja + clang -> dist/socom2.exe and the launcher
 ./build.sh test        # the C++ suite and the VU1 replay goldens

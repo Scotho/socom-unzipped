@@ -61,6 +61,71 @@ python -m tools_py.parity.gate   # in-game gate: title / transition / mission, P
                        # `./build.sh test` does NOT rebuild it.
 PS2X_PC_SAMPLER=5 ./run.sh 40    # run 40 s; logs/latest.log; prints guest thread PCs every 5 s
 ```
+### From your own disc to a buildable ELF — one command (2026-09-21)
+
+```
+bash scripts/disc_to_elf.sh "/path/to/SOCOM II - U.S. Navy SEALs (USA).iso"
+```
+
+`./build.sh recomp` reads `game/disc/SCUS_972.75`, `game/overlays/ftscore.bin` and `game/overlays/zsealetc.bin` and
+writes `game/overlays/socom2_game.elf`. None of them is in this repository -- they are the game's own bytes -- and the
+command above is how you produce all four from your own disc. About eight minutes and 4.2 GB the first time -- 473 of
+those 483 seconds are the third stage, where the game decrypts itself on an emulated R5900. It verifies
+every step, and a second run is a no-op that still verifies: if it stops, or you stop it, type the same line again and
+it picks up where it left off. `python -m tools_py.disc_to_elf` is the same command with the same arguments; `--out
+<dir>` writes the tree and the overlays somewhere other than `game/`, `--check` says which stages are already done,
+`--force` redoes them, and `--stages extract,dnas,overlays,elf` runs a subset.
+
+**What you need:** Python 3; `pip install unicorn` (stages 2 and 3 run the game's own decryption code on an emulated
+R5900 -- 2.1.4 is the version this was measured with); 4.2 GB free; and your own NTSC r0001 image (SCUS-97275). No 7z
+and no other extractor -- the ISO9660 reader is part of the command.
+
+| # | stage | what it does | here |
+|---|---|---|---|
+| 1 | `extract` | the ISO's filesystem to `game/disc/` -- 349 files, 4173 MB. A plain ISO9660 reader (`tools_py/iso_lbn.py` still maps a file to its LBN when you need one by hand) | 8 s (4173 MB at 554 MB/s; minutes on a slower disk) |
+| 2 | `dnas` | `OVERLAY/REL/DNAS.BIN` -> `DNAS.dec.bin`: `tools_py/dnas_selfdecrypt.py` runs each of the DNAS overlay's 131 self-encrypting code blocks through its own cipher under Unicorn | 2s |
+| 3 | `overlays` | `RUN/RAW/APACHE00.ZDB` -> `ftscore.bin` + `zsealetc.bin`: `tools_py/decrypt_apache.py` runs the retail loader's own decryption (four emulated passes per blob; its docstring names the loader functions it mirrors) and inflates the result | 473s |
+| 4 | `elf` | the loader + both overlays -> `socom2_game.elf`: `tools_py/make_overlay_elf.py` with the `--loader-text-end=recomp/loader_text_end.txt` that `build.sh recomp` also passes | 0.0s |
+
+**What it prints.** The two emulated stages print thousands of progress lines; those go to
+`game/disc_to_elf-dnas.log` and `game/overlays/disc_to_elf-overlays.log`, and what you see is:
+
+```
+extract: SOCOM II - U.S. Navy SEALs (USA).iso: volume 'SOCOM_II', 349 files, 4173 MB
+extract: SCUS_972.75 is the r0001 boot ELF (sha256 0172dc0bec19c83d...)
+  13% (543 of 4173 MB, 1293 MB/s)
+  ... one line per tenth ...
+extract: 349 files written, 0 already there (4173 MB in the tree)
+dnas: decrypting the DNAS overlay's code blocks under Unicorn (a few seconds)
+  (chatter -> game\disc_to_elf-dnas.log)
+dnas: 131 blocks, 667136 bytes -> OVERLAY\REL\DNAS.dec.bin (2s)
+overlays: running the loader's decryption under Unicorn (about eight minutes; four emulated passes over two blobs)
+  (chatter -> game\overlays\disc_to_elf-overlays.log)
+overlays: ftscore.bin + zsealetc.bin written, build id 'SOCOM 2 r0001 17:22:21 Oct 11 2003' (473s)
+elf: merging the loader and the two overlays (loader text ends at 0x1d5000)
+  (chatter -> game\overlays\disc_to_elf-elf.log)
+elf: game\overlays\socom2_game.elf: 4835072 bytes, 4 segments, entry 0x180008, build id 'SOCOM 2 r0001 17:22:21 Oct 11 2003' (0.0s)
+done in 483s. Next: ./build.sh recomp  (then ./build.sh runtime)
+```
+
+The second run of the same line, with everything already there, is the four "already there / matches -- skipped"
+lines and `done in 0s`; `--check` prints one `ok`/`todo` row per stage and leaves with 0 only when every row is `ok`.
+
+**What it checks.** `tools_py/disc_to_elf_expected.json` holds what the r0001 disc produces: the sizes and sha256
+digests of the three files the chain reads and of everything it writes, the number of DNAS blocks, the ELF's entry
+point and segment count, and the build id. `SCUS_972.75` is hashed **out of the image before 4 GB is written**, against
+the same digest the launcher pins (`launcher::kSocom2R0001ElfSha256`), so a wrong disc costs you seconds. A value the
+file does not hold yet is recorded and the run says so; a value that disagrees is a refusal naming both sides.
+
+**When it refuses,** it prints one sentence saying what to do and leaves with a code from
+`ps2x/exit_codes.h`: **66** the path is not a file; **67** not an ISO9660 image, a logical block that is not 2048, no
+`SCUS_972.75` in the root, a boot ELF that is not r0001's, or a `DNAS.BIN` / `APACHE00.ZDB` / ZDB entry table that is
+not the recorded one; **68** a merged ELF whose size, digest, entry point, segment count or build id is wrong; **2**
+no Unicorn (it prints the `pip install` line), no Python, a bad argument; **1** a truncated image -- checked both from
+the volume descriptor's own size and file by file -- or any other output that does not match what was recorded.
+
+Everything below this line works on a fresh clone with no disc at all.
+
 ### Build, run, verify — a newcomer's first hour
 
 **Without a disc (any fresh clone):** `bash scripts/bootstrap_windows.sh` puts the pinned llvm-mingw, CMake and Ninja
@@ -75,7 +140,7 @@ Five commands, in this order, on a clean checkout with the tools under `tools/` 
 
 | # | command | the line that says it worked |
 |---|---|---|
-| 1 | `./build.sh recomp` | `recomp: <n> files, unhandled=0` |
+| 1 | `./build.sh recomp` | `recomp: 14882 files, unhandled=114399` — and `Recompilation completed successfully` at the end of `recomp/recomp_run.log`. **That second number is not a failure and `unhandled=0` (what this row claimed until 2026-09-21) has not been true for a long time:** it counts `unhandled-instruction` lines in the log, which the recompiler emits and carries on from, and the exe built from exactly this generated code is the one the gate passes 3/3 on. Measured twice on 2026-09-21, identically, in two working trees. What would be a failure is a non-zero exit (the last 20 log lines are printed then) or a file count that fell |
 | 2 | `./build.sh runtime` | `built dist/socom2.exe` (the launcher lands beside it) |
 | 3 | `./build.sh test` | `Total Tests: 500` / `Passed: 500` / `Failed: 0`, then `vu1_replay` with `checked=15 skipped=0` |
 | 4 | `python -m unittest discover -s tools_py/tests -t .` | `Ran 1104 tests ...` / `OK (skipped=63)` |

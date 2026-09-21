@@ -66,8 +66,14 @@ for entry in "${ENTRIES[@]}"; do
     exit 1
   fi
   echo "bootstrap: $name $version verified; extracting into tools/$name"
-  rm -rf "$TOOLS/$name.new"
-  "$py" - "$archive" "$TOOLS/$name.new" "$top" <<'PY'
+  # Extract straight into the final directory and write the version stamp LAST. There used to be an
+  # extract-then-`mv` here, and on this machine `mv` refused to rename llvm-mingw's 9,314 files in a second working
+  # tree ("Permission denied", destination absent, no reparse point and no read-only bit; PowerShell's Rename-Item
+  # on the same path succeeded instantly) -- it stopped a fresh clone at its very first command. No rename, no
+  # failure mode: an interrupted extraction leaves no stamp, `--check` reports the version missing, and the next run
+  # redoes it from the cached, sha256-verified archive.
+  rm -rf "$TOOLS/$name"
+  "$py" - "$archive" "$TOOLS/$name" "$top" <<'PY'
 import os, sys, zipfile
 archive, dest, top = sys.argv[1], sys.argv[2], sys.argv[3]
 with zipfile.ZipFile(archive) as z:
@@ -86,8 +92,6 @@ with zipfile.ZipFile(archive) as z:
         with z.open(info) as src, open(out, "wb") as dst:
             dst.write(src.read())
 PY
-  rm -rf "$TOOLS/$name"
-  mv "$TOOLS/$name.new" "$TOOLS/$name"
   printf '%s\n' "$version" > "$TOOLS/$name/.bootstrap-version"
 done
 
