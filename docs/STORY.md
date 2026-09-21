@@ -611,9 +611,9 @@ The console side is the reference emulator running the retail disc, driven by th
 
 **The first kill was on the 13th and came as two stills. This one you can watch.**
 
-Two of our clients on one desk, both on that night's build, both in the same round on the hosted server, both driven by the agent while the owner watched. The recording ran the whole round; this is its last fifty-eight seconds: the approach across the yard, the shot, the killfeed on both screens, the scoreboard, and the next round's opening card. Cropped to the two windows and nothing else.
+Two of our clients on one desk, both on that night's build, both in the same round on the hosted server, both driven by the agent while the owner watched. The whole round, four minutes and a quarter of it, cropped to the two windows and nothing else: the round card, a long circling of the yard, the shot at 3:41, the killfeed on both screens, the scoreboard, and the next round's opening card.
 
-![Round's end, both screens: SOCOM-B on the left has just died, SOCOM-A on the right did it, and the same killfeed line sits on each. Press play for the approach and the shot.](docs/story/img/2026-09-21-online-kill.mp4)
+![Round's end, both screens: SOCOM-B on the left has just died, SOCOM-A on the right did it, and the same killfeed line sits on each. Press play for the whole round; the shot is at 3:41.](docs/story/img/2026-09-21-online-kill.mp4)
 
 *But:* it is not graceful. The camera sways, the aim hunts, and the approach takes most of a four-minute round. It is functional: the round ends by a shot, both screens say so, and the scoreboard counts it.
 
