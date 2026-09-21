@@ -24,7 +24,6 @@ from unicorn import UC_HOOK_CODE
 
 GAME = os.path.join(os.path.dirname(__file__), '..', 'game', 'disc')
 OUT = os.path.join(os.path.dirname(__file__), '..', 'game', 'overlays')
-os.makedirs(OUT, exist_ok=True)
 
 
 def load_elf(ee, path):
@@ -192,9 +191,19 @@ def zdb_entries(path):
     return out
 
 
-def main():
+def main(game=None, out=None):
+    """Decrypt both blobs and write <out>/{ftscore,zsealetc}.bin; returns the two paths.
+
+    `game` is the extracted disc tree (it must already hold OVERLAY/REL/DNAS.dec.bin, which
+    dnas_selfdecrypt.py writes) and `out` is where the plaintext overlays go. Both default to
+    game/disc and game/overlays beside this repository, which is how this was run by hand;
+    tools_py/disc_to_elf.py passes the pair a stranger chose with its --out."""
+    game = game or GAME
+    out = out or OUT
+    os.makedirs(out, exist_ok=True)
+    written = []
     ee = EE(verbose=True)
-    entry, gp = load_elf(ee, os.path.join(GAME, 'SCUS_972.75'))
+    entry, gp = load_elf(ee, os.path.join(game, 'SCUS_972.75'))
     BUF = 0x01000000
     OUT8 = 0x00f00000
     OUT4 = 0x00f00010
@@ -203,7 +212,7 @@ def main():
     ee.install_kernel_hle()
     install_sif_hle(ee)
 
-    blobs = zdb_entries(os.path.join(GAME, 'RUN', 'RAW', 'APACHE00.ZDB'))
+    blobs = zdb_entries(os.path.join(game, 'RUN', 'RAW', 'APACHE00.ZDB'))
     print("ZDB entries:", {k: len(v) for k, v in blobs.items()})
 
     # Run the ELF's crt0 (register/FPU clear, bss clear, SetupThread/SetupHeap, MSL init) and
@@ -230,7 +239,7 @@ def main():
     ee.run(entry, MAIN)
     print(f"crt0 done: reached main={bool(stopped)} sp={ee.reg(29):#x} gp={ee.reg(28):#x} syscalls={ee.syscall_counts}")
     # the overlay region is part of the ELF's bss, which crt0 just zero-filled: load DNAS now (as main() does)
-    load_overlay(ee, os.path.join(GAME, 'OVERLAY', 'REL', 'DNAS.dec.bin'), 0x4c5380)
+    load_overlay(ee, os.path.join(game, 'OVERLAY', 'REL', 'DNAS.dec.bin'), 0x4c5380)
     SP = None
 
     # what main() does before touching DNAS: sceSifInitRpc(0), sceCdInit(SCECdINIT)
@@ -271,12 +280,15 @@ def main():
         print(f"{name}: compressed head {comp[:8].hex()}")
         plain = zlib.decompress(comp)
         print(f"{name}: inflated {len(plain)} bytes, head {plain[:16].hex()}")
-        with open(os.path.join(OUT, name + '.bin'), 'wb') as f:
+        path = os.path.join(out, name + '.bin')
+        with open(path, 'wb') as f:
             f.write(plain)
+        written.append(path)
         # after the first blob the game keeps DNAS resident; the second blob is
         # decrypted with DNAS still loaded (dest 0x4c5380 is only written by inflate)
     print("data reads hitting patched words:", len(ee.data_reads), sorted(hex(a) for a in list(ee.data_reads)[:20]))
     print("done")
+    return written
 
 
 if __name__ == '__main__':
