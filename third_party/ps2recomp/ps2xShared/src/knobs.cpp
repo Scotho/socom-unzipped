@@ -220,7 +220,7 @@ namespace ps2x
         if (e->cls == knobs::Class::Dev && !knobs::devMode())
             return nullptr;
         if (e->kind == knobs::Kind::Path && !knobs::devMode() && !knobs::pathInsideHome(name, v))
-            return nullptr;               // R204: a stranger's path stays inside the game folder
+            return nullptr;               // R207: a stranger's path stays inside the game folder
         return v;
     }
 

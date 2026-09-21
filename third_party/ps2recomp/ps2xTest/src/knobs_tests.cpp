@@ -198,7 +198,7 @@ void register_knobs_tests()
             t.Equals(ps2x::knobs::describe({}, false), std::string("[knobs] dev=0 set: none"), "nothing set");
         });
 
-        tc.Run("a Path knob: for a stranger a value outside the game folder is refused, the disc image excepted (R204)", [](TestCase &t)
+        tc.Run("a Path knob: for a stranger a value outside the game folder is refused, the disc image excepted (R207)", [](TestCase &t)
         {
             KnobStateGuard guard;
             ps2x::knobs::setEnforcement(true);

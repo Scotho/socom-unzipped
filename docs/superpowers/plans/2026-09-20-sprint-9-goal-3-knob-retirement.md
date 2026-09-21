@@ -771,7 +771,7 @@ namespace ps2x
 }
 ```
 
-- [x] **Step 3: GREEN — the implementation.** Create `third_party/ps2recomp/ps2xShared/src/knobs.cpp`: *[done; R204's pathInsideHome added in its own commit]*
+- [x] **Step 3: GREEN — the implementation.** Create `third_party/ps2recomp/ps2xShared/src/knobs.cpp`: *[done; R207's pathInsideHome added in its own commit]*
 
 ```cpp
 #include "ps2x/knobs.h"
@@ -1090,7 +1090,7 @@ if __name__ == "__main__":
 
   Run `python -m unittest tools_py.tests.test_knobs_registry -v`. Expected RED: `ImportError: cannot import name 'knobs' from 'tools_py'`.
 
-- [x] **Step 2: GREEN.** Create `tools_py/knobs.py`: *[done, plus helper_getenv_sites (R203)]*
+- [x] **Step 2: GREEN.** Create `tools_py/knobs.py`: *[done, plus helper_getenv_sites (R206)]*
 
 ```python
 """The PS2X_* knob registry, read out of the C++ header that defines it (Sprint 9 Goal 3).
@@ -1707,7 +1707,7 @@ double ps2_fpu_trap_after_seconds()
 - [x] **C** — `… -- third_party/ps2recomp/ps2xRuntime/src/lib/game_overrides_socom2.cpp tools_py/knobs.py` *[done]*
 - [x] **D** — `… -- <the nine files> tools_py/knobs.py` *[done, ten files: SchedTrace.cpp joined]*
 - [x] **E** — `… -- <the four sources> third_party/ps2recomp/ps2xIOP/CMakeLists.txt tools_py/knobs.py` *[done]*
-- [x] **F** — `… -- <the nine files> tools_py/knobs.py`. `ps2xLauncher/src/main.cpp` is a file the launcher sessions edit: check `git status` for it first (commit-only-idle-files). *[done; the launcher's constant-named read, and the loopback test's PS2X_DEV=1 (R202)]*
+- [x] **F** — `… -- <the nine files> tools_py/knobs.py`. `ps2xLauncher/src/main.cpp` is a file the launcher sessions edit: check `git status` for it first (commit-only-idle-files). *[done; the launcher's constant-named read, and the loopback test's PS2X_DEV=1 (R205)]*
 - [x] **H** — after A1-F are committed. `bash scripts/check_quiet_gate.sh`; when the owner is at the desk, ask for the window. The full rebuild is Task 5 Step 1's build; H is committed before it so one build serves both. *[done in the --no-runner tree, which compiles no generated unit: the controller's full build pays R165]*
 
 Every commit message ends with the trailer. Write each pathspec out in full in the actual command; the angle brackets above are this table's files.
@@ -2102,7 +2102,7 @@ plus the gate's own three knobs (`PS2X_HOST_GAMEPAD`, `PS2X_PC_SAMPLER`, `PS2X_P
 the plan says -- `run.sh`, `drive.py`'s launch (`hostplatform.dev_env`), `scale_shot.child_env`, `env.sh` -- all of
 which sit *below* the pin, beside `PS2X_SOCOM2_PAD=1` and `PS2X_HOST_SCREENSHOT_LATEST`, which the pin does not see
 either. So the pin's three lines are byte-identical after Task 3 and a gate started from a clean shell is not refused;
-`PS2X_DEV=1` appears on the game's own `[knobs]` line (Task 5 Step 4 expects it). Proposed ruling R200 below says so.
+`PS2X_DEV=1` appears on the game's own `[knobs]` line (Task 5 Step 4 expects it). Proposed ruling R203 below says so.
 
 ### Baselines and counts
 
@@ -2110,7 +2110,7 @@ either. So the pin's three lines are byte-identical after Task 3 and a gate star
 |---|---|---|
 | `P` / `B` before Task 1, in the worktree (the suite at `a3aa99a` with this branch's 15 new Python cases subtracted; the main tree's last count was 1624/722) | 1622 | 722 |
 | Tasks 1-3 (`d76ec8d`, `1f94bae`, `0b20c21`) | 1637 OK | 732/732 (the Knobs suite alone 10/10) |
-| R204 (`d8a80e6`) | 1637 OK | 733/733 |
+| R207 (`d8a80e6`) | 1637 OK | 733/733 |
 | A1 `58d7979`, A2 `b8d90e5`, B `096686f`, C `f6e5f15`, D `a9bd6f7`, E `785ac50`, F `9cf25cc` | 1637 OK each | 733/733 each |
 | H, first try (the plan's placement in `ps2_runtime.cpp`) | 1637 OK | **red**: `vu1_replay` failed to link (`ps2_stubs::socom2HostInputShutdown`, `ps2HostProfStart`, `g_ps2RecompiledFunctionTable`...): the inline `ps2_fpu_trap_enabled()` is reached from the VU code, so its callee's object is pulled into every executable that links `ps2_runtime`, and `ps2_runtime.cpp.obj` drags the whole `PS2Runtime` behind it |
 | H, second try (`4b0d6f2`: the definition in its own unit `src/lib/ps2_fpu_trap.cpp`) | 1637 OK | 733/733 |
@@ -2133,12 +2133,12 @@ Registry counts: 154 rows after Task 1 (18 Shipping, 127 Dev, 8 Test, 1 Switch);
 **What the controller inherits (Tasks 5, 7, 8, 9 untouched):**
 - `4b0d6f2` changed `ps2_runtime_macros.h`: the next `./build.sh runtime` with generated code recompiles every unity
   unit (R165). Nothing else in these thirteen commits touches a generated unit's inputs.
-- The gate's env pin needs no `--accept-pins` for these commits (R200): the pinned lines are unchanged; `PS2X_DEV=1`
+- The gate's env pin needs no `--accept-pins` for these commits (R203): the pinned lines are unchanged; `PS2X_DEV=1`
   appears on the game's `[knobs]` line, where Task 5 Step 4 expects it.
 - Task 7's poisoned launch script sets `PS2X_MC_DIR` to a folder under the repository root and starts the runner
-  from there, so R204 honours it; a card folder outside the game folder would now read as
+  from there, so R207 honours it; a card folder outside the game folder would now read as
   `| refused, outside the game folder: PS2X_MC_DIR`.
-- `tools_py/tests/test_launcher_bug_report.py` already runs the launcher with `PS2X_DEV=1` (R202), so it stays green
+- `tools_py/tests/test_launcher_bug_report.py` already runs the launcher with `PS2X_DEV=1` (R205), so it stays green
   after the flip.
 - Batch E made `ps2_iop` link `ps2x_shared`; the Linux build (CI, the VM) has not been run on this branch -- Task 8.
 - Every commit carries the trailer this session was given (`Claude Opus 5 (1M context)`, HANDOFF �5 rule 3), not the
@@ -2184,9 +2184,9 @@ R152 onward (Goal 2 used R140-R151). Each is a decision this plan made where the
 
 - **R168** (Task 2): **the namespace-scope-read check is a heuristic on this tree's naming (`g_` globals, column-0 `static`), not a parser.** It catches all four reads that exist today and the shapes a fifth would most likely take. *Cost if wrong:* an early read written some other way is honoured under `PS2X_DEV=1` and ignored under `--dev` — a confusing afternoon for a developer, never a stranger's problem.
 
-### Proposed rulings from the Q2 agent (2026-09-21; the controller numbers them -- next free is R200)
+### Proposed rulings from the Q2 agent (2026-09-21; the controller numbers them -- next free is R203)
 
-- **Proposed R200 (Task 3, the env pin).** **`PS2X_DEV` enters the harness below the gate's env pin, and the pin is
+- **R203 (Task 3, the env pin).** **`PS2X_DEV` enters the harness below the gate's env pin, and the pin is
   not widened for it.** Q1b's `pins.env_pin` hashes `gate.launch_env` -- the operator's environment plus the gate's
   own three knobs -- and never saw `drive.py`'s `PS2X_SOCOM2_PAD=1` or `PS2X_HOST_SCREENSHOT_LATEST` either. Task 3
   puts `PS2X_DEV=1` beside those (in `run.sh`, `hostplatform.dev_env` in `drive.py`, `scale_shot.child_env`,
@@ -2196,25 +2196,25 @@ R152 onward (Goal 2 used R140-R151). Each is a decision this plan made where the
   additions are code, not environment -- a change there is a commit the harness pin records. *Cost if wrong:* the
   pin does not prove the harness's own additions; a later Q1 pass can hash `drive.launch`'s environment instead.
 
-- **Proposed R201 (Task 1, the inventory).** **`PS2X_INPUT_MAPPING` is the eighteenth Shipping name.** It is sent by
+- **R204 (Task 1, the inventory).** **`PS2X_INPUT_MAPPING` is the eighteenth Shipping name.** It is sent by
   `environmentFor` when the profile's mapping is not the default (R174), so the "Shipping class is exactly what the
   launcher can send" case sets a custom mapping before comparing. *Cost if wrong:* none -- the test scans, and 18
   is what the launcher emits.
 
-- **Proposed R202 (batch F).** **`PS2X_LAUNCHER_API_BASE` is a Dev knob read through `ps2x::knob` in the launcher,
+- **R205 (batch F).** **`PS2X_LAUNCHER_API_BASE` is a Dev knob read through `ps2x::knob` in the launcher,
   and the launcher's Python test sets `PS2X_DEV=1` on the launcher it starts.** A test seam is a probe: after the
   flip a stranger's `PS2X_LAUNCHER_API_BASE` is ignored exactly as a runner probe is. The launcher process reads
   `PS2X_DEV` for R156's filter anyway, so no new switch is added. *Cost if wrong:* a developer running the launcher
   by hand against a loopback service needs `PS2X_DEV=1` too -- one variable, and the header's comment says so.
 
-- **Proposed R203 (Task 4 D).** **The two helpers `SchedTrace.cpp` grew after the plan (`envOn`, `envMsToNs`) are
+- **R206 (Task 4 D).** **The two helpers `SchedTrace.cpp` grew after the plan (`envOn`, `envMsToNs`) are
   migrated under rule 2 like the plan's seven, and a check that no non-literal `getenv` remains in the shipped trees
   outside `knobs.cpp` and `bare_run.cpp` joins `test_knobs_registry` when the last helper migrates (batch F).**
   Without it the pending-list check proves only the literal reads; a helper that took the name as a parameter
   could keep a raw `getenv` for ever. *Cost if wrong:* a future helper needs an exemption in `tools_py/knobs.py`
   with its reason, as `bare_run.cpp`'s `applyEnvironment` (which applies `config.json`'s keys, not knobs) has.
 
-- **Proposed R204 (path knobs; the sprint file's addition).** **Every Path-kind knob is constrained to the portable
+- **R207 (path knobs; the sprint file's addition).** **Every Path-kind knob is constrained to the portable
   folder, or refused -- but not in this pass.** The registry now says which names are paths (Kind `Path`: 24 rows
   after Task 6, `PS2X_MC_DIR` and `PS2X_MC_DIR_SLOT1` among them) and after the flip every Dev one of them is
   ignored for a stranger; the two that a stranger can still reach are `PS2X_MC_DIR` (Shipping, already a name not a

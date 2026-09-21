@@ -20,7 +20,7 @@
 //                   else is true.
 //         Presence  any value, including 0, switches it on (traces; see docs/KNOBS.md).
 //         Int, Float, Text, Path, Spec   parsed where they are read. A Path a stranger sets must lie under the
-//                   game folder or it reads as unset (pathInsideHome, R204); the disc image is the exception.
+//                   game folder or it reads as unset (pathInsideHome, R207); the disc image is the exception.
 
 #include <cstddef>
 #include <string>
@@ -215,7 +215,7 @@ namespace ps2x
         const char *kindName(Kind kind);
         bool flagValue(const char *value, bool dflt);
 
-        // Sprint 10 Q2 (R204): a Path knob's value must lie under the game folder -- the process's current
+        // Sprint 10 Q2 (R207): a Path knob's value must lie under the game folder -- the process's current
         // directory, which both launcher glues and the bare run set to the folder the executable lives in --
         // or, for a stranger, it reads as unset. The disc image is the one file that is only read and lives
         // where the player keeps it. Developer mode lifts the rule (the gate's card and frame live under logs/).
