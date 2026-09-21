@@ -10,6 +10,7 @@
 #include "runtime/gs/gs_gl_upload_trace.h"
 #include "runtime/gs/gs_gl_upload_identity.h"
 #include "runtime/gs/gs_gl_texture_identity.h"
+#include "ps2x/knobs.h"
 
 // raylib's glad stops short of GL 4.5, so glClipControl (GL 4.5 / ARB_clip_control) is looked up
 // at runtime through GLFW, which raylib links on desktop.
@@ -101,7 +102,7 @@ namespace
     {
         static const uint32_t s_scale = []
         {
-            const char *const e = std::getenv("PS2X_GS_SCALE");
+            const char *const e = ps2x::knob("PS2X_GS_SCALE");
             long v = (e != nullptr && *e != 0) ? std::strtol(e, nullptr, 0) : 1L;
             if (v < 1L)
                 v = 1L;
@@ -121,7 +122,7 @@ namespace
     // 0x8c's row band).
     bool tracePagesHit(uint32_t page, uint32_t count)
     {
-        static const char *const s_env = std::getenv("PS2X_GS_TRACE_PAGES");
+        static const char *const s_env = ps2x::knob("PS2X_GS_TRACE_PAGES");
         static uint32_t s_page = 0u, s_count = 0u;
         static bool s_parsed = false;
         if (!s_env)
@@ -489,7 +490,7 @@ void main()
     {
         static const bool s_box = []
         {
-            const char *const e = std::getenv("PS2X_GS_SCALE_FILTER");
+            const char *const e = ps2x::knob("PS2X_GS_SCALE_FILTER");
             return e != nullptr && std::strcmp(e, "box") == 0;
         }();
         return s_box;
@@ -513,7 +514,7 @@ void main()
     {
         static const bool s_on = []
         {
-            const char *const e = std::getenv("PS2X_GS_SCALE_SELFTEST");
+            const char *const e = ps2x::knob("PS2X_GS_SCALE_SELFTEST");
             return e != nullptr && *e != 0 && *e != '0';
         }();
         return s_on;
@@ -680,10 +681,10 @@ void main()
 // ---------------------------------------------------------------------------------------------
 GSGlBackend::GSGlBackend()
     : m_cpu(std::make_unique<GSCpuBackend>()), m_shadow(std::make_unique<GSCpuBackend>()),
-      m_pendingCap(GsPendingCap::parseCapMb(std::getenv("PS2X_GS_PENDING_CAP_MB"), GsPendingCap::kDefaultCapMb) * 1024ull * 1024ull,
-                   GsPendingCap::parseCapMb(std::getenv("PS2X_GS_PENDING_HARD_CAP_MB"), GsPendingCap::kDefaultHardCapMb) * 1024ull * 1024ull)
+      m_pendingCap(GsPendingCap::parseCapMb(ps2x::knob("PS2X_GS_PENDING_CAP_MB"), GsPendingCap::kDefaultCapMb) * 1024ull * 1024ull,
+                   GsPendingCap::parseCapMb(ps2x::knob("PS2X_GS_PENDING_HARD_CAP_MB"), GsPendingCap::kDefaultHardCapMb) * 1024ull * 1024ull)
 {
-    m_backpressure.setMaxPendingFrames(GsFrameBackpressure::parseMaxPendingFrames(std::getenv("PS2X_GS_MAX_PENDING_FRAMES")));
+    m_backpressure.setMaxPendingFrames(GsFrameBackpressure::parseMaxPendingFrames(ps2x::knob("PS2X_GS_MAX_PENDING_FRAMES")));
 }
 
 GSGlBackend::~GSGlBackend() = default;
@@ -771,7 +772,7 @@ void GSGlBackend::record(Cmd &&cmd, const uint8_t *data, size_t size)
     // Sprint 8 Goal 2 Task 1: term (c) -- the queue-mutex push on the GAME thread, the one term of
     // the tile path that is not on the render thread. Only Upload and BeginTransfer are timed:
     // every tile costs one of each, and timing Submit would fold the draw stream into the answer.
-    static const bool s_uploadTrace = std::getenv("PS2X_GS_UPLOAD_TRACE") != nullptr;
+    static const bool s_uploadTrace = ps2x::knob("PS2X_GS_UPLOAD_TRACE") != nullptr;
     const bool traceThis = s_uploadTrace && (cmd.type == CmdType::Upload || cmd.type == CmdType::BeginTransfer);
     RecordTimer recordTimer{traceThis, traceThis ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{}};
     std::unique_lock<std::mutex> lock(m_queueMutex);
@@ -1137,7 +1138,7 @@ void GSGlBackend::Sync(GSSyncReason reason)
 
 PresentationFrame GSGlBackend::Present(const GSPresentationRequest &request)
 {
-    static const bool s_wantPixels = std::getenv("PS2X_FRAME_DUMP") != nullptr;
+    static const bool s_wantPixels = ps2x::knob("PS2X_FRAME_DUMP") != nullptr;
     PresentationFrame frame{};
     Cmd cmd;
     cmd.type = CmdType::Present;
@@ -1270,7 +1271,7 @@ bool GSGlBackend::ensureGl()
         if (!s_chosen)
         {
             s_chosen = true;
-            const bool legacy = GsGlDepth::legacyRequested(std::getenv("PS2X_GS_DEPTH_LEGACY"));
+            const bool legacy = GsGlDepth::legacyRequested(ps2x::knob("PS2X_GS_DEPTH_LEGACY"));
             g_clipControl = legacy ? nullptr : probeClipControl();
             g_depthMode = GsGlDepth::choose(legacy, g_clipControl != nullptr);
             std::fprintf(stderr, "[gs-gl] depth mapping: %s\n", GsGlDepth::name(g_depthMode));
@@ -1518,7 +1519,7 @@ long GSGlBackend::traceSkip(const char *env) const
     }
     if (!found)
     {
-        e = std::getenv(env);
+        e = ps2x::knob(env);
         if (s_cacheCount < 8)
             s_cache[s_cacheCount++] = {env, e};
     }
@@ -1547,11 +1548,11 @@ long GSGlBackend::traceSkip(const char *env) const
 
 void GSGlBackend::executeCommands(CommandBuffer &buffer)
 {
-    static const bool s_stats = std::getenv("PS2X_GS_STATS") != nullptr;
+    static const bool s_stats = ps2x::knob("PS2X_GS_STATS") != nullptr;
     // Sprint 8 Goal 2 Task 1: PS2X_GS_UPLOAD_TRACE=1 -- the per-call breakdown of the tile upload
     // path, on the same 60-call cadence as [gs-gl stats]. Read once; with it unset nothing below
     // reads a clock or touches a counter.
-    static const bool s_uploadTrace = std::getenv("PS2X_GS_UPLOAD_TRACE") != nullptr;
+    static const bool s_uploadTrace = ps2x::knob("PS2X_GS_UPLOAD_TRACE") != nullptr;
     static double s_time[8] = {0};
     static uint64_t s_count[8] = {0};
     static uint64_t s_calls = 0;
@@ -1559,7 +1560,7 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
     static auto s_lastReport = std::chrono::steady_clock::now();
     s_bytes += buffer.data.size();
     // PS2X_GS_TRACE_CMDS=<presents to skip>: then print the next 4000 replayed commands.
-    static const char *s_traceEnv = std::getenv("PS2X_GS_TRACE_CMDS");
+    static const char *s_traceEnv = ps2x::knob("PS2X_GS_TRACE_CMDS");
     static const bool s_traceCmds = s_traceEnv != nullptr;
     static uint32_t s_traceLines = 0;
     // PS2X_GS_TRACE_PRESENT: which replayed command changes the movie staging area (page row 3 of
@@ -1612,8 +1613,8 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
                     s_probe[i] = p[i];
             }
         }
-        static const uint32_t s_traceMax = std::getenv("PS2X_GS_TRACE_CMDS_MAX") ? static_cast<uint32_t>(std::strtoul(std::getenv("PS2X_GS_TRACE_CMDS_MAX"), nullptr, 0)) : 4000u;
-        static const long s_traceFrom = std::getenv("PS2X_GS_TRACE_CMDS_FROM") ? std::strtol(std::getenv("PS2X_GS_TRACE_CMDS_FROM"), nullptr, 0) : -1L;
+        static const uint32_t s_traceMax = ps2x::knob("PS2X_GS_TRACE_CMDS_MAX") ? static_cast<uint32_t>(std::strtoul(ps2x::knob("PS2X_GS_TRACE_CMDS_MAX"), nullptr, 0)) : 4000u;
+        static const long s_traceFrom = ps2x::knob("PS2X_GS_TRACE_CMDS_FROM") ? std::strtol(ps2x::knob("PS2X_GS_TRACE_CMDS_FROM"), nullptr, 0) : -1L;
         if (s_traceCmds && s_traceLines < s_traceMax &&
             (s_traceFrom >= 0 ? static_cast<long>(m_frameCounter) >= s_traceFrom : static_cast<long>(m_frameCounter) >= traceSkip("PS2X_GS_TRACE_CMDS")))
         {
@@ -1621,8 +1622,8 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
             // and the rest still print); PS2X_GS_TRACE_CMDS_PER_FRAME=<n>: at most n submit lines per frame. Together
             // they let a trace stay armed across a whole mission (the water pass: research/31 section 8) instead of
             // the ~5 s a 400k-line cap covers when every submit prints.
-            static const std::vector<long> s_traceTbp0 = traceBlockList(std::getenv("PS2X_GS_TRACE_CMDS_TBP0"));
-            static const uint32_t s_tracePerFrame = std::getenv("PS2X_GS_TRACE_CMDS_PER_FRAME") ? static_cast<uint32_t>(std::strtoul(std::getenv("PS2X_GS_TRACE_CMDS_PER_FRAME"), nullptr, 0)) : 0u;
+            static const std::vector<long> s_traceTbp0 = traceBlockList(ps2x::knob("PS2X_GS_TRACE_CMDS_TBP0"));
+            static const uint32_t s_tracePerFrame = ps2x::knob("PS2X_GS_TRACE_CMDS_PER_FRAME") ? static_cast<uint32_t>(std::strtoul(ps2x::knob("PS2X_GS_TRACE_CMDS_PER_FRAME"), nullptr, 0)) : 0u;
             static unsigned long long s_traceFrameSeen = ~0ull;
             static uint32_t s_traceFrameLines = 0u;
             if (m_frameCounter != s_traceFrameSeen)
@@ -1632,7 +1633,7 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
             }
             // PS2X_GS_TRACE_CMDS_BOX=x0,y0,x1,y1 (screen pixels, after XYOFFSET): print only the submits whose vertex
             // bounding box touches that box -- "which draws cover this shard pixel" (research/31 section 10).
-            static const std::vector<long> s_traceBox = traceBlockList(std::getenv("PS2X_GS_TRACE_CMDS_BOX"));
+            static const std::vector<long> s_traceBox = traceBlockList(ps2x::knob("PS2X_GS_TRACE_CMDS_BOX"));
             bool boxHit = true;
             if (cmd.type == CmdType::Submit && s_traceBox.size() >= 4u && cmd.batch.vertexCount > 0u)
             {
@@ -1725,7 +1726,7 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
         {
             // PS2X_GS_SKIP_TBP0=<blocks>: drop every textured draw that binds one of these textures (a bisect:
             // research/31 section 10 -- are the water shards the water draws or something under them?).
-            static const std::vector<long> s_skipTbp0 = traceBlockList(std::getenv("PS2X_GS_SKIP_TBP0"));
+            static const std::vector<long> s_skipTbp0 = traceBlockList(ps2x::knob("PS2X_GS_SKIP_TBP0"));
             if (!s_skipTbp0.empty() && cmd.batch.state.prim.tme && !traceBlockMatch(s_skipTbp0, 0xFFFFFFFFu) &&
                 std::find(s_skipTbp0.begin(), s_skipTbp0.end(), static_cast<long>(cmd.batch.state.context.tex0.tbp0)) != s_skipTbp0.end())
                 break;
@@ -2109,7 +2110,7 @@ void GSGlBackend::executeUpload(const uint8_t *data, size_t size)
 {
     // Sprint 8 Goal 2 Task 1: term (a) of the tile path, split -- the CPU swizzle into shadow VRAM,
     // and the page + rect marking. These two are the whole of the [gs-gl stats] upload= column.
-    static const bool s_uploadTrace = std::getenv("PS2X_GS_UPLOAD_TRACE") != nullptr;
+    static const bool s_uploadTrace = ps2x::knob("PS2X_GS_UPLOAD_TRACE") != nullptr;
     const GSTransferCommand &t = m_currentTransfer;
     const uint32_t page = t.bitbltbuf.dbp >> 5;
     const uint32_t span = pageSpan(t.bitbltbuf.dpsm, t.bitbltbuf.dbw, t.trxpos.dsay + t.trxreg.rrh);
