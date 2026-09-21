@@ -66,7 +66,7 @@ crypto path) and file the Ghidra notes in research/38 for the next attempt.
 - The runtime override is bound at recompile time through `recomp/socom2.toml` (`"<name>@0x<addr>"`), which
   means `./build.sh recomp` and a runtime rebuild -- **lock-bound** (`scripts/loop_lock.sh run <owner> -- <cmd>`),
   and the built exe's sha goes in the gate record.
-  > Superseded 2026-09-21 (R200 above): the override is a runtime `replaceFunction` wrap with
+  > Superseded 2026-09-21 (proposed ruling R200 above): the override is a runtime `replaceFunction` wrap with
   > the original kept; no toml line, no recompile. Only the runner rebuild (`./build.sh runtime`) is
   > lock-bound, and its exe's sha still goes in the gate record.
 - The variables are unset when the ONLINE fields are empty: an empty field sends nothing, and the runtime with
@@ -137,7 +137,7 @@ EOF
 the persona-list object's range is the name buffer; note its guest address in research/38 next to the static
 findings. If the static and dynamic addresses disagree, the static reading is wrong -- go back to Step 1.
 
-- [x] **Step 3: Bind the name in the recompiler's table** -- NOT DONE, on purpose (R200 above): the toml stub would drop the original body; the binding is `installOskPrefill` (`replaceFunction`) in Task 2 instead, and `recomp/socom2.toml` is untouched
+- [x] **Step 3: Bind the name in the recompiler's table** -- NOT DONE, on purpose (proposed ruling R200 above): the toml stub would drop the original body; the binding is `installOskPrefill` (`replaceFunction`) in Task 2 instead, and `recomp/socom2.toml` is untouched
 
 Append to the override list in `recomp/socom2.toml`, next to `"socom2_RsaGenerateKeyPair@0x0062B168"`:
 
@@ -170,7 +170,7 @@ git commit -m "research(osk): the keyboard-open routine, its buffer and caps, bo
 - Produces: `socom2_osk::prefillFor(fieldKind, nameEnv, passEnv, cap) -> std::string` (pure: which string
   goes in, cut to the cap, empty when the variable is unset) and the stub `ps2_stubs::socom2_OskOpen`.
 
-**Result (2026-09-21, the Goal 9 agent):** done as a runtime wrap (R200), not a toml stub, so
+**Result (2026-09-21, the Goal 9 agent):** done as a runtime wrap (proposed ruling R200), not a toml stub, so
 there is no `ps2_call_list.h` entry and no `_original` continuation: `installOskPrefill` (called from
 `applySocom2` after `installRtNetPortShift`, only when `PS2X_SOCOM2_LOGIN_NAME` or `_PASS` is set) keeps the
 original through `lookupFunction(0x38d770)` and `replaceFunction`s it with `socom2_OskOpenPrefill`, which reads
@@ -667,7 +667,62 @@ log with the two `-> prefilled:` lines, the persona-name keyboard read back at 6
 at 5 BEFORE the ENTER, and no `osk_type_pad` line. Then the owner's own login (HUMAN_TASKS), and a gate on
 the rebuilt exe with the variables unset (Task 2 Step 5) so the wrap is proven absent by default.
 
-- [ ] **Step 1: Write the failing test**
+**Result (2026-09-21, the Task 6 agent, worktree `wt-g9t6`, branch `agent/g9t6` off `sprint-10` at `38579a3`;
+Steps 1-3 and the lock-free half of Step 4 done, the two logins the controller's):** `--prefilled` on
+`online_login_ours`: `prefill_env(name, password)` checks both against the keyboards' caps (`PREFILL_NAME_CAP`
+14, `PREFILL_PASSWORD_CAP` 12) and character set (printable ASCII, no space; no `"` in the name -- research/38)
+and REFUSES a value outside them (`ap.error`, exit 2, before any game starts -- not cut the launcher's way,
+because the runtime would cut it too and the keyboard would then read back short 90 s in); `launch(seconds,
+instance, prefill)` puts the two variables in the game's environment, None adds nothing; `Shell.type(...,
+prefilled=True)` keeps the keyboard-open guard (`wait_osk`) and the mode read, then `osk_enter_prefilled`: the
+count read back (`osk_typed`) must equal `len(text)` -- else the new class `login:prefill-missing`
+(`CLASS_OSK_PREFILL`) with the count in the detail and no press -- then the walk to ENTER from `OSK_START` and
+the same `osk_enter_verified` read-back a typed ENTER gets (a keyboard still up is re-pressed, at most
+`OSK_ENTER_RETRIES`); `login(..., prefilled=False)` and `create_persona(..., prefilled=False)` pass it to both
+keyboards (the form read-back of PLAYER NAME after the name's ENTER is unchanged). Without the flag: the same
+calls with the default, byte for byte. Test: `tools_py/tests/test_online_login_prefilled.py`, 17 cases in
+five classes -- PrefillValues (d), LaunchEnvironment (a), KeyboardEnter (b/c at `Shell.type`, the real method
+over test_osk_typing's synthesised text rows), LoginFlow (b/c across `login`, test_first_login's form frames,
+test_online_login_lobby's FakeShell), CommandLine (`main()` with `launch`/`attach`/`login` patched: the flag
+reaches the environment and the presses; a 15-character name, a 13-character password and a space stop the
+run before `launch`). RED: 12 errors + 1 failure (`no attribute 'prefill_env'`, `login() takes 4 positional
+arguments but 5 were given`, `Shell.type() got an unexpected keyword argument 'prefilled'`, `launch() takes
+from 1 to 2 positional arguments but 3 were given`, `'[--prefilled]' not found` in the usage line). GREEN:
+17/17. Two existing test helpers grew with the signatures: `test_online_login_lobby.FakeShell.type` takes
+`prefilled` (records `("enter", text)` instead of `("type", text)`) and `test_first_login.LoginBranch`'s
+`create_persona` stub takes the fourth argument. Unverified here (a game launch): that the keyboard's cursor
+opens on the accent key (`OSK_START`) when the field is prefilled as it does when empty -- a lost ENTER walk
+is caught by `osk_enter_verified`'s re-press either way, and the first driven login says.
+
+**The controller's Step 4, exactly** (the module's argument names are the plan's: `--existing --prefilled
+--name --password`; `--out` names the run directory; `PS2X_RUN_LOG` pins the game's own log, `run.sh`):
+
+```bash
+export LOOP_LOCK_PATH=/c/projects/socom_pc/logs/.loop_lock
+mkdir -p logs/parity/s10_g9_prefill_gate
+for n in 1 2; do
+  PS2X_RUN_LOG="$PWD/logs/parity/s10_g9_prefill_gate/run${n}_game.log" \
+  bash scripts/loop_lock.sh run <owner> --purpose "launch: Goal 9 proof $n/2" -- \
+    python -m tools_py.parity.online_login_ours --existing --prefilled --name socomc --password socom \
+      --out logs/parity/s10_g9_prefill_gate/run$n 2>&1 | tee logs/parity/s10_g9_prefill_gate/run${n}_drive.txt
+done
+grep -h "prefill armed\|on-screen keyboard open" logs/parity/s10_g9_prefill_gate/run*_game.log
+grep -h "\[osk\]\|LOBBY class" logs/parity/s10_g9_prefill_gate/run*_drive.txt
+```
+
+What must come out, per run: in `run<n>_game.log` the boot line `[socom2] on-screen keyboard prefill armed:
+persona name 6 chars, password 5 chars` and the two keyboard lines ending `-> prefilled: persona name (6
+chars)` and `-> prefilled: the password (5 chars)` (the first login on the hosted box; a persona already saved
+there skips the name keyboard and shows only the second); in `run<n>_drive.txt` `[osk] prefilled: 6 of 6 in
+the field -> ENTER` and `[osk] prefilled: 5 of 5 in the field -> ENTER` (the read-backs BEFORE the ENTER),
+`[osk] enter: keyboard closed` after each, no `[osk] typed` line (the pad typer's) and no `WARNING: the
+on-screen keyboard is still up after typing` (the posted-keys typer's -- `main()`'s shell has no pad file, so
+"no `osk_type_pad` line" is vacuous there: the absence to check is those two), and `LOBBY class=ok`. A
+`LOBBY class=login:prefill-missing` with `0 of 6` means the exe was not rebuilt with Task 2 (or the variables
+did not reach it: check `prefill armed` in the game log first).
+
+- [x] **Step 1: Write the failing test** (as unittest, per the correction above: five TestCase classes, the plan's
+  case is `LoginFlow.test_a_prefilled_first_login_presses_enter_on_both_keyboards_and_types_nothing`)
 
 ```python
 def test_prefilled_login_presses_enter_and_never_types(monkeypatch):
@@ -691,12 +746,17 @@ def test_prefilled_login_presses_enter_and_never_types(monkeypatch):
     assert ("enter", "socomc") in calls and ("enter", "socom") in calls
 ```
 
-- [ ] **Step 2: Run it to see it fail**
+- [x] **Step 2: Run it to see it fail** (`python -m unittest tools_py.tests.test_online_login_prefilled`: 12 errors
+  + 1 failure, the messages in the result above)
 
 Run: `python -m pytest tools_py/tests -k prefilled -q`. Expected: `TypeError: login() got an unexpected
 keyword argument 'prefilled'`.
+> Superseded 2026-09-21: the runner is `python -m unittest tools_py.tests.test_online_login_prefilled`
+> (test_test_hygiene.py refuses pytest); the first error is `login() takes 4 positional arguments but 5 were
+> given` -- the flag is positional in `login`'s call from `main()`.
 
-- [ ] **Step 3: The flag**
+- [x] **Step 3: The flag** (as written, plus the refusal of a value outside the caps / character set -- the
+  result above; the class is spelled `CLASS_OSK_PREFILL = "login:prefill-missing"`)
 
 `login(sh, name, password, existing, prefilled=False)`: when `prefilled`, `create_persona` is called with
 `typed=False` and presses ENTER through `sh.osk_enter_verified(name, OSK_START)` after `sh.osk_typed() ==
@@ -705,15 +765,17 @@ at `:299`); the password step does the same with `password`. The launcher (`Shel
 two variables into the game's environment when `--prefilled` is given; `main()` adds the flag and the usage
 line at `:7` gains `[--prefilled]`.
 
-- [ ] **Step 4: Run the harness's tests, then the real login, twice**
+- [ ] **Step 4: Run the harness's tests, then the real login, twice** (the tests: done, the whole suite green --
+  the count in the record below; the two logins: THE CONTROLLER'S, the exact command in the result above)
 
 Run: `python -m pytest tools_py/tests -q` (lock-free), then (lock-bound, an away window):
+> Superseded 2026-09-21: `python -m unittest discover -s tools_py/tests -t .` (about 5 minutes).
 `scripts/loop_lock.sh run <owner> --purpose "Goal 9 proof" -- python -m tools_py.parity.online_login_ours --existing --prefilled --name socomc --password socom`
 twice. Expected: `LOBBY class=ok` both times, the log showing `on-screen keyboard prefilled: persona name (6
 chars)` and `... password (5 chars)` from the runtime and no `osk_type_pad` lines from the harness. The two
 run directories go in the gate record `logs/parity/s10_g9_prefill_gate`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit** (the record at the end names the hash; the two test helpers that grew are in the pathspec)
 
 ```bash
 git add tools_py/parity/online_login_ours.py tools_py/tests/test_online_login_prefilled.py
@@ -759,6 +821,7 @@ git commit -m "docs: Sprint 10 Goal 9 recorded -- the ONLINE tab's name and pass
 | 3 | `d30729d` config + environment + normalisers | `no member named 'loginName' in 'launcher::Config'` | the round-trip case |
 | 4 | `c145d39` ONLINE fields, masked, help, ABOUT, screenshots | "both fields are laid out" (+3); then "with its caption still inside the body" at pitch 56 | the layout case at both sizes; 42 PNGs |
 | 5 | `352b429` the zip's config copy blanked; the report guard | "the password is not in the zip's config.json" (+2) | both cases |
+| 6 | `c883526` `--prefilled`, `prefill_env`, `osk_enter_prefilled`, `login:prefill-missing`, 17 cases (agent/g9t6, 2026-09-21) | `no attribute 'prefill_env'`, `login() takes 4 positional arguments but 5 were given` (+3 kinds) | 17/17; the Python suite 1639 OK (105 skipped) |
 | 7 | this file + research/38 | -- | -- |
 
 Suite sizes after the pass: `ps2x_tests` 709 / 0 (was 700-701 before this goal); the Python suite unchanged
@@ -771,6 +834,8 @@ the worktree's git-ignored `logs/osk/` (`build2.log` RED, `build3.log` Tasks 2-3
 **What is left, in order, all the controller's:** Task 2 Step 5 (rebuild the runner, suite, a gate with the
 variables unset); Task 6 (`--prefilled`, two driven logins, `logs/parity/s10_g9_prefill_gate`); Task 7 Step 1
 (the rows, the numbering of R200/R201/R202, the story message); the owner's login (HUMAN_TASKS).
+> Updated 2026-09-21 (the Task 6 agent): Task 6's harness half is in (`agent/g9t6`); what is left of it is
+> Step 4's two logins on the rebuilt exe, the command and the expected lines in Task 6's result.
 
 ## Self-review against research/37
 
