@@ -1,0 +1,538 @@
+"""Sprint 10 Q1b: the gate states what it measured, and refuses to score when a pinned input drifted.
+
+Before this, summary.txt pinned one thing (the EXE line) and every other input the score depends on could
+change with no record: the reference images, the memory card the run boots from, the drive scripts, the
+harness revision, the PS2X_* environment. A silently-changed reference image moves every score with no
+record that anything moved -- the sibling of HANDOFF trap 4 (the pipeline cannot see a defect present in
+every run; it cannot see a change in its own standard either).
+
+tools_py/parity/pins.py is the mechanism (hash, compare, lines, files); gate.collect_pins names the gate's
+set. scripts/parity/pins.json is the committed standard. A launch whose pins do not match it is REFUSED
+(exit 7, distinct from a stage FAIL's 1) unless --accept-pins rewrites the standard; --baseline compares the
+stamp's recorded pins too. The mapping hash (Q3b) is read off a `[socom2] input mapping sha256=` game-log
+line when one exists, and recorded as absent otherwise.
+"""
+import contextlib
+import hashlib
+import io
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+import unittest
+from unittest import mock
+
+from tools_py.parity import gate, pins
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+REAL_EXPECTED = os.path.join(ROOT, "scripts", "parity", "pins.json")
+
+
+def _sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+class TreeAndFileHashes(unittest.TestCase):
+    def test_a_directory_pins_as_the_sorted_manifest_of_its_files(self):
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+            for root, order in ((a, ("x.bin", "sub/y.bin")), (b, ("sub/y.bin", "x.bin"))):
+                for rel in order:
+                    p = os.path.join(root, rel)
+                    os.makedirs(os.path.dirname(p), exist_ok=True)
+                    with open(p, "wb") as f:
+                        f.write(rel.encode())
+            ha, na = pins.tree_sha256(a)
+            hb, nb = pins.tree_sha256(b)
+            self.assertEqual((ha, na), (hb, 2), "creation order must not matter")
+            with open(os.path.join(b, "x.bin"), "ab") as f:
+                f.write(b"!")
+            self.assertNotEqual(pins.tree_sha256(b)[0], ha, "a byte changed")
+            os.rename(os.path.join(a, "x.bin"), os.path.join(a, "z.bin"))
+            self.assertNotEqual(pins.tree_sha256(a)[0], hb, "a name changed")
+
+    def test_the_manifest_is_the_documented_shape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "f"), "wb") as f:
+                f.write(b"abc")
+            expected = _sha(("f\0%s\n" % _sha(b"abc")).encode())
+            self.assertEqual(pins.tree_sha256(tmp), (expected, 1))
+
+    def test_a_missing_file_or_directory_pins_as_none_and_says_so(self):
+        p = pins.file_pin("nope", os.path.join("no", "such", "file.png"))
+        self.assertIsNone(p.sha256)
+        self.assertIn("missing", p.detail)
+        t = pins.tree_pin("card", os.path.join("no", "such", "dir"))
+        self.assertIsNone(t.sha256)
+        self.assertIn("missing", t.detail)
+
+
+class EnvPin(unittest.TestCase):
+    def test_covers_the_ps2x_variables_only_and_not_the_card_path(self):
+        env = {"PS2X_B": "2", "PS2X_A": "1", "PS2X_MC_DIR": "C:/somewhere", "PATH": "x", "SOCOM_EXE": "y"}
+        p = pins.env_pin(env)
+        self.assertEqual(p.detail, ["PS2X_A=1", "PS2X_B=2"])
+        self.assertEqual(p.sha256, _sha(b"PS2X_A=1\nPS2X_B=2\n"))
+        env["PS2X_MC_DIR"] = "/elsewhere"
+        self.assertEqual(pins.env_pin(env).sha256, p.sha256, "the card's path is the card pin's business")
+        env["PS2X_A"] = "3"
+        self.assertNotEqual(pins.env_pin(env).sha256, p.sha256)
+
+    def test_the_gates_own_launch_environment_is_what_is_pinned(self):
+        """collect_pins hashes the environment the mission stage (the widest) would be launched with: the
+        gate's own knobs plus whatever PS2X_* the operator exported. An empty shell gives the standard."""
+        current = gate.collect_pins(base={})
+        self.assertEqual(current["env"].detail, [
+            "PS2X_HOST_GAMEPAD=0",
+            "PS2X_PC_SAMPLER=1",
+            "PS2X_PEEK=" + gate.launch_env("mission", "card", base={})["PS2X_PEEK"]])
+        drifted = gate.collect_pins(base={"PS2X_GS_STATS": "1"})
+        self.assertNotEqual(drifted["env"].sha256, current["env"].sha256)
+        self.assertIn("PS2X_GS_STATS=1", drifted["env"].detail)
+
+
+class PinnedInputs(unittest.TestCase):
+    def test_script_refs_are_the_references_a_drive_script_names(self):
+        refs = gate.script_refs(os.path.join(ROOT, "scripts", "parity", "gameplay_probe.txt"))
+        self.assertEqual(refs, ["scripts/parity/ref_save_prompt_ours.png", "scripts/parity/ref_hud_ours.png"])
+        self.assertEqual(gate.script_refs(os.path.join(ROOT, "scripts", "parity", "title_menu.txt")),
+                         ["scripts/parity/ref_main_menu_ours.png"])
+
+    def test_script_refs_resolve_a_per_target_sibling(self):
+        """drive.ref_for_target reads `<stem>.ours.png` when one exists beside the named file, so THAT file
+        is the input, and its appearance must show up as a new pin name (an unpinned input), not hide."""
+        with tempfile.TemporaryDirectory() as tmp:
+            sub = os.path.join(tmp, "scripts", "parity")
+            os.makedirs(sub)
+            for name in ("ref_a.png", "ref_a.ours.png"):
+                with open(os.path.join(sub, name), "wb") as f:
+                    f.write(b"x")
+            script = os.path.join(sub, "s.txt")
+            with open(script, "w") as f:
+                f.write("untilref(scripts/parity/ref_a.png)+1.0:CROSS\n")
+            with mock.patch.object(gate, "ROOT", tmp):
+                self.assertEqual(gate.script_refs(script), ["scripts/parity/ref_a.ours.png"])
+
+    def test_the_pinned_files_are_the_exact_set_the_three_stages_read(self):
+        self.assertEqual(gate.pinned_files(), [
+            "scripts/parity/title_menu.txt",
+            "scripts/parity/ref_main_menu_ours.png",
+            "scripts/parity/transition_probe.txt",
+            "scripts/parity/ref_save_prompt_ours.png",
+            "scripts/parity/ref_briefing_ours.png",
+            "scripts/parity/gameplay_probe.txt",
+            "scripts/parity/ref_hud_ours.png",
+            "scripts/parity/ref_popup_prompt_ours.png",
+            "scripts/parity/refs/console_spawn_slot8.png",
+            "scripts/parity/refs/mission_failure_banner.png",
+            "scripts/parity/guest_probe_console.json",
+        ])
+        for rel in gate.pinned_files():
+            self.assertTrue(os.path.isfile(os.path.join(ROOT, rel)), rel)
+
+    def test_collect_pins_names_every_input_and_the_record_only_ones(self):
+        current = gate.collect_pins(base={})
+        self.assertEqual(list(current)[:11], gate.pinned_files())
+        self.assertEqual(list(current)[11:], ["card", "env", "harness", "mapping"])
+        for rel in gate.pinned_files():
+            with open(os.path.join(ROOT, rel), "rb") as f:
+                self.assertEqual(current[rel].sha256, _sha(f.read()), rel)
+        self.assertEqual(len(current["harness"].sha256), 64)
+        self.assertIn("git", current["harness"].detail)
+        self.assertIsNone(current["mapping"].sha256)
+        self.assertEqual(pins.RECORD_ONLY, ("harness",))
+
+    def test_the_card_is_the_one_the_run_would_boot_from(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "SCRATCHPAD.DAT"), "wb") as f:
+                f.write(b"card")
+            mine = gate.collect_pins(base={"PS2X_MC_DIR": tmp})["card"]
+            self.assertEqual(mine.sha256, pins.tree_sha256(tmp)[0])
+            self.assertIn(tmp.replace("\\", "/"), mine.detail)
+            self.assertIn("1 file", mine.detail)
+        pristine = gate.collect_pins(base={})["card"]
+        self.assertIn("game/disc/mc0_parity", pristine.detail)
+
+
+class MappingHook(unittest.TestCase):
+    """Q3b's hook: the runtime will print `[socom2] input mapping sha256=<hex>`; the gate pins it as `mapping`
+    when the line is in a game log and records `absent` (no refusal) when it is not."""
+
+    def test_present_in_a_game_log_is_pinned(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = os.path.join(tmp, "mission.game.log")
+            with open(log, "w") as f:
+                f.write("[socom2] boot\n[socom2] input mapping sha256=" + "ab" * 32 + "\n[peek] 1 2 3\n")
+            p = pins.mapping_pin([log])
+            self.assertEqual(p.sha256, "ab" * 32)
+            self.assertIn("mission.game.log", p.detail)
+
+    def test_absent_is_recorded_as_absent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = os.path.join(tmp, "title.game.log")
+            with open(log, "w") as f:
+                f.write("[socom2] boot\n")
+            p = pins.mapping_pin([log, os.path.join(tmp, "no.log")])
+            self.assertIsNone(p.sha256)
+            self.assertEqual(p.detail, "absent")
+        self.assertEqual(pins.mapping_pin([]).detail, "absent")
+
+    def test_two_stages_disagreeing_is_its_own_finding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, h in (("title", "aa" * 32), ("mission", "bb" * 32)):
+                with open(os.path.join(tmp, name + ".game.log"), "w") as f:
+                    f.write("[socom2] input mapping sha256=%s\n" % h)
+            p = pins.mapping_pin([os.path.join(tmp, "title.game.log"), os.path.join(tmp, "mission.game.log")])
+            self.assertIsNone(p.sha256)
+            self.assertIn("differs", p.detail)
+
+
+class Compare(unittest.TestCase):
+    def _pins(self, **kw):
+        return {k: pins.Pin(k, v, "") for k, v in kw.items()}
+
+    def test_names_changed_missing_and_unpinned_inputs(self):
+        current = self._pins(a="1", b="2", c="3", harness="h", mapping=None)
+        drifts = pins.compare(current, {"a": "1", "b": "9", "d": "4"})
+        self.assertEqual([(d.name, d.actual, d.expected) for d in drifts], [
+            ("b", "2", "9"),
+            ("d", None, "4"),
+            ("c", "3", None),
+        ])
+
+    def test_record_only_and_absent_pins_never_drift(self):
+        current = self._pins(a="1", harness="h", mapping=None)
+        self.assertEqual(pins.compare(current, {"a": "1"}), [])
+        self.assertEqual(pins.compare(current, {"a": "1", "harness": "zzz"}), [])
+
+    def test_a_present_mapping_is_compared_once_it_is_in_the_file(self):
+        current = self._pins(a="1", mapping="m1")
+        self.assertEqual([d.name for d in pins.compare(current, {"a": "1"})], ["mapping"])
+        self.assertEqual(pins.compare(current, {"a": "1", "mapping": "m1"}), [])
+        self.assertEqual([d.name for d in pins.compare(current, {"a": "1", "mapping": "m2"})], ["mapping"])
+
+    def test_lines_say_each_pins_state(self):
+        current = self._pins(a="1", b="2", harness="h", mapping=None)
+        current["harness"] = pins.Pin("harness", "h", "git abc, clean")
+        drifts = pins.compare(current, {"a": "1", "b": "9"})
+        lines = pins.lines(current, drifts)
+        self.assertEqual(lines, [
+            "PIN a sha256=1 ok",
+            "PIN b sha256=2 DRIFTED (expected 9)",
+            "PIN harness sha256=h recorded (git abc, clean; not compared)",
+            "PIN mapping absent (not compared)",
+        ])
+        self.assertEqual(pins.lines(current, drifts, accepted=True)[1], "PIN b sha256=2 accepted (was 9)")
+
+
+class ExpectedFile(unittest.TestCase):
+    def test_round_trips_and_keeps_only_comparable_pins(self):
+        current = {
+            "a": pins.Pin("a", "1", "file"),
+            "card": pins.Pin("card", "c", "game/disc/mc0_parity, 12 files"),
+            "env": pins.Pin("env", "e", ["PS2X_HOST_GAMEPAD=0"]),
+            "harness": pins.Pin("harness", "h", "git abc"),
+            "mapping": pins.Pin("mapping", None, "absent"),
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "pins.json")
+            pins.write_expected(current, path, note="test")
+            self.assertEqual(pins.load_expected(path), {"a": "1", "card": "c", "env": "e"})
+            with open(path) as f:
+                doc = json.load(f)
+            self.assertEqual(doc["detail"]["env"], ["PS2X_HOST_GAMEPAD=0"])
+            self.assertEqual(doc["detail"]["card"], "game/disc/mc0_parity, 12 files")
+            self.assertNotIn("harness", doc["pins"])
+            self.assertNotIn("mapping", doc["pins"])
+            self.assertEqual(pins.load_expected(os.path.join(tmp, "none.json")), None)
+
+    def test_the_committed_standard_matches_the_tree(self):
+        """The CI-side guard: a change to a pinned input without --accept-pins fails here, before any gate.
+        The card lives under the git-ignored game/ and is compared only where it exists."""
+        expected = pins.load_expected(REAL_EXPECTED)
+        self.assertIsNotNone(expected, "scripts/parity/pins.json is committed")
+        current = gate.collect_pins(base={})
+        if current["card"].sha256 is None:
+            current.pop("card")
+            expected.pop("card", None)
+        drifts = pins.compare(current, expected)
+        self.assertEqual(drifts, [], "\n".join(pins.lines(current, drifts)))
+
+
+class _LaunchCase(unittest.TestCase):
+    """main() with the launch mocked out: no lock, no drive, no game. The expected-pins file and the stamp are
+    per test; the card is a temp directory named through PS2X_MC_DIR (game/ is git-ignored, so the pristine
+    card may not exist on this checkout)."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.card = os.path.join(self.tmp, "card")
+        os.makedirs(self.card)
+        with open(os.path.join(self.card, "SCRATCHPAD.DAT"), "wb") as f:
+            f.write(b"pristine")
+        self.expected = os.path.join(self.tmp, "pins.json")
+        self.stamp = "q1b_pins_test_%d" % os.getpid()
+        self.out_root = os.path.join("logs", "parity", "gate", self.stamp)
+        shutil.rmtree(self.out_root, ignore_errors=True)
+        self.env = mock.patch.dict(os.environ, {"PS2X_MC_DIR": self.card}, clear=False)
+        self.env.start()
+        for k in [k for k in os.environ if k.startswith("PS2X_") and k != "PS2X_MC_DIR"]:
+            del os.environ[k]
+        self.patches = [
+            mock.patch.object(pins, "EXPECTED", self.expected),
+            mock.patch.object(gate, "free_gb", return_value=99.0),
+            mock.patch.object(gate, "exe_line", return_value="EXE dist/socom2.exe bytes=1 sha256=" + "00" * 32),
+            mock.patch.object(gate, "_lock", return_value=subprocess.CompletedProcess(["x"], 0, "", "")),
+        ]
+        for p in self.patches:
+            p.start()
+        pins.write_expected(gate.collect_pins(), self.expected, note="test standard")
+
+    def tearDown(self):
+        for p in self.patches:
+            p.stop()
+        self.env.stop()
+        shutil.rmtree(self.out_root, ignore_errors=True)
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _drift(self, name, sha="ff" * 32):
+        with open(self.expected) as f:
+            doc = json.load(f)
+        doc["pins"][name] = sha
+        with open(self.expected, "w") as f:
+            json.dump(doc, f, indent=1)
+
+    def _main(self, argv, stage=None):
+        stage = stage or (lambda name, out_root: (True, "ok " + name))
+        out = io.StringIO()
+        with mock.patch.object(gate, "run_gate", side_effect=stage) as run, contextlib.redirect_stdout(out):
+            rc = gate.main(["--stamp", self.stamp, "--only", "title"] + argv)
+        return rc, out.getvalue(), run
+
+    def _summary(self):
+        with open(os.path.join(self.out_root, "summary.txt"), encoding="utf-8") as f:
+            return f.read()
+
+
+class LaunchPins(_LaunchCase):
+    def test_a_matching_launch_scores_and_states_what_it_measured(self):
+        rc, out, run = self._main([])
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(run.call_count, 1)
+        summary = self._summary()
+        self.assertIn("PASS title (ok title)\n", summary)
+        self.assertIn("EXE dist/socom2.exe bytes=1 sha256=", summary)
+        current = gate.collect_pins()
+        self.assertIn("PIN scripts/parity/ref_hud_ours.png sha256=%s ok\n" % current["scripts/parity/ref_hud_ours.png"].sha256, summary)
+        self.assertIn("PIN card sha256=%s ok; %s, 1 file\n" % (pins.tree_sha256(self.card)[0], self.card.replace("\\", "/")), summary)
+        self.assertIn("PIN env sha256=%s ok; PS2X_HOST_GAMEPAD=0 PS2X_PC_SAMPLER=1 PS2X_PEEK=" % current["env"].sha256, summary)
+        self.assertIn("PIN harness sha256=%s recorded" % current["harness"].sha256, summary)
+        self.assertIn("PIN mapping absent", summary)
+        self.assertIn("PINS MATCH %s (13 compared)\n" % self.expected, summary)
+        self.assertIn("GATE PASS (1/1)", out)
+        with open(os.path.join(self.out_root, "pins.json")) as f:
+            record = json.load(f)
+        self.assertEqual(record["pins"]["card"], pins.tree_sha256(self.card)[0])
+        self.assertEqual(record["pins"]["harness"], current["harness"].sha256)
+        self.assertEqual(record["pins"]["mapping"], None)
+        self.assertEqual(record["verdict"], "MATCH")
+        self.assertEqual(record["exe"], "EXE dist/socom2.exe bytes=1 sha256=" + "00" * 32)
+
+    def test_a_drifted_reference_image_refuses_with_the_name_of_what_drifted(self):
+        self._drift("scripts/parity/ref_hud_ours.png")
+        rc, out, run = self._main([])
+        self.assertEqual(rc, 7, out)
+        self.assertEqual(run.call_count, 0, "no launch was paid for")
+        gate._lock.assert_not_called()
+        self.assertIn("GATE REFUSED (pins drifted: scripts/parity/ref_hud_ours.png)", out)
+        summary = self._summary()
+        self.assertNotIn("title", summary.split("EXE ")[0])
+        self.assertIn("PIN scripts/parity/ref_hud_ours.png sha256=%s DRIFTED (expected %s)\n"
+                      % (gate.collect_pins()["scripts/parity/ref_hud_ours.png"].sha256, "ff" * 32), summary)
+        self.assertIn("PINS DRIFTED: scripts/parity/ref_hud_ours.png -- refused to score", summary)
+        self.assertIn("--accept-pins", summary)
+        with open(os.path.join(self.out_root, "pins.json")) as f:
+            self.assertEqual(json.load(f)["drifted"], ["scripts/parity/ref_hud_ours.png"])
+
+    def test_a_refusal_is_not_a_stage_failure(self):
+        rc, out, _ = self._main([], stage=lambda name, out_root: (False, "bad"))
+        self.assertEqual(rc, 1)
+        self._drift("card")
+        rc, out, _ = self._main([], stage=lambda name, out_root: (False, "bad"))
+        self.assertEqual(rc, 7)
+
+    def test_a_touched_card_refuses(self):
+        with open(os.path.join(self.card, "SCRATCHPAD.DAT"), "ab") as f:
+            f.write(b" booted")
+        rc, out, _ = self._main([])
+        self.assertEqual(rc, 7)
+        self.assertIn("pins drifted: card", out)
+
+    def test_an_operators_ps2x_variable_refuses(self):
+        os.environ["PS2X_GS_STATS"] = "1"
+        rc, out, _ = self._main([])
+        self.assertEqual(rc, 7)
+        self.assertIn("pins drifted: env", out)
+        self.assertIn("PS2X_GS_STATS=1", self._summary())
+
+    def test_accept_pins_records_the_new_standard_and_scores(self):
+        self._drift("scripts/parity/ref_hud_ours.png")
+        self._drift("card")
+        rc, out, run = self._main(["--accept-pins"])
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(run.call_count, 1)
+        current = gate.collect_pins()
+        self.assertEqual(pins.load_expected(self.expected)["scripts/parity/ref_hud_ours.png"],
+                         current["scripts/parity/ref_hud_ours.png"].sha256)
+        self.assertEqual(pins.load_expected(self.expected)["card"], pins.tree_sha256(self.card)[0])
+        summary = self._summary()
+        self.assertIn("PIN scripts/parity/ref_hud_ours.png sha256=%s accepted (was %s)\n"
+                      % (current["scripts/parity/ref_hud_ours.png"].sha256, "ff" * 32), summary)
+        self.assertIn("PINS ACCEPTED: scripts/parity/ref_hud_ours.png, card -> %s rewritten\n" % self.expected, summary)
+        with open(os.path.join(self.out_root, "pins.json")) as f:
+            record = json.load(f)
+        self.assertTrue(record["accepted"])
+        self.assertEqual(record["verdict"], "ACCEPTED")
+        # ... and the next launch matches without the flag.
+        rc, out, _ = self._main([])
+        self.assertEqual(rc, 0, out)
+        self.assertIn("PINS MATCH", self._summary())
+
+    def test_accept_pins_on_a_matching_launch_changes_nothing_and_says_so(self):
+        before = pins.load_expected(self.expected)
+        rc, out, _ = self._main(["--accept-pins"])
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(pins.load_expected(self.expected), before)
+        self.assertIn("PINS MATCH", self._summary())
+
+    def test_a_mapping_line_in_the_game_log_is_pinned(self):
+        """Q3b: the first run that prints the mapping hash is a new pinned input -> refused until accepted;
+        once accepted, a run with a different hash is refused; a run without the line is recorded as absent."""
+        def stage_with(h):
+            def stage(name, out_root):
+                with open(os.path.join(out_root, name + ".game.log"), "w") as f:
+                    f.write("[socom2] input mapping sha256=%s\n" % h)
+                return True, "ok"
+            return stage
+
+        rc, out, run = self._main([], stage=stage_with("ab" * 32))
+        self.assertEqual(rc, 7, out)
+        self.assertEqual(run.call_count, 1, "the line is only known after the launch")
+        self.assertIn("pins drifted: mapping", out)
+        summary = self._summary()
+        self.assertIn("PASS title (ok)\n", summary, "the stage lines are kept; the verdict is the refusal")
+        self.assertIn("PIN mapping sha256=%s DRIFTED (expected none); from title.game.log\n" % ("ab" * 32), summary)
+
+        rc, out, _ = self._main(["--accept-pins"], stage=stage_with("ab" * 32))
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(pins.load_expected(self.expected)["mapping"], "ab" * 32)
+        self.assertIn("PIN mapping sha256=%s accepted (was none); from title.game.log\n" % ("ab" * 32), self._summary())
+
+        rc, out, _ = self._main([], stage=stage_with("ab" * 32))
+        self.assertEqual(rc, 0, out)
+        self.assertIn("PIN mapping sha256=%s ok; from title.game.log\n" % ("ab" * 32), self._summary())
+
+        rc, out, _ = self._main([], stage=stage_with("cd" * 32))
+        self.assertEqual(rc, 7, out)
+        self.assertIn("PIN mapping sha256=%s DRIFTED (expected %s); from title.game.log\n" % ("cd" * 32, "ab" * 32), self._summary())
+
+        os.remove(os.path.join(self.out_root, "title.game.log"))   # a stage that printed no line
+        rc, out, _ = self._main([])
+        self.assertEqual(rc, 0, out)
+        self.assertIn("PIN mapping absent (expected %s; the runtime printed no mapping line; not compared)\n" % ("ab" * 32), self._summary())
+
+    def test_pins_only_checks_the_tree_without_launching(self):
+        rc, out, run = self._main(["--pins"])
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(run.call_count, 0)
+        self.assertIn("PINS MATCH", out)
+        self.assertFalse(os.path.exists(self.out_root), "a dry check writes no stamp")
+        self._drift("scripts/parity/title_menu.txt")
+        rc, out, _ = self._main(["--pins"])
+        self.assertEqual(rc, 7)
+        self.assertIn("PINS DRIFTED: scripts/parity/title_menu.txt", out)
+        rc, out, _ = self._main(["--pins", "--accept-pins"])
+        self.assertEqual(rc, 0, out)
+        self.assertIn("PINS ACCEPTED: scripts/parity/title_menu.txt", out)
+        self.assertEqual(pins.load_expected(self.expected)["scripts/parity/title_menu.txt"],
+                         gate.collect_pins()["scripts/parity/title_menu.txt"].sha256)
+
+
+class BaselinePins(_LaunchCase):
+    """--baseline re-scores a saved stamp: the stamp's recorded pins must match the standard, and so must the
+    present tree's file-backed pins (the re-score reads today's reference images)."""
+
+    def _stamp(self, record):
+        os.makedirs(os.path.join(self.out_root, "title"))
+        if record is not None:
+            with open(os.path.join(self.out_root, "pins.json"), "w") as f:
+                json.dump(record, f)
+        return self.out_root
+
+    def _record(self, **override):
+        current = gate.collect_pins()
+        rec = {"pins": {k: v.sha256 for k, v in current.items()}}
+        rec["pins"].update(override)
+        return rec
+
+    def _baseline(self, argv=()):
+        out = io.StringIO()
+        with mock.patch.object(gate, "score_title", return_value=(True, "t")) as score, contextlib.redirect_stdout(out):
+            rc = gate.main(["--baseline", self.out_root] + list(argv))
+        return rc, out.getvalue(), score
+
+    def test_a_matching_record_scores(self):
+        self._stamp(self._record())
+        rc, out, score = self._baseline()
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(score.call_count, 1)
+        self.assertIn("PINS MATCH", out)
+        self.assertIn("GATE PASS (1/1) [baseline", out)
+
+    def test_a_record_with_different_pins_refuses(self):
+        self._stamp(self._record(**{"scripts/parity/ref_main_menu_ours.png": "ee" * 32}))
+        rc, out, score = self._baseline()
+        self.assertEqual(rc, 7, out)
+        self.assertEqual(score.call_count, 0)
+        self.assertIn("PIN scripts/parity/ref_main_menu_ours.png sha256=%s DRIFTED (expected %s)" % (
+            "ee" * 32, gate.collect_pins()["scripts/parity/ref_main_menu_ours.png"].sha256), out)
+        self.assertIn("GATE REFUSED (recorded pins drifted: scripts/parity/ref_main_menu_ours.png) [baseline", out)
+
+    def test_a_present_tree_that_drifted_from_the_standard_refuses(self):
+        self._stamp(self._record(**{"scripts/parity/ref_main_menu_ours.png": "ee" * 32}))
+        self._drift("scripts/parity/ref_main_menu_ours.png", "ee" * 32)   # the record agrees with the file; the tree does not
+        rc, out, score = self._baseline()
+        self.assertEqual(rc, 7, out)
+        self.assertEqual(score.call_count, 0)
+        self.assertIn("GATE REFUSED (pins drifted: scripts/parity/ref_main_menu_ours.png) [baseline", out)
+
+    def test_an_unrecorded_stamp_scores_and_says_so(self):
+        self._stamp(None)
+        rc, out, score = self._baseline()
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(score.call_count, 1)
+        self.assertIn("PINS unrecorded (no pins.json in the stamp: a run from before Q1b)", out)
+
+    def test_the_records_own_card_and_env_are_compared_but_not_todays(self):
+        """A re-score boots nothing: today's card and shell are not inputs to it. The record's are."""
+        os.environ["PS2X_GS_STATS"] = "1"
+        with open(os.path.join(self.card, "SCRATCHPAD.DAT"), "ab") as f:
+            f.write(b" booted")
+        self._stamp(self._record(env=pins.load_expected(self.expected)["env"], card=pins.load_expected(self.expected)["card"]))
+        rc, out, _ = self._baseline()
+        self.assertEqual(rc, 0, out)
+        shutil.rmtree(self.out_root)
+        self._stamp(self._record(env="dd" * 32, card=pins.load_expected(self.expected)["card"]))
+        rc, out, _ = self._baseline()
+        self.assertEqual(rc, 7, out)
+        self.assertIn("recorded pins drifted: env", out)
+
+    def test_accept_pins_is_a_launch_flag(self):
+        self._stamp(self._record())
+        with self.assertRaises(SystemExit):
+            with contextlib.redirect_stderr(io.StringIO()):
+                gate.main(["--baseline", self.out_root, "--accept-pins"])
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -14,6 +14,15 @@ the injectable seam for tests (mock.patch.object(gate, "free_gb", ...)); RUN_FRE
 query itself with a shell command whose last stdout line is the free space in GB, the same override
 scripts/run_detached.sh honours for its own disk refusal. `--score-title`/`--score-mission` (re-score
 an existing run, no game launch, nothing large written) are exempt.
+
+The gate states what it measured (Sprint 10 Q1b). Beside the EXE line, summary.txt carries one `PIN <name>
+sha256=<hex> ...` line per pinned input -- every reference image and drive script the three stages read
+(pinned_files, derived from the scripts and the scorers), the memory card the run boots from, the PS2X_*
+environment, the harness revision (record only) and, once the runtime prints it, the input mapping hash --
+and a run's pins.json beside it. The committed standard is scripts/parity/pins.json; a launch whose pins do
+not match it is REFUSED before anything is launched (exit 7, distinct from a stage FAIL's 1), and so is a
+`--baseline` re-score whose recorded pins, or today's reference files, do not match. `--accept-pins` makes the
+measured values the standard (the summary says so); `--pins` is the lock-free dry check.
 """
 import argparse
 import glob
@@ -24,12 +33,13 @@ import shutil
 import subprocess
 import sys
 import time
+from collections import OrderedDict
 
 import numpy as np
 from PIL import Image
 
 from tools_py.parity import (black_rows, compare, console_compare, drive, guest_probe, hostplatform,
-                             mission_fail, screen_bands)
+                             mission_fail, pins, screen_bands, sp_death_probe)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_MIN_FREE_GB = 4.0
@@ -537,17 +547,11 @@ def _lock(cmd, owner):
                          "the repo root." % e)
 
 
-def run_gate(name, out_root):
-    cfg = GATES[name]
-    out_dir = os.path.join(out_root, name)
-    os.makedirs(out_dir, exist_ok=True)
-    for p in glob.glob(os.path.join("logs", "parity", "latest_frame.png*")):
-        os.remove(p)
-    drive_log = os.path.join(out_root, name + ".drive.log")
-    # drive.py launches the exe with its own environment, so PS2X_* set here reach the runtime. The
-    # mission stage needs the guest-value probe's chains in PS2X_PEEK (Task 1c) for probe_lines to read
-    # anything; an operator's own PS2X_PEEK (a wider spec, e.g. the ladder's) is left alone.
-    env = dict(os.environ)
+def launch_env(name, card_dir, base=None):
+    """The environment a stage's drive is launched with: `base` (default os.environ) plus the gate's own
+    knobs. drive.py launches the exe with its own environment, so PS2X_* set here reach the runtime.
+    Pure -- the card copy is run_gate's -- so that collect_pins can hash exactly what a launch would get."""
+    env = dict(os.environ if base is None else base)
     # A gate run is defined as a boot with NO controller: with an Xbox pad plugged in the libpad HLE reported a
     # configured controller and the game skipped its PRECISION SHOOTER CONFIGURATION screens and the 'save to
     # memory card?' dialog the transition stage keys on (s6_gamepad, s6_gamepad2, 2026-09-16).
@@ -556,12 +560,12 @@ def run_gate(name, out_root):
     # onto game/disc/mc0, the card every gate booted from, and the boot stopped showing the configuration screens
     # and the 'save to memory card?' dialog the transition stage keys on (s6_gamepad .. s6_gamepad3, three gates
     # lost). Each stage now boots from a fresh copy of game/disc/mc0_parity in the stamp directory; an operator's
-    # own PS2X_MC_DIR wins. The copy is per stamp (not per stage) -- the game writes SCRATCHPAD.DAT at boot.
+    # own PS2X_MC_DIR wins.
     if not env.get("PS2X_MC_DIR"):
-        card = os.path.join(out_root, "mc0")
-        shutil.copytree(PRISTINE_CARD, card, dirs_exist_ok=True)
-        env["PS2X_MC_DIR"] = os.path.abspath(card)
+        env["PS2X_MC_DIR"] = card_dir
     if name == "mission":
+        # The mission stage needs the guest-value probe's chains in PS2X_PEEK (Task 1c) for probe_lines to read
+        # anything; an operator's own PS2X_PEEK (a wider spec, e.g. the ladder's) is left alone.
         if not env.get("PS2X_PEEK"):
             env["PS2X_PEEK"] = guest_probe.peek_spec(GUEST_PROBE_CONSOLE)
         # The runtime prints its [peek] rows from the PC sampler's thread, one row per sample
@@ -569,6 +573,29 @@ def run_gate(name, out_root):
         # s6_blockptr's mission stage read "PROBE ... NO-DATA (0 reads of 0 rows)". One row per second
         # is the ladder's cadence and costs nothing measurable.
         env.setdefault("PS2X_PC_SAMPLER", "1")
+    return env
+
+
+def card_source(base=None):
+    """The memory card a launch boots from: the operator's PS2X_MC_DIR when set, else the pristine card
+    run_gate copies. Its CONTENTS are the `card` pin (HANDOFF trap 5: the card is shared state, and a saved
+    controller configuration on it changes the boot flow the transition stage keys on)."""
+    env = os.environ if base is None else base
+    return env.get("PS2X_MC_DIR") or PRISTINE_CARD
+
+
+def run_gate(name, out_root):
+    cfg = GATES[name]
+    out_dir = os.path.join(out_root, name)
+    os.makedirs(out_dir, exist_ok=True)
+    for p in glob.glob(os.path.join("logs", "parity", "latest_frame.png*")):
+        os.remove(p)
+    drive_log = os.path.join(out_root, name + ".drive.log")
+    # The copy of the pristine card is per stamp (not per stage) -- the game writes SCRATCHPAD.DAT at boot.
+    card = os.path.join(out_root, "mc0")
+    if not os.environ.get("PS2X_MC_DIR"):
+        shutil.copytree(PRISTINE_CARD, card, dirs_exist_ok=True)
+    env = launch_env(name, os.path.abspath(card))
     with open(drive_log, "w", encoding="utf-8") as log:
         subprocess.run(drive_command(name, out_dir), stdout=log, stderr=subprocess.STDOUT, env=env)
     # The game's own run log (where the runtime prints its [peek] rows) lands beside the drive log as
@@ -588,8 +615,12 @@ def run_gate(name, out_root):
 def score_baseline(stamp):
     """Sprint 6 Task 8: score a saved run directory (a stamp name under logs/parity/gate, or a path) without
     launching anything -- each stage it holds through the same scorer the live gate used; nothing written.
-    Prints the gate's lines and summary; returns the gate's exit code, 4 when there is nothing to score."""
+    Prints the gate's lines and summary; returns the gate's exit code, 4 when there is nothing to score,
+    7 when the stamp's recorded pins or today's pinned files do not match the standard (baseline_pins)."""
     out_root = stamp if os.path.isdir(stamp) else os.path.join("logs", "parity", "gate", stamp)
+    refused = baseline_pins(out_root)
+    if refused is not None:
+        return refused
     results = []
     title_dir = os.path.join(out_root, "title")
     if os.path.isdir(title_dir):
@@ -627,6 +658,130 @@ def exe_line(env=None):
         return "EXE %s UNREADABLE (%s)" % (path, e.strerror or e)
 
 
+# Sprint 10 Q1b -- what a score is computed against, beyond the EXE. Each stage reads its drive script, the
+# references that script names (untilref/ifref, resolved the way drive.py resolves them) and the files its
+# scorer and its drive-side checks read:
+#   title       score_title against TITLE_REF (the same file the script's untilref names)
+#   transition  score_transition/score_fade against BRIEFING_REF; black_rows is code (the harness pin)
+#   mission     drive's ifpopup reads sp_death_probe.PROMPT_REF; score_mission_log reads console_compare's
+#               CONSOLE_REF (print-only, R78, but on every summary), mission_fail's BANNER_REF, and
+#               GUEST_PROBE_CONSOLE (the probe's tolerances AND the source of PS2X_PEEK)
+# ref_hud_ours.png is named by the mission script (untilref), so it arrives through script_refs.
+STAGE_INPUTS = {
+    "title": [TITLE_REF],
+    "transition": [BRIEFING_REF],
+    "mission": [sp_death_probe.PROMPT_REF, console_compare.CONSOLE_REF, mission_fail.BANNER_REF, GUEST_PROBE_CONSOLE],
+}
+HARNESS_TREES = ("tools_py/parity", "scripts/parity")
+SCRIPT_REF_RE = re.compile(r"^(?:untilref|ifref)\(\s*([^,)]+)")
+
+
+def _rel(path):
+    return path.replace("\\", "/")
+
+
+def script_refs(script_path):
+    """The reference images a drive.py step script reads, repo-relative with forward slashes, in script order,
+    each resolved through drive.ref_for_target("ours") so a `<stem>.ours.png` sibling -- the file the drive
+    would actually read if one appeared -- is what gets pinned, under its own name."""
+    out = []
+    with open(script_path, encoding="utf-8") as f:
+        text = f.read()
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        m = SCRIPT_REF_RE.match(line)
+        if m:
+            rel = _rel(drive.ref_for_target(m.group(1).strip(), "ours", root=ROOT))
+            if rel not in out:
+                out.append(rel)
+    return out
+
+
+def pinned_files():
+    """Every file the three stages read, in stage order, deduplicated: the drive script, the references it
+    names, then STAGE_INPUTS. This is the exact set; a change to any of them moves a score."""
+    out = []
+    for name, cfg in GATES.items():
+        for rel in [cfg["script"]] + script_refs(os.path.join(ROOT, cfg["script"])) + [_rel(p) for p in STAGE_INPUTS[name]]:
+            if rel not in out:
+                out.append(rel)
+    return out
+
+
+def collect_pins(base=None, game_logs=()):
+    """Every pinned input of a gate launched from environment `base` (default os.environ), as
+    `OrderedDict(name -> pins.Pin)`: the files (pinned_files), the card the launch boots from, the PS2X_*
+    environment the mission stage (the widest) gets, the harness (record only), and the mapping hash read
+    from `game_logs` (absent until Q3b's runtime prints it)."""
+    out = OrderedDict()
+    for rel in pinned_files():
+        out[rel] = pins.file_pin(rel, os.path.join(ROOT, rel))
+    src = card_source(base)
+    out["card"] = pins.tree_pin("card", src if os.path.isabs(src) else os.path.join(ROOT, src), label=_rel(src))
+    out["env"] = pins.env_pin(launch_env("mission", "<the stamp's copy of the card>", base=base))
+    out["harness"] = pins.harness_pin(ROOT, HARNESS_TREES, exclude=(_rel(pins.EXPECTED),))
+    out["mapping"] = pins.mapping_pin(game_logs)
+    return out
+
+
+def expected_pins_path():
+    return pins.EXPECTED if os.path.isabs(pins.EXPECTED) else os.path.join(ROOT, pins.EXPECTED)
+
+
+def pins_verdict(drifts, accepted, compared):
+    """(word, line): the PINS line of a summary -- MATCH, ACCEPTED (the standard was rewritten) or DRIFTED
+    (refused) -- and its one-word form for the record."""
+    names = ", ".join(d.name for d in drifts)
+    if not drifts:
+        return "MATCH", "PINS MATCH %s (%d compared)" % (pins.EXPECTED, compared)
+    if accepted:
+        return "ACCEPTED", "PINS ACCEPTED: %s -> %s rewritten" % (names, pins.EXPECTED)
+    return "DRIFTED", ("PINS DRIFTED: %s -- refused to score (pass --accept-pins to make the measured values the "
+                       "standard, or restore the input)" % names)
+
+
+def check_pins(current, accept=False, note=""):
+    """(drifts, expected, accepted) for `current` against the committed standard; with `accept`, a drift
+    rewrites the standard from `current` and is reported as accepted rather than refused."""
+    expected = pins.load_expected(expected_pins_path()) or {}
+    drifts = pins.compare(current, expected)
+    accepted = bool(drifts) and accept
+    if accepted:
+        pins.write_expected(current, expected_pins_path(), note=note)
+    return drifts, expected, accepted
+
+
+def baseline_pins(out_root):
+    """The pin checks of a --baseline re-score, printed; None when it may proceed, else the exit code.
+    Two questions: was the run made under the standard (its recorded pins.json, every pin it recorded --
+    a stamp from before Q1b has none and is scored with a line saying so), and is the standard what is on
+    disk now (today's pinned FILES: the re-score reads today's reference images; today's card and shell
+    boot nothing and are not asked)."""
+    expected = pins.load_expected(expected_pins_path()) or {}
+    record = pins.load_record(os.path.join(out_root, pins.RECORD_NAME))
+    if record is None:
+        print("PINS unrecorded (no %s in the stamp: a run from before Q1b)" % pins.RECORD_NAME)
+    else:
+        drifts = pins.compare(record, expected)
+        for line in pins.lines(record, drifts, expected=expected):
+            print(line)
+        if drifts:
+            print("PINS DRIFTED (recorded): %s" % ", ".join(d.name for d in drifts))
+            print("GATE REFUSED (recorded pins drifted: %s) [baseline %s]" % (", ".join(d.name for d in drifts), out_root))
+            return 7
+    files = pinned_files()
+    current = OrderedDict((n, p) for n, p in collect_pins(base={}).items() if n in files)
+    drifts = pins.compare(current, {n: s for n, s in expected.items() if n in files})
+    if drifts:
+        for line in pins.lines(current, drifts, expected=expected):
+            if "DRIFTED" in line:
+                print(line)
+        print("GATE REFUSED (pins drifted: %s) [baseline %s]" % (", ".join(d.name for d in drifts), out_root))
+        return 7
+    print("PINS MATCH %s (%d recorded, %d files on disk)" % (pins.EXPECTED, len(record or {}), len(current)))
+    return None
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", default="title,transition,mission")
@@ -637,10 +792,25 @@ def main(argv=None):
     ap.add_argument("--mission-frames", help="capture dir for --score-mission (default: <log minus .drive.log>)")
     ap.add_argument("--baseline", help="re-score a saved stamp (a logs/parity/gate/<stamp> name or a path) without "
                                        "launching: every stage it holds, through the live gate's scorers; writes nothing")
+    ap.add_argument("--pins", action="store_true",
+                    help="compare the tree's pinned inputs to %s and exit (0 match, 7 drifted); no launch, no lock" % pins.EXPECTED)
+    ap.add_argument("--accept-pins", action="store_true",
+                    help="a launch (or --pins) whose pins drifted rewrites %s from the measured values instead of "
+                         "refusing; the summary says so" % pins.EXPECTED)
     args = ap.parse_args(argv)
 
     if args.baseline:
+        if args.accept_pins:
+            ap.error("--accept-pins is a launch flag: a --baseline re-score compares the record, it does not set the standard")
         return score_baseline(args.baseline)
+
+    if args.pins:
+        current = collect_pins()
+        drifts, expected, accepted = check_pins(current, args.accept_pins, note="gate --pins --accept-pins")
+        for line in pins.lines(current, drifts, accepted, expected):
+            print(line)
+        print(pins_verdict(drifts, accepted, len(pins.comparable(current)))[1])
+        return 7 if drifts and not accepted else 0
 
     # --score-title/--score-mission re-score an existing run: no game launch, nothing large written
     # -- exempt from the disk refusal (review round 1 item 3, 2026-09-13), and checked first so
@@ -664,14 +834,40 @@ def main(argv=None):
     # Make the output root before taking the lock: a makedirs failure must not leak the lock.
     out_root = os.path.join("logs", "parity", "gate", args.stamp)
     os.makedirs(out_root, exist_ok=True)
+    exe = exe_line()
+    print(exe, flush=True)
+    # The pins are checked BEFORE the lock and the launch: a drifted standard refuses without spending a
+    # run. The record (pins.json) and the summary are written either way, so the refusal is on file.
+    current = collect_pins()
+    drifts, expected, accepted = check_pins(current, args.accept_pins,
+                                            note="gate --accept-pins, stamp %s" % args.stamp)
+    compared = len(pins.comparable(current))
+
+    def write_summary(stage_lines, all_drifts):
+        """summary.txt (stage lines, EXE, PIN lines, PINS verdict) and pins.json; returns the lines."""
+        word, verdict = pins_verdict(all_drifts, accepted, compared)
+        pin_lines = pins.lines(current, all_drifts, accepted, expected)
+        with open(os.path.join(out_root, "summary.txt"), "w", encoding="utf-8") as f:
+            f.write("".join(l + "\n" for l in stage_lines + [exe] + pin_lines + [verdict]))
+        pins.write_record(current, os.path.join(out_root, pins.RECORD_NAME), all_drifts, accepted, word,
+                          exe, pins.EXPECTED)
+        return pin_lines, verdict
+
+    if drifts and not accepted:
+        pin_lines, verdict = write_summary([], drifts)
+        for line in pin_lines + [verdict]:
+            print(line)
+        print("GATE REFUSED (pins drifted: %s) -> %s" % (", ".join(d.name for d in drifts), out_root))
+        return 7
+    for line in pins.lines(current, drifts, accepted, expected):
+        print(line, flush=True)
     take = _lock("take", args.owner)
     if take.returncode != 0:
         print("gate: lock busy: " + take.stdout.strip())
         return 2
-    exe = exe_line()
-    print(exe, flush=True)
     wanted = [g.strip() for g in args.only.split(",") if g.strip()]
     results = []
+    rc = 1
     try:
         for name in wanted:
             ok, detail = run_gate(name, out_root)
@@ -684,11 +880,28 @@ def main(argv=None):
         for name in wanted[len(results):]:
             results.append((False, "FAIL %s (gate did not run)" % name))
         failed = [line for ok, line in results if not ok]
-        with open(os.path.join(out_root, "summary.txt"), "w", encoding="utf-8") as f:
-            f.write("\n".join(line for _, line in results) + "\n" + exe + "\n")
-        print("GATE %s (%d/%d) -> %s" % ("FAIL" if failed else "PASS",
-                                         len(results) - len(failed), len(results), out_root))
-    return 1 if failed else 0
+        # Q3b's hook: the mapping hash is only known once a stage has run and the runtime has printed its
+        # line into <stage>.game.log. It is compared against the standard like every other pin -- a value
+        # the standard does not hold (the first run that prints one, or a changed table) refuses the score
+        # unless --accept-pins -- and an absent line is recorded as absent, never refused.
+        current["mapping"] = pins.mapping_pin([os.path.join(out_root, name + ".game.log") for name in wanted])
+        late = [d for d in pins.compare(current, expected) if d.name == "mapping"]
+        if late and args.accept_pins:
+            pins.write_expected(current, expected_pins_path(), note="gate --accept-pins, stamp %s" % args.stamp)
+            accepted = True
+        all_drifts = drifts + late
+        refused = bool(all_drifts) and not accepted
+        pin_lines, verdict = write_summary([line for _, line in results], all_drifts)
+        print(pin_lines[-1])        # the mapping line, now that the game logs exist
+        print(verdict)
+        if refused:
+            print("GATE REFUSED (pins drifted: %s) -> %s" % (", ".join(d.name for d in all_drifts), out_root))
+            rc = 7
+        else:
+            print("GATE %s (%d/%d) -> %s" % ("FAIL" if failed else "PASS",
+                                             len(results) - len(failed), len(results), out_root))
+            rc = 1 if failed else 0
+    return rc
 
 
 if __name__ == "__main__":
