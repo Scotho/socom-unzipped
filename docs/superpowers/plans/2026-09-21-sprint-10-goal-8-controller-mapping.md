@@ -202,29 +202,29 @@ owed, on the rebuilt exe, in the main tree:
 
 ## Proposed rulings (the controller numbers them)
 
-- **P-A — the mapping is per profile, and a default mapping is not written and not sent.** config.json carries a
+- **R193 — the mapping is per profile, and a default mapping is not written and not sent.** config.json carries a
   mapping only for a profile that changed one; `environmentFor` adds `PS2X_INPUT_MAPPING` only for a non-default
   mapping. Why: the default environment and the default file stay byte for byte what they were, which is what
   "inert by construction" has to mean for the harness (trap 1) and for a stranger's first run. Cost: a player who
   wants to SEE the defaults in the file cannot; the CONTROLLER page shows them instead. The owner can overturn it.
-- **P-B — the environment string is the whole table or nothing.** A `PS2X_INPUT_MAPPING` with fewer than sixteen pad
+- **R194 — the environment string is the whole table or nothing.** A `PS2X_INPUT_MAPPING` with fewer than sixteen pad
   rows, a row named twice, or a name the build does not know is refused whole and the runtime plays the defaults and
   says so. Why: a truncated value that silently left rows at their defaults would look like a deliberate mapping.
-- **P-C — the keyboard table is data but not rebindable from the page.** The keyboard is menus and typing (Q3) and
+- **R195 — the keyboard table is data but not rebindable from the page.** The keyboard is menus and typing (Q3) and
   the harness's scripted path (trap 1); the page rebinds the pad only. config.json may carry a `keys` patch for a
   hand edit, and the hash covers it, so a changed keyboard is loud on the log.
-- **P-D — the sticks and Triangle's pressure are not in the table.** Sticks are axes; Triangle's pressure is R139's
+- **R196 — the sticks and Triangle's pressure are not in the table.** Sticks are axes; Triangle's pressure is R139's
   crouch shortcut, which works on the PS2 mask AFTER the table ("l3" there means whichever host control the table
   binds to PS2 L3). The page says both, and the CROUCH mark on the drawing follows the mapping.
-- **P-E — "per-profile presets" is read as the mapping saved per profile, nothing more.** A profile is one player's
+- **R197 — "per-profile presets" is read as the mapping saved per profile, nothing more.** A profile is one player's
   save and persona; two people sharing a machine hold their pads differently, so each profile keeps its own layout
   and RESTORE DEFAULTS restores that profile's. No named presets (no "southpaw", no "copy from"): every layout the
   page can express is sixteen rows, and a stranger's first run needs none of them. Cost: a player with two profiles
   who wants the same custom layout on both binds it twice. The owner can overturn it; a "copy from profile" row is
   an afternoon on top of setActiveMapping.
-- **P-F — bind on RELEASE, B held cancels, a tap of B binds B.** The spec says "Escape or B to cancel"; B is also a
+- **R198 — bind on RELEASE, B held cancels, a tap of B binds B.** The spec says "Escape or B to cancel"; B is also a
   bindable button, and a rule that reserved it would leave Circle's own pad button unbindable by pressing. Half a
   second is the hold. Cost: a binding lands on release rather than on press, which nobody will feel; a player who
   holds a button for effect has to let go. The owner can overturn it (a pure constant, `kCancelHoldSeconds`).
-- **P-G — the section switch is launcher state, not a setting.** Which of SETUP / BUTTONS was open is not written to
+- **R199 — the section switch is launcher state, not a setting.** Which of SETUP / BUTTONS was open is not written to
   config.json (like the ADVANCED drawer, P4): the page opens on SETUP every time.
