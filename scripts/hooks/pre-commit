@@ -1,0 +1,18 @@
+#!/bin/sh
+# The leak check over what this commit is about to take: each staged file's staged content, a staged path the
+# .gitignore says is ignored (a `git add -f`), a staged path shaped like key material. Refuses the commit on
+# any hit. Installed by scripts/install_hooks.sh (git config core.hooksPath scripts/hooks).
+#
+# Do not reach for --no-verify: fix the hit, or record a reviewed decision with its reason in
+# tools_py/release/leak_allow.txt. The push hook and CI run the same check again, so a skipped hook only
+# moves the refusal later.
+cd "$(git rev-parse --show-toplevel)" || exit 2
+py=python
+command -v python >/dev/null 2>&1 || py=python3
+"$py" -m tools_py.release.leakcheck staged
+code=$?
+if [ "$code" -ne 0 ]; then
+  echo "pre-commit: leak check exit $code -- commit refused (0 clean, 1 findings, 2 the scanner did not run)." >&2
+  echo "pre-commit: fix the hit, or add a reviewed line with its reason to tools_py/release/leak_allow.txt." >&2
+  exit 1
+fi

@@ -6,6 +6,34 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
 
 ## Start here (2026-09-20)
 
+**THE OWNER GATE ON THE AUDIO LISTEN IS BYPASSED (your instruction, 2026-09-20 evening).** The music thread no longer
+waits on the fifth listen: Sprint 10 is reorganized around hardening the now-public repository (`docs/CURRENT_SPRINT.md`,
+"Sprint 10, REORGANIZED"), the music plan's open items are filler, and the fifth-round listen below stays on this list
+for whenever you want it -- the build and what to listen for are unchanged.
+
+**GitHub, done tonight under your words "ensure we cannot and will not publish sensitive files" (R181, R182 in
+CURRENT_SPRINT; overturn any of it in Settings):** secret scanning, push protection and Dependabot alerts ON; rulesets
+on `main` (a PR and green `build` + `leakcheck` checks required, no force-push, no deletion, no bypass -- not even you,
+because every agent pushes as you) and `sprint-*` (no force-push, no deletion). Non-provider patterns and validity
+checks are a paid feature and stayed off; the project's own gate covers those shapes.
+
+**Three things on the public repository only you can settle (none is urgent; the gate reports new exposures, not these):**
+1. **The old, pre-rewrite commits are still fetchable by hash** through the merged PR #1 (`refs/pull/1/head`) until
+   GitHub garbage-collects them. GitHub's documented step after a sensitive-data rewrite is to ask support to purge
+   the unreachable objects: https://support.github.com -> "Remove cached views and references" -- one message naming
+   the repository. Or leave it: the objects hold the home address that `a87e4b2` redacted, nothing else.
+2. **`server/config/simulated.db` is in public history** (`a3cef6c`; untracked in the sweep `9253026`). It is the LOCAL
+   simulated Horizon account store, encrypted with the dev key that sits beside it in `db.config.json`. If it only ever
+   held local test accounts, nothing to do (that is the leak check's recorded assumption, `leak_allow.txt`); if the
+   hosted box's store was ever copied there, say so and it is a `git filter-repo` like the last one.
+3. **The commit author e-mail** on every commit is your personal one. GitHub's no-reply address is the alternative;
+   changing history for it is your call and the gate's `metadata` mode records whatever you decide.
+
+**For the site session (not this repository):** `../scotho/scripts/secret-scan.mjs:28` carries the AWS account id as a
+literal rule. That repository is private today; the day it is not, the scanner is the leak. Its own git-ignored
+literals file is the fix.
+
+
 **Sprint 10 Goal 1 -- name the windows for the scheduled ladder (controller, 2026-09-20 ~09:00).** A Windows Task Scheduler entry `SOCOM Unzipped ladder` now exists on this machine, **DISABLED**, set to 03:30 daily as a placeholder. It runs `scripts/ladder_job.sh 4`: it refuses unless the machine is quiet, the loop lock is free and no game is running; then plays four ladder rounds against OUR hosted server (never another), pinned and detached as the ladder always is, and appends the record to `logs/ladder/ledger.jsonl` and `docs/LADDER.md`. It is two game instances for ~30 minutes, so it only belongs in a window you are away. Say when ("enable it, 03:30 daily" or another time), or `schtasks /Change /TN "SOCOM Unzipped ladder" /ENABLE` yourself. The first run was made by hand tonight while you were dark, and is the first row of `docs/LADDER.md`.
 
 **THE MUSIC, ROUND FOUR (2026-09-20 ~20:10 UTC): one listen on PCSX2.** Your round-three report (ambience good, cutscene good, the mission music jumps, skips, stops, restarts on contact and cuts off) is recorded and the approach is being changed -- the instrument scored the whole mix, and the reference runs never walked (`docs/superpowers/plans/2026-09-20-sprint-10-music-round-four.md`). ~~One thing only you can give: on PCSX2 ... does the console's music ever stop or jump?~~ **ANSWERED ~21:00 UTC: "psx2 sounds expected"** -- the reference stands; ours is the choppy one, in the mission and on the briefing screen.
@@ -51,7 +79,7 @@ workflows, and the visibility flip itself. Publishing any Release is always your
 
 ## Open
 
-- [ ] **Listen to the music, FIFTH round (2026-09-21 ~10:00 UTC) -- the build at `dist/socom2.exe` (20:13 local on 2026-09-20,
+- [ ] **(gate bypassed 2026-09-20 evening -- whenever you like)** **Listen to the music, FIFTH round (2026-09-21 ~10:00 UTC) -- the build at `dist/socom2.exe` (20:13 local on 2026-09-20,
   tree `619c139` or later; it also carries the intro/briefing fix: the movie decoder's gate no longer starves the music).** Your "it doesn't even sound like music" found it: every stereo music stem on ours was
   playing its two channels from DIFFERENT places in the song (a two-channel VPK is interleaved per 0xb000 streaming
   buffer, 0x5800 bytes of left then 0x5800 of right; ours split it per 0x800 chunk), so every listen since the first

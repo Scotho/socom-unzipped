@@ -21,7 +21,7 @@ sprint 10:    OPENED 2026-09-20 on the owner's instruction ("proceed on with the
               develop deleted, this branch opened. Q0b, Q1b-Q7 carry into Sprint 10 as filler unless the owner reorders;
               no GitHub release (Sprint 11 / D2, owner-only).
 git strategy: docs/GIT_STRATEGY.md     contributing: CONTRIBUTING.md
-next ruling:  R181 (R179-R180 are Sprint 10 Goal 9's, recorded in its plan: the password plain in config.json, and prefill-never-submit; R178 is Q0's conductor grains -- child sounds, registers, markers, from the open reference -- below; R177 is Q0's mix device buffer, 20 ms x 4, measured -- below; R176 is P4's ADVANCED section -- what went in it and what did not; R175 is P6's: the preset switch needs no launch and the server keeps advertising its IP -- below. R174 is Goal 12's split -- the mapping data path lands in Sprint 9 Q3, the UI is Sprint 10; R152-R168 are reserved by the Goal 3 plan; R169-R171 are Goal 10's music fixes, COMMITTED in `eca5450`; R172 is Goal 10's declined proposal -- the concurrency cap, not taken, waiting on Q1's instrument; R173 is P3's, the pad display staying live while the game runs)
+next ruling:  R184 (R181-R183 are the 2026-09-20 hardening rulings -- below, under "Sprint 10, reorganized"; R179-R180 are Sprint 10 Goal 9's, recorded in its plan: the password plain in config.json, and prefill-never-submit; R178 is Q0's conductor grains -- child sounds, registers, markers, from the open reference -- below; R177 is Q0's mix device buffer, 20 ms x 4, measured -- below; R176 is P4's ADVANCED section -- what went in it and what did not; R175 is P6's: the preset switch needs no launch and the server keeps advertising its IP -- below. R174 is Goal 12's split -- the mapping data path lands in Sprint 9 Q3, the UI is Sprint 10; R152-R168 are reserved by the Goal 3 plan; R169-R171 are Goal 10's music fixes, COMMITTED in `eca5450`; R172 is Goal 10's declined proposal -- the concurrency cap, not taken, waiting on Q1's instrument; R173 is P3's, the pad display staying live while the game runs)
 baselines:    C++ 686/686, Python 1457 OK, `PS2X_TEST_REPEAT=3 ./build.sh test` exit 0, CI green at `7de8492`; last gates: `s9_q0_children_gate` (3/3 on the runtime as merged, exe sha256 b3abebd5...), `s9_q0_prefill_gate`, `s9_q0_device_gate`, `s9_q0_trace_gate`, `s9_p7_playtest_gate`; audio parity `s9_q1_parity_ours2` 31/48 (the check's first PASS is Sprint 10's to earn)
 ```
 
@@ -77,6 +77,67 @@ marked "early" below, KNOWN/STATUS hygiene.
 **Moved out of Sprint 9: Goal 5 ("it stays up": the scheduled ladder job and per-map kill routes) goes back to
 Sprint 10, where it was drafted and whose title it is.** Reason: it serves no part of a stranger's first run, it only
 runs in windows the owner is away, and Sprint 9 is already eleven goals. Nothing of it had started.
+
+### Sprint 10, REORGANIZED 2026-09-20 (evening) -- hardening first: the repository is PUBLIC
+
+**The owner, 2026-09-20 evening:** the repository is public now (`github.com/Scotho/socom-unzipped`, flipped by the
+owner after the pre-publication sweep `9253026` and the history rewrite); the priority is **hardening the development
+and build process that strangers can now see and fork**; **no easy setup for everyday players until the hardening is
+further along** (Sprint 11 Goals 3, 4 and 8 -- the landing page, the install FAQs, the installer -- stay where they
+are); and the loop must **ensure sensitive files cannot and will not be published going forward.** The owner also
+**bypassed the owner gate on the audio listen** -- the music thread no longer waits on the fifth listen (HUMAN_TASKS
+records it; the listen is welcome whenever, and the music plan's open items become filler).
+
+**The reorganized order.** Milestone **H** (hardening) precedes every Goal below; Goals 1-9 keep their numbers and
+resume after H in the order they already had (Goal 2 the box as a service, Goal 4 the kill routes, the carried Q items).
+Sprint 11's Goal 9 (the leak gate) and the hardening half of its Goal 0 are pulled forward into H, because the day
+they were written for -- "immediately before the visibility flip" -- has already passed.
+
+| # | What | Marker | Notes |
+|---|---|---|---|
+| **H1** | **Nothing sensitive can be published: the gate, in four places.** (a) `tools_py/release/leakcheck.py` -- one command, six modes (`tree`, `staged`, `ignored`, `metadata`, `history`, `artifact`), three exit states (0 clean / 1 findings / 2 did not run -- never a pass), masked excerpts, `--json`, a planted control of 28 secret shapes that runs before every scan, and `leak_allow.txt` as the ledger of reviewed decisions with reasons. The monitor's rules (`../socom_monitor` `920e323`) vendored, adapted for a source tree (R183), plus the Cloudflare Access pair. (b) **git hooks** `scripts/hooks/pre-commit` (staged content, forced-ignored paths, key-shaped names) and `pre-push` (every commit in the pushed range), installed by `scripts/install_hooks.sh`; proven in a throwaway clone: a planted commit refused, a `--no-verify` commit caught at push, clean pushes through. (c) **CI** `.github/workflows/secrets.yml` on every push and PR: the gate's tests, `all` over full history, and gitleaks 8.30.1 pinned by sha256 as a second opinion (`.gitleaks.toml`); reports uploaded masked. (d) **GitHub**: secret scanning, push protection and Dependabot alerts ON (R181); rulesets on `main` and `sprint-*` (R182). The `.gitignore` refuses key material by name everywhere; `leak_extra.txt` (git-ignored) holds the owner's literals. | **DONE 2026-09-20** (this commit); the tree, the full history (920 commits), the identities and the ignored paths are clean on both scanners | Found and fixed on the way: `tools_py/decrypt.log` and `decrypt2.log` were tracked (the home directory in a traceback); two dangling submodule gitlinks (`server/horizon-docker`, `server/horizon-server-database-middleware`, no `.gitmodules`) that made every fresh clone and CI warn; the account store `simulated.db` IS in public history (`a3cef6c`, dev key beside it) -- the owner's decision, HUMAN_TASKS. |
+| **H2** | **CI says what it proves, and `main` is protected by it.** `linux.yml` runs on every push with a cheap `changes` job; `build` is skipped (and reports success) when only `docs/` moved, so it can be a required check without blocking documentation PRs. Actions pinned by commit SHA. Rulesets: `main` requires a PR and the `build` + `leakcheck` checks, no force-push, no deletion, nobody bypasses; `sprint-*` no force-push, no deletion. | **DONE 2026-09-20** once CI on this push is green and the rulesets are created (recorded in R182) | GIT_STRATEGY §6 asked for a CODEOWNERS review on `main` too; not required (R182): the sole code owner cannot review their own PR and would be locked out. It turns on with a second maintainer. |
+| **H3** | **A fresh clone builds something on Windows** (Sprint 11 Goal 0's third item, pulled forward): `./build.sh test --no-runner`, a toolchain bootstrap that fetches the pinned llvm-mingw, CMake and Ninja with their hashes (or documents the system packages), and a `windows` CI job. Bar: a clean Windows VM, following only `CONTRIBUTING.md`, reaches a green C++ and Python suite. | [A] lock-free to write; the bar needs a VM | The disc-less Windows build is the biggest gap a forker meets first. |
+| **H4** | **The C++ suite stops writing into the working directory** (Sprint 11 Goal 0's sixth item): `socom2_audio_tests.cpp`'s six `.bin`/`.wav`/`.vpk` files and the stray `mc0/` go to a temp directory; the `.gitignore` lines that paper over it come out. | [A] lock-bound (a suite run) | Debris a contributor would see on their first `git status`. |
+| **H5** | **Licences and accreditations, in git** (Sprint 11 Goal 5, pulled forward because a public tree with vendored code needs its inventory now): every third-party component in the tree and in the shipped archives, each licence text under `LICENSES/`, a `THIRD_PARTY_NOTICES` inside every archive, and a test that fails when a DLL or vendored directory ships without an inventory row. | [A] lock-free | The upstream baggage rows (vita/android modules, ps2xStudio, the 12 MB symbol database, the fonts tracked twice) are decided here too. |
+| **H6** | **Release artefacts through the gate**: `scripts/make_portable.sh` runs `leakcheck artifact` on the staged folder before zipping and refuses on a hit; the launcher's two scrubbers (the diagnostics zip, the bug report's log attachment) re-proven with a planted string (Sprint 11 Goal 9 item 5). | [A] lock-bound (a release build) | Nothing that reaches a stranger's disk is exempt because it was built rather than written. |
+| **H7** | **Disc-derived bytes, decided** (Sprint 11 Goal 1 item 3 -- the hard one): each fixture candidate (`tests/fixtures/audio/hudui_*.bin`, `tests/fixtures/vu1/**`, `movie/**`, `gate/**`, `scripts/parity/ref_*.png`, `refs/**`, the research screenshots, `recomp/socom2_ghidra.csv`, the decrypt tooling) gets a row: generate from the contributor's disc at test time and skip cleanly without one, keep a synthetic fixture for CI, or an owner decision (D2). | [A] the engineering rows; [O] D2 | The tree is public; every one of these is already published. The rows say what to do about it, in order of exposure. |
+| **H8** | **The release-draft workflow** (Sprint 11 Goal 0): on a `v*` tag pushed by the owner, CI builds the disc-less artefacts, verifies them against `SHA256SUMS`, runs `leakcheck artifact`, and creates a **draft** release. It never publishes. | [A] | Publishing stays the owner's click. |
+
+**What stays owner-only, prepared and listed in HUMAN_TASKS:** asking GitHub support to purge the pre-rewrite objects
+still fetchable through `refs/pull/1/head`; the `simulated.db`-in-history decision; the commit author e-mail; D1-D6.
+
+**Rulings (R181-R183):**
+
+**R181 -- secret scanning, push protection and Dependabot alerts are ON, turned on by the controller under the owner's
+words.** *Decided 2026-09-20.* HANDOFF §5 rule 13 keeps repository permissions the owner's "unless the owner says so
+in words"; "ensure we cannot and will not publish sensitive files in the repo going forward" is those words for exactly
+these three switches, which do nothing but refuse a push carrying a known secret shape and report one already there.
+Non-provider patterns and validity checks were requested too and silently refused by GitHub (a paid feature on a
+personal account); the project's own gate covers those shapes. **What it costs:** a push carrying a real token is
+blocked at GitHub with a message naming it -- the desired effect. **The owner can overturn it** in Settings > Security.
+
+**R182 -- rulesets on `main` and `sprint-*`, as GIT_STRATEGY §6 designed them, with one deviation: no CODEOWNERS
+review required and no bypass.** *Decided 2026-09-20.* `main`: a pull request required (0 approvals), the `build`
+and `leakcheck` checks required, no force-push, no deletion, no bypass actors -- agents push under the owner's
+credentials, so a bypass for the owner is a bypass for every session, and the point is that no session can put
+anything on `main` without CI having looked. `sprint-*`: no force-push, no deletion. **The deviation:** §6 asked for
+one CODEOWNERS review; the owner is the only code owner and GitHub does not count an author's own review, so the rule
+would lock the owner's sprint merges out. It goes on the day a second maintainer exists. **What it costs:** an
+emergency change to `main` needs a PR and a green `leakcheck` (minutes) and `build` (an hour, or skipped for
+docs-only); the owner can edit the ruleset in the UI in the meantime. **The owner can overturn any of it.**
+
+**R183 -- the leak check is the monitor's rules adapted for a SOURCE tree, not copied.** *Decided 2026-09-20.* The
+monitor's set was built for a published snapshot, where any absolute path or LAN address is a leak. A source tree
+legitimately names paths under the repository, loopback addresses, and (in tests and research notes) LAN peers. So:
+a bare drive-absolute path is not a rule (the home directory, which carries the user name, is); `private-ip` runs only
+on the `artifact` surface; the assignment rule fires on a literal or token-shaped value and not on an expression
+(source code assigns to variables named `token` all day); opacity needs three separate digit runs (a mangled C++ name
+and a build path do not); an SRI hash, a version string, a `.example`/`.test` address and the localised default
+account names (`Utilisateur` is French for "User") are innocent. Everything the monitor's 22 planted cases catch, this
+catches, and the tree's own shapes (24 lines in `test_leakcheck.py`) must not fire. **What it costs:** a LAN address in
+a document passes the tree scan; it is unroutable and the release archive scan still refuses it. **The owner can
+overturn it** -- one line in `leakrules.py` per rule.
 
 ### Sprint 10 -- "Console players in the same lobby, and it stays up" (drafted; spec `docs/superpowers/specs/2026-09-20-sprint-10-console-players-and-it-stays-up-design.md`)
 

@@ -1,3 +1,5 @@
 *.sh text eol=lf
 *.py text eol=lf
 server/linux/* text eol=lf
+scripts/hooks/* text eol=lf
+tools_py/release/leak_allow.txt text eol=lf

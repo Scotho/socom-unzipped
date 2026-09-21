@@ -1,0 +1,21 @@
+# gitleaks (CI's second opinion beside tools_py/release/leakcheck.py; .github/workflows/secrets.yml runs both).
+# The default rule set, plus the allowances below. Every allowance is a reviewed decision with its reason, as in
+# tools_py/release/leak_allow.txt -- the two lists are kept in step by hand.
+title = "SOCOM Unzipped"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Reviewed: the gate's own planted controls, and one fixed test token"
+paths = [
+  # the leak check's planted controls: every secret shape, invented, so the scanner proves it still catches each
+  '''tools_py/release/leakcheck\.py''',
+  '''tools_py/tests/test_leakcheck\.py''',
+  '''tools_py/release/leakrules\.py''',
+]
+regexTarget = "line"
+regexes = [
+  # ps2_iop_tests.cpp: `request.callToken = 0x1122334455667788ull` -- a fixed test token for the IOP call path
+  '''callToken = 0x1122334455667788ull''',
+]

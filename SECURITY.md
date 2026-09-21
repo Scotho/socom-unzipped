@@ -6,6 +6,15 @@ Please do not open a public issue for a security problem. Use GitHub's **private
 repository (Security tab, "Report a vulnerability") once the repository is public; until then, write to the owner
 through the contact on https://s2u.scotho.com. Expect an acknowledgement within a week. There is no bounty.
 
+## What the repository does about its own secrets
+
+Every commit and push in a maintainer's clone runs `tools_py/release/leakcheck.py` (git hooks, `scripts/install_hooks.sh`);
+CI runs it over the tree, the full history, the commit identities and the ignored paths, with gitleaks beside it, on
+every push and pull request (`.github/workflows/secrets.yml`); GitHub's secret scanning and push protection are on;
+`main` takes nothing that CI has not checked. If you find something these missed -- a credential, an address, a
+private key -- report it through the channel above rather than in an issue, so it can be rewritten out of history
+before it is pointed at.
+
 ## What is in scope
 
 - The launcher and the game runner: anything that lets a file a player might be *sent* -- a `config.json`, a

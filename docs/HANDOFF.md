@@ -34,7 +34,16 @@ supplies their own disc. The owner is Craig (GitHub `Scotho`); the repository is
   because three of its four documentation artefacts turn out to be already written.
 - **Baselines: C++ 686/686, Python 1457 OK, `PS2X_TEST_REPEAT=3 ./build.sh test` exit 0.** Last gates 3/3: `s9_q0_children_gate`,
   `s9_q0_prefill_gate`, `s9_q0_device_gate`, `s9_q0_trace_gate`, `s9_p7_playtest_gate`. Next free ruling number: **R179** (R178 is Q0's conductor grains).
-- **Where the loop is now (2026-09-21 03:00 UTC) -- the music, round four, is the live thread.** Read `docs/superpowers/plans/2026-09-20-sprint-10-music-round-four.md` task 4 top to bottom before touching audio: the real 989snd decompilation (`research/989snd-ziemas/`, audit research/36) corrected the model; the music-only capture pair (`scripts/parity/music_only_mission.txt`, `logs/s10_music_round4_ours_only.sh`, `logs/s10_music_round4_repin.sh`) is the instrument, with stereo alignment and the dip classifier (`tools_py/parity/audio_dips.py`) and the EE cue-sequencer poll (`music_state_poll`); the stereo interleave fix (`c6502ea`) is the day's find and the owner's fifth listen (HUMAN_TASKS) its bar. Open: the mission's 10-27 s music pauses (the stems are fired by the play-sound API's callers :242150/:242232 -- `PS2X_CALL_TRACE` next), the PCM ring's 300-400 ms feed stalls (the PSS demux thread parked in `sceMpegGetPicture`), and why the console's sequencer holds a 9 s voice cue for 120 s. Two traps learned today are in memory: never edit a running chain script; kill a chain's survivors by listed PID, never by pattern.
+- **Where the loop is now (2026-09-20 evening, LATEST) -- the repository is PUBLIC and Sprint 10 is reorganized around
+  hardening it.** The owner flipped `github.com/Scotho/socom-unzipped` public after the sweep and the history rewrite,
+  bypassed the owner gate on the audio listen, and set the priority: harden the development and build process a
+  stranger can now fork; no easy player setup until then; nothing sensitive can ever be published. Read
+  `docs/CURRENT_SPRINT.md` "Sprint 10, REORGANIZED" -- milestone H, H1 and H2 done that evening: the leak check
+  (`tools_py/release/leakcheck.py`, six modes, three exit states, `leak_allow.txt` the ledger), the git hooks
+  (`bash scripts/install_hooks.sh` once per clone -- **do it in your first hour**), CI `secrets.yml` with gitleaks,
+  GitHub's secret scanning and push protection and the rulesets (R181-R183). Next: H3 (a fresh clone builds on
+  Windows), H4-H8, then the Goals resume. The music thread below is filler now, not the live thread.
+- **Where the loop was (2026-09-21 03:00 UTC) -- the music, round four.** Read `docs/superpowers/plans/2026-09-20-sprint-10-music-round-four.md` task 4 top to bottom before touching audio: the real 989snd decompilation (`research/989snd-ziemas/`, audit research/36) corrected the model; the music-only capture pair (`scripts/parity/music_only_mission.txt`, `logs/s10_music_round4_ours_only.sh`, `logs/s10_music_round4_repin.sh`) is the instrument, with stereo alignment and the dip classifier (`tools_py/parity/audio_dips.py`) and the EE cue-sequencer poll (`music_state_poll`); the stereo interleave fix (`c6502ea`) is the day's find and the owner's fifth listen (HUMAN_TASKS) its bar. Open: the mission's 10-27 s music pauses (the stems are fired by the play-sound API's callers :242150/:242232 -- `PS2X_CALL_TRACE` next), the PCM ring's 300-400 ms feed stalls (the PSS demux thread parked in `sceMpegGetPicture`), and why the console's sequencer holds a 9 s voice cue for 120 s. Two traps learned today are in memory: never edit a running chain script; kill a chain's survivors by listed PID, never by pattern.
 - **Where the loop is now (2026-09-20 19:40 UTC):** Sprint 10 is under way on `sprint-10`. Goal 1: the ladder job exists, its verifier gap is fixed, streak 1 of 7 (`docs/LADDER.md`); the Task Scheduler entry stays DISABLED until the owner names a window. Goal 3: BAR MET -- both legs of the mixed match run on the hosted server on the verified flow, twice in a row each (the Goal 3 plan has every run and what it found; its task 7 is the one refinement left). Next in the spec's order: Goal 2 (the hosted box as a service -- the server session's work, coordinate), Goal 4 (per-map kill routes), the carried Q items. The owner's ear on the music is still the next input (HUMAN_TASKS round three).
 - **Where the loop was at 09:00 UTC:** Sprint 9 is closed on the machine's side and merged to `main` as `v0.9.0`; Sprint 10 is open on `sprint-10`. The last thing done: Q0 -- the mission ambience was a CONDUCTOR sound our mixer never ran (R178), found by the audio parity check the owner asked for; read `docs/superpowers/plans/2026-09-20-sprint-9-q0-mission-music-investigation.md` sections 6d-6f before touching audio: the instrument, the finding, the verdicts (gate 3/3, parity 31/48), and the four things left open with their numbers. **Gates as left:** `s9_q0_children_gate` 3/3 on exe sha256 `b3abebd5...`; suite 686/686 and Python 1457 three times over; CI green `7de8492`; audio parity `s9_q1_parity_ours2` 31/48 -- the check's first PASS is Sprint 10's to earn (the bed's level, the movie audio's level). **The owner's input is next** (HUMAN_TASKS "round three": listen on `dist/socom2.exe` through the JBL; the ladder window; the blue arrow). Sprint 10 Goal 1's job exists and ran once (LOBBY-FAIL, ledgered); its Task Scheduler entry is DISABLED until the owner names a window. Q0b, Q1b-Q7 carried into Sprint 10 -- `docs/CURRENT_SPRINT.md` has the order.
 - **Nobody else is known to be in the tree** as of 2026-09-19: `git status` showed only `server/config/simulated.db`,
@@ -44,8 +53,10 @@ supplies their own disc. The owner is Craig (GitHub `Scotho`); the repository is
 
 ## 3. Your first hour (all of it lock-free; start nothing heavy)
 
-1. `git status --short`, `git log --oneline -15`, `gh run list --branch sprint-9 --limit 3`,
-   `bash scripts/loop_lock.sh check`. Know who else is in the tree before you edit anything.
+1. `git status --short`, `git log --oneline -15`, `gh run list --branch sprint-10 --limit 3`,
+   `bash scripts/loop_lock.sh check`. Know who else is in the tree before you edit anything. Then
+   `bash scripts/install_hooks.sh` -- the leak check before every commit and push (rule 2 below is enforced, not
+   just written); `git config core.hooksPath` says `scripts/hooks` when it is on.
 2. Read, in this order: this file; `docs/CURRENT_SPRINT.md` (the ordered work); `docs/KNOWN.md` (what is proven, what
    is only believed, what was retracted -- where anything disagrees with KNOWN, KNOWN wins); `docs/HUMAN_TASKS.md` and
    `docs/PLAYTEST.md` (what is the owner's); the Sprint 9 spec, Goals 9 and 10 in full
@@ -88,7 +99,12 @@ eleven in the order they matter. Nothing was dropped.
    (2026-09-13, and `6b7a2b3`).* Never stage a file another session is editing. `git mv` stages a rename: name both
    paths in the pathspec.
 2. **Never commit:** `server/config/simulated.db` (always shows modified), `ONBOARDING.md`, root `*.bin`/`*.wav`,
-   `dist*/`, `build*/`, anything under `game/`, `tools/`, `logs/`, `vm/`; no key, token or private address.
+   `dist*/`, `build*/`, anything under `game/`, `tools/`, `logs/`, `vm/`; no key, token or private address. **The
+   repository is public (2026-09-20)**, so this is enforced: `python -m tools_py.release.leakcheck` (the pre-commit
+   hook runs `staged`, the pre-push hook `history` over the range, CI `all` plus gitleaks) refuses any of it. A hit
+   is fixed, or -- when it is a reviewed non-secret -- recorded with its reason in `tools_py/release/leak_allow.txt`.
+   Never `--no-verify`: the push hook and CI see the same thing and a hit in a pushed commit means a history rewrite.
+   Owner-specific literals (the address, an old account name) go in the git-ignored `tools_py/release/leak_extra.txt`.
 3. **End every commit message with the `Co-Authored-By` trailer your session is given** -- not one copied from an older
    commit or document. Subjects are `type(scope): what and why`, long, and say the finding (`docs/GIT_STRATEGY.md`).
 4. **Push to `origin sprint-9` and check CI** (`gh run list --branch sprint-9 --limit 1`). CI must stay green. A
@@ -185,6 +201,13 @@ rather than rule. At most two C++-building agents at once.
     rebuild); archive logs with the script in section 7; `vm/` is the owner's call.
 
 ## 7. Instruments and diagnostics
+
+- **The leak check** (`python -m tools_py.release.leakcheck <mode>`; modes `tree`, `staged`, `ignored`, `metadata`,
+  `history [range]`, `artifact <dir>`, `all`): exit 0 clean, 1 findings, **2 the scanner did not run -- never a
+  pass**. Every run starts with a planted control of 28 secret shapes; `--reveal` shows a hit unmasked on the terminal;
+  `--json FILE` writes the masked report. `tree` ~20 s, `history` ~16 s over 920 commits. Rules: `leakrules.py`;
+  decisions: `leak_allow.txt`; tests: `tools_py/tests/test_leakcheck.py` (25). gitleaks is CI's second opinion
+  (`.gitleaks.toml`), a local copy runs in ~2 s: `gitleaks git --log-opts=--all --redact .`.
 
 - **Build:** `./build.sh tools | recomp | runtime | release | test | all` (Git Bash; `all` = recomp + runtime).
   Runtime about 3 minutes incremental, 10-15 for a header change or a full generated rebuild. Linux:

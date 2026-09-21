@@ -20,6 +20,13 @@ Not sure your disc is r0001? The launcher checks it and says so (exit code 67 is
 
 ## Before you open a pull request
 
+0. **Install the hooks, once per clone:** `bash scripts/install_hooks.sh`. It points git at `scripts/hooks/`, where a
+   leak check (`python -m tools_py.release.leakcheck`) runs over what you are about to commit and, again, over every
+   commit you are about to push: key material, tokens, a home directory with your user name in it, an address, a
+   file the `.gitignore` refuses. CI runs the same check plus gitleaks on every push. If it stops you, fix the hit;
+   if the hit is a reviewed non-secret (a test fixture, a version string it misread), add one line with its reason
+   to `tools_py/release/leak_allow.txt` in the same PR. Do not bypass it with `--no-verify` -- the push hook and CI
+   will refuse the same thing, and a secret in a pushed commit means rewriting history.
 1. **Branch from `main`**, named `fix/<slug>`, `feat/<slug>` or `docs/<slug>`. One topic per PR. (`sprint-N` branches
    are the maintainers' integration branches; do not target them.) The whole scheme is `docs/GIT_STRATEGY.md`.
 2. **A failing test first** for any change to behaviour. C++ cases live in `third_party/ps2recomp/ps2xTest/src/`,
