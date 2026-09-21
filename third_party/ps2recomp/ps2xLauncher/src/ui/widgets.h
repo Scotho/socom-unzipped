@@ -101,8 +101,9 @@ namespace ui
     bool slider(const Ctx &ctx, Rect r, const std::string &id, double &value, double lo, double hi, double step);
     // maxLen 0 = no cap and no paste: the ONLINE page's fields, as they were. Above 0 the field stops there
     // and takes Ctrl+V -- the REPORT A BUG fields, capped at the contract's lengths.
+    // Sprint 10 Goal 9: `masked` draws one asterisk per character and edits as before -- the password field.
     void textField(const Ctx &ctx, Rect r, std::string &value, const std::string &id, bool &changed, bool editable = true,
-                   size_t maxLen = 0);
+                   size_t maxLen = 0, bool masked = false);
     // Sprint 9 Goal 8: a long text shown wrapped over several lines -- not an editor: typing appends, backspace
     // removes, Ctrl+V pastes (line breaks become spaces), and while it is typed in, the END is what is shown.
     void textArea(const Ctx &ctx, Rect r, std::string &value, const std::string &id, bool &changed, size_t maxLen);

@@ -179,15 +179,21 @@ namespace ui
                     add(out, page, "online.preset." + std::to_string(i), onlinePresetRow(window, static_cast<int>(i)));
             // Below the LAST row, whatever the count is -- the literal 3 here is what a fourth preset
             // would have been drawn on top of (Sprint 9 P6).
-            const float y = onlinePresetRow(window, static_cast<int>(launcher::kServerPresetCount) - 1).bottom() + 28.0f;
+            // Sprint 10 Goal 9: five rows under the presets now (address, profile, name, password, ADVANCED),
+            // on the REPORT page's 12-px pitch rather than the old 16, so the open ADVANCED section and its
+            // caption still end inside the body at the design size (the small window scrolls, as before).
+            const float y = onlinePresetRow(window, static_cast<int>(launcher::kServerPresetCount) - 1).bottom() + 20.0f;
             if (in.customServer)
                 add(out, page, "online.server", Rect{b.x + metrics::labelW, y, 420.0f, 40.0f});
-            add(out, page, "online.profile", Rect{b.x + metrics::labelW, y + 56.0f, 300.0f, 40.0f});
+            add(out, page, "online.profile", Rect{b.x + metrics::labelW, y + kOnlineRowPitch, 300.0f, 40.0f});
+            // Sprint 10 Goal 9: the persona and its password, under the profile that keeps the card.
+            add(out, page, "online.name", Rect{b.x + metrics::labelW, y + 2.0f * kOnlineRowPitch, 300.0f, 40.0f});
+            add(out, page, "online.password", Rect{b.x + metrics::labelW, y + 3.0f * kOnlineRowPitch, 300.0f, 40.0f});
             // Sprint 9 P4: everything a stranger needs is above this line; the disclosure and what it
             // reveals are below it, last in reading order and last in the focus order.
-            add(out, page, "online.advanced", Rect{b.x, y + 124.0f, b.w, 28.0f});
+            add(out, page, "online.advanced", Rect{b.x, y + 212.0f, b.w, 28.0f});
             if (in.advancedOpen)
-                add(out, page, "online.second", Rect{b.x + metrics::labelW, y + 166.0f, 460.0f, 34.0f});
+                add(out, page, "online.second", Rect{b.x + metrics::labelW, y + 252.0f, 460.0f, 34.0f});
             break;
         }
         case Page::Report:
@@ -236,6 +242,13 @@ namespace ui
             {"online.second",
              "Starts a second copy of the game on this machine, on its own ports and its own memory card, so "
              "two players here can meet in the same match. For testing."},
+            // Sprint 10 Goal 9 (R179, R180): the game's keyboards open already holding these; ENTER is the player's.
+            {"online.name",
+             "The persona other players see, and the name the game logs in with. Leave it empty and the game "
+             "asks on its own keyboard, as it always did. Up to 14 characters, no spaces."},
+            {"online.password",
+             "The persona's password, up to 12 characters. Kept in config.json next to the launcher, in plain "
+             "text, masked here; the game's keyboard opens with it already typed and you press ENTER."},
             {"disc.path",
              "Your own SOCOM II disc image. Nothing from the game is shipped with this program, so it reads "
              "the movies, sounds and levels out of the file you point it at."},
@@ -279,6 +292,9 @@ namespace ui
             return computed;
         return layoutFor(page, window, in);
     }
+
+    // The ONLINE page's field pitch: a 40-px field and the REPORT page's 12-px gap (Sprint 10 Goal 9).
+    const float kOnlineRowPitch = 52.0f;
 
     Rect onlinePresetRow(Rect window, int index)
     {

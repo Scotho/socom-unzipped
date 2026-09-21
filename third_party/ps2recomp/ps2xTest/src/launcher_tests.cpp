@@ -1329,6 +1329,44 @@ void register_launcher_tests()
                      "the toggle a player switched on is always on the page they switched it on");
         });
 
+        // Sprint 10 Goal 9: the persona and its password, under PROFILE and above ADVANCED -- a stranger's first-run
+        // settings, in reading order, and still inside the body with the second-instance caption at the small size.
+        tc.Run("the ONLINE page holds a name and a masked password under PROFILE, above ADVANCED, clear of each other", [](TestCase &t)
+        {
+            for (const ui::Rect window : {ui::Rect{0.0f, 0.0f, 1100.0f, 700.0f}, ui::Rect{0.0f, 0.0f, 800.0f, 520.0f}})
+            {
+                ui::LayoutInputs in;
+                in.advancedOpen = true;
+                in.customServer = true;   // the tallest form: the address field is on the page too
+                const std::vector<ui::Node> nodes = ui::layoutFor(ui::Page::Online, window, in);
+                const ui::Rect profile = ui::rectOf(nodes, "online.profile");
+                const ui::Rect name = ui::rectOf(nodes, "online.name");
+                const ui::Rect password = ui::rectOf(nodes, "online.password");
+                const ui::Rect advanced = ui::rectOf(nodes, "online.advanced");
+                const ui::Rect second = ui::rectOf(nodes, "online.second");
+                t.IsTrue(ui::drawable(name) && ui::drawable(password), "both fields are laid out");
+                t.IsTrue(name.y >= profile.bottom() && password.y >= name.bottom(), "in reading order under PROFILE");
+                t.IsTrue(advanced.y >= password.bottom(), "ADVANCED is below them");
+                t.IsTrue(second.y >= advanced.bottom(), "and the second-instance toggle below that");
+                const ui::Frame f = ui::frameFor(window);
+                if (window.w >= 1100.0f)   // the small window scrolls its body; the design size must not need to
+                    t.IsTrue(second.bottom() + 40.0f <= f.body.bottom(), "with its caption still inside the body");
+                // The focus order follows the reading order: profile, name, password, then ADVANCED.
+                const std::vector<std::string> ids = ui::FocusGraph::build(window, in).idsOn(ui::Page::Online);
+                size_t profileAt = ids.size(), nameAt = ids.size(), passwordAt = ids.size(), advancedAt = ids.size();
+                for (size_t i = 0; i < ids.size(); ++i)
+                {
+                    if (ids[i] == "online.profile") profileAt = i;
+                    if (ids[i] == "online.name") nameAt = i;
+                    if (ids[i] == "online.password") passwordAt = i;
+                    if (ids[i] == "online.advanced") advancedAt = i;
+                }
+                t.IsTrue(profileAt < nameAt && nameAt < passwordAt && passwordAt < advancedAt, "focus walks profile, name, password, ADVANCED");
+            }
+            t.IsFalse(ui::helpFor("online.name").empty() || ui::helpFor("online.password").empty(), "both fields have help");
+            t.IsTrue(ui::helpFor("online.password").find("config.json") != std::string::npos, "and the password's says where it is kept (R179)");
+        });
+
         // Sprint 9 P4 (owner, 2026-09-20): "tooltips where the launcher is unclear, 'what is a profile?'
         // first". The help is DATA, keyed by the control's own id, so the test can hold it to two rules a
         // tooltip set always breaks eventually: help that explains nothing, and help attached to a control

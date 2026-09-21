@@ -62,7 +62,7 @@ namespace ui
 
         const Rect profile = rectOf(nodes, "online.profile");
         const Rect address = ownAddress ? rectOf(nodes, "online.server")
-                                        : Rect{profile.x, profile.y - 56.0f, 420.0f, 40.0f};
+                                        : Rect{profile.x, profile.y - kOnlineRowPitch, 420.0f, 40.0f};
         rowLabel(ctx, address, "ADDRESS");
         bool changed = false;
         if (ownAddress)
@@ -78,6 +78,18 @@ namespace ui
         rowLabel(ctx, profile, "PROFILE");
         textField(ctx, profile, c.profile, "online.profile", changed);
         caption(ctx, Vec2{profile.right() + 18.0f, profile.y + 12.0f}, "picks cards/<profile> for the memory card");
+
+        // Sprint 10 Goal 9: the persona and its password, capped where the game's own keyboards cap them
+        // (research/38), the password masked (R179: plain in config.json, never on screen). Empty = the game
+        // asks on its keyboard, as it always did; filled = the keyboard opens already typed (R180).
+        const Rect name = rectOf(nodes, "online.name");
+        rowLabel(ctx, name, "PLAYER NAME");
+        textField(ctx, name, c.loginName, "online.name", changed, true, launcher::kLoginNameCap);
+        caption(ctx, Vec2{name.right() + 18.0f, name.y + 12.0f}, "the persona; empty = the game asks");
+        const Rect password = rectOf(nodes, "online.password");
+        rowLabel(ctx, password, "PASSWORD");
+        textField(ctx, password, c.loginPassword, "online.password", changed, true, launcher::kLoginPasswordCap, true);
+        caption(ctx, Vec2{password.right() + 18.0f, password.y + 12.0f}, "kept in config.json, plain; masked here");
 
         // Sprint 9 P4: everything above is a stranger's first run; everything below the rule is not. The
         // second instance is a testing tool -- it starts a whole second copy of the game -- so it lives

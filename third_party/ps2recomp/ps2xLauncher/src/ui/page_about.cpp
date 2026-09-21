@@ -44,6 +44,9 @@ namespace ui
         y += 24.0f;
         text(ctx, "config", Vec2{x, y}, 16.0f, theme::dim);
         text(ctx, ellipsizeStart(ctx, app.configPath, logs.w * 2.6f, 16.0f).c_str(), Vec2{x + 80.0f, y}, 16.0f, theme::text);
+        y += 20.0f;
+        // Sprint 10 Goal 9, R179: the one file a player might hand to someone else, and what is in it.
+        text(ctx, "server, profile, and the password if you typed one -- in plain text", Vec2{x + 80.0f, y}, 14.0f, theme::dim);
         y += 22.0f;
         text(ctx, "logs", Vec2{x, y}, 16.0f, theme::dim);
         text(ctx, ellipsizeStart(ctx, app.logsPath, logs.w * 2.6f, 16.0f).c_str(), Vec2{x + 80.0f, y}, 16.0f, theme::text);

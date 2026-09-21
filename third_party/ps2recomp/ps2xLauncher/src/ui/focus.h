@@ -93,6 +93,8 @@ namespace ui
     // The ONLINE page's preset rows, by index: a row exists for every preset, but only the ones that can
     // actually be played get a focusable node (see launcher::presetAvailable).
     Rect onlinePresetRow(Rect window, int index);
+    // The pitch between the ONLINE page's fields (the address sits one pitch above the profile, drawn by the page).
+    extern const float kOnlineRowPitch;
 
     // Sprint 9 P4 (owner: "tooltips where the launcher is unclear ... 'what is a profile?' first"). The
     // help is DATA, keyed by a control's own id, and empty for the controls that explain themselves --

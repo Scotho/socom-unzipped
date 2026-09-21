@@ -1038,6 +1038,9 @@ int main(int argc, char **argv)
         // Sprint 9 P4: the focus on the profile field, which is the one the owner asked for by name
         // ("what is a profile?"). The help is shown where the FOCUS is, so a capture of it needs one.
         shots.push_back(Shot{ui::Page::Online, 1100, 700, "_help"});
+        // Sprint 10 Goal 9: both fields filled -- the name readable, the password as marks -- at both sizes.
+        shots.push_back(Shot{ui::Page::Online, 1100, 700, "_credentials"});
+        shots.push_back(Shot{ui::Page::Online, 800, 520, "_credentials"});
         // Sprint 9 Goal 8: the hosted server's status line, and the REPORT A BUG page in each of its states
         // (the plain report_<size>.png above is the empty form).
         shots.push_back(Shot{ui::Page::Online, 1100, 700, "_status"});
@@ -1599,6 +1602,12 @@ int main(int argc, char **argv)
                 app.config.secondInstance = std::strcmp(shot.suffix, "_advanced") == 0;
                 if (std::strcmp(shot.suffix, "_help") == 0)
                     shotPendingFocus = "online.profile";
+                // Sprint 10 Goal 9: the fake persona and password (invented values; the file is never written).
+                const bool credentialsShot = std::strcmp(shot.suffix, "_credentials") == 0;
+                app.config.loginName = credentialsShot ? "socomc" : "";
+                app.config.loginPassword = credentialsShot ? "hunter2" : "";
+                if (credentialsShot)
+                    shotPendingFocus = "online.password";
                 if (std::strcmp(shot.suffix, "_community_healed") == 0)
                 {
                     // A saved config naming the unplayable preset: fromJson moves it to the one that exists.
