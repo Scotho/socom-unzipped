@@ -47,16 +47,12 @@ TEST_FIXTURE_PREFIXES = ("PS2X_BARE_TEST_",)
 # this list in the commit that migrates them; test_knobs_registry fails if a listed file has no raw read left,
 # and if an unlisted file has one. When the set is empty, delete this comment and leave the empty set.
 RAW_GETENV_PENDING = {
-    "third_party/ps2recomp/ps2xIOP/src/modules/snd989.cpp",
     "third_party/ps2recomp/ps2xLauncher/src/main.cpp",
     "third_party/ps2recomp/ps2xRuntime/include/ps2_runtime_macros.h",
     "third_party/ps2recomp/ps2xRuntime/include/runtime/host_gamepad.h",
     "third_party/ps2recomp/ps2xRuntime/include/runtime/host_gamepad_select.h",
     "third_party/ps2recomp/ps2xRuntime/src/lib/Kernel/Stubs/Pad.cpp",
-    "third_party/ps2recomp/ps2xRuntime/src/lib/host_mic.cpp",
-    "third_party/ps2recomp/ps2xRuntime/src/lib/ps2_audio.cpp",
     "third_party/ps2recomp/ps2xRuntime/src/lib/ps2_pad.cpp",
-    "third_party/ps2recomp/ps2xRuntime/src/lib/snd989_mixer.cpp",
     "third_party/ps2recomp/ps2xRuntime/src/lib/socom2_host_input.cpp",
     "third_party/ps2recomp/ps2xRuntime/src/lib/socom2_hostnet.cpp",
     "third_party/ps2recomp/ps2xRuntime/src/lib/socom2_libnetb.cpp",
