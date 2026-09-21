@@ -1,6 +1,7 @@
 #include "runtime/snd989_mixer.h"
 
 #include "runtime/ps2_vag.h"
+#include "ps2x/knobs.h"
 
 #include <algorithm>
 #include <unordered_map>
@@ -664,7 +665,7 @@ namespace snd989
 
         static bool streamWorkerEnabled()
         {
-            const char *env = std::getenv("PS2X_SND_STREAM_WORKER");
+            const char *env = ps2x::knob("PS2X_SND_STREAM_WORKER");
             return !(env && env[0] == '0');
         }
 
@@ -2000,7 +2001,7 @@ namespace snd989
         // what each live stream holds decoded ahead of its read head and how many fresh blocks the PCM ring holds
         // ahead of its head -- on the same output-frame clock as the start/done/UNDERRUN events, so a dip in the
         // mix can be read against the buffer that fed it.
-        static const bool s_instrument = std::getenv("PS2X_AUDIO_INSTRUMENT") != nullptr;
+        static const bool s_instrument = ps2x::knob("PS2X_AUDIO_INSTRUMENT") != nullptr;
         constexpr uint64_t kOccupancyFrames = 4800u;
         if (s_instrument && (m_impl->renderedFrames / kOccupancyFrames) != ((m_impl->renderedFrames + frames) / kOccupancyFrames))
             m_impl->logOccupancy(m_impl->renderedFrames + frames);

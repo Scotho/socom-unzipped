@@ -3,6 +3,7 @@
 #include "ps2_runtime.h"
 #include "runtime/ee_scheduler.h"
 #include "runtime/ps2_audio.h"
+#include "ps2x/knobs.h"
 
 #include <algorithm>
 #include <array>
@@ -35,7 +36,7 @@ namespace ps2_sched_trace
 
         bool envOn(const char *name)
         {
-            const char *e = std::getenv(name);
+            const char *e = ps2x::knob(name);
             if (!e || !*e)
                 return false;
             return !(std::strcmp(e, "0") == 0 || std::strcmp(e, "false") == 0 || std::strcmp(e, "off") == 0);
@@ -43,7 +44,7 @@ namespace ps2_sched_trace
 
         int64_t envMsToNs(const char *name, double defaultMs)
         {
-            const char *e = std::getenv(name);
+            const char *e = ps2x::knob(name);
             const double ms = (e && *e) ? std::atof(e) : defaultMs;
             return static_cast<int64_t>(ms * 1000000.0);
         }
@@ -204,7 +205,7 @@ namespace ps2_sched_trace
     {
         size_t wrapped = 0u;
         std::lock_guard<std::mutex> lock(g_mutex);
-        static const std::vector<std::string> s_always = parseStubNames(std::getenv("PS2X_SCHED_TRACE_STUBS"));
+        static const std::vector<std::string> s_always = parseStubNames(ps2x::knob("PS2X_SCHED_TRACE_STUBS"));
         for (const ps2_hle_stats::StubSpec &spec : stubs)
         {
             if (g_slotCount >= kMaxSlots)
@@ -248,7 +249,7 @@ namespace ps2_sched_trace
             return;
 
         std::vector<std::string> candidates;
-        if (const char *e = std::getenv("PS2X_SCHED_TRACE_TOML"); e && *e)
+        if (const char *e = ps2x::knob("PS2X_SCHED_TRACE_TOML"); e && *e)
             candidates.emplace_back(e);
         else
         {
@@ -279,7 +280,7 @@ namespace ps2_sched_trace
         std::cerr << "[sched] PS2X_SCHED_TRACE=1: " << wrapped << " bound stubs timed from " << used
                   << " (threshold " << static_cast<double>(stubThresholdNs()) / 1000000.0 << " ms, sample "
                   << static_cast<double>(sampleIntervalNs()) / 1000000.0 << " ms";
-        if (const char *always = std::getenv("PS2X_SCHED_TRACE_STUBS"); always && *always)
+        if (const char *always = ps2x::knob("PS2X_SCHED_TRACE_STUBS"); always && *always)
             std::cerr << ", every call of: " << always;
         std::cerr << ")" << std::endl;
     }

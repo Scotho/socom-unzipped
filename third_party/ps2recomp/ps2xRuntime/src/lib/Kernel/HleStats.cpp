@@ -2,6 +2,7 @@
 
 #include "ps2_runtime.h"
 #include "ps2_runtime_macros.h"
+#include "ps2x/knobs.h"
 
 #include <array>
 #include <atomic>
@@ -45,7 +46,7 @@ namespace ps2_hle_stats
 
         bool envOn(const char *name)
         {
-            const char *e = std::getenv(name);
+            const char *e = ps2x::knob(name);
             if (!e || !*e)
                 return false;
             return !(std::strcmp(e, "0") == 0 || std::strcmp(e, "false") == 0 || std::strcmp(e, "off") == 0);
@@ -284,7 +285,7 @@ namespace ps2_hle_stats
             return;
 
         std::vector<std::string> candidates;
-        if (const char *e = std::getenv("PS2X_HLE_STATS_TOML"); e && *e)
+        if (const char *e = ps2x::knob("PS2X_HLE_STATS_TOML"); e && *e)
             candidates.emplace_back(e);
         else
         {
@@ -317,7 +318,7 @@ namespace ps2_hle_stats
                   << wrapped << " wrapped" << std::endl;
 
         static const unsigned s_period = [] {
-            const char *e = std::getenv("PS2X_HLE_STATS_PERIOD");
+            const char *e = ps2x::knob("PS2X_HLE_STATS_PERIOD");
             const unsigned v = e ? static_cast<unsigned>(std::strtoul(e, nullptr, 0)) : 30u;
             return v == 0u ? 30u : v;
         }();

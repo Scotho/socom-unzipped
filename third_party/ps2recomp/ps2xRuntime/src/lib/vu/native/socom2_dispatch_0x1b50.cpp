@@ -122,6 +122,7 @@
 #undef private
 
 #include "runtime/gs/gs_frontend.h"
+#include "ps2x/knobs.h"
 
 #include <atomic>
 #include <cmath>
@@ -661,7 +662,7 @@ namespace
     // accepts, never widen it: the worst a bad value can do is hand more lists back.
     int32_t envCeiling(const char *name, int32_t fallback)
     {
-        const char *value = std::getenv(name);
+        const char *value = ps2x::knob(name);
         if (value == nullptr)
             return fallback;
         const int32_t parsed = std::atoi(value);
@@ -923,7 +924,7 @@ namespace
     // command 0x28's per-triangle kicks.
     bool xgkickIsImmediate()
     {
-        static const bool immediate = std::getenv("PS2X_VU1_XGKICK_CYCLE_EXACT") == nullptr;
+        static const bool immediate = ps2x::knob("PS2X_VU1_XGKICK_CYCLE_EXACT") == nullptr;
         return immediate;
     }
 
@@ -1813,7 +1814,7 @@ namespace
     bool hostDrawEnabled()
     {
         static const bool enabled = []() {
-            const char *value = std::getenv("PS2X_VU1_HOST_DRAW");
+            const char *value = ps2x::knob("PS2X_VU1_HOST_DRAW");
             return value != nullptr && std::atoi(value) != 0;
         }();
         return enabled;

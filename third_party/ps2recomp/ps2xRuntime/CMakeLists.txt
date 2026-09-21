@@ -399,6 +399,7 @@ add_library(ps2_runtime STATIC
     src/lib/gs/gs_frame_backpressure.cpp
     src/lib/gs/gs_stall_coalescer.cpp
     src/lib/ps2_iop_host.cpp
+    src/lib/ps2_fpu_trap.cpp
     src/lib/ps2_memory.cpp
     src/lib/ps2_pad.cpp
     src/lib/ps2_runtime.cpp

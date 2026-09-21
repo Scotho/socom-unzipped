@@ -38,6 +38,10 @@ class ChildEnv(unittest.TestCase):
         with self.assertRaises(ValueError):
             scale_shot.child_env("1280", latest=None, base={})
 
+    def test_the_child_is_in_developer_mode(self):
+        env = scale_shot.child_env("640x448", latest="out/frame.png", base={})
+        self.assertEqual(env["PS2X_DEV"], "1")    # PS2X_HOST_SCREENSHOT_LATEST is a Dev knob (Sprint 9 Goal 3)
+
 
 class NewestFrame(unittest.TestCase):
     def _touch(self, path, mtime):

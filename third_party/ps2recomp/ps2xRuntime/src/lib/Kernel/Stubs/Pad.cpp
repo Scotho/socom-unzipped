@@ -2,6 +2,7 @@
 #include "Pad.h"
 #include "runtime/host_gamepad.h"
 #include "runtime/host_gamepad_select.h"
+#include "ps2x/knobs.h"
 
 namespace ps2_stubs
 {
@@ -91,7 +92,7 @@ namespace ps2_stubs
             if (!hostGamepadEnabled())
                 return -1;
             // Task 8: the launcher's pick first, then the old "lowest available slot" rule.
-            return hostGamepadSelect(std::getenv("PS2X_HOST_GAMEPAD_INDEX"), kHostGamepadSlots, IsGamepadAvailable);
+            return hostGamepadSelect(hostGamepadIndexKnob(), kHostGamepadSlots, IsGamepadAvailable);
         }
 
         void applyGamepadState(PadInputState &state)

@@ -5,6 +5,7 @@
 #include "runtime/host_gamepad.h"
 #include "runtime/host_gamepad_select.h"
 #include "runtime/injected_pad_latch.h"
+#include "ps2x/knobs.h"
 
 #include <algorithm>
 #include <atomic>
@@ -229,7 +230,7 @@ namespace ps2_stubs
             if (g_config.mappingResolved)
                 return;
             g_config.mappingResolved = true;
-            const char *mappingEnv = std::getenv("PS2X_INPUT_MAPPING");
+            const char *mappingEnv = ps2x::knob("PS2X_INPUT_MAPPING");
             const bool mappingRead = launcher::mapping::fromEnv(mappingEnv, g_config.mapping);
             g_config.mappingDefault = launcher::mapping::isDefault(g_config.mapping);
             if (!mappingRead)
@@ -243,16 +244,16 @@ namespace ps2_stubs
         {
             g_config.initialised = true;
             g_config.start = std::chrono::steady_clock::now();
-            if (const char *mouse = std::getenv("PS2X_SOCOM2_MOUSE"))
+            if (const char *mouse = ps2x::knob("PS2X_SOCOM2_MOUSE"))
                 g_config.mouse = (mouse[0] != '0');
-            if (const char *sens = std::getenv("PS2X_SOCOM2_MOUSE_SENS"))
+            if (const char *sens = ps2x::knob("PS2X_SOCOM2_MOUSE_SENS"))
                 g_config.mouseSensitivity = static_cast<float>(std::atof(sens));
-            if (const char *script = std::getenv("PS2X_SOCOM2_INPUT_SCRIPT"))
+            if (const char *script = ps2x::knob("PS2X_SOCOM2_INPUT_SCRIPT"))
                 parseScript(script);
             resolveMapping();
             // Task 8: name the pad that is actually read (PS2X_HOST_GAMEPAD_INDEX), not slot 0.
             const int pad = hostGamepadEnabled()
-                                ? hostGamepadSelect(std::getenv("PS2X_HOST_GAMEPAD_INDEX"), kHostGamepadSlots, IsGamepadAvailable)
+                                ? hostGamepadSelect(hostGamepadIndexKnob(), kHostGamepadSlots, IsGamepadAvailable)
                                 : -1;
             std::cout << "[socom2-input] keyboard on ("
                       << (g_config.mappingDefault ? "arrows/WASD/IJKL, Enter=START, Backspace=SELECT, ZXCV=Square/Cross/Circle/Triangle, QE=L1/R1, 13=L2/R2, 24=L3/R3"
@@ -358,7 +359,7 @@ namespace ps2_stubs
         // mid-session should not have to restart.
         // `padSlot`, not `pad`: the poll's own out-parameter is named `pad` (Socom2PadState &).
         const int padSlot = hostGamepadEnabled()
-                                ? hostGamepadSelect(std::getenv("PS2X_HOST_GAMEPAD_INDEX"), kHostGamepadSlots, IsGamepadAvailable)
+                                ? hostGamepadSelect(hostGamepadIndexKnob(), kHostGamepadSlots, IsGamepadAvailable)
                                 : -1;
         if (padSlot >= 0)
         {
@@ -386,7 +387,7 @@ namespace ps2_stubs
             // R139: the pad's buttons are gathered into a mask and passed through the crouch shortcut, which is the
             // identity when the option is off (PS2X_PAD_CROUCH_SHORTCUT unset). The keyboard, the mouse, the script
             // and the harness's injected file never go through it.
-            static const CrouchShortcut s_crouch = crouchShortcutFromEnv(std::getenv("PS2X_PAD_CROUCH_SHORTCUT"));
+            static const CrouchShortcut s_crouch = crouchShortcutFromEnv(ps2x::knob("PS2X_PAD_CROUCH_SHORTCUT"));
             uint16_t hostMask = 0;
             for (const launcher::mapping::PadBinding &entry : g_config.mapping.pad)
             {
@@ -475,7 +476,7 @@ namespace ps2_stubs
         // here only, once per rendered frame, dropped a whole 0.09 s press under ~11 fps: the press
         // lived entirely between two polls (ten driven launches, 2026-09-18).
         {
-            static const char *s_file = std::getenv("PS2X_SOCOM2_INPUT_FILE");
+            static const char *s_file = ps2x::knob("PS2X_SOCOM2_INPUT_FILE");
             if (s_file != nullptr)
             {
                 socom2HostInputStartSampler(s_file);
@@ -497,7 +498,7 @@ namespace ps2_stubs
         // PS2X_SOCOM2_INPUT_TRACE=1: log every change of the pad state the game will read
         // (buttons as a 16-bit mask, the four axes), so a scripted probe's presses are provable.
         {
-            static const bool s_trace = std::getenv("PS2X_SOCOM2_INPUT_TRACE") != nullptr;
+            static const bool s_trace = ps2x::knob("PS2X_SOCOM2_INPUT_TRACE") != nullptr;
             if (s_trace)
             {
                 static Socom2PadState s_last;

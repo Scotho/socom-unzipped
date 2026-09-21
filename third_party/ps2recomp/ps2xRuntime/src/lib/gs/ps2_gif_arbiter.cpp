@@ -1,4 +1,5 @@
 #include "runtime/gs/ps2_gif_arbiter.h"
+#include "ps2x/knobs.h"
 #include <algorithm>
 #include <cstring>
 #include <cstdlib>
@@ -19,7 +20,12 @@ bool GifArbiter::isImagePacket(const uint8_t *data, uint32_t sizeBytes)
     return flg == 2u;
 }
 
-static const bool s_prioritySort = std::getenv("PS2X_GIF_PRIORITY_SORT") != nullptr;
+// Read on first use, not while the process is still initialising its statics: main() has not seen --dev by then.
+static bool prioritySort()
+{
+    static const bool s_on = ps2x::knob("PS2X_GIF_PRIORITY_SORT") != nullptr;
+    return s_on;
+}
 
 void GifArbiter::submit(GifPathId pathId, const uint8_t *data, uint32_t sizeBytes, bool path2DirectHl)
 {
@@ -29,7 +35,7 @@ void GifArbiter::submit(GifPathId pathId, const uint8_t *data, uint32_t sizeByte
     // between a submit and the drain (the DMA emulation is synchronous), so a packet arriving
     // at an empty queue is next in any case: process it from the caller's buffer, no copy
     // (an XGKICK packet was memcpy'd here on every kick, ~7% of the game thread).
-    if (m_queueCount == 0u && !s_prioritySort)
+    if (m_queueCount == 0u && !prioritySort())
     {
         m_processFn(data, sizeBytes);
         return;
@@ -56,7 +62,7 @@ void GifArbiter::drain()
     // priority sort moved a VU1 XGKICK (PATH1) ahead of PATH3 texture uploads queued by the same
     // DMA chain, which garbled SOCOM II's title-screen text once XGKICK packets were copied at
     // kick time (2026-09-08). PS2X_GIF_PRIORITY_SORT=1 restores the sort for A/B checks.
-    if (s_prioritySort)
+    if (prioritySort())
     std::stable_sort(m_queue.begin(), m_queue.begin() + static_cast<std::ptrdiff_t>(m_queueCount),
                      [](const GifArbiterPacket &a, const GifArbiterPacket &b)
                      {

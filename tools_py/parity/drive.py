@@ -63,7 +63,7 @@ def launch(target, seconds):
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     # The exe rewrites its current frame to this file; grab() reads it instead of PrintWindow.
     os.environ.setdefault("PS2X_HOST_SCREENSHOT_LATEST", os.path.abspath(os.path.join("logs", "parity", "latest_frame.png")))
-    env = cd_image_env(dict(os.environ, PS2X_SOCOM2_PAD="1"))
+    env = hostplatform.dev_env(cd_image_env(dict(os.environ, PS2X_SOCOM2_PAD="1")))
     if not hostplatform.is_windows():
         # Linux: press() injects through the runtime's latched pad file rather than X key events,
         # which the VM's ~3 fps poll drops (x11shot.press). The file must exist and be neutral

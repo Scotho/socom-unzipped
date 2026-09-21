@@ -20,6 +20,7 @@
 #include "ps2x/bare_run.h"
 #include "ps2x/exe_dir.h"
 #include "ps2x/exit_codes.h"
+#include "ps2x/knobs.h"
 #include "ps2x/preflight.h"
 #include "ps2x/process_fatal.h"
 
@@ -197,6 +198,11 @@ int main(int argc, char *argv[])
     // Sprint 9 Goal 1: running out of memory is exit 71 with a sentence, from whichever thread it happens on.
     ProcessFatal::installOutOfMemoryHandler();
 
+    // Sprint 9 Goal 3: --dev, anywhere after argv[0], is developer mode (the same as PS2X_DEV=1): Dev-class
+    // knobs are honoured. Taken out of argv here, before anything below looks at argv[1].
+    if (ps2x::knobs::consumeDevFlag(argc, argv))
+        ps2x::knobs::setDevMode(true);
+
     // socom2 --fail-test crash|oom: drives codes 70 and 71 for tools_py/tests/test_runner_exit_codes.py.
     if (argc > 2 && std::strcmp(argv[1], "--fail-test") == 0)
     {
@@ -244,16 +250,19 @@ int main(int argc, char *argv[])
             pathObj = getExecutablePath(argc, argv);
         }
 
+        // One line, so a bug report says which knobs were in effect and which were ignored (docs/KNOBS.md).
+        std::cout << ps2x::knobs::startupLine() << std::endl;
+
 #if !defined(PLATFORM_VITA) && !defined(__ANDROID__)
         // Before a window exists: the ELF, the card folder, the disc, and that the disc is r0001 (R130).
         {
             Preflight::Input pre;
             pre.elfPath = pathObj;
             // The same rule as configureCdImage (game_overrides_socom2.cpp): an empty value is unset.
-            if (const char *cd = std::getenv("PS2X_CD_IMAGE"); cd != nullptr && *cd != '\0')
+            if (const char *cd = ps2x::knob("PS2X_CD_IMAGE"); cd != nullptr && *cd != '\0')
                 pre.cdImageEnv = cd;
             std::error_code absEc;
-            const char *mc = std::getenv("PS2X_MC_DIR");   // the same rule as PS2Runtime::configureIoPathsFromElf
+            const char *mc = ps2x::knob("PS2X_MC_DIR");   // the same rule as PS2Runtime::configureIoPathsFromElf
             pre.cardDir = (mc != nullptr && *mc != '\0')
                               ? std::filesystem::absolute(std::filesystem::path(mc), absEc)
                               : std::filesystem::absolute(pathObj, absEc).parent_path() / "mc0";
@@ -273,7 +282,7 @@ int main(int argc, char *argv[])
         std::string windowTitle = "PS2-Recomp | ";
         // PS2X_WINDOW_TITLE=tag: distinguishes a second instance's window (the parity harness finds
         // windows by title substring).
-        if (const char *tag = std::getenv("PS2X_WINDOW_TITLE"))
+        if (const char *tag = ps2x::knob("PS2X_WINDOW_TITLE"))
             windowTitle = std::string(tag) + " | ";
         const char *gameName = getGameName(normalizedId);
 

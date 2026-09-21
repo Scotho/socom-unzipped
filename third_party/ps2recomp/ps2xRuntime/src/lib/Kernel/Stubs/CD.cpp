@@ -3,6 +3,7 @@
 #include "MPEG.h"
 #include "runtime/ee_scheduler.h"
 #include "runtime/ps2_audio.h"
+#include "ps2x/knobs.h"
 
 
 namespace
@@ -10,7 +11,7 @@ namespace
     // PS2X_CD_TRACE=1: print CD file lookups and sector reads (which disc files a screen loads).
     bool cdTraceEnabled()
     {
-        static const bool on = std::getenv("PS2X_CD_TRACE") != nullptr;
+        static const bool on = ps2x::knob("PS2X_CD_TRACE") != nullptr;
         return on;
     }
 }
@@ -48,7 +49,7 @@ namespace ps2_stubs
         // read against what its feeder waited on.
         bool cdStreamTraceOn()
         {
-            static const bool on = std::getenv("PS2X_CD_STREAM_TRACE") != nullptr;
+            static const bool on = ps2x::knob("PS2X_CD_STREAM_TRACE") != nullptr;
             return on;
         }
 

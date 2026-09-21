@@ -170,5 +170,18 @@ class RuntimeExeOverrideTest(unittest.TestCase):
             hp.runtime_exe("Linux", env={"SOCOM_EXE": "dist-linux-release/socom2.exe"})
 
 
+class DevEnvTest(unittest.TestCase):
+    """Sprint 9 Goal 3: every harness launch of the runner is a developer-mode launch -- the instruments the
+    harness reads (the exported frame, the sampler, the peek rows, the pad file) are Dev knobs."""
+
+    def test_it_sets_the_switch_and_returns_the_same_dict(self):
+        env = {"PATH": "x"}
+        self.assertIs(hp.dev_env(env), env)
+        self.assertEqual(env["PS2X_DEV"], "1")
+
+    def test_an_operators_own_choice_is_left_alone(self):
+        self.assertEqual(hp.dev_env({"PS2X_DEV": "0"})["PS2X_DEV"], "0")
+
+
 if __name__ == "__main__":
     unittest.main()

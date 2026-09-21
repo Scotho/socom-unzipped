@@ -22,6 +22,7 @@
 #include "ps2_iop_host.h"
 #include "ps2x/iop/iop_subsystem.h"
 #include "ps2x/exit_codes.h"
+#include "ps2x/knobs.h"
 
 #include <iostream>
 #include <fstream>
@@ -669,7 +670,8 @@ bool PS2Runtime::syncCoreSubsystems()
                                          (cpuContext->vu0_fbrst & (1u << 10)) != 0u;
                                      m_vu1.state().tBitEnabled =
                                          (cpuContext->vu0_fbrst & (1u << 11)) != 0u;
-                                     if (std::getenv("PS2X_TRACE_VU"))
+                                     static const bool s_traceVu = ps2x::knob("PS2X_TRACE_VU") != nullptr;   // was a getenv on every VU1 microprogram start
+                                     if (s_traceVu)
                                      {
                                          // Scan the microprogram reachable from startPC for an XGKICK lower-op,
                                          // and report how the program terminates, to see whether the render path
@@ -763,7 +765,7 @@ bool PS2Runtime::initialize(const char *title)
         SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_WINDOW_HIGHDPI);
         // PS2X_WINDOW_SIZE=<w>x<h> | fullscreen (the launcher's window-size choice, Task 8b); unset keeps the default
         // the parity gate depends on.
-        const ps2_window::Size windowSize = ps2_window::parseWindowSize(std::getenv("PS2X_WINDOW_SIZE"), HOST_WINDOW_WIDTH, HOST_WINDOW_HEIGHT);
+        const ps2_window::Size windowSize = ps2_window::parseWindowSize(ps2x::knob("PS2X_WINDOW_SIZE"), HOST_WINDOW_WIDTH, HOST_WINDOW_HEIGHT);
         InitWindow(windowSize.width, windowSize.height, title);
         // Owner 2026-09-20: Escape must not close the game. raylib's default exit key is KEY_ESCAPE, which made
         // WindowShouldClose() true on a key a PC player presses by reflex; the window's own close button and
@@ -1093,7 +1095,7 @@ void PS2Runtime::setIoPaths(const IoPaths &paths)
     {
         normalized.mcRoot = normalized.elfDirectory / "mc0";
     }
-    if (const char *mcDir = std::getenv("PS2X_MC_DIR"))
+    if (const char *mcDir = ps2x::knob("PS2X_MC_DIR"))
     {
         normalized.mcRoot = normalizeAbsolutePath(std::filesystem::path(mcDir));
     }
@@ -1117,7 +1119,7 @@ void PS2Runtime::configureIoPathsFromElf(const std::string &elfPath)
         paths.mcRoot = paths.elfDirectory / "mc0";
     }
     // PS2X_MC_DIR=<dir>: memory-card root override (a second instance needs its own card).
-    if (const char *mcDir = std::getenv("PS2X_MC_DIR"))
+    if (const char *mcDir = ps2x::knob("PS2X_MC_DIR"))
     {
         paths.mcRoot = normalizeAbsolutePath(std::filesystem::path(mcDir));
     }
@@ -1416,7 +1418,7 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
     {
         static const std::vector<uint32_t> s_jalrTrace = [] {
             std::vector<uint32_t> v;
-            if (const char *e = std::getenv("PS2X_JALR_TRACE"))
+            if (const char *e = ps2x::knob("PS2X_JALR_TRACE"))
             {
                 std::string spec(e);
                 size_t pos = 0;
@@ -2550,7 +2552,7 @@ void PS2Runtime::run()
         // rounding toward zero (2026-09-08: SOCOM II's title-screen labels are composed from an
         // index that only comes out right with chop; PS2X_EE_ROUND=nearest restores the old mode).
         {
-            const char *round = std::getenv("PS2X_EE_ROUND");
+            const char *round = ps2x::knob("PS2X_EE_ROUND");
             if (!round || std::strcmp(round, "nearest") != 0)
                 std::fesetround(FE_TOWARDZERO);
         }
@@ -2681,7 +2683,7 @@ void PS2Runtime::run()
         //             times its size (exact pixel replication), then stretch that stage the
         //             remaining scale/k (in [1,2)) into the window with linear filtering.
         static const std::string s_presentFilter = [] {
-            const char *e = std::getenv("PS2X_PRESENT_FILTER");
+            const char *e = ps2x::knob("PS2X_PRESENT_FILTER");
             std::string v(e ? e : "linear");
             if (v != "linear" && v != "integer" && v != "point")
             {
@@ -2788,7 +2790,7 @@ void PS2Runtime::run()
         // overlaps the GL window. Taken before the debug UI draws so its collapsed title bar does
         // not end up in the parity captures.
         {
-            static const char *s_latestEnv = std::getenv("PS2X_HOST_SCREENSHOT_LATEST");
+            static const char *s_latestEnv = ps2x::knob("PS2X_HOST_SCREENSHOT_LATEST");
             if (s_latestEnv)
             {
                 static double s_nextLatest = 0.5;
@@ -2811,7 +2813,7 @@ void PS2Runtime::run()
         // before this knob existed; the backing rectangle is 200x14, the box the task's bar allows.
         {
             static const bool s_fpsOverlay = [] {
-                const char *const e = std::getenv("PS2X_FPS_OVERLAY");
+                const char *const e = ps2x::knob("PS2X_FPS_OVERLAY");
                 return e != nullptr && *e != 0 && std::strcmp(e, "0") != 0;
             }();
             if (s_fpsOverlay)
@@ -2840,7 +2842,7 @@ void PS2Runtime::run()
         }
         // PS2X_HOST_SCREENSHOT=<dir>[:<seconds>]: save what the window shows every <seconds> (default 5).
         {
-            static const char *s_shotEnv = std::getenv("PS2X_HOST_SCREENSHOT");
+            static const char *s_shotEnv = ps2x::knob("PS2X_HOST_SCREENSHOT");
             if (s_shotEnv)
             {
                 static std::string s_dir;
