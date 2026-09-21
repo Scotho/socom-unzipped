@@ -83,6 +83,8 @@ namespace launcher::diagnostics
         const std::regex kCredential(
             R"((\b[\w-]{0,24}?(?:token|secret|password|passwd|pwd|api[_-]?key|access[_-]?key|private[_-]?key|bearer|credential|pass)s?\s*[:=]\s*)["']?([^\s"',;]{6,}))",
             std::regex::icase);
+        // The launcher's own password variable, whatever its length (a five-character password is still one).
+        const std::regex kLoginPass(R"((PS2X_SOCOM2_LOGIN_PASS\s*=\s*)[^\s"',;]+)");
         const std::regex kIpv4(R"((?:^|[^\w.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\w.]))");
         const char *const kHostedIp = "3.143.65.100";
 
@@ -114,6 +116,7 @@ namespace launcher::diagnostics
             replaceAll(out, backward, "~");
         }
         out = std::regex_replace(out, kUserDir, "~");
+        out = std::regex_replace(out, kLoginPass, "$1[redacted]");   // any length: the general rule's floor is six
         out = std::regex_replace(out, kCredential, "$1[redacted]");
         // addresses by hand: the hosted box stays, and a match that is not an address (a version) stays too
         std::string masked;

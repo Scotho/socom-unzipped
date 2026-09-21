@@ -150,6 +150,12 @@ void register_diagnostics_tests()
                      "a version string, an out-of-range tuple and a number are not addresses");
             t.Equals(diag::scrub("[socom2] 640x448 at 2x, token count 3", home), std::string("[socom2] 640x448 at 2x, token count 3"),
                      "the word token without a value stays");
+            // Q2's flip found the [knobs] line printing the login password in clear; describe() redacts it at the source
+            // now (R208), but a log written before that, or any line that names the variable, must not carry a short
+            // password past the six-character floor the general rule has -- `socom` is five.
+            t.Equals(diag::scrub("[knobs] dev=1 set: PS2X_SOCOM2_LOGIN_NAME=socomc PS2X_SOCOM2_LOGIN_PASS=socom PS2X_PEEK=0x1:4", home),
+                     std::string("[knobs] dev=1 set: PS2X_SOCOM2_LOGIN_NAME=socomc PS2X_SOCOM2_LOGIN_PASS=[redacted] PS2X_PEEK=0x1:4"),
+                     "the login password, however short, never leaves the machine on a knobs line");
         });
 
         tc.Run("gl_caps.txt: raylib's device lines and the backend's own, CRs dropped", [](TestCase &t)
