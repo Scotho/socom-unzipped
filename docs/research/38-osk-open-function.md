@@ -1,8 +1,8 @@
 # 38. The on-screen keyboard's open routine, its text buffer and its caps (Sprint 10 Goal 9, Task 1)
 
 Date: 2026-09-21. Written by the Goal 9 agent (worktree `wt-goal9`, branch `agent/goal9`) from the code as it
-stands on `sprint-10`; a static pass only -- nothing here was run in the game (the dynamic confirmation is the
-controller's, Task 2 Step 5 and Task 6 of the plan). Sources: the synthetic ELF `game/overlays/socom2_game.elf`
+stands on `sprint-10`; a static pass first -- the dynamic confirmation, six driven logins on 2026-09-21, is the
+last section, and it found one thing the static pass could not (the runtime unwinds guest calls). Sources: the synthetic ELF `game/overlays/socom2_game.elf`
 (scanned for `lui`/`addiu` pairs and `jal` targets with a 60-line Python script, `logs/osk/xref.py`), the
 recompiler's per-instruction disassembly comments in `recomp/output/*.cpp` (the main tree, read-only), the
 function list `recomp/socom2_ghidra.csv`, and the disc image itself for the UI scripts. Ghidra's GUI was not
@@ -127,11 +127,71 @@ recompile half of Task 2 Step 5 are dropped; `./build.sh runtime` (the runner) i
    normaliser keeps exactly that set, so a persona typed on the launcher is one the game's keyboard could have
    typed (the plan's "letters and digits only" would have mangled `Sgt_Rock`; a proposed ruling in the plan).
 
-## Not confirmed here (for the controller's run)
+## The initial text: what the dynamic confirmation found (2026-09-21, six driven logins)
 
-- **Step 2 of Task 1 (the dynamic confirmation)** was not run: it launches the game. The override logs, on every
-  keyboard open, the purpose key, the SkbName and the live `MaxChars`/`MaxBytes` it read from the message, and
-  whether it prefilled -- so the first driven login with the variables set is the confirmation: two
-  `[socom2] on-screen keyboard prefilled: persona name (N chars, cap 14)` / `... password (M chars, cap 12)` lines,
-  and the harness's `osk_typed()` read-back equal to the string's length before it presses ENTER.
+Everything in the table above held up in the game; what the static pass could not see was the runtime's own
+execution model, and that is what emptied the keyboard in the first two logins.
+
+**Two entries, not one (`2bc56ec`).** The action table's handler word is the thunk `0x2808d0` (`j func_38D770`),
+and the recompiler emits that thunk as a direct C++ call of `FUN_0038d770_0x38d770` -- a `replaceFunction` at
+`0x38d770` alone is never reached from the table (runs 1-2 of `logs/parity/s10_g9_prefill_gate`: armed, no
+keyboard line at all). The wrap sits on both entries (`kOskOpenEntries`); `jal`s inside recompiled code go
+through `dispatchGuestBranch` and the function table, so the wrap's own callees are traceable.
+
+**The buffer is `0x49ec70`, confirmed** -- and the wrap was blanking it before the game read it. With the wrap on
+the thunk, the game log said `on-screen keyboard open: purpose="_604_EnterPassword_MSG" skb="CREATEPLAYERNAME"
+MaxChars=12 MaxBytes=31 -> prefilled: the password (5 chars)` and the keyboard still opened empty (`[osk]
+prefilled: 0 of 5 in the field`). The third login (`logs/parity/s10_g9_prefill_diag3`) ran with
+`PS2X_CALL_TRACE=0x38b440:OskActivate,0x398ea0:OskSetup,0x39a5b0:OskLayout,0x39ae50:OskWrap,...`,
+`PS2X_WATCH=0x4a146c,0x4a14bc,0x4a1350,0x49ec70,0x49ecd0` and a temporary dump in the wrap after the original
+returned. The trace, in log order:
+
+```
+[socom2] on-screen keyboard open: purpose="_604_EnterPassword_MSG" ... -> prefilled: the password (5 chars)
+[call] OskStash #0 a0=0x16ee38c ... ra=0x38d788                          FUN_00397640(msg)
+[call] OskActivate #0 a0=0xf721d0 a1=0x49ec70 ... ra=0x38d84c a1="socom"  FUN_0038b440(spec, buffer): the text is there
+[ret-unwound] OskActivate #0 pc=0x3766a0 ra=0x38d84c                     <-- it did not return: it UNWOUND
+[osk-diag] after open: buf="socom" active=0x0 ... text1=""               the wrap's post-call code ran here, and blanked the buffer
+[call] OskSetup #0 a0=0xf721d0 a1=0xf727b0 a2=0x49ec70 ra=0x38b4c4        the resumed guest: FUN_00398ea0(spec, spec+0x5e0, buffer)
+[call] OskLayout #0 a0=0x49ec70 a1=0xf721d0 ra=0x398f40                   FUN_0039a5b0(buffer, spec) -- no a0="..." : empty
+[call] OskWrap #0 a1=0x49ec70 a2=0xf727b0 a3=0x1 f12=1.0 f13=310.0       FUN_0039ae50: 0 lines from an empty string
+[ret] OskWrap #0 v0=0x1 ; [ret] OskLayout #0 v0=0x1                      "success", nothing laid out
+```
+
+The runtime's guest calls are not plain calls: `PS2Runtime::dispatchGuestBranch` charges every inter-function
+transfer against the EE scheduler and, when a checkpoint is due, **unwinds** the whole recompiled call chain
+(`markDispatchUnwind`; every generated function returns at once) and resumes the guest later at the saved pc.
+`FUN_0038b440` hit that checkpoint at `0x3766a0` (inside the keyboard-state push, before `FUN_00398ea0`) in
+every one of the six logins -- deterministic. A host wrapper that calls the original and then "fixes up after"
+sees the original return at the unwind, not at the real return, and its fix-up runs while the guest is still
+in the middle of the wrapped function. The call trace's own thunk knows this (`[ret-unwound]` when `ctx->pc !=
+ra`); the prefill wrap did not, and blanked the buffer between the activation and the layout.
+
+**The fix (`f47cfe0`)**: the wrap writes the buffer's whole image BEFORE the original -- the field's text for a
+login keyboard, zeros for any other -- and never touches it after. That is enough because `0x49ec70` is read by
+this handler alone (the xref scan above), so what one open leaves is overwritten by the next open through the
+same wrap; the "blank it again after" of the first design was never needed. The rule for any future
+`replaceFunction` wrap in this runtime: **post-call code is unreliable** unless it checks `ctx->pc == entry ra`
+(the call trace's test), and even then the resumed original does not pass through the wrap again -- put the
+work before the call, or on the next entry.
+
+**The proof (`--existing --prefilled --name socomc --password socom`, the hosted server 3.143.65.100):**
+`logs/parity/s10_g9_prefill_fix4` and `..._fix5`: `OskActivate a1="socom"`, `OskSetup a2="socom"`, `OskLayout
+a0="socom"`, `[osk] prefilled: 5 of 5 in the field -> ENTER`, `[osk] enter: keyboard closed`, `LOBBY class=ok`
+(97.0 s, 96.6 s). `..._fix6_newpersona`, a scratch copy of `game/disc/mc0_parity` (no persona on the box) with
+`--name socomd`: the name keyboard `purpose="_455_EnterPlayerName_MSG" ... MaxChars=14 MaxBytes=31 -> prefilled:
+persona name (6 chars)` opened showing `socomd` with the cursor after it (`run/03_name_kbd.png`), `[osk]
+prefilled: 6 of 6 in the field -> ENTER`, `PLAYER NAME reads 6 glyphs`; then the password keyboard `5 of 5`;
+`LOBBY class=ok` at 131.5 s through the first-login prompts. Both rows of the table above are therefore live:
+the caps (14 / 12, 31 bytes), the purpose keys, the SkbName, the buffer.
+
+**What the edit object looks like, for the record** (from the diag dump and `FUN_00399ec0`, the insert-a-character
+routine, which reads the text the same way the "unchanged?" check does): `0x4a1450` is the first edit; `+0x1c`
+is a `char*` to its text and `+0x6c` an offset added to it (`FUN_00399ec0:0x399f50`); `+0x40` its width as a
+float (from the spec's per-edit block `spec+0xE0+idx*0x24`, `+0x14`), `+0x18` its font object; `0x4a1350` the
+cursor index, `0x4a1330` the two-edit flag, `0x49ecd0` the active spec. The layout is `FUN_0039a5b0(text, spec)`
+-> `FUN_0039ae50(&lines, text, font, 1, width, spec+0xC0)` (a word wrap) -> the first line set on the edit via
+its vtable slot `+0x70` and `FUN_00362b70` (refresh); the typed-character path goes through the very same
+layout, which is why a prefilled string behaves exactly as a typed one (ENTER, BACKSPACE, the caps).
+
 - The r0004 package (the community server's) moves every address here; this note is for r0001 (ours).

@@ -118,7 +118,7 @@ made on CROSS that takes a pointer into the object plus a small immediate (the b
 callee common to both is the keyboard-open routine. Record its `FUN_xxxxxxxx`, the `a0..a3` meanings, and the
 two immediates (the caps) in research/38.
 
-- [ ] **Step 2: Confirm the buffer dynamically** (NOT RUN -- a game launch; the controller's, folded into Task 6's first login: the `[socom2] on-screen keyboard` lines say the live purpose, SkbName, MaxChars/MaxBytes and what was prefilled)
+- [x] **Step 2: Confirm the buffer dynamically** (DONE 2026-09-21 in Task 6's logins: the buffer is `0x49ec70` as named -- `OskActivate a1=0x49ec70 a1="socom"`, `OskLayout a0="socom"` in `logs/parity/s10_g9_prefill_fix4/run_game.log`; research/38's section "the initial text: what the dynamic confirmation found" has the trace and the unwinding it exposed)
 
 Run the harness's existing login with a known name and read the guest RAM for it:
 
@@ -765,8 +765,34 @@ at `:299`); the password step does the same with `password`. The launcher (`Shel
 two variables into the game's environment when `--prefilled` is given; `main()` adds the flag and the usage
 line at `:7` gains `[--prefilled]`.
 
-- [ ] **Step 4: Run the harness's tests, then the real login, twice** (the tests: done, the whole suite green --
-  the count in the record below; the two logins: THE CONTROLLER'S, the exact command in the result above)
+- [x] **Step 4: Run the harness's tests, then the real login, twice** (the tests: done, the whole suite green --
+  the count in the record below; the logins: DONE 2026-09-21, three `LOBBY class=ok` in a row on the hosted
+  server after the fix below -- the record "The two logins, and the third" under this task)
+
+**The two logins, and the third (2026-09-21, the Task 6 follow-up agent, main tree, `sprint-10`).** Runs 1
+and 2 (`logs/parity/s10_g9_prefill_gate`, the exe of `2bc56ec`) entered the wrap -- the game log had
+`on-screen keyboard open: purpose="_604_EnterPassword_MSG" skb="CREATEPLAYERNAME" MaxChars=12 MaxBytes=31 ->
+prefilled: the password (5 chars)` -- and the keyboard opened empty (`[osk] prefilled: 0 of 5 in the field`,
+`LOBBY class=login:prefill-missing`). Run 3 (`logs/parity/s10_g9_prefill_diag3`, `PS2X_CALL_TRACE` on the
+activation chain, `PS2X_WATCH` on the buffer, a temporary dump after the original) found the cause in one
+line: `[ret-unwound] OskActivate #0 pc=0x3766a0 ra=0x38d84c` -- `FUN_0038b440` leaves through an EE
+scheduler checkpoint (`dispatchGuestBranch`'s unwind) before the text is laid out, the wrap took that for
+the original's return and blanked `0x49ec70`, and the resumed guest laid out an empty string. The buffer
+research/38 named is the right one; writing AFTER the original was the defect. Fix `f47cfe0`: the wrap
+writes the buffer's whole image before the open (the text for a login field, zeros for any other keyboard)
+and nothing after it (`socom2_osk::writeBuffer`, one new ps2x_tests case; 732/732). Then:
+
+| run | card / persona | `[osk]` lines | `LOBBY class` |
+|---|---|---|---|
+| `s10_g9_prefill_fix4` | `mc0`, `socomc` saved (password keyboard only) | `prefilled: 5 of 5 in the field -> ENTER`, `enter: keyboard closed` | `ok` (97.0 s) |
+| `s10_g9_prefill_fix5` | the same | the same | `ok` (96.6 s) |
+| `s10_g9_prefill_fix6_newpersona` | a scratch copy of `mc0_parity` (no persona for the box), `socomd` | name keyboard `prefilled: 6 of 6 -> ENTER`, `PLAYER NAME reads 6 glyphs`; password `5 of 5 -> ENTER` | `ok` (131.5 s, the first-login prompts) |
+
+The game logs carry both keyboard lines of research/38's table (`_455_EnterPlayerName_MSG` MaxChars=14 ->
+`prefilled: persona name (6 chars)`; `_604_EnterPassword_MSG` MaxChars=12 -> `prefilled: the password (5
+chars)`), and `OskActivate a1="socom"` / `OskLayout a0="socom"` -- the buffer read by the layout with the
+text in it. No `[osk] typed` line (the pad typer's) in any of the three. `socomd` is a throwaway account on
+the project's own box. The three-stage gate with the variables unset is still the controller's.
 
 Run: `python -m pytest tools_py/tests -q` (lock-free), then (lock-bound, an away window):
 > Superseded 2026-09-21: `python -m unittest discover -s tools_py/tests -t .` (about 5 minutes).
@@ -836,6 +862,10 @@ variables unset); Task 6 (`--prefilled`, two driven logins, `logs/parity/s10_g9_
 (the rows, the numbering of R200/R201/R202, the story message); the owner's login (HUMAN_TASKS).
 > Updated 2026-09-21 (the Task 6 agent): Task 6's harness half is in (`agent/g9t6`); what is left of it is
 > Step 4's two logins on the rebuilt exe, the command and the expected lines in Task 6's result.
+> Updated 2026-09-21 (the Task 6 follow-up agent): Task 6 is DONE -- `2bc56ec` (the thunk), `f47cfe0` (the
+> buffer written before the open, never after: the handler unwinds through a scheduler checkpoint), three
+> `LOBBY class=ok` logins including a first login with both keyboards (`s10_g9_prefill_fix4/5/6_newpersona`).
+> ps2x_tests 732/732. Left: Task 2 Step 5's gate with the variables unset, Task 7 Step 1, the owner's login.
 
 ## Self-review against research/37
 
