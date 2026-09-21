@@ -1,0 +1,78 @@
+{
+  "_comment": [
+    "What the SOCOM II NTSC r0001 disc (SCUS-97275) produces on its way to a buildable ELF, so that",
+    "tools_py/disc_to_elf.py can tell a stranger whether their run came out right instead of hoping.",
+    "Every value here is a FACT ABOUT the disc -- a size, a sha256 digest, a guest address, a build",
+    "id string -- and none of it is the disc's content: nothing here can be turned back into a byte",
+    "of the game. The same choice was already made for launcher::kSocom2R0001ElfSha256, the digest",
+    "the launcher and the runner's preflight pin (ps2xShared/include/launcher/launcher_config.h);",
+    "inputs.SCUS_972.75.sha256 below is that same digest and must stay equal to it.",
+    "",
+    "A null value is one nobody has measured yet: the first run records it and says so, and the",
+    "recorded value is committed with a note saying which disc it came from. A value that is here",
+    "and disagrees with a run is a refusal, never a quiet overwrite -- see check_value().",
+    "",
+    "disc.* is the image's shape and a difference there is only a note (R231): a re-built or",
+    "differently padded image of the same disc holds the same bytes at other LBNs, and the three",
+    "files this chain reads are pinned by digest under inputs.",
+    "",
+    "dnas.variants are the four (key table, cipher core) address pairs inside DNAS.BIN that",
+    "dnas_selfdecrypt.py's research path derives from a Ghidra decompilation. They are recorded here",
+    "so the chain runs without a Ghidra project; they are only meaningful for the DNAS.BIN whose",
+    "digest inputs records, which is checked first."
+  ],
+  "disc": {
+    "revision": "r0001",
+    "volume_id": "SOCOM_II",
+    "volume_sectors": 2139040,
+    "files": 349,
+    "manifest_sha256": "71ecfaa4732cc7c32d54ecccc9477602beec0aa28aae1698b09d1d59f6732d02"
+  },
+  "inputs": {
+    "SCUS_972.75": {
+      "size": 874792,
+      "sha256": "0172dc0bec19c83d1fe2d0fec0a290f41cc5d32efa14ed6859ca92773c05346c"
+    },
+    "OVERLAY/REL/DNAS.BIN": {
+      "size": 667136,
+      "sha256": "b205b68251723e554bc34a6afe5ef5cb37df2a688b0bcdd660c4f3f2845edafd"
+    },
+    "RUN/RAW/APACHE00.ZDB": {
+      "size": 1548056,
+      "sha256": "9f9bab21544d02d5040a0f30af82de902d55cae66a4d255dfc93ecd62315e044"
+    }
+  },
+  "dnas": {
+    "variants": {
+      "0x4ee9e8": {"keytab": "0x4efac8", "core": "0x4ef348"},
+      "0x52b9d0": {"keytab": "0x52af30", "core": "0x52c330"},
+      "0x53a358": {"keytab": "0x539e78", "core": "0x53acb8"},
+      "0x5412a0": {"keytab": "0x540a10", "core": "0x540938"}
+    },
+    "blocks": null,
+    "output": null
+  },
+  "zdb": {
+    "entries": {
+      "ftscore": 855920,
+      "zsealetc": 691792
+    }
+  },
+  "overlays": {
+    "ftscore.bin": {
+      "size": 2233472,
+      "sha256": "cf09a7fabaf59a1d68f01411bd1db9e859af054df1f2fbc4775d8c221785f836"
+    },
+    "zsealetc.bin": {
+      "size": 1723520,
+      "sha256": "cdb3fa8e707090ac879874e3987c6b7784808a4767e85d0e19fc6909d36549b1"
+    }
+  },
+  "elf": {
+    "build_id": "SOCOM 2 r0001 17:22:21 Oct 11 2003",
+    "entry": "0x180008",
+    "segments": null,
+    "size": 4835072,
+    "sha256": "06b83684719a78ad0580f236bd0eddd40453f87d9c30c0d39021331915798872"
+  }
+}
