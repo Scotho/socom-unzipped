@@ -6,6 +6,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <set>
 #include <string>
 #include <vector>
@@ -195,6 +196,37 @@ void register_knobs_tests()
                                  " PS2X_PEEK=0x416054:3,*0x408c58:64,*0x408c58+0xc0*:... PS2X_WINDOW_SIZE=1280x896"),
                      "a developer: every set knob, values clipped at 40 characters");
             t.Equals(ps2x::knobs::describe({}, false), std::string("[knobs] dev=0 set: none"), "nothing set");
+        });
+
+        tc.Run("a Path knob: for a stranger a value outside the game folder is refused, the disc image excepted (R204)", [](TestCase &t)
+        {
+            KnobStateGuard guard;
+            ps2x::knobs::setEnforcement(true);
+            ps2x::knobs::setDevMode(false);
+            using ps2x::knobs::pathInsideHome;
+            const char *had = std::getenv("PS2X_MC_DIR");   // an operator's own value, put back at the end
+            const std::string kept = had ? had : "";
+            t.IsTrue(pathInsideHome("PS2X_MC_DIR", "cards/viper"), "a relative folder under the game folder");
+            t.IsTrue(pathInsideHome("PS2X_MC_DIR", (std::filesystem::current_path() / "cards" / "viper_b").string().c_str()), "the same, absolute");
+            t.IsFalse(pathInsideHome("PS2X_MC_DIR", ".."), "the parent folder is outside");
+            t.IsFalse(pathInsideHome("PS2X_MC_DIR", "cards/../../elsewhere"), "and so is a folder that climbs out through .. (the profile trap, KNOWN 110c)");
+            t.IsFalse(pathInsideHome("PS2X_MC_DIR", (std::filesystem::temp_directory_path() / "socom_cards").string().c_str()), "an absolute folder elsewhere");
+            t.IsTrue(pathInsideHome("PS2X_CD_IMAGE", (std::filesystem::temp_directory_path() / "SOCOM II.iso").string().c_str()), "the disc image is only read and lives where the player keeps it");
+            setVar("PS2X_MC_DIR", "..");
+            t.IsNull(ps2x::knob("PS2X_MC_DIR"), "refused: read as unset, so the default card folder is used");
+            setVar("PS2X_MC_DIR", "cards/viper");
+            const char *inside = ps2x::knob("PS2X_MC_DIR");
+            t.IsTrue(inside != nullptr && std::string(inside) == "cards/viper", "inside: the value");
+            setVar("PS2X_MC_DIR", "..");
+            ps2x::knobs::setDevMode(true);
+            const char *dev = ps2x::knob("PS2X_MC_DIR");
+            t.IsTrue(dev != nullptr && std::string(dev) == "..", "a developer's run keeps any path (the gate's card lives under logs/)");
+            ps2x::knobs::setDevMode(false);
+            const ps2x::knobs::Pairs set = {{"PS2X_MC_DIR", ".."}, {"PS2X_GS_SCALE", "2"}};
+            t.Equals(ps2x::knobs::describe(set, false),
+                     std::string("[knobs] dev=0 set: PS2X_GS_SCALE=2 | refused, outside the game folder: PS2X_MC_DIR"),
+                     "the line says what was refused");
+            setVar("PS2X_MC_DIR", had ? kept.c_str() : nullptr);
         });
 
         tc.Run("the Shipping class is exactly what the launcher can send", [](TestCase &t)

@@ -3,6 +3,8 @@
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
+#include <cwctype>
+#include <filesystem>
 
 namespace ps2x
 {
@@ -12,6 +14,25 @@ namespace ps2x
         {
             std::atomic<int> g_dev{-1};           // -1: not decided yet, PS2X_DEV decides on first use
             std::atomic<bool> g_enforce{false};   // Sprint 9 Goal 3 Task 7 turns this on
+
+            // Path knobs whose value may lie anywhere: a file that is only read, kept where the player keeps it.
+            constexpr const char *kReadAnywhere[] = {"PS2X_CD_IMAGE"};
+
+            bool sameComponent(const std::filesystem::path &a, const std::filesystem::path &b)
+            {
+#ifdef _WIN32
+                // Windows paths compare without case; canonical() does not always agree with current_path() on it.
+                const std::wstring x = a.wstring(), y = b.wstring();
+                if (x.size() != y.size())
+                    return false;
+                for (size_t i = 0; i < x.size(); ++i)
+                    if (towlower(x[i]) != towlower(y[i]))
+                        return false;
+                return true;
+#else
+                return a == b;
+#endif
+            }
 
             std::string printable(const Entry &e, const std::string &value)
             {
@@ -83,6 +104,29 @@ namespace ps2x
             return !(std::strcmp(value, "0") == 0 || std::strcmp(value, "false") == 0 || std::strcmp(value, "off") == 0);
         }
 
+        bool pathInsideHome(const char *name, const char *value)
+        {
+            if (name == nullptr || value == nullptr || *value == 0)
+                return true;
+            for (const char *anywhere : kReadAnywhere)
+                if (std::strcmp(name, anywhere) == 0)
+                    return true;
+            namespace fs = std::filesystem;
+            std::error_code ec;
+            const fs::path home = fs::weakly_canonical(fs::current_path(ec), ec);
+            if (ec || home.empty())
+                return false;
+            const fs::path where = fs::weakly_canonical(fs::absolute(fs::path(value), ec), ec);
+            if (ec)
+                return false;
+            auto h = home.begin();
+            auto w = where.begin();
+            for (; h != home.end(); ++h, ++w)
+                if (w == where.end() || !sameComponent(*h, *w))
+                    return false;
+            return true;
+        }
+
         bool devMode()
         {
             int v = g_dev.load(std::memory_order_acquire);
@@ -122,7 +166,7 @@ namespace ps2x
 
         std::string describe(const Pairs &set, bool honourDev)
         {
-            std::string shown, ignored;
+            std::string shown, ignored, refused;
             for (const auto &pair : set)
             {
                 const Entry *e = find(pair.first.c_str());
@@ -133,6 +177,11 @@ namespace ps2x
                     ignored += " " + pair.first;
                     continue;
                 }
+                if (!honourDev && e->kind == Kind::Path && !pathInsideHome(e->name, pair.second.c_str()))
+                {
+                    refused += " " + pair.first;
+                    continue;
+                }
                 if (e->cls != Class::Dev && pair.second == e->dflt)
                     continue;
                 shown += " " + pair.first + "=" + printable(*e, pair.second);
@@ -140,6 +189,8 @@ namespace ps2x
             std::string out = std::string("[knobs] dev=") + (honourDev ? "1" : "0") + " set:" + (shown.empty() ? std::string(" none") : shown);
             if (!ignored.empty())
                 out += " | ignored without --dev:" + ignored;
+            if (!refused.empty())
+                out += " | refused, outside the game folder:" + refused;
             return out;
         }
 
@@ -168,6 +219,8 @@ namespace ps2x
             return nullptr;               // test_knobs_registry keeps this unreachable for a literal name
         if (e->cls == knobs::Class::Dev && !knobs::devMode())
             return nullptr;
+        if (e->kind == knobs::Kind::Path && !knobs::devMode() && !knobs::pathInsideHome(name, v))
+            return nullptr;               // R204: a stranger's path stays inside the game folder
         return v;
     }
 

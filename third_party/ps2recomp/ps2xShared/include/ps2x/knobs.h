@@ -19,7 +19,8 @@
 // Kind:   Flag      read with ps2x::knobOn -- unset or empty is the default; 0, false, off are false; anything
 //                   else is true.
 //         Presence  any value, including 0, switches it on (traces; see docs/KNOBS.md).
-//         Int, Float, Text, Path, Spec   parsed where they are read.
+//         Int, Float, Text, Path, Spec   parsed where they are read. A Path a stranger sets must lie under the
+//                   game folder or it reads as unset (pathInsideHome, R204); the disc image is the exception.
 
 #include <cstddef>
 #include <string>
@@ -186,7 +187,8 @@ namespace ps2x
 {
     // The value of a registered knob, or nullptr. While enforcement is off this is std::getenv(name). With it
     // on: nullptr when the variable is unset or empty, when the name is not in the table, or when the knob is
-    // Dev and the process is not in developer mode. Never caches -- tests and BareRun::applyEnvironment change
+    // Dev and the process is not in developer mode, or when it is a Path outside the game folder for a stranger
+    // (pathInsideHome). Never caches -- tests and BareRun::applyEnvironment change
     // the environment while the process runs -- so a site on a hot path reads once into its own static.
     const char *knob(const char *name);
 
@@ -218,6 +220,12 @@ namespace ps2x
         const char *kindName(Kind kind);
         bool flagValue(const char *value, bool dflt);
 
+        // Sprint 10 Q2 (R204): a Path knob's value must lie under the game folder -- the process's current
+        // directory, which both launcher glues and the bare run set to the folder the executable lives in --
+        // or, for a stranger, it reads as unset. The disc image is the one file that is only read and lives
+        // where the player keeps it. Developer mode lifts the rule (the gate's card and frame live under logs/).
+        bool pathInsideHome(const char *name, const char *value);
+
         // Developer mode: setDevMode() (the runner's --dev, ps2x_tests, vu1_replay) or, failing that,
         // PS2X_DEV under the flag rule, read once on first use.
         bool devMode();
@@ -231,7 +239,7 @@ namespace ps2x
         // Removes every "--dev" after argv[0], closes the gap, keeps argv null-terminated. True when one was there.
         bool consumeDevFlag(int &argc, char **argv);
 
-        // One line for the log: what is set and honoured, and what was set and ignored. `set` is the non-empty
+        // One line for the log: what is set and honoured, what was set and ignored, what was refused. `set` is the non-empty
         // PS2X_* variables in table order. A Shipping value equal to its default is not news; a Path is cut to
         // its last component (the diagnostics zip must not carry a home directory); 40 characters a value.
         using Pairs = std::vector<std::pair<std::string, std::string>>;
