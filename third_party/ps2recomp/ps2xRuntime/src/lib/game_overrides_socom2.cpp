@@ -1540,8 +1540,21 @@ namespace
                       << "; the keyboards open empty (PS2X_SOCOM2_LOGIN_NAME/_PASS ignored)" << std::endl;
             return;
         }
+        // The original is the handler itself; the wrap sits on the handler AND on the thunk the action table
+        // dispatches through (kOskOpenEntries), because the recompiled thunk calls the handler directly and a
+        // replacement at the handler alone is never reached (the first two driven logins: armed, 0 of 5 filled).
         g_oskOpenOriginal = runtime.lookupFunction(socom2_osk::kOskOpenAddr);
-        runtime.replaceFunction(socom2_osk::kOskOpenAddr, socom2_OskOpenPrefill);
+        int installed = 0;
+        for (uint32_t entry : socom2_osk::kOskOpenEntries)
+        {
+            if (runtime.hasFunction(entry))
+            {
+                runtime.replaceFunction(entry, socom2_OskOpenPrefill);
+                ++installed;
+            }
+        }
+        std::cout << "[socom2] on-screen keyboard prefill wraps " << installed << " of "
+                  << (sizeof(socom2_osk::kOskOpenEntries) / sizeof(socom2_osk::kOskOpenEntries[0])) << " entries" << std::endl;
         std::cout << "[socom2] on-screen keyboard prefill armed: persona name " << (haveName ? std::to_string(std::strlen(name)) + " chars" : "unset")
                   << ", password " << (havePass ? std::to_string(std::strlen(pass)) + " chars" : "unset") << std::endl;
     }

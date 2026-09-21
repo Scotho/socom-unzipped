@@ -12,6 +12,18 @@ void register_socom2_osk_prefill_tests()
 {
     MiniTest::Case("Socom2OskPrefill", [](TestCase &tc)
     {
+        // The first two driven logins (2026-09-21, s10_g9_prefill_gate run1/run2) armed the prefill and filled
+        // nothing: the UI action table dispatches through the thunk at 0x2808d0, whose recompiled body calls
+        // FUN_0038d770 as a direct C++ call, so a wrap at the handler alone is never entered. The wrap must sit on
+        // every entry the table can reach.
+        tc.Run("the wrap is installed on the thunk the action table calls as well as on the handler", [](TestCase &t)
+        {
+            constexpr std::size_t n = sizeof(socom2_osk::kOskOpenEntries) / sizeof(socom2_osk::kOskOpenEntries[0]);
+            t.Equals(n, static_cast<std::size_t>(2), "two entries: the thunk and the handler");
+            t.Equals(socom2_osk::kOskOpenEntries[0], 0x002808D0u, "the thunk the action table points at (j func_38D770)");
+            t.Equals(socom2_osk::kOskOpenEntries[1], socom2_osk::kOskOpenAddr, "the handler itself, for any direct dispatch");
+        });
+
         tc.Run("the keyboard prefill picks the field's own variable, cut to the field's cap, or nothing", [](TestCase &t)
         {
             using socom2_osk::Field;

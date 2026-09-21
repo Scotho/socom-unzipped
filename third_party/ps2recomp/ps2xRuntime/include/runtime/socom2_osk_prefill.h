@@ -18,6 +18,12 @@ namespace socom2_osk
 {
     // The handler and the buffer (guest addresses, r0001 FTSCore; research/38's table).
     constexpr uint32_t kOskOpenAddr = 0x0038D770u;        // FUN_0038d770: the GetTextInput action handler
+    // The UI action table does not point at the handler: it points at a one-instruction thunk (0x2808d0,
+    // `j func_38D770`) that the recompiler emits as a DIRECT C++ call, so a replacement at the handler's own
+    // address is never reached from the table. The first two driven logins proved it (prefill armed, 0 of 5 in
+    // the field): the wrap is installed at every entry the game dispatches through.
+    constexpr uint32_t kOskOpenThunkAddr = 0x002808D0u;   // thunk_FUN_0038d770: what the action table calls
+    constexpr uint32_t kOskOpenEntries[] = {kOskOpenThunkAddr, kOskOpenAddr};
     constexpr uint32_t kOskTextBufferAddr = 0x0049EC70u;  // the keyboard's initial text, bss, never written by the game
     constexpr std::size_t kOskTextBufferBytes = 0x48;     // room to the next global the game writes (0x49ecb8)
 
