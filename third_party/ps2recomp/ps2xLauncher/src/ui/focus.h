@@ -70,7 +70,7 @@ namespace ui
         // page at all -- not merely undrawn, so nothing can focus or activate what a player cannot see.
         bool advancedOpen = false;
         // Sprint 10 Goal 8: the CONTROLLER page's two sections under the drawn pad -- SETUP (the pad pick, the
-        // dead zone, the mouse) or BUTTONS (the bindings, RESTORE, the crouch row) -- and, in BUTTONS, whether
+        // dead zone) or BUTTONS (the bindings, RESTORE, the crouch row) -- and, in BUTTONS, whether
         // a dialog (a conflict's three answers, the restore confirm's two) has replaced the section's controls.
         bool padButtons = false;
         int padDialogButtons = 0;
@@ -104,7 +104,7 @@ namespace ui
     // Sprint 9 P4 (owner: "tooltips where the launcher is unclear ... 'what is a profile?' first"). The
     // help is DATA, keyed by a control's own id, and empty for the controls that explain themselves --
     // which is most of them. It is shown where the FOCUS is, not where a mouse is: the launcher is driven
-    // by a pad, and the mouse is leaving entirely in Q3, so hover would be help most players never see.
+    // by a pad, and the mouse left the game entirely in Q3 (R210), so hover would be help most players never see.
     std::string helpFor(const std::string &id);
     // Every id the set answers for, so a test can hold the set to the controls that actually exist.
     std::vector<std::string> helpedIds();

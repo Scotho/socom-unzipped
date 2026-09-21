@@ -38,7 +38,7 @@ namespace
     };
 
     const char *kDevName = "PS2X_WATCH_HUGE";             // Dev, read once at start-up by the runner only
-    const char *kShippingName = "PS2X_SOCOM2_MOUSE_SENS"; // Shipping, read once by socom2_host_input's initialise
+    const char *kShippingName = "PS2X_PAD_DEADZONE";      // Shipping, read once by host_gamepad_select's hostPadDeadZone
 }
 
 void register_knobs_tests()
@@ -238,7 +238,6 @@ void register_knobs_tests()
             c.gamepadIndex = 0;
             c.crouchShortcut = "l2";
             c.micDevice = "Microphone";
-            c.mouseLook = true;
             c.secondInstance = true;
             c.loginName = "socomc";          // Goal 9: sent only when the ONLINE fields are filled
             c.loginPassword = "hunter2";
@@ -257,7 +256,7 @@ void register_knobs_tests()
                 t.IsTrue(shipping.count(name) == 1, name + ": sent by the launcher, so it must be Shipping");
             for (const std::string &name : shipping)
                 t.IsTrue(sent.count(name) == 1, name + ": Shipping, so config.json must be able to set it");
-            t.Equals(static_cast<int>(shipping.size()), 20, "twenty settings: the plan's seventeen, PS2X_INPUT_MAPPING (Goal 8) and the two login knobs (Goal 9)");
+            t.Equals(static_cast<int>(shipping.size()), 18, "eighteen settings: the plan's seventeen, PS2X_INPUT_MAPPING (Goal 8) and the two login knobs (Goal 9), less the two mouse knobs (Q3, R210)");
         });
 
         // ---- Sprint 9 Goal 3 Task 7: the flip ---------------------------------------------------------------

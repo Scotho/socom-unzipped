@@ -259,16 +259,23 @@ void register_launcher_tests()
             c.gsScale = 2;
             c.presentFilter = "integer";
             c.windowSize = "1280x896";
-            c.mouseLook = true;
-            c.mouseSensitivity = 1.5;
             c.server = "192.168.2.10";
             c.profile = "craig";
             c.secondInstance = true;
             const std::string json = launcher::toJson(c);
             t.IsTrue(json.find("\"isoPath\"") != std::string::npos && json.find("D:\\\\games\\\\socom2.iso") != std::string::npos, "the path is escaped");
+            t.IsTrue(json.find("mouse") == std::string::npos, "Sprint 10 Q3 (R210): no mouse key is written any more");
             launcher::Config back;
             t.IsTrue(launcher::fromJson(json, back), "parses its own output");
-            t.IsTrue(back.isoPath == c.isoPath && back.gsScale == 2 && back.presentFilter == "integer" && back.windowSize == "1280x896" && back.mouseLook && back.mouseSensitivity == 1.5 && back.server == c.server && back.profile == "craig" && back.secondInstance, "every field survives");
+            t.IsTrue(back.isoPath == c.isoPath && back.gsScale == 2 && back.presentFilter == "integer" && back.windowSize == "1280x896" && back.server == c.server && back.profile == "craig" && back.secondInstance, "every field survives");
+            // Sprint 10 Q3 (R210): a config.json written before the mouse left still carries "mouseLook" and
+            // "mouseSensitivity" (every launcher up to 2026-09-21 wrote both, in this position). It loads without
+            // complaint, the two keys are ignored, and everything after them is still read.
+            launcher::Config old;
+            t.IsTrue(launcher::fromJson("{\"gsScale\": 2, \"mouseLook\": true, \"mouseSensitivity\": 1.5, \"gamepadIndex\": 1, \"profile\": \"craig\"}", old),
+                     "an old config with the mouse keys loads");
+            t.IsTrue(old.gsScale == 2 && old.gamepadIndex == 1 && old.profile == "craig", "and the keys around them are read");
+            t.IsTrue(launcher::toJson(old).find("mouse") == std::string::npos, "the next save drops them");
             launcher::Config partial;
             t.IsTrue(launcher::fromJson("{\"gsScale\": 3, \"future\": [1,2,3], \"profile\": \"x\"}", partial), "unknown keys are ignored");
             t.IsTrue(partial.gsScale == 3 && partial.profile == "x" && partial.windowSize == "1280x896" && partial.server == "127.0.0.1", "missing keys keep their defaults");
@@ -292,16 +299,15 @@ void register_launcher_tests()
             t.IsTrue(has("PS2X_SOCOM2_SERVER=socom.scotho.com"),
                      "the server: a fresh config plays on the project's hosted server, reached by name (Sprint 9 P6, R175)");
             t.IsTrue(has("PS2X_MC_DIR=cards/player"), "the profile's card directory");
-            t.IsTrue(!hasKey("PS2X_SOCOM2_MOUSE") && !hasKey("PS2X_SOCOM2_MOUSE_SENS"), "mouse look off: no mouse knobs");
             t.IsTrue(!hasKey("PS2X_SOCOM2_UDP_SHIFT") && !hasKey("PS2X_SOCOM2_RSA_KEY"), "first instance: no shift, no second key");
             c.gsScale = 2;
-            c.mouseLook = true;
-            c.mouseSensitivity = 0.75;
             c.secondInstance = true;
             c.profile = "craig";
             c.windowSize = "fullscreen";
             env = launcher::environmentFor(c);
-            t.IsTrue(has("PS2X_GS_SCALE=2") && has("PS2X_SOCOM2_MOUSE=1") && has("PS2X_SOCOM2_MOUSE_SENS=0.75") && has("PS2X_WINDOW_SIZE=fullscreen"), "scale, mouse, sensitivity, fullscreen");
+            t.IsTrue(has("PS2X_GS_SCALE=2") && has("PS2X_WINDOW_SIZE=fullscreen"), "scale, fullscreen");
+            // Sprint 10 Q3 (R210): the mouse left -- no configuration sends a PS2X_SOCOM2_MOUSE* variable any more.
+            t.IsTrue(!hasKey("PS2X_SOCOM2_MOUSE") && !hasKey("PS2X_SOCOM2_MOUSE_SENS"), "no mouse knobs, whatever the config says");
             t.IsTrue(has("PS2X_SOCOM2_UDP_SHIFT=2") && has("PS2X_SOCOM2_RSA_KEY=b") && has("PS2X_MC_DIR=cards/craig_b"), "the second instance: shift 2, key b, its own cards");
         });
 
@@ -674,22 +680,23 @@ void register_launcher_tests()
             t.IsTrue(hasNode(ui::layoutFor(ui::Page::Video, window, in), ui::barLaunchId(ui::Page::Video)),
                      "every other page keeps the bar's LAUNCH");
 
-            // CONTROLLER, SETUP (the graph's default section): the section switch, a list on the left, three
-            // knobs on the right. Sprint 10 Goal 8 moved the crouch row into BUTTONS -- its own case below.
+            // CONTROLLER, SETUP (the graph's default section): the section switch, a list on the left, one knob
+            // on the right (Sprint 10 Q3, R210: the mouse-look toggle and its sensitivity slider left; the dead zone
+            // is what remains). Sprint 10 Goal 8 moved the crouch row into BUTTONS -- its own case below.
             t.Equals(g.move("rail.controller", ui::Dir::Right), std::string("pad.section.0"), "the section switch is the first control");
             t.Equals(g.move("pad.section.0", ui::Dir::Down), std::string("pad.pick.0"), "under it, the pad list");
             t.Equals(g.move("pad.pick.0", ui::Dir::Down), std::string("pad.pick.1"), "down walks the pad list");
             t.Equals(g.move("pad.pick.0", ui::Dir::Right), std::string("pad.deadzone"), "right crosses to the knobs");
             t.Equals(g.move("pad.deadzone", ui::Dir::Left), std::string("pad.pick.0"), "and left crosses back to the list");
-            t.Equals(g.move("pad.deadzone", ui::Dir::Down), std::string("pad.mouselook"), "the knobs run down the right column");
-            t.Equals(g.move("pad.mouselook", ui::Dir::Down), std::string("pad.sensitivity"), "dead zone, mouse look, sensitivity");
-            t.Equals(g.move("pad.sensitivity", ui::Dir::Up), std::string("pad.mouselook"), "and up retraces them");
-            t.Equals(g.move("pad.sensitivity", ui::Dir::Down), std::string("bar.launch.controller"), "below the last knob is the bar's LAUNCH");
+            t.Equals(g.move("pad.deadzone", ui::Dir::Down), std::string("bar.launch.controller"), "below the one knob is the bar's LAUNCH");
+            t.IsFalse(ui::hasNode(ui::layoutFor(ui::Page::Controller, window, in), "pad.mouselook") ||
+                          ui::hasNode(ui::layoutFor(ui::Page::Controller, window, in), "pad.sensitivity"),
+                      "no mouse-look toggle and no sensitivity slider: the mouse left (Q3, R210)");
             t.IsFalse(ui::hasNode(ui::layoutFor(ui::Page::Controller, window, in), "pad.crouch.0"), "the crouch row is not in SETUP");
             t.IsTrue(!ui::adjustsHorizontally("pad.section.0") && !ui::adjustsHorizontally("pad.crouch.0"), "cells navigate; they are not a slider");
-            t.IsTrue(ui::adjustsHorizontally("pad.deadzone") && ui::adjustsHorizontally("pad.sensitivity") &&
-                         ui::adjustsHorizontally("audio.volume") && !ui::adjustsHorizontally("pad.mouselook"),
-                     "left/right ADJUSTS the three sliders rather than navigating away from them");
+            t.IsTrue(ui::adjustsHorizontally("pad.deadzone") && ui::adjustsHorizontally("audio.volume") &&
+                         !ui::adjustsHorizontally("pad.sensitivity") && !ui::adjustsHorizontally("pad.mouselook"),
+                     "left/right ADJUSTS the two sliders rather than navigating away from them; the gone ids adjust nothing");
 
             // The rail itself walks up and down and stops at its ends.
             t.Equals(g.move("rail.play", ui::Dir::Down), std::string("rail.disc"), "the rail walks down");
@@ -1632,7 +1639,7 @@ void register_launcher_tests()
 
         // ---- Sprint 10 Goal 8 (R174, part 2): the controller mapping UI --------------------------------------
         // The CONTROLLER page keeps the drawn pad and splits what is under it into two sections: SETUP (the pad
-        // pick, the dead zone, the mouse) and BUTTONS (the sixteen bindings, RESTORE DEFAULTS, and the crouch
+        // pick, the dead zone) and BUTTONS (the sixteen bindings, RESTORE DEFAULTS, and the crouch
         // shortcut -- which is a binding too, of a light Triangle, so it lives beside the others rather than as
         // a leftover under the knobs). The layout is pure, so what the tests assert on is what the player sees.
         tc.Run("CONTROLLER: SETUP and BUTTONS are two sections under the pad; the bindings, RESTORE and the crouch row live in BUTTONS", [](TestCase &t)
@@ -1644,7 +1651,8 @@ void register_launcher_tests()
             const std::vector<ui::Node> setup = ui::layoutFor(ui::Page::Controller, window, in);
             t.IsTrue(ui::hasNode(setup, "pad.section.0") && ui::hasNode(setup, "pad.section.1"), "the two section cells are always there");
             t.IsTrue(ui::hasNode(setup, "pad.pick.0") && ui::hasNode(setup, "pad.pick.1"), "SETUP: the pad list");
-            t.IsTrue(ui::hasNode(setup, "pad.deadzone") && ui::hasNode(setup, "pad.mouselook") && ui::hasNode(setup, "pad.sensitivity"), "SETUP: the knobs");
+            t.IsTrue(ui::hasNode(setup, "pad.deadzone"), "SETUP: the dead zone");
+            t.IsFalse(ui::hasNode(setup, "pad.mouselook") || ui::hasNode(setup, "pad.sensitivity"), "SETUP: no mouse controls (Q3, R210)");
             t.IsFalse(ui::hasNode(setup, "pad.bind.cross"), "SETUP has no binding cells");
             t.IsFalse(ui::hasNode(setup, "pad.restore"), "and no RESTORE");
             t.IsFalse(ui::hasNode(setup, "pad.crouch.0"), "and the crouch row moved out of it");
@@ -1711,7 +1719,7 @@ void register_launcher_tests()
             t.Equals(g.move("pad.crouch.0", ui::Dir::Down), std::string("bar.launch.controller"), "and under that the bar's LAUNCH");
             t.Equals(g.move(ui::bindCellId(0), ui::Dir::Left), std::string("rail.controller"), "left off the first column is the rail");
             for (const std::string &id : g.idsOn(ui::Page::Controller))
-                t.IsTrue(!ui::adjustsHorizontally(id) || id == "pad.deadzone" || id == "pad.sensitivity", "cells navigate: " + id);
+                t.IsTrue(!ui::adjustsHorizontally(id) || id == "pad.deadzone", "cells navigate: " + id);
         });
 
         tc.Run("CONTROLLER: a dialog takes the BUTTONS section's controls out of the layout and puts its own in", [](TestCase &t)

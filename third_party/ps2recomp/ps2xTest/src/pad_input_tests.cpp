@@ -8,8 +8,10 @@
 #include "runtime/injected_pad_latch.h"
 #include "socom2_host_input.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstring>
 #include <vector>
 #include <cstdint>
 #include <string>
@@ -698,6 +700,104 @@ void register_pad_input_tests()
             bool seen[16] = {};
             for (const auto &k : kSocom2Keys) { t.IsTrue(k.button < 16, "a button index is in range"); if (k.button < 16) seen[k.button] = true; }
             for (int i = 0; i < 16; ++i) t.IsTrue(seen[i], "PS2 button " + std::to_string(i) + " is reachable from the keyboard");
+        });
+
+        // Sprint 10 Q3 (R210, owner 2026-09-20: "keyboard support ONLY for menu navigation and typing"). The
+        // keyboard's gameplay half -- the sticks and the shoulders, triggers and stick clicks -- is honoured only
+        // in developer mode, where it is the harness's scripted path (HANDOFF trap 1: every gate, ladder and
+        // control round posts exactly these keys into the window, and every harness launch has PS2X_DEV=1, R203).
+        // The menu-and-typing half -- d-pad, the four face buttons, START, SELECT -- is everyone's.
+        tc.Run("the keyboard scope: developer mode is the whole table, a player's game is menus and typing (R210)", [](TestCase &t)
+        {
+            using namespace ps2_stubs;
+            t.IsTrue(socom2KeyboardScopeFor(true) == KeyboardScope::Full, "developer mode: the whole table, the harness's path");
+            t.IsTrue(socom2KeyboardScopeFor(false) == KeyboardScope::Menus, "a player's game: menus and typing");
+            for (int id = 0; id < 16; ++id)
+                t.IsTrue(socom2KeyboardDrivesButton(KeyboardScope::Full, static_cast<uint8_t>(id)), "Full drives PS2 button " + std::to_string(id));
+            t.IsTrue(socom2KeyboardDrivesSticks(KeyboardScope::Full), "Full moves the sticks");
+            for (int id : {kPadUp, kPadRight, kPadDown, kPadLeft, kPadTriangle, kPadCircle, kPadCross, kPadSquare, kPadStart, kPadSelect})
+                t.IsTrue(socom2KeyboardDrivesButton(KeyboardScope::Menus, static_cast<uint8_t>(id)), "Menus drives PS2 button " + std::to_string(id) + " (menus and the on-screen keyboard read it)");
+            for (int id : {kPadL1, kPadR1, kPadL2, kPadR2, kPadL3, kPadR3})
+                t.IsFalse(socom2KeyboardDrivesButton(KeyboardScope::Menus, static_cast<uint8_t>(id)), "Menus leaves PS2 button " + std::to_string(id) + " to the pad");
+            t.IsFalse(socom2KeyboardDrivesSticks(KeyboardScope::Menus), "Menus never moves a stick");
+            t.IsFalse(socom2KeyboardDrivesButton(KeyboardScope::Full, 16) || socom2KeyboardDrivesButton(KeyboardScope::Menus, 16), "an id out of range is nothing, in either scope");
+        });
+
+        // The inert-in-developer-mode proof: with the scope Full, every key of the resolved table is consumed
+        // exactly as the poll consumed it before Q3 (the reference loop below IS that code), so the gate's harness
+        // sees no difference. Without developer mode the same presses reach only the menu buttons.
+        tc.Run("the keyboard applied: under Full every default key lands as before; under Menus only the menu keys land (R210)", [](TestCase &t)
+        {
+            using namespace ps2_stubs;
+            const launcher::mapping::Mapping def = launcher::mapping::defaults();
+            static std::vector<int> s_down;
+            const auto isDown = [](int key) { return std::find(s_down.begin(), s_down.end(), key) != s_down.end(); };
+            const auto reference = [&](Socom2PadState &out)
+            {
+                // socom2HostInputPoll's keyboard half as it was on 2026-09-21 before Q3.
+                for (const launcher::mapping::KeyBinding &entry : def.keys)
+                    if (entry.button < 16 && isDown(entry.key))
+                        out.button[entry.button] = 1u;
+                const auto axis = [&](int negative, int positive) -> uint8_t
+                {
+                    const bool n = isDown(negative), p = isDown(positive);
+                    return n == p ? 0x80u : (n ? 0x00u : 0xFFu);
+                };
+                out.axis[2] = axis('A', 'D');
+                out.axis[3] = axis('W', 'S');
+                out.axis[0] = axis('J', 'L');
+                out.axis[1] = axis('I', 'K');
+            };
+
+            // One key at a time: every entry of the table, and each stick key.
+            std::vector<int> keys;
+            for (const launcher::mapping::KeyBinding &entry : def.keys)
+                keys.push_back(entry.key);
+            for (int k : {'W', 'A', 'S', 'D', 'I', 'J', 'K', 'L'})
+                keys.push_back(k);
+            for (int key : keys)
+            {
+                s_down = {key};
+                Socom2PadState expected, full, menus;
+                reference(expected);
+                socom2ApplyKeyboard(def, KeyboardScope::Full, isDown, full);
+                t.IsTrue(std::memcmp(&full, &expected, sizeof(full)) == 0, "Full: key " + launcher::mapping::keyName(key) + " lands exactly as before");
+                socom2ApplyKeyboard(def, KeyboardScope::Menus, isDown, menus);
+                for (int id = 0; id < 16; ++id)
+                    t.Equals(static_cast<int>(menus.button[id]),
+                             socom2KeyboardDrivesButton(KeyboardScope::Menus, static_cast<uint8_t>(id)) ? static_cast<int>(expected.button[id]) : 0,
+                             "Menus: key " + launcher::mapping::keyName(key) + " and PS2 button " + std::to_string(id));
+                for (int axis = 0; axis < 4; ++axis)
+                    t.Equals(static_cast<int>(menus.axis[axis]), 0x80, "Menus: key " + launcher::mapping::keyName(key) + " moves no stick");
+            }
+
+            // A chord the harness holds (hold:W with R1 to fire, and START): the whole thing under Full, START alone under Menus.
+            s_down = {'W', 'E', 257};
+            Socom2PadState expected, full, menus;
+            reference(expected);
+            socom2ApplyKeyboard(def, KeyboardScope::Full, isDown, full);
+            t.IsTrue(std::memcmp(&full, &expected, sizeof(full)) == 0, "Full: W+E+Enter is forward, R1 and START as before");
+            t.IsTrue(full.axis[3] == 0x00u && full.button[kPadR1] == 1u && full.button[kPadStart] == 1u, "and that is what the reference says too");
+            socom2ApplyKeyboard(def, KeyboardScope::Menus, isDown, menus);
+            t.IsTrue(menus.axis[3] == 0x80u && menus.button[kPadR1] == 0u && menus.button[kPadStart] == 1u, "Menus: START, no movement, no fire");
+
+            // The contribution is OR-ed into what is already there; an axis at rest is left alone (the pad's stick may hold it).
+            s_down = {};
+            Socom2PadState kept;
+            kept.button[kPadCross] = 1u;
+            kept.axis[2] = 0xFFu;
+            socom2ApplyKeyboard(def, KeyboardScope::Full, isDown, kept);
+            t.IsTrue(kept.button[kPadCross] == 1u && kept.axis[2] == 0xFFu, "nothing down: nothing changes");
+
+            // A custom table from PS2X_INPUT_MAPPING is gated by the PS2 button it names, not by the key.
+            launcher::mapping::Mapping custom = def;
+            custom.keys = {{'P', static_cast<uint8_t>(kPadL1)}, {'O', static_cast<uint8_t>(kPadCross)}};
+            s_down = {'P', 'O'};
+            Socom2PadState c1, c2;
+            socom2ApplyKeyboard(custom, KeyboardScope::Full, isDown, c1);
+            t.IsTrue(c1.button[kPadL1] == 1u && c1.button[kPadCross] == 1u, "Full: a custom key table, both entries");
+            socom2ApplyKeyboard(custom, KeyboardScope::Menus, isDown, c2);
+            t.IsTrue(c2.button[kPadL1] == 0u && c2.button[kPadCross] == 1u, "Menus: the entry bound to L1 is gameplay whatever key it is on");
         });
 
         tc.Run("off is today's pad, for every button and with or without the touchpad", [](TestCase &t)
