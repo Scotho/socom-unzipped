@@ -272,3 +272,25 @@ whether it is wanted at all.
 - The DWM colours on the owner's Windows 11: written from the documented attribute ids, exercised only on the launcher
   side of nothing — the runtime's window is the game's.
 - The cues through speakers: rendered and measured, not heard.
+
+---
+
+## Result (2026-09-21, the Q4 agent)
+
+- Commits on `agent/q4`: `0acf90b` (a), `283130c` (b), `0162d71` (c) + this plan. Not pushed.
+- Suite: `./build.sh test --no-runner` (`logs/q4/build2.log`, then `tests3.log` after the one fix): Python 1655 OK
+  (96 skipped), ps2x_tests **753/753** (was 743 at `8d6e5c3`: +4 Launcher, +1 Launcher chrome, +1 HostConfig,
+  +4 MenuSounds). RED first: the first suite run with the new cases had 2 failures -- the switch cell's id inside
+  Goal 8's `pad.bind.*` walk (17 "sixteen cells"), and the cue bars set before the cues were measured (.BACK peak
+  1383, .NEG's tail); the second run 1 -- Goal 8's focus walk `BUTTONS -> RESTORE`, now `-> SWITCH -> OFF ->`.
+  The rest of the new cases were written with their code in the same pass and passed on their first run.
+- Screenshots (`logs/q4/shots/`, 51 PNGs, the walk on the rebuilt launcher; the four looked at):
+  `controller_buttons_1100x700.png` -- the section row reads SETUP | BUTTONS | SWITCH XBOX | OFF | RESTORE
+  DEFAULTS above the sixteen cells, nothing moved. `controller_buttons_switch_1100x700.png` -- the SWITCH cell
+  focused, bound to VIEW with the custom dot, the ring on the drawing's VIEW button, SELECT reading NOT BOUND with
+  its dot (as REPLACE leaves it), the band carrying the switch's help. `controller_buttons_switch_conflict_1100x700.png`
+  -- the two-answer dialog, "VIEW is already SELECT, and the game must not read the window switch. Replace it
+  (SELECT loses its button), or cancel?", the focus on CANCEL. `audio_1100x700.png` / `audio_800x520.png` -- the
+  LAUNCHER row under the volume's captions, the toggle on, the line "from your disc: cache/menu_sounds/<key>".
+- Not committed: `scripts/q4_syntax_check.py` (an agent-local `-fsyntax-only` helper, deleted).
+
