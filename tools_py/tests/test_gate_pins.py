@@ -34,6 +34,23 @@ def _sha(data):
 
 
 class TreeAndFileHashes(unittest.TestCase):
+    def test_a_text_file_pins_the_same_with_crlf_and_lf_line_endings(self):
+        """The first merge of this mechanism refused to score on the main tree: three drive scripts had "drifted"
+        because the worktree that generated the standard checked them out with CRLF (core.autocrlf) and the main
+        tree holds them with LF -- the same content, different bytes. A text pin is of the content, not the
+        checkout; a binary pin (a PNG) is of the bytes."""
+        with tempfile.TemporaryDirectory() as d:
+            lf, crlf, png = (os.path.join(d, n) for n in ("a.txt", "b.txt", "c.png"))
+            with open(lf, "wb") as fh:
+                fh.write(b"hold:W 3.0\npress:X\n")
+            with open(crlf, "wb") as fh:
+                fh.write(b"hold:W 3.0\r\npress:X\r\n")
+            with open(png, "wb") as fh:
+                fh.write(b"\x89PNG\r\n\x1a\n\x00\x00\r\n")
+            self.assertEqual(pins.file_sha256(lf), pins.file_sha256(crlf))
+            self.assertEqual(pins.file_sha256(lf), _sha(b"hold:W 3.0\npress:X\n"))
+            self.assertEqual(pins.file_sha256(png), _sha(b"\x89PNG\r\n\x1a\n\x00\x00\r\n"), "binary bytes untouched")
+
     def test_a_directory_pins_as_the_sorted_manifest_of_its_files(self):
         with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
             for root, order in ((a, ("x.bin", "sub/y.bin")), (b, ("sub/y.bin", "x.bin"))):
@@ -135,8 +152,7 @@ class PinnedInputs(unittest.TestCase):
         self.assertEqual(list(current)[:11], gate.pinned_files())
         self.assertEqual(list(current)[11:], ["card", "env", "harness", "mapping"])
         for rel in gate.pinned_files():
-            with open(os.path.join(ROOT, rel), "rb") as f:
-                self.assertEqual(current[rel].sha256, _sha(f.read()), rel)
+            self.assertEqual(current[rel].sha256, pins.file_sha256(os.path.join(ROOT, rel)), rel)
         self.assertEqual(len(current["harness"].sha256), 64)
         self.assertIn("git", current["harness"].detail)
         self.assertIsNone(current["mapping"].sha256)

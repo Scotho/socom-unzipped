@@ -90,21 +90,21 @@ would actually read) — an "unpinned input", refused.
   git-ignored card the pins check (which sits between the disk check and the lock) would answer 7 first.
 - `docs/parity/NOTES.md`: how a summary with PIN lines is read.
 
-## 4. Proposed rulings (for the controller to number in CURRENT_SPRINT; next free is R184)
+## 4. Rulings (numbered by the controller 2026-09-21: R185-R188; R184 was taken by the mid-sprint merge to main)
 
-- **R184 — any drift refuses, whatever `--only` asked for.** The standard describes the gate as a whole; a
+- **R185 — any drift refuses, whatever `--only` asked for.** The standard describes the gate as a whole; a
   `--only title` run with a drifted mission reference is still a gate whose standard moved, and `--accept-pins`
   is one flag away. Cost if wrong: an unnecessary refusal on a partial run. Overturn: scope `compare` to the
   requested stages' inputs (the per-stage lists are already in `pinned_files`' construction).
-- **R185 — the harness is recorded, never compared.** The file cannot name the revision of the tree that holds it,
+- **R186 — the harness is recorded, never compared.** The file cannot name the revision of the tree that holds it,
   and the inputs the score depends on are pinned individually; every commit to the harness is itself the record.
   The expected-pins file is excluded from the harness hash so accepting a standard does not move the harness it
   was accepted under.
-- **R186 — an operator's extra `PS2X_*` variable is a drift.** The gate is defined as a boot with exactly its own
+- **R187 — an operator's extra `PS2X_*` variable is a drift.** The gate is defined as a boot with exactly its own
   knobs; `PS2X_GS_STATS=1` or a wider `PS2X_PEEK` changes what the runtime does and is refused unless accepted.
   `PS2X_MC_DIR` is exempt from the env pin because the card pin covers what it points at: an operator's copy of
   the pristine card matches; a touched one does not.
-- **R187 — the first run that prints a mapping hash is refused until accepted.** The task said "pin it as
+- **R188 — the first run that prints a mapping hash is refused until accepted.** The task said "pin it as
   mapping"; a pin the standard does not hold is an unpinned input like any other. Q3b's proving gate therefore
   runs with `--accept-pins` once, and the file gains `mapping`. An absent line is recorded as absent and never
   refused (as briefed).

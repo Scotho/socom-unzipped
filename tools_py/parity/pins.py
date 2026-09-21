@@ -42,10 +42,20 @@ Drift = namedtuple("Drift", "name actual expected")
 
 
 def file_sha256(path):
+    """sha256 of a file's CONTENT: a text file (no NUL in its first 8 KB) is hashed with CRLF folded to LF, so the
+    same drive script pins the same from a checkout that wrote it with CRLF (core.autocrlf on Windows) as from one
+    that wrote LF -- the first merge of this mechanism refused to score on exactly that. Binary files (the reference
+    PNGs, the card's files) are hashed as their bytes."""
     digest = hashlib.sha256()
     with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            digest.update(chunk)
+        head = fh.read(8192)
+        text = b"\x00" not in head
+        fh.seek(0)
+        if text:
+            digest.update(fh.read().replace(b"\r\n", b"\n"))     # whole, so no CRLF straddles a chunk
+        else:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                digest.update(chunk)
     return digest.hexdigest()
 
 
