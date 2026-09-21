@@ -23,6 +23,7 @@ from tools_py.parity import online_match_ours as M
 from tools_py.parity import verdict_core as vc
 from tools_py.tests.online_rows import Clock, peek, tail
 from tools_py.tests.test_aim_pad import AimShell, AimWorld
+from tools_py.tests.shell import BASH
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TEMPLATE = os.path.join(ROOT, "scripts", "parity", "ladder_frostfire.sh")
@@ -118,12 +119,6 @@ class HarnessIdentityTest(unittest.TestCase):
         self.assertTrue(commit.endswith("-live") or commit == vc.NO_DATA, commit)
 
 
-BASH = shutil.which("bash")
-if os.name == "nt":
-    for cand in (r"C:\Program Files\Git\bin\bash.exe", r"C:\Program Files\Git\usr\bin\bash.exe"):
-        if os.path.exists(cand):
-            BASH = cand
-            break
 
 
 class DryRunTest(unittest.TestCase):

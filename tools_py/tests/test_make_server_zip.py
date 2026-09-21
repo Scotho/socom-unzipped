@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import unittest
 import zipfile
+from tools_py.tests.shell import BASH
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPT = os.path.join(ROOT, "scripts", "make_server_zip.sh")
@@ -21,11 +22,11 @@ SERVER_EXE = os.path.join(ROOT, "server", "horizon-server", "Server.Unified.Laun
 
 
 def _run(out, env=None):
-    return subprocess.run(["bash", SCRIPT, out], capture_output=True, text=True, cwd=ROOT,
+    return subprocess.run([BASH, SCRIPT, out], capture_output=True, text=True, cwd=ROOT,
                           env={**os.environ, **(env or {})})
 
 
-@unittest.skipUnless(shutil.which("bash") and shutil.which("powershell"), "bash and PowerShell only")
+@unittest.skipUnless(BASH and shutil.which("powershell"), "bash and PowerShell only")
 class MakeServerZipTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -58,7 +59,7 @@ class MakeServerZipTest(unittest.TestCase):
                          "a seeded database must not ship")
 
 
-@unittest.skipUnless(shutil.which("bash") and shutil.which("powershell"), "bash and PowerShell only")
+@unittest.skipUnless(BASH and shutil.which("powershell"), "bash and PowerShell only")
 class MakeServerZipRefusalTest(unittest.TestCase):
     """Needs no built server, so it runs on a fresh clone too."""
 

@@ -16,6 +16,7 @@ import os
 import re
 import subprocess
 import unittest
+from tools_py.tests.shell import BASH
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 ENV_SH = os.path.join(ROOT, "scripts", "parity", "env.sh")
@@ -28,7 +29,7 @@ def run_bash(script, env=None):
     for k in ("SOCOM_SERVER_IP", "PS2X_SOCOM2_SERVER", "PS2X_PEEK"):
         e.pop(k, None)
     e.update(env or {})
-    p = subprocess.run(["bash", "-c", script], cwd=ROOT, env=e,
+    p = subprocess.run([BASH, "-c", script], cwd=ROOT, env=e,
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     assert p.returncode == 0, "bash failed (%s): %s" % (p.returncode, p.stderr)
     return p.stdout.split()

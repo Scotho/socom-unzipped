@@ -16,6 +16,7 @@ import tempfile
 import unittest
 
 from tools_py.parity import online_match_ours as M
+from tools_py.tests.shell import BASH
 
 HEALTH_OFFSET = 0x40          # actor-relative; inside the single peeked block below
 BLOCK_WORDS = 0x48 // 4       # covers ACTOR_POS_WORDS and HEALTH_OFFSET
@@ -214,7 +215,7 @@ class FrostfireScriptLaunches(unittest.TestCase):
         import subprocess
         script = ("unset PS2X_PEEK PS2X_CALL_TRACE PS2X_CALL_TRACE_EVERY PS2X_SOCOM2_SERVER PS2X_GS_STATS; "
                   ". scripts/parity/env.sh; export PS2X_SOCOM2_RSA_KEY_B=b; env | grep '^PS2X_'")
-        p = subprocess.run(["bash", "-c", script], capture_output=True, text=True, cwd=os.getcwd())
+        p = subprocess.run([BASH, "-c", script], capture_output=True, text=True, cwd=os.getcwd())
         return dict(line.split("=", 1) for line in p.stdout.splitlines() if "=" in line)
 
     def test_committed_script_is_not_refused(self):

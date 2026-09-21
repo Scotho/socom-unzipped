@@ -17,16 +17,11 @@ import unittest
 from tools_py.parity import online_ladder as LD
 from tools_py.parity import online_match_ours as M
 from tools_py.tests.test_round_loop_fixes import SPAWNS_8C, Replay
+from tools_py.tests.shell import BASH
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TEMPLATE = os.path.join(ROOT, "scripts", "parity", "ladder_frostfire.sh").replace("\\", "/")
 PIN = os.path.join(ROOT, "scripts", "pin_harness.sh").replace("\\", "/")
-BASH = shutil.which("bash")
-if os.name == "nt":
-    for cand in (r"C:\Program Files\Git\bin\bash.exe", r"C:\Program Files\Git\usr\bin\bash.exe"):
-        if os.path.exists(cand):
-            BASH = cand
-            break
 
 
 def fwd(p):

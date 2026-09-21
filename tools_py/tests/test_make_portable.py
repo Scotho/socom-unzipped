@@ -9,6 +9,7 @@ import unittest
 
 from tools_py import portable_audit
 from tools_py.tests.binfmt_fixtures import tiny_pe
+from tools_py.tests.shell import BASH
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPT = os.path.join(ROOT, "scripts", "make_portable.sh")
@@ -36,10 +37,10 @@ def fake_dist(tmp, without=()):
     return dist
 
 
-@unittest.skipUnless(shutil.which("bash") and shutil.which("powershell"), "bash and PowerShell only")
+@unittest.skipUnless(BASH and shutil.which("powershell"), "bash and PowerShell only")
 class MakePortableTest(unittest.TestCase):
     def _run(self, dist, *args):
-        return subprocess.run(["bash", SCRIPT] + list(args), capture_output=True, text=True, cwd=ROOT,
+        return subprocess.run([BASH, SCRIPT] + list(args), capture_output=True, text=True, cwd=ROOT,
                               env={**os.environ, "DIST": dist})
 
     def test_folder_has_the_game_the_launcher_the_closure_the_readme_and_the_licences(self):
