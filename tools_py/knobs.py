@@ -71,10 +71,6 @@ RAW_GETENV_PENDING = {
     "third_party/ps2recomp/ps2xRuntime/src/lib/socom2_host_input.cpp",
     "third_party/ps2recomp/ps2xRuntime/src/lib/socom2_hostnet.cpp",
     "third_party/ps2recomp/ps2xRuntime/src/lib/socom2_libnetb.cpp",
-    "third_party/ps2recomp/ps2xRuntime/src/lib/vu/native/socom2_dispatch_0x1b50.cpp",
-    "third_party/ps2recomp/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp",
-    "third_party/ps2recomp/ps2xRuntime/src/lib/vu/ps2_vu1_lower.cpp",
-    "third_party/ps2recomp/ps2xRuntime/src/lib/vu/ps2_vu1_upper.cpp",
     "third_party/ps2recomp/ps2xRuntime/src/main.cpp",
 }
 

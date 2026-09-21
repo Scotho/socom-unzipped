@@ -10,6 +10,7 @@ extern std::atomic<uint64_t> g_vuProgramsKickBit;
 #include "runtime/ps2_guest_clock.h"
 #include "runtime/vu1_native_warning.h"
 #include "ps2_vu1_detail.h"
+#include "ps2x/knobs.h"
 
 #include <algorithm>
 #include <cfenv>
@@ -950,7 +951,7 @@ void VU1Interpreter::dumpOverrunState()
     for (int i = 0; i < 16; ++i)
         std::fprintf(stderr, "%s%d", i ? "," : "", (int)m_state.vi[i]);
     std::fprintf(stderr, "\n");
-    const char *dir = std::getenv("PS2X_FRAME_DUMP");
+    const char *dir = ps2x::knob("PS2X_FRAME_DUMP");
     const std::string path = std::string(dir ? dir : "logs") + "/vu1_overrun_data.bin";
     if (FILE *fp = std::fopen(path.c_str(), "wb"))
     {
@@ -1074,7 +1075,7 @@ void VU1Interpreter::startXgkick(uint32_t qwordAddress)
     // signature of a buffer re-templated by the program before the modeled transfer finished.
     // Default since 2026-09-08: the per-cycle model dropped SOCOM II's object geometry (buffers
     // re-templated before the modeled transfer finished); PS2X_VU1_XGKICK_CYCLE_EXACT=1 restores it.
-    static const bool s_immediate = std::getenv("PS2X_VU1_XGKICK_CYCLE_EXACT") == nullptr;
+    static const bool s_immediate = ps2x::knob("PS2X_VU1_XGKICK_CYCLE_EXACT") == nullptr;
     if (s_immediate)
     {
         m_xgkick.cycleCredit = 0x40000000u;
@@ -2306,11 +2307,11 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
     // vu1_replay + tools_py/gif_packets.py.
     if (m_unit == Unit::VU1)
     {
-        static const char *s_dumpEnv = std::getenv("PS2X_VU1_DUMP");
+        static const char *s_dumpEnv = ps2x::knob("PS2X_VU1_DUMP");
         extern std::atomic<bool> g_ps2xTraceArmed;
         // PS2X_VU1_DUMP_AFTER=<seconds>: arm the dump on a timer instead of PS2X_TRIGGER (title /
         // online screens have no convenient trigger value).
-        static const double s_dumpAfter = std::getenv("PS2X_VU1_DUMP_AFTER") ? std::atof(std::getenv("PS2X_VU1_DUMP_AFTER")) : 0.0;
+        static const double s_dumpAfter = ps2x::knob("PS2X_VU1_DUMP_AFTER") ? std::atof(ps2x::knob("PS2X_VU1_DUMP_AFTER")) : 0.0;
         static const auto s_dumpStart = std::chrono::steady_clock::now();
         const bool timerArmed = s_dumpAfter > 0.0 &&
                                 std::chrono::duration<double>(std::chrono::steady_clock::now() - s_dumpStart).count() >= s_dumpAfter;
@@ -2355,10 +2356,10 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
     // the next three, so the trace can be aimed at a later screen (menu, mission).
     static std::atomic<int> s_vuTraceDumped{0};
     static std::atomic<uint64_t> s_vuTraceSeen{0};
-    static const int s_vuTraceSkip = std::getenv("PS2X_TRACE_VU") ? std::atoi(std::getenv("PS2X_TRACE_VU")) : 0;
+    static const int s_vuTraceSkip = ps2x::knob("PS2X_TRACE_VU") ? std::atoi(ps2x::knob("PS2X_TRACE_VU")) : 0;
     bool traceThis = false;
     uint32_t traceFirstXg = 0xFFFFFFFFu;
-    static const bool s_vuTraceEnv = std::getenv("PS2X_TRACE_VU") != nullptr;
+    static const bool s_vuTraceEnv = ps2x::knob("PS2X_TRACE_VU") != nullptr;
     if (m_unit == Unit::VU1 && s_vuTraceEnv &&
         s_vuTraceSeen.fetch_add(1, std::memory_order_relaxed) >= static_cast<uint64_t>(s_vuTraceSkip) &&
         s_vuTraceDumped.load(std::memory_order_relaxed) < 3)
@@ -2404,7 +2405,7 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
             }
             // Dump the whole VU1 data memory for each traced program (vu1_data_<n>.bin).
             {
-                const char *dir = std::getenv("PS2X_FRAME_DUMP");
+                const char *dir = ps2x::knob("PS2X_FRAME_DUMP");
                 const std::string path = std::string(dir ? dir : "logs") + "/vu1_data_" +
                                          std::to_string(s_vuTraceDumped.load(std::memory_order_relaxed)) + ".bin";
                 if (FILE *fp = std::fopen(path.c_str(), "wb"))
@@ -2419,7 +2420,7 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
             if (!s_codeDumped)
             {
                 s_codeDumped = true;
-                const char *dir = std::getenv("PS2X_FRAME_DUMP");
+                const char *dir = ps2x::knob("PS2X_FRAME_DUMP");
                 const std::string path = std::string(dir ? dir : "logs") + "/vu1_code.bin";
                 if (FILE *fp = std::fopen(path.c_str(), "wb"))
                 {
@@ -2462,17 +2463,17 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
     // Fast path on by default since 2026-09-09 (verified in the mission: title, intro and gameplay
     // clean, 18 ns/cycle vs 100); PS2X_VU1_FAST=0 selects the cycle-exact scheduler, which a VU
     // trace also forces.
-    static const bool s_fastEnv = std::getenv("PS2X_VU1_FAST") == nullptr || std::atoi(std::getenv("PS2X_VU1_FAST")) != 0;
+    static const bool s_fastEnv = ps2x::knob("PS2X_VU1_FAST") == nullptr || std::atoi(ps2x::knob("PS2X_VU1_FAST")) != 0;
     // VU0 micro programs (VCALLMS) share the same instruction semantics; PS2X_VU0_FAST=0 keeps them on
     // the cycle-exact scheduler (they were ~4.5% of the game thread on it, STATUS 2026-09-09).
-    static const bool s_vu0FastEnv = std::getenv("PS2X_VU0_FAST") == nullptr || std::atoi(std::getenv("PS2X_VU0_FAST")) != 0;
+    static const bool s_vu0FastEnv = ps2x::knob("PS2X_VU0_FAST") == nullptr || std::atoi(ps2x::knob("PS2X_VU0_FAST")) != 0;
     m_fast = s_fastEnv && (m_unit == Unit::VU1 || s_vu0FastEnv) && !traceThis;
-    static const bool s_genEnv = std::getenv("PS2X_VU1_GEN") == nullptr || std::atoi(std::getenv("PS2X_VU1_GEN")) != 0;
+    static const bool s_genEnv = ps2x::knob("PS2X_VU1_GEN") == nullptr || std::atoi(ps2x::knob("PS2X_VU1_GEN")) != 0;
     // Hand-written native programs (src/lib/vu/native) replace a microprogram entry point on
     // both the fast and the cycle-exact path: what they produce does not depend on how the
     // microcode would have been interpreted. On by default (kVu1NativeDefault);
     // PS2X_VU1_NATIVE=0 reverts to the generated/interpreted path.
-    static const bool s_nativeEnv = std::getenv("PS2X_VU1_NATIVE") ? std::atoi(std::getenv("PS2X_VU1_NATIVE")) != 0 : kVu1NativeDefault;
+    static const bool s_nativeEnv = ps2x::knob("PS2X_VU1_NATIVE") ? std::atoi(ps2x::knob("PS2X_VU1_NATIVE")) != 0 : kVu1NativeDefault;
     // Both registries are keyed by the FNV-1a hash of the 16 KB code image, rehashed only when
     // the VIF MPG generation counter changes.
     const bool hashableImage = memory != nullptr && vuCode == memory->getVU1Code();
@@ -2557,7 +2558,7 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
                                  (unsigned long long)m_knownHash, m_state.pc);
                 }
             }
-            static const bool s_bailHistEnv = std::getenv("PS2X_VU1_BAILHIST") != nullptr;
+            static const bool s_bailHistEnv = ps2x::knob("PS2X_VU1_BAILHIST") != nullptr;
             if (s_bailHistEnv && !g_vu1BailHist)
             {
                 static uint32_t s_bailHist[2048] = {0};
@@ -2594,7 +2595,7 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
         }
         g_vuInsnCount.fetch_add(1, std::memory_order_relaxed);
 
-        static const uint32_t s_traceStepCap = std::getenv("PS2X_TRACE_VU_STEPS") ? static_cast<uint32_t>(std::atoi(std::getenv("PS2X_TRACE_VU_STEPS"))) : 1200u;
+        static const uint32_t s_traceStepCap = ps2x::knob("PS2X_TRACE_VU_STEPS") ? static_cast<uint32_t>(std::atoi(ps2x::knob("PS2X_TRACE_VU_STEPS"))) : 1200u;
         if (traceThis && traceSteps < s_traceStepCap)
         {
             uint32_t lo, up;
@@ -2814,7 +2815,7 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
     }
     // PS2X_VU_STATS=1: once a second, VU1 programs / cycles executed and host time spent in run().
     {
-        static const bool s_stats = std::getenv("PS2X_VU_STATS") != nullptr;
+        static const bool s_stats = ps2x::knob("PS2X_VU_STATS") != nullptr;
         if (s_stats && m_unit == Unit::VU1)
         {
             static uint64_t s_programs = 0, s_cycles = 0;
