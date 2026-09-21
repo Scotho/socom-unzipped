@@ -30,11 +30,13 @@ class RegistryShapeTest(unittest.TestCase):
         self.assertEqual(len(knobs.table()), len(re.findall(r'^    X\("PS2X_', text, re.M)),
                          "a row the regex cannot read would vanish from docs/KNOBS.md and from every check here")
 
-    def test_twenty_shipping_settings_and_one_switch(self):
+    def test_eighteen_shipping_settings_and_one_switch(self):
         # The plan counted 17 at 8e5d778; Sprint 10 Goal 8 (R174) added PS2X_INPUT_MAPPING to environmentFor, and
         # Goal 9 the two login knobs (merged after the registry was written: the first generated rebuild found them).
+        # Sprint 10 Q3 (R210) deleted PS2X_SOCOM2_MOUSE and PS2X_SOCOM2_MOUSE_SENS with their code: the mouse left.
         rows = knobs.table()
-        self.assertEqual(sum(1 for r in rows if r["cls"] == "Shipping"), 20)
+        self.assertEqual(sum(1 for r in rows if r["cls"] == "Shipping"), 18)
+        self.assertFalse([r["name"] for r in rows if "MOUSE" in r["name"]], "no mouse knob survives Q3")
         self.assertEqual([r["name"] for r in rows if r["cls"] == "Switch"], ["PS2X_DEV"])
 
 

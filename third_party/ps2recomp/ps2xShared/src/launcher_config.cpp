@@ -84,15 +84,13 @@ namespace launcher
         out += "  \"windowSize\": " + quote(c.windowSize) + ",\n";
         out += std::string("  \"fpsOverlay\": ") + (c.fpsOverlay ? "true" : "false") + ",\n";
         out += "  \"audioVolume\": " + std::to_string(c.audioVolume) + ",\n";
-        out += std::string("  \"mouseLook\": ") + (c.mouseLook ? "true" : "false") + ",\n";
-        char sens[32];
-        std::snprintf(sens, sizeof(sens), "%g", c.mouseSensitivity);
-        out += std::string("  \"mouseSensitivity\": ") + sens + ",\n";
         out += "  \"gamepadIndex\": " + std::to_string(c.gamepadIndex) + ",\n";
         char dz[32];
         std::snprintf(dz, sizeof(dz), "%g", c.padDeadZone);
         out += std::string("  \"padDeadZone\": ") + dz + ",\n";
         out += "  \"crouchShortcut\": " + quote(normalizeCrouchShortcut(c.crouchShortcut)) + ",\n";
+        out += "  \"focusToggle\": " + quote(normalizeFocusToggle(c.focusToggle)) + ",\n";   // Sprint 10 Q4
+        out += std::string("  \"menuSounds\": ") + (c.menuSounds ? "true" : "false") + ",\n";
         out += "  \"micDevice\": " + quote(c.micDevice) + ",\n";
         out += "  \"serverPreset\": " + quote(c.serverPreset) + ",\n";
         out += "  \"server\": " + quote(c.server) + ",\n";
@@ -160,7 +158,7 @@ namespace launcher
                 std::string key;
                 if (!p.string(key) || !p.take(':'))
                     return false;
-                if (key == "isoPath" || key == "presentFilter" || key == "windowSize" || key == "server" || key == "serverPreset" || key == "profile" || key == "micDevice" || key == "crouchShortcut" || key == "loginName" || key == "loginPassword")
+                if (key == "isoPath" || key == "presentFilter" || key == "windowSize" || key == "server" || key == "serverPreset" || key == "profile" || key == "micDevice" || key == "crouchShortcut" || key == "focusToggle" || key == "loginName" || key == "loginPassword")
                 {
                     std::string v;
                     if (!p.string(v))
@@ -168,6 +166,7 @@ namespace launcher
                     if (key == "isoPath") c.isoPath = v;
                     else if (key == "presentFilter") c.presentFilter = v;
                     else if (key == "crouchShortcut") c.crouchShortcut = normalizeCrouchShortcut(v);
+                    else if (key == "focusToggle") c.focusToggle = normalizeFocusToggle(v);
                     // Review finding F5: a stored 0x0 (or any zero dimension) keeps the default instead.
                     else if (key == "windowSize") { if (isUsableWindowSize(v)) c.windowSize = v; }
                     else if (key == "server") { c.server = v; sawServer = true; }
@@ -191,18 +190,19 @@ namespace launcher
                     else if (key == "loginPassword") c.loginPassword = v;
                     else c.profile = normalizeProfile(v);
                 }
-                else if (key == "gsScale" || key == "mouseSensitivity" || key == "mouseLook" || key == "secondInstance" || key == "gamepadIndex" || key == "padDeadZone" || key == "fpsOverlay" || key == "audioVolume")
+                // Sprint 10 Q3 (R210): "mouseLook" and "mouseSensitivity", written by every launcher before 2026-09-21,
+                // are no longer keys of ours; they fall through to the unknown-key skip below like any other.
+                else if (key == "gsScale" || key == "secondInstance" || key == "gamepadIndex" || key == "padDeadZone" || key == "fpsOverlay" || key == "audioVolume" || key == "menuSounds")
                 {
                     std::string raw;
                     if (!p.scalar(raw))
                         return false;
                     if (key == "gsScale") c.gsScale = std::atoi(raw.c_str());
-                    else if (key == "mouseSensitivity") c.mouseSensitivity = std::atof(raw.c_str());
-                    else if (key == "mouseLook") c.mouseLook = raw == "true";
                     else if (key == "fpsOverlay") c.fpsOverlay = raw == "true";
                     else if (key == "audioVolume") c.audioVolume = std::atoi(raw.c_str());
                     else if (key == "gamepadIndex") c.gamepadIndex = std::atoi(raw.c_str());
                     else if (key == "padDeadZone") c.padDeadZone = std::atof(raw.c_str());
+                    else if (key == "menuSounds") c.menuSounds = raw == "true";
                     else c.secondInstance = raw == "true";
                 }
                 else if (key == "mappings")
@@ -367,6 +367,21 @@ namespace launcher
         return "off";
     }
 
+    std::string normalizeFocusToggle(const std::string &value)
+    {
+        if (value == "none")
+            return value;
+        // hostButtonFromName answers 0 (kHostNone) for "none" and -1 for a name it does not know; "none" is
+        // taken above, so a bound button and "off" are both kept and only nonsense becomes the default.
+        return mapping::hostButtonFromName(value) > mapping::kHostNone ? value : std::string("guide");
+    }
+
+    int focusToggleHost(const Config &config)
+    {
+        const std::string name = normalizeFocusToggle(config.focusToggle);
+        return name == "none" ? mapping::kHostNone : mapping::hostButtonFromName(name);
+    }
+
     std::string normalizeProfile(const std::string &value)
     {
         // A name, not a path. Anything with a separator, a colon, a control character or any other punctuation
@@ -490,13 +505,7 @@ namespace launcher
         // Sprint 7 Task 9: only when the player picked one -- unset means the runtime opens no capture device.
         if (!c.micDevice.empty())
             env.push_back("PS2X_MIC_DEVICE=" + c.micDevice);
-        if (c.mouseLook)
-        {
-            env.push_back("PS2X_SOCOM2_MOUSE=1");
-            char sens[32];
-            std::snprintf(sens, sizeof(sens), "%g", c.mouseSensitivity);
-            env.push_back(std::string("PS2X_SOCOM2_MOUSE_SENS=") + sens);
-        }
+        // Sprint 10 Q3 (R210): no PS2X_SOCOM2_MOUSE / _SENS any more -- the mouse left the launcher and the runtime.
         if (c.secondInstance)
         {
             env.push_back("PS2X_SOCOM2_UDP_SHIFT=2");

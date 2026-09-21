@@ -282,7 +282,7 @@ rather than rule. At most two C++-building agents at once.
 | Move "Second instance" into an ADVANCED section | P4 | Open |
 | A one-frame flash at the top left on page change | P4 (suspect `ui/focus.cpp:211-217`) | Open |
 | Launcher menu sounds from the game's own bank | Q4 -- decoded from the player's ISO at first run, cached, never shipped | Open |
-| Remove every mouse option; keyboard permanent but for menus and typing only | Q3; trap 1; the proposed ruling | Recorded, NOT implemented, deliberately after Goal 3 |
+| Remove every mouse option; keyboard permanent but for menus and typing only | Q3; trap 1; R210 | **DONE 2026-09-21** (`agent/q3`, merged `0c172a6`): the mouse and its two knobs are gone; the gameplay keys survive in developer mode only, which every harness launch is |
 | The debugger must not be open at launch | `2d0463f` (it was `m_visible = true`; F1 toggles) | DONE. Open: whether the release build carries imgui at all -- a size measurement inside Q2 |
 | We expose many PS2X options; maybe a private git-ignored dev build -- "unless you agree otherwise" | Spec Goal 3, "the exposure question"; Q2; `SECURITY.md` | Answered no, with reasons; one real vector found and fixed (`f5809c8`, the profile was a path). The owner can still overrule -- as a committed option |
 | The server's name is `socom.scotho.com`; "you add it" | `80b1971`; P6 | The DNS-only A record exists and resolves. Next: the persona measurement, then the launcher's default |

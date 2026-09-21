@@ -1,6 +1,7 @@
 // Sprint 8 Goal 9: the layout and the focus model. Pure -- no raylib, no globals, no drawing.
 #include "focus.h"
 
+#include "bind_flow.h"                   // Sprint 10 Q4: the window switch's cell ids
 #include "launcher/launcher_config.h"   // which server presets can be played at all
 
 #include <algorithm>
@@ -156,6 +157,8 @@ namespace ui
         case Page::Audio:
         {
             add(out, page, "audio.volume", Rect{b.x + metrics::labelW, b.y + 22.0f, b.w - metrics::labelW - 90.0f, 32.0f});
+            // Sprint 10 Q4: the launcher's own sounds, under the slider's scale and its two caption lines.
+            add(out, page, "audio.sounds", Rect{b.x + metrics::labelW, b.y + 150.0f, b.w - metrics::labelW, 40.0f});
             break;
         }
         case Page::Controller:
@@ -183,13 +186,16 @@ namespace ui
                     add(out, page, "pad.pick." + std::to_string(i), Rect{b.x, top + static_cast<float>(i) * 30.0f, 400.0f, 26.0f});
                 const float rx = b.x + 440.0f;
                 const float rw = b.w - 440.0f;
+                // Sprint 10 Q3 (R210): the dead zone alone -- the mouse-look toggle and its sensitivity slider left.
                 add(out, page, "pad.deadzone", Rect{rx, top, rw, 28.0f});
-                add(out, page, "pad.mouselook", Rect{rx, top + 44.0f, rw, 28.0f});
-                add(out, page, "pad.sensitivity", Rect{rx, top + 92.0f, rw, 28.0f});
                 break;
             }
             // BUTTONS: RESTORE at the switch row's right end; the sixteen cells four across and four down; the
             // crouch row (R139) last, in the label column's grid like every other row with a label.
+            // Sprint 10 Q4: the WINDOW SWITCH cell and its OFF sit on the section row between the section
+            // switch and RESTORE -- the one strip of BUTTONS with room, and a binding belongs with the bindings.
+            add(out, page, kSwitchCellId, Rect{b.x + 322.0f, below, 190.0f, 28.0f});
+            add(out, page, kSwitchOffId, Rect{b.x + 522.0f, below, 50.0f, 28.0f});
             add(out, page, "pad.restore", Rect{b.right() - 200.0f, below, 200.0f, 28.0f});
             const Rect grid{b.x, top, b.w, 24.0f};
             for (int i = 0; i < 16; ++i)
@@ -305,6 +311,19 @@ namespace ui
             {"pad.restore",
              "Puts every button back to the defaults for this profile. It asks first, and the answer it lands on "
              "is CANCEL."},
+            // Sprint 10 Q4: the window switch. What it does, and the one platform fact a player will hit: an Xbox
+            // pad's guide button is hidden by Windows' XInput, so the launcher asks for it another way; if that
+            // way is missing on their machine, this cell is where they put the switch on a button that works.
+            {"pad.switch.bind",
+             "While the game runs, this pad button brings the launcher in front of it, and again sends the game "
+             "back. The XBOX / PS button by default. Press to bind another one; the game never reads it."},
+            {"pad.switch.off",
+             "Turns the window switch off: no pad button swaps the windows, and the XBOX / PS button is left to "
+             "whatever else listens for it (Steam, the Xbox Game Bar)."},
+            // Sprint 10 Q4: where the launcher's sounds come from, and why there are none before a disc is set.
+            {"audio.sounds",
+             "The game's own menu clicks, read out of YOUR disc image the first time it is verified and kept in "
+             "cache/ next to this program. Nothing ships with the download, so with no disc set there is silence."},
         };
     }
 
@@ -563,6 +582,6 @@ namespace ui
 
     bool adjustsHorizontally(const std::string &id)
     {
-        return id == "audio.volume" || id == "pad.deadzone" || id == "pad.sensitivity";
+        return id == "audio.volume" || id == "pad.deadzone";
     }
 }

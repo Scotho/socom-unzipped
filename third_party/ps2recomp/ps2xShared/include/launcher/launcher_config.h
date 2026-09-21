@@ -71,8 +71,7 @@ namespace launcher
         std::string windowSize = "1280x896";   // <w>x<h> | fullscreen
         bool fpsOverlay = false;               // Sprint 7 Task 10: PS2X_FPS_OVERLAY, off unless asked for
         int audioVolume = 100;                 // Sprint 7 Task 11: PS2X_AUDIO_VOLUME, 0-100, 100 = unity
-        bool mouseLook = false;
-        double mouseSensitivity = 1.0;
+        // Sprint 10 Q3 (R210): mouseLook and mouseSensitivity left on 2026-09-21; an old config.json's keys are ignored on load.
         // Sprint 7 Task 8: which host pad to read (-1 = the first available one, as the runtime did before)
         // and the stick dead zone the three pad paths apply.
         int gamepadIndex = -1;
@@ -97,7 +96,20 @@ namespace launcher
         // time until 2026-09-21); an old config.json with no block keeps them for everyone; and a default
         // mapping sends nothing to the game (launcher/mapping.h). activeMapping() reads the current profile's.
         std::vector<ProfileMapping> mappings;
+        // Sprint 10 Q4 (owner 2026-09-20: "pressing the XBOX or PLAYSTATION button should toggle the launcher
+        // focus"): the host button that swaps the front window between the launcher and the running game. A
+        // host button NAME as mapping.h spells them ("guide" by default; "none" switches it off), not a PS2
+        // button: the game never sees this one. Launcher-only -- no environment variable carries it.
+        std::string focusToggle = "guide";
+        // Sprint 10 Q4: the launcher's own menu sounds -- the game's HUD cues, decoded from the player's disc
+        // (launcher/menu_sounds.h). On by default and launcher-only: the game's mix is PS2X_AUDIO_VOLUME's.
+        bool menuSounds = true;
     };
+
+    // Q4: the switch's host button as mapping.h numbers them (kHostNone when off); the name normalised --
+    // a known host name or "none" stays, anything else (a typo, a newer build's word) is "guide".
+    std::string normalizeFocusToggle(const std::string &value);
+    int focusToggleHost(const Config &config);
 
     // The mapping the current profile plays (the defaults when it has none), and the setter that keeps the
     // list clean: a profile set back to the defaults loses its entry rather than carrying a copy of them.
@@ -175,7 +187,7 @@ namespace launcher
     std::vector<std::string> selftestExitLines();
 
 
-    // The environment socom2.exe is started with, as KEY=VALUE strings (PS2X_SOCOM2_PAD=1 always; MOUSE only when on;
+    // The environment socom2.exe is started with, as KEY=VALUE strings (PS2X_SOCOM2_PAD=1 always;
     // the second instance gets PS2X_SOCOM2_UDP_SHIFT=2, PS2X_SOCOM2_RSA_KEY=b and its own card directory).
     std::vector<std::string> environmentFor(const Config &config);
 

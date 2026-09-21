@@ -120,7 +120,7 @@ ZXCV=Square/Cross/Circle/Triangle, QE=L1/R1, 13=L2/R2, 24=L3/R3; **gamepad 0 -- 
 since 2026-09-16, OR-ed with the keyboard, sticks past a 15 % dead zone override the keyboard axes**; the start
 banner names the pad or says `gamepad none`; **`PS2X_HOST_GAMEPAD=0` disables every host gamepad read** -- the gate and the
 online launch scripts set it, because a plugged-in controller makes the game skip its controller-configuration screens
-at boot), `PS2X_SOCOM2_MOUSE=1` adds mouse look; `PS2X_TEST_REPEAT=N` (above) repeats the unit suite for a
+at boot), ~~`PS2X_SOCOM2_MOUSE=1` adds mouse look~~ (removed with its code in Sprint 10 Q3, R210); `PS2X_TEST_REPEAT=N` (above) repeats the unit suite for a
 determinism check.
 `PS2X_VU1_NATIVE_TEST_CEILING=<n>` / `PS2X_VU1_NATIVE_TEST_CLIP_CEILING=<n>` lower the native
 dispatcher's per-handler vertex/triangle and clipped-vertex ceilings so `build.sh test` can reach
@@ -246,7 +246,7 @@ window that owns `config.json` beside it and starts `socom2.exe socom2_game.elf`
 so nobody sets a variable by hand. Disc: the ISO path (Browse), verified by hashing `SCUS_972.75` out of the image
 against the r0001 digest -- Launch stays off until it matches. Video: Native / Sharp (2x) / Sharper (3x, untested)
 detail (`PS2X_GS_SCALE`), the presentation filter, 640x448 / 1280x896 / fullscreen. Controller: the pad raylib sees,
-sticks and buttons live (the same calls the game's input poll makes), mouse look and its sensitivity. Online: server
+sticks and buttons live (the same calls the game's input poll makes); mouse look and its sensitivity are gone since Sprint 10 Q3 (R210). Online: server
 address, profile (its own `cards/<profile>/`), and a second-instance checkbox (UDP shift 2, key b, `cards/<profile>_b`).
 Launch writes `logs/run_<stamp>.log`; Copy diagnostics puts the last log and `config.json` under `diagnostics/`.
 `--selftest` prints the verified disc and the environment and exits; `--launch-test [seconds]` starts the game the

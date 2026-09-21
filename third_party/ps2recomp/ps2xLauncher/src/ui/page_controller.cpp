@@ -1,5 +1,6 @@
 // Sprint 8 Goal 9, the CONTROLLER page: the pad as the game will read it, and what changes it. Sprint 10 Goal 8
-// (R174, part 2): the space under the drawn pad is two sections -- SETUP (the pad pick, the dead zone, the mouse)
+// (R174, part 2): the space under the drawn pad is two sections -- SETUP (the pad pick, the dead zone; the mouse
+// controls left in Sprint 10 Q3, R210)
 // and BUTTONS (the sixteen bindings, RESTORE DEFAULTS, and the crouch shortcut, which is a binding of a light
 // Triangle and so belongs beside the others). The bind flow itself is pure (bind_flow.h); this file draws it.
 #include "bind_flow.h"
@@ -81,7 +82,7 @@ namespace ui
         const GlyphFamily family = glyphFamilyFor(app.pad.name);
         const bool buttons = app.padSection == 1;
         const bool listening = app.bind.state == BindFlow::State::Listening;
-        const bool dialog = dialogButtonCount(app.bind.state) > 0;
+        const bool dialog = dialogButtonCount(app.bind) > 0;
 
         // ---- the drawn pad ------------------------------------------------------------------------------
         // The pad fills the band above the sections: 560 units wide, centred on the body, with the glyph
@@ -162,8 +163,6 @@ namespace ui
             // ---- SETUP: the pad picker ------------------------------------------------------------------------
             const Rect firstPick = rectOf(nodes, "pad.pick.0");
             const Rect deadZone = rectOf(nodes, "pad.deadzone");
-            const Rect mouseLook = rectOf(nodes, "pad.mouselook");
-            const Rect sensitivity = rectOf(nodes, "pad.sensitivity");
             // No "CONTROLLER" label over the list any more: the SETUP cell sits where it was, and the list's
             // check marks say what it is.
             int padSel = 0;
@@ -190,24 +189,24 @@ namespace ui
             if (slider(ctx, deadZone, "pad.deadzone", c.padDeadZone, 0.0, 0.40, 0.01))
                 app.dirty = true;
 
-            if (toggle(ctx, mouseLook, "Mouse look", "pad.mouselook", c.mouseLook))
-                app.dirty = true;
-
-            std::snprintf(label, sizeof(label), "MOUSE SENSITIVITY  %.2f", c.mouseSensitivity);
-            text(ctx, label, Vec2{sensitivity.x, sensitivity.y - 22.0f}, metrics::labelSize,
-                 c.mouseLook ? theme::dim : theme::mix(theme::dim, theme::ground, 0.35f), Face::Bold, 0.06f);
-            if (slider(ctx, sensitivity, "pad.sensitivity", c.mouseSensitivity, 0.25, 3.0, 0.05))
-                app.dirty = true;
+            // Sprint 10 Q3 (R210): the keyboard is menus and typing only, and the mouse is gone -- so the SETUP
+            // section says so once, where the mouse-look toggle used to be (its row was 44 under the dead zone).
+            // Two lines: the column is 340 units wide and one line of it ran off the panel (the first capture).
+            text(ctx, "KEYBOARD", Vec2{deadZone.x, deadZone.y + 44.0f}, metrics::labelSize, theme::dim, Face::Bold, 0.06f);
+            caption(ctx, Vec2{deadZone.x, deadZone.y + 44.0f + metrics::labelSize + 8.0f},
+                    "Menus and typing only: arrows, Enter, Backspace, Z/X/C/V.");
+            caption(ctx, Vec2{deadZone.x, deadZone.y + 44.0f + metrics::labelSize + 8.0f + metrics::captionSize * 1.4f},
+                    "Playing needs a controller.");
 
             // One line under it all: the crouch shortcut's trade while one is on (the mark on the drawing is
-            // explained where it is seen), else what the drawing is for.
+            // explained where it is seen), else what the drawing is for. Where the sensitivity slider's bottom was.
             const char *hint = crouch == "off" ? nullptr : launcher::crouchShortcutHint(crouch);
-            caption(ctx, Vec2{firstPick.x, sensitivity.bottom() + 10.0f},
+            caption(ctx, Vec2{firstPick.x, deadZone.y + 92.0f + 28.0f + 10.0f},
                     hint != nullptr
                         ? hint
                         : (app.pad.present
                                ? "Press a button: what lights up above is what the game reads. The ring is the dead zone."
-                               : "No pad: WASD move, IJKL look, Z/X/C/V = square/cross/circle/triangle, Q/E = L1/R1, Enter = start."));
+                               : "No controller found. The keyboard walks the menus; playing needs a pad -- connect one."));
             return;
         }
 
@@ -226,13 +225,26 @@ namespace ui
                 for (size_t i = 0; i < lines.size() && i < 2u; ++i, y += (metrics::bodySize - 1.0f) * 1.3f)
                     text(ctx, lines[i].c_str(), Vec2{panelR.x + 20.0f, y}, metrics::bodySize - 1.0f, theme::text);
             }
-            const int count = dialogButtonCount(app.bind.state);
+            const int count = dialogButtonCount(app.bind);
             for (int i = 0; i < count; ++i)
             {
                 const std::string id = "pad.dialog." + std::to_string(i);
-                if (!button(ctx, rectOf(nodes, id), dialogButtonLabel(app.bind.state, i), id))
+                if (!button(ctx, rectOf(nodes, id), dialogButtonLabel(app.bind, i), id))
                     continue;
-                if (app.bind.state == BindFlow::State::Conflict)
+                if (app.bind.state == BindFlow::State::Conflict && app.bind.button == kSwitchTarget)
+                {
+                    // Sprint 10 Q4: the window switch's two answers -- REPLACE frees the button from the game
+                    // and the switch takes it; CANCEL leaves both as they were.
+                    if (bindResolve(app.bind, m, i == 0 ? Resolution::Replace : Resolution::Ask, ctx.time) == BindEvent::Bound)
+                    {
+                        launcher::setActiveMapping(c, m);
+                        c.focusToggle = hostButtonName(app.bind.lastHost);
+                        app.dirty = true;
+                        app.status = std::string("the window switch is now ") + hostLabel(family, app.bind.lastHost).text;
+                    }
+                    app.nav.focus = kSwitchCellId;
+                }
+                else if (app.bind.state == BindFlow::State::Conflict)
                 {
                     const Resolution r = i == 0 ? Resolution::Swap : (i == 1 ? Resolution::Replace : Resolution::Ask);
                     const uint8_t bound = app.bind.button;
@@ -279,11 +291,33 @@ namespace ui
             }
         }
 
+        // ---- BUTTONS: the window switch (Sprint 10 Q4) -----------------------------------------------------
+        // The seventeenth cell: the launcher's own binding, drawn like the sixteen so it is bound like them. "Not
+        // the default" here is any button but the guide; OFF is a radio cell beside it, selected when it is off.
+        {
+            const int switchHost = launcher::focusToggleHost(c);
+            const bool mine = listening && app.bind.button == kSwitchTarget;
+            if (bindCell(ctx, rectOf(nodes, kSwitchCellId), kSwitchCellId, kSwitchTarget, hostLabel(family, switchHost),
+                         switchHost != kHostGuide, mine, countdown) && !listening)
+            {
+                if (!app.pad.present)
+                    app.status = "connect a controller to bind the window switch";
+                else
+                    app.requestBind = static_cast<int>(kSwitchTarget);
+            }
+            if (radioCell(ctx, rectOf(nodes, kSwitchOffId), "OFF", kSwitchOffId, switchHost == kHostNone) && switchHost != kHostNone && !listening)
+            {
+                c.focusToggle = "none";
+                app.dirty = true;
+                app.status = "the window switch is off";
+            }
+        }
+
         // ---- BUTTONS: restore -----------------------------------------------------------------------------
         if (button(ctx, rectOf(nodes, "pad.restore"), "RESTORE DEFAULTS", "pad.restore", !isDefault(m) && !listening))
         {
             restoreAsk(app.bind);
-            app.nav.focus = dialogFocusId(app.bind.state);
+            app.nav.focus = dialogFocusId(app.bind);
         }
 
         // ---- BUTTONS: the crouch shortcut (owner request 2026-09-19, R139) ---------------------------------

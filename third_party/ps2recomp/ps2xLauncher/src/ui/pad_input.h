@@ -23,6 +23,9 @@ namespace ui
         PagePrev,    // L1
         PageNext,    // R1
         Launch,      // Start
+        // Sprint 10 Q4: the window switch -- the guide button by default, or whatever launcher::Config::focusToggle
+        // names. The ONE button the gate reads while the game runs (see padIntent).
+        Toggle,
         Count
     };
 
@@ -46,6 +49,9 @@ namespace ui
         bool pageNext = false;
         bool launch = false;
         bool prompts = false;   // the pad moved the UI, so show the pad's glyphs rather than the keyboard's
+        // Q4: swap the front window between the launcher and the game. Only ever true while the game runs --
+        // with no game there is nothing to swap to, and the button does nothing rather than something else.
+        bool toggle = false;
     };
 
     // `repeatAt` is the caller's stick-repeat clock, carried between frames.

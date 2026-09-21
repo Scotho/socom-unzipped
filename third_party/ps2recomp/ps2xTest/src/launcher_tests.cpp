@@ -14,6 +14,7 @@
 #include "ui/pad_input.h"
 #include "ui/pad_render.h"
 #include "ui/theme.h"
+#include "ps2x/host_window.h"   // Sprint 10 Q4: the game window's chrome holds the launcher's palette
 #ifndef _WIN32
 #include "../../ps2xLauncher/src/win32_glue.h"   // Sprint 8 Task 4: the POSIX glue, tested where it is built
 #include <cerrno>
@@ -258,16 +259,23 @@ void register_launcher_tests()
             c.gsScale = 2;
             c.presentFilter = "integer";
             c.windowSize = "1280x896";
-            c.mouseLook = true;
-            c.mouseSensitivity = 1.5;
             c.server = "192.168.2.10";
             c.profile = "craig";
             c.secondInstance = true;
             const std::string json = launcher::toJson(c);
             t.IsTrue(json.find("\"isoPath\"") != std::string::npos && json.find("D:\\\\games\\\\socom2.iso") != std::string::npos, "the path is escaped");
+            t.IsTrue(json.find("mouse") == std::string::npos, "Sprint 10 Q3 (R210): no mouse key is written any more");
             launcher::Config back;
             t.IsTrue(launcher::fromJson(json, back), "parses its own output");
-            t.IsTrue(back.isoPath == c.isoPath && back.gsScale == 2 && back.presentFilter == "integer" && back.windowSize == "1280x896" && back.mouseLook && back.mouseSensitivity == 1.5 && back.server == c.server && back.profile == "craig" && back.secondInstance, "every field survives");
+            t.IsTrue(back.isoPath == c.isoPath && back.gsScale == 2 && back.presentFilter == "integer" && back.windowSize == "1280x896" && back.server == c.server && back.profile == "craig" && back.secondInstance, "every field survives");
+            // Sprint 10 Q3 (R210): a config.json written before the mouse left still carries "mouseLook" and
+            // "mouseSensitivity" (every launcher up to 2026-09-21 wrote both, in this position). It loads without
+            // complaint, the two keys are ignored, and everything after them is still read.
+            launcher::Config old;
+            t.IsTrue(launcher::fromJson("{\"gsScale\": 2, \"mouseLook\": true, \"mouseSensitivity\": 1.5, \"gamepadIndex\": 1, \"profile\": \"craig\"}", old),
+                     "an old config with the mouse keys loads");
+            t.IsTrue(old.gsScale == 2 && old.gamepadIndex == 1 && old.profile == "craig", "and the keys around them are read");
+            t.IsTrue(launcher::toJson(old).find("mouse") == std::string::npos, "the next save drops them");
             launcher::Config partial;
             t.IsTrue(launcher::fromJson("{\"gsScale\": 3, \"future\": [1,2,3], \"profile\": \"x\"}", partial), "unknown keys are ignored");
             t.IsTrue(partial.gsScale == 3 && partial.profile == "x" && partial.windowSize == "1280x896" && partial.server == "127.0.0.1", "missing keys keep their defaults");
@@ -291,16 +299,15 @@ void register_launcher_tests()
             t.IsTrue(has("PS2X_SOCOM2_SERVER=socom.scotho.com"),
                      "the server: a fresh config plays on the project's hosted server, reached by name (Sprint 9 P6, R175)");
             t.IsTrue(has("PS2X_MC_DIR=cards/player"), "the profile's card directory");
-            t.IsTrue(!hasKey("PS2X_SOCOM2_MOUSE") && !hasKey("PS2X_SOCOM2_MOUSE_SENS"), "mouse look off: no mouse knobs");
             t.IsTrue(!hasKey("PS2X_SOCOM2_UDP_SHIFT") && !hasKey("PS2X_SOCOM2_RSA_KEY"), "first instance: no shift, no second key");
             c.gsScale = 2;
-            c.mouseLook = true;
-            c.mouseSensitivity = 0.75;
             c.secondInstance = true;
             c.profile = "craig";
             c.windowSize = "fullscreen";
             env = launcher::environmentFor(c);
-            t.IsTrue(has("PS2X_GS_SCALE=2") && has("PS2X_SOCOM2_MOUSE=1") && has("PS2X_SOCOM2_MOUSE_SENS=0.75") && has("PS2X_WINDOW_SIZE=fullscreen"), "scale, mouse, sensitivity, fullscreen");
+            t.IsTrue(has("PS2X_GS_SCALE=2") && has("PS2X_WINDOW_SIZE=fullscreen"), "scale, fullscreen");
+            // Sprint 10 Q3 (R210): the mouse left -- no configuration sends a PS2X_SOCOM2_MOUSE* variable any more.
+            t.IsTrue(!hasKey("PS2X_SOCOM2_MOUSE") && !hasKey("PS2X_SOCOM2_MOUSE_SENS"), "no mouse knobs, whatever the config says");
             t.IsTrue(has("PS2X_SOCOM2_UDP_SHIFT=2") && has("PS2X_SOCOM2_RSA_KEY=b") && has("PS2X_MC_DIR=cards/craig_b"), "the second instance: shift 2, key b, its own cards");
         });
 
@@ -673,22 +680,23 @@ void register_launcher_tests()
             t.IsTrue(hasNode(ui::layoutFor(ui::Page::Video, window, in), ui::barLaunchId(ui::Page::Video)),
                      "every other page keeps the bar's LAUNCH");
 
-            // CONTROLLER, SETUP (the graph's default section): the section switch, a list on the left, three
-            // knobs on the right. Sprint 10 Goal 8 moved the crouch row into BUTTONS -- its own case below.
+            // CONTROLLER, SETUP (the graph's default section): the section switch, a list on the left, one knob
+            // on the right (Sprint 10 Q3, R210: the mouse-look toggle and its sensitivity slider left; the dead zone
+            // is what remains). Sprint 10 Goal 8 moved the crouch row into BUTTONS -- its own case below.
             t.Equals(g.move("rail.controller", ui::Dir::Right), std::string("pad.section.0"), "the section switch is the first control");
             t.Equals(g.move("pad.section.0", ui::Dir::Down), std::string("pad.pick.0"), "under it, the pad list");
             t.Equals(g.move("pad.pick.0", ui::Dir::Down), std::string("pad.pick.1"), "down walks the pad list");
             t.Equals(g.move("pad.pick.0", ui::Dir::Right), std::string("pad.deadzone"), "right crosses to the knobs");
             t.Equals(g.move("pad.deadzone", ui::Dir::Left), std::string("pad.pick.0"), "and left crosses back to the list");
-            t.Equals(g.move("pad.deadzone", ui::Dir::Down), std::string("pad.mouselook"), "the knobs run down the right column");
-            t.Equals(g.move("pad.mouselook", ui::Dir::Down), std::string("pad.sensitivity"), "dead zone, mouse look, sensitivity");
-            t.Equals(g.move("pad.sensitivity", ui::Dir::Up), std::string("pad.mouselook"), "and up retraces them");
-            t.Equals(g.move("pad.sensitivity", ui::Dir::Down), std::string("bar.launch.controller"), "below the last knob is the bar's LAUNCH");
+            t.Equals(g.move("pad.deadzone", ui::Dir::Down), std::string("bar.launch.controller"), "below the one knob is the bar's LAUNCH");
+            t.IsFalse(ui::hasNode(ui::layoutFor(ui::Page::Controller, window, in), "pad.mouselook") ||
+                          ui::hasNode(ui::layoutFor(ui::Page::Controller, window, in), "pad.sensitivity"),
+                      "no mouse-look toggle and no sensitivity slider: the mouse left (Q3, R210)");
             t.IsFalse(ui::hasNode(ui::layoutFor(ui::Page::Controller, window, in), "pad.crouch.0"), "the crouch row is not in SETUP");
             t.IsTrue(!ui::adjustsHorizontally("pad.section.0") && !ui::adjustsHorizontally("pad.crouch.0"), "cells navigate; they are not a slider");
-            t.IsTrue(ui::adjustsHorizontally("pad.deadzone") && ui::adjustsHorizontally("pad.sensitivity") &&
-                         ui::adjustsHorizontally("audio.volume") && !ui::adjustsHorizontally("pad.mouselook"),
-                     "left/right ADJUSTS the three sliders rather than navigating away from them");
+            t.IsTrue(ui::adjustsHorizontally("pad.deadzone") && ui::adjustsHorizontally("audio.volume") &&
+                         !ui::adjustsHorizontally("pad.sensitivity") && !ui::adjustsHorizontally("pad.mouselook"),
+                     "left/right ADJUSTS the two sliders rather than navigating away from them; the gone ids adjust nothing");
 
             // The rail itself walks up and down and stops at its ends.
             t.Equals(g.move("rail.play", ui::Dir::Down), std::string("rail.disc"), "the rail walks down");
@@ -1631,7 +1639,7 @@ void register_launcher_tests()
 
         // ---- Sprint 10 Goal 8 (R174, part 2): the controller mapping UI --------------------------------------
         // The CONTROLLER page keeps the drawn pad and splits what is under it into two sections: SETUP (the pad
-        // pick, the dead zone, the mouse) and BUTTONS (the sixteen bindings, RESTORE DEFAULTS, and the crouch
+        // pick, the dead zone) and BUTTONS (the sixteen bindings, RESTORE DEFAULTS, and the crouch
         // shortcut -- which is a binding too, of a light Triangle, so it lives beside the others rather than as
         // a leftover under the knobs). The layout is pure, so what the tests assert on is what the player sees.
         tc.Run("CONTROLLER: SETUP and BUTTONS are two sections under the pad; the bindings, RESTORE and the crouch row live in BUTTONS", [](TestCase &t)
@@ -1643,7 +1651,8 @@ void register_launcher_tests()
             const std::vector<ui::Node> setup = ui::layoutFor(ui::Page::Controller, window, in);
             t.IsTrue(ui::hasNode(setup, "pad.section.0") && ui::hasNode(setup, "pad.section.1"), "the two section cells are always there");
             t.IsTrue(ui::hasNode(setup, "pad.pick.0") && ui::hasNode(setup, "pad.pick.1"), "SETUP: the pad list");
-            t.IsTrue(ui::hasNode(setup, "pad.deadzone") && ui::hasNode(setup, "pad.mouselook") && ui::hasNode(setup, "pad.sensitivity"), "SETUP: the knobs");
+            t.IsTrue(ui::hasNode(setup, "pad.deadzone"), "SETUP: the dead zone");
+            t.IsFalse(ui::hasNode(setup, "pad.mouselook") || ui::hasNode(setup, "pad.sensitivity"), "SETUP: no mouse controls (Q3, R210)");
             t.IsFalse(ui::hasNode(setup, "pad.bind.cross"), "SETUP has no binding cells");
             t.IsFalse(ui::hasNode(setup, "pad.restore"), "and no RESTORE");
             t.IsFalse(ui::hasNode(setup, "pad.crouch.0"), "and the crouch row moved out of it");
@@ -1699,7 +1708,10 @@ void register_launcher_tests()
             const ui::FocusGraph g = ui::FocusGraph::build(window, in);
             t.Equals(g.move("rail.controller", ui::Dir::Right), std::string("pad.section.0"), "the rail opens onto the section switch");
             t.Equals(g.move("pad.section.0", ui::Dir::Right), std::string("pad.section.1"), "right is BUTTONS");
-            t.Equals(g.move("pad.section.1", ui::Dir::Right), std::string("pad.restore"), "then RESTORE, at the row's right end");
+            // Sprint 10 Q4 put the window switch and its OFF on the row between BUTTONS and RESTORE.
+            t.Equals(g.move("pad.section.1", ui::Dir::Right), std::string(ui::kSwitchCellId), "then the window switch (Q4)");
+            t.Equals(g.move(ui::kSwitchCellId, ui::Dir::Right), std::string(ui::kSwitchOffId), "then its OFF");
+            t.Equals(g.move(ui::kSwitchOffId, ui::Dir::Right), std::string("pad.restore"), "then RESTORE, at the row's right end");
             t.Equals(g.move("pad.section.0", ui::Dir::Down), ui::bindCellId(0), "down from the switch is the first cell");
             t.Equals(g.move(ui::bindCellId(0), ui::Dir::Right), ui::bindCellId(1), "right walks the row");
             t.Equals(g.move(ui::bindCellId(3), ui::Dir::Down), ui::bindCellId(7), "down is the cell under it");
@@ -1707,7 +1719,7 @@ void register_launcher_tests()
             t.Equals(g.move("pad.crouch.0", ui::Dir::Down), std::string("bar.launch.controller"), "and under that the bar's LAUNCH");
             t.Equals(g.move(ui::bindCellId(0), ui::Dir::Left), std::string("rail.controller"), "left off the first column is the rail");
             for (const std::string &id : g.idsOn(ui::Page::Controller))
-                t.IsTrue(!ui::adjustsHorizontally(id) || id == "pad.deadzone" || id == "pad.sensitivity", "cells navigate: " + id);
+                t.IsTrue(!ui::adjustsHorizontally(id) || id == "pad.deadzone", "cells navigate: " + id);
         });
 
         tc.Run("CONTROLLER: a dialog takes the BUTTONS section's controls out of the layout and puts its own in", [](TestCase &t)
@@ -1927,6 +1939,148 @@ void register_launcher_tests()
             const ui::PadAnchor r1 = ui::padAnchor(g, kHostR1);
             t.IsTrue(l1.c.x < g.centre.x && r1.c.x > g.centre.x, "L1 is on the left, R1 on the right");
             t.IsTrue(l1.c.y < up.c.y, "and the shoulders are above the d-pad");
+        });
+
+        // ---- Sprint 10 Q4: the window switch -----------------------------------------------------------------
+        // Owner 2026-09-20: "Pressing the XBOX or PLAYSTATION button should toggle the launcher focus if
+        // possible, and again should swap back to the game." The measurement (win32_glue.h, the Q4 plan): the
+        // guide arrives through raylib on Linux and for a DirectInput pad on Windows, and NOT for an XInput pad,
+        // which the launcher reads through XInput's hidden entry point instead -- and when neither works, the
+        // switch is a binding the player can move (kSwitchTarget through Goal 8's flow). The gate opens exactly
+        // one button wide while the game runs: the rest of the pad stays the game's (P3), because the runtime
+        // reads it whether or not its window is in front.
+        tc.Run("the window switch is the one button the pad gate passes while the game runs, and nothing when it does not", [](TestCase &t)
+        {
+            ui::PadFrame pad;
+            pad.present = true;
+            pad.pressed[static_cast<int>(ui::PadNav::Toggle)] = true;
+            pad.pressed[static_cast<int>(ui::PadNav::Right)] = true;
+            pad.pressed[static_cast<int>(ui::PadNav::Activate)] = true;
+
+            double repeatAt = 0.0;
+            const ui::PadIntent running = ui::padIntent(pad, /*gameRunning=*/true, /*now=*/1.0, repeatAt);
+            t.IsTrue(running.toggle, "while the game runs, the switch's press asks for the swap");
+            t.Equals(running.dx, 0, "and the d-pad pressed with it still moves nothing: the pad is the game's");
+            t.IsFalse(running.activate, "and A activates nothing");
+            t.IsFalse(running.prompts, "and the prompts are not the pad's -- the launcher read one button, not the pad");
+
+            double repeatAtIdle = 0.0;
+            const ui::PadIntent idle = ui::padIntent(pad, /*gameRunning=*/false, /*now=*/1.0, repeatAtIdle);
+            t.IsFalse(idle.toggle, "with no game there is nothing to swap to, so the press is not a swap");
+            t.Equals(idle.dx, 1, "and the launcher is driven as before");
+
+            ui::PadFrame none;
+            none.present = true;
+            const ui::PadIntent quiet = ui::padIntent(none, /*gameRunning=*/true, /*now=*/2.0, repeatAt);
+            t.IsFalse(quiet.toggle, "no press, no swap");
+        });
+
+        tc.Run("the window switch is a config field: the guide by default, a host button name, none, and nonsense heals", [](TestCase &t)
+        {
+            using namespace launcher::mapping;
+            launcher::Config c;
+            t.Equals(c.focusToggle, std::string("guide"), "the guide button by default (the owner's XBOX / PS button)");
+            t.Equals(launcher::focusToggleHost(c), static_cast<int>(kHostGuide), "which is raylib's GAMEPAD_BUTTON_MIDDLE");
+            t.IsTrue(launcher::toJson(c).find("\"focusToggle\": \"guide\"") != std::string::npos, "written to config.json");
+
+            c.focusToggle = "select";
+            launcher::Config back;
+            t.IsTrue(launcher::fromJson(launcher::toJson(c), back), "parses its own output");
+            t.Equals(back.focusToggle, std::string("select"), "a bound button survives the round trip");
+            t.Equals(launcher::focusToggleHost(back), static_cast<int>(kHostSelect), "and names raylib's button");
+
+            c.focusToggle = "none";
+            t.IsTrue(launcher::fromJson(launcher::toJson(c), back), "parses");
+            t.Equals(back.focusToggle, std::string("none"), "off is kept");
+            t.Equals(launcher::focusToggleHost(back), static_cast<int>(kHostNone), "and presses nothing");
+
+            t.Equals(launcher::normalizeFocusToggle("banana"), std::string("guide"), "a word this build does not know is the default");
+            t.Equals(launcher::normalizeFocusToggle(""), std::string("guide"), "and so is nothing");
+            launcher::Config old;
+            t.IsTrue(launcher::fromJson("{\"gsScale\": 1}", old), "a config written before Q4 parses");
+            t.Equals(old.focusToggle, std::string("guide"), "and gets the guide");
+            // Launcher-only: the game never sees the switch, so no variable carries it.
+            for (const std::string &kv : launcher::environmentFor(c))
+                t.IsTrue(kv.find("TOGGLE") == std::string::npos && kv.find("SWITCH") == std::string::npos, "no environment variable: " + kv);
+        });
+
+        tc.Run("the window switch binds through the press-the-button flow: a free button binds, a button the game reads is a two-answer conflict", [](TestCase &t)
+        {
+            using namespace launcher::mapping;
+            ui::BindFlow flow;
+            Mapping m = defaults();
+            ui::bindStart(flow, ui::kSwitchTarget, 0.0);
+            t.IsTrue(flow.state == ui::BindFlow::State::Listening, "the switch is a target the flow accepts");
+            t.Equals(std::string(ui::ps2Label(ui::kSwitchTarget).text), std::string("SWITCH"), "and its cell reads SWITCH");
+            t.IsTrue(ui::bindStep(flow, m, ui::BindInput{kHostGuide, 0.1, false}, 1.0) == ui::BindEvent::Bound, "the guide (no row of the mapping) binds");
+            t.Equals(flow.lastHost, kHostGuide, "and the caller is told which button, to write into Config::focusToggle");
+            t.IsTrue(m == defaults(), "the mapping is untouched: the switch takes no row");
+
+            // A button the game reads: the conflict has two answers, opens on CANCEL, and REPLACE frees it.
+            ui::bindStart(flow, ui::kSwitchTarget, 2.0);
+            t.IsTrue(ui::bindStep(flow, m, ui::BindInput{kHostSelect, 0.1, false}, 3.0) == ui::BindEvent::Conflict, "VIEW / SHARE drives SELECT");
+            t.Equals(flow.takenBy, static_cast<int>(kPs2Select), "which the flow names");
+            t.Equals(ui::dialogButtonCount(flow), 2, "two answers -- there is nothing to swap the switch with");
+            t.Equals(std::string(ui::dialogButtonLabel(flow, 0)), std::string("REPLACE"), "replace");
+            t.Equals(std::string(ui::dialogButtonLabel(flow, 1)), std::string("CANCEL"), "cancel");
+            t.Equals(ui::dialogFocusId(flow), std::string("pad.dialog.1"), "the focus lands on CANCEL: REPLACE takes a button from the game");
+            t.Equals(ui::dialogButtonCount(flow.state), 3, "the state alone still says three: the overload on the flow is the one to ask");
+            const std::string sentence = ui::dialogSentence(flow, ui::GlyphFamily::Xbox);
+            t.IsTrue(sentence.find("VIEW") != std::string::npos && sentence.find("SELECT") != std::string::npos, "the sentence names both: " + sentence);
+            t.IsTrue(ui::bindResolve(flow, m, Resolution::Swap, 4.0) == ui::BindEvent::Cancelled, "swap is refused for the switch: it is a cancel");
+            t.IsTrue(m == defaults(), "and moved nothing");
+
+            ui::bindStart(flow, ui::kSwitchTarget, 5.0);
+            ui::bindStep(flow, m, ui::BindInput{kHostSelect, 0.1, false}, 6.0);
+            t.IsTrue(ui::bindResolve(flow, m, Resolution::Replace, 7.0) == ui::BindEvent::Bound, "replace binds the switch");
+            t.Equals(flow.lastHost, kHostSelect, "to VIEW / SHARE");
+            t.Equals(m.pad[rowOf(kPs2Select)].host, kHostNone, "and SELECT lost its pad button: the game must not read the switch");
+            t.Equals(boundTo(m, kHostSelect), -1, "nothing in the mapping drives it any more");
+        });
+
+        tc.Run("CONTROLLER: the window switch's cell and its OFF sit on BUTTONS' section row, clear of the section switch and RESTORE; the switch's conflict lays out two buttons", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.padButtons = true;
+            const std::vector<ui::Node> buttons = ui::layoutFor(ui::Page::Controller, window, in);
+            t.IsTrue(ui::hasNode(buttons, ui::kSwitchCellId) && ui::hasNode(buttons, ui::kSwitchOffId), "both cells are in BUTTONS");
+            const ui::Rect sw = ui::rectOf(buttons, ui::kSwitchCellId);
+            const ui::Rect off = ui::rectOf(buttons, ui::kSwitchOffId);
+            const ui::Rect section1 = ui::rectOf(buttons, "pad.section.1");
+            const ui::Rect restore = ui::rectOf(buttons, "pad.restore");
+            t.IsTrue(std::fabs(sw.y - section1.y) < 0.001f && std::fabs(off.y - section1.y) < 0.001f, "on the section row");
+            t.IsTrue(sw.x >= section1.right() + 8.0f, "right of BUTTONS, with a gap");
+            t.IsTrue(off.x >= sw.right() + 8.0f, "OFF right of the cell, with a gap");
+            t.IsTrue(restore.x >= off.right() + 8.0f, "and RESTORE right of OFF, with a gap");
+            in.padButtons = false;
+            const std::vector<ui::Node> setup = ui::layoutFor(ui::Page::Controller, window, in);
+            t.IsFalse(ui::hasNode(setup, ui::kSwitchCellId) || ui::hasNode(setup, ui::kSwitchOffId), "SETUP has neither: a binding lives with the bindings");
+            in.padButtons = true;
+            in.padDialogButtons = 2;
+            const std::vector<ui::Node> dialog = ui::layoutFor(ui::Page::Controller, window, in);
+            t.IsTrue(ui::hasNode(dialog, "pad.dialog.0") && ui::hasNode(dialog, "pad.dialog.1") && !ui::hasNode(dialog, "pad.dialog.2"),
+                     "the switch's two-answer dialog lays out exactly two buttons");
+            t.IsFalse(ui::hasNode(dialog, ui::kSwitchCellId), "and nothing behind it");
+            t.IsTrue(ui::helpFor(ui::kSwitchCellId).find("XBOX / PS") != std::string::npos, "the cell's help names the button the owner asked for");
+            t.IsFalse(ui::helpFor(ui::kSwitchOffId).empty(), "and OFF says what it leaves alone");
+        });
+
+        // Sprint 10 Q4 (b): the game window's caption, where the system lets a window colour it, wears the
+        // launcher's top bar. The runtime cannot include ui/theme.h, so ps2x/host_window.h carries the three
+        // numbers and this is what keeps them the theme's when the theme moves.
+        tc.Run("the game window's chrome colours are the launcher's top bar, its text and its rule", [](TestCase &t)
+        {
+            using namespace ps2x::host_window;
+            const ui::Rgba bar = ui::theme::mix(ui::theme::panel, ui::theme::ground, 0.5f);
+            t.IsTrue(kCaption.r == bar.r && kCaption.g == bar.g && kCaption.b == bar.b, "the caption is the top bar's ground");
+            t.IsTrue(kCaptionText.r == ui::theme::text.r && kCaptionText.g == ui::theme::text.g && kCaptionText.b == ui::theme::text.b,
+                     "the caption's text is theme::text");
+            t.IsTrue(kBorder.r == ui::theme::line.r && kBorder.g == ui::theme::line.g && kBorder.b == ui::theme::line.b,
+                     "the border is theme::line, the rule under the bar");
+            t.IsTrue(ui::contrastRatio(ui::Rgba{kCaptionText.r, kCaptionText.g, kCaptionText.b, 0xFF},
+                                       ui::Rgba{kCaption.r, kCaption.g, kCaption.b, 0xFF}) >= 4.5f,
+                     "and the title reads on it (4.5:1, the theme's own bar)");
         });
 
 #ifndef _WIN32

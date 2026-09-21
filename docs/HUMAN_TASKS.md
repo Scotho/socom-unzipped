@@ -37,6 +37,18 @@ checks are a paid feature and stayed off; the project's own gate covers those sh
    fixtures, harness references, research evidence, ~9 MB): all stay as illustration of our own output, the movie
    frames go, or every picture goes. Until you decide, nothing moves.
 
+**Four launcher things to try with your hands (Sprint 10 Q4, 2026-09-21; the plan `docs/superpowers/plans/2026-09-21-sprint-10-q4-launcher-rest.md`):**
+1. Xbox pad: launch the game, press the XBOX/guide button -> the launcher comes to the front ("switched windows"
+   in its bar); press again -> the game is back. If nothing happens, CONTROLLER > BUTTONS > SWITCH, press it, then
+   press VIEW: the REPLACE dialog should appear and VIEW becomes the switch.
+2. A DualShock/DualSense on Sony's own driver: the PS button with the launcher unfocused -- the one measurement
+   the machine could not make.
+3. The game window: its title is "SOCOM II U.S. Navy SEALs -- SOCOM Unzipped", it has the launcher's icon, and on
+   Windows 11 a teal caption. Say Win10 or Win11.
+4. Menu sounds, with your disc verified: a click on focus moves (SLIDE), Enter (METAL), Escape (BACK), LAUNCH
+   while the game runs (NEG); AUDIO > LAUNCHER toggles them off; `cache/menu_sounds/<key>/` holds four WAVs decoded
+   from your disc's HUDUI bank. Is 0.45 the right level, and is SLIDE the game's own focus-move cue?
+
 **Your online name and password now reach the game (Sprint 10 Goal 9, 2026-09-21): type them once in the launcher.**
 ONLINE > PROFILE has PLAYER NAME and a masked PASSWORD; with both set, the game's two keyboards open already filled
 and you press ENTER (the harness did it three times on the hosted server, one with a brand-new persona). The

@@ -27,6 +27,15 @@ namespace ui
     std::string bindCellId(int cell);          // "pad.bind.<ps2 name>"
     int bindCellOf(const std::string &id);     // the cell an id names, or -1
 
+    // Sprint 10 Q4: the seventeenth cell is not a PS2 button. It is the launcher's own WINDOW SWITCH (the guide
+    // button by default, launcher_config.h's focusToggle), bound through the same press-the-button flow so a
+    // player whose pad hides its guide button can put the switch on a button it does show. A host button the
+    // mapping already drives is a Conflict with a two-answer dialog: REPLACE (that PS2 button loses its pad
+    // button -- the game must not read the switch) or CANCEL; there is nothing to SWAP with.
+    constexpr uint8_t kSwitchTarget = 0xFF;
+    constexpr const char *kSwitchCellId = "pad.switch.bind";   // not "pad.bind.*": that prefix is the sixteen cells'
+    constexpr const char *kSwitchOffId = "pad.switch.off";   // the OFF cell beside it: focusToggle = "none"
+
     // What the game calls its button, for the cell's left side: a shape glyph for the four face buttons (index as
     // drawShapeGlyph: 0 triangle, 1 cross, 2 square, 3 circle; -1 for the rest) and a short word otherwise.
     struct Ps2Label
@@ -86,10 +95,12 @@ namespace ui
         TimedOut
     };
 
-    void bindStart(BindFlow &flow, uint8_t button, double now);
-    // Listening only (anything else answers None): the frame's input against the clock.
+    void bindStart(BindFlow &flow, uint8_t button, double now);   // a PS2 button, or kSwitchTarget
+    // Listening only (anything else answers None): the frame's input against the clock. For the switch, Bound
+    // moves nothing in `m` -- flow.lastHost is the button the caller writes into Config::focusToggle.
     BindEvent bindStep(BindFlow &flow, launcher::mapping::Mapping &m, const BindInput &in, double now);
     // Conflict only: Swap or Replace moves the binding; Ask is the cancel and moves nothing. Back to Idle either way.
+    // For the switch, Replace unbinds the PS2 button that had the host button (Swap is refused: it is a cancel).
     BindEvent bindResolve(BindFlow &flow, launcher::mapping::Mapping &m, launcher::mapping::Resolution resolution, double now);
     // Whole seconds left while listening (at least 1 until the deadline passes), 0 otherwise.
     int bindCountdown(const BindFlow &flow, double now);
@@ -104,6 +115,11 @@ namespace ui
     int dialogButtonCount(BindFlow::State state);           // 3 for Conflict, 2 for ConfirmRestore, 0 otherwise
     const char *dialogButtonLabel(BindFlow::State state, int index);
     std::string dialogFocusId(BindFlow::State state);        // "pad.dialog.<n>", "" when no dialog is open
+    // Q4: the same three, from the flow itself -- the switch's conflict has two answers (REPLACE, CANCEL) and
+    // opens on CANCEL, because its REPLACE takes a button away from the game. Prefer these overloads.
+    int dialogButtonCount(const BindFlow &flow);
+    const char *dialogButtonLabel(const BindFlow &flow, int index);
+    std::string dialogFocusId(const BindFlow &flow);
     // The dialog's one sentence: "LB is already L1." / "Every button back to the defaults?"
     std::string dialogSentence(const BindFlow &flow, GlyphFamily family);
 }

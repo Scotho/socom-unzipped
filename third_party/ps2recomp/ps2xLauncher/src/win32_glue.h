@@ -51,6 +51,29 @@ namespace win32glue
     std::string stamp();
     void terminate(GameProcess &game);   // kills the game (the launch test)
 
+    // Sprint 10 Q4: the window switch (owner 2026-09-20: "pressing the XBOX or PLAYSTATION button should toggle
+    // the launcher focus"). Two halves the measurement in the Q4 plan bounds:
+    //
+    //   The guide button. raylib (5.5, the GLFW desktop platform) maps GLFW_GAMEPAD_BUTTON_GUIDE to
+    //   GAMEPAD_BUTTON_MIDDLE, so it arrives like any button -- WHEN the backend delivers it. Linux does: GLFW
+    //   reads evdev and every Xbox/DualShock row of its mapping table carries `guide:b<n>` (BTN_MODE). Windows
+    //   does for a DirectInput pad with a mapping row (the PS4/PS5 rows carry `guide:b12`), and does NOT for an
+    //   XInput pad: GLFW polls XInputGetState, whose wButtons never carries the guide bit, and its XInput row has
+    //   no `guide:` at all. xinput1_4.dll's ordinal 100 (the undocumented XInputGetStateEx, which SDL and every
+    //   emulator use) does report it as 0x0400, so the launcher asks that directly, for every XInput user, and
+    //   ORs it into the pad's guide. `xinputGuideReadable` says whether the entry point was found (the CONTROLLER
+    //   page's status says so when it was not); POSIX answers false to both and leaves the guide to raylib.
+    bool xinputGuideReadable();
+    bool xinputGuideDown();
+    //   The swap. Windows: the launcher's HWND is raylib's GetWindowHandle(); the game's is found by its process
+    //   id (EnumWindows). SetForegroundWindow is refused to a process that is not in front unless it attaches its
+    //   input queue to the one that is (AttachThreadInput) -- the standard way, and the only one that needs no
+    //   change to the game. POSIX: X11 through dlopen (no new link line), both windows found by _NET_WM_PID in
+    //   _NET_CLIENT_LIST, the front one read from _NET_ACTIVE_WINDOW and the other asked for with the same
+    //   message a pager sends; on Wayland (no X display) it does nothing and says so.
+    //   True when the swap was made; false with `why` set otherwise.
+    bool toggleForeground(void *launcherWindow, const GameProcess &game, std::string &why);
+
     // Sprint 9 Goal 8: one blocking HTTP(S) request, for the bug report and the server's status line. Call it
     // off the UI thread. Windows: WinHTTP, certificate validation ON (no SECURITY_FLAG_IGNORE_* is ever set).
     // POSIX: a `curl` subprocess started with an argv (no shell), the body on its stdin; no curl = `error`.
