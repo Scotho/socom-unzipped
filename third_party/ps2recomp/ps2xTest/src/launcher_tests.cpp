@@ -7,6 +7,7 @@
 #include "launcher/sha256.h"
 // Sprint 8 Goal 9: the redesigned launcher's pure halves -- the layout and the focus model, the pad's
 // geometry, the glyph family, the scale factor. None of these headers touches raylib.
+#include "ui/bind_flow.h"
 #include "ui/chrome.h"
 #include "ui/focus.h"
 #include "ui/glyphs.h"
@@ -598,31 +599,19 @@ void register_launcher_tests()
             t.IsTrue(hasNode(ui::layoutFor(ui::Page::Video, window, in), ui::barLaunchId(ui::Page::Video)),
                      "every other page keeps the bar's LAUNCH");
 
-            // CONTROLLER: a list on the left, three knobs on the right.
-            t.Equals(g.move("rail.controller", ui::Dir::Right), std::string("pad.pick.0"), "the pad list is the first control");
+            // CONTROLLER, SETUP (the graph's default section): the section switch, a list on the left, three
+            // knobs on the right. Sprint 10 Goal 8 moved the crouch row into BUTTONS -- its own case below.
+            t.Equals(g.move("rail.controller", ui::Dir::Right), std::string("pad.section.0"), "the section switch is the first control");
+            t.Equals(g.move("pad.section.0", ui::Dir::Down), std::string("pad.pick.0"), "under it, the pad list");
             t.Equals(g.move("pad.pick.0", ui::Dir::Down), std::string("pad.pick.1"), "down walks the pad list");
             t.Equals(g.move("pad.pick.0", ui::Dir::Right), std::string("pad.deadzone"), "right crosses to the knobs");
             t.Equals(g.move("pad.deadzone", ui::Dir::Left), std::string("pad.pick.0"), "and left crosses back to the list");
             t.Equals(g.move("pad.deadzone", ui::Dir::Down), std::string("pad.mouselook"), "the knobs run down the right column");
             t.Equals(g.move("pad.mouselook", ui::Dir::Down), std::string("pad.sensitivity"), "dead zone, mouse look, sensitivity");
             t.Equals(g.move("pad.sensitivity", ui::Dir::Up), std::string("pad.mouselook"), "and up retraces them");
-            // R139: the crouch shortcut is a row of four cells under both columns, the last thing on the page.
-            t.Equals(g.move("pad.pick.1", ui::Dir::Down), std::string("pad.crouch.0"), "below the pad list is the crouch row's first cell");
-            t.Equals(g.move("pad.crouch.0", ui::Dir::Right), std::string("pad.crouch.1"), "right walks the row");
-            t.Equals(g.move("pad.crouch.1", ui::Dir::Right), std::string("pad.crouch.2"), "off, stick click, touchpad");
-            t.Equals(g.move("pad.crouch.2", ui::Dir::Right), std::string("pad.crouch.3"), "and L2");
-            t.Equals(g.move("pad.crouch.3", ui::Dir::Left), std::string("pad.crouch.2"), "left walks back");
-            t.Equals(g.move("pad.sensitivity", ui::Dir::Down).rfind("pad.crouch.", 0), static_cast<size_t>(0), "below the knobs is the crouch row too");
-            t.Equals(g.move("pad.crouch.0", ui::Dir::Up).rfind("pad.pick.", 0), static_cast<size_t>(0), "up from its left end is the pad list");
-            t.Equals(g.move("pad.crouch.3", ui::Dir::Up), std::string("pad.sensitivity"), "up from its right end is the last knob");
-            t.Equals(g.move("pad.crouch.0", ui::Dir::Down), std::string("bar.launch.controller"), "and below it is the bar's LAUNCH");
-            t.IsTrue(!ui::adjustsHorizontally("pad.crouch.0"), "cells navigate; they are not a slider");
-            {
-                const ui::Node *sens = g.find("pad.sensitivity");
-                const ui::Node *crouch = g.find("pad.crouch.0");
-                t.IsTrue(sens != nullptr && crouch != nullptr && crouch->r.y >= sens->r.bottom() + 8.0f,
-                         "the row clears the knobs above it");
-            }
+            t.Equals(g.move("pad.sensitivity", ui::Dir::Down), std::string("bar.launch.controller"), "below the last knob is the bar's LAUNCH");
+            t.IsFalse(ui::hasNode(ui::layoutFor(ui::Page::Controller, window, in), "pad.crouch.0"), "the crouch row is not in SETUP");
+            t.IsTrue(!ui::adjustsHorizontally("pad.section.0") && !ui::adjustsHorizontally("pad.crouch.0"), "cells navigate; they are not a slider");
             t.IsTrue(ui::adjustsHorizontally("pad.deadzone") && ui::adjustsHorizontally("pad.sensitivity") &&
                          ui::adjustsHorizontally("audio.volume") && !ui::adjustsHorizontally("pad.mouselook"),
                      "left/right ADJUSTS the three sliders rather than navigating away from them");
@@ -1300,11 +1289,13 @@ void register_launcher_tests()
             ui::LayoutInputs in;
             in.advancedOpen = true;   // the ADVANCED sections' controls count too
             const ui::FocusGraph g = ui::FocusGraph::build(window, in);
+            in.padButtons = true;     // Sprint 10 Goal 8: and the CONTROLLER page's other section
+            const ui::FocusGraph gButtons = ui::FocusGraph::build(window, in);
             const std::vector<std::string> helped = ui::helpedIds();
             t.IsTrue(helped.size() >= 3u, "there is a help set to check");
             for (const std::string &id : helped)
             {
-                const bool real = g.find(id) != nullptr;
+                const bool real = g.find(id) != nullptr || gButtons.find(id) != nullptr;
                 t.IsTrue(real, ("help is attached to a control that exists: " + id).c_str());
                 t.IsFalse(ui::helpFor(id).empty(), ("and it is not empty: " + id).c_str());
                 // A sentence, not a restatement of the label: short help that just repeats the control is
@@ -1523,6 +1514,307 @@ void register_launcher_tests()
 
             const ui::PadIntent after = ui::padIntent(pad, /*gameRunning=*/false, /*now=*/5.0, repeatAt);
             t.Equals(after.dx, -1, "the frame the game ends, the still-held stick is one step, not a burst");
+        });
+
+
+        // ---- Sprint 10 Goal 8 (R174, part 2): the controller mapping UI --------------------------------------
+        // The CONTROLLER page keeps the drawn pad and splits what is under it into two sections: SETUP (the pad
+        // pick, the dead zone, the mouse) and BUTTONS (the sixteen bindings, RESTORE DEFAULTS, and the crouch
+        // shortcut -- which is a binding too, of a light Triangle, so it lives beside the others rather than as
+        // a leftover under the knobs). The layout is pure, so what the tests assert on is what the player sees.
+        tc.Run("CONTROLLER: SETUP and BUTTONS are two sections under the pad; the bindings, RESTORE and the crouch row live in BUTTONS", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.padChoices = 2;
+            in.padButtons = false;
+            const std::vector<ui::Node> setup = ui::layoutFor(ui::Page::Controller, window, in);
+            t.IsTrue(ui::hasNode(setup, "pad.section.0") && ui::hasNode(setup, "pad.section.1"), "the two section cells are always there");
+            t.IsTrue(ui::hasNode(setup, "pad.pick.0") && ui::hasNode(setup, "pad.pick.1"), "SETUP: the pad list");
+            t.IsTrue(ui::hasNode(setup, "pad.deadzone") && ui::hasNode(setup, "pad.mouselook") && ui::hasNode(setup, "pad.sensitivity"), "SETUP: the knobs");
+            t.IsFalse(ui::hasNode(setup, "pad.bind.cross"), "SETUP has no binding cells");
+            t.IsFalse(ui::hasNode(setup, "pad.restore"), "and no RESTORE");
+            t.IsFalse(ui::hasNode(setup, "pad.crouch.0"), "and the crouch row moved out of it");
+
+            in.padButtons = true;
+            const std::vector<ui::Node> buttons = ui::layoutFor(ui::Page::Controller, window, in);
+            for (int i = 0; i < ui::kBindCells; ++i)
+                t.IsTrue(ui::hasNode(buttons, ui::bindCellId(i)), "BUTTONS: a cell per PS2 button: " + ui::bindCellId(i));
+            t.IsTrue(ui::hasNode(buttons, "pad.restore"), "BUTTONS: RESTORE DEFAULTS");
+            for (int i = 0; i < launcher::kCrouchShortcutCount; ++i)
+                t.IsTrue(ui::hasNode(buttons, "pad.crouch." + std::to_string(i)), "BUTTONS: the crouch row");
+            t.IsFalse(ui::hasNode(buttons, "pad.pick.0") || ui::hasNode(buttons, "pad.deadzone"), "and none of SETUP's controls");
+
+            // Every PS2 button exactly once, and the cells named by the game's own words.
+            bool seen[16] = {};
+            for (int i = 0; i < ui::kBindCells; ++i)
+            {
+                const uint8_t b = ui::bindCellButton(i);
+                t.IsTrue(b < 16 && !seen[b], "cell " + std::to_string(i) + " is a PS2 button not seen before");
+                if (b < 16) seen[b] = true;
+                t.Equals(ui::bindCellOf(ui::bindCellId(i)), i, "the id reads back to its cell");
+            }
+            t.Equals(ui::bindCellId(0), std::string("pad.bind.cross"), "the first cell is Cross, the button a player presses most");
+            // The layout emits the cells in the flow's order (focus.cpp carries its own copy of the order, so a
+            // drift between the two would put a cell's rect under another cell's name).
+            std::vector<std::string> emitted;
+            for (const ui::Node &n : buttons)
+                if (n.id.rfind("pad.bind.", 0) == 0)
+                    emitted.push_back(n.id);
+            t.Equals(emitted.size(), static_cast<size_t>(ui::kBindCells), "sixteen cells emitted");
+            for (size_t i = 0; i < emitted.size(); ++i)
+                t.Equals(emitted[i], ui::bindCellId(static_cast<int>(i)), "cell " + std::to_string(i) + " is the flow's cell " + std::to_string(i));
+            t.Equals(ui::bindCellOf("pad.bind.banana"), -1, "an id that is not a cell is -1");
+
+            // Four across, four down, all under the section row, the crouch row last, the pad band above untouched.
+            const ui::Rect section = ui::rectOf(buttons, "pad.section.1");
+            const ui::Rect first = ui::rectOf(buttons, ui::bindCellId(0));
+            const ui::Rect fourth = ui::rectOf(buttons, ui::bindCellId(3));
+            const ui::Rect fifth = ui::rectOf(buttons, ui::bindCellId(4));
+            const ui::Rect last = ui::rectOf(buttons, ui::bindCellId(15));
+            const ui::Rect crouch = ui::rectOf(buttons, "pad.crouch.0");
+            t.IsTrue(first.y >= section.bottom(), "the grid starts under the section row");
+            t.IsTrue(std::fabs(fourth.y - first.y) < 0.001f && fourth.x > first.x, "cells 0-3 are one row");
+            t.IsTrue(fifth.y > first.y && std::fabs(fifth.x - first.x) < 0.001f, "cell 4 starts the next row");
+            t.IsTrue(crouch.y >= last.bottom(), "the crouch row is under the grid");
+            const ui::Frame f = ui::frameFor(window);
+            for (const ui::Node &n : buttons)
+                t.IsTrue(n.r.inside(f.content) || n.r.inside(f.bar), "inside the panel: " + n.id);
+            const float padBandBottom = ui::rectOf(setup, "pad.section.0").y;
+            t.IsTrue(std::fabs(padBandBottom - section.y) < 0.001f, "the section row is at the same place in both sections, so the pad above never moves");
+
+            // The focus walks it: from the section cell down into the grid, right along a row, down to the crouch row.
+            const ui::FocusGraph g = ui::FocusGraph::build(window, in);
+            t.Equals(g.move("rail.controller", ui::Dir::Right), std::string("pad.section.0"), "the rail opens onto the section switch");
+            t.Equals(g.move("pad.section.0", ui::Dir::Right), std::string("pad.section.1"), "right is BUTTONS");
+            t.Equals(g.move("pad.section.1", ui::Dir::Right), std::string("pad.restore"), "then RESTORE, at the row's right end");
+            t.Equals(g.move("pad.section.0", ui::Dir::Down), ui::bindCellId(0), "down from the switch is the first cell");
+            t.Equals(g.move(ui::bindCellId(0), ui::Dir::Right), ui::bindCellId(1), "right walks the row");
+            t.Equals(g.move(ui::bindCellId(3), ui::Dir::Down), ui::bindCellId(7), "down is the cell under it");
+            t.Equals(g.move(ui::bindCellId(12), ui::Dir::Down), std::string("pad.crouch.0"), "under the last row is the crouch row");
+            t.Equals(g.move("pad.crouch.0", ui::Dir::Down), std::string("bar.launch.controller"), "and under that the bar's LAUNCH");
+            t.Equals(g.move(ui::bindCellId(0), ui::Dir::Left), std::string("rail.controller"), "left off the first column is the rail");
+            for (const std::string &id : g.idsOn(ui::Page::Controller))
+                t.IsTrue(!ui::adjustsHorizontally(id) || id == "pad.deadzone" || id == "pad.sensitivity", "cells navigate: " + id);
+        });
+
+        tc.Run("CONTROLLER: a dialog takes the BUTTONS section's controls out of the layout and puts its own in", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.padButtons = true;
+            in.padDialogButtons = 3;   // a conflict: SWAP, REPLACE, CANCEL
+            const std::vector<ui::Node> nodes = ui::layoutFor(ui::Page::Controller, window, in);
+            t.IsTrue(ui::hasNode(nodes, "pad.dialog.0") && ui::hasNode(nodes, "pad.dialog.1") && ui::hasNode(nodes, "pad.dialog.2"), "three dialog buttons");
+            t.IsFalse(ui::hasNode(nodes, "pad.dialog.3"), "and not a fourth");
+            t.IsFalse(ui::hasNode(nodes, "pad.bind.cross") || ui::hasNode(nodes, "pad.restore") || ui::hasNode(nodes, "pad.crouch.0"),
+                      "nothing behind the dialog can be focused or activated");
+            t.IsFalse(ui::hasNode(nodes, "pad.section.0"), "nor the section switch: the dialog is answered first");
+            const ui::FocusGraph g = ui::FocusGraph::build(window, in);
+            t.Equals(g.move("pad.dialog.0", ui::Dir::Right), std::string("pad.dialog.1"), "right walks the dialog's buttons");
+            t.Equals(g.move("pad.dialog.1", ui::Dir::Right), std::string("pad.dialog.2"), "to the last");
+            t.Equals(g.move("rail.controller", ui::Dir::Right), std::string("pad.dialog.0"), "the rail opens onto the dialog");
+            const ui::Frame f = ui::frameFor(window);
+            for (const ui::Node &n : nodes)
+                t.IsTrue(n.r.inside(f.content) || n.r.inside(f.bar), "inside the panel: " + n.id);
+
+            in.padDialogButtons = 2;   // the restore confirm: RESTORE, CANCEL
+            const std::vector<ui::Node> two = ui::layoutFor(ui::Page::Controller, window, in);
+            t.IsTrue(ui::hasNode(two, "pad.dialog.1") && !ui::hasNode(two, "pad.dialog.2"), "two buttons for the confirm");
+            in.padButtons = false;
+            in.padDialogButtons = 3;
+            t.IsFalse(ui::hasNode(ui::layoutFor(ui::Page::Controller, window, in), "pad.dialog.0"), "a dialog belongs to BUTTONS; SETUP never shows one");
+        });
+
+        // The flow, driven a frame at a time with no window. Released, not pressed, so that B can mean both
+        // "bind me" (a tap) and "cancel" (a hold).
+        tc.Run("press-the-button-to-bind: a released button binds, B held cancels, a tap of B binds it, Escape cancels, the countdown runs out", [](TestCase &t)
+        {
+            using namespace launcher::mapping;
+            ui::BindFlow flow;
+            Mapping m = defaults();
+            t.IsTrue(flow.state == ui::BindFlow::State::Idle, "idle to begin with");
+            t.Equals(ui::bindCountdown(flow, 0.0), 0, "and no countdown");
+            t.IsTrue(ui::bindStep(flow, m, ui::BindInput{kHostL3, 0.1, false}, 0.0) == ui::BindEvent::None, "a release while idle is nothing");
+            t.IsTrue(m == defaults(), "and moves nothing");
+
+            ui::bindStart(flow, kPs2Triangle, 10.0);
+            t.IsTrue(flow.state == ui::BindFlow::State::Listening, "activating a cell listens");
+            t.Equals(ui::bindCountdown(flow, 10.0), 5, "five seconds on the clock");
+            t.Equals(ui::bindCountdown(flow, 12.2), 3, "counting down in whole seconds, rounded up");
+            t.IsTrue(ui::bindStep(flow, m, ui::BindInput{}, 11.0) == ui::BindEvent::None, "a frame with nothing released keeps listening");
+            t.IsTrue(flow.state == ui::BindFlow::State::Listening, "still listening");
+            t.IsTrue(ui::bindStep(flow, m, ui::BindInput{kHostGuide, 0.1, false}, 12.0) == ui::BindEvent::Bound, "a free button released binds");
+            t.IsTrue(flow.state == ui::BindFlow::State::Idle, "and the flow is idle again");
+            t.Equals(m.pad[rowOf(kPs2Triangle)].host, kHostGuide, "Triangle is on the guide button");
+            t.Equals(flow.lastHost, kHostGuide, "the drawing is told which control it landed on");
+            t.IsTrue(flow.lastAt == 12.0, "and when");
+
+            // The countdown runs out.
+            m = defaults();
+            ui::bindStart(flow, kPs2Triangle, 20.0);
+            t.IsTrue(ui::bindStep(flow, m, ui::BindInput{}, 24.9) == ui::BindEvent::None, "still waiting at 4.9 s");
+            t.IsTrue(ui::bindStep(flow, m, ui::BindInput{}, 25.0) == ui::BindEvent::TimedOut, "at five seconds it gives up");
+            t.IsTrue(flow.state == ui::BindFlow::State::Idle && m == defaults(), "idle, nothing moved");
+
+            // Escape.
+            ui::bindStart(flow, kPs2Triangle, 30.0);
+            t.IsTrue(ui::bindStep(flow, m, ui::BindInput{0, 0.0, true}, 30.5) == ui::BindEvent::Cancelled, "Escape cancels");
+            t.IsTrue(flow.state == ui::BindFlow::State::Idle && m == defaults(), "idle, nothing moved");
+
+            // B held cancels; B tapped binds B (and Circle, which had it, is the conflict -- see the next case).
+            ui::bindStart(flow, kPs2Triangle, 40.0);
+            t.IsTrue(ui::bindStep(flow, m, ui::BindInput{ui::kCancelHost, 0.6, false}, 41.0) == ui::BindEvent::Cancelled, "B held over half a second cancels");
+            t.IsTrue(flow.state == ui::BindFlow::State::Idle && m == defaults(), "idle, nothing moved");
+            ui::bindStart(flow, kPs2Triangle, 50.0);
+            t.IsTrue(ui::bindStep(flow, m, ui::BindInput{ui::kCancelHost, 0.1, false}, 51.0) == ui::BindEvent::Conflict, "a tap of B is a bind of B -- which Circle already has");
+            t.IsTrue(flow.state == ui::BindFlow::State::Conflict, "so the flow stops to ask");
+            t.Equals(flow.takenBy, static_cast<int>(kPs2Circle), "and says who has it");
+            ui::bindCancel(flow);
+
+            // Binding the button it already has is a bind, not a conflict with itself.
+            ui::bindStart(flow, kPs2Triangle, 60.0);
+            t.IsTrue(ui::bindStep(flow, m, ui::BindInput{kHostFaceUp, 0.1, false}, 61.0) == ui::BindEvent::Bound, "the same button again binds");
+            t.IsTrue(m == defaults(), "and changes nothing");
+
+            // An unknown PS2 button cannot start a session.
+            ui::bindStart(flow, 99, 70.0);
+            t.IsTrue(flow.state == ui::BindFlow::State::Idle, "an id out of range starts nothing");
+        });
+
+        tc.Run("a conflict says what the button already does and offers swap, replace or cancel", [](TestCase &t)
+        {
+            using namespace launcher::mapping;
+            ui::BindFlow flow;
+            Mapping m = defaults();
+            ui::bindStart(flow, kPs2Triangle, 0.0);
+            t.IsTrue(ui::bindStep(flow, m, ui::BindInput{kHostL3, 0.1, false}, 1.0) == ui::BindEvent::Conflict, "the stick click is L3's");
+            t.IsTrue(m == defaults(), "asking moved nothing");
+            t.Equals(ui::dialogButtonCount(flow.state), 3, "three answers");
+            t.Equals(std::string(ui::dialogButtonLabel(flow.state, 0)), std::string("SWAP"), "swap");
+            t.Equals(std::string(ui::dialogButtonLabel(flow.state, 1)), std::string("REPLACE"), "replace");
+            t.Equals(std::string(ui::dialogButtonLabel(flow.state, 2)), std::string("CANCEL"), "cancel");
+            t.Equals(ui::dialogFocusId(flow.state), std::string("pad.dialog.0"), "the focus lands on SWAP, the likely intent");
+            const std::string sentence = ui::dialogSentence(flow, ui::GlyphFamily::Xbox);
+            t.IsTrue(sentence.find("LS CLICK") != std::string::npos, "the sentence names the pad's own button: " + sentence);
+            t.IsTrue(sentence.find("L3") != std::string::npos, "and what the game already has it as");
+            t.IsTrue(sentence.find("TRIANGLE") != std::string::npos, "and what is being bound");
+
+            // Cancel: nothing moves.
+            t.IsTrue(ui::bindResolve(flow, m, Resolution::Ask, 2.0) == ui::BindEvent::Cancelled, "cancel");
+            t.IsTrue(flow.state == ui::BindFlow::State::Idle && m == defaults(), "idle, nothing moved");
+
+            // Swap.
+            ui::bindStart(flow, kPs2Triangle, 3.0);
+            ui::bindStep(flow, m, ui::BindInput{kHostL3, 0.1, false}, 4.0);
+            t.IsTrue(ui::bindResolve(flow, m, Resolution::Swap, 5.0) == ui::BindEvent::Bound, "swap binds");
+            t.Equals(m.pad[rowOf(kPs2Triangle)].host, kHostL3, "Triangle is on the stick click");
+            t.Equals(m.pad[rowOf(kPs2L3)].host, kHostFaceUp, "and L3 is on the top face button");
+            t.Equals(flow.lastHost, kHostL3, "the drawing is told");
+
+            // Replace.
+            m = defaults();
+            ui::bindStart(flow, kPs2Triangle, 6.0);
+            ui::bindStep(flow, m, ui::BindInput{kHostL3, 0.1, false}, 7.0);
+            t.IsTrue(ui::bindResolve(flow, m, Resolution::Replace, 8.0) == ui::BindEvent::Bound, "replace binds");
+            t.Equals(m.pad[rowOf(kPs2Triangle)].host, kHostL3, "Triangle is on the stick click");
+            t.Equals(m.pad[rowOf(kPs2L3)].host, kHostNone, "and L3 has no button");
+            t.IsTrue(ui::bindResolve(flow, m, Resolution::Swap, 9.0) == ui::BindEvent::None, "resolving with no conflict open is nothing");
+        });
+
+        tc.Run("restore defaults is a two-step whose focus lands on CANCEL", [](TestCase &t)
+        {
+            using namespace launcher::mapping;
+            ui::BindFlow flow;
+            Mapping m = defaults();
+            m.pad[rowOf(kPs2Triangle)].host = kHostGuide;
+            ui::restoreAsk(flow);
+            t.IsTrue(flow.state == ui::BindFlow::State::ConfirmRestore, "the first press asks");
+            t.IsFalse(isDefault(m), "and moves nothing");
+            t.Equals(ui::dialogButtonCount(flow.state), 2, "two answers");
+            t.Equals(std::string(ui::dialogButtonLabel(flow.state, 0)), std::string("RESTORE"), "restore");
+            t.Equals(std::string(ui::dialogButtonLabel(flow.state, 1)), std::string("CANCEL"), "cancel");
+            t.Equals(ui::dialogFocusId(flow.state), std::string("pad.dialog.1"),
+                     "the focus lands on CANCEL: a second press of the same button cannot wipe a layout");
+            t.IsFalse(ui::dialogSentence(flow, ui::GlyphFamily::Xbox).empty(), "and it asks in words");
+            ui::restoreAnswer(flow, m, false);
+            t.IsTrue(flow.state == ui::BindFlow::State::Idle && !isDefault(m), "no: idle, the layout kept");
+            ui::restoreAsk(flow);
+            ui::restoreAnswer(flow, m, true);
+            t.IsTrue(flow.state == ui::BindFlow::State::Idle && isDefault(m), "yes: idle, the defaults");
+            t.Equals(ui::dialogFocusId(ui::BindFlow::State::Idle), std::string(), "no dialog, no focus to land");
+            t.Equals(ui::dialogButtonCount(ui::BindFlow::State::Listening), 0, "listening is not a dialog");
+        });
+
+        tc.Run("the pad's own names for its buttons follow the glyph family, and the game's buttons have their words and shapes", [](TestCase &t)
+        {
+            using namespace launcher::mapping;
+            auto textOf = [](ui::GlyphFamily f, int host) { return std::string(ui::hostLabel(f, host).text); };
+            t.Equals(textOf(ui::GlyphFamily::Xbox, kHostFaceUp), std::string("Y"), "Xbox: Y on top");
+            t.Equals(textOf(ui::GlyphFamily::Xbox, kHostFaceDown), std::string("A"), "A at the bottom");
+            t.Equals(textOf(ui::GlyphFamily::Xbox, kHostL1), std::string("LB"), "LB");
+            t.Equals(textOf(ui::GlyphFamily::Xbox, kHostR2), std::string("RT"), "RT");
+            t.Equals(textOf(ui::GlyphFamily::Xbox, kHostSelect), std::string("VIEW"), "VIEW");
+            t.Equals(textOf(ui::GlyphFamily::Xbox, kHostStart), std::string("MENU"), "MENU");
+            t.Equals(textOf(ui::GlyphFamily::Xbox, kHostL3), std::string("LS CLICK"), "the stick click");
+            t.Equals(ui::hostLabel(ui::GlyphFamily::Xbox, kHostFaceUp).face, -1, "an Xbox pad's face button is a letter, not a shape");
+            t.Equals(ui::hostLabel(ui::GlyphFamily::PlayStation, kHostFaceUp).face, 0, "a PlayStation pad's top face button is the triangle, drawn");
+            t.Equals(ui::hostLabel(ui::GlyphFamily::PlayStation, kHostFaceRight).face, 3, "and its right one the circle");
+            t.Equals(textOf(ui::GlyphFamily::PlayStation, kHostL1), std::string("L1"), "PlayStation: L1");
+            t.Equals(textOf(ui::GlyphFamily::PlayStation, kHostStart), std::string("OPTIONS"), "OPTIONS");
+            t.Equals(textOf(ui::GlyphFamily::Generic, kHostFaceUp), std::string("1"), "a generic pad's buttons are numbered");
+            t.Equals(textOf(ui::GlyphFamily::Generic, kHostSelect), std::string("SELECT"), "SELECT");
+            t.Equals(textOf(ui::GlyphFamily::Xbox, kHostNone), std::string("NOT BOUND"), "an unbound row says so");
+            for (int h = 1; h <= kHostButtonMax; ++h)
+                for (ui::GlyphFamily f : {ui::GlyphFamily::Xbox, ui::GlyphFamily::PlayStation, ui::GlyphFamily::Generic})
+                    t.IsTrue(std::strlen(ui::hostLabel(f, h).text) > 0, "every host button has a label in every family");
+
+            t.Equals(ui::ps2Label(kPs2Triangle).face, 0, "Triangle is the shape");
+            t.Equals(ui::ps2Label(kPs2Cross).face, 1, "Cross is the shape");
+            t.Equals(ui::ps2Label(kPs2L1).face, -1, "L1 is a word");
+            t.Equals(std::string(ui::ps2Label(kPs2L1).text), std::string("L1"), "L1");
+            t.Equals(std::string(ui::ps2Label(kPs2Right).text), std::string("RIGHT"), "and libpad2's 5 is RIGHT, not DOWN");
+            for (int b = 0; b < 16; ++b)
+                t.IsTrue(std::strlen(ui::ps2Label(static_cast<uint8_t>(b)).text) > 0, "every PS2 button has a word");
+        });
+
+        // R139 on the same page: SOCOM II reads how HARD Triangle is pressed, a pad button is always firm, so the
+        // Triangle cell's help says so and points at the crouch row under it -- which is where the light press is.
+        tc.Run("the Triangle cell's help tells the analogue truth (R139), and the crouch cells' help states each trade", [](TestCase &t)
+        {
+            const std::string triangle = ui::helpFor("pad.bind.triangle");
+            t.IsFalse(triangle.empty(), "the Triangle cell has help");
+            t.IsTrue(triangle.find("hard") != std::string::npos || triangle.find("pressure") != std::string::npos, "it says the game reads pressure");
+            t.IsTrue(triangle.find("crouch") != std::string::npos || triangle.find("CROUCH") != std::string::npos, "and where crouch lives");
+            t.IsTrue(ui::helpFor("pad.bind.cross").empty(), "an ordinary cell explains itself");
+            for (int i = 0; i < launcher::kCrouchShortcutCount; ++i)
+                t.Equals(ui::helpFor("pad.crouch." + std::to_string(i)), std::string(launcher::crouchShortcutHint(launcher::kCrouchShortcuts[i])),
+                         "a crouch cell's help is its trade, the line the caption used to carry");
+            t.IsFalse(ui::helpFor("pad.restore").empty(), "RESTORE says what it restores");
+        });
+
+        // The drawing: every host button has a place on the pad the callouts hang off, inside the pad's bounds.
+        tc.Run("every host button has an anchor on the drawn pad", [](TestCase &t)
+        {
+            using namespace launcher::mapping;
+            const ui::Rect bounds{100.0f, 50.0f, 560.0f, 262.0f};
+            const ui::PadGeometry g = ui::padGeometry(bounds);
+            for (int h = 1; h <= kHostButtonMax; ++h)
+            {
+                const ui::PadAnchor a = ui::padAnchor(g, h);
+                t.IsTrue(a.valid, "host " + std::to_string(h) + " has an anchor");
+                t.IsTrue(a.r > 0.0f, "with a radius");
+                t.IsTrue(bounds.contains(a.c), "inside the pad's bounds");
+            }
+            t.IsFalse(ui::padAnchor(g, kHostNone).valid, "none has no place");
+            t.IsTrue(ui::padAnchor(g, ui::kPadAnchorTouchpad).valid, "the touchpad's place is the centre plate");
+            const ui::PadAnchor up = ui::padAnchor(g, kHostDpadUp);
+            const ui::PadAnchor down = ui::padAnchor(g, kHostDpadDown);
+            t.IsTrue(up.c.y < down.c.y && std::fabs(up.c.x - down.c.x) < 0.001f, "d-pad up is above d-pad down");
+            const ui::PadAnchor l1 = ui::padAnchor(g, kHostL1);
+            const ui::PadAnchor r1 = ui::padAnchor(g, kHostR1);
+            t.IsTrue(l1.c.x < g.centre.x && r1.c.x > g.centre.x, "L1 is on the left, R1 on the right");
+            t.IsTrue(l1.c.y < up.c.y, "and the shoulders are above the d-pad");
         });
 
 #ifndef _WIN32

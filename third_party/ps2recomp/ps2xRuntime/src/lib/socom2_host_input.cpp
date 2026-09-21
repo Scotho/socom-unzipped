@@ -318,14 +318,22 @@ namespace ps2_stubs
         static_assert(KEY_ENTER == 257 && KEY_ESCAPE == 256 && KEY_BACKSPACE == 259 && KEY_TAB == 258 && KEY_UP == 265 &&
                       KEY_RIGHT == 262 && KEY_DOWN == 264 && KEY_LEFT == 263 && KEY_SPACE == 32 && KEY_Z == 'Z' && KEY_ONE == '1',
                       "launcher/mapping.h's key table is written in raylib's key codes");
-        static_assert(launcher::mapping::kPs2Select == kPadSelect && launcher::mapping::kPs2L3 == kPadL3 &&
-                      launcher::mapping::kPs2R3 == kPadR3 && launcher::mapping::kPs2Start == kPadStart &&
-                      launcher::mapping::kPs2Up == kPadUp && launcher::mapping::kPs2Right == kPadRight &&
-                      launcher::mapping::kPs2Down == kPadDown && launcher::mapping::kPs2Left == kPadLeft &&
-                      launcher::mapping::kPs2L2 == kPadL2 && launcher::mapping::kPs2R2 == kPadR2 &&
-                      launcher::mapping::kPs2L1 == kPadL1 && launcher::mapping::kPs2R1 == kPadR1 &&
-                      launcher::mapping::kPs2Triangle == kPadTriangle && launcher::mapping::kPs2Circle == kPadCircle &&
-                      launcher::mapping::kPs2Cross == kPadCross && launcher::mapping::kPs2Square == kPadSquare,
+        static_assert(static_cast<int>(launcher::mapping::kPs2Select) == static_cast<int>(kPadSelect) &&
+                      static_cast<int>(launcher::mapping::kPs2L3) == static_cast<int>(kPadL3) &&
+                      static_cast<int>(launcher::mapping::kPs2R3) == static_cast<int>(kPadR3) &&
+                      static_cast<int>(launcher::mapping::kPs2Start) == static_cast<int>(kPadStart) &&
+                      static_cast<int>(launcher::mapping::kPs2Up) == static_cast<int>(kPadUp) &&
+                      static_cast<int>(launcher::mapping::kPs2Right) == static_cast<int>(kPadRight) &&
+                      static_cast<int>(launcher::mapping::kPs2Down) == static_cast<int>(kPadDown) &&
+                      static_cast<int>(launcher::mapping::kPs2Left) == static_cast<int>(kPadLeft) &&
+                      static_cast<int>(launcher::mapping::kPs2L2) == static_cast<int>(kPadL2) &&
+                      static_cast<int>(launcher::mapping::kPs2R2) == static_cast<int>(kPadR2) &&
+                      static_cast<int>(launcher::mapping::kPs2L1) == static_cast<int>(kPadL1) &&
+                      static_cast<int>(launcher::mapping::kPs2R1) == static_cast<int>(kPadR1) &&
+                      static_cast<int>(launcher::mapping::kPs2Triangle) == static_cast<int>(kPadTriangle) &&
+                      static_cast<int>(launcher::mapping::kPs2Circle) == static_cast<int>(kPadCircle) &&
+                      static_cast<int>(launcher::mapping::kPs2Cross) == static_cast<int>(kPadCross) &&
+                      static_cast<int>(launcher::mapping::kPs2Square) == static_cast<int>(kPadSquare),
                       "launcher/mapping.h's PS2 ids are libpad2's (Socom2PadButton)");
         for (const launcher::mapping::KeyBinding &entry : g_config.mapping.keys)
         {
@@ -356,24 +364,24 @@ namespace ps2_stubs
         {
             // The pad table: the mapping's rows (launcher/mapping.h), whose host ids are raylib's GamepadButton
             // values -- asserted here, once. A row bound to none (0) is skipped.
-            static_assert(GAMEPAD_BUTTON_LEFT_FACE_UP == launcher::mapping::kHostDpadUp &&
-                          GAMEPAD_BUTTON_LEFT_FACE_RIGHT == launcher::mapping::kHostDpadRight &&
-                          GAMEPAD_BUTTON_LEFT_FACE_DOWN == launcher::mapping::kHostDpadDown &&
-                          GAMEPAD_BUTTON_LEFT_FACE_LEFT == launcher::mapping::kHostDpadLeft &&
-                          GAMEPAD_BUTTON_RIGHT_FACE_UP == launcher::mapping::kHostFaceUp &&
-                          GAMEPAD_BUTTON_RIGHT_FACE_RIGHT == launcher::mapping::kHostFaceRight &&
-                          GAMEPAD_BUTTON_RIGHT_FACE_DOWN == launcher::mapping::kHostFaceDown &&
-                          GAMEPAD_BUTTON_RIGHT_FACE_LEFT == launcher::mapping::kHostFaceLeft &&
-                          GAMEPAD_BUTTON_LEFT_TRIGGER_1 == launcher::mapping::kHostL1 &&
-                          GAMEPAD_BUTTON_LEFT_TRIGGER_2 == launcher::mapping::kHostL2 &&
-                          GAMEPAD_BUTTON_RIGHT_TRIGGER_1 == launcher::mapping::kHostR1 &&
-                          GAMEPAD_BUTTON_RIGHT_TRIGGER_2 == launcher::mapping::kHostR2 &&
-                          GAMEPAD_BUTTON_MIDDLE_LEFT == launcher::mapping::kHostSelect &&
-                          GAMEPAD_BUTTON_MIDDLE == launcher::mapping::kHostGuide &&
-                          GAMEPAD_BUTTON_MIDDLE_RIGHT == launcher::mapping::kHostStart &&
-                          GAMEPAD_BUTTON_LEFT_THUMB == launcher::mapping::kHostL3 &&
-                          GAMEPAD_BUTTON_RIGHT_THUMB == launcher::mapping::kHostR3 &&
-                          GAMEPAD_BUTTON_UNKNOWN == launcher::mapping::kHostNone,
+            static_assert(static_cast<int>(GAMEPAD_BUTTON_LEFT_FACE_UP) == static_cast<int>(launcher::mapping::kHostDpadUp) &&
+                          static_cast<int>(GAMEPAD_BUTTON_LEFT_FACE_RIGHT) == static_cast<int>(launcher::mapping::kHostDpadRight) &&
+                          static_cast<int>(GAMEPAD_BUTTON_LEFT_FACE_DOWN) == static_cast<int>(launcher::mapping::kHostDpadDown) &&
+                          static_cast<int>(GAMEPAD_BUTTON_LEFT_FACE_LEFT) == static_cast<int>(launcher::mapping::kHostDpadLeft) &&
+                          static_cast<int>(GAMEPAD_BUTTON_RIGHT_FACE_UP) == static_cast<int>(launcher::mapping::kHostFaceUp) &&
+                          static_cast<int>(GAMEPAD_BUTTON_RIGHT_FACE_RIGHT) == static_cast<int>(launcher::mapping::kHostFaceRight) &&
+                          static_cast<int>(GAMEPAD_BUTTON_RIGHT_FACE_DOWN) == static_cast<int>(launcher::mapping::kHostFaceDown) &&
+                          static_cast<int>(GAMEPAD_BUTTON_RIGHT_FACE_LEFT) == static_cast<int>(launcher::mapping::kHostFaceLeft) &&
+                          static_cast<int>(GAMEPAD_BUTTON_LEFT_TRIGGER_1) == static_cast<int>(launcher::mapping::kHostL1) &&
+                          static_cast<int>(GAMEPAD_BUTTON_LEFT_TRIGGER_2) == static_cast<int>(launcher::mapping::kHostL2) &&
+                          static_cast<int>(GAMEPAD_BUTTON_RIGHT_TRIGGER_1) == static_cast<int>(launcher::mapping::kHostR1) &&
+                          static_cast<int>(GAMEPAD_BUTTON_RIGHT_TRIGGER_2) == static_cast<int>(launcher::mapping::kHostR2) &&
+                          static_cast<int>(GAMEPAD_BUTTON_MIDDLE_LEFT) == static_cast<int>(launcher::mapping::kHostSelect) &&
+                          static_cast<int>(GAMEPAD_BUTTON_MIDDLE) == static_cast<int>(launcher::mapping::kHostGuide) &&
+                          static_cast<int>(GAMEPAD_BUTTON_MIDDLE_RIGHT) == static_cast<int>(launcher::mapping::kHostStart) &&
+                          static_cast<int>(GAMEPAD_BUTTON_LEFT_THUMB) == static_cast<int>(launcher::mapping::kHostL3) &&
+                          static_cast<int>(GAMEPAD_BUTTON_RIGHT_THUMB) == static_cast<int>(launcher::mapping::kHostR3) &&
+                          static_cast<int>(GAMEPAD_BUTTON_UNKNOWN) == static_cast<int>(launcher::mapping::kHostNone),
                           "launcher/mapping.h's host ids are raylib's GamepadButton values");
             // R139: the pad's buttons are gathered into a mask and passed through the crouch shortcut, which is the
             // identity when the option is off (PS2X_PAD_CROUCH_SHORTCUT unset). The keyboard, the mouse, the script
