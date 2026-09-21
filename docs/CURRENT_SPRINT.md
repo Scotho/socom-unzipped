@@ -124,7 +124,11 @@ runtime rebuild or the online round the item needs. No agent runs the game. **R1
 the owner asked for the hardening and the developer setup on `main` as soon as possible (PR #5, `sprint-10` -> `main`,
 validated locally first: the full Python suite, ps2x_tests 701/0, `leakcheck all`, both scanners clean; CI's three
 required checks on the PR head). What else the branch carries (Goal 3's mixed match, Goal 1's first row, the music
-round four) was gated when it landed. The sprint stays open on `sprint-10`; `v0.10.0` waits for its close.
+round four) was gated when it landed. The sprint stays open on `sprint-10`; `v0.10.0` waits for its close. **MERGED
+2026-09-21 05:15 UTC as `92b92c6` on `main`** (PR #6 from the frozen branch `hardening-to-main` = `b82fd22`, so `sprint-10`
+could keep moving; PR #5 closed in its favour; `build`, `build-windows`, `leakcheck` green on the head; `main` no
+longer tracks `server/config/simulated.db`). The linux build on PR #5 had reddened once on the threaded fire-window
+flake (KNOWN §4), which an agent is now fixing at its root (`agent/flake`).
 
 | Chunk | Agent / branch | Scope | State |
 |---|---|---|---|
