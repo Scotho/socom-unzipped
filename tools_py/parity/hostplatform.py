@@ -29,6 +29,15 @@ def exe_name(base, system=None):
 
 
 EXE_OVERRIDE_ENV = "SOCOM_EXE"
+DEV_ENV = "PS2X_DEV"
+
+
+def dev_env(env):
+    """Sprint 9 Goal 3: mark a child environment as a developer-mode launch (in place; returns it). The runner
+    honours Dev-class knobs -- every instrument the harness reads -- only with this or --dev. An operator's own
+    PS2X_DEV wins, so `PS2X_DEV=0 ./run.sh` is still a stranger's run."""
+    env.setdefault(DEV_ENV, "1")
+    return env
 
 
 def runtime_exe(system=None, env=None):

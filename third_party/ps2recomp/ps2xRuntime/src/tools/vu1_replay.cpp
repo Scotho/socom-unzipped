@@ -111,6 +111,7 @@ namespace
 #undef private
 #include "runtime/gs/gs_frontend.h"
 #include "runtime/ps2_memory.h"
+#include "ps2x/knobs.h"
 
 // Defined in the game runner (game_overrides_socom2.cpp); the interpreter references it for the
 // triggered program dump. Never armed here.
@@ -869,6 +870,7 @@ namespace
 
 int main(int argc, char **argv)
 {
+    ps2x::knobs::setDevMode(true);   // the tool steers the runtime through Dev knobs (replaySetEnv)
     if (argc < 2)
     {
         std::fprintf(stderr, "usage: vu1_replay <dump.bin> [--out packets.bin] [--trace] [--state]\n"

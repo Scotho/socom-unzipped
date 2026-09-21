@@ -2055,6 +2055,63 @@ git push
 
 ---
 
+## Execution ledger (Sprint 10 Q2, the Opus agent on `agent/knobs`, worktree `C:\projects\wt-knobs`, started 2026-09-21)
+
+The plan's Handoff note 1 said the ledger lives at `.superpowers/sdd/...`; nothing there is tracked (HANDOFF trap 11),
+so the ledger is this section. Tasks 1, 2, 3, 4 (A1-H) and 6 are the agent's; Tasks 5, 7, 8, 9 are the controller's
+and are not started here. The controller merges `agent/knobs` into `sprint-10` in the main tree; nothing was pushed.
+
+### The inventory, reconciled to the tree (Task 2 Step 3)
+
+The plan was written against `8e5d778`; the branch point of this work is `a3aa99a` (sprint-10). `grep -rhoaE
+'"PS2X_[A-Z0-9_]+' ps2xRuntime/{src,include} ps2xIOP ps2xShared ps2xLauncher` finds **145** names read by the shipped
+executables, the plan's 134 plus eleven, none removed:
+
+| New name | Read at | Verdict / Kind / Default | Where it came from |
+|---|---|---|---|
+| `PS2X_AUDIO_INSTRUMENT` | `ps2_audio.cpp:492S` `snd989_mixer.cpp:2003S` | DEV, Presence | research/36 item 9 (music round four) |
+| `PS2X_CD_STREAM_TRACE` | `CD.cpp:51S` `MPEG.cpp:3188S` `MPEG.cpp:3204S` | DEV, Presence | the movie feeder / MPEG gate work |
+| `PS2X_INPUT_MAPPING` | `socom2_host_input.cpp:232C` (`resolveMapping`, once) | **SHIPPING**, Spec | Sprint 10 Goal 8 (R174): `environmentFor` sends it when the profile's mapping is not the default. **The Shipping class is 18, not 17**; the "Shipping class is exactly what the launcher can send" case sets a custom mapping so the name is emitted, and asserts 18. |
+| `PS2X_LAUNCHER_API_BASE` | `bug_report.h:32` (the literal), read at `ps2xLauncher/src/main.cpp:275` as `std::getenv(br::kApiBaseEnv)` | DEV, Text, `https://s2u.scotho.com` | Sprint 9 Goal 8, exactly as Handoff note 2 foresaw. Batch F migrates the read; `tools_py/tests/test_launcher_bug_report.py` gets `PS2X_DEV=1` in the launcher's environment in the same commit, because a test seam is a Dev knob and the launcher process reads `PS2X_DEV` (R156) -- harmless before the flip, required after it. |
+| `PS2X_SCHED_TRACE` | `SchedTrace.cpp:122S` (through its own `envOn`) | DEV, Flag, `0` | `a384dfb`, research/36 item 16 |
+| `PS2X_SCHED_TRACE_MAX_LINES_PER_S` | `EeScheduler.cpp:2495S` | DEV, Int, `4000` | same |
+| `PS2X_SCHED_TRACE_SAMPLE_MS` | `SchedTrace.cpp:134S` (`envMsToNs`) | DEV, Float, `20` | same |
+| `PS2X_SCHED_TRACE_STUBS` | `SchedTrace.cpp:207S` `SchedTrace.cpp:282C` | DEV, Spec | same |
+| `PS2X_SCHED_TRACE_STUB_MS` | `SchedTrace.cpp:128S` (`envMsToNs`) | DEV, Float, `1` | same |
+| `PS2X_SCHED_TRACE_TOML` | `SchedTrace.cpp:251C` (once, at install) | DEV, Path, `recomp/socom2.toml` | same |
+| `PS2X_SOCOM2_MUSIC_TRACE` | `game_overrides_socom2.cpp:1408C` (`installMusicTrace`, once) | DEV, Presence | music round four |
+
+Two more helpers that take the name as a parameter, beyond the plan's seven: `SchedTrace.cpp`'s `envOn(name)` and
+`envMsToNs(name, defaultMs)` (batch D, rule 2). `Kernel/SchedTrace.cpp` is a new file with three literal reads and
+joins `RAW_GETENV_PENDING` (batch D). The registry after Task 1 therefore holds **154** rows (18 Shipping, 127 Dev,
+8 Test, 1 Switch), not the plan's 143; after Task 6, 149.
+
+Not in the tree: `PS2X_SOCOM2_LOGIN_NAME` / `PS2X_SOCOM2_LOGIN_PASS` (the brief said they might exist -- the Goal 9
+agent is running beside this one; the only occurrences are a planted control string in `tools_py/release/leakcheck.py:437`
+and a scrub test in `diagnostics_tests.cpp:117`, neither a read). `harness_names` finds the leakcheck string and it is
+in `NOT_KNOBS` with its reason. The Goal 9 merge will add real names; the registry test will fail the day it does, which
+is the test doing its job (the same shape as Handoff note 2).
+
+Per-file raw-`getenv` line counts moved too (`gs_gl_backend.cpp` 46 lines, `game_overrides_socom2.cpp` 36,
+`ps2_vu1_core.cpp` 15, `host_mic.cpp` 4 -- the plan's call counts were per call, not per line, and three files gained or
+lost reads since `8e5d778`); the batches are defined by file, so nothing in the batch table changes except the additions
+named above.
+
+**The gate's env pin (Q1b, after the plan was written).** `pins.env_pin` hashes `gate.launch_env(...)`: `os.environ`
+plus the gate's own three knobs (`PS2X_HOST_GAMEPAD`, `PS2X_PC_SAMPLER`, `PS2X_PEEK`). Task 3 puts `PS2X_DEV` where
+the plan says -- `run.sh`, `drive.py`'s launch (`hostplatform.dev_env`), `scale_shot.child_env`, `env.sh` -- all of
+which sit *below* the pin, beside `PS2X_SOCOM2_PAD=1` and `PS2X_HOST_SCREENSHOT_LATEST`, which the pin does not see
+either. So the pin's three lines are byte-identical after Task 3 and a gate started from a clean shell is not refused;
+`PS2X_DEV=1` appears on the game's own `[knobs]` line (Task 5 Step 4 expects it). Proposed ruling R200 below says so.
+
+### Baselines and counts
+
+| | Python (`Ran N tests`) | C++ (`Total Tests:`) |
+|---|---|---|
+| `P` / `B` before Task 1 (the controller's last suite on `a3aa99a`) | 1624 | 722 |
+
+---
+
 ## Rulings made on the owner's behalf
 
 R152 onward (Goal 2 used R140-R151). Each is a decision this plan made where the spec was silent or the tree disagreed with it; each is the controller's to overturn before the task that carries it starts.
@@ -2092,6 +2149,47 @@ R152 onward (Goal 2 used R140-R151). Each is a decision this plan made where the
 - **R167** (Task 8): **Linux is proven by CI, the VM's C++ and Python suites and `test_knobs_line` on the Linux runner; the VM's title stage is read for its log, not its score.** R107 and R148 already record that the VM's gate cannot discriminate at 1.6 fps. *Cost if wrong:* a Linux-only break in `drive.py`'s direct launch — which Step 3 exists to catch when the VM is free.
 
 - **R168** (Task 2): **the namespace-scope-read check is a heuristic on this tree's naming (`g_` globals, column-0 `static`), not a parser.** It catches all four reads that exist today and the shapes a fifth would most likely take. *Cost if wrong:* an early read written some other way is honoured under `PS2X_DEV=1` and ignored under `--dev` — a confusing afternoon for a developer, never a stranger's problem.
+
+### Proposed rulings from the Q2 agent (2026-09-21; the controller numbers them -- next free is R200)
+
+- **Proposed R200 (Task 3, the env pin).** **`PS2X_DEV` enters the harness below the gate's env pin, and the pin is
+  not widened for it.** Q1b's `pins.env_pin` hashes `gate.launch_env` -- the operator's environment plus the gate's
+  own three knobs -- and never saw `drive.py`'s `PS2X_SOCOM2_PAD=1` or `PS2X_HOST_SCREENSHOT_LATEST` either. Task 3
+  puts `PS2X_DEV=1` beside those (in `run.sh`, `hostplatform.dev_env` in `drive.py`, `scale_shot.child_env`,
+  `env.sh`), so the pinned lines are byte-identical and the controller's Task 5 gate is accepted without
+  `--accept-pins`; the game's `[knobs]` line is where `PS2X_DEV` is read back (Task 5 Step 4). *Why not widen the
+  pin to the launched environment:* the pin's job is to refuse an operator's stray variable, and `drive.py`'s
+  additions are code, not environment -- a change there is a commit the harness pin records. *Cost if wrong:* the
+  pin does not prove the harness's own additions; a later Q1 pass can hash `drive.launch`'s environment instead.
+
+- **Proposed R201 (Task 1, the inventory).** **`PS2X_INPUT_MAPPING` is the eighteenth Shipping name.** It is sent by
+  `environmentFor` when the profile's mapping is not the default (R174), so the "Shipping class is exactly what the
+  launcher can send" case sets a custom mapping before comparing. *Cost if wrong:* none -- the test scans, and 18
+  is what the launcher emits.
+
+- **Proposed R202 (batch F).** **`PS2X_LAUNCHER_API_BASE` is a Dev knob read through `ps2x::knob` in the launcher,
+  and the launcher's Python test sets `PS2X_DEV=1` on the launcher it starts.** A test seam is a probe: after the
+  flip a stranger's `PS2X_LAUNCHER_API_BASE` is ignored exactly as a runner probe is. The launcher process reads
+  `PS2X_DEV` for R156's filter anyway, so no new switch is added. *Cost if wrong:* a developer running the launcher
+  by hand against a loopback service needs `PS2X_DEV=1` too -- one variable, and the header's comment says so.
+
+- **Proposed R203 (Task 4 D).** **The two helpers `SchedTrace.cpp` grew after the plan (`envOn`, `envMsToNs`) are
+  migrated under rule 2 like the plan's seven, and a check that no non-literal `getenv` remains in the shipped trees
+  outside `knobs.cpp` and `bare_run.cpp` joins `test_knobs_registry` when the last helper migrates (batch F).**
+  Without it the pending-list check proves only the literal reads; a helper that took the name as a parameter
+  could keep a raw `getenv` for ever. *Cost if wrong:* a future helper needs an exemption in `tools_py/knobs.py`
+  with its reason, as `bare_run.cpp`'s `applyEnvironment` (which applies `config.json`'s keys, not knobs) has.
+
+- **Proposed R204 (path knobs; the sprint file's addition).** **Every Path-kind knob is constrained to the portable
+  folder, or refused -- but not in this pass.** The registry now says which names are paths (Kind `Path`: 24 rows
+  after Task 6, `PS2X_MC_DIR` and `PS2X_MC_DIR_SLOT1` among them) and after the flip every Dev one of them is
+  ignored for a stranger; the two that a stranger can still reach are `PS2X_MC_DIR` (Shipping, already a name not a
+  path through `normalizeProfile`) and, through `config.json`, nothing else. The `remove_all` on the card root
+  (`KNOWN.md` row 110(c)) is a MemoryCard defect and is not made worse or better here. The constraint itself
+  (resolve under the home, refuse outside it) is one function at the accessor's edge and a test per Path row; it is
+  queued as the first item after the flip, because doing it before the flip changes what a launch with today's
+  environment does (a dump path outside the folder that works today would be refused), which Trap 1 forbids.
+  *Cost if wrong:* a stranger with a Dev path knob set gets nothing (the flip); a developer keeps today's behaviour.
 
 ## Self-review
 

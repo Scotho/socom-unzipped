@@ -20,6 +20,7 @@
 #include "ps2x/bare_run.h"
 #include "ps2x/exe_dir.h"
 #include "ps2x/exit_codes.h"
+#include "ps2x/knobs.h"
 #include "ps2x/preflight.h"
 #include "ps2x/process_fatal.h"
 
@@ -197,6 +198,11 @@ int main(int argc, char *argv[])
     // Sprint 9 Goal 1: running out of memory is exit 71 with a sentence, from whichever thread it happens on.
     ProcessFatal::installOutOfMemoryHandler();
 
+    // Sprint 9 Goal 3: --dev, anywhere after argv[0], is developer mode (the same as PS2X_DEV=1): Dev-class
+    // knobs are honoured. Taken out of argv here, before anything below looks at argv[1].
+    if (ps2x::knobs::consumeDevFlag(argc, argv))
+        ps2x::knobs::setDevMode(true);
+
     // socom2 --fail-test crash|oom: drives codes 70 and 71 for tools_py/tests/test_runner_exit_codes.py.
     if (argc > 2 && std::strcmp(argv[1], "--fail-test") == 0)
     {
@@ -243,6 +249,9 @@ int main(int argc, char *argv[])
         {
             pathObj = getExecutablePath(argc, argv);
         }
+
+        // One line, so a bug report says which knobs were in effect and which were ignored (docs/KNOBS.md).
+        std::cout << ps2x::knobs::startupLine() << std::endl;
 
 #if !defined(PLATFORM_VITA) && !defined(__ANDROID__)
         // Before a window exists: the ELF, the card folder, the disc, and that the disc is r0001 (R130).
