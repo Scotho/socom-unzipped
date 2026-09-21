@@ -207,18 +207,46 @@ bool GsPendingCap::mustWait() const
 
 void GsPendingCap::noteHardWait() { m_hardWaits.fetch_add(1u, std::memory_order_relaxed); }
 
+bool GsPendingCap::atCap() const
+{
+    return m_capBytes != 0u && m_bytes.load(std::memory_order_relaxed) >= m_capBytes;
+}
+
+void GsPendingCap::noteDropped(uint64_t bytes)
+{
+    m_droppedCommands.fetch_add(1u, std::memory_order_relaxed);
+    m_droppedBytes.fetch_add(bytes, std::memory_order_relaxed);
+}
+
+// Sprint 10 Goal 11 (Q6): the verdict. Refuse everything while latched once the cap is reached,
+// and keep refusing (absorbing) until the latch clears -- see the header for why the byte count
+// alone cannot end it. A refused draw is a drop (as since Sprint 7); a refused state-carrying
+// command is an absorption the caller hands to GsStallCoalescer.
 bool GsPendingCap::admit(bool latched, bool carriesState, uint64_t bytes)
 {
-    if (m_capBytes != 0u && latched && !carriesState &&
-        m_bytes.load(std::memory_order_relaxed) >= m_capBytes)
+    if (latched && (m_absorbing.load(std::memory_order_relaxed) || atCap()))
     {
-        m_droppedCommands.fetch_add(1u, std::memory_order_relaxed);
-        m_droppedBytes.fetch_add(bytes, std::memory_order_relaxed);
+        if (!carriesState)
+        {
+            noteDropped(bytes);
+            return false;
+        }
+        if (!m_absorbing.load(std::memory_order_relaxed))
+        {
+            m_absorbing.store(true, std::memory_order_relaxed);
+            m_absorptions.fetch_add(1u, std::memory_order_relaxed);
+        }
+        m_absorbedCommands.fetch_add(1u, std::memory_order_relaxed);
+        m_absorbedBytes.fetch_add(bytes, std::memory_order_relaxed);
         return false;
     }
     m_bytes.fetch_add(bytes, std::memory_order_relaxed);
     return true;
 }
+
+void GsPendingCap::admitWaited(uint64_t bytes) { m_bytes.fetch_add(bytes, std::memory_order_relaxed); }
+bool GsPendingCap::absorbing() const { return m_absorbing.load(std::memory_order_relaxed); }
+void GsPendingCap::endAbsorbing() { m_absorbing.store(false, std::memory_order_relaxed); }
 
 void GsPendingCap::onReplayed(uint64_t bytes)
 {
@@ -237,5 +265,8 @@ uint64_t GsPendingCap::bytes() const { return m_bytes.load(std::memory_order_rel
 uint64_t GsPendingCap::capBytes() const { return m_capBytes; }
 uint64_t GsPendingCap::hardCapBytes() const { return m_hardCapBytes; }
 uint64_t GsPendingCap::hardWaits() const { return m_hardWaits.load(std::memory_order_relaxed); }
+uint64_t GsPendingCap::absorptions() const { return m_absorptions.load(std::memory_order_relaxed); }
+uint64_t GsPendingCap::absorbedCommands() const { return m_absorbedCommands.load(std::memory_order_relaxed); }
+uint64_t GsPendingCap::absorbedBytes() const { return m_absorbedBytes.load(std::memory_order_relaxed); }
 uint64_t GsPendingCap::droppedCommands() const { return m_droppedCommands.load(std::memory_order_relaxed); }
 uint64_t GsPendingCap::droppedBytes() const { return m_droppedBytes.load(std::memory_order_relaxed); }
