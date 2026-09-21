@@ -183,9 +183,8 @@ namespace ui
                     add(out, page, "pad.pick." + std::to_string(i), Rect{b.x, top + static_cast<float>(i) * 30.0f, 400.0f, 26.0f});
                 const float rx = b.x + 440.0f;
                 const float rw = b.w - 440.0f;
+                // Sprint 10 Q3 (R210): the dead zone alone -- the mouse-look toggle and its sensitivity slider left.
                 add(out, page, "pad.deadzone", Rect{rx, top, rw, 28.0f});
-                add(out, page, "pad.mouselook", Rect{rx, top + 44.0f, rw, 28.0f});
-                add(out, page, "pad.sensitivity", Rect{rx, top + 92.0f, rw, 28.0f});
                 break;
             }
             // BUTTONS: RESTORE at the switch row's right end; the sixteen cells four across and four down; the
@@ -563,6 +562,6 @@ namespace ui
 
     bool adjustsHorizontally(const std::string &id)
     {
-        return id == "audio.volume" || id == "pad.deadzone" || id == "pad.sensitivity";
+        return id == "audio.volume" || id == "pad.deadzone";
     }
 }

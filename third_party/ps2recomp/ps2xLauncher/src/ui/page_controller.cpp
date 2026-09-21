@@ -1,5 +1,6 @@
 // Sprint 8 Goal 9, the CONTROLLER page: the pad as the game will read it, and what changes it. Sprint 10 Goal 8
-// (R174, part 2): the space under the drawn pad is two sections -- SETUP (the pad pick, the dead zone, the mouse)
+// (R174, part 2): the space under the drawn pad is two sections -- SETUP (the pad pick, the dead zone; the mouse
+// controls left in Sprint 10 Q3, R210)
 // and BUTTONS (the sixteen bindings, RESTORE DEFAULTS, and the crouch shortcut, which is a binding of a light
 // Triangle and so belongs beside the others). The bind flow itself is pure (bind_flow.h); this file draws it.
 #include "bind_flow.h"
@@ -162,8 +163,6 @@ namespace ui
             // ---- SETUP: the pad picker ------------------------------------------------------------------------
             const Rect firstPick = rectOf(nodes, "pad.pick.0");
             const Rect deadZone = rectOf(nodes, "pad.deadzone");
-            const Rect mouseLook = rectOf(nodes, "pad.mouselook");
-            const Rect sensitivity = rectOf(nodes, "pad.sensitivity");
             // No "CONTROLLER" label over the list any more: the SETUP cell sits where it was, and the list's
             // check marks say what it is.
             int padSel = 0;
@@ -190,24 +189,24 @@ namespace ui
             if (slider(ctx, deadZone, "pad.deadzone", c.padDeadZone, 0.0, 0.40, 0.01))
                 app.dirty = true;
 
-            if (toggle(ctx, mouseLook, "Mouse look", "pad.mouselook", c.mouseLook))
-                app.dirty = true;
-
-            std::snprintf(label, sizeof(label), "MOUSE SENSITIVITY  %.2f", c.mouseSensitivity);
-            text(ctx, label, Vec2{sensitivity.x, sensitivity.y - 22.0f}, metrics::labelSize,
-                 c.mouseLook ? theme::dim : theme::mix(theme::dim, theme::ground, 0.35f), Face::Bold, 0.06f);
-            if (slider(ctx, sensitivity, "pad.sensitivity", c.mouseSensitivity, 0.25, 3.0, 0.05))
-                app.dirty = true;
+            // Sprint 10 Q3 (R210): the keyboard is menus and typing only, and the mouse is gone -- so the SETUP
+            // section says so once, where the mouse-look toggle used to be (its row was 44 under the dead zone).
+            // Two lines: the column is 340 units wide and one line of it ran off the panel (the first capture).
+            text(ctx, "KEYBOARD", Vec2{deadZone.x, deadZone.y + 44.0f}, metrics::labelSize, theme::dim, Face::Bold, 0.06f);
+            caption(ctx, Vec2{deadZone.x, deadZone.y + 44.0f + metrics::labelSize + 8.0f},
+                    "Menus and typing only: arrows, Enter, Backspace, Z/X/C/V.");
+            caption(ctx, Vec2{deadZone.x, deadZone.y + 44.0f + metrics::labelSize + 8.0f + metrics::captionSize * 1.4f},
+                    "Playing needs a controller.");
 
             // One line under it all: the crouch shortcut's trade while one is on (the mark on the drawing is
-            // explained where it is seen), else what the drawing is for.
+            // explained where it is seen), else what the drawing is for. Where the sensitivity slider's bottom was.
             const char *hint = crouch == "off" ? nullptr : launcher::crouchShortcutHint(crouch);
-            caption(ctx, Vec2{firstPick.x, sensitivity.bottom() + 10.0f},
+            caption(ctx, Vec2{firstPick.x, deadZone.y + 92.0f + 28.0f + 10.0f},
                     hint != nullptr
                         ? hint
                         : (app.pad.present
                                ? "Press a button: what lights up above is what the game reads. The ring is the dead zone."
-                               : "No pad: WASD move, IJKL look, Z/X/C/V = square/cross/circle/triangle, Q/E = L1/R1, Enter = start."));
+                               : "No controller found. The keyboard walks the menus; playing needs a pad -- connect one."));
             return;
         }
 

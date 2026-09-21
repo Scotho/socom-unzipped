@@ -48,8 +48,8 @@ namespace ps2_stubs
             launcher::mapping::Mapping mapping = launcher::mapping::defaults();
             bool mappingResolved = false;
             bool mappingDefault = true;
-            bool mouse = false;
-            float mouseSensitivity = 4.0f;
+            // Sprint 10 Q3 (R210): which half of the key table the game gets -- decided once, from developer mode.
+            KeyboardScope keyboardScope = KeyboardScope::Menus;
             std::vector<ScriptEvent> script;
             std::vector<bool> fired;
             std::chrono::steady_clock::time_point start;
@@ -244,10 +244,9 @@ namespace ps2_stubs
         {
             g_config.initialised = true;
             g_config.start = std::chrono::steady_clock::now();
-            if (const char *mouse = ps2x::knob("PS2X_SOCOM2_MOUSE"))
-                g_config.mouse = (mouse[0] != '0');
-            if (const char *sens = ps2x::knob("PS2X_SOCOM2_MOUSE_SENS"))
-                g_config.mouseSensitivity = static_cast<float>(std::atof(sens));
+            // R210: the one read of developer mode this file makes. The harness's launches all have it (R203);
+            // a player's game gets the menu-and-typing half of the keyboard and plays on the pad.
+            g_config.keyboardScope = socom2KeyboardScopeFor(ps2x::knobs::devMode());
             if (const char *script = ps2x::knob("PS2X_SOCOM2_INPUT_SCRIPT"))
                 parseScript(script);
             resolveMapping();
@@ -255,22 +254,13 @@ namespace ps2_stubs
             const int pad = hostGamepadEnabled()
                                 ? hostGamepadSelect(hostGamepadIndexKnob(), kHostGamepadSlots, IsGamepadAvailable)
                                 : -1;
-            std::cout << "[socom2-input] keyboard on ("
-                      << (g_config.mappingDefault ? "arrows/WASD/IJKL, Enter=START, Backspace=SELECT, ZXCV=Square/Cross/Circle/Triangle, QE=L1/R1, 13=L2/R2, 24=L3/R3"
-                                                  : "PS2X_INPUT_MAPPING's key table; WASD/IJKL sticks")
-                      << ")"
+            std::cout << "[socom2-input] keyboard "
+                      << (g_config.keyboardScope == KeyboardScope::Full
+                              ? (g_config.mappingDefault ? "full, developer mode (arrows/WASD/IJKL, Enter=START, Backspace=SELECT, ZXCV=Square/Cross/Circle/Triangle, QE=L1/R1, 13=L2/R2, 24=L3/R3)"
+                                                         : "full, developer mode (PS2X_INPUT_MAPPING's key table; WASD/IJKL sticks)")
+                              : "menus and typing only (d-pad, Enter=START, Backspace=SELECT, ZXCV=Square/Cross/Circle/Triangle; R210)")
                       << "; gamepad " << (!hostGamepadEnabled() ? "off (PS2X_HOST_GAMEPAD=0)" : pad >= 0 ? GetGamepadName(pad) : "none")
-                      << "; mouse " << (g_config.mouse ? "on" : "off (PS2X_SOCOM2_MOUSE=1)")
                       << "; script events " << g_config.script.size() << std::endl;
-        }
-
-        uint8_t axisFromKeys(int negativeKey, int positiveKey)
-        {
-            const bool negative = IsKeyDown(negativeKey);
-            const bool positive = IsKeyDown(positiveKey);
-            if (negative == positive)
-                return 0x80u;
-            return negative ? 0x00u : 0xFFu;
         }
 
         uint8_t clampAxis(float value)
@@ -299,6 +289,62 @@ namespace ps2_stubs
     {
         resolveMapping();
         return g_config.mapping;
+    }
+
+    // ---- Sprint 10 Q3 (R210): the keyboard's scope ------------------------------------------------------------
+    // Pure, and the only place the rule is written: what a player's keyboard drives is the d-pad, the four face
+    // buttons, START and SELECT -- the game's menus, its pause and its on-screen keyboard read nothing else. The
+    // sticks, L1/R1, L2/R2 and L3/R3 are movement, aim, fire, lean and crouch: gameplay, and the pad's for a player.
+
+    KeyboardScope socom2KeyboardScopeFor(bool devMode)
+    {
+        return devMode ? KeyboardScope::Full : KeyboardScope::Menus;
+    }
+
+    bool socom2KeyboardDrivesButton(KeyboardScope scope, uint8_t button)
+    {
+        if (button >= 16)
+            return false;
+        if (scope == KeyboardScope::Full)
+            return true;
+        switch (button)
+        {
+        case kPadUp: case kPadRight: case kPadDown: case kPadLeft:
+        case kPadTriangle: case kPadCircle: case kPadCross: case kPadSquare:
+        case kPadStart: case kPadSelect:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    bool socom2KeyboardDrivesSticks(KeyboardScope scope)
+    {
+        return scope == KeyboardScope::Full;
+    }
+
+    void socom2ApplyKeyboard(const launcher::mapping::Mapping &mapping, KeyboardScope scope, bool (*isKeyDown)(int key),
+                             Socom2PadState &next)
+    {
+        for (const launcher::mapping::KeyBinding &entry : mapping.keys)
+        {
+            if (socom2KeyboardDrivesButton(scope, entry.button) && isKeyDown(entry.key))
+                next.button[entry.button] = 1u;
+        }
+        if (!socom2KeyboardDrivesSticks(scope))
+            return;
+        // WASD = left stick, IJKL = right stick (raylib's key codes are the capitals; the poll static_asserts it).
+        static const struct { int negative; int positive; int slot; } kStickKeys[] = {
+            {'A', 'D', 2}, {'W', 'S', 3}, {'J', 'L', 0}, {'I', 'K', 1},   // LX, LY (up = 0), RX, RY
+        };
+        for (const auto &pair : kStickKeys)
+        {
+            const bool negative = isKeyDown(pair.negative);
+            const bool positive = isKeyDown(pair.positive);
+            if (negative == positive)
+                continue;   // both or neither: the axis stays where it was
+            next.axis[pair.slot] = negative ? 0x00u : 0xFFu;
+        }
     }
 
     void socom2HostInputPoll(Socom2PadState &pad)
@@ -336,24 +382,20 @@ namespace ps2_stubs
                       static_cast<int>(launcher::mapping::kPs2Cross) == static_cast<int>(kPadCross) &&
                       static_cast<int>(launcher::mapping::kPs2Square) == static_cast<int>(kPadSquare),
                       "launcher/mapping.h's PS2 ids are libpad2's (Socom2PadButton)");
-        for (const launcher::mapping::KeyBinding &entry : g_config.mapping.keys)
-        {
-            if (entry.button < 16 && IsKeyDown(entry.key))
-                next.button[entry.button] = 1u;
-        }
+        static_assert(KEY_A == 'A' && KEY_D == 'D' && KEY_W == 'W' && KEY_S == 'S' && KEY_J == 'J' && KEY_L == 'L' &&
+                      KEY_I == 'I' && KEY_K == 'K', "socom2ApplyKeyboard's stick keys are raylib's key codes");
+        // R210: the key table and the WASD/IJKL sticks, under the scope decided once in initialise() -- the whole
+        // table in developer mode (the harness's path), the menu-and-typing buttons alone for a player.
+        socom2ApplyKeyboard(g_config.mapping, g_config.keyboardScope, IsKeyDown, next);
         // R139: a full Triangle from any source outranks the crouch shortcut's light one (tracked stage by stage).
         bool fullTriangle = next.button[kPadTriangle] != 0;
         bool lightTriangle = false;
-        next.axis[2] = axisFromKeys(KEY_A, KEY_D);   // LX
-        next.axis[3] = axisFromKeys(KEY_W, KEY_S);   // LY (up = 0)
-        next.axis[0] = axisFromKeys(KEY_J, KEY_L);   // RX
-        next.axis[1] = axisFromKeys(KEY_I, KEY_K);   // RY
 
         // Gamepad 0 (raylib: XInput / DirectInput), OR-ed with the keyboard like the pad file is. The
         // generic pad path (ps2_pad.cpp) read it already, but SOCOM's pad is served by this poll once
         // PS2X_SOCOM2_PAD is set, so an Xbox controller did nothing here until 2026-09-16 (owner's free
         // play: Windows saw the controller, the game did not). A stick overrides the keyboard axis only
-        // when deflected past the dead zone, so WASD/IJKL/mouse keep working with a pad plugged in.
+        // when deflected past the dead zone, so WASD/IJKL keep working with a pad plugged in (developer mode).
         // Task 8: the pad the launcher picked (PS2X_HOST_GAMEPAD_INDEX), or the first available one.
         // Re-selected every poll rather than latched: pads are hot-pluggable, and a player who plugs one in
         // mid-session should not have to restart.
@@ -385,7 +427,7 @@ namespace ps2_stubs
                           static_cast<int>(GAMEPAD_BUTTON_UNKNOWN) == static_cast<int>(launcher::mapping::kHostNone),
                           "launcher/mapping.h's host ids are raylib's GamepadButton values");
             // R139: the pad's buttons are gathered into a mask and passed through the crouch shortcut, which is the
-            // identity when the option is off (PS2X_PAD_CROUCH_SHORTCUT unset). The keyboard, the mouse, the script
+            // identity when the option is off (PS2X_PAD_CROUCH_SHORTCUT unset). The keyboard, the script
             // and the harness's injected file never go through it.
             static const CrouchShortcut s_crouch = crouchShortcutFromEnv(ps2x::knob("PS2X_PAD_CROUCH_SHORTCUT"));
             uint16_t hostMask = 0;
@@ -420,21 +462,6 @@ namespace ps2_stubs
                 if (v != 0.0f)
                     next.axis[stick.slot] = clampAxis(128.0f + v * 127.0f);
             }
-        }
-
-        // Mouse -> right stick + triggers.
-        if (g_config.mouse)
-        {
-            const Vector2 delta = GetMouseDelta();
-            if (delta.x != 0.0f || delta.y != 0.0f)
-            {
-                next.axis[0] = clampAxis(128.0f + delta.x * g_config.mouseSensitivity);
-                next.axis[1] = clampAxis(128.0f + delta.y * g_config.mouseSensitivity);
-            }
-            if (IsMouseButtonDown(MOUSE_BUTTON_LEFT))
-                next.button[kPadR1] = 1u;
-            if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT))
-                next.button[kPadL1] = 1u;
         }
 
         // Scripted presses.

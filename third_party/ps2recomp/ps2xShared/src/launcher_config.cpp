@@ -84,10 +84,6 @@ namespace launcher
         out += "  \"windowSize\": " + quote(c.windowSize) + ",\n";
         out += std::string("  \"fpsOverlay\": ") + (c.fpsOverlay ? "true" : "false") + ",\n";
         out += "  \"audioVolume\": " + std::to_string(c.audioVolume) + ",\n";
-        out += std::string("  \"mouseLook\": ") + (c.mouseLook ? "true" : "false") + ",\n";
-        char sens[32];
-        std::snprintf(sens, sizeof(sens), "%g", c.mouseSensitivity);
-        out += std::string("  \"mouseSensitivity\": ") + sens + ",\n";
         out += "  \"gamepadIndex\": " + std::to_string(c.gamepadIndex) + ",\n";
         char dz[32];
         std::snprintf(dz, sizeof(dz), "%g", c.padDeadZone);
@@ -191,14 +187,14 @@ namespace launcher
                     else if (key == "loginPassword") c.loginPassword = v;
                     else c.profile = normalizeProfile(v);
                 }
-                else if (key == "gsScale" || key == "mouseSensitivity" || key == "mouseLook" || key == "secondInstance" || key == "gamepadIndex" || key == "padDeadZone" || key == "fpsOverlay" || key == "audioVolume")
+                // Sprint 10 Q3 (R210): "mouseLook" and "mouseSensitivity", written by every launcher before 2026-09-21,
+                // are no longer keys of ours; they fall through to the unknown-key skip below like any other.
+                else if (key == "gsScale" || key == "secondInstance" || key == "gamepadIndex" || key == "padDeadZone" || key == "fpsOverlay" || key == "audioVolume")
                 {
                     std::string raw;
                     if (!p.scalar(raw))
                         return false;
                     if (key == "gsScale") c.gsScale = std::atoi(raw.c_str());
-                    else if (key == "mouseSensitivity") c.mouseSensitivity = std::atof(raw.c_str());
-                    else if (key == "mouseLook") c.mouseLook = raw == "true";
                     else if (key == "fpsOverlay") c.fpsOverlay = raw == "true";
                     else if (key == "audioVolume") c.audioVolume = std::atoi(raw.c_str());
                     else if (key == "gamepadIndex") c.gamepadIndex = std::atoi(raw.c_str());
@@ -490,13 +486,7 @@ namespace launcher
         // Sprint 7 Task 9: only when the player picked one -- unset means the runtime opens no capture device.
         if (!c.micDevice.empty())
             env.push_back("PS2X_MIC_DEVICE=" + c.micDevice);
-        if (c.mouseLook)
-        {
-            env.push_back("PS2X_SOCOM2_MOUSE=1");
-            char sens[32];
-            std::snprintf(sens, sizeof(sens), "%g", c.mouseSensitivity);
-            env.push_back(std::string("PS2X_SOCOM2_MOUSE_SENS=") + sens);
-        }
+        // Sprint 10 Q3 (R210): no PS2X_SOCOM2_MOUSE / _SENS any more -- the mouse left the launcher and the runtime.
         if (c.secondInstance)
         {
             env.push_back("PS2X_SOCOM2_UDP_SHIFT=2");

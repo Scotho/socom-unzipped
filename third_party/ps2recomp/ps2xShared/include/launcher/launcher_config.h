@@ -71,8 +71,7 @@ namespace launcher
         std::string windowSize = "1280x896";   // <w>x<h> | fullscreen
         bool fpsOverlay = false;               // Sprint 7 Task 10: PS2X_FPS_OVERLAY, off unless asked for
         int audioVolume = 100;                 // Sprint 7 Task 11: PS2X_AUDIO_VOLUME, 0-100, 100 = unity
-        bool mouseLook = false;
-        double mouseSensitivity = 1.0;
+        // Sprint 10 Q3 (R210): mouseLook and mouseSensitivity left on 2026-09-21; an old config.json's keys are ignored on load.
         // Sprint 7 Task 8: which host pad to read (-1 = the first available one, as the runtime did before)
         // and the stick dead zone the three pad paths apply.
         int gamepadIndex = -1;
@@ -175,7 +174,7 @@ namespace launcher
     std::vector<std::string> selftestExitLines();
 
 
-    // The environment socom2.exe is started with, as KEY=VALUE strings (PS2X_SOCOM2_PAD=1 always; MOUSE only when on;
+    // The environment socom2.exe is started with, as KEY=VALUE strings (PS2X_SOCOM2_PAD=1 always;
     // the second instance gets PS2X_SOCOM2_UDP_SHIFT=2, PS2X_SOCOM2_RSA_KEY=b and its own card directory).
     std::vector<std::string> environmentFor(const Config &config);
 
