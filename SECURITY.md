@@ -3,8 +3,8 @@
 ## Reporting
 
 Please do not open a public issue for a security problem. Use GitHub's **private vulnerability reporting** on this
-repository (Security tab, "Report a vulnerability") once the repository is public; until then, write to the owner
-through the contact on https://s2u.scotho.com. Expect an acknowledgement within a week. There is no bounty.
+repository (Security tab, "Report a vulnerability"; it is enabled), or write to the owner through the contact on
+https://s2u.scotho.com. Expect an acknowledgement within a week. There is no bounty.
 
 ## What the repository does about its own secrets
 

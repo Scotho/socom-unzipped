@@ -6,9 +6,13 @@ The parts marked **NOW** are in force on `sprint-9`. The parts marked **AT S9 CL
 
 ## 1. Where the repository is today
 
-- `github.com/Scotho/socom-unzipped`, **private**, no licence file at the root, no tags, no releases, no branch
-  protection, one CI workflow (`.github/workflows/linux.yml`: ubuntu-24.04, the library + tests + launcher with no
-  generated code, about an hour; `docs/**` changes do not trigger it).
+- `github.com/Scotho/socom-unzipped`, **PUBLIC since 2026-09-20** (the owner flipped it after the pre-publication
+  sweep and the history rewrite). `LICENSE` (GPL-3.0) at the root; `THIRD_PARTY_NOTICES.md` and `LICENSES/`; the tag
+  `v0.9.0`; no releases yet. Rulesets on `main` and `sprint-*` (§6); four workflows: `linux` and `windows` (the
+  library + tests + launcher with no generated code, about an hour each, skipped and reporting success on a
+  docs-only push), `secrets` (the leak check over the tree and full history plus gitleaks, minutes, every push) and
+  `release-draft` (§5). *Until 2026-09-20 this bullet said "private, no licence file, no tags, no branch protection,
+  one workflow".*
 - `develop` is gone (2026-09-20): it had pointed at the same commit as `main` after every sprint merge since Sprint 5
   and never held anything `main` did not.
 - Fifteen branches on the remote: `main`, `sprint-1`..`sprint-10`, `fix/gl-depth-precision`, `fix/gs-block-pointer`.
@@ -100,10 +104,18 @@ from the owner's disc and is not, and must never be, in the repository. So:
   owner.
 - Secret scanning and push protection on; Dependabot alerts on (the vendored tree means most updates are manual, but
   the alerts are free). Private vulnerability reporting on (`SECURITY.md` points at it).
-- Before the visibility flip: the full-history audit of Sprint 11 Goal 1 (secrets, addresses, disc-derived bytes).
-  **A private repository's history becomes public with it.** Decision D1 in the Sprint 11 spec is whether to publish
-  this history (after the audit says it is clean, or after a targeted `git filter-repo`), or to start the public
-  repository from a single import commit and keep this one private as the archive.
+- **Done 2026-09-20/21 (Sprint 10 H1-H2, rulings R181-R182 in `docs/CURRENT_SPRINT.md`):** secret scanning, push
+  protection, Dependabot alerts, private vulnerability reporting -- on. Rulesets: `main` requires a pull request and
+  the `build` + `leakcheck` checks, no force-push, no deletion, **no bypass actors** (agents push as the owner, so a
+  bypass for the owner is a bypass for every session); `sprint-*` no force-push, no deletion. Actions must be pinned
+  by commit SHA (`sha_pinning_required`); fork PRs from first-time contributors wait for approval. **One deviation
+  from the first bullet of this section:** no CODEOWNERS review is required on `main` -- the owner is the only code
+  owner and GitHub does not count an author's own review, so the rule would lock the owner's sprint merges out; it
+  goes on the day a second maintainer exists. The `windows` check joins the required set once it has been green on
+  `main` (it was green on `sprint-10` first).
+- The full-history audit of Sprint 11 Goal 1 (secrets, addresses) ran before the flip (`9253026`, the address
+  rewrite); the disc-derived-bytes half ran after it (`docs/audits/2026-09-21-disc-derived-bytes.md`). Decision D1
+  was made by the flip: this history, rewritten once, is the public one.
 
 ## 7. Issues and bug reports
 
