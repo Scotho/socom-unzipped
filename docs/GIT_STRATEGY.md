@@ -111,8 +111,7 @@ from the owner's disc and is not, and must never be, in the repository. So:
   by commit SHA (`sha_pinning_required`); fork PRs from first-time contributors wait for approval. **One deviation
   from the first bullet of this section:** no CODEOWNERS review is required on `main` -- the owner is the only code
   owner and GitHub does not count an author's own review, so the rule would lock the owner's sprint merges out; it
-  goes on the day a second maintainer exists. The `windows` check joins the required set once it has been green on
-  `main` (it was green on `sprint-10` first).
+  goes on the day a second maintainer exists. `build-windows` joined the required set on 2026-09-21 once the workflow was green on `sprint-10`.
 - The full-history audit of Sprint 11 Goal 1 (secrets, addresses) ran before the flip (`9253026`, the address
   rewrite); the disc-derived-bytes half ran after it (`docs/audits/2026-09-21-disc-derived-bytes.md`). Decision D1
   was made by the flip: this history, rewritten once, is the public one.

@@ -32,7 +32,11 @@ suggestions, stop rules and the owner-only list are not.
    `build.sh`. A red gate is fixed before anything else. Never regress: title labels clean, online reaches the lobby,
    a mission loads, the online local player moves.
 5. **Commit and push** by `docs/HANDOFF.md` §5 rules 1-4 (explicit pathspec; the never-commit list; your session's own
-   trailer; `git push origin <sprint branch>`; check CI when the push was not documentation-only).
+   trailer; `git push origin <sprint branch>`; check CI -- `secrets` runs on every push, `linux` and `windows` when
+   anything outside `docs/` moved). **The repository is public:** the hooks (`bash scripts/install_hooks.sh`, once
+   per clone) run the leak check before the commit and again before the push, and CI runs it over the full history;
+   a hit is fixed, or a reviewed non-secret is recorded with its reason in `tools_py/release/leak_allow.txt`. Never
+   `--no-verify`.
 6. **Write it down where it will be read:** a dated entry on top of `docs/STATUS.md` and its "Current state" block if
    the state changed; **audit `docs/KNOWN.md`** -- promote, retire or retract every row this step touched; tick the
    plan's boxes; update the item's row in `docs/CURRENT_SPRINT.md`; a numbered ruling for every moved default or
