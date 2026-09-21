@@ -1,0 +1,11 @@
+# Sprint 10 hardening: the workflows pin every action by commit SHA (Actions is set to require it), so the pins
+# only move when something moves them. Dependabot opens a pull request when an action has a new release, keeping the
+# SHA and the `# vX.Y.Z` comment in step; the PR goes through the same checks as any other. Nothing else is watched
+# here -- the vendored tree's updates are manual (docs/GIT_STRATEGY.md §6) and Dependabot ALERTS are on separately.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [ci]
