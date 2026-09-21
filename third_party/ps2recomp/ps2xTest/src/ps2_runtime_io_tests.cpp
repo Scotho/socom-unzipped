@@ -706,6 +706,167 @@ void register_ps2_runtime_io_tests()
                       "sceMcDelete should remove the host file");
         });
 
+        // --- Sprint 10 Q7 item 4: the Sprint 8 branch review's card leftovers (KNOWN 110 d) ---------
+        // (1) the 8000-cluster size was never enforced on writes; (2) a card root that cannot be a
+        // directory read as an empty, formatted card; (3) GetInfo walked the directory recursively
+        // under the mutex on every poll, and the game polls it many times a second in the menus.
+
+        tc.Run("a write that would take the card past its 8000 clusters is refused with sceMcResFullDevice and nothing of it lands (KNOWN 110 d)", [](TestCase &t)
+        {
+            TestContext test;
+
+            constexpr uint32_t typeAddr = GUEST_BUFFER_AREA_START + 0xA00;
+            constexpr uint32_t freeAddr = GUEST_BUFFER_AREA_START + 0xA04;
+            constexpr uint32_t formatAddr = GUEST_BUFFER_AREA_START + 0xA08;
+            constexpr uint32_t dirAddr = GUEST_STRING_AREA_START + 0xE00;
+            constexpr uint32_t fileAddr = GUEST_STRING_AREA_START + 0xE40;
+            constexpr uint32_t secondAddr = GUEST_STRING_AREA_START + 0xE80;
+            constexpr uint32_t payloadAddr = 0x100000u;                   // 8 MB of guest RAM from here
+            constexpr int32_t kFillBytes = 7999 * 1024;                   // the folder's own cluster + 7999 = 8000
+
+            clearContext(test.ctx);
+            ps2_stubs::sceMcInit(test.rdram.data(), &test.ctx, nullptr);
+            writeGuestString(test.rdram.data(), dirAddr, "/BASCUS-97275SOCOMII");
+            writeGuestString(test.rdram.data(), fileAddr, "/BASCUS-97275SOCOMII/FILL.BIN");
+            writeGuestString(test.rdram.data(), secondAddr, "/BASCUS-97275SOCOMII/MORE.BIN");
+            for (int32_t i = 0; i < kFillBytes; ++i)
+                test.rdram[payloadAddr + static_cast<uint32_t>(i)] = static_cast<uint8_t>(i * 7);
+
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, 0u);
+            setRegU32(test.ctx, 5, 0u);
+            setRegU32(test.ctx, 6, dirAddr);
+            ps2_stubs::sceMcMkdir(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(syncMc(test.rdram), 0, "the save folder is created (one cluster)");
+
+            auto openFor = [&](uint32_t nameAddr, uint32_t mode)
+            {
+                clearContext(test.ctx);
+                setRegU32(test.ctx, 4, 0u);
+                setRegU32(test.ctx, 5, 0u);
+                setRegU32(test.ctx, 6, nameAddr);
+                setRegU32(test.ctx, 7, mode);
+                ps2_stubs::sceMcOpen(test.rdram.data(), &test.ctx, nullptr);
+                return syncMc(test.rdram);
+            };
+            auto writeTo = [&](int32_t fd, uint32_t src, int32_t bytes)
+            {
+                clearContext(test.ctx);
+                setRegU32(test.ctx, 4, static_cast<uint32_t>(fd));
+                setRegU32(test.ctx, 5, src);
+                setRegU32(test.ctx, 6, static_cast<uint32_t>(bytes));
+                ps2_stubs::sceMcWrite(test.rdram.data(), &test.ctx, nullptr);
+                return syncMc(test.rdram);
+            };
+            auto closeFd = [&](int32_t fd)
+            {
+                clearContext(test.ctx);
+                setRegU32(test.ctx, 4, static_cast<uint32_t>(fd));
+                ps2_stubs::sceMcClose(test.rdram.data(), &test.ctx, nullptr);
+                return syncMc(test.rdram);
+            };
+
+            const int32_t fd = openFor(fileAddr, PS2_FIO_WRITE_CREATE_TRUNC);
+            t.IsTrue(fd > 0, "the fill file opens for writing");
+            t.Equals(writeTo(fd, payloadAddr, kFillBytes), kFillBytes, "7999 clusters fit beside the folder's one: the card is exactly full");
+            mcGetInfo(test, 0, typeAddr, freeAddr, formatAddr);
+            t.Equals(syncMc(test.rdram), 0, "the full card still answers GetInfo");
+            t.Equals(readGuestS32(test.rdram.data(), freeAddr), 0, "and reports no free cluster");
+
+            t.Equals(writeTo(fd, payloadAddr, 1), -3, "one more byte needs a cluster the card does not have: sceMcResFullDevice");
+            t.Equals(closeFd(fd), 0, "the fill file closes");
+            std::error_code ec;
+            t.Equals(static_cast<int64_t>(std::filesystem::file_size(test.paths.mcRoot / "BASCUS-97275SOCOMII" / "FILL.BIN", ec)),
+                     static_cast<int64_t>(kFillBytes), "the refused byte never landed on the host file");
+
+            const int32_t fd2 = openFor(secondAddr, PS2_FIO_WRITE_CREATE_TRUNC);
+            t.IsTrue(fd2 > 0, "a second file can be opened (an empty file costs no data cluster)");
+            t.Equals(writeTo(fd2, payloadAddr, 100), -3, "but its first byte has nowhere to go on a full card");
+            t.Equals(closeFd(fd2), 0, "the second file closes");
+            t.Equals(static_cast<int64_t>(std::filesystem::file_size(test.paths.mcRoot / "BASCUS-97275SOCOMII" / "MORE.BIN", ec)),
+                     static_cast<int64_t>(0), "and stays empty");
+
+            // Rewriting inside the file's existing clusters needs no new one.
+            const int32_t fd3 = openFor(fileAddr, PS2_FIO_O_WRONLY);
+            t.IsTrue(fd3 > 0, "the fill file reopens for writing");
+            t.Equals(writeTo(fd3, payloadAddr, 512), 512, "overwriting the first 512 bytes allocates nothing and is accepted");
+            t.Equals(closeFd(fd3), 0, "closed again");
+        });
+
+        tc.Run("a card root that cannot be a directory is not an empty formatted card: no card, and exit 72 for the launcher to explain (KNOWN 110 d)", [](TestCase &t)
+        {
+            TestContext test;
+
+            constexpr uint32_t typeAddr = GUEST_BUFFER_AREA_START + 0xA20;
+            constexpr uint32_t freeAddr = GUEST_BUFFER_AREA_START + 0xA24;
+            constexpr uint32_t formatAddr = GUEST_BUFFER_AREA_START + 0xA28;
+
+            // The launcher's profile folder is a FILE: create_directories fails, and the old code then read
+            // "does not exist" as "holds nothing" -- an empty, formatted 8 MB card that no save could ever land on.
+            std::error_code ec;
+            std::filesystem::remove_all(test.paths.mcRoot, ec);
+            {
+                std::ofstream blocker(test.paths.mcRoot, std::ios::binary);
+                blocker << "not a directory";
+            }
+            t.IsTrue(std::filesystem::is_regular_file(test.paths.mcRoot, ec), "the card root is a file before the query");
+            setPs2ProcessExitCode(0);
+
+            clearContext(test.ctx);
+            ps2_stubs::sceMcInit(test.rdram.data(), &test.ctx, nullptr);
+            mcGetInfo(test, 0, typeAddr, freeAddr, formatAddr);
+            const int32_t result = syncMc(test.rdram);
+            t.IsTrue(result != 0, "GetInfo does not succeed on a card that cannot exist");
+            t.Equals(readGuestS32(test.rdram.data(), typeAddr), 0, "no card is inserted (type 0), not an empty formatted one (type 2)");
+            t.Equals(readGuestS32(test.rdram.data(), freeAddr), 0, "and it has no free space to offer");
+            t.Equals(ps2ProcessExitCode(), 72, "the process will leave with card-dir-unwritable, the sentence the launcher already knows");
+            // Polled again -- the game asks many times a second -- the answer holds and the code is not lost.
+            mcGetInfo(test, 0, typeAddr, freeAddr, formatAddr);
+            t.Equals(readGuestS32(test.rdram.data(), typeAddr), 0, "still no card on the next poll");
+            t.Equals(ps2ProcessExitCode(), 72, "the exit code stays");
+            setPs2ProcessExitCode(0);
+            std::filesystem::remove(test.paths.mcRoot, ec);
+            std::filesystem::create_directories(test.paths.mcRoot, ec);
+        });
+
+        tc.Run("GetInfo counts the card's clusters once and again after the game's own writes, not on every poll (KNOWN 110 d)", [](TestCase &t)
+        {
+            TestContext test;
+
+            constexpr uint32_t typeAddr = GUEST_BUFFER_AREA_START + 0xA40;
+            constexpr uint32_t freeAddr = GUEST_BUFFER_AREA_START + 0xA44;
+            constexpr uint32_t formatAddr = GUEST_BUFFER_AREA_START + 0xA48;
+            constexpr uint32_t dirAddr = GUEST_STRING_AREA_START + 0xF00;
+
+            clearContext(test.ctx);
+            ps2_stubs::sceMcInit(test.rdram.data(), &test.ctx, nullptr);
+            const uint64_t walksAtStart = ps2_stubs::getMemoryCardDebugSnapshot().directoryWalks;
+
+            mcGetInfo(test, 0, typeAddr, freeAddr, formatAddr);
+            t.Equals(syncMc(test.rdram), 0, "the first poll answers");
+            const int32_t freeFirst = readGuestS32(test.rdram.data(), freeAddr);
+            t.Equals(ps2_stubs::getMemoryCardDebugSnapshot().directoryWalks - walksAtStart, uint64_t{1}, "the first poll walks the directory once");
+
+            for (int i = 0; i < 20; ++i)
+                mcGetInfo(test, 0, typeAddr, freeAddr, formatAddr);
+            t.Equals(ps2_stubs::getMemoryCardDebugSnapshot().directoryWalks - walksAtStart, uint64_t{1}, "twenty more polls walk nothing");
+            t.Equals(readGuestS32(test.rdram.data(), freeAddr), freeFirst, "and answer the same free count");
+
+            // What the game itself changes is counted at its next poll.
+            writeGuestString(test.rdram.data(), dirAddr, "/BASCUS-97275SOCOMII");
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, 0u);
+            setRegU32(test.ctx, 5, 0u);
+            setRegU32(test.ctx, 6, dirAddr);
+            ps2_stubs::sceMcMkdir(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(syncMc(test.rdram), 0, "the game makes its save folder");
+            mcGetInfo(test, 0, typeAddr, freeAddr, formatAddr);
+            t.Equals(ps2_stubs::getMemoryCardDebugSnapshot().directoryWalks - walksAtStart, uint64_t{2}, "the poll after a write walks again");
+            t.Equals(readGuestS32(test.rdram.data(), freeAddr), freeFirst - 1, "and sees the folder's cluster");
+            mcGetInfo(test, 0, typeAddr, freeAddr, formatAddr);
+            t.Equals(ps2_stubs::getMemoryCardDebugSnapshot().directoryWalks - walksAtStart, uint64_t{2}, "and the next poll does not");
+        });
+
         tc.Run("guest memory-card paths cannot escape the card root", [](TestCase &t)
         {
             TestContext test;
