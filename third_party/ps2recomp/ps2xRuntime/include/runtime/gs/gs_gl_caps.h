@@ -17,6 +17,7 @@
 #include <cstring>
 #include <string>
 #include "ps2x/exit_codes.h"
+#include "ps2x/knobs.h"
 
 namespace GsGlCaps
 {
@@ -97,7 +98,7 @@ namespace GsGlCaps
 
     inline Report evaluate(const char *glVersion, bool dualSourceBlend, bool clipControl)
     {
-        return evaluate(glVersion, dualSourceBlend, clipControl, std::getenv("PS2X_GS_GL_FORCE_FAIL"));
+        return evaluate(glVersion, dualSourceBlend, clipControl, ps2x::knob("PS2X_GS_GL_FORCE_FAIL"));
     }
 
     // One attempt, ever. shouldAttempt() is false from the first fail() onwards, so ensureGl()

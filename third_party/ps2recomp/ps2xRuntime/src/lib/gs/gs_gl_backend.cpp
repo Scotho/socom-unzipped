@@ -2196,7 +2196,7 @@ void GSGlBackend::refreshRenderTargetsFromShadow(uint32_t page, uint32_t pageCou
 {
     // Sprint 8 Goal 2 Task 1: how many exact rectangles a second there are to batch. Task 2's claim
     // is that rects/s is large and gl_calls/s equals it today.
-    static const bool s_uploadTrace = std::getenv("PS2X_GS_UPLOAD_TRACE") != nullptr;
+    static const bool s_uploadTrace = ps2x::knob("PS2X_GS_UPLOAD_TRACE") != nullptr;
     for (RenderTarget &rt : m_renderTargets)
     {
         const uint32_t pagesPerRow = std::max<uint32_t>(1u, (rt.fbw * 64u + 63u) / 64u);
@@ -2240,7 +2240,7 @@ void GSGlBackend::refreshRenderTargetsFromShadow(uint32_t page, uint32_t pageCou
         {
             // PS2X_GS_TRACE_DIRTY=<frame>: from that frame on, log every dirty mark that lands in
             // the visible rows of a display buffer, with the transfer that caused it.
-            static const long s_traceDirty = std::getenv("PS2X_GS_TRACE_DIRTY") ? std::strtol(std::getenv("PS2X_GS_TRACE_DIRTY"), nullptr, 0) : -1L;
+            static const long s_traceDirty = ps2x::knob("PS2X_GS_TRACE_DIRTY") ? std::strtol(ps2x::knob("PS2X_GS_TRACE_DIRTY"), nullptr, 0) : -1L;
             if (s_traceDirty >= 0 && static_cast<long>(m_frameCounter) >= s_traceDirty && rowFirst < 448u && rowLast > 380u)
                 std::fprintf(stderr, "[gs-gl dirty] frame=%llu rt fbp=%03x rows %u..%u <- transfer dbp=%05x dbw=%u dpsm=%02x dst=(%u,%u) %ux%u pages %03x+%u\n",
                              (unsigned long long)m_frameCounter, rt.fbp, rowFirst, rowLast, transfer.bitbltbuf.dbp, transfer.bitbltbuf.dbw,
@@ -2272,9 +2272,9 @@ void GSGlBackend::refreshDirtyRows(RenderTarget &rt)
     // Sprint 8 Goal 2 Task 1: terms (a-convert) and (b). The two glTexSubImage2D sites of this file
     // are both below, so this is the only place the GL half of a tile upload can be timed -- and
     // its milliseconds are charged to clear=, submit= and present=, never to upload=.
-    static const bool s_uploadTrace = std::getenv("PS2X_GS_UPLOAD_TRACE") != nullptr;
+    static const bool s_uploadTrace = ps2x::knob("PS2X_GS_UPLOAD_TRACE") != nullptr;
     // PS2X_GS_NO_DIRTY_REFRESH=1: A/B switch — drop the pending rows instead of re-reading them.
-    static const bool s_noRefresh = std::getenv("PS2X_GS_NO_DIRTY_REFRESH") != nullptr;
+    static const bool s_noRefresh = ps2x::knob("PS2X_GS_NO_DIRTY_REFRESH") != nullptr;
     if (s_noRefresh)
     {
         rt.dirtyRows = false;
@@ -2436,7 +2436,7 @@ void GSGlBackend::executeClear(const GSContext &context, uint32_t rgba)
     // fade/typing screen before the mission briefing (user report 2026-09-09).
     refreshDirtyRows(*rt);
     {
-        static const bool s_traceClear = std::getenv("PS2X_GS_TRACE_DISPFB") != nullptr;
+        static const bool s_traceClear = ps2x::knob("PS2X_GS_TRACE_DISPFB") != nullptr;
         if (s_traceClear)
             std::fprintf(stderr, "[gs-gl clear] frame=%llu fbp=%03x fbw=%u psm=%02x scissor=(%d,%d)-(%d,%d) rgba=%08x\n",
                          (unsigned long long)m_frameCounter, context.frame.fbp, context.frame.fbw, context.frame.psm,
@@ -2867,7 +2867,7 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
     // PS2X_GS_TRACE_PRESENT: sample the displayed target before the shadow refresh, and record
     // the refresh window, to tell a blank target from a refresh that blanks it.
     {
-        static const long s_skipPre = [] { const char *e = std::getenv("PS2X_GS_TRACE_PRESENT"); return e ? std::strtol(e, nullptr, 0) : -1L; }();
+        static const long s_skipPre = [] { const char *e = ps2x::knob("PS2X_GS_TRACE_PRESENT"); return e ? std::strtol(e, nullptr, 0) : -1L; }();
         static uint32_t s_printedPre = 0u;
         // After the skip: the first 30 presents, then every present that still has pending
         // dirty rows below 512 (the visible part of the display buffers) — a refresh that would
@@ -2893,7 +2893,7 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
     // displayed buffer three ways (gpu = the GL target, shadow = the render thread's VRAM copy,
     // cpu = the authoritative game-thread VRAM) as PPMs, to tell which layer holds a pixel.
     {
-        static const char *const s_dumpEnv = std::getenv("PS2X_GS_DUMP_DISPLAY");
+        static const char *const s_dumpEnv = ps2x::knob("PS2X_GS_DUMP_DISPLAY");
         if (s_dumpEnv)
         {
             static const auto s_epoch = std::chrono::steady_clock::now();
@@ -3063,7 +3063,7 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
     // PS2X_GS_TRACE_PRESENT=<skip>: after <skip> presents, print 30 presents with the copy's
     // centre pixel (rgba) and the GL error state, to tell a black copy from a black draw.
     {
-        static const long s_skip = [] { const char *e = std::getenv("PS2X_GS_TRACE_PRESENT"); return e ? std::strtol(e, nullptr, 0) : -1L; }();
+        static const long s_skip = [] { const char *e = ps2x::knob("PS2X_GS_TRACE_PRESENT"); return e ? std::strtol(e, nullptr, 0) : -1L; }();
         static uint32_t s_printed = 0u;
         if (s_skip >= 0 && static_cast<long>(m_frameCounter) > s_skip && s_printed < 30u)
         {
@@ -3088,7 +3088,7 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
     {
         static uint32_t s_logged = 0u;
         // PS2X_GS_TRACE_DISPFB=1: log every change of the displayed buffer (fbp/fbw/psm/size).
-        static const bool s_traceDispfb = std::getenv("PS2X_GS_TRACE_DISPFB") != nullptr;
+        static const bool s_traceDispfb = ps2x::knob("PS2X_GS_TRACE_DISPFB") != nullptr;
         static uint64_t s_lastKey = ~0ull;
         const uint64_t key = (static_cast<uint64_t>(display.fbp) << 32) | (display.fbw << 24) | (display.psm << 16) | (width << 4) | (height & 0xFu) | (static_cast<uint64_t>(height) << 40);
         const bool changed = s_traceDispfb && key != s_lastKey;
@@ -3241,7 +3241,7 @@ uint32_t GSGlBackend::decodeTexture(const GSDrawState &state, const TextureKey &
     }
     // Experiment: PS2X_GS_TEX_FROM_CPU=1 decodes from the authoritative (game-thread) VRAM instead
     // of the render-thread shadow, to tell shadow staleness from decode bugs.
-    static const bool s_fromCpu = std::getenv("PS2X_GS_TEX_FROM_CPU") != nullptr;
+    static const bool s_fromCpu = ps2x::knob("PS2X_GS_TEX_FROM_CPU") != nullptr;
     static std::vector<uint8_t> s_cpuCopy;
     if (s_fromCpu)
         m_cpu->SnapshotVram(s_cpuCopy);
@@ -3288,8 +3288,8 @@ uint32_t GSGlBackend::decodeTexture(const GSDrawState &state, const TextureKey &
         }
         // Diagnostic (with PS2X_GS_DUMP_TEX, after PS2X_GS_GL_DEBUG_AFTER presents, first 64
         // decodes): does the shadow VRAM's CLUT match the authoritative VRAM?
-        static const bool s_clutDiag = std::getenv("PS2X_GS_DUMP_TEX") != nullptr;
-        static const unsigned long long s_clutAfter = std::getenv("PS2X_GS_GL_DEBUG_AFTER") ? std::strtoull(std::getenv("PS2X_GS_GL_DEBUG_AFTER"), nullptr, 0) : 0ull;
+        static const bool s_clutDiag = ps2x::knob("PS2X_GS_DUMP_TEX") != nullptr;
+        static const unsigned long long s_clutAfter = ps2x::knob("PS2X_GS_GL_DEBUG_AFTER") ? std::strtoull(ps2x::knob("PS2X_GS_GL_DEBUG_AFTER"), nullptr, 0) : 0ull;
         static uint32_t s_clutDiagCount = 0;
         if (s_clutDiag && m_frameCounter >= s_clutAfter && s_clutDiagCount++ < 64u)
         {
@@ -3352,16 +3352,16 @@ uint32_t GSGlBackend::decodeTexture(const GSDrawState &state, const TextureKey &
     }
 
     // PS2X_GS_DUMP_TEX=<dir>: write every decoded texture as a PPM (RGB) + PGM (alpha) for inspection.
-    static const char *s_dumpDir = std::getenv("PS2X_GS_DUMP_TEX");
+    static const char *s_dumpDir = ps2x::knob("PS2X_GS_DUMP_TEX");
     // Gated by PS2X_GS_GL_DEBUG_AFTER (presents) and capped: ungated it wrote 136k files per boot.
-    static const unsigned long long s_dumpAfter = std::getenv("PS2X_GS_GL_DEBUG_AFTER") ? std::strtoull(std::getenv("PS2X_GS_GL_DEBUG_AFTER"), nullptr, 0) : 0ull;
+    static const unsigned long long s_dumpAfter = ps2x::knob("PS2X_GS_GL_DEBUG_AFTER") ? std::strtoull(ps2x::knob("PS2X_GS_GL_DEBUG_AFTER"), nullptr, 0) : 0ull;
     static uint32_t s_dumpCount = 0;
     // PS2X_GS_DUMP_TEX_TBP0=<block>: only decodes of that texture; _EVERY=<n>: every n-th of them; _MAX=<n>: the cap
     // (default 6); _FROM=t<seconds>: a host-time arm like PS2X_GS_TRACE_CMDS (the frame arm above still applies).
-    static const std::vector<long> s_dumpTbp0 = traceBlockList(std::getenv("PS2X_GS_DUMP_TEX_TBP0"));
-    static const uint32_t s_dumpEvery = std::getenv("PS2X_GS_DUMP_TEX_EVERY") ? std::max<uint32_t>(1u, static_cast<uint32_t>(std::strtoul(std::getenv("PS2X_GS_DUMP_TEX_EVERY"), nullptr, 0))) : 1u;
-    static const uint32_t s_dumpMax = std::getenv("PS2X_GS_DUMP_TEX_MAX") ? static_cast<uint32_t>(std::strtoul(std::getenv("PS2X_GS_DUMP_TEX_MAX"), nullptr, 0)) : 6u;
-    static const bool s_dumpHasFrom = std::getenv("PS2X_GS_DUMP_TEX_FROM") != nullptr;
+    static const std::vector<long> s_dumpTbp0 = traceBlockList(ps2x::knob("PS2X_GS_DUMP_TEX_TBP0"));
+    static const uint32_t s_dumpEvery = ps2x::knob("PS2X_GS_DUMP_TEX_EVERY") ? std::max<uint32_t>(1u, static_cast<uint32_t>(std::strtoul(ps2x::knob("PS2X_GS_DUMP_TEX_EVERY"), nullptr, 0))) : 1u;
+    static const uint32_t s_dumpMax = ps2x::knob("PS2X_GS_DUMP_TEX_MAX") ? static_cast<uint32_t>(std::strtoul(ps2x::knob("PS2X_GS_DUMP_TEX_MAX"), nullptr, 0)) : 6u;
+    static const bool s_dumpHasFrom = ps2x::knob("PS2X_GS_DUMP_TEX_FROM") != nullptr;
     static uint32_t s_dumpSeen = 0u;
     const bool dumpArmed = s_dumpDir && m_frameCounter >= s_dumpAfter &&
         (!s_dumpHasFrom || static_cast<long>(m_frameCounter) >= traceSkip("PS2X_GS_DUMP_TEX_FROM")) &&
@@ -3442,7 +3442,7 @@ uint32_t GSGlBackend::decodeTexture(const GSDrawState &state, const TextureKey &
 
 uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidth, uint32_t &outHeight)
 {
-    static const bool s_uploadTraceResolve = std::getenv("PS2X_GS_UPLOAD_TRACE") != nullptr;
+    static const bool s_uploadTraceResolve = ps2x::knob("PS2X_GS_UPLOAD_TRACE") != nullptr;
     const GSTex0Reg &tex = state.context.tex0;
     const uint32_t width = std::min<uint32_t>(1024u, 1u << std::min<uint32_t>(tex.tw, 10u));
     const uint32_t height = std::min<uint32_t>(1024u, 1u << std::min<uint32_t>(tex.th, 10u));
@@ -3462,7 +3462,7 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
     // holds everything the readback+decode would have produced. Restricted to texel-coordinate
     // draws with clamp/region-clamp wrapping (the shader normalizes by the target's size then),
     // never for the target being drawn into (feedback). PS2X_GS_RT_TEXTURE=0 restores the readback.
-    static const bool s_rtTexture = std::getenv("PS2X_GS_RT_TEXTURE") == nullptr || std::atoi(std::getenv("PS2X_GS_RT_TEXTURE")) != 0;
+    static const bool s_rtTexture = ps2x::knob("PS2X_GS_RT_TEXTURE") == nullptr || std::atoi(ps2x::knob("PS2X_GS_RT_TEXTURE")) != 0;
     if (s_rtTexture && tex.psm == GS_PSM_CT32 && state.prim.fst)
     {
         const uint64_t clamp = state.context.clamp;
@@ -3556,7 +3556,7 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
         // 551-1385 of them a second against 26-52 cached textures. Before throwing the texture
         // away, ask whether the CONTENT actually changed. PS2X_GS_NO_TEX_REVALIDATE=1 restores the
         // old behaviour for the A/B and the bisect.
-        static const bool s_noRevalidate = std::getenv("PS2X_GS_NO_TEX_REVALIDATE") != nullptr;
+        static const bool s_noRevalidate = ps2x::knob("PS2X_GS_NO_TEX_REVALIDATE") != nullptr;
         if (!s_noRevalidate && it->second.sourceHash != GsGlTextureIdentity::kUnhashable)
         {
             const auto tRev0 = s_uploadTraceResolve ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
@@ -3798,7 +3798,7 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
     if (!zte)
         ztst = 1u;
     // PS2X_GS_NO_ZTEST=1: A/B switch — every draw passes the depth test.
-    static const bool s_noZtest = std::getenv("PS2X_GS_NO_ZTEST") != nullptr;
+    static const bool s_noZtest = ps2x::knob("PS2X_GS_NO_ZTEST") != nullptr;
     if (s_noZtest)
         ztst = 1u;
     glEnable(GL_DEPTH_TEST);
@@ -3953,10 +3953,10 @@ void GSGlBackend::flushBatch()
     setupDrawState(m_batchState);
     // PS2X_GS_GL_DEBUG_PSM=<psm>: print the first batches drawn with that texture format (state,
     // bound texture, blend and the vertices actually submitted), to compare with the CPU path.
-    static const int s_debugPsm = std::getenv("PS2X_GS_GL_DEBUG_PSM") ? std::atoi(std::getenv("PS2X_GS_GL_DEBUG_PSM")) : -1;
+    static const int s_debugPsm = ps2x::knob("PS2X_GS_GL_DEBUG_PSM") ? std::atoi(ps2x::knob("PS2X_GS_GL_DEBUG_PSM")) : -1;
     static int s_debugCount = 0;
     // PS2X_GS_GL_DEBUG_AFTER=<presents>: only debug draws issued after that many presents.
-    static const unsigned long long s_debugAfter = std::getenv("PS2X_GS_GL_DEBUG_AFTER") ? std::strtoull(std::getenv("PS2X_GS_GL_DEBUG_AFTER"), nullptr, 0) : 0ull;
+    static const unsigned long long s_debugAfter = ps2x::knob("PS2X_GS_GL_DEBUG_AFTER") ? std::strtoull(ps2x::knob("PS2X_GS_GL_DEBUG_AFTER"), nullptr, 0) : 0ull;
     const bool debugWindow = m_frameCounter >= s_debugAfter;
     if (debugWindow && s_debugPsm >= 0 && m_batchState.prim.tme && static_cast<int>(m_batchState.context.tex0.psm) == s_debugPsm && s_debugCount++ < 12)
     {
@@ -4004,7 +4004,7 @@ void GSGlBackend::flushBatch()
         std::fprintf(stderr, "[gs-gl dbg]   band before: (100,50)=%u,%u,%u,%u (500,50)=%u,%u,%u,%u target fbp=%03x fbo=%u tex tbp0=%05x tbw=%u\n",
                      pa[0], pa[1], pa[2], pa[3], pb[0], pb[1], pb[2], pb[3],
                      m_batchRt ? m_batchRt->fbp : 0u, m_batchRt ? m_batchRt->fbo : 0u, m_batchState.context.tex0.tbp0, m_batchState.context.tex0.tbw);
-        static const bool s_noDepth = std::getenv("PS2X_GS_GL_DEBUG_NODEPTH") != nullptr;
+        static const bool s_noDepth = ps2x::knob("PS2X_GS_GL_DEBUG_NODEPTH") != nullptr;
         if (s_noDepth)
             glDisable(GL_DEPTH_TEST);
         // What does the bound texture hold at the sampled texel?
@@ -4047,7 +4047,7 @@ void GSGlBackend::flushBatch()
         // PS2X_GS_PROBE=<frame>: for 400 frames from there, after every untextured sprite batch
         // into fbp 0x8c, read back rows 200 and 420 at x=320 (GL RT rows) to see whether the
         // draw reached the bottom band (the movie strip investigation, 2026-09-09).
-        static const long s_probeFrom = std::getenv("PS2X_GS_PROBE") ? std::strtol(std::getenv("PS2X_GS_PROBE"), nullptr, 0) : -1L;
+        static const long s_probeFrom = ps2x::knob("PS2X_GS_PROBE") ? std::strtol(ps2x::knob("PS2X_GS_PROBE"), nullptr, 0) : -1L;
         if (s_probeFrom >= 0 && static_cast<long>(m_frameCounter) >= s_probeFrom && static_cast<long>(m_frameCounter) < s_probeFrom + 400 &&
             m_batchRt && m_batchRt->fbp == 0x8cu && !m_batchState.prim.tme && m_batchState.prim.type == GS_PRIM_SPRITE && m_vertices.size() >= 6)
         {

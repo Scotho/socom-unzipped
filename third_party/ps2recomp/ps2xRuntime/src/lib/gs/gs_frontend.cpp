@@ -9,7 +9,7 @@ namespace
     // PS2X_GS_BACKEND=cpu|gpu (default gpu). The CPU rasterizer stays as the reference/fallback.
     std::unique_ptr<GSRasterBackend> makeDefaultRasterBackend()
     {
-        const char *choice = std::getenv("PS2X_GS_BACKEND");
+        const char *choice = ps2x::knob("PS2X_GS_BACKEND");
         if (choice && (choice[0] == 'c' || choice[0] == 'C'))
             return std::make_unique<GSCpuBackend>();
         return std::make_unique<GSGlBackend>();
@@ -18,6 +18,7 @@ namespace
 
 #include "ps2_log.h"
 #include "runtime/ps2_memory.h"
+#include "ps2x/knobs.h"
 #include <atomic>
 #include <algorithm>
 #include <cmath>
@@ -653,7 +654,7 @@ void GS::latchHostPresentationFrame()
     }
 
     // PS2X_FRAME_DUMP=<dir>: log non-black pixel count each present and dump a PPM every 60 frames.
-    static const char *s_frameDumpDir = std::getenv("PS2X_FRAME_DUMP");
+    static const char *s_frameDumpDir = ps2x::knob("PS2X_FRAME_DUMP");
     if (s_frameDumpDir && hasFrame && width && height)
     {
         static std::atomic<uint64_t> s_frameNo{0};
@@ -778,7 +779,7 @@ bool GS::copyLatchedHostPresentationFrame(std::vector<uint8_t> &outPixels,
 // 'console GS dump replays ...' (PS2X_CONSOLE_REPLAY_DIR) can render OUR stream through both rasterisers.
 void GS::dumpGifRecordUnlocked(uint32_t path, const uint8_t *data, uint32_t sizeBytes)
 {
-    static const char *s_env = std::getenv("PS2X_GIF_DUMP");
+    static const char *s_env = ps2x::knob("PS2X_GIF_DUMP");
     if (!s_env || !data || sizeBytes == 0u)
         return;
     static std::string s_file;
@@ -1009,7 +1010,8 @@ void GS::uploadImageNativeUnlocked(uint64_t bitbltbuf,
         return;
 
     // The image-upload HLE writes registers directly: record it as the packet it stands for.
-    if (std::getenv("PS2X_GIF_DUMP"))
+    static const bool s_gifDump = ps2x::knob("PS2X_GIF_DUMP") != nullptr;   // was a getenv on every image upload
+    if (s_gifDump)
     {
         std::vector<uint8_t> pkt(16u * 5u + 16u + ((sizeBytes + 15u) & ~15u), 0u);
         const uint64_t tag0 = 4ull | (1ull << 15) | (1ull << 60), ad = 0xEull;
