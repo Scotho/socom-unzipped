@@ -288,10 +288,20 @@ class TestVideos(unittest.TestCase):
         doc = site.parse_document(self.with_video())
         entry = doc["eras"][0]["entries"][0]
         page = site.render_entry(entry, "https://example.test/r", "/story/img", 1)
-        self.assertIn('<video controls preload="metadata" playsinline poster="/story/img/2026-09-21-online-kill.png">', page)
-        self.assertIn('<source src="/story/img/2026-09-21-online-kill.mp4" type="video/mp4">', page)
+        self.assertRegex(page, r'<video controls preload="metadata" playsinline poster="/story/img/2026-09-21-online-kill\.png(\?v=[0-9a-f]{10})?">')
+        self.assertRegex(page, r'<source src="/story/img/2026-09-21-online-kill\.mp4(\?v=[0-9a-f]{10})?" type="video/mp4">')
         self.assertIn("<figcaption>One round, both screens.</figcaption>", page)
         self.assertNotIn("<img", page)
+
+    def test_media_urls_carry_the_files_hash(self):
+        """A re-encoded file under an unchanged URL is what Cloudflare kept serving; the stamp is the file's own."""
+        from tools_py.story import site
+        real = os.path.join(ROOT, cite.PICTURE_DIR, "2026-09-21-online-kill.mp4")
+        if not os.path.isfile(real):
+            self.skipTest("the video is not in this tree")
+        url = site.media_url("/story/img", "2026-09-21-online-kill.mp4")
+        self.assertRegex(url, r"^/story/img/2026-09-21-online-kill\.mp4\?v=[0-9a-f]{10}$")
+        self.assertEqual(site.media_url("/story/img", "no-such-file.png"), "/story/img/no-such-file.png")
 
 
 class TestShallowClone(unittest.TestCase):
