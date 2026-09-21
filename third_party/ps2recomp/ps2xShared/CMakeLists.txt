@@ -15,6 +15,7 @@ add_library(ps2x_shared STATIC
     src/bug_report.cpp
     src/mapping.cpp
     src/knobs.cpp
+    src/host_window.cpp   # Sprint 10 Q4: the game window's title and the launcher's palette on its chrome
 )
 target_include_directories(ps2x_shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_features(ps2x_shared PUBLIC cxx_std_20)

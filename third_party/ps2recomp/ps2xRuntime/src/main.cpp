@@ -20,6 +20,7 @@
 #include "ps2x/bare_run.h"
 #include "ps2x/exe_dir.h"
 #include "ps2x/exit_codes.h"
+#include "ps2x/host_window.h"
 #include "ps2x/knobs.h"
 #include "ps2x/preflight.h"
 #include "ps2x/process_fatal.h"
@@ -279,23 +280,15 @@ int main(int argc, char *argv[])
         std::string elfName = pathObj.filename().string();
         std::string normalizedId = normalizeGameId(elfName);
 
-        std::string windowTitle = "PS2-Recomp | ";
-        // PS2X_WINDOW_TITLE=tag: distinguishes a second instance's window (the parity harness finds
-        // windows by title substring).
-        if (const char *tag = ps2x::knob("PS2X_WINDOW_TITLE"))
-            windowTitle = std::string(tag) + " | ";
+        // Sprint 10 Q4: "<game> -- SOCOM Unzipped" (ps2x/host_window.h), the launcher's name on the game's
+        // window. It was "PS2-Recomp | <elf>" -- the harness's key moved with it (keys.py, pinned by
+        // test_host_window_title.py). PS2X_WINDOW_TITLE=tag still goes in front: a second instance's window
+        // is found by its tag, as it always was.
         const char *gameName = getGameName(normalizedId);
-
-#if !defined(PLATFORM_VITA)
-        if (gameName)
-        {
-            windowTitle += std::string(gameName) + " | " + elfName;
-        }
-        else
+#if defined(PLATFORM_VITA)
+        gameName = nullptr;
 #endif
-        {
-            windowTitle += elfName;
-        }
+        const std::string windowTitle = ps2x::host_window::title(ps2x::knob("PS2X_WINDOW_TITLE"), gameName, elfName);
 
         PS2Runtime runtime;
 #if defined(PS2X_ENABLE_DEBUG_UI) && !defined(PLATFORM_VITA)

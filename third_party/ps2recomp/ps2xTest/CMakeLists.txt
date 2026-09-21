@@ -75,6 +75,7 @@ add_library(ps2_test_lib STATIC
     src/mapping_tests.cpp
     src/socom2_osk_prefill_tests.cpp
     src/knobs_tests.cpp
+    src/menu_sounds_tests.cpp   # Sprint 10 Q4
 )
 
 target_include_directories(ps2_test_lib PRIVATE

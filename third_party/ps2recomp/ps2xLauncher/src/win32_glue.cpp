@@ -17,6 +17,7 @@
 #include <commdlg.h>
 #include <shellapi.h>
 #include <winhttp.h>
+#include <xinput.h>   // Sprint 10 Q4: XINPUT_STATE for the guide button (the DLL is loaded by hand, never linked)
 #endif
 
 namespace fs = std::filesystem;
@@ -353,6 +354,134 @@ namespace win32glue
 #else
         (void)game;
 #endif
+    }
+
+    // ---- Sprint 10 Q4: the window switch ------------------------------------------------------------------
+    namespace
+    {
+        // XInputGetStateEx: ordinal 100 of xinput1_4.dll (and 1_3), the documented signature with the guide
+        // bit 0x0400 in wButtons. Loaded once; a machine without it (documented as possible) reads "no".
+        struct XInputGuide
+        {
+            bool tried = false;
+            HMODULE dll = nullptr;
+            DWORD(WINAPI *getStateEx)(DWORD, XINPUT_STATE *) = nullptr;
+            // A user index that answered ERROR_DEVICE_NOT_CONNECTED is asked again only every 120 frames:
+            // XInput's own guidance, a disconnected slot is the slow one to poll.
+            unsigned skip[4] = {};
+        };
+        XInputGuide g_xinput;
+        constexpr WORD kXInputGuideBit = 0x0400;
+
+        void loadXInputGuide()
+        {
+            if (g_xinput.tried)
+                return;
+            g_xinput.tried = true;
+            for (const wchar_t *name : {L"xinput1_4.dll", L"xinput1_3.dll"})
+            {
+                g_xinput.dll = LoadLibraryW(name);
+                if (g_xinput.dll == nullptr)
+                    continue;
+                g_xinput.getStateEx = reinterpret_cast<DWORD(WINAPI *)(DWORD, XINPUT_STATE *)>(
+                    reinterpret_cast<void *>(GetProcAddress(g_xinput.dll, reinterpret_cast<LPCSTR>(100))));
+                if (g_xinput.getStateEx != nullptr)
+                    return;
+                FreeLibrary(g_xinput.dll);
+                g_xinput.dll = nullptr;
+            }
+        }
+
+        // The first visible, unowned, titled top-level window of a process: the game's raylib window.
+        struct FindByPid
+        {
+            DWORD pid;
+            HWND found;
+        };
+        BOOL CALLBACK findWindowByPid(HWND hwnd, LPARAM lParam)
+        {
+            FindByPid *f = reinterpret_cast<FindByPid *>(lParam);
+            DWORD pid = 0;
+            GetWindowThreadProcessId(hwnd, &pid);
+            if (pid != f->pid || !IsWindowVisible(hwnd) || GetWindow(hwnd, GW_OWNER) != nullptr || GetWindowTextLengthW(hwnd) == 0)
+                return TRUE;
+            f->found = hwnd;
+            return FALSE;
+        }
+
+        bool bringToFront(HWND target)
+        {
+            const HWND front = GetForegroundWindow();
+            if (front == target)
+                return true;
+            // A process that is not in front may not take the foreground (SetForegroundWindow's rules) unless
+            // its input queue is attached to the one that is. Attached for the call only.
+            const DWORD me = GetCurrentThreadId();
+            const DWORD frontThread = front != nullptr ? GetWindowThreadProcessId(front, nullptr) : 0;
+            const bool attached = frontThread != 0 && frontThread != me && AttachThreadInput(frontThread, me, TRUE);
+            if (IsIconic(target))
+                ShowWindow(target, SW_RESTORE);
+            BringWindowToTop(target);
+            SetForegroundWindow(target);
+            if (attached)
+                AttachThreadInput(frontThread, me, FALSE);
+            return GetForegroundWindow() == target;
+        }
+    }
+
+    bool xinputGuideReadable()
+    {
+        loadXInputGuide();
+        return g_xinput.getStateEx != nullptr;
+    }
+
+    bool xinputGuideDown()
+    {
+        loadXInputGuide();
+        if (g_xinput.getStateEx == nullptr)
+            return false;
+        bool down = false;
+        for (DWORD user = 0; user < 4; ++user)
+        {
+            if (g_xinput.skip[user] > 0)
+            {
+                --g_xinput.skip[user];
+                continue;
+            }
+            XINPUT_STATE state{};
+            const DWORD result = g_xinput.getStateEx(user, &state);
+            if (result != ERROR_SUCCESS)
+            {
+                g_xinput.skip[user] = 120;
+                continue;
+            }
+            down = down || (state.Gamepad.wButtons & kXInputGuideBit) != 0;
+        }
+        return down;
+    }
+
+    bool toggleForeground(void *launcherWindow, const GameProcess &game, std::string &why)
+    {
+        const HWND mine = reinterpret_cast<HWND>(launcherWindow);
+        if (mine == nullptr || game.process == nullptr)
+        {
+            why = "no game window to switch to";
+            return false;
+        }
+        FindByPid f{GetProcessId(static_cast<HANDLE>(game.process)), nullptr};
+        EnumWindows(findWindowByPid, reinterpret_cast<LPARAM>(&f));
+        if (f.found == nullptr)
+        {
+            why = "the game has no window yet";
+            return false;
+        }
+        const HWND target = GetForegroundWindow() == mine ? f.found : mine;
+        if (!bringToFront(target))
+        {
+            why = target == mine ? "Windows refused to bring the launcher forward" : "Windows refused to bring the game forward";
+            return false;
+        }
+        return true;
     }
 
     // ---- Sprint 9 Goal 8: one HTTPS request (the bug report, the server's status line) ---------------------

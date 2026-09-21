@@ -93,6 +93,8 @@ namespace launcher
         std::snprintf(dz, sizeof(dz), "%g", c.padDeadZone);
         out += std::string("  \"padDeadZone\": ") + dz + ",\n";
         out += "  \"crouchShortcut\": " + quote(normalizeCrouchShortcut(c.crouchShortcut)) + ",\n";
+        out += "  \"focusToggle\": " + quote(normalizeFocusToggle(c.focusToggle)) + ",\n";   // Sprint 10 Q4
+        out += std::string("  \"menuSounds\": ") + (c.menuSounds ? "true" : "false") + ",\n";
         out += "  \"micDevice\": " + quote(c.micDevice) + ",\n";
         out += "  \"serverPreset\": " + quote(c.serverPreset) + ",\n";
         out += "  \"server\": " + quote(c.server) + ",\n";
@@ -160,7 +162,7 @@ namespace launcher
                 std::string key;
                 if (!p.string(key) || !p.take(':'))
                     return false;
-                if (key == "isoPath" || key == "presentFilter" || key == "windowSize" || key == "server" || key == "serverPreset" || key == "profile" || key == "micDevice" || key == "crouchShortcut" || key == "loginName" || key == "loginPassword")
+                if (key == "isoPath" || key == "presentFilter" || key == "windowSize" || key == "server" || key == "serverPreset" || key == "profile" || key == "micDevice" || key == "crouchShortcut" || key == "focusToggle" || key == "loginName" || key == "loginPassword")
                 {
                     std::string v;
                     if (!p.string(v))
@@ -168,6 +170,7 @@ namespace launcher
                     if (key == "isoPath") c.isoPath = v;
                     else if (key == "presentFilter") c.presentFilter = v;
                     else if (key == "crouchShortcut") c.crouchShortcut = normalizeCrouchShortcut(v);
+                    else if (key == "focusToggle") c.focusToggle = normalizeFocusToggle(v);
                     // Review finding F5: a stored 0x0 (or any zero dimension) keeps the default instead.
                     else if (key == "windowSize") { if (isUsableWindowSize(v)) c.windowSize = v; }
                     else if (key == "server") { c.server = v; sawServer = true; }
@@ -191,7 +194,7 @@ namespace launcher
                     else if (key == "loginPassword") c.loginPassword = v;
                     else c.profile = normalizeProfile(v);
                 }
-                else if (key == "gsScale" || key == "mouseSensitivity" || key == "mouseLook" || key == "secondInstance" || key == "gamepadIndex" || key == "padDeadZone" || key == "fpsOverlay" || key == "audioVolume")
+                else if (key == "gsScale" || key == "mouseSensitivity" || key == "mouseLook" || key == "secondInstance" || key == "gamepadIndex" || key == "padDeadZone" || key == "fpsOverlay" || key == "audioVolume" || key == "menuSounds")
                 {
                     std::string raw;
                     if (!p.scalar(raw))
@@ -203,6 +206,7 @@ namespace launcher
                     else if (key == "audioVolume") c.audioVolume = std::atoi(raw.c_str());
                     else if (key == "gamepadIndex") c.gamepadIndex = std::atoi(raw.c_str());
                     else if (key == "padDeadZone") c.padDeadZone = std::atof(raw.c_str());
+                    else if (key == "menuSounds") c.menuSounds = raw == "true";
                     else c.secondInstance = raw == "true";
                 }
                 else if (key == "mappings")
@@ -365,6 +369,21 @@ namespace launcher
             if (value == known)
                 return known;
         return "off";
+    }
+
+    std::string normalizeFocusToggle(const std::string &value)
+    {
+        if (value == "none")
+            return value;
+        // hostButtonFromName answers 0 (kHostNone) for "none" and -1 for a name it does not know; "none" is
+        // taken above, so a bound button and "off" are both kept and only nonsense becomes the default.
+        return mapping::hostButtonFromName(value) > mapping::kHostNone ? value : std::string("guide");
+    }
+
+    int focusToggleHost(const Config &config)
+    {
+        const std::string name = normalizeFocusToggle(config.focusToggle);
+        return name == "none" ? mapping::kHostNone : mapping::hostButtonFromName(name);
     }
 
     std::string normalizeProfile(const std::string &value)

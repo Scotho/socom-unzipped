@@ -72,6 +72,8 @@ namespace ui
         static const char *byId[kPs2ButtonCount] = {
             "SELECT", "L3", "R3", "START", "UP", "RIGHT", "DOWN", "LEFT",
             "L2", "R2", "L1", "R1", "TRIANGLE", "CIRCLE", "CROSS", "SQUARE"};
+        if (button == kSwitchTarget)
+            return Ps2Label{"SWITCH", -1};   // Q4: the window switch's cell reads like the others
         return Ps2Label{button < kPs2ButtonCount ? byId[button] : "", ps2Face(button)};
     }
 
@@ -110,7 +112,7 @@ namespace ui
 
     void bindStart(BindFlow &flow, uint8_t button, double now)
     {
-        if (rowOf(button) < 0)
+        if (button != kSwitchTarget && rowOf(button) < 0)
             return;
         flow.state = BindFlow::State::Listening;
         flow.button = button;
@@ -135,6 +137,23 @@ namespace ui
         }
         if (in.releasedHost > kHostNone && in.releasedHost <= kHostButtonMax)
         {
+            if (flow.button == kSwitchTarget)
+            {
+                // Q4: the switch takes no row of the mapping. A host button the game reads is a conflict all
+                // the same -- the game must never see the switch -- and the dialog's REPLACE frees it.
+                const int taken = boundTo(m, in.releasedHost);
+                if (taken >= 0)
+                {
+                    flow.state = BindFlow::State::Conflict;
+                    flow.host = in.releasedHost;
+                    flow.takenBy = taken;
+                    return BindEvent::Conflict;
+                }
+                flow.lastHost = in.releasedHost;
+                flow.lastAt = now;
+                bindCancel(flow);
+                return BindEvent::Bound;
+            }
             const Conflict c = rebind(m, flow.button, in.releasedHost, Resolution::Ask);
             if (c.kind == Conflict::Kind::Taken)
             {
@@ -160,12 +179,15 @@ namespace ui
     {
         if (flow.state != BindFlow::State::Conflict)
             return BindEvent::None;
-        if (resolution == Resolution::Ask)
+        if (resolution == Resolution::Ask || (flow.button == kSwitchTarget && resolution == Resolution::Swap))
         {
             bindCancel(flow);
             return BindEvent::Cancelled;
         }
-        rebind(m, flow.button, flow.host, resolution);
+        if (flow.button == kSwitchTarget)
+            rebind(m, static_cast<uint8_t>(flow.takenBy), kHostNone, Resolution::Replace);   // the game lets go of it
+        else
+            rebind(m, flow.button, flow.host, resolution);
         flow.lastHost = flow.host;
         flow.lastAt = now;
         bindCancel(flow);
@@ -240,8 +262,38 @@ namespace ui
         return std::string();
     }
 
+    int dialogButtonCount(const BindFlow &flow)
+    {
+        if (flow.state == BindFlow::State::Conflict && flow.button == kSwitchTarget)
+            return 2;
+        return dialogButtonCount(flow.state);
+    }
+
+    const char *dialogButtonLabel(const BindFlow &flow, int index)
+    {
+        if (flow.state == BindFlow::State::Conflict && flow.button == kSwitchTarget)
+        {
+            static const char *labels[2] = {"REPLACE", "CANCEL"};
+            return index >= 0 && index < 2 ? labels[index] : "";
+        }
+        return dialogButtonLabel(flow.state, index);
+    }
+
+    std::string dialogFocusId(const BindFlow &flow)
+    {
+        if (flow.state == BindFlow::State::Conflict && flow.button == kSwitchTarget)
+            return "pad.dialog.1";   // CANCEL: REPLACE takes a button away from the game
+        return dialogFocusId(flow.state);
+    }
+
     std::string dialogSentence(const BindFlow &flow, GlyphFamily family)
     {
+        if (flow.state == BindFlow::State::Conflict && flow.button == kSwitchTarget)
+        {
+            const std::string theirs = flow.takenBy >= 0 ? ps2Label(static_cast<uint8_t>(flow.takenBy)).text : "";
+            return hostWords(family, flow.host) + " is already " + theirs +
+                   ", and the game must not read the window switch. Replace it (" + theirs + " loses its button), or cancel?";
+        }
         if (flow.state == BindFlow::State::Conflict)
         {
             const std::string mine = ps2Label(flow.button).text;

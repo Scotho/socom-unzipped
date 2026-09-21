@@ -34,7 +34,10 @@ MAPS = {
              # left stick (W/A/S/D) and right stick (I/J/K/L) in socom2_host_input.cpp keyboard mode
              "W": 0x57, "A": 0x41, "S": 0x53, "D": 0x44, "I": 0x49, "J": 0x4A, "K": 0x4B, "L": 0x4C},
 }
-WINDOW_TITLES = {"pcsx2": "SOCOM II - U.S. Navy SEALs", "ours": "PS2-Recomp"}
+# "ours": every title the runner opens ENDS with this (ps2x/host_window.h's kTitleSuffix, pinned by
+# tests/test_host_window_title.py). It was "PS2-Recomp" until Sprint 10 Q4 gave the game window the launcher's
+# name. The launcher's own window is "SOCOM Unzipped" with no dashes, so this key never picks it.
+WINDOW_TITLES = {"pcsx2": "SOCOM II - U.S. Navy SEALs", "ours": "-- SOCOM Unzipped"}
 
 
 def child_windows(main_hwnd):

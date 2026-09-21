@@ -20,8 +20,10 @@
 #include "launcher/iso9660.h"
 #include "launcher/launcher_config.h"
 #include "launcher/launcher_layout.h"
+#include "launcher/menu_sounds.h"
 #include "launcher/mic_devices.h"
 #include "launcher/sha256.h"
+#include "ps2x/app_icon_embedded.h"   // Sprint 10 Q4: the window icon both executables wear
 #include "ps2x/exe_dir.h"
 #include "ps2x/knobs.h"
 #include "ps2x/zip_store.h"
@@ -827,6 +829,84 @@ namespace
         app.layout.padChoices = static_cast<int>(app.padLabels.size());
         app.layout.micChoices = static_cast<int>(app.micLabels.size());
         app.layout.customServer = false;   // the default preset owns the address
+        // Sprint 10 Q4: the AUDIO page's line under the sounds toggle, as a first run with a verified disc shows it.
+        app.menuSoundsStatus = "from your disc: cache/menu_sounds/8c1f2a9b4d3e7f60";
+    }
+
+    // ---- Sprint 10 Q4: the launcher's own cues, out of the player's disc -------------------------------------
+    // The four HUD sounds (launcher/menu_sounds.h), decoded the first time a verified disc is seen and cached
+    // under <home>/cache/menu_sounds/<key>/, loaded through raylib's audio and played on the events below.
+    // No disc, a disc that did not verify, the setting off, or no audio device: nothing is loaded and the
+    // AUDIO page's line says which. Quiet on purpose (kMenuSoundVolume): these are the launcher's clicks, not
+    // the game's mix, and the owner asked for the game's voice, not its loudness.
+    constexpr float kMenuSoundVolume = 0.45f;
+
+    struct MenuSounds
+    {
+        bool deviceReady = false;
+        bool loaded = false;
+        Sound cue[static_cast<int>(launcher::menusounds::Cue::Count)]{};
+
+        void unload()
+        {
+            if (!loaded)
+                return;
+            for (Sound &s : cue)
+                UnloadSound(s);
+            loaded = false;
+        }
+
+        void play(launcher::menusounds::Cue c) const
+        {
+            if (loaded)
+                PlaySound(cue[static_cast<int>(c)]);
+        }
+    };
+
+    // (Re)loads the cues from the cache, building it from the ISO when it is not there. Sets the page's line.
+    void refreshMenuSounds(MenuSounds &menu, ui::App &app, const fs::path &home)
+    {
+        namespace ms = launcher::menusounds;
+        menu.unload();
+        if (!app.config.menuSounds)
+        {
+            app.menuSoundsStatus = "off";
+            return;
+        }
+        if (!menu.deviceReady)
+        {
+            app.menuSoundsStatus = "no audio device: silent";
+            return;
+        }
+        if (!app.discOk)
+        {
+            app.menuSoundsStatus = app.config.isoPath.empty() ? "no disc set yet: silent until one is (DISC page)"
+                                                              : "the disc did not verify: silent";
+            return;
+        }
+        const iso9660::Reader read = iso9660::fileReader(app.config.isoPath);
+        const std::string key = ms::isoKey(read);
+        if (key.empty())
+        {
+            app.menuSoundsStatus = "the disc image cannot be read: silent";
+            return;
+        }
+        const std::string dir = ms::cacheDir(home.string(), key);
+        std::string why;
+        if (!ms::cacheComplete(dir) && !ms::buildCache(read, dir, why))
+        {
+            app.menuSoundsStatus = "no HUD sounds in this image (" + why + "): silent";
+            std::fprintf(stderr, "[launcher] menu sounds: %s\n", why.c_str());
+            return;
+        }
+        for (int i = 0; i < static_cast<int>(ms::Cue::Count); ++i)
+        {
+            const fs::path file = fs::path(dir) / ms::cueFile(static_cast<ms::Cue>(i));
+            menu.cue[i] = LoadSound(file.string().c_str());
+            SetSoundVolume(menu.cue[i], kMenuSoundVolume);
+        }
+        menu.loaded = true;
+        app.menuSoundsStatus = "from your disc: " + fs::path(dir).lexically_relative(home).generic_string();
     }
 }
 
@@ -925,6 +1005,16 @@ int main(int argc, char **argv)
     }
     SetTargetFPS(60);
     SetExitKey(KEY_NULL);
+    // Sprint 10 Q4: raylib's audio for the menu cues. Not under --screenshot (no device is touched there), and a
+    // machine with no output device simply has no cues (IsAudioDeviceReady says so; nothing else is affected).
+    MenuSounds menu;
+    if (screenshotDir == nullptr)
+    {
+        InitAudioDevice();
+        menu.deviceReady = IsAudioDeviceReady();
+        if (!menu.deviceReady)
+            std::fprintf(stderr, "[launcher] no audio device: the menu sounds stay silent\n");
+    }
 
     // The custom title bar. On Windows the window keeps its frame (resize, snap, shadow) and only loses the
     // caption; everywhere else raylib gives us an undecorated window and we drag it ourselves.
@@ -953,6 +1043,15 @@ int main(int argc, char **argv)
 
     ui::Fonts fonts;   // rasterised per pixel size, rebuilt when the scale changes
     {
+        // Sprint 10 Q4: the crest as the window's icon (taskbar, title bar), the same one the game window gets.
+        Image icon = LoadImageFromMemory(".png", kImage_SocomUnzippedIcon, kImage_SocomUnzippedIcon_len);
+        if (icon.data != nullptr)
+        {
+            if (icon.format != PIXELFORMAT_UNCOMPRESSED_R8G8B8A8)
+                ImageFormat(&icon, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+            SetWindowIcon(icon);
+            UnloadImage(icon);
+        }
         Image logo = LoadImageFromMemory(".png", kImage_SocomUnzippedLogo, kImage_SocomUnzippedLogo_len);
         if (logo.data != nullptr)
         {
@@ -995,6 +1094,7 @@ int main(int argc, char **argv)
         app.micLabels = launcher::micLabels(*mic);
         meterOn = !app.config.micDevice.empty() && mic->startMeter(app.config.micDevice);
         app.meterOn = meterOn;
+        refreshMenuSounds(menu, app, dir);
     }
 
     // Sprint 9 Goal 8: the two requests this window ever makes, each on its own worker.
@@ -1048,6 +1148,10 @@ int main(int argc, char **argv)
         shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_buttons_conflict"});
         shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_buttons_restore"});
         shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_buttons_playstation"});
+        // Sprint 10 Q4: the window switch's cell bound to VIEW (a custom binding, its callout on the drawing),
+        // and its two-answer conflict dialog.
+        shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_buttons_switch"});
+        shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_buttons_switch_conflict"});
         // The owner's own config named the community server; this is what the page does with it.
         shots.push_back(Shot{ui::Page::Online, 1100, 700, "_community_healed"});
         // Sprint 9 P4: the ADVANCED section in both of its states. Shut is the ordinary `online`
@@ -1144,7 +1248,7 @@ int main(int argc, char **argv)
         app.layout.advancedOpen = app.advancedOpen || ui::advancedForced(app.config);
         // Sprint 10 Goal 8: the CONTROLLER page's section, and whether a bind dialog has replaced its controls.
         app.layout.padButtons = app.padSection == 1;
-        app.layout.padDialogButtons = ui::dialogButtonCount(app.bind.state);
+        app.layout.padDialogButtons = ui::dialogButtonCount(app.bind);
 
         const ui::FocusGraph graph = ui::FocusGraph::build(window, app.layout);
         // A page the last frame's draw asked for (a rail click, a PLAY row's CHANGE) lands here, before
@@ -1156,6 +1260,8 @@ int main(int argc, char **argv)
             nav.focus = ui::railId(nav.page);   // the list under the focus changed (a pad was unplugged)
 
         // ---- input ----------------------------------------------------------------------------------------
+        const std::string focusBefore = nav.focus;   // Q4: a move is a focus that changed by the end of the frame
+        bool cueSelect = false, cueBack = false;
         ui::Ctx ctx;
         ctx.scale = scale;
         ctx.dpi = dpiScale;
@@ -1242,6 +1348,21 @@ int main(int argc, char **argv)
         static double s_downSince[18] = {};
         static bool s_ignoreDown[18] = {};
         const bool listening = app.bind.state == ui::BindFlow::State::Listening;
+        // Sprint 10 Q4: the guide button, once a frame, from raylib (a DirectInput pad on Windows, any pad on
+        // Linux) OR from XInput's hidden entry point (an Xbox pad on Windows, whose guide bit XInputGetState
+        // hides -- win32_glue.h has the measurement). Its edges feed the bind loop and the pad gate below.
+        static bool s_guideWasDown = false;
+        bool guideDown = false, guidePressed = false, guideReleased = false;
+        if (!app.fake)
+        {
+            const int padSlot = shownSlot(app.config);
+            const bool padPresent = padSlot >= 0 && IsGamepadAvailable(padSlot);
+            guideDown = (padPresent && IsGamepadButtonDown(padSlot, GAMEPAD_BUTTON_MIDDLE)) || win32glue::xinputGuideDown();
+            guidePressed = guideDown && !s_guideWasDown;
+            guideReleased = !guideDown && s_guideWasDown;
+            s_guideWasDown = guideDown;
+        }
+        bool toggleWindows = false;
         if (!app.fake && listening)
         {
             const int padSlot = shownSlot(app.config);
@@ -1250,10 +1371,11 @@ int main(int argc, char **argv)
             in.escape = IsKeyPressed(KEY_ESCAPE);
             for (int h = 1; h <= launcher::mapping::kHostButtonMax; ++h)
             {
-                const bool down = padPresent && IsGamepadButtonDown(padSlot, h);
+                const bool guide = h == launcher::mapping::kHostGuide;
+                const bool down = padPresent && (guide ? guideDown : IsGamepadButtonDown(padSlot, h));
                 if (down && s_downSince[h] == 0.0)
                     s_downSince[h] = ctx.time;
-                if (padPresent && IsGamepadButtonReleased(padSlot, h))
+                if (padPresent && (guide ? guideReleased : IsGamepadButtonReleased(padSlot, h)))
                 {
                     if (s_ignoreDown[h])
                         s_ignoreDown[h] = false;
@@ -1273,6 +1395,14 @@ int main(int argc, char **argv)
             {
             case ui::BindEvent::Bound:
             {
+                if (bound == ui::kSwitchTarget)
+                {
+                    // Sprint 10 Q4: the window switch is the launcher's, not the mapping's.
+                    app.config.focusToggle = launcher::mapping::hostButtonName(app.bind.lastHost);
+                    app.dirty = true;
+                    app.status = std::string("the window switch is now ") + ui::hostLabel(family, app.bind.lastHost).text;
+                    break;
+                }
                 launcher::setActiveMapping(app.config, m);
                 app.dirty = true;
                 const int row = launcher::mapping::rowOf(bound);
@@ -1281,7 +1411,7 @@ int main(int argc, char **argv)
                 break;
             }
             case ui::BindEvent::Conflict:
-                nav.focus = ui::dialogFocusId(app.bind.state);
+                nav.focus = ui::dialogFocusId(app.bind);
                 break;
             case ui::BindEvent::Cancelled:
                 app.status = "binding cancelled";
@@ -1318,10 +1448,17 @@ int main(int argc, char **argv)
                 edge(ui::PadNav::PagePrev, GAMEPAD_BUTTON_LEFT_TRIGGER_1);
                 edge(ui::PadNav::PageNext, GAMEPAD_BUTTON_RIGHT_TRIGGER_1);
                 edge(ui::PadNav::Launch, GAMEPAD_BUTTON_MIDDLE_RIGHT);
+                // Sprint 10 Q4: the window switch's button -- the guide (through the read above) or whatever the
+                // player bound in its place; "none" presses nothing.
+                const int toggleHost = launcher::focusToggleHost(app.config);
+                padFrame.pressed[static_cast<int>(ui::PadNav::Toggle)] =
+                    toggleHost == launcher::mapping::kHostGuide ? guidePressed
+                                                                : (toggleHost != launcher::mapping::kHostNone && IsGamepadButtonPressed(padSlot, toggleHost));
                 padFrame.leftX = GetGamepadAxisMovement(padSlot, GAMEPAD_AXIS_LEFT_X);
                 padFrame.leftY = GetGamepadAxisMovement(padSlot, GAMEPAD_AXIS_LEFT_Y);
             }
             const ui::PadIntent padWants = ui::padIntent(padFrame, app.running, ctx.time, padRepeatAt);
+            toggleWindows = padWants.toggle;
 
             if (typing)
             {
@@ -1368,8 +1505,12 @@ int main(int argc, char **argv)
                         nav.focus = ids[at % ids.size()];
                 }
                 ctx.activate = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE) || padWants.activate;
+                cueSelect = ctx.activate;
                 if (IsKeyPressed(KEY_ESCAPE) || padWants.back)
+                {
                     nav.back(graph);
+                    cueBack = true;
+                }
                 if (padWants.pagePrev)
                     nav.goTo(graph, ui::pageAt(ui::pageIndex(nav.page) - 1));
                 if (padWants.pageNext)
@@ -1437,6 +1578,33 @@ int main(int argc, char **argv)
             ui::focusRing(ctx, ring.shown);
         EndDrawing();
 
+        // ---- Sprint 10 Q4: the cues, from what the frame did. One per frame, in this order: a refused LAUNCH
+        // (the thing the player just tried), back, select (Enter / A, or a click that took), then a focus that
+        // moved -- never a move on top of a select, so opening a page is one click, not two.
+        if (!app.fake && menu.loaded)
+        {
+            namespace ms = launcher::menusounds;
+            // A click counts when it landed on a control (hit() takes the focus, but a control that already
+            // had it is still a click); a click on nothing is nothing.
+            bool clicked = false;
+            if (ctx.click)
+            {
+                for (const ui::Node &n : nodes)
+                    clicked = clicked || n.r.contains(ctx.mouse);
+                for (const ui::Node &n : rail)
+                    clicked = clicked || n.r.contains(ctx.mouse);
+            }
+            const bool refused = app.requestLaunch && (app.running || !app.discOk);
+            if (refused)
+                menu.play(ms::Cue::Refuse);
+            else if (cueBack)
+                menu.play(ms::Cue::Back);
+            else if (cueSelect || clicked)
+                menu.play(ms::Cue::Select);
+            else if (nav.focus != focusBefore)
+                menu.play(ms::Cue::Move);
+        }
+
         // ---- what the pages asked for ---------------------------------------------------------------------
         if (!app.fake)
         {
@@ -1457,7 +1625,10 @@ int main(int argc, char **argv)
                 app.discOk = st.ok;
                 app.discMessage = st.message;
                 app.status = st.ok ? "disc verified" : st.message;
+                refreshMenuSounds(menu, app, dir);   // Q4: a new disc is a new set of cues (or none)
             }
+            if (app.requestMenuSounds)
+                refreshMenuSounds(menu, app, dir);
             if (app.requestMicRescan)
             {
                 app.micLabels = launcher::micLabels(*mic);
@@ -1484,6 +1655,19 @@ int main(int argc, char **argv)
             }
             if (app.requestOpenLogs)
                 win32glue::openFolder((dir / "logs").string());
+            // Sprint 10 Q4: the window switch. padIntent only ever raises it while the game runs; the glue
+            // decides which of the two windows is behind and brings it forward.
+            if (toggleWindows)
+            {
+                std::string why;
+                if (win32glue::toggleForeground(GetWindowHandle(), game, why))
+                    app.status = "switched windows";
+                else
+                {
+                    app.status = "window switch: " + why;
+                    std::fprintf(stderr, "[launcher] window switch: %s\n", why.c_str());
+                }
+            }
 
             // ---- Sprint 9 Goal 8: the status line. Asked for when ONLINE opens (never within 5 s of the
             // last ask) and every 10 s while it stays open; the answer lands in a slot this thread polls.
@@ -1597,7 +1781,7 @@ int main(int argc, char **argv)
                 const bool padPresent = padSlot >= 0 && IsGamepadAvailable(padSlot);
                 for (int h = 1; h <= launcher::mapping::kHostButtonMax; ++h)
                 {
-                    s_ignoreDown[h] = padPresent && IsGamepadButtonDown(padSlot, h);
+                    s_ignoreDown[h] = padPresent && (h == launcher::mapping::kHostGuide ? guideDown : IsGamepadButtonDown(padSlot, h));
                     s_downSince[h] = 0.0;
                 }
             }
@@ -1606,7 +1790,7 @@ int main(int argc, char **argv)
             app.requestBind = -1;
         }
         app.requestBrowse = app.requestVerify = app.requestLaunch = app.requestSave = false;
-        app.requestDiagnostics = app.requestOpenLogs = false;
+        app.requestDiagnostics = app.requestOpenLogs = app.requestMenuSounds = false;
         app.requestMicChanged = app.requestMicRescan = false;
 
         // PS2X_LAUNCHER_SHOT=<file>: the REAL window, with its own chrome, at whatever size it opened at --
@@ -1738,6 +1922,25 @@ int main(int argc, char **argv)
                     }
                     if (suffix == "_buttons")
                         shotPendingFocus = ui::bindCellId(0);
+                    // Q4: the switch. Every shot starts from the guide; _buttons_switch has it on VIEW with the
+                    // cell focused, _buttons_switch_conflict caught VIEW while SELECT still drives it.
+                    app.config.focusToggle = suffix == "_buttons_switch" ? "select" : "guide";
+                    if (suffix == "_buttons_switch")
+                    {
+                        // As the REPLACE answer leaves things: SELECT lost its pad button to the switch.
+                        launcher::mapping::rebind(m, launcher::mapping::kPs2Select, launcher::mapping::kHostNone, launcher::mapping::Resolution::Replace);
+                        app.bind.lastHost = launcher::mapping::kHostSelect;
+                        app.bind.lastAt = 1.0e12;
+                        shotPendingFocus = ui::kSwitchCellId;
+                    }
+                    if (suffix == "_buttons_switch_conflict")
+                    {
+                        app.bind.state = ui::BindFlow::State::Conflict;
+                        app.bind.button = ui::kSwitchTarget;
+                        app.bind.host = launcher::mapping::kHostSelect;
+                        app.bind.takenBy = launcher::mapping::kPs2Select;
+                        shotPendingFocus = ui::dialogFocusId(app.bind);
+                    }
                     launcher::setActiveMapping(app.config, m);
                 }
                 app.config.secondInstance = std::strcmp(shot.suffix, "_advanced") == 0;
@@ -1784,6 +1987,9 @@ int main(int argc, char **argv)
     fonts.clear();
     if (g_logo.id != 0)
         UnloadTexture(g_logo);
+    menu.unload();
+    if (menu.deviceReady)
+        CloseAudioDevice();
     CloseWindow();
     // A request still in flight: the window is gone already, and each join is bounded by its request's timeout.
     reportJob.join();
