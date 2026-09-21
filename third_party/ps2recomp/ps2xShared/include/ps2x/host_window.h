@@ -7,7 +7,7 @@
 // text, border -- build 22000 and later; Windows 10 ignores the calls). It owns nothing else outside the client
 // area: the client area IS the game's frame, the one the parity gate captures at 640x448 and compares pixel for
 // pixel, so a header bar drawn by the runtime -- the owner's "button on the game client's header that focuses
-// options" -- would move every capture and is not done in this pass (proposed ruling R213). On Linux the window
+// options" -- would move every capture and is not done in this pass (R214). On Linux the window
 // manager draws the decorations from the title and the _NET_WM_ICON raylib sets; nothing more is reachable.
 //
 // PURE: no raylib, no windows.h. The runtime applies these through raylib and dwmapi (host_window_chrome.cpp);

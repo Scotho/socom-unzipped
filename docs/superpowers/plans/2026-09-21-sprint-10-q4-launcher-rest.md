@@ -5,7 +5,7 @@ The item is `docs/CURRENT_SPRINT.md` row Q4; the design is the Sprint 9 spec's "
 the game window that follows it". Four parts, in the order the brief gave them: (a) the guide button toggles between
 the launcher and the running game, (b) the game window styled like the launcher, (c) the launcher's menu sounds from
 the game's HUDUI bank, decoded from the player's own ISO, (d) the profile viewer — an owner question, one paragraph.
-This file is the record: the measurements, what was built and tested, the rulings proposed (numbered from R210, for
+This file is the record: the measurements, what was built and tested, the rulings proposed (numbered from R211, for
 the controller to confirm), and the owner's tries.
 
 **Scope:** `ps2xLauncher` (the switch, the sounds, the AUDIO and CONTROLLER pages, the icon), `ps2xShared`
@@ -49,7 +49,7 @@ What each backend delivers for the guide/home button, read off the sources in th
   DualShock (hid-sony) row among them. **Readable through raylib.** Reading the file descriptor needs no focus.
 - **The runtime does not check focus:** there is no `IsWindowFocused` anywhere in `ps2xRuntime/src`, so the game reads
   the pad whether or not its window is in front — the mirror image of the P3 defect. This bounds what the switch
-  may do (R210).
+  may do (R211).
 
 ### What was built
 
@@ -111,7 +111,7 @@ first id, `pad.bind.switch`, fell inside the `pad.bind.*` namespace Goal 8's lay
   it at 640x448 and compares it pixel for pixel against the references (HANDOFF §6 trap 1; `keys.py`,
   `winshot.py`). The runtime can draw over it (the FPS overlay does), but a HEADER BAR — the owner's "button on the
   game client's header that focuses options" — would either sit on the game's pixels or grow the client area by
-  its height, and either moves every capture the gate makes. Not done in this pass: **R213**.
+  its height, and either moves every capture the gate makes. Not done in this pass: **R214**.
 - The harness finds the game window by a title substring — `keys.WINDOW_TITLES["ours"] = "PS2-Recomp"` — used by
   `drive.py`, `frame_burst.py` and `online_login_ours.py` (instance B by its `PS2X_WINDOW_TITLE` tag instead). A
   title with the launcher's name in it therefore moves the harness's key with it, and the key must not appear in the
@@ -205,34 +205,34 @@ whether it is wanted at all.
 
 ---
 
-## Proposed rulings (numbered from R210; the controller confirms)
+## Proposed rulings (numbered from R211; the controller confirms)
 
-- **R210 — while the game runs the pad drives the launcher NEVER, in front or behind; the switch is the one button
+- **R211 — while the game runs the pad drives the launcher NEVER, in front or behind; the switch is the one button
   the gate passes.** The runtime reads the pad whether or not its window is in front (no `IsWindowFocused` in
   `ps2xRuntime/src`), so a launcher that took the pad back when brought forward would recreate the P3 defect from
   the other side. In front, the launcher is driven by mouse and keyboard (which follow the focus), and the switch
   sends the game forward again. Cost: no pad navigation of the launcher mid-game. The fix that lifts it is a runtime
   focus gate on the PAD path only (the keyboard path is the harness's, trap 1) — a small change that needs a gate, so
   it is the controller's to schedule, not this pass's.
-- **R211 — the switch is a binding, in BUTTONS, with OFF beside it; the guide by default.** A host button the mapping
+- **R212 — the switch is a binding, in BUTTONS, with OFF beside it; the guide by default.** A host button the mapping
   drives is a conflict resolved only by REPLACE or CANCEL: the game must never read the switch. Launcher-only, per
   machine (config.json's top level, not per profile: which button swaps windows is the pad's, not the persona's).
   RESTORE DEFAULTS leaves it alone for the same reason.
-- **R212 — an Xbox pad's guide button is read from XInput's ordinal 100 on Windows.** Undocumented, present in
+- **R213 — an Xbox pad's guide button is read from XInput's ordinal 100 on Windows.** Undocumented, present in
   xinput1_4 and 1_3 since Windows 7, what SDL reads; absent, the launcher says so in the status line and the player
   binds another button. Cost: four `XInputGetStateEx` calls a frame on top of GLFW's own (a disconnected user is
   re-asked every 120 frames).
-- **R213 — no header bar on the game window in this pass.** The client area is the gate's capture; a bar over or
+- **R214 — no header bar on the game window in this pass.** The client area is the gate's capture; a bar over or
   above it moves every comparison. The pair of the pad switch for the mouse is, for now, the taskbar. A later pass
   can draw a bar the runtime owns above the frame IF the harness's capture is taught the offset in the same change.
-- **R214 — the game window's title is `"<game> -- SOCOM Unzipped"` and the harness's key moved with it.**
+- **R215 — the game window's title is `"<game> -- SOCOM Unzipped"` and the harness's key moved with it.**
   `keys.WINDOW_TITLES["ours"]` is the suffix, pinned to the header by `test_host_window_title.py`; the launcher's
   own title stays `"SOCOM Unzipped"` (no dashes) so the key cannot pick it. Cost: the first gate after the merge is
   the proof; a gate that finds no window at its title stage is this ruling failing loudly, not silently.
-- **R215 — the launcher's cues play at 0.45 of their rendered level, and the setting lives on AUDIO.** "Quietly" was
+- **R216 — the launcher's cues play at 0.45 of their rendered level, and the setting lives on AUDIO.** "Quietly" was
   the brief; the game's own HUD level is 0x400 = unity, which is loud next to a desktop. One constant
   (`kMenuSoundVolume`), the owner's ear decides.
-- **R216 — the cache is keyed by content, not by path.** SHA-256 over the PVD and the bank's first sector: two
+- **R217 — the cache is keyed by content, not by path.** SHA-256 over the PVD and the bank's first sector: two
   images cannot share a key by accident, a re-pointed ISO path finds its own cache, and nothing about the player's
   file system is in the key.
 
@@ -242,7 +242,7 @@ whether it is wanted at all.
 
 1. `./build.sh runtime` (with generated code): the title line `[window] chrome: icon set, caption colours ...` in the
    run log; the window titled `SOCOM II U.S. Navy SEALs -- SOCOM Unzipped` with the crest as its icon.
-2. The gate: its title stage finds the window by the new key (R214). Expected 3/3 as before — nothing inside the
+2. The gate: its title stage finds the window by the new key (R215). Expected 3/3 as before — nothing inside the
    frame changed.
 3. Linux CI: `posix_glue.cpp` gained the X11 half (dlopen; `<X11/Xlib.h>` for the types, which raylib's X11 platform
    already needs) — a compile the Windows worktree could not make.
