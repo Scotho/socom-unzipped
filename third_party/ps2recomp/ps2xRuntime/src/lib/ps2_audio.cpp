@@ -495,7 +495,12 @@ void PS2AudioBackend::onNotify(uint32_t function, const int32_t *args, size_t co
     {
         switch (function)
         {
-        case 0x09u: case 0x13u: case 0x14u: case 0x15u: case 0x18u: case 0x1Bu: case 0x21u: case 0x22u:
+        // 0x11/0x12 (the play family) joined the stamped commands on 2026-09-22, for R239's experiment: a
+        // stray sound can only be charged to a play if the play carries the output-frame clock the capture is
+        // measured on. Without the stamp, tools_py/parity/audio_dips.py can classify a dip as COMMAND but
+        // nothing can align an ONSET with the play that caused it.
+        case 0x09u: case 0x11u: case 0x12u: case 0x13u: case 0x14u: case 0x15u: case 0x18u: case 0x1Bu:
+        case 0x21u: case 0x22u:
         case 0x2Du: case 0x2Eu: case 0x2Fu: case 0x34u: case 0x3Cu: case 0x3Du:
         {
             std::ostringstream o;

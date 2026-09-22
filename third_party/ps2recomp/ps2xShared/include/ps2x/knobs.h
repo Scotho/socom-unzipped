@@ -11,7 +11,17 @@
 // ps2xRuntime, ps2xIOP, ps2xShared or ps2xLauncher without a row here fails the Python suite, and so does a
 // row nothing reads.
 //
-// Class:  Shipping  a player-facing setting; launcher::Config has a field behind it; always honoured.
+// Class:  Shipping  a player-facing setting; launcher::Config has a field behind it; always honoured. The
+//                   Knobs suite ENFORCES the second half ("the Shipping class is exactly what the launcher
+//                   can send"), so a knob with no config.json key cannot be Shipping. R238 (2026-09-22)
+//                   first tried to reclass PS2X_MC_TRACE and PS2X_AUDIO_DUMP here so a player could produce
+//                   evidence; that was wrong twice over -- it broke the enforced rule, and it was not needed:
+//                   devMode() reads PS2X_DEV from the environment in EVERY build (knobs.cpp), so a Dev knob
+//                   is already reachable in a shipped executable with PS2X_DEV=1. What was actually missing
+//                   is that a FAILURE said nothing at all; see MemoryCard.cpp's unconditional line.
+//         Dev       a probe, trace, dump or A/B switch; honoured only in developer mode (--dev on the runner's
+//                   command line, or PS2X_DEV=1). A stranger's environment cannot switch one on by accident,
+//                   but the owner of any build can, which is how a player-reported fault gets instrumented.
 //         Dev       a probe, trace, dump or A/B switch; honoured only in developer mode (--dev on the runner's
 //                   command line, or PS2X_DEV=1). A stranger's environment cannot switch one on.
 //         Test      read by ps2x_tests only, never by a shipped executable.
@@ -112,7 +122,7 @@
     X("PS2X_LOD_SCALE", Dev, Float, "0", "Experiment: force both LOD scale floats of the camera (writes guest memory).") \
     X("PS2X_MC_DIR", Shipping, Path, "", "Memory-card folder for slot 0; unset = mc0 beside the ELF.") \
     X("PS2X_MC_DIR_SLOT1", Dev, Path, "", "A folder to serve as the second card slot; unset = no card in slot 1.") \
-    X("PS2X_MC_TRACE", Dev, Presence, "", "Log every memory-card GetInfo and Sync.") \
+    X("PS2X_MC_TRACE", Dev, Presence, "", "Log every memory-card command, not only the ones that failed.") \
     X("PS2X_MIC_DEVICE", Shipping, Text, "", "Capture device name for the headset; unset = no microphone.") \
     X("PS2X_MIC_DUMP", Dev, Path, "", "Tee the captured microphone PCM to this WAV.") \
     X("PS2X_MIC_DUMP_PLAYBACK", Dev, Path, "", "WAV of what lgaud 0x09 asked the headset to play ({title} expands to the window tag).") \
@@ -134,6 +144,7 @@
     X("PS2X_SCHED_TRACE_STUBS", Dev, Spec, "", "With SCHED_TRACE: name[,...] of stubs traced on every call, with arguments and return.") \
     X("PS2X_SCHED_TRACE_STUB_MS", Dev, Float, "1", "With SCHED_TRACE: a bound stub slower than this many host ms is reported.") \
     X("PS2X_SCHED_TRACE_TOML", Dev, Path, "recomp/socom2.toml", "With SCHED_TRACE: the recompiler config naming the stubs.") \
+    X("PS2X_SND_MUTE_BANK", Dev, Spec, "", "0xHANDLE[,...]: play nothing from these 989snd banks (which sound is the stray one).") \
     X("PS2X_SND_STREAM_WORKER", Dev, Int, "1", "0 reads audio streams on the mixer thread instead of the worker (A/B).") \
     X("PS2X_SOCOM2_HOSTS", Dev, Spec, "", "name=ip[,...]: extra host-name answers for the resolver the game uses.") \
     X("PS2X_SOCOM2_INPUT_FILE", Dev, Path, "", "Pad-state injection file polled by a sampler thread; how the harness presses buttons.") \
@@ -175,7 +186,7 @@
     X("PS2X_VU_STATS", Dev, Presence, "", "Once a second: VU1 programs, cycles and host time.") \
     X("PS2X_WATCH", Dev, Spec, "", "0xADDR[,...]: poll guest words every ~0.5 ms and print each change with pc/ra.") \
     X("PS2X_WATCH_HUGE", Dev, Spec, "", "0xADDR:words: report floats in the range that turn huge or NaN.") \
-    X("PS2X_WINDOW_SIZE", Shipping, Text, "640x448", "<w>x<h> | fullscreen (the launcher sends 1280x896 by default).") \
+    X("PS2X_WINDOW_SIZE", Shipping, Text, "640x448", "<w>x<h> | fullscreen (the launcher sends 640x448 by default).") \
     X("PS2X_WINDOW_TITLE", Dev, Text, "", "Window-title tag for a second instance; the harness finds windows by it.")
 
 namespace ps2x

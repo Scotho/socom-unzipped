@@ -21,7 +21,7 @@ sprint 10:    OPENED 2026-09-20 on the owner's instruction ("proceed on with the
               develop deleted, this branch opened. Q0b, Q1b-Q7 carry into Sprint 10 as filler unless the owner reorders;
               no GitHub release (Sprint 11 / D2, owner-only).
 git strategy: docs/GIT_STRATEGY.md     contributing: CONTRIBUTING.md
-next ruling:  R236 (R230-R235 are the disc chain's -- the expectations file holds whole-file digests in the tree, a differently shaped image is a note not a refusal, the DNAS addresses are recorded, the extracted tree is size-verified, CONTRIBUTING may say the game build is supported on one disc's evidence -- in docs/superpowers/plans/2026-09-21-sprint-10-disc-to-elf.md; R229 is free; R222-R228 are Q7's -- in docs/superpowers/plans/2026-09-21-sprint-10-q7-residuals.md; R218-R221 are Q5's -- closed without a launch, R113 stands with a corrected meaning, the HLE's status sequence stays, the one launch worth making is a peek of the controller preset's talk slots -- in docs/superpowers/plans/2026-09-21-sprint-10-q5-headset-button.md; R210 is Q3's -- the keyboard's gameplay mapping survives in developer mode only, menus and typing for a player -- in docs/superpowers/plans/2026-09-21-sprint-10-q3-mouse-leaves-keyboard-narrowed.md; R211-R217 are Q4's -- in docs/superpowers/plans/2026-09-21-sprint-10-q4-launcher-rest.md, renumbered from the agent's R210-R216; R210 is reserved for Q3's keyboard ruling; R209: Q2's Task 8 VM ring deferred to the sprint close, CI is the Linux ring, the VM stays off; R208 is the flip's: the knobs line redacts PS2X_SOCOM2_LOGIN_PASS at the source; R203-R207 are Q2's -- PS2X_DEV below the env pin, PS2X_INPUT_MAPPING the 18th shipping name, PS2X_LAUNCHER_API_BASE a dev knob, the helper-getenv check, path knobs constrained to the game folder -- in docs/superpowers/plans/2026-09-20-sprint-9-goal-3-knob-retirement.md; R200-R202 are Goal 9's -- the OSK prefill is a runtime replaceFunction wrap, not a toml stub, so no recompile; the persona name keeps the keyboard's whole character set; the password is capped at 12 -- in docs/superpowers/plans/2026-09-20-sprint-10-goal-9-online-credentials.md; R193-R199 are Goal 8/Q3b's -- the mapping per profile and a default not written nor sent, the environment string whole-or-nothing, the keyboard data but not rebindable, sticks and Triangle pressure outside the table, presets = per profile, bind on release with B held to cancel, the section switch is state not a setting -- in docs/superpowers/plans/2026-09-21-sprint-10-goal-8-controller-mapping.md; R189-R192 are Q6's -- absorb-and-re-anchor, Present droppable at the cap on a latched stall, the bounds, no launch from the agent's branch -- in docs/superpowers/plans/2026-09-21-sprint-10-q6-latched-stall-bound.md §5; R185-R188 are Q1b's pin rulings -- any drift refuses whatever --only asked, the harness is recorded never compared, an extra PS2X_* variable is a drift, the first mapping hash is refused until accepted -- in docs/superpowers/plans/2026-09-21-sprint-10-q1b-gate-pins.md §4; R184 is the mid-sprint merge to main, below; R181-R183 are the 2026-09-20 hardening rulings -- below, under "Sprint 10, reorganized"; R179-R180 are Sprint 10 Goal 9's, recorded in its plan: the password plain in config.json, and prefill-never-submit; R178 is Q0's conductor grains -- child sounds, registers, markers, from the open reference -- below; R177 is Q0's mix device buffer, 20 ms x 4, measured -- below; R176 is P4's ADVANCED section -- what went in it and what did not; R175 is P6's: the preset switch needs no launch and the server keeps advertising its IP -- below. R174 is Goal 12's split -- the mapping data path lands in Sprint 9 Q3, the UI is Sprint 10; R152-R168 are reserved by the Goal 3 plan; R169-R171 are Goal 10's music fixes, COMMITTED in `eca5450`; R172 is Goal 10's declined proposal -- the concurrency cap, not taken, waiting on Q1's instrument; R173 is P3's, the pad display staying live while the game runs)
+next ruling:  R241 (R236-R240 are the 2026-09-22 playthrough's -- the launcher defaults to 640x448, the prefilled login leaves the player path, a player build must be able to explain its own audio and saves, the online blop is charged to bank 0xa00000 until the mute A/B says otherwise, the join driver refreshes the list and takes a channel -- below, under "The playthrough, 2026-09-22"; R230-R235 are the disc chain's -- the expectations file holds whole-file digests in the tree, a differently shaped image is a note not a refusal, the DNAS addresses are recorded, the extracted tree is size-verified, CONTRIBUTING may say the game build is supported on one disc's evidence -- in docs/superpowers/plans/2026-09-21-sprint-10-disc-to-elf.md; R229 is free; R222-R228 are Q7's -- in docs/superpowers/plans/2026-09-21-sprint-10-q7-residuals.md; R218-R221 are Q5's -- closed without a launch, R113 stands with a corrected meaning, the HLE's status sequence stays, the one launch worth making is a peek of the controller preset's talk slots -- in docs/superpowers/plans/2026-09-21-sprint-10-q5-headset-button.md; R210 is Q3's -- the keyboard's gameplay mapping survives in developer mode only, menus and typing for a player -- in docs/superpowers/plans/2026-09-21-sprint-10-q3-mouse-leaves-keyboard-narrowed.md; R211-R217 are Q4's -- in docs/superpowers/plans/2026-09-21-sprint-10-q4-launcher-rest.md, renumbered from the agent's R210-R216; R210 is reserved for Q3's keyboard ruling; R209: Q2's Task 8 VM ring deferred to the sprint close, CI is the Linux ring, the VM stays off; R208 is the flip's: the knobs line redacts PS2X_SOCOM2_LOGIN_PASS at the source; R203-R207 are Q2's -- PS2X_DEV below the env pin, PS2X_INPUT_MAPPING the 18th shipping name, PS2X_LAUNCHER_API_BASE a dev knob, the helper-getenv check, path knobs constrained to the game folder -- in docs/superpowers/plans/2026-09-20-sprint-9-goal-3-knob-retirement.md; R200-R202 are Goal 9's -- the OSK prefill is a runtime replaceFunction wrap, not a toml stub, so no recompile; the persona name keeps the keyboard's whole character set; the password is capped at 12 -- in docs/superpowers/plans/2026-09-20-sprint-10-goal-9-online-credentials.md; R193-R199 are Goal 8/Q3b's -- the mapping per profile and a default not written nor sent, the environment string whole-or-nothing, the keyboard data but not rebindable, sticks and Triangle pressure outside the table, presets = per profile, bind on release with B held to cancel, the section switch is state not a setting -- in docs/superpowers/plans/2026-09-21-sprint-10-goal-8-controller-mapping.md; R189-R192 are Q6's -- absorb-and-re-anchor, Present droppable at the cap on a latched stall, the bounds, no launch from the agent's branch -- in docs/superpowers/plans/2026-09-21-sprint-10-q6-latched-stall-bound.md §5; R185-R188 are Q1b's pin rulings -- any drift refuses whatever --only asked, the harness is recorded never compared, an extra PS2X_* variable is a drift, the first mapping hash is refused until accepted -- in docs/superpowers/plans/2026-09-21-sprint-10-q1b-gate-pins.md §4; R184 is the mid-sprint merge to main, below; R181-R183 are the 2026-09-20 hardening rulings -- below, under "Sprint 10, reorganized"; R179-R180 are Sprint 10 Goal 9's, recorded in its plan: the password plain in config.json, and prefill-never-submit; R178 is Q0's conductor grains -- child sounds, registers, markers, from the open reference -- below; R177 is Q0's mix device buffer, 20 ms x 4, measured -- below; R176 is P4's ADVANCED section -- what went in it and what did not; R175 is P6's: the preset switch needs no launch and the server keeps advertising its IP -- below. R174 is Goal 12's split -- the mapping data path lands in Sprint 9 Q3, the UI is Sprint 10; R152-R168 are reserved by the Goal 3 plan; R169-R171 are Goal 10's music fixes, COMMITTED in `eca5450`; R172 is Goal 10's declined proposal -- the concurrency cap, not taken, waiting on Q1's instrument; R173 is P3's, the pad display staying live while the game runs)
 baselines:    C++ 686/686, Python 1457 OK, `PS2X_TEST_REPEAT=3 ./build.sh test` exit 0, CI green at `7de8492`; last gates: `s9_q0_children_gate` (3/3 on the runtime as merged, exe sha256 b3abebd5...), `s9_q0_prefill_gate`, `s9_q0_device_gate`, `s9_q0_trace_gate`, `s9_p7_playtest_gate`; audio parity `s9_q1_parity_ours2` 31/48 (the check's first PASS is Sprint 10's to earn)
 ```
 
@@ -171,6 +171,79 @@ are written up with their measurements and are filler by definition; the stub-st
 with its finding; Goal 12's site wording (the site session's). **What does NOT carry:** the ladder streak, because
 "it stays up" is this sprint's title and 4 of 7 does not prove it.
 
+### The playthrough, 2026-09-22 (live, as the owner played; R236-R240)
+
+The owner played tonight's portable build from their own unzipped copy under `Downloads/socom2-portable/socom2` and
+reported as they went; the controller read their logs without touching the machine. **"Excellent from the outset"** --
+title, logos, intro movie, the CONTROLLER page, retained settings, the lobby. What it found, in the order it came:
+
+| # | What the owner saw | What the logs say | Where it goes |
+|---|---|---|---|
+| 1 | Click a text field in the launcher (the online tab), leave it, and **the controller no longer works in the launcher** | not in the game's logs at all -- launcher-side focus state | a regression; fix + a test that focuses a field and then reads the pad |
+| 2 | The CONTROLLER page graphic **should be better**, and they want **hold-a-button-to-remap** with hints that walk them through it | -- | UI work on the page R193-R199 built |
+| 3 | **No memory-card data, and the save after the control-type prompt failed**; it worked on the second launch | nothing. `PS2X_MC_TRACE` is a **Dev** knob, so a player build records no card operation at all | R238; then reproduce on a virgin card |
+| 4 | Menu music good; **the first small stutters in the mission briefing**; mission music **skips worse the longer the mission runs** -- "one song playing with stutters or skips ... it is not playing linearly" | the stall bound engaged **0** times; the renderer reported "replay made no progress within 2000 ms" twice; music chunks re-fire from identical offsets (`1032ea+1920` seven times at 13.14 s, `11f275+0` six times) | the owner's own instruction: a drive script that **skips the cinematics** and a long in-mission capture scored against PCSX2 |
+| 5 | A **garbled glyph atlas** in the HELP popup before Mallard at the church | Q6's stall path cleared; R123 revalidate-by-hash is the live suspect | the `PS2X_GS_NO_TEX_REVALIDATE=1` A/B |
+| 6 | **The prefilled login works but is the wrong design** -- "seems like a bad idea to manually have it type in like that"; they want a **persona saved on the card with remember-password checked**, or the prefill removed | the OSK wrap does what it was built to do (R200-R202) | **R237** |
+| 7 | On the online screens, **"a random sound is popping in that doesn't seem to belong"** -- "a short and ramping deviation from the note the song was currently playing ... nothing should persist"; **the main menu has no such issue** | see below | **R239** |
+| 8 | **The default resolution should be 640x448** | the launcher sent `1280x896` (R92); the runtime's own default was already 640x448 | **R236**, done |
+
+**The online blop, what the logs actually establish.** The music stream is exonerated on its own evidence: one
+`989snd stream ... start` per screen, no re-seek, and **all 2,560** `snd_SoundIsStillPlaying` polls answered "yes" --
+the song never restarts under itself. What does fire is bank `0x00a00000` (loaded from sector 2010461, magic `SBlk`,
+**24 sounds in 60,928 bytes of ADPCM** -- each about a tenth of a second, so nothing persists, exactly as the owner
+heard). Bucketing those one-shot plays by where they land in `run_20260922_005048.log`: **87 during boot and the
+intro movies, ZERO on the main menu, 100+ steady across the online screens** -- silent on the screen the owner calls
+clean, constant on the screens that blop. Sound 8 (214 plays) and 0xc (26) come in a fixed repeating cycle at three
+fixed volumes (`8@0x2cc, c@0x4cc, 8@0x333, 8@0x400`), with pitchMod and pitchBend zero in every call. `playWithHandle`
+has no fallback -- an unresolvable bank or an empty grain returns false and plays silence -- so what is heard is a
+real grain from a real bank. **What a log cannot say** is whether the game is wrong to ask or we are wrong to render
+(wrong grain, wrong level, wrong pitch), and that is a thirty-second listen once the bank can be muted (R238).
+
+**R236: the launcher's default window is the game's own 640x448** (the owner, 2026-09-22: "the default res should be
+the 640x448"), overturning Sprint 7 Task 1c's 2x default (R92). The runtime's default with `PS2X_WINDOW_SIZE` unset
+was already 640x448, so the launcher, the runtime and the parity gate now agree on one size; `1280x896` stays one
+click away on the VIDEO page. Done: `launcher_config.h`, three launcher tests, the knob's description, `docs/KNOBS.md`.
+
+**R237: the prefilled login leaves the player path.** The supported way in is the game's own -- a persona saved on the
+memory card with remember-password checked -- because the card save works (the owner's second launch proved it), which
+makes typing into the OSK redundant on the path a player takes. The prefill survives as a **Dev** knob because the
+drive scripts genuinely need it (it is how `online_login_ours` types a persona). The real work R237 creates is not
+the removal: it is proving that a persona and its remember-password flag survive a restart on a **virgin** card, which
+is the same save path that failed the owner on their first launch (finding 3).
+
+**R238: a failure the player can see must never be silent, and that is not a question of knobs.** The owner's save
+failed on a virgin card and the build they played recorded nothing about the card at all, so the fault could not be
+explained afterwards. **The first attempt at this ruling was wrong and is recorded here because the correction is the
+useful part.** It reclassed `PS2X_MC_TRACE` and `PS2X_AUDIO_DUMP` from Dev to Shipping, on the belief that a Dev knob
+is compiled out of a player build. Two things killed it: the Knobs suite enforces "the Shipping class is exactly what
+the launcher can send", and none of those knobs has a `config.json` key; and, more to the point, **the belief was
+false** -- `devMode()` reads `PS2X_DEV` from the environment in every build (`ps2xShared/src/knobs.cpp`), so every Dev
+knob was already reachable in the executable the owner was playing, with `PS2X_DEV=1`. The instruments were never the
+problem. What was missing is that a **failed** card command said nothing at all, at any class, with any knob set.
+
+So what R238 actually is: `setMcCommandResultLocked` -- the one funnel every card command's result passes through --
+prints `[mc] command <n> FAILED result=<r> (<name>)` for any **negative** result, in every build, with no knob. Only
+negative: the result codes are a union, and a command that succeeded may answer with a count or a handle (the first
+cut printed "command 13 FAILED result=3" for a directory read that returned three entries). `PS2X_SND_MUTE_BANK` was
+added as a **Dev** A/B switch, which is what it is. The principle that survives: **an instrument may be opt-in, but a
+failure may not.** When something a player can see goes wrong, the log of the build they are running says so on its
+own -- and the way to ask for more is written down where a player will find it, not assumed unreachable.
+
+**R239: the online blop is charged to bank `0x00a00000`'s one-shots until the mute A/B says otherwise** -- on the
+correlation above (zero where the owner hears nothing, a hundred-plus where they do) and on the stream's exoneration.
+It is a suspect, not a finding: the A/B under R238 either clears the bank or convicts it, and nothing is fixed before
+that runs. The in-mission complaint (finding 4) stays a separate matter; identical re-fired chunk offsets are not this.
+
+**R240: the join driver presses REFRESH LIST before JOIN GAME, and takes a channel.** Asked mid-playthrough to send
+an agent into the owner's lobby, `online_login_ours --join --instance B` logged in as `socome` (its own persona on
+`game/disc/mc0_b`, ports shifted +2, no collision with the owner's `socomc`) and reached the BRIEFING ROOM in 175 s --
+then pressed CROSS on JOIN GAME four times against **"There are no games to join." on Channel 1**
+(`logs/parity/join_owner_lobby/lobby_fail_join_list.png`). That is not a join failure and must not be scored as one:
+the driver never refreshes the list and never chooses a channel, so it can only ever find a game in whichever room
+and channel the game drops it into. Both go in before the next mixed-match leg is scored.
+
+
 **Rulings (R181-R183):**
 
 **R181 -- secret scanning, push protection and Dependabot alerts are ON, turned on by the controller under the owner's
@@ -260,7 +333,14 @@ overturn it** -- one line in `leakrules.py` per rule.
    `docs/superpowers/plans/2026-09-20-sprint-10-goal-9-online-credentials.md`. [A] except the owner's login.
    **Lock-bound** at tasks 2 and 6 (a recompile, a runtime rebuild, two driven logins); tasks 1, 3, 4, 5, 7 are not.
 10. Wishlist, unscheduled, **[B: the owner's r0004 package and PSRewired's answer]**: the community server. Nothing
-   connects to a server that is not ours until the owner reports that answer.
+   connects to a server that is not ours until the owner reports that answer. **Written up for Sprint 11 on
+   2026-09-21** (spec `docs/superpowers/specs/2026-09-21-sprint-11-r0004-and-the-community-server-design.md`,
+   superseding Sprint 8 Goal 10): the cost of a second recompilation is now *measured* rather than estimated (~80
+   overlay addresses move; 645 of 656 stub bindings are in the loader, which r0004 does not touch), and the one part
+   that is **not** blocked -- bounding the chat receive path the PSRewired admin reported -- is split out as its own
+   goal. Also in the spec: what the three r0004 HDD maps would need, speculatively, with the finding that the whole
+   HDD install path (`ATAD/HDD/PFS.IRX` on the disc, `hdd0:`/`pfs0:`, the fileXio client **in the loader**) already
+   exists in r0001 and can be exercised today.
 
 ### Sprint 11 -- "Release hardening: a public repository a stranger can trust" (drafted; spec `docs/superpowers/specs/2026-09-20-sprint-11-release-hardening-design.md`)
 
@@ -276,6 +356,8 @@ a secret of each class (a gate that has never failed is not known to work). It r
 third set, and it does NOT replace D1 -- a clean history says no secret is in it, not that the owner wants it public. **Early items, already
 landed on `sprint-9` because they cost nothing and shape every commit after them:** `docs/GIT_STRATEGY.md`,
 `CONTRIBUTING.md`, `SECURITY.md`, `.github/` issue and PR templates, `CODEOWNERS`.
+
+**A second Sprint 11 spec, drafted 2026-09-21: `docs/superpowers/specs/2026-09-21-sprint-11-r0004-and-the-community-server-design.md`** -- r0004 and the community server, superseding Sprint 8 Goal 10. Goals A-D are autonomous and provable with no r0004 package (the chat receive path bounded; a revision-parameterised pipeline that must reproduce r0001 byte-identically; the per-revision address table and its fingerprint matcher at 100% on identity and on a synthetic relocation; the launcher's revision option). Goals E-G are blocked on the owner's memory card, on PSRewired, and on one unknown about where the HDD maps' data comes from. Owner decisions D1-D4 are at the end of that spec. It is a separate item from release hardening and does not change Goals 0-9 above.
 
 **Goal 6 built early, 2026-09-20, by session socom-pc-10, out of band and lock-free:** the design `docs/superpowers/specs/2026-09-19-sprint-11-goal-6-progress-story-design.md`, the first draft of `docs/STORY.md` (52 entries, 2026-09-02 to `playtest-1`, every one cited), `docs/story/timeline.json` and `docs/story/witnesses.json`, and the citation test `tools_py/story/cite.py` (34 tests, in the suite) that fails on a dead hash, a fragment that does not match its commit's subject, an unwitnessed run, or a retracted phrase stated as current. Not done: the release entry, the pictures, the site page, and the D1 citation reconciliation -- all four are §1 of the spec and stay Sprint 11's.
 

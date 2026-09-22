@@ -11,6 +11,11 @@ the end so they can be answered before the sprint opens rather than during it.
 `CONTRIBUTING.md`, `SECURITY.md`, `.github/CODEOWNERS`, `.github/ISSUE_TEMPLATE/*`, `.github/PULL_REQUEST_TEMPLATE.md`.
 They are written for the public repository and are correct for the private one.
 
+**A sibling spec, not part of this one:** `2026-09-21-sprint-11-r0004-and-the-community-server-design.md` (r0004, the
+community server, the chat-receive fix and the HDD maps) is also drafted for Sprint 11. It is scheduled independently
+and changes nothing in Goals 0-9 below; its Goal A (bounding the chat receive path) is the one item there that is not
+blocked on anything, and it interacts with this spec only through `SECURITY.md` and the README's multiplayer warning.
+
 Markers: **[A]** autonomous; **[O]** the owner's; **[B: x]** blocked on x.
 
 ## Goals

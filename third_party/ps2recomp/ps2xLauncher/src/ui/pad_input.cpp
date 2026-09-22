@@ -4,6 +4,15 @@
 
 namespace ui
 {
+    bool releasesField(const bool keyEnter, const bool keyEscape, const bool keyTab, const PadIntent &pad,
+                       const bool clickedAway)
+    {
+        // The pad's two face buttons both let go: cross commits the text, circle abandons the edit. Both are
+        // edges, so the press that OPENED the field cannot also close it -- the field becomes active during
+        // the page draw that follows, by which time the button is no longer pressed this frame.
+        return keyEnter || keyEscape || keyTab || pad.activate || pad.back || clickedAway;
+    }
+
     namespace
     {
         constexpr float kStickThreshold = 0.55f;   // past this, a stick counts as pushed

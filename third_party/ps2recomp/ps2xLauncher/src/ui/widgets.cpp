@@ -440,12 +440,13 @@ namespace ui
     {
         // What a focused field takes from the keyboard this frame: typed characters, Ctrl+V, backspace.
         // Printable ASCII only, as the launcher's fonts are; a pasted line break becomes a space.
-        bool typeInto(std::string &value, size_t maxLen, bool paste)
+        bool typeInto(std::string &value, size_t maxLen, bool paste, bool (*accept)(char) = nullptr)
         {
             bool changed = false;
             auto room = [&]() { return maxLen == 0 || value.size() < maxLen; };
+            auto takes = [&](int c) { return accept == nullptr || accept(static_cast<char>(c)); };
             for (int c = GetCharPressed(); c > 0; c = GetCharPressed())
-                if (c >= 32 && c < 127 && room())
+                if (c >= 32 && c < 127 && takes(c) && room())
                 {
                     value.push_back(static_cast<char>(c));
                     changed = true;
@@ -458,7 +459,7 @@ namespace ui
                     unsigned char c = static_cast<unsigned char>(*p);
                     if (c == '\n' || c == '\t')
                         c = ' ';
-                    if (c >= 32 && c < 127)
+                    if (c >= 32 && c < 127 && takes(c))
                     {
                         value.push_back(static_cast<char>(c));
                         changed = true;
@@ -530,6 +531,8 @@ namespace ui
                 *ctx.focusOut = id;
             if (ctx.activeField != nullptr)
                 *ctx.activeField = id;
+            if (ctx.fieldTookClick != nullptr)
+                *ctx.fieldTookClick = true;
         }
         if (isFocused && ctx.activate && ctx.activeField != nullptr)
             *ctx.activeField = id;
@@ -560,7 +563,7 @@ namespace ui
         }
     }
 
-    void textField(const Ctx &ctx, Rect r, std::string &value, const std::string &id, bool &changed, bool editable, size_t maxLen, bool masked)
+    void textField(const Ctx &ctx, Rect r, std::string &value, const std::string &id, bool &changed, bool editable, size_t maxLen, bool masked, bool (*accept)(char))
     {
         if (!drawable(r))
             return;
@@ -575,12 +578,14 @@ namespace ui
                 *ctx.focusOut = id;
             if (editable && ctx.activeField != nullptr)
                 *ctx.activeField = id;
+            if (editable && ctx.fieldTookClick != nullptr)
+                *ctx.fieldTookClick = true;
         }
         if (editable && isFocused && ctx.activate && ctx.activeField != nullptr)
             *ctx.activeField = id;
 
         // maxLen > 0 marks the REPORT A BUG fields: capped at the contract's length, and they take Ctrl+V.
-        if (isActive && typeInto(value, maxLen, maxLen > 0))
+        if (isActive && typeInto(value, maxLen, maxLen > 0, accept))
             changed = true;
 
         const float inset = 10.0f;

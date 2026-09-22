@@ -35,6 +35,12 @@ namespace ui
         int adjust = 0;         // -1 / +1 for the focused slider
 
         std::string *activeField = nullptr;   // the text field that owns the keyboard, by id
+        // Set by a text field that took this frame's click (2026-09-22). A click that no field took is a
+        // click AWAY from the one that had the keyboard, and releases it -- see main's release below. Without
+        // this the only exits from a field were ENTER, ESCAPE and TAB, all keyboard keys, so clicking a field
+        // and then clicking elsewhere left the keyboard captured and the pad dead (the owner's playthrough:
+        // "when you click a field with text, and exit the field, controller no longer functions").
+        bool *fieldTookClick = nullptr;
         double time = 0.0;
         bool fake = false;      // --screenshot: no hover, no caret blink, no animation
     };
@@ -102,8 +108,11 @@ namespace ui
     // maxLen 0 = no cap and no paste: the ONLINE page's fields, as they were. Above 0 the field stops there
     // and takes Ctrl+V -- the REPORT A BUG fields, capped at the contract's lengths.
     // Sprint 10 Goal 9: `masked` draws one asterisk per character and edits as before -- the password field.
+    // `accept` (2026-09-22) refuses a character at the keystroke: the login fields pass the game keyboard's
+    // own accept-set (launcher::keyboardAccepts), so a character the keyboard cannot hold never enters the
+    // value, is never saved, and can never differ from what the game is handed. nullptr = every printable.
     void textField(const Ctx &ctx, Rect r, std::string &value, const std::string &id, bool &changed, bool editable = true,
-                   size_t maxLen = 0, bool masked = false);
+                   size_t maxLen = 0, bool masked = false, bool (*accept)(char) = nullptr);
     // Sprint 9 Goal 8: a long text shown wrapped over several lines -- not an editor: typing appends, backspace
     // removes, Ctrl+V pastes (line breaks become spaces), and while it is typed in, the END is what is shown.
     void textArea(const Ctx &ctx, Rect r, std::string &value, const std::string &id, bool &changed, size_t maxLen);
