@@ -1,0 +1,198 @@
+"""Fix wave W7 (2026-09-22): the mission-music instrument -- a drive script that skips the cinematics, reaches
+gameplay fast and then holds in the mission long enough to contain the degradation the owner describes.
+
+The owner, playing tonight's build: "one song playing with stutters or skips ... it is not playing linearly ...
+fine the first while, gets much worse as I proceed", and "You may have to write tests that skip the cutscenes
+and move faster to catch these issues."
+
+Two files carry that: `scripts/parity/mission_music_fast.txt` (the path) and `scripts/parity/mission_music_long.sh`
+(the schedule, the capture and the scores). Nothing here launches a game -- the wrapper's `--dry-run` writes the
+generated drive script and stops -- so these are checks of the script the controller is about to run, not of the
+run. The numbers they pin come from logs/parity/s9_q1_parity_ours (our exe on launch_to_mission_xl): the DEPLOY
+press at t=87 s, the mission up by ~137 s, and that script's `next+10.0:NONE` mission step spending
+`waited=40.1s stable=False` before another 10 s on top -- the 50 s the fast path does not spend.
+"""
+import os
+import shutil
+import subprocess
+import sys
+import unittest
+
+from tools_py.parity import drive
+from tools_py.tests.shell import BASH
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+FAST = os.path.join(ROOT, "scripts", "parity", "mission_music_fast.txt")
+LONG_SH = os.path.join(ROOT, "scripts", "parity", "mission_music_long.sh")
+AUDIO_SH = os.path.join(ROOT, "scripts", "parity", "audio_parity.sh")
+
+
+def steps(path):
+    with open(path, encoding="utf-8") as f:
+        return drive.parse(f.read())
+
+
+class TheFastPath(unittest.TestCase):
+    def setUp(self):
+        self.steps = steps(FAST)
+        self.modes = [m for m, _d, _b in self.steps]
+
+    def test_it_parses_as_a_drive_script(self):
+        self.assertTrue(self.steps)
+        for mode, delay, buttons in self.steps:
+            self.assertGreaterEqual(delay, 0.0)
+            for b in buttons:
+                self.assertEqual(b, b.upper())
+
+    def test_the_cinematics_are_skipped_by_the_existing_means(self):
+        # the boot screens, the intro movie and the briefing cinematic: one CROSS on each NEW settled screen,
+        # which is what launch_to_mission*.txt already does for a skippable screen
+        crosses = [i for i, (m, _d, b) in enumerate(self.steps) if m == "next" and b == ["CROSS"]]
+        self.assertGreaterEqual(len(crosses), 13)
+        self.assertEqual(crosses, list(range(len(crosses))))       # they are the run's opening, uninterrupted
+
+    def test_the_flyover_is_pressed_through_to_the_hud_not_waited_out(self):
+        untilref = [i for i, m in enumerate(self.modes) if m.startswith("untilref(")]
+        self.assertEqual(len(untilref), 1)
+        mode = self.modes[untilref[0]]
+        parts = [v.strip() for v in mode[len("untilref("):-1].split(",")]
+        ref = parts[0]
+        self.assertTrue(os.path.exists(os.path.join(ROOT, ref)), ref)
+        self.assertIn("lit", parts)                                # the in-game HUD, not the intro cinematic
+        # and the step that carries the CROSS through it
+        self.assertEqual(self.steps[untilref[0]][2], ["CROSS"])
+
+    def test_the_forty_second_mission_settle_is_gone(self):
+        # launch_to_mission_xl.txt spends `next+10.0:NONE` there and measured waited=40.1s stable=False
+        after_deploy = self.modes[self.modes.index("untilref(scripts/parity/ref_hud_ours.png,92,112,0,40,40,20,lit)")
+                                  - 1]
+        self.assertEqual(after_deploy, "wait")
+        self.assertNotIn("long", self.modes)
+
+    def test_a_popup_guard_sits_between_the_hud_and_the_hold(self):
+        untilref = next(i for i, m in enumerate(self.modes) if m.startswith("untilref("))
+        self.assertIn("ifpopup", self.modes[untilref:])
+
+    def test_it_ends_in_a_hold_the_wrapper_extends(self):
+        self.assertEqual(self.steps[-1], ("wait", 8.0, []))
+
+
+@unittest.skipUnless(BASH, "bash not found")
+class TheLongWrapper(unittest.TestCase):
+    STAMP = "test_w7_mission_music_dryrun"
+
+    def tearDown(self):
+        shutil.rmtree(os.path.join(ROOT, "logs", "parity", self.STAMP), ignore_errors=True)
+
+    def dry_run(self, *args):
+        p = subprocess.run([BASH, LONG_SH, "--dry-run", "--stamp", self.STAMP, *args],
+                           cwd=ROOT, capture_output=True, text=True)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        head = dict(kv.split("=", 1) for kv in p.stdout.splitlines()[0].split())
+        generated = os.path.join(ROOT, "logs", "parity", self.STAMP, "drive_script.txt")
+        return head, steps(generated), p.stdout
+
+    def test_the_default_hold_is_at_least_the_ten_minutes_w7_asks_for(self):
+        head, parsed, _ = self.dry_run()
+        self.assertEqual(head["minutes"], "12")
+        held = sum(d for m, d, b in parsed if m == "wait" and not b and d == 8.0)
+        self.assertGreaterEqual(held, 600.0)
+        self.assertEqual(held, 12 * 60.0)
+
+    def test_the_hold_is_an_argument(self):
+        for minutes in ("2", "20"):
+            head, parsed, _ = self.dry_run("--minutes", minutes)
+            held = sum(d for m, d, b in parsed if m == "wait" and not b and d == 8.0)
+            self.assertEqual(held, int(minutes) * 60.0, minutes)
+            self.assertEqual(head["hold"], f"{int(minutes) * 60}s")
+
+    def test_the_run_length_covers_the_boot_and_the_whole_hold(self):
+        head, parsed, _ = self.dry_run("--minutes", "12")
+        drive_s, record_s = int(head["drive"][:-1]), int(head["record"][:-1])
+        scripted = sum(d for _m, d, _b in parsed)
+        # a game killed mid-hold leaves the rest of the capture as digital silence (s9_q1_parity_ours)
+        self.assertGreater(drive_s, scripted + 137 + 10)
+        self.assertGreater(record_s, drive_s)
+
+    def test_the_console_gets_the_longer_boot_allowance(self):
+        ours, _, _ = self.dry_run("--minutes", "5")
+        console, _, _ = self.dry_run("--minutes", "5", "--target", "pcsx2")
+        self.assertGreater(int(console["drive"][:-1]), int(ours["drive"][:-1]))
+
+    def test_popup_guards_are_interleaved_through_the_hold(self):
+        _head, parsed, _ = self.dry_run("--minutes", "12")
+        modes = [m for m, _d, _b in parsed]
+        holds = modes.count("wait")
+        self.assertGreaterEqual(modes.count("ifpopup"), holds // 16)
+        # never two hold steps apart by more than the guard interval near the end of the run
+        tail = modes[modes.index("untilref(scripts/parity/ref_hud_ours.png,92,112,0,40,40,20,lit)"):]
+        gaps, run = [], 0
+        for m in tail:
+            if m == "ifpopup":
+                gaps.append(run)
+                run = 0
+            else:
+                run += 1
+        self.assertLessEqual(max(gaps), 10)
+
+    def test_a_bad_target_is_refused_without_writing_anything(self):
+        p = subprocess.run([BASH, LONG_SH, "--dry-run", "--stamp", self.STAMP, "--target", "dolphin"],
+                           cwd=ROOT, capture_output=True, text=True)
+        self.assertEqual(p.returncode, 2)
+
+
+@unittest.skipUnless(BASH, "bash not found")
+class AudioParityStaysCompatible(unittest.TestCase):
+    """W7 lengthened audio_parity.sh's capture rather than copying it. Its first three arguments, and what it
+    does with them, must not have moved: the pinned PCSX2 reference was captured with the old defaults."""
+
+    def test_the_script_still_parses_and_keeps_its_defaults(self):
+        self.assertEqual(subprocess.run([BASH, "-n", AUDIO_SH], cwd=ROOT).returncode, 0)
+        with open(AUDIO_SH, encoding="utf-8") as f:
+            body = f.read()
+        self.assertIn("drive_s=${4:-600}", body)
+        self.assertIn("rec_s=${5:-$((drive_s + 20))}", body)
+        self.assertIn('--seconds "$drive_s"', body)
+        self.assertIn('"$OUT/endpoint.wav" "$rec_s"', body)
+
+    def test_the_dump_is_only_exported_when_asked_for(self):
+        with open(AUDIO_SH, encoding="utf-8") as f:
+            body = f.read()
+        self.assertIn('if [ -n "${AUDIO_DUMP:-}" ] && [ "$target" != pcsx2 ]; then', body)
+        self.assertIn('export PS2X_AUDIO_DUMP="$AUDIO_DUMP"', body)
+
+    def test_usage_still_prints_from_the_header(self):
+        p = subprocess.run([BASH, AUDIO_SH], cwd=ROOT, capture_output=True, text=True)
+        self.assertEqual(p.returncode, 2)
+        self.assertIn("audio_parity.sh capture", p.stdout)
+        self.assertIn("audio_parity.sh compare", p.stdout)
+
+
+class TheScorersW7Reuses(unittest.TestCase):
+    """W7 scores with tools that already exist. audio_envelope is the primary read (reference-free, per-segment,
+    and its four measurements are the owner's four words); audio_dips classifies what it finds against the game
+    log and the mixer's dump. Neither is new here -- these only check the flags the wrapper passes."""
+
+    def help(self, module):
+        return subprocess.run([sys.executable, "-m", f"tools_py.parity.{module}", "--help"],
+                              cwd=ROOT, capture_output=True, text=True, check=True).stdout
+
+    def test_audio_envelope_takes_the_segment_the_wrapper_passes(self):
+        out = self.help("audio_envelope")
+        self.assertIn("--segment", out)
+
+    def test_audio_dips_takes_the_dump_and_the_log(self):
+        out = self.help("audio_dips")
+        self.assertIn("--dump", out)
+        self.assertIn("--log", out)
+
+    def test_the_wrapper_names_both_and_says_why_audio_parity_is_not_the_scorer(self):
+        with open(LONG_SH, encoding="utf-8") as f:
+            body = f.read()
+        self.assertIn("tools_py.parity.audio_envelope", body)
+        self.assertIn("tools_py.parity.audio_dips", body)
+        self.assertIn("audio_parity.py is deliberately NOT the scorer", body)
+
+
+if __name__ == "__main__":
+    unittest.main()

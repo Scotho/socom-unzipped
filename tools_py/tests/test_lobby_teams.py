@@ -137,7 +137,7 @@ def run_join(*frames):
     sh, g = FakeShell(), Grabs(*JOIN_FRAMES, *frames)
     sh.is_screen = lambda name, thresh=None: name == "game_lobby"
     with mock.patch.object(L.winshot, "grab", g):
-        L.join_game(sh, switch=False)
+        L.join_game(sh, switch=False, refresh=False)    # W8's REFRESH LIST is tested in test_lobby_join_channel
     return sh
 
 
@@ -177,7 +177,7 @@ class JoinSwitchTeams(unittest.TestCase):
         sh, g = FakeShell(), Grabs(*JOIN_FRAMES, lobby(BOTH_SEALS, cursor=1))
         sh.is_screen = lambda name, thresh=None: name == "game_lobby"
         with mock.patch.object(L.winshot, "grab", g), self.assertRaises(L.LobbyFail) as cm:
-            L.join_game(sh, switch=False)
+            L.join_game(sh, switch=False, refresh=False)
         self.assertEqual((cm.exception.cls, cm.exception.code), ("join:switch-teams", L.LOBBY_FAIL_EXIT))
         self.assertEqual(sh.presses, self.JOIN + [CROSS] * L.LOBBY_SWITCH_MAX)
         self.assertEqual(len(teams_lines(sh)), L.LOBBY_SWITCH_MAX + 1)
@@ -189,7 +189,7 @@ class JoinSwitchTeams(unittest.TestCase):
         sh, g = FakeShell(), Grabs(*JOIN_FRAMES, lobby(BOTH_SEALS), LOBBY_GONE)
         sh.is_screen = lambda name, thresh=None: name == "game_lobby"
         with mock.patch.object(L.winshot, "grab", g), self.assertRaises(L.LobbyFail) as cm:
-            L.join_game(sh, switch=False)
+            L.join_game(sh, switch=False, refresh=False)
         self.assertEqual(cm.exception.cls, "join:switch-teams")
         self.assertEqual(sh.presses, self.JOIN)
 
@@ -214,7 +214,7 @@ class JoinSwitchTeams(unittest.TestCase):
         sh, g = FakeShell(), Grabs(*JOIN_FRAMES, lobby(ONE_EACH, cursor=1))
         sh.is_screen = lambda name, thresh=None: name == "game_lobby"
         with mock.patch.object(L.winshot, "grab", g):
-            L.join_game(sh, switch=True)
+            L.join_game(sh, switch=True, refresh=False)
         self.assertEqual(sh.presses, self.JOIN)                    # no blind SWITCH TEAMS on balanced teams
         self.assertTrue(any("same-team" in m for m in sh.logs), sh.logs)
 

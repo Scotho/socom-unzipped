@@ -230,10 +230,77 @@ added as a **Dev** A/B switch, which is what it is. The principle that survives:
 failure may not.** When something a player can see goes wrong, the log of the build they are running says so on its
 own -- and the way to ask for more is written down where a player will find it, not assumed unreachable.
 
-**R239: the online blop is charged to bank `0x00a00000`'s one-shots until the mute A/B says otherwise** -- on the
-correlation above (zero where the owner hears nothing, a hundred-plus where they do) and on the stream's exoneration.
-It is a suspect, not a finding: the A/B under R238 either clears the bank or convicts it, and nothing is fixed before
-that runs. The in-mission complaint (finding 4) stays a separate matter; identical re-fired chunk offsets are not this.
+**R239: the online blop was charged to bank `0x00a00000`'s one-shots. THE A/B RAN, AND THE CHARGE IS WITHDRAWN.**
+Two runs on the same screens, one with the bank live and one with `PS2X_SND_MUTE_BANK=0xa00000`, each capturing the
+mix with `PS2X_AUDIO_DUMP` while the play commands carried the mixer's output-frame clock (0x11/0x12 joined the
+stamped instrument for this). What they say, in the order it matters:
+
+1. **During the music, the bank never plays.** Charted in 20 s windows, run A's one-shots all fall between 20 s and
+   160 s -- the boot, menu and login screens, where the driver is pressing buttons, so they are the UI answering
+   presses -- and the window where the song actually plays (160-260 s, -28 to -33 dBFS) contains **zero** plays. The
+   muted run agrees: same music windows, same levels, no plays in them either. A sound that is not playing cannot be
+   the sound heard over the song.
+2. **The one-shots are quiet.** Where they do fire, the mix before is -64 dBFS and after -44 dBFS -- 9 dB BELOW the
+   capture's own average. They are not loud blips over anything.
+3. **The music in both captures is clean, by two different measures.** Level steps: 5 onsets >= 6 dB in 100 s of
+   music, four of them bunched at the cue's start. Spectral flux (`audio_envelope`): 4 splices in A's music window
+   and **7 in B's** -- the muted run scored WORSE, which is the reading of a measurement finding nothing rather than
+   a difference.
+
+**So the A/B did not separate the hypotheses, because the symptom was not in the capture at all.** Written down as
+"did not reproduce", per this plan's own rule, and NOT as a pass.
+
+**The correction, which is the part worth keeping.** The correlation this ruling rested on -- "87 plays during the
+intro, ZERO on the main menu, 100+ across the online screens" -- was produced by bucketing the owner's log **by line
+number**, and log lines are not time. A screen that logs heavily compresses minutes into hundreds of lines while a
+quiet screen stretches seconds over none, so that histogram described where the plays sat in the FILE, not when they
+happened. It was suggestive and it was not evidence, and it should not have been reported to the owner as a
+correlation with what they were hearing. The lesson for the next one of these: **a claim about when two things
+coincide has to be measured on a clock both of them are on** -- which is exactly why the play commands now carry the
+output-frame clock, and why the capture, not the log, settled it.
+
+**Run C settled it.** The owner was NAVIGATING the online screens; A and B sat still, which is why their one-shots
+landed on the login screens and never on the lobby. Run C pressed through the briefing-room menu (40 alternating
+DOWN/UP) while the song played, and reproduced the owner's condition exactly: 100-190 s carries the music at -28 to
+-34 dBFS **and** 4-5 one-shots per ten seconds throughout. In that window, the 41 plays of sound 8 land at a median
+of **-30.5 dBFS against a bed of -30.3 dBFS** -- **-0.2 dB relative to the music**, a median step of +0.64 dB, only 9
+of 41 above 3 dB. Under the owner's own condition the bank's one-shots are inaudible against the song. **R239 is
+CLEARED: the bank is not the stray sound.**
+
+**Where it goes next, and this project has been here before.** What the owner described -- "a short and ramping
+deviation from the note the song was currently playing" -- is a pitch or continuity artefact at roughly constant
+level, and every capture above is `PS2X_AUDIO_DUMP`: the mix **as rendered**, before the device. `docs/KNOWN.md` §1
+already holds the row that matters: the mission music once dropped out ~41 times a minute at the owner's JBL Flip 6
+while the pre-device mix had 5 silences, because the dump is written per callback and cannot see a late callback --
+"the defect they reported lives in the device path", on the endpoint only the owner had ever listened on. That was
+fixed to 2 by the 20 ms x 4 mix device, and the owner is now on a Bluetooth endpoint again with a new build.
+
+So the next experiment is not another dump: it is the **WASAPI loopback beside the dump**, on the online screens,
+scored by `tools_py/parity/audio_dips.py`, which exists precisely to classify each event DEVICE / STARVATION /
+COMMAND / UNEXPLAINED by aligning the endpoint recording to the mixer's own output-frame clock. A defect that is in
+the endpoint and not in the dump is a DEVICE verdict, and nothing in a pre-device capture can ever find it.
+
+**W7 ran, and that experiment has its first reading (`logs/parity/mission_music_ours_20260922_024457`).** The
+ten-minute capture took both -- the mixer's dump and the WASAPI loopback -- and its own mix-open line names the
+endpoint it rendered to: **`device Speakers (JBL Flip 6), period 20 ms x 4, engine 48000 Hz`**, session volume 1.00.
+That is the owner's own Bluetooth speaker, the path `docs/KNOWN.md` section 1 already ties to what they hear.
+`audio_dips` classified **31 DEVICE events** -- dips present in the endpoint recording and absent from the dump at
+the aligned time -- clustered in the roughly four minutes of the capture that carry any audio at all. The mixer
+rendered those samples; something between `render()` and the speaker did not deliver them. It is a LEAD, not a
+finding: the previous measured state after the 20 ms x 4 device was 2 sub-second dropouts per mission minute, and
+until the same capture is repeated on a wired endpoint -- where these should vanish if the Bluetooth path is the
+cause -- the number is one run on one device.
+
+**What W7 also established, by failing twice.** The fast path works (`untilref(ref_hud_ours.png): 3 presses,
+matched=True` -- the cinematics really are skipped, and the `lit` flag proves the hold was in gameplay). What does
+NOT work is the assumption underneath the chunk: **a driven hold does not capture music.** Standing at the insertion
+point, the only streams that play are two-to-four-second voice cues and the mix sits at -51 dBFS; a `--stage
+briefing` mode was added to hold on the briefing instead, and its score plays for about one minute (-34.8 dBFS) and
+then the screen goes quiet at -50 dBFS for the remaining nine. Both captures are therefore mostly silence, and
+**neither contains the degradation the owner described**, which they heard *while proceeding through the mission*.
+The instrument is proven; the drive that feeds it is not. What it needs is a ROUTE -- the drive moving through the
+mission with `hold+<s>:W` steps, which the grammar already supports -- not a longer hold. That is W7's follow-up and
+it is the only way the second half of the owner's music report gets captured.
 
 **R240: the join driver presses REFRESH LIST before JOIN GAME, and takes a channel.** Asked mid-playthrough to send
 an agent into the owner's lobby, `online_login_ours --join --instance B` logged in as `socome` (its own persona on

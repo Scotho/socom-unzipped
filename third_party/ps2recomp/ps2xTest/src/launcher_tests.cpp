@@ -1939,6 +1939,161 @@ void register_launcher_tests()
             const ui::PadAnchor r1 = ui::padAnchor(g, kHostR1);
             t.IsTrue(l1.c.x < g.centre.x && r1.c.x > g.centre.x, "L1 is on the left, R1 on the right");
             t.IsTrue(l1.c.y < up.c.y, "and the shoulders are above the d-pad");
+
+            // W9: the hold gesture draws a ring closing on the control being held, so every button the
+            // gesture ARMS must have somewhere on the drawing for that ring to go. (It is the same table,
+            // which is the point -- the gesture invented no second one.)
+            for (int h = 1; h <= kHostButtonMax; ++h)
+                if (ui::holdArms(h))
+                    t.IsTrue(ui::padAnchor(g, h).valid, "an armed host has a ring to draw: " + std::to_string(h));
+        });
+
+        // ---- W9 (owner, 2026-09-22): hold a pad button to remap it -------------------------------------------
+        // "The controller page is a good improvement, but let's try to improve the graphic just a bit if
+        // possible. I'd also like to add a new remapping mechanism, hold the button to remap the button while
+        // on the controller page." The gesture lives behind the SAME gate as every other pad reading
+        // (ui::padHold, beside ui::padIntent in pad_input.cpp) so that a page never reaches for raylib and a
+        // button held through a firefight can never arm anything in the launcher.
+        tc.Run("hold-to-remap: the buttons the UI navigates with are never armed, and a hold fires once at 750 ms", [](TestCase &t)
+        {
+            using namespace launcher::mapping;
+            // The five the launcher's own navigation spends on the PRESS edge. Cross and circle are the
+            // crux: cross activates and circle goes back, so a gesture that stole either would make the page
+            // it is meant to improve unusable -- and circle is also the bind flow's own cancel (kCancelHost
+            // held past kCancelHoldSeconds), so a hold of it would collide with the way OUT of a session.
+            t.IsFalse(ui::holdArms(kHostFaceDown), "cross activates: the gesture never takes it");
+            t.IsFalse(ui::holdArms(kHostFaceRight), "circle goes back, and is the flow's own hold-to-cancel");
+            t.IsFalse(ui::holdArms(kHostL1), "L1 has already changed the page before a hold could build");
+            t.IsFalse(ui::holdArms(kHostR1), "and so has R1");
+            t.IsFalse(ui::holdArms(kHostStart), "Start has already asked for a launch");
+            t.IsFalse(ui::holdArms(kHostNone), "there is no button 0");
+            t.IsFalse(ui::holdArms(kHostButtonMax + 1), "nor one past the last");
+            int armed = 0;
+            for (int h = 1; h <= kHostButtonMax; ++h)
+                if (ui::holdArms(h))
+                    ++armed;
+            t.Equals(armed, kHostButtonMax - 5, "twelve of the seventeen arm it");
+            t.IsTrue(ui::holdArms(kHostDpadUp) && ui::holdArms(kHostDpadLeft), "the d-pad does: the launcher reads only its edge, so a HELD d-pad is free");
+            t.IsTrue(ui::holdArms(kHostL2) && ui::holdArms(kHostR2), "and both triggers, which the launcher reads not at all");
+            t.IsTrue(ui::holdArms(kHostGuide) && ui::holdArms(kHostSelect) && ui::holdArms(kHostL3), "and the guide, select and the stick clicks");
+
+            t.IsTrue(ui::kRemapHoldSeconds >= 0.6 && ui::kRemapHoldSeconds <= 1.0,
+                     "the hold is between 600 ms and a second: past a fumbled press, short of a punishment");
+
+            ui::HoldWatch w;
+            ui::HoldFrame f;
+            f.present = true;
+            f.down[kHostFaceUp] = true;
+
+            ui::HoldIntent got = ui::padHold(w, f, /*gameRunning=*/false, /*typing=*/false, /*pageArmed=*/true, 100.0);
+            t.Equals(got.host, kHostFaceUp, "the frame it goes down it is the button building");
+            t.IsFalse(got.fired, "nothing has fired yet");
+            t.IsTrue(got.progress < 0.01f, "and the bar the page draws is empty");
+
+            got = ui::padHold(w, f, false, false, true, 100.0 + ui::kRemapHoldSeconds * 0.5);
+            t.IsTrue(std::fabs(got.progress - 0.5f) < 0.01f, "halfway through is half a bar");
+            t.IsFalse(got.fired, "and still nothing committed");
+
+            got = ui::padHold(w, f, false, false, true, 100.0 + ui::kRemapHoldSeconds);
+            t.IsTrue(got.fired, "at the hold's length it fires");
+            t.Equals(got.host, kHostFaceUp, "for the button that was held");
+            t.IsTrue(std::fabs(got.progress - 1.0f) < 0.001f, "with a full bar");
+
+            got = ui::padHold(w, f, false, false, true, 100.0 + ui::kRemapHoldSeconds * 4.0);
+            t.IsFalse(got.fired, "and it fires ONCE: holding on does not open session after session");
+            t.Equals(got.host, kHostFaceUp, "though the page still names the button it was");
+
+            // A second armed button pressed during a hold changes nothing: the first keeps the watch.
+            f.down[kHostL2] = true;
+            got = ui::padHold(w, f, false, false, true, 100.0 + ui::kRemapHoldSeconds * 5.0);
+            t.Equals(got.host, kHostFaceUp, "one gesture at a time");
+        });
+
+        tc.Run("hold-to-remap: letting go is the cancel, and the gate takes the gesture away with the pad", [](TestCase &t)
+        {
+            using namespace launcher::mapping;
+            ui::HoldWatch w;
+            ui::HoldFrame f;
+            f.present = true;
+            f.down[kHostL2] = true;
+
+            // Letting go before the bar fills is the whole cancel, and it leaves nothing banked: the next
+            // press starts its own clock rather than finishing the abandoned one.
+            ui::padHold(w, f, false, false, true, 10.0);
+            ui::HoldIntent got = ui::padHold(w, f, false, false, true, 10.0 + ui::kRemapHoldSeconds * 0.9);
+            t.IsFalse(got.fired, "nine tenths of the way is not a remap");
+            f.down[kHostL2] = false;
+            got = ui::padHold(w, f, false, false, true, 10.0 + ui::kRemapHoldSeconds * 0.95);
+            t.Equals(got.host, 0, "let go and nothing is building");
+            f.down[kHostL2] = true;
+            got = ui::padHold(w, f, false, false, true, 10.0 + ui::kRemapHoldSeconds);
+            t.IsFalse(got.fired, "and pressing again does not collect the abandoned hold");
+            t.IsTrue(got.progress < 0.01f, "the clock started over");
+
+            // Every refusal CLEARS the watch rather than pausing it, so a hold begun under one condition can
+            // never complete under another -- the same rule padIntent keeps for the stick's repeat clock.
+            auto refuses = [&t](bool gameRunning, bool typing, bool pageArmed, bool present, const char *why)
+            {
+                ui::HoldWatch watch;
+                ui::HoldFrame frame;
+                frame.present = present;
+                frame.down[kHostL2] = true;
+                ui::padHold(watch, frame, gameRunning, typing, pageArmed, 0.0);
+                const ui::HoldIntent late = ui::padHold(watch, frame, gameRunning, typing, pageArmed, ui::kRemapHoldSeconds * 3.0);
+                t.IsFalse(late.fired, std::string("no hold ") + why);
+                t.Equals(late.host, 0, std::string("and nothing is shown as building ") + why);
+            };
+            refuses(true, false, true, true, "while the game runs: the pad is the game's (P3)");
+            refuses(false, true, true, true, "while a text field holds the keyboard: the pad's buttons are its way out");
+            refuses(false, false, false, true, "anywhere but the CONTROLLER page with no session already open");
+            refuses(false, false, true, false, "with no pad connected");
+
+            // ... and one that was building when the condition changed is gone, not banked.
+            ui::HoldWatch watch;
+            ui::HoldFrame frame;
+            frame.present = true;
+            frame.down[kHostL2] = true;
+            ui::padHold(watch, frame, false, false, true, 0.0);
+            ui::padHold(watch, frame, /*gameRunning=*/true, false, true, ui::kRemapHoldSeconds * 0.5);
+            const ui::HoldIntent back = ui::padHold(watch, frame, false, false, true, ui::kRemapHoldSeconds * 0.9);
+            t.IsFalse(back.fired, "the game started mid-hold, so the hold did not survive it");
+            t.IsTrue(back.progress < 0.01f, "it began again from zero when the page came back");
+        });
+
+        tc.Run("hold-to-remap opens the flow that already existed: the PS2 button the held control drives, and the same conflict", [](TestCase &t)
+        {
+            // The gesture decides WHEN to bind, never HOW: main.cpp turns a fired hold into exactly the
+            // bindStart() the BUTTONS cell has always called, on the PS2 button that control drives now. So
+            // "hold the button to remap the button" means: hold the one you want to MOVE, then press where
+            // you want it -- and a clash is Goal 8's Conflict dialog, unchanged.
+            using namespace launcher::mapping;
+            Mapping m = defaults();
+            const int target = boundTo(m, kHostL2);
+            t.Equals(target, kPs2L2, "holding the left trigger is a session for the PS2 button it drives");
+            t.IsTrue(target >= 0, "which is what main hands bindStart");
+
+            ui::BindFlow flow;
+            ui::bindStart(flow, static_cast<uint8_t>(target), 0.0);
+            t.IsTrue(flow.state == ui::BindFlow::State::Listening, "the held button opens the same listening session a click does");
+
+            // Press a button the mapping already uses: the same three answers, the same focus, the same words.
+            t.IsTrue(ui::bindStep(flow, m, ui::BindInput{kHostR2, 0.1, false}, 1.0) == ui::BindEvent::Conflict,
+                     "the right trigger is R2's, so the flow stops to ask");
+            t.Equals(ui::dialogButtonCount(flow), 3, "swap, replace, cancel -- nothing new was invented for the gesture");
+            t.Equals(ui::dialogFocusId(flow), std::string("pad.dialog.0"), "opening on SWAP as ever");
+            const std::string sentence = ui::dialogSentence(flow, ui::GlyphFamily::Xbox);
+            t.IsTrue(sentence.find("RT") != std::string::npos, "the sentence names the pad's own button: " + sentence);
+            t.IsTrue(sentence.find("R2") != std::string::npos, "and what the game already has it as");
+            t.IsTrue(ui::bindResolve(flow, m, Resolution::Swap, 2.0) == ui::BindEvent::Bound, "and swap still swaps");
+            t.Equals(m.pad[rowOf(kPs2L2)].host, kHostR2, "L2 moved to the right trigger");
+            t.Equals(m.pad[rowOf(kPs2R2)].host, kHostL2, "and R2 took the left one");
+
+            // A control the mapping does not drive has nothing to remap: main says so rather than opening an
+            // empty session. (kHostNone is never bound, by construction -- boundTo's own contract.)
+            Mapping bare = defaults();
+            rebind(bare, kPs2L2, kHostNone, Resolution::Replace);
+            t.Equals(boundTo(bare, kHostL2), -1, "with L2 unbound, holding the left trigger has nothing to move");
+            t.Equals(boundTo(bare, kHostNone), -1, "and 'none' is never bound to anything");
         });
 
         // ---- Sprint 10 Q4: the window switch -----------------------------------------------------------------

@@ -574,6 +574,13 @@ namespace
             prompts[count++] = Prompt{"HOLD B", "CANCEL", -1};
             prompts[count++] = Prompt{"ESC", "CANCEL", -1};
         }
+        else if (app.holdHost != 0 && app.holdProgress > 0.12f)
+        {
+            // W9: a hold is building. Same reasoning as the listening row above -- every pad button is a
+            // candidate right now, so the row speaks words: what is happening, and the way out of it.
+            prompts[count++] = Prompt{"HOLDING", "REMAP", -1};
+            prompts[count++] = Prompt{"LET GO", "CANCEL", -1};
+        }
         else if (typing)
         {
             prompts[count++] = Prompt{"TYPE", "EDIT", -1};
@@ -590,7 +597,13 @@ namespace
         {
             prompts[count++] = Prompt{adjusts ? "LT/RT" : "ARROWS", adjusts ? "ADJUST" : "MOVE", -1};
             prompts[count++] = Prompt{"ENTER", "SELECT", 1};
-            prompts[count++] = Prompt{"ESC", "BACK", 3};
+            // W9: on the CONTROLLER page the third slot is the gesture, not BACK. The gesture is the one
+            // thing on that page a player cannot discover by looking; BACK is on every other page, is the
+            // rail entry one step to the left, and is Escape, which no player has to be told about.
+            if (app.nav.page == ui::Page::Controller && app.pad.present)
+                prompts[count++] = Prompt{"HOLD", "REMAP", -1};
+            else
+                prompts[count++] = Prompt{"ESC", "BACK", 3};
         }
         for (int i = 0; i < count; ++i)
         {
@@ -1351,6 +1364,12 @@ int main(int argc, char **argv)
         // the cell) is still down on this frame and is ignored until it comes back up.
         static double s_downSince[18] = {};
         static bool s_ignoreDown[18] = {};
+        // W9 (2026-09-22): the hold-a-button-to-remap watch, carried between frames like padRepeatAt. The
+        // decision is ui::padHold's (pure, behind the pad gate); this loop only feeds it what raylib says
+        // and turns a fired hold into the bind session that already existed.
+        static ui::HoldWatch s_hold;
+        app.holdHost = 0;
+        app.holdProgress = 0.0f;
         const bool listening = app.bind.state == ui::BindFlow::State::Listening;
         // Sprint 10 Q4: the guide button, once a frame, from raylib (a DirectInput pad on Windows, any pad on
         // Linux) OR from XInput's hidden entry point (an Xbox pad on Windows, whose guide bit XInputGetState
@@ -1427,6 +1446,7 @@ int main(int argc, char **argv)
                 break;
             }
             app.padPrompts = true;
+            s_hold = ui::HoldWatch{};   // a session is open: the gesture has nothing left to start
         }
         else if (!app.fake)
         {
@@ -1463,6 +1483,51 @@ int main(int argc, char **argv)
             }
             const ui::PadIntent padWants = ui::padIntent(padFrame, app.running, ctx.time, padRepeatAt);
             toggleWindows = padWants.toggle;
+
+            // ---- W9: hold a pad button to remap it (the owner, 2026-09-22) -------------------------------
+            // The same gate, one gesture wide. A hold is a duration, not an edge, so this reads the frame's
+            // DOWN state for every host button (the guide through the read above, which XInput hides);
+            // ui::padHold refuses it while the game runs, while a field holds the keyboard, and anywhere but
+            // the CONTROLLER page with no session already open. No page ever reaches for raylib itself.
+            ui::HoldFrame holdFrame;
+            holdFrame.present = padPresent;
+            if (padPresent)
+                for (int h = 1; h <= launcher::mapping::kHostButtonMax; ++h)
+                    holdFrame.down[h] = h == launcher::mapping::kHostGuide ? guideDown : IsGamepadButtonDown(padSlot, h);
+            const bool holdPageArmed = nav.page == ui::Page::Controller
+                                       && app.bind.state == ui::BindFlow::State::Idle && app.requestBind < 0;
+            const ui::HoldIntent holdWants =
+                ui::padHold(s_hold, holdFrame, app.running, typing, holdPageArmed, ctx.time);
+            app.holdHost = holdWants.host;
+            app.holdProgress = holdWants.progress;
+            if (holdWants.fired)
+            {
+                // What the held control DRIVES is what the session is for: hold the button you want to move,
+                // then press where you want it -- and a clash is Goal 8's own Conflict dialog, because this
+                // is Goal 8's own flow. The window switch is checked first: it takes no row of the mapping,
+                // so boundTo would answer -1 for the very button a player is most likely to hold.
+                const launcher::mapping::Mapping heldMapping = launcher::activeMapping(app.config);
+                const int target = launcher::focusToggleHost(app.config) == holdWants.host
+                                       ? static_cast<int>(ui::kSwitchTarget)
+                                       : launcher::mapping::boundTo(heldMapping, holdWants.host);
+                const ui::GlyphFamily heldFamily = ui::glyphFamilyFor(app.pad.name);
+                if (target < 0)
+                    app.status = std::string(ui::hostLabel(heldFamily, holdWants.host).text) +
+                                 " drives nothing yet -- open its row below to give it a button";
+                else
+                {
+                    // BUTTONS is where the cell and any conflict dialog live; a hold begun in SETUP lands
+                    // the player where the answer is (the section switch applies on the next frame's
+                    // layout, exactly as it does when the player clicks it).
+                    app.padSection = 1;
+                    app.requestBind = target;
+                    nav.focus = target == static_cast<int>(ui::kSwitchTarget)
+                                    ? std::string(ui::kSwitchCellId)
+                                    : "pad.bind." + std::string(launcher::mapping::ps2ButtonName(
+                                                        static_cast<uint8_t>(target)));
+                }
+                app.padPrompts = true;
+            }
 
             if (typing)
             {

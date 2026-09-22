@@ -485,6 +485,38 @@ void register_ps2_runtime_io_tests()
                      "sceMcGetDir file entries should carry the closed-file attribute");
         });
 
+        tc.Run("sceMcGetDir on '..' at the card root lists the root instead of refusing the card", [](TestCase &t)
+        {
+            // 2026-09-22, the owner's playthrough finding 3: "i'm noticing i have no memory card data, and when
+            // i start a mission and select control type, it asks to save, at which time i try and it fails ...
+            // I restarted and it works the second time." A run to the control-type prompt on a VIRGIN card
+            // logged five of `[mc] GetDir REFUSED path '..' (not normalisable)`, each answered DeniedPermit --
+            // which the game reads as a card it cannot use. normalizeGuestMcPathLocked refused ".." whenever it
+            // would pop past the root, and on a fresh card the current directory IS the root. Every filesystem
+            // the API imitates answers "/.." with "/".
+            TestContext test;
+            std::filesystem::create_directories(test.paths.mcRoot / "SAVEDATA");
+
+            const uint32_t patternAddr = GUEST_STRING_AREA_START + 0x780;
+            writeGuestString(test.rdram.data(), patternAddr, "..");
+
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, 0u);
+            setRegU32(test.ctx, 5, 0u);
+            setRegU32(test.ctx, 6, patternAddr);
+            setRegU32(test.ctx, 7, 0u);
+            setRegU32(test.ctx, 8, 8u);
+            setRegU32(test.ctx, 9, GUEST_MC_TABLE_ADDR);
+
+            ps2_stubs::sceMcGetDir(test.rdram.data(), &test.ctx, nullptr);
+
+            int32_t cmd = 0;
+            const int32_t result = syncMc(test.rdram, &cmd);
+            t.Equals(cmd, 0x0D, "the last command is GETDIR");
+            t.IsTrue(result != -5, "'..' at the root is not DeniedPermit -- that refusal is what failed the save");
+            t.IsTrue(result >= 0, "it is a listing: a count of entries, not an error code");
+        });
+
         tc.Run("sceMcGetInfo reports formatted and unformatted states", [](TestCase &t)
         {
             TestContext test;

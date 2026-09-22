@@ -234,15 +234,20 @@ JOIN_PRESSES = [("key", "cross"), ("key", "cross"), ("key", "cross")]
 
 
 class JoinGameVerified(unittest.TestCase):
+    """The CROSS chain of JOIN GAME itself. Fix wave W8 added a REFRESH LIST press in front of it and made an
+    empty list its own outcome; both live on the default path and are tested in test_lobby_join_channel.py, so
+    these run with `refresh=False` -- the pre-R240 path, which is still what `--no-refresh` asks for and must
+    keep issuing exactly the presses it always did."""
+
     def run_join(self, *frames, expect=None):
         sh, g = FakeShell(), Grabs(*frames)
         sh.is_screen = lambda name, thresh=None: name == "game_lobby"
         with mock.patch.object(L.winshot, "grab", g), mock.patch.object(L, "lobby_teams", return_value=(0, 0)):
             if expect is None:
-                L.join_game(sh, switch=False)
+                L.join_game(sh, switch=False, refresh=False)
                 return sh
             with self.assertRaises(L.LobbyFail) as cm:
-                L.join_game(sh, switch=False)
+                L.join_game(sh, switch=False, refresh=False)
         self.assertEqual((cm.exception.cls, cm.exception.code), (expect, L.LOBBY_FAIL_EXIT))
         self.assertIn(f"LOBBY class={expect}", sh.logs)
         self.assertEqual([p for p in sh.presses if p[0] == "pad"], [("pad", "CROSS")] * L.LOBBY_RESEND_MAX)
@@ -255,7 +260,11 @@ class JoinGameVerified(unittest.TestCase):
             self.assertEqual(press_lines(sh, stage), [f"[lobby] {stage} press=cross verified=True attempt=1"])
         self.assertIn("17_game_lobby_ok", sh.shots)
 
-    def test_no_games_to_join(self):                              # wtb3/wtb5's B: the host never created the world
+    def test_a_list_that_never_activates(self):
+        # The fixture's banner band is black (the crop is of the list row only), so join_list_state reads
+        # "unread" -- a frame that says nothing, which is re-sent on and finally fails, exactly as before.
+        # The frame that carries the real "There are no games to join." sentence is a NO-GAMES outcome now,
+        # not this one: test_lobby_join_channel.NoGamesIsNotAFailure.
         sh = self.run_join(GAMES_LIST_NONE, expect="join:list")
         self.assertEqual(len(sh.presses), 1 + L.LOBBY_RESEND_MAX)
 
