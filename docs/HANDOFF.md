@@ -212,7 +212,10 @@ rather than rule. At most two C++-building agents at once.
    reasons -- read a VM suite by suite name, not by exit code; and llvmpipe renders at about 2 fps, so no audio or
    frame-rate bar can be read there (R107).
 10. **`docs/STATUS.md` is a log, newest on top, 2400 lines.** Only its "Current state" block is current.
-    `docs/ROADMAP.md` is a Sprint 4-7 document: read its §3 (what overturned what) and §7, not its sprint lists.
+    `docs/ROADMAP.md` was rewritten 2026-09-22 and is now narrative and pointers only, never live state -- its §0 is
+    a claim-by-claim audit of the old one (nine claims held, two were wrong, the rest overtaken). The Sprint 4-7
+    document it replaced is `docs/archive/ROADMAP-sprint-4-to-sprint-7.md`, kept verbatim because fifteen files cite
+    it by section: **every `ROADMAP.md §N` reference written before 2026-09-22 means the archived copy.**
 11. **There is no scheduler and no ledger.** Nothing in the repository fires the loop; `.superpowers/sdd/` holds only a
     `.gitignore`. The loop is you, working `docs/LOOP_PROMPT.md` one iteration after another. `docs/process-audit.md`
     §8 prescribes `docs/OFFLINE_QUEUE.md` and `scripts/wait_done.sh`; neither was ever written -- the lock-free filler
