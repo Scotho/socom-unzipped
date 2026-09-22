@@ -532,6 +532,41 @@ namespace snd989
         constexpr double kTickHz = 240.0;
     }
 
+    // PS2X_SND_MUTE_BANK (ruling R238): "0xa00000,0xb00000" plays nothing from those banks. It exists to
+    // settle by ear, in one listen, whether a stray sound is a bank one-shot or the music stream -- the
+    // question the owner's 2026-09-22 playthrough left open and that no log could answer. Parsed once.
+    const std::vector<uint32_t> &mutedBanks()
+    {
+        static const std::vector<uint32_t> s_banks = []
+        {
+            std::vector<uint32_t> out;
+            const char *spec = ps2x::knob("PS2X_SND_MUTE_BANK");
+            if (spec == nullptr || *spec == '\0')
+                return out;
+            for (const char *p = spec; *p != '\0';)
+            {
+                while (*p == ',' || *p == ' ')
+                    ++p;
+                if (*p == '\0')
+                    break;
+                char *end = nullptr;
+                const unsigned long long value = std::strtoull(p, &end, 0);
+                if (end == p)
+                    break;
+                out.push_back(static_cast<uint32_t>(value));
+                p = end;
+            }
+            return out;
+        }();
+        return s_banks;
+    }
+
+    bool bankMuted(uint32_t bank)
+    {
+        const std::vector<uint32_t> &banks = mutedBanks();
+        return std::find(banks.begin(), banks.end(), bank) != banks.end();
+    }
+
     uint16_t note2Pitch(int8_t centerNote, int8_t centerFine, int note, int fine)
     {
         bool ps1 = false;
@@ -1585,6 +1620,18 @@ namespace snd989
         // and only a handle it was never handed at all leaves it with none (knowsHandle, review finding F3).
         if (handle != 0u)
             m_impl->seenHandles.insert(handle);
+        if (bankMuted(bank))
+        {
+            // Counted and reported once per bank, so the A/B says in the log what it silenced: a run whose
+            // log has no such line silenced nothing and is not an A/B.
+            static std::unordered_set<uint32_t> s_said;
+            if (s_said.insert(bank).second)
+            {
+                std::fprintf(stderr, "[audio] 989snd bank 0x%08x MUTED by PS2X_SND_MUTE_BANK\n", bank);
+                std::fflush(stderr);
+            }
+            return false;
+        }
         auto it = m_impl->banks.find(bank);
         if (it == m_impl->banks.end() || handle == 0u)
             return false;

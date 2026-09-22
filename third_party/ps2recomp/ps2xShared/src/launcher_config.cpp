@@ -186,8 +186,11 @@ namespace launcher
                         sawPreset = true;
                     }
                     else if (key == "micDevice") c.micDevice = v;
-                    else if (key == "loginName") c.loginName = v;
-                    else if (key == "loginPassword") c.loginPassword = v;
+                    // Normalised on the way IN (the 2026-09-22 audit): a config.json written by hand, or by a
+                    // launcher from before the field refused these characters, must not leave a value in the
+                    // field that differs from what the game will be handed.
+                    else if (key == "loginName") c.loginName = normalizeLoginName(v);
+                    else if (key == "loginPassword") c.loginPassword = normalizeLoginPassword(v);
                     else c.profile = normalizeProfile(v);
                 }
                 // Sprint 10 Q3 (R210): "mouseLook" and "mouseSensitivity", written by every launcher before 2026-09-21,
@@ -400,20 +403,26 @@ namespace launcher
         return value.size() > 64 ? value.substr(0, 64) : value;
     }
 
+    bool keyboardAccepts(const char ch, const bool allowDoubleQuote)
+    {
+        const unsigned char u = static_cast<unsigned char>(ch);
+        return u > 0x20 && u < 0x7F && (allowDoubleQuote || ch != '"');
+    }
+
     namespace
     {
         // Sprint 10 Goal 9: what the game's keyboard can type. Printable ASCII, no space; the double quote only
         // where the keyboard offers it (the name keyboard's NoDQuote flag refuses it, research/38). Anything
-        // else -- a space, an accent, a control character -- is dropped, not refused whole: a name is not a
-        // path, and what the player sees in the field is exactly what the keyboard will hold.
+        // else -- a space, an accent, a control character -- is dropped, not refused whole: a name is not a path.
+        // The accept-set lives in keyboardAccepts and the launcher's field applies the same predicate as the
+        // player types, so this pass is a backstop for a config.json written by hand or by an older launcher,
+        // not the place a space is silently lost (the 2026-09-22 audit's finding 1).
         std::string keyboardText(const std::string &value, std::size_t cap, bool allowDoubleQuote)
         {
             std::string out;
             for (const char ch : value)
             {
-                const unsigned char u = static_cast<unsigned char>(ch);
-                const bool ok = u > 0x20 && u < 0x7F && (allowDoubleQuote || ch != '"');
-                if (!ok)
+                if (!keyboardAccepts(ch, allowDoubleQuote))
                     continue;
                 out.push_back(ch);
                 if (out.size() == cap)

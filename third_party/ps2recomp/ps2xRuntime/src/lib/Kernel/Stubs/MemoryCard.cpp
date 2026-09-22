@@ -1,4 +1,5 @@
 #include <iostream>
+#include <cstdio>
 #include <cstdlib>
 #include "Common.h"
 #include "MemoryCard.h"
@@ -556,11 +557,43 @@ namespace ps2_stubs
             return patternPos == pattern.size();
         }
 
+        // The result codes by name, for the line below: a player reads "FullDevice", not "-3".
+        const char *mcResultName(int32_t result)
+        {
+            switch (result)
+            {
+            case kMcResultSucceed:       return "Succeed";
+            case kMcResultChangedCard:   return "ChangedCard";
+            case kMcResultNoFormat:      return "NoFormat";
+            case kMcResultFullDevice:    return "FullDevice";
+            case kMcResultNoEntry:       return "NoEntry";
+            case kMcResultDeniedPermit:  return "DeniedPermit";
+            case kMcResultNotEmpty:      return "NotEmpty";
+            case kMcResultUpLimitHandle: return "UpLimitHandle";
+            default:                     return "unknown";
+            }
+        }
+
         void setMcCommandResultLocked(int32_t cmd, int32_t result)
         {
             g_mcLastCmd = cmd;
             g_mcLastResult = result;
             g_mcCommandPending = true;
+            // Ruling R238 (2026-09-22): a card command that FAILED prints one line in EVERY build, knob or
+            // no knob. The owner's save failed on a virgin card during their playthrough and the build they
+            // played recorded nothing at all -- PS2X_MC_TRACE is a developer knob and covered only GetInfo
+            // and Sync even then. Successes stay behind the knob: this is the failure, not a trace.
+            //
+            // Only a NEGATIVE result is a failure. The codes are a union: an error is < 0, while a command
+            // that succeeded may answer with a count or a handle (the first cut printed "command 13 FAILED
+            // result=3" for a directory read that returned three entries, and "result=1000" for a read of a
+            // thousand bytes -- noise that would have buried the one line that matters).
+            if (result < kMcResultSucceed)
+            {
+                std::fprintf(stderr, "[mc] command %d FAILED result=%d (%s) card=%s\n", cmd, result,
+                             mcResultName(result), getMcRootPath(0).string().c_str());
+                std::fflush(stderr);
+            }
         }
 
         void closeMcFilesLocked()

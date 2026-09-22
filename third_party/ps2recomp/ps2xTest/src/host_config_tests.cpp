@@ -39,8 +39,9 @@ void register_host_config_tests()
             launcher::Config bad;
             bad.windowSize = "0x0";
             const std::vector<std::string> env = launcher::environmentFor(bad);
-            t.IsTrue(std::find(env.begin(), env.end(), std::string("PS2X_WINDOW_SIZE=1280x896")) != env.end(),
-                     "and a 0x0 that reached a Config anyway never becomes PS2X_WINDOW_SIZE=0x0");
+            t.IsTrue(std::find(env.begin(), env.end(), std::string("PS2X_WINDOW_SIZE=640x448")) != env.end(),
+                     "and a 0x0 that reached a Config anyway never becomes PS2X_WINDOW_SIZE=0x0 -- it becomes "
+                     "the launcher's default, 640x448 since R236 (2026-09-22)");
         });
 
         tc.Run("PS2X_WINDOW_SIZE: <w>x<h> sets the window, fullscreen is borderless, anything else keeps the default", [](TestCase &t)

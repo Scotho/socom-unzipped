@@ -66,9 +66,11 @@ namespace launcher
         std::string isoPath;
         int gsScale = 1;                       // 1 native, 2 sharp, 3 sharper (experimental)
         std::string presentFilter = "linear";  // linear | integer | point
-        // Sprint 7 Task 1c: the launcher opens at 2x. The runtime's own default is still 640x448
-        // (PS2X_WINDOW_SIZE unset), which is what the parity gate runs at.
-        std::string windowSize = "1280x896";   // <w>x<h> | fullscreen
+        // The launcher opens at the game's own 640x448 (the owner, 2026-09-22 playthrough: "the default res
+        // should be the 640x448"), which overrides Sprint 7 Task 1c's 2x default (R92). The runtime's default was
+        // already 640x448 with PS2X_WINDOW_SIZE unset, so the launcher and the parity gate now agree; 1280x896
+        // stays one click away on the VIDEO page.
+        std::string windowSize = "640x448";    // <w>x<h> | fullscreen
         bool fpsOverlay = false;               // Sprint 7 Task 10: PS2X_FPS_OVERLAY, off unless asked for
         int audioVolume = 100;                 // Sprint 7 Task 11: PS2X_AUDIO_VOLUME, 0-100, 100 = unity
         // Sprint 10 Q3 (R210): mouseLook and mouseSensitivity left on 2026-09-21; an old config.json's keys are ignored on load.
@@ -147,6 +149,12 @@ namespace launcher
     constexpr std::size_t kLoginPasswordCap = 12;
     std::string normalizeLoginName(const std::string &value);
     std::string normalizeLoginPassword(const std::string &value);
+    // The accept-set ABOVE, as a predicate, so the field that takes the characters and the normaliser that
+    // sends them cannot disagree (the 2026-09-22 audit: the field took a space, config.json kept it, and the
+    // game was handed the string without it -- the keyboard opened with the wrong text and the login failed
+    // with nothing on screen to explain it). The field refuses what the keyboard cannot hold, which is what
+    // makes "what the player sees in the field is exactly what the keyboard will hold" true.
+    bool keyboardAccepts(char ch, bool allowDoubleQuote);
     // The cell's label and the one line under the row that states the trade. Never empty.
     const char *crouchShortcutLabel(const std::string &value);
     const char *crouchShortcutHint(const std::string &value);

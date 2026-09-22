@@ -4,6 +4,44 @@ Things only the owner can do: hands-on checks on the real machine with real ears
 adds items here when it reaches a step it cannot verify itself, and moves on. Report back in one line each; the
 loop picks the answer up from the next session's prompt or from a note in `docs/STATUS.md`.
 
+## Start here (2026-09-22, after your playthrough)
+
+**Your findings are all recorded and the fix wave is running** -- `docs/superpowers/plans/2026-09-22-fix-wave-playthrough.md`
+is the chunk table, `docs/CURRENT_SPRINT.md` ("The playthrough, 2026-09-22") holds the findings and rulings R236-R240,
+and `docs/KNOWN.md` has four new section-2 rows (each with the experiment that settles it) and two new hazards.
+
+**Done without needing you:** the launcher now defaults to **640x448** (R236, your instruction); a text field lets go
+of the keyboard when you click away from it OR press the pad's cross or circle, which is the controller regression you
+found (it had only three ways out and all three were keyboard keys); the login fields now refuse a space and a `"`
+**as you type**, because the field used to accept characters the game's keyboard cannot hold and then hand the game a
+different string, with the login failing and nothing on screen to say why (found by the reading audit, confirmed in
+the code); and a memory-card command that FAILS now prints `[mc] command <n> FAILED result=<r> (<name>)` in **every** build,
+with no knob to set -- which is why your failed save left no evidence at all. (A correction worth knowing: the first
+diagnosis, that our traces are compiled out of the build you play, was wrong. `PS2X_DEV=1` in the environment reaches
+every developer knob in any build, yours included -- so if something goes wrong again you can re-run with
+`PS2X_DEV=1 PS2X_MC_TRACE=1` or `PS2X_AUDIO_DUMP=logs/sound.wav` and the evidence will be there. The real hole was
+that a *failed* card command said nothing at all, at any setting.)
+
+**What still needs you, and none of it is urgent:**
+
+- **The prefilled login.** You asked for a persona saved on the card with remember-password checked, or the prefill
+  removed. Taken as R237: it leaves the player path and survives as a developer knob (the drive scripts type personas
+  with it). Before it is removed for good, the thing to prove is that the game's own persona + remember-password
+  survives a restart on a **virgin** card -- which is the same save path that failed you the first time. The loop can
+  drive that; you would only be asked to confirm it feels right.
+- **The CONTROLLER page**: the better pad graphic and hold-a-button-to-remap with hints are chunk W9. When it is built
+  you are the only one who can say whether the hold gesture reads clearly.
+- **The music**, both halves: the briefing's first small stutters and the mission degrading with time. The loop is
+  building the fast-forward drive that skips the cinematics and takes a ten-minute in-mission capture against PCSX2 --
+  your instruction. You said you would validate the few spots where the music cuts short in PCSX2 yourself; those
+  notes are still wanted whenever you have them.
+- **The online stray sound.** Charged to bank `0x00a00000`'s one-shots (R239) on the correlation: zero of them on the
+  main menu, which you say is clean, and a hundred-plus on the online screens, which blop. The A/B that convicts or
+  clears the bank is machine-only now that the mute knob exists; you may be asked for one thirty-second listen.
+- **The lobby join.** When you asked for an agent in your lobby it reached the BRIEFING ROOM as `socome` and found
+  **"There are no games to join." on Channel 1** -- it never refreshes the list and never picks a channel (R240, being
+  fixed). If you remember which channel your game was in, that is worth a line.
+
 ## Start here (2026-09-21 evening)
 
 **TONIGHT'S BUILD IS READY, and it is not `playtest-1`.** `dist-release/portable/socom2-portable.zip`, 56,581,263

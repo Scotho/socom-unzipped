@@ -577,7 +577,9 @@ namespace
         else if (typing)
         {
             prompts[count++] = Prompt{"TYPE", "EDIT", -1};
-            prompts[count++] = Prompt{"ENTER", "DONE", -1};
+            // padFace 1 = the bottom face button: a pad player leaves the field with it (2026-09-22), and the
+            // prompt has to say so, or the way out is invisible to the player who needs it most.
+            prompts[count++] = Prompt{"ENTER", "DONE", 1};
         }
         else if (onRail)
         {
@@ -1279,6 +1281,8 @@ int main(int argc, char **argv)
         ctx.focus = nav.focus;
         ctx.focusOut = &nav.focus;
         ctx.activeField = &app.activeField;
+        bool fieldTookClick = false;
+        ctx.fieldTookClick = &fieldTookClick;
         ctx.time = GetTime();
         ctx.fake = app.fake;
 
@@ -1462,7 +1466,8 @@ int main(int argc, char **argv)
 
             if (typing)
             {
-                if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_TAB))
+                if (ui::releasesField(IsKeyPressed(KEY_ENTER), IsKeyPressed(KEY_ESCAPE), IsKeyPressed(KEY_TAB),
+                                      padWants, false))
                     app.activeField.clear();
             }
             else
@@ -1554,6 +1559,13 @@ int main(int argc, char **argv)
         drawContentFrame(ctx, app);
         drawPage(ctx, app, nodes);
         drawBar(ctx, app, nodes);
+
+        // Clicking away from a text field releases the keyboard (2026-09-22). Every widget has now been
+        // offered this frame's click; if none of the editable ones took it, the click was elsewhere and the
+        // field that held the keyboard lets go -- which is what makes the pad work again without a keypress.
+        if (!app.activeField.empty()
+            && ui::releasesField(false, false, false, ui::PadIntent{}, !app.fake && ctx.click && !fieldTookClick))
+            app.activeField.clear();
 
         // A 120 ms wipe on a page change, so the pane arrives rather than snapping.
         if (nav.page != lastPage)

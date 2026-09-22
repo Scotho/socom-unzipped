@@ -278,8 +278,8 @@ void register_launcher_tests()
             t.IsTrue(launcher::toJson(old).find("mouse") == std::string::npos, "the next save drops them");
             launcher::Config partial;
             t.IsTrue(launcher::fromJson("{\"gsScale\": 3, \"future\": [1,2,3], \"profile\": \"x\"}", partial), "unknown keys are ignored");
-            t.IsTrue(partial.gsScale == 3 && partial.profile == "x" && partial.windowSize == "1280x896" && partial.server == "127.0.0.1", "missing keys keep their defaults");
-            t.Equals(launcher::Config{}.windowSize, std::string("1280x896"), "the launcher's default is 2x");
+            t.IsTrue(partial.gsScale == 3 && partial.profile == "x" && partial.windowSize == "640x448" && partial.server == "127.0.0.1", "missing keys keep their defaults");
+            t.Equals(launcher::Config{}.windowSize, std::string("640x448"), "the launcher's default is the game's own 640x448 (the owner, 2026-09-22)");
             launcher::Config broken;
             broken.gsScale = 2;
             t.IsTrue(!launcher::fromJson("{\"gsScale\": ", broken), "malformed JSON is refused");
@@ -295,7 +295,7 @@ void register_launcher_tests()
             t.IsTrue(has("PS2X_SOCOM2_PAD=1"), "the SOCOM input path is always on");
             t.IsTrue(has("PS2X_GS_SCALE=1"), "native scale");
             t.IsTrue(has("PS2X_PRESENT_FILTER=linear"), "the filter");
-            t.IsTrue(has("PS2X_WINDOW_SIZE=1280x896"), "the window size: the launcher's 2x default (the gate sets none and stays 640x448)");
+            t.IsTrue(has("PS2X_WINDOW_SIZE=640x448"), "the window size: the launcher sends the game's own 640x448, the same size the gate runs at");
             t.IsTrue(has("PS2X_SOCOM2_SERVER=socom.scotho.com"),
                      "the server: a fresh config plays on the project's hosted server, reached by name (Sprint 9 P6, R175)");
             t.IsTrue(has("PS2X_MC_DIR=cards/player"), "the profile's card directory");
@@ -2168,5 +2168,64 @@ void register_launcher_tests()
             t.IsTrue(std::filesystem::is_directory(dir, ec), "and it is a directory that exists (/proc/self/exe's parent, or the fallback)");
         });
 #endif
+
+        tc.Run("a text field lets go: the pad's two face buttons, a click away, and the three keys", [](TestCase &t)
+        {
+            // 2026-09-22, the owner's playthrough finding 1: "When you click a field with text (like in
+            // online tab), and exit the field, controller no longer functions in the launcher." While a field
+            // holds the keyboard, main's navigation branch -- the only consumer of PadIntent's dx, dy and
+            // activate -- is skipped entirely, so a field that never lets go IS a dead pad. Before this the
+            // ways out were ENTER, ESCAPE and TAB: three keyboard keys, none of them on a controller.
+            const ui::PadIntent idle{};
+            t.IsTrue(!ui::releasesField(false, false, false, idle, false), "nothing pressed: the field keeps the keyboard");
+            t.IsTrue(ui::releasesField(true, false, false, idle, false), "ENTER");
+            t.IsTrue(ui::releasesField(false, true, false, idle, false), "ESCAPE");
+            t.IsTrue(ui::releasesField(false, false, true, idle, false), "TAB");
+            t.IsTrue(ui::releasesField(false, false, false, idle, true), "a click no editable widget took is a click away");
+            ui::PadIntent cross{};
+            cross.activate = true;
+            t.IsTrue(ui::releasesField(false, false, false, cross, false), "the pad's cross commits and lets go");
+            ui::PadIntent circle{};
+            circle.back = true;
+            t.IsTrue(ui::releasesField(false, false, false, circle, false), "the pad's circle abandons and lets go");
+            ui::PadIntent moving{};
+            moving.dx = 1;
+            moving.dy = -1;
+            t.IsTrue(!ui::releasesField(false, false, false, moving, false),
+                     "the stick alone does not leave the field -- only the two face buttons do");
+        });
+
+        tc.Run("the login fields take exactly what the game's keyboard can hold: no space, no quote in the name", [](TestCase &t)
+        {
+            // The 2026-09-22 audit's finding 1. typeInto accepted every character from 32 to 126, so a space
+            // entered the field and was saved to config.json; keyboardText dropped it at environmentFor. The
+            // field showed one string and the game was handed another, the keyboard opened with the wrong
+            // text, and the login failed with nothing on screen to explain it.
+            t.IsTrue(!launcher::keyboardAccepts(' ', false), "the name refuses a space");
+            t.IsTrue(!launcher::keyboardAccepts(' ', true), "so does the password: neither keyboard has one");
+            t.IsTrue(!launcher::keyboardAccepts('"', false), "the name keyboard's NoDQuote flag refuses the double quote");
+            t.IsTrue(launcher::keyboardAccepts('"', true), "the password keyboard offers it");
+            t.IsTrue(launcher::keyboardAccepts('a', false) && launcher::keyboardAccepts('Z', false)
+                         && launcher::keyboardAccepts('7', false) && launcher::keyboardAccepts('-', false),
+                     "printable ASCII passes");
+            t.IsTrue(!launcher::keyboardAccepts('\t', false) && !launcher::keyboardAccepts('\n', false)
+                         && !launcher::keyboardAccepts(static_cast<char>(0x7F), false),
+                     "a control character and DEL do not");
+
+            // The invariant that makes the field trustworthy: whatever is in the config is ALREADY what the
+            // game will be handed, so what the player reads in the field is what the keyboard will hold.
+            launcher::Config loaded;
+            t.IsTrue(launcher::fromJson("{\"loginName\": \"my name\", \"loginPassword\": \"pass word\"}", loaded),
+                     "a config.json with spaces in both fields loads");
+            t.Equals(loaded.loginName, std::string("myname"), "the name is normalised on the way IN, not on the way out");
+            t.Equals(loaded.loginPassword, std::string("password"), "and so is the password");
+            t.Equals(launcher::normalizeLoginName(loaded.loginName), loaded.loginName,
+                     "the stored name is a fixed point: the field cannot differ from what is sent");
+            t.Equals(launcher::normalizeLoginPassword(loaded.loginPassword), loaded.loginPassword,
+                     "and so is the stored password");
+            launcher::Config quoted;
+            t.IsTrue(launcher::fromJson("{\"loginName\": \"a\\\"b\"}", quoted), "a name with a double quote loads");
+            t.Equals(quoted.loginName, std::string("ab"), "and loses the quote its keyboard has no key for");
+        });
     });
 }

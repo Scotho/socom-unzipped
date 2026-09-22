@@ -84,11 +84,13 @@ namespace ui
         // asks on its keyboard, as it always did; filled = the keyboard opens already typed (R180).
         const Rect name = rectOf(nodes, "online.name");
         rowLabel(ctx, name, "PLAYER NAME");
-        textField(ctx, name, c.loginName, "online.name", changed, true, launcher::kLoginNameCap);
+        textField(ctx, name, c.loginName, "online.name", changed, true, launcher::kLoginNameCap, false,
+                  [](char ch) { return launcher::keyboardAccepts(ch, false); });
         caption(ctx, Vec2{name.right() + 18.0f, name.y + 12.0f}, "the persona; empty = the game asks");
         const Rect password = rectOf(nodes, "online.password");
         rowLabel(ctx, password, "PASSWORD");
-        textField(ctx, password, c.loginPassword, "online.password", changed, true, launcher::kLoginPasswordCap, true);
+        textField(ctx, password, c.loginPassword, "online.password", changed, true, launcher::kLoginPasswordCap, true,
+                  [](char ch) { return launcher::keyboardAccepts(ch, true); });
         caption(ctx, Vec2{password.right() + 18.0f, password.y + 12.0f}, "kept in config.json, plain; masked here");
 
         // Sprint 9 P4: everything above is a stranger's first run; everything below the rule is not. The

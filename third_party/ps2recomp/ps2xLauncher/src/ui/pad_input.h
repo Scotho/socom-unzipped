@@ -38,6 +38,16 @@ namespace ui
         float leftY = 0.0f;
     };
 
+    // What ends an edit in a text field (2026-09-22). While a field holds the keyboard the launcher's whole
+    // navigation branch is skipped -- that is what "typing" means -- so every way out of a field has to be
+    // named here or it does not exist. Before this the ways out were ENTER, ESCAPE and TAB: all keyboard
+    // keys. A player who clicked a field and then clicked elsewhere, or who opened a field with the pad, was
+    // left with a dead pad and no way back without a keyboard (the owner's playthrough, finding 1).
+    //
+    // `clickedAway` = this frame had a click and no editable widget took it.
+    struct PadIntent;
+    bool releasesField(bool keyEnter, bool keyEscape, bool keyTab, const PadIntent &pad, bool clickedAway);
+
     // What the launcher should do about it.
     struct PadIntent
     {
