@@ -1,5 +1,8 @@
 # Parity report 2026-09-07 ours_e (libvu0 un-stubbed; alignment shifted +1)
 
+> **SNAPSHOT 2026-09-07, never updated.** This is one parity run from the week the renderer was being brought up (mean 91.6 over 6 screens, 14 capture points not reached). It is NOT the project's parity status: the game now plays missions and online rounds, and the live gate is `python -m tools_py.parity.gate` with its stamps under `logs/parity/`. Kept for the screen-by-screen breakdown only. See `docs/DOC_MAINTENANCE.md` (class S).
+
+
 Golden: PCSX2 2.8.1 (`logs/parity/golden`). Run: `logs/parity/runs/ours_e`. Score = 100·(1 − 0.5·mad − 0.5·block) at 320x224; screens are the step script's capture points (`scripts/parity/launch_to_mission.txt`), same index on both sides.
 
 **Mean score 91.6 over 6 screens (14 not reached).**

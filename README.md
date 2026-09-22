@@ -45,7 +45,7 @@ As of September 2026 (Sprint 10, tag `v0.9.0`):
 | Works | Not yet |
 |---|---|
 | Boots from the ISO to the title, through the menus, into a mission; Xbox/DirectInput pads for play, the keyboard for the menus and typing | A public release download. Builds are handed to testers by hand; the download and its page are Sprint 11 |
-| Rendering through an OpenGL backend with an integer up-scale (1x-3x); a CPU rasteriser for tests | Terrain holes on some maps (root cause still open) and a water defect on one map |
+| Rendering through an OpenGL backend with an integer up-scale (`PS2X_GS_SCALE` 1-4; 3-4 are untested); a CPU rasteriser for tests | Frame rate: 43-45 fps in a mission and 52-60 in the menus, against the console's 60 |
 | Online: login, lobby, and full rounds on the hosted Horizon server -- two of our instances, and one of ours against a console client through PCSX2 | Music and mission ambience are mid-fix (the stream ring and a conductor-sound path); voice chat is untested end to end |
 | A launcher that owns the settings, checks the disc, picks the server, and files bug reports | Linux: the runtime, tests and launcher build in CI; the playable build is being brought up in a VM |
 | An automated parity gate (title / transition / mission) and an online "ladder" that plays rounds unattended | Anything but the NTSC r0001 disc |

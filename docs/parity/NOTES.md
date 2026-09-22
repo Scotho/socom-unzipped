@@ -1,5 +1,8 @@
 # Parity harness notes
 
+> **SNAPSHOT, append-only.** Dated spike notes about the parity harness, oldest first; each section says when it was written. Nothing here is kept current -- the live harness is `tools_py/parity/` and its tests. See `docs/DOC_MAINTENANCE.md` (class S).
+
+
 ## 2026-09-07 spike: key injection into PCSX2 without focus
 `PostMessageW(WM_KEYDOWN/WM_KEYUP)` to PCSX2's main window (title "SOCOM II - U.S. Navy SEALs",
 no child windows in `-batch -nogui` mode) works: CROSS advanced the first-boot popup from

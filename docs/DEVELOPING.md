@@ -153,8 +153,13 @@ and fewer is a regression to report.
 | 1 | `./build.sh recomp` | `recomp: 14882 files, unhandled=114399` — and `Recompilation completed successfully` at the end of `recomp/recomp_run.log`. **That second number is not a failure and `unhandled=0` (what this row claimed until 2026-09-21) has not been true for a long time:** it counts `unhandled-instruction` lines in the log, which the recompiler emits and carries on from, and the exe built from exactly this generated code is the one the gate passes 3/3 on. Measured twice on 2026-09-21, identically, in two working trees. What would be a failure is a non-zero exit (the last 20 log lines are printed then) or a file count that fell |
 | 2 | `./build.sh runtime` | `built dist/socom2.exe` (the launcher lands beside it) |
 | 3 | `./build.sh test` | `Total Tests: 764` / `Passed: 764` / `Failed: 0`, then `PASS: vram diff against 1.00% tolerance, checked=15 skipped=0` (this row said 500 until 2026-09-21, three sprints of cases after it stopped being true) |
-| 4 | `python -m unittest discover -s tools_py/tests -t .` | `Ran 1723 tests ...` / `OK` (1712 on the fresh clone an hour before the eleven bootstrap cases landed). The **skip** count is not a constant and is not worth matching — 100 on that clone, 85 once a disc had been extracted into `game/`, 109 in a worktree with neither — because cases skip on what you have. `OK`, with no failures, is the bar. (This row said 1104 / `skipped=63` until 2026-09-21.) |
+| 4 | `python -m unittest discover -s tools_py/tests -t .` | **`OK`, with no failures, is the bar** — match that, not a number. The count only ever grows: `Ran 1832 tests` on 2026-09-22 (1723 on 2026-09-21, 1104 before that). The **skip** count is not a constant and is not worth matching — 100 on that clone, 85 once a disc had been extracted into `game/`, 109 in a worktree with neither — because cases skip on what you have. `OK`, with no failures, is the bar. (This row said 1104 / `skipped=63` until 2026-09-21.) |
 | 5 | `python -m tools_py.parity.gate --stamp first_run` | `GATE PASS (3/3) -> logs\parity\gate\first_run` (about 15 min; the game window opens and closes three times; do not touch the keyboard) |
+
+`python -m tools_py.docmaint` checks the documentation registry (`docs/DOC_MAINTENANCE.md`): every document
+classified, the ruling counter one past the highest in use, no undated suite count outside **this file**, every
+snapshot dated and every archive banded. It needs no build and the Python suite runs it; **this table is the single
+source for the suite counts, which is why no other document may state one without a date beside it.**
 
 `python -m tools_py.parity.gate --baseline first_run` re-scores that saved run without launching, which is the
 fastest way to check a scoring change. A gate refuses to start under 4 GB free on C: (`RUN_MIN_FREE_GB`) and

@@ -37,8 +37,13 @@ supplies their own disc. The owner is Craig (GitHub `Scotho`); the repository is
   `3b12fa4`), and **the first half of P4** (`1966fa6`: the page-change flash and the top bar's two alignments).
   Landed but not closed out: Goal 8 (REPORT A BUG and the ONLINE status line) -- see P5, and read its row first,
   because three of its four documentation artefacts turn out to be already written.
-- **Baselines: C++ 686/686, Python 1457 OK, `PS2X_TEST_REPEAT=3 ./build.sh test` exit 0.** Last gates 3/3: `s9_q0_children_gate`,
-  `s9_q0_prefill_gate`, `s9_q0_device_gate`, `s9_q0_trace_gate`, `s9_p7_playtest_gate`. Next free ruling number: **R179** (R178 is Q0's conductor grains).
+- **Baselines: `docs/DEVELOPING.md` §"What a green run looks like" owns the suite counts** -- it is the single source and
+  this line deliberately does not repeat them (they were `686/686` and `1457` here until 2026-09-22, four sprints after
+  they stopped being true). `PS2X_TEST_REPEAT=3 ./build.sh test` exit 0. Last gates 3/3: `s9_q0_children_gate`,
+  `s9_q0_prefill_gate`, `s9_q0_device_gate`, `s9_q0_trace_gate`, `s9_p7_playtest_gate`.
+- **Next free ruling number: R241.** (It read **R179** from 2026-09-20 to 2026-09-22 while R240 was in use -- and a
+  collision had already happened once, an agent numbering from R200 into taken ground. `tools_py/tests/test_doc_maintenance.py`
+  now fails when this line is not `max(R<n>) + 1`, so take your number from here and update this line in the same commit.)
 - **Where the loop is now (2026-09-21 evening, LATEST) -- Sprint 10's autonomous stack is DONE and on `main` in four
   slices; `docs/STATUS.md`'s top entry is the list.** Eleven chunks went to Opus agents in their own worktrees and
   were paid for in this tree, each with its gate: Q1b (the gate pins its inputs), Q6 (the stall bound), the threaded
