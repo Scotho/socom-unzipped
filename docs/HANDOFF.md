@@ -22,6 +22,11 @@ supplies their own disc. The owner is Craig (GitHub `Scotho`); the repository is
 
 ## 2. Where it stands
 
+> **Picking up the 2026-09-22 fix wave?** Start at
+> `docs/superpowers/plans/2026-09-22-fix-wave-handoff.md` — the remaining work is mostly judgment (whether the
+> prefilled login may be removed yet, how far a mission drive should walk), and that document holds the state,
+> the one experiment worth running first (the endpoint A/B), and the five traps that cost this session time.
+
 - **Plays:** boot, movies, title, menus, single-player missions, online login, lobby, a full round with kills between
   two instances on the hosted server (`s8_hosted_control2`, `s8_hosted_kill`). Twenty of twenty maps play a control
   round. Saves persist on simulated memory cards. 58-60 fps on the menus under load. Linux client builds and boots.
