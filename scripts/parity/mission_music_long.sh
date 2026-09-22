@@ -49,6 +49,16 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 MINUTES=12
+# Which music to capture. `mission` holds at the insertion point, which is what this script was written for.
+# `briefing` stops one press EARLIER, on the mission briefing, and holds there -- added 2026-09-22 after the
+# two-minute proof run showed why it is needed: standing still in the mission, the only streams that play are
+# two-to-four-second voice cues and the mix sits at -51 dBFS, so a twelve-minute in-mission hold captures
+# almost no music at all. The briefing's score plays continuously at about -32 dBFS, and it is where the owner
+# reported the FIRST half of the fault ("menu music seemed good up until the point i was in the mission
+# briefing, i noticed the first few small stutters"). The mission half of their report -- the music degrading
+# the longer they played -- needs the drive to MOVE through the mission, which is a route, not a hold; see the
+# plan's W7 follow-up.
+STAGE=mission
 TARGET=ours
 STAMP=""
 SCORE=1
@@ -57,6 +67,7 @@ BASE=scripts/parity/mission_music_fast.txt
 while [ $# -gt 0 ]; do
   case "$1" in
     --minutes) MINUTES=$2; shift 2 ;;
+    --stage) STAGE=$2; shift 2 ;;
     --target) TARGET=$2; shift 2 ;;
     --stamp) STAMP=$2; shift 2 ;;
     --script) BASE=$2; shift 2 ;;
@@ -85,7 +96,26 @@ EXTRA=$(( (HOLD_S - 8 + 7) / 8 ))
 # ~2.5 s (wait_stable's 2 s cap, then no press) and takes nothing away from the capture.
 POPUP_EVERY=8
 SCRIPT="$OUT/drive_script.txt"
-cp "$BASE" "$SCRIPT"
+case "$STAGE" in
+  mission)
+    cp "$BASE" "$SCRIPT"
+    ;;
+  briefing)
+    # Everything up to but NOT including the deploy press, so the hold lands on the briefing screen with its
+    # score playing. The marker is the deploy line itself, which mission_music_fast.txt keeps on one line.
+    awk '/^wait\+2\.0:CROSS[[:space:]]*# deploy/ { exit } { print }' "$BASE" > "$SCRIPT"
+    if ! grep -q 'DEPLOY' "$SCRIPT"; then
+      echo "mission_music_long: the briefing stage found no DEPLOY step in $BASE -- refusing rather than" >&2
+      echo "  capturing some other screen for $MINUTES minutes." >&2
+      exit 3
+    fi
+    echo "# --- briefing stage: the deploy press and everything after it is cut; the hold is on the briefing ---" >> "$SCRIPT"
+    ;;
+  *)
+    echo "mission_music_long: --stage must be mission or briefing, not '$STAGE'" >&2
+    exit 2
+    ;;
+esac
 POPUPS=0
 {
   echo "# --- $EXTRA hold steps appended by mission_music_long.sh for a ${MINUTES}-minute in-mission capture,"
@@ -120,7 +150,7 @@ DUMP="$OUT/mix.wav"
 DUMP_ENV="$ROOT/$DUMP"
 if command -v cygpath >/dev/null 2>&1; then DUMP_ENV="$(cygpath -w "$ROOT/$DUMP")"; fi
 
-echo "stamp=$STAMP target=$TARGET minutes=$MINUTES hold=${HOLD_S}s steps=+$EXTRA popups=$POPUPS drive=${DRIVE_S}s record=${REC_S}s"
+echo "stamp=$STAMP target=$TARGET stage=$STAGE minutes=$MINUTES hold=${HOLD_S}s steps=+$EXTRA popups=$POPUPS drive=${DRIVE_S}s record=${REC_S}s"
 echo "script=$SCRIPT dump=$DUMP env=$DUMP_ENV"
 if [ "$DRY" = 1 ]; then
   echo "--dry-run: nothing launched. $(grep -c '^wait+8.0:NONE' "$SCRIPT") hold steps, $(grep -cv '^[[:space:]]*\(#.*\)\?$' "$SCRIPT") steps in all."

@@ -280,6 +280,28 @@ scored by `tools_py/parity/audio_dips.py`, which exists precisely to classify ea
 COMMAND / UNEXPLAINED by aligning the endpoint recording to the mixer's own output-frame clock. A defect that is in
 the endpoint and not in the dump is a DEVICE verdict, and nothing in a pre-device capture can ever find it.
 
+**W7 ran, and that experiment has its first reading (`logs/parity/mission_music_ours_20260922_024457`).** The
+ten-minute capture took both -- the mixer's dump and the WASAPI loopback -- and its own mix-open line names the
+endpoint it rendered to: **`device Speakers (JBL Flip 6), period 20 ms x 4, engine 48000 Hz`**, session volume 1.00.
+That is the owner's own Bluetooth speaker, the path `docs/KNOWN.md` section 1 already ties to what they hear.
+`audio_dips` classified **31 DEVICE events** -- dips present in the endpoint recording and absent from the dump at
+the aligned time -- clustered in the roughly four minutes of the capture that carry any audio at all. The mixer
+rendered those samples; something between `render()` and the speaker did not deliver them. It is a LEAD, not a
+finding: the previous measured state after the 20 ms x 4 device was 2 sub-second dropouts per mission minute, and
+until the same capture is repeated on a wired endpoint -- where these should vanish if the Bluetooth path is the
+cause -- the number is one run on one device.
+
+**What W7 also established, by failing twice.** The fast path works (`untilref(ref_hud_ours.png): 3 presses,
+matched=True` -- the cinematics really are skipped, and the `lit` flag proves the hold was in gameplay). What does
+NOT work is the assumption underneath the chunk: **a driven hold does not capture music.** Standing at the insertion
+point, the only streams that play are two-to-four-second voice cues and the mix sits at -51 dBFS; a `--stage
+briefing` mode was added to hold on the briefing instead, and its score plays for about one minute (-34.8 dBFS) and
+then the screen goes quiet at -50 dBFS for the remaining nine. Both captures are therefore mostly silence, and
+**neither contains the degradation the owner described**, which they heard *while proceeding through the mission*.
+The instrument is proven; the drive that feeds it is not. What it needs is a ROUTE -- the drive moving through the
+mission with `hold+<s>:W` steps, which the grammar already supports -- not a longer hold. That is W7's follow-up and
+it is the only way the second half of the owner's music report gets captured.
+
 **R240: the join driver presses REFRESH LIST before JOIN GAME, and takes a channel.** Asked mid-playthrough to send
 an agent into the owner's lobby, `online_login_ours --join --instance B` logged in as `socome` (its own persona on
 `game/disc/mc0_b`, ports shifted +2, no collision with the owner's `socomc`) and reached the BRIEFING ROOM in 175 s --
