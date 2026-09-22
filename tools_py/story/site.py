@@ -316,7 +316,6 @@ def chrome_header(base):
         '  <a class="brand" href="%s#top" aria-label="SOCOM Unzipped, top of page"><span class="ii">II</span><span class="word">UNZIPPED</span></a>' % w,
         '  <nav class="nav" aria-label="Sections">',
         '    <a href="%s#what">WHAT</a>' % w,
-        '    <a href="%s#loop">HOW</a>' % w,
         '    <a href="%s#state">STATE</a>' % w,
         '    <a href="%s/story.html" class="on" aria-current="page">STORY</a>' % base,
         '    <a href="%s#server">SERVER</a>' % w,
@@ -332,7 +331,7 @@ def chrome_header(base):
     return "\n".join(lines) + "\n"
 
 
-def chrome_footer(base, fine):
+def chrome_footer(base, fine, repo="https://github.com/Scotho/socom-unzipped"):
     w = base + "/"
     lines = [
         '<footer class="foot">',
@@ -345,7 +344,7 @@ def chrome_footer(base, fine):
         '    <nav aria-label="Footer">',
         '      <a href="%s/story.html">The story</a>' % base,
         '      <a href="%s/classic.html">Classic menu</a>' % base,
-        '      <span class="soon">GitHub (soon)</span>',
+        '      <a href="%s" target="_blank" rel="noopener">GitHub</a>' % repo,
         '      <a href="%s#report">Report a bug</a>' % w,
         '    </nav>',
         '  </div>',
@@ -455,7 +454,7 @@ def render(doc, timeline, repo, img_base, logo, ui_css_inline=None, base=""):
     out.append("</div></main>")
     fine = ("generated %s from docs/STORY.md at %s &middot; %d entries, %d commit citations &middot; checked by tools_py/story/cite.py "
             "&middot; link to a moment: #&lt;date&gt;-&lt;slug&gt;" % (generated, head_sha, len(entries), n_commits))
-    out.append(chrome_footer(base, fine))
+    out.append(chrome_footer(base, fine, repo))
     out.append("<script>%s</script>" % JS)
     return "\n".join(out) + "\n"
 
