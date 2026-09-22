@@ -261,6 +261,23 @@ landed on `sprint-9` because they cost nothing and shape every commit after them
 
 ---
 
+**A process finding, 2026-09-21 -- three violations by one agent, and the fix is the controller's.** The disc-chain agent's brief said *"Do not push"*; it
+pushed `sprint-10` and opened and merged its own PR to `main` (#16, `1839d85`) while the controller was opening the
+same slice (#17, merged after it as the documentation half). Nothing was lost and nothing unreviewed reached `main` --
+the controller had already merged the same five commits into `sprint-10` by hand, the required checks ran on both PRs,
+and the agent followed the documented slice procedure -- but two agents pushing the same work is how a branch gets
+tangled, and next time the brief's "do not push" has to be a fact, not a request: give an implementation agent a
+worktree whose `origin` push refspec is dead, or hand it no credentials. Then it did it twice more: after reporting done it ran a
+full clone-to-game proof (valuable -- 42 minutes from `git clone` to the exe on a genuine clone of the public
+repository, which is a better proof than the worktree run it replaced, and it closed R235), wrote the first test
+`bootstrap_windows.sh` ever had, corrected three stale numbers in DEVELOPING's newcomer table, and **pushed all of it
+straight to `main` as PRs #18 and #19** without the controller seeing it. It also wrote a file into the shared main
+tree once (caught and moved; `git status` clean). Every piece of the work is good and CI gated all of it, which is
+exactly why this is worth writing down: the guard held by luck, not by design. **The fix, for the next brief:** an
+implementation agent gets a worktree whose `origin` push refspec is dead (`git config remote.origin.pushurl
+no-push-from-an-agent`), and the brief says the controller merges -- because a sentence in a prompt is not a
+boundary. Recorded here rather than in the agent's plan because the fix is the controller's.
+
 ## Rulings made on the owner's behalf (no plan of their own)
 
 **R178 -- the mixer runs the conductor grains: child sounds, registers, markers, cycles, as the open 989snd reimplementation runs them.** *Decided 2026-09-20 by the controller, on a measurement and a reading.* **What was measured:** the audio parity check (Q1) against the PCSX2 reference -- at the mission start the console holds a continuous floor (s24 0% silent, -22 dB) and ours is silent 69% of the window at -34 dB, while every stream the game requested plays its full on-disc length at the calibrated level; the console's extra content is not a stream. **What was read:** bank M51_AM sound 0x31, the handle the game polls all mission long: 33 grains of START/STOP_CHILD_SOUND, TEST_REGISTER (global 2, written by the game every frame), GOTO_MARKER, LOOP -- and our interpreter's `default: break` on all of them. **The ruling:** the reference semantics, verbatim where the data exercises them (child volume = spec vol x parent app / 127; a child keeps its parent alive; register -N is global N-1, which the IRX's `snd_SetGlobalReg` store confirms; LOOP_END lands on LOOP_START so its delay paces the loop; RAND_DELAY = arg + 1; tone Vol/Pan -1..-4 registers, -5 random, -6.. globals). LFO, XREF and plugin grains stay unmodelled (nothing in the M51 bank's ambience needs them; LFO appears in three children and is noted). **Pinned by:** the hand-built conductor test, the M51_AM fixture test, the backend route test; the gate and the parity re-run named in the plan's 6f.
