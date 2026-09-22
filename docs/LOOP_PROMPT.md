@@ -37,6 +37,10 @@ suggestions, stop rules and the owner-only list are not.
    per clone) run the leak check before the commit and again before the push, and CI runs it over the full history;
    a hit is fixed, or a reviewed non-secret is recorded with its reason in `tools_py/release/leak_allow.txt`. Never
    `--no-verify`.
+5b. **Is it proven? Then it goes to `main` today** -- a frozen slice branch, a PR, the three required checks, a merge
+   commit, then `main` merged back into the sprint branch (`docs/GIT_STRATEGY.md` §2, "Slices"). The owner asked for
+   this on 2026-09-21 and it is now how the loop works: `main` is never more than one proven item behind, so anyone who
+   clones the public repository gets work that has passed its bar. Unproven work stays on the sprint branch.
 6. **Write it down where it will be read:** a dated entry on top of `docs/STATUS.md` and its "Current state" block if
    the state changed; **audit `docs/KNOWN.md`** -- promote, retire or retract every row this step touched; tick the
    plan's boxes; update the item's row in `docs/CURRENT_SPRINT.md`; a numbered ruling for every moved default or
