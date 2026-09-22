@@ -107,9 +107,11 @@ INSTANCES = {
 }
 
 
-def launch(seconds, instance=None, prefill=None):
+def launch(seconds, instance=None, prefill=None, mc_dir=None):
     """Start the exe; returns (proc, title substring to find its window). `prefill` (prefill_env's dict, --prefilled)
-    goes into the game's environment; None adds nothing, the environment is what it was."""
+    goes into the game's environment; None adds nothing, the environment is what it was. `mc_dir` (--mc-dir, W10):
+    the memory-card folder the game boots from (PS2X_MC_DIR, created empty when absent -- a virgin card); it
+    overrides the instance's own."""
     env = dict(os.environ, PS2X_SOCOM2_PAD="1")
     title = keys.WINDOW_TITLES[T]
     latest = os.path.abspath(os.path.join("logs", "parity", f"latest_frame_{instance or 'A'}.png"))
@@ -121,6 +123,9 @@ def launch(seconds, instance=None, prefill=None):
         write_pad_file(INSTANCES[instance]["PS2X_SOCOM2_INPUT_FILE"])   # neutral before the exe starts
         title = INSTANCES[instance]["PS2X_WINDOW_TITLE"]
         os.makedirs(env.get("PS2X_MC_DIR", "game/disc/mc0"), exist_ok=True)
+    if mc_dir:
+        env["PS2X_MC_DIR"] = os.path.abspath(mc_dir)
+        os.makedirs(env["PS2X_MC_DIR"], exist_ok=True)
     proc = subprocess.Popen(["bash", "./run.sh", str(seconds)], env=env,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     proc.latest_frame = latest
@@ -462,6 +467,23 @@ LOGIN_FORM_PROMPT_MIN_COLS = 40
 LOGIN_CONNECT_DOWNS = 4          # PASSWORD -> SAVE PASSWORD, HOMETOWN, GENDER, CONNECT
 LOGIN_CONNECT_EXTRA_DOWNS = 3    # more DOWNs while CONNECT reads unlit, before login:connect-focus
 LOGIN_GENDER_BACKS = 2           # TRIANGLEs out of a prompt the CROSS opened, before login:connect-focus
+# Fix wave W10 (2026-09-22): the SAVE PASSWORD row's two boxes, "YES" and "NO", and the PASSWORD value strip.
+# On the 640x448 form (logs/parity/blop_c/02_persona.png, NO ticked): the YES box is an empty outline at x 176-192
+# whose inside never rises above 47, the NO box at x 240-254 carries the tick and its inside reads up to 102; the
+# label text either side ("YES" from x 202, "NO" from x 268) is 157 and lies outside both boxes. Boxes are
+# (y0, y1, x0, x1) of the INSIDE, so the outline itself (47) is not read. The PASSWORD strip is the PLAYER NAME
+# strip one row down: five asterisks read max 186 (blop_c 05_password), the empty field 63.
+LOGIN_SAVE_YES_BOX = (169, 183, 178, 191)
+LOGIN_SAVE_NO_BOX = (169, 183, 242, 253)
+LOGIN_SAVE_TICK_MIN = 70.0
+LOGIN_PASSWORD_VALUE = (136, 158, 172, 400)
+# The PASSWORD strip's own ink floor: with the PASSWORD row lit its highlight spills into the empty strip at 63
+# (blop_c 02_persona), over the keyboard counter's 60, which would read an empty field as one glyph on the very
+# frame the relaunch proof reads. The asterisks reach 186; nothing but ink reaches 100.
+LOGIN_PASSWORD_INK_MIN = 100.0
+CLASS_SAVE_TICK = "login:save-password"        # + ":row" / ":tick": SAVE PASSWORD could not be set to YES
+CLASS_RELAUNCH_LOGIN = "login:saved-password"  # the relaunch: the card did not bring the persona or its password back
+# (the two names above are not *_PASSWORD: the release leak check reads `X_PASSWORD = "..."` as a secret assignment)
 
 # The main menu of the block-pointer exe: NEW GAME / ONLINE / LAN. The lit row's text pulses in size (ONLINE lit spans
 # x 267-370 in s6_ladder7's A_lobby_fail_pre-login and 243-394 in wtb4's and 3b's timeout captures, the width of a
@@ -839,6 +861,45 @@ def login_persona_mode(gray):
     if not login_form_up(gray):
         return None
     return "create" if login_name_empty(gray) else "saved"
+
+
+def login_password_glyphs(gray):
+    """Glyphs in the form's PASSWORD field (the asterisks; 0 when it is empty). Form up, no keyboard. Read with
+    the strip's own ink floor (LOGIN_PASSWORD_INK_MIN): the lit row's spill must not count as a character."""
+    return glyph_run_count(gray, LOGIN_PASSWORD_VALUE, ink_min=LOGIN_PASSWORD_INK_MIN)
+
+
+def login_save_password(gray):
+    """Which SAVE PASSWORD box carries the tick: "yes", "no", or None when neither or both do (a keyboard over
+    the form, a transition, a frame that is not the form)."""
+    y0, y1, x0, x1 = LOGIN_SAVE_YES_BOX
+    yes = float(np.asarray(gray, dtype=np.float32)[y0:y1, x0:x1].max()) > LOGIN_SAVE_TICK_MIN
+    y0, y1, x0, x1 = LOGIN_SAVE_NO_BOX
+    no = float(np.asarray(gray, dtype=np.float32)[y0:y1, x0:x1].max()) > LOGIN_SAVE_TICK_MIN
+    if yes == no:
+        return None
+    return "yes" if yes else "no"
+
+
+def set_save_password(sh):
+    """Fix wave W10: tick SAVE PASSWORD = YES on the CONNECT TO SOCOM II form, from the PASSWORD row (the password
+    keyboard just closed). DOWN to the row, verified lit; then, while the tick is not on YES, LEFT and then CROSS,
+    each read back -- which of the two the widget answers to has not been observed, so both are tried and the
+    frame decides. Leaves the cursor ON the SAVE PASSWORD row: the caller's walk to CONNECT is one DOWN shorter."""
+    press_verified(sh, f"{CLASS_SAVE_TICK}:row", "down", 1.0,
+                   lambda g: lobby_row_lit(g, "save_password"), "the SAVE PASSWORD row lit")
+    state = login_save_password(lobby_gray(sh))
+    sh.log(f"[login] save password: reads {state} before any press")
+    for btn in ("left", "cross"):
+        if state == "yes":
+            break
+        sh.press(btn, 1.0)
+        state = login_save_password(lobby_gray(sh))
+        sh.log(f"[login] save password: reads {state} after {btn}")
+    sh.shot("05_save_password")
+    if state != "yes":
+        raise lobby_fail(sh, f"{CLASS_SAVE_TICK}:tick",
+                         f"SAVE PASSWORD did not read YES after LEFT and CROSS (reads {state})")
 
 
 def lobby_notice_up(gray):
@@ -1368,17 +1429,18 @@ def osk_typed_count(gray):
     return glyph_run_count(gray, (OSK_TEXT_ROWS[0], OSK_TEXT_ROWS[1], OSK_TEXT_COLS[0], OSK_TEXT_COLS[1]))
 
 
-def glyph_run_count(gray, box):
+def glyph_run_count(gray, box, ink_min=OSK_INK_MIN):
     """Characters written in a (y0, y1, x0, x1) band of a full 640x448 grey frame: the number of runs of
-    glyph columns (max between OSK_INK_MIN and OSK_CURSOR_MIN, at least OSK_GLYPH_MIN_WIDTH wide, separated by
+    glyph columns (max between `ink_min` and OSK_CURSOR_MIN, at least OSK_GLYPH_MIN_WIDTH wide, separated by
     a column with no ink). The blinking white cursor block is not a glyph, so an empty field reads 0 whether
     or not its cursor is on. A space has no ink and is not counted (no harness text carries one).
 
     Written for the keyboard's text row (OSK_TEXT_ROWS/COLS) and reused unchanged, band and all thresholds,
-    for the form's PLAYER NAME value strip (LOGIN_NAME_VALUE) -- the same font on the same ground."""
+    for the form's PLAYER NAME value strip (LOGIN_NAME_VALUE) -- the same font on the same ground. The PASSWORD
+    strip (W10) passes its own, higher `ink_min`: its lit row spills into the strip."""
     y0, y1, x0, x1 = box
     colmax = np.asarray(gray, dtype=np.float32)[y0:y1, x0:x1].max(axis=0)
-    ink, glyph = colmax > OSK_INK_MIN, (colmax > OSK_INK_MIN) & (colmax <= OSK_CURSOR_MIN)
+    ink, glyph = colmax > ink_min, (colmax > ink_min) & (colmax <= OSK_CURSOR_MIN)
     count, x = 0, 0
     while x < len(ink):
         if not ink[x]:
@@ -1485,9 +1547,12 @@ def press_online(sh):
 
 
 @staged("login")
-def login(sh, name, password, existing, prefilled=False):
+def login(sh, name, password, existing, prefilled=False, save_password=False, saved_password=False):
     """LOGIN -> universe -> persona -> password -> CONNECT -> prompts -> EULA -> lobby (news closed).
-    `prefilled` (--prefilled): the game was launched with the two variables, so each keyboard is ENTERed, not typed."""
+    `prefilled` (--prefilled): the game was launched with the two variables, so each keyboard is ENTERed, not typed.
+    `save_password` (--save-password, W10): after the password, tick SAVE PASSWORD = YES before CONNECT.
+    `saved_password` (--saved-password, W10): the relaunch half of the proof -- the form must arrive with the
+    persona AND its password from the card; nothing is typed, and an empty field is the failure, classified."""
     sh.press_until_gone("cross", "login")                        # LOGIN
     sh.wait_for("universe", 60)
     sh.shot("01_universe")
@@ -1499,6 +1564,24 @@ def login(sh, name, password, existing, prefilled=False):
     sh.wait_for("persona", 60, required=False)
     sh.shot("02_persona")
     mode, listed = persona_form_mode(sh, existing)
+    if saved_password:
+        if mode == "create":
+            raise lobby_fail(sh, f"{CLASS_RELAUNCH_LOGIN}:no-persona",
+                             "the relaunch's form has an empty PLAYER NAME: the card brought no persona back")
+        if not listed:
+            press_persona_list(sh)                               # the form with the saved persona, cursor on PASSWORD
+        gray = lobby_gray(sh)
+        n, state = login_password_glyphs(gray), login_save_password(gray)
+        sh.log(f"[login] saved password: PASSWORD reads {n} glyphs, SAVE PASSWORD reads {state}; typing nothing")
+        sh.shot("05_password")
+        if n == 0:
+            raise lobby_fail(sh, f"{CLASS_RELAUNCH_LOGIN}:empty",
+                             f"the relaunch's PASSWORD field is empty (SAVE PASSWORD reads {state}): the saved "
+                             f"password did not survive the restart")
+        press_connect(sh)
+        login_prompts(sh)
+        login_to_lobby(sh)
+        return
     if mode == "create":
         sh.log(f"[login] persona: none saved -> creating {name}" + (" (prefilled)" if prefilled else ""))
         create_persona(sh, name, listed, prefilled)
@@ -1509,7 +1592,11 @@ def login(sh, name, password, existing, prefilled=False):
         sh.shot("04_pw_kbd")
     sh.type(password, prefilled=prefilled)
     sh.shot("05_password")
-    press_connect(sh)
+    if save_password:
+        set_save_password(sh)
+        press_connect(sh, downs=LOGIN_CONNECT_DOWNS - 1)
+    else:
+        press_connect(sh)
     login_prompts(sh)
     login_to_lobby(sh)
 
@@ -1648,9 +1735,10 @@ def press_persona(sh, existing, listed=False):
                        "the name keyboard")
 
 
-def press_connect(sh):
+def press_connect(sh, downs=LOGIN_CONNECT_DOWNS):
     """The DOWNs from PASSWORD to CONNECT and the CROSS on it, each read back (s6_ladder6 A: one of the four blind
-    DOWNs was dropped, CROSS opened "Specify your gender." and the login stage timed out).
+    DOWNs was dropped, CROSS opened "Specify your gender." and the login stage timed out). `downs`: from the
+    PASSWORD row it is LOGIN_CONNECT_DOWNS; one fewer when the cursor already sits on SAVE PASSWORD (W10).
 
     After the four DOWNs a fresh frame must show the CONNECT button lit; while it does not, one more DOWN and a
     re-read, at most LOGIN_CONNECT_EXTRA_DOWNS times (`[login] connect focus: lit|not lit (median m) attempt k`);
@@ -1659,7 +1747,7 @@ def press_connect(sh):
     LOBBY_RESEND_MAX times, then login:connect-press -- 127 of 127 launches that connected had the form gone at
     the 5 s read); still up with the cursor elsewhere, or a keyboard opened, is a prompt the CROSS opened:
     TRIANGLE backs out of it and the DOWN search resumes, at most LOGIN_GENDER_BACKS times."""
-    for _ in range(LOGIN_CONNECT_DOWNS):                         # SAVE PASSWORD, HOMETOWN, GENDER, CONNECT
+    for _ in range(downs):                                       # SAVE PASSWORD, HOMETOWN, GENDER, CONNECT
         sh.press("down", 0.8)
     extra = backs = resends = crosses = attempt = 0
     while True:
@@ -2370,7 +2458,17 @@ def main():
     # / _PASS), its keyboards open already holding them, and the login presses ENTER on each instead of typing.
     ap.add_argument("--prefilled", action="store_true",
                     help="export --name / --password to the game and ENTER the prefilled keyboards instead of typing")
+    # Fix wave W10 (R237 re-decided): the game's OWN remember-password, proven on a virgin card in two launches --
+    # the first creates the persona with SAVE PASSWORD = YES, the second must log in with nothing typed.
+    ap.add_argument("--save-password", action="store_true",
+                    help="tick SAVE PASSWORD = YES on the form before CONNECT (the first launch of the W10 proof)")
+    ap.add_argument("--saved-password", action="store_true",
+                    help="type nothing: the form must arrive with the persona and its password from the card "
+                         "(the relaunch of the W10 proof; an empty field fails as login:saved-password)")
+    ap.add_argument("--mc-dir", default="", help="memory-card folder (PS2X_MC_DIR), created empty when absent")
     a = ap.parse_args()
+    if a.save_password and a.saved_password:
+        ap.error("--save-password and --saved-password are the two launches of one proof, not one launch")
     prefill = None
     if a.prefilled:
         try:
@@ -2381,11 +2479,12 @@ def main():
     if not a.instance and hostplatform.process_running("socom2"):
         raise SystemExit(f"{hostplatform.exe_name('socom2')} is already running; "
                          "refusing to start a second game instance")
-    proc, title = launch(a.seconds, a.instance or None, prefill)
+    proc, title = launch(a.seconds, a.instance or None, prefill, **({"mc_dir": a.mc_dir} if a.mc_dir else {}))
     try:
         sh = attach(proc, title, a.out)
         boot_to_online(sh)
-        login(sh, a.name, a.password, a.existing, a.prefilled)
+        login(sh, a.name, a.password, a.existing, a.prefilled,
+              **{k: True for k, v in (("save_password", a.save_password), ("saved_password", a.saved_password)) if v})
         if a.host:
             to_briefing_room(sh, a.channel)
             host_game(sh)

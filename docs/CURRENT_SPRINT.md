@@ -285,7 +285,10 @@ ten-minute capture took both -- the mixer's dump and the WASAPI loopback -- and 
 endpoint it rendered to: **`device Speakers (JBL Flip 6), period 20 ms x 4, engine 48000 Hz`**, session volume 1.00.
 That is the owner's own Bluetooth speaker, the path `docs/KNOWN.md` section 1 already ties to what they hear.
 `audio_dips` classified **31 DEVICE events** -- dips present in the endpoint recording and absent from the dump at
-the aligned time -- clustered in the roughly four minutes of the capture that carry any audio at all. The mixer
+the aligned time -- clustered in the roughly four minutes of the capture that carry any audio at all. **Corrected
+2026-09-22 midday to 11:** twenty of the 31 were the scorer's own (a start-time match misled by a local offset, and a
+greedy match that called a cue's ending a 365 s DEVICE event); with overlap matching the count is 11, all 50 ms, ten
+of them while the briefing score plays (`dips_rescored.txt`, `docs/KNOWN.md` section 2). Eleven is still a lead. The mixer
 rendered those samples; something between `render()` and the speaker did not deliver them. It is a LEAD, not a
 finding: the previous measured state after the 20 ms x 4 device was 2 sub-second dropouts per mission minute, and
 until the same capture is repeated on a wired endpoint -- where these should vanish if the Bluetooth path is the

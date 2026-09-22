@@ -89,3 +89,4 @@ about something this controller had asserted earlier, which is the part worth ke
 
 **The live lead leaving this wave** is the endpoint, not the mixer: 31 DEVICE events on the owner's own JBL Flip 6,
 dips at the speaker that the mixer's dump does not contain. It has a KNOWN row and a one-run A/B that settles it.
+(Re-scored 2026-09-22 midday: **11**, not 31 -- twenty were the scorer's matching; the A/B stands, see the handoff.)

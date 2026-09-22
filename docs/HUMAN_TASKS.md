@@ -4,6 +4,51 @@ Things only the owner can do: hands-on checks on the real machine with real ears
 adds items here when it reaches a step it cannot verify itself, and moves on. Report back in one line each; the
 loop picks the answer up from the next session's prompt or from a note in `docs/STATUS.md`.
 
+## Start here (2026-09-22 midday: three runs are built and waiting for a window)
+
+You were at the machine all morning (Teams, Jira, Sublime), so nothing lock-bound ran -- the host-load rule. Everything
+that could be done without a launch is done, tested and committed on `sprint-10`; what is left is three game runs
+that need **a window you are away from the machine and not on a call**, plus one line from you. Say when, and the
+loop runs them in this order:
+
+1. **The endpoint A/B (~16 min).** The Bluetooth capture's DEVICE count was **re-scored to 11, not 31**: twenty of
+   the 31 were the scorer's own matching (a cue's ending was being called a 365 s device fault). Eleven 50 ms dips,
+   ten of them while the briefing score plays, is still a lead, and it still settles the same way. The tool now
+   exists: `scripts/parity/endpoint_ab.sh` backs up your per-app audio routing, points our exe and the recorder at
+   the **HyperX QuadCast S** headphone output (the only wired endpoint that is live), runs the same ten-minute
+   briefing capture, refuses to score unless the game's own log names the HyperX, prints both runs' DEVICE-per-minute
+   tables side by side, and puts your routing and default device back on any exit. **While it runs, your default
+   output device is the HyperX** -- which is why it needs you off a call. If you would rather it used a different
+   wired device, plug it in and name it.
+   ```
+   bash scripts/loop_lock.sh run owner --purpose "endpoint A/B" -- bash scripts/parity/endpoint_ab.sh --device HyperX
+   ```
+2. **The remember-password proof (W10, two launches, ~7 min each).** Your prefilled login stays until this passes.
+   Launch one boots from an EMPTY card, creates a persona with SAVE PASSWORD ticked YES (the driver reads the tick
+   off the form and tries LEFT then CROSS, since nobody has recorded which one the widget answers to), and connects.
+   Launch two boots from the card launch one wrote and must reach the lobby **with nothing typed** -- an empty
+   PASSWORD field fails the run as `login:saved-password:empty`, a missing persona as `:no-persona`. Only a pass
+   removes the prefill from the player path (and reclasses the two knobs to Dev, with `PS2X_DEV=1` on the drive
+   scripts that use `--prefilled`); a fail means R237 is rewritten and the prefill stays.
+   ```
+   bash scripts/loop_lock.sh run owner --purpose "W10 launch 1" -- python -m tools_py.parity.online_login_ours --mc-dir logs/parity/w10_virgin/mc0 --name w10test --password socom --save-password --out logs/parity/w10_virgin_a --seconds 400
+   bash scripts/loop_lock.sh run owner --purpose "W10 launch 2" -- python -m tools_py.parity.online_login_ours --mc-dir logs/parity/w10_virgin/mc0 --existing --saved-password --out logs/parity/w10_virgin_b --seconds 400
+   ```
+3. **The walking mission capture (W7, ~15 min; W6 rides along).** A driven hold captures no music, so the hold now
+   MOVES: `--walk` repeats a short safe leg (forward 8 s, back 8 s, so the player is at the insertion point every
+   20 s) for twelve minutes, with the popup guard every 80 s. It is deliberately not a route into the level: a death
+   ends the capture and the music with it, and nobody has your route. **If you want it to walk your route instead,
+   describe it in stick directions and seconds** (`hold+8.0:W` is "forward 8 s"; W/A/S/D move, I/J/K/L turn) and
+   it goes in as the leg. Every popup the guard meets is saved as a frame, so if the HELP popup before Mallard turns
+   up, that is W6's garbled-glyph frame; the second command is the same walk with the revalidate-by-hash suspect off.
+   ```
+   bash scripts/loop_lock.sh run owner --purpose "W7 walk" -- bash scripts/parity/mission_music_long.sh --walk --minutes 12
+   PS2X_GS_NO_TEX_REVALIDATE=1 bash scripts/loop_lock.sh run owner --purpose "W6 A/B" -- bash scripts/parity/mission_music_long.sh --walk --minutes 12 --stamp w6_norevalidate
+   ```
+
+**The one line still only you can give:** which channel your lobby was in, for the join driver (W8). Without it the
+two-instance self-join is the fallback (host from instance A, join from B), which is a fourth run for the same window.
+
 ## Start here (2026-09-22, after your playthrough)
 
 **Your findings are all recorded and the fix wave is running** -- `docs/superpowers/plans/2026-09-22-fix-wave-playthrough.md`

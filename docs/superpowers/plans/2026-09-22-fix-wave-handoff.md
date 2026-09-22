@@ -136,6 +136,54 @@ DOWN there. `join_list_check` now refuses to re-send once the cursor has left JO
 - Do not run anything lock-bound while the owner is at the machine (`scripts/check_quiet_gate.sh`, and the host
   load memory).
 
+## Progress (2026-09-22 midday, Fable) -- the lock-free half is done; the launches are queued
+
+The owner was at the machine for the whole session (input idle 2 s, Teams and Jira open), so by the host-load rule
+nothing lock-bound ran. Everything below is code, tests and documents; the runs are exact commands in
+`docs/HUMAN_TASKS.md` ("Start here, midday") waiting for a window.
+
+**The A/B's number was wrong before the A/B ran.** Reading the 31 DEVICE rows: the last one was 365 s long (a cue
+ending at 581 s, the level never climbing back within 10 dB, its 50 ms dump twin already taken by the endpoint dip
+before it) and the first was a 5 s hole whose local offset (2.05 s against a global 2.72 s) put it 2 s from its own
+dump twin, which was then listed "dump only". Both are the scorer's start-time, first-unused matching. Fixed in
+`tools_py/parity/audio_dips.py`: an endpoint dip matches the dump dip it OVERLAPS most in aligned time, one dump dip
+may explain several endpoint dips, a dip that runs to the end of the capture says so, and the report ends with a
+**DEVICE count per minute** (the number the A/B compares). Re-scored: **11 DEVICE events, all 50 ms, 10-20 dB, per
+minute 1/3/2/4 while the briefing score plays and one at 578 s** (`dips_rescored.txt` beside the capture). The
+docs that quoted 31 now say so (KNOWN section 2, CURRENT_SPRINT, the playthrough plan). Eleven is still a lead.
+
+**The A/B is a script now, and it handles the trap.** `tools_py/parity/endpoint_route.py` (pycaw's IPolicyConfig
+for the defaults, winreg + `reg export/import` for the per-app key) and `scripts/parity/endpoint_ab.sh`: backup,
+remove our two exe paths' routing entries (the JBL pin), make the wired device the default for console and
+multimedia (the loopback recorder follows the default; communications is left alone), run the same briefing
+capture, `check` the run's own mix-open line and **refuse to score (rc 5) unless it names the device**, print both
+DEVICE-per-minute tables, restore on any exit. The only live wired render endpoint is the **HyperX QuadCast S**
+headphone output (USB); the HDMI monitor and the Realtek SPDIF are also active but nothing listens on them. The cost
+the owner pays: their default output device is the HyperX for ~16 minutes, so the run needs them off a call.
+`mission_music_long.sh` now writes the run's mix-open line to `endpoint_device.txt` and takes
+`--max-device-per-minute N` (rc 4 over the ceiling) -- the pin, to be set from the A/B's result.
+
+**W7's route: decision (a), a short safe leg.** `mission_music_long.sh --walk`: `hold+8.0:W`, settle, `hold+8.0:S`,
+settle, repeated (the pattern `gameplay_damage.txt` already uses), popup guard every 8 legs, the run length
+lengthened by the holds' overheads, refused on the briefing stage. Not the owner's route -- nobody has it -- and
+the owner is asked for one in stick directions if they want it walked. W6 rides on the same run: the `ifpopup`
+guard saves the frame it reads, and the A/B is the same command with `PS2X_GS_NO_TEX_REVALIDATE=1`.
+
+**W10: the order is kept, and both launches are built.** `online_login_ours.py --save-password` ticks SAVE
+PASSWORD = YES on the form after the password (DOWN verified on the row lit, then LEFT and CROSS each read back
+off the two boxes -- YES x 176-192, NO x 240-254, a tick reads ~100 against 47 for an empty outline on
+`blop_c/02_persona.png`; which press the widget answers is unknown, so both are tried and the frame decides), and
+walks one DOWN fewer to CONNECT. `--saved-password` is the relaunch: the persona-list CROSS, then the PASSWORD
+strip must read glyphs (its own ink floor of 100: the lit row spills 63 into the empty strip, over the keyboard
+counter's 60) -- nothing typed, `login:saved-password:empty` / `:no-persona` otherwise. `--mc-dir` boots from a
+named card folder, created empty (developer mode lifts the R207 path rule, and run.sh sets it). 16 tests in
+`test_saved_password.py`; the 127 login-driver tests unchanged. **Removing the prefill waits for launch two.**
+
+**W8 untouched**: the lobby channel is still the owner's line; the two-instance self-join is the fallback.
+
+**Suite:** Python green on the touched modules (dips 20, mission music 22, endpoint route 8, login 127); the whole
+discover run is recorded in the commit message.
+
 ## Still owed to the owner
 
 They are told all of this in `docs/HUMAN_TASKS.md` ("Start here (2026-09-22, after your playthrough)"). The two

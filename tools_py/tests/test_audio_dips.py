@@ -205,6 +205,78 @@ class Classification(unittest.TestCase):
         self.assertEqual(rows[0].label, "STARVATION")
 
 
+class Matching(unittest.TestCase):
+    """Fix wave A (2026-09-22): the DEVICE verdict is "in the endpoint, not in the dump", so it is only as good as
+    the matching. The ten-minute briefing capture (logs/parity/mission_music_ours_20260922_024457) showed two ways
+    the old start-time match (first unused dump dip within 0.25 s) invented DEVICE events: a 5 s hole whose local
+    offset was 0.7 s off landed 2 s from its dump twin and was called DEVICE while the twin was listed "dump only";
+    and a 365 s "dip" (a cue ending, the level never climbing back) was called DEVICE because the 50 ms dump dip it
+    started on had already been taken by the 50 ms endpoint dip before it. Dips are matched by OVERLAP in aligned
+    time now, and one dump dip may explain several endpoint dips."""
+
+    def setUp(self):
+        self.ev = ad.read_events(LOG)
+
+    def test_an_endpoint_dip_overlapping_a_dump_dip_is_matched_even_when_their_starts_differ(self):
+        # The dump holds a 5 s hole at 26.0 s (after the stream is done, nothing in the log there); the endpoint's
+        # copy starts 2 s later by a bad local offset.
+        dump_dips = [ad.Dip(26.0, 5.0, -20.0, -80.0)]
+        ep_dips = [ad.Dip(28.0 + 1.0, 4.9, -20.0, -80.0)]
+        rows = ad.classify(ep_dips, dump_dips, 1.0, self.ev)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].label, "UNEXPLAINED")       # matched: read against the log, not DEVICE
+        self.assertNotIn("dump only", rows[0].label)
+
+    def test_one_dump_dip_explains_every_endpoint_dip_inside_it(self):
+        # A 20 s level drop in the dump (a stream done); the endpoint shows a 50 ms dip at its start and then the
+        # long one. Neither is DEVICE, and the dump dip is not "dump only".
+        dump_dips = [ad.Dip(24.9, 20.0, -20.0, -60.0)]
+        ep_dips = [ad.Dip(24.9 + 1.5, 0.05, -20.0, -60.0), ad.Dip(25.0 + 1.5, 19.9, -20.0, -60.0)]
+        rows = ad.classify(ep_dips, dump_dips, 1.5, self.ev)
+        self.assertEqual([r.label for r in rows], ["COMMAND", "COMMAND"])
+        self.assertTrue(all("done" in r.reason for r in rows))
+
+    def test_an_endpoint_dip_touching_no_dump_dip_is_still_device(self):
+        dump_dips = [ad.Dip(5.0, 0.1, -20.0, -40.0)]
+        ep_dips = [ad.Dip(5.0 + 1.5, 0.1, -20.0, -40.0), ad.Dip(30.0 + 1.5, 0.1, -20.0, -40.0)]
+        rows = ad.classify(ep_dips, dump_dips, 1.5, self.ev)
+        self.assertEqual([r.label for r in rows], ["STARVATION", "DEVICE"])
+
+    def test_a_dip_that_runs_to_the_end_of_the_capture_says_so(self):
+        rate = 48000
+        x = tone(6.0, rate)
+        cut(x, rate, 4.0, 2.0, 10 ** (-20 / 20.0))         # the level drops at 4 s and never comes back
+        dips = ad.find_dips(x, rate)
+        self.assertEqual(len(dips), 1)
+        self.assertTrue(dips[0].open_end)
+        closed = ad.find_dips(cut(tone(6.0, rate), rate, 2.0, 0.2, 0.0), rate)
+        self.assertFalse(closed[0].open_end)
+        rows = ad.classify(dips, None, 0.0, self.ev)
+        self.assertIn("runs to the end of the capture", rows[0].reason)
+
+
+class PerMinute(unittest.TestCase):
+    """The per-minute DEVICE count: the number the endpoint A/B compares and the audio gate pins."""
+
+    def rows(self):
+        R = ad.Row
+        return [R(10.0, 0.05, 12.0, "vag g1", "DEVICE", ""), R(50.0, 0.1, 12.0, "vag g1", "DEVICE", ""),
+                R(55.0, 0.1, 12.0, "vag g1", "COMMAND", ""), R(130.0, 0.05, 12.0, "vag g2", "DEVICE", ""),
+                R(200.0, 0.2, 12.0, "vag g2", "UNEXPLAINED (dump only)", "")]
+
+    def test_counts_per_minute_over_the_whole_capture(self):
+        self.assertEqual(ad.device_per_minute(self.rows(), 240.0), [2, 0, 1, 0])
+        self.assertEqual(ad.device_per_minute([], 90.0), [0, 0])
+        self.assertEqual(ad.device_per_minute(self.rows(), 0.0), [2, 0, 1, 0])   # no length given: up to the last row
+
+    def test_the_report_carries_the_table_and_the_totals(self):
+        text = ad.report(self.rows(), 1.0, 0.9, total_s=240.0)
+        self.assertIn("DEVICE per minute:", text)
+        self.assertIn("00:00-01:00  2", text)
+        self.assertIn("02:00-03:00  1", text)
+        self.assertIn("DEVICE total 3 over 4 minutes, max 2 in a minute (00:00)", text)
+
+
 class Run10GroundTruth(unittest.TestCase):
     """The owner's phone recordings of run 10, placed on its loopback by envelope correlation: the dips they heard."""
     CAPTURE = os.path.join(ROOT, "logs", "parity", "s10_r4k_music_ours", "endpoint.wav")
