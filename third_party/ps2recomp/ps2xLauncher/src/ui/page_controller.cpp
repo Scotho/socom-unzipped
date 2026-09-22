@@ -116,20 +116,66 @@ namespace ui
                 if (!marked)
                     callouts.push_back(PadCallout{app.bind.lastHost, -1, "", true});
             }
-        }
-        drawPad(ctx, padArea, app.pad, static_cast<float>(c.padDeadZone), markHost, callouts.empty() ? nullptr : &callouts);
 
-        // Listening: the ask, across the drawing, where the eye already is.
+            // W9 (the owner: "clearer indication of which button is bound to what"): the cell the focus is
+            // on, lit on the drawing. Walking the sixteen cells now walks the pad, so the answer to "which
+            // control is this row?" is a glance rather than a guess -- and it costs no clutter, because only
+            // ever one cell holds the focus.
+            const int focusCell = bindCellOf(app.nav.focus);
+            const int focusHost = focusCell >= 0 ? hostOf(m, bindCellButton(focusCell))
+                                                 : (app.nav.focus == kSwitchCellId ? launcher::focusToggleHost(c) : kHostNone);
+            if (focusHost != kHostNone)
+            {
+                const Ps2Label game = focusCell >= 0 ? ps2Label(bindCellButton(focusCell)) : ps2Label(kSwitchTarget);
+                bool merged = false;
+                for (PadCallout &call : callouts)
+                    if (call.host == focusHost)
+                        call.focus = merged = true;
+                if (!merged)
+                    callouts.push_back(PadCallout{focusHost, game.face, game.text, false, true});
+            }
+        }
+        // While a hold is building, the ring closing on that control is the drawing's half of the hint.
+        const bool holding = app.holdHost != kHostNone && app.holdProgress > 0.12f && !listening && !dialog;
+        drawPad(ctx, padArea, app.pad, static_cast<float>(c.padDeadZone), markHost,
+                callouts.empty() ? nullptr : &callouts, holding ? app.holdHost : 0, app.holdProgress);
+
+        // Listening: the ask, across the drawing, where the eye already is. W9: and under it, in words, the
+        // two ways out -- the bottom bar says them too, but a player who has just triggered this by ACCIDENT
+        // (a long press they did not mean) is looking at the middle of the screen, not at the bar.
         if (listening && app.pad.present)
         {
             const Ps2Label game = ps2Label(app.bind.button);
             char line[96];
             std::snprintf(line, sizeof(line), "PRESS THE BUTTON FOR %s   %d", game.text, bindCountdown(app.bind, ctx.time));
             const float size = 24.0f;
-            const Rect band{padArea.x + 20.0f, padArea.cy() - size * 0.95f, padArea.w - 40.0f, size * 1.9f};
-            fillRect(ctx, band, theme::alpha(theme::ground, 215));
+            const Rect band{padArea.x + 20.0f, padArea.cy() - size * 1.25f, padArea.w - 40.0f, size * 2.5f};
+            fillRect(ctx, band, theme::alpha(theme::ground, 225));
             strokeRect(ctx, band, theme::gold, 1.5f);
-            textCenteredIn(ctx, line, band, size, theme::goldHi, Face::Display);
+            textCenteredIn(ctx, line, Rect{band.x, band.y, band.w, band.h - 16.0f}, size, theme::goldHi, Face::Display);
+            const char *out = "HOLD CIRCLE OR PRESS ESC TO CANCEL";
+            text(ctx, out, Vec2{band.cx() - textWidth(ctx, out, metrics::captionSize - 2.0f, Face::Bold, 0.06f) * 0.5f,
+                                band.bottom() - 17.0f},
+                 metrics::captionSize - 2.0f, theme::caption, Face::Bold, 0.06f);
+        }
+
+        // W9: a hold is building. The same band, in the same place, because it is the same conversation one
+        // step earlier -- which button, how far along, and how to stop. Nothing is committed until the bar
+        // fills, and letting go before it does is the whole cancel.
+        if (holding && app.pad.present)
+        {
+            const HostLabel held = hostLabel(family, app.holdHost);
+            char line[96];
+            std::snprintf(line, sizeof(line), "HOLD TO REMAP  %s", held.text);
+            const float size = 22.0f;
+            const Rect band{padArea.x + 60.0f, padArea.cy() - size * 1.5f, padArea.w - 120.0f, size * 3.0f};
+            fillRect(ctx, band, theme::alpha(theme::ground, 225));
+            strokeRect(ctx, band, theme::gold, 1.5f);
+            textCenteredIn(ctx, line, Rect{band.x, band.y + 2.0f, band.w, size * 1.4f}, size, theme::goldHi, Face::Display);
+            const char *out = "LET GO TO CANCEL";
+            text(ctx, out, Vec2{band.x + 16.0f, band.bottom() - 30.0f}, metrics::captionSize - 3.0f, theme::caption,
+                 Face::Bold, 0.06f);
+            meterBar(ctx, Rect{band.x + 16.0f, band.bottom() - 16.0f, band.w - 32.0f, 10.0f}, app.holdProgress, theme::gold);
         }
 
         // The legend: the owner plays on an Xbox pad and the game prompts with PlayStation shapes.
@@ -148,6 +194,15 @@ namespace ui
                 x += 74.0f;
             }
         }
+
+        // W9, the at-rest hint: the gesture is invisible until someone says it exists. It goes in the strip
+        // under the drawing, right-aligned to the body's edge -- the glyph legend above ends around
+        // padArea.x + 500 and the body runs ~110 units past padArea's right, so the two never meet. The
+        // bottom bar's prompt row carries the short form (main.cpp, drawPrompts: HOLD / REMAP), and this is
+        // the sentence that says what "HOLD" means.
+        if (app.pad.present && !listening && !dialog && !holding)
+            textRightIn(ctx, "HOLD A BUTTON TO REMAP IT", Rect{b.x, padArea.bottom() + 2.0f, b.w, 20.0f},
+                        metrics::captionSize - 3.0f, theme::dim, Face::Bold);
 
         // ---- the section switch ---------------------------------------------------------------------------
         for (int i = 0; i < 2; ++i)

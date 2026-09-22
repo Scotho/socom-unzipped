@@ -9,6 +9,8 @@
 // game may own the pad.
 //
 // Pure: no raylib, no windows.h -- so the tests can hold a stick down for five seconds without a window.
+#include "launcher/mapping.h"   // the host buttons' numbering, so the hold detector below owns no copy of it
+
 namespace ui
 {
     // The pad's buttons, as the launcher uses them (not raylib's numbering; main.cpp maps them).
@@ -66,4 +68,69 @@ namespace ui
 
     // `repeatAt` is the caller's stick-repeat clock, carried between frames.
     PadIntent padIntent(const PadFrame &pad, bool gameRunning, double now, double &repeatAt);
+
+    // ---- W9 (owner, 2026-09-22): hold a pad button to remap it ------------------------------------------
+    // "I'd also like to add a new remapping mechanism, hold the button to remap the button while on the
+    // controller page." The gesture is HERE, behind the same gate as everything else the pad says, for the
+    // same reason: a button held through a firefight must not arm anything in the launcher, and a page must
+    // never reach for raylib on its own. main.cpp reads the pad and fills a HoldFrame; page_controller.cpp
+    // only draws what comes back.
+    //
+    // What the hold means: the player holds the pad button they want to MOVE, and the flow that opens is the
+    // existing BindFlow for the PS2 button that control currently drives -- so the next button they press is
+    // where it moves to, and a clash is the same Conflict dialog (swap / replace / cancel) as ever. Nothing
+    // about binding is reimplemented here; this only decides WHEN to call bindStart.
+    constexpr double kRemapHoldSeconds = 0.75;   // see holdArms() for why this number
+
+    // The buttons the gesture refuses, and the whole argument for the feature being usable:
+    //
+    //   CROSS (kHostFaceDown) is Activate and CIRCLE (kHostFaceRight) is Back. They are how the player moves
+    //   around the page at all -- cross opens a cell, circle leaves for the rail -- and circle is also the
+    //   bind flow's own cancel (kCancelHost, held past kCancelHoldSeconds). A hold that stole cross would
+    //   turn every slightly-slow press into a remap session, and a hold that stole circle would collide with
+    //   the gesture that gets you OUT of one. Neither is armed, ever.
+    //
+    //   L1 / R1 (the page tabs) and START (LAUNCH) are refused for a different reason: their PRESS edge has
+    //   already been spent by the time a hold could build -- L1 has changed the page, START has asked for a
+    //   launch -- so arming them would only ever produce a hold that silently dies. Refusing them says so.
+    //
+    //   The d-pad IS armed: the launcher takes one focus step from its press edge and then reads nothing more
+    //   from it (only the stick repeats), so a held d-pad is otherwise dead input and the gesture is free.
+    //
+    // All five refused buttons are still bindable the way they always were: activate their cell on the
+    // BUTTONS section. The gesture is a shortcut, not the only road.
+    //
+    // 750 ms, inside the 600-1000 ms the brief allows: long enough that a press-and-think on the d-pad (which
+    // does move the focus) cannot reach it by accident, short enough that the progress ring does not feel
+    // like a punishment. It is a constant so a test can name it rather than count frames.
+    bool holdArms(int host);
+
+    // Which host buttons are down THIS frame, indexed by launcher::mapping's host id ([0] unused).
+    struct HoldFrame
+    {
+        bool present = false;
+        bool down[launcher::mapping::kHostButtonMax + 1] = {};
+    };
+
+    // Carried between frames by the caller, like padIntent's repeat clock.
+    struct HoldWatch
+    {
+        int host = 0;         // the button building a hold, 0 for none
+        double since = 0.0;   // when it went down
+        bool spent = false;   // this hold already fired; the button must come up before another can start
+    };
+
+    struct HoldIntent
+    {
+        int host = 0;           // the button building (0: nothing is)
+        float progress = 0.0f;  // 0..1 of the way to kRemapHoldSeconds -- what the page draws
+        bool fired = false;     // this frame, start the remap for `host`
+    };
+
+    // `pageArmed`: the CONTROLLER page is showing and nothing else owns the pad (no bind session open, no
+    // dialog). `typing`: a text field holds the keyboard -- while it does, main's navigation branch is skipped
+    // entirely and the pad's buttons are the field's way OUT (ui::releasesField), so they cannot also be a
+    // gesture. Any refusal clears the watch, so a hold can never survive the condition that allowed it.
+    HoldIntent padHold(HoldWatch &watch, const HoldFrame &frame, bool gameRunning, bool typing, bool pageArmed,
+                       double now);
 }

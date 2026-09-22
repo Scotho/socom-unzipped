@@ -104,6 +104,12 @@ namespace ui
         int padSection = 0;
         BindFlow bind;
         int requestBind = -1;
+        // W9 (owner, 2026-09-22): "hold the button to remap the button while on the controller page". The
+        // detector is ui::padHold, behind the pad gate in main.cpp; these two are what the page is allowed to
+        // know about it -- which host button is building a hold, and how far along it is (0..1). The page
+        // draws the progress and names the button; it never reads a pad.
+        int holdHost = 0;
+        float holdProgress = 0.0f;
     };
 
     // ---- the shared furniture of a settings page ----------------------------------------------------------

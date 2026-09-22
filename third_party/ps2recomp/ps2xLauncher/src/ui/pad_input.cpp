@@ -83,4 +83,61 @@ namespace ui
         out.prompts = out.dx != 0 || out.dy != 0 || out.activate || out.back;
         return out;
     }
+
+    bool holdArms(const int host)
+    {
+        using namespace launcher::mapping;
+        if (host < 1 || host > kHostButtonMax)
+            return false;
+        // The five the launcher's own navigation spends on the press edge (pad_input.h has the argument):
+        // cross activates, circle goes back, L1/R1 are the page tabs, Start is LAUNCH.
+        return host != kHostFaceDown && host != kHostFaceRight && host != kHostL1 && host != kHostR1 &&
+               host != kHostStart;
+    }
+
+    HoldIntent padHold(HoldWatch &watch, const HoldFrame &frame, const bool gameRunning, const bool typing,
+                       const bool pageArmed, const double now)
+    {
+        // Every refusal clears the watch rather than pausing it, so a hold begun under one condition can
+        // never finish under another: start the game, open a field, leave the page or unplug the pad and the
+        // gesture is gone, not banked. (The same rule as padIntent's repeat clock, and for the same reason.)
+        if (!frame.present || gameRunning || typing || !pageArmed)
+        {
+            watch = HoldWatch{};
+            return HoldIntent{};
+        }
+
+        // Letting go is the cancel: the button that was building is no longer down, so nothing is.
+        if (watch.host != 0 && !frame.down[watch.host])
+            watch = HoldWatch{};
+
+        // One button at a time, the lowest-numbered armed one that is down. A second button pressed during a
+        // hold changes nothing: the first one keeps the watch until it comes up.
+        if (watch.host == 0)
+        {
+            for (int h = 1; h <= launcher::mapping::kHostButtonMax; ++h)
+            {
+                if (!frame.down[h] || !holdArms(h))
+                    continue;
+                watch.host = h;
+                watch.since = now;
+                watch.spent = false;
+                break;
+            }
+            if (watch.host == 0)
+                return HoldIntent{};
+        }
+
+        HoldIntent out;
+        out.host = watch.host;
+        const double held = now - watch.since;
+        const float p = static_cast<float>(held / kRemapHoldSeconds);
+        out.progress = p < 0.0f ? 0.0f : (p > 1.0f ? 1.0f : p);
+        if (!watch.spent && held >= kRemapHoldSeconds)
+        {
+            watch.spent = true;
+            out.fired = true;   // exactly once per press: `spent` stands until the button comes up
+        }
+        return out;
+    }
 }

@@ -126,18 +126,27 @@ namespace ui
 
     // One callout: the game's button (a shape index as drawShapeGlyph's, or a word) on host button `host`;
     // `highlight` rings it -- the binding just made.
+    //
+    // W9 (2026-09-22), the owner's "clearer indication of which button is bound to what": `focus` is the
+    // cell the player is standing on in the BUTTONS list. It is drawn as a teal ring with its label pill
+    // BELOW the control rather than over it, so walking the sixteen cells lights each control up on the
+    // drawing and the control itself stays visible under the label.
     struct PadCallout
     {
         int host;
         int face;
         const char *text;
         bool highlight;
+        bool focus = false;
     };
 
     struct Ctx;   // widgets.h -- the drawing half only
     // `markHost`: R139's crouch shortcut, ringed and tagged CROUCH on its control whether or not it is held (0 for
     // none; kPadAnchorTouchpad for the plate). `callouts`: the mapping's differences from the default, drawn on
     // the pad (null or empty for none).
+    // W9: `holdHost` / `holdProgress` are ui::padHold's answer -- the host button the player is holding down to
+    // remap and how far along it is (0..1). Drawn as a ring closing in on that control, so "which button is it
+    // building on" is answered on the pad itself and not only in words. 0 / 0.0f: no hold.
     void drawPad(const Ctx &ctx, Rect bounds, const PadSnapshot &pad, float deadZone, int markHost = 0,
-                 const std::vector<PadCallout> *callouts = nullptr);
+                 const std::vector<PadCallout> *callouts = nullptr, int holdHost = 0, float holdProgress = 0.0f);
 }
