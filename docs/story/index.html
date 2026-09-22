@@ -855,7 +855,7 @@ figcaption{padding:8px 10px;font:12.5px/1.45 var(--head);letter-spacing:.4px;col
 <section class="closing" id="how-this-document-is-checked"><h2>How this document is checked</h2>
 <p>Every <code>Cited:</code> line is parsed and verified by <code>tools_py/story/cite.py</code>, in the project's Python suite:</p>
 <p><code>python -m tools_py.story.cite</code></p>
-<p>A commit hash must resolve, be unambiguous, be reachable from the published branch, and the words beside it must come from the commit's real subject. A run or gate id must have a frozen witness in <code>docs/story/witnesses.json</code>, re-proved against the file on the machine that has the logs. A tracked path must be tracked. <code>docs/story/timeline.json</code> is the machine-readable form, and the test fails if it and this document disagree in either direction. The design is <code>docs/superpowers/specs/2026-09-19-sprint-11-goal-6-progress-story-design.md</code>.</p>
+<p>A commit hash must resolve, be unambiguous, be reachable from the published branch, and the words beside it must come from the commit's real subject. A run or gate id must have a frozen witness in <code>docs/story/witnesses.json</code>, re-proved against the file on the machine that has the logs. A tracked path must be tracked. <code>docs/story/timeline.json</code> is the machine-readable form, rebuilt from this document by <code>python -m tools_py.story.timeline</code>, and the test fails if it and this document disagree in either direction. The design is <code>docs/superpowers/specs/2026-09-19-sprint-11-goal-6-progress-story-design.md</code>.</p>
 </section>
 </div></main>
 <footer class="foot">

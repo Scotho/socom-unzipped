@@ -746,5 +746,6 @@ python -m tools_py.story.cite
 A commit hash must resolve, be unambiguous, be reachable from the published branch, and the words beside it must come
 from the commit's real subject. A run or gate id must have a frozen witness in `docs/story/witnesses.json`, re-proved
 against the file on the machine that has the logs. A tracked path must be tracked. `docs/story/timeline.json` is the
-machine-readable form, and the test fails if it and this document disagree in either direction. The design is
+machine-readable form, rebuilt from this document by `python -m tools_py.story.timeline`, and the test fails if it
+and this document disagree in either direction. The design is
 `docs/superpowers/specs/2026-09-19-sprint-11-goal-6-progress-story-design.md`.
