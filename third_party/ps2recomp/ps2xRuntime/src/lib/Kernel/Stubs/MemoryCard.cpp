@@ -402,6 +402,7 @@ namespace ps2_stubs
             }
 
             const bool absolute = !path.empty() && path.front() == '/';
+            bool climbedPastRoot = false;   // see the ".." case below
             std::vector<std::string> parts;
             if (!absolute && port >= 0 && port < static_cast<int32_t>(g_mcPorts.size()))
             {
@@ -417,11 +418,30 @@ namespace ps2_stubs
 
                 if (part == "..")
                 {
+                    // A ".." that would climb past the root is not refused outright any more, but it is not
+                    // forgiven either -- which of the two depends on what FOLLOWS it (2026-09-22).
+                    //
+                    // Why it changed: on a virgin card the owner's save failed, and a driven run to the
+                    // control-type prompt logged five of `[mc] GetDir REFUSED path '..'`, each answered
+                    // DeniedPermit -- a card the game cannot use. On a fresh card the current directory IS
+                    // the root, so the game's own ".." enumeration underflowed and was refused.
+                    //
+                    // Why it is not simply clamped: "guest memory-card paths cannot escape the card root"
+                    // asserts that `/../escape.bin` is REFUSED, and it is right to. Silently rewriting that
+                    // into `/escape.bin` would answer a request to name something outside the card by
+                    // quietly naming something else inside it, which is a lie the caller cannot see.
+                    //
+                    // So: a trailing ".." is a query for the parent directory, and this filesystem's root is
+                    // its own parent -- allowed, resolving to the root. A climb with components after it is
+                    // an attempt to name something beyond the root -- still refused, below.
                     if (parts.empty())
                     {
-                        return false;
+                        climbedPastRoot = true;
                     }
-                    parts.pop_back();
+                    else
+                    {
+                        parts.pop_back();
+                    }
                     continue;
                 }
 
@@ -431,6 +451,13 @@ namespace ps2_stubs
                 }
 
                 parts.push_back(part);
+            }
+
+            // The climb is only forgiven when nothing was named beyond it: ".." (and "a/../..") resolve to
+            // the root, while "/../escape.bin" is refused rather than silently rewritten as "/escape.bin".
+            if (climbedPastRoot && !parts.empty())
+            {
+                return false;
             }
 
             normalized = joinMcPathComponents(parts);
@@ -986,6 +1013,13 @@ namespace ps2_stubs
                     std::string guestQuery;
                     if (!normalizeGuestMcPathLocked(port, rawPath.empty() ? "." : rawPath, guestQuery))
                     {
+                        // A REFUSED path, not a missing one, and the game cannot tell us which it asked for --
+                        // so say it here. On a virgin card this fired five times in one run to the mission's
+                        // control-type prompt (2026-09-22, the owner's failed save), and without the path there
+                        // is no way to know whether the normaliser is right to refuse or we are rejecting a
+                        // shape the game legitimately uses to enumerate saves on a fresh card.
+                        std::fprintf(stderr, "[mc] GetDir REFUSED path '%s' (not normalisable)\n", rawPath.c_str());
+                        std::fflush(stderr);
                         result = kMcResultDeniedPermit;
                     }
                     else
@@ -1106,6 +1140,18 @@ namespace ps2_stubs
                         }
                         else
                         {
+                            // THIS is where a virgin card's GetDir is refused (2026-09-22, the owner's failed
+                            // save): entries were found, and the table address the game handed us did not
+                            // resolve to host memory, so the listing had nowhere to go. It is a guest-ADDRESS
+                            // failure, not a path or permission one, and the game reads the refusal as a card
+                            // it cannot use. Five of these in one run to the mission's control-type prompt.
+                            // The address is what names the cause -- a scratchpad pointer, an uninitialised
+                            // one, or a region our mapper does not cover -- so print it.
+                            std::fprintf(stderr,
+                                         "[mc] GetDir REFUSED: %u entries but table address 0x%08x does not "
+                                         "resolve to guest memory\n",
+                                         static_cast<unsigned>(entryCount), static_cast<unsigned>(tableAddr));
+                            std::fflush(stderr);
                             result = kMcResultDeniedPermit;
                         }
                     }
