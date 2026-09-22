@@ -1,0 +1,55 @@
+# W7 (fix wave A, 2026-09-22): the FAST path to in-mission gameplay, for a long mission-music capture.
+#
+# The owner, on tonight's playthrough: "one song playing with stutters or skips ... it is not playing linearly ...
+# fine the first while, gets much worse as I proceed", and: "You may have to write tests that skip the cutscenes
+# and move faster to catch these issues." So this script exists to spend its seconds IN the mission, not on the
+# way there: everything before the HUD is skipped by the means the other drive files already use, and the hold
+# that follows is where the capture lives.
+#
+# What it cuts against launch_to_mission_xl.txt (measured on logs/parity/s9_q1_parity_ours, our exe):
+#   * that script's `next+10.0:NONE  # mission` step spent waited=40.1s stable=False (the mission load never
+#     settles inside --maxwait) and then another 10 s on top -- ~50 s of the run for nothing. Here the load is
+#     `wait+2.0:NONE`, straight into the untilref, which does its own settle poll per press;
+#   * the flyover is not held through, it is PRESSED through: the same
+#     `untilref(ref_hud_ours.png,...,lit)` step music_only_mission.txt uses, which presses CROSS on each settled
+#     screen until the in-game HUD band matches with the letterbox bands lit -- i.e. until gameplay, not a
+#     cinematic, is on screen. That is the existing idiom for a skippable cinematic and it is also the proof,
+#     in the drive log, that the capture's hold really is in-mission (`untilref(...): matched=True`).
+# The boot screens keep `next+<delay>:CROSS`: each press goes in as soon as a NEW settled screen appears, which
+# is already the fast path through the logos and the intro movie (t=10s..t=76s on that run), and the briefing
+# cinematic is the `next+2.0:CROSS  # cinematic -> skip` press the other files already make.
+#
+# Reaching the HUD costs ~100-140 s of our exe's boot. The hold after it is what scripts/parity/mission_music_long.sh
+# appends: it copies this file and adds `wait+8.0:NONE` lines (with an `ifpopup+1.0:CROSS` guard every eighth, since
+# an unanswered HELP pop-up PAUSES the game) to make up the hold the run asked for (default 12 minutes), so the
+# length of the capture is an argument and this file stays the path, not the schedule.
+# Run it on its own for the short version (the one hold below, ~8 s of mission).
+#
+# Both targets (PCSX2's keys map takes ours' stick names). Screens align by step index with launch_to_mission*.txt
+# up to the DEPLOY press, so a step-by-step read against those runs still lines up.
+next+1.0:CROSS      # loading logo (press has no effect; establishes the first screen)
+next+1.0:CROSS      # Select MEMORY CARD slot -> slot 1
+next+1.0:CROSS      # card notice -> CONTINUE
+next+1.0:CROSS      # SONY COMPUTER ENTERTAINMENT AMERICA
+next+1.0:CROSS      # DEVELOPED BY
+next+1.0:CROSS      # intro / warning screen
+next+1.0:CROSS      # intro movie -> skip
+next+2.0:CROSS      # main menu -> NEW GAME
+next+2.0:CROSS      # select rank
+next+2.0:CROSS      # controller presets (1)
+next+2.0:CROSS      # controller presets (2)
+next+2.0:CROSS      # save prompt / cinematic
+next+2.0:CROSS      # briefing cinematic -> skip
+next+2.0:DOWN       # briefing: OVERVIEW -> ...
+wait+1.0:DOWN
+wait+1.0:DOWN
+wait+1.0:DOWN
+wait+1.0:DOWN       # DEPLOY
+wait+2.0:CROSS      # deploy -> load mission
+wait+2.0:NONE       # the load is under way; the untilref below polls it (no 40 s settle wait here)
+untilref(scripts/parity/ref_hud_ours.png,92,112,0,40,40,20,lit)+1.0:CROSS   # press through the load and the flyover until the HUD shows
+ifpopup+1.0:CROSS   # the first objective pop-up / "X TO ABORT" cinematic, if it is up
+wait+4.0:NONE
+ifpopup+1.0:CROSS   # a second one can arrive a few seconds after the HUD (s6_depth_m4)
+# --- the mission hold starts here; mission_music_long.sh appends its `wait+8.0:NONE` lines after this line ---
+wait+8.0:NONE

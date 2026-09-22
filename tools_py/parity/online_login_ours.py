@@ -339,6 +339,32 @@ CLASS_CONNECT_PRESS = "login:connect-press"  # the form stayed up with CONNECT l
 CLASS_OSK_ENTER = "login:keyboard-enter"     # the keyboard stayed up after ENTER and OSK_ENTER_RETRIES re-presses
 CLASS_PERSONA = "login:persona"              # + ":list" / ":password-keyboard" / ":name-keyboard": that CROSS never registered
 CLASS_OSK_PREFILL = "login:prefill-missing"  # --prefilled: the keyboard opened holding a different count than the string's
+# Fix wave W8 (R240, 2026-09-22). Two things the join path could not say before.
+#
+# (a) An EMPTY GAMES LIST IS NOT A FAILURE. The 2026-09-22 join of the owner's live lobby reached the BRIEFING
+# ROOM in 175 s, pressed CROSS on JOIN GAME four times against "There are no games to join." on Channel 1 and
+# scored itself LOBBY-FAIL join:list -- a verdict on our client for a lobby that simply had no game in it. That
+# is its own outcome now: `RESULT NO-GAMES channel=<n>` and exit LOBBY_NO_GAMES_EXIT, so a mixed-match leg whose
+# partner had not created the world yet reads as "nothing to join", never as "the join failed". lobby_report
+# already separates the two: `RESULT NO-GAMES` is a RESULT word, and only `RESULT LOBBY-FAIL` is a lobby failure.
+#
+# (b) `--channel`. The room is chosen one screen earlier, on SOCOM II ONLINE -> BRIEFING ROOMS ("Select a
+# Briefing Room", ROOM NAME / # of PLAYERS / ELIGIBLE RANKS), where `to_briefing_room` used to press CROSS on
+# whatever row the list opened on. `select_room` walks DOWN to the Nth row first.
+CLASS_NO_GAMES = "join:no-games"
+CLASS_CHANNEL = "login:channel"              # --channel N: the room list's highlight would not move to row N
+CLASS_CURSOR_DRIFT = "join:cursor-drift"     # the briefing room cursor left JOIN GAME between two presses
+LOBBY_NO_GAMES_EXIT = 5                      # beside LOBBY_FAIL_EXIT 4: a different thing, a different code
+LOBBY_REFRESH_WAIT_S = 6.0                   # after the REFRESH LIST press, before the list is read
+# The BRIEFING ROOMS room list: the rows under the column-header bar (which fills y 96..120 and would otherwise
+# read as a selected row). The selected room's fill is a median of 38 over x 190..620 against 15-23 for an empty
+# row -- identical on all 306 `*10_rooms.png` captures in logs/parity. Every one of those 306 shows exactly ONE
+# room, so the list's row PITCH has never been observed and nothing here assumes one: `select_room` presses DOWN
+# and requires the highlight's top edge to have MOVED DOWN, which needs no pitch and cannot silently land on the
+# wrong room.
+ROOMS_LIST_ROWS = (122, 400)
+ROOMS_LIST_COLS = (190, 620)
+ROOMS_ROW_FILL_MIN = 30.0
 
 # Title band of the four screens the CREATE GAME / JOIN GAME presses move between (full-res 640x448:
 # x 20-360, y 18-58), compared as a text mask (map_mask_distance's measure) against
@@ -365,6 +391,19 @@ LOBBY_TITLE_COLS = {"game_lobby": 215, "briefing_room": 215}
 # The GAME LOBBY's READY row (menu row 2, the cursor detector's band): median 68 with the cursor on it
 # (8a A/B, s6_ladder4 B_16), 23 with no cursor drawn (every *_17_game_lobby_ok), 0-8 once in-game.
 LOBBY_ROWS = {"create_game": (106, 128, 18, 135),     # BRIEFING ROOM menu row 0
+              # Fix wave W8 (R240): the rest of that menu -- CREATE GAME / JOIN GAME / WATCH GAME / PLAYER LIST /
+              # REFRESH LIST -- at row 0's own band stepped by the menu's 32 px pitch. Measured on the briefing-room
+              # captures in logs/parity: the lit fill spans y 139..161 with JOIN GAME lit
+              # (join_owner_lobby/11_briefing_room.png) and y 171..193 with WATCH GAME lit
+              # (join_owner_lobby/miss_join_list_2.png), and every row of every capture reads 68 lit against 22-25
+              # unlit -- the same two numbers as create_game, which is why they take its threshold unchanged. The
+              # console reads the SAME bands (67 lit / 20-22 unlit on s10_pcsx2_login1 B_11 and s10_pcsx2_mapscan
+              # A_11): PCSX2's ~7% narrowing of these screens is horizontal, and x 18..135 is inside the menu on
+              # both, so pcsx2_shell's joiner needs no sibling geometry here.
+              "join_game": (138, 160, 18, 135),       # BRIEFING ROOM menu row 1
+              "watch_game": (170, 192, 18, 135),      # row 2
+              "player_list": (202, 224, 18, 135),     # row 3
+              "refresh_list": (234, 256, 18, 135),    # row 4 -- the press R240 says was never made
               "choose_games": (386, 406, 18, 170),    # CREATE GAME menu's last row
               "games_list": (262, 280, 150, 620),     # first row of the briefing room's games list
               "ready": (158, 180, 22, 165),           # GAME LOBBY menu row 2
@@ -384,7 +423,28 @@ LOBBY_ROWS = {"create_game": (106, 128, 18, 135),     # BRIEFING ROOM menu row 0
               "hometown": (196, 218, 20, 160)}
 LOBBY_ROW_LIT_MEDIAN = {"create_game": 50.0, "choose_games": 50.0, "games_list": 27.0, "ready": 50.0,
                         "connect": 50.0, "gender": 50.0, "player_name": 50.0, "password": 50.0,
-                        "save_password": 50.0, "hometown": 50.0}
+                        "save_password": 50.0, "hometown": 50.0,
+                        "join_game": 50.0, "watch_game": 50.0, "player_list": 50.0, "refresh_list": 50.0}
+# The BRIEFING ROOM's left menu, top to bottom: `briefing_focus_row` names the lit one and `briefing_select`
+# walks between them. (A sixth row, GAME DETAILS, appears under REFRESH LIST once the games list holds a game;
+# nothing presses on it, so it is read by nobody and has no band.)
+BRIEFING_MENU = ("create_game", "join_game", "watch_game", "player_list", "refresh_list")
+# The BRIEFING ROOM's prompt band, above the menu, and how wide its text runs. Fix wave W8: this band is what
+# separates "the JOIN GAME press has not taken" from "the press took and the list is EMPTY", which R240's run
+# could not tell apart and scored LOBBY-FAIL for. Three sentences appear there and they differ in LENGTH, so the
+# measure is the ink's span, not its position -- which also makes it target-independent, the console drawing
+# these screens about 7% narrower (Sprint 10 Goal 3). Over every capture in logs/parity that carries the
+# BRIEFING ROOM title (377 of them):
+#   "Activate the games list and choose a game to join." / "... to watch."  419-429 px ours, 385 px on PCSX2 (268)
+#   "There are no games to join."                                           207 px (9: join_owner_lobby's fail
+#                                                                           capture, ours_task6_mp, ours_task7_cal1 ...)
+#   "Choose game to join."                                                  179 px (104, every one with a game in
+#                                                                           the list: games_list lit at 36)
+#   nothing on the band (a fade)                                            0 px (1)
+BRIEFING_BANNER = (slice(60, 95), slice(90, 570))
+BRIEFING_BANNER_INK = 100.0      # the band's text; the panel behind it never reaches this
+BRIEFING_BANNER_WIDE_PX = 300    # between 207 and 385: 1.45x clear of the widest short sentence either side
+BRIEFING_BANNER_MIN_PX = 80      # narrower than any of the three: the band is mid-fade and says nothing yet
 # The CONNECT TO SOCOM II form top to bottom: `login_focus_row` names whichever one is lit.
 LOGIN_ROW_ORDER = ("player_name", "password", "save_password", "hometown", "gender", "connect")
 # The PLAYER NAME value strip, right of the row labels and left of the diver photo that fills the panel's
@@ -499,6 +559,35 @@ def lobby_fail(sh, cls, detail=""):
     except (RuntimeError, OSError) as e:  # a stale or missing frame must not hide the classification
         sh.log(f"(no lobby-fail capture: {e})")
     return LobbyFail(cls, detail)
+
+
+class LobbyNoGames(SystemExit):
+    """The briefing room had no game to join. NOT a LobbyFail: a different exit code, a different RESULT word,
+    and nothing about it is a verdict on this client (fix wave W8, R240)."""
+
+    def __init__(self, channel, detail=""):
+        super().__init__(LOBBY_NO_GAMES_EXIT)
+        self.channel, self.detail = channel, detail
+
+    def __str__(self):
+        return f"NO-GAMES channel={self.channel}" + (f" -- {self.detail}" if self.detail else "")
+
+
+def lobby_no_games(sh, channel, detail=""):
+    """Log the RESULT and class lines, capture the screen; returns the exception to raise.
+
+    The shape is `lobby_fail`'s on purpose -- same log, same capture, same "the outcome is decided, stop the
+    stage clock" -- because the only thing that differs is what it MEANS. `RESULT NO-GAMES ...` is picked up by
+    lobby_report as a RESULT (outcome "result"), never as outcome "lobby-fail"."""
+    where = channel if channel is not None else "?"
+    sh.log(f"RESULT NO-GAMES channel={where}" + (f" -- {detail}" if detail else ""))
+    sh.log(f"LOBBY class={CLASS_NO_GAMES}")
+    sh.stages = ()
+    try:
+        sh.shot("lobby_no_games")
+    except (RuntimeError, OSError) as e:
+        sh.log(f"(no no-games capture: {e})")
+    return LobbyNoGames(where, detail)
 
 
 @contextlib.contextmanager
@@ -656,6 +745,65 @@ def lobby_row_lit(gray, row):
     return lobby_row_median(gray, row) > LOBBY_ROW_LIT_MEDIAN[row]
 
 
+def briefing_banner_span(gray):
+    """Width in pixels of the ink on the BRIEFING ROOM's prompt band (0 when nothing is drawn on it)."""
+    ink = np.where((gray[BRIEFING_BANNER] > BRIEFING_BANNER_INK).any(axis=0))[0]
+    return int(ink.max() - ink.min() + 1) if len(ink) else 0
+
+
+def briefing_banner(gray):
+    """What the BRIEFING ROOM's prompt band is saying, by the length of the sentence on it:
+    "prompt" (the long "Activate the games list and choose a game to join/watch."), "short" (either of the two
+    short answers -- "There are no games to join." or "Choose game to join."), or "dark" (mid-fade, no verdict).
+    Only meaningful on a frame that carries the BRIEFING ROOM title."""
+    span = briefing_banner_span(gray)
+    if span >= BRIEFING_BANNER_WIDE_PX:
+        return "prompt"
+    return "short" if span >= BRIEFING_BANNER_MIN_PX else "dark"
+
+
+def join_list_state(gray):
+    """What the CROSS on JOIN GAME did, read off one frame (fix wave W8, R240) -- three outcomes, not two:
+
+      "listed"    the games list is up with a game highlighted (the first row's fill lit): the join can go on.
+      "none"      the list is up and EMPTY -- "There are no games to join.": the banner has gone short and no
+                  row is lit. Not a failure of this client; `lobby_no_games` is the outcome.
+      "unpressed" the banner still carries the long "Activate the games list ..." prompt: the press did not
+                  register, which is what a re-send is for (R240's first press really was eaten -- the banner in
+                  logs/parity/join_owner_lobby/miss_join_list_1.png is still the prompt).
+      "unread"    the frame is not the briefing room, or the banner is mid-fade. Never a verdict; read again.
+    """
+    if not lobby_title_is(gray, "briefing_room"):
+        return "unread"
+    if lobby_row_lit(gray, "games_list"):
+        return "listed"
+    banner = briefing_banner(gray)
+    if banner == "prompt":
+        return "unpressed"
+    return "none" if banner == "short" else "unread"
+
+
+def briefing_focus_row(gray):
+    """Name of the lit row of the BRIEFING ROOM's left menu, or None when none or several read lit (a
+    transition, or a frame that is not the briefing room). `login_focus_row`'s read, one menu over."""
+    lit = [row for row in BRIEFING_MENU if lobby_row_lit(gray, row)]
+    return lit[0] if len(lit) == 1 else None
+
+
+def briefing_rows_detail(gray):
+    return "row medians " + ", ".join(f"{r.replace('_', ' ')} {lobby_row_median(gray, r):.0f}" for r in BRIEFING_MENU)
+
+
+def rooms_fill_top(gray):
+    """Top row (y) of the highlighted entry in the BRIEFING ROOMS room list, or None when none is highlighted.
+    The column-header bar above the list is excluded by ROOMS_LIST_ROWS, which starts below it."""
+    y0, y1 = ROOMS_LIST_ROWS
+    x0, x1 = ROOMS_LIST_COLS
+    med = np.median(gray[y0:y1, x0:x1], axis=1)
+    hit = np.where(med > ROOMS_ROW_FILL_MIN)[0]
+    return int(hit[0]) + y0 if len(hit) else None
+
+
 def login_form_prompt_cols(gray):
     """Columns of bright text in the CONNECT TO SOCOM II form's prompt band."""
     return int((gray[LOGIN_FORM_PROMPT] > LOGIN_FORM_PROMPT_LUMA).any(axis=0).sum())
@@ -753,7 +901,10 @@ def press_verified(sh, step, btn, wait, check, what):
     try:
         return verify_resend(sh, step, dropped, send)
     except LobbyFail as e:
-        e.detail = f"{what} never showed after {btn.upper()} and {LOBBY_RESEND_MAX} re-sends -- see the capture"
+        # Only this step's own exhaustion gets this sentence. A check may classify something else on the frame it
+        # was handed (join_list_check's `join:cursor-drift`), and that failure carries its own explanation.
+        if e.cls == step:
+            e.detail = f"{what} never showed after {btn.upper()} and {LOBBY_RESEND_MAX} re-sends -- see the capture"
         raise
 
 
@@ -1557,13 +1708,54 @@ def press_connect(sh):
         lobby_resend(sh, "triangle", 1.5)
 
 
+def select_room(sh, channel):
+    """Move the BRIEFING ROOMS highlight to the `channel`-th room (1-based) before the CROSS that enters it.
+    Returns the number of DOWN presses it took.
+
+    R240 asked for a `--channel`, and the room list IS where the game offers the choice: the SOCOM II ONLINE
+    screen's BRIEFING ROOMS page is headed "Select a Briefing Room" over a ROOM NAME / # of PLAYERS / ELIGIBLE
+    RANKS table, and the briefing room that follows carries the chosen room's name beside its title ("Channel 1",
+    "US East (Ohio)"). What is NOT knowable from this repository is the table's row pitch: all 306 room-list
+    captures under logs/parity show exactly one room (the highlight at y 125 on every one of the 273 that really
+    are that screen, ours and PCSX2 alike), because every server we have driven has offered one. So
+    nothing here is pitched: a press is judged by the highlight having MOVED DOWN, and a press that does not move
+    it fails as `login:channel` naming the row it was on. `--channel 1` presses nothing at all and is byte-for-byte
+    the old behaviour; `--channel 2` and up is written but UNEXERCISED, and will fail fast on a one-room server
+    rather than enter the wrong room quietly."""
+    channel = 1 if channel is None else int(channel)
+    if channel < 1:
+        raise lobby_fail(sh, CLASS_CHANNEL, f"--channel {channel}: the rooms are numbered from 1")
+    if channel == 1:
+        # The default path presses nothing and must not gain a new way to fail: the highlight is read for the
+        # record only, off whatever frame is there, and a read that cannot be taken is logged as such.
+        try:
+            top = rooms_fill_top(lobby_gray_of(winshot.grab(sh.hwnd)))
+        except (RuntimeError, OSError) as e:
+            top = f"unread ({e})"
+        sh.log(f"[lobby] briefing rooms: channel 1 -- the first room, no press (highlight top y={top})")
+        return 0
+    for n in range(2, channel + 1):
+        before = rooms_fill_top(lobby_gray(sh))
+        sh.press("down", 1.2)
+        after = rooms_fill_top(lobby_gray(sh))
+        sh.log(f"[lobby] briefing rooms: DOWN {n - 1} for channel {channel} -- highlight y {before} -> {after}")
+        if before is None or after is None or after <= before:
+            sh.shot(f"10_rooms_channel_{n}")
+            raise lobby_fail(sh, CLASS_CHANNEL,
+                             f"--channel {channel}: the room list's highlight did not move down on press {n - 1} "
+                             f"(top y {before} -> {after}); the server is offering fewer rooms than that")
+    sh.shot(f"10_rooms_channel_{channel}")
+    return channel - 1
+
+
 @staged("login")
-def to_briefing_room(sh):
+def to_briefing_room(sh, channel=1):
     sh.press("down", 2.0)
     sh.press("cross", 3.0)                                       # BRIEFING ROOMS
     sh.wait_for("rooms", 30)
     sh.shot("10_rooms")
-    sh.press_until_gone("cross", "rooms", wait=5.0)              # join Channel 1
+    select_room(sh, channel)                                     # --channel N; 1 presses nothing (the old path)
+    sh.press_until_gone("cross", "rooms", wait=5.0)              # enter the highlighted room
     sh.wait_for("briefing_room", 40)
     sh.shot("11_briefing_room")
 
@@ -1928,14 +2120,102 @@ def lobby_select(sh, row, label, lit_row=None, presses=LOBBY_CURSOR_PRESSES, on_
     raise lobby_fail(sh, cls, why)
 
 
+def briefing_select(sh, step, want):
+    """Walk the BRIEFING ROOM's left menu to `want` (a BRIEFING_MENU name), one VERIFIED press per row, and
+    return the number of presses. Each press is `press_verified`'s -- the same machinery, the same
+    `[lobby] <step> press=<btn> verified=<bool> attempt=<n>` line and the same re-send -- with the check being
+    "the next row down (or up) is now lit", so a dropped press is re-sent on the row it failed on rather than
+    landing the walk one row short.
+
+    The menu is read before the first press, never assumed: R240's run pressed CROSS on what it believed was
+    JOIN GAME four times and the second capture (logs/parity/join_owner_lobby/miss_join_list_2.png) shows the
+    cursor was on WATCH GAME by then -- the banner on it reads "... choose a game to watch." That the cursor had
+    moved at all is unexplained by anything in this file; reading it costs one frame and removes the question."""
+    g = lobby_gray(sh)
+    if not lobby_title_is(g, "briefing_room"):
+        raise lobby_fail(sh, step, f"the BRIEFING ROOM is not on screen (title band distance "
+                                   f"{lobby_title_dist(g, 'briefing_room'):.3f})")
+    here = briefing_focus_row(g)
+    if here is None:
+        raise lobby_fail(sh, step, f"no single row of the BRIEFING ROOM menu reads lit -- {briefing_rows_detail(g)}")
+    i, j = BRIEFING_MENU.index(here), BRIEFING_MENU.index(want)
+    if i == j:
+        sh.log(f"[lobby] {step}: {want.replace('_', ' ').upper()} already lit")
+        return 0
+    btn, direction = ("down", 1) if j > i else ("up", -1)
+    for k in range(i + direction, j + direction, direction):
+        row = BRIEFING_MENU[k]
+        press_verified(sh, f"{step}:{row.replace('_', '-')}", btn, 1.2,
+                       lambda g, row=row: lobby_row_lit(g, row),
+                       f"the {row.replace('_', ' ').upper()} row lit")
+    return abs(j - i)
+
+
+def refresh_games_list(sh):
+    """REFRESH LIST, then back to JOIN GAME (R240: the driver never pressed it, so it could only ever see the
+    list the room happened to open with).
+
+    The CROSS on REFRESH LIST is the one press on this path that CANNOT be verified by what it produces: a
+    refresh leaves no mark on the screen -- same title, same banner, same menu -- and the only readable
+    difference it could make is the very games list the JOIN GAME press is about to read. So it is not sent
+    through `press_verified`: a re-send there would be a CROSS pressed into whatever screen the check had just
+    failed to recognise, which is the thing this file's verified presses exist to stop. It is pressed once, and
+    the frame after it is read and logged in the same line format -- if the press took us off the briefing room,
+    that is `join:refresh` and the run stops here instead of pressing on into a screen nobody named."""
+    presses = briefing_select(sh, "join:refresh-select", "refresh_list")
+    sh.press("cross", LOBBY_REFRESH_WAIT_S)
+    g = lobby_gray(sh)
+    still = lobby_title_is(g, "briefing_room")
+    sh.log(f"[lobby] join:refresh press=cross verified={still} attempt=1 "
+           f"(row {briefing_focus_row(g)}, banner {briefing_banner_span(g)} px, after {presses} select presses)")
+    if not still:
+        raise lobby_fail(sh, "join:refresh", "the REFRESH LIST press left the BRIEFING ROOM (title band distance "
+                                             f"{lobby_title_dist(g, 'briefing_room'):.3f}) -- see the capture")
+    sh.shot("11b_refresh_list")
+    briefing_select(sh, "join:list-select", "join_game")
+
+
+def join_list_check(sh, channel):
+    """`press_verified`'s check for the CROSS on JOIN GAME, with the empty list taken out of the failure path.
+
+    True only for "listed". "unpressed" is False, so the press is re-sent exactly as before. "none" -- the list
+    came up EMPTY -- raises LobbyNoGames straight out of press_verified: re-sending CROSS at an empty list is
+    what R240's run did four times, and the fourth press is one press away from opening WATCH GAME.
+
+    And a re-send is refused outright once the cursor has left JOIN GAME. Between R240's first and second press
+    the highlight moved to WATCH GAME and the banner with it ("... choose a game to watch.",
+    logs/parity/join_owner_lobby/miss_join_list_2.png) -- nothing in this file presses DOWN there and the move is
+    unexplained, but a CROSS re-sent onto that row opens the WATCH list, and the run would then be driving a
+    screen nobody named. `join:cursor-drift` says so instead."""
+    def check(g):
+        state = join_list_state(g)
+        row = briefing_focus_row(g)
+        # Its own step word: `[lobby] join:list <...>` would be read as a press line by lobby_report and by
+        # the tests' press_lines(), and this is a READ, not a press.
+        sh.log(f"[lobby] join:list-read -> {state} (row {row}, banner {briefing_banner_span(g)} px, "
+               f"first row median {lobby_row_median(g, 'games_list'):.0f})")
+        if state == "none":
+            raise lobby_no_games(sh, channel, 'the briefing room answered "There are no games to join."')
+        if state == "unpressed" and row is not None and row != "join_game":
+            raise lobby_fail(sh, CLASS_CURSOR_DRIFT,
+                             f"the briefing room cursor is on {row.replace('_', ' ').upper()}, not JOIN GAME: "
+                             "a re-sent CROSS would open that menu instead of the games list")
+        return state == "listed"
+    return check
+
+
 @staged("join")
-def join_game(sh, switch=True):
-    # join:list -- JOIN GAME activates the games list and highlights the host's game; "There are no games
-    # to join." (wtb3/wtb5's B, whose host never created the world) leaves the row dark, and the re-sends
-    # give the host up to 3 x 8 s more. join:enter -- launch1/1b's CROSS on the game left the list on
-    # screen (band distance 0.577) although Medius had answered the join (research/21 §6.1).
+def join_game(sh, switch=True, channel=None, refresh=True):
+    # join:refresh -- REFRESH LIST before anything else (R240). join:list -- JOIN GAME activates the games list
+    # and highlights the host's game; a list that is up but EMPTY is `RESULT NO-GAMES`, not a failure
+    # (join_list_check), and the re-sends now only fire for a press that did not register at all, giving a host
+    # who is still creating the world up to 3 x 8 s more. join:enter -- launch1/1b's CROSS on the game left the
+    # list on screen (band distance 0.577) although Medius had answered the join (research/21 §6.1).
+    if refresh:
+        refresh_games_list(sh)      # ends with the cursor READ back onto JOIN GAME, not assumed there
+    # --no-refresh is the pre-R240 path exactly: no REFRESH LIST, no menu read, CROSS where the cursor already is.
     press_verified(sh, "join:list", "cross", 8.0,
-                   lambda g: lobby_row_lit(g, "games_list"), "a game highlighted in the games list")
+                   join_list_check(sh, channel), "a game highlighted in the games list")
     sh.shot("12_games_list")
     press_verified(sh, "join:enter", "cross", 25.0,
                    lambda g: lobby_title_is(g, "game_lobby"), "the GAME LOBBY")
@@ -2078,6 +2358,12 @@ def main():
     # foreign-joiner host does in online_match_ours.
     ap.add_argument("--join", action="store_true", help="after the briefing room: JOIN GAME (verified), READY, hold, walk")
     ap.add_argument("--play", type=int, default=4, help="with --join: 3 s W bursts after the hold")
+    # Fix wave W8 (R240): the room is chosen on BRIEFING ROOMS, one screen before the briefing room itself.
+    # 1 is the old behaviour exactly (the list's first row, no press). See select_room for what 2+ costs.
+    ap.add_argument("--channel", type=int, default=1,
+                    help="which BRIEFING ROOMS entry to enter, 1-based (default 1: the first room)")
+    ap.add_argument("--no-refresh", dest="refresh", action="store_false",
+                    help="with --join: do NOT press REFRESH LIST before JOIN GAME (the pre-R240 path)")
     ap.add_argument("--instance", default="", help="A or B: window title, memory card dir and UDP ports of that instance")
     ap.add_argument("--then", default="", help="extra presses after the lobby, e.g. cross:3,type:test")
     # Sprint 10 Goal 9: the name and password reach the game as the launcher's ONLINE fields would (PS2X_SOCOM2_LOGIN_NAME
@@ -2101,11 +2387,11 @@ def main():
         boot_to_online(sh)
         login(sh, a.name, a.password, a.existing, a.prefilled)
         if a.host:
-            to_briefing_room(sh)
+            to_briefing_room(sh, a.channel)
             host_game(sh)
         elif a.join:
-            to_briefing_room(sh)
-            join_game(sh)
+            to_briefing_room(sh, a.channel)
+            join_game(sh, channel=a.channel, refresh=a.refresh)
             time.sleep(35)                                   # READY becomes available
             ready(sh)
             for i in range(a.hold // 10):

@@ -2,7 +2,7 @@
 # The audio parity check (Sprint 9 Q0, owner 2026-09-20: "an audio parity test with PCSX2 like our visual parity
 # test"). One target, one capture, one score file; then `compare` against the pinned console reference.
 #
-#   scripts/parity/audio_parity.sh capture <pcsx2|ours> <stamp> [script.txt]   # under the loop lock: a game run
+#   scripts/parity/audio_parity.sh capture <pcsx2|ours> <stamp> [script.txt] [drive_s] [record_s]   # under the lock
 #   scripts/parity/audio_parity.sh compare <stamp> [ref.json]                  # lock-free: PASS/FAIL per step window
 #
 # The capture records what Windows sends to the DEFAULT output endpoint (WASAPI loopback) while drive.py plays the
@@ -10,13 +10,32 @@
 # the visual gate's audio dump never could. Reference: scripts/parity/refs/audio_<script>.pcsx2.json, pinned from a
 # PCSX2 capture of the same script. Windows routes PCSX2 per app (KNOWN section 4): instance A's override silences
 # it at every endpoint, so for a pcsx2 capture this script removes that override for the run and restores it after.
+#
+# W7 (fix wave A, 2026-09-22): `drive_s` (the game's own run length, drive.py --seconds) and `record_s` (the
+# loopback recording) are arguments, defaulting to the 600 / 620 the launch_to_mission_xl reference was pinned
+# with -- a script that holds in the mission for ten minutes needs both longer, and every earlier invocation
+# (three arguments or fewer) behaves exactly as before. AUDIO_DUMP=<path> in the environment is exported to the
+# launched game as PS2X_AUDIO_DUMP, so a capture can have the mixer's own pre-device WAV beside the endpoint
+# recording (scripts/parity/mission_music_long.sh is the caller that sets it; unset, nothing is written).
 set -u
 ROOT=/c/projects/socom_pc; cd "$ROOT"
 cmd=${1:-}; shift || true
 case "$cmd" in
   capture)
     target=$1; stamp=$2; script=${3:-scripts/parity/launch_to_mission_xl.txt}
+    drive_s=${4:-600}; rec_s=${5:-$((drive_s + 20))}
     OUT="logs/parity/$stamp"; mkdir -p "$OUT"
+    # The mixer's own dump (W7): only when the caller asked for one, and only for our runtime -- PCSX2 has no
+    # such knob, so a pcsx2 capture is the endpoint recording alone whatever AUDIO_DUMP says.
+    if [ -n "${AUDIO_DUMP:-}" ] && [ "$target" != pcsx2 ]; then
+      export PS2X_AUDIO_DUMP="$AUDIO_DUMP"
+      # PS2X_AUDIO_DUMP is a Dev knob (R238 considered making it Shipping and did NOT -- the Shipping class
+      # is exactly what the launcher can send, and this has no config.json key). A Dev knob is honoured in any
+      # build, including a released one, but only in developer mode -- so without this the dump is silently
+      # ignored and the capture is an endpoint recording with nothing to align it to.
+      export PS2X_DEV=1
+      echo "PS2X_AUDIO_DUMP=$PS2X_AUDIO_DUMP PS2X_DEV=1" > "$OUT/audio_dump.txt"
+    fi
     restore=""
     if [ "$target" = pcsx2 ]; then
       restore="$OUT/pcsx2_override_backup.txt"
@@ -26,18 +45,19 @@ case "$cmd" in
     date +%s.%N > "$OUT/.capture_started"
     # 620 s, not 480: the drive runs 600 s and PCSX2 reaches the mission HUD at ~350 s, so a 480 s recording ended
     # 130 s into the console's mission and every later reference window scored digital silence (run 8, 2026-09-20).
-    python -m tools_py.parity.loopback_record "$OUT/endpoint.wav" 620 > "$OUT/loopback.log" 2>&1 &
+    # `record_s` keeps that margin by default (drive_s + 20).
+    python -m tools_py.parity.loopback_record "$OUT/endpoint.wav" "$rec_s" > "$OUT/loopback.log" 2>&1 &
     REC=$!
     sleep 1
     # The per-app session volume Windows remembers for the exe on this endpoint sits BEFORE the loopback tap: hold
     # the launched game at 1.0 / unmuted while it runs and log what it was (music round four, 2026-09-20).
     exe=socom2.exe; [ "$target" = pcsx2 ] && exe=pcsx2-qt.exe
-    PYTHONPATH="$ROOT" python -m tools_py.parity.app_volume hold "$exe" --seconds 600 > "$OUT/app_volume.log" 2>&1 &
+    PYTHONPATH="$ROOT" python -m tools_py.parity.app_volume hold "$exe" --seconds "$drive_s" > "$OUT/app_volume.log" 2>&1 &
     VOL=$!
     date +%s.%N > "$OUT/.drive_started"
     # --seconds is OUR game's run length (drive.py defaults to 400): launch_to_mission_xl runs past 400 s, and a game
     # killed at 400 s leaves the last eleven windows as digital silence that reads as a FAIL of the mix (s9_q1_parity_ours).
-    python -m tools_py.parity.drive --target "$target" --script "$script" --out "$OUT" --tail 10 --seconds 600 > "$OUT/drive.stdout" 2>&1
+    python -m tools_py.parity.drive --target "$target" --script "$script" --out "$OUT" --tail 10 --seconds "$drive_s" > "$OUT/drive.stdout" 2>&1
     rc=$?
     kill $VOL 2>/dev/null
     wait $REC
@@ -48,7 +68,7 @@ case "$cmd" in
     powershell -NoProfile -Command 'Get-Process pcsx2-qt -ErrorAction SilentlyContinue | Stop-Process -Force' >/dev/null 2>&1
     offset=$(python -c "print(round(float(open('$OUT/.drive_started').read())-float(open('$OUT/.capture_started').read()),2))")
     rate=$(python -c "import wave; print(wave.open('$OUT/endpoint.wav').getframerate())")
-    echo "target=$target script=$script drive_rc=$rc offset=${offset}s rate=$rate" > "$OUT/capture.txt"
+    echo "target=$target script=$script drive_rc=$rc offset=${offset}s rate=$rate drive_s=$drive_s record_s=$rec_s dump=${PS2X_AUDIO_DUMP:-none}" > "$OUT/capture.txt"
     PYTHONPATH="$ROOT" python -m tools_py.parity.audio_parity score "$OUT/endpoint.wav" "$rate" "$OUT/drive.stdout" "$offset" "$OUT/audio_scores.json" --target "$target" --script "$(basename "$script")" > "$OUT/scores.txt" 2>&1
     echo "scored -> $OUT/audio_scores.json ($(grep -c ':' "$OUT/scores.txt") windows)"; cat "$OUT/capture.txt"
     exit $rc ;;
