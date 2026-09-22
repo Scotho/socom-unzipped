@@ -22,6 +22,26 @@ every developer knob in any build, yours included -- so if something goes wrong 
 `PS2X_DEV=1 PS2X_MC_TRACE=1` or `PS2X_AUDIO_DUMP=logs/sound.wav` and the evidence will be there. The real hole was
 that a *failed* card command said nothing at all, at any setting.)
 
+**Your failed save is FIXED, at the root.** A driven run to the control-type prompt with an empty card printed
+`[mc] GetDir REFUSED path '..'` five times: the game enumerates a fresh card with `..`, our path normaliser refused
+any `..` that would climb past the root, and on a virgin card the current directory IS the root -- so we answered
+"permission denied" and the game read that as a card it could not use. Your second launch worked because by then the
+save folder existed. Fixed so a trailing `..` resolves to the root while `/../escape.bin` is still refused, and
+proven by the same run: the five refusals are gone. Gate 3/3, on `main` in PR #23.
+
+**And the stray online sound is NOT what I told you it was.** I said the one-shots correlated with the screens you
+heard it on. That correlation came from bucketing your log by LINE NUMBER, and log lines are not time -- it should
+never have been reported to you as a correlation. Measured properly (three captures, the play commands stamped with
+the mixer's own clock, one of them navigating the lobby while the song played, as you were), those one-shots sit at
+-0.2 dB against the music bed: inaudible. The bank is cleared.
+
+Where it actually points: every one of those captures is the mix AS RENDERED, and `docs/KNOWN.md` already holds the
+row where your mission music dropped out ~41 times a minute **at your JBL speaker** while the pre-device mix was
+clean. A ten-minute capture tonight, whose own log line reads `device Speakers (JBL Flip 6), period 20 ms x 4`,
+found **31 dips present at the endpoint and absent from the mixer's dump**. That is a lead, not a finding -- one run,
+one device -- and it settles by repeating the capture on a wired endpoint. If you have a wired headset or speaker,
+that A/B is worth ten minutes of your next sitting.
+
 **What still needs you, and none of it is urgent:**
 
 - **The prefilled login.** You asked for a persona saved on the card with remember-password checked, or the prefill
