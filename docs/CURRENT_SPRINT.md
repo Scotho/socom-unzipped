@@ -151,6 +151,26 @@ flake (KNOWN §4), which an agent is now fixing at its root (`agent/flake`).
 | **the ISO-to-ELF step (NEW, ranked FIRST -- the owner's standing priority)** | `agent/disc` | `./build.sh recomp` starts from the extracted disc tree and the decrypted overlays, which were produced once by hand on this machine and are **not** a documented runnable step -- so a stranger can build everything but the game. Three steps exist (`iso_lbn.py` / an ISO extractor, `decrypt_apache.py` under Unicorn, `make_overlay_elf.py`); the job is one script with a check at the end, tried on the owner's disc from a clean `game/`. CONTRIBUTING and DEVELOPING now say so plainly instead of promising it **DONE 2026-09-21 ~18:10 UTC, merged `6dfa2c4`** (the owner: "the priority is building a reusable and validated build chain for new dev"). One command `scripts/disc_to_elf.sh <iso>`, idempotent, verifying its own output, refusing a wrong-revision disc; tests on a synthetic ISO; then the bar -- from an empty `game/` in a scratch tree to `recomp: <n> files, unhandled=0` and a built exe. `bash scripts/disc_to_elf.sh <iso>` (also `python -m tools_py.disc_to_elf`): four stages -- a pure-Python ISO9660 extract, the DNAS self-decrypt, the loader's own decryption under Unicorn, the ELF merge -- each skipped when its output is already right, each refusing with a sentence and an exit code from the taxonomy (66 path, 67 not r0001 / wrong image, 68 bad ELF, 2 no Unicorn). 43 tests on a synthetic ISO with the emulators faked, so CI runs them all; suite 1712 OK. **The bar, from nothing:** an empty `game/` in a scratch tree, the owner's ISO read-only -> `disc_to_elf` 483 s (473 of them the emulated decryption) -> `./build.sh recomp` 273 s -> `./build.sh runtime` 983 s -> `dist/socom2.exe`. **29 minutes, and the six digests the owner recorded by hand on 2026-09-04 came out byte-identical** (`ftscore.bin`, `zsealetc.bin`, `socom2_game.elf` 4835072 bytes entry 0x180008), with the 349 extracted files matching the owner's own tree in name and size. A second run is 1 s of checks. CONTRIBUTING, DEVELOPING and the README now say the game build IS supported, with what is not proven named (any other dump; the chain on Linux). **Found on the way:** `bootstrap_windows.sh`'s extract-then-`mv` refused the rename in a second working tree and stopped a fresh clone at its first command -- rename removed, `67ff2e8`; and DEVELOPING's "the line that says it worked: `unhandled=0`" has been false for a long time (the main tree's own recomp log says 114,399, and the exe built from that code passes the gate) -- corrected. |
 | Next chunks, in order | -- | ~~Q2~~ Q3 on top of Q2's developer mode (an agent, after Q2's flip; the controller's full generated rebuild + three gates + a round), then Q3 on top of Q2's developer mode, Q4/Q5 launcher and voice, Goal 4 kill routes (controller, two instances, owner away), Goal 3's tasks 5 and 7, Q7 and Goal 6 as filler | queued |
 
+**The road to `v0.10.0` (written 2026-09-21 evening, the owner: "make sure that work and sprint 10 both make it on
+main").** Everything proven is already on `main` -- six slices, the policy is now `docs/GIT_STRATEGY.md` §2 "Slices"
+and step 5b of `docs/LOOP_PROMPT.md`, so it outlives this controller. What stands between here and the tag:
+
+| # | What | Whose | Cost |
+|---|---|---|---|
+| 1 | **The playthrough** and whatever it finds; each fix lands as its own slice | the owner tonight, then the loop | unknown until the notes come back |
+| 2 | **The ladder streak, 4 of 7** -- three more clean four-round runs against the hosted box | the loop, in away windows | ~35 min each, one at a time |
+| 3 | **Goal 4, per-map kill routes** for the sweep maps (the last big [A] item of this sprint) | the loop, away windows | hours of game runs |
+| 4 | **Goal 3's tasks 5 and 7** (the parked-opponent row; "seen by the other" read from the peer entity) | the loop | two mixed-match runs |
+| 5 | **H7's two decisions** (class A: the audio fixtures and the VU1 dumps; class C: the line on pictures of the game's art) | **the owner** | minutes to decide, then the loop does the work |
+| 6 | **Q2's Task 8 VM ring** (the Linux runtime rebuilt in the VM with the flip) -- R209 deferred it here | the loop | one VM session, the host quiet |
+| 7 | **Q8, the close** -- KNOWN audit, STATUS rewritten, the sprint's rulings reconciled into one list (R181-R235 is fifty-five), `PS2X_TEST_REPEAT=3 ./build.sh test`, a full gate on the close commit, the PR `sprint-10 -> main` as a merge commit, the annotated tag `v0.10.0` on it, `sprint-10` deleted, Sprint 11 opened | the loop | ~3 h of machine time |
+
+**What carries to Sprint 11 rather than holding the tag** (the controller's proposal; the owner can overturn any of
+it): the two-machine match (needs a friend, carried since Sprint 7); Q7's six gate-scored performance residuals, which
+are written up with their measurements and are filler by definition; the stub-state header, back on the filler list
+with its finding; Goal 12's site wording (the site session's). **What does NOT carry:** the ladder streak, because
+"it stays up" is this sprint's title and 4 of 7 does not prove it.
+
 **Rulings (R181-R183):**
 
 **R181 -- secret scanning, push protection and Dependabot alerts are ON, turned on by the controller under the owner's

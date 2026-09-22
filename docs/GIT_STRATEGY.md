@@ -32,6 +32,26 @@ The parts marked **NOW** are in force on `sprint-9`. The parts marked **AT S9 CL
 **NOW:** work goes to `sprint-10` (off `main` at `4415254`); push `origin sprint-10`; check CI (`gh run list --branch sprint-10 --limit 1`).
 Never force-push a shared branch. Never rewrite `main`.
 
+**Slices: a proven item reaches `main` the day it is proven, not at the sprint's end (2026-09-21, the owner's
+instruction "ensure main gets all of our hardening/security fixes and developer setup info as soon as possible ... the
+rest can be merged to main when tested and ready").** The sprint branch keeps moving; each proven item goes over on its
+own PR, so `main` is never more than one item behind and a stranger cloning it gets work that has passed its bar. The
+shape, six times over in Sprint 10:
+
+1. The item is done on `sprint-10` and has **paid its own bar** -- the suite, and the three-stage gate (plus a control
+   round where the item's row says so). Unproven work never goes.
+2. `git branch sliceN-to-main sprint-10 && git push origin sliceN-to-main` -- a FROZEN branch, because `sprint-10` will
+   have moved by the time the checks finish, and a PR whose head moves under it is a PR nobody reviewed.
+3. `gh pr create --base main --head sliceN-to-main`, title `Sprint N to main (k): <what>`, body = what the item is, the
+   stamps that prove it, and what is NOT proven.
+4. Wait for `build`, `build-windows` and `leakcheck` (the required checks; `main`'s ruleset admits nothing else), then
+   `gh pr merge --merge` (a merge commit: the per-item commits are what the rulings and KNOWN rows cite).
+5. `git merge origin/main` back into the sprint branch immediately, delete the slice branch. `main` and `sprint-N` are
+   identical again; the next item starts from a clean diff.
+
+**Never** let an implementation agent do this: it merges its own unreviewed work (it happened -- see `docs/HANDOFF.md`
+on handing out a worktree). The controller opens and merges every slice.
+
 **Merging a sprint (AT S9 CLOSE and after):** open a PR `sprint-N -> main`, title `Sprint N: <its name>`, body = the
 close-out block from `docs/CURRENT_SPRINT.md`; merge with a **merge commit** (not squash: the per-task commits are the
 record the rulings, KNOWN rows and the progress story cite by hash). Outside PRs to `main` are **squash-merged** (one
