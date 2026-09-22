@@ -20,6 +20,24 @@
    "archived": false,
    "kind": "file"
   },
+  "logs/host/host_007_29s.png": {
+   "source": "logs/host/host_007_29s.png",
+   "text": "<binary .png, 203332 bytes>",
+   "bytes": 203332,
+   "sha256": "6efaf99e79b3e7462e80a038fa12c3ce0f4a9b26aa4352fb268a31c452f9d86e",
+   "captured": "2026-09-22",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/host_cpu/host_001_6s.png": {
+   "source": "logs/host_cpu/host_001_6s.png",
+   "text": "<binary .png, 12980 bytes>",
+   "bytes": 12980,
+   "sha256": "2a213ba14676212a4b5449228107699176192d7334c379602c72de06251ce13d",
+   "captured": "2026-09-22",
+   "archived": false,
+   "kind": "file"
+  },
   "logs/launcher_server_picker.png": {
    "source": "logs/launcher_server_picker.png",
    "text": "<binary .png, 31938 bytes>",
@@ -28,6 +46,15 @@
    "captured": "2026-09-20",
    "archived": false,
    "kind": "file"
+  },
+  "logs/parity/blop_c": {
+   "source": "logs/parity/blop_c",
+   "text": "00_login.png\n01_universe.png\n02_persona.png\n03_name.png\n04_pw_kbd.png\n05_password.png\n06_connect_focus.png\n07_after_connect.png\n07_write_down.png\n08_eula.png\n09_lobby.png\n09_lobby_no_news.png\n... (67 entries)",
+   "bytes": 67,
+   "sha256": "c48bb71c83f113424e974ba3ad9868262e80e8f9452cacae544f9374e421230e",
+   "captured": "2026-09-22",
+   "archived": false,
+   "kind": "directory"
   },
   "logs/parity/gameplay_probe5_sheet.png": {
    "source": "logs/parity/gameplay_probe5_sheet.png",
@@ -46,6 +73,87 @@
    "captured": "2026-09-20",
    "archived": true,
    "kind": "file"
+  },
+  "logs/parity/gate/fixwave_a": {
+   "source": "logs/parity/gate/fixwave_a",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\npins.json\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\n... (15 entries)",
+   "bytes": 15,
+   "sha256": "e3c7826c304d4ee9cc31cbee93f309037c7a138b4cc1b104831110cc0dc0ae58",
+   "captured": "2026-09-22",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate/fixwave_b": {
+   "source": "logs/parity/gate/fixwave_b",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\npins.json\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\n... (15 entries)",
+   "bytes": 15,
+   "sha256": "e3c7826c304d4ee9cc31cbee93f309037c7a138b4cc1b104831110cc0dc0ae58",
+   "captured": "2026-09-22",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate/s10_g8_gate": {
+   "source": "logs/parity/gate/s10_g8_gate",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\npins.json\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\n... (15 entries)",
+   "bytes": 15,
+   "sha256": "e3c7826c304d4ee9cc31cbee93f309037c7a138b4cc1b104831110cc0dc0ae58",
+   "captured": "2026-09-22",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate/s10_h6_scrub_gate": {
+   "source": "logs/parity/gate/s10_h6_scrub_gate",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\ntransition.drive.log\n... (14 entries)",
+   "bytes": 14,
+   "sha256": "b118075f435dec44e6765fe80ab9796c1cdc0b623a90b16ed0335a8cd8dc3251",
+   "captured": "2026-09-22",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate/s10_playtest2_gate": {
+   "source": "logs/parity/gate/s10_playtest2_gate",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\npins.json\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\n... (15 entries)",
+   "bytes": 15,
+   "sha256": "e3c7826c304d4ee9cc31cbee93f309037c7a138b4cc1b104831110cc0dc0ae58",
+   "captured": "2026-09-22",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate/s10_q3_gate": {
+   "source": "logs/parity/gate/s10_q3_gate",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\npins.json\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\n... (15 entries)",
+   "bytes": 15,
+   "sha256": "e3c7826c304d4ee9cc31cbee93f309037c7a138b4cc1b104831110cc0dc0ae58",
+   "captured": "2026-09-22",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate/s10_q4_gate": {
+   "source": "logs/parity/gate/s10_q4_gate",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\npins.json\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\n... (15 entries)",
+   "bytes": 15,
+   "sha256": "e3c7826c304d4ee9cc31cbee93f309037c7a138b4cc1b104831110cc0dc0ae58",
+   "captured": "2026-09-22",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate/s10_q6_gate": {
+   "source": "logs/parity/gate/s10_q6_gate",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\npins.json\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\n... (15 entries)",
+   "bytes": 15,
+   "sha256": "e3c7826c304d4ee9cc31cbee93f309037c7a138b4cc1b104831110cc0dc0ae58",
+   "captured": "2026-09-22",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate/s10_q7b_gate": {
+   "source": "logs/parity/gate/s10_q7b_gate",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\npins.json\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\n... (15 entries)",
+   "bytes": 15,
+   "sha256": "e3c7826c304d4ee9cc31cbee93f309037c7a138b4cc1b104831110cc0dc0ae58",
+   "captured": "2026-09-22",
+   "archived": false,
+   "kind": "directory"
   },
   "logs/parity/gate/s3d_2x_host": {
    "source": "logs/parity/gate/s3d_2x_host",
@@ -182,6 +290,15 @@
    "archived": false,
    "kind": "directory"
   },
+  "logs/parity/gate/s9_g3_gating_gate": {
+   "source": "logs/parity/gate/s9_g3_gating_gate",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\npins.json\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\n... (15 entries)",
+   "bytes": 15,
+   "sha256": "e3c7826c304d4ee9cc31cbee93f309037c7a138b4cc1b104831110cc0dc0ae58",
+   "captured": "2026-09-22",
+   "archived": false,
+   "kind": "directory"
+  },
   "logs/parity/gate/s9_p1_gate": {
    "source": "logs/parity/gate/s9_p1_gate",
    "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\ntransition.drive.log\n... (14 entries)",
@@ -307,6 +424,15 @@
    "captured": "2026-09-20",
    "archived": false,
    "kind": "file"
+  },
+  "logs/parity/mission_music_ours_20260922_024457": {
+   "source": "logs/parity/mission_music_ours_20260922_024457",
+   "text": ".capture_started\n.drive_started\napp_volume.log\naudio_dump.txt\naudio_scores.json\ncapture.txt\ndips.txt\ndips_rescored.txt\ndrive.stdout\ndrive_script.txt\nendpoint.wav\nenvelope_endpoint.txt\n... (200 entries)",
+   "bytes": 200,
+   "sha256": "44df4b2eadcbc0fed2263585298edfaa1031759c95c7db8ecbffe23dab7fdaec",
+   "captured": "2026-09-22",
+   "archived": false,
+   "kind": "directory"
   },
   "logs/parity/mixed2_ours_hosts_g": {
    "source": "logs/parity/mixed2_ours_hosts_g",
@@ -434,6 +560,24 @@
    "archived": false,
    "kind": "directory"
   },
+  "logs/parity/runs/ours_a/s02_CROSS.png": {
+   "source": "logs/parity/runs/ours_a/s02_CROSS.png",
+   "text": "<binary .png, 127064 bytes>",
+   "bytes": 127064,
+   "sha256": "5cdbd1f3f3ac5163ad6cd74ee953da43cde1cbc25ac0fbe5b5b6b045d535200d",
+   "captured": "2026-09-22",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/s10_g8_control_frostfire": {
+   "source": "logs/parity/s10_g8_control_frostfire",
+   "text": "A_00_login.png\nA_01_universe.png\nA_02_persona.png\nA_03_name.png\nA_04_pw_kbd.png\nA_05_password.png\nA_06_connect_focus.png\nA_07_after_connect.png\nA_07_write_down.png\nA_08_eula.png\nA_09_lobby.png\nA_09_lobby_no_news.png\n... (50 entries)",
+   "bytes": 50,
+   "sha256": "2a24f1aa34d1d7745b004f3def62d85def20461a4c40cabed4d11e46dbbbb962",
+   "captured": "2026-09-22",
+   "archived": false,
+   "kind": "directory"
+  },
   "logs/parity/s5_t5_ladder2": {
    "source": "logs/parity/s5_t5_ladder2",
    "text": "A_00_login.png\nA_01_universe.png\nA_02_persona.png\nA_03_name.png\nA_04_pw_kbd.png\nA_05_password.png\nA_06_connect_focus.png\nA_07_after_connect.png\nA_07_write_down.png\nA_08_eula.png\nA_09_lobby.png\nA_09_lobby_no_news.png\n... (65 entries)",
@@ -539,6 +683,15 @@
    "bytes": 211,
    "sha256": "22e46f22e2044bb62be78c5427337ac7495f1e2c45c8dd5724818582cf3b7e30",
    "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/shots_live/host_010_113s.png": {
+   "source": "logs/shots_live/host_010_113s.png",
+   "text": "<binary .png, 112244 bytes>",
+   "bytes": 112244,
+   "sha256": "914a7ed42d4fe040516538f4908557f850c93024699837965563f77de7c3ff20",
+   "captured": "2026-09-22",
    "archived": false,
    "kind": "file"
   }

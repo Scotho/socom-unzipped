@@ -1,7 +1,7 @@
 {
  "schema": 1,
- "generated": "2026-09-21",
- "head": "0eef452",
+ "generated": "2026-09-22",
+ "head": "e6a924d",
  "about": "Machine-readable form of docs/STORY.md. Built by reading the document; the citation test asserts the two agree.",
  "entries": [
   {
@@ -122,8 +122,17 @@
     {
      "kind": "path",
      "ref": "docs/research/08-controller-and-dbcman.md"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/host_cpu/host_001_6s.png",
+     "path": "logs/host_cpu/host_001_6s.png"
     }
-   ]
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-05-the-card-prompt-upside-down.png",
+    "caption": "The oldest frame of the game this machine still holds: the evening of the 5th, six seconds after launch, the memory-card slot prompt drawn by the software rasterizer with its text upside down. Everything else is black because nothing else had been asked for yet."
+   }
   },
   {
    "id": "2026-09-05-the-main-menu-at-full-speed",
@@ -172,11 +181,16 @@
      "kind": "log",
      "ref": "logs/host/host_000_1s.png",
      "path": "logs/host/host_000_1s.png"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/host/host_007_29s.png",
+     "path": "logs/host/host_007_29s.png"
     }
    ],
    "picture": {
-    "path": "docs/story/img/2026-09-05-menu-with-no-captions.png",
-    "caption": "The title screen as the first parity run captured it two days later: the logo, and a menu with no captions, no roller and no movie behind it. Every menu screen looked like this until the 7th."
+    "path": "docs/story/img/2026-09-05-the-title-at-full-speed.png",
+    "caption": "The same evening, seven minutes after the software rasterizer's run, on the new OpenGL backend: the title, 29 seconds after launch, drawn at full speed. The bar along the bottom is the runtime's own debugger."
    }
   },
   {
@@ -247,8 +261,17 @@
      "kind": "log",
      "ref": "logs/parity/mission_merge/host_000_1s.png",
      "path": "logs/parity/mission_merge/host_000_1s.png"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/shots_live/host_010_113s.png",
+     "path": "logs/shots_live/host_010_113s.png"
     }
-   ]
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-07-flat-grey-and-a-night-sky.png",
+    "caption": "The first mission, the afternoon of the 7th, 113 seconds after launch: flat grey ground, a wall of fog, and a night sky drawn as white specks. No textures, no HUD, and the camera is not going anywhere."
+   }
   },
   {
    "id": "2026-09-07-the-console-becomes-the-marking-scheme",
@@ -353,8 +376,17 @@
     {
      "kind": "path",
      "ref": "docs/STATUS.md"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/runs/ours_a/s02_CROSS.png",
+     "path": "logs/parity/runs/ours_a/s02_CROSS.png"
     }
-   ]
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-05-menu-with-no-captions.png",
+    "caption": "The main menu as the first parity run captured it that afternoon, hours before the movie fix landed: the logo, and a menu with no captions, no roller and no movie behind it. The 81.0 was scored on a screen like this one."
+   }
   },
   {
    "id": "2026-09-07-two-clients-one-server-one-match",
@@ -1646,7 +1678,7 @@
    "id": "2026-09-18-the-launcher-learns-your-pad",
    "date": "2026-09-18",
    "title": "The launcher learns your pad",
-   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "The front door stopped assuming everyone owns the same controller.",
    "citations": [
     {
@@ -1736,7 +1768,7 @@
    "id": "2026-09-18-the-sound-reports-run-to-ground",
    "date": "2026-09-18",
    "title": "The sound reports run to ground",
-   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "The owner said the sound stopped halfway through a mission. It had.",
    "citations": [
     {
@@ -1766,7 +1798,7 @@
    "id": "2026-09-18-the-game-runs-on-linux",
    "date": "2026-09-18",
    "title": "The game runs on Linux",
-   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "The owner asked for Linux in the morning, offered a spare VM, and by evening the game was drawing frames on Ubuntu.",
    "citations": [
     {
@@ -1812,7 +1844,7 @@
    "id": "2026-09-19-the-menus-stop-dropping-frames",
    "date": "2026-09-19",
    "title": "The menus stop dropping frames",
-   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "The planned fix was thrown out by the measurement that was supposed to justify it.",
    "citations": [
     {
@@ -1853,7 +1885,7 @@
    "id": "2026-09-19-it-can-save-and-it-can-hear-you",
    "date": "2026-09-19",
    "title": "It can save, and it can hear you",
-   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "Two things every finished game has, and this one didn't.",
    "citations": [
     {
@@ -1909,7 +1941,7 @@
    "id": "2026-09-19-the-launcher-gets-a-face",
    "date": "2026-09-19",
    "title": "The launcher gets a face",
-   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "Until now the front door was a box with some checkboxes in it.",
    "citations": [
     {
@@ -1962,7 +1994,7 @@
    "id": "2026-09-19-a-server-of-its-own-on-the-internet",
    "date": "2026-09-19",
    "title": "A server of its own, on the internet",
-   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "Every online round the project had ever played was against a server on the same desk.",
    "citations": [
     {
@@ -2027,7 +2059,7 @@
    "id": "2026-09-19-it-says-why-it-won-t-start-and-it-weighs-less",
    "date": "2026-09-19",
    "title": "It says why it won't start, and it weighs less",
-   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "A new sprint with one narrow question: what happens to somebody who has never seen this before.",
    "citations": [
     {
@@ -2083,7 +2115,7 @@
    "id": "2026-09-19-a-way-to-report-what-went-wrong",
    "date": "2026-09-19",
    "title": "A way to report what went wrong",
-   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "The only place in the whole program where a player can talk back.",
    "citations": [
     {
@@ -2131,7 +2163,7 @@
    "id": "2026-09-19-the-things-the-owner-actually-noticed",
    "date": "2026-09-19",
    "title": "The things the owner actually noticed",
-   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "Not one of these came out of a test. They came out of somebody trying to play.",
    "citations": [
     {
@@ -2192,7 +2224,7 @@
    "id": "2026-09-20-the-first-build-made-for-a-person-to-play",
    "date": "2026-09-20",
    "title": "The first build made for a person to play",
-   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "Building it found two bugs that would have shipped. Playing it found the one the whole sprint was for.",
    "citations": [
     {
@@ -2250,7 +2282,7 @@
    "id": "2026-09-20-the-music-chased-to-the-speaker",
    "date": "2026-09-20",
    "title": "The music, chased to the speaker",
-   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "Every audio measurement the project had ever made ran on a wired endpoint. The owner listens on a Bluetooth speaker.",
    "citations": [
     {
@@ -2287,7 +2319,7 @@
    "id": "2026-09-20-an-audio-parity-test-and-the-sound-that-was-never-there",
    "date": "2026-09-20",
    "title": "An audio parity test, and the sound that was never there",
-   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "The owner asked for an audio version of the picture test. It found something no ear had named.",
    "citations": [
     {
@@ -2330,7 +2362,7 @@
    "id": "2026-09-20-version-0-9-0-and-a-robot-that-plays-every-night",
    "date": "2026-09-20",
    "title": "Version 0.9.0, and a robot that plays every night",
-   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "Sprint 9 merged to main and got a tag. Then a scheduled job started playing rounds against the hosted server on its own.",
    "citations": [
     {
@@ -2369,7 +2401,7 @@
    "id": "2026-09-20-a-console-and-a-pc-in-the-same-match",
    "date": "2026-09-20",
    "title": "A console and a PC in the same match",
-   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "A PlayStation 2 client and our program, in one game, on the hosted server, both ways round.",
    "citations": [
     {
@@ -2425,10 +2457,335 @@
    }
   },
   {
+   "id": "2026-09-21-anyone-can-read-it-now-and-build-it",
+   "date": "2026-09-21",
+   "title": "Anyone can read it now, and build it",
+   "era": "2026-09-21 .. 2026-09-22 - Public, and played",
+   "hook": "The repository went public on the evening of the 20th. The next day went on making that safe, and then on proving a stranger could actually use it.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "3c06c5d",
+     "sha": "3c06c5d805c6ce58af8f4d5bcaca7392281c9db8",
+     "date": "2026-09-20",
+     "subject": "feat(release): the leak gate in four places -- Sprint 10 reorganized around hardening the now-public repository"
+    },
+    {
+     "kind": "commit",
+     "ref": "00b0ce3",
+     "sha": "00b0ce3404020b3af9d2523684975937848178fd",
+     "date": "2026-09-20",
+     "subject": "feat(build): a fresh clone builds on Windows (H3), the suite stops littering the tree (H4), the licence inventory with its test (H5), and the release folder passes the leak check before it is archived (H6)"
+    },
+    {
+     "kind": "commit",
+     "ref": "92b92c6",
+     "sha": "92b92c6ddfe57060a65fb24b8a69bac0e8e743c3",
+     "date": "2026-09-21",
+     "subject": "merge: Sprint 10 hardening to main -- the leak gate, CI, rulesets, a fresh Windows clone that builds, the licence inventory (PR #6, frozen at b82fd22)"
+    },
+    {
+     "kind": "commit",
+     "ref": "110c286",
+     "sha": "110c2864c9fe80ed5cd52c6bab13a777ec775ae7",
+     "date": "2026-09-21",
+     "subject": "ci(release): the release-draft workflow (H8) -- a v* tag makes a DRAFT with the checklist, a manual run verifies the attached archives, nothing publishes"
+    },
+    {
+     "kind": "commit",
+     "ref": "eb94301",
+     "sha": "eb94301be6c2fed528ea759ccb835ef1c2b3fa2c",
+     "date": "2026-09-21",
+     "subject": "docs(audit): H7 -- disc-derived bytes in the public tree, five classes and fourteen rows sized; nothing moved, the two decisions are the owner's"
+    },
+    {
+     "kind": "commit",
+     "ref": "065bdcc",
+     "sha": "065bdcc977a54ea0bfdc0e9b74282d5c3c0d8964",
+     "date": "2026-09-21",
+     "subject": "docs: the newcomer path run from a real clone -- 42 minutes to the game, and three stale counts corrected"
+    },
+    {
+     "kind": "gate",
+     "ref": "s10_h6_scrub_gate",
+     "path": "logs/parity/gate/s10_h6_scrub_gate"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/GIT_STRATEGY.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-21-from-your-disc-to-a-build-in-one-command",
+   "date": "2026-09-21",
+   "title": "From your disc to a build, in one command",
+   "era": "2026-09-21 .. 2026-09-22 - Public, and played",
+   "hook": "The one step of the build a newcomer could not do had been run once, by hand, at the start of the project.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "41eb046",
+     "sha": "41eb046295e202875be4c625e0bbe4a5a6d2c786",
+     "date": "2026-09-21",
+     "subject": "feat(disc): one command from a stranger's ISO to the files ./build.sh recomp needs"
+    },
+    {
+     "kind": "commit",
+     "ref": "6dfa2c4",
+     "sha": "6dfa2c4d616bbe21629032f13370bf051dda8f91",
+     "date": "2026-09-21",
+     "subject": "merge: agent/disc -- the new-developer build chain closed: scripts/disc_to_elf.sh takes a stranger's ISO to the buildable ELF in one idempotent, self-verifying command (43 tests; proven from an empty game/ to dist/socom2.exe in 29 minutes, the owner's six recorded digests verified byte-identical)"
+    },
+    {
+     "kind": "commit",
+     "ref": "67ff2e8",
+     "sha": "67ff2e8d1d188bd5b5fe07fe697b25aaf57df273",
+     "date": "2026-09-21",
+     "subject": "fix(bootstrap): no rename -- extract each toolchain straight into tools/<name> and stamp last; the extract-then-mv stopped a fresh clone at its first command"
+    },
+    {
+     "kind": "commit",
+     "ref": "403f593",
+     "sha": "403f5936c457ca4632b885f15ee6d922614e00c4",
+     "date": "2026-09-21",
+     "subject": "test(bootstrap): the first command a stranger types finally has a test, and a guard on the rename that broke it"
+    },
+    {
+     "kind": "commit",
+     "ref": "7e7e1f0",
+     "sha": "7e7e1f052b8329fc74bbf5f7a96a7a9f9cacf0d1",
+     "date": "2026-09-21",
+     "subject": "docs: the game build IS supported now -- one command from your own disc, proven from nothing"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/DEVELOPING.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-21-eleven-jobs-eleven-worktrees-one-gate-each",
+   "date": "2026-09-21",
+   "title": "Eleven jobs, eleven worktrees, one gate each",
+   "era": "2026-09-21 .. 2026-09-22 - Public, and played",
+   "hook": "The most commits in a day so far, 150, and most of them written by agents that never touched the main tree.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "691685d",
+     "sha": "691685d7b352f599807c6465d18e757a409a9dfa",
+     "date": "2026-09-21",
+     "subject": "feat(gate): the gate states what it measured -- PIN lines and pins.json beside the EXE line, a committed standard (scripts/parity/pins.json), and a refusal to score (exit 7) when a pinned input drifted (Sprint 10 Q1b)"
+    },
+    {
+     "kind": "commit",
+     "ref": "2342d60",
+     "sha": "2342d608737106e7d31dfa969b05612c557568f2",
+     "date": "2026-09-21",
+     "subject": "fix(gs): a latched stall no longer grows the command queue on its state stream -- past the cap the uploads, transfers, CLUT loads and VRAM writes are absorbed and the replay is re-anchored from the game VRAM when the latch clears (Sprint 10 Q6)"
+    },
+    {
+     "kind": "commit",
+     "ref": "c303f74",
+     "sha": "c303f7425e84b037a22f678dedc4258b4fd5d40a",
+     "date": "2026-09-21",
+     "subject": "fix(tests): the simulated Clock runs its threads in lockstep -- time moves only when every thread on it waits, so the shooter is never starved of its turn (Sprint 10, the CI flake in KNOWN §4)"
+    },
+    {
+     "kind": "commit",
+     "ref": "99a059c",
+     "sha": "99a059c2ff779dfe815c95624078db54448df8d7",
+     "date": "2026-09-21",
+     "subject": "test(gs): the console-replay case runs -- its fixture regenerated by script from the surviving PCSX2 capture, and the frame scored against the console's own picture (Sprint 10 Q7 item 1)"
+    },
+    {
+     "kind": "commit",
+     "ref": "955539c",
+     "sha": "955539c15696ba6920c6eb48f9864fdef9f63396",
+     "date": "2026-09-21",
+     "subject": "revert(runtime): the stub-state header stays per-TU -- moving Support.h's definitions into one unit SHARES the CD, IOP-heap and streaming state that nineteen stub translation units each held privately, and the mission stage latched the renderer 200 s in"
+    },
+    {
+     "kind": "commit",
+     "ref": "1bfc047",
+     "sha": "1bfc0473e6b18bcb514961333cb57a2d12c2374d",
+     "date": "2026-09-21",
+     "subject": "docs: the delegation finding -- an agent pushed to main three times against its brief, and how the next worktree is handed out (a dead push refspec, not a sentence)"
+    },
+    {
+     "kind": "gate",
+     "ref": "s10_q6_gate",
+     "path": "logs/parity/gate/s10_q6_gate"
+    },
+    {
+     "kind": "gate",
+     "ref": "s10_q7b_gate",
+     "path": "logs/parity/gate/s10_q7b_gate"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-21-a-stranger-s-environment-can-t-change-the-game",
+   "date": "2026-09-21",
+   "title": "A stranger's environment can't change the game",
+   "era": "2026-09-21 .. 2026-09-22 - Public, and played",
+   "hook": "About 150 environment variables could change how the game ran, and nothing said which ones a player was meant to touch.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "d76ec8d",
+     "sha": "d76ec8de13bf944c3fd45e578ccc3182536f6c14",
+     "date": "2026-09-21",
+     "subject": "feat(shared): the knob registry -- 145 PS2X_* names classified in one table that is ps2x::knob's lookup; enforcement off, so nothing changes yet (Sprint 9 Goal 3 Task 1, Sprint 10 Q2)"
+    },
+    {
+     "kind": "commit",
+     "ref": "1f94bae",
+     "sha": "1f94baeaebd9257465557813fc33f372fa000998",
+     "date": "2026-09-21",
+     "subject": "feat(tools): docs/KNOBS.md generated from knobs.h, and the test that fails on a knob without a row, a row without a read, a raw getenv outside the pending list, a helper reading a handed name, and a read before main (Sprint 9 Goal 3 Task 2)"
+    },
+    {
+     "kind": "commit",
+     "ref": "869356e",
+     "sha": "869356e10db1a7b3f47ea81dbeb26f8662138051",
+     "date": "2026-09-21",
+     "subject": "feat(runtime,launcher): a stranger's environment cannot change the game -- Dev knobs need --dev or PS2X_DEV, eight 'X=0 switches it on' traps become flags, the pad is on by default, the launcher stops handing inherited PS2X_* to the game, versions.txt carries the [knobs] line, the password never does (Sprint 9 Goal 3 Task 7 Steps 1-6, R208)"
+    },
+    {
+     "kind": "commit",
+     "ref": "2b49124",
+     "sha": "2b4912439ce4d7789a1c33be6f04f67fad63de5c",
+     "date": "2026-09-21",
+     "subject": "fix(launcher): the scrub redacts PS2X_SOCOM2_LOGIN_PASS at any length -- the flip found the knobs line carrying the password in clear, and a five-character password slipped under the general rule's six-character floor (test first)"
+    },
+    {
+     "kind": "commit",
+     "ref": "954154a",
+     "sha": "954154acc103064d2133211ca997639f2366a37b",
+     "date": "2026-09-21",
+     "subject": "docs: Q2 / Goal 3 closed -- 151 knobs classified (20 shipping, the rest developer-mode), one accessor, docs/KNOBS.md generated and held to the source, a stranger's environment proven inert (the poisoned launch), gates s9_g3_batches_gate and s9_g3_gating_gate 3/3, the Foxhunt round; DEVELOPING and HANDOFF say the rule; KNOWN's proven row; R209"
+    },
+    {
+     "kind": "commit",
+     "ref": "8ff45e7",
+     "sha": "8ff45e7ce217483a0edd05d1e9dd8fdabae0862c",
+     "date": "2026-09-21",
+     "subject": "feat(input): the mouse leaves and the keyboard is narrowed to menus and typing -- its gameplay half only in developer mode, the harness's path (Sprint 10 Q3, R210)"
+    },
+    {
+     "kind": "gate",
+     "ref": "s9_g3_gating_gate",
+     "path": "logs/parity/gate/s9_g3_gating_gate"
+    },
+    {
+     "kind": "gate",
+     "ref": "s10_q3_gate",
+     "path": "logs/parity/gate/s10_q3_gate"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/KNOBS.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-21-press-a-button-to-bind-it-and-the-game-remembers-who-you-are",
+   "date": "2026-09-21",
+   "title": "Press a button to bind it, and the game remembers who you are",
+   "era": "2026-09-21 .. 2026-09-22 - Public, and played",
+   "hook": "The pad's buttons were two tables compiled into the program. Now they're a setting, and the launcher lets you change it with the pad alone.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "3d7dd22",
+     "sha": "3d7dd222410994ecf86b5fe414adb21ef7bed015",
+     "date": "2026-09-21",
+     "subject": "feat(input): Q3b, the mapping data path (R174) -- the two compile-time button tables become one table resolved from configuration, per profile, with today's values as the defaults, byte for byte; the runtime walks it as data and prints its hash"
+    },
+    {
+     "kind": "commit",
+     "ref": "384dd0d",
+     "sha": "384dd0d4a5c10cfa5933c4d29751dfb7ec7f1926",
+     "date": "2026-09-21",
+     "subject": "feat(launcher): Goal 8, the controller mapping UI (R174, part 2) -- the CONTROLLER page's BUTTONS section: press-the-button-to-bind with a countdown and cancel, the binding drawn on the pad, the pad's own names for its buttons, conflicts that swap, replace or cancel, a restore that asks, the crouch row beside the bindings, all of it with the pad alone"
+    },
+    {
+     "kind": "commit",
+     "ref": "0acf90b",
+     "sha": "0acf90b5c4ad4bce4acb1cb3a8b72c537dd03577",
+     "date": "2026-09-21",
+     "subject": "feat(launcher): the window switch -- the guide button swaps launcher and game, measured per platform, bindable in BUTTONS (Sprint 10 Q4a)"
+    },
+    {
+     "kind": "commit",
+     "ref": "283130c",
+     "sha": "283130cb1a1d4e6a8b9d9d9123a88e9b507f7903",
+     "date": "2026-09-21",
+     "subject": "feat(window): the game window wears the launcher's name, icon and palette; the harness's title key moves with it (Sprint 10 Q4b)"
+    },
+    {
+     "kind": "commit",
+     "ref": "0162d71",
+     "sha": "0162d7115afd4fb6779188d58c36ad667ef33e55",
+     "date": "2026-09-21",
+     "subject": "feat(launcher): menu sounds from the game's HUDUI bank, decoded from the player's own ISO on first run and cached, never shipped (Sprint 10 Q4c)"
+    },
+    {
+     "kind": "commit",
+     "ref": "103122a",
+     "sha": "103122a40c0365f8dd53949ed4d19b439706fa79",
+     "date": "2026-09-21",
+     "subject": "feat(runtime): the on-screen keyboard opens holding the launcher's persona name and password -- a runtime wrap of the GetTextInput handler, no recompile (Sprint 10 Goal 9 Task 2, R180)"
+    },
+    {
+     "kind": "commit",
+     "ref": "2bc56ec",
+     "sha": "2bc56ecd8e4cad8fca88821ca529576066b60d5c",
+     "date": "2026-09-21",
+     "subject": "fix(osk): the prefill wrap is installed on the thunk the UI action table calls (0x2808d0) as well as on the handler -- the recompiled thunk calls FUN_0038d770 directly, so a wrap at the handler alone was never entered"
+    },
+    {
+     "kind": "commit",
+     "ref": "f47cfe0",
+     "sha": "f47cfe0de9566a08a32d19644c3e7be62310c7b3",
+     "date": "2026-09-21",
+     "subject": "fix(osk): the prefill buffer is written before the open and never after -- the original handler unwinds through a scheduler checkpoint before the game reads it, so the post-call blank emptied every keyboard"
+    },
+    {
+     "kind": "commit",
+     "ref": "d99dad1",
+     "sha": "d99dad12eb529fcb2dfd10a3d9148600cec5786a",
+     "date": "2026-09-21",
+     "subject": "docs(ladder): run 4 by hand -- KILL 4/4 on the hosted server (ladder_20260921_041614, the Goal 8 exe be9b19df): streak 4 of 7"
+    },
+    {
+     "kind": "gate",
+     "ref": "s10_g8_gate",
+     "path": "logs/parity/gate/s10_g8_gate"
+    },
+    {
+     "kind": "gate",
+     "ref": "s10_q4_gate",
+     "path": "logs/parity/gate/s10_q4_gate"
+    },
+    {
+     "kind": "run",
+     "ref": "s10_g8_control_frostfire",
+     "path": "logs/parity/s10_g8_control_frostfire"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/LADDER.md"
+    }
+   ]
+  },
+  {
    "id": "2026-09-21-one-round-on-film",
    "date": "2026-09-21",
    "title": "One round, on film",
-   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
+   "era": "2026-09-21 .. 2026-09-22 - Public, and played",
    "hook": "The first kill was on the 13th and came as two stills. This one you can watch.",
    "citations": [
     {
@@ -2447,6 +2804,99 @@
     "path": "docs/story/img/2026-09-21-online-kill.mp4",
     "caption": "Round's end, both screens: SOCOM-B on the left has just died, SOCOM-A on the right did it, and the same killfeed line sits on each. Press play for the whole round; the shot is at 3:41."
    }
+  },
+  {
+   "id": "2026-09-22-the-owner-plays-it-and-the-save-fails-the-first-time",
+   "date": "2026-09-22",
+   "title": "The owner plays it, and the save fails the first time",
+   "era": "2026-09-21 .. 2026-09-22 - Public, and played",
+   "hook": "A new build for one sitting, and the notes that came back were the useful kind: small, specific, and none of them from a test.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "ffebba2",
+     "sha": "ffebba2d3067d9ed57b5b019427bf7b1a495296e",
+     "date": "2026-09-21",
+     "subject": "docs(playtest): tonight's archive -- built from acbc693, gate s10_playtest2_gate 3/3 on the exe inside the zip, the release leak check clean; the script's ready block, what is new since playtest-1, and a step 0 that folds in today's checks"
+    },
+    {
+     "kind": "commit",
+     "ref": "46a6594",
+     "sha": "46a6594d8e194828d30c930aecd920a4c52b6315",
+     "date": "2026-09-22",
+     "subject": "fix wave A (W1-W3, R236-R238): the pad regression, the field accept-set, and a card failure that is never silent"
+    },
+    {
+     "kind": "commit",
+     "ref": "152579a",
+     "sha": "152579aaf534afb278c7031a7daa2e96925f2b9e",
+     "date": "2026-09-22",
+     "subject": "finding 3, root cause and fix: the game asks a virgin card for '..' and we answered \"card refused\""
+    },
+    {
+     "kind": "gate",
+     "ref": "s10_playtest2_gate",
+     "path": "logs/parity/gate/s10_playtest2_gate"
+    },
+    {
+     "kind": "gate",
+     "ref": "fixwave_a",
+     "path": "logs/parity/gate/fixwave_a"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/superpowers/plans/2026-09-22-fix-wave-playthrough.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-22-hold-a-button-to-remap-it-and-a-sound-that-was-never-there",
+   "date": "2026-09-22",
+   "title": "Hold a button to remap it, and a sound that was never there",
+   "era": "2026-09-21 .. 2026-09-22 - Public, and played",
+   "hook": "The rest of the owner's notes, and one of the project's own claims that didn't survive being measured.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "668c7f5",
+     "sha": "668c7f538720ea084672158314f1edea031a4df7",
+     "date": "2026-09-22",
+     "subject": "fix wave A (W9, W5): hold a button to remap it, a better pad, and the bank cleared of the online blop"
+    },
+    {
+     "kind": "commit",
+     "ref": "00d8348",
+     "sha": "00d8348fa2c3e70c6d1865c0084ed95069420503",
+     "date": "2026-09-22",
+     "subject": "fix wave A (W7, W8, R240): an empty games list is not a join failure, and a fast path to in-mission music"
+    },
+    {
+     "kind": "commit",
+     "ref": "0b1250b",
+     "sha": "0b1250b4f30c1e7ce405ec5296d13b8ed4b030a9",
+     "date": "2026-09-22",
+     "subject": "fix wave A (W7): the instrument is proven, the drive that feeds it is not -- and the endpoint is dropping audio again"
+    },
+    {
+     "kind": "gate",
+     "ref": "fixwave_b",
+     "path": "logs/parity/gate/fixwave_b"
+    },
+    {
+     "kind": "run",
+     "ref": "blop_c",
+     "path": "logs/parity/blop_c"
+    },
+    {
+     "kind": "run",
+     "ref": "mission_music_ours_20260922_024457",
+     "path": "logs/parity/mission_music_ours_20260922_024457"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/KNOWN.md"
+    }
+   ]
   }
  ]
 }

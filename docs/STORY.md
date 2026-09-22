@@ -62,11 +62,13 @@ The protection layer encrypts 131 of its own code blocks; running the cipher off
 
 A full diagnosis of the render path said every layer below the game was fine. The game just wasn't asking for anything to be drawn, because it was waiting for a controller. Fake one and it wedges somewhere else. The real cause took a hardware watchpoint: the game asks Sony's device-bus manager how many bytes arrived, our stub never answered, and the game read back an uninitialised number and copied that many bytes over its own heap. Five of those calls per boot; the third overran into the texture registry. Answer all five and the intro plays: 2,445 frames, no faults.
 
+![The oldest frame of the game this machine still holds: the evening of the 5th, six seconds after launch, the memory-card slot prompt drawn by the software rasterizer with its text upside down. Everything else is black because nothing else had been asked for yet.](docs/story/img/2026-09-05-the-card-prompt-upside-down.png)
+
 *How:* the smashed registry turned code words into pointers, which faulted, which the runtime silently retried forever. A hang with no error.
 
 *But:* the controller was a fiction with neutral input; real keyboard input came later the same day. And "every layer below the game is correct" didn't survive the afternoon: three real delivery bugs turned up in that path a few hours later.
 
-`Cited:` `594b887` libpad2 (scePad2) HLE — report one connected DualShock2, neutral input · `cc27753` answer every libdbc RPC — unanswered ReceiveData smashed the heap · docs/research/07-render-pipeline-diagnosis.md · docs/research/08-controller-and-dbcman.md
+`Cited:` `594b887` libpad2 (scePad2) HLE — report one connected DualShock2, neutral input · `cc27753` answer every libdbc RPC — unanswered ReceiveData smashed the heap · docs/research/07-render-pipeline-diagnosis.md · docs/research/08-controller-and-dbcman.md · logs/host_cpu/host_001_6s.png
 
 ### 2026-09-05 - The main menu, at full speed
 
@@ -74,13 +76,13 @@ A full diagnosis of the render path said every layer below the game was fine. Th
 
 SOCOM II ships its shell's constants through one particular kind of transfer tag, and the chain walker treated that kind differently from every other. The camera's eye vector never arrived, the backface test rejected every menu triangle, nothing was submitted. Fixed, the shell drew at 13 to 17 fps, a software rasterizer doing a swizzled read and a palette lookup for every one of a million textured pixels. An OpenGL 3.3 backend that records draw commands on the game thread and replays them on the graphics thread took the same screen to 55-60. Then the game walked its real first-boot sequence for the first time: memory card prompt, loading warning, "no SOCOM data found", Sony logo, intro, main menu.
 
-![The title screen as the first parity run captured it two days later: the logo, and a menu with no captions, no roller and no movie behind it. Every menu screen looked like this until the 7th.](docs/story/img/2026-09-05-menu-with-no-captions.png)
+![The same evening, seven minutes after the software rasterizer's run, on the new OpenGL backend: the title, 29 seconds after launch, drawn at full speed. The bar along the bottom is the runtime's own debugger.](docs/story/img/2026-09-05-the-title-at-full-speed.png)
 
 *How:* the last black screen of the day wasn't a rendering bug at all. The menu frame's alpha is zero and the present was blending the finished picture to black.
 
 *But:* no button captions, no 3D roller, a black rectangle where the background movie belongs. The 60 is the menu's number; there was no mission to measure yet.
 
-`Cited:` `5152946` TTE-gated DMAtag upper-half transfer — shell UI renders · `409d0c3` OpenGL 3.3 GPU backend — menu renders at full speed · `31b559e` host keyboard/mouse/scripted DualShock2; main menu reached · `73c9a49` recompile the two uncovered trampolines; present the GS frame opaque · docs/superpowers/plans/2026-09-05-gpu-gs-backend.md · docs/STATUS.md · logs/host/host_000_1s.png
+`Cited:` `5152946` TTE-gated DMAtag upper-half transfer — shell UI renders · `409d0c3` OpenGL 3.3 GPU backend — menu renders at full speed · `31b559e` host keyboard/mouse/scripted DualShock2; main menu reached · `73c9a49` recompile the two uncovered trampolines; present the GS frame opaque · docs/superpowers/plans/2026-09-05-gpu-gs-backend.md · docs/STATUS.md · logs/host/host_000_1s.png · logs/host/host_007_29s.png
 
 ### 2026-09-07 - The first frames of a mission
 
@@ -88,11 +90,13 @@ SOCOM II ships its shell's constants through one particular kind of transfer tag
 
 First the mission had to load at all: four fixes the day before, all the same kind of bug: the recompiler and the runtime disagreeing with the original code about where a function starts and ends. 136 real functions sat in gaps the map never listed, and calling into one did nothing. With those in, the Albania briefing handed off to a running level that drew nothing. The reason: a background thread wakes every vertical blank and reads about 176 pixels back off the frame buffer to judge scene brightness. That readback path didn't exist, so every read spun to a sixteen-million-iteration timeout, a third of a second each, and starved the game to one tick a minute. Swap the readback for a fixed mid-grey and the mission runs at twenty ticks a second: flat world polygons and a night sky.
 
+![The first mission, the afternoon of the 7th, 113 seconds after launch: flat grey ground, a wall of fog, and a night sky drawn as white specks. No textures, no HUD, and the camera is not going anywhere.](docs/story/img/2026-09-07-flat-grey-and-a-night-sky.png)
+
 *How:* nothing was broken in the renderer; a spin loop with a very large bound was the whole defect.
 
 *But:* flat grey, no textures, no HUD, a camera that doesn't move. And the mid-grey stub was a defect in waiting: the exposure thread reading a constant grey asked for no brightening, which is half of why every gameplay frame was 1.73x too dark until 2026-09-16.
 
-`Cited:` `ec4b9fb` do not mistake a scheduler unwind for a return · `feb92ab` run INTC/DMAC handlers, alarms and the GS vsync callback on a dedicated invocation stack · `2b06f50` recompile the 136 function bodies Ghidra left in gaps · `eebd64a` split the six merged Ghidra ranges whose second function is called by pointer · `7bb89d4` the Albania mission loads and runs · docs/STATUS.md · `d3cea62` stub the auto-exposure thread's GS readback — the mission now ticks every frame and draws · `545b85a` (2026-09-16) the auto-exposure readback answered from GS memory instead of a grey pixel · docs/research/31-flat-grey-geometry.md · logs/parity/mission_merge/host_000_1s.png
+`Cited:` `ec4b9fb` do not mistake a scheduler unwind for a return · `feb92ab` run INTC/DMAC handlers, alarms and the GS vsync callback on a dedicated invocation stack · `2b06f50` recompile the 136 function bodies Ghidra left in gaps · `eebd64a` split the six merged Ghidra ranges whose second function is called by pointer · `7bb89d4` the Albania mission loads and runs · docs/STATUS.md · `d3cea62` stub the auto-exposure thread's GS readback — the mission now ticks every frame and draws · `545b85a` (2026-09-16) the auto-exposure readback answered from GS memory instead of a grey pixel · docs/research/31-flat-grey-geometry.md · logs/parity/mission_merge/host_000_1s.png · logs/shots_live/host_010_113s.png
 
 ### 2026-09-07 - The console becomes the marking scheme
 
@@ -114,11 +118,13 @@ A harness captures a window without stealing focus, posts the same button presse
 
 The stand-in for the PS2's movie library never cleared its work buffer when a player was created. The game read the first word of that buffer to ask whether the movie had finished, found leftover bytes spelling UIMe from an unrelated file, and concluded it had already ended. The real function clears the buffer. With that one line, plus the game's feed callback run on the calling thread instead of parking the only thread that could feed the decoder, the Sony logo, the intro and the looping menu background all play. The main menu's score went from 81.0 to 98.8.
 
+![The main menu as the first parity run captured it that afternoon, hours before the movie fix landed: the logo, and a menu with no captions, no roller and no movie behind it. The 81.0 was scored on a screen like this one.](docs/story/img/2026-09-05-menu-with-no-captions.png)
+
 *How:* the movie player's finished flag was read out of a work buffer that was never cleared on creation; clearing it, like the real library does, is the whole fix.
 
 *But:* 98.8 is one screen against one reference capture, and the report it was measured in is gone from disk; the number survives in the research note and the log.
 
-`Cited:` `ad503c8` play SOCOM II movies through the sceMpeg HLE (menu background, intros) · `9305c72` Merge feat/menu-movie · docs/research/09-menu-movie-ipu.md · docs/STATUS.md
+`Cited:` `ad503c8` play SOCOM II movies through the sceMpeg HLE (menu background, intros) · `9305c72` Merge feat/menu-movie · docs/research/09-menu-movie-ipu.md · docs/STATUS.md · logs/parity/runs/ours_a/s02_CROSS.png
 
 ### 2026-09-07 - Two clients, one server, one match
 
@@ -412,7 +418,7 @@ The launcher is a small window that owns the settings file. It reads the disc im
 
 `Cited:` `770d5fb` SOCOM Unzipped launcher, first cut · `2a8f8e4` scripts/make_portable.sh -- the portable folder · `docs/STATUS.md` · `logs/parity/gate/s6_launcher_gate/summary.txt` · `logs/launcher_server_picker.png` · `docs/research/assets/launcher-first-cut.png` · `09b793a` the 2026-09-17 audit and code review · `fae7d0e` the audit's fix wave · `32aec0b` Sprint 7 opened -- two strangers, two machines, one hosted server · `a843385` the stranger's machine, defensively · `39cd17f` equal-priority guest threads are never time-sliced · `docs/AUDIT-2026-09-17.md` · `logs/parity/gate/s6_fixwave_gate/summary.txt` · `logs/parity/gate/s7_gl_gate/summary.txt` · `logs/parity/gate/s7_gl_gate2/summary.txt`
 
-## 2026-09-18 .. 2026-09-21 - Linux, a server, a stranger
+## 2026-09-18 .. 2026-09-20 - Linux, a server, a stranger
 
 *A player with their own disc can unzip a 56 MB download, start the game on Windows or Linux, save to a memory card, report a bug from inside it, and play online against a server the project hosts in Ohio. As of tonight, against a console player in the same lobby too. Only the owner's PC has done any of it.*
 
@@ -606,6 +612,69 @@ The console side is the reference emulator running the retail disc, driven by th
 
 `Cited:` `93677a5` the mixed match's leg 1 on the verified flow · `136c635` leg 1 reached · `25690ad` leg 2 reached · `984a342` Sprint 10 Goal 3's bar met · run mixed2_ours_hosts_g · run mixed2_pcsx2_hosts_g · tools_py/parity/pcsx2_shell.py · docs/superpowers/plans/2026-09-20-sprint-10-goal-3-mixed-match.md
 
+## 2026-09-21 .. 2026-09-22 - Public, and played
+
+*The code is public, and a stranger can build it from their own disc in under an hour. The owner played a build end to end and the fixes came out of what they hit. Still: nobody outside this house has played, and the music at the speaker is the open question.*
+
+### 2026-09-21 - Anyone can read it now, and build it
+
+**The repository went public on the evening of the 20th. The next day went on making that safe, and then on proving a stranger could actually use it.**
+
+A leak check now stands at four doors: before a commit, before a push, on the build service over the whole history, and on the release folder before it's archived. It rehearses on 28 planted secret shapes before every scan, and a scanner that didn't run is never a pass. A second, independent scanner reads the same history. Then a fresh clone was made to build on Windows from nothing: a pinned toolchain download of 245 MB, a build in about four minutes on a bare rented runner, the suite green. A licence inventory with a test that fails on any dependency without a row. A release workflow that makes a draft on a tag and never publishes. And the newcomer's path was run for real, from a clone of the public address into an empty folder, every command one the documentation tells a stranger to type: 42 minutes from the clone to the game on screen, about 15 GB of disk.
+
+*How:* tools_py/release/leakcheck.py has six modes and three exit states; gitleaks 8.30.1 pinned by sha256 is the second opinion; scripts/bootstrap_windows.sh pins llvm-mingw, CMake and Ninja by hash.
+
+*But:* a stranger can build the game, not download and play it. That's the owner's order: harden the build first, no easy player setup until then. And an audit of disc-derived bytes in the public tree found five classes of them, sized and listed; whether any of it moves is the owner's decision, not made yet.
+
+`Cited:` `3c06c5d` (2026-09-20) the leak gate in four places -- Sprint 10 reorganized around hardening the now-public repository · `00b0ce3` (2026-09-20) a fresh clone builds on Windows (H3), the suite stops littering the tree (H4), the licence inventory with its test (H5) · `92b92c6` Sprint 10 hardening to main · `110c286` the release-draft workflow (H8) · `eb94301` H7 -- disc-derived bytes in the public tree, five classes and fourteen rows sized · `065bdcc` the newcomer path run from a real clone -- 42 minutes to the game · gate s10_h6_scrub_gate · docs/GIT_STRATEGY.md
+
+### 2026-09-21 - From your disc to a build, in one command
+
+**The one step of the build a newcomer could not do had been run once, by hand, at the start of the project.**
+
+Everything the recompiler needs comes out of the player's own disc: the loader, the encrypted archive, the two code overlays inside it. That path had been walked by hand on the 4th and promised in the contributing guide ever since. Now it's one script: point it at an ISO and it pulls the files, decrypts them, checks every digest against the six the owner recorded the first time, and stops cleanly if any differ. Running it for real, from an empty game folder to a built executable, took 29 minutes and matched the owner's digests byte for byte. Running the whole newcomer path after it found a bug the maintainer's machine could never see: the toolchain bootstrap extracted into one folder and renamed it, and on a fresh clone the rename failed at the very first command a stranger types. Fixed, and the first command finally has a test.
+
+*How:* scripts/disc_to_elf.sh is idempotent and self-verifying, 43 tests; the two decryption scripts became callable so one command could drive them.
+
+*But:* the recompile still reports 114,399 untranslatable instructions, the same number as on the 4th. It's garbage that never runs, and it's still there.
+
+`Cited:` `41eb046` one command from a stranger's ISO to the files ./build.sh recomp needs · `6dfa2c4` merge: agent/disc -- the new-developer build chain closed · `67ff2e8` no rename -- extract each toolchain straight into tools/<name> · `403f593` the first command a stranger types finally has a test · `7e7e1f0` the game build IS supported now -- one command from your own disc, proven from nothing · docs/DEVELOPING.md
+
+### 2026-09-21 - Eleven jobs, eleven worktrees, one gate each
+
+**The most commits in a day so far, 150, and most of them written by agents that never touched the main tree.**
+
+Each job got its own copy of the repository, a bounded brief and a stop rule. The controller merged what came back, rebuilt, and ran the three-stage picture gate before calling anything done. What landed: the gate now records every input it scored against and refuses to score at all if one has drifted. A render stall that used to eat the machine, 1.45 GB of queued commands over 600 frames, is bounded at 67 MB. A test that had been failing on the build service one run in two was fixed at its root, a simulated clock that starved one thread of its turn: 50 failures in 100 runs before, 0 in 300 after. And a console-replay test that had never actually run, runs. Two regressions got through the suite and were caught only by the gate. One was a tidy-up that moved some shared state into one file and quietly made nineteen stubs share a single disc-streaming cursor; the mission never loaded, and the change was reverted whole. The other finding was about the agents, not the code: one pushed to the main branch three times against its brief. The fix is not a stronger sentence in the brief. The next worktree is handed out with no address to push to.
+
+*How:* each chunk ran in its own git worktree on a branch; a merge, ./build.sh runtime and python -m tools_py.parity.gate in the main tree paid for it.
+
+*But:* the suite was green on both sides of the state revert, 764 of 764. Only the gate saw it. And removing the worktrees deleted the toolchain through their folder links, twice, before the order of operations was written down.
+
+`Cited:` `691685d` the gate states what it measured -- PIN lines and pins.json beside the EXE line · `2342d60` a latched stall no longer grows the command queue on its state stream · `c303f74` the simulated Clock runs its threads in lockstep · `99a059c` the console-replay case runs · `955539c` the stub-state header stays per-TU · `1bfc047` the delegation finding -- an agent pushed to main three times against its brief · gate s10_q6_gate · gate s10_q7b_gate
+
+### 2026-09-21 - A stranger's environment can't change the game
+
+**About 150 environment variables could change how the game ran, and nothing said which ones a player was meant to touch.**
+
+Every one of them is now a row in one table with a class: 18 that a player's launcher can send, the rest for developers only. One accessor reads them all, a generated page lists them, and a test fails on a name without a row, a row without a read, or a read that goes around the accessor. Developer settings need developer mode; outside it they read as unset, and the start-up line names what it ignored. Eight settings that switched something on when set to zero became plain flags. The launcher stopped passing on whatever it inherited. Proven by poisoning a launch with every setting at something hostile and watching the gate pass anyway. Found on the way: the start-up line was writing the login password in clear, and a five-letter password slipped under the scrubber's six-letter floor. Same day, the mouse left the launcher and the game entirely, and the keyboard was narrowed to menus and typing for a player. The full gameplay mapping survives in developer mode only, because the harness plays the game through it.
+
+*How:* ps2x::knob is the one read path; --dev or PS2X_DEV=1 is developer mode; the [knobs] line in every log says what was honoured and what was ignored.
+
+*But:* the mouse block that was deleted had never had a test. The count moved three times in a day, 145, 149, 151, as the registry found reads the inventory had missed.
+
+`Cited:` `d76ec8d` the knob registry -- 145 PS2X_* names classified in one table · `1f94bae` docs/KNOBS.md generated from knobs.h · `869356e` a stranger's environment cannot change the game -- Dev knobs need --dev or PS2X_DEV · `2b49124` the scrub redacts PS2X_SOCOM2_LOGIN_PASS at any length · `954154a` Q2 / Goal 3 closed -- 151 knobs classified · `8ff45e7` the mouse leaves and the keyboard is narrowed to menus and typing · gate s9_g3_gating_gate · gate s10_q3_gate · docs/KNOBS.md
+
+### 2026-09-21 - Press a button to bind it, and the game remembers who you are
+
+**The pad's buttons were two tables compiled into the program. Now they're a setting, and the launcher lets you change it with the pad alone.**
+
+On the CONTROLLER page every button of the game has a cell. Press it and the launcher listens for five seconds; the next pad button you let go of becomes the binding, and the drawn pad lights up to show it. Bind a button that's already taken and it asks: swap, replace, or cancel. Restore defaults asks first, and the default answer is no. The game logs a hash of the mapping it was given and the gate pins it. Then the rest of the launcher: the guide button swaps between launcher and game; the game window wears the launcher's name, icon and colours; and the menus click with the game's own sounds, decoded from the player's disc on the first run and cached, never shipped. And the login: the launcher's player name and password now appear in the game's own on-screen keyboard, ready to confirm. That took two findings to work at all. The game's menu calls the keyboard through a tiny forwarding routine the first wrap never intercepted; and once it did, the text vanished, because the wrap's clean-up ran when the game's scheduler unwound the call, before the keyboard had read it. Three logins with nothing typed, and the ladder streak reached four of the seven clean runs the bar wants.
+
+*How:* the mapping is one table resolved from config.json per profile, with today's values as the defaults byte for byte; the four menu cues are the disc's HUDUI bank rendered through the runtime's own mixer.
+
+*But:* the remapping page is proven by tests and screenshots; the owner's hands haven't touched it. The menu sounds were rendered and measured, not heard. And the hold-to-remap gesture the owner would ask for was a day away.
+
+`Cited:` `3d7dd22` Q3b, the mapping data path (R174) · `384dd0d` Goal 8, the controller mapping UI (R174, part 2) · `0acf90b` the window switch -- the guide button swaps launcher and game · `283130c` the game window wears the launcher's name, icon and palette · `0162d71` menu sounds from the game's HUDUI bank, decoded from the player's own ISO on first run and cached, never shipped · `103122a` the on-screen keyboard opens holding the launcher's persona name and password · `2bc56ec` the prefill wrap is installed on the thunk the UI action table calls · `f47cfe0` the prefill buffer is written before the open and never after · `d99dad1` run 4 by hand -- KILL 4/4 on the hosted server · gate s10_g8_gate · gate s10_q4_gate · run s10_g8_control_frostfire · docs/LADDER.md
 
 ### 2026-09-21 - One round, on film
 
@@ -619,21 +688,47 @@ Two of our clients on one desk, both on that night's build, both in the same rou
 
 `Cited:` `0eef452` run 2 by hand -- KILL 4/4 on the hosted server · docs/LADDER.md
 
+### 2026-09-22 - The owner plays it, and the save fails the first time
+
+**A new build for one sitting, and the notes that came back were the useful kind: small, specific, and none of them from a test.**
+
+The archive was built the night before, gated on the exact executable inside it and checked for leaks. The owner played it end to end and reported as they went. The pad stopped working in the launcher after a click into a text field, because the only ways out of a field were keyboard keys. A space typed into the player name was shown in the field, saved to disk, and silently dropped before the game got it, so the login failed with nothing on screen to say why. The launcher's default window went back to the game's own 640 by 448. And the one that mattered: on a fresh install the first save failed, and the second launch worked. The build the owner played recorded nothing about it, because a failed memory-card command said nothing at any setting. Fixed first: any failure prints one line, in every build, no setting needed. That line found the bug the same night. The game lists a brand-new card by asking for its parent folder, "..", and our path checker refused that as an attempt to climb out of the card. The game read "permission denied" as a card it couldn't use. On the second launch the save folder existed, the path resolved, and it worked.
+
+*How:* a trailing ".." now resolves to the card's root, which is its own parent; a ".." followed by anything is still refused, so "/../escape.bin" never names a file.
+
+*But:* the first cut of the diagnostics ruling was wrong. It reclassed two developer settings as shipping ones, believing developer settings are compiled out of a player's build. They aren't, and the suite refused the change. Fixing the actual hole, silence on failure, is what found the save bug.
+
+`Cited:` `ffebba2` (2026-09-21) tonight's archive -- built from acbc693, gate s10_playtest2_gate 3/3 on the exe inside the zip · `46a6594` fix wave A (W1-W3, R236-R238): the pad regression, the field accept-set, and a card failure that is never silent · `152579a` finding 3, root cause and fix: the game asks a virgin card for '..' and we answered "card refused" · gate s10_playtest2_gate · gate fixwave_a · docs/superpowers/plans/2026-09-22-fix-wave-playthrough.md
+
+### 2026-09-22 - Hold a button to remap it, and a sound that was never there
+
+**The rest of the owner's notes, and one of the project's own claims that didn't survive being measured.**
+
+The owner asked for a second way to remap: hold any pad button on the CONTROLLER page and the same bind flow opens for it, with hints that walk you through it, a meter that fills as you hold, and a gold ring closing in on the control. Five buttons can't be held, for reasons the code states: the two that move around the page, and three whose press is already spent on tabs and launch. The pad drawing got redone while it was open. The join driver learned that an empty games list is a result of its own and not a failure, after it had pressed JOIN GAME four times into "There are no games to join" trying to reach the owner's lobby. Then the "blop" the owner hears on the online screens. The project's notes had charged it to one sound bank on the strength of a correlation, and the correlation had been drawn by bucketing the owner's log by line number. Log lines are not time. Measured on one clock, with the play commands stamped on the mixer's own frame counter, the bank's one-shots sit 0.2 dB against the music bed. Inaudible. Cleared. What the same instrument did find: over ten minutes on the owner's Bluetooth speaker, 31 dropouts at the speaker that the mixer's own output doesn't contain.
+
+*How:* the new drive script skips the cinematics and reaches gameplay on the existing boot chain minus about 50 seconds of dead wait; audio_dips classifies each dip as DEVICE, STARVATION or COMMAND against the log.
+
+*But:* a lead, not a finding: one run, one device. It settles on a wired speaker, and that run hasn't happened. The join driver's refresh press has no visible mark, and nobody has joined a real lobby with it. And a driven hold captures almost no music, because standing still at the start of a mission plays only short voice cues; the capture that matches what the owner heard needs the drive to walk.
+
+`Cited:` `668c7f5` fix wave A (W9, W5): hold a button to remap it, a better pad, and the bank cleared of the online blop · `00d8348` fix wave A (W7, W8, R240): an empty games list is not a join failure · `0b1250b` fix wave A (W7): the instrument is proven, the drive that feeds it is not -- and the endpoint is dropping audio again · gate fixwave_b · run blop_c · run mission_music_ours_20260922_024457 · docs/KNOWN.md
+
 ---
 
-## Where it stands tonight, 2026-09-20
+## Where it stands tonight, 2026-09-22
 
 *Not an entry and no `Cited:` line. This is the view from the end of the record on the night it ends, and it gets
 replaced by real entries as things land.*
 
-The tree is at `73beea6`, 840 commits, on `sprint-10`, with two tags: `playtest-1` and `v0.9.0`. Sprint 9 is merged. Sprint 10
-is open and already has its headline: a console client and our program in one match, both ways round, on the hosted
-server. The scheduled ladder has one clean run of the seven it needs.
+The tree is at `e6a924d`, 1,028 commits, on `sprint-10`, with two tags: `playtest-1` and `v0.9.0`. The repository is
+public. Sprint 10's autonomous work is on `main`, slice by slice, the last two slices from the owner's playthrough. The
+scheduled ladder has four clean runs of the seven it needs. Sprint 11 has a spec: the r0004 update the community
+server requires, costed against the tree, waiting on a package only my memory card can supply.
 
-The open question is still the one I found on the first evening: the music. The device buffer, the pan, the silent
-voice lines and the missing ambience bed are fixed and measured. The still-playing answer that lets stems chain on the
-console is fixed and being verified. The bed is still 7-12 dB quieter than the console's and the logo movies are quiet
-at the source. My ear decides when it's done, and the last verdict was "better, not done".
+The open question is still the music, and it has moved from the mixer to the speaker. Every fix so far was measured on
+the mix as rendered. The one instrument that listens at the speaker heard 31 dropouts in ten minutes on my Bluetooth
+speaker that the mix doesn't contain. One run on a wired speaker decides whether that's the cable or us. Behind it, two
+decisions: whether the login the launcher prefills can go now that the save works on a fresh card, and how far a driven
+walk into the first mission should go before a death counts as "the music stopped".
 
 No stranger has played yet. No two humans have played each other. Those are the two sentences this page most wants to
 lose.
