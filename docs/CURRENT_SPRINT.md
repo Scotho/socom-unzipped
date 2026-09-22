@@ -260,7 +260,14 @@ overturn it** -- one line in `leakrules.py` per rule.
    `docs/superpowers/plans/2026-09-20-sprint-10-goal-9-online-credentials.md`. [A] except the owner's login.
    **Lock-bound** at tasks 2 and 6 (a recompile, a runtime rebuild, two driven logins); tasks 1, 3, 4, 5, 7 are not.
 10. Wishlist, unscheduled, **[B: the owner's r0004 package and PSRewired's answer]**: the community server. Nothing
-   connects to a server that is not ours until the owner reports that answer.
+   connects to a server that is not ours until the owner reports that answer. **Written up for Sprint 11 on
+   2026-09-21** (spec `docs/superpowers/specs/2026-09-21-sprint-11-r0004-and-the-community-server-design.md`,
+   superseding Sprint 8 Goal 10): the cost of a second recompilation is now *measured* rather than estimated (~80
+   overlay addresses move; 645 of 656 stub bindings are in the loader, which r0004 does not touch), and the one part
+   that is **not** blocked -- bounding the chat receive path the PSRewired admin reported -- is split out as its own
+   goal. Also in the spec: what the three r0004 HDD maps would need, speculatively, with the finding that the whole
+   HDD install path (`ATAD/HDD/PFS.IRX` on the disc, `hdd0:`/`pfs0:`, the fileXio client **in the loader**) already
+   exists in r0001 and can be exercised today.
 
 ### Sprint 11 -- "Release hardening: a public repository a stranger can trust" (drafted; spec `docs/superpowers/specs/2026-09-20-sprint-11-release-hardening-design.md`)
 
@@ -276,6 +283,8 @@ a secret of each class (a gate that has never failed is not known to work). It r
 third set, and it does NOT replace D1 -- a clean history says no secret is in it, not that the owner wants it public. **Early items, already
 landed on `sprint-9` because they cost nothing and shape every commit after them:** `docs/GIT_STRATEGY.md`,
 `CONTRIBUTING.md`, `SECURITY.md`, `.github/` issue and PR templates, `CODEOWNERS`.
+
+**A second Sprint 11 spec, drafted 2026-09-21: `docs/superpowers/specs/2026-09-21-sprint-11-r0004-and-the-community-server-design.md`** -- r0004 and the community server, superseding Sprint 8 Goal 10. Goals A-D are autonomous and provable with no r0004 package (the chat receive path bounded; a revision-parameterised pipeline that must reproduce r0001 byte-identically; the per-revision address table and its fingerprint matcher at 100% on identity and on a synthetic relocation; the launcher's revision option). Goals E-G are blocked on the owner's memory card, on PSRewired, and on one unknown about where the HDD maps' data comes from. Owner decisions D1-D4 are at the end of that spec. It is a separate item from release hardening and does not change Goals 0-9 above.
 
 **Goal 6 built early, 2026-09-20, by session socom-pc-10, out of band and lock-free:** the design `docs/superpowers/specs/2026-09-19-sprint-11-goal-6-progress-story-design.md`, the first draft of `docs/STORY.md` (52 entries, 2026-09-02 to `playtest-1`, every one cited), `docs/story/timeline.json` and `docs/story/witnesses.json`, and the citation test `tools_py/story/cite.py` (34 tests, in the suite) that fails on a dead hash, a fragment that does not match its commit's subject, an unwitnessed run, or a retracted phrase stated as current. Not done: the release entry, the pictures, the site page, and the D1 citation reconciliation -- all four are §1 of the spec and stay Sprint 11's.
 
