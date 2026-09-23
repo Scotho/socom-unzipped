@@ -32,7 +32,7 @@ Then, for the same pass (spec §1, the four things the later pass must add):
    .git/filter-repo/commit-map` first, then `python -m tools_py.story.cite` must be clean; if the public repository is a
    fresh import, follow spec §4.4 decision 4 and put the one-sentence header note in `STORY.md`'s preface.
 3. **The site page** — the hosted-server session takes a fresh copy of `docs/STORY.md`, `docs/story/timeline.json` and
-   `docs/story/img/` at deploy (spec §6.2); `docs/story/site/index.html` is the reference rendering.
+   `docs/story/img/` at deploy (spec §6.2); `docs/story/index.html` is the reference rendering.
 4. **The preface** — "The ending is open" comes out; the two-clocks note stays.
 
 Witness the new run citation with `python -m tools_py.story.witness --captured {{YYYY-MM-DD}}` before running the check.

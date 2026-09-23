@@ -179,7 +179,7 @@ Per tick, when the state byte `*DAT_0045b718 == 3`:
 |---|---|
 | `third_party/ps2recomp/ps2xRuntime/include/runtime/mic_format.h` (new), `third_party/ps2recomp/ps2xRuntime/include/runtime/host_mic.h` (:5-7 the retracted assumption, :70-92 `HostMic`, :100-102 the env entry points), `third_party/ps2recomp/ps2xRuntime/src/lib/host_mic.cpp` (:160-235 the dump thread, :238-258 `startHostMicFromEnvironment`), `third_party/ps2recomp/ps2xIOP/include/ps2x/iop/iop_host.h` (:69-99, beside the audio seams), `third_party/ps2recomp/ps2xRuntime/src/lib/ps2_iop_host.h` (:47-52), `third_party/ps2recomp/ps2xRuntime/src/lib/ps2_iop_host.cpp` (:265-288), `third_party/ps2recomp/ps2xTest/src/socom2_audio_tests.cpp` (:1228-1245 the `MicRing` case, :1405-1430 the WAV header cases), `scripts/parity/refs/make_voice_ref.py` (new) | **Task 1**: `IopHost::micAvailable()` / `micRead()`, the pure format header, `PS2X_MIC_FAKE`, `PS2X_MIC_GAMEREAD_DUMP`, and the dump thread turned into a tee |
 | `third_party/ps2recomp/ps2xIOP/src/modules/lgaud.cpp` (rewritten), `third_party/ps2recomp/ps2xIOP/src/builtin_profiles.cpp` (:121, read only), `third_party/ps2recomp/ps2xTest/src/socom2_lgaud_tests.cpp` (new), `third_party/ps2recomp/ps2xTest/CMakeLists.txt` (:65, the source list), `logs/s8_voice_read.sh` (new) | **Task 2**: the service state machine against the block above — Enumerate / EnumHint / Open / StartRecording / Available / Read / Mixer / Close — and one single-instance launch that proves the game reaches 0x08 |
-| `third_party/ps2recomp/ps2xLauncher/src/launcher_config.cpp` (:345, read only), `third_party/ps2recomp/ps2xTest/src/launcher_tests.cpp` (:344-347, the two existing mic cases), `docs/research/35-voice-path.md` (new) | **Task 3**: the launcher wiring check, and the push-to-talk answer out of `:211140-211175` |
+| `third_party/ps2recomp/ps2xLauncher/src/launcher_config.cpp` (:345, read only), `third_party/ps2recomp/ps2xTest/src/launcher_tests.cpp` (:344-347, the two existing mic cases), `docs/research/35-voice-path.md` (new) | **Task 3**: the launcher wiring check, and the push-to-talk answer out of `:211140-211175` | <!-- docmaint: future -->
 | `tools_py/parity/audio_corr.py` (:47 `read_wav`, :159 `correlate_arrays`, :304-330 the argument parser), `tools_py/parity/online_login_ours.py` (:57-66 `INSTANCES`), `tools_py/tests/test_audio_corr.py` (new), `logs/s8_voice_round.sh` (new), `logs/parity/s8_voice_round/` | **Task 4**: the driven two-instance round and the three dumps; `--ref-wav`; the >= 0.95 bar and the packets leaving A |
 | `third_party/ps2recomp/ps2xIOP/src/modules/lgaud.cpp` (the playback half), `third_party/ps2recomp/ps2xIOP/include/ps2x/iop/iop_host.h` (`micPlaybackWrite`), `third_party/ps2recomp/ps2xRuntime/src/lib/ps2_audio.cpp`, `third_party/ps2recomp/ps2xTest/src/socom2_lgaud_tests.cpp` | **Task 5**: the other player heard through the PC's speakers — Write PCM into the 989snd mixer as an extra source |
 | `docs/KNOWN.md` (:101), `docs/STATUS.md`, `docs/CURRENT_SPRINT.md` (:151-154), `docs/HUMAN_TASKS.md` (:93-110), this plan | **Task 6**: Goal 3 close-out |
@@ -484,7 +484,7 @@ git push
 ```
   The message's first clause is the retraction; the trailer is `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
 
-**STOP RULE (from the brief).** If the argument structs for Read (0x08) and Available (0x12) cannot be recovered with confidence — they *are* recovered above, with file:line for every field, so this fires only if the reviewer's independent re-derivation in Task 2 Step 1 **disagrees** — stop after this task, file the listing of what the game asked for in `docs/KNOWN.md` and `docs/research/35-voice-path.md`, and do not write a state machine against a guess.
+**STOP RULE (from the brief).** If the argument structs for Read (0x08) and Available (0x12) cannot be recovered with confidence — they *are* recovered above, with file:line for every field, so this fires only if the reviewer's independent re-derivation in Task 2 Step 1 **disagrees** — stop after this task, file the listing of what the game asked for in `docs/KNOWN.md` and `docs/research/35-voice-path.md`, and do not write a state machine against a guess. <!-- docmaint: future -->
 
 ---
 
@@ -776,7 +776,7 @@ git push
 ## Task 3 — The launcher's wiring, and the push-to-talk question (spec Goal 3; brief: "does the game gate voice on a pad button? find it")
 
 **Files:**
-- Create: `docs/research/35-voice-path.md`
+- Create: `docs/research/35-voice-path.md` <!-- docmaint: future -->
 - Modify: `third_party/ps2recomp/ps2xTest/src/launcher_tests.cpp` (one added case)
 - Read only: `third_party/ps2recomp/ps2xLauncher/src/launcher_config.cpp:345`, `third_party/ps2recomp/ps2xLauncher/include/launcher/launcher_config.h:44`, `game/analysis/socom2_game.elf.decomp.c:211100-211200`, `game/analysis/socom2_game.elf.strings.txt:707-731`
 - Test: `launcher_tests.cpp`
@@ -801,7 +801,7 @@ grep -n "0045b718" game/analysis/socom2_game.elf.decomp.c | head -40
 ```
   The three possible answers, and what each means for us: (a) **open mic** — `bVar4` is a level/VAD test on the buffer the loop just scaled at `:211149-211159`, and nothing else is needed; (b) **push-to-talk on a pad button** — the gate reads the pad, and the driven round in Task 4 must hold that button, which changes `logs/pad_A.txt` (`tools_py/parity/online_login_ours.py:58`); (c) **a lobby/team state** — the gate is a channel or team check, and the round must reach that state. The `VOICE MODULATION: ON/OFF` and `UIVOICE` strings (`socom2_game.elf.strings.txt:707-708,610`) say there is at least a menu option in the area; find which variable they write.
 
-- [ ] **Step 3: write `docs/research/35-voice-path.md`.** Sections: (1) the RPC block and the per-function table from this plan, with the file:line for each field and the ESTABLISHED/ASSUMED verdict carried over verbatim; (2) the capture loop, its 0x500/58 ms cadence and its AGC; (3) the answer to Step 2 with its evidence, or the exact listing of what was read and why it is still open; (4) **what is on the wire**, which is the honest negative below; (5) the three dumps and how to reproduce them. This is the document Task 4 cites and Task 6's KNOWN row points at.
+- [ ] **Step 3: write `docs/research/35-voice-path.md`.** Sections: (1) the RPC block and the per-function table from this plan, with the file:line for each field and the ESTABLISHED/ASSUMED verdict carried over verbatim; (2) the capture loop, its 0x500/58 ms cadence and its AGC; (3) the answer to Step 2 with its evidence, or the exact listing of what was read and why it is still open; (4) **what is on the wire**, which is the honest negative below; (5) the three dumps and how to reproduce them. This is the document Task 4 cites and Task 6's KNOWN row points at. <!-- docmaint: future -->
 
 - [ ] **Step 4: state the wire question and its experiment, because no document answers it.** Searched: `grep -rn -i "voice|headset|mic" docs/research/*.md`. What exists:
   - `docs/research/05-code-package-and-harness.md:15` — the network stack inside ZSealEtc includes SCE-RT DME client 1.32.0070, `rt_udp 01.02.0048`, **`rt_audio` (voice)**, `rt_crypt`, Medius Client Library 1.50.0013. **Names the library, nothing else.**
@@ -816,7 +816,7 @@ grep -n "0045b718" game/analysis/socom2_game.elf.decomp.c | head -40
   1. the set of distinct `ra=` values (a voice send has an `ra` that appears only in the mic-on run);
   2. the histogram of `len` (voice frames arrive at **17.2 per second**, one per 0x500-byte read, so a length class at ~17 Hz that is absent from the control run is the flow);
   3. the destination port (peer, so `tracePort` at `:110` traces it by default: ports below 10000 or all of them with `PS2X_SOCOM2_NET_TRACE_PORTS`).
-  The DME server's log is the second witness: `server/logs/console-DME.log` shows per-client UDP sockets from 50000 upward (`server/README.md:49,97`), so a flow that appears only in the mic-on run is visible there too. Record the answer — `ra`, length class, port, rate — in `docs/research/35-voice-path.md` §4.
+  The DME server's log is the second witness: `server/logs/console-DME.log` shows per-client UDP sockets from 50000 upward (`server/README.md:49,97`), so a flow that appears only in the mic-on run is visible there too. Record the answer — `ra`, length class, port, rate — in `docs/research/35-voice-path.md` §4. <!-- docmaint: future -->
 
 - [ ] **Step 5: commit.**
 
@@ -923,7 +923,7 @@ grep -o "ra=0x[0-9a-f]*" logs/run_A_<voice>.log   | sort -u > /tmp/ra_voice.txt
 grep -o "ra=0x[0-9a-f]*" logs/run_A_<control>.log | sort -u > /tmp/ra_control.txt
 comm -23 /tmp/ra_voice.txt /tmp/ra_control.txt
 ```
-  **Bar: at least one `ra=` present only in the voice round, with a length class arriving at 15-20 per second.** Record the `ra`, the length, the destination port and the rate in `docs/research/35-voice-path.md` §4 and in the ledger.
+  **Bar: at least one `ra=` present only in the voice round, with a length class arriving at 15-20 per second.** Record the `ra`, the length, the destination port and the rate in `docs/research/35-voice-path.md` §4 and in the ledger. <!-- docmaint: future -->
 
 - [ ] **Step 6: the end-to-end bar, if Task 5 has not run yet it is the Write dump.** B's `PS2X_MIC_DUMP_PLAYBACK` is written by Task 2 Step 6's accepted-and-dumped playback path, which exists before Task 5 does the mixing:
 

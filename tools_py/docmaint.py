@@ -6,8 +6,12 @@ ruling number as R179 while R241 was in use -- a collision that had already happ
 difference between the documents that stayed true and the ones that rotted was not care; it was
 whether anything could fail. This module is the thing that fails.
 
-It is deliberately small. Five checks, each one aimed at a rot mechanism that actually bit this
-project. Nothing here fails on a calendar: a test that reddens because a week passed gets disabled,
+It is deliberately small. Six checks, each one aimed at a rot mechanism that actually bit this
+project. The sixth was added on 2026-09-23 for the opposite reason -- a rot mechanism that had not
+bitten yet only because nobody dared move anything: the Sprint 1-6 specs and plans were cited by
+path from a hundred places, and `docs/archive/README.md` recorded them as "not moved, on purpose".
+
+Nothing here fails on a calendar: a test that reddens because a week passed gets disabled,
 and then the check is worse than nothing. Cadence is the sprint-close review in
 `docs/DOC_MAINTENANCE.md`; this module only enforces what is mechanically true at any moment.
 """
@@ -54,6 +58,17 @@ COUNT_PATTERNS = (
 # CURRENT_SPRINT's, which says which rulings belong to what. Two copies are safe only because this
 # module makes them agree -- on 2026-09-22 they said R242 and R241 while R240 was the highest in use.
 RULING_LINE = re.compile(r"(?:Next free ruling number|next ruling)\s*:\s*\*{0,2}R(\d+)\*{0,2}", re.I)
+
+# Check 6. A backticked path is a claim about the tree, and a move falsifies every one of them in
+# silence -- which is why the Sprint 1-6 specs and plans sat under docs/superpowers/ for a sprint
+# after they were dead: nobody could move them without breaking citations nothing would catch. The
+# scan is deliberately narrow: backticks only (a prose mention is not a path), docs/ only (the rest
+# of the tree moves under the compiler's nose, not the reader's), and a glob or a <placeholder>
+# describes a set rather than a file. A path that does not exist *yet* is legitimate in a plan; mark
+# that line with FUTURE_MARK and say so, so the exception is visible in the document itself.
+BACKTICKED = re.compile(r"`([^`\n]+)`")
+LOCATOR = re.compile(r":\d[\d,\-]*$")          # `docs/KNOWN.md:101`, `...md:318,355,433-435`
+FUTURE_MARK = "<!-- docmaint: future -->"
 COUNTER_DOCS = ("docs/HANDOFF.md", "docs/CURRENT_SPRINT.md")
 RULING_ANY = re.compile(r"\bR(\d{2,3})\b")
 DATE = re.compile(r"\b20\d{2}-\d{2}-\d{2}\b")
@@ -178,15 +193,104 @@ def undated_snapshots():
     return bad
 
 
+def archived_by_location():
+    """Markdown under a docs/archive/ SUBdirectory: class A by location, so no registry row is owed.
+
+    docs/archive/*.md is covered a row each (COVERED above). A subdirectory is a block moved whole --
+    docs/archive/sprints-1-6/ is twelve files that arrived in one commit -- and a row each would say
+    nothing a reader could not see from the path. The banner is still owed: that is the whole point
+    of the class, and silent_archives() below holds these files to it.
+    """
+    out = []
+    base = os.path.join(ROOT, "docs", "archive")
+    if not os.path.isdir(base):
+        return out
+    for name in sorted(os.listdir(base)):
+        sub = os.path.join(base, name)
+        if not os.path.isdir(sub):
+            continue
+        for dirpath, dirnames, filenames in os.walk(sub):
+            dirnames[:] = sorted(dirnames)
+            for fn in sorted(filenames):
+                if fn.lower().endswith(".md"):
+                    rel = os.path.relpath(os.path.join(dirpath, fn), ROOT)
+                    out.append(rel.replace(os.sep, "/"))
+    return sorted(out)
+
+
 def silent_archives():
     """Class-A files whose first 15 lines do not say they are archived or superseded."""
     bad = []
-    for path in by_class("A"):
+    for path in by_class("A") + archived_by_location():
         if not os.path.isfile(os.path.join(ROOT, path)):
             continue
-        if re.search(r"[Aa]rchiv|[Ss]upersed|[Rr]eplaced by", head(path)):
+        # Case-insensitive: the house banner is "> **ARCHIVED <date> -- ...**", in capitals, and the
+        # old [Aa]rchiv character class did not match it. The banners that existed when this check
+        # was written happened to carry "Superseded" as well, so the gap never showed.
+        if re.search(r"archiv|supersed|replaced by", head(path), re.I):
             continue
         bad.append(path)
+    return bad
+
+
+def linked_docs():
+    """Every markdown file check 6 reads: the repository root's and everything under docs/."""
+    out = []
+    for name in sorted(os.listdir(ROOT)):
+        if name.lower().endswith(".md") and os.path.isfile(os.path.join(ROOT, name)):
+            out.append(name)
+    docs = os.path.join(ROOT, "docs")
+    if os.path.isdir(docs):
+        for dirpath, dirnames, filenames in os.walk(docs):
+            dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+            for fn in sorted(filenames):
+                if fn.lower().endswith(".md"):
+                    rel = os.path.relpath(os.path.join(dirpath, fn), ROOT)
+                    out.append(rel.replace(os.sep, "/"))
+    return sorted(set(out))
+
+
+def _cited_paths(line):
+    """The docs/ FILES a line claims exist.
+
+    Narrow on purpose, because a check with false positives gets switched off:
+
+    * a locator is not part of the path -- `docs/KNOWN.md:101` and `docs/X.md#anchor` cite a place
+      inside a file that does exist;
+    * a glob, a brace set or a <placeholder> names a set rather than a file;
+    * a token whose last segment has no extension is a directory or the house shorthand for a
+      research note by number (`docs/research/19`), and a directory named in a design document is a
+      proposal, not a claim. Check 6 is about a file that moved, which is the failure that actually
+      happened here.
+    """
+    for m in BACKTICKED.finditer(line):
+        tok = m.group(1).strip()
+        if not tok.startswith("docs/"):
+            continue
+        if line[max(0, m.start() - 2):m.start()] == "~~" and line[m.end():m.end() + 2] == "~~":
+            continue                                         # ~~`a/dead/path`~~ is a retraction
+        tok = tok.split()[0].split("#")[0]                   # `docs/ROADMAP.md §3`, `...md#anchor`
+        tok = LOCATOR.sub("", tok)                           # `...md:101`, `...md:318,355,433-435`
+        tok = tok.strip().rstrip(".,;:!?)]>\"'").rstrip("/")
+        if not tok or tok == "docs":
+            continue
+        if any(ch in tok for ch in "*?<>|{}") or "…" in tok or "..." in tok:
+            continue
+        if "." not in tok.rsplit("/", 1)[-1]:
+            continue
+        yield tok
+
+
+def dangling_doc_links():
+    """(file, line, target) for every backticked docs/ path that is not in the tree."""
+    bad = []
+    for rel in linked_docs():
+        for i, line in enumerate(_read(rel).split("\n"), 1):
+            if FUTURE_MARK in line:
+                continue
+            for tok in _cited_paths(line):
+                if not os.path.exists(os.path.join(ROOT, tok.replace("/", os.sep))):
+                    bad.append((rel, i, tok))
     return bad
 
 
@@ -207,6 +311,7 @@ def report():
         "count_offenders": count_offenders(),
         "undated_snapshots": undated_snapshots(),
         "silent_archives": silent_archives(),
+        "dangling_doc_links": dangling_doc_links(),
     }
 
 
@@ -217,7 +322,7 @@ def main(argv=None):
           % (r["max_ruling"], r["max_ruling_in"], r["next_free_ruling"]))
     bad = 0
     for key in ("unregistered", "missing_files", "duplicate_rows", "count_offenders",
-                "undated_snapshots", "silent_archives"):
+                "undated_snapshots", "silent_archives", "dangling_doc_links"):
         if r[key]:
             bad += len(r[key])
             print("%s:" % key)

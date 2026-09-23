@@ -255,8 +255,8 @@ shipping target is Windows; our Linux build is the VM (`scripts/vm_sync.sh`) and
 **Files.** `include/runtime/ps2_vu1_command_stream.h` (1,271), `src/lib/ps2_vu1_command_stream.cpp` (5,296),
 `vu/ps2_vu1_core.cpp` (2,181), `vu/ps2_vu_recompiler.cpp` (6,961), `vu/ps2_vu_analysis.cpp` (2,446),
 `vu/ps2_vu_ir.cpp` (1,236), `vu/ps2_vu_program_cache.cpp`, `include/runtime/ps2_vu1.h`. Design docs
-`docs/threaded-vu-gs-ownership.md` (773), `docs/vu-x64-recompiler.md` (329), `docs/vu1-workload-profiling.md`
-(278), `docs/vu-backends.md`, `docs/vu-ir.md`, `docs/vu-program-cache.md`, `docs/vu-native-emitter-spike.md`.
+`research/ps2recomp-cucumber/docs/threaded-vu-gs-ownership.md` (773), `research/ps2recomp-cucumber/docs/vu-x64-recompiler.md` (329), `research/ps2recomp-cucumber/docs/vu1-workload-profiling.md`
+(278), `research/ps2recomp-cucumber/docs/vu-backends.md`, `research/ps2recomp-cucumber/docs/vu-ir.md`, `research/ps2recomp-cucumber/docs/vu-program-cache.md`, `research/ps2recomp-cucumber/docs/vu-native-emitter-spike.md`.
 ~40 commits 2026-08-13 to 2026-08-16: `25bedb9` classify VU1 owner command traffic, `9468f3e` defer VU1 requeues
 across VIF1 events, `c696ec2` extend late VU1 speculation without replay, `d4382ba`/`81281c3` coalesce and batch
 VIF1 owner rendezvous, `a49512f` execute VU1 through exact checkpoint epochs, `823db0b` defer early coarse VU1
@@ -267,10 +267,10 @@ publication, `08b8a3f` harden coarse VU1 causal ordering, `0255a86`/`b647346` ga
 speculation model (`Vu1SpeculationStatistics`, `Vu1SpeculationResolution`) and two timing policies: "exact"
 slices as the architectural oracle, and a bounded "coarse" mode that keeps one whole VU activation private to the
 owner under cycle and PATH1 limits. The publication rule is stated in
-`docs/threaded-vu-gs-ownership.md`: *"It does not authorize a worker to publish guest state according to host
+`research/ps2recomp-cucumber/docs/threaded-vu-gs-ownership.md`: *"It does not authorize a worker to publish guest state according to host
 completion time."* Access classes FF / OM / GO / DO / LC with a required treatment for each.
 
-Separately, `docs/vu1-workload-profiling.md` describes a bounded JSON profiler grouping invocations by (reset
+Separately, `research/ps2recomp-cucumber/docs/vu1-workload-profiling.md` describes a bounded JSON profiler grouping invocations by (reset
 epoch, FNV-1a hash of the whole VU code memory, entry PC), with opcode histograms and, notably, whether an MPG
 upload's bytes *were already identical at the destination*.
 
@@ -287,7 +287,7 @@ per-title native table. Its speculation and causal-ordering machinery is the pri
 the profiler's **"the uploaded bytes were already identical at the destination"** counter. Our dispatcher keys on
 the program hash; a count of redundant MPG uploads is a cheap line in `ps2_vif1_interpreter.cpp` and would say
 whether the 4 remaining non-native programs are re-uploads of programs we already have. ~40 lines. And one idea
-worth reading rather than taking: the FF/OM/GO/DO/LC access-class table in `docs/threaded-vu-gs-ownership.md` is
+worth reading rather than taking: the FF/OM/GO/DO/LC access-class table in `research/ps2recomp-cucumber/docs/threaded-vu-gs-ownership.md` is
 the best short statement of the publication rule we have a recorded incident for -- worth linking from our own
 notes when the GL back-pressure work resumes.
 
@@ -298,8 +298,8 @@ notes when the GL back-pressure work resumes.
 **Files.** `src/lib/ee_thread_scheduler.cpp` (1,673) / `include/runtime/ee_thread_scheduler.h` (532),
 `ee_runtime_executor.cpp` (1,274), `ee_scheduler_executor.cpp` (436), `ee_execution_backend.cpp` (737),
 `boost_ee_fiber.cpp` (681), `ee_event_scheduler.cpp` (290), `ee_counters.cpp` (912), `ee_cache.cpp` (416);
-docs `docs/ee-execution-backends.md` (96), `docs/ee-event-scheduling.md` (182),
-`docs/ee-generated-code-benchmark.md`, `docs/ee-random-retirement-benchmark.md`. Commits `648df345` migrate EE
+docs `research/ps2recomp-cucumber/docs/ee-execution-backends.md` (96), `research/ps2recomp-cucumber/docs/ee-event-scheduling.md` (182),
+`research/ps2recomp-cucumber/docs/ee-generated-code-benchmark.md`, `research/ps2recomp-cucumber/docs/ee-random-retirement-benchmark.md`. Commits `648df345` migrate EE
 execution to fibers, `66c038ee` pin Boost.Context, `42773d76` trace deterministic EE transitions, `967815f`
 expose EE scheduler diagnostic counters, `73225c3`/`90ea6ee`/`de782b7`/`a1ba920` typed owner-local transitions,
 `88951df2` measure scheduler compatibility in shadow mode, `306a69dd` complete Phase 3 backend differential.
@@ -388,7 +388,7 @@ Third-party code vendored or fetched inside the fork, and whether it rides along
 
 | Component | How | Licence | Rides along with |
 |---|---|---|---|
-| Xbyak 7.37 (`docs/third-party/xbyak.txt`, `FetchContent` from herumi/xbyak, pin `431abd86`) | configure-time fetch, linked into `ps2_runtime` | BSD-3-Clause | only the VU x64 JIT (`vu/ps2_vu_recompiler.cpp`) -- **not taken** |
+| Xbyak 7.37 (`research/ps2recomp-cucumber/docs/third-party/xbyak.txt`, `FetchContent` from herumi/xbyak, pin `431abd86`) | configure-time fetch, linked into `ps2_runtime` | BSD-3-Clause | only the VU x64 JIT (`vu/ps2_vu_recompiler.cpp`) -- **not taken** |
 | Boost 1.91.0, `context` only (`FetchContent`, exact release archive, `cmake/BoostContextReleaseArchive.cmake`) | configure-time fetch | BSL-1.0 | only `legacy-cpp-fiber` -- **not taken** |
 | Dear ImGui + rlImGui + raylib | HUD client only | MIT / MIT / zlib | only `ps2DebugHud` -- **not taken** |
 | Vulkan headers | `find_path(vulkan/vulkan.h)`, dynamic loading, no link dependency | Apache-2.0 / MIT | only the Vulkan backend -- **not taken** |

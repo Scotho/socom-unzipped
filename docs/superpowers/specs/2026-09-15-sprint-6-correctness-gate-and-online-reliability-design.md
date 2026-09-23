@@ -1,7 +1,7 @@
 # Sprint 6 — a gate that can see, the paused correctness fixes, and a cheaper online result: design
 
 Status: written 2026-09-15 by the controller from `docs/ROADMAP.md` §6 (revised 2026-09-13, with the
-owner's two 2026-09-14 additions to item 5), the 2026-09-14 handoff audit (`docs/HANDOFF-AUDIT-2026-09-14.md`
+owner's two 2026-09-14 additions to item 5), the 2026-09-14 handoff audit (`docs/archive/HANDOFF-AUDIT-2026-09-14.md`
 "Recommended Sprint 6 Order"), `docs/CURRENT_SPRINT.md`'s "Paused 2026-09-14" block, and research/25–27.
 **The owner has not reviewed this document.** It rests on the standing instruction (2026-09-15: "proceed
 as suggested autonomously, picking up where the last agent left off") and on items the owner agreed to

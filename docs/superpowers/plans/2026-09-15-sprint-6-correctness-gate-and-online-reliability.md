@@ -8,7 +8,7 @@
 
 **Tech Stack:** C++20 (llvm-mingw clang via `build.sh`), Python 3 (`unittest`, numpy, Pillow), the local Horizon server, PCSX2 2.8.1 as the console reference (savestate slot 8 = Seeding Chaos spawn), Ghidra decomp `game/analysis/socom2_game.elf.decomp.c`, Git Bash + PowerShell.
 
-**Spec:** `docs/superpowers/specs/2026-09-15-sprint-6-correctness-gate-and-online-reliability-design.md` (owner review pending). **Required reading for every dispatch:** `docs/KNOWN.md`, `docs/research/25-sp-teleport.md` §9–§10, `docs/research/26-water-polygons.md`, `docs/research/27-gl-depth-precision.md`, `docs/HANDOFF-AUDIT-2026-09-14.md`, and for online tasks `docs/research/22-kill-readout.md`, `docs/research/24-frostfire-walkability.md`.
+**Spec:** `docs/superpowers/specs/2026-09-15-sprint-6-correctness-gate-and-online-reliability-design.md` (owner review pending). **Required reading for every dispatch:** `docs/KNOWN.md`, `docs/research/25-sp-teleport.md` §9–§10, `docs/research/26-water-polygons.md`, `docs/research/27-gl-depth-precision.md`, `docs/archive/HANDOFF-AUDIT-2026-09-14.md`, and for online tasks `docs/research/22-kill-readout.md`, `docs/research/24-frostfire-walkability.md`.
 
 ## Handoff notes for the executing model (read once)
 

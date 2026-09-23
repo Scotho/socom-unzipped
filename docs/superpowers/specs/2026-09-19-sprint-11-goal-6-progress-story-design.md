@@ -483,7 +483,7 @@ Four decisions make it mechanical:
    the commits genuinely are not there — the recommendation is: **keep the hashes, say once what they are, and quote
    the subject inline.** The story's header carries one sentence: *"Commits are cited by their hash in the project's
    development repository, which is private; each citation carries its date and its subject so the claim reads without
-   it."* Then `docs/story/commits.json` — the date/subject/sha witness, tracked in the public repository — becomes the
+   it."* Then `docs/story/commits.json` — the date/subject/sha witness, tracked in the public repository — becomes the <!-- docmaint: future -->
    citation of record, and the test verifies the story against *it* rather than against `git`, with the git check
    enabled by a flag that the owner's machine sets. **The alternative — dropping hashes — is rejected**: it makes the
    story uncheckable, and checkable is the one property the owner asked for by name. It costs a reader the ability to
@@ -614,7 +614,7 @@ story on trust, which is the opposite of this goal.
   directions: every entry in the prose is in the data and vice versa, with matching dates and citations. Two artefacts
   that can drift are a defect generator; one test removes the class.
 - **`docs/story/PICTURES.md`** — the inventory of §5.3, one row per published image.
-- **`docs/story/commits.json`** — only if D1 lands on a fresh public history (§4.4.4).
+- **`docs/story/commits.json`** — only if D1 lands on a fresh public history (§4.4.4). <!-- docmaint: future -->
 
 The data file's shape, version 1:
 
@@ -794,7 +794,7 @@ as the archive? §4.4 is the design either way; the owner's answer decides which
 
 **Recommendation:** decide D1 on Goal 1's audit numbers first, as the Sprint 11 spec already says. For the story
 specifically, **keep hashes in both cases**: run `remap.py` for a rewrite, and for a fresh import add the one header
-sentence plus `docs/story/commits.json` as the citation of record. **Cost of the fresh-import case:** a reader cannot
+sentence plus `docs/story/commits.json` as the citation of record. **Cost of the fresh-import case:** a reader cannot <!-- docmaint: future -->
 `git show` a citation, and the date and subject beside it are what they get instead. **Rejected:** dropping hashes,
 which trades the goal's one hard property for tidiness.
 

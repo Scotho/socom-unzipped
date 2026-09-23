@@ -469,7 +469,7 @@ lock-bound work ("lag spikes running this while working") and asked for lock-fre
   (`docs/superpowers/specs/2026-09-15-game-client-package-and-installer-outline.md`).
 - **Block-pointer fix:** not started in code (TDD: the seven-region test must be watched failing, which needs a build);
   the test is pasted in full into the plan's Task 0b.
-- **Process:** `docs/HANDOFF-AUDIT-2026-09-14.md` (the previous session's audit) is now tracked. New standing rule in
+- **Process:** `docs/archive/HANDOFF-AUDIT-2026-09-14.md` (the previous session's audit) is now tracked. New standing rule in
   `CURRENT_SPRINT.md`: builds, gates and launches only in a host window the owner names.
 
 ## 2026-09-13 (local) — Sprint 5 landed: THE ACCEPTANCE TEST PASSED — Frostfire control fixed, the single-player stall fixed, and a first online kill on three independent rounds
