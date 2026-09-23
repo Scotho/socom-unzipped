@@ -33,6 +33,34 @@ Every rewritten line carries, in a comment, the r0001 address it came from and t
 What this tool does NOT touch: `[performance] critical`, whose entries are names rather than addresses and
 which `ps2xRecomp/src/lib/config_manager.cpp` never reads; and the right-hand side of an `[mmio]` pair,
 which is a hardware register address and belongs to the machine, not to the build.
+
+THE DATA-REFERENCE PASS. A jump table's base is a rodata address, not a function start, so the function
+matcher never has an opinion about it -- that is why all 24 of r0001's overlay bases came back unresolved.
+But the base is not loose in the file: the function that switches through the table LOADS it, with a
+`lui`/`lo` pair, a few instructions before the `jr`. So the base can be read out of the other build
+instead of guessed, in three steps, and the same instrument places an instruction patch whose function
+the matcher lost:
+
+  the use site     the one `lui`+`lo` pair in the A image that forms this base, and the A function
+                   holding it (the Ghidra table says which).
+  the same site    in the B image, by the function match when there is one (the body moved as a block),
+                   otherwise by ANCHORING: the window of instructions around the site, with every
+                   address immediate masked out, is looked up in the B image; one hit places it. When a
+                   window occurs N times in each image -- duplicated code -- the Nth A site takes the
+                   Nth B site, which is the only order-preserving reading.
+  the table        read at the base the B site's `lui`/`lo` form: every entry must be a word-aligned
+                   address inside the B image and near that site. How many there are is the switch's
+                   OWN `sltiu rX, rY, N` bound when it has one -- the code will not index past N -- and
+                   otherwise the run of words that still read as targets. Either way a switch that grew
+                   a case is written with the cases it has now, not with r0001's count.
+  the leftovers    a table whose site cannot be anchored is tried once more against every `lui/lw/jr`
+                   switch site in the B image, keeping only bases that fall between the two neighbouring
+                   tables' resolved bases AND whose entries repeat r0001's pattern of equal targets.
+                   One survivor is an answer; none or several is left unresolved and said so.
+
+Nothing here reads r0001's number for a resolved table: base, entry count and every target come from the
+B image. This needs BOTH images (`--elf-a`/`--elf-b`, or the paths the match report names); without them
+the pass does not run and the bases stay unresolved, exactly as before. `--no-data-refs` turns it off.
 """
 import argparse
 import bisect
@@ -41,6 +69,7 @@ import json
 import os
 import re
 import sys
+import tomllib
 from collections import OrderedDict
 from typing import Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple
 
@@ -163,6 +192,322 @@ class Translator:
         return Decision("unresolved", addr, "", None, False, False, "no function body holds it")
 
 
+# ---- the data-reference pass ----------------------------------------------------------------
+
+LUI_OP = 0x0F
+JUMP_OPS = (0x02, 0x03)                              # j, jal: the target is an address
+LOAD_STORE_OPS = frozenset((0x20, 0x21, 0x23, 0x24, 0x25, 0x27, 0x28, 0x29, 0x2B,
+                            0x2F, 0x31, 0x35, 0x37, 0x39, 0x3D, 0x3F))
+IMMEDIATE_OPS = frozenset((0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x18, 0x19))
+STORE_OPS = frozenset((0x28, 0x29, 0x2A, 0x2B, 0x2E, 0x39, 0x3D, 0x3F))
+LO_OPS = LOAD_STORE_OPS | frozenset((0x09, 0x0D))    # what can carry a lui's low half
+# A jump table is READ, never written: a `sw` whose base register and immediate happen to add up to a
+# table's address is a store into somebody's struct, not a use of that table. Leaving stores in made two
+# of r0001's 24 bases look like they had two use sites apiece, which is the difference between "this
+# pass cannot say" and an answer.
+BASE_OPS = LO_OPS - STORE_OPS
+SHAPES = ((10, 6), (6, 4), (4, 2))                   # the anchor's windows, widest first
+SITE_SPAN = 0x20000                                  # how far a table's entries may sit from its site
+GROW_SPREAD = 0x400                                  # how far past the known entries a grown table may reach
+GROW_LIMIT = 64
+
+
+def normalize(word: int) -> int:
+    """One instruction with its ADDRESSES removed, so two builds of the same code compare equal.
+
+    A `lui`'s immediate is half an address; a `j`/`jal` target is an address; a load or an immediate
+    op based on anything but `sp` or `zero` is usually reaching into data. All of those move between
+    builds. Everything else -- opcodes, register numbers, shift amounts, branch displacements, stack
+    offsets, small constants -- is the shape of the code, and that is what the anchor matches on."""
+    op = word >> 26
+    if op == LUI_OP:
+        return word & 0xFFFF0000
+    if op in JUMP_OPS:
+        return word & 0xFC000000
+    if op in LOAD_STORE_OPS or op in IMMEDIATE_OPS:
+        if ((word >> 21) & 0x1F) in (29, 0):         # sp-relative, or a constant: not an address
+            return word
+        return word & 0xFFFF0000
+    return word
+
+
+def form_address(hi_word: int, lo_word: int) -> Optional[int]:
+    """The address a `lui` and its low half form, with `addiu`/`lw`'s sign extension carried."""
+    if (hi_word >> 26) != LUI_OP:
+        return None
+    op = lo_word >> 26
+    if op not in LO_OPS:
+        return None
+    hi, lo = hi_word & 0xFFFF, lo_word & 0xFFFF
+    if op == 0x0D:                                    # ori zero-extends
+        return ((hi << 16) | lo) & 0xFFFFFFFF
+    return ((hi << 16) + (lo - 0x10000 if lo >= 0x8000 else lo)) & 0xFFFFFFFF
+
+
+def table_shape(values: Sequence[int]) -> List[int]:
+    """Which entries are equal to which, and in what order -- a table's pattern with its addresses
+    taken out. Two builds of one switch keep it even when the whole function moved."""
+    seen: Dict[int, int] = {}
+    return [seen.setdefault(v, len(seen)) for v in values]
+
+
+class CodeImage:
+    """An image's instruction words by guest address, and the searches this pass needs over them."""
+
+    def __init__(self, segments: Sequence[Tuple[int, bytes]]):
+        self.segs = []
+        for vaddr, data in sorted((int(v), bytes(d)) for v, d in segments):
+            self.segs.append((vaddr, [int.from_bytes(data[i:i + 4], "little")
+                                      for i in range(0, len(data) - 3, 4)]))
+        self._index: Dict[int, Dict[int, List[int]]] = {}
+        self._switches: Optional[List[Tuple[int, int]]] = None
+
+    def word(self, addr: int) -> Optional[int]:
+        if addr % 4:
+            return None
+        for vaddr, words in self.segs:
+            if vaddr <= addr < vaddr + 4 * len(words):
+                return words[(addr - vaddr) // 4]
+        return None
+
+    def window(self, addr: int, before: int, after: int) -> Optional[List[int]]:
+        """The instructions around `addr`, or None when the segment does not hold that many."""
+        if addr % 4:
+            return None
+        for vaddr, words in self.segs:
+            i = (addr - vaddr) // 4
+            if vaddr <= addr < vaddr + 4 * len(words) and i >= before and i + after < len(words):
+                return words[i - before:i + after + 1]
+        return None
+
+    def _keyed(self, before: int, after: int) -> Dict[int, List[int]]:
+        """address -> window, hashed. The key itself is not kept: a hash bucket is re-checked."""
+        span = before + 1 + after
+        idx = self._index.get(span)
+        if idx is None:
+            idx = {}
+            for vaddr, words in self.segs:
+                shaped = [normalize(w) for w in words]
+                for i in range(len(shaped) - span + 1):
+                    idx.setdefault(hash(tuple(shaped[i:i + span])), []).append(vaddr + (i + before) * 4)
+            self._index[span] = idx
+        return idx
+
+    def occurrences(self, key: Tuple[int, ...], before: int, after: int) -> List[int]:
+        """Every address whose surrounding window has exactly this shape, in address order."""
+        out = []
+        for addr in self._keyed(before, after).get(hash(key), []):
+            win = self.window(addr, before, after)
+            if win and tuple(normalize(w) for w in win) == key:
+                out.append(addr)
+        return sorted(out)
+
+    def lui_sites_for(self, base: int, reach: int = 16) -> List[Tuple[int, int]]:
+        """(lui, lo) for every pair in this image that forms `base`."""
+        lo = base & 0xFFFF
+        hi = ((base >> 16) + (1 if lo >= 0x8000 else 0)) & 0xFFFF
+        out = []
+        for vaddr, words in self.segs:
+            for i, w in enumerate(words):
+                if (w >> 26) != LUI_OP or (w & 0xFFFF) != hi:
+                    continue
+                rt = (w >> 16) & 0x1F
+                for j in range(i + 1, min(i + 1 + reach, len(words))):
+                    w2 = words[j]
+                    if (w2 >> 26) in BASE_OPS and ((w2 >> 21) & 0x1F) == rt \
+                            and form_address(w, w2) == base:
+                        out.append((vaddr + i * 4, vaddr + j * 4))
+        return out
+
+    def switch_sites(self) -> List[Tuple[int, int]]:
+        """(lui, base) for every `lui … lw rX,imm(rY) ; jr rX` in the image: a switch, and its table."""
+        if self._switches is None:
+            out = []
+            for vaddr, words in self.segs:
+                for i, w in enumerate(words):
+                    if (w >> 26) != LUI_OP:
+                        continue
+                    rt = (w >> 16) & 0x1F
+                    for j in range(i + 1, min(i + 5, len(words) - 1)):
+                        x = words[j]
+                        if (x >> 26) != 0x23 or ((x >> 21) & 0x1F) != rt:
+                            continue
+                        dst = (x >> 16) & 0x1F
+                        nxt = words[j + 1]
+                        if (nxt & 0xFC1FFFFF) != 0x08 or ((nxt >> 21) & 0x1F) != dst:
+                            continue                  # not `jr dst`
+                        base = form_address(w, x)
+                        if base is not None:
+                            out.append((vaddr + i * 4, base))
+                        break
+            self._switches = out
+        return self._switches
+
+    def switch_bound(self, lui: int, back: int = 8) -> Optional[int]:
+        """How many cases the switch just before `lui` admits -- its own `sltiu rX, rY, N`.
+
+        This is the count as a FACT rather than as a guess: the code will not index past N, so the
+        table has N entries whatever the words after it look like."""
+        for k in range(1, back + 1):
+            w = self.word(lui - 4 * k)
+            if w is None:
+                break
+            if (w >> 26) == 0x0B:                         # sltiu
+                n = w & 0xFFFF
+                return n if 0 < n <= 4096 else None
+        return None
+
+    def read_table(self, base: int, count: int, near: int, grow: bool = True) -> Optional[List[int]]:
+        """`count` entries at `base`, plus however many more this build's switch grew.
+
+        Every entry must be a word-aligned address this image actually holds, and must sit near the
+        switch that reads it -- a table of plausible targets, not a run of arbitrary words."""
+        out: List[int] = []
+        for i in range(count):
+            w = self.word(base + 4 * i)
+            if w is None or w % 4 or self.word(w) is None or abs(w - near) > SITE_SPAN:
+                return None
+            out.append(w)
+        if not out:
+            return None
+        while grow and len(out) - count < GROW_LIMIT:
+            w = self.word(base + 4 * len(out))
+            if w is None or w % 4 or self.word(w) is None or abs(w - near) > SITE_SPAN:
+                break
+            if not (min(out) - GROW_SPREAD <= w <= max(out) + GROW_SPREAD):
+                break
+            out.append(w)
+        return out
+
+
+class Anchor:
+    """Where an A-build address landed in the B build, read off the code around it."""
+
+    def __init__(self, a: CodeImage, b: CodeImage, shapes: Sequence[Tuple[int, int]] = SHAPES):
+        self.a, self.b, self.shapes = a, b, shapes
+
+    def place(self, addr: int) -> Optional[Tuple[int, str]]:
+        for before, after in self.shapes:
+            win = self.a.window(addr, before, after)
+            if win is None:
+                continue
+            key = tuple(normalize(w) for w in win)
+            hits = self.b.occurrences(key, before, after)
+            if len(hits) == 1:
+                return hits[0], "window %d/%d" % (before, after)
+            if len(hits) > 1:
+                mine = self.a.occurrences(key, before, after)
+                if len(mine) == len(hits) and addr in mine:
+                    rank = mine.index(addr)
+                    return hits[rank], "window %d/%d, copy %d of %d" % (before, after, rank + 1, len(hits))
+        return None
+
+
+class TableFix(NamedTuple):
+    """One jump table, answered from the B image."""
+    base: int
+    entries: List[int]
+    note: str
+
+
+def counted_table(img: CodeImage, base: int, r0001_count: int, site: int) -> Tuple[Optional[List[int]], str]:
+    """A table and how its length was settled: the switch's own bound first, the run of targets after.
+
+    The bound is the better answer -- it is what the code will index -- but it is only taken when that
+    many entries actually read as a table, so a `sltiu` that guards something else cannot lengthen a
+    table by itself."""
+    bound = img.switch_bound(site)
+    if bound:
+        read = img.read_table(base, bound, site, grow=False)
+        if read is not None:
+            return read, ", count from the switch's own sltiu bound"
+    return img.read_table(base, r0001_count, site), ", count from the run of targets"
+
+
+def source_tables(doc: dict) -> List[Tuple[int, List[int]]]:
+    """(base, targets) for every `[[jump_tables.table]]` in the source config, in file order."""
+    out = []
+    for t in ((doc.get("jump_tables") or {}).get("table") or []):
+        addr = t.get("address")
+        if not isinstance(addr, str):
+            continue
+        out.append((int(addr, 16), [int(e["target"], 16) for e in (t.get("entries") or [])
+                                    if isinstance(e.get("target"), str)]))
+    return out
+
+
+def resolve_tables(tables: Sequence[Tuple[int, List[int]]], tr: Translator, anchor: Anchor,
+                   ) -> Tuple[Dict[int, TableFix], Dict[int, str]]:
+    """Every overlay jump table, placed by its use site; the leftovers by order and pattern."""
+    fixes: Dict[int, TableFix] = {}
+    why: Dict[int, str] = {}
+    entries_of = OrderedDict((base, ents) for base, ents in tables)
+    for base, ents in entries_of.items():
+        if base in fixes or base in why or tr.is_fixed(base) or not ents:
+            continue
+        sites = anchor.a.lui_sites_for(base)
+        if len(sites) != 1:
+            why[base] = ("%d lui/lo pairs in r0001 form this base, so which code reads it is not "
+                         "a fact this pass can state" % len(sites))
+            continue
+        lui_a, lo_a = sites[0]
+        holder = tr.containing(lui_a)
+        named = holder[0][2] if holder else "no named function"
+        placed = None
+        moved = tr.translate(lui_a)
+        if moved.kind == "translated":
+            w = anchor.b.word(moved.addr)
+            mine = anchor.a.word(lui_a)
+            if w is not None and (w >> 26) == LUI_OP and ((w >> 16) & 0x1F) == ((mine >> 16) & 0x1F):
+                placed = (moved.addr, "the %s match of %s" % (moved.method, named))
+        if placed is None:
+            placed = anchor.place(lui_a)
+        if placed is None:
+            why[base] = ("its use site 0x%08x, in %s, is in neither a matched function nor a window "
+                         "this build repeats" % (lui_a, named))
+            continue
+        lui_b, how = placed
+        new = form_address(anchor.b.word(lui_b) or 0, anchor.b.word(lui_b + (lo_a - lui_a)) or 0)
+        read, counted = counted_table(anchor.b, new, len(ents), lui_b) if new is not None else (None, "")
+        if read is None:
+            why[base] = ("its use site placed at 0x%08x forms 0x%s, which does not read as a table of "
+                         "%d targets" % (lui_b, "%08x" % new if new is not None else "?", len(ents)))
+            continue
+        fixes[base] = TableFix(new, read, "r0001 0x%08x, %d entries%s%s, use site 0x%08x -> 0x%08x in %s (%s)"
+                               % (base, len(read),
+                                  " (%d in r0001)" % len(ents) if len(read) != len(ents) else "",
+                                  counted, lui_a, lui_b, named, how))
+
+    order = list(entries_of)
+    for i, base in enumerate(order):
+        if base not in why:
+            continue
+        prev = next((fixes[b].base for b in reversed(order[:i]) if b in fixes), None)
+        nxt = next((fixes[b].base for b in order[i + 1:] if b in fixes), None)
+        if prev is None or nxt is None or not (prev < nxt):
+            continue
+        want = table_shape(entries_of[base])
+        found = []
+        for site, cand in anchor.b.switch_sites():
+            if not (prev < cand < nxt) or any(c == cand for _s, c in found):
+                continue
+            read = anchor.b.read_table(cand, len(want), site)
+            if read and table_shape(read[:len(want)]) == want:
+                found.append((site, cand))
+        if len(found) != 1:
+            continue
+        site, cand = found[0]
+        read, counted = counted_table(anchor.b, cand, len(want), site)
+        holder = tr.containing(anchor.a.lui_sites_for(base)[0][0])
+        fixes[base] = TableFix(cand, read,
+                               "r0001 0x%08x, %d entries%s%s, base between 0x%08x and 0x%08x with r0001's "
+                               "own pattern of equal targets, read by 0x%08x (%s)"
+                               % (base, len(read), " (%d in r0001)" % len(want) if len(read) != len(want) else "",
+                                  counted, prev, nxt, site, holder[0][2] if holder else "no named function"))
+        del why[base]
+    return fixes, why
+
+
 # ---- reading the inputs ---------------------------------------------------------------------
 
 def load_matches(doc: dict) -> Dict[int, Match]:
@@ -258,20 +603,66 @@ def _label(line: str, role: str) -> str:
     return comment.lstrip("# ").strip()
 
 
-def rewrite(text: str, tr: Translator, sets: Optional[Dict[str, str]] = None) -> Tuple[List[str], List[Site]]:
+def grown_entry(template: str, index: int, target: int) -> str:
+    """One more entry line, written the way this table's own lines are written."""
+    line = re.sub(r"(index\s*=\s*)\d+", lambda m: "%s%d" % (m.group(1), index), template, count=1)
+    line = TARGET_RE.sub(lambda m: m.group(0).replace(m.group(1), format_like(m.group(1), target)),
+                         split_comment(line)[0].rstrip(), count=1)
+    return line + "  # grown: this build's switch has a case r0001 did not"
+
+
+def rewrite(text: str, tr: Translator, sets: Optional[Dict[str, str]] = None,
+            tables: Optional[Dict[int, TableFix]] = None, table_why: Optional[Dict[int, str]] = None,
+            anchor: Optional[Anchor] = None) -> Tuple[List[str], List[Site]]:
     """The source config with every overlay address translated. Returns (lines, one Site per address)."""
     sets = sets or {}
+    tables, table_why = tables or {}, table_why or {}
     lines = text.splitlines()
     out: List[str] = []
     sites: List[Site] = []
     section, array = "", ""
+    fix: Optional[TableFix] = None
+    entry_i, entry_template = 0, ""
     for n, line in enumerate(lines, 1):
         if array:
             if ARRAY_CLOSE_RE.match(line):
+                if array == "entries" and fix is not None and entry_template:
+                    while entry_i < len(fix.entries):
+                        out.append(grown_entry(entry_template, entry_i, fix.entries[entry_i]))
+                        sites.append(Site(n, "jump_table_entries", "grown", fix.entries[entry_i],
+                                          Decision("translated", fix.entries[entry_i], "table (grown)",
+                                                   None, False, False, "")))
+                        entry_i += 1
                 array = ""
                 out.append(line)
                 continue
+            if array == "entries" and fix is not None and entry_i < len(fix.entries):
+                m = TARGET_RE.search(line)
+                if m:
+                    a_addr = int(m.group(1), 16)
+                    new = fix.entries[entry_i]
+                    out.append(line[:m.start(1)] + format_like(m.group(1), new) + line[m.end(1):])
+                    sites.append(Site(n, "jump_table_entries", "", a_addr,
+                                      Decision("translated", new, "table", None, False, False, "")))
+                    entry_i, entry_template = entry_i + 1, line
+                    continue
         else:
+            if section.endswith("jump_tables.table"):
+                m = TABLE_ADDR_RE.match(line)
+                if m:
+                    a_addr = int(m.group(1), 16)
+                    fix, entry_i, entry_template = tables.get(a_addr), 0, ""
+                    if fix is not None:
+                        d = Decision("translated", fix.base, "data-ref", None, False, False, "")
+                        sites.append(Site(n, "jump_tables", _label(line, "jump_tables"), a_addr, d))
+                        out.append(add_note(line[:m.start(1)] + format_like(m.group(1), fix.base)
+                                            + line[m.end(1):], fix.note))
+                        continue
+                    if a_addr in table_why:
+                        d = Decision("unresolved", a_addr, "", None, False, False, table_why[a_addr])
+                        sites.append(Site(n, "jump_tables", _label(line, "jump_tables"), a_addr, d))
+                        out.append(add_note(line, note_for(a_addr, d)))
+                        continue
             m = SECTION_RE.match(line)
             if m:
                 section, array = m.group(1), ""
@@ -296,6 +687,13 @@ def rewrite(text: str, tr: Translator, sets: Optional[Dict[str, str]] = None) ->
         for m, role in hits:
             a_addr = int(m.group(1), 16)
             d = tr.translate(a_addr)
+            if d.kind == "unresolved" and role == "patches" and anchor is not None:
+                # A patch is an INSTRUCTION address, so the code around it is evidence even when the
+                # matcher lost the function. The window's centre is the patched instruction itself, so
+                # a hit is the same instruction, in the same company, in the other build.
+                hit = anchor.place(a_addr)
+                if hit is not None:
+                    d = Decision("translated", hit[0], "anchor %s" % hit[1], None, False, False, "")
             sites.append(Site(n, role, label, a_addr, d))
             if d.kind == "unchanged":
                 continue
@@ -311,7 +709,9 @@ def rewrite(text: str, tr: Translator, sets: Optional[Dict[str, str]] = None) ->
     return out, sites
 
 
-def revision_block(sites: Sequence[Site], source: str, match: str) -> List[str]:
+def revision_block(sites: Sequence[Site], source: str, match: str,
+                   tables: Optional[Dict[int, TableFix]] = None,
+                   table_why: Optional[Dict[int, str]] = None) -> List[str]:
     """The `[revision]` table: the counts, and every address this config still carries from r0001."""
     kinds = {"translated": 0, "unchanged": 0, "unresolved": 0}
     interior = weak = 0
@@ -337,6 +737,11 @@ def revision_block(sites: Sequence[Site], source: str, match: str) -> List[str]:
         "#   (weak)                              that body match was seed+delta -- the seed pass proved",
         "#                                       the function's fingerprint and length at the new address,",
         "#                                       not that the bytes inside it kept their offsets.",
+        "#   use site / window / base between     the data-reference pass: the address was READ OUT of",
+        "#                                       this build's image, at the code that loads it. A table",
+        "#                                       whose line says so has its base, its entry count and",
+        "#                                       every one of its targets from this build -- not one",
+        "#                                       number in it is r0001's.",
         "# Addresses in a region that is byte-identical in both images do not move: untouched, uncommented.",
         "[revision]",
         'source = "%s"' % source.replace("\\", "/"),
@@ -346,6 +751,8 @@ def revision_block(sites: Sequence[Site], source: str, match: str) -> List[str]:
         "weak = %d" % weak,
         "unchanged = %d" % kinds.get("unchanged", 0),
         "unresolved_count = %d" % len(unresolved),
+        "jump_tables_resolved = %d" % len(tables or {}),
+        "jump_tables_unresolved = %d" % len(table_why or {}),
         "",
         "# The addresses this config still carries from r0001, because the matcher could not place them.",
         "# They are r0001 numbers in another build's config: wrong until someone resolves them by hand.",
@@ -389,6 +796,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--elf-b", help="the B image (default: the match report's own b.elf)")
     ap.add_argument("--fixed", action="append", default=[], metavar="0xLO-0xHI",
                     help="a region that does not move, instead of deriving it from the two ELFs")
+    ap.add_argument("--no-data-refs", action="store_true",
+                    help="do not read jump-table bases and stray patches out of the two images")
     ap.add_argument("--set-input", help="[general] input")
     ap.add_argument("--set-output", help="[general] output")
     ap.add_argument("--set-ghidra-output", help="[general] ghidra_output")
@@ -406,6 +815,17 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("NO-DATA: no A-side function table (--csv-a; the report names %r)" % csv_a)
         return 2
 
+    elf_a = args.elf_a or (doc.get("a") or {}).get("elf")
+    elf_b = args.elf_b or (doc.get("b") or {}).get("elf")
+    have_both = bool(elf_a and elf_b and os.path.exists(elf_a) and os.path.exists(elf_b))
+    segs_a = segs_b = None
+    if have_both:
+        from tools_py.address_matcher import load_segments
+        with open(elf_a, "rb") as fh:
+            segs_a = load_segments(fh.read())
+        with open(elf_b, "rb") as fh:
+            segs_b = load_segments(fh.read())
+
     if args.fixed:
         try:
             fixed = [parse_region(f) for f in args.fixed]
@@ -413,17 +833,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             print("bad --fixed:", e)
             return 2
     else:
-        elf_a = args.elf_a or (doc.get("a") or {}).get("elf")
-        elf_b = args.elf_b or (doc.get("b") or {}).get("elf")
-        if not (elf_a and elf_b and os.path.exists(elf_a) and os.path.exists(elf_b)):
+        if not have_both:
             print("NO-DATA: the regions that do not move need both images (--elf-a/--elf-b, or --fixed); "
                   "the report names %r and %r" % (elf_a, elf_b))
             return 2
-        from tools_py.address_matcher import load_segments
-        with open(elf_a, "rb") as fh:
-            segs_a = load_segments(fh.read())
-        with open(elf_b, "rb") as fh:
-            segs_b = load_segments(fh.read())
         fixed = fixed_regions(segs_a, segs_b)
         print("# regions byte-identical in both images (they do not move): %s"
               % ", ".join("0x%08x-0x%08x" % r for r in fixed))
@@ -431,9 +844,19 @@ def main(argv: Optional[List[str]] = None) -> int:
     tr = Translator(load_matches(doc), load_bodies(csv_a), fixed)
     with open(args.source_toml, encoding="utf-8") as fh:
         text = fh.read()
+
+    anchor, fixes, why = None, {}, {}
+    if have_both and not args.no_data_refs:
+        anchor = Anchor(CodeImage(segs_a), CodeImage(segs_b))
+        fixes, why = resolve_tables(source_tables(tomllib.loads(text)), tr, anchor)
+        print("# jump tables read out of the B image: %d placed, %d left unresolved" % (len(fixes), len(why)))
+    elif not have_both:
+        print("# no data-reference pass: it needs both images (--elf-a/--elf-b); jump-table bases and "
+              "patches in unmatched functions stay unresolved")
+
     sets = {k: v for k, v in (("input", args.set_input), ("output", args.set_output),
                               ("ghidra_output", args.set_ghidra_output)) if v is not None}
-    lines, sites = rewrite(text, tr, sets)
+    lines, sites = rewrite(text, tr, sets, fixes, why, anchor)
 
     if args.dry_run:
         print("# the translation table: role, r0001 -> this revision, method")
@@ -453,7 +876,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not args.out:
         print("nothing written: pass --out <path> (or --dry-run)")
         return 2
-    lines = lines + revision_block(sites, args.source_toml, args.match_json)
+    lines = lines + revision_block(sites, args.source_toml, args.match_json, fixes, why)
     with open(args.out, "w", encoding="utf-8", newline="\n") as fh:
         fh.write("\n".join(lines) + "\n")
     print("wrote", args.out)

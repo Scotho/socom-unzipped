@@ -24,6 +24,7 @@ import contextlib
 import io
 import json
 import os
+import struct
 import subprocess
 import sys
 import tempfile
@@ -320,6 +321,347 @@ class Regions(unittest.TestCase):
         b = [(0x100000, b"aaaa"), (0x100004, b"bb")]
         self.assertEqual(revision_toml.fixed_regions(a, b), [(0x100000, 0x100006)])
 
+
+# ---- the data-reference pass ----------------------------------------------------------------
+#
+# A jump table's base is not a function start, so the function matcher never has an opinion about it
+# (Task 19's concern 1: all 24 overlay bases unresolved). The base IS loaded, by a lui/lo pair, inside
+# the function that switches through it -- so it can be read out of the other image instead of guessed.
+# Everything below is synthetic: two little ELFs built here, holding functions whose only real property
+# is the shape of a MIPS switch.
+
+def elf32(segments):
+    """The smallest little-endian ELF32 that `address_matcher.load_segments` will read."""
+    phoff, phent = 52, 32
+    head = bytearray(52)
+    head[0:4] = b"\x7fELF"
+    head[4:6] = b"\x01\x01"
+    struct.pack_into("<I", head, 28, phoff)
+    struct.pack_into("<HH", head, 42, phent, len(segments))
+    body, phdrs = bytearray(), bytearray()
+    off = phoff + phent * len(segments)
+    for vaddr, data in segments:
+        phdrs += struct.pack("<8I", 1, off + len(body), vaddr, vaddr, len(data), len(data), 5, 0x1000)
+        body += data
+    return bytes(head) + bytes(phdrs) + bytes(body)
+
+
+def switch_body(seed, base, cases=None):
+    """28 words: filler, then `sll/lui/addu/lw/jr` -- the switch that reads its table at `base`.
+
+    The filler is `addiu v0, zero, imm`, whose immediate is a constant and not an address, so it is
+    part of the shape the anchor matches on; the lui's and the lw's immediates are the address and are
+    exactly what the anchor must NOT match on. `cases` puts the switch's own `sltiu v0, v0, N` guard in
+    front of it, which is how many entries its table really has."""
+    pre = [0x24020000 | ((seed * 0x137 + i * 7) & 0xFFFF) for i in range(14)]
+    if cases is not None:
+        pre[12] = 0x2C420000 | cases              # sltiu v0, v0, cases
+    core = [0x00021080,                       # sll   v0, v0, 2
+            0x3C030000 | ((base >> 16) & 0xFFFF),   # lui   v1, %hi(base)
+            0x00621821,                       # addu  v1, v1, v0
+            0x8C630000 | (base & 0xFFFF),     # lw    v1, %lo(base)(v1)
+            0x00600008,                       # jr    v1
+            0x00000000]                       # nop
+    post = [0x00000021 | (((seed * 0x1D + i) & 0xFFFF) << 6) for i in range(8)]
+    return pre + core + post
+
+
+LUI_INDEX = 15                                # where switch_body puts the lui
+SW_BYTES = 28 * 4
+
+
+def blob(words):
+    return b"".join(w.to_bytes(4, "little") for w in words)
+
+
+def image(size, placements):
+    """One segment's bytes: {offset: [words]} laid into `size` zero bytes."""
+    buf = bytearray(size)
+    for off, words in placements.items():
+        buf[off:off + 4 * len(words)] = blob(words)
+    return bytes(buf)
+
+
+# The A build: three switching functions, their tables, and a patch site inside each.
+A_MOVED, A_DRIFT, A_GONE, A_RECAST = 0x00300040, 0x003000B0, 0x00300120, 0x00300190
+A_T1, A_T2, A_T3, A_T4 = 0x00300C00, 0x00300C40, 0x00300C80, 0x00300CC0
+# The B build: `moved` moved (and the matcher placed it), `drifted` moved and the matcher did NOT,
+# `recast` moved and its own code changed, so nothing anchors it, and `vanished` is not there at all.
+B_MOVED, B_DRIFT, B_RECAST = 0x00300200, 0x00300270, 0x003002E0
+B_T1, B_T4, B_T2 = 0x00300E00, 0x00300E20, 0x00300E40
+
+_a_drift = switch_body(2, A_T2)
+_b_drift = switch_body(2, B_T2)
+_b_drift[22] = 0x00000025                     # one word changed, well outside the anchor's window
+_a_recast = switch_body(4, A_T4, cases=2)
+_b_recast = switch_body(4, B_T4, cases=9)     # a bound nine entries long, over a table two entries long
+_b_recast[13] = 0x24020123                    # a word INSIDE every window: this site cannot be anchored
+
+A_ELF = elf32([(0x00300000, image(0x1000, {
+    A_MOVED - 0x300000: switch_body(1, A_T1, cases=2),
+    A_DRIFT - 0x300000: _a_drift,
+    A_GONE - 0x300000: switch_body(3, A_T3),
+    A_T1 - 0x300000: [A_MOVED + 0x40, A_MOVED + 0x50],
+    A_T2 - 0x300000: [A_DRIFT + 0x40, A_DRIFT + 0x50],
+    A_T3 - 0x300000: [A_GONE + 0x40, A_GONE + 0x50],
+    A_RECAST - 0x300000: _a_recast,
+    A_T4 - 0x300000: [A_RECAST + 0x40, A_RECAST + 0x50],
+}))])
+B_ELF = elf32([(0x00300000, image(0x1000, {
+    B_MOVED - 0x300000: switch_body(1, B_T1, cases=2),
+    B_DRIFT - 0x300000: _b_drift,
+    B_T1 - 0x300000: [B_MOVED + 0x40, B_MOVED + 0x50],
+    B_T2 - 0x300000: [B_DRIFT + 0x40, B_DRIFT + 0x50, B_DRIFT + 0x60],   # r0004 grew a case
+    B_RECAST - 0x300000: _b_recast,
+    B_T4 - 0x300000: [B_RECAST + 0x40, B_RECAST + 0x50],
+}))])
+
+ANCHOR_SOURCE = '''\
+[general]
+input = "../game/overlays/socom2_game.elf"
+ghidra_output = "socom2_ghidra.csv"
+output = "./output/"
+
+stubs = []
+untracked_stubs = []
+skip = []
+
+[mmio]
+
+[jump_tables]
+[[jump_tables.table]]
+address = "0x300c00"
+entries = [
+  { index = 0, target = "0x300080" },
+  { index = 1, target = "0x300090" },
+]
+
+[[jump_tables.table]]
+address = "0x300cc0"
+entries = [
+  { index = 0, target = "0x3001d0" },
+  { index = 1, target = "0x3001e0" },
+]
+
+[[jump_tables.table]]
+address = "0x300c40"
+entries = [
+  { index = 0, target = "0x3000f0" },
+  { index = 1, target = "0x300100" },
+]
+
+[[jump_tables.table]]
+address = "0x300c80"
+entries = [
+  { index = 0, target = "0x300160" },
+  { index = 1, target = "0x300170" },
+]
+
+[patches]
+instructions = [
+  { address = "0x3000b4", value = "0x0" },  # inside `drifted`, which the matcher could not place
+  { address = "0x300124", value = "0x0" },  # inside `vanished`, which is not in the B build at all
+]
+'''
+
+ANCHOR_CSV = '''\
+Name,Start,End,Size
+moved,0x00300040,0x003000B0,112
+drifted,0x003000B0,0x00300120,112
+vanished,0x00300120,0x00300190,112
+recast,0x00300190,0x00300200,112
+'''
+
+ANCHOR_MATCHES = {
+    "0x00300040": {"name": "moved", "b": "0x00300200", "how": "exact"},
+    "0x003000B0": {"name": "drifted", "b": None, "how": "unresolved"},
+    "0x00300120": {"name": "vanished", "b": None, "how": "unresolved"},
+    "0x00300190": {"name": "recast", "b": None, "how": "unresolved"},
+}
+
+
+class AnchorBed(unittest.TestCase):
+    """Both images on disk, so the tool can read a base out of the B build instead of guessing it."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        d = self.tmp.name
+        self.source = write(os.path.join(d, "socom2.toml"), ANCHOR_SOURCE)
+        self.csv = write(os.path.join(d, "socom2_ghidra.csv"), ANCHOR_CSV)
+        self.elf_a = os.path.join(d, "a.elf")
+        self.elf_b = os.path.join(d, "b.elf")
+        with open(self.elf_a, "wb") as fh:
+            fh.write(A_ELF)
+        with open(self.elf_b, "wb") as fh:
+            fh.write(B_ELF)
+        self.match = write(os.path.join(d, "match.json"), json.dumps({
+            "a": {"elf": self.elf_a, "csv": self.csv},
+            "b": {"elf": self.elf_b, "csv": "b.csv"},
+            "matches": ANCHOR_MATCHES,
+            "summary": {"total": 3, "resolved": 1, "unresolved": 2},
+        }))
+        self.out = os.path.join(d, "socom2_r0004.toml")
+
+    def translated(self, *extra):
+        argv = [self.source, self.match, "--csv-a", self.csv, "--fixed", "0x100000-0x200000",
+                "--elf-a", self.elf_a, "--elf-b", self.elf_b, "--out", self.out] + list(extra)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = revision_toml.main(argv)
+        self.printed = buf.getvalue()
+        self.assertEqual(rc, 0, self.printed)
+        with open(self.out, encoding="utf-8") as fh:
+            text = fh.read()
+        return text, tomllib.loads(text)
+
+    def table(self, doc, base):
+        for t in doc["jump_tables"]["table"]:
+            if int(t["address"], 16) == base:
+                return t
+        return None
+
+
+class JumpTableBases(AnchorBed):
+    def test_a_base_inside_a_matched_function_is_read_from_the_b_image(self):
+        # `moved` matched exact, so the lui is at the same offset in the B body; the base is whatever
+        # that lui and its lw form -- not an r0001 number, and not a guess.
+        _text, doc = self.translated()
+        self.assertIsNotNone(self.table(doc, B_T1))
+        self.assertIsNone(self.table(doc, A_T1))
+
+    def test_a_base_in_a_function_the_matcher_lost_is_found_by_the_code_around_it(self):
+        _text, doc = self.translated()
+        self.assertIsNotNone(self.table(doc, B_T2))
+        self.assertIsNone(self.table(doc, A_T2))
+
+    def test_the_line_names_the_r0001_base_the_count_and_the_use_site(self):
+        text, _doc = self.translated()
+        line = [ln for ln in text.splitlines() if ln.startswith('address = "0x300e00"')][0]
+        self.assertIn("0x00300c00", line)
+        self.assertIn("2 entries", line)
+        self.assertIn("0x%08x" % (A_MOVED + LUI_INDEX * 4), line)      # the r0001 use site
+        self.assertIn("moved", line)                                   # the function that switches
+
+    def test_the_entries_are_the_b_image_s_own_words(self):
+        _text, doc = self.translated()
+        targets = [e["target"] for e in self.table(doc, B_T1)["entries"]]
+        self.assertEqual([int(t, 16) for t in targets], [B_MOVED + 0x40, B_MOVED + 0x50])
+
+    def test_the_count_comes_from_the_switch_s_own_bound_when_it_has_one(self):
+        text, _doc = self.translated()
+        line = [ln for ln in text.splitlines() if ln.startswith('address = "0x300e00"')][0]
+        self.assertIn("sltiu", line)
+
+    def test_a_bound_that_does_not_read_as_a_table_is_not_taken(self):
+        # `recast`'s guard admits nine cases; only two words after its base read as targets. The bound
+        # is evidence, not an instruction: when it does not hold up, the run of targets answers instead.
+        text, doc = self.translated()
+        self.assertEqual(len(self.table(doc, B_T4)["entries"]), 2)
+        line = [ln for ln in text.splitlines() if ln.startswith('address = "0x300e20"')][0]
+        self.assertIn("run of targets", line)
+
+    def test_a_grown_table_gets_the_extra_entry(self):
+        _text, doc = self.translated()
+        entries = self.table(doc, B_T2)["entries"]
+        self.assertEqual(len(entries), 3)
+        self.assertEqual(int(entries[2]["target"], 16), B_DRIFT + 0x60)
+        self.assertEqual([e["index"] for e in entries], [0, 1, 2])
+
+    def test_a_function_that_is_not_in_the_b_image_leaves_its_table_unresolved(self):
+        text, doc = self.translated()
+        self.assertIsNotNone(self.table(doc, A_T3))
+        self.assertIn("0x00300c80", doc["revision"]["unresolved"])
+        self.assertIn("UNRESOLVED", [ln for ln in text.splitlines()
+                                     if ln.startswith('address = "0x300c80"')][0])
+
+    def test_the_counts_say_how_many_tables_were_placed(self):
+        _text, doc = self.translated()
+        self.assertEqual(doc["revision"]["jump_tables_resolved"], 3)
+        self.assertEqual(doc["revision"]["jump_tables_unresolved"], 1)
+
+    def test_a_site_nothing_anchors_is_placed_by_order_and_by_the_table_s_own_pattern(self):
+        # `recast`'s own code changed around the site, so no window matches it. What is still true is
+        # that its table sits between its neighbours' tables in this build too, and that a switch has
+        # the same pattern of repeated targets in both builds. One candidate survives both; if two had,
+        # the table would stay unresolved.
+        text, doc = self.translated()
+        self.assertIsNotNone(self.table(doc, B_T4))
+        self.assertIsNone(self.table(doc, A_T4))
+        line = [ln for ln in text.splitlines() if ln.startswith('address = "0x300e20"')][0]
+        self.assertIn("0x00300cc0", line)
+        self.assertIn("pattern", line)
+        self.assertIn("0x%08x" % B_T1, line)
+        self.assertIn("0x%08x" % B_T2, line)
+
+    def test_that_table_s_entries_are_this_build_s_own_words(self):
+        _text, doc = self.translated()
+        targets = [int(e["target"], 16) for e in self.table(doc, B_T4)["entries"]]
+        self.assertEqual(targets, [B_RECAST + 0x40, B_RECAST + 0x50])
+
+
+class AnchoredPatches(AnchorBed):
+    def test_a_patch_in_a_function_the_matcher_lost_is_anchored_by_its_window(self):
+        _text, doc = self.translated()
+        addrs = [int(p["address"], 16) for p in doc["patches"]["instructions"]]
+        self.assertIn(B_DRIFT + 4, addrs)
+        self.assertNotIn(A_DRIFT + 4, addrs)
+
+    def test_a_patch_with_nowhere_to_land_stays_unresolved(self):
+        _text, doc = self.translated()
+        addrs = [int(p["address"], 16) for p in doc["patches"]["instructions"]]
+        self.assertIn(A_GONE + 4, addrs)
+        self.assertIn("0x%08x" % (A_GONE + 4), doc["revision"]["unresolved"])
+
+    def test_the_anchored_line_says_how_it_was_placed(self):
+        text, _doc = self.translated()
+        line = [ln for ln in text.splitlines() if "0x%x" % (B_DRIFT + 4) in ln][0]
+        self.assertIn("0x%08x" % (A_DRIFT + 4), line)
+        self.assertIn("window", line)
+
+
+class DataRefsOffWithoutBothImages(Bed):
+    def test_without_the_two_images_a_base_is_still_left_alone(self):
+        # The pass needs both builds' bytes. The original bed passes --fixed and no ELFs, so the tool
+        # must behave exactly as it did before: the base keeps r0001's number and says so.
+        _text, doc = self.translated()
+        self.assertEqual(doc["jump_tables"]["table"][0]["address"], "0x300c00")
+        self.assertIn("0x00300c00", doc["revision"]["unresolved"])
+
+
+class AnchorUnits(unittest.TestCase):
+    def test_normalize_keeps_the_shape_and_drops_the_address(self):
+        lui_a = 0x3C030030
+        lui_b = 0x3C030031
+        self.assertEqual(revision_toml.normalize(lui_a), revision_toml.normalize(lui_b))
+        self.assertNotEqual(revision_toml.normalize(lui_a), revision_toml.normalize(0x3C040030))
+
+    def test_normalize_keeps_a_stack_offset_because_it_is_not_an_address(self):
+        self.assertNotEqual(revision_toml.normalize(0xFFBF0010), revision_toml.normalize(0xFFBF0020))
+
+    def test_a_lui_addiu_pair_forms_the_address_with_the_sign_carried(self):
+        self.assertEqual(revision_toml.form_address(0x3C030030, 0x24630C00), 0x00300C00)
+        self.assertEqual(revision_toml.form_address(0x3C030031, 0x2463FFF0), 0x0030FFF0)
+
+    def test_the_switch_s_bound_is_read_off_the_guard_in_front_of_it(self):
+        img = revision_toml.CodeImage([(0x00300000, blob(switch_body(1, 0x00300C00, cases=7)))])
+        self.assertEqual(img.switch_bound(0x00300000 + LUI_INDEX * 4), 7)
+        plain = revision_toml.CodeImage([(0x00300000, blob(switch_body(1, 0x00300C00)))])
+        self.assertIsNone(plain.switch_bound(0x00300000 + LUI_INDEX * 4))
+
+    def test_a_store_that_happens_to_form_the_address_is_not_a_use_site(self):
+        # `sw v0, 0xc00(v1)` after `lui v1,0x30` adds up to 0x300c00 as surely as the lw does -- and it
+        # is a write into somebody's struct, not a read of a jump table. Counting it made two of the
+        # real 24 bases look ambiguous.
+        words = switch_body(1, 0x00300C00) + [0x3C030030, 0xAC620C00]
+        img = revision_toml.CodeImage([(0x00300000, blob(words))])
+        self.assertEqual(img.lui_sites_for(0x00300C00),
+                         [(0x00300000 + LUI_INDEX * 4, 0x00300000 + (LUI_INDEX + 2) * 4)])
+
+    def test_the_image_finds_the_pair_that_forms_a_base(self):
+        img = revision_toml.CodeImage([(0x00300000, blob(switch_body(1, 0x00300C00)))])
+        self.assertEqual(img.lui_sites_for(0x00300C00),
+                         [(0x00300000 + LUI_INDEX * 4, 0x00300000 + (LUI_INDEX + 2) * 4)])
 
 if __name__ == "__main__":
     unittest.main()

@@ -1532,571 +1532,587 @@ entries = [
 ]
 
 [[jump_tables.table]]
-address = "0x656930"  # UNRESOLVED: r0001 0x00656930 kept -- inside 0x00656388, which the matcher could not place
+address = "0x655430"  # r0001 0x00656930, 39 entries, count from the switch's own sltiu bound, use site 0x004c8f58 -> 0x004c8f58 in FUN_004c8f40 (window 10/6)
 entries = [
-  { index = 0, target = "0x4c8f70" },  # UNRESOLVED: r0001 0x004c8f70 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 1, target = "0x4c9188" },  # UNRESOLVED: r0001 0x004c9188 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 2, target = "0x4c9188" },  # UNRESOLVED: r0001 0x004c9188 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 3, target = "0x4c8f80" },  # UNRESOLVED: r0001 0x004c8f80 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 4, target = "0x4c8f90" },  # UNRESOLVED: r0001 0x004c8f90 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 5, target = "0x4c8fa0" },  # UNRESOLVED: r0001 0x004c8fa0 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 6, target = "0x4c8fb0" },  # UNRESOLVED: r0001 0x004c8fb0 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 7, target = "0x4c8fd0" },  # UNRESOLVED: r0001 0x004c8fd0 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 8, target = "0x4c8fe0" },  # UNRESOLVED: r0001 0x004c8fe0 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 9, target = "0x4c8ff0" },  # UNRESOLVED: r0001 0x004c8ff0 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 10, target = "0x4c9000" },  # UNRESOLVED: r0001 0x004c9000 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 11, target = "0x4c9010" },  # UNRESOLVED: r0001 0x004c9010 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 12, target = "0x4c9020" },  # UNRESOLVED: r0001 0x004c9020 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 13, target = "0x4c9188" },  # UNRESOLVED: r0001 0x004c9188 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 14, target = "0x4c9030" },  # UNRESOLVED: r0001 0x004c9030 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 15, target = "0x4c9188" },  # UNRESOLVED: r0001 0x004c9188 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 16, target = "0x4c9040" },  # UNRESOLVED: r0001 0x004c9040 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 17, target = "0x4c9080" },  # UNRESOLVED: r0001 0x004c9080 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 18, target = "0x4c9050" },  # UNRESOLVED: r0001 0x004c9050 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 19, target = "0x4c9060" },  # UNRESOLVED: r0001 0x004c9060 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 20, target = "0x4c9070" },  # UNRESOLVED: r0001 0x004c9070 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 21, target = "0x4c9090" },  # UNRESOLVED: r0001 0x004c9090 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 22, target = "0x4c9188" },  # UNRESOLVED: r0001 0x004c9188 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 23, target = "0x4c9188" },  # UNRESOLVED: r0001 0x004c9188 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 24, target = "0x4c90a0" },  # UNRESOLVED: r0001 0x004c90a0 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 25, target = "0x4c9188" },  # UNRESOLVED: r0001 0x004c9188 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 26, target = "0x4c90b0" },  # UNRESOLVED: r0001 0x004c90b0 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 27, target = "0x4c90c8" },  # UNRESOLVED: r0001 0x004c90c8 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 28, target = "0x4c90d8" },  # UNRESOLVED: r0001 0x004c90d8 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 29, target = "0x4c90e8" },  # UNRESOLVED: r0001 0x004c90e8 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 30, target = "0x4c90f8" },  # UNRESOLVED: r0001 0x004c90f8 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 31, target = "0x4c9108" },  # UNRESOLVED: r0001 0x004c9108 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 32, target = "0x4c9118" },  # UNRESOLVED: r0001 0x004c9118 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 33, target = "0x4c9128" },  # UNRESOLVED: r0001 0x004c9128 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 34, target = "0x4c9148" },  # UNRESOLVED: r0001 0x004c9148 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 35, target = "0x4c9158" },  # UNRESOLVED: r0001 0x004c9158 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 36, target = "0x4c9168" },  # UNRESOLVED: r0001 0x004c9168 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 37, target = "0x4c9178" },  # UNRESOLVED: r0001 0x004c9178 kept -- inside 0x004c8f40, which the matcher could not place
-  { index = 38, target = "0x4c9138" },  # UNRESOLVED: r0001 0x004c9138 kept -- inside 0x004c8f40, which the matcher could not place
+  { index = 0, target = "0x4c8f70" },
+  { index = 1, target = "0x4c9188" },
+  { index = 2, target = "0x4c9188" },
+  { index = 3, target = "0x4c8f80" },
+  { index = 4, target = "0x4c8f90" },
+  { index = 5, target = "0x4c8fa0" },
+  { index = 6, target = "0x4c8fb0" },
+  { index = 7, target = "0x4c8fd0" },
+  { index = 8, target = "0x4c8fe0" },
+  { index = 9, target = "0x4c8ff0" },
+  { index = 10, target = "0x4c9000" },
+  { index = 11, target = "0x4c9010" },
+  { index = 12, target = "0x4c9020" },
+  { index = 13, target = "0x4c9188" },
+  { index = 14, target = "0x4c9030" },
+  { index = 15, target = "0x4c9188" },
+  { index = 16, target = "0x4c9040" },
+  { index = 17, target = "0x4c9080" },
+  { index = 18, target = "0x4c9050" },
+  { index = 19, target = "0x4c9060" },
+  { index = 20, target = "0x4c9070" },
+  { index = 21, target = "0x4c9090" },
+  { index = 22, target = "0x4c9188" },
+  { index = 23, target = "0x4c9188" },
+  { index = 24, target = "0x4c90a0" },
+  { index = 25, target = "0x4c9188" },
+  { index = 26, target = "0x4c90b0" },
+  { index = 27, target = "0x4c90c8" },
+  { index = 28, target = "0x4c90d8" },
+  { index = 29, target = "0x4c90e8" },
+  { index = 30, target = "0x4c90f8" },
+  { index = 31, target = "0x4c9108" },
+  { index = 32, target = "0x4c9118" },
+  { index = 33, target = "0x4c9128" },
+  { index = 34, target = "0x4c9148" },
+  { index = 35, target = "0x4c9158" },
+  { index = 36, target = "0x4c9168" },
+  { index = 37, target = "0x4c9178" },
+  { index = 38, target = "0x4c9138" },
 ]
 
 [[jump_tables.table]]
-address = "0x656a10"  # UNRESOLVED: r0001 0x00656a10 kept -- inside 0x00656388, which the matcher could not place
+address = "0x655510"  # r0001 0x00656a10, 19 entries, count from the switch's own sltiu bound, use site 0x004ca740 -> 0x004ca740 in FUN_004ca620 (window 10/6)
 entries = [
-  { index = 0, target = "0x4ca758" },  # UNRESOLVED: r0001 0x004ca758 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 1, target = "0x4ca768" },  # UNRESOLVED: r0001 0x004ca768 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 2, target = "0x4ca778" },  # UNRESOLVED: r0001 0x004ca778 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 3, target = "0x4ca788" },  # UNRESOLVED: r0001 0x004ca788 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 4, target = "0x4ca7f8" },  # UNRESOLVED: r0001 0x004ca7f8 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 5, target = "0x4ca878" },  # UNRESOLVED: r0001 0x004ca878 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 6, target = "0x4ca7a8" },  # UNRESOLVED: r0001 0x004ca7a8 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 7, target = "0x4ca7c8" },  # UNRESOLVED: r0001 0x004ca7c8 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 8, target = "0x4ca7d8" },  # UNRESOLVED: r0001 0x004ca7d8 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 9, target = "0x4ca7e8" },  # UNRESOLVED: r0001 0x004ca7e8 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 10, target = "0x4ca818" },  # UNRESOLVED: r0001 0x004ca818 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 11, target = "0x4ca7b8" },  # UNRESOLVED: r0001 0x004ca7b8 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 12, target = "0x4ca828" },  # UNRESOLVED: r0001 0x004ca828 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 13, target = "0x4ca868" },  # UNRESOLVED: r0001 0x004ca868 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 14, target = "0x4ca858" },  # UNRESOLVED: r0001 0x004ca858 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 15, target = "0x4ca838" },  # UNRESOLVED: r0001 0x004ca838 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 16, target = "0x4ca848" },  # UNRESOLVED: r0001 0x004ca848 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 17, target = "0x4ca798" },  # UNRESOLVED: r0001 0x004ca798 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 18, target = "0x4ca808" },  # UNRESOLVED: r0001 0x004ca808 kept -- inside 0x004ca620, which the matcher could not place
+  { index = 0, target = "0x4ca758" },
+  { index = 1, target = "0x4ca768" },
+  { index = 2, target = "0x4ca778" },
+  { index = 3, target = "0x4ca788" },
+  { index = 4, target = "0x4ca7f8" },
+  { index = 5, target = "0x4ca878" },
+  { index = 6, target = "0x4ca7a8" },
+  { index = 7, target = "0x4ca7c8" },
+  { index = 8, target = "0x4ca7d8" },
+  { index = 9, target = "0x4ca7e8" },
+  { index = 10, target = "0x4ca818" },
+  { index = 11, target = "0x4ca7b8" },
+  { index = 12, target = "0x4ca828" },
+  { index = 13, target = "0x4ca868" },
+  { index = 14, target = "0x4ca858" },
+  { index = 15, target = "0x4ca838" },
+  { index = 16, target = "0x4ca848" },
+  { index = 17, target = "0x4ca798" },
+  { index = 18, target = "0x4ca808" },
 ]
 
 [[jump_tables.table]]
-address = "0x656a60"  # UNRESOLVED: r0001 0x00656a60 kept -- inside 0x00656388, which the matcher could not place
+address = "0x655560"  # r0001 0x00656a60, 19 entries, count from the switch's own sltiu bound, use site 0x004ca908 -> 0x004ca908 in FUN_004ca620 (window 10/6)
 entries = [
-  { index = 0, target = "0x4ca920" },  # UNRESOLVED: r0001 0x004ca920 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 1, target = "0x4ca928" },  # UNRESOLVED: r0001 0x004ca928 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 2, target = "0x4ca930" },  # UNRESOLVED: r0001 0x004ca930 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 3, target = "0x4ca938" },  # UNRESOLVED: r0001 0x004ca938 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 4, target = "0x4ca970" },  # UNRESOLVED: r0001 0x004ca970 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 5, target = "0x4ca9b0" },  # UNRESOLVED: r0001 0x004ca9b0 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 6, target = "0x4ca948" },  # UNRESOLVED: r0001 0x004ca948 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 7, target = "0x4ca958" },  # UNRESOLVED: r0001 0x004ca958 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 8, target = "0x4ca960" },  # UNRESOLVED: r0001 0x004ca960 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 9, target = "0x4ca968" },  # UNRESOLVED: r0001 0x004ca968 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 10, target = "0x4ca980" },  # UNRESOLVED: r0001 0x004ca980 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 11, target = "0x4ca950" },  # UNRESOLVED: r0001 0x004ca950 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 12, target = "0x4ca988" },  # UNRESOLVED: r0001 0x004ca988 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 13, target = "0x4ca9a8" },  # UNRESOLVED: r0001 0x004ca9a8 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 14, target = "0x4ca9a0" },  # UNRESOLVED: r0001 0x004ca9a0 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 15, target = "0x4ca990" },  # UNRESOLVED: r0001 0x004ca990 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 16, target = "0x4ca998" },  # UNRESOLVED: r0001 0x004ca998 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 17, target = "0x4ca940" },  # UNRESOLVED: r0001 0x004ca940 kept -- inside 0x004ca620, which the matcher could not place
-  { index = 18, target = "0x4ca978" },  # UNRESOLVED: r0001 0x004ca978 kept -- inside 0x004ca620, which the matcher could not place
+  { index = 0, target = "0x4ca920" },
+  { index = 1, target = "0x4ca928" },
+  { index = 2, target = "0x4ca930" },
+  { index = 3, target = "0x4ca938" },
+  { index = 4, target = "0x4ca970" },
+  { index = 5, target = "0x4ca9b0" },
+  { index = 6, target = "0x4ca948" },
+  { index = 7, target = "0x4ca958" },
+  { index = 8, target = "0x4ca960" },
+  { index = 9, target = "0x4ca968" },
+  { index = 10, target = "0x4ca980" },
+  { index = 11, target = "0x4ca950" },
+  { index = 12, target = "0x4ca988" },
+  { index = 13, target = "0x4ca9a8" },
+  { index = 14, target = "0x4ca9a0" },
+  { index = 15, target = "0x4ca990" },
+  { index = 16, target = "0x4ca998" },
+  { index = 17, target = "0x4ca940" },
+  { index = 18, target = "0x4ca978" },
 ]
 
 [[jump_tables.table]]
-address = "0x656ab0"  # UNRESOLVED: r0001 0x00656ab0 kept -- inside 0x00656388, which the matcher could not place
+address = "0x6555b0"  # r0001 0x00656ab0, 19 entries, count from the switch's own sltiu bound, use site 0x004cab10 -> 0x004cab10 in FUN_004caa58 (window 10/6)
 entries = [
-  { index = 0, target = "0x4cab28" },  # UNRESOLVED: r0001 0x004cab28 kept -- inside 0x004caa58, which the matcher could not place
-  { index = 1, target = "0x4cab38" },  # UNRESOLVED: r0001 0x004cab38 kept -- inside 0x004caa58, which the matcher could not place
-  { index = 2, target = "0x4cab48" },  # UNRESOLVED: r0001 0x004cab48 kept -- inside 0x004caa58, which the matcher could not place
-  { index = 3, target = "0x4cab58" },  # UNRESOLVED: r0001 0x004cab58 kept -- inside 0x004caa58, which the matcher could not place
-  { index = 4, target = "0x4cabc8" },  # UNRESOLVED: r0001 0x004cabc8 kept -- inside 0x004caa58, which the matcher could not place
-  { index = 5, target = "0x4cac48" },  # UNRESOLVED: r0001 0x004cac48 kept -- inside 0x004caa58, which the matcher could not place
-  { index = 6, target = "0x4cab78" },  # UNRESOLVED: r0001 0x004cab78 kept -- inside 0x004caa58, which the matcher could not place
-  { index = 7, target = "0x4cab98" },  # UNRESOLVED: r0001 0x004cab98 kept -- inside 0x004caa58, which the matcher could not place
-  { index = 8, target = "0x4caba8" },  # UNRESOLVED: r0001 0x004caba8 kept -- inside 0x004caa58, which the matcher could not place
-  { index = 9, target = "0x4cabb8" },  # UNRESOLVED: r0001 0x004cabb8 kept -- inside 0x004caa58, which the matcher could not place
-  { index = 10, target = "0x4cabe8" },  # UNRESOLVED: r0001 0x004cabe8 kept -- inside 0x004caa58, which the matcher could not place
-  { index = 11, target = "0x4cab88" },  # UNRESOLVED: r0001 0x004cab88 kept -- inside 0x004caa58, which the matcher could not place
-  { index = 12, target = "0x4cabf8" },  # UNRESOLVED: r0001 0x004cabf8 kept -- inside 0x004caa58, which the matcher could not place
-  { index = 13, target = "0x4cac38" },  # UNRESOLVED: r0001 0x004cac38 kept -- inside 0x004caa58, which the matcher could not place
-  { index = 14, target = "0x4cac28" },  # UNRESOLVED: r0001 0x004cac28 kept -- inside 0x004caa58, which the matcher could not place
-  { index = 15, target = "0x4cac08" },  # UNRESOLVED: r0001 0x004cac08 kept -- inside 0x004caa58, which the matcher could not place
-  { index = 16, target = "0x4cac18" },  # UNRESOLVED: r0001 0x004cac18 kept -- inside 0x004caa58, which the matcher could not place
-  { index = 17, target = "0x4cab68" },  # UNRESOLVED: r0001 0x004cab68 kept -- inside 0x004caa58, which the matcher could not place
-  { index = 18, target = "0x4cabd8" },  # UNRESOLVED: r0001 0x004cabd8 kept -- inside 0x004caa58, which the matcher could not place
+  { index = 0, target = "0x4cab28" },
+  { index = 1, target = "0x4cab38" },
+  { index = 2, target = "0x4cab48" },
+  { index = 3, target = "0x4cab58" },
+  { index = 4, target = "0x4cabc8" },
+  { index = 5, target = "0x4cac48" },
+  { index = 6, target = "0x4cab78" },
+  { index = 7, target = "0x4cab98" },
+  { index = 8, target = "0x4caba8" },
+  { index = 9, target = "0x4cabb8" },
+  { index = 10, target = "0x4cabe8" },
+  { index = 11, target = "0x4cab88" },
+  { index = 12, target = "0x4cabf8" },
+  { index = 13, target = "0x4cac38" },
+  { index = 14, target = "0x4cac28" },
+  { index = 15, target = "0x4cac08" },
+  { index = 16, target = "0x4cac18" },
+  { index = 17, target = "0x4cab68" },
+  { index = 18, target = "0x4cabd8" },
 ]
 
 [[jump_tables.table]]
-address = "0x658740"  # UNRESOLVED: r0001 0x00658740 kept -- inside 0x00658718, which the matcher could not place
+address = "0x657240"  # r0001 0x00658740, 15 entries, count from the switch's own sltiu bound, use site 0x004da750 -> 0x004da750 in FUN_004da6f8 (window 10/6)
 entries = [
-  { index = 0, target = "0x4da780" },  # UNRESOLVED: r0001 0x004da780 kept -- inside 0x004da6f8, which the matcher could not place
-  { index = 1, target = "0x4da780" },  # UNRESOLVED: r0001 0x004da780 kept -- inside 0x004da6f8, which the matcher could not place
-  { index = 2, target = "0x4da768" },  # UNRESOLVED: r0001 0x004da768 kept -- inside 0x004da6f8, which the matcher could not place
-  { index = 3, target = "0x4da768" },  # UNRESOLVED: r0001 0x004da768 kept -- inside 0x004da6f8, which the matcher could not place
-  { index = 4, target = "0x4da780" },  # UNRESOLVED: r0001 0x004da780 kept -- inside 0x004da6f8, which the matcher could not place
-  { index = 5, target = "0x4da780" },  # UNRESOLVED: r0001 0x004da780 kept -- inside 0x004da6f8, which the matcher could not place
-  { index = 6, target = "0x4da768" },  # UNRESOLVED: r0001 0x004da768 kept -- inside 0x004da6f8, which the matcher could not place
-  { index = 7, target = "0x4da768" },  # UNRESOLVED: r0001 0x004da768 kept -- inside 0x004da6f8, which the matcher could not place
-  { index = 8, target = "0x4da780" },  # UNRESOLVED: r0001 0x004da780 kept -- inside 0x004da6f8, which the matcher could not place
-  { index = 9, target = "0x4da780" },  # UNRESOLVED: r0001 0x004da780 kept -- inside 0x004da6f8, which the matcher could not place
-  { index = 10, target = "0x4da768" },  # UNRESOLVED: r0001 0x004da768 kept -- inside 0x004da6f8, which the matcher could not place
-  { index = 11, target = "0x4da768" },  # UNRESOLVED: r0001 0x004da768 kept -- inside 0x004da6f8, which the matcher could not place
-  { index = 12, target = "0x4da768" },  # UNRESOLVED: r0001 0x004da768 kept -- inside 0x004da6f8, which the matcher could not place
-  { index = 13, target = "0x4da780" },  # UNRESOLVED: r0001 0x004da780 kept -- inside 0x004da6f8, which the matcher could not place
-  { index = 14, target = "0x4da780" },  # UNRESOLVED: r0001 0x004da780 kept -- inside 0x004da6f8, which the matcher could not place
+  { index = 0, target = "0x4da780" },
+  { index = 1, target = "0x4da780" },
+  { index = 2, target = "0x4da768" },
+  { index = 3, target = "0x4da768" },
+  { index = 4, target = "0x4da780" },
+  { index = 5, target = "0x4da780" },
+  { index = 6, target = "0x4da768" },
+  { index = 7, target = "0x4da768" },
+  { index = 8, target = "0x4da780" },
+  { index = 9, target = "0x4da780" },
+  { index = 10, target = "0x4da768" },
+  { index = 11, target = "0x4da768" },
+  { index = 12, target = "0x4da768" },
+  { index = 13, target = "0x4da780" },
+  { index = 14, target = "0x4da780" },
 ]
 
 [[jump_tables.table]]
-address = "0x658830"  # UNRESOLVED: r0001 0x00658830 kept -- inside 0x00658718, which the matcher could not place
+address = "0x657330"  # r0001 0x00658830, 18 entries, count from the switch's own sltiu bound, use site 0x004dae2c -> 0x004dae2c in FUN_004dad90 (window 10/6)
 entries = [
-  { index = 0, target = "0x4dae40" },  # UNRESOLVED: r0001 0x004dae40 kept -- inside 0x004dad90, which the matcher could not place
-  { index = 1, target = "0x4dae88" },  # UNRESOLVED: r0001 0x004dae88 kept -- inside 0x004dad90, which the matcher could not place
-  { index = 2, target = "0x4daea0" },  # UNRESOLVED: r0001 0x004daea0 kept -- inside 0x004dad90, which the matcher could not place
-  { index = 3, target = "0x4daeb0" },  # UNRESOLVED: r0001 0x004daeb0 kept -- inside 0x004dad90, which the matcher could not place
-  { index = 4, target = "0x4daee8" },  # UNRESOLVED: r0001 0x004daee8 kept -- inside 0x004dad90, which the matcher could not place
-  { index = 5, target = "0x4db1c8" },  # UNRESOLVED: r0001 0x004db1c8 kept -- inside 0x004dad90, which the matcher could not place
-  { index = 6, target = "0x4db1d8" },  # UNRESOLVED: r0001 0x004db1d8 kept -- inside 0x004dad90, which the matcher could not place
-  { index = 7, target = "0x4db1f8" },  # UNRESOLVED: r0001 0x004db1f8 kept -- inside 0x004dad90, which the matcher could not place
-  { index = 8, target = "0x4db218" },  # UNRESOLVED: r0001 0x004db218 kept -- inside 0x004dad90, which the matcher could not place
-  { index = 9, target = "0x4db230" },  # UNRESOLVED: r0001 0x004db230 kept -- inside 0x004dad90, which the matcher could not place
-  { index = 10, target = "0x4db260" },  # UNRESOLVED: r0001 0x004db260 kept -- inside 0x004dad90, which the matcher could not place
-  { index = 11, target = "0x4db288" },  # UNRESOLVED: r0001 0x004db288 kept -- inside 0x004dad90, which the matcher could not place
-  { index = 12, target = "0x4db278" },  # UNRESOLVED: r0001 0x004db278 kept -- inside 0x004dad90, which the matcher could not place
-  { index = 13, target = "0x4db2a0" },  # UNRESOLVED: r0001 0x004db2a0 kept -- inside 0x004dad90, which the matcher could not place
-  { index = 14, target = "0x4daf08" },  # UNRESOLVED: r0001 0x004daf08 kept -- inside 0x004dad90, which the matcher could not place
-  { index = 15, target = "0x4db138" },  # UNRESOLVED: r0001 0x004db138 kept -- inside 0x004dad90, which the matcher could not place
-  { index = 16, target = "0x4db248" },  # UNRESOLVED: r0001 0x004db248 kept -- inside 0x004dad90, which the matcher could not place
-  { index = 17, target = "0x4db118" },  # UNRESOLVED: r0001 0x004db118 kept -- inside 0x004dad90, which the matcher could not place
+  { index = 0, target = "0x4dae40" },
+  { index = 1, target = "0x4dae88" },
+  { index = 2, target = "0x4daea0" },
+  { index = 3, target = "0x4daeb0" },
+  { index = 4, target = "0x4daee8" },
+  { index = 5, target = "0x4db1c8" },
+  { index = 6, target = "0x4db1d8" },
+  { index = 7, target = "0x4db1f8" },
+  { index = 8, target = "0x4db218" },
+  { index = 9, target = "0x4db230" },
+  { index = 10, target = "0x4db260" },
+  { index = 11, target = "0x4db288" },
+  { index = 12, target = "0x4db278" },
+  { index = 13, target = "0x4db2a0" },
+  { index = 14, target = "0x4daf08" },
+  { index = 15, target = "0x4db138" },
+  { index = 16, target = "0x4db248" },
+  { index = 17, target = "0x4db118" },
 ]
 
 [[jump_tables.table]]
-address = "0x6588b0"  # UNRESOLVED: r0001 0x006588b0 kept -- inside 0x00658718, which the matcher could not place
+address = "0x6573b0"  # r0001 0x006588b0, 15 entries, count from the switch's own sltiu bound, use site 0x004dcce4 -> 0x004dcce4 in FUN_004dcc58 (window 10/6)
 entries = [
-  { index = 0, target = "0x4dcd10" },  # UNRESOLVED: r0001 0x004dcd10 kept -- inside 0x004dcc58, which the matcher could not place
-  { index = 1, target = "0x4dcd10" },  # UNRESOLVED: r0001 0x004dcd10 kept -- inside 0x004dcc58, which the matcher could not place
-  { index = 2, target = "0x4dccf8" },  # UNRESOLVED: r0001 0x004dccf8 kept -- inside 0x004dcc58, which the matcher could not place
-  { index = 3, target = "0x4dccf8" },  # UNRESOLVED: r0001 0x004dccf8 kept -- inside 0x004dcc58, which the matcher could not place
-  { index = 4, target = "0x4dcd10" },  # UNRESOLVED: r0001 0x004dcd10 kept -- inside 0x004dcc58, which the matcher could not place
-  { index = 5, target = "0x4dcd10" },  # UNRESOLVED: r0001 0x004dcd10 kept -- inside 0x004dcc58, which the matcher could not place
-  { index = 6, target = "0x4dccf8" },  # UNRESOLVED: r0001 0x004dccf8 kept -- inside 0x004dcc58, which the matcher could not place
-  { index = 7, target = "0x4dccf8" },  # UNRESOLVED: r0001 0x004dccf8 kept -- inside 0x004dcc58, which the matcher could not place
-  { index = 8, target = "0x4dcd10" },  # UNRESOLVED: r0001 0x004dcd10 kept -- inside 0x004dcc58, which the matcher could not place
-  { index = 9, target = "0x4dcd10" },  # UNRESOLVED: r0001 0x004dcd10 kept -- inside 0x004dcc58, which the matcher could not place
-  { index = 10, target = "0x4dccf8" },  # UNRESOLVED: r0001 0x004dccf8 kept -- inside 0x004dcc58, which the matcher could not place
-  { index = 11, target = "0x4dccf8" },  # UNRESOLVED: r0001 0x004dccf8 kept -- inside 0x004dcc58, which the matcher could not place
-  { index = 12, target = "0x4dccf8" },  # UNRESOLVED: r0001 0x004dccf8 kept -- inside 0x004dcc58, which the matcher could not place
-  { index = 13, target = "0x4dcd10" },  # UNRESOLVED: r0001 0x004dcd10 kept -- inside 0x004dcc58, which the matcher could not place
-  { index = 14, target = "0x4dcd10" },  # UNRESOLVED: r0001 0x004dcd10 kept -- inside 0x004dcc58, which the matcher could not place
+  { index = 0, target = "0x4dcd10" },
+  { index = 1, target = "0x4dcd10" },
+  { index = 2, target = "0x4dccf8" },
+  { index = 3, target = "0x4dccf8" },
+  { index = 4, target = "0x4dcd10" },
+  { index = 5, target = "0x4dcd10" },
+  { index = 6, target = "0x4dccf8" },
+  { index = 7, target = "0x4dccf8" },
+  { index = 8, target = "0x4dcd10" },
+  { index = 9, target = "0x4dcd10" },
+  { index = 10, target = "0x4dccf8" },
+  { index = 11, target = "0x4dccf8" },
+  { index = 12, target = "0x4dccf8" },
+  { index = 13, target = "0x4dcd10" },
+  { index = 14, target = "0x4dcd10" },
 ]
 
 [[jump_tables.table]]
-address = "0x65a5a0"  # UNRESOLVED: r0001 0x0065a5a0 kept -- no function body holds it
+address = "0x6590a0"  # r0001 0x0065a5a0, 5 entries, count from the switch's own sltiu bound, use site 0x00505e18 -> 0x00505e18 in FUN_00505d90 (window 10/6)
 entries = [
-  { index = 0, target = "0x505e30" },  # UNRESOLVED: r0001 0x00505e30 kept -- inside 0x00505d90, which the matcher could not place
-  { index = 1, target = "0x505f20" },  # UNRESOLVED: r0001 0x00505f20 kept -- inside 0x00505d90, which the matcher could not place
-  { index = 2, target = "0x506138" },  # UNRESOLVED: r0001 0x00506138 kept -- inside 0x00505d90, which the matcher could not place
-  { index = 3, target = "0x5062a8" },  # UNRESOLVED: r0001 0x005062a8 kept -- inside 0x00505d90, which the matcher could not place
-  { index = 4, target = "0x506320" },  # UNRESOLVED: r0001 0x00506320 kept -- inside 0x00505d90, which the matcher could not place
+  { index = 0, target = "0x505e30" },
+  { index = 1, target = "0x505f20" },
+  { index = 2, target = "0x506138" },
+  { index = 3, target = "0x5062a8" },
+  { index = 4, target = "0x506320" },
 ]
 
 [[jump_tables.table]]
-address = "0x663820"  # UNRESOLVED: r0001 0x00663820 kept -- no function body holds it
+address = "0x663870"  # r0001 0x00663820, 31 entries, count from the switch's own sltiu bound, use site 0x006116a8 -> 0x00618e10 in FUN_006115c0 (window 10/6)
 entries = [
-  { index = 0, target = "0x6116c0" },  # UNRESOLVED: r0001 0x006116c0 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 1, target = "0x6116d0" },  # UNRESOLVED: r0001 0x006116d0 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 2, target = "0x6116e0" },  # UNRESOLVED: r0001 0x006116e0 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 3, target = "0x6116d8" },  # UNRESOLVED: r0001 0x006116d8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 4, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 5, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 6, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 7, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 8, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 9, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 10, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 11, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 12, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 13, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 14, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 15, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 16, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 17, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 18, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 19, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 20, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 21, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 22, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 23, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 24, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 25, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 26, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 27, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 28, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 29, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
-  { index = 30, target = "0x6116e8" },  # UNRESOLVED: r0001 0x006116e8 kept -- inside 0x006115c0, which the matcher could not place
+  { index = 0, target = "0x618e28" },
+  { index = 1, target = "0x618e38" },
+  { index = 2, target = "0x618e48" },
+  { index = 3, target = "0x618e40" },
+  { index = 4, target = "0x618e50" },
+  { index = 5, target = "0x618e50" },
+  { index = 6, target = "0x618e50" },
+  { index = 7, target = "0x618e50" },
+  { index = 8, target = "0x618e50" },
+  { index = 9, target = "0x618e50" },
+  { index = 10, target = "0x618e50" },
+  { index = 11, target = "0x618e50" },
+  { index = 12, target = "0x618e50" },
+  { index = 13, target = "0x618e50" },
+  { index = 14, target = "0x618e50" },
+  { index = 15, target = "0x618e50" },
+  { index = 16, target = "0x618e50" },
+  { index = 17, target = "0x618e50" },
+  { index = 18, target = "0x618e50" },
+  { index = 19, target = "0x618e50" },
+  { index = 20, target = "0x618e50" },
+  { index = 21, target = "0x618e50" },
+  { index = 22, target = "0x618e50" },
+  { index = 23, target = "0x618e50" },
+  { index = 24, target = "0x618e50" },
+  { index = 25, target = "0x618e50" },
+  { index = 26, target = "0x618e50" },
+  { index = 27, target = "0x618e50" },
+  { index = 28, target = "0x618e50" },
+  { index = 29, target = "0x618e50" },
+  { index = 30, target = "0x618e50" },
 ]
 
 [[jump_tables.table]]
-address = "0x663980"  # UNRESOLVED: r0001 0x00663980 kept -- no function body holds it
+address = "0x6639d0"  # r0001 0x00663980, 31 entries, count from the switch's own sltiu bound, use site 0x00613330 -> 0x0061aaa8 in FUN_006132b8 (window 10/6)
 entries = [
-  { index = 0, target = "0x613678" },  # UNRESOLVED: r0001 0x00613678 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 1, target = "0x613348" },  # UNRESOLVED: r0001 0x00613348 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 2, target = "0x6133c8" },  # UNRESOLVED: r0001 0x006133c8 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 3, target = "0x613448" },  # UNRESOLVED: r0001 0x00613448 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 4, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 5, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 6, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 7, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 8, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 9, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 10, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 11, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 12, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 13, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 14, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 15, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 16, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 17, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 18, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 19, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 20, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 21, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 22, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 23, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 24, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 25, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 26, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 27, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 28, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 29, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 30, target = "0x613678" },  # UNRESOLVED: r0001 0x00613678 kept -- inside 0x006132b8, which the matcher could not place
+  { index = 0, target = "0x61adf0" },
+  { index = 1, target = "0x61aac0" },
+  { index = 2, target = "0x61ab40" },
+  { index = 3, target = "0x61abc0" },
+  { index = 4, target = "0x61ae88" },
+  { index = 5, target = "0x61ae88" },
+  { index = 6, target = "0x61ae88" },
+  { index = 7, target = "0x61ae88" },
+  { index = 8, target = "0x61ae88" },
+  { index = 9, target = "0x61ae88" },
+  { index = 10, target = "0x61ae88" },
+  { index = 11, target = "0x61ae88" },
+  { index = 12, target = "0x61ae88" },
+  { index = 13, target = "0x61ae88" },
+  { index = 14, target = "0x61ae88" },
+  { index = 15, target = "0x61ae88" },
+  { index = 16, target = "0x61ae88" },
+  { index = 17, target = "0x61ae88" },
+  { index = 18, target = "0x61ae88" },
+  { index = 19, target = "0x61ae88" },
+  { index = 20, target = "0x61ae88" },
+  { index = 21, target = "0x61ae88" },
+  { index = 22, target = "0x61ae88" },
+  { index = 23, target = "0x61ae88" },
+  { index = 24, target = "0x61ae88" },
+  { index = 25, target = "0x61ae88" },
+  { index = 26, target = "0x61ae88" },
+  { index = 27, target = "0x61ae88" },
+  { index = 28, target = "0x61ae88" },
+  { index = 29, target = "0x61ae88" },
+  { index = 30, target = "0x61adf0" },
 ]
 
 [[jump_tables.table]]
-address = "0x663a00"  # UNRESOLVED: r0001 0x00663a00 kept -- no function body holds it
+address = "0x663a50"  # r0001 0x00663a00, 31 entries, count from the switch's own sltiu bound, use site 0x006134e4 -> 0x0061ac5c in FUN_006132b8 (window 10/6)
 entries = [
-  { index = 0, target = "0x613678" },  # UNRESOLVED: r0001 0x00613678 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 1, target = "0x6134f8" },  # UNRESOLVED: r0001 0x006134f8 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 2, target = "0x613578" },  # UNRESOLVED: r0001 0x00613578 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 3, target = "0x6135f8" },  # UNRESOLVED: r0001 0x006135f8 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 4, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 5, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 6, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 7, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 8, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 9, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 10, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 11, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 12, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 13, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 14, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 15, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 16, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 17, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 18, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 19, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 20, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 21, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 22, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 23, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 24, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 25, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 26, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 27, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 28, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 29, target = "0x613710" },  # UNRESOLVED: r0001 0x00613710 kept -- inside 0x006132b8, which the matcher could not place
-  { index = 30, target = "0x613678" },  # UNRESOLVED: r0001 0x00613678 kept -- inside 0x006132b8, which the matcher could not place
+  { index = 0, target = "0x61adf0" },
+  { index = 1, target = "0x61ac70" },
+  { index = 2, target = "0x61acf0" },
+  { index = 3, target = "0x61ad70" },
+  { index = 4, target = "0x61ae88" },
+  { index = 5, target = "0x61ae88" },
+  { index = 6, target = "0x61ae88" },
+  { index = 7, target = "0x61ae88" },
+  { index = 8, target = "0x61ae88" },
+  { index = 9, target = "0x61ae88" },
+  { index = 10, target = "0x61ae88" },
+  { index = 11, target = "0x61ae88" },
+  { index = 12, target = "0x61ae88" },
+  { index = 13, target = "0x61ae88" },
+  { index = 14, target = "0x61ae88" },
+  { index = 15, target = "0x61ae88" },
+  { index = 16, target = "0x61ae88" },
+  { index = 17, target = "0x61ae88" },
+  { index = 18, target = "0x61ae88" },
+  { index = 19, target = "0x61ae88" },
+  { index = 20, target = "0x61ae88" },
+  { index = 21, target = "0x61ae88" },
+  { index = 22, target = "0x61ae88" },
+  { index = 23, target = "0x61ae88" },
+  { index = 24, target = "0x61ae88" },
+  { index = 25, target = "0x61ae88" },
+  { index = 26, target = "0x61ae88" },
+  { index = 27, target = "0x61ae88" },
+  { index = 28, target = "0x61ae88" },
+  { index = 29, target = "0x61ae88" },
+  { index = 30, target = "0x61adf0" },
 ]
 
 [[jump_tables.table]]
-address = "0x663c20"  # UNRESOLVED: r0001 0x00663c20 kept -- inside 0x00663c18, which the matcher could not place
+address = "0x663c70"  # r0001 0x00663c20, 10 entries, count from the switch's own sltiu bound, use site 0x00616f98 -> 0x0061e6f0 in FUN_00616f80 (window 10/6)
 entries = [
-  { index = 0, target = "0x61e708" },  # r0001 0x00616fb0 exact
-  { index = 1, target = "0x617038" },  # UNRESOLVED: r0001 0x00617038 kept -- the matcher could not place this function
-  { index = 2, target = "0x61e720" },  # r0001 0x00616fb8 seed+delta
-  { index = 3, target = "0x61e730" },  # r0001 0x00616fc8 seed+delta
-  { index = 4, target = "0x61e740" },  # r0001 0x00616fd8 seed+delta
-  { index = 5, target = "0x61e750" },  # r0001 0x00616fe8 seed+delta
-  { index = 6, target = "0x61e760" },  # r0001 0x00616ff8 seed+delta
-  { index = 7, target = "0x61e770" },  # r0001 0x00617008 seed+delta
-  { index = 8, target = "0x61e780" },  # r0001 0x00617018 seed+delta
-  { index = 9, target = "0x61e790" },  # r0001 0x00617028 seed+delta
+  { index = 0, target = "0x61e708" },
+  { index = 1, target = "0x61e790" },
+  { index = 2, target = "0x61e710" },
+  { index = 3, target = "0x61e720" },
+  { index = 4, target = "0x61e730" },
+  { index = 5, target = "0x61e740" },
+  { index = 6, target = "0x61e750" },
+  { index = 7, target = "0x61e760" },
+  { index = 8, target = "0x61e770" },
+  { index = 9, target = "0x61e780" },
 ]
 
 [[jump_tables.table]]
-address = "0x663c50"  # UNRESOLVED: r0001 0x00663c50 kept -- inside 0x00663c18, which the matcher could not place
+address = "0x663ca0"  # r0001 0x00663c50, 16 entries, count from the switch's own sltiu bound, use site 0x0061ad44 -> 0x00622534 in FUN_0061acf0 (window 10/6)
 entries = [
-  { index = 0, target = "0x61ad58" },  # UNRESOLVED: r0001 0x0061ad58 kept -- inside 0x0061acf0, which the matcher could not place
-  { index = 1, target = "0x61ada0" },  # UNRESOLVED: r0001 0x0061ada0 kept -- inside 0x0061acf0, which the matcher could not place
-  { index = 2, target = "0x61ae10" },  # UNRESOLVED: r0001 0x0061ae10 kept -- inside 0x0061acf0, which the matcher could not place
-  { index = 3, target = "0x61ae58" },  # UNRESOLVED: r0001 0x0061ae58 kept -- inside 0x0061acf0, which the matcher could not place
-  { index = 4, target = "0x61aec8" },  # UNRESOLVED: r0001 0x0061aec8 kept -- inside 0x0061acf0, which the matcher could not place
-  { index = 5, target = "0x61af08" },  # UNRESOLVED: r0001 0x0061af08 kept -- inside 0x0061acf0, which the matcher could not place
-  { index = 6, target = "0x61af60" },  # UNRESOLVED: r0001 0x0061af60 kept -- inside 0x0061acf0, which the matcher could not place
-  { index = 7, target = "0x61afb8" },  # UNRESOLVED: r0001 0x0061afb8 kept -- inside 0x0061acf0, which the matcher could not place
-  { index = 8, target = "0x61b040" },  # UNRESOLVED: r0001 0x0061b040 kept -- inside 0x0061acf0, which the matcher could not place
-  { index = 9, target = "0x61b058" },  # UNRESOLVED: r0001 0x0061b058 kept -- inside 0x0061acf0, which the matcher could not place
-  { index = 10, target = "0x61b080" },  # UNRESOLVED: r0001 0x0061b080 kept -- inside 0x0061acf0, which the matcher could not place
-  { index = 11, target = "0x61b0d0" },  # UNRESOLVED: r0001 0x0061b0d0 kept -- inside 0x0061acf0, which the matcher could not place
-  { index = 12, target = "0x61b130" },  # UNRESOLVED: r0001 0x0061b130 kept -- inside 0x0061acf0, which the matcher could not place
-  { index = 13, target = "0x61b168" },  # UNRESOLVED: r0001 0x0061b168 kept -- inside 0x0061acf0, which the matcher could not place
-  { index = 14, target = "0x61b1c0" },  # UNRESOLVED: r0001 0x0061b1c0 kept -- inside 0x0061acf0, which the matcher could not place
-  { index = 15, target = "0x61b1e8" },  # UNRESOLVED: r0001 0x0061b1e8 kept -- inside 0x0061acf0, which the matcher could not place
+  { index = 0, target = "0x622548" },
+  { index = 1, target = "0x622590" },
+  { index = 2, target = "0x622600" },
+  { index = 3, target = "0x622648" },
+  { index = 4, target = "0x6226b8" },
+  { index = 5, target = "0x6226f8" },
+  { index = 6, target = "0x622750" },
+  { index = 7, target = "0x6227a8" },
+  { index = 8, target = "0x622830" },
+  { index = 9, target = "0x622848" },
+  { index = 10, target = "0x622870" },
+  { index = 11, target = "0x6228c0" },
+  { index = 12, target = "0x622920" },
+  { index = 13, target = "0x622958" },
+  { index = 14, target = "0x6229b0" },
+  { index = 15, target = "0x6229d8" },
 ]
 
 [[jump_tables.table]]
-address = "0x663ca0"  # UNRESOLVED: r0001 0x00663ca0 kept -- inside 0x00663c18, which the matcher could not place
+address = "0x663cf0"  # r0001 0x00663ca0, 29 entries, count from the switch's own sltiu bound, use site 0x0061c460 -> 0x00623c20 in FUN_0061c450 (window 10/6)
 entries = [
-  { index = 0, target = "0x623c38" },  # r0001 0x0061c478 exact
-  { index = 1, target = "0x623cc4" },  # r0001 0x0061c504, body+0x4 of 0x0061c500 exact
-  { index = 2, target = "0x623c50" },  # r0001 0x0061c480 seed+delta
-  { index = 3, target = "0x623c68" },  # r0001 0x0061c498 seed+delta
-  { index = 4, target = "0x623cc4" },  # r0001 0x0061c504, body+0x4 of 0x0061c500 exact
-  { index = 5, target = "0x623c70" },  # r0001 0x0061c4a0 seed+delta
-  { index = 6, target = "0x623c78" },  # r0001 0x0061c4a8 seed+delta
-  { index = 7, target = "0x623cc4" },  # r0001 0x0061c504, body+0x4 of 0x0061c500 exact
-  { index = 8, target = "0x623c58" },  # r0001 0x0061c488 seed+delta
-  { index = 9, target = "0x623c80" },  # r0001 0x0061c4b0 seed+delta
-  { index = 10, target = "0x623cc4" },  # r0001 0x0061c504, body+0x4 of 0x0061c500 exact
-  { index = 11, target = "0x623c88" },  # r0001 0x0061c4b8 seed+delta
-  { index = 12, target = "0x623c90" },  # r0001 0x0061c4c0 seed+delta
-  { index = 13, target = "0x623c98" },  # r0001 0x0061c4c8 seed+delta
-  { index = 14, target = "0x623ca0" },  # r0001 0x0061c4d0 seed+delta
-  { index = 15, target = "0x623ca0" },  # r0001 0x0061c4d0 seed+delta
-  { index = 16, target = "0x623ca8" },  # r0001 0x0061c4d8 seed+delta
-  { index = 17, target = "0x623cb0" },  # r0001 0x0061c4e0 seed+delta
-  { index = 18, target = "0x623c48" },  # r0001 0x0061c4f0 seed+delta
-  { index = 19, target = "0x623ca0" },  # r0001 0x0061c4d0 seed+delta
-  { index = 20, target = "0x623cb8" },  # r0001 0x0061c4e8 seed+delta
-  { index = 21, target = "0x623cb8" },  # r0001 0x0061c4e8 seed+delta
-  { index = 22, target = "0x623c48" },  # r0001 0x0061c4f0 seed+delta
-  { index = 23, target = "0x61c4f8" },  # UNRESOLVED: r0001 0x0061c4f8 kept -- the matcher could not place this function
-  { index = 24, target = "0x623cc4" },  # r0001 0x0061c504, body+0x4 of 0x0061c500 exact
-  { index = 25, target = "0x623c60" },  # r0001 0x0061c490 seed+delta
-  { index = 26, target = "0x623cc4" },  # r0001 0x0061c504, body+0x4 of 0x0061c500 exact
-  { index = 27, target = "0x623cc0" },  # r0001 0x0061c500 exact
-  { index = 28, target = "0x623cc0" },  # r0001 0x0061c500 exact
+  { index = 0, target = "0x623c38" },
+  { index = 1, target = "0x623cc4" },
+  { index = 2, target = "0x623c40" },
+  { index = 3, target = "0x623c58" },
+  { index = 4, target = "0x623cc4" },
+  { index = 5, target = "0x623c60" },
+  { index = 6, target = "0x623c68" },
+  { index = 7, target = "0x623cc4" },
+  { index = 8, target = "0x623c48" },
+  { index = 9, target = "0x623c70" },
+  { index = 10, target = "0x623cc4" },
+  { index = 11, target = "0x623c78" },
+  { index = 12, target = "0x623c80" },
+  { index = 13, target = "0x623c88" },
+  { index = 14, target = "0x623c90" },
+  { index = 15, target = "0x623c90" },
+  { index = 16, target = "0x623c98" },
+  { index = 17, target = "0x623ca0" },
+  { index = 18, target = "0x623cb0" },
+  { index = 19, target = "0x623c90" },
+  { index = 20, target = "0x623ca8" },
+  { index = 21, target = "0x623ca8" },
+  { index = 22, target = "0x623cb0" },
+  { index = 23, target = "0x623cb8" },
+  { index = 24, target = "0x623cc4" },
+  { index = 25, target = "0x623c50" },
+  { index = 26, target = "0x623cc4" },
+  { index = 27, target = "0x623cc0" },
+  { index = 28, target = "0x623cc0" },
 ]
 
 [[jump_tables.table]]
-address = "0x663e10"  # UNRESOLVED: r0001 0x00663e10 kept -- inside 0x00663c18, which the matcher could not place
+address = "0x663e60"  # r0001 0x00663e10, 6 entries, count from the switch's own sltiu bound, use site 0x0061f738 -> 0x00627000 in FUN_0061f518 (window 10/6)
 entries = [
-  { index = 0, target = "0x61f794" },  # UNRESOLVED: r0001 0x0061f794 kept -- inside 0x0061f518, which the matcher could not place
-  { index = 1, target = "0x61f794" },  # UNRESOLVED: r0001 0x0061f794 kept -- inside 0x0061f518, which the matcher could not place
-  { index = 2, target = "0x61f794" },  # UNRESOLVED: r0001 0x0061f794 kept -- inside 0x0061f518, which the matcher could not place
-  { index = 3, target = "0x61f750" },  # UNRESOLVED: r0001 0x0061f750 kept -- inside 0x0061f518, which the matcher could not place
-  { index = 4, target = "0x61f794" },  # UNRESOLVED: r0001 0x0061f794 kept -- inside 0x0061f518, which the matcher could not place
-  { index = 5, target = "0x61f770" },  # UNRESOLVED: r0001 0x0061f770 kept -- inside 0x0061f518, which the matcher could not place
+  { index = 0, target = "0x62705c" },
+  { index = 1, target = "0x62705c" },
+  { index = 2, target = "0x62705c" },
+  { index = 3, target = "0x627018" },
+  { index = 4, target = "0x62705c" },
+  { index = 5, target = "0x627038" },
 ]
 
 [[jump_tables.table]]
-address = "0x664050"  # UNRESOLVED: r0001 0x00664050 kept -- inside 0x00663ec0, which the matcher could not place
+address = "0x6640a0"  # r0001 0x00664050, 19 entries, count from the switch's own sltiu bound, use site 0x006257f8 -> 0x0062d2b8 in FUN_00625690 (window 10/6)
 entries = [
-  { index = 0, target = "0x6260d8" },  # UNRESOLVED: r0001 0x006260d8 kept -- inside 0x00625690, which the matcher could not place
-  { index = 1, target = "0x625810" },  # UNRESOLVED: r0001 0x00625810 kept -- inside 0x00625690, which the matcher could not place
-  { index = 2, target = "0x625848" },  # UNRESOLVED: r0001 0x00625848 kept -- inside 0x00625690, which the matcher could not place
-  { index = 3, target = "0x625868" },  # UNRESOLVED: r0001 0x00625868 kept -- inside 0x00625690, which the matcher could not place
-  { index = 4, target = "0x6258a0" },  # UNRESOLVED: r0001 0x006258a0 kept -- inside 0x00625690, which the matcher could not place
-  { index = 5, target = "0x6258d0" },  # UNRESOLVED: r0001 0x006258d0 kept -- inside 0x00625690, which the matcher could not place
-  { index = 6, target = "0x625d78" },  # UNRESOLVED: r0001 0x00625d78 kept -- inside 0x00625690, which the matcher could not place
-  { index = 7, target = "0x625dd8" },  # UNRESOLVED: r0001 0x00625dd8 kept -- inside 0x00625690, which the matcher could not place
-  { index = 8, target = "0x625af0" },  # UNRESOLVED: r0001 0x00625af0 kept -- inside 0x00625690, which the matcher could not place
-  { index = 9, target = "0x625ea8" },  # UNRESOLVED: r0001 0x00625ea8 kept -- inside 0x00625690, which the matcher could not place
-  { index = 10, target = "0x625f88" },  # UNRESOLVED: r0001 0x00625f88 kept -- inside 0x00625690, which the matcher could not place
-  { index = 11, target = "0x625e58" },  # UNRESOLVED: r0001 0x00625e58 kept -- inside 0x00625690, which the matcher could not place
-  { index = 12, target = "0x625c58" },  # UNRESOLVED: r0001 0x00625c58 kept -- inside 0x00625690, which the matcher could not place
-  { index = 13, target = "0x6260d8" },  # UNRESOLVED: r0001 0x006260d8 kept -- inside 0x00625690, which the matcher could not place
-  { index = 14, target = "0x625d10" },  # UNRESOLVED: r0001 0x00625d10 kept -- inside 0x00625690, which the matcher could not place
-  { index = 15, target = "0x6258c0" },  # UNRESOLVED: r0001 0x006258c0 kept -- inside 0x00625690, which the matcher could not place
-  { index = 16, target = "0x626020" },  # UNRESOLVED: r0001 0x00626020 kept -- inside 0x00625690, which the matcher could not place
-  { index = 17, target = "0x626038" },  # UNRESOLVED: r0001 0x00626038 kept -- inside 0x00625690, which the matcher could not place
-  { index = 18, target = "0x626090" },  # UNRESOLVED: r0001 0x00626090 kept -- inside 0x00625690, which the matcher could not place
+  { index = 0, target = "0x62db98" },
+  { index = 1, target = "0x62d2d0" },
+  { index = 2, target = "0x62d308" },
+  { index = 3, target = "0x62d328" },
+  { index = 4, target = "0x62d360" },
+  { index = 5, target = "0x62d390" },
+  { index = 6, target = "0x62d838" },
+  { index = 7, target = "0x62d898" },
+  { index = 8, target = "0x62d5b0" },
+  { index = 9, target = "0x62d968" },
+  { index = 10, target = "0x62da48" },
+  { index = 11, target = "0x62d918" },
+  { index = 12, target = "0x62d718" },
+  { index = 13, target = "0x62db98" },
+  { index = 14, target = "0x62d7d0" },
+  { index = 15, target = "0x62d380" },
+  { index = 16, target = "0x62dae0" },
+  { index = 17, target = "0x62daf8" },
+  { index = 18, target = "0x62db50" },
 ]
 
 [[jump_tables.table]]
-address = "0x665510"  # UNRESOLVED: r0001 0x00665510 kept -- inside 0x006654c8, which the matcher could not place
+address = "0x665560"  # r0001 0x00665510, 29 entries, count from the switch's own sltiu bound, use site 0x006365f4 -> 0x0063dfd4 in FUN_006364c0 (window 10/6)
 entries = [
-  { index = 0, target = "0x636710" },  # UNRESOLVED: r0001 0x00636710 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 1, target = "0x636710" },  # UNRESOLVED: r0001 0x00636710 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 2, target = "0x636820" },  # UNRESOLVED: r0001 0x00636820 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 3, target = "0x636748" },  # UNRESOLVED: r0001 0x00636748 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 4, target = "0x636628" },  # UNRESOLVED: r0001 0x00636628 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 5, target = "0x636628" },  # UNRESOLVED: r0001 0x00636628 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 6, target = "0x6366f0" },  # UNRESOLVED: r0001 0x006366f0 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 7, target = "0x6366f0" },  # UNRESOLVED: r0001 0x006366f0 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 8, target = "0x636710" },  # UNRESOLVED: r0001 0x00636710 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 9, target = "0x636820" },  # UNRESOLVED: r0001 0x00636820 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 10, target = "0x636820" },  # UNRESOLVED: r0001 0x00636820 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 11, target = "0x636820" },  # UNRESOLVED: r0001 0x00636820 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 12, target = "0x636820" },  # UNRESOLVED: r0001 0x00636820 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 13, target = "0x636820" },  # UNRESOLVED: r0001 0x00636820 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 14, target = "0x636820" },  # UNRESOLVED: r0001 0x00636820 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 15, target = "0x636760" },  # UNRESOLVED: r0001 0x00636760 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 16, target = "0x636820" },  # UNRESOLVED: r0001 0x00636820 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 17, target = "0x636780" },  # UNRESOLVED: r0001 0x00636780 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 18, target = "0x6367a0" },  # UNRESOLVED: r0001 0x006367a0 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 19, target = "0x636820" },  # UNRESOLVED: r0001 0x00636820 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 20, target = "0x636820" },  # UNRESOLVED: r0001 0x00636820 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 21, target = "0x636820" },  # UNRESOLVED: r0001 0x00636820 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 22, target = "0x6366a0" },  # UNRESOLVED: r0001 0x006366a0 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 23, target = "0x6366c0" },  # UNRESOLVED: r0001 0x006366c0 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 24, target = "0x636608" },  # UNRESOLVED: r0001 0x00636608 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 25, target = "0x636780" },  # UNRESOLVED: r0001 0x00636780 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 26, target = "0x6367c0" },  # UNRESOLVED: r0001 0x006367c0 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 27, target = "0x6367e0" },  # UNRESOLVED: r0001 0x006367e0 kept -- inside 0x006364c0, which the matcher could not place
-  { index = 28, target = "0x636800" },  # UNRESOLVED: r0001 0x00636800 kept -- inside 0x006364c0, which the matcher could not place
+  { index = 0, target = "0x63e0f0" },
+  { index = 1, target = "0x63e0f0" },
+  { index = 2, target = "0x63e200" },
+  { index = 3, target = "0x63e128" },
+  { index = 4, target = "0x63e008" },
+  { index = 5, target = "0x63e008" },
+  { index = 6, target = "0x63e0d0" },
+  { index = 7, target = "0x63e0d0" },
+  { index = 8, target = "0x63e0f0" },
+  { index = 9, target = "0x63e200" },
+  { index = 10, target = "0x63e200" },
+  { index = 11, target = "0x63e200" },
+  { index = 12, target = "0x63e200" },
+  { index = 13, target = "0x63e200" },
+  { index = 14, target = "0x63e200" },
+  { index = 15, target = "0x63e140" },
+  { index = 16, target = "0x63e200" },
+  { index = 17, target = "0x63e160" },
+  { index = 18, target = "0x63e180" },
+  { index = 19, target = "0x63e200" },
+  { index = 20, target = "0x63e200" },
+  { index = 21, target = "0x63e200" },
+  { index = 22, target = "0x63e080" },
+  { index = 23, target = "0x63e0a0" },
+  { index = 24, target = "0x63dfe8" },
+  { index = 25, target = "0x63e160" },
+  { index = 26, target = "0x63e1a0" },
+  { index = 27, target = "0x63e1c0" },
+  { index = 28, target = "0x63e1e0" },
 ]
 
 [[jump_tables.table]]
-address = "0x665590"  # UNRESOLVED: r0001 0x00665590 kept -- inside 0x006654c8, which the matcher could not place
+address = "0x665610"  # r0001 0x00665590, 29 entries (13 in r0001), count from the switch's own sltiu bound, base between 0x00665560 and 0x00665690 with r0001's own pattern of equal targets, read by 0x0063eff4 (FUN_00637510)
 entries = [
-  { index = 0, target = "0x6375f8" },  # UNRESOLVED: r0001 0x006375f8 kept -- inside 0x00637510, which the matcher could not place
-  { index = 1, target = "0x637638" },  # UNRESOLVED: r0001 0x00637638 kept -- inside 0x00637510, which the matcher could not place
-  { index = 2, target = "0x637668" },  # UNRESOLVED: r0001 0x00637668 kept -- inside 0x00637510, which the matcher could not place
-  { index = 3, target = "0x637690" },  # UNRESOLVED: r0001 0x00637690 kept -- inside 0x00637510, which the matcher could not place
-  { index = 4, target = "0x6376c0" },  # UNRESOLVED: r0001 0x006376c0 kept -- inside 0x00637510, which the matcher could not place
-  { index = 5, target = "0x6376f0" },  # UNRESOLVED: r0001 0x006376f0 kept -- inside 0x00637510, which the matcher could not place
-  { index = 6, target = "0x637728" },  # UNRESOLVED: r0001 0x00637728 kept -- inside 0x00637510, which the matcher could not place
-  { index = 7, target = "0x6378b0" },  # UNRESOLVED: r0001 0x006378b0 kept -- inside 0x00637510, which the matcher could not place
-  { index = 8, target = "0x637758" },  # UNRESOLVED: r0001 0x00637758 kept -- inside 0x00637510, which the matcher could not place
-  { index = 9, target = "0x637778" },  # UNRESOLVED: r0001 0x00637778 kept -- inside 0x00637510, which the matcher could not place
-  { index = 10, target = "0x6377a0" },  # UNRESOLVED: r0001 0x006377a0 kept -- inside 0x00637510, which the matcher could not place
-  { index = 11, target = "0x6377d0" },  # UNRESOLVED: r0001 0x006377d0 kept -- inside 0x00637510, which the matcher could not place
-  { index = 12, target = "0x637820" },  # UNRESOLVED: r0001 0x00637820 kept -- inside 0x00637510, which the matcher could not place
+  { index = 0, target = "0x63f008" },
+  { index = 1, target = "0x63f048" },
+  { index = 2, target = "0x63f078" },
+  { index = 3, target = "0x63f0a0" },
+  { index = 4, target = "0x63f0d0" },
+  { index = 5, target = "0x63f100" },
+  { index = 6, target = "0x63f138" },
+  { index = 7, target = "0x63f728" },
+  { index = 8, target = "0x63f168" },
+  { index = 9, target = "0x63f188" },
+  { index = 10, target = "0x63f1b0" },
+  { index = 11, target = "0x63f1e0" },
+  { index = 12, target = "0x63f230" },
+  { index = 13, target = "0x63f2f0" },  # grown: this build's switch has a case r0001 did not
+  { index = 14, target = "0x63f3c0" },  # grown: this build's switch has a case r0001 did not
+  { index = 15, target = "0x63f458" },  # grown: this build's switch has a case r0001 did not
+  { index = 16, target = "0x63f530" },  # grown: this build's switch has a case r0001 did not
+  { index = 17, target = "0x63f618" },  # grown: this build's switch has a case r0001 did not
+  { index = 18, target = "0x63f2c0" },  # grown: this build's switch has a case r0001 did not
+  { index = 19, target = "0x63f390" },  # grown: this build's switch has a case r0001 did not
+  { index = 20, target = "0x63f428" },  # grown: this build's switch has a case r0001 did not
+  { index = 21, target = "0x63f4b8" },  # grown: this build's switch has a case r0001 did not
+  { index = 22, target = "0x63f5a0" },  # grown: this build's switch has a case r0001 did not
+  { index = 23, target = "0x63f6a8" },  # grown: this build's switch has a case r0001 did not
+  { index = 24, target = "0x63f6b8" },  # grown: this build's switch has a case r0001 did not
+  { index = 25, target = "0x63f6c8" },  # grown: this build's switch has a case r0001 did not
+  { index = 26, target = "0x63f6d8" },  # grown: this build's switch has a case r0001 did not
+  { index = 27, target = "0x63f6e8" },  # grown: this build's switch has a case r0001 did not
+  { index = 28, target = "0x63f6f8" },  # grown: this build's switch has a case r0001 did not
 ]
 
 [[jump_tables.table]]
-address = "0x6655d0"  # UNRESOLVED: r0001 0x006655d0 kept -- inside 0x006654c8, which the matcher could not place
+address = "0x665690"  # r0001 0x006655d0, 7 entries, count from the switch's own sltiu bound, use site 0x006380dc -> 0x0063ff64 in FUN_006380c0 (window 10/6)
 entries = [
-  { index = 0, target = "0x6380f0" },  # UNRESOLVED: r0001 0x006380f0 kept -- inside 0x006380c0, which the matcher could not place
-  { index = 1, target = "0x638100" },  # UNRESOLVED: r0001 0x00638100 kept -- inside 0x006380c0, which the matcher could not place
-  { index = 2, target = "0x638110" },  # UNRESOLVED: r0001 0x00638110 kept -- inside 0x006380c0, which the matcher could not place
-  { index = 3, target = "0x638120" },  # UNRESOLVED: r0001 0x00638120 kept -- inside 0x006380c0, which the matcher could not place
-  { index = 4, target = "0x638130" },  # UNRESOLVED: r0001 0x00638130 kept -- inside 0x006380c0, which the matcher could not place
-  { index = 5, target = "0x638140" },  # UNRESOLVED: r0001 0x00638140 kept -- inside 0x006380c0, which the matcher could not place
-  { index = 6, target = "0x638150" },  # UNRESOLVED: r0001 0x00638150 kept -- inside 0x006380c0, which the matcher could not place
+  { index = 0, target = "0x63ff78" },
+  { index = 1, target = "0x63ff88" },
+  { index = 2, target = "0x63ff98" },
+  { index = 3, target = "0x63ffa8" },
+  { index = 4, target = "0x63ffb8" },
+  { index = 5, target = "0x63ffc8" },
+  { index = 6, target = "0x63ffd8" },
 ]
 
 [[jump_tables.table]]
-address = "0x6655f0"  # UNRESOLVED: r0001 0x006655f0 kept -- inside 0x006654c8, which the matcher could not place
+address = "0x6656b0"  # r0001 0x006655f0, 5 entries, count from the switch's own sltiu bound, use site 0x00638194 -> 0x0064001c in FUN_00638178 (window 10/6)
 entries = [
-  { index = 0, target = "0x6381a8" },  # UNRESOLVED: r0001 0x006381a8 kept -- inside 0x00638178, which the matcher could not place
-  { index = 1, target = "0x6381b0" },  # UNRESOLVED: r0001 0x006381b0 kept -- inside 0x00638178, which the matcher could not place
-  { index = 2, target = "0x6381c0" },  # UNRESOLVED: r0001 0x006381c0 kept -- inside 0x00638178, which the matcher could not place
-  { index = 3, target = "0x6381d0" },  # UNRESOLVED: r0001 0x006381d0 kept -- inside 0x00638178, which the matcher could not place
-  { index = 4, target = "0x6381e0" },  # UNRESOLVED: r0001 0x006381e0 kept -- inside 0x00638178, which the matcher could not place
+  { index = 0, target = "0x640030" },
+  { index = 1, target = "0x640038" },
+  { index = 2, target = "0x640048" },
+  { index = 3, target = "0x640058" },
+  { index = 4, target = "0x640068" },
 ]
 
 [[jump_tables.table]]
-address = "0x665880"  # UNRESOLVED: r0001 0x00665880 kept -- inside 0x00665760, which the matcher could not place
+address = "0x6659a0"  # r0001 0x00665880, 13 entries, count from the switch's own sltiu bound, base between 0x006656b0 and 0x00667d30 with r0001's own pattern of equal targets, read by 0x006492fc (FUN_00640ea0)
 entries = [
-  { index = 0, target = "0x640fe8" },  # UNRESOLVED: r0001 0x00640fe8 kept -- inside 0x00640ea0, which the matcher could not place
-  { index = 1, target = "0x641098" },  # UNRESOLVED: r0001 0x00641098 kept -- inside 0x00640ea0, which the matcher could not place
-  { index = 2, target = "0x641098" },  # UNRESOLVED: r0001 0x00641098 kept -- inside 0x00640ea0, which the matcher could not place
-  { index = 3, target = "0x641098" },  # UNRESOLVED: r0001 0x00641098 kept -- inside 0x00640ea0, which the matcher could not place
-  { index = 4, target = "0x641098" },  # UNRESOLVED: r0001 0x00641098 kept -- inside 0x00640ea0, which the matcher could not place
-  { index = 5, target = "0x641098" },  # UNRESOLVED: r0001 0x00641098 kept -- inside 0x00640ea0, which the matcher could not place
-  { index = 6, target = "0x641098" },  # UNRESOLVED: r0001 0x00641098 kept -- inside 0x00640ea0, which the matcher could not place
-  { index = 7, target = "0x641098" },  # UNRESOLVED: r0001 0x00641098 kept -- inside 0x00640ea0, which the matcher could not place
-  { index = 8, target = "0x641080" },  # UNRESOLVED: r0001 0x00641080 kept -- inside 0x00640ea0, which the matcher could not place
-  { index = 9, target = "0x641080" },  # UNRESOLVED: r0001 0x00641080 kept -- inside 0x00640ea0, which the matcher could not place
-  { index = 10, target = "0x641098" },  # UNRESOLVED: r0001 0x00641098 kept -- inside 0x00640ea0, which the matcher could not place
-  { index = 11, target = "0x641080" },  # UNRESOLVED: r0001 0x00641080 kept -- inside 0x00640ea0, which the matcher could not place
-  { index = 12, target = "0x641080" },  # UNRESOLVED: r0001 0x00641080 kept -- inside 0x00640ea0, which the matcher could not place
+  { index = 0, target = "0x649310" },
+  { index = 1, target = "0x6493c8" },
+  { index = 2, target = "0x6493c8" },
+  { index = 3, target = "0x6493c8" },
+  { index = 4, target = "0x6493c8" },
+  { index = 5, target = "0x6493c8" },
+  { index = 6, target = "0x6493c8" },
+  { index = 7, target = "0x6493c8" },
+  { index = 8, target = "0x6493b0" },
+  { index = 9, target = "0x6493b0" },
+  { index = 10, target = "0x6493c8" },
+  { index = 11, target = "0x6493b0" },
+  { index = 12, target = "0x6493b0" },
 ]
 
 [[jump_tables.table]]
-address = "0x667c30"  # UNRESOLVED: r0001 0x00667c30 kept -- inside 0x00667c20, which the matcher could not place
+address = "0x667d30"  # r0001 0x00667c30, 5 entries, count from the switch's own sltiu bound, use site 0x006449d8 -> 0x0064cd10 in FUN_006449c0 (window 6/4)
 entries = [
-  { index = 0, target = "0x64cd58" },  # r0001 0x006449f0 seed+delta
-  { index = 1, target = "0x64cd28" },  # r0001 0x00644a00 seed+delta
-  { index = 2, target = "0x64cd38" },  # r0001 0x00644a10 seed+delta
-  { index = 3, target = "0x64cd48" },  # r0001 0x00644a20 seed+delta
-  { index = 4, target = "0x64cd68" },  # r0001 0x00644a30 seed+delta
+  { index = 0, target = "0x64cd28" },
+  { index = 1, target = "0x64cd38" },
+  { index = 2, target = "0x64cd48" },
+  { index = 3, target = "0x64cd58" },
+  { index = 4, target = "0x64cd68" },
 ]
 
 [[jump_tables.table]]
-address = "0x667c50"  # UNRESOLVED: r0001 0x00667c50 kept -- inside 0x00667c20, which the matcher could not place
+address = "0x667d50"  # r0001 0x00667c50, 31 entries, count from the switch's own sltiu bound, use site 0x00644a74 -> 0x0064cdac in FUN_00644a58 (window 10/6)
 entries = [
-  { index = 0, target = "0x644a88" },  # UNRESOLVED: r0001 0x00644a88 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 1, target = "0x644aa0" },  # UNRESOLVED: r0001 0x00644aa0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 2, target = "0x644ac0" },  # UNRESOLVED: r0001 0x00644ac0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 3, target = "0x644ab0" },  # UNRESOLVED: r0001 0x00644ab0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 4, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 5, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 6, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 7, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 8, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 9, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 10, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 11, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 12, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 13, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 14, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 15, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 16, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 17, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 18, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 19, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 20, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 21, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 22, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 23, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 24, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 25, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 26, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 27, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 28, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 29, target = "0x644ad0" },  # UNRESOLVED: r0001 0x00644ad0 kept -- inside 0x00644a58, which the matcher could not place
-  { index = 30, target = "0x644a90" },  # UNRESOLVED: r0001 0x00644a90 kept -- inside 0x00644a58, which the matcher could not place
+  { index = 0, target = "0x64cdc0" },
+  { index = 1, target = "0x64cdd8" },
+  { index = 2, target = "0x64cdf8" },
+  { index = 3, target = "0x64cde8" },
+  { index = 4, target = "0x64ce08" },
+  { index = 5, target = "0x64ce08" },
+  { index = 6, target = "0x64ce08" },
+  { index = 7, target = "0x64ce08" },
+  { index = 8, target = "0x64ce08" },
+  { index = 9, target = "0x64ce08" },
+  { index = 10, target = "0x64ce08" },
+  { index = 11, target = "0x64ce08" },
+  { index = 12, target = "0x64ce08" },
+  { index = 13, target = "0x64ce08" },
+  { index = 14, target = "0x64ce08" },
+  { index = 15, target = "0x64ce08" },
+  { index = 16, target = "0x64ce08" },
+  { index = 17, target = "0x64ce08" },
+  { index = 18, target = "0x64ce08" },
+  { index = 19, target = "0x64ce08" },
+  { index = 20, target = "0x64ce08" },
+  { index = 21, target = "0x64ce08" },
+  { index = 22, target = "0x64ce08" },
+  { index = 23, target = "0x64ce08" },
+  { index = 24, target = "0x64ce08" },
+  { index = 25, target = "0x64ce08" },
+  { index = 26, target = "0x64ce08" },
+  { index = 27, target = "0x64ce08" },
+  { index = 28, target = "0x64ce08" },
+  { index = 29, target = "0x64ce08" },
+  { index = 30, target = "0x64cdc8" },
 ]
 
 [[jump_tables.table]]
-address = "0x6683b0"  # UNRESOLVED: r0001 0x006683b0 kept -- inside 0x00667cf8, which the matcher could not place
+address = "0x429db0"  # r0001 0x006683b0, 23 entries, count from the switch's own sltiu bound, use site 0x0064a5ec -> 0x003fc9c4 in FUN_0064a298 (window 10/6)
 entries = [
-  { index = 0, target = "0x3fcb08" },  # r0001 0x0064a730 seed+delta
-  { index = 1, target = "0x3fcaf8" },  # r0001 0x0064a720 seed+delta
-  { index = 2, target = "0x3fcae8" },  # r0001 0x0064a710 seed+delta
-  { index = 3, target = "0x3fcad8" },  # r0001 0x0064a700 seed+delta
-  { index = 4, target = "0x3fcac8" },  # r0001 0x0064a6f0 seed+delta
-  { index = 5, target = "0x3fcab8" },  # r0001 0x0064a6e0 seed+delta
-  { index = 6, target = "0x3fca98" },  # r0001 0x0064a6c0 seed+delta
-  { index = 7, target = "0x3fca88" },  # r0001 0x0064a6b0 seed+delta
-  { index = 8, target = "0x3fca78" },  # r0001 0x0064a6a0 seed+delta
-  { index = 9, target = "0x3fca68" },  # r0001 0x0064a690 seed+delta
-  { index = 10, target = "0x3fcb18" },  # r0001 0x0064a740 seed+delta
-  { index = 11, target = "0x3fca58" },  # r0001 0x0064a680 seed+delta
-  { index = 12, target = "0x3fca48" },  # r0001 0x0064a670 seed+delta
-  { index = 13, target = "0x3fca38" },  # r0001 0x0064a660 seed+delta
-  { index = 14, target = "0x3fca28" },  # r0001 0x0064a650 seed+delta
-  { index = 15, target = "0x3fca18" },  # r0001 0x0064a640 seed+delta
-  { index = 16, target = "0x3fca08" },  # r0001 0x0064a630 seed+delta
-  { index = 17, target = "0x3fc9f8" },  # r0001 0x0064a620 seed+delta
-  { index = 18, target = "0x3fc9e8" },  # r0001 0x0064a610 seed+delta
-  { index = 19, target = "0x3fc9d8" },  # r0001 0x0064a600 seed+delta
-  { index = 20, target = "0x3fcb18" },  # r0001 0x0064a740 seed+delta
-  { index = 21, target = "0x3fcb18" },  # r0001 0x0064a740 seed+delta
-  { index = 22, target = "0x3fcaa8" },  # r0001 0x0064a6d0 seed+delta
+  { index = 0, target = "0x3fcb08" },
+  { index = 1, target = "0x3fcaf8" },
+  { index = 2, target = "0x3fcae8" },
+  { index = 3, target = "0x3fcad8" },
+  { index = 4, target = "0x3fcac8" },
+  { index = 5, target = "0x3fcab8" },
+  { index = 6, target = "0x3fca98" },
+  { index = 7, target = "0x3fca88" },
+  { index = 8, target = "0x3fca78" },
+  { index = 9, target = "0x3fca68" },
+  { index = 10, target = "0x3fcb18" },
+  { index = 11, target = "0x3fca58" },
+  { index = 12, target = "0x3fca48" },
+  { index = 13, target = "0x3fca38" },
+  { index = 14, target = "0x3fca28" },
+  { index = 15, target = "0x3fca18" },
+  { index = 16, target = "0x3fca08" },
+  { index = 17, target = "0x3fc9f8" },
+  { index = 18, target = "0x3fc9e8" },
+  { index = 19, target = "0x3fc9d8" },
+  { index = 20, target = "0x3fcb18" },
+  { index = 21, target = "0x3fcb18" },
+  { index = 22, target = "0x3fcaa8" },
 ]
 
 # Patches to apply during recompilation
@@ -2130,25 +2146,25 @@ instructions = [
   { address = "0x1c26fc", value = "0x0" },  # Potential self-modifying code
   { address = "0x1c2b24", value = "0x0" },  # Potential self-modifying code
   { address = "0x1c2b6c", value = "0x0" },  # Potential self-modifying code
-  { address = "0x22eaac", value = "0x0" },  # Potential self-modifying code  (UNRESOLVED: r0001 0x0022eaac kept -- inside 0x0022ea70, which the matcher could not place)
-  { address = "0x23c744", value = "0x0" },  # Potential self-modifying code  (UNRESOLVED: r0001 0x0023c744 kept -- inside 0x0023c6f0, which the matcher could not place)
+  { address = "0x22eaac", value = "0x0" },  # Potential self-modifying code  (r0001 0x0022eaac anchor window 10/6)
+  { address = "0x23c744", value = "0x0" },  # Potential self-modifying code  (r0001 0x0023c744 anchor window 10/6)
   { address = "0x243c40", value = "0x0" },  # Potential self-modifying code  (r0001 0x00243c40, body+0x58 of 0x00243be8 exact)
-  { address = "0x299438", value = "0x0" },  # Potential self-modifying code  (UNRESOLVED: r0001 0x00299438 kept -- inside 0x00299320, which the matcher could not place)
-  { address = "0x299748", value = "0x0" },  # Potential self-modifying code  (UNRESOLVED: r0001 0x00299748 kept -- inside 0x00299700, which the matcher could not place)
-  { address = "0x299e1c", value = "0x0" },  # Potential self-modifying code  (UNRESOLVED: r0001 0x00299e1c kept -- inside 0x00299c40, which the matcher could not place)
-  { address = "0x29b780", value = "0x0" },  # Potential self-modifying code  (UNRESOLVED: r0001 0x0029b780 kept -- inside 0x0029b5d0, which the matcher could not place)
-  { address = "0x29b9f8", value = "0x0" },  # Potential self-modifying code  (UNRESOLVED: r0001 0x0029b9f8 kept -- inside 0x0029b8d0, which the matcher could not place)
-  { address = "0x2e752c", value = "0x0" },  # Potential self-modifying code  (UNRESOLVED: r0001 0x002e752c kept -- inside 0x002e7450, which the matcher could not place)
-  { address = "0x3007dc", value = "0x0" },  # Potential self-modifying code  (UNRESOLVED: r0001 0x003007dc kept -- inside 0x00300740, which the matcher could not place)
-  { address = "0x320410", value = "0x0" },  # Potential self-modifying code  (UNRESOLVED: r0001 0x00320410 kept -- inside 0x00320310, which the matcher could not place)
-  { address = "0x3418b4", value = "0x0" },  # Potential self-modifying code  (UNRESOLVED: r0001 0x003418b4 kept -- inside 0x00341860, which the matcher could not place)
-  { address = "0x3600a4", value = "0x0" },  # Potential self-modifying code  (UNRESOLVED: r0001 0x003600a4 kept -- inside 0x00360030, which the matcher could not place)
+  { address = "0x29a9c8", value = "0x0" },  # Potential self-modifying code  (r0001 0x00299438 anchor window 10/6, copy 1 of 2)
+  { address = "0x29acd8", value = "0x0" },  # Potential self-modifying code  (r0001 0x00299748 anchor window 10/6, copy 2 of 2)
+  { address = "0x29b3ac", value = "0x0" },  # Potential self-modifying code  (r0001 0x00299e1c anchor window 10/6)
+  { address = "0x29cc80", value = "0x0" },  # Potential self-modifying code  (r0001 0x0029b780 anchor window 10/6)
+  { address = "0x29cef8", value = "0x0" },  # Potential self-modifying code  (r0001 0x0029b9f8 anchor window 10/6)
+  { address = "0x3044cc", value = "0x0" },  # Potential self-modifying code  (r0001 0x002e752c anchor window 10/6)
+  { address = "0x31db6c", value = "0x0" },  # Potential self-modifying code  (r0001 0x003007dc anchor window 10/6)
+  { address = "0x33da20", value = "0x0" },  # Potential self-modifying code  (r0001 0x00320410 anchor window 10/6)
+  { address = "0x35ee44", value = "0x0" },  # Potential self-modifying code  (r0001 0x003418b4 anchor window 10/6)
+  { address = "0x37d934", value = "0x0" },  # Potential self-modifying code  (r0001 0x003600a4 anchor window 10/6)
   { address = "0x4c8a5c", value = "0x0" },  # Potential self-modifying code  (r0001 0x004c8a5c, body+0x9c of 0x004c89c0 exact)
-  { address = "0x616980", value = "0x0" },  # Potential self-modifying code  (UNRESOLVED: r0001 0x00616980 kept -- inside 0x00616820, which the matcher could not place)
+  { address = "0x61e0c0", value = "0x0" },  # Potential self-modifying code  (r0001 0x00616980 anchor window 10/6)
   { address = "0x631f48", value = "0x0" },  # Potential self-modifying code  (r0001 0x0062a488, body+0xd8 of 0x0062a3b0 exact)
   { address = "0x634604", value = "0x0" },  # Potential self-modifying code  (r0001 0x0062cb44, body+0x24 of 0x0062cb20 exact)
-  { address = "0x6338d0", value = "0x0" },  # Potential self-modifying code  (UNRESOLVED: r0001 0x006338d0 kept -- inside 0x00633790, which the matcher could not place)
-  { address = "0x638f44", value = "0x0" },  # Potential self-modifying code  (UNRESOLVED: r0001 0x00638f44 kept -- inside 0x00638f20, which the matcher could not place)
+  { address = "0x63b2b8", value = "0x0" },  # Potential self-modifying code  (r0001 0x006338d0 anchor window 10/6)
+  { address = "0x6410a4", value = "0x0" },  # Potential self-modifying code  (r0001 0x00638f44 anchor window 4/2)
 ]
 
 # Performance critical functions (may need manual optimization)
@@ -2626,15 +2642,22 @@ critical = [
 #   (weak)                              that body match was seed+delta -- the seed pass proved
 #                                       the function's fingerprint and length at the new address,
 #                                       not that the bytes inside it kept their offsets.
+#   use site / window / base between     the data-reference pass: the address was READ OUT of
+#                                       this build's image, at the code that loads it. A table
+#                                       whose line says so has its base, its entry count and
+#                                       every one of its targets from this build -- not one
+#                                       number in it is r0001's.
 # Addresses in a region that is byte-identical in both images do not move: untouched, uncommented.
 [revision]
 source = "recomp/socom2.toml"
 match = "game/r0004/match.json"
-translated = 91
-translated_interior = 22
+translated = 529
+translated_interior = 16
 weak = 0
 unchanged = 1357
-unresolved_count = 371
+unresolved_count = 115
+jump_tables_resolved = 24
+jump_tables_unresolved = 0
 
 # The addresses this config still carries from r0001, because the matcher could not place them.
 # They are r0001 numbers in another build's config: wrong until someone resolves them by hand.
@@ -2755,259 +2778,3 @@ unresolved_count = 371
 "0x00350c84" = "mmio -- inside 0x00350ab0, which the matcher could not place"
 "0x0030ac38" = "mmio -- inside 0x0030aaa0, which the matcher could not place"
 "0x00350c60" = "mmio -- inside 0x00350ab0, which the matcher could not place"
-"0x00656930" = "jump_tables -- inside 0x00656388, which the matcher could not place"
-"0x004c8f70" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c9188" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c8f80" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c8f90" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c8fa0" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c8fb0" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c8fd0" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c8fe0" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c8ff0" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c9000" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c9010" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c9020" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c9030" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c9040" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c9080" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c9050" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c9060" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c9070" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c9090" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c90a0" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c90b0" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c90c8" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c90d8" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c90e8" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c90f8" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c9108" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c9118" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c9128" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c9148" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c9158" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c9168" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c9178" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x004c9138" = "jump_table_entries -- inside 0x004c8f40, which the matcher could not place"
-"0x00656a10" = "jump_tables -- inside 0x00656388, which the matcher could not place"
-"0x004ca758" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca768" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca778" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca788" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca7f8" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca878" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca7a8" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca7c8" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca7d8" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca7e8" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca818" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca7b8" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca828" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca868" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca858" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca838" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca848" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca798" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca808" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x00656a60" = "jump_tables -- inside 0x00656388, which the matcher could not place"
-"0x004ca920" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca928" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca930" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca938" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca970" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca9b0" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca948" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca958" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca960" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca968" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca980" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca950" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca988" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca9a8" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca9a0" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca990" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca998" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca940" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x004ca978" = "jump_table_entries -- inside 0x004ca620, which the matcher could not place"
-"0x00656ab0" = "jump_tables -- inside 0x00656388, which the matcher could not place"
-"0x004cab28" = "jump_table_entries -- inside 0x004caa58, which the matcher could not place"
-"0x004cab38" = "jump_table_entries -- inside 0x004caa58, which the matcher could not place"
-"0x004cab48" = "jump_table_entries -- inside 0x004caa58, which the matcher could not place"
-"0x004cab58" = "jump_table_entries -- inside 0x004caa58, which the matcher could not place"
-"0x004cabc8" = "jump_table_entries -- inside 0x004caa58, which the matcher could not place"
-"0x004cac48" = "jump_table_entries -- inside 0x004caa58, which the matcher could not place"
-"0x004cab78" = "jump_table_entries -- inside 0x004caa58, which the matcher could not place"
-"0x004cab98" = "jump_table_entries -- inside 0x004caa58, which the matcher could not place"
-"0x004caba8" = "jump_table_entries -- inside 0x004caa58, which the matcher could not place"
-"0x004cabb8" = "jump_table_entries -- inside 0x004caa58, which the matcher could not place"
-"0x004cabe8" = "jump_table_entries -- inside 0x004caa58, which the matcher could not place"
-"0x004cab88" = "jump_table_entries -- inside 0x004caa58, which the matcher could not place"
-"0x004cabf8" = "jump_table_entries -- inside 0x004caa58, which the matcher could not place"
-"0x004cac38" = "jump_table_entries -- inside 0x004caa58, which the matcher could not place"
-"0x004cac28" = "jump_table_entries -- inside 0x004caa58, which the matcher could not place"
-"0x004cac08" = "jump_table_entries -- inside 0x004caa58, which the matcher could not place"
-"0x004cac18" = "jump_table_entries -- inside 0x004caa58, which the matcher could not place"
-"0x004cab68" = "jump_table_entries -- inside 0x004caa58, which the matcher could not place"
-"0x004cabd8" = "jump_table_entries -- inside 0x004caa58, which the matcher could not place"
-"0x00658740" = "jump_tables -- inside 0x00658718, which the matcher could not place"
-"0x004da780" = "jump_table_entries -- inside 0x004da6f8, which the matcher could not place"
-"0x004da768" = "jump_table_entries -- inside 0x004da6f8, which the matcher could not place"
-"0x00658830" = "jump_tables -- inside 0x00658718, which the matcher could not place"
-"0x004dae40" = "jump_table_entries -- inside 0x004dad90, which the matcher could not place"
-"0x004dae88" = "jump_table_entries -- inside 0x004dad90, which the matcher could not place"
-"0x004daea0" = "jump_table_entries -- inside 0x004dad90, which the matcher could not place"
-"0x004daeb0" = "jump_table_entries -- inside 0x004dad90, which the matcher could not place"
-"0x004daee8" = "jump_table_entries -- inside 0x004dad90, which the matcher could not place"
-"0x004db1c8" = "jump_table_entries -- inside 0x004dad90, which the matcher could not place"
-"0x004db1d8" = "jump_table_entries -- inside 0x004dad90, which the matcher could not place"
-"0x004db1f8" = "jump_table_entries -- inside 0x004dad90, which the matcher could not place"
-"0x004db218" = "jump_table_entries -- inside 0x004dad90, which the matcher could not place"
-"0x004db230" = "jump_table_entries -- inside 0x004dad90, which the matcher could not place"
-"0x004db260" = "jump_table_entries -- inside 0x004dad90, which the matcher could not place"
-"0x004db288" = "jump_table_entries -- inside 0x004dad90, which the matcher could not place"
-"0x004db278" = "jump_table_entries -- inside 0x004dad90, which the matcher could not place"
-"0x004db2a0" = "jump_table_entries -- inside 0x004dad90, which the matcher could not place"
-"0x004daf08" = "jump_table_entries -- inside 0x004dad90, which the matcher could not place"
-"0x004db138" = "jump_table_entries -- inside 0x004dad90, which the matcher could not place"
-"0x004db248" = "jump_table_entries -- inside 0x004dad90, which the matcher could not place"
-"0x004db118" = "jump_table_entries -- inside 0x004dad90, which the matcher could not place"
-"0x006588b0" = "jump_tables -- inside 0x00658718, which the matcher could not place"
-"0x004dcd10" = "jump_table_entries -- inside 0x004dcc58, which the matcher could not place"
-"0x004dccf8" = "jump_table_entries -- inside 0x004dcc58, which the matcher could not place"
-"0x0065a5a0" = "jump_tables -- no function body holds it"
-"0x00505e30" = "jump_table_entries -- inside 0x00505d90, which the matcher could not place"
-"0x00505f20" = "jump_table_entries -- inside 0x00505d90, which the matcher could not place"
-"0x00506138" = "jump_table_entries -- inside 0x00505d90, which the matcher could not place"
-"0x005062a8" = "jump_table_entries -- inside 0x00505d90, which the matcher could not place"
-"0x00506320" = "jump_table_entries -- inside 0x00505d90, which the matcher could not place"
-"0x00663820" = "jump_tables -- no function body holds it"
-"0x006116c0" = "jump_table_entries -- inside 0x006115c0, which the matcher could not place"
-"0x006116d0" = "jump_table_entries -- inside 0x006115c0, which the matcher could not place"
-"0x006116e0" = "jump_table_entries -- inside 0x006115c0, which the matcher could not place"
-"0x006116d8" = "jump_table_entries -- inside 0x006115c0, which the matcher could not place"
-"0x006116e8" = "jump_table_entries -- inside 0x006115c0, which the matcher could not place"
-"0x00663980" = "jump_tables -- no function body holds it"
-"0x00613678" = "jump_table_entries -- inside 0x006132b8, which the matcher could not place"
-"0x00613348" = "jump_table_entries -- inside 0x006132b8, which the matcher could not place"
-"0x006133c8" = "jump_table_entries -- inside 0x006132b8, which the matcher could not place"
-"0x00613448" = "jump_table_entries -- inside 0x006132b8, which the matcher could not place"
-"0x00613710" = "jump_table_entries -- inside 0x006132b8, which the matcher could not place"
-"0x00663a00" = "jump_tables -- no function body holds it"
-"0x006134f8" = "jump_table_entries -- inside 0x006132b8, which the matcher could not place"
-"0x00613578" = "jump_table_entries -- inside 0x006132b8, which the matcher could not place"
-"0x006135f8" = "jump_table_entries -- inside 0x006132b8, which the matcher could not place"
-"0x00663c20" = "jump_tables -- inside 0x00663c18, which the matcher could not place"
-"0x00617038" = "jump_table_entries -- the matcher could not place this function"
-"0x00663c50" = "jump_tables -- inside 0x00663c18, which the matcher could not place"
-"0x0061ad58" = "jump_table_entries -- inside 0x0061acf0, which the matcher could not place"
-"0x0061ada0" = "jump_table_entries -- inside 0x0061acf0, which the matcher could not place"
-"0x0061ae10" = "jump_table_entries -- inside 0x0061acf0, which the matcher could not place"
-"0x0061ae58" = "jump_table_entries -- inside 0x0061acf0, which the matcher could not place"
-"0x0061aec8" = "jump_table_entries -- inside 0x0061acf0, which the matcher could not place"
-"0x0061af08" = "jump_table_entries -- inside 0x0061acf0, which the matcher could not place"
-"0x0061af60" = "jump_table_entries -- inside 0x0061acf0, which the matcher could not place"
-"0x0061afb8" = "jump_table_entries -- inside 0x0061acf0, which the matcher could not place"
-"0x0061b040" = "jump_table_entries -- inside 0x0061acf0, which the matcher could not place"
-"0x0061b058" = "jump_table_entries -- inside 0x0061acf0, which the matcher could not place"
-"0x0061b080" = "jump_table_entries -- inside 0x0061acf0, which the matcher could not place"
-"0x0061b0d0" = "jump_table_entries -- inside 0x0061acf0, which the matcher could not place"
-"0x0061b130" = "jump_table_entries -- inside 0x0061acf0, which the matcher could not place"
-"0x0061b168" = "jump_table_entries -- inside 0x0061acf0, which the matcher could not place"
-"0x0061b1c0" = "jump_table_entries -- inside 0x0061acf0, which the matcher could not place"
-"0x0061b1e8" = "jump_table_entries -- inside 0x0061acf0, which the matcher could not place"
-"0x00663ca0" = "jump_tables -- inside 0x00663c18, which the matcher could not place"
-"0x0061c4f8" = "jump_table_entries -- the matcher could not place this function"
-"0x00663e10" = "jump_tables -- inside 0x00663c18, which the matcher could not place"
-"0x0061f794" = "jump_table_entries -- inside 0x0061f518, which the matcher could not place"
-"0x0061f750" = "jump_table_entries -- inside 0x0061f518, which the matcher could not place"
-"0x0061f770" = "jump_table_entries -- inside 0x0061f518, which the matcher could not place"
-"0x00664050" = "jump_tables -- inside 0x00663ec0, which the matcher could not place"
-"0x006260d8" = "jump_table_entries -- inside 0x00625690, which the matcher could not place"
-"0x00625810" = "jump_table_entries -- inside 0x00625690, which the matcher could not place"
-"0x00625848" = "jump_table_entries -- inside 0x00625690, which the matcher could not place"
-"0x00625868" = "jump_table_entries -- inside 0x00625690, which the matcher could not place"
-"0x006258a0" = "jump_table_entries -- inside 0x00625690, which the matcher could not place"
-"0x006258d0" = "jump_table_entries -- inside 0x00625690, which the matcher could not place"
-"0x00625d78" = "jump_table_entries -- inside 0x00625690, which the matcher could not place"
-"0x00625dd8" = "jump_table_entries -- inside 0x00625690, which the matcher could not place"
-"0x00625af0" = "jump_table_entries -- inside 0x00625690, which the matcher could not place"
-"0x00625ea8" = "jump_table_entries -- inside 0x00625690, which the matcher could not place"
-"0x00625f88" = "jump_table_entries -- inside 0x00625690, which the matcher could not place"
-"0x00625e58" = "jump_table_entries -- inside 0x00625690, which the matcher could not place"
-"0x00625c58" = "jump_table_entries -- inside 0x00625690, which the matcher could not place"
-"0x00625d10" = "jump_table_entries -- inside 0x00625690, which the matcher could not place"
-"0x006258c0" = "jump_table_entries -- inside 0x00625690, which the matcher could not place"
-"0x00626020" = "jump_table_entries -- inside 0x00625690, which the matcher could not place"
-"0x00626038" = "jump_table_entries -- inside 0x00625690, which the matcher could not place"
-"0x00626090" = "jump_table_entries -- inside 0x00625690, which the matcher could not place"
-"0x00665510" = "jump_tables -- inside 0x006654c8, which the matcher could not place"
-"0x00636710" = "jump_table_entries -- inside 0x006364c0, which the matcher could not place"
-"0x00636820" = "jump_table_entries -- inside 0x006364c0, which the matcher could not place"
-"0x00636748" = "jump_table_entries -- inside 0x006364c0, which the matcher could not place"
-"0x00636628" = "jump_table_entries -- inside 0x006364c0, which the matcher could not place"
-"0x006366f0" = "jump_table_entries -- inside 0x006364c0, which the matcher could not place"
-"0x00636760" = "jump_table_entries -- inside 0x006364c0, which the matcher could not place"
-"0x00636780" = "jump_table_entries -- inside 0x006364c0, which the matcher could not place"
-"0x006367a0" = "jump_table_entries -- inside 0x006364c0, which the matcher could not place"
-"0x006366a0" = "jump_table_entries -- inside 0x006364c0, which the matcher could not place"
-"0x006366c0" = "jump_table_entries -- inside 0x006364c0, which the matcher could not place"
-"0x00636608" = "jump_table_entries -- inside 0x006364c0, which the matcher could not place"
-"0x006367c0" = "jump_table_entries -- inside 0x006364c0, which the matcher could not place"
-"0x006367e0" = "jump_table_entries -- inside 0x006364c0, which the matcher could not place"
-"0x00636800" = "jump_table_entries -- inside 0x006364c0, which the matcher could not place"
-"0x00665590" = "jump_tables -- inside 0x006654c8, which the matcher could not place"
-"0x006375f8" = "jump_table_entries -- inside 0x00637510, which the matcher could not place"
-"0x00637638" = "jump_table_entries -- inside 0x00637510, which the matcher could not place"
-"0x00637668" = "jump_table_entries -- inside 0x00637510, which the matcher could not place"
-"0x00637690" = "jump_table_entries -- inside 0x00637510, which the matcher could not place"
-"0x006376c0" = "jump_table_entries -- inside 0x00637510, which the matcher could not place"
-"0x006376f0" = "jump_table_entries -- inside 0x00637510, which the matcher could not place"
-"0x00637728" = "jump_table_entries -- inside 0x00637510, which the matcher could not place"
-"0x006378b0" = "jump_table_entries -- inside 0x00637510, which the matcher could not place"
-"0x00637758" = "jump_table_entries -- inside 0x00637510, which the matcher could not place"
-"0x00637778" = "jump_table_entries -- inside 0x00637510, which the matcher could not place"
-"0x006377a0" = "jump_table_entries -- inside 0x00637510, which the matcher could not place"
-"0x006377d0" = "jump_table_entries -- inside 0x00637510, which the matcher could not place"
-"0x00637820" = "jump_table_entries -- inside 0x00637510, which the matcher could not place"
-"0x006655d0" = "jump_tables -- inside 0x006654c8, which the matcher could not place"
-"0x006380f0" = "jump_table_entries -- inside 0x006380c0, which the matcher could not place"
-"0x00638100" = "jump_table_entries -- inside 0x006380c0, which the matcher could not place"
-"0x00638110" = "jump_table_entries -- inside 0x006380c0, which the matcher could not place"
-"0x00638120" = "jump_table_entries -- inside 0x006380c0, which the matcher could not place"
-"0x00638130" = "jump_table_entries -- inside 0x006380c0, which the matcher could not place"
-"0x00638140" = "jump_table_entries -- inside 0x006380c0, which the matcher could not place"
-"0x00638150" = "jump_table_entries -- inside 0x006380c0, which the matcher could not place"
-"0x006655f0" = "jump_tables -- inside 0x006654c8, which the matcher could not place"
-"0x006381a8" = "jump_table_entries -- inside 0x00638178, which the matcher could not place"
-"0x006381b0" = "jump_table_entries -- inside 0x00638178, which the matcher could not place"
-"0x006381c0" = "jump_table_entries -- inside 0x00638178, which the matcher could not place"
-"0x006381d0" = "jump_table_entries -- inside 0x00638178, which the matcher could not place"
-"0x006381e0" = "jump_table_entries -- inside 0x00638178, which the matcher could not place"
-"0x00665880" = "jump_tables -- inside 0x00665760, which the matcher could not place"
-"0x00640fe8" = "jump_table_entries -- inside 0x00640ea0, which the matcher could not place"
-"0x00641098" = "jump_table_entries -- inside 0x00640ea0, which the matcher could not place"
-"0x00641080" = "jump_table_entries -- inside 0x00640ea0, which the matcher could not place"
-"0x00667c30" = "jump_tables -- inside 0x00667c20, which the matcher could not place"
-"0x00667c50" = "jump_tables -- inside 0x00667c20, which the matcher could not place"
-"0x00644a88" = "jump_table_entries -- inside 0x00644a58, which the matcher could not place"
-"0x00644aa0" = "jump_table_entries -- inside 0x00644a58, which the matcher could not place"
-"0x00644ac0" = "jump_table_entries -- inside 0x00644a58, which the matcher could not place"
-"0x00644ab0" = "jump_table_entries -- inside 0x00644a58, which the matcher could not place"
-"0x00644ad0" = "jump_table_entries -- inside 0x00644a58, which the matcher could not place"
-"0x00644a90" = "jump_table_entries -- inside 0x00644a58, which the matcher could not place"
-"0x006683b0" = "jump_tables -- inside 0x00667cf8, which the matcher could not place"
-"0x0022eaac" = "patches Potential self-modifying code -- inside 0x0022ea70, which the matcher could not place"
-"0x0023c744" = "patches Potential self-modifying code -- inside 0x0023c6f0, which the matcher could not place"
-"0x00299438" = "patches Potential self-modifying code -- inside 0x00299320, which the matcher could not place"
-"0x00299748" = "patches Potential self-modifying code -- inside 0x00299700, which the matcher could not place"
-"0x00299e1c" = "patches Potential self-modifying code -- inside 0x00299c40, which the matcher could not place"
-"0x0029b780" = "patches Potential self-modifying code -- inside 0x0029b5d0, which the matcher could not place"
-"0x0029b9f8" = "patches Potential self-modifying code -- inside 0x0029b8d0, which the matcher could not place"
-"0x002e752c" = "patches Potential self-modifying code -- inside 0x002e7450, which the matcher could not place"
-"0x003007dc" = "patches Potential self-modifying code -- inside 0x00300740, which the matcher could not place"
-"0x00320410" = "patches Potential self-modifying code -- inside 0x00320310, which the matcher could not place"
-"0x003418b4" = "patches Potential self-modifying code -- inside 0x00341860, which the matcher could not place"
-"0x003600a4" = "patches Potential self-modifying code -- inside 0x00360030, which the matcher could not place"
-"0x00616980" = "patches Potential self-modifying code -- inside 0x00616820, which the matcher could not place"
-"0x006338d0" = "patches Potential self-modifying code -- inside 0x00633790, which the matcher could not place"
-"0x00638f44" = "patches Potential self-modifying code -- inside 0x00638f20, which the matcher could not place"
