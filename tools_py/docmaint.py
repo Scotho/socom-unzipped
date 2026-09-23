@@ -104,7 +104,14 @@ def head(relpath, lines=15):
 def max_ruling():
     """The highest R<n> in use across the live documents, and where it was found."""
     best, where = 0, None
-    for path in by_class("L") + ["docs/STATUS.md"]:
+    # Rulings are numbered where they are made: the live documents AND the plans' own "## Rulings"
+    # sections (house convention since Sprint 5). A plan-only ruling not scanned here made the
+    # counter read one too high on 2026-09-22, the first night the check ran.
+    plans_dir = os.path.join(ROOT, "docs", "superpowers", "plans")
+    plans = []
+    if os.path.isdir(plans_dir):
+        plans = ["docs/superpowers/plans/" + n for n in sorted(os.listdir(plans_dir)) if n.endswith(".md")]
+    for path in by_class("L") + ["docs/STATUS.md"] + plans:
         if not os.path.isfile(os.path.join(ROOT, path)):
             continue
         for line in _read(path).split("\n"):
