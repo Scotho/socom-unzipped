@@ -91,7 +91,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 |---|---|---|---|
 | `README.md` | **L** | controller | The public front page. Its "Works / Not yet" table is a live claim and is the highest-stakes row here — a stranger reads it before anything else |
 | `CONTRIBUTING.md` | **C** | controller | |
-| `SECURITY.md` | **C** | controller | The "known, unfixed" section is live in spirit; review it whenever the network path changes |
+| `SECURITY.md` | **C** | controller | The "Known: the game's own network code" section is live in spirit; review it whenever the network path changes |
 | `THIRD_PARTY_NOTICES.md` | **G** | licence test | A test fails on a dependency, vendored directory or release DLL without a row |
 | `docs/STATUS.md` | **L** | controller | **Only the "Current state" block is live.** Everything under it is a dated log, newest first, and is class S by paragraph — an entry keeps the numbers it was written with, on purpose. This is why STATUS is exempt from the single-source count rule |
 | `docs/KNOWN.md` | **L** | every task | Proven vs believed, with the artefact for each. **It wins on any disagreement.** The model this schema is generalised from |

@@ -28,7 +28,7 @@ sprint 10:    OPENED 2026-09-20 on the owner's instruction ("proceed on with the
               develop deleted, this branch opened. Q0b, Q1b-Q7 carry into Sprint 10 as filler unless the owner reorders;
               no GitHub release (Sprint 11 / D2, owner-only).
 git strategy: docs/GIT_STRATEGY.md     contributing: CONTRIBUTING.md
-next ruling:  R247 (R245-R246, 2026-09-23: option B not scheduled; the chat bound's install is the Milestone S proof, the traversal a filler row -- the Sprint 11 plan's rulings section) -- nothing is renumbered. The sprint's sixty-four numbers R181-R244 are
+next ruling:  R248 (R245-R247, 2026-09-23: option B not scheduled; the chat bound's install is the Milestone S proof, the traversal a filler row; the vendored baggage deleted -- the Sprint 11 plan's rulings section) -- nothing is renumbered. The sprint's sixty-four numbers R181-R244 are
               reconciled row by row in ONE table below ("Sprint 10's rulings ledger, R181-R244"): the decision
               in its own words, where it is written, and its status. R229 is deliberately vacant. This line used
               to carry that index as a single 2,700-character paragraph, which no reader could use; the table is
@@ -167,8 +167,9 @@ sprints without an owner.
 6. **The transition residual strip** and **the intro-cinematic freeze** -- both still *believed*, both still with the
    experiment that would settle them unrun (`docs/KNOWN.md` §2).
 7. **Voice** -- R221: one peek of `0x4415c4/0x4415c5` in a live round says whether the talk slot is bound at all.
-8. **Multiplayer security** -- `SECURITY.md`'s known, unfixed item. The largest gap between what the project is and
-   what its README has to warn about. Sprint 11's milestone S closes the one reported hole on both sides.
+8. **Multiplayer security** -- `SECURITY.md`'s "Known" section. The largest gap between what the project is and
+   what its README has to warn about. Sprint 11's milestone S closed the one reported hole on both sides
+   (2026-09-23; the README narrowed the same day, Task 4); everything else in the network path is unaudited.
 
 **One citation that does not resolve in this tree:** R243 cites `docs/research/40-upstream-divergence.md`, which lives
 on branch `agent/upstream` (`83c02d9`) and has not been merged forward. `docs/research/41-cucumber-fork.md` is here
