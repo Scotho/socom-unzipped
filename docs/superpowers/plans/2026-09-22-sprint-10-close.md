@@ -83,6 +83,23 @@ table in `docs/CURRENT_SPRINT.md` is the binding list. **Ledger:** `.superpowers
   lobby was on another channel and `--channel 2+` is unexercised (the driver says so) — one run when the line comes.
 - Further rulings are appended here and in the ledger as they are made.
 
-## Outcome
+## Outcome (2026-09-23 04:55Z, the close commit)
 
-*(written at the close)*
+| Task | State | Evidence |
+|---|---|---|
+| 1 fix wave A's queued runs | **done** | chain 1: the A/B refused to score (rc=5, the routing tool's `DeleteKey` on a non-empty key — fixed `201ca93`, reviewed) then re-run in chain 2 with the verdict **wired 14 vs Bluetooth 11: the dips are ours** (`logs/parity/endpoint_ab_20260922_232644`); W10 launch 1 rc=0 / launch 2 `LOBBY-FAIL login:saved-password:empty` → **R237 rewritten, the prefill stays**; W7 walk rc=0 (superseded by the A/B); W6 not reproduced (ten identical clean popups; the church is never reached; the capture records no env); W8 by R244 |
+| 2 the ladder streak | **done, 7 of 7** | runs 5, 6, 7 KILL at 03:03Z, 03:36Z, 04:21Z (`docs/LADDER.md`); three refusals and one un-launched run, all agent builds in the lock's gaps — the `ladder_job.sh` pre-check race is KNOWN §4's |
+| 3 Goal 3 tasks 5 and 7 | **carried** | R242's company: the night's lock went to the streak and the close; two mixed-match runs are Sprint 11 filler |
+| 4 Goal 4 scoped | **done as ruled** | R242; the speed-freeze re-measure from the ladder logs is a filler row (not read tonight) |
+| 5 the VM ring | **carried** | as the plan allowed: CI proves the library, the suites and the launcher on Linux (R209); the VM rebuild is Sprint 11 Task 18 |
+| 6 H7's decisions | **carried** | the owner's, in HUMAN_TASKS' morning block |
+| 7 Q8 the close | **done** | KNOWN audit + STATUS + CURRENT_SPRINT + HUMAN_TASKS + HANDOFF + README/DEVELOPING/ROADMAP/STORY rewritten from a 56-finding read, reviewed and fixed (`70759da`…`5aef282`); the 64 rulings reconciled; DOC_MAINTENANCE §5 stamped (`800ada5`); Python suite OK; C++ suite ×3 **770/770**, vram-diff 15/15; gate **`s10_close_gate` PASS 3/3** on exe `3f3a5011…`, PINS MATCH (13); the PR and the tag follow this commit |
+| 8 Sprint 11 opened | **in progress** | the plan (`2026-09-23-sprint-11.md`, 18 tasks + 2b + 8a–c) written and committed; six tasks run in worktrees tonight — T2, T3, T12, T14, T15 complete and reviewed, T10 on its fix build; the peer's U1 done (research/40, R245), Task 9 assigned; `sprint-11` opens at the merge |
+
+**Also found and fixed tonight, none of it in the plan:** the routing tool's non-empty-key delete; the afternoon's
+idle harness fix committed as found (`c340bf4`); a worktree's private loop lock (`9b39523`, structural); the ruling
+scan missing the plans' own rulings (`16412e9`); the `ladder_job.sh` pre-check race (recorded, not fixed); five of
+the owner's launcher windows holding the executable (closed, HUMAN_TASKS told).
+
+**Rulings this plan made:** R241, R242, R243, R244 above; R245 in the Sprint 11 plan. Unnumbered: the idle files
+committed as found; the W6 A/B judged unproven on its artefact; the ladder given lock priority over agent builds.
