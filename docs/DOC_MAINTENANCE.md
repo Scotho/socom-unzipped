@@ -1,6 +1,19 @@
 # Documentation maintenance — the classes, the registry, and the sprint-close review
 
-**Last full review: 2026-09-22 (Sprint 10, open).** Next: at Sprint 10's close, by the controller.
+**Last full review: 2026-09-23 (Sprint 10 close).** Next: at Sprint 11's close, by the controller.
+
+> **The first review under this schema, 2026-09-23 (Sprint 10's close), and what it changed.** Step 1: `docmaint`
+> OK. Step 2: every L document read for truth by a read-only agent against the tree and the night's ledgers — 56
+> findings (README 4, STATUS 4, KNOWN 8, CURRENT_SPRINT 9, HANDOFF 13, HUMAN_TASKS 10, DEVELOPING 2, ROADMAP 4,
+> STORY 2, PICTURES 0), every one applied with supersede-in-place (`70759da`, `7a89b8c`, `80e0074`, `37f9bb0`),
+> reviewed (four sentence-level Importants, all fixed: `1d86d71`, `ae13cf8`, `dec9af9`, `5aef282`), re-reviewed
+> clean. Step 3: README's table rewritten row by row against KNOWN. Step 4: ROADMAP had already regrown a task list
+> (its eight-item backlog) one day after the rewrite — moved to CURRENT_SPRINT's filler list; STORY's closing beat
+> answered under a dated blockquote. Step 5: nothing archived this time. The sprint's 64 rulings (R181–R244, R229
+> deliberately vacant) reconciled into one table in CURRENT_SPRINT. Two lessons for the schema: (1) a class-N
+> document regrows live state within a day if the author does not have a filler list to put it in — CURRENT_SPRINT
+> now has one; (2) counts must carry their date *and* the same artefact must carry the same number in every row
+> (the same capture was "21 minutes" and "twelve-minute" three lines apart).
 
 ## 0. Why this exists
 
