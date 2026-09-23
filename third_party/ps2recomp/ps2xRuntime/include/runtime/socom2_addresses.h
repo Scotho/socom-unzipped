@@ -9,7 +9,19 @@
 //
 // The column for a new revision is not read by hand: tools_py/address_matcher.py fingerprints both images
 // (tools_py/fingerprint.py: FNV-1a 64 over the instruction stream with every relocated immediate zeroed)
-// and reports where each r0001 routine went, with how it knows.
+// and reports where each r0001 routine went, with how it knows. tools_py/addresses_from_match.py then
+// prints the column below out of that report -- one value per member, in this order, with the method on
+// each line. The kR0004 column was printed by (Task 19, 2026-09-23):
+//
+//   python -m tools_py.addresses_from_match game/r0004/match.json --revision r0004 \
+//       --override versionString=0x0040cc60:build-banner --override dnasCheck=0x002cf330:capsule-table ...
+//
+// ...one --override per field the matcher itself could not place, each naming the evidence that did.
+// Every one of them is written up, field by field, in
+// .superpowers/sdd/2026-09-23-sprint-11/task-19-addresses-report.md.
+//
+// A field a revision's column could not establish is kUnavailable (0), never the other revision's
+// address: the install guards skip that one override and say which field they skipped.
 //
 // WHAT IS NOT HERE -- the loader. Everything below kOverlayBase (0x001d5600) is the boot ELF: the disc and
 // memory-card game-code loaders, the overlay file reader, sceSifSendCmd, the msifrpc entry points,
@@ -17,11 +29,14 @@
 // that differ -- so those addresses stay literal at their call sites in game_overrides_socom2.cpp. A
 // loader address appearing in this table would be a mistake, and socom2_addresses_tests.cpp fails on one.
 //
-// current() is what call sites use. It answers r0001 until the runtime has read the loaded image's version
-// string (game_overrides_socom2.cpp reads it out of the overlay at kR0001.versionString during
-// applySocom2) and handed it to selectFromVersionString(). An image whose stamp names no revision, or one
-// this table has no column for, keeps r0001 AND logs: a silently wrong address does not present as a bad
-// address, it presents as a crash somewhere else entirely, hours later.
+// current() is what call sites use. It answers r0001 until the runtime has read the loaded image's build
+// banner and handed it over. The banner MOVES WITH THE RELINK, so there is no one address to read it at:
+// selectFromImage() probes every column's own versionString and takes the column whose text names that
+// column (game_overrides_socom2.cpp does this once, at the top of applySocom2, before any install). An
+// image whose stamps name no revision, or one this table has no column for, keeps r0001 AND logs: a
+// silently wrong address does not present as a bad address, it presents as a crash somewhere else
+// entirely, hours later. That is not hypothetical -- until Task 19 the runtime read one fixed address
+// that held a boot path rather than a banner, and the r0004 exe ran a whole session on r0001's addresses.
 #pragma once
 #include "runtime/socom2_chat.h"
 #include "runtime/socom2_osk_prefill.h"
@@ -36,6 +51,10 @@ namespace socom2_addresses
 {
     // The lowest address the overlays occupy. Below this is the loader (see the note above).
     constexpr uint32_t kOverlayBase = 0x001D5600u;
+
+    // "this revision's address for this field was never established". The one value below kOverlayBase a
+    // column may carry, and the only honest alternative to a number somebody proved.
+    constexpr uint32_t kUnavailable = 0u;
 
     struct Table
     {
@@ -54,7 +73,7 @@ namespace socom2_addresses
         uint32_t musicManager;          // the per-frame music manager (PS2X_SOCOM2_MUSIC_TRACE)
         uint32_t cuePush;               // the music cue push
         uint32_t cameraHolder;          // DATA: the camera holder pointer the cull trace reads
-        uint32_t versionString;         // DATA: "SOCOM 2 r0001 17:22:21 Oct 11 2003" -- what picks the column
+        uint32_t versionString;         // DATA: the build banner ("SOCOM 2 r0001 17:22:21 Oct 11 2003") -- what picks the column
         uint32_t oskOpen;               // the on-screen keyboard's GetTextInput handler
         uint32_t oskOpenThunk;          // the one-instruction thunk the UI action table dispatches through
         uint32_t oskTextBuffer;         // DATA: the keyboard's initial-text buffer the prefill writes
@@ -84,7 +103,10 @@ namespace socom2_addresses
         0x0034afd0u,   // musicManager
         0x0034b6c0u,   // cuePush
         0x00415ff0u,   // cameraHolder
-        0x003e5c60u,   // versionString
+        // The BANNER, not 0x003e5c60. That address holds the boot path "cdrom0:\SCUS_972.75;1", which names
+        // no revision -- so until Task 19 every image, r0004 included, fell back to the r0001 column and the
+        // r0004 exe ran the whole session on r0001's override addresses (s11_r0004_gate/title.game.log).
+        0x003e17e0u,   // versionString
         socom2_osk::kOskOpenAddr,         // oskOpen -- one definition, in the header that documents the handler
         socom2_osk::kOskOpenThunkAddr,    // oskOpenThunk -- ditto; the table dispatches here, not at the handler
         socom2_osk::kOskTextBufferAddr,   // oskTextBuffer -- ditto
@@ -98,8 +120,66 @@ namespace socom2_addresses
         0x00669120u,   // ctorTableZsealEnd
     };
 
+    // SCUS_972.75 relinked, "SOCOM 2 r0004 10:14:38 Nov  3 2004" -- the pressing PSRewired's community
+    // server expects. Not a patch of r0001: FTSCore's code section grew by 176 544 bytes and ZSealEtc's
+    // shrank by 6 784, so every routine below sits at a new address and a few have changed bodies.
+    //
+    // The `method` on each line is what established that address, against
+    // game/overlays_r0004/socom2_game_r0004.elf. In descending order of strength:
+    //   exact           tools_py/address_matcher.py: one occurrence of the fingerprint in each image.
+    //   relinked-body   the same instruction stream at a new address: same length, unique in BOTH images
+    //                   under a fingerprint that also zeroes load/store displacements (the EE compiler
+    //                   reaches a global as `lui $at,hi` + `lw rt,lo($at)`, so for a global the
+    //                   displacement IS a relocation -- which is the one thing address_matcher.py's
+    //                   fingerprint deliberately keeps, and why it left these unresolved), and every
+    //                   differing word the same opcode and registers with only its immediate moved.
+    //   +string         and the body reaches a string that occurs once in each image, whose r0004
+    //                   address only this r0004 function references.
+    //   capsule-table   and the r0004 capsule's own second patch table names the same address.
+    //   thunk-target    the only `j <handler>` thunk in each image, once the handler was established.
+    //   data-via-twin   a data address, read out of a twinned function at the same instruction offset;
+    //                   every twin that reaches it agrees (cameraHolder: 66 of them, unanimous).
+    //   build-banner    the string itself, found in the image.
+    //   ctor-run        the maximal run of words that are all function starts around the table -- a rule
+    //                   that reproduces r0001's two tables' declared bounds exactly, both ends.
+    //   bracketed       neither fingerprint places it (its body really changed): it is the one row in the
+    //                   r0004 image between two neighbours that ARE placed, and 124 of its 126
+    //                   instructions match r0001's in shape. The weakest line in this column.
+    inline constexpr Table kR0004 = {
+        "r0004",
+        0x00627f38u,   // rtNetConfigInit      r0001 0x00620648  exact
+        0x0025ac10u,   // packTrace            r0001 0x0025a5d0  relinked-body
+        0x00291fc0u,   // cull                 r0001 0x00290c30  exact
+        0x00355a10u,   // node                 r0001 0x00338480  relinked-body
+        0x00355f50u,   // node2                r0001 0x003389c0  relinked-body
+        0x003d9ce0u,   // lod                  r0001 0x003b7b90  exact
+        0x003d8f60u,   // detail               r0001 0x003b6e10  relinked-body
+        0x00292d10u,   // camCfg               r0001 0x002918b0  relinked-body
+        0x00354750u,   // defer                r0001 0x003371b0  bracketed (body changed: two instructions fewer)
+        0x00354250u,   // flush                r0001 0x00336cb0  relinked-body
+        0x00368660u,   // musicManager         r0001 0x0034afd0  relinked-body
+        0x00368d50u,   // cuePush              r0001 0x0034b6c0  exact
+        0x004429b0u,   // cameraHolder         r0001 0x00415ff0  data-via-twin
+        0x0040cc60u,   // versionString        r0001 0x003e17e0  build-banner
+        0x003adbc0u,   // oskOpen              r0001 0x0038d770  relinked-body+string ("KEYBOARD")
+        0x00281be0u,   // oskOpenThunk         r0001 0x002808d0  thunk-target
+        0x004a2440u,   // oskTextBuffer        r0001 0x0049ec70  data-via-twin (oskOpen +0xd8)
+        0x00312100u,   // chatFanoutRecv       r0001 0x002f4ef0  relinked-body+string ("%s: %s")
+        0x00312230u,   // chatListRender       r0001 0x002f5020  relinked-body+string ("%s %s: %s")
+        0x00452928u,   // chatListHolders      r0001 0x0044f568  data-via-twin (21 twins, unanimous)
+        0x002cf330u,   // dnasCheck            r0001 0x002cc670  capsule-table + relinked-body+string ("DNAS_ERROR_CODE")
+        0x004315a0u,   // ctorTableFtsBegin    r0001 0x00404d10  ctor-run (126 entries; r0001 has 125)
+        0x00431798u,   // ctorTableFtsEnd      r0001 0x00404f04  ctor-run
+        0x00668a60u,   // ctorTableZsealBegin  r0001 0x006690e0  ctor-run (16 entries, as r0001)
+        0x00668aa0u,   // ctorTableZsealEnd    r0001 0x00669120  ctor-run + data-via-twin (3 twins agree)
+    };
+
     // Every column this build knows. A second revision is one more entry here and one more Table above.
-    inline const Table *const kTables[] = {&kR0001};
+    inline const Table *const kTables[] = {&kR0001, &kR0004};
+
+    // Is this a field the column established? kUnavailable is not, and neither is a loader address --
+    // nothing below kOverlayBase belongs in a per-revision column at all.
+    inline bool available(uint32_t addr) { return addr >= kOverlayBase; }
 
     // The revision token in a version string: an `r` that starts a word and is followed by digits
     // ("SOCOM 2 r0001 17:22:21 Oct 11 2003" -> "r0001"). Empty when the text names none, which is what
@@ -151,6 +231,20 @@ namespace socom2_addresses
     // Choose the column directly (the tests, and any caller that already knows the revision).
     inline void select(const Table &t) { detail::slot() = &t; }
 
+    // The guard every install site puts in front of an override: true when the chosen column has an
+    // address for this field, otherwise ONE log line naming the field and no override. A field nobody
+    // established is a missing feature, which is survivable; the r0001 address in its place is a crash
+    // somewhere else entirely, hours later, which is not.
+    inline bool require(uint32_t addr, const char *field)
+    {
+        if (available(addr))
+            return true;
+        std::cout << "[socom2] address table: " << current().revision << " has no address for "
+                  << (field ? field : "(unnamed field)") << " -- that override is not installed"
+                  << std::endl;
+        return false;
+    }
+
     // Choose the column from the loaded image's version string, read at current().versionString.
     inline void selectFromVersionString(const char *versionText)
     {
@@ -167,5 +261,36 @@ namespace socom2_addresses
         select(t);
         std::cout << "[socom2] address table: image is " << rev << ", using the " << t.revision
                   << " addresses" << std::endl;
+    }
+
+    // Read up to a stamp's worth of NUL-terminated text at a guest address; empty when there is none.
+    // The runtime passes a reader over RDRAM; the suite passes one over a table of strings.
+    using StampReader = std::string (*)(uint32_t addr, void *user);
+
+    // Choose the column by probing the loaded image. selectFromVersionString() can only judge a string
+    // somebody has already read -- but the address to read it AT is itself per-revision (r0001's banner
+    // is at 0x003e17e0, r0004's at 0x0040cc60, and in an r0004 image 0x003e17e0 is code). So each
+    // column's own versionString is read and the column whose text names that column wins. This is what
+    // the r0004 capsule does too: it probes both builds' layouts and takes the one that answers.
+    //
+    // No column answering keeps r0001 AND logs, through the same warning as an unreadable stamp.
+    inline const Table &selectFromImage(StampReader read, void *user = nullptr)
+    {
+        std::string firstText;
+        for (const Table *t : kTables)
+        {
+            const std::string text = read ? read(t->versionString, user) : std::string();
+            if (t == &kR0001)
+                firstText = text;
+            if (revisionOf(text.c_str()) == t->revision)
+            {
+                select(*t);
+                std::cout << "[socom2] address table: stamp@0x" << std::hex << t->versionString << std::dec
+                          << " = \"" << text << "\" -- using the " << t->revision << " addresses" << std::endl;
+                return *t;
+            }
+        }
+        selectFromVersionString(firstText.c_str());
+        return current();
     }
 }

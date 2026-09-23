@@ -506,10 +506,14 @@ namespace
         // Loader's __initialize_cpp_rts(ctor_start, ctor_end, 0, 0) walks a table and calls each
         // constructor; one guest call per overlay keeps the scheduler's invocation stack shallow.
         constexpr uint32_t kInitCppRts = 0x00182840u;
-        struct Table { uint32_t begin, end; const char *name; };
+        // beginField/endField name the socom2_addresses::Table members these two came out of, so the
+        // guard below can say which field a revision failed to place rather than just which overlay.
+        struct Table { uint32_t begin, end; const char *beginField, *endField, *name; };
         const socom2_addresses::Table &addr = socom2_addresses::current();
-        const Table tables[] = {{addr.ctorTableFtsBegin, addr.ctorTableFtsEnd, "FTSCore"},
-                                {addr.ctorTableZsealBegin, addr.ctorTableZsealEnd, "ZSealEtc"}};
+        const Table tables[] = {{addr.ctorTableFtsBegin, addr.ctorTableFtsEnd,
+                                 "ctorTableFtsBegin", "ctorTableFtsEnd", "FTSCore"},
+                                {addr.ctorTableZsealBegin, addr.ctorTableZsealEnd,
+                                 "ctorTableZsealBegin", "ctorTableZsealEnd", "ZSealEtc"}};
         std::vector<GuestInvocation> invocations;
         if (!runtime->hasFunction(kInitCppRts))
         {
@@ -519,6 +523,12 @@ namespace
         {
             for (const Table &t : tables)
             {
+                // A revision whose column could not place this table says so and runs no constructors
+                // for that overlay -- running r0001's table addresses against another build's data
+                // would call whatever happens to sit there.
+                if (!socom2_addresses::require(t.begin, t.beginField) ||
+                    !socom2_addresses::require(t.end, t.endField))
+                    continue;
                 GuestInvocation inv{};
                 inv.kind = GuestInvocationKind::HleCall;
                 inv.context = *ctx;
@@ -2170,21 +2180,34 @@ namespace
 #endif
     }
 
+    // The reader socom2_addresses::selectFromImage probes each column's build stamp through. Forty bytes
+    // is the whole stamp ("SOCOM 2 rNNNN HH:MM:SS Mon DD YYYY" and its terminator); an address holding
+    // anything else -- code, zeros, another build's data -- simply names no revision.
+    std::string readGuestStamp(uint32_t addr, void *user)
+    {
+        const uint8_t *p = getConstMemPtr(static_cast<const uint8_t *>(user), addr);
+        std::string s;
+        for (int i = 0; p && i < 40 && p[i]; ++i)
+            s.push_back(static_cast<char>(p[i]));
+        std::cout << "[socom2] mem@0x" << std::hex << addr << std::dec << " = \"" << s << "\"" << std::endl;
+        return s;
+    }
+
     void applySocom2(PS2Runtime &runtime)
     {
         std::cout << "[socom2] applying SOCOM II overrides" << std::endl;
         installCrashHandler(runtime);
         {
-            // The FTSCore data segment carries the build stamp ("SOCOM 2 r0001 17:22:21 Oct 11 2003").
-            // Reading it here does double duty: it proves the overlay is resident, and it chooses the
-            // address column every install below reads (runtime/socom2_addresses.h). It has to run first:
-            // an install that ran before the choice would have wrapped an r0001 address in another build.
-            const uint8_t *p = getConstMemPtr(runtime.memory().getRDRAM(), socom2_addresses::kR0001.versionString);
-            std::string s;
-            for (int i = 0; p && i < 40 && p[i]; ++i) s.push_back(static_cast<char>(p[i]));
-            std::cout << "[socom2] mem@0x" << std::hex << socom2_addresses::kR0001.versionString << std::dec
-                      << " = \"" << s << "\"" << std::endl;
-            socom2_addresses::selectFromVersionString(s.c_str());
+            // The FTSCore data segment carries the build stamp ("SOCOM 2 r0001 17:22:21 Oct 11 2003",
+            // "SOCOM 2 r0004 10:14:38 Nov  3 2004"). Reading it here does double duty: it proves the
+            // overlay is resident, and it chooses the address column every install below reads
+            // (runtime/socom2_addresses.h). It has to run first: an install that ran before the choice
+            // would have wrapped an r0001 address in another build.
+            //
+            // The stamp is read at EVERY column's own versionString, not at r0001's: the banner moves with
+            // the relink (r0001 0x003e17e0, r0004 0x0040cc60), and in an r0004 image r0001's address is
+            // code. Reading only r0001's is exactly what made the r0004 exe run on r0001's addresses.
+            socom2_addresses::selectFromImage(readGuestStamp, runtime.memory().getRDRAM());
         }
         startPcSampler(runtime);
         startRdramDump(runtime);
@@ -2237,9 +2260,18 @@ namespace
         runtime.replaceFunction(0x0062a5a8u, socom2_crypto::rc4SetKey);
         runtime.replaceFunction(0x0062a720u, socom2_crypto::rc4EncryptFn);
         runtime.replaceFunction(0x0062a7c8u, socom2_crypto::rc4DecryptFn);
-        // DNAS authentication object (FTSCore FUN_002cc670): the published r0001 bypass patches
-        // `jr ra` at its entry; a private Horizon server needs no DNAS.
-        runtime.replaceFunction(socom2_addresses::current().dnasCheck, ps2_stubs::socom2_DnasTickDone);
+        // DNAS authentication object (FTSCore FUN_002cc670 in r0001, FUN_002cf330 in r0004 -- the same
+        // address the r0004 capsule's second patch table writes): the published r0001 bypass patches
+        // `jr ra` at its entry; a private Horizon server needs no DNAS. This is the login gate, so a
+        // column that could not place it must say so rather than patch the other revision's address.
+        {
+            const uint32_t dnas = socom2_addresses::current().dnasCheck;
+            if (socom2_addresses::require(dnas, "dnasCheck") && runtime.hasFunction(dnas))
+                runtime.replaceFunction(dnas, ps2_stubs::socom2_DnasTickDone);
+            else if (socom2_addresses::available(dnas))
+                std::cout << "[socom2] no function at 0x" << std::hex << dnas << std::dec
+                          << "; the DNAS tick is the game's own" << std::endl;
+        }
         // _InitSys kernel-patch search (FindAddress loop over the BIOS): nothing to find here.
         ps2_game_overrides::bindAddressHandler(runtime, 0x001ac9d8u, "ret0");
         // PS2X_HLE_STATS=1 wraps the bound stubs' table entries: last, so it wraps whatever
