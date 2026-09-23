@@ -544,6 +544,14 @@ namespace
     }
 
     // FUN_001c5b30(port): load the r0004 update from the memory card.  0 = not present.
+    //
+    // Task 11 (Sprint 11 Goal D), so the launcher's GAME VERSION selector is not misread against this:
+    // a revision is COMPILED IN here, never hot-loaded. On the console r0004 arrived as game code on a
+    // memory card and this function pulled it in at runtime; a recompilation cannot, because the code it
+    // would load has to have been through the recompiler. An r0004 build is therefore a SECOND
+    // executable (launcher::kGameRevisions names it socom2_r0004.exe), not this one patching itself --
+    // which is why BOTH builds answer "no update present" here, and why the answer stays 0 even in the
+    // r0004 build, where the update is not an update but the whole game.
     void socom2_LoadGameCodeFromMemcard(uint8_t *, R5900Context *ctx, PS2Runtime *)
     {
         std::cout << "[socom2] LoadGameCodeFromMemcard -> none" << std::endl;
