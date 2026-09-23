@@ -333,6 +333,14 @@ workflows, and the visibility flip itself. Publishing any Release is always your
 **Relayed to the site session, not yet confirmed done:** s2u.scotho.com must drop its "keyboard/mouse support" claim
 (your instruction, 2026-09-20).
 
+**A second request for the site session (Sprint 11 Task 13, 2026-09-23):** after a successful SEND, the launcher now
+shows a second line under the reference -- *"Contributors can also open an issue at github.com/Scotho/socom-unzipped
+and quote this id."* The site's REPORT A BUG form (`../scotho/sites/s2u/src/report.ts`) should show the same sentence,
+word for word, in the same place. It is one string in the site's repository, so it is that session's edit, not this
+one's; the launcher's copy is the single literal `kGithubIssueLine` in `launcher/bug_report.h`. Nothing else about the
+pipeline changes: reports stay private, and no report's text ever crosses to GitHub (`docs/HANDOFF.md` rule 12).
+The related decision, **G7 reply policy**, is in the decision table above and proceeds on **no**.
+
 ## Open
 
 - [ ] **(gate bypassed 2026-09-20 evening -- whenever you like)** **Listen to the music, FIFTH round (2026-09-21 ~10:00 UTC) -- the build at `dist/socom2.exe` (20:13 local on 2026-09-20,
