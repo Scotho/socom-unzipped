@@ -17,15 +17,17 @@ the game's own code recompiled to C++ by a vendored fork of PS2Recomp (`third_pa
 renderer (OpenGL), audio, input and network native; a launcher (`ps2xLauncher`, raylib); online play against a Horizon
 server the project hosts on AWS Lightsail (3.143.65.100, now also `socom.scotho.com`); Windows and Linux. The player
 supplies their own disc. The owner is Craig (GitHub `Scotho`); the repository is `github.com/Scotho/socom-unzipped`,
-**private** today, meant to become a public project others can fork and contribute to. The product name is
+**PUBLIC since 2026-09-20** -- which is why the leak hooks are step 1 of the first hour and why nothing sensitive may
+reach a commit message. The product name is
 **SOCOM Unzipped**; the site is s2u.scotho.com (another session's, in `../scotho`).
 
 ## 2. Where it stands
 
-> **Picking up the 2026-09-22 fix wave?** Start at
-> `docs/superpowers/plans/2026-09-22-fix-wave-handoff.md` — the remaining work is mostly judgment (whether the
-> prefilled login may be removed yet, how far a mission drive should walk), and that document holds the state,
-> the one experiment worth running first (the endpoint A/B), and the five traps that cost this session time.
+> **Picking up after the Sprint 10 close (2026-09-23)?** Start at `docs/CURRENT_SPRINT.md`'s "Sprint 10 -- CLOSED"
+> block -- the night's five runs and their verdicts, the reconciled rulings ledger, and what carries -- then
+> `docs/superpowers/plans/2026-09-23-sprint-11.md`, which is the open plan. The 2026-09-22 fix wave's own handoff
+> (`docs/superpowers/plans/2026-09-22-fix-wave-handoff.md`) is still worth reading for its five traps, but the two
+> judgment calls it left open have been answered: the endpoint A/B ran, and the prefilled login stays.
 
 - **Plays:** boot, movies, title, menus, single-player missions, online login, lobby, a full round with kills between
   two instances on the hosted server (`s8_hosted_control2`, `s8_hosted_kill`). Twenty of twenty maps play a control
@@ -44,13 +46,24 @@ supplies their own disc. The owner is Craig (GitHub `Scotho`); the repository is
 - **Next free ruling number: R245.** (It read **R179** from 2026-09-20 to 2026-09-22 while R240 was in use -- and a
   collision had already happened once, an agent numbering from R200 into taken ground. `tools_py/tests/test_doc_maintenance.py`
   now fails when this line is not `max(R<n>) + 1`, so take your number from here and update this line in the same commit.)
-- **Where the loop is now (2026-09-21 evening, LATEST) -- Sprint 10's autonomous stack is DONE and on `main` in four
+- **Where the loop is now (2026-09-23 morning, LATEST) -- Sprint 10 is CLOSED; what is left of it is the merge to
+  `main` and the annotated tag `v0.10.0`, and Sprint 11 is open on
+  `docs/superpowers/plans/2026-09-23-sprint-11.md`** (eighteen tasks across milestones S, U, R and P; eight owner
+  decisions, each with the default the loop proceeds on, in `docs/HUMAN_TASKS.md`'s top block). Overnight, under the
+  owner's twelve-hour mandate: the endpoint A/B gave its verdict -- the mission music's DEVICE dips **survive a wired
+  endpoint** (wired 14 against Bluetooth 11), so they are ours and three `docs/KNOWN.md` rows that blamed the owner's
+  speaker are retracted in place; W10 split the card question -- the persona survives a virgin-card restart, the
+  saved password does not, so **R237 is rewritten and the prefilled login stays**; W6 did not reproduce but cannot be
+  closed (the walk never reaches the church and the capture wrote no environment); W8 is proven by the ladder
+  (R244); and the sprint's sixty-four rulings R181-R244 are reconciled into one table in `docs/CURRENT_SPRINT.md`.
+  The full account is `docs/STATUS.md`'s 2026-09-23 entry.
+- **Where the loop was (2026-09-21 evening) -- Sprint 10's autonomous stack is DONE and on `main` in four
   slices; `docs/STATUS.md`'s top entry is the list.** Eleven chunks went to Opus agents in their own worktrees and
   were paid for in this tree, each with its gate: Q1b (the gate pins its inputs), Q6 (the stall bound), the threaded
   flake, Q3b+Goal 8 (mapping and the remapping UI), Goal 9 (the credentials, end to end), Goal 2 (the box as a
   service), Q2/Goal 3 (knob retirement and the flip), Q3 (the mouse out, the keyboard narrowed), Q4 (the window
-  switch, the window's chrome, menu sounds), Q5 (closed under its stop rule), Q7 (four residuals). Suite Python 1671
-  OK / ps2x_tests 764/0; ladder streak 4 of 7. **What is left is the owner's hands** (`docs/HUMAN_TASKS.md`: a pad
+  switch, the window's chrome, menu sounds), Q5 (closed under its stop rule), Q7 (four residuals). The suite counts are `docs/DEVELOPING.md`'s, as the baselines bullet above
+  says; the ladder streak is `docs/LADDER.md`'s, generated. **What is left is the owner's hands** (`docs/HUMAN_TASKS.md`: a pad
   session, the prefilled login, Q4's four tries, the disc-derived-bytes decisions, the ladder window) **or a quiet
   machine** (Goal 4's kill routes, Goal 3's tasks 5 and 7, ladder 5-7, Q2's VM ring, Q7's gate-scored residuals).
   **Two traps this day taught, both in KNOWN:** a `replaceFunction` wrap's post-call code runs at the scheduler's
@@ -87,9 +100,12 @@ supplies their own disc. The owner is Craig (GitHub `Scotho`); the repository is
    just written); `git config core.hooksPath` says `scripts/hooks` when it is on.
 2. Read, in this order: this file; `docs/CURRENT_SPRINT.md` (the ordered work); `docs/KNOWN.md` (what is proven, what
    is only believed, what was retracted -- where anything disagrees with KNOWN, KNOWN wins); `docs/HUMAN_TASKS.md` and
-   `docs/PLAYTEST.md` (what is the owner's); the Sprint 9 spec, Goals 9 and 10 in full
-   (`docs/superpowers/specs/2026-09-19-sprint-9-a-strangers-first-run-design.md`); the top block of `docs/STATUS.md`.
-3. Then `docs/LOOP_PROMPT.md` -- the shape of one iteration -- and begin at the first open item of milestone P.
+   `docs/PLAYTEST.md` (what is the owner's); **`docs/DOC_MAINTENANCE.md` (the schema: which document may hold which
+   kind of fact, and what the sprint close checks)**; the open sprint's spec and plan; the top block of
+   `docs/STATUS.md`.
+3. Then `docs/LOOP_PROMPT.md` -- the shape of one iteration -- and begin at the first open item of the current
+   plan's task list (`docs/superpowers/plans/2026-09-23-sprint-11.md`), with `docs/CURRENT_SPRINT.md`'s road table as
+   the order above it.
 
 Dates: the documents and commit subjects are stamped 2026-09-20 for a session the host clock calls 2026-09-19. Do not
 "correct" either; when you write a date, use the host's.
@@ -135,7 +151,9 @@ eleven in the order they matter. Nothing was dropped.
    Owner-specific literals (the address, an old account name) go in the git-ignored `tools_py/release/leak_extra.txt`.
 3. **End every commit message with the `Co-Authored-By` trailer your session is given** -- not one copied from an older
    commit or document. Subjects are `type(scope): what and why`, long, and say the finding (`docs/GIT_STRATEGY.md`).
-4. **Push to `origin sprint-9` and check CI** (`gh run list --branch sprint-9 --limit 1`). CI must stay green. A
+4. **Push to the OPEN sprint's branch on `origin` and check CI** (`gh run list --branch <that branch> --limit 1`;
+   the branch is named in `docs/CURRENT_SPRINT.md`'s header block -- `sprint-10` through its close, `sprint-11`
+   after it). Never hard-code a sprint number here: this rule said `sprint-9` for two sprints. CI must stay green. A
    `docs/**`-only push does not trigger it; anything else costs an hour on a hosted runner. **Know what green means:**
    the one workflow is Linux-only, builds with NO generated game code and never runs the gate. It proves the library,
    the two suites and the launcher. It proves nothing about the game.
@@ -146,13 +164,22 @@ eleven in the order they matter. Nothing was dropped.
 6. **One build or launch at a time, under the loop lock**, through `bash scripts/loop_lock.sh run <owner> --purpose
    "..." -- <cmd>` (foreground) or `scripts/run_detached.sh --owner <owner> <script> <marker>` (game runs). Never hold
    the lock across tool calls any other way. `scripts/check_quiet_gate.sh` first: **the owner feels long builds and
-   game runs** on this machine. Two-instance online runs only when the owner is away.
+   game runs** on this machine. Two-instance online runs only when the owner is away. **The lock is machine-wide --
+   but only since `9b39523` (2026-09-23).** Before that its default path was derived from the tree it ran in, so a
+   worktree's copy took a *private* lock and this rule was silently not enforced across worktrees: a build ran beside
+   a running capture on the night of the Sprint 10 close. The default follows git's common dir now, so every worktree
+   of this repository resolves to one lock; if you ever override it, `LOOP_LOCK_PATH` must be the same path for
+   everyone.
 7. **The VM `socom-linux` is powered off; leave it off unless a task needs it and the host is quiet. Never touch the
    owner's VM named "Work".** `scripts/vm_sync.sh` is the only door (ssh/tree/generated/iso); keys are in `vm/keys`
    (git-ignored).
 8. **Nothing connects to a server that is not ours.** The community server (PSRewired) preset stores an address and
    that is all, until the owner reports their answer.
-9. **Every moved default and every skipped measurement gets a numbered ruling** (next: R173) in the plan's "Rulings
+9. **Every moved default and every skipped measurement gets a numbered ruling** -- take the number from the "Next
+   free ruling number" line in section 2 above, which is the one checked home for it, and bump that line in the same
+   commit. (This rule carried a second, disagreeing copy of the counter, "(next: R173)", until 2026-09-23 -- exactly
+   the defect `docs/DOC_MAINTENANCE.md` §0 was written about, in the file that owns the number.) The ruling goes in
+   the plan's "Rulings
    made on the owner's behalf", or in `docs/CURRENT_SPRINT.md` when there is no plan. A ruling says what was decided,
    what it cost, and that the owner can overturn it.
 10. **What only the owner can verify goes to `docs/HUMAN_TASKS.md` and the loop moves on.** Do not wait on a person.
@@ -164,7 +191,10 @@ eleven in the order they matter. Nothing was dropped.
     and permissions, signing, spending money, deploying the site. Prepare them; do not perform them unless the owner
     says so in words.
 
-**Giving an agent a worktree (2026-09-21, learned the hard way).** Create it, junction in only what it needs
+**Giving an agent a worktree (2026-09-21, learned the hard way; `scripts/agent_worktree.sh` now does all of this).**
+A worktree is a second tree with the same scripts in it, and that is the trap underneath both of these stories: the
+push guard below was one agent's judgment, and the loop lock (rule 6) resolved to a private lock inside a worktree
+until 2026-09-23. Create it, junction in only what it needs
 (`tools/`; never `game/` -- see the memory note), and **kill its push**: `git -C <worktree> config remote.origin.pushurl
 no-push-from-an-agent` before the brief goes out. One agent this day pushed and merged to `main` three times against an
 explicit "do not push"; the work was good and CI gated it, but nothing except the agent's own judgment stood between a
@@ -186,8 +216,8 @@ rather than rule. At most two C++-building agents at once.
    `tools_py/parity/keys.py:31-34` and `drive.py` on ours, every `scripts/parity/*.txt` step script (`hold:W`,
    `hold:I`...), `x11shot.py` on Linux, and through `drive`: `gate.py`, `online_login_ours.py`,
    `online_match_ours.py`, `online_ladder.py`, `sp_death_probe.py` and the shell wrappers. The owner has asked for the
-   keyboard to be menus-and-typing only. The proposed ruling keeps the mapping as the harness's scripted path in
-   developer mode. **If you narrow the keyboard without that, you remove the instrument the project measures itself
+   keyboard to be menus-and-typing only. **R210 (made 2026-09-21, Q3 merged `0c172a6`)** keeps the mapping as the
+   harness's scripted path in developer mode. **If you narrow the keyboard without that, you remove the instrument the project measures itself
    with, and every later "gate 3/3" is a lie.** A gate AND an online control round must pass after the change.
 2. **A green CI is not a green game** (rule 4). Only the gate on the rebuilt exe says the game still works.
 3. **A freeze with a running HUD clock is the renderer, not the network.** A GL backlog stops the guest's clock; two
@@ -266,8 +296,10 @@ rather than rule. At most two C++-building agents at once.
   The project's only regression bar. Refuses under 4 GB free on C:. Results under `logs/parity/gate/<stamp>/`.
 - **The ladder** (`scripts/parity/ladder_frostfire.sh`, pins HEAD's harness first) and **control rounds**
   (`scripts/parity/online_control_round.sh "<map>"`): two instances, online, against our server only.
-  `scripts/parity/env.sh` sets the server address for the harness. `mixed_match.sh` (ours against PCSX2) has never
-  produced a result (Sprint 10 Goal 3).
+  `scripts/parity/env.sh` sets the server address for the harness. `mixed_match.sh` (ours against PCSX2) **runs both ways on
+  the hosted server** -- the console joins a game we host and we join a game it hosts, both proven 2026-09-20
+  (Sprint 10 Goal 3; `docs/KNOWN.md` §1, `logs/parity/mixed2_ours_hosts_d` and `mixed2_pcsx2_hosts_f`). This line
+  said it had never produced a result until 2026-09-23.
 - **Audio (rebuilt 2026-09-20, Q0/Q1):** the ear's path is measured now, not the mixer's. `tools_py/parity/audio_envelope.py`
   scores any WAV reference-free (envelope oscillation, splices, silences, sub-second holes); `loopback_record.py`
   records what Windows sends to the default endpoint (WASAPI loopback -- this is what the owner hears);
@@ -297,25 +329,32 @@ rather than rule. At most two C++-building agents at once.
 
 - **The hosted-server / site session** owns `server/`, the Lightsail box and `../scotho` (s2u.scotho.com, the bug
   inbox, SERVER STATS). Do not edit those; agree contracts with it in a spec section, as Goals 8 and 13 did.
-- **A session on Goal 10's fixes** (section 2) and **a session that held the Goal 3 plan** (now committed, `44b4ae4`,
-  not started). Either may be gone by the time you read this; the working tree and the log say which.
+- **A session on Goal 10's fixes** (section 2) and **a session that held the Goal 3 plan** (`44b4ae4`). Both are
+  finished: Goal 10's music work closed in round four on 2026-09-21, and the knob-retirement plan ran as Sprint 10's
+  Q2 on 2026-09-21 with its own rulings R203-R209. Either session may be gone by the time you read this; the working
+  tree and the log say which.
+- **Agents in worktrees** (`C:\projects\wt-*`, one branch each) whenever the controller has dispatched any. They
+  never touch this tree; the controller merges. `.superpowers/sdd/<plan>/progress.md` is the ledger that says who
+  holds what.
 - **Relays owed to the site session, not yet confirmed done:** (1) drop the "keyboard/mouse support" claim from
   s2u.scotho.com (the owner's instruction, 2026-09-20); (2) after a report is sent, the site's form should say that
   contributors can also open a GitHub issue and quote the `BR-` id (Sprint 11 Goal 7; not urgent).
 
 ## 9. What the owner said on 2026-09-20, and where each thing now lives
 
+*States re-checked at the Sprint 10 close, 2026-09-23: nine rows that still read "Open" had landed in P4 (2026-09-20) and Q4 (2026-09-21, gate `s10_q4_gate` 3/3). Only the profile viewer is still a live question, and it is the owner's.*
+
 | The owner said | Where it lives | State |
 |---|---|---|
-| The music gets louder and quieter and jumps between tracks; research it, fix it universally | Spec Goal 10; sprint P1, P2, Q1 | Root cause found (two stream-path bugs, plus no looping and no concurrency cap); a fix is in progress in another session |
-| While the game runs the pad drives both windows; the guide button should toggle | Spec Goal 9; P3 (input gate), Q4 (guide toggle, measured per platform first) | Open |
+| The music gets louder and quieter and jumps between tracks; research it, fix it universally | Spec Goal 10; sprint P1, P2, Q1; music round four | **DONE on the machine's side 2026-09-21** -- the defect was a stereo VPK interleaved per 0xb000 streaming buffer that we split per 0x800 chunk, so every stem played its two channels from different places in the song (`c6502ea`); the mission's pauses are proven to be the game's own playlist design. What remains is the DEVICE dips, and the 2026-09-23 A/B proved those are ours rather than the owner's speaker (`docs/KNOWN.md` §1) |
+| While the game runs the pad drives both windows; the guide button should toggle | Spec Goal 9; P3 (input gate), Q4 (guide toggle) | **DONE 2026-09-21 (Q4, R211-R213):** while the game runs the pad never drives the launcher; the switch is one button, bound in BUTTONS with OFF beside it, the guide by default, read from XInput's ordinal 100 on Windows |
 | Live server stats in the launcher | Goal 8's ONLINE line, one reader | Landed; confirm at P5 |
-| Style the game window like the launcher; a header button that focuses options | Q4 | Open |
-| UNZIPPED sits lower than SOCOM II; RUNNING sits above its lamp | P4 (`main.cpp:443-446`, `:463-467`), asserted in tests | Open |
-| Tooltips ("what is a profile?"); should there be a profile viewer? | P4 (tooltips); Q4 (viewer -- the owner's call) | Open |
-| Move "Second instance" into an ADVANCED section | P4 | Open |
-| A one-frame flash at the top left on page change | P4 (suspect `ui/focus.cpp:211-217`) | Open |
-| Launcher menu sounds from the game's own bank | Q4 -- decoded from the player's ISO at first run, cached, never shipped | Open |
+| Style the game window like the launcher; a header button that focuses options | Q4 | **DONE 2026-09-21 as decided, not as asked (R214, R215):** no header bar on the game window in this pass, because the client area is what the gate captures; the window's title became "&lt;game&gt; -- SOCOM Unzipped" and the harness's key moved with it |
+| UNZIPPED sits lower than SOCOM II; RUNNING sits above its lamp | P4 (`main.cpp:443-446`, `:463-467`), asserted in tests | **DONE 2026-09-20 (P4, R176's pass)** -- both alignments landed and are asserted in tests |
+| Tooltips ("what is a profile?"); should there be a profile viewer? | P4 (tooltips); Q4 (viewer -- the owner's call) | **Tooltips DONE 2026-09-20** (six, focus-driven). **The profile viewer is the one row here that is genuinely still open, and it is the owner's call, not the loop's** |
+| Move "Second instance" into an ADVANCED section | P4 | **DONE 2026-09-20 (R176)** -- ADVANCED is a per-page section, it holds one thing today, and it may not hide a setting that is doing something |
+| A one-frame flash at the top left on page change | P4 (`1966fa6`) | **DONE 2026-09-20** -- the frame's node list was built before input, so the frame drew the new page with the old list |
+| Launcher menu sounds from the game's own bank | Q4 -- decoded from the player's ISO at first run, cached, never shipped | **DONE 2026-09-21 (R216, R217):** the cues play at 0.45 of their rendered level with the setting on AUDIO, and the cache is keyed by content (SHA-256 over the PVD and the bank's first sector), not by path |
 | Remove every mouse option; keyboard permanent but for menus and typing only | Q3; trap 1; R210 | **DONE 2026-09-21** (`agent/q3`, merged `0c172a6`): the mouse and its two knobs are gone; the gameplay keys survive in developer mode only, which every harness launch is |
 | The debugger must not be open at launch | `2d0463f` (it was `m_visible = true`; F1 toggles) | DONE. Open: whether the release build carries imgui at all -- a size measurement inside Q2 |
 | We expose many PS2X options; maybe a private git-ignored dev build -- "unless you agree otherwise" | Spec Goal 3, "the exposure question"; Q2; `SECURITY.md` | Answered no, with reasons; one real vector found and fixed (`f5809c8`, the profile was a path). The owner can still overrule -- as a committed option |
@@ -336,17 +375,24 @@ rather than rule. At most two C++-building agents at once.
    (R175, KNOWN §4), so switching the default to `socom.scotho.com` orphans nothing. Nothing is owed here. The
    related question that IS the owner's, if they ever want it: whether the hosted server should advertise its
    NAME rather than its IP -- that string is guest-visible, and that one would want measuring first.
-4. **Is a friend on another network available for the playtest?** If so, Sprint 10 Goal 5 (the first two-machine
-   match, carried since Sprint 7) is answered in the same evening.
+4. **Is a friend on another network available for the playtest?** If so, the first two-machine match (carried since
+   Sprint 7, and carried past Sprint 10's close) is answered in the same evening. It is the one item on the
+   "what a stranger still lacks" list that no amount of machine time can close.
 5. **Whether the release build should drop imgui and the dump/trace families** -- decided on Q2's size number, but the
    owner should know the trade: a smaller download against a shipped build that is harder to diagnose.
 
 ## 11. The documents, and what was pruned on 2026-09-20
 
+**The schema that decides all of this is `docs/DOC_MAINTENANCE.md`** (written 2026-09-22): every perpetuating
+document has one class, the class decides what may be written in it and when it is checked, and
+`tools_py/docmaint.py` plus `tools_py/tests/test_doc_maintenance.py` fail on the parts that can be made mechanical.
+Read it before adding a document or moving a fact.
+
 **Live, kept in step by the controller:** `docs/CURRENT_SPRINT.md` (order), `docs/KNOWN.md` (truth), `docs/STATUS.md`
 (log; its top block is current state), `docs/HUMAN_TASKS.md` and `docs/PLAYTEST.md` (the owner's), this file (refresh
-sections 2, 4, 8 and 10 whenever the pick-up point changes), `docs/LOOP_PROMPT.md`, `docs/GIT_STRATEGY.md`, the open
-sprint's spec and plans under `docs/superpowers/`. **Reference:** `docs/ROADMAP.md`, `docs/AUDIT-2026-09-17.md`,
+sections 2, 4, 8 and 10 whenever the pick-up point changes), `docs/LOOP_PROMPT.md`, `docs/GIT_STRATEGY.md`,
+`docs/DOC_MAINTENANCE.md`, the open sprint's spec and plans under `docs/superpowers/`. **Generated, never
+hand-edited:** `docs/KNOBS.md` (from `ps2x/knobs.h`) and `docs/LADDER.md` (from `logs/ladder/ledger.jsonl`). **Reference:** `docs/ROADMAP.md`, `docs/AUDIT-2026-09-17.md`,
 `docs/process-audit.md` (the source of rules 5 and 11), `docs/research/01-34`.
 
 **Pruned** (a sub-agent catalogued keep / archive / delete; the controller checked every citation before acting):
