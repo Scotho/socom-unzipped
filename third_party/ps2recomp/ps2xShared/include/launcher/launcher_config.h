@@ -46,6 +46,7 @@ namespace launcher
         {"r0004", "r0004 (community update)",  "socom2_r0004.exe"},
     };
     constexpr size_t kGameRevisionCount = sizeof(kGameRevisions) / sizeof(kGameRevisions[0]);
+    static_assert(kGameRevisionCount <= 32, "the installed-revision mask is a uint32_t: one bit per table row");
     // What the greyed cell says when the build it names is not installed. The ONLINE page already drew this
     // sentence on the community preset's row; it is one string now, so the two places cannot drift apart.
     constexpr const char *kRevisionMissingNote = "needs the r0004 game update -- planned";

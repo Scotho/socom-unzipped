@@ -71,6 +71,7 @@ namespace Preflight
         // refused here with exit 67 and nothing on screen to explain it -- the very failure the launcher's
         // disc-check comment promises is impossible. `expectedSha256` remains an explicit override for a
         // caller that pins one image of its own (preflight_tests.cpp's synthetic disc).
+        if (digest.empty()) return false;   // no digest is never an accepted disc, whatever the override says
         return !launcher::discRevisionForDigest(digest).empty() || digest == expectedSha256;
     }
 
