@@ -23,7 +23,9 @@
 #     scripts/make_portable.sh grows the Linux lib/ layout in a later task (design item 5).
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# BASH_SOURCE, not $0: when this file is SOURCED (tools_py/tests/test_build_linux.py drives
+# test_step that way) $0 is the shell, and $0/.. would point somewhere else entirely.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "$ROOT/scripts/python_env.sh"   # $PYTHON, resolved once for every script
 socom_require_python build_linux
 CC="${CC:-clang}"
@@ -165,6 +167,13 @@ test_step() {
   fi
   echo "tests: ok"
 }
+
+# Sourced by tools_py/tests/test_build_linux.py to drive test_step with its four moving parts
+# stubbed -- the same testability knob scripts/make_portable.sh carries for MAKE_PORTABLE_SYSTEM
+# and LDD. A real run sets it nowhere, and it stops before anything is configured or built.
+if [ -n "${BUILD_LINUX_SOURCE_ONLY:-}" ]; then
+  return 0 2>/dev/null || exit 0
+fi
 
 case "$STEP" in
   tools)   build_tools ;;
