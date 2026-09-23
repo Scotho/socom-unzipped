@@ -47,6 +47,11 @@ case "$cmd" in
     fi
     # KNOWN §4: a capture that does not record the PS2X_* it ran under proves nothing about a later one.
     env | grep '^PS2X_' | LC_ALL=C sort > "$OUT/env_ps2x.txt"
+    # ... and one that does not record what ELSE was rendering to the endpoint proves nothing about the device: the
+    # 2026-09-23 audio-out capture scored 562 DEVICE events because a browser was playing music into the same
+    # endpoint for its whole sixteen minutes (the endpoint sat 15-20 dB above the mixer's dump; the trace showed no
+    # late callback at all). The sessions at the start and at the end, so a contaminated capture says so itself.
+    python -m tools_py.parity.app_volume list > "$OUT/sessions_start.txt" 2>&1 || true
     restore=""
     if [ "$target" = pcsx2 ]; then
       restore="$OUT/pcsx2_override_backup.txt"
@@ -79,6 +84,7 @@ case "$cmd" in
     powershell -NoProfile -Command 'Get-Process pcsx2-qt -ErrorAction SilentlyContinue | Stop-Process -Force' >/dev/null 2>&1
     offset=$(python -c "print(round(float(open('$OUT/.drive_started').read())-float(open('$OUT/.capture_started').read()),2))")
     rate=$(python -c "import wave; print(wave.open('$OUT/endpoint.wav').getframerate())")
+    python -m tools_py.parity.app_volume list > "$OUT/sessions_end.txt" 2>&1 || true
     echo "target=$target script=$script drive_rc=$rc offset=${offset}s rate=$rate drive_s=$drive_s record_s=$rec_s dump=${PS2X_AUDIO_DUMP:-none}" > "$OUT/capture.txt"
     PYTHONPATH="$ROOT" python -m tools_py.parity.audio_parity score "$OUT/endpoint.wav" "$rate" "$OUT/drive.stdout" "$offset" "$OUT/audio_scores.json" --target "$target" --script "$(basename "$script")" > "$OUT/scores.txt" 2>&1
     echo "scored -> $OUT/audio_scores.json ($(grep -c ':' "$OUT/scores.txt") windows)"; cat "$OUT/capture.txt"
