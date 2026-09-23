@@ -4109,6 +4109,10 @@ namespace Server.Medius
             if (channel == null)
                 return Task.CompletedTask;
 
+            // What we forward is clamped to leave room for the terminator.
+            var message = ChatClamp.Fit(chatMessage.Message, Constants.CHATMESSAGE_MAXLEN);
+            var originatorAccountName = ChatClamp.Fit(clientObject.AccountName, Constants.ACCOUNTNAME_MAXLEN);
+
             switch (chatMessage.MessageType)
             {
                 case MediusChatMessageType.Broadcast:
@@ -4120,9 +4124,9 @@ namespace Server.Medius
                             {
                                 MessageID = chatMessage.MessageID,
                                 OriginatorAccountID = clientObject.AccountId,
-                                OriginatorAccountName = clientObject.AccountName,
+                                OriginatorAccountName = originatorAccountName,
                                 MessageType = chatMessage.MessageType,
-                                Message = chatMessage.Message
+                                Message = message
                             });
                         }
                         break;
@@ -4134,9 +4138,9 @@ namespace Server.Medius
                         {
                             MessageID = new MessageId(),
                             OriginatorAccountID = clientObject.AccountId,
-                            OriginatorAccountName = clientObject.AccountName,
+                            OriginatorAccountName = originatorAccountName,
                             MessageType = chatMessage.MessageType,
-                            Message = chatMessage.Message
+                            Message = message
                         });
                         break;
                     }
@@ -4167,12 +4171,15 @@ namespace Server.Medius
             if (channel == null)
                 return;
 
+            // What we forward is clamped to leave room for the terminator.
+            var message = ChatClamp.Fit(chatMessage.Message, Constants.CHATMESSAGE_MAXLEN);
+
             switch (chatMessage.MessageType)
             {
                 case MediusChatMessageType.Broadcast:
                     {
                         // Relay
-                        channel.BroadcastChatMessage(allButSender, clientObject, chatMessage.Message);
+                        channel.BroadcastChatMessage(allButSender, clientObject, message);
                         break;
                     }
                 default:
