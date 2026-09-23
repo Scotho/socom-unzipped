@@ -114,9 +114,8 @@ is Horizon configured for SOCOM II's app id, with a seed script for a local inst
 
 ### How it was built
 
-Most of this repository was produced by AI agents (Claude, through Claude Code) working in sprints under a human
-owner -- `docs/HOW_IT_WAS_BUILT.md` is the honest account of that: the method, what the owner did and what the agents
-did, and the things that went wrong and were kept.
+`docs/HOW_IT_WAS_BUILT.md` is the honest account: AI agents (Claude, through Claude Code) working in sprints under a
+human owner, what each side did, and what went wrong.
 
 ## Contributing and security
 

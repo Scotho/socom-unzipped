@@ -4,9 +4,9 @@
 which part of the work, how a change was allowed to become a commit, and which of the project's own mistakes were
 kept on the record because they are the part worth reading.*
 
-This is not a pitch. The work was done by AI agents in a loop run by one person, and both halves of that sentence
-carry real weight and real limits; the page states both. It holds no live state on purpose — for what is true today,
-follow the pointers at the end. Every dated claim below names the commit that proves it.
+This is not a pitch. The work was done by AI agents in a loop run by one person, and the page states the weight and
+the limits of both halves of that sentence. It holds no live state on purpose — for what is true today, follow the
+pointers at the end. Every dated claim below names the commit that proves it.
 
 ## What a static recompilation is here
 
@@ -24,8 +24,7 @@ code could be trusted (`ac7de47`, 2026-09-04).
 The target shape is the one the Nintendo 64 recompilation projects settled on, and it is the acceptance bar the owner
 set (quoted in `docs/LOOP_PROMPT.md`): **the game's logic stays recompiled; the renderer, audio, input and network are
 native code written for this project.** What is still emulated is the console around the game — the EE kernel and
-scheduler, the DMA controller, the vector units, the IOP services at the RPC boundary. `docs/DEVELOPING.md` has the
-one-paragraph version with the file paths.
+scheduler, the DMA controller, the vector units, the IOP services at the RPC boundary.
 
 Nothing from the game ships. The program reads the player's own disc, and refuses a pressing it does not support
 rather than half-working.
@@ -113,19 +112,19 @@ are written down in `docs/KNOWN.md` §4 rather than hidden:
 
 ## What is written down, and why
 
-- `docs/KNOWN.md` — four sections: proven, with the artefact; believed, with the experiment that would settle it;
-  retracted; and standing hazards. It was created on 2026-09-12 (`2d9f73a`) and already carried six dead sentences on
-  its first day. The rule is that a committed sentence found false is corrected the same hour, in place, where it was
-  written — a blockquote saying what superseded it, never a quiet delete.
+- **The known/believed ledger.** Four sections: proven, with the artefact; believed, with the experiment that would
+  settle it; retracted; and standing hazards. It was created on 2026-09-12 (`2d9f73a`) and already carried six dead
+  sentences on its first day. The rule is that a committed sentence found false is corrected the same hour, in place,
+  where it was written — a blockquote saying what superseded it, never a quiet delete.
 - **Numbered rulings.** Every default moved and every measurement skipped on the owner's behalf gets a number, a
   reason, and a cost-if-wrong. The counter that hands out the next number is itself checked by a test, because it once
-  drifted far enough that an agent obeying it would have collided with sixty-two existing rulings.
-- `docs/HUMAN_TASKS.md` — the queue of things only the owner can verify. The loop adds to it and moves on rather than
-  blocking.
-- `docs/DOC_MAINTENANCE.md` — every perpetuating document has a class that decides what may be written in it, and a
-  test fails on a document nobody classified. This page is class **N**: narrative, pointers, no live numbers.
-- `docs/STORY.md` — the timeline, where every dated claim carries its commit hashes and run records, and a test fails
-  if a citation stops pointing at something real.
+  drifted far enough that an agent obeying it would have collided with sixty-two existing rulings — it offered R179
+  from 2026-09-20 to 2026-09-22 while R241 was in use (`docs/DOC_MAINTENANCE.md` §0; `c5c0170`).
+- **The owner's queue.** The loop adds anything only the owner can verify to it and moves on rather than blocking.
+- **A class per document.** Every perpetuating document has one, deciding what may be written in it, and a test fails
+  on a document nobody classified. This page's class forbids it a live number.
+- **A cited timeline**, where every dated claim carries its commit hashes and run records, and a test fails if a
+  citation stops pointing at something real.
 
 ## The things that went wrong, and were kept
 
