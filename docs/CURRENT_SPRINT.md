@@ -28,7 +28,7 @@ sprint 10:    OPENED 2026-09-20 on the owner's instruction ("proceed on with the
               develop deleted, this branch opened. Q0b, Q1b-Q7 carry into Sprint 10 as filler unless the owner reorders;
               no GitHub release (Sprint 11 / D2, owner-only).
 git strategy: docs/GIT_STRATEGY.md     contributing: CONTRIBUTING.md
-next ruling:  R246 (R245, 2026-09-23: option B not scheduled -- the Sprint 11 plan's rulings section) -- nothing is renumbered. The sprint's sixty-four numbers R181-R244 are
+next ruling:  R247 (R245-R246, 2026-09-23: option B not scheduled; the chat bound's install is the Milestone S proof, the traversal a filler row -- the Sprint 11 plan's rulings section) -- nothing is renumbered. The sprint's sixty-four numbers R181-R244 are
               reconciled row by row in ONE table below ("Sprint 10's rulings ledger, R181-R244"): the decision
               in its own words, where it is written, and its status. R229 is deliberately vacant. This line used
               to carry that index as a single 2,700-character paragraph, which no reader could use; the table is
@@ -75,7 +75,7 @@ mixed-match runs); the speed-freeze re-measure from the ladder logs (R242); **th
 to be ours** — 50 ms DEVICE dips after the mixer's dump point on any endpoint (the A/B, KNOWN §1): the output path
 between `render()` and the device is where to look; a route to the church for the W6 capture, and the capture
 recording its own `PS2X_*` environment; `ladder_job.sh`'s pre-check race (let `run_detached` take the lock without a
-separate check); the streamer half of the real-IRX oracle (research/40 §6's price); the three #244 patches as
+separate check; KNOWN §4); **a harness chat step** (open the briefing-room chat box and type a line, A hosts before B joins) so a line is seen crossing the client bound (R246, KNOWN §2); the streamer half of the real-IRX oracle (research/40 §6's price); the three #244 patches as
 upstream issues; the standing backlog below.
 
 ## The close, 2026-09-22 evening → 2026-09-23 morning (the owner's twelve-hour mandate)
