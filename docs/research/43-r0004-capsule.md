@@ -226,7 +226,7 @@ table is for a revision we do not hold (unchanged from Step 1).
 already names "load DNAS.BIN from disc, decrypt APACHE00.ZDB into both overlay slots and run it".
 `FUN_001C5B30`, the loader's memory-card update chooser, starts twenty-four bytes after the probed
 word — three words past this function's end at `0x001C5B24`.
-The word itself is the `lq s0, 0(sp)` two instructions before that function's `jr ra` — an ordinary
+The word itself is the `lq s0, 0(sp)` one instruction before that function's `jr ra` — an ordinary
 register restore in its epilogue. (Capstone decodes it as an MSA instruction; the EE's 128-bit
 `lq`/`sq` have to be decoded by hand, as Step 1 warned.)
 
@@ -253,7 +253,7 @@ mismatch it sets `0x000A0058` and clears `0x000A0060` and `0x000A0064`. Two cons
 game-visible effect of the capsule, and has since before r0004 was a topic:
 
 - `ps2_stubs::socom2_DnasTickDone` (≈line 265) sets `$v0 = 1` and returns to `$ra`;
-- `applySocom2` (≈line 2127) installs it unconditionally:
+- `applySocom2` (line 2135) installs it unconditionally:
   `runtime.replaceFunction(socom2_addresses::current().dnasCheck, ps2_stubs::socom2_DnasTickDone);`
 - `socom2_addresses::Table::dnasCheck` is `0x002CC670` (`runtime/socom2_addresses.h`), already a
   per-revision column, so an r0004 build needs one more number and no new code;
