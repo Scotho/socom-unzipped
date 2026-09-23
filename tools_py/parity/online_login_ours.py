@@ -2480,6 +2480,7 @@ def main():
         raise SystemExit(f"{hostplatform.exe_name('socom2')} is already running; "
                          "refusing to start a second game instance")
     proc, title = launch(a.seconds, a.instance or None, prefill, **({"mc_dir": a.mc_dir} if a.mc_dir else {}))
+    sh = None
     try:
         sh = attach(proc, title, a.out)
         boot_to_online(sh)
@@ -2515,7 +2516,14 @@ def main():
         sh.shot("final")
     finally:
         proc.terminate()
-        hostplatform.kill_process_by_name("socom2")
+        if a.instance:
+            # 2026-09-22 (the hosted join, 14:53): with --instance another socom2.exe on this PC may be the
+            # owner's own launcher game, and `taskkill /F /IM socom2.exe` ended it with ours. Kill only the
+            # game this run drove -- the process behind its window, else the launch's own process tree.
+            pid = winshot.window_pid(sh.hwnd) if sh is not None else 0
+            hostplatform.kill_process_tree(pid or proc.pid)
+        else:
+            hostplatform.kill_process_by_name("socom2")     # the guard above admitted no other instance
 
 
 if __name__ == "__main__":
