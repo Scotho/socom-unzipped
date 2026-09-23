@@ -18,6 +18,32 @@ and `tools_py/docmaint.py`'s check 6 holds every document to it.
 | `HANDOFF-AUDIT-2026-09-14.md` | *docs/HANDOFF-AUDIT-2026-09-14.md* | The audit that opened Sprint 6. History. | `docs/STATUS.md`, the Sprint 6 spec and plan |
 | `CURRENT_SPRINT-to-sprint-8.md` | the dated blocks of *docs/CURRENT_SPRINT.md* from Sprint 5's pause to Sprint 8's close | The live file had become a reverse-chronological log in which the order of work was one paragraph among thirty, with four superseded sets of "standing rules" and "next" lists below it. | `docs/AUDIT-2026-09-17.md` (its §4 lists the drift it found there) |
 
-Not moved, on purpose: the Sprint 1-6 specs and plans under `docs/superpowers/` (cited by path in hundreds of places;
-they move in Sprint 11 Goal 1, as one block, with a link check), and `docs/parity/REPORT.md` (`tools_py/parity/compare.py`
-names it).
+## `sprints-1-6/` — the closed sprints' specs and plans
+
+Moved 2026-09-23 (Sprint 11 Goal 1). Twelve files, one spec and one plan per sprint, kept verbatim under a banner
+each. They are the design record of Sprints 1 to 6; every one of them describes work that is finished, and a reader
+who took one for the current plan would be six sprints out.
+
+They stayed under `docs/superpowers/` for a sprint after they died because this file said so — *"cited by path in
+hundreds of places"* — and nothing could catch a citation a move had broken. `tools_py/docmaint.py`'s **check 6** is
+what made the move safe: every backticked `docs/` path in the tree must exist, so a stale citation is now a test
+failure. Forty-three citations were re-pointed in the same commit.
+
+The files here are class **A by location** (`docs/DOC_MAINTENANCE.md` §2): a subdirectory of this one is a block moved
+whole, so it needs no registry row — but every file in it still has to carry its banner, and check 5 holds it to that.
+
+| Sprint | Closed | Spec and plan |
+|---|---|---|
+| 1 — hygiene and native render | 2026-09-11 | `2026-09-10-sprint-1-hygiene-and-native-render-design.md`, `2026-09-10-sprint-1-hygiene-and-native-render.md` |
+| 2 — host render and family B | 2026-09-11 | `2026-09-11-sprint-2-host-render-and-family-b-design.md`, `2026-09-11-sprint-2-host-render-and-family-b.md` |
+| 3 — render scale and the fourth family | 2026-09-12 | `2026-09-11-sprint-3-render-scale-and-fourth-family-design.md`, `2026-09-11-sprint-3-render-scale-and-fourth-family.md` |
+| 4 — visible defects and the first kill | 2026-09-13 | `2026-09-12-sprint-4-visible-defects-and-first-kill-design.md`, `2026-09-12-sprint-4-visible-defects-and-first-kill.md` |
+| 5 — control readout and the first kill | 2026-09-13 | `2026-09-13-sprint-5-control-readout-and-first-kill-design.md`, `2026-09-13-sprint-5-control-readout-and-first-kill.md` |
+| 6 — correctness gate and online reliability | 2026-09-17 | `2026-09-15-sprint-6-correctness-gate-and-online-reliability-design.md`, `2026-09-15-sprint-6-correctness-gate-and-online-reliability.md` |
+
+Sprint 5's plan is a citation of record in `docs/STORY.md` and `docs/story/timeline.json` (the first online kill), so
+its path is load-bearing beyond this directory. The Sprint 1–6 plans are also still read by the ruling counter — their
+`## Rulings made on the owner's behalf` sections hold live ruling numbers, and `max_ruling()` scans this directory for
+exactly that reason.
+
+Not moved, on purpose: `docs/parity/REPORT.md` (`tools_py/parity/compare.py` names it).

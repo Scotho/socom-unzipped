@@ -1,5 +1,9 @@
 # Sprint 4 — Visible Defects, Gate Trust, and the First-Kill Online Test: Implementation Plan
 
+> **ARCHIVED 2026-09-23 — Sprint 4's plan, closed 2026-09-13. Cited by `docs/archive/HANDOFF-reference-to-2026-09-13.md` and the Sprint 4 spec beside it; kept verbatim.**
+> Moved here from `docs/superpowers/plans/` in Sprint 11; nothing below it was edited except those
+> citations that pointed at this block's own old paths. It is a record, not an instruction.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Fix the last defects you can see on screen (intro-movie macroblocks, ground height), make the parity gate incapable of hiding a red run, close the `--vram-diff` calibration, and then drive a two-instance online match to a first kill — the user's standing definition of "playable".
@@ -8,7 +12,7 @@
 
 **Tech Stack:** C++20 (llvm-mingw clang via `build.sh`), CMake/Ninja, OpenGL through raylib/rlgl, MiniTest, Python 3 (numpy, Pillow), PCSX2 as the console reference, a local Horizon server (Medius/DME, C# sources under `server/`), Git Bash + PowerShell for detached runs.
 
-**Spec:** `docs/superpowers/specs/2026-09-12-sprint-4-visible-defects-and-first-kill-design.md`
+**Spec:** `docs/archive/sprints-1-6/2026-09-12-sprint-4-visible-defects-and-first-kill-design.md`
 
 ## Handoff notes for the executing model (read once)
 
@@ -453,7 +457,7 @@ block.** A plan that quotes a prior belief should quote it as a belief.
   Medley; the owner's switch to Frostfire exposed a second, unrelated control failure within one
   run. "The movement fix works" is true and map-scoped, and every movement claim from this sprint
   should be read with "on Medley" attached.
-- **Handed to Sprint 5** (`docs/superpowers/specs/2026-09-13-sprint-5-control-readout-and-first-kill-design.md`,
+- **Handed to Sprint 5** (`docs/archive/sprints-1-6/2026-09-13-sprint-5-control-readout-and-first-kill-design.md`,
   `ee10842`): Frostfire control handover, confirming `actor+0x1044`/`+0xF7A` live, an online harness
   that cannot spend a match proving nothing, the HLE and heap liveness audit, the engagement ladder,
   and the acceptance run. ~~Also handed over unrun: this plan's `s4_head_1x` gate (Task 9's open box).~~ That box was closed with offline evidence in the final fix wave (title s00–s19 99.8–100.0 vs `s3_head_1x`; see Task 9).

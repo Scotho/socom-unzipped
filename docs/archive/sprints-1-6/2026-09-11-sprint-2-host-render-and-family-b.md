@@ -1,5 +1,9 @@
 # Sprint 2 — Host-Resolution Drawing, Family B/C, Gate Hardening: Implementation Plan
 
+> **ARCHIVED 2026-09-23 — Sprint 2's plan, closed 2026-09-11. Cited by `docs/archive/HANDOFF-reference-to-2026-09-13.md`; kept verbatim.**
+> Moved here from `docs/superpowers/plans/` in Sprint 11; nothing below it was edited except those
+> citations that pointed at this block's own old paths. It is a record, not an instruction.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Let the native VU1 dispatcher hand the GS backend sub-pixel host-space triangles directly (behind a knob, proven equivalent, then at 2x), finish the dispatcher natively (family B and C command lists), and make the gates deterministic and runnable on a fresh clone.
@@ -8,7 +12,7 @@
 
 **Tech Stack:** C++20 (llvm-mingw clang via `build.sh`), CMake/Ninja, MiniTest, Python 3 (numpy, Pillow), Git Bash.
 
-**Spec:** `docs/superpowers/specs/2026-09-11-sprint-2-host-render-and-family-b-design.md`
+**Spec:** `docs/archive/sprints-1-6/2026-09-11-sprint-2-host-render-and-family-b-design.md`
 
 ## Global Constraints
 
@@ -338,7 +342,7 @@ git push
 
 ### Task 11: Docs and state
 
-**Files:** `docs/STATUS.md`, `docs/LOOP_PROMPT.md`, `README.md`, `docs/superpowers/plans/2026-09-11-sprint-2-host-render-and-family-b.md`
+**Files:** `docs/STATUS.md`, `docs/LOOP_PROMPT.md`, `README.md`, `docs/archive/sprints-1-6/2026-09-11-sprint-2-host-render-and-family-b.md`
 
 - [x] **Step 1:** STATUS "Current state" lines updated (knobs `PS2X_VU1_HOST_DRAW`, `PS2X_GS_SCALE` if landed, native coverage count, gate determinism), one dated Sprint 2 entry; README "Build and run" lists the new knobs; LOOP_PROMPT goal 3 text updated to the Sprint 2 spec; plan boxes ticked. Commit and push. Merge `sprint-2` into `develop` (fast-forward) and `main`.
 

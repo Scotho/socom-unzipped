@@ -1,8 +1,12 @@
 # Sprint 3 — render-target scale, the fourth VU1 command family, intro-movie macroblocks: design
 
+> **ARCHIVED 2026-09-23 — Sprint 3's spec, closed 2026-09-12. Cited by `docs/archive/HANDOFF-reference-to-2026-09-13.md` and the Sprint 3 plan beside it; kept verbatim.**
+> Moved here from `docs/superpowers/specs/` in Sprint 11; nothing below it was edited except those
+> citations that pointed at this block's own old paths. It is a record, not an instruction.
+
 Status: scope approved by the user on 2026-09-11 ("proceed"). Project: SOCOM Unzipped,
 repo `github.com/Scotho/socom-unzipped`, branch `develop` (= `main` = 148dffa at sprint start).
-Executor: a separate Opus-class model following `docs/superpowers/plans/2026-09-11-sprint-3-render-scale-and-fourth-family.md`
+Executor: a separate Opus-class model following `docs/archive/sprints-1-6/2026-09-11-sprint-3-render-scale-and-fourth-family.md`
 with superpowers:subagent-driven-development.
 
 ## 1. Where Sprint 2 left things

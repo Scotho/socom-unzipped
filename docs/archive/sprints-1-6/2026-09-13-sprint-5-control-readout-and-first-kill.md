@@ -1,5 +1,9 @@
 # Sprint 5 — Control on the Test Map, a Kill Readout from Sourced Offsets, and the First Kill: Implementation Plan
 
+> **ARCHIVED 2026-09-23 — Sprint 5's plan, closed 2026-09-13. Cited by `docs/STORY.md` and `docs/story/timeline.json` as a citation of record for the first online kill, `docs/archive/HANDOFF-reference-to-2026-09-13.md`, `docs/archive/ROADMAP-sprint-4-to-sprint-7.md` and the Sprint 5 spec beside it; kept verbatim.**
+> Moved here from `docs/superpowers/plans/` in Sprint 11; nothing below it was edited except those
+> citations that pointed at this block's own old paths. It is a record, not an instruction.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Settle why nobody moves on Frostfire (the uninitialised ghost flag first), confirm the sourced health/life fields in one single-player run, make the online harness unable to spend a match on an uncontrollable or hung player, then climb the engagement from contact to damage to a kill attributed by signals from different objects and processes.
@@ -8,7 +12,7 @@
 
 **Tech Stack:** C++20 (llvm-mingw clang via `build.sh`), Python 3 (`unittest`, numpy, Pillow), the local Horizon server, PCSX2 as the console reference, Ghidra decomp `game/analysis/socom2_game.elf.decomp.c`, reCOM (`tools/reference/reCOM`, SOCOM 1), Git Bash + PowerShell.
 
-**Spec:** `docs/superpowers/specs/2026-09-13-sprint-5-control-readout-and-first-kill-design.md`. **Required reading for every dispatch:** `docs/KNOWN.md`, `docs/research/19-community-and-engine-resources.md` (F1–F5), `docs/research/18-online-round-start.md` §3.9–§3.12 and §4.12–§4.13, `docs/research/11-recom-applicability.md` §1 "zNetwork".
+**Spec:** `docs/archive/sprints-1-6/2026-09-13-sprint-5-control-readout-and-first-kill-design.md`. **Required reading for every dispatch:** `docs/KNOWN.md`, `docs/research/19-community-and-engine-resources.md` (F1–F5), `docs/research/18-online-round-start.md` §3.9–§3.12 and §4.12–§4.13, `docs/research/11-recom-applicability.md` §1 "zNetwork".
 
 ## Handoff notes for the executing model (read once)
 

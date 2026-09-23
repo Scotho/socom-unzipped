@@ -122,10 +122,14 @@ def max_ruling():
     # Rulings are numbered where they are made: the live documents AND the plans' own "## Rulings"
     # sections (house convention since Sprint 5). A plan-only ruling not scanned here made the
     # counter read one too high on 2026-09-22, the first night the check ran.
-    plans_dir = os.path.join(ROOT, "docs", "superpowers", "plans")
+    # docs/archive/sprints-1-6/ is in the list because the Sprint 1-6 plans moved there on
+    # 2026-09-23 and their rulings did not stop existing: dropping them would let the counter walk
+    # backwards, which is the exact failure this check was written for.
     plans = []
-    if os.path.isdir(plans_dir):
-        plans = ["docs/superpowers/plans/" + n for n in sorted(os.listdir(plans_dir)) if n.endswith(".md")]
+    for folder in ("docs/superpowers/plans", "docs/archive/sprints-1-6"):
+        d = os.path.join(ROOT, *folder.split("/"))
+        if os.path.isdir(d):
+            plans += [folder + "/" + n for n in sorted(os.listdir(d)) if n.endswith(".md")]
     for path in by_class("L") + ["docs/STATUS.md"] + plans:
         if not os.path.isfile(os.path.join(ROOT, path)):
             continue

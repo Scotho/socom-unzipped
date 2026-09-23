@@ -1,5 +1,9 @@
 # Sprint 1 — hygiene, freeze, and the first native render replacement: design
 
+> **ARCHIVED 2026-09-23 — Sprint 1's spec, closed 2026-09-11. Cited by `docs/archive/HANDOFF-reference-to-2026-09-13.md` and the Sprint 1 plan beside it; kept verbatim.**
+> Moved here from `docs/superpowers/specs/` in Sprint 11; nothing below it was edited except those
+> citations that pointed at this block's own old paths. It is a record, not an instruction.
+
 Status: direction approved by the user on 2026-09-10 after an external audit of the project
 (the audit is summarised in §1). Project name from this date: **SOCOM Unzipped**, repository
 `github.com/Scotho/socom-unzipped`.

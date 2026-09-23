@@ -1,5 +1,9 @@
 # Sprint 3 — Render-Target Scale, Fourth VU1 Family, Intro-Movie Macroblocks: Implementation Plan
 
+> **ARCHIVED 2026-09-23 — Sprint 3's plan, closed 2026-09-12. Cited by `docs/archive/HANDOFF-reference-to-2026-09-13.md` and the Sprint 3 spec beside it; kept verbatim.**
+> Moved here from `docs/superpowers/plans/` in Sprint 11; nothing below it was edited except those
+> citations that pointed at this block's own old paths. It is a record, not an instruction.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the native render path visibly better (a presentation-filter experiment, then a real integer render-target scale behind `PS2X_GS_SCALE`, verified bit-identical at 1× and sharper at 2×), finish the VU1 dispatcher (the fourth command family and, if feasible, `0x34`), give the host-draw equivalence check family-C coverage, and localise the intro-movie black macroblocks.
@@ -8,7 +12,7 @@
 
 **Tech Stack:** C++20 (llvm-mingw clang via `build.sh`), CMake/Ninja, OpenGL through raylib/rlgl, MiniTest, Python 3 (numpy, Pillow), Git Bash + PowerShell for detached runs.
 
-**Spec:** `docs/superpowers/specs/2026-09-11-sprint-3-render-scale-and-fourth-family-design.md`
+**Spec:** `docs/archive/sprints-1-6/2026-09-11-sprint-3-render-scale-and-fourth-family-design.md`
 
 ## Handoff notes for the executing model (read once)
 

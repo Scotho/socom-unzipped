@@ -27,7 +27,7 @@ into `develop`.~~
 > 3-D separation 50.0 units on Medley. **Frostfire, the default test map since 2026-09-13, is a
 > second, open cause**: neither player moves after round start there. The live facts are in
 > `docs/KNOWN.md`; the next sprint is
-> `docs/superpowers/specs/2026-09-13-sprint-5-control-readout-and-first-kill-design.md`. The
+> `docs/archive/sprints-1-6/2026-09-13-sprint-5-control-readout-and-first-kill-design.md`. The
 > summary below is kept as written on 2026-09-12; its "predicted, not confirmed" and "one
 > measurement run and one fix" no longer hold.
 
@@ -324,7 +324,7 @@ Sprint 5 carries its first pass.
 > the `0x200` fix) was done inside Sprint 4; item 2 (calibration) was done on Medley; the first kill
 > was **not** reached (closest true 3-D separation 50.0 units), movement failed on Frostfire, and
 > `PASS` cannot print until a health word is confirmed. The current distance to a kill, and the plan
-> for it, is `docs/superpowers/specs/2026-09-13-sprint-5-control-readout-and-first-kill-design.md`
+> for it, is `docs/archive/sprints-1-6/2026-09-13-sprint-5-control-readout-and-first-kill-design.md`
 > §1 and §6. The text below is kept as written on 2026-09-12.
 
 The user's definition of playable: an automated two-instance online match driven to its end by one
@@ -445,8 +445,8 @@ movie_blocks monotonicity, the ground-height retarget, the 4c severity).
 > 16-launch ladder, pre-registered acceptance bars, a simplified engagement) and the acceptance run
 > came from that rewritten path. Full detail: `docs/STATUS.md`'s dated Sprint 5 entry, the plan's own
 > `## Outcome` and `## Rulings made on the owner's behalf` sections, and `docs/KNOWN.md` §1.
-> **Superseded, in full, by `docs/superpowers/specs/2026-09-13-sprint-5-control-readout-and-first-kill-design.md`
-> and its plan (`docs/superpowers/plans/2026-09-13-sprint-5-control-readout-and-first-kill.md`).**
+> **Superseded, in full, by `docs/archive/sprints-1-6/2026-09-13-sprint-5-control-readout-and-first-kill-design.md`
+> and its plan (`docs/archive/sprints-1-6/2026-09-13-sprint-5-control-readout-and-first-kill.md`).**
 > The Sprint 5 that stood here ("land the fix, reach the first kill") was written before Sprint 4's
 > Task 8 finished, and the world it planned for ended the same night. Its Tasks 0–2 were done
 > inside Sprint 4 (the retractions; the `0x200` cause measured; the fix landed with a same-binary
