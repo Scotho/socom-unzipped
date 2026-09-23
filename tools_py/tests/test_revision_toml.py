@@ -368,6 +368,20 @@ def switch_body(seed, base, cases=None):
 
 LUI_INDEX = 15                                # where switch_body puts the lui
 SW_BYTES = 28 * 4
+MMIO_AT = 5                                   # where with_mmio puts the access in switch_body's filler
+
+
+def with_mmio(words, reg):
+    """`lui at, %hi(reg)` then `sw t5, %lo(reg)(at)` in the filler: an access to a hardware register.
+
+    Both immediates are addresses, so `normalize` drops both -- which is exactly the point. The anchor
+    has to place this instruction on the shape of the code around it, and the REGISTER is then a
+    separate, independent thing to check at whatever address it landed on."""
+    out = list(words)
+    hi = ((reg >> 16) + (1 if (reg & 0xFFFF) >= 0x8000 else 0)) & 0xFFFF
+    out[MMIO_AT - 1] = 0x3C010000 | hi                    # lui at, %hi(reg)
+    out[MMIO_AT] = 0xAC2D0000 | (reg & 0xFFFF)            # sw  t5, %lo(reg)(at)
+    return out
 
 
 def blob(words):
@@ -382,38 +396,55 @@ def image(size, placements):
     return bytes(buf)
 
 
-# The A build: three switching functions, their tables, and a patch site inside each.
-A_MOVED, A_DRIFT, A_GONE, A_RECAST = 0x00300040, 0x003000B0, 0x00300120, 0x00300190
-A_T1, A_T2, A_T3, A_T4 = 0x00300C00, 0x00300C40, 0x00300C80, 0x00300CC0
+# The A build: four switching functions, their tables, a patch site and an [mmio] access inside each.
+A_MOVED, A_DRIFT, A_GONE, A_RECAST, A_RELABEL = (0x00300040, 0x003000B0, 0x00300120,
+                                                 0x00300190, 0x00300200)
+A_T1, A_T2, A_T3, A_T4, A_TR = 0x00300C00, 0x00300C40, 0x00300C80, 0x00300CC0, 0x00300D00
 # The B build: `moved` moved (and the matcher placed it), `drifted` moved and the matcher did NOT,
-# `recast` moved and its own code changed, so nothing anchors it, and `vanished` is not there at all.
-B_MOVED, B_DRIFT, B_RECAST = 0x00300200, 0x00300270, 0x003002E0
-B_T1, B_T4, B_T2 = 0x00300E00, 0x00300E20, 0x00300E40
+# `recast` moved and its own code changed, so nothing anchors it, `relabelled` moved and anchors but
+# its access now forms a different register, and `vanished` is not there at all.
+B_MOVED, B_DRIFT, B_RECAST, B_RELABEL = 0x00300240, 0x003002B0, 0x00300320, 0x00300390
+B_T1, B_T4, B_T2, B_TR = 0x00300E00, 0x00300E20, 0x00300E40, 0x00300D40
 
-_a_drift = switch_body(2, A_T2)
-_b_drift = switch_body(2, B_T2)
+# The hardware registers the [mmio] keys annotate. They belong to the machine, not to the build, so
+# they read the same in both images -- which is what makes them evidence about a placement.
+MMIO_MOVED, MMIO_DRIFT, MMIO_GONE, MMIO_RELABEL = 0x10003C00, 0x1000E000, 0x10009000, 0x1000B400
+
+_a_moved = with_mmio(switch_body(1, A_T1, cases=2), MMIO_MOVED)
+_b_moved = with_mmio(switch_body(1, B_T1, cases=2), MMIO_MOVED)
+_a_drift = with_mmio(switch_body(2, A_T2), MMIO_DRIFT)
+_b_drift = with_mmio(switch_body(2, B_T2), MMIO_DRIFT)
 _b_drift[22] = 0x00000025                     # one word changed, well outside the anchor's window
+_a_gone = with_mmio(switch_body(3, A_T3), MMIO_GONE)
 _a_recast = switch_body(4, A_T4, cases=2)
 _b_recast = switch_body(4, B_T4, cases=9)     # a bound nine entries long, over a table two entries long
 _b_recast[13] = 0x24020123                    # a word INSIDE every window: this site cannot be anchored
+_a_relabel = with_mmio(switch_body(5, A_TR), MMIO_RELABEL)
+# The same code, and the same shape once the addresses are masked out -- but this build's store forms
+# a register 0x20 along. The window lands here; the key's own claim does not.
+_b_relabel = with_mmio(switch_body(5, B_TR), MMIO_RELABEL + 0x20)
 
 A_ELF = elf32([(0x00300000, image(0x1000, {
-    A_MOVED - 0x300000: switch_body(1, A_T1, cases=2),
+    A_MOVED - 0x300000: _a_moved,
     A_DRIFT - 0x300000: _a_drift,
-    A_GONE - 0x300000: switch_body(3, A_T3),
+    A_GONE - 0x300000: _a_gone,
     A_T1 - 0x300000: [A_MOVED + 0x40, A_MOVED + 0x50],
     A_T2 - 0x300000: [A_DRIFT + 0x40, A_DRIFT + 0x50],
     A_T3 - 0x300000: [A_GONE + 0x40, A_GONE + 0x50],
     A_RECAST - 0x300000: _a_recast,
     A_T4 - 0x300000: [A_RECAST + 0x40, A_RECAST + 0x50],
+    A_RELABEL - 0x300000: _a_relabel,
+    A_TR - 0x300000: [A_RELABEL + 0x40, A_RELABEL + 0x50],
 }))])
 B_ELF = elf32([(0x00300000, image(0x1000, {
-    B_MOVED - 0x300000: switch_body(1, B_T1, cases=2),
+    B_MOVED - 0x300000: _b_moved,
     B_DRIFT - 0x300000: _b_drift,
     B_T1 - 0x300000: [B_MOVED + 0x40, B_MOVED + 0x50],
     B_T2 - 0x300000: [B_DRIFT + 0x40, B_DRIFT + 0x50, B_DRIFT + 0x60],   # r0004 grew a case
     B_RECAST - 0x300000: _b_recast,
     B_T4 - 0x300000: [B_RECAST + 0x40, B_RECAST + 0x50],
+    B_RELABEL - 0x300000: _b_relabel,
+    B_TR - 0x300000: [B_RELABEL + 0x40, B_RELABEL + 0x50],
 }))])
 
 ANCHOR_SOURCE = '''\
@@ -427,6 +458,10 @@ untracked_stubs = []
 skip = []
 
 [mmio]
+"0x300054" = "0x10003c00"  # inside `moved`, which the matcher placed
+"0x3000c4" = "0x1000e000"  # inside `drifted`: only the code around it can place this
+"0x300134" = "0x10009000"  # inside `vanished`, which is not in the B build at all
+"0x300214" = "0x1000b400"  # inside `relabelled`: the window lands, the register does not
 
 [jump_tables]
 [[jump_tables.table]]
@@ -470,13 +505,15 @@ moved,0x00300040,0x003000B0,112
 drifted,0x003000B0,0x00300120,112
 vanished,0x00300120,0x00300190,112
 recast,0x00300190,0x00300200,112
+relabelled,0x00300200,0x00300270,112
 '''
 
 ANCHOR_MATCHES = {
-    "0x00300040": {"name": "moved", "b": "0x00300200", "how": "exact"},
+    "0x00300040": {"name": "moved", "b": "0x00300240", "how": "exact"},
     "0x003000B0": {"name": "drifted", "b": None, "how": "unresolved"},
     "0x00300120": {"name": "vanished", "b": None, "how": "unresolved"},
     "0x00300190": {"name": "recast", "b": None, "how": "unresolved"},
+    "0x00300200": {"name": "relabelled", "b": None, "how": "unresolved"},
 }
 
 
@@ -499,7 +536,7 @@ class AnchorBed(unittest.TestCase):
             "a": {"elf": self.elf_a, "csv": self.csv},
             "b": {"elf": self.elf_b, "csv": "b.csv"},
             "matches": ANCHOR_MATCHES,
-            "summary": {"total": 3, "resolved": 1, "unresolved": 2},
+            "summary": {"total": 5, "resolved": 1, "unresolved": 4},
         }))
         self.out = os.path.join(d, "socom2_r0004.toml")
 
@@ -520,6 +557,8 @@ class AnchorBed(unittest.TestCase):
             if int(t["address"], 16) == base:
                 return t
         return None
+
+    line_with = Bed.line_with
 
 
 class JumpTableBases(AnchorBed):
@@ -620,6 +659,65 @@ class AnchoredPatches(AnchorBed):
         self.assertIn("window", line)
 
 
+class AnchoredMmio(AnchorBed):
+    """An [mmio] key is an INSTRUCTION address, so the same anchor places it -- and unlike a patch it
+    carries its own evidence: the hardware register it says that instruction touches."""
+
+    def keys(self, doc):
+        return sorted(int(k, 16) for k in doc["mmio"])
+
+    def test_a_key_in_a_function_the_matcher_lost_is_anchored_by_its_window(self):
+        _text, doc = self.translated()
+        self.assertIn(B_DRIFT + MMIO_AT * 4, self.keys(doc))
+        self.assertNotIn(A_DRIFT + MMIO_AT * 4, self.keys(doc))
+
+    def test_a_key_inside_a_matched_function_still_rides_that_match(self):
+        text, doc = self.translated()
+        self.assertIn(B_MOVED + MMIO_AT * 4, self.keys(doc))
+        line = self.line_with(text, "0x%x" % (B_MOVED + MMIO_AT * 4))
+        self.assertIn("body+0x%x of 0x%08x exact" % (MMIO_AT * 4, A_MOVED), line)
+
+    def test_the_value_is_the_hardware_register_and_is_never_touched(self):
+        _text, doc = self.translated()
+        self.assertEqual(doc["mmio"]["0x%x" % (B_DRIFT + MMIO_AT * 4)], "0x%x" % MMIO_DRIFT)
+
+    def test_a_key_with_nowhere_to_land_stays_unresolved_and_listed(self):
+        _text, doc = self.translated()
+        self.assertIn(A_GONE + MMIO_AT * 4, self.keys(doc))
+        self.assertIn("0x%08x" % (A_GONE + MMIO_AT * 4), doc["revision"]["unresolved"])
+
+    def test_that_reason_says_the_code_around_it_does_not_recur(self):
+        _text, doc = self.translated()
+        self.assertIn("window", doc["revision"]["unresolved"]["0x%08x" % (A_GONE + MMIO_AT * 4)])
+
+    def test_a_placement_whose_code_forms_another_register_is_refused(self):
+        # `relabelled`'s window lands squarely on the B body -- every address immediate is masked out,
+        # so a store to a different register has the same shape. What is NOT the same is the register
+        # the key annotates, and that is the whole content of the key. Refuse, do not guess.
+        _text, doc = self.translated()
+        self.assertIn(A_RELABEL + MMIO_AT * 4, self.keys(doc))
+        self.assertNotIn(B_RELABEL + MMIO_AT * 4, self.keys(doc))
+        why = doc["revision"]["unresolved"]["0x%08x" % (A_RELABEL + MMIO_AT * 4)]
+        self.assertIn("0x%08x" % (MMIO_RELABEL + 0x20), why)
+        self.assertIn("0x%08x" % MMIO_RELABEL, why)
+
+    def test_the_anchored_line_says_how_it_was_placed_and_that_the_register_holds(self):
+        text, _doc = self.translated()
+        line = self.line_with(text, "0x%x" % (B_DRIFT + MMIO_AT * 4))
+        self.assertIn("0x%08x" % (A_DRIFT + MMIO_AT * 4), line)
+        self.assertIn("window", line)
+        self.assertIn("0x%08x" % MMIO_DRIFT, line)
+
+    def test_the_counts_say_how_many_were_anchored(self):
+        _text, doc = self.translated()
+        self.assertEqual(doc["revision"]["anchored"], 2)       # one [mmio] key, one patch
+
+    def test_no_data_refs_leaves_every_key_where_it_was(self):
+        _text, doc = self.translated("--no-data-refs")
+        self.assertIn(A_DRIFT + MMIO_AT * 4, self.keys(doc))
+        self.assertNotIn(B_DRIFT + MMIO_AT * 4, self.keys(doc))
+
+
 class DataRefsOffWithoutBothImages(Bed):
     def test_without_the_two_images_a_base_is_still_left_alone(self):
         # The pass needs both builds' bytes. The original bed passes --fixed and no ELFs, so the tool
@@ -627,6 +725,11 @@ class DataRefsOffWithoutBothImages(Bed):
         _text, doc = self.translated()
         self.assertEqual(doc["jump_tables"]["table"][0]["address"], "0x300c00")
         self.assertIn("0x00300c00", doc["revision"]["unresolved"])
+
+    def test_without_the_two_images_an_mmio_key_in_a_lost_function_stays_unresolved(self):
+        _text, doc = self.translated()
+        self.assertIn("0x300810", doc["mmio"])
+        self.assertIn("0x00300810", doc["revision"]["unresolved"])
 
 
 class AnchorUnits(unittest.TestCase):
@@ -662,6 +765,34 @@ class AnchorUnits(unittest.TestCase):
         img = revision_toml.CodeImage([(0x00300000, blob(switch_body(1, 0x00300C00)))])
         self.assertEqual(img.lui_sites_for(0x00300C00),
                          [(0x00300000 + LUI_INDEX * 4, 0x00300000 + (LUI_INDEX + 2) * 4)])
+
+
+class MmioUnits(unittest.TestCase):
+    """What an [mmio] key claims -- that the instruction here touches that register -- read back out
+    of the image, so a placement can be checked instead of trusted."""
+
+    def img(self, words):
+        return revision_toml.CodeImage([(0x00300000, blob(words))])
+
+    def test_the_register_is_read_off_the_lui_that_sets_the_base(self):
+        img = self.img(with_mmio(switch_body(1, 0x00300C00), 0x1000E000))
+        self.assertEqual(img.formed_register(0x00300000 + MMIO_AT * 4), 0x1000E000)
+
+    def test_an_access_with_no_lui_in_reach_is_not_checkable(self):
+        # The base register came from somewhere else -- an argument, a struct field, a `lui` further
+        # back than the reach. Nothing is wrong; this key's claim just cannot be read off the code.
+        words = switch_body(1, 0x00300C00)
+        words[MMIO_AT] = 0xAC2DE000                       # sw t5, -0x2000(at), with no lui above it
+        self.assertIsNone(self.img(words).formed_register(0x00300000 + MMIO_AT * 4))
+
+    def test_a_base_register_written_in_between_is_not_derivable(self):
+        words = with_mmio(switch_body(1, 0x00300C00), 0x1000E000)
+        words[MMIO_AT - 1], words[MMIO_AT - 2] = 0x24010004, words[MMIO_AT - 1]   # addiu at, zero, 4
+        self.assertIsNone(self.img(words).formed_register(0x00300000 + MMIO_AT * 4))
+
+    def test_an_instruction_that_is_not_a_load_or_a_store_forms_nothing(self):
+        img = self.img(with_mmio(switch_body(1, 0x00300C00), 0x1000E000))
+        self.assertIsNone(img.formed_register(0x00300000 + LUI_INDEX * 4))
 
 if __name__ == "__main__":
     unittest.main()

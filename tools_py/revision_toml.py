@@ -32,7 +32,11 @@ Every rewritten line carries, in a comment, the r0001 address it came from and t
 
 What this tool does NOT touch: `[performance] critical`, whose entries are names rather than addresses and
 which `ps2xRecomp/src/lib/config_manager.cpp` never reads; and the right-hand side of an `[mmio]` pair,
-which is a hardware register address and belongs to the machine, not to the build.
+which is a hardware register address and belongs to the machine, not to the build. The LEFT-hand side of
+that pair is translated like everything else: `config_manager.cpp` reads it as `instAddr` and
+`ps2_recompiler.cpp` looks the decoding instruction's own address up in it, so an `[mmio]` key is an
+instruction address exactly like an instruction patch -- and an instruction address carried over from
+another build annotates whatever this build happens to have put there.
 
 THE DATA-REFERENCE PASS. A jump table's base is a rodata address, not a function start, so the function
 matcher never has an opinion about it -- that is why all 24 of r0001's overlay bases came back unresolved.
@@ -61,6 +65,15 @@ the matcher lost:
 Nothing here reads r0001's number for a resolved table: base, entry count and every target come from the
 B image. This needs BOTH images (`--elf-a`/`--elf-b`, or the paths the match report names); without them
 the pass does not run and the bases stay unresolved, exactly as before. `--no-data-refs` turns it off.
+
+THE [mmio] KEYS. A key is an instruction address in a function the matcher usually lost, so the same
+anchor places it: the function match when there is one, the masked window otherwise, and nothing at all
+when neither answers. What a key has that a patch does not is its own claim to check -- the hardware
+register it says that instruction touches. Most of these accesses spell the register out, `lui rX,
+%hi(reg)` a few instructions above and the key's own `lw`/`sw ..., %lo(reg)(rX)`; both of those
+immediates are masked out of the window, so the register is INDEPENDENT evidence about where the window
+landed. Where the A image spells it out, the address this tool writes must spell out the same register or
+the key is left unresolved -- including when it was the function matcher, not the anchor, that placed it.
 """
 import argparse
 import bisect
@@ -83,6 +96,7 @@ ARRAY_CLOSE_RE = re.compile(r"^\s*\]\s*,?\s*(?:#.*)?$")
 
 SELECTOR_RE = re.compile(r'"[^"@]*@(0[xX][0-9A-Fa-f]+)"')
 MMIO_KEY_RE = re.compile(r'^\s*"(0[xX][0-9A-Fa-f]+)"\s*=')
+MMIO_REG_RE = re.compile(r'^\s*"0[xX][0-9A-Fa-f]+"\s*=\s*"?(0[xX][0-9A-Fa-f]+)"?')
 TARGET_RE = re.compile(r'target\s*=\s*"(0[xX][0-9A-Fa-f]+)"')
 PATCH_RE = re.compile(r'address\s*=\s*"(0[xX][0-9A-Fa-f]+)"')
 TABLE_ADDR_RE = re.compile(r'^\s*address\s*=\s*"(0[xX][0-9A-Fa-f]+)"')
@@ -100,6 +114,7 @@ class Decision(NamedTuple):
     interior: bool
     weak: bool
     reason: str                   # why it is unresolved
+    note: str = ""                # a confirmation to carry into the comment, beyond the method
 
 
 class Site(NamedTuple):
@@ -210,6 +225,13 @@ SHAPES = ((10, 6), (6, 4), (4, 2))                   # the anchor's windows, wid
 SITE_SPAN = 0x20000                                  # how far a table's entries may sit from its site
 GROW_SPREAD = 0x400                                  # how far past the known entries a grown table may reach
 GROW_LIMIT = 64
+MMIO_REACH = 12                                      # how far above an access its register's `lui` may sit
+ACCESS_OPS = LOAD_STORE_OPS | STORE_OPS              # what an [mmio] key can be annotating
+# What writes a register, for walking back from an access to the `lui` that set its base. Anything
+# not listed reads as "writes nothing", which can only make the walk find a `lui` that is not really
+# the source -- and that is caught, because the register it forms is then compared with the one the
+# config annotates before anything is believed.
+WRITES_RT_OPS = (IMMEDIATE_OPS | LOAD_STORE_OPS | frozenset((LUI_OP,))) - STORE_OPS
 
 
 def normalize(word: int) -> int:
@@ -319,6 +341,34 @@ class CodeImage:
                         out.append((vaddr + i * 4, vaddr + j * 4))
         return out
 
+    def formed_register(self, addr: int, reach: int = MMIO_REACH) -> Optional[int]:
+        """The address the load or store at `addr` forms, when a `lui` nearby sets its base register.
+
+        An `[mmio]` key claims that the instruction AT this address touches THAT hardware register.
+        Most of these accesses spell the register out in the code -- `lui at, %hi(reg)` a few
+        instructions above, the key's own `lw`/`sw ..., %lo(reg)(at)` at the key itself -- so the
+        claim is checkable against the image rather than merely carried over. None means "not
+        checkable here": the base came from an argument, from a struct, or from further back than
+        the reach. That is not the same as false, and nothing is refused on it."""
+        w = self.word(addr)
+        if w is None or (w >> 26) not in ACCESS_OPS:
+            return None
+        rs = (w >> 21) & 0x1F
+        for k in range(1, reach + 1):
+            prev = self.word(addr - 4 * k)
+            if prev is None:
+                return None
+            op = prev >> 26
+            if op == LUI_OP and ((prev >> 16) & 0x1F) == rs:
+                return form_address(prev, w)
+            if op in WRITES_RT_OPS and ((prev >> 16) & 0x1F) == rs:
+                return None                               # something else set the base in between
+            if op == 0 and ((prev >> 11) & 0x1F) == rs:
+                return None
+            if op == 0x03 and rs == 31:                   # jal, which writes ra
+                return None
+        return None
+
     def switch_sites(self) -> List[Tuple[int, int]]:
         """(lui, base) for every `lui … lw rX,imm(rY) ; jr rX` in the image: a switch, and its table."""
         if self._switches is None:
@@ -401,6 +451,36 @@ class Anchor:
                     rank = mine.index(addr)
                     return hits[rank], "window %d/%d, copy %d of %d" % (before, after, rank + 1, len(hits))
         return None
+
+
+def instruction_decision(anchor: Anchor, a_addr: int, d: Decision,
+                         register: Optional[int] = None) -> Decision:
+    """A patch's or an `[mmio]` key's decision, re-asked of the two images.
+
+    Both are INSTRUCTION addresses, which is what the window anchor is for: the window's centre is the
+    annotated instruction itself, so a hit is the same instruction, in the same company, in the other
+    build. An `[mmio]` key carries one more thing -- the hardware register it says that instruction
+    touches -- and where the A image spells that register out in the code, the address this tool is
+    about to write has to spell out the same one, or it is not the same access and the tool does not
+    know where that access went. That check runs on a key the MATCHER placed too: a function's delta is
+    a claim about the whole body, and here is a place where the body itself can answer."""
+    if d.kind == "unresolved":
+        hit = anchor.place(a_addr)
+        if hit is None:
+            return d._replace(reason=d.reason + "; and no window of the code around it recurs in this "
+                                                "build")
+        d = Decision("translated", hit[0], "anchor %s" % hit[1], None, False, False, "")
+    if d.kind != "translated" or register is None:
+        return d
+    want = anchor.a.formed_register(a_addr)
+    if want != register:
+        return d                    # this build does not spell the register out here: nothing to check
+    got = anchor.b.formed_register(d.addr)
+    if got == want:
+        return d._replace(note="register 0x%08x confirmed" % register)
+    return Decision("unresolved", a_addr, "", d.via, d.interior, False,
+                    "0x%08x, where %s puts it, forms %s and not the 0x%08x this key annotates"
+                    % (d.addr, d.method, "0x%08x" % got if got is not None else "no register", register))
 
 
 class TableFix(NamedTuple):
@@ -568,10 +648,12 @@ def add_note(line: str, note: str) -> str:
 def note_for(a_addr: int, d: Decision) -> str:
     if d.kind == "unresolved":
         return "UNRESOLVED: r0001 0x%08x kept -- %s" % (a_addr, d.reason)
+    tail = ", %s" % d.note if d.note else ""
     if d.interior:
-        return "r0001 0x%08x, body+0x%x of 0x%08x %s%s" % (
-            a_addr, a_addr - (d.via or 0), d.via or 0, d.method, " (weak)" if d.weak else "")
-    return "r0001 0x%08x %s" % (a_addr, d.method)
+        return "r0001 0x%08x, body+0x%x of 0x%08x %s%s%s" % (
+            a_addr, a_addr - (d.via or 0), d.via or 0, d.method,
+            " (weak)" if d.weak else "", tail)
+    return "r0001 0x%08x %s%s" % (a_addr, d.method, tail)
 
 
 def _hits(line: str, section: str, array: str) -> List[Tuple[re.Match, str]]:
@@ -687,13 +769,15 @@ def rewrite(text: str, tr: Translator, sets: Optional[Dict[str, str]] = None,
         for m, role in hits:
             a_addr = int(m.group(1), 16)
             d = tr.translate(a_addr)
-            if d.kind == "unresolved" and role == "patches" and anchor is not None:
-                # A patch is an INSTRUCTION address, so the code around it is evidence even when the
-                # matcher lost the function. The window's centre is the patched instruction itself, so
-                # a hit is the same instruction, in the same company, in the other build.
-                hit = anchor.place(a_addr)
-                if hit is not None:
-                    d = Decision("translated", hit[0], "anchor %s" % hit[1], None, False, False, "")
+            if anchor is not None and d.kind != "unchanged" and role in ("patches", "mmio"):
+                # A patch and an [mmio] key are both INSTRUCTION addresses, so the code around them is
+                # evidence even when the matcher lost the function -- and an [mmio] key's hardware
+                # register is evidence about wherever that code turns out to be.
+                register = None
+                if role == "mmio":
+                    rm = MMIO_REG_RE.match(line)
+                    register = int(rm.group(1), 16) if rm else None
+                d = instruction_decision(anchor, a_addr, d, register)
             sites.append(Site(n, role, label, a_addr, d))
             if d.kind == "unchanged":
                 continue
@@ -714,13 +798,17 @@ def revision_block(sites: Sequence[Site], source: str, match: str,
                    table_why: Optional[Dict[int, str]] = None) -> List[str]:
     """The `[revision]` table: the counts, and every address this config still carries from r0001."""
     kinds = {"translated": 0, "unchanged": 0, "unresolved": 0}
-    interior = weak = 0
+    interior = weak = anchored = confirmed = 0
     unresolved: "OrderedDict[int, List[str]]" = OrderedDict()
     for s in sites:
         kinds[s.decision.kind] = kinds.get(s.decision.kind, 0) + 1
         if s.decision.kind == "translated" and s.decision.interior:
             interior += 1
             weak += 1 if s.decision.weak else 0
+        if s.decision.kind == "translated" and s.decision.method.startswith("anchor"):
+            anchored += 1
+        if s.decision.kind == "translated" and s.decision.note.startswith("register"):
+            confirmed += 1
         if s.decision.kind == "unresolved":
             what = "%s%s -- %s" % (s.role, (" " + s.label) if s.label else "", s.decision.reason)
             unresolved.setdefault(s.a_addr, [])
@@ -742,6 +830,12 @@ def revision_block(sites: Sequence[Site], source: str, match: str,
         "#                                       whose line says so has its base, its entry count and",
         "#                                       every one of its targets from this build -- not one",
         "#                                       number in it is r0001's.",
+        "#   anchor window N/M                   an INSTRUCTION address -- a patch, an [mmio] key --",
+        "#                                       placed by the shape of the code around it, with every",
+        "#                                       address immediate masked out.",
+        "#   register 0xR confirmed              and the [mmio] key's own claim still holds there: the",
+        "#                                       code at the new address forms that same hardware",
+        "#                                       register. Where it does not, the key is UNRESOLVED.",
         "# Addresses in a region that is byte-identical in both images do not move: untouched, uncommented.",
         "[revision]",
         'source = "%s"' % source.replace("\\", "/"),
@@ -749,6 +843,8 @@ def revision_block(sites: Sequence[Site], source: str, match: str,
         "translated = %d" % kinds.get("translated", 0),
         "translated_interior = %d" % interior,
         "weak = %d" % weak,
+        "anchored = %d" % anchored,
+        "mmio_registers_confirmed = %d" % confirmed,
         "unchanged = %d" % kinds.get("unchanged", 0),
         "unresolved_count = %d" % len(unresolved),
         "jump_tables_resolved = %d" % len(tables or {}),
