@@ -46,7 +46,14 @@ reach a commit message. The product name is
 - **Next free ruling number: R246.** (It read **R179** from 2026-09-20 to 2026-09-22 while R240 was in use -- and a
   collision had already happened once, an agent numbering from R200 into taken ground. `tools_py/tests/test_doc_maintenance.py`
   now fails when this line is not `max(R<n>) + 1`, so take your number from here and update this line in the same commit.)
-- **Where the loop is now (2026-09-23 morning, LATEST) -- Sprint 10 is CLOSED; what is left of it is the merge to
+- **Where the loop is now (2026-09-23 05:10Z, LATEST) -- Sprint 10 is on `main` (`f15acfa`, PR #24, tag `v0.10.0`);
+  `sprint-11` is open off it with seven agent branches merged forward (`4732892`) and its opening chain running
+  (the runner rebuilt with the chat wrap and the address table, the suite, gate `s11_open_gate`, the two-instance
+  chat proof). Read `docs/CURRENT_SPRINT.md` "Sprint 11 -- OPEN" for what landed overnight and what is next; the plan
+  is `docs/superpowers/plans/2026-09-23-sprint-11.md`. Two traps this night taught, both fixed: a worktree's
+  `loop_lock.sh` resolved to a private lock (`9b39523`), and `git config` in a worktree writes the SHARED config, so
+  the dead push URL disabled the main tree's push too (`4b5eb3f`; per-worktree config now).
+- **Where the loop was (2026-09-23 morning) -- Sprint 10 is CLOSED; what is left of it is the merge to
   `main` and the annotated tag `v0.10.0`, and Sprint 11 is open on
   `docs/superpowers/plans/2026-09-23-sprint-11.md`** (eighteen tasks across milestones S, U, R and P; eight owner
   decisions, each with the default the loop proceeds on, in `docs/HUMAN_TASKS.md`'s top block). Overnight, under the

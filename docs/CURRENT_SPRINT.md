@@ -9,8 +9,8 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 repository another person can fork, build and contribute to.
 
 ```
-branch:       sprint-10 -- CLOSED 2026-09-23, pending the merge to main and the tag v0.10.0 (off main at 4415254 =
-              the Sprint 9 merge, tagged v0.9.0, 2026-09-20; develop is deleted). See "Sprint 10 -- CLOSED" below.
+branch:       sprint-11 -- OPEN 2026-09-23 05:06Z off main at f15acfa (the Sprint 10 merge, PR #24, tagged v0.10.0).
+              Sprint 10 is CLOSED and on main. See "Sprint 11 -- OPEN" and "Sprint 10 -- CLOSED" below.
 spec:         docs/superpowers/specs/2026-09-20-sprint-10-console-players-and-it-stays-up-design.md
               (Sprint 9's spec, 2026-09-19-sprint-9-a-strangers-first-run-design.md, closed with v0.9.0)
 plans:        docs/superpowers/plans/2026-09-22-sprint-10-close.md (the close, R241-R244);
@@ -46,6 +46,37 @@ Markers used below: **[A]** autonomous; **[O]** the owner's hands, ears, money o
 long builds); "lock-free" can run at any time.
 
 ---
+
+## Sprint 11 — OPEN 2026-09-23 (plan `docs/superpowers/plans/2026-09-23-sprint-11.md`)
+
+Four milestones, from the plan: **S** the chat hole closed on both sides (Tasks 2, 2b, 3, 4); **U** upstream and
+external (R241/R243/R245: Tasks 5–8, 8a–8c); **R** the r0004 groundwork that needs no package (Tasks 9–11); **P** the
+public repository's remaining owes (Tasks 12–18). Owner decisions are `docs/HUMAN_TASKS.md`'s top block; every task
+proceeds on its default. Markers as below.
+
+**Opened with six tasks already landed overnight** (the night of the Sprint 10 close, in agent worktrees, each
+reviewed and fix-rounded before the merge-forward `4732892`): **Task 2** the chat receive wrap (`f2064d3`; the
+two-instance proof and gate are the opening chain's); **Task 3** the server clamp (`5b7d20e`, `4d7e481` — the
+Lightsail redeploy waits for the next server restart); **Task 10** the fingerprint matcher and the address table
+(`a201221`…`86c2912`; identity on the real image 99.66 % = 14,828/14,879, the 51 unreadable bodies honestly
+unresolved); **Task 12** the leak gate's external leg (`c0e60e3`, `a021c52`); **Task 14** `docs/INSTALL.md` and
+`docs/FAQ.md`; **Task 15** `docs/HOW_IT_WAS_BUILT.md`. Also in: **U1** (research/40 §9: the real 989SND.IRX agrees
+with our model on 1,775 of 1,794 calls; R245 — option B not scheduled; the two alignments `7b44d70`, `776e423`),
+**U4** (research/41), and **U3 parked**: the SOCOM 1 demo disc (`SCUS-972.05`) is not on this machine — HUMAN_TASKS.
+**Task 9** is in flight (socom-pc-09, `agent/revision`: the ELF half byte-identical; the exe half on the lock).
+
+**Not yet started:** Task 2b (the game-list record readers), Task 4 (README narrowed — after the proof), Task 6 (the
+cherry-picks, one worktree each), Task 7 (parked on the disc), 8a–8c, Task 11 (the launcher's revision plumbing),
+Task 13 (labels, the triage half, the launcher's post-SEND sentence), Task 16 (the link check and the archive move),
+Task 17 (the vendored baggage), Task 18 (the VM ring, the tag backfill, the branch sweep — the last is the owner's).
+
+**Filler added at the open** (carried from Sprint 10's close and the night's findings): Goal 3's tasks 5 and 7 (two
+mixed-match runs); the speed-freeze re-measure from the ladder logs (R242); **the mission-music dropouts, now known
+to be ours** — 50 ms DEVICE dips after the mixer's dump point on any endpoint (the A/B, KNOWN §1): the output path
+between `render()` and the device is where to look; a route to the church for the W6 capture, and the capture
+recording its own `PS2X_*` environment; `ladder_job.sh`'s pre-check race (let `run_detached` take the lock without a
+separate check); the streamer half of the real-IRX oracle (research/40 §6's price); the three #244 patches as
+upstream issues; the standing backlog below.
 
 ## The close, 2026-09-22 evening → 2026-09-23 morning (the owner's twelve-hour mandate)
 
