@@ -86,6 +86,7 @@ layout and the ciphertext-zero terminator; the decrypt itself was already proven
    difference must be stated in the README and to the owner before "r0004" is claimed as a name.
 2. **What `FUN_002cc670` is.** Not yet read. The whole patch is "make this function return immediately", so the
    name of that function *is* the patch. Step 2's Ghidra pass answers it.
+   **Answered below (Step 2): it is the UI command `DNASAuthenticate`, and the patch is a DNAS bypass.**
 3. **The second table's build.** `0x00421998` holds the version string in some other revision (not r0001 — that
    address is past the overlay image we have). Which revision, and whether we care, is open.
 4. **The two reserved header words** are zero here and unread by the apply routine. They may be a checksum or a
@@ -121,3 +122,191 @@ python -m tools_py.r0004.capsule research/r0005-patch/C_Source/059/update.dat --
 
 The plan names `game/r0004/stack.txt`; `main` defaults to `<capsule dir>/decoded/stack.txt`, so pass
 `--out game/r0004` for the plan's exact path.
+
+## Step 2 (2026-09-23): what the stub does
+
+Read-only, from our own r0001 decompilation (`game/analysis/socom2_game.elf.decomp.c`,
+`.functions.txt`, `.strings.txt`, `recomp/socom2_ghidra.csv`) and from the Step 1 plaintext stack
+(git-ignored, `game/r0004/decoded/`). No build, no game run, no lock. No game bytes are reproduced
+here: instruction words are named by their mnemonics, strings by their content.
+
+### 1. `FUN_002cc670` is the UI command **`DNASAuthenticate`**
+
+The function has **no caller anywhere in the image**. Its address appears exactly once: in the
+handler slot of a row of the UI action table at `0x003DD4D0`. That table is an array of 16-byte rows
+— `{ id, name pointer, handler, second handler }` — running from `0x003DD4D0` to about `0x003DE1C0`,
+one row per named command the UI scripts can invoke. The row at `0x003DE120` is id `0xC7`, name
+string `DNASAuthenticate` at `0x003EE760`, handler `0x002CC670`. Its neighbours in the table name the
+neighbourhood exactly: `DownloadPatch` (`0x002CA340`), `DeletePatch` (`0x002CA330`),
+`VerifyPatchLevel` (`0x002766B0`), `RemoveNonSuppressionMaps`, `IsMemcardSaveOK`,
+`HardDriveOperation`.
+
+**What the function does.** It is a *poll-until-done tick*, not a test. On the first call (global
+`DAT_0044AF40` still null) it allocates and constructs the DNAS authentication state-machine object —
+class name string `CSMDNASAuthenticate` at `0x003F33B0`, vtable `PTR_PTR_004065A0` — binds the UI
+variable `DNAS_ERROR_CODE` (`0x003F33E0`) into it, starts it through its vtable, and returns **0**
+("still working"). On every later call it asks the task whether it has finished (`FUN_003A5C10`); while
+it has not, it returns 0 again; when it has, it releases the object through the vtable, clears the
+global and returns **1**. The UI script therefore sits on this command, once per frame, until it
+answers 1.
+
+**Caller level 1 — the UI command dispatcher `FUN_002745A0`.** Given a UI script node, it takes the
+node's command name, resolves it against the `0x003DD4D0` table by string compare, caches the row
+index in the node (byte at node+10) so the lookup happens once, then calls the row's handler through
+a register-indirect jump. Two details matter:
+
+- the dispatcher loads the handler address **into `$v0`** and jumps with `jalr $v0`;
+- it then masks the result with `andi $v0, $v0, 0xff` and returns it as the node's one-byte result.
+  Its own "nothing to do / succeeded" paths return the literal 1.
+
+**Caller level 2 — the UI script VM.** `FUN_002745A0` is itself registered, by `FUN_0025BC20` through
+the registry helper `FUN_0026A8E0`, as the handler for the node type named **`ui::UI_COMMAND`**
+(string at `0x003ED0C0`) on the UI registry object at `0x00414BB0` — the sibling registration in the
+same run of code is `ui::UI_APP_COMMAND`. So the full chain is: a `ui::UI_COMMAND` node named
+`DNASAuthenticate` in the front-end script → `FUN_002745A0` → `FUN_002CC670`, and the byte that comes
+back is what the script branches on.
+
+**What the two words change.** The capsule's first table (Step 1) is two pairs:
+
+| address | written | meaning |
+|---|---|---|
+| `0x002CC670` | `jr ra` | return from the first instruction |
+| `0x002CC674` | `nop` | the delay slot |
+
+**The stub does not set `$v0`.** It leaves whatever was there. At the only call site that is the
+handler's own address, because the dispatcher jumps with `jalr $v0` — so the dispatcher's `andi`
+yields the low byte of `0x002CC670`, i.e. `0x70`: non-zero, which the script reads as true, but *not*
+the game's canonical 1. (Anything that tested the result for equality with 1 rather than for
+non-zero would read the patched command as still-running; PSRewired ship this patch and it works on
+hardware, so nothing on this path does.)
+
+**In plain words: the patch is a DNAS bypass, and nothing else.** With it, the front-end's DNAS
+authentication step reports success on the very first poll. `CSMDNASAuthenticate` is never
+constructed, `DNAS.BIN`/libdnas2 never run, `DNAS_ERROR_CODE` is never written, and the
+`MP_DNAS_ERROR` / `DNAS Initialization Failure` paths are never reached. That is the whole
+game-visible content of `r0004v002.elf`.
+
+### 2. `0x003F5DD8` is a client-side join filter, not the login gate
+
+`0x003F5DD8` holds the bare token `r0001` (distinct from the build banner `SOCOM 2 r0001 …` at
+`0x003E17E0`, and from the loader's own copy at `0x001D44F0`). It has **exactly one reader in the
+game**: `FUN_002FD6E0`, which is reached from exactly one place, `FUN_002766B0` — the handler of the
+sibling UI command **`VerifyPatchLevel`**.
+
+`FUN_002FD6E0` walks the session list (records of `0x3D8` bytes, base `DAT_0044FD58`, count
+`DAT_0044FD54`), finds the session named by the caller, and compares that session's advertised
+patch-level field (record + `0x338`) against this string; an empty field is accepted. `FUN_002766B0`
+raises a `PatchServerURL` message when it does not match. So the string is a **client-side "can I
+join this game" filter over the returned game list**. It is never copied into a packet, never sent to
+Medius, and never compared at login.
+
+**So how does a patched r0001 pass a server that wants r0004?** *The stubbed function is the gate.*
+SCEA's "you must download the update in order to log in" was enforced through **DNAS** — the title
+revision lives in the DNAS ticket, not in a string the client types onto the wire — which is why the
+entire published patch is a DNAS stub, and why the PCSX2 equivalent is named, in full, "DNAS Bypass
+R0001 - r0004". The capsule never rewrites `0x003F5DD8` because rewriting it would achieve nothing:
+it is not what any server sees.
+
+Bounds on that claim, stated plainly: this is proven **client-side**. Our image contains no path from
+`0x003F5DD8` to the network, and the capsule contains no version rewrite. What PSRewired's own Medius
+does with a version field is not visible from here — but a capsule that changes no version string
+could not satisfy a server that compared one, so either the server does not compare one or it is
+satisfied from the DNAS side. *[inference]*
+
+**The capsule's own use of the same address is a different job.** Its build chooser reads
+`0x003F5DD8` as one 32-bit word and compares it against the four characters `r000` — a **prefix**
+test, not an equality with `r0001`. It means "the decrypted overlay is resident and it has this
+build's data layout", and it is what selects the first patch table. `0x00421998` is the same token in
+the other build's layout; that address is past the end of the overlay image we have, so that second
+table is for a revision we do not hold (unchanged from Step 1).
+
+### 3. `0x001C5B18` is a fingerprint, not a hook point
+
+`0x001C5B18` lies inside **`FUN_001C59C0`** (`0x001C59C0`–`0x001C5B24`) — the function the runtime
+already names "load DNAS.BIN from disc, decrypt APACHE00.ZDB into both overlay slots and run it".
+`FUN_001C5B30`, the loader's memory-card update chooser, starts twenty-four bytes after the probed
+word — three words past this function's end at `0x001C5B24`.
+The word itself is the `lq s0, 0(sp)` two instructions before that function's `jr ra` — an ordinary
+register restore in its epilogue. (Capstone decodes it as an MSA instruction; the EE's 128-bit
+`lq`/`sq` have to be decoded by hand, as Step 1 warned.)
+
+Nothing is ever written there, so it is **not a hook point**: it is a fingerprint. The address is in
+the boot ELF — `SCUS_972.75` occupies everything below `0x001D5000` — so the test means precisely
+"the r0001 boot ELF is resident in RAM", i.e. `LoadExecPS2` has happened and the capsule's own image
+is gone.
+
+The hook body runs from the kernel syscall vector (`0x800002FC`) on **every syscall**. On a match it
+reads the flag at `0x000A0064`, and if it is zero writes zero to it again — which is a no-op, and
+nothing in the whole 491-write stack ever sets that flag — then calls the build chooser. On a
+mismatch it sets `0x000A0058` and clears `0x000A0060` and `0x000A0064`. Two consequences:
+
+1. **The two probes are a pair.** `0x001C5B18` says the boot ELF is up; the `r000` probe at
+   `0x003F5DD8` says the *overlay* is decrypted and is this layout. Only both together let the
+   applier run, which is what keeps the write from landing before the overlay that would overwrite it.
+2. **The patch is re-applied continuously**, at every syscall, for as long as the fingerprint holds.
+   An overlay reload that restores the original two instructions is undone again at the next syscall.
+   The runtime equivalent is therefore a *permanent* function replacement, not a one-shot memory poke.
+
+### 4. Our runtime already does this — proposal
+
+`third_party/ps2recomp/ps2xRuntime/src/lib/game_overrides_socom2.cpp` already carries the whole
+game-visible effect of the capsule, and has since before r0004 was a topic:
+
+- `ps2_stubs::socom2_DnasTickDone` (≈line 265) sets `$v0 = 1` and returns to `$ra`;
+- `applySocom2` (≈line 2127) installs it unconditionally:
+  `runtime.replaceFunction(socom2_addresses::current().dnasCheck, ps2_stubs::socom2_DnasTickDone);`
+- `socom2_addresses::Table::dnasCheck` is `0x002CC670` (`runtime/socom2_addresses.h`), already a
+  per-revision column, so an r0004 build needs one more number and no new code;
+- the replacement is permanent for the process, which is exactly what the capsule achieves by
+  re-writing on every syscall;
+- `socom2_LoadGameCodeFromMemcard` (`FUN_001C5B30`, ≈line 546) answers "no update present", which is
+  what the capsule itself observes — it finds no `mc0:UPDATE.DAT` and falls back to its embedded
+  stack. Task 18's comment change at that line is correct as written.
+
+**Ours is the stricter of the two.** The capsule leaves `$v0` holding the handler address (`0x70`
+after the dispatcher's mask); we return the canonical 1. Any consumer that is satisfied by the
+capsule is satisfied by us, and one that wanted an exact 1 would be satisfied only by us.
+
+So the change to propose is **not a new override**. It is to say so in the code, put the one knob on
+it that lets a run prove which override is carrying the login, and leave the behaviour alone:
+
+> **Proposal.** Replace the bare line 2127 with an `installChatBound`-shaped
+> `installDnasBypass(PS2Runtime &runtime)` beside the other installers: it reads
+> `socom2_addresses::current().dnasCheck`, returns with a log line if `runtime.hasFunction` is false,
+> honours a default-on knob `ps2x::knobOn("PS2X_SOCOM2_DNAS_BYPASS", true)` (0 = let the game's own
+> DNAS tick run, for the one test that proves the bypass is what gets us past authentication), keeps
+> the original in a `g_dnasTickOriginal` for that test, then
+> `runtime.replaceFunction(addr, ps2_stubs::socom2_DnasTickDone)` and logs "DNAS bypass armed (the
+> r0004 capsule's only game patch)". `socom2_DnasTickDone` itself does not change.
+
+**It must not be gated on the launcher's GAME VERSION = r0004 choice**, for three reasons:
+
+1. The bypass is needed by **r0001 too**. Every online round this project has ever run depended on it;
+   gating it on r0004 would break them all.
+2. The capsule does not gate on the revision either. Its trigger is "the r0001 image is resident" —
+   it patches r0001, which is the only thing it ever patches.
+3. The capsule's patch **is** the difference between "an r0001 disc" and "what PSRewired call an
+   r0004 client". A runtime that already applies it is already on the far side of that line; making it
+   conditional would be inventing a distinction the capsule does not make.
+
+The GAME VERSION selector's job stays what Task 18 gives it — the preset's `requiresRevision`
+warning — and it does not reach this override.
+
+**What Step 3 therefore owes.** Very little on this function: the image work is two instructions the
+runtime already supersedes. What the r0004 build genuinely needs is the *rest* of the delta, and this
+capsule does not carry it (Step 1's open question, unchanged).
+
+### 5. Two things found on the way
+
+1. **`socom2_addresses.h`'s `versionString` points at the wrong string.** `kR0001.versionString` is
+   `0x003E5C60` and the comment says it holds `SOCOM 2 r0001 17:22:21 Oct 11 2003`. It does not:
+   `0x003E5C60` holds the boot path `cdrom0:\SCUS_972.75;1`. The banner is at `0x003E17E0`.
+   `applySocom2` (≈line 2067) reads `0x003E5C60`, hands it to `selectFromVersionString`, whose
+   `revisionOf()` finds no `r`+digits, and the table logs "no column for revision …" and keeps r0001.
+   Right answer today, by luck; wrong the moment there is a second column. Two candidate fixes:
+   `0x003E17E0` (the banner the comment describes) or `0x003F5DD8` (the bare patch-level token — which
+   is what the capsule itself probes, and a shorter, more stable read). Worth a task.
+2. **The DNAS comment's explanation of `$v0` is wrong.** ≈line 263 says the published pnach works
+   "with v0 still holding the previous call's 1". The real mechanism is the dispatcher's `jalr $v0`:
+   `$v0` holds `0x002CC670`, and the `andi` makes the node result `0x70`. Harmless — the effect is the
+   same non-zero — but the comment should say what actually happens.
