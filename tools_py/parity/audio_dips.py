@@ -18,6 +18,13 @@ The dump is written on the mixer's output-frame clock (48 kHz, PS2X_AUDIO_DUMP),
 event carries, so a dip at dump time t sits at frame t * 48000. The endpoint capture starts at its own moment;
 `align` finds the offset by cross-correlating the two envelopes and reports it. Every threshold is a parameter.
 
+An endpoint dip is matched to a dump dip by OVERLAP in aligned time (fix wave A, 2026-09-22), not by its start:
+the ten-minute briefing capture showed the start-time match inventing DEVICE events -- a 5 s hole placed 2 s from
+its twin by a bad local offset, and a 365 s "dip" (a cue ending, the level never climbing back) whose 50 ms dump
+twin had been taken by the endpoint dip before it. One dump dip may explain several endpoint dips. A dip that runs
+to the end of the capture is reported as such: its duration is the rest of the recording, not a fault's length.
+The report ends with the DEVICE count per minute, which is the number the endpoint A/B compares.
+
     python -m tools_py.parity.audio_dips <endpoint.wav> [--dump mix.wav] [--log game.log] [--start s] [--end s]
 """
 import argparse
@@ -84,6 +91,7 @@ class Dip:
     dur_s: float
     ref_db: float      # the median level of the preceding `ref_s`
     low_db: float      # the lowest hop inside the dip
+    open_end: bool = False   # the level never climbed back before the capture ended: dur_s is the rest of it
 
     @property
     def depth_db(self) -> float:
@@ -117,7 +125,7 @@ def find_dips(mono: np.ndarray, rate: int, hop_s: float = DEFAULT_HOP_S, ref_s: 
             while j < n and db[j] <= ref - drop_db:
                 j += 1
             in_dip[i:j] = True
-            out.append(Dip(t0_s + i * hop_s, (j - i) * hop_s, ref, float(db[i:j].min())))
+            out.append(Dip(t0_s + i * hop_s, (j - i) * hop_s, ref, float(db[i:j].min()), open_end=(j >= n)))
             i = j
         else:
             i += 1
@@ -337,56 +345,75 @@ def _command(ev: Events, f0: int, f1: int, slack: int, live_handles: List[str]) 
 
 def classify(endpoint_dips: List[Dip], dump_dips: Optional[List[Dip]], offset_s: float, ev: Events,
              window_s: float = DEFAULT_WINDOW_S, match_s: float = 0.25, offsets: Optional[List[float]] = None) -> List[Row]:
-    """One row per dip. An endpoint dip with no dump dip within `match_s` at the aligned time is DEVICE; a dip in
-    the dump is STARVATION, COMMAND or UNEXPLAINED by the log within `window_s`. Dump dips with no endpoint
-    counterpart are listed too (label suffixed "(dump only)"). `offsets`, one per endpoint dip (local_offsets),
-    replaces the single `offset_s` for that dip's mapping."""
+    """One row per dip. An endpoint dip is matched to the dump dip it OVERLAPS most in aligned time (`match_s` of
+    slack either side); one with no overlapping dump dip is DEVICE. A matched or dump-side dip is STARVATION,
+    COMMAND or UNEXPLAINED by the log within `window_s` of the dump dip's interval. One dump dip may explain
+    several endpoint dips; dump dips no endpoint dip touched are listed too (label suffixed "(dump only)").
+    `offsets`, one per endpoint dip (local_offsets), replaces the single `offset_s` for that dip's mapping."""
     slack = int(window_s * MIXER_RATE)
     rows: List[Row] = []
     used = set()
     per_dip = offsets if offsets is not None and len(offsets) == len(endpoint_dips) else [offset_s] * len(endpoint_dips)
 
-    def explain(d: Dip, t_dump: float, off: float, suffix: str = "") -> Row:
-        f0 = int(t_dump * MIXER_RATE)
-        f1 = int((t_dump + d.dur_s) * MIXER_RATE)
+    def explain(start_s: float, d: Dip, t0_dump: float, t1_dump: float, suffix: str = "") -> Row:
+        """The row for `d` reported at `start_s`, read against the log over dump time t0..t1."""
+        f0 = int(t0_dump * MIXER_RATE)
+        f1 = int(t1_dump * MIXER_RATE)
         routes = _routes_live(ev, f0, slack)
         live = [h for h, s in ev.stream_start.items() if s - slack <= f0 <= ev.stream_done.get(h, 1 << 62) + slack]
+        tail = " (runs to the end of the capture)" if d.open_end else ""
         why = _starvation(ev, f0, f1, slack)
         if why:
-            return Row(t_dump + off, d.dur_s, d.depth_db, "+".join(routes) or "none", "STARVATION" + suffix, why)
+            return Row(start_s, d.dur_s, d.depth_db, "+".join(routes) or "none", "STARVATION" + suffix, why + tail)
         why = _command(ev, f0, f1, slack, live)
         if why:
-            return Row(t_dump + off, d.dur_s, d.depth_db, "+".join(routes) or "none", "COMMAND" + suffix, why)
-        return Row(t_dump + off, d.dur_s, d.depth_db, "+".join(routes) or "none", "UNEXPLAINED" + suffix, "nothing in the log within %.0f ms" % (window_s * 1000))
+            return Row(start_s, d.dur_s, d.depth_db, "+".join(routes) or "none", "COMMAND" + suffix, why + tail)
+        return Row(start_s, d.dur_s, d.depth_db, "+".join(routes) or "none", "UNEXPLAINED" + suffix,
+                   "nothing in the log within %.0f ms" % (window_s * 1000) + tail)
 
     if dump_dips is None:
         # No dump: every dip is read against the log at its aligned time (no DEVICE verdict is possible).
         for d, off in zip(endpoint_dips, per_dip):
-            rows.append(explain(d, d.start_s - off, off))
+            rows.append(explain(d.start_s, d, d.start_s - off, d.start_s - off + d.dur_s))
         rows.sort(key=lambda r: r.start_s)
         return rows
     for d, off in zip(endpoint_dips, per_dip):
         t_dump = d.start_s - off
-        match = None
+        t_end = t_dump + d.dur_s
+        match, best = None, 0.0
         for k, dd in enumerate(dump_dips):
-            if k not in used and abs(dd.start_s - t_dump) <= match_s:
-                match = (k, dd)
-                break
+            overlap = min(t_end, dd.end_s) - max(t_dump, dd.start_s) + match_s   # a gap up to match_s still touches
+            if overlap > best:
+                match, best = (k, dd), overlap
         if match is None:
             f0 = int(t_dump * MIXER_RATE)
+            tail = " (runs to the end of the capture)" if d.open_end else ""
             rows.append(Row(d.start_s, d.dur_s, d.depth_db, "+".join(_routes_live(ev, f0, slack)) or "none", "DEVICE",
-                            "in the endpoint, not in the dump at %.2f s (offset %.2f s)" % (t_dump, off)))
+                            "in the endpoint, not in the dump at %.2f s (offset %.2f s)" % (t_dump, off) + tail))
         else:
             used.add(match[0])
-            rows.append(explain(match[1], match[1].start_s, off))
+            rows.append(explain(d.start_s, d, match[1].start_s, match[1].end_s))
     for k, dd in enumerate(dump_dips):
         if k not in used:
-            rows.append(explain(dd, dd.start_s, offset_s, " (dump only)"))
+            rows.append(explain(dd.start_s + offset_s, dd, dd.start_s, dd.end_s, " (dump only)"))
     rows.sort(key=lambda r: r.start_s)
     return rows
 
 
-def report(rows: List[Row], offset_s: Optional[float] = None, corr: Optional[float] = None) -> str:
+def device_per_minute(rows: List[Row], total_s: float = 0.0) -> List[int]:
+    """The DEVICE count in each minute of the capture: `total_s` minutes (rounded up), or as many as reach the
+    last row when no length is given. This is the number the endpoint A/B compares and a gate can pin."""
+    last = max([r.start_s for r in rows], default=0.0)
+    minutes = int(math.ceil(max(total_s, last + 1e-9) / 60.0)) if (total_s > 0 or rows) else 0
+    counts = [0] * minutes
+    for r in rows:
+        if r.label.split(" ")[0] == "DEVICE":
+            counts[min(int(r.start_s // 60), minutes - 1)] += 1
+    return counts
+
+
+def report(rows: List[Row], offset_s: Optional[float] = None, corr: Optional[float] = None,
+           total_s: float = 0.0) -> str:
     lines = []
     if offset_s is not None:
         lines.append("alignment: endpoint = dump + %.3f s (envelope correlation %.2f)" % (offset_s, corr or 0.0))
@@ -400,6 +427,16 @@ def report(rows: List[Row], offset_s: Optional[float] = None, corr: Optional[flo
     lines.append("summary (label x route):")
     for (label, route), n in sorted(counts.items()):
         lines.append("  %-12s %-14s %d" % (label, route, n))
+    per_minute = device_per_minute(rows, total_s)
+    lines.append("DEVICE per minute:")
+    for k, n in enumerate(per_minute):
+        lines.append("  %02d:00-%02d:00  %d" % (k, k + 1, n))
+    if per_minute:
+        worst = max(range(len(per_minute)), key=lambda k: per_minute[k])
+        lines.append("DEVICE total %d over %d minutes, max %d in a minute (%02d:00)"
+                     % (sum(per_minute), len(per_minute), per_minute[worst], worst))
+    else:
+        lines.append("DEVICE total 0 over 0 minutes")
     return "\n".join(lines)
 
 
@@ -434,7 +471,7 @@ def main(argv=None) -> int:
     ep_dips = find_dips(seg, ep_rate, hop_s=args.hop, drop_db=args.drop_db, t0_s=e0)
     offsets = local_offsets(ep, ep_rate, dump, dump_rate, ep_dips, offset) if args.dump else None
     rows = classify(ep_dips, dump_dips, offset, ev, offsets=offsets)
-    print(report(rows, offset if args.dump else None, corr))
+    print(report(rows, offset if args.dump else None, corr, total_s=e1 - e0))
     return 0
 
 

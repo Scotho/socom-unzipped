@@ -9,10 +9,24 @@
 # loopback of what Windows actually sends the speaker -- and score the capture minute by minute so the
 # degradation the owner describes is a column of numbers rather than an impression.
 #
-#   scripts/parity/mission_music_long.sh [--minutes N] [--target ours|pcsx2] [--stamp S] [--no-score] [--dry-run]
+#   scripts/parity/mission_music_long.sh [--minutes N] [--stage mission|briefing] [--walk] [--target ours|pcsx2]
+#                                        [--stamp S] [--max-device-per-minute N] [--no-score] [--dry-run]
 #
 # --dry-run generates the drive script and prints the lengths, launching nothing: it is how the script itself is
 # checked without the loop lock (and how tools_py/tests/test_mission_music_fast.py checks the generated hold).
+#
+# --walk (fix wave A follow-up, 2026-09-22): the mission hold MOVES. The two-minute proof run showed that a driven
+# hold at the insertion point captures almost no music (2-4 s voice cues, the mix at -51 dBFS), while the owner's
+# report is the music degrading "as I proceed". So instead of `wait+8.0:NONE` the hold is a repeated short leg --
+# `hold+8.0:W` (walk forward 8 s), `wait+2.0:NONE`, `hold+8.0:S` (walk back 8 s), `wait+2.0:NONE` -- the pattern
+# gameplay_damage.txt already uses, which returns to the insertion point every 20 s. Walking blind into the level
+# meets hostiles, and a death ends the capture and the music with it, so the leg is deliberately SHORT and safe
+# rather than the owner's route (which nobody has recorded); the same run serves W6 (the garbled HELP popup) if a
+# popup arrives, since every `ifpopup` guard saves the frame it looks at before pressing. Mission stage only.
+#
+# --max-device-per-minute N: the pin. After the dips scorer runs, its "DEVICE total .. max K in a minute" line is
+# read and the run exits 4 when K > N. Unset = report only; the ceiling is pinned once the endpoint A/B has said
+# what a clean device looks like (docs/superpowers/plans/2026-09-22-fix-wave-handoff.md).
 #
 # Run it under the loop lock (it launches a game):
 #   scripts/loop_lock.sh run <owner> --purpose "W7 mission music" -- scripts/parity/mission_music_long.sh --minutes 12
@@ -63,21 +77,29 @@ TARGET=ours
 STAMP=""
 SCORE=1
 DRY=0
+WALK=0
+MAX_DEVICE=""
 BASE=scripts/parity/mission_music_fast.txt
 while [ $# -gt 0 ]; do
   case "$1" in
     --minutes) MINUTES=$2; shift 2 ;;
     --stage) STAGE=$2; shift 2 ;;
+    --walk) WALK=1; shift ;;
     --target) TARGET=$2; shift 2 ;;
     --stamp) STAMP=$2; shift 2 ;;
     --script) BASE=$2; shift 2 ;;
+    --max-device-per-minute) MAX_DEVICE=$2; shift 2 ;;
     --no-score) SCORE=0; shift ;;
     --dry-run) DRY=1; shift ;;
-    -h|--help) sed -n '2,45p' "$0"; exit 0 ;;
-    *) echo "unknown argument: $1" >&2; sed -n '2,45p' "$0"; exit 2 ;;
+    -h|--help) sed -n '2,60p' "$0"; exit 0 ;;
+    *) echo "unknown argument: $1" >&2; sed -n '2,60p' "$0"; exit 2 ;;
   esac
 done
 case "$TARGET" in ours|pcsx2) ;; *) echo "--target must be ours or pcsx2" >&2; exit 2 ;; esac
+if [ "$WALK" = 1 ] && [ "$STAGE" != mission ]; then
+  echo "mission_music_long: --walk moves through the MISSION; it has no meaning on the '$STAGE' stage" >&2
+  exit 2
+fi
 [ -f "$BASE" ] || { echo "no such script: $BASE" >&2; exit 2; }
 [ -n "$STAMP" ] || STAMP="mission_music_${TARGET}_$(date +%Y%m%d_%H%M%S)"
 OUT="logs/parity/$STAMP"
@@ -117,18 +139,37 @@ case "$STAGE" in
     ;;
 esac
 POPUPS=0
+# The walk: one leg is `hold+8.0:<dir>` then `wait+2.0:NONE` (10 s of script), the direction alternating W / S so
+# the player is back at the insertion point after every pair. LEGS covers the whole hold; the base script's own
+# closing `wait+8.0:NONE` is left in place as the settle before the first leg.
+LEGS=$(( (HOLD_S + 9) / 10 ))
 {
-  echo "# --- $EXTRA hold steps appended by mission_music_long.sh for a ${MINUTES}-minute in-mission capture,"
-  echo "# --- with an ifpopup guard every $POPUP_EVERY of them ---"
-  i=0
-  while [ "$i" -lt "$EXTRA" ]; do
-    echo "wait+8.0:NONE"
-    i=$((i + 1))
-    if [ $((i % POPUP_EVERY)) -eq 0 ] && [ "$i" -lt "$EXTRA" ]; then
-      echo "ifpopup+1.0:CROSS"
-      POPUPS=$((POPUPS + 1))
-    fi
-  done
+  if [ "$WALK" = 1 ]; then
+    echo "# --- $LEGS walking legs appended by mission_music_long.sh --walk for a ${MINUTES}-minute in-mission capture:"
+    echo "# --- hold W 8 s / settle 2 s / hold S 8 s / settle 2 s, an ifpopup guard every $POPUP_EVERY legs ---"
+    i=0
+    while [ "$i" -lt "$LEGS" ]; do
+      if [ $((i % 2)) -eq 0 ]; then echo "hold+8.0:W          # walk forward 8 s"; else echo "hold+8.0:S          # walk back 8 s"; fi
+      echo "wait+2.0:NONE"
+      i=$((i + 1))
+      if [ $((i % POPUP_EVERY)) -eq 0 ] && [ "$i" -lt "$LEGS" ]; then
+        echo "ifpopup+1.0:CROSS"
+        POPUPS=$((POPUPS + 1))
+      fi
+    done
+  else
+    echo "# --- $EXTRA hold steps appended by mission_music_long.sh for a ${MINUTES}-minute in-mission capture,"
+    echo "# --- with an ifpopup guard every $POPUP_EVERY of them ---"
+    i=0
+    while [ "$i" -lt "$EXTRA" ]; do
+      echo "wait+8.0:NONE"
+      i=$((i + 1))
+      if [ $((i % POPUP_EVERY)) -eq 0 ] && [ "$i" -lt "$EXTRA" ]; then
+        echo "ifpopup+1.0:CROSS"
+        POPUPS=$((POPUPS + 1))
+      fi
+    done
+  fi
 } >> "$SCRIPT"
 
 # The boot allowance is what the run may spend BEFORE the hold. Measured on our exe (logs/parity/s9_q1_parity_ours,
@@ -141,6 +182,8 @@ BOOT_S=240
 # capture passes, and 50 s of slack. A game killed mid-hold leaves the rest of the capture as digital silence,
 # which reads as a catastrophic FAIL of the mix rather than as a short run (s9_q1_parity_ours).
 DRIVE_S=$((BOOT_S + HOLD_S + POPUPS * 3 + 60))
+# A hold step costs its 0.5 s post-press sleep and a capture on top of the hold itself; a walk has two steps a leg.
+[ "$WALK" = 1 ] && DRIVE_S=$((DRIVE_S + LEGS * 2))
 REC_S=$((DRIVE_S + 20))
 DUMP="$OUT/mix.wav"
 # PS2X_AUDIO_DUMP is read by a NATIVE Windows binary through python and run.sh, and an MSYS "/c/..." path
@@ -150,10 +193,10 @@ DUMP="$OUT/mix.wav"
 DUMP_ENV="$ROOT/$DUMP"
 if command -v cygpath >/dev/null 2>&1; then DUMP_ENV="$(cygpath -w "$ROOT/$DUMP")"; fi
 
-echo "stamp=$STAMP target=$TARGET stage=$STAGE minutes=$MINUTES hold=${HOLD_S}s steps=+$EXTRA popups=$POPUPS drive=${DRIVE_S}s record=${REC_S}s"
+echo "stamp=$STAMP target=$TARGET stage=$STAGE walk=$WALK minutes=$MINUTES hold=${HOLD_S}s steps=+$EXTRA legs=$LEGS popups=$POPUPS drive=${DRIVE_S}s record=${REC_S}s"
 echo "script=$SCRIPT dump=$DUMP env=$DUMP_ENV"
 if [ "$DRY" = 1 ]; then
-  echo "--dry-run: nothing launched. $(grep -c '^wait+8.0:NONE' "$SCRIPT") hold steps, $(grep -cv '^[[:space:]]*\(#.*\)\?$' "$SCRIPT") steps in all."
+  echo "--dry-run: nothing launched. $(grep -c '^wait+8.0:NONE' "$SCRIPT") hold steps, $(grep -c '^hold+8.0:[WS]' "$SCRIPT") walking legs, $(grep -cv '^[[:space:]]*\(#.*\)\?$' "$SCRIPT") steps in all."
   exit 0
 fi
 AUDIO_DUMP="$DUMP_ENV" scripts/parity/audio_parity.sh capture "$TARGET" "$STAMP" "$SCRIPT" "$DRIVE_S" "$REC_S"
@@ -178,6 +221,19 @@ if [ "$SCORE" = 1 ]; then
     PYTHONPATH="$ROOT" python -m tools_py.parity.audio_dips "$OUT/endpoint.wav" --dump "$OUT/mix.wav" \
       ${log:+--log "$log"} > "$OUT/dips.txt" 2>&1 || true
     tail -40 "$OUT/dips.txt"
+    # The endpoint this run rendered to, beside its dips: a DEVICE count that does not name its device proves
+    # nothing (docs/KNOWN.md section 4, the endpoint hazard).
+    grep -m1 "mix stream open" "$log" 2>/dev/null | tee "$OUT/endpoint_device.txt" || echo "(no mix-stream-open line in $log)" | tee "$OUT/endpoint_device.txt"
+    if [ -n "$MAX_DEVICE" ]; then
+      worst=$(sed -n 's/^DEVICE total [0-9]* over [0-9]* minutes, max \([0-9]*\) in a minute.*/\1/p' "$OUT/dips.txt")
+      if [ -z "$worst" ]; then
+        echo "DEVICE pin: the dips report carries no per-minute total -- cannot judge (rc=4)"; [ "$rc" = 0 ] && rc=4
+      elif [ "$worst" -gt "$MAX_DEVICE" ]; then
+        echo "DEVICE pin: FAIL -- $worst DEVICE events in one minute, the ceiling is $MAX_DEVICE (rc=4)"; [ "$rc" = 0 ] && rc=4
+      else
+        echo "DEVICE pin: OK -- at most $worst DEVICE events in a minute, ceiling $MAX_DEVICE"
+      fi
+    fi
   fi
 fi
 echo "capture and scores in $OUT"

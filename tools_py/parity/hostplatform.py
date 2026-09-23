@@ -93,6 +93,26 @@ def kill_argv(base, system=None):
     return ["pkill", "-x", base]
 
 
+def kill_tree_argv(pid, system=None):
+    """argv that takes ONE process and its children down by pid -- the game this run launched and
+    nothing else. 2026-09-22, the hosted join: `taskkill /F /IM socom2.exe` on the harness's exit
+    ended the owner's own launcher game on the same PC together with ours. A drive that runs beside
+    another instance (--instance) must kill by pid; the image-name kill is for a drive whose
+    "already running" guard admitted no other game."""
+    pid = int(pid)
+    if is_windows(system):
+        return ["cmd", "/c", f"taskkill /F /T /PID {pid}"]
+    return ["pkill", "-9", "-P", str(pid)]
+
+
+def kill_process_tree(pid, system=None):
+    """taskkill /F /T /PID <pid> | pkill -9 -P <pid> (then the pid itself). Best effort."""
+    p = run(kill_tree_argv(pid, system))
+    if not is_windows(system):
+        run(["kill", "-9", str(int(pid))])
+    return p
+
+
 def running_argv(base, system=None):
     """argv that lists (Windows) or matches (Linux) the process."""
     if is_windows(system):

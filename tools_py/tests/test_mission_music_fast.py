@@ -140,6 +140,49 @@ class TheLongWrapper(unittest.TestCase):
                            cwd=ROOT, capture_output=True, text=True)
         self.assertEqual(p.returncode, 2)
 
+    # --walk (the W7 follow-up, 2026-09-22): a driven hold captures no music, so the mission hold moves --
+    # a short safe leg, forward 8 s and back 8 s, repeated for the whole hold.
+    def test_walk_replaces_the_hold_with_alternating_legs_that_cover_the_minutes(self):
+        head, parsed, out = self.dry_run("--walk", "--minutes", "10")
+        self.assertEqual(head["walk"], "1")
+        legs = [(d, b) for m, d, b in parsed if m == "hold"]
+        self.assertGreaterEqual(sum(d for d, _b in legs), 0.8 * 600)          # holds are 8 of every 10 s
+        walked = sum(d for m, d, b in parsed if m in ("hold", "wait") and parsed.index((m, d, b)) >= 0)
+        self.assertGreaterEqual(walked, 600.0)
+        self.assertTrue(all(b in (["W"], ["S"]) for _d, b in legs), legs[:4])
+        self.assertTrue(all(d == 8.0 for d, _b in legs))
+        dirs = [b[0] for _d, b in legs]
+        self.assertEqual(dirs[:4], ["W", "S", "W", "S"])                       # back where it started every 20 s
+        self.assertEqual(dirs.count("W"), dirs.count("S"))
+        self.assertIn("60 walking legs", out)
+
+    def test_walk_keeps_the_popup_guards_and_lengthens_the_run(self):
+        head_w, parsed_w, _ = self.dry_run("--walk", "--minutes", "10")
+        head_h, parsed_h, _ = self.dry_run("--minutes", "10")
+        modes = [m for m, _d, _b in parsed_w]
+        self.assertGreaterEqual(modes.count("ifpopup"), modes.count("hold") // 16)
+        # a hold step costs its post-press sleep and a capture on top of the hold: the run allows for it
+        self.assertGreater(int(head_w["drive"][:-1]), int(head_h["drive"][:-1]))
+        scripted = sum(d for _m, d, _b in parsed_w)
+        self.assertGreater(int(head_w["drive"][:-1]), scripted + 137 + 10 + 2 * modes.count("hold") - 10)
+
+    def test_walk_is_refused_on_the_briefing(self):
+        p = subprocess.run([BASH, LONG_SH, "--dry-run", "--stamp", self.STAMP, "--walk", "--stage", "briefing"],
+                           cwd=ROOT, capture_output=True, text=True)
+        self.assertEqual(p.returncode, 2)
+        self.assertIn("MISSION", p.stderr)
+
+    def test_the_device_pin_is_read_from_the_dips_report(self):
+        # The pin's parse line, on a report in the scorer's own format: the max-in-a-minute number.
+        with open(LONG_SH, encoding="utf-8") as f:
+            body = f.read()
+        self.assertIn("--max-device-per-minute", body)
+        sed = "s/^DEVICE total [0-9]* over [0-9]* minutes, max \\([0-9]*\\) in a minute.*/\\1/p"
+        self.assertIn(sed, body)
+        p = subprocess.run([BASH, "-c", f"printf 'x\\nDEVICE total 11 over 16 minutes, max 4 in a minute (03:00)\\n' | sed -n '{sed}'"],
+                           capture_output=True, text=True)
+        self.assertEqual(p.stdout.strip(), "4")
+
 
 @unittest.skipUnless(BASH, "bash not found")
 class AudioParityStaysCompatible(unittest.TestCase):

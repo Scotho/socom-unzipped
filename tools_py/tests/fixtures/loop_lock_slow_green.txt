@@ -2,6 +2,6 @@
 # `git hash-object scripts/loop_lock.sh` to the blob line below. Update this file ONLY after
 #   LOOP_LOCK_SLOW_TESTS=1 python -m unittest tools_py.tests.test_loop_lock
 # is green on the script as it stands.
-blob 885b822eb09f75170b238b03ea6964967675f2cc
-date 2026-09-14T04:15:30Z
-run 64 tests in 1033.7 s, OK (skipped=1: this stamp test itself), 2026-09-14T03:58:16Z..04:15:30Z, sprint-5 after d9b5f33
+blob 89779b1e526c383aed6641231ec72027d71b2596
+date 2026-09-23T02:53:00Z
+run 64 tests in 2233.1 s, OK (skipped=1: this stamp test itself), 2026-09-23T02:16Z..02:53Z, sprint-10 close night under a game capture and agent builds (the 2233 s is the load, not the suite) -- the default lock path now follows git's common dir so a worktree shares the main tree's lock

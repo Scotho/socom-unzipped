@@ -4,6 +4,141 @@ Things only the owner can do: hands-on checks on the real machine with real ears
 adds items here when it reaches a step it cannot verify itself, and moves on. Report back in one line each; the
 loop picks the answer up from the next session's prompt or from a note in `docs/STATUS.md`.
 
+> **2026-09-22 evening — parked by the owner's instruction** (*"save the human tasks for later"*). Nothing below is
+> waited on tonight; the loop is closing Sprint 10 and opening Sprint 11 under the owner's authority
+> (`docs/superpowers/plans/2026-09-22-sprint-10-close.md`). The endpoint A/B, the W10 proof and the W7/W6 captures
+> listed under "Start here (midday)" are **machine runs** and ran overnight; their results are in the sprint record.
+> A fresh "Start here" block for the morning is written at the close -- **it is immediately below, `## Start here
+> (2026-09-23 morning)`**, and it carries the results of those runs.
+
+## Start here (2026-09-23 morning)
+
+Sprint 10 is **closed** -- what is left of it is the merge to `main` and the tag `v0.10.0`, both the loop's. Sprint 11
+is open on `docs/superpowers/plans/2026-09-23-sprint-11.md`. The night's results are in `docs/STATUS.md`'s newest
+entry and in `docs/CURRENT_SPRINT.md`'s "Sprint 10 -- CLOSED" block; the short version is that your Bluetooth speaker
+is **not** the cause of the music dropouts (they survive a wired endpoint, so they are ours), the prefilled login
+**stays** for now because a virgin card keeps the persona but loses the saved password, and the garbled HELP glyphs
+did not reproduce on a walk that never reaches the church.
+
+### The eight decisions, and the default each one proceeds on
+
+**The loop proceeds on the default in the last column; say a word to change any of them and the affected task is
+reworked, nothing is lost.** None of these is waited on.
+
+| # | Decision | Default the plan proceeds on |
+|---|---|---|
+| D2 | Legal position on shipping `socom2.exe` + `socom2_game.elf` | as today; no public download until answered |
+| D3 | The tree's own licence split (Python tooling/docs under MIT or Apache-2.0?) | GPL-3.0 for the whole tree |
+| D4 | What of the development record is published under `docs/dev/` | all of it stays where it is; nothing moves to `docs/dev/` |
+| D5 | Signing | unsigned; the FAQ says what SmartScreen will show |
+| D6 | The landing page's deploy; wording about the community server | deploy owner-only; wording drafted here, in `docs/INSTALL.md` |
+| H7-A / H7-C | Disc-derived bytes: the audio/VU1 fixtures; the ~240 pictures | nothing moves |
+| r0004 D1-D4 | distribution of r0004; ordering; disclosure wording; HDD maps in scope? | D2 ordering as recommended; D4 = HDD maps **out** of scope for v1 (Goal G not scheduled) |
+| G7 reply policy | do fixed reports get an answer to the contact left? | no |
+
+### Send this to the PSRewired moderator
+
+Through the private channel `SECURITY.md` names, when you have a moment. Drafted so it asks for what we cannot get
+ourselves and publishes no mechanics:
+
+> *We bounded the chat receive path on the client and clamp forwarded chat fields on our server. Before we narrow our
+> public warning: which struct and field did you see the overflow in, which revision did you verify it on, does r0004
+> close it client-side, and what did your server-side fix do? We will not publish mechanics.*
+
+### One `gh` command only you can run: the merged-branch sweep
+
+Deleting the merged `agent/*` and `sprint-*` branches needs the `sprint-*` ruleset lifted first (R182 put it there),
+and branch protection is yours, not the loop's. When you are ready: lift the ruleset with `gh api` under your own
+credentials, let the loop delete the branches on the written list (it is Sprint 11 Task 18 Step 3, and the list is
+written there), then restore the ruleset. Nothing else in Sprint 11 is blocked on it.
+
+### One thing the loop did to your desktop, so you are not surprised
+
+At 04:25Z the close's build could not copy `dist/socom_unzipped_launcher.exe` -- **five launcher windows you had opened
+on 2026-09-22 between 14:29 and 14:56 were still open** and held the executable locked. The loop closed them (nothing
+is lost: the launcher saves its settings on every change). If you had one of them parked on purpose, that is why it is
+gone.
+
+### The two things still only you can do
+
+- **The lobby channel.** Which channel your lobby was in when you asked for an agent to join it. The join driver now
+  refreshes the list and takes a channel (R240, landed `00d8348`), and R244 settled that no extra self-join run is
+  needed -- the ladder exercises the same path. So this is one line, not a run, and it is worth having.
+- **A route to the church, in stick directions.** The garbled glyph atlas you saw was in the HELP popup *after the
+  church load*. Two twelve-minute walking captures produced ten clean popups each, because an in-place walk never
+  gets there. Write the route the way the drive scripts read it (`hold+8.0:W` is "forward 8 s"; W/A/S/D move,
+  I/J/K/L turn) and the A/B can be run properly -- with the capture recording its own environment this time, which
+  is the other half of why the last one proved less than it looked.
+
+## Start here (2026-09-22 midday: three runs are built and waiting for a window)
+
+> **Superseded 2026-09-23: all three runs RAN overnight, under the owner's twelve-hour mandate, and none of them is
+> waiting on a window any more.** Their verdicts are marked on each item below and the full record is
+> `docs/STATUS.md`'s 2026-09-23 entry. The block is kept because it is what the questions looked like before the
+> answers.
+
+You were at the machine all morning (Teams, Jira, Sublime), so nothing lock-bound ran -- the host-load rule. Everything
+that could be done without a launch is done, tested and committed on `sprint-10`; what is left is three game runs
+that need **a window you are away from the machine and not on a call**, plus one line from you. Say when, and the
+loop runs them in this order:
+
+1. **The endpoint A/B (~16 min). RAN 2026-09-23, and it has a verdict: wired 14 DEVICE dips against Bluetooth 11
+   over sixteen minutes -- the dips SURVIVE the wired endpoint, so they are OURS, not your speaker.**
+   (`logs/parity/endpoint_ab_20260922_232644`. The first attempt, in chain 1, refused to score with rc=5 because the
+   per-app routing fix had not landed yet and it was still recording on the JBL -- the tool doing exactly what it was
+   built to do. The re-run at 02:43Z put your routing and default device back afterwards, as designed.) What follows
+   was the question before the answer: The Bluetooth capture's DEVICE count was **re-scored to 11, not 31**: twenty of
+   the 31 were the scorer's own matching (a cue's ending was being called a 365 s device fault). Eleven 50 ms dips,
+   ten of them while the briefing score plays, is still a lead, and it still settles the same way. The tool now
+   exists: `scripts/parity/endpoint_ab.sh` backs up your per-app audio routing, points our exe and the recorder at
+   the **HyperX QuadCast S** headphone output (the only wired endpoint that is live), runs the same ten-minute
+   briefing capture, refuses to score unless the game's own log names the HyperX, prints both runs' DEVICE-per-minute
+   tables side by side, and puts your routing and default device back on any exit. **While it runs, your default
+   output device is the HyperX** -- which is why it needs you off a call. If you would rather it used a different
+   wired device, plug it in and name it.
+   ```
+   bash scripts/loop_lock.sh run owner --purpose "endpoint A/B" -- bash scripts/parity/endpoint_ab.sh --device HyperX
+   ```
+2. **The remember-password proof (W10, two launches, ~7 min each). RAN 2026-09-23, and it FAILED in exactly the way
+   this item anticipated: launch 1 rc=0 created the persona on a virgin card and reached the lobby; launch 2 rc=4
+   came back `LOBBY-FAIL login:saved-password:empty`. The persona survives the restart; the saved password does not.
+   So R237 is rewritten and YOUR PREFILLED LOGIN STAYS** (`logs/parity/w10_virgin_a`, `logs/parity/w10_virgin_b`).
+   It is not yet known whether the game writes the password only on a clean exit -- which the driver's kill skips --
+   or whether our memory-card code loses it; one launch that quits cleanly settles that, and it is queued.
+   The instruction as it was written: Your prefilled login stays until this passes.
+   Launch one boots from an EMPTY card, creates a persona with SAVE PASSWORD ticked YES (the driver reads the tick
+   off the form and tries LEFT then CROSS, since nobody has recorded which one the widget answers to), and connects.
+   Launch two boots from the card launch one wrote and must reach the lobby **with nothing typed** -- an empty
+   PASSWORD field fails the run as `login:saved-password:empty`, a missing persona as `:no-persona`. Only a pass
+   removes the prefill from the player path (and reclasses the two knobs to Dev, with `PS2X_DEV=1` on the drive
+   scripts that use `--prefilled`); a fail means R237 is rewritten and the prefill stays.
+   ```
+   bash scripts/loop_lock.sh run owner --purpose "W10 launch 1" -- python -m tools_py.parity.online_login_ours --mc-dir logs/parity/w10_virgin/mc0 --name w10test --password socom --save-password --out logs/parity/w10_virgin_a --seconds 400
+   bash scripts/loop_lock.sh run owner --purpose "W10 launch 2" -- python -m tools_py.parity.online_login_ours --mc-dir logs/parity/w10_virgin/mc0 --existing --saved-password --out logs/parity/w10_virgin_b --seconds 400
+   ```
+3. **The walking mission capture (W7, ~15 min; W6 rides along). BOTH RAN 2026-09-23, rc=0.** W7 scored 47 DEVICE
+   dips over 21 minutes at the JBL -- the same lead, superseded hours later by the wired A/B above. W6 did **not**
+   reproduce: ten identical, clean popups in both walks, including your "Headquarters has provided you with some
+   HELP". That is not an acquittal, for two reasons: your sighting was after the church load, which an in-place walk
+   never reaches, and the capture recorded no `PS2X_*` environment, so the revalidate-off half cannot be proven to
+   have run with the knob off. Both are carried, and the route is asked for in the morning block above.
+   The instruction as it was written: A driven hold captures no music, so the hold now
+   MOVES: `--walk` repeats a short safe leg (forward 8 s, back 8 s, so the player is at the insertion point every
+   20 s) for twelve minutes, with the popup guard every 80 s. It is deliberately not a route into the level: a death
+   ends the capture and the music with it, and nobody has your route. **If you want it to walk your route instead,
+   describe it in stick directions and seconds** (`hold+8.0:W` is "forward 8 s"; W/A/S/D move, I/J/K/L turn) and
+   it goes in as the leg. Every popup the guard meets is saved as a frame, so if the HELP popup before Mallard turns
+   up, that is W6's garbled-glyph frame; the second command is the same walk with the revalidate-by-hash suspect off.
+   ```
+   bash scripts/loop_lock.sh run owner --purpose "W7 walk" -- bash scripts/parity/mission_music_long.sh --walk --minutes 12
+   PS2X_GS_NO_TEX_REVALIDATE=1 bash scripts/loop_lock.sh run owner --purpose "W6 A/B" -- bash scripts/parity/mission_music_long.sh --walk --minutes 12 --stamp w6_norevalidate
+   ```
+
+**The one line still only you can give:** which channel your lobby was in, for the join driver (W8). ~~Without it the
+two-instance self-join is the fallback (host from instance A, join from B), which is a fourth run for the same
+window.~~ **Superseded 2026-09-23 by R244: there is no fourth run.** The ladder's own runs exercise the same R240
+refresh-then-join path, so W8 is proven by them. The channel line is still wanted, and it is one line, not a run.
+
 ## Start here (2026-09-22, after your playthrough)
 
 **Your findings are all recorded and the fix wave is running** -- `docs/superpowers/plans/2026-09-22-fix-wave-playthrough.md`
@@ -22,25 +157,59 @@ every developer knob in any build, yours included -- so if something goes wrong 
 `PS2X_DEV=1 PS2X_MC_TRACE=1` or `PS2X_AUDIO_DUMP=logs/sound.wav` and the evidence will be there. The real hole was
 that a *failed* card command said nothing at all, at any setting.)
 
+**Your failed save is FIXED, at the root.** A driven run to the control-type prompt with an empty card printed
+`[mc] GetDir REFUSED path '..'` five times: the game enumerates a fresh card with `..`, our path normaliser refused
+any `..` that would climb past the root, and on a virgin card the current directory IS the root -- so we answered
+"permission denied" and the game read that as a card it could not use. Your second launch worked because by then the
+save folder existed. Fixed so a trailing `..` resolves to the root while `/../escape.bin` is still refused, and
+proven by the same run: the five refusals are gone. Gate 3/3, on `main` in PR #23.
+
+**And the stray online sound is NOT what I told you it was.** I said the one-shots correlated with the screens you
+heard it on. That correlation came from bucketing your log by LINE NUMBER, and log lines are not time -- it should
+never have been reported to you as a correlation. Measured properly (three captures, the play commands stamped with
+the mixer's own clock, one of them navigating the lobby while the song played, as you were), those one-shots sit at
+-0.2 dB against the music bed: inaudible. The bank is cleared.
+
+Where it actually points: every one of those captures is the mix AS RENDERED, and `docs/KNOWN.md` already holds the
+row where your mission music dropped out ~41 times a minute **at your JBL speaker** while the pre-device mix was
+clean. A ten-minute capture tonight, whose own log line reads `device Speakers (JBL Flip 6), period 20 ms x 4`,
+found dips present at the endpoint and absent from the mixer's dump. **The first count was 31 and was re-scored the
+same day to 11** -- twenty of the thirty-one were the scorer's own matching, not the game's. **And the A/B ran on
+2026-09-23: wired 14 against Bluetooth 11 over sixteen minutes.** The dips do not care what the speaker is, so they
+are ours, somewhere between `render()` and the audio dump's write. Your Bluetooth speaker is exonerated; nothing is
+owed from you here, and the remaining work is a Sprint 11 audio item.
+
 **What still needs you, and none of it is urgent:**
 
-- **The prefilled login.** You asked for a persona saved on the card with remember-password checked, or the prefill
-  removed. Taken as R237: it leaves the player path and survives as a developer knob (the drive scripts type personas
-  with it). Before it is removed for good, the thing to prove is that the game's own persona + remember-password
-  survives a restart on a **virgin** card -- which is the same save path that failed you the first time. The loop can
-  drive that; you would only be asked to confirm it feels right.
-- **The CONTROLLER page**: the better pad graphic and hold-a-button-to-remap with hints are chunk W9. When it is built
-  you are the only one who can say whether the hold gesture reads clearly.
+- **The prefilled login -- SETTLED 2026-09-23, and the answer is that it STAYS.** The proof this bullet asked for
+  ran overnight and failed: on a virgin card the persona survives a restart, the **saved password does not**
+  (`LOBBY-FAIL login:saved-password:empty`). So the game's own way in does not yet reach the lobby unattended, and
+  the prefill is not removed. See the morning block at the top of this file for the verdict and what settles the
+  remaining question (whether the game writes the password only on a clean exit, which the test driver's kill skips,
+  or whether our card code loses it). Nothing is owed from you here.
+  > ~~You asked for a persona saved on the card with remember-password checked, or the prefill removed. Taken as
+  > R237: it leaves the player path and survives as a developer knob (the drive scripts type personas with it).
+  > Before it is removed for good, the thing to prove is that the game's own persona + remember-password survives a
+  > restart on a **virgin** card -- which is the same save path that failed you the first time. The loop can drive
+  > that; you would only be asked to confirm it feels right.~~
+- **The CONTROLLER page**: the better pad graphic and hold-a-button-to-remap with hints were chunk W9, and **W9 is
+  built** (`668c7f5`). It is waiting on your eye now: you are the only one who can say whether the hold gesture reads
+  clearly.
 - **The music**, both halves: the briefing's first small stutters and the mission degrading with time. The loop is
   building the fast-forward drive that skips the cinematics and takes a ten-minute in-mission capture against PCSX2 --
   your instruction. You said you would validate the few spots where the music cuts short in PCSX2 yourself; those
   notes are still wanted whenever you have them.
-- **The online stray sound.** Charged to bank `0x00a00000`'s one-shots (R239) on the correlation: zero of them on the
-  main menu, which you say is clean, and a hundred-plus on the online screens, which blop. The A/B that convicts or
-  clears the bank is machine-only now that the mute knob exists; you may be asked for one thirty-second listen.
+- ~~**The online stray sound.** Charged to bank `0x00a00000`'s one-shots (R239) on the correlation: zero of them on
+  the main menu, which you say is clean, and a hundred-plus on the online screens, which blop. The A/B that convicts
+  or clears the bank is machine-only now that the mute knob exists; you may be asked for one thirty-second listen.~~
+  **Withdrawn 2026-09-22 -- the A/B ran and CLEARED the bank** (the correction is a few paragraphs above: the
+  one-shots sit at -0.2 dB against the music bed, inaudible, and the correlation that charged them was drawn by
+  bucketing your log by line number). **No listen is owed.**
 - **The lobby join.** When you asked for an agent in your lobby it reached the BRIEFING ROOM as `socome` and found
-  **"There are no games to join." on Channel 1** -- it never refreshes the list and never picks a channel (R240, being
-  fixed). If you remember which channel your game was in, that is worth a line.
+  **"There are no games to join." on Channel 1** -- it never refreshed the list and never picked a channel. **R240
+  landed on 2026-09-22 (`00d8348`): the driver presses REFRESH LIST before JOIN GAME and takes a channel**, and R244
+  settled that the ladder's own runs prove that path, so no extra run is scheduled. If you remember which channel
+  your game was in, that is still worth a line.
 
 ## Start here (2026-09-21 evening)
 
@@ -209,15 +378,20 @@ workflows, and the visibility flip itself. Publishing any Release is always your
 - [ ] **The launcher, second look (2026-09-19).** Your three notes are in (`76c096c`): the gold ring no longer flies -- it is on the option the frame you move; READY sits against the window buttons; the page title is on the window's middle. Your open launcher held `dist/socom_unzipped_launcher.exe` locked, so the new build is beside it as `dist/socom_unzipped_launcher_new.exe`: close the old one and run that (or rename it over). Say what still looks off.
 - [ ] **The launcher with the Xbox pad** (Task 8b Step 4). Run `dist/socom_unzipped_launcher.exe`: point it at the
   ISO, check the controller test area sees the pad (sticks, triggers, every button), pick a video size, press
-  Launch. Report: did the pad register in the test area, did the game start, did the pad work in the game. Since
-  2026-09-17 the launcher opens the game at 1280x896 by default (Sprint 7 Task 1c, ruling R92; the 2x frame measured
-  0.83 mean |diff| against the 1x frame, i.e. scaled, not cropped) and the window is DPI-aware: one more line worth
+  Launch. Report: did the pad register in the test area, did the game start, did the pad work in the game. ~~Since
+  2026-09-17 the launcher opens the game at 1280x896 by default (Sprint 7 Task 1c, ruling R92)~~ **-- overturned
+  2026-09-22 on your own instruction ("the default res should be the 640x448"): R236 makes the launcher's default the
+  game's own 640x448, with 1280x896 one click away on the VIDEO page.** (The 2x frame had measured 0.83 mean |diff|
+  against the 1x frame, i.e. scaled, not cropped.) The window is DPI-aware: one more line worth
   having is whether the window looks right on your display (sharp, the whole frame visible, no tiny window).
 
 - [ ] **The two server addresses for the launcher's picker** (owner request 2026-09-17; audit §2.6). The launcher now
-  offers *SOCOM Community (public Horizon)*, *SOCOM Unzipped (project server)* and *Custom*. Both preset addresses are
-  deliberate placeholders (`COMMUNITY_SERVER_ADDRESS_TBC`, `UNZIPPED_SERVER_ADDRESS_TBC`) in
-  `third_party/ps2recomp/ps2xLauncher/include/launcher/launcher_config.h`, because neither is known to the tree: the
+  offers *SOCOM Community (public Horizon)*, *SOCOM Unzipped (project server)* and *Custom*. **Only ONE preset address
+  is still a placeholder: the community server's (`COMMUNITY_SERVER_ADDRESS_TBC`). Ours reads `socom.scotho.com` and
+  is the launcher's default** -- see the 2026-09-19 postscript below, which has been the true state of this item since
+  it was written. The file is
+  `third_party/ps2recomp/ps2xShared/include/launcher/launcher_config.h` (it moved out of `ps2xLauncher/`; the old path
+  in this item did not exist). What was true when the item was raised: the
   community server's is whatever the SOCOM community's Horizon publishes for SOCOM II (a hostname or IP), and ours does
   not exist until a machine hosts it. Two lines back: the community address, and, once hosted, ours (with the ports
   forwarded per `server/README.md`). The default preset switches to *SOCOM Unzipped* when ours is real.

@@ -1,0 +1,190 @@
+# Documentation maintenance — the classes, the registry, and the sprint-close review
+
+**Last full review: 2026-09-23 (Sprint 10 close).** Next: at Sprint 11's close, by the controller.
+
+> **The first review under this schema, 2026-09-23 (Sprint 10's close), and what it changed.** Step 1: `docmaint`
+> OK. Step 2: every L document read for truth by a read-only agent against the tree and the night's ledgers — 56
+> findings (README 4, STATUS 4, KNOWN 8, CURRENT_SPRINT 9, HANDOFF 13, HUMAN_TASKS 10, DEVELOPING 2, ROADMAP 4,
+> STORY 2, PICTURES 0), every one applied with supersede-in-place (`70759da`, `7a89b8c`, `80e0074`, `37f9bb0`),
+> reviewed (four sentence-level Importants, all fixed: `1d86d71`, `ae13cf8`, `dec9af9`, `5aef282`), re-reviewed
+> clean. Step 3: README's table rewritten row by row against KNOWN. Step 4: ROADMAP had already regrown a task list
+> (its eight-item backlog) one day after the rewrite — moved to CURRENT_SPRINT's filler list; STORY's closing beat
+> answered under a dated blockquote. Step 5: nothing archived this time. The sprint's 64 rulings (R181–R244, R229
+> deliberately vacant) reconciled into one table in CURRENT_SPRINT. Two lessons for the schema: (1) a class-N
+> document regrows live state within a day if the author does not have a filler list to put it in — CURRENT_SPRINT
+> now has one; (2) counts must carry their date *and* the same artefact must carry the same number in every row
+> (the same capture was "21 minutes" and "twelve-minute" three lines apart).
+
+## 0. Why this exists
+
+On 2026-09-22 `docs/ROADMAP.md` was audited against the tree for the first time since it was written. Nine of its
+twenty-five checkable claims still held; two were **wrong in a way that would misdirect an agent** — it told readers to
+reorder the standing goals in `LOOP_PROMPT.md`, a file that had been rewritten two days earlier to contain no goals at
+all, and it described a knob problem that Sprint 10 had solved. The same pass found three more:
+
+- **`docs/HANDOFF.md` offered "Next free ruling number: **R179**" while R241 was in use.** Not merely stale — an
+  agent obeying it would have collided with sixty-two existing rulings, and `docs/CURRENT_SPRINT.md` already records
+  that exact failure happening once ("the agent numbered from R200, already taken").
+- **`README.md`, the public front page, listed "terrain holes (root cause still open) and a water defect on one map"**
+  — both fixed on 2026-09-16, six days before the README's own last edit. It understated the project to strangers.
+- **`docs/HANDOFF.md` and `docs/CURRENT_SPRINT.md` both carried the suite baselines `C++ 686/686, Python 1457 OK` on 2026-09-22** —
+  true when written on 2026-09-20, four sprints stale by then, and the third and fourth places in the tree to
+  hard-code a number that `docs/DEVELOPING.md` already owns. (That sentence keeps its date *on the same line as the
+  number*, which is exactly what check 3 asks for.)
+- **The ruling counter had two homes that disagreed**: `HANDOFF.md` said the next free number was R242 and
+  `CURRENT_SPRINT.md` said R241, while R240 was the highest actually in use.
+
+The documents that stayed true and the ones that rotted did not differ in care. `docs/KNOWN.md` is audited after every
+task and stayed true for ten days across six sprints. `ROADMAP.md` was audited by nobody. **The difference is whether
+anything could fail.** This file is the schema; `tools_py/docmaint.py` and `tools_py/tests/test_doc_maintenance.py`
+are the thing that fails.
+
+## 1. The six classes
+
+Every perpetuating document has exactly one class. The class decides **what may be written in it** and **when it is
+checked** — and the first of those matters more, because a document with nothing perishable in it cannot rot.
+
+| Class | Meaning | What it may contain | Checked |
+|---|---|---|---|
+| **L** — Live | Must be true *right now*; read by every session | Current state, open items, live numbers | **After every task that changes it**, and in full at sprint close |
+| **G** — Generated | A tool writes it from a source of truth | Whatever the tool emits — never hand-edited | By its own test, every suite run |
+| **N** — Narrative | History, reasoning and pointers | **No live state, no live numbers, no task lists.** Pointers to L documents instead | Sprint close |
+| **S** — Snapshot | Frozen at its date | Anything — it is a record of one moment | Never. It is not updated; it is superseded |
+| **C** — Contract | Rules that change only by decision | Process, policy, templates | Sprint close, against what actually happens |
+| **A** — Archive | Superseded, kept because things cite it | The original text, verbatim, under a banner | Never |
+
+**The rule that does the most work is N's.** The roadmap rotted because it held live state — sprint task lists, test
+counts, frame rates, an instruction to go and edit another file. A narrative document that says *"the live queue is
+`docs/CURRENT_SPRINT.md`"* cannot be wrong about the queue. Prefer moving a fact to its owning L document and pointing
+at it over repeating it.
+
+**S and A are not failures.** A dated snapshot that says what it is costs nothing and is often the most valuable thing
+in the tree. The failure mode is a snapshot that *reads as current* — which is why both classes must announce
+themselves, and why the checks below enforce exactly that and nothing else about their content.
+
+## 2. What the registry covers
+
+The table in §3 must account for every `.md` file in these locations, one row each:
+
+- the repository root: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `THIRD_PARTY_NOTICES.md`
+- `docs/*.md`, `docs/parity/*.md`, `docs/story/*.md`, `docs/archive/*.md`
+
+Everything else is classified **by location**, and needs no row:
+
+- `docs/research/**` — **S**. A research note is a dated investigation. Supersede, never rewrite.
+- `docs/superpowers/specs/**` and `plans/**` — **S**. A spec is what was decided that day; the plan's `## Outcome`
+  is where it is reconciled. Their filenames carry the date already.
+- `docs/audits/**` — **S**, dated in the filename by convention.
+- `third_party/**`, `server/horizon-server/**` — vendored. Not ours to maintain; do not edit to match our tree.
+- `tools_py/**/README.md`, `tests/fixtures/**/README.md` — **S**, owned by the fixture or tool beside them.
+
+A new document in a covered location with no row **fails the suite**. That is the point: the registry is how a
+document gets a class, and an unclassified document is one nobody has decided the rules for.
+
+## 3. The registry
+
+| Path | Class | Owner | Note |
+|---|---|---|---|
+| `README.md` | **L** | controller | The public front page. Its "Works / Not yet" table is a live claim and is the highest-stakes row here — a stranger reads it before anything else |
+| `CONTRIBUTING.md` | **C** | controller | |
+| `SECURITY.md` | **C** | controller | The "known, unfixed" section is live in spirit; review it whenever the network path changes |
+| `THIRD_PARTY_NOTICES.md` | **G** | licence test | A test fails on a dependency, vendored directory or release DLL without a row |
+| `docs/STATUS.md` | **L** | controller | **Only the "Current state" block is live.** Everything under it is a dated log, newest first, and is class S by paragraph — an entry keeps the numbers it was written with, on purpose. This is why STATUS is exempt from the single-source count rule |
+| `docs/KNOWN.md` | **L** | every task | Proven vs believed, with the artefact for each. **It wins on any disagreement.** The model this schema is generalised from |
+| `docs/CURRENT_SPRINT.md` | **L** | controller | The live queue and the road to the next tag |
+| `docs/HANDOFF.md` | **L** | controller | What a new controller reads first. Holds the **ruling counter**, checked mechanically |
+| `docs/HUMAN_TASKS.md` | **L** | controller | The owner's queue |
+| `docs/DEVELOPING.md` | **L** | controller | **Owns the suite counts.** No other registered document may state them |
+| `docs/story/PICTURES.md` | **L** | story | The inventory of what `STORY.md` shows; the citation test keeps them honest |
+| `docs/KNOBS.md` | **G** | `tools_py.knobs` | Generated from `ps2x/knobs.h`; a test fails on a stale row, an unregistered read or a row nothing reads |
+| `docs/LADDER.md` | **G** | `ladder_ledger.py` | One row per scheduled ladder run, written from `logs/ladder/ledger.jsonl`, committed by a person |
+| `docs/ROADMAP.md` | **N** | controller | Narrative and pointers only. Rewritten 2026-09-22; its §0 is the audit of what it replaced |
+| `docs/STORY.md` | **N** | story | Every entry cited; `tools_py/story/cite.py` fails on a dead hash or an unwitnessed run |
+| `docs/GIT_STRATEGY.md` | **C** | controller | Branches, slices, releases. Carries the sprint-close step that invokes this file |
+| `docs/LOOP_PROMPT.md` | **C** | controller | **Carries no state at all** — the model for C. Rewritten 2026-09-20 after the old one aimed the loop at Sprint 6 for six days |
+| `docs/PLAYTEST.md` | **C** | controller | The owner's one-sitting script |
+| `docs/DOC_MAINTENANCE.md` | **C** | controller | This file |
+| `docs/story/release-entry.template.md` | **C** | story | A template |
+| `docs/AUDIT-2026-09-17.md` | **S** | — | Sprint 6's ledger. Dated in the filename |
+| `docs/process-audit.md` | **S** | — | Written 2026-09-12, end of Sprint 4. Says so in its first line; it should move to `docs/audits/` at the next tidy |
+| `docs/parity/REPORT.md` | **S** | — | One parity run from 2026-09-07. Banded 2026-09-22 — it had read as the project's parity status for fifteen days |
+| `docs/parity/NOTES.md` | **S** | — | Dated spike notes, append-only |
+| `docs/archive/README.md` | **A** | — | |
+| `docs/archive/ROADMAP-sprint-4-to-sprint-7.md` | **A** | — | Fifteen files cite it; every `ROADMAP.md §N` written before 2026-09-22 means this file |
+| `docs/archive/CURRENT_SPRINT-to-sprint-8.md` | **A** | — | |
+| `docs/archive/HANDOFF-reference-to-2026-09-13.md` | **A** | — | |
+| `docs/archive/HANDOFF-2026-09-08.md` | **A** | — | Banded 2026-09-22 |
+| `docs/archive/HANDOFF-AUDIT-2026-09-14.md` | **A** | — | Banded 2026-09-22 |
+
+## 4. What is enforced mechanically
+
+`tools_py/tests/test_doc_maintenance.py`, in the Python suite, so it runs in CI and needs no build. Five checks, each
+aimed at a rot mechanism that actually bit this project:
+
+1. **Registry completeness** — every covered file has exactly one row; every row points at a file that exists. *Catches
+   a new document nobody classified, and a row left behind by a move.*
+2. **The ruling counter** — `docs/HANDOFF.md`'s "Next free ruling number: R\<n\>" must be exactly `max(R<n>) + 1` over
+   the live documents. *Catches the R179-against-R241 collision, which had already happened once.*
+3. **Single-source suite counts** — `Total Tests: <n>`, `Ran <n> tests` and `<n>/<n>` baselines may appear only in
+   `docs/DEVELOPING.md`. S and A documents are exempt (they are records), and `docs/STATUS.md` is exempt by the §3
+   note. *Catches the 686/686 defect, in all four places it had reached.*
+4. **Snapshots are dated** — every S file has a date in its filename or in its first fifteen lines. *Catches a
+   `REPORT.md` that reads as the current report.*
+5. **Archives announce themselves** — every A file says "archived" or "superseded" in its first fifteen lines.
+   *Catches an archive that reads as live.*
+
+Run it by hand with `python -m tools_py.docmaint`, which prints the registry size, the ruling numbers and every problem.
+
+**Each check is fired once against a planted defect** (`PlantedDefectsTest`: an unregistered document, a row whose file
+is gone, a colliding ruling number, two counter lines that disagree, an undated count, an undated snapshot, a silent
+archive — plus the three negative controls that must *not* fire, and a clean-tree control for the controls). A gate
+that has never failed is not known to work, and this one found two real defects and one bug in its own test on the day
+it was written.
+
+**A limitation, stated rather than hidden.** Check 3 guarantees a count has *one home and a date*; it cannot tell
+whether the number in that home is still right — the only way to know is to run the suite, which is §5 step 2's job.
+This was demonstrated the hour the check was written — on 2026-09-22 the suite came back `Ran 1832 tests` while
+`DEVELOPING.md` still carried the previous day's number. That is why the Python row now says **`OK`, with no failures, is the bar** and treats
+the count as a dated fact that only grows. Prefer a bar a reader can check over a number they must match.
+
+**What is deliberately *not* enforced.** Nothing here fails on a calendar. A test that reddens because a week has
+passed gets disabled within a fortnight, and a disabled check is worse than no check because it reads as coverage.
+Cadence is §5, a human step with a stamp. Likewise, "an N document contains no live state" is only half mechanical —
+the count half is check 3; the rest is a reading, and §5 is where it happens.
+
+## 5. The sprint-close review
+
+**A sprint does not close until this has run and its result is written into the close-out commit.** It is a step in
+`docs/GIT_STRATEGY.md`'s close-out, not an optional tidy. Budget: under an hour; it is mostly reading.
+
+1. **`python -m tools_py.docmaint`** — exit 0. If it fails, fix the document, not the check.
+2. **Every L document, read for truth**, in this order — `KNOWN.md` (it is audited per task, so this is a spot check),
+   `CURRENT_SPRINT.md`, `HANDOFF.md`, `HUMAN_TASKS.md`, `STATUS.md`'s Current state block, `DEVELOPING.md`,
+   `README.md`. For each, three questions: *is every claim still true; is anything the sprint closed still listed as
+   open; is anything the sprint opened missing?*
+3. **`README.md` gets its own pass**, because it is the only one a stranger reads and the only one where being *behind*
+   is as damaging as being wrong. Walk the "Works / Not yet" table row by row against `KNOWN.md`.
+4. **Every N document, read for live state that has crept in.** A number, a task list, a "next", an instruction to go
+   and edit another file: move it to its L document and leave a pointer.
+5. **Anything superseded this sprint moves to S or A** with a banner naming what replaced it. A document that is
+   *wrong* is archived, never quietly deleted — things cite it.
+6. **Stamp this file's "Last full review" line** with the date and the sprint, and name in the close-out commit what
+   the review changed. A review that changed nothing says so explicitly; that is a result too.
+
+**When a document is found wrong, record the wrongness, not just the fix.** The audit table in `ROADMAP.md` §0 is the
+pattern: what was claimed, what is actually true, how long it had been wrong. That is the only way the next review
+knows which documents to distrust.
+
+## 6. Rules for writing, so there is less to maintain
+
+- **A fact has one home.** Before writing a number, ask which document owns it and link there instead. Four documents
+  held the suite count; one was right.
+- **Prefer a pointer to a copy**, and prefer a generated file to either. `KNOBS.md` and `LADDER.md` have never been
+  wrong, because nobody writes them.
+- **A document that tells agents what to do is code.** It gets audited like code. `LOOP_PROMPT.md` is opened first by
+  every iteration, so it carries no state; `HANDOFF.md` must carry state, so its one dangerous number is now tested.
+- **Date anything that is a moment.** A filename date costs nothing and makes the class obvious at a glance.
+- **Supersede in place, never rewrite history.** Blockquote the old claim, say what replaced it, keep the text. The
+  archived roadmap is readable *because* its wrong turns are still in it.
+- **If a claim cannot be checked, do not make it.** "The game runs well" ages badly; "43-45 fps in a mission,
+  measured on <date>, against the console's 60" does not — it simply becomes a dated fact.

@@ -57,6 +57,13 @@ close-out block from `docs/CURRENT_SPRINT.md`; merge with a **merge commit** (no
 record the rulings, KNOWN rows and the progress story cite by hash). Outside PRs to `main` are **squash-merged** (one
 commit per contribution, the PR number in the subject).
 
+**Before that PR is opened, the documentation review in `docs/DOC_MAINTENANCE.md` §5 must have run**, its "Last full
+review" line must be stamped with this sprint, and the close-out commit must say what it changed (a review that
+changed nothing says so). `python -m tools_py.docmaint` exits 0 is the mechanical half and the suite enforces it; the
+reading of the live documents is the half that matters, and is the reason the roadmap was two sprints and two wrong
+instructions out of date when it was finally audited on 2026-09-22. **A sprint that has not had its documentation
+review is not closed.**
+
 ## 3. Commits
 
 - **Explicit pathspec, always:** `git commit -m "..." -- <paths>`. Never `git add -A`, never a bare `git commit` after

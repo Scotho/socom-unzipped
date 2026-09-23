@@ -9,10 +9,17 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 repository another person can fork, build and contribute to.
 
 ```
-branch:       sprint-10 (off main at 4415254 = the Sprint 9 merge, tagged v0.9.0, 2026-09-20; develop is deleted)
-spec:         docs/superpowers/specs/2026-09-19-sprint-9-a-strangers-first-run-design.md
-plans:        docs/superpowers/plans/2026-09-19-sprint-9-goal-1-*.md (done), 2026-09-20-sprint-9-goal-2-*.md (done),
-              2026-09-20-sprint-9-goal-3-knob-retirement.md (written, NOT started; see Q2 before touching it)
+branch:       sprint-10 -- CLOSED 2026-09-23, pending the merge to main and the tag v0.10.0 (off main at 4415254 =
+              the Sprint 9 merge, tagged v0.9.0, 2026-09-20; develop is deleted). See "Sprint 10 -- CLOSED" below.
+spec:         docs/superpowers/specs/2026-09-20-sprint-10-console-players-and-it-stays-up-design.md
+              (Sprint 9's spec, 2026-09-19-sprint-9-a-strangers-first-run-design.md, closed with v0.9.0)
+plans:        docs/superpowers/plans/2026-09-22-sprint-10-close.md (the close, R241-R244);
+              2026-09-20-sprint-9-goal-3-knob-retirement.md (DONE 2026-09-21 as Q2; its own Rulings section holds
+              R203-R209); the Sprint 9 goal-1 and goal-2 plans are done; the sprint's other plans are listed with
+              their chunks below.
+next sprint:  docs/superpowers/plans/2026-09-23-sprint-11.md -- eighteen tasks across milestones S (the chat hole),
+              U (upstream and external), R (r0004 groundwork), P (the public repository), with eight owner decisions
+              and the default each one proceeds on. Its branch opens after the Sprint 10 merge.
 human tasks:  docs/HUMAN_TASKS.md      playtest script: docs/PLAYTEST.md
 sprint 10:    OPENED 2026-09-20 on the owner's instruction ("proceed on with the next sprint") while Sprint 9's
               milestone Q is CARRIED -- spec docs/superpowers/specs/2026-09-20-sprint-10-console-players-and-it-stays-up-design.md,
@@ -21,8 +28,17 @@ sprint 10:    OPENED 2026-09-20 on the owner's instruction ("proceed on with the
               develop deleted, this branch opened. Q0b, Q1b-Q7 carry into Sprint 10 as filler unless the owner reorders;
               no GitHub release (Sprint 11 / D2, owner-only).
 git strategy: docs/GIT_STRATEGY.md     contributing: CONTRIBUTING.md
-next ruling:  R241 (R236-R240 are the 2026-09-22 playthrough's -- the launcher defaults to 640x448, the prefilled login leaves the player path, a player build must be able to explain its own audio and saves, the online blop is charged to bank 0xa00000 until the mute A/B says otherwise, the join driver refreshes the list and takes a channel -- below, under "The playthrough, 2026-09-22"; R230-R235 are the disc chain's -- the expectations file holds whole-file digests in the tree, a differently shaped image is a note not a refusal, the DNAS addresses are recorded, the extracted tree is size-verified, CONTRIBUTING may say the game build is supported on one disc's evidence -- in docs/superpowers/plans/2026-09-21-sprint-10-disc-to-elf.md; R229 is free; R222-R228 are Q7's -- in docs/superpowers/plans/2026-09-21-sprint-10-q7-residuals.md; R218-R221 are Q5's -- closed without a launch, R113 stands with a corrected meaning, the HLE's status sequence stays, the one launch worth making is a peek of the controller preset's talk slots -- in docs/superpowers/plans/2026-09-21-sprint-10-q5-headset-button.md; R210 is Q3's -- the keyboard's gameplay mapping survives in developer mode only, menus and typing for a player -- in docs/superpowers/plans/2026-09-21-sprint-10-q3-mouse-leaves-keyboard-narrowed.md; R211-R217 are Q4's -- in docs/superpowers/plans/2026-09-21-sprint-10-q4-launcher-rest.md, renumbered from the agent's R210-R216; R210 is reserved for Q3's keyboard ruling; R209: Q2's Task 8 VM ring deferred to the sprint close, CI is the Linux ring, the VM stays off; R208 is the flip's: the knobs line redacts PS2X_SOCOM2_LOGIN_PASS at the source; R203-R207 are Q2's -- PS2X_DEV below the env pin, PS2X_INPUT_MAPPING the 18th shipping name, PS2X_LAUNCHER_API_BASE a dev knob, the helper-getenv check, path knobs constrained to the game folder -- in docs/superpowers/plans/2026-09-20-sprint-9-goal-3-knob-retirement.md; R200-R202 are Goal 9's -- the OSK prefill is a runtime replaceFunction wrap, not a toml stub, so no recompile; the persona name keeps the keyboard's whole character set; the password is capped at 12 -- in docs/superpowers/plans/2026-09-20-sprint-10-goal-9-online-credentials.md; R193-R199 are Goal 8/Q3b's -- the mapping per profile and a default not written nor sent, the environment string whole-or-nothing, the keyboard data but not rebindable, sticks and Triangle pressure outside the table, presets = per profile, bind on release with B held to cancel, the section switch is state not a setting -- in docs/superpowers/plans/2026-09-21-sprint-10-goal-8-controller-mapping.md; R189-R192 are Q6's -- absorb-and-re-anchor, Present droppable at the cap on a latched stall, the bounds, no launch from the agent's branch -- in docs/superpowers/plans/2026-09-21-sprint-10-q6-latched-stall-bound.md §5; R185-R188 are Q1b's pin rulings -- any drift refuses whatever --only asked, the harness is recorded never compared, an extra PS2X_* variable is a drift, the first mapping hash is refused until accepted -- in docs/superpowers/plans/2026-09-21-sprint-10-q1b-gate-pins.md §4; R184 is the mid-sprint merge to main, below; R181-R183 are the 2026-09-20 hardening rulings -- below, under "Sprint 10, reorganized"; R179-R180 are Sprint 10 Goal 9's, recorded in its plan: the password plain in config.json, and prefill-never-submit; R178 is Q0's conductor grains -- child sounds, registers, markers, from the open reference -- below; R177 is Q0's mix device buffer, 20 ms x 4, measured -- below; R176 is P4's ADVANCED section -- what went in it and what did not; R175 is P6's: the preset switch needs no launch and the server keeps advertising its IP -- below. R174 is Goal 12's split -- the mapping data path lands in Sprint 9 Q3, the UI is Sprint 10; R152-R168 are reserved by the Goal 3 plan; R169-R171 are Goal 10's music fixes, COMMITTED in `eca5450`; R172 is Goal 10's declined proposal -- the concurrency cap, not taken, waiting on Q1's instrument; R173 is P3's, the pad display staying live while the game runs)
-baselines:    C++ 686/686, Python 1457 OK, `PS2X_TEST_REPEAT=3 ./build.sh test` exit 0, CI green at `7de8492`; last gates: `s9_q0_children_gate` (3/3 on the runtime as merged, exe sha256 b3abebd5...), `s9_q0_prefill_gate`, `s9_q0_device_gate`, `s9_q0_trace_gate`, `s9_p7_playtest_gate`; audio parity `s9_q1_parity_ours2` 31/48 (the check's first PASS is Sprint 10's to earn)
+next ruling:  R246 (R245, 2026-09-23: option B not scheduled -- the Sprint 11 plan's rulings section) -- nothing is renumbered. The sprint's sixty-four numbers R181-R244 are
+              reconciled row by row in ONE table below ("Sprint 10's rulings ledger, R181-R244"): the decision
+              in its own words, where it is written, and its status. R229 is deliberately vacant. This line used
+              to carry that index as a single 2,700-character paragraph, which no reader could use; the table is
+              its one home now, per docs/DOC_MAINTENANCE.md section 6.
+baselines:    the suite counts live in `docs/DEVELOPING.md` ("What a green run looks like") and nowhere else -- this
+              line said C++ 686/686 and Python 1457 from 2026-09-20 to 2026-09-22, four sprints after they stopped
+              being true, which is why `tools_py/tests/test_doc_maintenance.py` now refuses an undated count outside
+              that file. `PS2X_TEST_REPEAT=3 ./build.sh test` exit 0; last gates: `s9_q0_children_gate` (3/3 on the
+              runtime as merged, exe sha256 b3abebd5...), `s9_q0_prefill_gate`, `s9_q0_device_gate`,
+              `s9_q0_trace_gate`, `s9_p7_playtest_gate`; audio parity `s9_q1_parity_ours2` 31/48
 ```
 
 Markers used below: **[A]** autonomous; **[O]** the owner's hands, ears, money or decision; **[B: x]** blocked on x.
@@ -30,6 +46,191 @@ Markers used below: **[A]** autonomous; **[O]** the owner's hands, ears, money o
 long builds); "lock-free" can run at any time.
 
 ---
+
+## The close, 2026-09-22 evening → 2026-09-23 morning (the owner's twelve-hour mandate)
+
+**The owner, 2026-09-22 ~22:10:** *"save the human tasks for later, agreed on the rest, and proceed with all remaining
+sprint 10 work and finish sprint 10 with my authority and your best judgement. Once that's done, formalize and begin
+sprint 11 autonomously … You have the computer for the next 12 hours and are free to use as many agents or workflows
+as needed."* The plan is `docs/superpowers/plans/2026-09-22-sprint-10-close.md` (eight tasks: the fix wave's queued
+runs, the ladder streak to 7, Goal 3's tasks 5 and 7, Goal 4 scoped, the VM ring if time allows, H7 carried, Q8 the
+close with the tag `v0.10.0`, Sprint 11 opened) and its rulings R241–R242. **Owner-only items are parked in
+HUMAN_TASKS and not waited on.** Also in flight: the owner's ruling relayed by session socom-pc-09 that four
+external-repo items (upstream PR #244's real-IRX IOP — the owner: *"the audio issues are actually not resolved"* —
+the cherry-pickable GS/VIF/SIF PRs, the SOCOM 1 demo symbols, the MrCoolTheCucumber fork) join the plan; R241 puts
+them in Sprint 11 as milestone U and hands item 1 to that session in worktree `wt-upstream` now.
+
+### Sprint 10 — CLOSED 2026-09-23 (the tag `v0.10.0` and the merge are the close's last step)
+
+**What landed on the night of the mandate.** Chain 1 ran five launches back to back and every one of them produced a
+result:
+
+| # | Run | Verdict |
+|---|---|---|
+| 1 | the endpoint A/B, first attempt | **rc=5, refused to score** -- the per-app routing fix was not in yet, so the capture was still on the JBL and `endpoint_ab.sh` did what it was built to do rather than score an un-rerouted run |
+| 2 | W10 launch 1 (virgin card, persona created) | **rc=0** -- persona `w10test` created on an empty card, SAVE PASSWORD answered LEFT and read back yes, `LOBBY class=ok`, the card left holding `BASCUS-97275SOCOMII/SaveGame0-6` |
+| 3 | W10 launch 2 (nothing typed) | **rc=4, `LOBBY-FAIL login:saved-password:empty`** -- the persona survived the restart, the saved password did not |
+| 4 | W7, the walking mission capture | **rc=0** -- 47 DEVICE dips over 21 minutes at the JBL (peak 31 in one minute), absent from the mixer's dump: the same lead, superseded hours later by the A/B |
+| 5 | W6, the revalidate A/B | **rc=0, NOT REPRODUCED** -- ten identical, clean popups across both twelve-minute walks, the owner's "Headquarters has provided you with some HELP" among them |
+
+**The endpoint A/B's verdict (02:43Z, chain 2, on the re-routed endpoint).** `wired 14 DEVICE dips against Bluetooth
+11 over sixteen minutes` -- the dips **survive** a wired device (`logs/parity/endpoint_ab_20260922_232644`). They are
+ours, after the mixer's dump point and endpoint-independent. Three places in `docs/KNOWN.md` that blamed the owner's
+Bluetooth speaker are retracted in place, and the live question is now what loses ~50 ms between `render()` and the
+dump's write.
+
+**W10's verdict, and R237 rewritten.** The persona survives a restart on a virgin card; the saved password does not.
+**The prefilled login therefore stays in the player path** -- see the rewritten R237 block below. Two candidates
+remain (a password written only on a clean exit, which the driver's kill skips; or our card HLE losing it) and one
+launch with a clean exit settles them.
+
+**W6 is neither confirmed nor cleared.** The walk never reaches the church, which is where the owner saw the garbled
+atlas, and the mission capture writes no environment dump, so the `PS2X_GS_NO_TEX_REVALIDATE=1` half of the A/B is
+unproven from the artefact. Both are carried.
+
+**W8 needs no run of its own (R244).** The join driver's R240 path -- REFRESH LIST before JOIN GAME, then a channel
+-- is exercised by every ladder run, so ladder runs 5-7 prove it and the two-instance self-join was dropped rather
+than scheduled.
+
+**The ladder streak:** `**7 of 7** (runs 5, 6 and 7 KILL on 2026-09-23 at 03:03Z, 03:36Z and 04:21Z, exe 3f3a5011; the bar "seven consecutive runs with no LOBBY-FAIL and no CRASH" met; `docs/LADDER.md` is the ledger)`.
+
+**Also tonight, outside the runs:** the loop lock was found to resolve to a *private* lock inside a worktree, so a
+build ran beside a running capture; fixed machine-wide in `9b39523` (the default follows git's common dir) and
+recorded as a standing hazard in `docs/KNOWN.md` §4 and in `docs/HANDOFF.md`'s worktree paragraph.
+
+**What carries to Sprint 11** (`docs/superpowers/plans/2026-09-23-sprint-11.md`, milestones S/U/R/P):
+
+- **Goal 4's per-map kill routes** -- [A] filler, by R242; the speed-freeze half is re-measured from existing logs.
+- **Goal 3's tasks 5 and 7** -- the parked-opponent row and "seen by the other" read from the peer entity.
+- **The VM ring** (Q2's Task 8, deferred here by R209) -- it did not run tonight; it is Sprint 11's Task 18 Step 1,
+  with the times recorded in `docs/DEVELOPING.md` beside the Windows numbers.
+- **H7's two decisions** -- the owner's, in `docs/HUMAN_TASKS.md`'s morning block with the eight Sprint 11 defaults.
+- **The mission music's DEVICE dips**, as a Sprint 11 audio item: a capture that stamps the mixer's output-frame
+  clock on both the dump and the endpoint recording, plus the per-minute DEVICE count pinned into the audio gate.
+- **W6 over a route that reaches the church**, which needs the owner's route in stick directions.
+- **The capture's environment dump** -- every capture used as evidence writes its `PS2X_*` beside its output, the way
+  the gate's pins do (R185-R187).
+
+#### Standing backlog, carried from the roadmap 2026-09-23 (filler; no sprint owns these)
+
+Moved here verbatim from `docs/ROADMAP.md` §6, which is class N and may hold no task list. Nothing here is
+scheduled: these are the items a sprint takes when it has lock-free time and nothing better ranked. Two of them
+already have live homes and are repeated here only so the queue is in one place -- item 4's online freeze and item
+7's voice peek (R221) are both `docs/KNOWN.md` §2 rows with their experiments attached. Two have survived three
+sprints without an owner.
+
+1. **The EE soft-double chain** (`litodp -> dpmul -> dpdiv -> exp -> dptofp`) against host `double`, and a faithful
+   `__ieee754_rem_pio2f` port against a reference. Open and unowned since 2026-09-12.
+2. **HLE audit leg three** -- consumer readings for research/20's flagged rows. Never started.
+3. **The gameplay-state correctness probe** as the gate's correctness leg. Never built.
+4. **The online freeze root cause** -- research/29's **shape 2** (`socom2_libnetb::waitReadable` blocking the EE
+   executor for up to 10 s, not excluded from the guest clock) is still a live candidate; the CLUT and clock fixes
+   addressed a different freeze. It needs a peer that stops sending, and the mixed match that can produce one now
+   runs **both ways** on the hosted server (Sprint 10 Goal 3) -- so this is testable in a way it was not when
+   research/29 was written.
+5. **The live teleport count.** The single-player turn teleport itself is **fixed and proven** (`a81eb74`,
+   2026-09-15: our `sceGsExecLoadImage`/`StoreImage` HLE multiplied the BITBLTBUF block pointer by 8, smearing the
+   motion-pack restore) -- *not* by the root-motion trace the archived roadmap planned, which is worth recording as
+   another finding-A case. What is still owed is the `rx`-hold teleport count from the guest-value probe, which is
+   item 3's instrument and lands with it.
+6. **The transition residual strip** and **the intro-cinematic freeze** -- both still *believed*, both still with the
+   experiment that would settle them unrun (`docs/KNOWN.md` §2).
+7. **Voice** -- R221: one peek of `0x4415c4/0x4415c5` in a live round says whether the talk slot is bound at all.
+8. **Multiplayer security** -- `SECURITY.md`'s known, unfixed item. The largest gap between what the project is and
+   what its README has to warn about. Sprint 11's milestone S closes the one reported hole on both sides.
+
+**One citation that does not resolve in this tree:** R243 cites `docs/research/40-upstream-divergence.md`, which lives
+on branch `agent/upstream` (`83c02d9`) and has not been merged forward. `docs/research/41-cucumber-fork.md` is here
+(`18b8c78`). Merging `agent/upstream` is milestone U's first act in Sprint 11.
+
+#### Sprint 10's rulings ledger, R181-R244 (reconciled at the close; this table is the one home)
+
+Sixty-four numbers, sixty-three rulings: **R229 is deliberately vacant** -- it was declared free in words when Q4's
+rulings were renumbered to R211-R217, and no decision was ever issued under it. Nothing here is renumbered. The
+working notes behind this table are `.superpowers/sdd/2026-09-22-sprint-10-close/report-rulings.md`.
+
+| R | The decision (its own key words) | Where it is written | Status |
+|---|---|---|---|
+| R181 | "secret scanning, push protection and Dependabot alerts are **ON**", turned on by the controller under the owner's words | this file, "Rulings (R181-R183)" | stands |
+| R182 | "rulesets on `main` and `sprint-*` … with one deviation: **no CODEOWNERS review** required and no bypass" | this file, "Rulings (R181-R183)" | stands |
+| R183 | "the leak check is the monitor's rules **adapted for a SOURCE tree**, not copied" | this file, "Rulings (R181-R183)" | stands |
+| R184 | "**the mid-sprint merge to `main`**" -- the hardening and the developer setup reach `main` before the sprint closes | this file, Sprint 10 reorganized | stands (merged `92b92c6`, PR #6) |
+| R185 | "any drift **refuses**, whatever `--only` asked for" | `plans/2026-09-21-sprint-10-q1b-gate-pins.md` §4 | stands |
+| R186 | "the harness is **recorded, never compared**" | `plans/2026-09-21-sprint-10-q1b-gate-pins.md` §4 | stands |
+| R187 | "an operator's extra `PS2X_*` variable **is a drift**" | `plans/2026-09-21-sprint-10-q1b-gate-pins.md` §4 | stands |
+| R188 | "the first run that prints a mapping hash is **refused until accepted**" | `plans/2026-09-21-sprint-10-q1b-gate-pins.md` §4 | stands |
+| R189 | "the state stream is **absorbed, not waited on**" on a latched stall; re-anchor when the window comes back | `plans/2026-09-21-sprint-10-q6-latched-stall-bound.md` §5 | stands |
+| R190 | "`Present` is **droppable at the cap** on a latched stall" | `plans/2026-09-21-sprint-10-q6-latched-stall-bound.md` §5 | stands |
+| R191 | "the bounds: **512 rectangle pieces, 8 per key, 256 palettes, 4 MB**" | `plans/2026-09-21-sprint-10-q6-latched-stall-bound.md` §5 | stands |
+| R192 | "**no launch from this branch**" -- the gate and the stall run are the controller's | `plans/2026-09-21-sprint-10-q6-latched-stall-bound.md` §5 | stands |
+| R193 | "the mapping is **per profile**, and a default mapping is **not written and not sent**" | `plans/2026-09-21-sprint-10-goal-8-controller-mapping.md` | stands |
+| R194 | "the environment string is **the whole table or nothing**" | `plans/2026-09-21-sprint-10-goal-8-controller-mapping.md` | stands |
+| R195 | "the keyboard table is **data but not rebindable** from the page" | `plans/2026-09-21-sprint-10-goal-8-controller-mapping.md` | stands |
+| R196 | "the sticks and Triangle's pressure are **not in the table**" | `plans/2026-09-21-sprint-10-goal-8-controller-mapping.md` | stands |
+| R197 | "'per-profile presets' is read as **the mapping saved per profile, nothing more**" | `plans/2026-09-21-sprint-10-goal-8-controller-mapping.md` | stands |
+| R198 | "**bind on RELEASE, B held cancels, a tap of B binds B**" | `plans/2026-09-21-sprint-10-goal-8-controller-mapping.md` | stands |
+| R199 | "the section switch is **launcher state, not a setting**" | `plans/2026-09-21-sprint-10-goal-8-controller-mapping.md` | stands |
+| R200 | "the override is a runtime **`replaceFunction` wrap**, not a `recomp/socom2.toml` stub; **no recompile**" | `plans/2026-09-20-sprint-10-goal-9-online-credentials.md` | stands |
+| R201 | "the persona name keeps **every character the game's keyboard has**" | `plans/2026-09-20-sprint-10-goal-9-online-credentials.md` | stands |
+| R202 | "the password is **capped at 12** in the launcher" | `plans/2026-09-20-sprint-10-goal-9-online-credentials.md` | stands |
+| R203 | "`PS2X_DEV` enters the harness **below the gate's env pin**, and the pin is **not widened** for it" | `plans/2026-09-20-sprint-9-goal-3-knob-retirement.md` | stands |
+| R204 | "`PS2X_INPUT_MAPPING` is **the eighteenth Shipping name**" | `plans/2026-09-20-sprint-9-goal-3-knob-retirement.md` | stands -- and `docs/KNOBS.md` (generated) is the one home of the counts; two L documents that said 151/20 were corrected at this close |
+| R205 | "`PS2X_LAUNCHER_API_BASE` is a **Dev** knob read through `ps2x::knob`" | `plans/2026-09-20-sprint-9-goal-3-knob-retirement.md` | stands |
+| R206 | `SchedTrace.cpp`'s two later helpers "are **migrated under rule 2**"; a no-raw-`getenv` check joins `test_knobs_registry` | `plans/2026-09-20-sprint-9-goal-3-knob-retirement.md` | stands |
+| R207 | "Every **Path-kind** knob is constrained to the portable folder, or refused -- **but not in this pass**" | `plans/2026-09-20-sprint-9-goal-3-knob-retirement.md` | stands; its work is still queued |
+| R208 | "the `[knobs]` line **never writes a credential's value**: `PS2X_SOCOM2_LOGIN_PASS` is printed as `[redacted]`" | `plans/2026-09-20-sprint-9-goal-3-knob-retirement.md` | stands |
+| R209 | "Q2's **Task 8 VM ring deferred** to the sprint close, **CI is the Linux ring**, the VM stays off" | road-table row 6 below, which carries its parenthetical ("R209 deferred it here") | stands -- it has no written block of its own; the VM ring did not run at the close and carries to Sprint 11 Task 18 |
+| R210 | "the keyboard's **gameplay mapping** is honoured **only in developer mode**" | `plans/2026-09-21-sprint-10-q3-mouse-leaves-keyboard-narrowed.md` | stands; made, and Q3 merged `0c172a6` |
+| R211 | "while the game runs the pad drives the launcher **NEVER**; the switch is the one button" | `plans/2026-09-21-sprint-10-q4-launcher-rest.md` | stands |
+| R212 | "the switch is **a binding, in BUTTONS**, with OFF beside it; **the guide by default**" | `plans/2026-09-21-sprint-10-q4-launcher-rest.md` | stands |
+| R213 | "an Xbox pad's guide button is read from **XInput's ordinal 100** on Windows" | `plans/2026-09-21-sprint-10-q4-launcher-rest.md` | stands |
+| R214 | "**no header bar on the game window in this pass**" | `plans/2026-09-21-sprint-10-q4-launcher-rest.md` | stands; deliberately not done |
+| R215 | the game window's title is "&lt;game&gt; -- SOCOM Unzipped" and "the harness's key moved with it" | `plans/2026-09-21-sprint-10-q4-launcher-rest.md` | stands |
+| R216 | "the launcher's cues play at **0.45 of their rendered level**, and the setting lives on AUDIO" | `plans/2026-09-21-sprint-10-q4-launcher-rest.md` | stands |
+| R217 | "the cache is **keyed by content, not by path**" | `plans/2026-09-21-sprint-10-q4-launcher-rest.md` | stands |
+| R218 | "**Goal 4 is closed on its own stop rule, without a launch**" | `plans/2026-09-21-sprint-10-q5-headset-button.md` | stands |
+| R219 | "Sprint 8's **R113 stands with its meaning corrected**, and the HLE is not changed for it" | `plans/2026-09-21-sprint-10-q5-headset-button.md` | stands (it corrects R113, outside this range) |
+| R220 | "the HLE's state word **stays at '1 once, then 2'**" | `plans/2026-09-21-sprint-10-q5-headset-button.md` | stands |
+| R221 | "the one launch worth making is **a peek, not a proof**" | `plans/2026-09-21-sprint-10-q5-headset-button.md` | stands; still queued |
+| R222 | "the console-replay case runs wherever `game/console_replay` exists and **says 'skipped' where it does not**" | `plans/2026-09-21-sprint-10-q7-residuals.md` | stands |
+| R223 | "the card's cluster count is walked **once per game-side change, not per poll**" | `plans/2026-09-21-sprint-10-q7-residuals.md` | stands |
+| R224 | "a card root that cannot take a file **answers 'no card' and leaves exit 72**" | `plans/2026-09-21-sprint-10-q7-residuals.md` | stands |
+| R225 | "a write past the card's capacity is **refused whole with `sceMcResFullDevice` (-3)**" | `plans/2026-09-21-sprint-10-q7-residuals.md` | stands |
+| R226 | "the microphone resampler walks the product **`phase + step * k`, not a running sum**" | `plans/2026-09-21-sprint-10-q7-residuals.md` | stands |
+| R227 | "the stub helpers live in **namespace `stub_support`** with a global using-directive in the header" | `plans/2026-09-21-sprint-10-q7-residuals.md` | stands |
+| R228 | "the synthetic Linux packaging test asserts the **executable bit on Linux only**" | `plans/2026-09-21-sprint-10-q7-residuals.md` | stands |
+| R229 | -- | this table, and nowhere else since 2026-09-23 (it was declared free in words in the index line this table replaced) | **deliberately vacant**: no ruling was ever issued under this number. It is not missing and it is not reused |
+| R230 | "the expectations file holds **sha256 digests of whole game files, in the tree**" | `plans/2026-09-21-sprint-10-disc-to-elf.md` | stands |
+| R231 | "a difference in the image's *shape* is **a note, not a refusal**" | `plans/2026-09-21-sprint-10-disc-to-elf.md` | stands |
+| R232 | "the four **DNAS cipher addresses are recorded rather than derived**" | `plans/2026-09-21-sprint-10-disc-to-elf.md` | stands |
+| R233 | "the extracted tree is **verified by size** against the image's own directory records" | `plans/2026-09-21-sprint-10-disc-to-elf.md` | stands |
+| R234 | "`CONTRIBUTING.md` now says **the game build is supported**, on the evidence of one disc image on one machine" | `plans/2026-09-21-sprint-10-disc-to-elf.md` | stands |
+| R235 | "the from-nothing run **reused the toolchain archives** already in the main tree's bootstrap cache" | `plans/2026-09-21-sprint-10-disc-to-elf.md` | **closed** by the genuine clone-to-game run recorded below |
+| R236 | "the launcher's **default window is the game's own 640x448**" | this file, the R236 block | stands -- it **overturns R92**, Sprint 7's 2x default |
+| R237 | "the prefilled login leaves the player path" | this file, the R237 block | **REWRITTEN 2026-09-23 by W10**: the persona survives a virgin-card restart, the saved password does not, so **the prefill stays** until the clean-exit launch settles which side loses the write |
+| R238 | "a failure the player can see **must never be silent**"; `setMcCommandResultLocked` prints `[mc] command <n> FAILED …` in every build | this file, the R238 block | stands **as corrected in place** -- the first telling (reclassing two Dev knobs to Shipping) was wrong and the correction is kept beside it |
+| R239 | "the online blop was charged to bank `0x00a00000`'s one-shots" | this file, the R239 block | **withdrawn by its own A/B** -- the bank is cleared |
+| R240 | "the join driver **presses REFRESH LIST before JOIN GAME, and takes a channel**" | this file, the playthrough block | stands; landed in `00d8348`, and R244 proves its path through the ladder |
+| R241 | "the four external-repo items … **become Sprint 11 milestone U, early**" | `plans/2026-09-22-sprint-10-close.md` | stands |
+| R242 | "**Goal 4's per-map kill routes carry to Sprint 11 as [A] filler**; the speed-freeze half is re-measured from existing logs" | `plans/2026-09-22-sprint-10-close.md` | stands -- it supersedes road-table row 3 below |
+| R243 | "milestone U item 1's **step (b) is redefined as a differential test**, not a music-parity number" | `plans/2026-09-22-sprint-10-close.md` | stands; committed `564ef99`. Its citation `docs/research/40-upstream-divergence.md` is on `agent/upstream` |
+| R244 | "**W8's fallback run is not run separately**: the ladder streak proves the join driver's R240 path" | `plans/2026-09-22-sprint-10-close.md` | stands; committed `22d1900` |
+
+*Paths written `plans/...` are relative to `docs/superpowers/`; all others are from the repository root.*
+
+**Below R181, kept verbatim from the index line this table replaced** (they are Sprint 9's and earlier, and no part
+of this reconciliation): R179-R180 are Sprint 10 Goal 9's, recorded in its plan -- the password plain in
+`config.json`, and prefill-never-submit; R178 is Q0's conductor grains (child sounds, registers, markers, from the
+open reference), below; R177 is Q0's mix device buffer, 20 ms x 4, measured, below; R176 is P4's ADVANCED section --
+what went in it and what did not; R175 is P6's -- the preset switch needs no launch and the server keeps advertising
+its IP, below; R174 is Goal 12's split -- the mapping data path lands in Sprint 9 Q3, the UI is Sprint 10;
+R152-R168 are reserved by the Goal 3 plan; R169-R171 are Goal 10's music fixes, COMMITTED in `eca5450`; R172 is Goal
+10's declined proposal -- the concurrency cap, not taken, waiting on Q1's instrument; R173 is P3's, the pad display
+staying live while the game runs.
+
+**Three rulings changed state during the sprint and one changed state at the close:** R236 overturns R92 (Sprint 7);
+R238 was corrected in place after its first telling was shown false; R239 was withdrawn by the very A/B it asked for;
+and R237's premise was reversed by W10 on 2026-09-23. **Collisions: none. Missing: none.**
 
 ## The order, reworked 2026-09-20 (controller handoff)
 
@@ -157,19 +358,22 @@ and step 5b of `docs/LOOP_PROMPT.md`, so it outlives this controller. What stand
 
 | # | What | Whose | Cost |
 |---|---|---|---|
-| 1 | **The playthrough** and whatever it finds; each fix lands as its own slice | the owner tonight, then the loop | unknown until the notes come back |
-| 2 | **The ladder streak, 4 of 7** -- three more clean four-round runs against the hosted box | the loop, in away windows | ~35 min each, one at a time |
-| 3 | **Goal 4, per-map kill routes** for the sweep maps (the last big [A] item of this sprint) | the loop, away windows | hours of game runs |
-| 4 | **Goal 3's tasks 5 and 7** (the parked-opponent row; "seen by the other" read from the peer entity) | the loop | two mixed-match runs |
-| 5 | **H7's two decisions** (class A: the audio fixtures and the VU1 dumps; class C: the line on pictures of the game's art) | **the owner** | minutes to decide, then the loop does the work |
-| 6 | **Q2's Task 8 VM ring** (the Linux runtime rebuilt in the VM with the flip) -- R209 deferred it here | the loop | one VM session, the host quiet |
-| 7 | **Q8, the close** -- KNOWN audit, STATUS rewritten, the sprint's rulings reconciled into one list (R181-R235 is fifty-five), `PS2X_TEST_REPEAT=3 ./build.sh test`, a full gate on the close commit, the PR `sprint-10 -> main` as a merge commit, the annotated tag `v0.10.0` on it, `sprint-10` deleted, Sprint 11 opened | the loop | ~3 h of machine time |
+| 1 | ~~**The playthrough** and whatever it finds; each fix lands as its own slice~~ **DONE: the owner played on 2026-09-22.** The eight findings and R236-R240 are in "The playthrough, 2026-09-22" below; fix wave A took them in eleven chunks, two slices on `main`, and its last two runs (W6, W10) finished at the close | the owner, then the loop | paid |
+| 2 | **The ladder streak** -- the bar is seven consecutive clean runs (`docs/LADDER.md`, generated). It stood at 4 of 7 when this row was written; chain 2's run 5 was REFUSED (exit 75) at 02:43Z and the chain stopped by design, so the streak did not move on that attempt, and chain 3 relaunched runs 5-7 with a retry on 75. **The number at the close is in the "Sprint 10 -- CLOSED" block above**, which is also where R244 records that these runs are what prove W8 | the loop, in away windows | ~35 min each, one at a time |
+| 3 | ~~**Goal 4, per-map kill routes** for the sweep maps (the last big [A] item of this sprint)~~ **SUPERSEDED by R242 (2026-09-22): the routes carry to Sprint 11 as [A] filler and do NOT hold the tag**; the speed-freeze half is re-measured from existing logs | the loop, away windows | hours of game runs, in Sprint 11 |
+| 4 | ~~**Goal 3's tasks 5 and 7** (the parked-opponent row; "seen by the other" read from the peer entity)~~ **CARRIED to Sprint 11 at the close (2026-09-23): they did not run and they do not hold the tag** -- see the carry list in the "Sprint 10 -- CLOSED" block above | the loop | two mixed-match runs, in Sprint 11 |
+| 5 | ~~**H7's two decisions** (class A: the audio fixtures and the VU1 dumps; class C: the line on pictures of the game's art)~~ **CARRIED to Sprint 11 at the close (2026-09-23), and never waited on:** they are in `docs/HUMAN_TASKS.md`'s morning block as H7-A / H7-C, with "nothing moves" as the default the loop proceeds on | **the owner** | minutes to decide, then the loop does the work |
+| 6 | ~~**Q2's Task 8 VM ring** (the Linux runtime rebuilt in the VM with the flip) -- R209 deferred it here~~ **CARRIED to Sprint 11 at the close (2026-09-23): it did not run.** R209 deferred it to this close, the close did not pay it, and it is now Sprint 11's Task 18 Step 1, with its times recorded in `docs/DEVELOPING.md` beside the Windows numbers | the loop | one VM session, the host quiet |
+| 7 | **Q8, the close** -- KNOWN audit, STATUS rewritten, the sprint's rulings reconciled into one list (**R181-R244 is sixty-four numbers, sixty-three rulings** -- this row said "R181-R235 is fifty-five" until 2026-09-23; the reconciled list is the ledger table in the "Sprint 10 -- CLOSED" block above), `PS2X_TEST_REPEAT=3 ./build.sh test`, a full gate on the close commit, the PR `sprint-10 -> main` as a merge commit, the annotated tag `v0.10.0` on it, `sprint-10` deleted, Sprint 11 opened | the loop | ~3 h of machine time |
 
 **What carries to Sprint 11 rather than holding the tag** (the controller's proposal; the owner can overturn any of
 it): the two-machine match (needs a friend, carried since Sprint 7); Q7's six gate-scored performance residuals, which
 are written up with their measurements and are filler by definition; the stub-state header, back on the filler list
-with its finding; Goal 12's site wording (the site session's). **What does NOT carry:** the ladder streak, because
-"it stays up" is this sprint's title and 4 of 7 does not prove it.
+with its finding; Goal 12's site wording (the site session's). **What does NOT carry:** the ladder streak. "It stays up" is this sprint's
+title, so the bar -- seven consecutive clean scheduled-ladder runs -- is paid here or not at all. **This document does
+not hold the count:** it is `docs/LADDER.md`'s, generated from the run ledger, and the figure as it stood at the close
+is in the "Sprint 10 -- CLOSED" block above, filled in when the tag is cut. (This sentence carried an undated "4 of 7"
+until 2026-09-23.)
 
 ### The playthrough, 2026-09-22 (live, as the owner played; R236-R240)
 
@@ -205,12 +409,30 @@ the 640x448"), overturning Sprint 7 Task 1c's 2x default (R92). The runtime's de
 was already 640x448, so the launcher, the runtime and the parity gate now agree on one size; `1280x896` stays one
 click away on the VIDEO page. Done: `launcher_config.h`, three launcher tests, the knob's description, `docs/KNOBS.md`.
 
-**R237: the prefilled login leaves the player path.** The supported way in is the game's own -- a persona saved on the
-memory card with remember-password checked -- because the card save works (the owner's second launch proved it), which
-makes typing into the OSK redundant on the path a player takes. The prefill survives as a **Dev** knob because the
-drive scripts genuinely need it (it is how `online_login_ours` types a persona). The real work R237 creates is not
-the removal: it is proving that a persona and its remember-password flag survive a restart on a **virgin** card, which
-is the same save path that failed the owner on their first launch (finding 3).
+**R237, REWRITTEN 2026-09-23: the prefilled login STAYS in the player path, because the experiment the ruling set
+itself failed.** W10 ran overnight (chain 1, 01:43Z and 01:44Z) and split the question in two. Launch 1 booted from an
+empty card, created persona `w10test` with the SAVE PASSWORD widget answered LEFT (read back as yes), reached
+`LOBBY class=ok` and left the card holding `BASCUS-97275SOCOMII/SaveGame0-6` -- rc=0, `logs/parity/w10_virgin_a`.
+Launch 2 booted from that same card with **nothing typed** and failed `LOBBY-FAIL login:saved-password:empty` -- rc=4,
+`logs/parity/w10_virgin_b`. **The persona survives a restart on a virgin card; the saved password does not.** The
+game's own way in therefore does not yet reach the lobby unattended, so the prefill is not redundant and is not
+removed; it stays on the player path, and the two knobs are not reclassed.
+
+**The open question, and it is a fork with no evidence between its two arms:** either the game writes the password
+only on a clean exit, which the driver's kill skips, or our memory-card HLE (or the relaunch's read of it) loses that
+field. **What settles it** is one launch that creates the persona and then quits through the driver's own clean-exit
+path, followed by the same relaunch -- carried in `docs/KNOWN.md` §2 with that experiment attached.
+
+> **Superseded 2026-09-23** (the ruling as first written on 2026-09-22; kept because the reversal is the useful part
+> -- it assumed the card path was sound because the owner's second launch had worked, and the virgin-card proof it
+> demanded is exactly what failed):
+>
+> **R237: the prefilled login leaves the player path.** The supported way in is the game's own -- a persona saved on
+> the memory card with remember-password checked -- because the card save works (the owner's second launch proved
+> it), which makes typing into the OSK redundant on the path a player takes. The prefill survives as a **Dev** knob
+> because the drive scripts genuinely need it (it is how `online_login_ours` types a persona). The real work R237
+> creates is not the removal: it is proving that a persona and its remember-password flag survive a restart on a
+> **virgin** card, which is the same save path that failed the owner on their first launch (finding 3).
 
 **R238: a failure the player can see must never be silent, and that is not a question of knobs.** The owner's save
 failed on a virgin card and the build they played recorded nothing about the card at all, so the fault could not be
@@ -285,7 +507,10 @@ ten-minute capture took both -- the mixer's dump and the WASAPI loopback -- and 
 endpoint it rendered to: **`device Speakers (JBL Flip 6), period 20 ms x 4, engine 48000 Hz`**, session volume 1.00.
 That is the owner's own Bluetooth speaker, the path `docs/KNOWN.md` section 1 already ties to what they hear.
 `audio_dips` classified **31 DEVICE events** -- dips present in the endpoint recording and absent from the dump at
-the aligned time -- clustered in the roughly four minutes of the capture that carry any audio at all. The mixer
+the aligned time -- clustered in the roughly four minutes of the capture that carry any audio at all. **Corrected
+2026-09-22 midday to 11:** twenty of the 31 were the scorer's own (a start-time match misled by a local offset, and a
+greedy match that called a cue's ending a 365 s DEVICE event); with overlap matching the count is 11, all 50 ms, ten
+of them while the briefing score plays (`dips_rescored.txt`, `docs/KNOWN.md` section 2). Eleven is still a lead. The mixer
 rendered those samples; something between `render()` and the speaker did not deliver them. It is a LEAD, not a
 finding: the previous measured state after the 20 ms x 4 device was 2 sub-second dropouts per mission minute, and
 until the same capture is repeated on a wired endpoint -- where these should vanish if the Bluetooth path is the

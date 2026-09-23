@@ -1,5 +1,8 @@
 # Claude Workflow Handoff Audit - 2026-09-14
 
+> **ARCHIVED.** An audit of the handoff process written 2026-09-14 and superseded by `docs/audits/2026-09-20-test-harness-and-process-audit.md` and `docs/DOC_MAINTENANCE.md`. Kept because it is cited; read it as history only. See `docs/DOC_MAINTENANCE.md` (class A).
+
+
 Audience: the Claude/controller agent supervising the autonomous sprint workflow.
 
 Goal under audit: native SOCOM 2 on modern machines, lightly modernized and maintainable for a community project.

@@ -8,7 +8,8 @@ from `RUN/RAW/APACHE00.ZDB` with libdnas2. We recovered the plaintext overlays o
 (`tools_py/decrypt_apache.py`, Unicorn-driven), merged them with the loader into one ELF
 (`game/overlays/socom2_game.elf`), and statically recompile that ELF to C++ with a vendored fork
 of PS2Recomp (`third_party/ps2recomp`, GPL-3.0). The fork's runtime provides the EE kernel,
-DMAC/VIF/GIF, a software GS, a VU1 interpreter and IOP services emulated at the SIF-RPC level.
+DMAC/VIF/GIF, a GS (an OpenGL backend with an integer up-scale is the default path; the CPU
+rasteriser is the test path), a VU1 interpreter and IOP services emulated at the SIF-RPC level.
 SOCOM-specific behaviour lives in `third_party/ps2recomp/ps2xRuntime/src/lib/game_overrides_socom2.cpp`
 (EE-side hooks) and `third_party/ps2recomp/ps2xIOP/src/modules/*.cpp` (IOP services). The
 online server is Horizon Private Server configured for SOCOM II under `server/`.
@@ -153,17 +154,25 @@ and fewer is a regression to report.
 | 1 | `./build.sh recomp` | `recomp: 14882 files, unhandled=114399` — and `Recompilation completed successfully` at the end of `recomp/recomp_run.log`. **That second number is not a failure and `unhandled=0` (what this row claimed until 2026-09-21) has not been true for a long time:** it counts `unhandled-instruction` lines in the log, which the recompiler emits and carries on from, and the exe built from exactly this generated code is the one the gate passes 3/3 on. Measured twice on 2026-09-21, identically, in two working trees. What would be a failure is a non-zero exit (the last 20 log lines are printed then) or a file count that fell |
 | 2 | `./build.sh runtime` | `built dist/socom2.exe` (the launcher lands beside it) |
 | 3 | `./build.sh test` | `Total Tests: 764` / `Passed: 764` / `Failed: 0`, then `PASS: vram diff against 1.00% tolerance, checked=15 skipped=0` (this row said 500 until 2026-09-21, three sprints of cases after it stopped being true) |
-| 4 | `python -m unittest discover -s tools_py/tests -t .` | `Ran 1723 tests ...` / `OK` (1712 on the fresh clone an hour before the eleven bootstrap cases landed). The **skip** count is not a constant and is not worth matching — 100 on that clone, 85 once a disc had been extracted into `game/`, 109 in a worktree with neither — because cases skip on what you have. `OK`, with no failures, is the bar. (This row said 1104 / `skipped=63` until 2026-09-21.) |
+| 4 | `python -m unittest discover -s tools_py/tests -t .` | **`OK`, with no failures, is the bar** — match that, not a number. The count only ever grows: `Ran 1832 tests` on 2026-09-22 (1723 on 2026-09-21, 1104 before that). The **skip** count is not a constant and is not worth matching — 100 on that clone, 85 once a disc had been extracted into `game/`, 109 in a worktree with neither — because cases skip on what you have. `OK`, with no failures, is the bar. (This row said 1104 / `skipped=63` until 2026-09-21.) |
 | 5 | `python -m tools_py.parity.gate --stamp first_run` | `GATE PASS (3/3) -> logs\parity\gate\first_run` (about 15 min; the game window opens and closes three times; do not touch the keyboard) |
+
+`python -m tools_py.docmaint` checks the documentation registry (`docs/DOC_MAINTENANCE.md`): every document
+classified, the ruling counter one past the highest in use, no undated suite count outside **this file**, every
+snapshot dated and every archive banded. It needs no build and the Python suite runs it; **this table is the single
+source for the suite counts, which is why no other document may state one without a date beside it.**
 
 `python -m tools_py.parity.gate --baseline first_run` re-scores that saved run without launching, which is the
 fastest way to check a scoring change. A gate refuses to start under 4 GB free on C: (`RUN_MIN_FREE_GB`) and
 while another launch holds the loop lock (`scripts/loop_lock.sh status`). Anything else: `docs/STATUS.md` has the
 day-by-day, `docs/KNOWN.md` what is proven and what is believed, `docs/HUMAN_TASKS.md` the checks only a person can do.
 
-**Knobs, since Sprint 10 Q2 (2026-09-21):** `docs/KNOBS.md` is the complete, generated list (151 names; `python -m
-tools_py.knobs write` regenerates it and `test_knobs_registry` fails when the source and the registry disagree in either
-direction). The 20 **Shipping** names are `config.json` settings the launcher sends. Everything else is a **Dev** knob
+**Knobs, since Sprint 10 Q2 (2026-09-21):** `docs/KNOBS.md` is the complete, generated list, and it states its own count by
+class on its first lines -- read it there rather than here (`python -m tools_py.knobs write` regenerates it and
+`test_knobs_registry` fails when the source and the registry disagree in either direction). This paragraph said
+"151 names" and "the 20 Shipping names" until 2026-09-23, against the generated file's 150 and 18: a count repeated
+outside its one home, which is exactly what this document's own single-source rule forbids. The **Shipping** names
+are `config.json` settings the launcher sends. Everything else is a **Dev** knob
 and is ignored unless the run is in developer mode -- `--dev` on `socom2`'s command line or `PS2X_DEV=1`; `run.sh`, the
 gate and every script under `scripts/parity/` are developer-mode launches already. The game's first log line, `[knobs]
 dev=<0|1> set: ... | ignored without --dev: ...`, says what was honoured and what was not; the launcher passes the game

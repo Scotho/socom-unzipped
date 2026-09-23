@@ -70,7 +70,23 @@
 # <dir>/<point>.go (points: reap_before_mutex, reap_inside_mutex, renew_before_mutex, renew_inside_mutex,
 # release_before_mutex, mutex_after_token); LOOP_LOCK_TEST_CS_DIR (critical-section overlap detector), LOOP_LOCK_TEST_CS_HOLD,
 # LOOP_LOCK_RELEASE_WAIT_SEC.
-LOCK="${LOOP_LOCK_PATH:-$(cd "$(dirname "$0")/.." && pwd)/logs/.loop_lock}"
+# The lock is MACHINE-WIDE: one game, one build, one gate at a time on this host. An agent's worktree carries its
+# own copy of this script, and until 2026-09-23 the default here resolved to THAT worktree's logs/, so a build in a
+# worktree ran beside a game capture in the main tree with both "holding the lock" (T10's runtime build over the
+# W6 capture, the night of the Sprint 10 close). The default now follows git's common dir -- the main repository's
+# .git -- so every worktree of this repository shares the main tree's lock without anyone remembering a variable.
+# LOOP_LOCK_PATH still overrides it (the tests set it; a second repository clone would want its own).
+_loop_lock_default() {
+  local here common
+  here="$(cd "$(dirname "$0")/.." && pwd)"
+  common="$(git -C "$here" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+  if [ -n "$common" ] && [ -d "$common" ]; then
+    echo "$(cd "$common/.." && pwd)/logs/.loop_lock"
+  else
+    echo "$here/logs/.loop_lock"
+  fi
+}
+LOCK="${LOOP_LOCK_PATH:-$(_loop_lock_default)}"
 LOCKD="$LOCK.d"
 REC="$LOCKD/record"
 MX="$LOCK.mx"

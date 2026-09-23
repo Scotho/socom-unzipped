@@ -43,6 +43,13 @@ class KillArgv(unittest.TestCase):
     def test_linux_pkill_on_the_bare_name(self):
         self.assertEqual(hp.kill_argv("socom2", system=LIN), ["pkill", "-x", "socom2"])
 
+    def test_kill_tree_names_one_pid_never_the_image(self):
+        # 2026-09-22: a drive beside the owner's own game (--instance) kills by pid, so the owner's
+        # socom2.exe on the same PC survives the harness's exit.
+        self.assertEqual(hp.kill_tree_argv(4321, system=WIN), ["cmd", "/c", "taskkill /F /T /PID 4321"])
+        self.assertEqual(hp.kill_tree_argv("4321", system=LIN), ["pkill", "-9", "-P", "4321"])
+        self.assertNotIn("/IM", " ".join(hp.kill_tree_argv(1, system=WIN)))
+
 
 class RunningArgv(unittest.TestCase):
     def test_windows_tasklist(self):
