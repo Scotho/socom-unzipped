@@ -195,8 +195,11 @@ class PlantedSecretsAreCaught(unittest.TestCase):
         for name in ("linux", "ring", "linuxring", "projects"):
             with self.subTest(name=name):
                 self.assertFalse(R.is_product_word(name), name)
-        checkout = os.path.basename(os.path.dirname(os.path.dirname(R.HERE)))
-        self.assertNotIn(checkout.lower(), {w.lower() for w in R.PRODUCT_TOKENS})
+        # The list is written out, never derived: a worktree's name is not in it, and no token is a path.
+        # (The repository's own name IS a product word -- a clone called socom_pc must not fail this.)
+        for name in ("wt-linuxring", "wt", "socom_pc_web", "projects"):
+            self.assertNotIn(name, {w.lower() for w in R.PRODUCT_TOKENS}, name)
+        self.assertFalse(any(os.sep in w or "/" in w for w in R.PRODUCT_TOKENS), "a token is a path")
 
     def test_a_user_named_socom_leaves_the_readme_alone(self):
         """End to end: the rules built for that machine, over the line that fired."""
