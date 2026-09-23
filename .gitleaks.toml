@@ -18,6 +18,8 @@ paths = [
 ]
 regexTarget = "line"
 regexes = [
+  # an address-table FIELD NAME (the DNAS RC4 set-key stub's slot), not a key: generic-api-key matched the identifier
+  '''dnasRc4SetKey''',
   # ps2_iop_tests.cpp: `request.callToken = 0x1122334455667788ull` -- a fixed test token for the IOP call path
   '''callToken = 0x1122334455667788ull''',
   # diagnostics_tests.cpp: the launcher scrubber's planted credential, which the test proves does not survive the scrub
