@@ -112,11 +112,16 @@ namespace
         return static_cast<bool>(out);
     }
 
-    // The disc check: SCUS_972.75 in the root directory, hashed against the pinned r0001 digest.
+    // The disc check: SCUS_972.75 in the root directory, hashed against the revisions the launcher knows
+    // (launcher::kDiscRevisions -- one row today, r0001). Task 11: what it answers is now WHICH revision the
+    // image is, not merely whether it is the pinned one, because the launcher has a GAME VERSION to name.
+    // An image in no row is refused exactly as before, with the same sentence, and the runner's own
+    // preflight still exits 67 on it (ps2xShared/src/preflight.cpp; ExitCodes::kDiscNotR0001 unchanged).
     struct DiscStatus
     {
         bool checked = false;
         bool ok = false;
+        std::string revision;   // "r0001" for an image in the table; empty for anything else
         std::string message;
     };
 
@@ -148,13 +153,14 @@ namespace
             return st;
         }
         const std::string digest = sha256::hex(bytes.data(), bytes.size());
-        if (digest != launcher::kSocom2R0001ElfSha256)
+        st.revision = launcher::discRevisionForDigest(digest);
+        if (st.revision.empty())
         {
             st.message = "not SOCOM II NTSC r0001 (SCUS_972.75 differs)";
             return st;
         }
         st.ok = true;
-        st.message = "SOCOM II U.S. Navy SEALs NTSC r0001";
+        st.message = "SOCOM II U.S. Navy SEALs NTSC " + st.revision;
         return st;
     }
 
@@ -950,11 +956,30 @@ int main(int argc, char **argv)
         return line.empty() ? 1 : 0;   // silent when unreachable, as the ONLINE page is
     }
 
+    // Task 11: which game builds are installed beside the launcher -- one bit per kGameRevisions row, each
+    // probed by that row's OWN exeName. Asked here, once, and handed to the UI: a page never touches the
+    // disk. The loop is the point (Sprint 11 review, Important 1): this named kGameRevisions[1] directly
+    // until then, so a third revision would have been invisible here and reported installed whenever
+    // r0004 was. A row is a row -- adding one needs no change in this file.
+    uint32_t gameRevisionsInstalled = 0;
+    for (size_t i = 0; i < launcher::kGameRevisionCount; ++i)
+    {
+        const char *exe = launcher::kGameRevisions[i].exeName;
+        std::error_code ec;
+        if (exe[0] != '\0' && fs::is_regular_file(dir / exe, ec))
+            gameRevisionsInstalled |= 1u << i;
+    }
+
     launcher::Config config;
     {
         const std::string text = readText(configPath);
         if (!text.empty() && !launcher::fromJson(text, config))
             std::fprintf(stderr, "config.json is malformed; using the defaults\n");
+        // Task 11: fromJson cannot see the disk, so the clamp is here -- a config naming a build that is
+        // not installed (a folder copied from a machine that had it) plays the disc's own build rather
+        // than leaving the launcher pointing at an executable that is not there.
+        if (!launcher::gameRevisionAvailable(launcher::gameRevisionIndex(config.gameRevision), gameRevisionsInstalled))
+            config.gameRevision = launcher::kGameRevisions[0].id;
     }
 
     if (argc > 1 && std::strcmp(argv[1], "--selftest") == 0)
@@ -1100,6 +1125,7 @@ int main(int argc, char **argv)
     }
     else
     {
+        app.gameRevisionsInstalled = gameRevisionsInstalled;   // Task 11 (the walk fixes it per shot instead)
         const DiscStatus st = checkDisc(app.config.isoPath);
         app.discChecked = st.checked;
         app.discOk = st.ok;
@@ -1167,6 +1193,18 @@ int main(int argc, char **argv)
         // and its two-answer conflict dialog.
         shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_buttons_switch"});
         shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_buttons_switch_conflict"});
+        // Task 11: the GAME VERSION selector at the plan's two sizes, on both pages that carry it. The
+        // 1100x700 captures are the plain ones above; 900x600 is not in the generic pair (which is
+        // 1100x700 and the 800x520 minimum), so it is asked for here.
+        shots.push_back(Shot{ui::Page::Play, 900, 600, ""});
+        shots.push_back(Shot{ui::Page::Online, 900, 600, ""});
+        // ... and the state the selector cannot reach until an r0004 build exists: that build installed and
+        // chosen, against the project server, which is the REVERSE mismatch warning. The forward one (the
+        // community server on the r0001 build) gets no picture on purpose -- it cannot be reached without
+        // forcing a preset the launcher heals away, and the forced page then shows a placeholder address
+        // that misrepresents it. Its sentence is asserted in launcher_tests.cpp instead.
+        shots.push_back(Shot{ui::Page::Play, 1100, 700, "_r0004"});
+        shots.push_back(Shot{ui::Page::Online, 1100, 700, "_r0004"});
         // The owner's own config named the community server; this is what the page does with it.
         shots.push_back(Shot{ui::Page::Online, 1100, 700, "_community_healed"});
         // Sprint 9 P4: the ADVANCED section in both of its states. Shut is the ordinary `online`
@@ -1261,6 +1299,7 @@ int main(int argc, char **argv)
         // OUT here -- inside the block above it would be skipped under --screenshot, and the
         // ADVANCED capture would show a section that says "in use" over nothing at all.
         app.layout.advancedOpen = app.advancedOpen || ui::advancedForced(app.config);
+        app.layout.gameRevisionsInstalled = app.gameRevisionsInstalled;   // Task 11: a greyed cell is drawn, never focusable
         // Sprint 10 Goal 8: the CONTROLLER page's section, and whether a bind dialog has replaced its controls.
         app.layout.padButtons = app.padSection == 1;
         app.layout.padDialogButtons = ui::dialogButtonCount(app.bind);
@@ -2029,6 +2068,13 @@ int main(int argc, char **argv)
                 app.config.loginPassword = credentialsShot ? "hunter2" : "";
                 if (credentialsShot)
                     shotPendingFocus = "online.password";
+                // Task 11: "_r0004" installs the community build and picks it, against the project server
+                // that runs r0001 -- the reverse mismatch warning. Set on EVERY shot, not only that one:
+                // the walk reuses a single App, so a version left behind by one capture would otherwise
+                // reappear in every picture after it.
+                const bool r0004Shot = std::strcmp(shot.suffix, "_r0004") == 0;
+                app.gameRevisionsInstalled = r0004Shot ? (1u << launcher::gameRevisionIndex("r0004")) : 0u;
+                app.config.gameRevision = r0004Shot ? "r0004" : "r0001";
                 if (std::strcmp(shot.suffix, "_community_healed") == 0)
                 {
                     // A saved config naming the unplayable preset: fromJson moves it to the one that exists.

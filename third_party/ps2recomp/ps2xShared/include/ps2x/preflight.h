@@ -37,7 +37,11 @@ namespace Preflight
     // Creates `dir` when absent, then writes and removes a probe file in it.
     bool directoryWritable(const std::filesystem::path &dir, std::string &why);
 
-    // ELF -> card folder -> disc found -> disc is r0001. The first failure wins.
+    // Is this SCUS_972.75 one the runtime will play? Any revision in launcher::kDiscRevisions, or the
+    // caller's own `expectedSha256` override. Pure, so the rule can be asserted without a real disc.
+    bool discAccepted(const std::string &digest, const std::string &expectedSha256);
+
+    // ELF -> card folder -> disc found -> disc is a revision we know. The first failure wins.
     Result run(const Input &input);
 
     // "[preflight] exit 66 disc-not-found: <sentence> (<detail>)"

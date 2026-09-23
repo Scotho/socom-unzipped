@@ -1528,6 +1528,187 @@ void register_launcher_tests()
             t.Equals(launcher::effectiveServer(kept), std::string("192.168.2.10"), "with the address the player typed");
         });
 
+        // ---- Task 11 (Sprint 11 Goal D): the launcher's revision plumbing --------------------------------
+        // The launcher has to say WHICH SOCOM II this is, in two places that have to agree: the disc it
+        // verifies and the game code it starts. Both are tables with one row per revision, so the second
+        // revision is a row rather than a branch -- the shape is the point, not today's single entry.
+        tc.Run("the revision tables: one disc digest today, and every preset says which revision it needs", [](TestCase &t)
+        {
+            t.IsTrue(launcher::kDiscRevisionCount == 1u, "one disc revision is known today: the r0001 NTSC image");
+            t.Equals(std::string(launcher::kDiscRevisions[0].sha256), std::string(launcher::kSocom2R0001ElfSha256),
+                     "and it is the digest the disc check has always pinned");
+            t.Equals(std::string(launcher::kDiscRevisions[0].revision), std::string("r0001"), "named r0001");
+            t.Equals(launcher::discRevisionForDigest(launcher::kSocom2R0001ElfSha256), std::string("r0001"),
+                     "the pinned digest resolves to its revision");
+            t.IsTrue(launcher::discRevisionForDigest("0000000000000000000000000000000000000000000000000000000000000000").empty(),
+                     "an unknown digest resolves to nothing at all -- the disc is refused exactly as before");
+            t.IsTrue(launcher::discRevisionForDigest("").empty(), "and an empty digest is not a revision either");
+
+            // Every preset, including one a later sprint adds: the field is always there to read, and
+            // whatever it holds is either a revision the launcher knows or the empty "we do not know".
+            for (const launcher::ServerPreset &p : launcher::kServerPresets)
+            {
+                t.IsTrue(p.requiresRevision != nullptr, std::string("preset ") + p.id + " carries the field");
+                // Empty is a legitimate answer -- "unknown, say nothing". Anything else has to be a
+                // revision the launcher knows, or the selector would compare against a name it cannot draw.
+                t.IsTrue(p.requiresRevision[0] == '\0' || launcher::findGameRevision(p.requiresRevision) != nullptr,
+                         std::string("preset ") + p.id + " names a revision the launcher knows, or none at all");
+            }
+            t.Equals(std::string(launcher::findServerPreset("community")->requiresRevision), std::string("r0004"),
+                     "PSRewired runs r0004");
+            t.Equals(std::string(launcher::findServerPreset("unzipped")->requiresRevision), std::string("r0001"),
+                     "the project's own server runs the disc's own revision");
+            // Custom is NOT r0001 (the brief said it was; the Sprint 11 review overruled that). A typed
+            // address is any server on earth -- including PSRewired, which is precisely how a player will
+            // reach r0004 before the community preset is enabled -- so the launcher cannot state its
+            // revision and must not guess one.
+            t.IsTrue(std::string(launcher::findServerPreset("custom")->requiresRevision).empty(),
+                     "a custom address names no revision: the launcher does not know what it is");
+        });
+
+        tc.Run("the GAME VERSION selector offers r0004 only when its build sits beside the launcher", [](TestCase &t)
+        {
+            t.IsTrue(launcher::kGameRevisionCount == 2u, "two game versions are named");
+            t.Equals(std::string(launcher::kGameRevisions[0].id), std::string("r0001"), "the disc's own build is first");
+            t.Equals(std::string(launcher::kGameRevisions[0].label), std::string("r0001 (your disc)"),
+                     "and is labelled for a player who has never heard the word revision");
+            t.Equals(std::string(launcher::kGameRevisions[1].id), std::string("r0004"), "the community update is second");
+            t.Equals(std::string(launcher::kGameRevisions[1].label), std::string("r0004 (community update)"), "labelled the same way");
+            t.IsTrue(std::string(launcher::kGameRevisions[0].exeName).empty(),
+                     "r0001 is this launcher's own game: there is no second executable to look for");
+            t.Equals(std::string(launcher::kGameRevisions[1].exeName), std::string("socom2_r0004.exe"),
+                     "r0004 is one beside the launcher, in dist/");
+            t.Equals(std::string(launcher::kRevisionMissingNote), std::string("needs the r0004 game update -- planned"),
+                     "and the greyed cell says why, in the sentence the ONLINE page already used");
+
+            // Availability is a pure question of a bool, not of the disk: the pages ask the world once and
+            // hand the answer down, so a test drives both states with no file anywhere.
+            t.IsTrue(launcher::gameRevisionAvailable(0, 0u),
+                     "the disc's own build is playable with nothing else installed: it IS this launcher");
+            t.IsFalse(launcher::gameRevisionAvailable(1, 0u),
+                      "the community build is not, while its executable is missing");
+            t.IsTrue(launcher::gameRevisionAvailable(1, 1u << 1), "and is, once its own executable is there");
+            t.IsFalse(launcher::gameRevisionAvailable(launcher::kGameRevisionCount, ~0u),
+                      "a row that is not in the table is never available, whatever is installed");
+
+            // The mask, not a bool (Sprint 11 review, Important 1). This is the assertion the old
+            // `bool present` could not make: plant the presence of a row this build does not have yet and
+            // no OTHER row may claim it. With a single flag, every executable-bearing row went available
+            // together -- a third revision would have been reported installed the moment r0004 was.
+            const uint32_t onlyAThirdRow = 1u << 2;
+            t.IsFalse(launcher::gameRevisionAvailable(1, onlyAThirdRow),
+                      "another row's executable does not make r0004 installed");
+            for (size_t i = 0; i < launcher::kGameRevisionCount; ++i)
+            {
+                if (launcher::kGameRevisions[i].exeName[0] == '\0')
+                    continue;   // that row is this build; it needs no file and no bit
+                t.IsTrue(launcher::gameRevisionAvailable(i, 1u << i),
+                         std::string("row ") + launcher::kGameRevisions[i].id + " is available on its own bit");
+                t.IsFalse(launcher::gameRevisionAvailable(i, ~(1u << i)),
+                          std::string("row ") + launcher::kGameRevisions[i].id +
+                              " is NOT available on every other bit -- each row is gated by its own file alone");
+            }
+            t.IsTrue(launcher::gameRevisionIndex("r0004") == 1u, "the id names its row");
+            t.IsTrue(launcher::gameRevisionIndex("nope") == launcher::kGameRevisionCount, "and an id of no row says so");
+
+            t.Equals(launcher::normalizeGameRevision("r0007"), std::string("r0001"), "an unknown revision plays the disc's own");
+            t.Equals(launcher::normalizeGameRevision(""), std::string("r0001"), "and so does an empty one");
+            t.Equals(launcher::Config{}.gameRevision, std::string("r0001"), "a fresh config plays the disc's own build");
+            launcher::Config c;
+            c.gameRevision = "r0004";
+            launcher::Config back;
+            t.IsTrue(launcher::fromJson(launcher::toJson(c), back), "the choice round-trips through config.json");
+            t.Equals(back.gameRevision, std::string("r0004"), "... and comes back as it went in");
+            launcher::Config older;
+            t.IsTrue(launcher::fromJson("{\"gsScale\": 1}", older), "a config written before this task parses");
+            t.Equals(older.gameRevision, std::string("r0001"), "and plays the disc's own build");
+
+            // The layout: the r0004 cell is DRAWN either way -- greyed, with the note -- but it is only a
+            // focusable control when the build it names exists. A cell a player cannot use must not be
+            // reachable by the pad; that is how a launcher comes to offer a game it cannot start.
+            for (const ui::Page page : {ui::Page::Play, ui::Page::Online})
+            {
+                const std::string slug = ui::pageSlug(page);
+                for (const ui::Rect window : {ui::Rect{0.0f, 0.0f, 1100.0f, 700.0f}, ui::Rect{0.0f, 0.0f, 900.0f, 600.0f},
+                                              ui::Rect{0.0f, 0.0f, 800.0f, 520.0f}})
+                {
+                    ui::LayoutInputs in;
+                    in.gameRevisionsInstalled = 0u;
+                    std::vector<ui::Node> nodes = ui::layoutFor(page, window, in);
+                    t.IsTrue(ui::hasNode(nodes, slug + ".revision.0"), "the disc's own build is always on offer");
+                    t.IsFalse(ui::hasNode(nodes, slug + ".revision.1"),
+                              "the community build is not, with no executable for it");
+                    t.IsTrue(ui::drawable(ui::revisionCell(window, page, 1)),
+                             "but its cell is still drawn, greyed, so the player learns the version exists");
+                    in.gameRevisionsInstalled = 1u << 1;
+                    nodes = ui::layoutFor(page, window, in);
+                    t.IsTrue(ui::hasNode(nodes, slug + ".revision.1"),
+                             "with the executable beside the launcher the cell becomes a control");
+                    const ui::Rect node = ui::rectOf(nodes, slug + ".revision.1");
+                    const ui::Rect drawn = ui::revisionCell(window, page, 1);
+                    t.IsTrue(std::fabs(node.x - drawn.x) < 0.01f && std::fabs(node.y - drawn.y) < 0.01f,
+                             "at the very cell it was drawn in");
+                    t.IsTrue(ui::revisionCell(window, page, 0).right() <= drawn.x,
+                             "the two cells sit side by side, in the table's order");
+                    const ui::Frame f = ui::frameFor(window);
+                    if (window.w >= 1100.0f && window.h >= 700.0f)
+                        t.IsTrue(drawn.inside(f.body), std::string("and the row is inside the body on ") + slug);
+                    // Sprint 11 review, Minor 8: hold the re-tuned ONLINE rhythm -- the row belongs above
+                    // the fields, not among them, whatever a later edit does to the pitch.
+                    if (page == ui::Page::Online)
+                        t.IsTrue(ui::revisionCell(window, page, 0).bottom() <= ui::rectOf(nodes, "online.profile").y,
+                                 "the GAME VERSION row sits above PROFILE in the same column");
+                }
+            }
+        });
+
+        // The two mismatch warnings. Neither can fire in today's shipped build -- the community preset is
+        // not playable and there is no r0004 executable -- and both are what makes the pair safe to ship:
+        // the moment either half arrives, a player who picks one without the other is told, in the launcher,
+        // rather than by a login that fails with nothing on screen.
+        tc.Run("the community server on the r0001 build says which revision that server runs", [](TestCase &t)
+        {
+            t.Equals(launcher::revisionWarning("community", "r0001"),
+                     std::string("the community server runs r0004; this is the r0001 build"),
+                     "the warning names both sides, in that order");
+            t.IsTrue(launcher::revisionWarning("unzipped", "r0001").empty(),
+                     "the project's own server runs r0001: there is nothing to warn about");
+            t.IsTrue(launcher::revisionWarning("custom", "r0001").empty(), "and neither has an address the player typed");
+            t.IsTrue(launcher::revisionWarning("nonsense", "r0001").empty(), "a preset that is not ours is not warned about");
+            t.IsTrue(launcher::revisionWarning("community", "").empty(), "nor is a revision that is not ours");
+            t.IsTrue(launcher::revisionWarning("", "").empty(), "nor nothing at all");
+        });
+
+        tc.Run("the r0004 build against a server that runs r0001 warns the other way", [](TestCase &t)
+        {
+            t.Equals(launcher::revisionWarning("unzipped", "r0004"),
+                     std::string("the r0001 servers run r0001; this is the r0004 build"),
+                     "the reverse warning, with the server named first exactly as the forward one is");
+            t.IsTrue(launcher::revisionWarning("community", "r0004").empty(),
+                     "the community server and the community build agree: no warning");
+
+            // A preset whose required revision is empty is never warned about, on either build. Custom is
+            // how a player reaches PSRewired before the community preset is enabled, so warning them that
+            // "the r0001 servers run r0001" would be wrong about the one route that works.
+            t.IsTrue(launcher::revisionWarning("custom", "r0004").empty(),
+                     "a typed address on the r0004 build is not second-guessed");
+            t.IsTrue(launcher::revisionWarning("custom", "r0001").empty(),
+                     "nor on the r0001 build: the launcher does not know what that server runs");
+            t.Equals(launcher::revisionWarning("unzipped", "r0004"),
+                     std::string("the r0001 servers run r0001; this is the r0004 build"),
+                     "while a server whose revision we DO know still warns");
+            // Both sentences are in the table, once each: the pages read them, nothing retypes them.
+            t.IsTrue(launcher::kRevisionWarningCount == 2u, "two mismatches are named");
+            for (const launcher::RevisionMismatch &m : launcher::kRevisionWarnings)
+            {
+                t.IsTrue(launcher::findGameRevision(m.serverRevision) != nullptr, "each names a revision the launcher knows");
+                t.IsTrue(launcher::findGameRevision(m.buildRevision) != nullptr, "on both sides");
+                t.IsTrue(std::string(m.warning).find(m.serverRevision) != std::string::npos &&
+                             std::string(m.warning).find(m.buildRevision) != std::string::npos,
+                         "and the sentence names them both, so a player can tell which half they are missing");
+            }
+        });
+
         tc.Run("the ONLINE page does not offer the preset that cannot be played", [](TestCase &t)
         {
             const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};

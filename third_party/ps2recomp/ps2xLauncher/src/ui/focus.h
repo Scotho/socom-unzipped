@@ -74,6 +74,10 @@ namespace ui
         // a dialog (a conflict's three answers, the restore confirm's two) has replaced the section's controls.
         bool padButtons = false;
         int padDialogButtons = 0;
+        // Task 11: whether socom2_r0004.exe sits beside the launcher. The GAME VERSION selector's second
+        // cell is DRAWN either way -- greyed, with the note -- but it is only a focusable node when the
+        // build it names exists, because a control a player cannot use must not be reachable by the pad.
+        uint32_t gameRevisionsInstalled = 0;
     };
 
     // Whether an ADVANCED section MUST be open whatever the player last chose, because something inside it
@@ -100,6 +104,12 @@ namespace ui
     Rect onlinePresetRow(Rect window, int index);
     // The pitch between the ONLINE page's fields (the address sits one pitch above the profile, drawn by the page).
     extern const float kOnlineRowPitch;
+
+    // Task 11: the GAME VERSION selector's cells, by index, on the page that carries it (PLAY or ONLINE).
+    // Shared the way onlinePresetRow is: layoutFor emits a node for the cells that can be chosen, and the
+    // page draws the greyed one from this same rect -- so what is drawn and what can be focused cannot
+    // disagree about where a cell is.
+    Rect revisionCell(Rect window, Page page, int index);
 
     // Sprint 9 P4 (owner: "tooltips where the launcher is unclear ... 'what is a profile?' first"). The
     // help is DATA, keyed by a control's own id, and empty for the controls that explain themselves --

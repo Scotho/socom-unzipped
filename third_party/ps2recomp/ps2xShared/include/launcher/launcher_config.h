@@ -3,6 +3,7 @@
 #include "launcher/mapping.h"   // Sprint 10 Goal 8 (R174): the input mapping, a field of Config
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -12,12 +13,68 @@ namespace launcher
     constexpr const char *kSocom2R0001ElfSha256 = "0172dc0bec19c83d1fe2d0fec0a290f41cc5d32efa14ed6859ca92773c05346c";
     constexpr const char *kSocom2ElfName = "SCUS_972.75";
 
+    // Task 11 (Sprint 11 Goal D): the discs this launcher can NAME. One row today -- and the row is the
+    // point. SOCOM II shipped in more than one revision, the community server runs r0004, and the disc
+    // check used to answer a bool against a single pinned digest; a second disc was therefore a second
+    // branch through checkDisc rather than a line of data. An image whose digest is in no row is refused
+    // exactly as it always was, with the sentence exit 67 (ExitCodes::kDiscNotR0001) has always carried.
+    struct DiscRevision
+    {
+        const char *sha256;
+        const char *revision;
+    };
+    constexpr DiscRevision kDiscRevisions[] = {
+        {kSocom2R0001ElfSha256, "r0001"},
+    };
+    constexpr size_t kDiscRevisionCount = sizeof(kDiscRevisions) / sizeof(kDiscRevisions[0]);
+    // The revision that digest names, or "" for a digest in no row (and for an empty one).
+    std::string discRevisionForDigest(const std::string &digest);
+
+    // Task 11: the game code the launcher can start. r0001 is the recompilation of the player's own disc
+    // and is always there -- it IS this build -- so it names no executable. r0004 is the revision the
+    // community server runs: a whole second code package, a second recompilation, and therefore a second
+    // executable beside this one. `exeName` empty means "this build", which is what makes the missing-file
+    // question a table lookup instead of a special case for index 1.
+    struct GameRevision
+    {
+        const char *id;
+        const char *label;
+        const char *exeName;   // "" = this launcher's own game; otherwise a file beside the launcher
+    };
+    constexpr GameRevision kGameRevisions[] = {
+        {"r0001", "r0001 (your disc)",         ""},
+        {"r0004", "r0004 (community update)",  "socom2_r0004.exe"},
+    };
+    constexpr size_t kGameRevisionCount = sizeof(kGameRevisions) / sizeof(kGameRevisions[0]);
+    // What the greyed cell says when the build it names is not installed. The ONLINE page already drew this
+    // sentence on the community preset's row; it is one string now, so the two places cannot drift apart.
+    constexpr const char *kRevisionMissingNote = "needs the r0004 game update -- planned";
+
+    const GameRevision *findGameRevision(const std::string &id);
+    // The ROW `id` names, or kGameRevisionCount when it is not one of ours.
+    size_t gameRevisionIndex(const std::string &id);
+    // One of kGameRevisions' ids; anything else (a typo, a value from a newer build, empty) is "r0001".
+    std::string normalizeGameRevision(const std::string &value);
+    // Can the version in row `index` actually be started? `installed` is a bitmask over kGameRevisions --
+    // bit i set when row i's own executable was found beside the launcher. Asked of the world ONCE, by
+    // main.cpp, and handed down: a page never touches the disk.
+    //
+    // A MASK, not a bool: this took a single `present` until the Sprint 11 review, which is the one place
+    // the task's own rule ("a revision is a row, not a branch") was still a branch -- main.cpp probed for
+    // kGameRevisions[1] by name, and every executable-bearing row was then reported installed whenever
+    // that one was. Each row is now gated by its own bit and by no other's, so a third row needs no code.
+    bool gameRevisionAvailable(size_t index, uint32_t installed);
+
     struct ServerPreset
     {
         const char *id;
         const char *label;
         const char *address;
         const char *note;
+        // Task 11: the game revision that server runs, or "" for UNKNOWN -- say nothing. Only the two
+        // named servers have a revision we can state; a custom address is any server on earth, and the
+        // launcher guessing one is how it comes to contradict the player (see kServerPresets below).
+        const char *requiresRevision;
     };
 
     // The servers a player can pick. Ours is hosted (AWS Lightsail, us-east-2, a static address; Sprint 8 Goal 12). The
@@ -34,10 +91,15 @@ namespace launcher
     // config that still names "unzipped-ip" heals to "unzipped" (kRetiredPresets). The ids are the stable
     // thing: an old config naming "unzipped" keeps working and simply starts reaching the box by name.
     constexpr ServerPreset kServerPresets[] = {
-        {"community",   "SOCOM Community (public Horizon)", "COMMUNITY_SERVER_ADDRESS_TBC", "the public community server"},
-        {"unzipped",    "SOCOM Unzipped (project server)",  "socom.scotho.com",             "the project's hosted server (US East)"},
-        {"custom",      "Custom",                            "",                             "any address or hostname"},
+        {"community",   "SOCOM Community (public Horizon)", "COMMUNITY_SERVER_ADDRESS_TBC", "the public community server",          "r0004"},
+        {"unzipped",    "SOCOM Unzipped (project server)",  "socom.scotho.com",             "the project's hosted server (US East)", "r0001"},
+        {"custom",      "Custom",                            "",                             "any address or hostname",              ""},
     };
+    // Custom's revision is EMPTY, not "r0001". The Task 11 brief said r0001 and the Sprint 11 review
+    // overruled it, rightly: a typed address is any server there is -- including PSRewired, which is
+    // exactly how a player reaches r0004 before the community preset has an address of its own. Telling
+    // them "the r0001 servers run r0001" would be the launcher contradicting the one route that works.
+    // The two named presets are the only servers whose revision this project can state.
     // Ids a shipped build once wrote and this one no longer offers, each with the preset it means today.
     // fromJson reads through this before findServerPreset, so retiring a preset never costs a player their
     // server. `unzipped-ip` was the same box by its raw address (Sprint 9 P6; removed 2026-09-20).
@@ -83,6 +145,10 @@ namespace launcher
         std::string crouchShortcut = "l3";   // owner 2026-09-20: without a shortcut a pad cannot crouch at all
         // Sprint 7 Task 9: the capture device by name; "" = none (no PS2X_MIC_DEVICE, no device opened).
         std::string micDevice;
+        // Task 11: which game code to start -- an id out of kGameRevisions. A fresh config plays the disc's
+        // own build, and so does a config naming a version whose executable is not installed (main.cpp
+        // clamps it on load): the launcher must never be left pointing at a game that is not there.
+        std::string gameRevision = "r0001";
         std::string serverPreset = "unzipped"; // an id out of kServerPresets; a fresh config plays on the project's hosted server (Sprint 8 Goal 12); "custom" means the address below
         std::string server = "127.0.0.1";
         std::string profile = "player";
@@ -165,6 +231,26 @@ namespace launcher
     // resolution as a pure function: "" when either dimension is not a usable size, so the caller keeps what it
     // had, and "<w>x<h>" otherwise.
     std::string monitorSizeOrEmpty(int width, int height);
+
+    // Task 11: the two mismatch warnings, as DATA. Neither can fire in today's shipped build -- the
+    // community preset is not playable and no r0004 executable exists -- which is exactly why they are
+    // written now: the moment either half arrives, a player who has one without the other is told so in
+    // the launcher, rather than by a login that fails with nothing on screen to explain it. The sentence
+    // names both revisions, so a player can tell which half they are missing.
+    struct RevisionMismatch
+    {
+        const char *serverRevision;   // what the chosen server runs
+        const char *buildRevision;    // what the chosen GAME VERSION is
+        const char *warning;
+    };
+    constexpr RevisionMismatch kRevisionWarnings[] = {
+        {"r0004", "r0001", "the community server runs r0004; this is the r0001 build"},
+        {"r0001", "r0004", "the r0001 servers run r0001; this is the r0004 build"},
+    };
+    constexpr size_t kRevisionWarningCount = sizeof(kRevisionWarnings) / sizeof(kRevisionWarnings[0]);
+    // The warning for this pairing, or "" when the two agree -- and "" for a preset or a revision that is
+    // not one of ours, because a launcher must not invent a sentence about a server it does not know.
+    std::string revisionWarning(const std::string &presetId, const std::string &gameRevision);
 
     // Sprint 8 Goal 9 (fourth pass): can this preset actually be played? A preset carries a placeholder
     // address until its server exists -- the community one still does, because PSRewired runs game revision
