@@ -201,7 +201,97 @@ a Sprint 11 goal in its own right, sized from the differential's table; do not m
 prefer-HLE policy (§5.2) and the reboot question (§5.5) are settled. Item 2's cherry-picks are independent of all
 of this as long as each PR is checked for ps2xIOP/SIF contact (§1).
 
-## 9. Numbers this note rests on (re-derivable)
+## 9. The differential, run (2026-09-23, R243)
+
+Step (b) as redefined by R243: the disc's real IRX set on PR #244's `ps2xIOP`, fed the 989snd RPC sequences our own
+runs logged, against the answers our `snd989.cpp` model logged for the same calls. Everything here is reproducible from
+`docs/research/assets/40-irx-differential/`: `harness.cpp` (a REPL host on `IopSubsystem`), `CMakeLists.txt`
+(`add_subdirectory` of #244's `ps2xIOP`), `replay.py` (parses a run log's `[ps2xIOP] 989snd: NAME (fno) [args] ->
+result` lines, translates our model's handles and pointers into the ones the real IRX issues, replays, tabulates),
+`build_both.sh` (the two builds under the loop lock), `pr244-spike-patches.diff` (three local patches to #244, below)
+and the two result tables. Source copies live in `research/irx-differential/` (git-ignored); #244 is checked out at
+`research/ps2recomp-244/` (a worktree of the upstream clone at `75d729c`).
+
+**What loads and runs.** `USB/USBD.IRX hub=1`, `LIBSD.IRX`, `SOUND/989SND.IRX stream_priority=18`,
+`SOUND/989DSTRM.IRX`, `LGAUD.IRX`, `HEADSETO.IRX priority=22`, in the game's order with the game's arguments, from the
+extracted disc, by their `cdrom0:` paths. All six load, relocate, resolve their imports and start; `USBD` and `LGAUD`
+return 1 from `_start` (not resident: no USB hardware behind the register bag, and LGAUD's `modload:18` import is
+unhandled), `HEADSETO` stays resident (2), the sound three return 0. 989snd prints its banner with the right thread
+priorities, registers its two RPC servers (SIDs `0x123456`/`0x123457`) on its first scheduled run, and answers in the
+`{-1, result, -1}` reply layout research/06 §1.2 predicted, stream-SID bank loads as a single word. Its hard-timer
+tick runs once `snd_StartSoundSystem` has been called (about 1,790 IOP instructions per NTSC frame). #244's own four
+test suites pass under our llvm-mingw clang (`100% tests passed out of 4`).
+
+**Three local patches to #244 were needed** (all in `pr244-spike-patches.diff`, none upstreamed yet, each a finding
+in its own right):
+1. `iop_emulator.cpp` `loadImage`: `_start(argc, argv)` received `(byte count, raw buffer)`; modload gives
+   `argv[0]` = the module path and the NUL-separated arguments after it. 989snd parsed the raw words as strings and
+   reported eighteen "Error: cause 7" (unknown argument); `stream_priority=18` never took.
+2. `iop_stdio.cpp`: `printf` logged the bare format string; the patch renders `%d %u %x %s %c %p` from the o32
+   registers and the caller's stack, which is what made every "989snd Error: cause N -> a, b, c, d" readable.
+3. `iop_imports.cpp` `registerExportTable`: the walk stopped at the first zero word. Kept as a guard (two consecutive
+   zeros end the table); in the event the disc's 989SND table was correctly relocated (ordinal 93 = module base, the
+   function at offset 0 = `snd_RegisterExternProcHandler`) and this patch was not the fix for §9.3 below.
+
+Two harness defects of my own also cost a rebuild each: the disc image is 4.3 GB and `fseek`/`ftell` are 32-bit on
+Windows (`_fseeki64`), and the first RPC went out before the IRX's server threads had had a scheduler run.
+
+### 9.1 Run 1: `logs/run_20260922_150258.log` -- 2,007 calls, 1,794 compared, **19 disagreements**
+
+Table: `assets/40-irx-differential/results_run_20260922_150258.md`. A boot-to-menus session: one VAG stream (the
+title music), 102 `NoReturn` bank sounds, 1,764 `snd_SoundIsStillPlaying` polls of the one stream handle. The 19:
+
+| Class | Calls | What the real IRX did | Reading |
+|---|---|---|---|
+| `snd_StreamSafeCdRead` (0x38) | 7 | answers `0x84000002` after five "cause 66" retries and a "cause 59"; ours answers 1 | **emulator gap**: the safe-read path's cdvdman call (`FUN_0001a52c(&buf, 1, callback, &data)`, the callback form) returns 0 on #244, which serves `sceCdRead/Seek/Sync/GetError/Callback/SearchFile` and little else |
+| `snd_PcmStreamPosition` (0x40) | 4 | alternates two constants (`0x114fb80`, `0x14cb80` = buffer, buffer+0x1003000); ours advances with time | **SPU2-dependent**: `FUN_0000b268` → libsd `FUN_0001a71c(core, 0)` (block-transfer status) reads the register bag |
+| `snd_CallExtension` (0x4c) with id `0x12c4e67a`, fn 6 | 6 | 0 with "cause 3" (no such extension); ours answers 1 | **model difference, console unverified**: the id occurs in none of the disc's IRX files; 989DSTRM registers as `"dstr"`, HEADSETO registers nothing without a headset. Our model fakes success; the real answer with no headset is probably 0 |
+| `snd_BankLoadByLoc` (0x03), the 5th and 6th loads | 2 | 0 with "cause 25" (a transfer still in flight) then "cause 18"/"cause 15" (transfer result < 0; heap exhausted, 14,304 B) | **SPU2-dependent**: the VAG upload's completion (libsd's transfer interrupt → 989snd's `snd_TransCallback`) is not observed on the register bag when the next load comes one frame later; four earlier loads completed |
+
+Everything else agreed: 4 bank loads (real IOP pointers vs our `0xa00000`-class constants, mapped), `snd_UnloadBank`,
+`snd_InitVAGStreamingEx`, `snd_PlayVAGStreamByLoc` (handle mapped), 3 `snd_PcmStreamOpen`, and **all 1,764 polls**.
+The polls are a weak agreement: in this log our model never answered 0 (the stream played to the end of the capture),
+so the played-out transition of research/36 was not exercised. That is why run 2 exists.
+
+### 9.2 Run 2: `logs/run_20260922_232655.log` -- 16,655 calls, 13,044 compared, 12,643 disagreements, all one cascade
+
+Table: `assets/40-irx-differential/results_run_20260922_232655.md`. A mission session: 29 VAG streams, 24 bank sounds
+with returned handles, 7,140 `snd_SetSoundParams`, 5,459 polls of which 13 saw a stop on our side. The count is not a
+verdict on our model; it is the shape of the two emulator gaps of run 1 at mission scale:
+
+- Every `snd_PlayVAGStreamByLoc` answers a real handle (`0x84000002`, `0x84000003`, …, mapped, "agree"), then the
+  stream's own first CD read fails ("cause 66" ×5, "cause 59"), the stream is torn down, and the very next poll of
+  that handle answers 0 with "cause 53" (handle not found). 5,446 polls and 7,127 `SetSoundParams` disagree that way.
+- After the third bank load of the mission ("cause 25", "cause 18", then "cause 15" with 25,968 B refused) the heap
+  is gone: `snd_InitVAGStreamingEx` answers 0 ("cause 38") and every `snd_PlaySoundVolPanPMPB` on the missing bank
+  answers 0 (24 of 24).
+- 340 `snd_StreamCdIdle` and 21 `snd_GetMasterVolume` agree; 1,605 `snd_SetGlobalReg` and 1,016
+  `snd_SetMasterVolume` carry no answer to compare.
+
+### 9.3 Findings for option B, in order of weight
+
+1. **The real IRX's handles carry bit 31; ours do not.** `snd_PlayVAGStreamByLoc` answers `0x84000002`;
+   `snd989.cpp:1116 makeHandle` returns `(type << 24) | (slot << 16) | uid` with bit 31 clear (our logs show
+   `0x0400003c`). research/36 §"bit 31" describes the IRX side exactly (`snd_ActivateHandler` sets it, deactivation
+   clears it, the liveness test compares the whole word) and even calls our handles "`0x84xxxxxx`-class", but the
+   code does not set the bit. Whether any EE path tests the sign of a handle is unmeasured; the console's handles are
+   negative as `int32` and the game works, so at minimum nothing on the EE may treat a negative handle as failure.
+2. **Two IOP-emulation gaps decide whether the real IRX can be an oracle at mission scale**: the safe-read cdvdman
+   form (run 1's 0x38, run 2's every stream) and SPU DMA transfer completion (bank loads past the third). Both are
+   #244 work, not 989snd work, and both sit below the SPU2 core §6 already costed. Until they are closed, the
+   differential is trustworthy for the non-stream, non-transfer half of the API (run 1's 1,775 agreements) and blind
+   for the streamer, which is exactly the half research/36 could not read either (`stream.c` unimplemented in v3.01).
+3. **`snd_CallExtension(0x12c4e67a, …)`**: our model's 1 is invented; the real IRX has nothing registered under that
+   id on this disc without a headset. Cheap to align (answer 0) once the EE's reaction to 0 is checked.
+4. **PCM stream position** is an SPU2 read on the real IRX and a clock on ours; it cannot agree without (A)/(B).
+5. **`stream_priority=18` was silently ignored** by #244's argument ABI (patch 1); thread priorities are part of the
+   sequencer's timing and any future run of the real IRX must carry the patch.
+
+Stop-rule accounting: the harness reached a full replay on the second lock gap after the builds landed; the day was
+spent mostly waiting on the lock behind the Sprint 10 chain, and on the five tooling defects above. No game build, no
+merge, nothing in the main tree.
+
+## 10. Numbers this note rests on (re-derivable)
 
 - `git -C research/ps2recomp rev-list --count 14b1e5c..origin/main` = 1; `git log 14b1e5c..origin/main` = `75d729c`.
 - `git log --oneline -- third_party/ps2recomp | wc -l` = 299; first is `8736759`.
