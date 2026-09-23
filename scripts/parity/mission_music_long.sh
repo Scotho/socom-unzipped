@@ -60,6 +60,8 @@
 #     writes its audio_scores.json anyway as a by-product; it is evidence, not the verdict.
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+. "$ROOT/scripts/python_env.sh"    # $PYTHON, resolved once for every script
+socom_require_python mission_music_long
 cd "$ROOT"
 
 MINUTES=12
@@ -211,14 +213,14 @@ if [ "$SCORE" = 1 ]; then
     [ -s "$wav" ] || { echo "no capture at $wav -- skipping its score"; continue; }
     name=$(basename "$wav" .wav)
     echo "=== audio_envelope --segment 60  $wav ==="
-    PYTHONPATH="$ROOT" python -m tools_py.parity.audio_envelope "$wav" --segment 60 \
+    PYTHONPATH="$ROOT" "$PYTHON" -m tools_py.parity.audio_envelope "$wav" --segment 60 \
       > "$OUT/envelope_$name.txt" 2>&1 || true
     cat "$OUT/envelope_$name.txt"
   done
   if [ -s "$OUT/endpoint.wav" ] && [ -s "$OUT/mix.wav" ]; then
     echo "=== audio_dips  endpoint vs mix ==="
     log=$(ls -t logs/run_*.log 2>/dev/null | head -1)
-    PYTHONPATH="$ROOT" python -m tools_py.parity.audio_dips "$OUT/endpoint.wav" --dump "$OUT/mix.wav" \
+    PYTHONPATH="$ROOT" "$PYTHON" -m tools_py.parity.audio_dips "$OUT/endpoint.wav" --dump "$OUT/mix.wav" \
       ${log:+--log "$log"} > "$OUT/dips.txt" 2>&1 || true
     tail -40 "$OUT/dips.txt"
     # The endpoint this run rendered to, beside its dips: a DEVICE count that does not name its device proves

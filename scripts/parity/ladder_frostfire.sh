@@ -47,6 +47,7 @@ set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 . "$(dirname "$0")/env.sh"
+socom_require_python ladder_frostfire
 export PATH="/usr/bin:/bin:$PATH"
 
 MODE=launch
@@ -118,7 +119,7 @@ pin() {       # pin <out_dir>: snapshot HEAD into <out_dir>/harness and set HARN
   fi
   # The import check, path-format proof: pin_harness.sh's own prefix match WARNs whenever <out_dir> is relative or an
   # MSYS /c/... path (python prints C:\...), so its "OK" line cannot be the gate. Python compares real paths itself.
-  if ! PYTHONPATH="$HARNESS" PYTHONSAFEPATH=1 python -c "import os, sys, tools_py.parity.online_match_ours as m
+  if ! PYTHONPATH="$HARNESS" PYTHONSAFEPATH=1 "$PYTHON" -c "import os, sys, tools_py.parity.online_match_ours as m
 h = os.path.normcase(os.path.realpath(sys.argv[1])); f = os.path.normcase(os.path.realpath(m.__file__))
 sys.exit(0 if f.startswith(h + os.sep) else 'imported ' + m.__file__ + ', not under ' + sys.argv[1])" "$HARNESS"; then
     echo "PIN-FAIL the pinned import did not resolve under the snapshot '$HARNESS' -- not falling back to the live tree" >&2
@@ -133,10 +134,10 @@ if [ "$PINNED" = 1 ]; then
     pin "$OUT"
   fi
   ROUTE="${ROUTE:-$HARNESS/tools_py/parity/routes/frostfire_v2.json}"
-  PY=(env PYTHONPATH="$HARNESS" PYTHONSAFEPATH=1 python -m tools_py.parity.online_match_ours)
+  PY=(env PYTHONPATH="$HARNESS" PYTHONSAFEPATH=1 "$PYTHON" -m tools_py.parity.online_match_ours)
 else
   ROUTE="${ROUTE:-tools_py/parity/routes/frostfire_v2.json}"
-  PY=(python -m tools_py.parity.online_match_ours)
+  PY=("$PYTHON" -m tools_py.parity.online_match_ours)
 fi
 
 # Instruments come from scripts/parity/env.sh (sourced above); these two are this script's own.

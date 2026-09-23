@@ -13,8 +13,13 @@
 #     SOCOM_SERVER_IP=10.0.0.5 bash scripts/parity/online_control_round.sh "foxhunt"
 #
 # Every value uses ${VAR:-default}, so whatever is already in the operator's environment wins and sourcing
-# this file twice is harmless. No `set -e`/`set -u` here and nothing but assignments -- it is safe to source
-# from a script that has already set its own shell options.
+# this file twice is harmless. No `set -e`/`set -u` here and nothing but assignments and one sourced helper
+# -- it is safe to source from a script that has already set its own shell options.
+
+# $PYTHON, resolved once for everybody (an explicit PYTHON, else `python`, else `python3`): a Linux machine
+# has no `python`, and the harness scripts all invoke the interpreter. BASH_SOURCE, not $0 -- $0 is still the
+# sourcing script's own name.
+. "$(dirname "${BASH_SOURCE[0]}")/../python_env.sh"
 
 SOCOM_SERVER_IP="${SOCOM_SERVER_IP:-192.168.2.10}"
 export SOCOM_SERVER_IP

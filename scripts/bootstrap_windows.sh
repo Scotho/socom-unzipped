@@ -15,6 +15,8 @@
 # recompiled code comes from your own disc (README "For developers").
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+. "$ROOT/scripts/python_env.sh"   # $PYTHON, resolved once for every script
+socom_require_python bootstrap_windows
 TOOLS="${SOCOM_TOOLS_DIR:-$ROOT/tools}"     # the override exists for the script's own test
 CACHE="$TOOLS/.bootstrap"
 
@@ -28,8 +30,7 @@ ENTRIES=(
   "ninja|$NINJA_VERSION|https://github.com/ninja-build/ninja/releases/download/v$NINJA_VERSION/ninja-win.zip|07fc8261b42b20e71d1720b39068c2e14ffcee6396b76fb7a795fb460b78dc65|"
 )
 
-py=python
-command -v python >/dev/null 2>&1 || py=python3
+py="$PYTHON"
 
 sha256_of() { "$py" -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$1"; }
 

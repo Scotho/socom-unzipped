@@ -12,6 +12,7 @@ set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 . "$(dirname "$0")/env.sh"
+socom_require_python mixed_match
 OUT="${1:-logs/parity/mixed_ours_hosts}"
 NAME="$(basename "$OUT")"
 PCSX2_OUT="$OUT/pcsx2"
@@ -28,20 +29,20 @@ if ! netstat -an | grep -q "$SOCOM_SERVER_IP:53 "; then
 fi
 
 # PCSX2 B boots first (a cold boot is ~90 s; the join macro waits it out), while ours logs in and hosts.
-python -m tools_py.parity.pcsx2_ctl kill > /dev/null 2>&1
-python -m tools_py.parity.pcsx2_ctl launch B > "$OUT/pcsx2_launch.txt" 2>&1 || { echo "done 6" > "logs/${NAME}.done"; exit 6; }
-python -m tools_py.parity.online_match_ours --existing-b --foreign-b --hold 30 --play 4 --map "Frostfire" \
+"$PYTHON" -m tools_py.parity.pcsx2_ctl kill > /dev/null 2>&1
+"$PYTHON" -m tools_py.parity.pcsx2_ctl launch B > "$OUT/pcsx2_launch.txt" 2>&1 || { echo "done 6" > "logs/${NAME}.done"; exit 6; }
+"$PYTHON" -m tools_py.parity.online_match_ours --existing-b --foreign-b --hold 30 --play 4 --map "Frostfire" \
        --out "$OUT" --seconds 900 > "logs/parity/drive_${NAME}.txt" 2>&1 &
 OURS_PID=$!
 # the joiner: the macro's fixed timings put its JOIN press ~3.5 min after boot, when ours' game lobby is up
-python -m tools_py.parity.pcsx2_ctl join B --name socomx7 --game test --out "$PCSX2_OUT" > "$OUT/pcsx2_join.txt" 2>&1
+"$PYTHON" -m tools_py.parity.pcsx2_ctl join B --name socomx7 --game test --out "$PCSX2_OUT" > "$OUT/pcsx2_join.txt" 2>&1
 # the console client's captures at 1 Hz through ours' hold and walk (60 s covers --hold 30 and four 3 s bursts)
-python -m tools_py.parity.pcsx2_ctl watch B play 60 1.0 --out "$PCSX2_OUT" > "$OUT/pcsx2_watch.txt" 2>&1
+"$PYTHON" -m tools_py.parity.pcsx2_ctl watch B play 60 1.0 --out "$PCSX2_OUT" > "$OUT/pcsx2_watch.txt" 2>&1
 wait $OURS_PID
 rc=$?
-python -m tools_py.parity.pcsx2_ctl kill > /dev/null 2>&1
+"$PYTHON" -m tools_py.parity.pcsx2_ctl kill > /dev/null 2>&1
 # the console-side motion verdict: the first 20 captures (ours holds still) against the last 20 (ours walks)
-python - "$PCSX2_OUT" >> "logs/parity/drive_${NAME}.txt" <<'EOF'
+"$PYTHON" - "$PCSX2_OUT" >> "logs/parity/drive_${NAME}.txt" <<'EOF'
 import glob, os, sys
 from PIL import Image
 from tools_py.parity import motion_diff

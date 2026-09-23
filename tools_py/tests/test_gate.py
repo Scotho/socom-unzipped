@@ -16,6 +16,10 @@ from tools_py.parity import black_rows, drive, gate, screen_bands
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FIXTURES = os.path.join(ROOT, "tests", "fixtures", "gate")   # committed: runs on a fresh clone
+# The save inside the pristine card, not just the directory that holds it: run_gate copies the card and the
+# case below reads this file out of the copy. The socom-linux VM has the ISO but not the card, and a guard on
+# the directory alone let the case run there and fail on a missing file instead of skipping (2026-09-22).
+PRISTINE_CARD_SAVE = os.path.join(ROOT, gate.PRISTINE_CARD, "BASCUS-97275SOCOMII", "BASCUS-97275SOCOMII")
 TITLE_FIXTURE_RUN = os.path.join(FIXTURES, "title")
 TRANSITION_FIXTURE_RUN = os.path.join(FIXTURES, "transition")
 GOOD_MISSION_FIXTURE = os.path.join(FIXTURES, "mission", "good.drive.txt")
@@ -396,8 +400,9 @@ class MissionSeeing(unittest.TestCase):
             self.assertFalse(ok, detail)
             self.assertTrue(detail.startswith("GUEST PROBE FAILED"), detail)
 
-    @unittest.skipUnless(os.path.isdir(os.path.join(ROOT, gate.PRISTINE_CARD)),
-                         "needs the pristine memory card game/disc/mc0_parity (owner's disc assets; /game/ is gitignored)")
+    @unittest.skipUnless(os.path.isfile(PRISTINE_CARD_SAVE),
+                         "needs the pristine memory card save %s (owner's disc assets; game/ is git-ignored)"
+                         % PRISTINE_CARD_SAVE)
     def test_mission_stage_launches_with_the_probe_peek_spec(self):
         """run_gate sets PS2X_PEEK for the mission stage from guest_probe_console.json unless the
         environment already carries one (an operator's wider spec wins).

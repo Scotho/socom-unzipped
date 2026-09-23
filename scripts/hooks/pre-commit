@@ -7,8 +7,9 @@
 # tools_py/release/leak_allow.txt. The push hook and CI run the same check again, so a skipped hook only
 # moves the refusal later.
 cd "$(git rev-parse --show-toplevel)" || exit 2
-py=python
-command -v python >/dev/null 2>&1 || py=python3
+. scripts/python_env.sh            # $PYTHON, resolved once for every script
+socom_require_python pre-commit
+py="$PYTHON"
 "$py" -m tools_py.release.leakcheck staged
 code=$?
 if [ "$code" -ne 0 ]; then

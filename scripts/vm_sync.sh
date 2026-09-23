@@ -2,10 +2,14 @@
 # Sprint 8 Goal 1: sync the tree (and, on request, the generated code and the ISO) into the socom-linux VM over SSH.
 # The host has no rsync, so the tree travels as a tar stream; the generated code likewise; the ISO by scp once.
 #   scripts/vm_sync.sh tree        # the repository minus build dirs, logs, vm/, dist*/ (a few seconds)
+#                                  # ... and it deletes: what the host no longer has goes from the guest too
+#                                  # (tools_py/vm_prune.py), or a moved file keeps shadowing its new home.
 #   scripts/vm_sync.sh generated   # recomp/output (576 MB, 14,882 files; once, or after a re-recomp)
 #   scripts/vm_sync.sh iso <path>  # the ISO to ~/socom2.iso (4 GB, once)
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+. "$ROOT/scripts/python_env.sh"   # $PYTHON, resolved once for every script
+socom_require_python vm_sync
 cd "$ROOT"
 KEY="$ROOT/vm/keys/socom_linux"
 SSH="ssh -i $KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -p 2222 socom@127.0.0.1"
@@ -24,15 +28,21 @@ case "${1:-tree}" in
         --exclude=./dist-release --exclude=./dist-linux-release \
         --exclude=./third_party/ps2recomp/build-linux --exclude=./third_party/ps2recomp/build-linux-release \
         --exclude=./tools/llvm-mingw --exclude=./tools/cmake --exclude=./tools/ninja --exclude=./tools/pcsx2 \
-        --exclude=./server --exclude=./research --exclude=./node_modules --exclude='*.wav' --exclude='*.iso' \
+        --exclude=./server/config/simulated.db --exclude='./server/*/bin' --exclude='./server/*/obj' \
+        --exclude=./research --exclude=./node_modules --exclude='*.wav' --exclude='*.iso' \
         -czf - . | $SSH 'tar -xzf - -C ~/socom_pc' && echo "tree synced" &&
     $SSH "$MD5_LIST" > "$ROOT/vm/.sync_after.md5" &&
-    python -m tools_py.vm_restamp "$ROOT/vm/.sync_before.md5" < "$ROOT/vm/.sync_after.md5" > "$ROOT/vm/.restamp_list" &&
+    "$PYTHON" -m tools_py.vm_restamp "$ROOT/vm/.sync_before.md5" < "$ROOT/vm/.sync_after.md5" > "$ROOT/vm/.restamp_list" &&
     { [ ! -s "$ROOT/vm/.restamp_list" ] || { tr '\n' '\0' < "$ROOT/vm/.restamp_list" | $SSH 'cd ~/socom_pc && xargs -0 touch --' && echo "re-stamped $(wc -l < "$ROOT/vm/.restamp_list") changed guest files"; }; } &&
     # Sprint 9: the untar never deleted, so a `git mv` left the old file in the guest (a stale header shadowed
-    # the moved one and broke the VM build). Prune what the host no longer has, under the source roots only.
-    $SSH 'cd ~/socom_pc && find third_party/ps2recomp/ps2xLauncher third_party/ps2recomp/ps2xShared third_party/ps2recomp/ps2xRuntime third_party/ps2recomp/ps2xTest third_party/ps2recomp/ps2xIOP tools_py scripts src -type f 2>/dev/null' \
-      | python -m tools_py.vm_prune "$ROOT" > "$ROOT/vm/.prune_list" &&
+    # the moved one and broke the VM build). Prune what the host no longer has, under the synced roots.
+    # Sprint 11 Task 18: docs/ was not one of those roots, so when fourteen documents moved into docs/archive/
+    # the guest kept both copies and tools_py.docmaint failed there on every duplicate. The roots are
+    # tools_py/vm_prune.py's ROOTS -- keep the two lists in step (tools_py/tests/test_vm_prune.py checks).
+    # The decision is entirely vm_prune's: it compares this listing against the host's `git ls-files` and the
+    # host's own walk, and prints the paths to remove. The count it removed is printed below.
+    $SSH 'cd ~/socom_pc && find third_party/ps2recomp/ps2xLauncher third_party/ps2recomp/ps2xShared third_party/ps2recomp/ps2xRuntime third_party/ps2recomp/ps2xTest third_party/ps2recomp/ps2xIOP tools_py scripts docs tests ghidra_scripts -type d \( -name "__pycache__" -o -name "_deps" \) -prune -o -type f -print 2>/dev/null' \
+      | "$PYTHON" -m tools_py.vm_prune "$ROOT" > "$ROOT/vm/.prune_list" &&
     { [ ! -s "$ROOT/vm/.prune_list" ] || { tr '\n' '\0' < "$ROOT/vm/.prune_list" | $SSH 'cd ~/socom_pc && xargs -0 rm -f --' && echo "pruned $(wc -l < "$ROOT/vm/.prune_list") stale guest files"; }; } ;;
   generated)
     $SSH 'mkdir -p ~/socom_pc/recomp/output' &&
