@@ -506,8 +506,16 @@ def _read_text_report(spec, code, out, err):
     if code == 1 and not findings:
         return _ext_result(spec, "not_run", 2, scanned=scanned,
                            reason="exit 1, but it printed no line this end could read as a finding")
-    return _ext_result(spec, "findings" if findings else "clean", 1 if findings else 0,
-                       findings=findings, scanned=scanned)
+    if findings:
+        return _ext_result(spec, "findings", 1, findings=findings, scanned=scanned)
+    # Exit 0 and nothing read is NOT a clean result: a text-parsed sibling whose wording has moved on looks
+    # exactly like one that scanned a clean tree. The stats line is the proof that this end still understands
+    # it -- without it, nothing is known about what it scanned, and that is the third state, not the first.
+    if scanned["files"] < 1:
+        return _ext_result(spec, "not_run", 2, scanned=scanned,
+                           reason="exit 0, but its output was not parseable: no stats line, so nothing is "
+                                  "known about what it scanned")
+    return _ext_result(spec, "clean", 0, scanned=scanned)
 
 
 def run_external(spec, siblings_root):

@@ -201,6 +201,28 @@ class ExternalMode(unittest.TestCase):
         self.assertIn("SKIPPED", out)
         self.assertEqual(L.main(["external", "--siblings-root", self.tmp, "--allow", os.devnull, "--require"]), 2)
 
+    def test_a_sibling_that_exits_0_with_output_we_cannot_read_is_not_clean(self):
+        """The failure mode a text-parsed sibling has and a JSON one does not: its scanner is fine, its wording
+        changed, and every line this end reads as a finding is gone. Exit 0 and nothing parsed is not "clean" --
+        it is "nothing is known about what it scanned", which is the third state."""
+        write(os.path.join(self.tmp, "socom_monitor", "leakcheck.py"),
+              'import os, sys\n'
+              'sys.exit(2) if not os.path.isdir(sys.argv[1]) else None\n'
+              'print("scanned the site; all good")\n')
+        os.makedirs(os.path.join(self.tmp, "socom_monitor", "out", "site"), exist_ok=True)
+        code, out, err, rep = self.run_mode()
+        mon = self.entry(rep, "monitor-leakcheck")
+        self.assertEqual((mon["state"], mon["exit"], mon["findings"]), ("not_run", 2, []))
+        self.assertEqual(mon["scanned"]["files"], 0)
+        self.assertIn("not parseable", mon["reason"])
+        self.assertNotIn("CLEAN", out)
+        self.assertNotIn("-- clean", out)
+        # it is there and it could not be scanned, so it is exit 2 with the flag and without it
+        self.assertEqual(code, 2)
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(L.main(["external", "--siblings-root", self.tmp, "--allow", os.devnull,
+                                     "--require"]), 2)
+
     def test_a_clean_sibling_says_clean_and_exits_0(self):
         self.monitor(code=0)
         # a scanner that exits 0 with nothing on stderr: the only shape that may print "clean"
