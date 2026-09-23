@@ -283,9 +283,27 @@ class EveryScriptUsesIt(unittest.TestCase):
                 continue
             with open(path, encoding="utf-8") as fh:
                 body = strip_comments(fh.read())
-            if "command -v python" in body or "command -v \"$PYTHON\"" in body:
+            # any `command -v` over anything interpreter-shaped, not just the two spellings that
+            # existed when this was written: make_portable.sh's `command -v "$PY3"` sailed through
+            # the narrow version for a whole review round (I2).
+            if re.search(r'command -v\s+"?\$?\{?(PY|PYTHON|python)', body):
                 offenders.append(rel)
         self.assertEqual(offenders, [], "the interpreter is resolved in scripts/python_env.sh and nowhere else")
+
+    def test_no_script_keeps_an_interpreter_of_its_own(self):
+        """A second variable resolved from the environment is a second rule, however it is spelled.
+        `PY3="${PYTHON3:-python3}"` in make_portable.sh answered four of the five Python invocations in
+        its Linux branch, and the test that drives that branch handed it PYTHON3 in the environment --
+        so the second rule was never exercised on a python3-only PATH either (review I2)."""
+        offenders = []
+        for rel, path in shell_scripts():
+            if os.path.abspath(path) == os.path.abspath(HELPER):
+                continue
+            with open(path, encoding="utf-8") as fh:
+                body = strip_comments(fh.read())
+            for m in re.finditer(r'\$\{(PYTHON[0-9A-Z_]*)\s*:?-', body):
+                offenders.append("%s: ${%s:-...}" % (rel, m.group(1)))
+        self.assertEqual(offenders, [], "an interpreter default belongs in scripts/python_env.sh only")
 
     def test_parity_env_sh_carries_the_helper(self):
         """The online scripts source env.sh and nothing else; if env.sh stops carrying the rule, six
@@ -340,7 +358,7 @@ class ScriptsRunWithoutPython(unittest.TestCase):
         from tools_py.tests.test_make_portable_linux import fake_ldist
         ldist, ldd = fake_ldist(self.tmp.name)
         out = os.path.join(self.tmp.name, "out")
-        env = self.shim.env(MAKE_PORTABLE_SYSTEM="Linux", LDD=ldd, PYTHON3=sys.executable,
+        env = self.shim.env(MAKE_PORTABLE_SYSTEM="Linux", LDD=ldd, PYTHON=sys.executable,
                             LDIST=ldist, DIST=os.path.join(self.tmp.name, "nodist"))
         p = run('bash scripts/make_portable.sh "%s"' % out.replace("\\", "/"), env)
         self.assertFoundAnInterpreter(p)

@@ -11,9 +11,10 @@
 # Sprint 8 Goal 1 item 5: on Linux it assembles dist-linux/portable/socom2-linux/ instead -- the same three
 # binaries with their executable bits, lib/ filled from ldd through scripts/portable_libs.py, and a .tar.gz
 # instead of a zip. The Windows branch below is unchanged (its here-docs need column-0 terminators).
-# Sprint 10 Q7: the Linux branch takes its platform from MAKE_PORTABLE_SYSTEM (default `uname -s`), its ldd from
-# LDD and its python3 from PYTHON3, so tools_py/tests/test_make_portable_linux.py can drive it on the Windows
-# host with a synthetic dist-linux/ and an ldd that answers for it; a real run sets none of the three.
+# Sprint 10 Q7: the Linux branch takes its platform from MAKE_PORTABLE_SYSTEM (default `uname -s`) and its ldd
+# from LDD, so tools_py/tests/test_make_portable_linux.py can drive it on the Windows host with a synthetic
+# dist-linux/ and an ldd that answers for it; a real run sets neither. The interpreter is $PYTHON like
+# everywhere else (scripts/python_env.sh) -- there was a second rule here, PYTHON3, and it disagreed.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$ROOT/scripts/python_env.sh"   # $PYTHON, resolved once for every script
@@ -25,7 +26,6 @@ PY="$PYTHON"
 case "${MAKE_PORTABLE_SYSTEM:-$(uname -s)}" in
   Linux)
     LDD="${LDD:-ldd}"
-    PY3="${PYTHON3:-python3}"
     # Sprint 8 Goal 1 item 5: the same folder as a tarball. dist-linux/ holds the native build;
     # socom2_game.elf is platform-neutral, so take dist/'s copy when only Windows has built it.
     DIST="${DIST:-$ROOT/dist}"
@@ -40,7 +40,6 @@ case "${MAKE_PORTABLE_SYSTEM:-$(uname -s)}" in
       [ -f "$LDIST/$f" ] || { echo "make_portable: $LDIST/$f missing -- run scripts/build_linux.sh first${SUFFIX:+ (or scripts/build_linux.sh release)}" >&2; exit 2; }
     done
     command -v "$LDD" >/dev/null || { echo "make_portable: ldd not found" >&2; exit 2; }
-    command -v "$PY3" >/dev/null || { echo "make_portable: python3 not found (scripts/portable_libs.py)" >&2; exit 2; }
     rm -rf "$PKG"
     mkdir -p "$PKG/lib" "$PKG/cards" "$PKG/logs" "$PKG/LICENSES"
     # -p keeps the executable bits; the tarball must unpack runnable.
@@ -51,7 +50,7 @@ case "${MAKE_PORTABLE_SYSTEM:-$(uname -s)}" in
     # Every shared library the runner AND the launcher pull in, minus the host's own stack.
     # RPATH $ORIGIN/lib (set by CMake) is what finds these at run time.
     LDD_OUT="$("$LDD" "$LDIST/socom2"; "$LDD" "$LDIST/socom_unzipped_launcher")"
-    if MISSING="$(printf '%s\n' "$LDD_OUT" | "$PY3" "$ROOT/scripts/portable_libs.py" --missing)"; then
+    if MISSING="$(printf '%s\n' "$LDD_OUT" | "$PY" "$ROOT/scripts/portable_libs.py" --missing)"; then
       :
     else
       echo "make_portable: ldd cannot resolve these libraries -- install them and rebuild:" >&2
@@ -61,7 +60,7 @@ case "${MAKE_PORTABLE_SYSTEM:-$(uname -s)}" in
     # The executables are the roots of the walk: a library is carried only when they reach it through
     # libraries we carry ourselves (ldd's flat list also names what only a host library needs -- libXau).
     # (tr: a Windows python prints CRLF, and the test drives this branch there -- as the Windows branch's NEEDED.)
-    printf '%s\n' "$LDD_OUT" | "$PY3" "$ROOT/scripts/portable_libs.py" \
+    printf '%s\n' "$LDD_OUT" | "$PY" "$ROOT/scripts/portable_libs.py" \
       "$LDIST/socom2" "$LDIST/socom_unzipped_launcher" | tr -d '\r' > "$OUT/.libs.txt"
     while read -r so; do
       [ -n "$so" ] || continue
@@ -89,13 +88,13 @@ Online: enter the server address in the launcher's Online panel; your profile na
 directory under cards/. Logs land in logs/ -- send the newest run_*.log with any report.
 Nothing is installed and nothing is written outside this folder; delete the folder to remove it.
 RD
-    "$PY3" "$AUDIT" audit "$PKG" --system Linux || { echo "make_portable: the assembled folder failed its audit" >&2; exit 4; }
+    "$PY" "$AUDIT" audit "$PKG" --system Linux || { echo "make_portable: the assembled folder failed its audit" >&2; exit 4; }
     ( cd "$ROOT" && "$PY" -m tools_py.release.leakcheck artifact "$PKG" ) \
       || { echo "make_portable: the assembled folder failed the leak check (exit $?) -- nothing archived" >&2; exit 5; }
     rm -f "$OUT/socom2-linux.tar.gz" "$OUT/SHA256SUMS"
     # (from inside OUT: a drive-letter path after -f reads as a remote host to GNU tar on the Windows host.)
     ( cd "$OUT" && tar -czf socom2-linux.tar.gz socom2-linux )
-    "$PY3" "$AUDIT" sha256sums "$OUT" socom2-linux.tar.gz >/dev/null
+    "$PY" "$AUDIT" sha256sums "$OUT" socom2-linux.tar.gz >/dev/null
     echo "portable folder: $PKG ($(ls "$PKG" | wc -l) entries, $NLIBS libraries in lib/), tarball: $OUT/socom2-linux.tar.gz ($(wc -c < "$OUT/socom2-linux.tar.gz") bytes), $OUT/SHA256SUMS"
     ;;
   *)
