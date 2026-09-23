@@ -145,6 +145,8 @@ class EveryScriptUsesIt(unittest.TestCase):
     def test_no_script_invokes_a_bare_python(self):
         offenders = []
         for rel, path in shell_scripts():
+            if os.path.abspath(path) == os.path.abspath(HELPER):
+                continue          # the one file where the word is the point: it is looking for it
             with open(path, encoding="utf-8") as fh:
                 body = strip_comments(fh.read())
             for n, line in enumerate(body.splitlines(), 1):
@@ -167,6 +169,20 @@ class EveryScriptUsesIt(unittest.TestCase):
                 continue
             offenders.append(rel)
         self.assertEqual(offenders, [], "these use $PYTHON without reaching scripts/python_env.sh")
+
+    def test_only_the_helper_resolves_the_interpreter(self):
+        """One rule, one place. Three scripts and the two hooks each carried their own
+        `py=python; command -v python || py=python3` before this, and a fourth resolution
+        (`${PYTHON:-python3}`) disagreed with all of them."""
+        offenders = []
+        for rel, path in shell_scripts():
+            if os.path.abspath(path) == os.path.abspath(HELPER):
+                continue
+            with open(path, encoding="utf-8") as fh:
+                body = strip_comments(fh.read())
+            if "command -v python" in body or "command -v \"$PYTHON\"" in body:
+                offenders.append(rel)
+        self.assertEqual(offenders, [], "the interpreter is resolved in scripts/python_env.sh and nowhere else")
 
     def test_parity_env_sh_carries_the_helper(self):
         """The online scripts source env.sh and nothing else; if env.sh stops carrying the rule, six

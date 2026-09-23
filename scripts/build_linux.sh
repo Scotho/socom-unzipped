@@ -157,8 +157,8 @@ test_step() {
     cxx_rc=2
     echo "build_linux: ps2x_tests did not build -- the C++ suite did not run (exit 2 is 'did not measure')"
   fi
-  verdict "tests: python" "$py_rc"
-  verdict "tests: c++   " "$cxx_rc"
+  verdict "tests: Python" "$py_rc"
+  verdict "tests: C++   " "$cxx_rc"
   if [ "$py_rc" -ne 0 ] || [ "$cxx_rc" -ne 0 ]; then
     return 1
   fi
