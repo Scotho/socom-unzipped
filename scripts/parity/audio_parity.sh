@@ -19,6 +19,7 @@
 # recording (scripts/parity/mission_music_long.sh is the caller that sets it; unset, nothing is written).
 set -u
 ROOT=/c/projects/socom_pc; cd "$ROOT"
+. "$ROOT/scripts/python_env.sh"    # $PYTHON, resolved once for every script
 cmd=${1:-}; shift || true
 case "$cmd" in
   capture)
@@ -40,24 +41,24 @@ case "$cmd" in
     if [ "$target" = pcsx2 ]; then
       restore="$OUT/pcsx2_override_backup.txt"
       powershell -NoProfile -Command "\$b='HKCU:\Software\Microsoft\Internet Explorer\LowRegistry\Audio\PolicyConfig\PropertyStore'; Get-ChildItem \$b | ForEach-Object { \$v=(Get-ItemProperty \$_.PSPath).'(default)'; if (\$v -like '*pcsx2-qt*' -and \$v -notlike '*pcsx2_b*') { Add-Content -Path '$restore' -Value (\$_.PSChildName + '|' + \$v) -Encoding utf8; Remove-Item -Path \$_.PSPath -Recurse -Force } }" >/dev/null 2>&1
-      PYTHONPATH="$ROOT" python logs/pcsx2_resize_loop.py 90 > "$OUT/resize.log" 2>&1 &
+      PYTHONPATH="$ROOT" "$PYTHON" logs/pcsx2_resize_loop.py 90 > "$OUT/resize.log" 2>&1 &
     fi
     date +%s.%N > "$OUT/.capture_started"
     # 620 s, not 480: the drive runs 600 s and PCSX2 reaches the mission HUD at ~350 s, so a 480 s recording ended
     # 130 s into the console's mission and every later reference window scored digital silence (run 8, 2026-09-20).
     # `record_s` keeps that margin by default (drive_s + 20).
-    python -m tools_py.parity.loopback_record "$OUT/endpoint.wav" "$rec_s" > "$OUT/loopback.log" 2>&1 &
+    "$PYTHON" -m tools_py.parity.loopback_record "$OUT/endpoint.wav" "$rec_s" > "$OUT/loopback.log" 2>&1 &
     REC=$!
     sleep 1
     # The per-app session volume Windows remembers for the exe on this endpoint sits BEFORE the loopback tap: hold
     # the launched game at 1.0 / unmuted while it runs and log what it was (music round four, 2026-09-20).
     exe=socom2.exe; [ "$target" = pcsx2 ] && exe=pcsx2-qt.exe
-    PYTHONPATH="$ROOT" python -m tools_py.parity.app_volume hold "$exe" --seconds "$drive_s" > "$OUT/app_volume.log" 2>&1 &
+    PYTHONPATH="$ROOT" "$PYTHON" -m tools_py.parity.app_volume hold "$exe" --seconds "$drive_s" > "$OUT/app_volume.log" 2>&1 &
     VOL=$!
     date +%s.%N > "$OUT/.drive_started"
     # --seconds is OUR game's run length (drive.py defaults to 400): launch_to_mission_xl runs past 400 s, and a game
     # killed at 400 s leaves the last eleven windows as digital silence that reads as a FAIL of the mix (s9_q1_parity_ours).
-    python -m tools_py.parity.drive --target "$target" --script "$script" --out "$OUT" --tail 10 --seconds "$drive_s" > "$OUT/drive.stdout" 2>&1
+    "$PYTHON" -m tools_py.parity.drive --target "$target" --script "$script" --out "$OUT" --tail 10 --seconds "$drive_s" > "$OUT/drive.stdout" 2>&1
     rc=$?
     kill $VOL 2>/dev/null
     wait $REC
@@ -66,20 +67,20 @@ case "$cmd" in
     fi
     powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kill_stale_drivers.ps1 >/dev/null 2>&1
     powershell -NoProfile -Command 'Get-Process pcsx2-qt -ErrorAction SilentlyContinue | Stop-Process -Force' >/dev/null 2>&1
-    offset=$(python -c "print(round(float(open('$OUT/.drive_started').read())-float(open('$OUT/.capture_started').read()),2))")
-    rate=$(python -c "import wave; print(wave.open('$OUT/endpoint.wav').getframerate())")
+    offset=$("$PYTHON" -c "print(round(float(open('$OUT/.drive_started').read())-float(open('$OUT/.capture_started').read()),2))")
+    rate=$("$PYTHON" -c "import wave; print(wave.open('$OUT/endpoint.wav').getframerate())")
     echo "target=$target script=$script drive_rc=$rc offset=${offset}s rate=$rate drive_s=$drive_s record_s=$rec_s dump=${PS2X_AUDIO_DUMP:-none}" > "$OUT/capture.txt"
-    PYTHONPATH="$ROOT" python -m tools_py.parity.audio_parity score "$OUT/endpoint.wav" "$rate" "$OUT/drive.stdout" "$offset" "$OUT/audio_scores.json" --target "$target" --script "$(basename "$script")" > "$OUT/scores.txt" 2>&1
+    PYTHONPATH="$ROOT" "$PYTHON" -m tools_py.parity.audio_parity score "$OUT/endpoint.wav" "$rate" "$OUT/drive.stdout" "$offset" "$OUT/audio_scores.json" --target "$target" --script "$(basename "$script")" > "$OUT/scores.txt" 2>&1
     echo "scored -> $OUT/audio_scores.json ($(grep -c ':' "$OUT/scores.txt") windows)"; cat "$OUT/capture.txt"
     exit $rc ;;
   compare)
     stamp=$1; ref=${2:-}
     OUT="logs/parity/$stamp"
     if [ -z "$ref" ]; then
-      script=$(python -c "import json; print(json.load(open('$OUT/audio_scores.json'))['meta'].get('script','launch_to_mission_xl.txt'))")
+      script=$("$PYTHON" -c "import json; print(json.load(open('$OUT/audio_scores.json'))['meta'].get('script','launch_to_mission_xl.txt'))")
       ref="scripts/parity/refs/audio_${script%.txt}.pcsx2.json"
     fi
-    PYTHONPATH="$ROOT" python -m tools_py.parity.audio_parity compare "$ref" "$OUT/audio_scores.json" | tee "$OUT/audio_parity.txt"
+    PYTHONPATH="$ROOT" "$PYTHON" -m tools_py.parity.audio_parity compare "$ref" "$OUT/audio_scores.json" | tee "$OUT/audio_parity.txt"
     exit ${PIPESTATUS[0]} ;;
   *) sed -n '2,12p' "$0"; exit 2 ;;
 esac

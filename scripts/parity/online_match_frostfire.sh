@@ -41,7 +41,7 @@ export PATH="/usr/bin:/bin:$PATH"
 rm -f "logs/${NAME}.done"
 # Instruments come from scripts/parity/env.sh (sourced above); the B-side key is this script's own.
 export PS2X_SOCOM2_RSA_KEY_B=b
-python -m tools_py.parity.online_match_ours --existing-b --hold 30 --until-kill \
+"$PYTHON" -m tools_py.parity.online_match_ours --existing-b --hold 30 --until-kill \
        --map frostfire --engage 22 --engage-dy 10 \
        --max-steps 60 --max-walk-seconds 240 \
        --fight-seconds 200 --kill-timeout 470 \

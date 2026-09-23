@@ -11,7 +11,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 . "$(dirname "$0")/env.sh"
 MAP="${1:?map name}"
-SLUG="$(python -c "import sys; from tools_py.parity import online_login_ours as L; print(L.map_slug(sys.argv[1]))" "$MAP")"
+SLUG="$("$PYTHON" -c "import sys; from tools_py.parity import online_login_ours as L; print(L.map_slug(sys.argv[1]))" "$MAP")"
 OUT="${2:-logs/parity/ours_control_${SLUG}}"
 NAME="$(basename "$OUT")"
 mkdir -p "$(dirname "$OUT")"
@@ -19,7 +19,7 @@ export PATH="/usr/bin:/bin:$PATH"
 rm -f "logs/${NAME}.done"
 # Instruments come from scripts/parity/env.sh (sourced above); the B-side key is this script's own.
 export PS2X_SOCOM2_RSA_KEY_B=b
-python -m tools_py.parity.online_match_ours --existing-b --hold 30 --control-round --rounds 1 \
+"$PYTHON" -m tools_py.parity.online_match_ours --existing-b --hold 30 --control-round --rounds 1 \
        --map "$MAP" --max-steps 60 --max-walk-seconds 240 \
        --out "$OUT" --seconds 1200 \
        > "logs/parity/drive_${NAME}.txt" 2>&1

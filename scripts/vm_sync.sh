@@ -6,6 +6,7 @@
 #   scripts/vm_sync.sh iso <path>  # the ISO to ~/socom2.iso (4 GB, once)
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+. "$ROOT/scripts/python_env.sh"   # $PYTHON, resolved once for every script
 cd "$ROOT"
 KEY="$ROOT/vm/keys/socom_linux"
 SSH="ssh -i $KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -p 2222 socom@127.0.0.1"
@@ -27,12 +28,12 @@ case "${1:-tree}" in
         --exclude=./server --exclude=./research --exclude=./node_modules --exclude='*.wav' --exclude='*.iso' \
         -czf - . | $SSH 'tar -xzf - -C ~/socom_pc' && echo "tree synced" &&
     $SSH "$MD5_LIST" > "$ROOT/vm/.sync_after.md5" &&
-    python -m tools_py.vm_restamp "$ROOT/vm/.sync_before.md5" < "$ROOT/vm/.sync_after.md5" > "$ROOT/vm/.restamp_list" &&
+    "$PYTHON" -m tools_py.vm_restamp "$ROOT/vm/.sync_before.md5" < "$ROOT/vm/.sync_after.md5" > "$ROOT/vm/.restamp_list" &&
     { [ ! -s "$ROOT/vm/.restamp_list" ] || { tr '\n' '\0' < "$ROOT/vm/.restamp_list" | $SSH 'cd ~/socom_pc && xargs -0 touch --' && echo "re-stamped $(wc -l < "$ROOT/vm/.restamp_list") changed guest files"; }; } &&
     # Sprint 9: the untar never deleted, so a `git mv` left the old file in the guest (a stale header shadowed
     # the moved one and broke the VM build). Prune what the host no longer has, under the source roots only.
     $SSH 'cd ~/socom_pc && find third_party/ps2recomp/ps2xLauncher third_party/ps2recomp/ps2xShared third_party/ps2recomp/ps2xRuntime third_party/ps2recomp/ps2xTest third_party/ps2recomp/ps2xIOP tools_py scripts src -type f 2>/dev/null' \
-      | python -m tools_py.vm_prune "$ROOT" > "$ROOT/vm/.prune_list" &&
+      | "$PYTHON" -m tools_py.vm_prune "$ROOT" > "$ROOT/vm/.prune_list" &&
     { [ ! -s "$ROOT/vm/.prune_list" ] || { tr '\n' '\0' < "$ROOT/vm/.prune_list" | $SSH 'cd ~/socom_pc && xargs -0 rm -f --' && echo "pruned $(wc -l < "$ROOT/vm/.prune_list") stale guest files"; }; } ;;
   generated)
     $SSH 'mkdir -p ~/socom_pc/recomp/output' &&

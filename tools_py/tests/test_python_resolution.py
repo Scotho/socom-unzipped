@@ -1,0 +1,233 @@
+"""Where the repository's shell scripts find Python: scripts/python_env.sh, and the rule that every
+script goes through it.
+
+A Debian/Ubuntu machine has no `python` -- the distribution ships `python3` and nothing else, and
+`python` only appears if somebody installs python-is-python3. Every script that typed the bare word
+therefore died in the socom-linux VM on 2026-09-22 with "python: command not found"
+(scripts/parity/ladder_frostfire.sh:121 and scripts/make_portable.sh:91 were the two that showed).
+Linux CI never saw it, because actions/setup-python puts a `python` shim on the PATH.
+
+One rule, in one sourced file: an explicit PYTHON in the environment wins, else `python`, else
+`python3`; nothing at all is a sentence on stderr and exit 2, never a silent skip.
+
+These tests drive bash with a temporary PATH that holds a `python3` shim and no `python` at all --
+the VM's shape, reproduced on the Windows host. No launch, no emulator, no network.
+"""
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import unittest
+
+from tools_py.tests.shell import BASH
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+HELPER = os.path.join(ROOT, "scripts", "python_env.sh")
+
+# A `python` spelled out in a script, as a word of its own. `python3`, `$PYTHON`, `PYTHONPATH` and
+# `python_env.sh` are not it; neither is `/^python/`, which is awk's process-name regex in
+# scripts/loop_lock.sh (it has to keep matching a real python3 process).
+BARE_PYTHON = re.compile(r"(?<![\w./$^-])python(?![\w.-])")
+
+
+def shell_scripts():
+    """Every shell script the repository ships under scripts/ -- the hooks included, they run on Linux too."""
+    out = subprocess.run(["git", "ls-files", "scripts"], cwd=ROOT, capture_output=True, text=True, check=True)
+    keep = []
+    for rel in out.stdout.split():
+        path = os.path.join(ROOT, rel)
+        if rel.endswith(".sh") or rel.startswith("scripts/hooks/"):
+            keep.append((rel, path))
+    return sorted(keep)
+
+
+def strip_comments(text):
+    """Whole-line `#` comments only: a prose line may say the word without invoking it."""
+    return "\n".join("" if line.lstrip().startswith("#") else line for line in text.splitlines())
+
+
+class PathShim(object):
+    """A PATH holding exactly the interpreters asked for, and never the host's own."""
+
+    def __init__(self, tmp, names):
+        self.dir = os.path.join(tmp, "bin")
+        os.makedirs(self.dir, exist_ok=True)
+        real = sys.executable.replace("\\", "/")
+        for name in names:
+            path = os.path.join(self.dir, name)
+            with open(path, "w", newline="\n", encoding="utf-8") as fh:
+                fh.write("#!/bin/sh\nexec '%s' \"$@\"\n" % real)
+            os.chmod(path, 0o755)
+
+    def env(self, **extra):
+        e = dict(os.environ)
+        e.pop("PYTHON", None)
+        e.pop("PYTHON3", None)
+        keep = []
+        for part in e.get("PATH", "").split(os.pathsep):
+            if not part:
+                continue
+            try:
+                names = {n.lower() for n in os.listdir(part)}
+            except OSError:
+                names = set()
+            if names & {"python", "python.exe", "python3", "python3.exe", "py.exe"}:
+                continue          # the host's own interpreter must not answer for the shim
+            keep.append(part)
+        e["PATH"] = os.pathsep.join([self.dir] + keep)
+        e.update(extra)
+        return e
+
+
+def run(script, env, cwd=ROOT):
+    return subprocess.run([BASH, "-c", script], cwd=cwd, env=env,
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+
+
+@unittest.skipUnless(BASH, "no Git Bash on this machine (tools_py/tests/shell.py)")
+class PythonEnvSh(unittest.TestCase):
+    """scripts/python_env.sh -- the one resolution rule."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_python3_only_is_enough(self):
+        """The VM's shape: no `python` anywhere, and the scripts still find an interpreter."""
+        shim = PathShim(self.tmp.name, ["python3"])
+        p = run('. scripts/python_env.sh; echo "$PYTHON"; "$PYTHON" -c "print(7*6)"', shim.env())
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertNotIn("command not found", p.stderr)
+        self.assertTrue(p.stdout.splitlines()[0].endswith("python3"), p.stdout)
+        self.assertIn("42", p.stdout)
+
+    def test_python_is_preferred_when_both_are_there(self):
+        shim = PathShim(self.tmp.name, ["python", "python3"])
+        p = run('. scripts/python_env.sh; echo "$PYTHON"', shim.env())
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertTrue(p.stdout.strip().endswith("python"), p.stdout)
+
+    def test_an_explicit_python_wins(self):
+        shim = PathShim(self.tmp.name, ["python", "python3"])
+        p = run('. scripts/python_env.sh; echo "$PYTHON"',
+                shim.env(PYTHON=os.path.join(shim.dir, "python3").replace("\\", "/")))
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertTrue(p.stdout.strip().endswith("python3"), p.stdout)
+
+    def test_no_interpreter_at_all_dies_with_a_sentence(self):
+        shim = PathShim(self.tmp.name, [])
+        p = run('. scripts/python_env.sh; socom_require_python demo; echo REACHED', shim.env())
+        self.assertNotEqual(p.returncode, 0)
+        self.assertNotIn("REACHED", p.stdout)
+        self.assertIn("python3", p.stderr)
+        self.assertRegex(p.stderr, r"[A-Za-z].*\.")          # a sentence, not a bare token
+
+    def test_sourcing_twice_is_harmless(self):
+        shim = PathShim(self.tmp.name, ["python3"])
+        p = run('. scripts/python_env.sh; first="$PYTHON"; . scripts/python_env.sh; '
+                '[ "$first" = "$PYTHON" ] && echo SAME', shim.env())
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("SAME", p.stdout)
+
+    def test_it_is_safe_to_source_under_set_eu(self):
+        """Every caller runs `set -euo pipefail`; the resolution must not trip it when `python` is absent."""
+        shim = PathShim(self.tmp.name, ["python3"])
+        p = run('set -euo pipefail; . scripts/python_env.sh; echo "$PYTHON"', shim.env())
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertTrue(p.stdout.strip().endswith("python3"), p.stdout)
+
+
+@unittest.skipUnless(BASH, "no Git Bash on this machine (tools_py/tests/shell.py)")
+class EveryScriptUsesIt(unittest.TestCase):
+    """The seam that keeps the defect from coming back one script at a time."""
+
+    def test_no_script_invokes_a_bare_python(self):
+        offenders = []
+        for rel, path in shell_scripts():
+            with open(path, encoding="utf-8") as fh:
+                body = strip_comments(fh.read())
+            for n, line in enumerate(body.splitlines(), 1):
+                if BARE_PYTHON.search(line):
+                    offenders.append("%s:%d: %s" % (rel, n, line.strip()))
+        self.assertEqual(offenders, [],
+                         "a bare `python` is not on a Linux PATH -- resolve it through scripts/python_env.sh")
+
+    def test_a_script_that_needs_an_interpreter_sources_the_helper(self):
+        """Directly, or through scripts/parity/env.sh, which the online harness already sources."""
+        offenders = []
+        for rel, path in shell_scripts():
+            if rel == "scripts/python_env.sh":
+                continue
+            with open(path, encoding="utf-8") as fh:
+                text = fh.read()
+            if "$PYTHON" not in text and "${PYTHON" not in text:
+                continue
+            if "python_env.sh" in text or re.search(r'^\s*\.\s+"\$\(dirname "\$0"\)/env\.sh"', text, re.M):
+                continue
+            offenders.append(rel)
+        self.assertEqual(offenders, [], "these use $PYTHON without reaching scripts/python_env.sh")
+
+    def test_parity_env_sh_carries_the_helper(self):
+        """The online scripts source env.sh and nothing else; if env.sh stops carrying the rule, six
+        scripts lose their interpreter at once."""
+        shim = PathShim(tempfile.mkdtemp(), ["python3"])
+        p = run('. scripts/parity/env.sh; echo "$PYTHON"', shim.env())
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertTrue(p.stdout.strip().endswith("python3"), p.stdout)
+
+    def test_every_script_still_parses(self):
+        bad = [rel for rel, path in shell_scripts()
+               if subprocess.run([BASH, "-n", path], capture_output=True).returncode != 0]
+        self.assertEqual(bad, [])
+
+
+@unittest.skipUnless(BASH, "no Git Bash on this machine (tools_py/tests/shell.py)")
+class ScriptsRunWithoutPython(unittest.TestCase):
+    """The scripts with a read-only path, driven for real on a PATH that has python3 and no python."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.shim = PathShim(self.tmp.name, ["python3"])
+
+    def assertFoundAnInterpreter(self, p):
+        both = p.stdout + p.stderr
+        for sentence in ("python: command not found", "python: not found",
+                         "no python on the PATH", "python: No such file"):
+            self.assertNotIn(sentence, both, both)
+
+    def test_disc_to_elf_check(self):
+        p = run("bash scripts/disc_to_elf.sh --check", self.shim.env())
+        self.assertFoundAnInterpreter(p)
+
+    def test_two_machine_readout(self):
+        a = os.path.join(self.tmp.name, "a.log")
+        b = os.path.join(self.tmp.name, "b.log")
+        for path in (a, b):
+            open(path, "w").close()
+        p = run('bash scripts/parity/two_machine_readout.sh "%s" "%s"' % (a, b), self.shim.env())
+        self.assertFoundAnInterpreter(p)
+
+    def test_vm_sync_usage(self):
+        p = run("bash scripts/vm_sync.sh --nonsense", self.shim.env())
+        self.assertFoundAnInterpreter(p)
+        self.assertIn("usage", p.stderr)
+
+    def test_make_portable_packages_a_linux_folder(self):
+        """make_portable.sh:91 -- `$PY -m tools_py.release.leakcheck` -- is one of the two lines the VM
+        actually died on. The synthetic Linux harness of test_make_portable_linux.py drives the whole
+        branch here, on a PATH shaped like the VM's."""
+        from tools_py.tests.test_make_portable_linux import fake_ldist
+        ldist, ldd = fake_ldist(self.tmp.name)
+        out = os.path.join(self.tmp.name, "out")
+        env = self.shim.env(MAKE_PORTABLE_SYSTEM="Linux", LDD=ldd, PYTHON3=sys.executable,
+                            LDIST=ldist, DIST=os.path.join(self.tmp.name, "nodist"))
+        p = run('bash scripts/make_portable.sh "%s"' % out.replace("\\", "/"), env)
+        self.assertFoundAnInterpreter(p)
+        self.assertEqual(p.returncode, 0, p.stderr + p.stdout)
+        self.assertTrue(os.path.isfile(os.path.join(out, "socom2-linux.tar.gz")), p.stdout)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -18,9 +18,10 @@
 # players seen moving.
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+. "$ROOT/scripts/python_env.sh"    # $PYTHON, resolved once for every script
 cd "$ROOT"
 if [ "$#" -lt 2 ]; then
   echo "usage: bash scripts/parity/two_machine_readout.sh <log_A> <log_B> [<harness log>...]" >&2
   exit 2
 fi
-exec "${PYTHON:-python}" -m tools_py.parity.two_machine_readout "$@"
+exec "$PYTHON" -m tools_py.parity.two_machine_readout "$@"

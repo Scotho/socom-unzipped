@@ -24,6 +24,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+. "$ROOT/scripts/python_env.sh"   # $PYTHON, resolved once for every script
 CC="${CC:-clang}"
 CXX="${CXX:-clang++}"
 export CC CXX
@@ -127,7 +128,7 @@ release() {   # Sprint 9 Goal 2: see build.sh release(); same switches, the syst
 test_step() {
   # Python tests first, exactly as build.sh runs them: one runner, unittest (no pytest), discovered
   # from tools_py/tests with the repo root as the top-level directory.
-  ( cd "$ROOT" && "${PYTHON:-python3}" -m unittest discover -s tools_py/tests -t . -v )
+  ( cd "$ROOT" && "$PYTHON" -m unittest discover -s tools_py/tests -t . -v )
   configure_runtime
   cmake --build "$RTBUILD" --target ps2x_tests -j "$JOBS"
   # ps2x_tests reads ps2xRecomp/include/ps2recomp/instructions.h relative to its own directory.

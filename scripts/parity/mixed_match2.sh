@@ -29,43 +29,43 @@ if ! netstat -an | grep -q "$LAN:53 "; then
   echo "mixed_match2: the DNS stub is not listening on $LAN:53 -- start tools_py.parity.dns_stub --bind $LAN --answer $SOCOM_SERVER_IP first" >&2
   echo "done 5" > "logs/${NAME}.done"; exit 5
 fi
-python -m tools_py.parity.pcsx2_ctl kill > /dev/null 2>&1
+"$PYTHON" -m tools_py.parity.pcsx2_ctl kill > /dev/null 2>&1
 # A host left over from the previous leg keeps its game up on the server, and the console client would join THAT
 # (mixed2_ours_hosts_b joined socomc's game while this run's host refused to start: "socom2.exe is already running").
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kill_stale_drivers.ps1 > /dev/null 2>&1
-python -c "from tools_py.parity import hostplatform; hostplatform.kill_process_by_name('socom2')" > /dev/null 2>&1
-python -m tools_py.parity.pcsx2_ctl launch B > "$OUT/pcsx2_launch.txt" 2>&1 || { echo "done 6" > "logs/${NAME}.done"; exit 6; }
+"$PYTHON" -c "from tools_py.parity import hostplatform; hostplatform.kill_process_by_name('socom2')" > /dev/null 2>&1
+"$PYTHON" -m tools_py.parity.pcsx2_ctl launch B > "$OUT/pcsx2_launch.txt" 2>&1 || { echo "done 6" > "logs/${NAME}.done"; exit 6; }
 # Ours logs in and hosts (verified), holds the lobby and then walks; the console client joins beside it.
-python -m tools_py.parity.online_match_ours --existing-b --foreign-b --hold 30 --play 4 --map "Frostfire" \
+"$PYTHON" -m tools_py.parity.online_match_ours --existing-b --foreign-b --hold 30 --play 4 --map "Frostfire" \
        --out "$OUT" --seconds 900 > "logs/parity/drive_${NAME}.txt" 2>&1 &
 OURS_PID=$!
-PYTHONPATH="$ROOT" python -m tools_py.parity.pcsx2_shell join B --name "$PERSONA" $EXISTING --out "$PCSX2_OUT" > "$OUT/pcsx2_join.txt" 2>&1
+PYTHONPATH="$ROOT" "$PYTHON" -m tools_py.parity.pcsx2_shell join B --name "$PERSONA" $EXISTING --out "$PCSX2_OUT" > "$OUT/pcsx2_join.txt" 2>&1
 JOIN_RC=$?
 echo "pcsx2 join rc=$JOIN_RC" >> "logs/parity/drive_${NAME}.txt"
 if [ "$JOIN_RC" -eq 0 ]; then
   sleep 35                                                # "The READY button will be available in 30 seconds": a press before that does nothing (leg 1c)
-  PYTHONPATH="$ROOT" python -m tools_py.parity.pcsx2_shell ready B --out "$PCSX2_OUT" > "$OUT/pcsx2_ready.txt" 2>&1
+  PYTHONPATH="$ROOT" "$PYTHON" -m tools_py.parity.pcsx2_shell ready B --out "$PCSX2_OUT" > "$OUT/pcsx2_ready.txt" 2>&1
   echo "pcsx2 ready rc=$?" >> "logs/parity/drive_${NAME}.txt"
 fi
 # The console side of the movement bar: its own position over PINE (instance B, port 28012; the camera/player
 # block cam_poll reads) once a second through the round, while it walks four 3 s bursts -- ours' peek and walk
 # are the host's side (online_match_ours --play). Both instances then have a position trail through the same round.
 sleep 45                                                  # the host's READY (joiner + 35 s) and the launch countdown
-PYTHONPATH="$ROOT" python -m tools_py.parity.cam_poll --port 28012 --spec 0x416054:3 --spec "*0x488de8+0x120:96" --out "$OUT/pcsx2_pos.txt" --seconds 100 --every 1.0 > "$OUT/pcsx2_pos.log" 2>&1 &
+PYTHONPATH="$ROOT" "$PYTHON" -m tools_py.parity.cam_poll --port 28012 --spec 0x416054:3 --spec "*0x488de8+0x120:96" --out "$OUT/pcsx2_pos.txt" --seconds 100 --every 1.0 > "$OUT/pcsx2_pos.log" 2>&1 &
 POLL=$!
-python -m tools_py.parity.pcsx2_ctl watch B play 60 1.0 --out "$PCSX2_OUT" > "$OUT/pcsx2_watch.txt" 2>&1 &
+"$PYTHON" -m tools_py.parity.pcsx2_ctl watch B play 60 1.0 --out "$PCSX2_OUT" > "$OUT/pcsx2_watch.txt" 2>&1 &
 WATCH=$!
 sleep 15
 for i in 1 2 3 4; do
-  python -m tools_py.parity.pcsx2_ctl hold B LUP 3.0 >> "$OUT/pcsx2_walk.txt" 2>&1
+  "$PYTHON" -m tools_py.parity.pcsx2_ctl hold B LUP 3.0 >> "$OUT/pcsx2_walk.txt" 2>&1
   sleep 12
 done
 wait $WATCH
 wait $POLL
 wait $OURS_PID
 rc=$?
-python -m tools_py.parity.pcsx2_ctl kill > /dev/null 2>&1
-python - "$PCSX2_OUT" >> "logs/parity/drive_${NAME}.txt" <<'EOF'
+"$PYTHON" -m tools_py.parity.pcsx2_ctl kill > /dev/null 2>&1
+"$PYTHON" - "$PCSX2_OUT" >> "logs/parity/drive_${NAME}.txt" <<'EOF'
 import glob, os, sys
 from PIL import Image
 from tools_py.parity import motion_diff

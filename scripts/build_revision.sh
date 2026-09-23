@@ -41,12 +41,12 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export PATH="$ROOT/tools/llvm-mingw/bin:$ROOT/tools/cmake/bin:$ROOT/tools/ninja:$PATH"
+. "$ROOT/scripts/python_env.sh"   # $PYTHON, resolved once for every script
 
 die2() { echo "build_revision: $*" >&2; exit 2; }
 say() { echo "$*"; }
 
-py=python
-command -v python >/dev/null 2>&1 || py=python3
+py="$PYTHON"
 
 REV="" ZDB="" CHECK="" DRY=0 STOP="runtime" FORCE=0 OUT="" GAME="" LOADER="" LTE="" TAIL=0 GHIDRA="" GHIDRA_R0001=0
 while [ $# -gt 0 ]; do

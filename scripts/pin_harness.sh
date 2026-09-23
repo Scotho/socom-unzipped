@@ -47,6 +47,7 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
+. "$ROOT/scripts/python_env.sh"   # $PYTHON, resolved once for every script
 cd "$ROOT"
 
 if [ $# -lt 1 ]; then
@@ -89,7 +90,7 @@ fi
 # relative (logs/parity/...) or an MSYS /c/... path, because python prints C:\... . The snapshot is handed over as
 # MSYS resolves it (`pwd -W`: C:/...), which python can realpath.
 harness_win=$(cd "$harness" && { pwd -W 2>/dev/null || pwd; })
-check=$(PYTHONPATH="$harness_win" PYTHONSAFEPATH=1 python -c \
+check=$(PYTHONPATH="$harness_win" PYTHONSAFEPATH=1 "$PYTHON" -c \
   "import os, sys, tools_py.parity.online_match_ours as m
 h = os.path.normcase(os.path.realpath(sys.argv[1])); f = os.path.normcase(os.path.realpath(m.__file__))
 print(m.__file__); sys.exit(0 if f.startswith(h + os.sep) else 3)" "$harness_win" 2>&1)

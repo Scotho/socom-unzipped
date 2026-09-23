@@ -16,10 +16,11 @@
 # host with a synthetic dist-linux/ and an ldd that answers for it; a real run sets none of the three.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+. "$ROOT/scripts/python_env.sh"   # $PYTHON, resolved once for every script
 SUFFIX=""
 if [ "${1:-}" = "--release" ]; then SUFFIX="-release"; shift; fi
 AUDIT="$ROOT/tools_py/portable_audit.py"
-PY="${PYTHON:-python}"
+PY="$PYTHON"
 case "${MAKE_PORTABLE_SYSTEM:-$(uname -s)}" in
   Linux)
     LDD="${LDD:-ldd}"
@@ -99,7 +100,7 @@ RD
   *)
 DIST="${DIST:-$ROOT/dist$SUFFIX}"
 OUT="${1:-$ROOT/dist$SUFFIX/portable}"
-PY="${PYTHON:-python}"
+PY="$PYTHON"
 PKG="$OUT/socom2"
 for f in socom2.exe socom2_game.elf socom_unzipped_launcher.exe; do
   [ -f "$DIST/$f" ] || { echo "make_portable: $DIST/$f missing -- run ./build.sh runtime first${SUFFIX:+ (or ./build.sh release)}" >&2; exit 2; }

@@ -12,6 +12,7 @@
 # not ours: SOCOM_SERVER_IP is the project's hosted box, fixed here.
 set -u
 ROOT=/c/projects/socom_pc; cd "$ROOT" || exit 1
+. "$ROOT/scripts/python_env.sh"   # $PYTHON, resolved once for every script
 export PATH="/usr/bin:/mingw64/bin:$HOME/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
 ROUNDS="${1:-4}"
 export SOCOM_SERVER_IP=3.143.65.100
@@ -38,5 +39,5 @@ echo "ladder_job: launch rc=$rc; waiting for $done_marker"
 deadline=$(( $(date +%s) + 3600 ))
 while [ ! -f "$done_marker" ] && [ "$(date +%s)" -lt "$deadline" ]; do sleep 30; done
 if [ -f "$done_marker" ]; then cat "$done_marker"; else echo "ladder_job: no done marker after an hour"; fi
-python -m tools_py.parity.ladder_ledger add "$out" "$SOCOM_SERVER_IP"
+"$PYTHON" -m tools_py.parity.ladder_ledger add "$out" "$SOCOM_SERVER_IP"
 echo "ladder_job: done $(date -u +%FT%TZ)"
