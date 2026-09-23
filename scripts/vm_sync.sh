@@ -41,7 +41,7 @@ case "${1:-tree}" in
     # tools_py/vm_prune.py's ROOTS -- keep the two lists in step (tools_py/tests/test_vm_prune.py checks).
     # The decision is entirely vm_prune's: it compares this listing against the host's `git ls-files` and the
     # host's own walk, and prints the paths to remove. The count it removed is printed below.
-    $SSH 'cd ~/socom_pc && find third_party/ps2recomp/ps2xLauncher third_party/ps2recomp/ps2xShared third_party/ps2recomp/ps2xRuntime third_party/ps2recomp/ps2xTest third_party/ps2recomp/ps2xIOP tools_py scripts src docs tests ghidra_scripts -type d \( -name "__pycache__" -o -name "_deps" \) -prune -o -type f -print 2>/dev/null' \
+    $SSH 'cd ~/socom_pc && find third_party/ps2recomp/ps2xLauncher third_party/ps2recomp/ps2xShared third_party/ps2recomp/ps2xRuntime third_party/ps2recomp/ps2xTest third_party/ps2recomp/ps2xIOP tools_py scripts docs tests ghidra_scripts -type d \( -name "__pycache__" -o -name "_deps" \) -prune -o -type f -print 2>/dev/null' \
       | "$PYTHON" -m tools_py.vm_prune "$ROOT" > "$ROOT/vm/.prune_list" &&
     { [ ! -s "$ROOT/vm/.prune_list" ] || { tr '\n' '\0' < "$ROOT/vm/.prune_list" | $SSH 'cd ~/socom_pc && xargs -0 rm -f --' && echo "pruned $(wc -l < "$ROOT/vm/.prune_list") stale guest files"; }; } ;;
   generated)

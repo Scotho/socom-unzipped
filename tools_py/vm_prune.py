@@ -11,6 +11,12 @@ tracked directories that the tar sends whole. Everything the tar does NOT send i
 (EXCLUDED), so a guest build tree, its logs, its keys, its .git or its extracted disc can never be named
 here however the lists are shaped. Root-level files are not pruned: the walk does not descend from the
 root, and a renamed README is not the failure this guards.
+
+And there is a floor. "The host has nothing" reads as "delete everything" to stale(), so a host list that
+cannot be trusted -- a root missing its directories, an empty list, fewer paths than FLOOR, no README.md
+-- stops the run with a sentence instead of producing a longer list (see refuse()). This is the only
+thing in the VM ring that deletes, and scripts/vm_sync.sh pipes its output straight into
+`xargs -0 rm -f --` behind nothing but `[ -s ]`.
 """
 import os
 import subprocess
@@ -18,7 +24,7 @@ import sys
 
 ROOTS = ("third_party/ps2recomp/ps2xLauncher/", "third_party/ps2recomp/ps2xShared/",
          "third_party/ps2recomp/ps2xRuntime/", "third_party/ps2recomp/ps2xTest/",
-         "third_party/ps2recomp/ps2xIOP/", "tools_py/", "scripts/", "src/",
+         "third_party/ps2recomp/ps2xIOP/", "tools_py/", "scripts/",
          "docs/", "tests/", "ghidra_scripts/")
 
 # What scripts/vm_sync.sh's tar never sends, plus the guest's own git directory and server/. A path under
@@ -72,7 +78,38 @@ def host_files(root):
     return out
 
 
+# A host list this small is not a checkout of this repository, and "the host has nothing" reads as
+# "delete everything" to stale(). The real tree carries thousands of files under ROOTS; 100 is far below
+# anything a genuine sync could produce and far above an accident.
+FLOOR = 100
+# ... and one file whose absence means the root is not this repository at all, whatever the count says.
+KEYSTONE = "README.md"
+
+
+def refuse(root, host):
+    """Why this host list must not be pruned against, or None. The prune is the only thing here that
+    deletes, and scripts/vm_sync.sh pipes its output straight into `xargs -0 rm -f --` behind nothing but
+    `[ -s ]` -- so a host list that cannot be trusted has to stop the run, not produce a longer list."""
+    missing = [r for r in ROOTS if not os.path.isdir(os.path.join(root, r))]
+    if missing:
+        return ("these pruned roots are not on the host under %s: %s -- wrong root, or a checkout that "
+                "is not this repository" % (root, ", ".join(missing)))
+    if not host:
+        return "the host list is empty under %s -- wrong root, or git could not run" % root
+    if len(host) < FLOOR:
+        return ("the host list has %d paths under %s, below the floor of %d -- a partial or wrong "
+                "checkout" % (len(host), root, FLOOR))
+    if not os.path.isfile(os.path.join(root, KEYSTONE)):
+        return "%s is not at %s -- that is not this repository's root" % (KEYSTONE, root)
+    return None
+
+
 if __name__ == "__main__":
     sys.stdout.reconfigure(newline=chr(10))   # the list goes to a Linux xargs: no CR
-    for path in stale(host_files(sys.argv[1]), sys.stdin.read().splitlines()):
+    _root = sys.argv[1]
+    _host = host_files(_root)
+    _why = refuse(_root, _host)
+    if _why:
+        sys.exit("vm_prune: %s -- refusing to prune, nothing deleted." % _why)
+    for path in stale(_host, sys.stdin.read().splitlines()):
         print(path)

@@ -14,6 +14,7 @@ the walk does not descend from the root, and a renamed README is not the failure
 """
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -105,6 +106,57 @@ class TwoTrees(unittest.TestCase):
         listed = vm_prune.host_files(vm_prune.__file__.rsplit(os.sep + "tools_py", 1)[0])
         self.assertIn("docs/HANDOFF.md", listed)
         self.assertIn("tools_py/vm_prune.py", listed)
+
+
+class TheFloor(unittest.TestCase):
+    """Review I6: an empty host list means "delete every guest file under the roots".
+
+    `tracked()` swallows every git failure and returns []; `os.walk` over a root that is not there
+    yields nothing. So a `sys.argv[1]` pointing anywhere without the roots -- a renamed checkout, a
+    $ROOT resolved through a junction, a tree with no .git and no source dirs -- made stale() name every
+    path the guest listed, and scripts/vm_sync.sh pipes that straight into `xargs -0 rm -f --` behind
+    nothing but `[ -s ]`. The list is never otherwise inspected. This is the one way the prune can reach
+    outside the synced set, so it refuses rather than prints."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def run_main(self, root, guest_lines):
+        cmd = [sys.executable, "-m", "tools_py.vm_prune", root]
+        return subprocess.run(cmd, input="\n".join(guest_lines), text=True, capture_output=True,
+                              cwd=os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+
+    def test_an_empty_host_list_refuses_instead_of_naming_everything(self):
+        empty = os.path.join(self.tmp.name, "nothing-here")
+        os.makedirs(empty)
+        p = self.run_main(empty, ["tools_py/a.py", "docs/b.md", "scripts/c.sh"])
+        self.assertNotEqual(p.returncode, 0, p.stdout)
+        self.assertEqual(p.stdout.strip(), "", "it printed paths to delete from a host it could not read")
+        self.assertIn("refusing to prune", p.stderr)
+
+    def test_a_host_missing_its_roots_refuses_and_names_them(self):
+        half = tree(os.path.join(self.tmp.name, "half"), ["tools_py/live.py"])
+        p = self.run_main(half, ["tools_py/gone.py"])
+        self.assertNotEqual(p.returncode, 0, p.stdout)
+        self.assertEqual(p.stdout.strip(), "")
+        self.assertIn("docs", p.stderr)
+        self.assertIn("refusing to prune", p.stderr)
+
+    def test_a_host_list_below_the_floor_refuses(self):
+        """A checkout whose roots exist but hold almost nothing is not a host to prune against."""
+        thin = tree(os.path.join(self.tmp.name, "thin"),
+                    [os.path.join(r, "one.txt") for r in vm_prune.ROOTS])
+        p = self.run_main(thin, ["tools_py/gone.py"])
+        self.assertNotEqual(p.returncode, 0, p.stdout)
+        self.assertIn("refusing to prune", p.stderr)
+
+    def test_the_real_checkout_is_over_the_floor_and_still_prunes(self):
+        """The floor must not refuse the thing it exists to allow."""
+        root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        p = self.run_main(root, ["tools_py/definitely_not_a_real_file_9f3a.py", "tools_py/vm_prune.py"])
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(p.stdout.split(), ["tools_py/definitely_not_a_real_file_9f3a.py"])
 
 
 class TheSyncScript(unittest.TestCase):
