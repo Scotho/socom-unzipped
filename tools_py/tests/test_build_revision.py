@@ -238,6 +238,49 @@ class BuildRevisionForcedEntryPointsTest(unittest.TestCase):
 
 
 @unittest.skipUnless(BASH, "needs a bash that is not WSL's launcher")
+class BuildRevisionMatchReportTest(unittest.TestCase):
+    """recomp/socom2.toml's ~1,900 guest addresses are r0001's, so the config is a per-revision input too.
+
+    With an address match report step 3 runs tools_py.revision_toml and translates them; without one it
+    copies-and-renames as it always did, and a foreign revision is warned that what it gets is r0001's
+    numbers. `r0009fake` has no game/r0009fake/match.json in any tree, which is what makes it the revision
+    these cases can assert the fallback on.
+    """
+
+    def test_a_missing_report_is_refused(self):
+        p = run_bash(SCRIPT, "r0004", EMPTY_ZDB, "--dry-run", "--match", "game/no_such_match.json")
+        self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+        self.assertIn("no such address match report", p.stderr)
+
+    def test_match_needs_a_path(self):
+        p = run_bash(SCRIPT, "r0004", EMPTY_ZDB, "--dry-run", "--match")
+        self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+
+    def test_the_dry_run_names_the_report_step_3_will_translate_through(self):
+        p = run_bash(SCRIPT, "r0004", EMPTY_ZDB, "--dry-run", "--match", EMPTY_ZDB)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("every address translated through", p.stdout)
+        self.assertIn("empty.zdb", p.stdout)
+
+    def test_without_a_report_the_dry_run_says_the_addresses_stay_r0001s(self):
+        p = run_bash(SCRIPT, "r0009fake", EMPTY_ZDB, "--dry-run")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("every other address stays r0001's", p.stdout)
+
+    def test_a_foreign_revision_without_a_report_is_warned_on_stderr(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = run_bash(SCRIPT, "r0009fake", EMPTY_ZDB, "--ghidra-from-r0001",
+                         "--out", sh(os.path.join(tmp, "out")))
+            self.assertIn("no address match report", p.stderr)
+            self.assertIn("address_matcher", p.stderr)
+
+    def test_the_r0001_disc_is_not_warned(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = run_bash(SCRIPT, "r0001check", EMPTY_ZDB, "--out", sh(os.path.join(tmp, "out")))
+            self.assertNotIn("no address match report", p.stderr)
+
+
+@unittest.skipUnless(BASH, "needs a bash that is not WSL's launcher")
 class BuildRevisionRecompSkipTest(unittest.TestCase):
     """Step 4 skips on the mark it writes when ps2_recomp returns 0, never on 'the directory has files in it'.
 

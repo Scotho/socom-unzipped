@@ -158,6 +158,23 @@ extension, `MakeFunctions.java` on the three entry points no flow reaches before
 **raw** export; `tools_py/carry_names.py <match.json> <raw.csv> <out.csv>` then carries the named functions of an
 older revision onto their matched addresses (`tools_py/address_matcher.py` says which) and leaves every
 address-derived Ghidra name where it is.
+**The recompiler's own config is a per-revision input too, and `tools_py/revision_toml.py` carries it over
+(Sprint 11 Task 19).** Rewriting `input`/`output`/`ghidra_output` is three lines of `recomp/socom2.toml`; the other
+~1,900 are r0001 guest addresses — the stub selectors `ps2_recomp` binds by start address, the 19 overlay
+instruction patches, the 24 overlay jump-table sites, the `[mmio]` annotations — and in a build relinked from
+changed source they point at whatever the new build happens to have put there. With an address match report
+(`--match <json>`, or `game/<rev>/match.json` when it is there) step 3 runs
+`python -m tools_py.revision_toml recomp/socom2.toml <match.json> --out recomp/socom2_<rev>.toml`, which moves a
+function-start address by its own match, an address *inside* a matched function's body by that function's delta
+(marked `(weak)` when the function was placed by `seed+delta` rather than by fingerprint), and leaves an address in
+a region that is byte-identical in both images alone. Every line it rewrites carries the r0001 address and the
+method in a comment; `--dry-run` prints the table and writes nothing. **Its limit is the matcher's:** what the
+match report cannot place, this tool does not guess — the r0001 number stays, the line says `UNRESOLVED`, and the
+address is listed in `[revision.unresolved]` with the role the config gave it, so the config states what it does not
+know. Without a report the step copies-and-renames as before, and warns. On r0004 (2026-09-23): of the config's
+1,985 addresses, 1,357 are in the loader and do not move, **91 of the remaining 628 were translated and 537 were
+left as r0001's** (371 distinct addresses in `[revision.unresolved]`) — including all 24 overlay jump-table base
+addresses, none of which is a function start in r0001's map.
 **Proven on r0001 (2026-09-23):** `bash scripts/build_revision.sh r0001check game/disc/RUN/RAW/APACHE00.ZDB
 --check-against dist/socom2_game.elf` -- the ELF identical (sha256 `06b83684...8872`), `diff -rq --exclude=.complete` of the 14,882
 generated files against `recomp/output` empty (the mark is the script's own, since the review round), the exe built (236,856,320 B; not byte-identical to `dist/socom2.exe`,
