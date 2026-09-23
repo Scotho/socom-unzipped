@@ -55,6 +55,8 @@ namespace socom2_addresses
         uint32_t cameraHolder;          // DATA: the camera holder pointer the cull trace reads
         uint32_t versionString;         // DATA: "SOCOM 2 r0001 17:22:21 Oct 11 2003" -- what picks the column
         uint32_t oskOpen;               // the on-screen keyboard's GetTextInput handler
+        uint32_t oskOpenThunk;          // the one-instruction thunk the UI action table dispatches through
+        uint32_t oskTextBuffer;         // DATA: the keyboard's initial-text buffer the prefill writes
         uint32_t chatFanoutRecv;        // the chat receive fan-out (milestone S)
         uint32_t dnasCheck;             // the DNAS tick the runtime answers done
         uint32_t ctorTableFtsBegin;     // DATA: FTSCore's static constructor table
@@ -80,7 +82,9 @@ namespace socom2_addresses
         0x0034b6c0u,   // cuePush
         0x00415ff0u,   // cameraHolder
         0x003e5c60u,   // versionString
-        socom2_osk::kOskOpenAddr,   // oskOpen -- one definition, in the header that documents the handler
+        socom2_osk::kOskOpenAddr,         // oskOpen -- one definition, in the header that documents the handler
+        socom2_osk::kOskOpenThunkAddr,    // oskOpenThunk -- ditto; the table dispatches here, not at the handler
+        socom2_osk::kOskTextBufferAddr,   // oskTextBuffer -- ditto
         0x002f4ef0u,   // chatFanoutRecv
         0x002cc670u,   // dnasCheck
         0x00404d10u,   // ctorTableFtsBegin

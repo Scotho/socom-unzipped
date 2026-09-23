@@ -472,6 +472,10 @@ namespace
             std::memcpy(&vaddr, ph + 8, 4);
             std::memcpy(&filesz, ph + 16, 4);
             std::memcpy(&memsz, ph + 20, 4);
+            // 0x1e7000 is the FIRST OVERLAY'S LOAD ADDRESS -- where FTSCore starts, so everything at or
+            // above it is overlay content to restore. It is not the same boundary as
+            // socom2_addresses::kOverlayBase (0x1d5600), which is the end of the LOADER'S DATA: the gap
+            // between them belongs to neither, and the table's invariant only has to exclude the loader.
             if (type != 1 || vaddr < 0x001e7000u || memsz == 0)
                 continue;
             uint8_t *dst = getMemPtr(rdram, vaddr);
@@ -1415,7 +1419,8 @@ namespace
         const uint32_t kPush = socom2_addresses::current().cuePush;           // r0001: FUN_0034b6c0, the cue push
         if (!runtime.hasFunction(kManager) || !runtime.hasFunction(kPush))
         {
-            std::cout << "[music] trace: FUN_0034afd0 / FUN_0034b6c0 not in the function table" << std::endl;
+            std::cout << "[music] trace: 0x" << std::hex << kManager << " / 0x" << kPush << std::dec
+                      << " not in the function table" << std::endl;
             return;
         }
         g_musicMgrOriginal = runtime.lookupFunction(kManager);
@@ -1479,7 +1484,8 @@ namespace
         const uint32_t kRtNetCfgInit = socom2_addresses::current().rtNetConfigInit;   // r0001: FUN_00620648
         if (!runtime.hasFunction(kRtNetCfgInit))
         {
-            std::cout << "[socom2] no function at 0x620648; peer UDP port shift stays host-side only" << std::endl;
+            std::cout << "[socom2] no function at 0x" << std::hex << kRtNetCfgInit << std::dec
+                      << "; peer UDP port shift stays host-side only" << std::endl;
             return;
         }
         g_rtNetCfgOriginal = runtime.lookupFunction(kRtNetCfgInit);
@@ -1506,7 +1512,7 @@ namespace
     void socom2_OskOpenPrefill(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         const uint32_t msgAddr = GPR_U32(ctx, 4) & PS2_RAM_MASK;
-        const uint32_t bufAddr = socom2_osk::kOskTextBufferAddr & PS2_RAM_MASK;
+        const uint32_t bufAddr = socom2_addresses::current().oskTextBuffer & PS2_RAM_MASK;
         socom2_osk::Request req;
         std::string text;
         if (msgAddr != 0 && msgAddr + socom2_osk::kArgBlockBytes <= PS2_RAM_SIZE)
@@ -1540,18 +1546,23 @@ namespace
         const bool havePass = pass != nullptr && *pass != '\0';
         if (!haveName && !havePass)
             return;
-        if (!runtime.hasFunction(socom2_osk::kOskOpenAddr))
+        // All three of the keyboard's addresses are revision-bound and all three come from one place
+        // (runtime/socom2_addresses.h): the handler, the thunk the UI action table actually dispatches
+        // through, and the initial-text buffer the wrapper writes.
+        const socom2_addresses::Table &addr = socom2_addresses::current();
+        if (!runtime.hasFunction(addr.oskOpen))
         {
-            std::cout << "[socom2] no function at 0x" << std::hex << socom2_osk::kOskOpenAddr << std::dec
+            std::cout << "[socom2] no function at 0x" << std::hex << addr.oskOpen << std::dec
                       << "; the keyboards open empty (PS2X_SOCOM2_LOGIN_NAME/_PASS ignored)" << std::endl;
             return;
         }
         // The original is the handler itself; the wrap sits on the handler AND on the thunk the action table
         // dispatches through (kOskOpenEntries), because the recompiled thunk calls the handler directly and a
         // replacement at the handler alone is never reached (the first two driven logins: armed, 0 of 5 filled).
-        g_oskOpenOriginal = runtime.lookupFunction(socom2_osk::kOskOpenAddr);
+        g_oskOpenOriginal = runtime.lookupFunction(addr.oskOpen);
+        const uint32_t entries[] = {addr.oskOpenThunk, addr.oskOpen};
         int installed = 0;
-        for (uint32_t entry : socom2_osk::kOskOpenEntries)
+        for (uint32_t entry : entries)
         {
             if (runtime.hasFunction(entry))
             {
@@ -1560,7 +1571,7 @@ namespace
             }
         }
         std::cout << "[socom2] on-screen keyboard prefill wraps " << installed << " of "
-                  << (sizeof(socom2_osk::kOskOpenEntries) / sizeof(socom2_osk::kOskOpenEntries[0])) << " entries" << std::endl;
+                  << (sizeof(entries) / sizeof(entries[0])) << " entries" << std::endl;
         std::cout << "[socom2] on-screen keyboard prefill armed: persona name " << (haveName ? std::to_string(std::strlen(name)) + " chars" : "unset")
                   << ", password " << (havePass ? std::to_string(std::strlen(pass)) + " chars" : "unset") << std::endl;
     }
@@ -1850,7 +1861,7 @@ namespace
             return;
         g_packOriginal = runtime.lookupFunction(kPack);
         runtime.replaceFunction(kPack, socom2_PackTrace);
-        std::cout << "[pack-trace] FUN_0025a5d0 -> " << path << std::endl;
+        std::cout << "[pack-trace] 0x" << std::hex << kPack << std::dec << " -> " << path << std::endl;
     }
 
     // The deferred (sorted, translucent) draw list -- research/31 section 16: components whose flags carry bit 0 are
@@ -1934,7 +1945,7 @@ namespace
         g_cullTraceAfter = std::atof(rest.c_str());
         if (!runtime.hasFunction(addr.cull))
         {
-            std::cout << "[cull-trace] no function at 0x290c30" << std::endl;
+            std::cout << "[cull-trace] no function at 0x" << std::hex << addr.cull << std::dec << std::endl;
             return;
         }
         g_cullTraceFile = std::fopen(path.c_str(), "w");
@@ -1982,7 +1993,8 @@ namespace
             g_flushOriginal = runtime.lookupFunction(addr.flush);
             runtime.replaceFunction(addr.flush, socom2_FlushTrace);
         }
-        std::cout << "[cull-trace] FUN_00290c30 -> " << path << " from t=" << g_cullTraceAfter << "s, " << g_cullTraceLeft << " calls" << std::endl;
+        std::cout << "[cull-trace] 0x" << std::hex << addr.cull << std::dec << " -> " << path
+                  << " from t=" << g_cullTraceAfter << "s, " << g_cullTraceLeft << " calls" << std::endl;
     }
 
     void installCrashHandler(PS2Runtime &runtime)
@@ -2007,7 +2019,8 @@ namespace
             const uint8_t *p = getConstMemPtr(runtime.memory().getRDRAM(), socom2_addresses::kR0001.versionString);
             std::string s;
             for (int i = 0; p && i < 40 && p[i]; ++i) s.push_back(static_cast<char>(p[i]));
-            std::cout << "[socom2] mem@0x3e5c60 = \"" << s << "\"" << std::endl;
+            std::cout << "[socom2] mem@0x" << std::hex << socom2_addresses::kR0001.versionString << std::dec
+                      << " = \"" << s << "\"" << std::endl;
             socom2_addresses::selectFromVersionString(s.c_str());
         }
         startPcSampler(runtime);

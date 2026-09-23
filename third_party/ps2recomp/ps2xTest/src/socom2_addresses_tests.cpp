@@ -63,7 +63,12 @@ void register_socom2_addresses_tests()
             t.Equals(a.cuePush, 0x0034b6c0u, "cuePush: FUN_0034b6c0");
             t.Equals(a.cameraHolder, 0x00415ff0u, "cameraHolder: the camera holder pointer");
             t.Equals(a.versionString, 0x003e5c60u, "versionString: the FTSCore build stamp");
+            t.Equals(a.oskOpen, 0x0038D770u, "oskOpen: FUN_0038d770, the GetTextInput handler");
             t.Equals(a.oskOpen, socom2_osk::kOskOpenAddr, "oskOpen: socom2_osk::kOskOpenAddr, not a second copy");
+            t.Equals(a.oskOpenThunk, 0x002808D0u, "oskOpenThunk: thunk_FUN_0038d770, what the action table calls");
+            t.Equals(a.oskOpenThunk, socom2_osk::kOskOpenThunkAddr, "oskOpenThunk: one definition, not a second copy");
+            t.Equals(a.oskTextBuffer, 0x0049EC70u, "oskTextBuffer: the keyboard's initial-text buffer");
+            t.Equals(a.oskTextBuffer, socom2_osk::kOskTextBufferAddr, "oskTextBuffer: one definition, not a second copy");
             t.Equals(a.chatFanoutRecv, 0x002f4ef0u, "chatFanoutRecv: FUN_002f4ef0");
             t.Equals(a.dnasCheck, 0x002cc670u, "dnasCheck: FUN_002cc670");
             t.Equals(a.ctorTableFtsBegin, 0x00404d10u, "ctorTableFtsBegin: FTSCore static constructors");
@@ -80,11 +85,25 @@ void register_socom2_addresses_tests()
             const socom2_addresses::Table &a = socom2_addresses::forRevision("r0001");
             const uint32_t fields[] = {a.rtNetConfigInit, a.packTrace, a.cull, a.node, a.node2, a.lod,
                                        a.detail, a.camCfg, a.defer, a.flush, a.musicManager, a.cuePush,
-                                       a.cameraHolder, a.versionString, a.oskOpen, a.chatFanoutRecv,
+                                       a.cameraHolder, a.versionString, a.oskOpen, a.oskOpenThunk,
+                                       a.oskTextBuffer, a.chatFanoutRecv,
                                        a.dnasCheck, a.ctorTableFtsBegin, a.ctorTableFtsEnd,
                                        a.ctorTableZsealBegin, a.ctorTableZsealEnd};
             for (uint32_t v : fields)
                 t.IsTrue(v >= socom2_addresses::kOverlayBase, "0x" + std::to_string(v) + " is at or above the overlay base");
+        });
+
+        tc.Run("the keyboard wrap needs all three of its addresses from one column", [](TestCase &t)
+        {
+            // The prefill replaces the handler AND the thunk the action table dispatches through, then
+            // writes the initial-text buffer. All three move together in a relink, so all three are
+            // fields: a column that carried the handler alone would arm the wrap and fill nothing.
+            const socom2_addresses::Table &a = socom2_addresses::forRevision("r0001");
+            t.IsTrue(a.oskOpen != a.oskOpenThunk, "the handler and the thunk are different addresses");
+            t.IsTrue(a.oskTextBuffer != a.oskOpen && a.oskTextBuffer != a.oskOpenThunk, "the buffer is neither");
+            t.IsTrue(a.oskOpen >= socom2_addresses::kOverlayBase, "the handler is overlay content");
+            t.IsTrue(a.oskOpenThunk >= socom2_addresses::kOverlayBase, "the thunk is overlay content");
+            t.IsTrue(a.oskTextBuffer >= socom2_addresses::kOverlayBase, "the buffer is overlay content");
         });
 
         tc.Run("the revision token is read out of the version string", [](TestCase &t)
