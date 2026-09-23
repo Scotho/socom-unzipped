@@ -33,7 +33,21 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+      # The release process began at 92b92c6 (2026-09-21: the leak gate, the notes template, this workflow). A tag
+      # on anything older -- v0.5.0..v0.8.0 were backfilled onto their sprints' close commits on 2026-09-23 -- is
+      # history, not a release: it gets no draft, and the job ends green saying so instead of failing on a tree
+      # the gate was never written for.
+      - name: Is this tag from after the release process existed?
+        id: elig
+        run: |
+          if git merge-base --is-ancestor 92b92c6 "$GITHUB_SHA"; then
+            echo "eligible=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "historical tag, no draft"
+          fi
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        if: steps.elig.outputs.eligible == 'true'
         with:
           python-version: '3.12'
       # `all` includes the `external` leg, which calls ../scotho's and ../socom_monitor's own scanners. A runner
@@ -41,8 +55,10 @@ jobs:
       # it is, "did not run", never as clean. `--require` (which would make a missing sibling exit 2) belongs on
       # the owner's machine, where the siblings exist; it must never be added here.
       - name: The leak check over the tagged tree, its history, the identities, the ignored paths and the siblings
+        if: steps.elig.outputs.eligible == 'true'
         run: python -m tools_py.release.leakcheck all
       - name: Create the DRAFT release with the checklist as its notes
+        if: steps.elig.outputs.eligible == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
