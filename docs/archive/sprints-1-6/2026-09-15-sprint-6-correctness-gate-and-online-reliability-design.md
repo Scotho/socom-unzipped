@@ -1,14 +1,18 @@
 # Sprint 6 — a gate that can see, the paused correctness fixes, and a cheaper online result: design
 
+> **ARCHIVED 2026-09-23 — Sprint 6's spec, closed 2026-09-17. Cited by `docs/archive/CURRENT_SPRINT-to-sprint-8.md`, `docs/superpowers/specs/2026-09-15-game-client-package-and-installer-outline.md` and the Sprint 6 plan beside it; kept verbatim.**
+> Moved here from `docs/superpowers/specs/` in Sprint 11; nothing below it was edited except those
+> citations that pointed at this block's own old paths. It is a record, not an instruction.
+
 Status: written 2026-09-15 by the controller from `docs/ROADMAP.md` §6 (revised 2026-09-13, with the
-owner's two 2026-09-14 additions to item 5), the 2026-09-14 handoff audit (`docs/HANDOFF-AUDIT-2026-09-14.md`
+owner's two 2026-09-14 additions to item 5), the 2026-09-14 handoff audit (`docs/archive/HANDOFF-AUDIT-2026-09-14.md`
 "Recommended Sprint 6 Order"), `docs/CURRENT_SPRINT.md`'s "Paused 2026-09-14" block, and research/25–27.
 **The owner has not reviewed this document.** It rests on the standing instruction (2026-09-15: "proceed
 as suggested autonomously, picking up where the last agent left off") and on items the owner agreed to
 on 2026-09-14. Goals 0–1 are those already-agreed items; Goals 2 onward follow the roadmap's order and
 are the first thing to re-rule when the owner returns. Branch `sprint-6` off `develop` after
 `fix/gl-depth-precision` and `fix/gs-block-pointer` are merged. Executor: the autonomous loop following
-`docs/superpowers/plans/2026-09-15-sprint-6-correctness-gate-and-online-reliability.md`. **Goal N here
+`docs/archive/sprints-1-6/2026-09-15-sprint-6-correctness-gate-and-online-reliability.md`. **Goal N here
 is Task N in the plan.**
 
 **Authority.** `docs/KNOWN.md` wins over this document wherever they disagree. Every numeric bar names

@@ -1,5 +1,9 @@
 # Sprint 5 — Control on the Test Map, a Kill Readout from Sourced Offsets, and the First Kill: Implementation Plan
 
+> **ARCHIVED 2026-09-23 — Sprint 5's plan, closed 2026-09-13. Cited by `docs/STORY.md` and `docs/story/timeline.json` as a citation of record for the first online kill, `docs/archive/HANDOFF-reference-to-2026-09-13.md`, `docs/archive/ROADMAP-sprint-4-to-sprint-7.md` and the Sprint 5 spec beside it; kept verbatim.**
+> Moved here from `docs/superpowers/plans/` in Sprint 11; nothing below it was edited except those
+> citations that pointed at this block's own old paths. It is a record, not an instruction.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Settle why nobody moves on Frostfire (the uninitialised ghost flag first), confirm the sourced health/life fields in one single-player run, make the online harness unable to spend a match on an uncontrollable or hung player, then climb the engagement from contact to damage to a kill attributed by signals from different objects and processes.
@@ -8,7 +12,7 @@
 
 **Tech Stack:** C++20 (llvm-mingw clang via `build.sh`), Python 3 (`unittest`, numpy, Pillow), the local Horizon server, PCSX2 as the console reference, Ghidra decomp `game/analysis/socom2_game.elf.decomp.c`, reCOM (`tools/reference/reCOM`, SOCOM 1), Git Bash + PowerShell.
 
-**Spec:** `docs/superpowers/specs/2026-09-13-sprint-5-control-readout-and-first-kill-design.md`. **Required reading for every dispatch:** `docs/KNOWN.md`, `docs/research/19-community-and-engine-resources.md` (F1–F5), `docs/research/18-online-round-start.md` §3.9–§3.12 and §4.12–§4.13, `docs/research/11-recom-applicability.md` §1 "zNetwork".
+**Spec:** `docs/archive/sprints-1-6/2026-09-13-sprint-5-control-readout-and-first-kill-design.md`. **Required reading for every dispatch:** `docs/KNOWN.md`, `docs/research/19-community-and-engine-resources.md` (F1–F5), `docs/research/18-online-round-start.md` §3.9–§3.12 and §4.12–§4.13, `docs/research/11-recom-applicability.md` §1 "zNetwork".
 
 ## Handoff notes for the executing model (read once)
 
@@ -244,7 +248,7 @@ Source: `.superpowers/sdd/2026-09-13-sprint-5-control-readout-and-first-kill/bro
 - [x] **Step 2: Run.** Caps: **4 usable matches, hard cap 10 launches.** Success: spec §5 Goal 6 (P(≥ 4 usable in 10) ≈ 62 % at 4 in 10), both screens within 2 s, exit 0, `verdict_replay.py` independently `KILL` with the same killer and victim. *(Superseded by Amendment A1: Task 5 and Task 6 became one 16-launch ladder, and this task's own caps were never separately spent — the acceptance run landed on ladder launch 2, the 3rd launch of 16 shared with Task 5.)*
 - [x] **Step 3: Disagreement is the finding**, never a pass: fix whichever scorer is wrong with a test reproducing it, then re-score the stored logs (no relaunch). *(Never exercised — KillWatch and `verdict_replay` agreed on rounds 1–3, independently re-derived clause by clause.)*
 - [x] **Step 4: On success**: record the command, artefacts, launch count and both verdict lines; tile both screens into tracked `docs/research/assets/22-first-kill.png`; the same hour, mark superseded every tracked "not reached" sentence (`LOOP_PROMPT.md`, `HANDOFF.md`, `ROADMAP.md` §4, `STATUS.md` Current state). *(The PNG landed same-hour, `5f1de26`; the doc-wide "not reached" sweep did not happen "the same hour" as written — it is this Task 7 close-out, flagged as a concern in `ladder-launch2-report.md`.)*
-- [ ] **NOT APPLICABLE — no cap was exhausted.** **Step 4b: On cap exhaustion — named deliverable**: research/22 §"Acceptance attempts" with, per launch, its outcome (lobby failure class / `NO-CONTROL` / highest rung / each scorer's verdict line), the closest 3-D approach and contact rows, both screens at the best moment tiled into `docs/research/assets/22-attempts.png`, and a ranked next-instrument list for Sprint 6. *(The acceptance test PASSED at ladder launch 2, 3 of the shared 16-launch cap, so this deliverable was never triggered.)*
+- [ ] **NOT APPLICABLE — no cap was exhausted.** **Step 4b: On cap exhaustion — named deliverable**: research/22 §"Acceptance attempts" with, per launch, its outcome (lobby failure class / `NO-CONTROL` / highest rung / each scorer's verdict line), the closest 3-D approach and contact rows, both screens at the best moment tiled into `docs/research/assets/22-attempts.png`, and a ranked next-instrument list for Sprint 6. *(The acceptance test PASSED at ladder launch 2, 3 of the shared 16-launch cap, so this deliverable was never triggered.)* <!-- docmaint: future -->
 - [x] **Step 5: Commit** (`git commit -- <paths>`).
 
 ---

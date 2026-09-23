@@ -1,5 +1,9 @@
 # Sprint 6 — A Gate That Can See, the Paused Correctness Fixes, and a Cheaper Online Result: Implementation Plan
 
+> **ARCHIVED 2026-09-23 — Sprint 6's plan, closed 2026-09-17. Cited by `docs/archive/CURRENT_SPRINT-to-sprint-8.md` and the Sprint 6 spec beside it; kept verbatim.**
+> Moved here from `docs/superpowers/plans/` in Sprint 11; nothing below it was edited except those
+> citations that pointed at this block's own old paths. It is a record, not an instruction.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Land the two paused runtime fixes and the pop-up gate step, give the parity gate a correctness leg (mission-failure detection, a console-vs-ours image score, a guest-value probe), make online results cheap (lobby ≥ 8/10, the freeze rooted), and make the acceptance kill repeat.
@@ -8,7 +12,7 @@
 
 **Tech Stack:** C++20 (llvm-mingw clang via `build.sh`), Python 3 (`unittest`, numpy, Pillow), the local Horizon server, PCSX2 2.8.1 as the console reference (savestate slot 8 = Seeding Chaos spawn), Ghidra decomp `game/analysis/socom2_game.elf.decomp.c`, Git Bash + PowerShell.
 
-**Spec:** `docs/superpowers/specs/2026-09-15-sprint-6-correctness-gate-and-online-reliability-design.md` (owner review pending). **Required reading for every dispatch:** `docs/KNOWN.md`, `docs/research/25-sp-teleport.md` §9–§10, `docs/research/26-water-polygons.md`, `docs/research/27-gl-depth-precision.md`, `docs/HANDOFF-AUDIT-2026-09-14.md`, and for online tasks `docs/research/22-kill-readout.md`, `docs/research/24-frostfire-walkability.md`.
+**Spec:** `docs/archive/sprints-1-6/2026-09-15-sprint-6-correctness-gate-and-online-reliability-design.md` (owner review pending). **Required reading for every dispatch:** `docs/KNOWN.md`, `docs/research/25-sp-teleport.md` §9–§10, `docs/research/26-water-polygons.md`, `docs/research/27-gl-depth-precision.md`, `docs/archive/HANDOFF-AUDIT-2026-09-14.md`, and for online tasks `docs/research/22-kill-readout.md`, `docs/research/24-frostfire-walkability.md`.
 
 ## Handoff notes for the executing model (read once)
 

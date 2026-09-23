@@ -1,10 +1,14 @@
 # Sprint 4 — visible render defects, gate trust, and the first-kill online test: design
 
+> **ARCHIVED 2026-09-23 — Sprint 4's spec, closed 2026-09-13. Cited by `docs/archive/HANDOFF-reference-to-2026-09-13.md` and the Sprint 4 plan beside it; kept verbatim.**
+> Moved here from `docs/superpowers/specs/` in Sprint 11; nothing below it was edited except those
+> citations that pointed at this block's own old paths. It is a record, not an instruction.
+
 Status: scope approved by the user on 2026-09-12 ("Render defects, then online"; the online half
 runs "all the way to a first kill"; the render wave includes ground height). Project: SOCOM
 Unzipped, repo `github.com/Scotho/socom-unzipped`, branch `develop` (= `main` = 4868863 at sprint
 start). Executor: an Opus-class model following
-`docs/superpowers/plans/2026-09-12-sprint-4-visible-defects-and-first-kill.md` with
+`docs/archive/sprints-1-6/2026-09-12-sprint-4-visible-defects-and-first-kill.md` with
 superpowers:subagent-driven-development.
 
 ## 1. Where Sprint 3 left things

@@ -327,7 +327,7 @@ whose top item is a symptom that does not exist.
    updated when a sprint branch is created, not when it merges.
 3. A `tools_py/doc_claims.py` check, run by the close-out and by the preflight of item 3: every
    line in `docs/HANDOFF.md`/`docs/STATUS.md` tagged `<!-- claim: id -->` must have a matching
-   entry in a small `docs/claims.md` ledger saying *measured*, *inferred* or *retracted*, with the
+   entry in a small `docs/claims.md` ledger saying *measured*, *inferred* or *retracted*, with the <!-- docmaint: future -->
    run or note that establishes it. Start with the dozen load-bearing claims only — the sprint
    record shows the damage comes from a handful of sentences quoted as fact, not from the bulk.
 
@@ -479,7 +479,7 @@ describing a sprint that ended yesterday.
    `third_party/ps2recomp/`, `recomp/`, **`tools_py/`, `scripts/parity/` or `build.sh`**. A change
    to the gate is exactly when a green gate is evidence of something.
 4. **Fix the busy-firing branch.** Step 1 currently says "wait for the next firing". Replace with:
-   if the lock is held, do offline work from a standing queue (`docs/OFFLINE_QUEUE.md` —
+   if the lock is held, do offline work from a standing queue (`docs/OFFLINE_QUEUE.md` — <!-- docmaint: future -->
    decomp reading, static audits like item 4, research-note consolidation, test backfill) and
    return with a note. A held lock should cost zero cycles, not one.
 5. **Never return control while waiting.** Codify `scripts/wait_done.sh <marker> <timeout>` (item

@@ -320,7 +320,7 @@ Two copies of the game logged in to the project's own server, met on Frostfire a
 
 *But:* one launch, one map, two scripted copies on one PC against a server on the same PC. The kill count stepped on the killer's side only; what moved on both was the victim team's alive count. Round 4 fired 111 bursts at an aim error that never corrected and killed nobody.
 
-`Cited:` `811b886` THE ACCEPTANCE TEST PASSED -- Sprint 5 ladder launch 2 · `5f1de26` first online kill -- ladder launch 2 round 1, both screens tiled · `171290b` match the exact route-no-time tag · `d9b5f33` (2026-09-14) pin the acceptance PASS -- ladder launch 2 round 1 fixture · run s5_t5_ladder2 · docs/superpowers/plans/2026-09-13-sprint-5-control-readout-and-first-kill.md · docs/research/22-kill-readout.md · docs/research/assets/22-first-kill.png
+`Cited:` `811b886` THE ACCEPTANCE TEST PASSED -- Sprint 5 ladder launch 2 · `5f1de26` first online kill -- ladder launch 2 round 1, both screens tiled · `171290b` match the exact route-no-time tag · `d9b5f33` (2026-09-14) pin the acceptance PASS -- ladder launch 2 round 1 fixture · run s5_t5_ladder2 · docs/archive/sprints-1-6/2026-09-13-sprint-5-control-readout-and-first-kill.md · docs/research/22-kill-readout.md · docs/research/assets/22-first-kill.png
 
 ### 2026-09-14 - Two things the owner spotted
 

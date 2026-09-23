@@ -1,5 +1,9 @@
 # Sprint 2 — host-resolution drawing, the rest of the dispatcher, gate hardening: design
 
+> **ARCHIVED 2026-09-23 — Sprint 2's spec, closed 2026-09-11. Cited by `docs/archive/HANDOFF-reference-to-2026-09-13.md` and the Sprint 2 plan beside it; kept verbatim.**
+> Moved here from `docs/superpowers/specs/` in Sprint 11; nothing below it was edited except those
+> citations that pointed at this block's own old paths. It is a record, not an instruction.
+
 Status: contents approved by the user on 2026-09-11 ("approved. proceed into sprint 2 after 1 is
 finished"). Project: SOCOM Unzipped, repo `github.com/Scotho/socom-unzipped`, branch `develop`.
 

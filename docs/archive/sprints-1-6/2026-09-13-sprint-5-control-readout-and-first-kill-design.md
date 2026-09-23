@@ -1,12 +1,16 @@
 # Sprint 5 — control on the test map, a kill readout from sourced offsets, and the first kill: design
 
+> **ARCHIVED 2026-09-23 — Sprint 5's spec, closed 2026-09-13. Cited by `docs/archive/HANDOFF-reference-to-2026-09-13.md`, `docs/archive/ROADMAP-sprint-4-to-sprint-7.md` and the Sprint 4 and Sprint 5 plans beside it; kept verbatim.**
+> Moved here from `docs/superpowers/specs/` in Sprint 11; nothing below it was edited except those
+> citations that pointed at this block's own old paths. It is a record, not an instruction.
+
 Status: written 2026-09-13 as the revision of `docs/ROADMAP.md` §6 "Sprint 5" (drafted before
 Sprint 4's Task 8 finished); amended twice the same day after independent review and to fold in
 `docs/research/19-community-and-engine-resources.md` (`7e81197`). Scope rests on the owner's
 standing instruction to proceed autonomously toward the acceptance test and on the owner's
 2026-09-13 decision that the default test map is **Frostfire**. Branch `sprint-5` off `develop`
 **after** `sprint-4` is merged. Executor: an Opus-class model following
-`docs/superpowers/plans/2026-09-13-sprint-5-control-readout-and-first-kill.md` with
+`docs/archive/sprints-1-6/2026-09-13-sprint-5-control-readout-and-first-kill.md` with
 superpowers:subagent-driven-development. **Goal N here is Task N in the plan.**
 
 **Authority.** `docs/KNOWN.md` (at `90c6b45` or later) wins over this document wherever they

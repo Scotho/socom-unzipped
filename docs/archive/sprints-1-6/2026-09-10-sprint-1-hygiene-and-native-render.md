@@ -1,5 +1,9 @@
 # Sprint 1 — Hygiene, Freeze, First Native VU1 Program: Implementation Plan
 
+> **ARCHIVED 2026-09-23 — Sprint 1's plan, closed 2026-09-11. Cited by `docs/archive/HANDOFF-reference-to-2026-09-13.md`; kept verbatim.**
+> Moved here from `docs/superpowers/plans/` in Sprint 11; nothing below it was edited except those
+> citations that pointed at this block's own old paths. It is a record, not an instruction.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the project testable (unit tests build and run, one PASS/FAIL gate command), freeze emulator speed work, and land the first hand-written native replacement of a VU1 program (entry point 0 of the game's single microcode image, the 2D/UI path) verified packet-for-packet against the interpreter.
@@ -8,7 +12,7 @@
 
 **Tech Stack:** C++20 under llvm-mingw clang (portable toolchain in `tools/`, driven by `build.sh`), CMake + Ninja, the fork's hand-rolled MiniTest framework, Python 3 (numpy, Pillow) for the parity tooling, Git Bash for scripts.
 
-**Spec:** `docs/superpowers/specs/2026-09-10-sprint-1-hygiene-and-native-render-design.md`
+**Spec:** `docs/archive/sprints-1-6/2026-09-10-sprint-1-hygiene-and-native-render-design.md`
 
 ## Global Constraints
 
@@ -609,8 +613,8 @@ git push
 Replace the "Ordered goals" list (lines 3-12) with:
 ```markdown
 Ordered goals (user, 2026-09-10, Sprint 1 — see
-docs/superpowers/specs/2026-09-10-sprint-1-hygiene-and-native-render-design.md and the plan in
-docs/superpowers/plans/2026-09-10-sprint-1-hygiene-and-native-render.md):
+docs/archive/sprints-1-6/2026-09-10-sprint-1-hygiene-and-native-render-design.md and the plan in
+docs/archive/sprints-1-6/2026-09-10-sprint-1-hygiene-and-native-render.md):
 
 1. Hygiene: `./build.sh test` green, `python -m tools_py.parity.gate` green. Both are REQUIRED
    before any commit that touches third_party/ps2recomp/ or recomp/. A red gate is fixed first.
@@ -632,7 +636,7 @@ Insert before the first dated entry:
 ## Current state (keep to five lines; update when it changes, dated entries below are the log)
 - Build: `./build.sh all`; tests `./build.sh test` (ps2x_tests + vu1 fixture verify); gates `python -m tools_py.parity.gate`.
 - Plays: title/menus 59 fps, Albania 5-1 at 36-42 fps, two-instance online match reaches gameplay on local Horizon.
-- Sprint 1 (2026-09-10 →): hygiene done up to Task N of docs/superpowers/plans/2026-09-10-sprint-1-hygiene-and-native-render.md; emulator speed work frozen.
+- Sprint 1 (2026-09-10 →): hygiene done up to Task N of docs/archive/sprints-1-6/2026-09-10-sprint-1-hygiene-and-native-render.md; emulator speed work frozen.
 - Native VU1: entry-0 program status: <not started | hands back N of 12 fixtures | 12/12 native, gate green>.
 - Open user reports: black 16x16 squares on the intro movie (goal-3 item, not a gate).
 ```
@@ -1048,7 +1052,7 @@ Then the main menu and lobby: `logs/vu1dump_title` is the title only. Capture 15
 
 **Files:**
 - Modify: `third_party/ps2recomp/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp` (`kVu1NativeDefault`)
-- Modify: `docs/STATUS.md` ("Current state"), `docs/superpowers/plans/2026-09-10-sprint-1-hygiene-and-native-render.md` (tick boxes)
+- Modify: `docs/STATUS.md` ("Current state"), `docs/archive/sprints-1-6/2026-09-10-sprint-1-hygiene-and-native-render.md` (tick boxes)
 
 **Interfaces:**
 - Consumes: `python -m tools_py.parity.gate` (Task 3), `PS2X_VU1_NATIVE` (Task 6).
@@ -1067,7 +1071,7 @@ Set `constexpr bool kVu1NativeDefault = true;` in `ps2_vu1_core.cpp`, rebuild, r
 
 STATUS "Current state" line 4: `Native VU1: entry-0 program 150/150 title + 150/150 menu dumps native, gate green, default on (PS2X_VU1_NATIVE=0 reverts)`. Tick the plan's boxes. Commit:
 ```bash
-git add third_party/ps2recomp/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp docs/STATUS.md docs/superpowers/plans/2026-09-10-sprint-1-hygiene-and-native-render.md
+git add third_party/ps2recomp/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp docs/STATUS.md docs/archive/sprints-1-6/2026-09-10-sprint-1-hygiene-and-native-render.md
 git commit -m "vu1(native): entry-0 program on by default after a green gate (title/transition/mission); PS2X_VU1_NATIVE=0 reverts"
 git push
 ```

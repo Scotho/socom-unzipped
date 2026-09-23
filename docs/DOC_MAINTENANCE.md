@@ -71,6 +71,10 @@ The table in §3 must account for every `.md` file in these locations, one row e
 
 Everything else is classified **by location**, and needs no row:
 
+- `docs/archive/<subdirectory>/**` — **A**. `docs/archive/*.md` at the top level is one document each and gets a row
+  each; a subdirectory is a *block* moved whole (`docs/archive/sprints-1-6/` is twelve files that arrived in one
+  commit), and a row apiece would say nothing the path does not. **The banner is still owed** — that is the whole
+  point of the class, and `tools_py/docmaint.py`'s check 5 holds every file under such a subdirectory to it.
 - `docs/research/**` — **S**. A research note is a dated investigation. Supersede, never rewrite.
 - `docs/superpowers/specs/**` and `plans/**` — **S**. A spec is what was decided that day; the plan's `## Outcome`
   is where it is reconciled. Their filenames carry the date already.
@@ -121,7 +125,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 
 ## 4. What is enforced mechanically
 
-`tools_py/tests/test_doc_maintenance.py`, in the Python suite, so it runs in CI and needs no build. Five checks, each
+`tools_py/tests/test_doc_maintenance.py`, in the Python suite, so it runs in CI and needs no build. Six checks, each
 aimed at a rot mechanism that actually bit this project:
 
 1. **Registry completeness** — every covered file has exactly one row; every row points at a file that exists. *Catches
@@ -133,14 +137,28 @@ aimed at a rot mechanism that actually bit this project:
    note. *Catches the 686/686 defect, in all four places it had reached.*
 4. **Snapshots are dated** — every S file has a date in its filename or in its first fifteen lines. *Catches a
    `REPORT.md` that reads as the current report.*
-5. **Archives announce themselves** — every A file says "archived" or "superseded" in its first fifteen lines.
-   *Catches an archive that reads as live.*
+5. **Archives announce themselves** — every A file says "archived" or "superseded" in its first fifteen lines, in any
+   case. *Catches an archive that reads as live.*
+6. **No dangling `docs/` path** — every backticked path starting `docs/` in a markdown file at the root or under
+   `docs/` must exist in the tree. *Catches the citation a move left pointing at nothing* — which is why the Sprint 1–6
+   specs and plans sat under `docs/superpowers/` for a sprint after they were dead: nobody could move them without
+   breaking citations nothing would catch. It found 44 on the tree the day it was written, in fifteen documents.
+
+**Check 6's exception, and its scope.** A path that does not exist *yet* is legitimate in a plan or a design: put
+`<!-- docmaint: future -->` on that line and the check skips it, so the exception is visible in the document itself
+rather than in a list somewhere. A struck-through path (`~~`…`~~`) is a retraction and is skipped too. The scan is
+deliberately narrow, because a check with false positives gets switched off: a locator is not part of the path
+(`docs/KNOWN.md:101` cites a place inside a file that does exist), a glob or a `<placeholder>` names a set rather than
+a file, and a token whose last segment has no extension is a directory or the house shorthand for a research note by
+number (`docs/research/19`) — a directory named in a design document is a proposal, not a claim. Check 6 is about a
+file that moved.
 
 Run it by hand with `python -m tools_py.docmaint`, which prints the registry size, the ruling numbers and every problem.
 
 **Each check is fired once against a planted defect** (`PlantedDefectsTest`: an unregistered document, a row whose file
 is gone, a colliding ruling number, two counter lines that disagree, an undated count, an undated snapshot, a silent
-archive — plus the three negative controls that must *not* fire, and a clean-tree control for the controls). A gate
+archive, a silent file in an archive subdirectory, a dangling `docs/` path in a `docs/` file and in a root file — plus
+the negative controls that must *not* fire, and a clean-tree control for the controls). A gate
 that has never failed is not known to work, and this one found two real defects and one bug in its own test on the day
 it was written.
 

@@ -1,6 +1,6 @@
 """The documentation registry (docs/DOC_MAINTENANCE.md) held to the tree.
 
-Five checks, each aimed at a rot mechanism that actually bit this project (the reasons are in
+Six checks, each aimed at a rot mechanism that actually bit this project (the reasons are in
 docs/DOC_MAINTENANCE.md section 0). No build needed, so this runs in CI. Nothing here fails on a
 calendar -- cadence is the sprint-close review, a human step with a stamp.
 """
@@ -83,12 +83,34 @@ class SnapshotsAndArchivesTest(unittest.TestCase):
             "class-A file(s) whose first 15 lines do not say 'archived' or 'superseded' -- an archive "
             "that reads as live is the defect archiving was supposed to prevent")
 
+    def test_the_archive_subdirectories_are_classified_by_location(self):
+        """docs/archive/<sub>/**.md is class A by location: no row, but a banner is still required."""
+        listed = [r["path"] for r in docmaint.registry()]
+        for path in docmaint.archived_by_location():
+            self.assertNotIn(path, listed,
+                             "%s is class A by location (docs/DOC_MAINTENANCE.md section 2) -- it must not "
+                             "also carry a registry row" % path)
+            self.assertNotIn(path, docmaint.covered_files())
+
+
+class DanglingLinksTest(unittest.TestCase):
+    """A path written in a document is a claim about the tree, and a move falsifies it silently."""
+
+    def test_no_document_cites_a_docs_path_that_is_not_there(self):
+        bad = docmaint.dangling_doc_links()
+        self.assertEqual(
+            bad, [],
+            "backticked docs/ path(s) that are not in the tree: %s -- re-point the citation, or, if it "
+            "describes a file that does not exist yet, mark the line '%s'"
+            % (bad, docmaint.FUTURE_MARK))
+
 
 class ReportTest(unittest.TestCase):
     def test_the_report_runs_clean_on_this_tree(self):
         r = docmaint.report()
         problems = {k: r[k] for k in ("unregistered", "missing_files", "duplicate_rows",
-                                      "count_offenders", "undated_snapshots", "silent_archives") if r[k]}
+                                      "count_offenders", "undated_snapshots", "silent_archives",
+                                      "dangling_doc_links") if r[k]}
         self.assertEqual(problems, {}, "python -m tools_py.docmaint says: %s" % problems)
 
     def test_the_review_stamp_parses(self):
@@ -145,6 +167,7 @@ class PlantedDefectsTest(unittest.TestCase):
         self.assertEqual(r["count_offenders"], [])
         self.assertEqual(r["undated_snapshots"], [])
         self.assertEqual(r["silent_archives"], [])
+        self.assertEqual(r["dangling_doc_links"], [])
         self.assertEqual(r["next_free_ruling"], r["max_ruling"] + 1, "the counter check's own control")
 
     def test_an_unregistered_document_fires_check_1(self):
@@ -190,10 +213,63 @@ class PlantedDefectsTest(unittest.TestCase):
         self.registry([("docs/archive/OLD.md", "A"), ("docs/DOC_MAINTENANCE.md", "C")])
         self.assertIn("docs/archive/OLD.md", docmaint.report()["silent_archives"])
 
+    def test_a_capitalised_banner_is_a_banner(self):
+        """The house banner is in capitals; [Aa]rchiv did not match it."""
+        self.write("docs/archive/OLD.md", "# old thing\n\n> **ARCHIVED 2026-09-23 -- Sprint 1's spec.**\n")
+        self.registry([("docs/archive/OLD.md", "A"), ("docs/DOC_MAINTENANCE.md", "C")])
+        self.assertEqual(docmaint.report()["silent_archives"], [])
+
     def test_a_banded_archive_does_not_fire_check_5(self):
         self.write("docs/archive/OLD.md", "# old thing\n\n> **ARCHIVED.** Superseded by X.\n")
         self.registry([("docs/archive/OLD.md", "A"), ("docs/DOC_MAINTENANCE.md", "C")])
         self.assertEqual(docmaint.report()["silent_archives"], [])
+
+    def test_a_silent_file_in_an_archive_subdirectory_fires_check_5(self):
+        """Class A by location: no row is owed, but the banner still is."""
+        self.write("docs/archive/sprints-1-6/SPEC.md", "# a sprint spec\n\nreads exactly like a live plan\n")
+        self.assertEqual(docmaint.report()["unregistered"], [], "a subdirectory file must owe no row")
+        self.assertIn("docs/archive/sprints-1-6/SPEC.md", docmaint.report()["silent_archives"])
+
+    def test_a_banded_file_in_an_archive_subdirectory_does_not_fire_check_5(self):
+        self.write("docs/archive/sprints-1-6/SPEC.md",
+                   "# a sprint spec\n\n> **ARCHIVED 2026-09-23 -- Sprint 1's spec, closed 2026-09-10.**\n")
+        self.assertEqual(docmaint.report()["silent_archives"], [])
+        self.assertEqual(docmaint.archived_by_location(), ["docs/archive/sprints-1-6/SPEC.md"])
+
+    def test_a_dangling_docs_path_fires_check_6(self):
+        self.write("docs/HANDOFF.md",
+                   "# h\n\nNext free ruling number: R100\n\nR99 was decided.\n\nSee `docs/superpowers/specs/gone.md`.\n")
+        hits = docmaint.report()["dangling_doc_links"]
+        self.assertTrue(any(h[2] == "docs/superpowers/specs/gone.md" for h in hits), hits)
+        self.assertTrue(any(h[0] == "docs/HANDOFF.md" for h in hits), hits)
+
+    def test_a_docs_path_that_exists_does_not_fire_check_6(self):
+        self.write("docs/HANDOFF.md",
+                   "# h\n\nNext free ruling number: R100\n\nR99 was decided.\n\nSee `docs/DEVELOPING.md` and "
+                   "`docs/DEVELOPING.md#running` and `docs/DOC_MAINTENANCE.md` section 2.\n")
+        self.assertEqual(docmaint.report()["dangling_doc_links"], [])
+
+    def test_a_future_marked_docs_path_does_not_fire_check_6(self):
+        self.write("docs/HANDOFF.md",
+                   "# h\n\nNext free ruling number: R100\n\nR99 was decided.\n\n"
+                   "The installer will write `docs/INSTALL-WINDOWS.md`. <!-- docmaint: future -->\n")
+        self.assertEqual(docmaint.report()["dangling_doc_links"], [])
+
+    def test_a_root_document_is_scanned_too(self):
+        self.write("README.md", "# r\n\nSee `docs/NOPE.md`.\n")
+        self.assertTrue(any(h[0] == "README.md" for h in docmaint.report()["dangling_doc_links"]))
+
+    def test_a_struck_through_path_is_a_retraction_and_does_not_fire_check_6(self):
+        self.write("README.md", "# r\n\n~~`docs/research/19-old.md`~~ `docs/DEVELOPING.md` (renumbered).\n")
+        self.assertEqual(docmaint.report()["dangling_doc_links"], [])
+
+    def test_a_locator_is_not_part_of_the_path(self):
+        self.write("README.md", "# r\n\n`docs/DEVELOPING.md:101` and `docs/DEVELOPING.md:318,355,433-435`.\n")
+        self.assertEqual(docmaint.report()["dangling_doc_links"], [])
+
+    def test_a_glob_or_a_placeholder_is_not_a_citation(self):
+        self.write("README.md", "# r\n\n`docs/research/**` and `docs/audits/*.md` and `docs/research/<n>-x.md`.\n")
+        self.assertEqual(docmaint.report()["dangling_doc_links"], [])
 
 
 if __name__ == "__main__":

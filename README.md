@@ -4,6 +4,11 @@
 hosted server.**
 
 [![linux](https://github.com/Scotho/socom-unzipped/actions/workflows/linux.yml/badge.svg)](https://github.com/Scotho/socom-unzipped/actions/workflows/linux.yml)
+[![windows](https://github.com/Scotho/socom-unzipped/actions/workflows/windows.yml/badge.svg)](https://github.com/Scotho/socom-unzipped/actions/workflows/windows.yml)
+[![secrets](https://github.com/Scotho/socom-unzipped/actions/workflows/secrets.yml/badge.svg)](https://github.com/Scotho/socom-unzipped/actions/workflows/secrets.yml)
+
+A green badge means the runtime library, the test suites and the launcher build without the game and the leak check is
+clean; the parity gate needs a disc and runs on the maintainer's machine, its stamps are in the release notes.
 
 > ## ⚠️ Multiplayer is UNTESTED for security. Proceed at your own risk.
 >
