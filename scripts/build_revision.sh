@@ -4,6 +4,7 @@
 #   bash scripts/build_revision.sh <rev> <APACHE00.ZDB> [--check-against <elf>] [--dry-run] [--stop-after <step>]
 #                                  [--force] [--out <dir>] [--game <disc tree>] [--loader <elf>] [--loader-text-end 0x..]
 #                                  [--ghidra <csv>] [--ghidra-from-r0001] [--extra <extra_functions.txt>]
+#                                  [--match <match.json>]
 #
 #   rev   r + four digits, optionally followed by a letter and then letters and digits (r0001, r0004, r0001check).
 #         The suffix form exists so a check build of the r0001 disc never overwrites r0001's own products.
@@ -22,6 +23,12 @@
 #                       named with --ghidra <csv>. Only an r0001* revision falls back to r0001's own map
 #                       silently; any other revision must ask for it with --ghidra-from-r0001, which warns that
 #                       the generated code will be wrong until Task 10's matcher writes that revision a map.
+#                       Rewriting the three paths is not the whole job: EVERY OTHER ADDRESS IN THAT FILE is an
+#                       r0001 guest address too -- the stub selectors ps2_recomp binds by start address, the
+#                       instruction patches, the jump-table sites, the [mmio] annotations. With an address
+#                       match report (--match <json>, or game/<rev>/match.json when it is there) step 3 runs
+#                       tools_py.revision_toml, which translates each of them and lists in [revision.unresolved]
+#                       the ones it could not place. Without one it copies-and-renames as before, and warns.
 #   4 recomp   [lock]   ps2_recomp socom2_<rev>.toml                               -> recomp/output_<rev>/
 #                       fix_ghidra_csv.py first folds the revision's FORCED ENTRY POINTS into the map:
 #                       recomp/extra_functions_<rev>.txt when it is there, or --extra <file>, else
@@ -55,7 +62,7 @@ say() { echo "$*"; }
 
 py="$PYTHON"
 
-REV="" ZDB="" CHECK="" DRY=0 STOP="runtime" FORCE=0 OUT="" GAME="" LOADER="" LTE="" TAIL=0 GHIDRA="" GHIDRA_R0001=0 EXTRA=""
+REV="" ZDB="" CHECK="" DRY=0 STOP="runtime" FORCE=0 OUT="" GAME="" LOADER="" LTE="" TAIL=0 GHIDRA="" GHIDRA_R0001=0 EXTRA="" MATCH=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --check-against) [ $# -ge 2 ] || die2 "--check-against needs a path"; CHECK="$2"; shift 2 ;;
@@ -69,6 +76,7 @@ while [ $# -gt 0 ]; do
     --ghidra) [ $# -ge 2 ] || die2 "--ghidra needs the revision's function map (a Ghidra ExportPS2Functions CSV)"; GHIDRA="$2"; shift 2 ;;
     --ghidra-from-r0001) GHIDRA_R0001=1; shift ;;
     --extra) [ $# -ge 2 ] || die2 "--extra needs the revision's forced entry points (one hex address per line)"; EXTRA="$2"; shift 2 ;;
+    --match) [ $# -ge 2 ] || die2 "--match needs an address match report (tools_py.address_matcher --out)"; MATCH="$2"; shift 2 ;;
     --_tail) TAIL=1; shift ;;      # internal: the lock-bound steps, re-entered under loop_lock.sh run
     -h|--help) sed -n '2,40p' "$0"; exit 0 ;;
     -*) die2 "unknown option $1" ;;
@@ -115,6 +123,19 @@ else
   EXTRA="$ROOT/recomp/extra_functions.txt"
   case "$REV" in r0001*) ;; *) EXTRA_BORROWED=1 ;; esac
 fi
+# The revision's address match report, settled here for the same reason. recomp/socom2.toml's ~1,900
+# addresses are r0001's; with a report, step 3 translates them (tools_py/revision_toml.py). r0001 needs
+# none -- translating a build onto itself is the identity -- so only another revision is warned.
+if [ -n "$MATCH" ]; then
+  [ -f "$MATCH" ] || die2 "no such address match report: $MATCH (tools_py.address_matcher --out writes one)"
+  MATCH="$(cd "$(dirname "$MATCH")" && pwd)/$(basename "$MATCH")"
+elif [ -f "$ROOT/game/$REV/match.json" ]; then
+  MATCH="$ROOT/game/$REV/match.json"
+fi
+TOML_BORROWED=0
+if [ -z "$MATCH" ]; then
+  case "$REV" in r0001*) ;; *) TOML_BORROWED=1 ;; esac
+fi
 sha() { sha256sum "$1" | cut -d' ' -f1; }
 
 if [ "$TAIL" = 0 ]; then
@@ -155,7 +176,9 @@ if [ "$TAIL" = 0 ]; then
   [ "$GHIDRA_NEED" = 0 ] || [ "$DRY" = 1 ] \
     || die2 "$REV has no function map of its own ($(rel "$CSV")): pass --ghidra <csv>, or --ghidra-from-r0001 to start from r0001's map knowing the generated code will be wrong until Sprint 11 Task 10's matcher writes one"
   [ "$EXTRA_BORROWED" = 0 ] || [ "$DRY" = 1 ] \
-    || echo "WARNING: $REV has no forced entry points of its own (recomp/extra_functions_$REV.txt); using r0001's, whose overlay entries are another build's addresses. Write one with: python tools_py/find_imm_targets.py $(rel "$ELF") $(rel "$CSV") recomp/extra_functions_$REV.txt" >&2
+    || echo "WARNING: $REV has no forced entry points of its own (recomp/extra_functions_$REV.txt); using r0001's, whose overlay entries are another build's addresses. Write one with: $PYTHON tools_py/find_imm_targets.py $(rel "$ELF") $(rel "$CSV") recomp/extra_functions_$REV.txt" >&2
+  [ "$TOML_BORROWED" = 0 ] || [ "$DRY" = 1 ] \
+    || echo "WARNING: $REV has no address match report (game/$REV/match.json, or --match <json>); $(rel "$TOML") will keep r0001's stub selectors, instruction patches, jump-table sites and [mmio] annotations, which are another build's addresses. Write one with: $PYTHON -m tools_py.address_matcher dist/socom2_game.elf recomp/socom2_ghidra.csv $(rel "$ELF") $(rel "$CSV") --out game/$REV/match.json" >&2
 fi
 
 # ---- dry run ------------------------------------------------------------------------------------------------
@@ -174,7 +197,12 @@ if [ "$DRY" = 1 ]; then
   else
     MAPNOTE="$(rel "$CSV") is already there"
   fi
-  say "  step 3  toml              recomp/socom2.toml -> $(rel "$TOML") (input/output/ghidra_output rewritten); $MAPNOTE"
+  if [ -n "$MATCH" ]; then
+    TOMLNOTE="every address translated through $(rel "$MATCH") (tools_py.revision_toml)"
+  else
+    TOMLNOTE="input/output/ghidra_output rewritten; every other address stays r0001's"
+  fi
+  say "  step 3  toml              recomp/socom2.toml -> $(rel "$TOML") ($TOMLNOTE); $MAPNOTE"
   say "  step 4  recomp   [lock]   ps2_recomp socom2_$REV.toml -> $(rel "$GEN")/; forced entry points $(rel "$EXTRA")$([ "$EXTRA_BORROWED" = 1 ] && echo ' (r0001'"'"'s -- another build'"'"'s overlay addresses)')"
   say "  step 5  runtime  [lock]   cmake $(rel "$RTBUILD") -> $(rel "$EXE") (+ $(rel "$DIST")/socom2_game_$REV.elf)"
   [ "$STOP" = runtime ] || say "  stop after $STOP"
@@ -241,10 +269,23 @@ if [ "$TAIL" = 0 ]; then
     # onto itself, which under `set -e` killed the run between step 2 and step 3.
     say "toml: $(rel "$CSV") is the map named by --ghidra -- nothing to copy"
   fi
-  sed -e "s|^input *=.*|input = \"$TOML_INPUT\"|" \
-      -e "s|^output *=.*|output = \"$TOML_OUTPUT\"|" \
-      -e "s|^ghidra_output *=.*|ghidra_output = \"socom2_ghidra_$REV.csv\"|" \
-      "$ROOT/recomp/socom2.toml" > "$TOML"
+  if [ -n "$MATCH" ]; then
+    # The three paths AND every guest address in the file, in one pass. The tool prints its own counts
+    # and writes [revision.unresolved]: what it could not place stays r0001's number and says so.
+    say "toml: translating r0001's addresses through $(rel "$MATCH") (tools_py.revision_toml)"
+    if ! (cd "$ROOT" && "$py" -m tools_py.revision_toml "$ROOT/recomp/socom2.toml" "$MATCH" \
+            --elf-b "$ELF" \
+            --set-input "$TOML_INPUT" --set-output "$TOML_OUTPUT" \
+            --set-ghidra-output "socom2_ghidra_$REV.csv" --out "$TOML"); then
+      echo "build_revision: step 3 could not translate the config through $(rel "$MATCH") -- run tools_py.revision_toml by hand to see why, or drop --match to copy r0001's addresses across unchanged" >&2
+      exit 1
+    fi
+  else
+    sed -e "s|^input *=.*|input = \"$TOML_INPUT\"|" \
+        -e "s|^output *=.*|output = \"$TOML_OUTPUT\"|" \
+        -e "s|^ghidra_output *=.*|ghidra_output = \"socom2_ghidra_$REV.csv\"|" \
+        "$ROOT/recomp/socom2.toml" > "$TOML"
+  fi
   say "toml: $(rel "$TOML") (input $TOML_INPUT, output $TOML_OUTPUT, ghidra_output socom2_ghidra_$REV.csv)"
   # 4-5 under the lock, re-entering this script
   export BR_REV="$REV" BR_STOP="$STOP" BR_FORCE="$FORCE" BR_OUT="$OUT" BR_EXTRA="$EXTRA"
