@@ -115,9 +115,8 @@ is Horizon configured for SOCOM II's app id, with a seed script for a local inst
 ### How it was built
 
 Most of this repository was produced by AI agents (Claude, through Claude Code) working in sprints under a human
-owner: specs and plans in `docs/superpowers/`, numbered rulings, a "known / believed / retracted" ledger, and a gate
-that has to go green before a sprint closes. `docs/STORY.md` tells that story with its evidence; the sprint plans are
-kept as written, which is why they read like working notes rather than documentation.
+owner -- `docs/HOW_IT_WAS_BUILT.md` is the honest account of that: the method, what the owner did and what the agents
+did, and the things that went wrong and were kept.
 
 ## Contributing and security
 

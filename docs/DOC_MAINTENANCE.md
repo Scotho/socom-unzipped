@@ -87,6 +87,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/LADDER.md` | **G** | `ladder_ledger.py` | One row per scheduled ladder run, written from `logs/ladder/ledger.jsonl`, committed by a person |
 | `docs/ROADMAP.md` | **N** | controller | Narrative and pointers only. Rewritten 2026-09-22; its §0 is the audit of what it replaced |
 | `docs/STORY.md` | **N** | story | Every entry cited; `tools_py/story/cite.py` fails on a dead hash or an unwitnessed run |
+| `docs/HOW_IT_WAS_BUILT.md` | **N** | controller | How the project was made, for a stranger: the method, the owner's share and the agents', and the process failures worth keeping. Pointers only — the live documents own every current number. `README.md` links it |
 | `docs/GIT_STRATEGY.md` | **C** | controller | Branches, slices, releases. Carries the sprint-close step that invokes this file |
 | `docs/LOOP_PROMPT.md` | **C** | controller | **Carries no state at all** — the model for C. Rewritten 2026-09-20 after the old one aimed the loop at Sprint 6 for six days |
 | `docs/PLAYTEST.md` | **C** | controller | The owner's one-sitting script |
