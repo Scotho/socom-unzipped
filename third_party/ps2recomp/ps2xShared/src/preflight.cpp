@@ -63,6 +63,17 @@ namespace Preflight
         return true;
     }
 
+    bool discAccepted(const std::string &digest, const std::string &expectedSha256)
+    {
+        // The TABLE decides (launcher::kDiscRevisions). This was a bare equality against one pinned digest
+        // until the Sprint 11 review (Important 2): the launcher's own check had become revision-aware, so
+        // the moment a second row was added the launcher would have accepted a disc that the runtime then
+        // refused here with exit 67 and nothing on screen to explain it -- the very failure the launcher's
+        // disc-check comment promises is impossible. `expectedSha256` remains an explicit override for a
+        // caller that pins one image of its own (preflight_tests.cpp's synthetic disc).
+        return !launcher::discRevisionForDigest(digest).empty() || digest == expectedSha256;
+    }
+
     Result run(const Input &input)
     {
         Result r;
@@ -112,7 +123,7 @@ namespace Preflight
             return r;
         }
         const std::string digest = sha256::hex(bytes.data(), bytes.size());
-        if (digest != input.expectedElfSha256)
+        if (!discAccepted(digest, input.expectedElfSha256))
         {
             r.code = ExitCodes::kDiscNotR0001;
             r.detail = input.discElfName + " in " + r.disc.string() + " hashes to " + digest;

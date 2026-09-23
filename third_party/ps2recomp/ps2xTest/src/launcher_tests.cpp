@@ -1578,11 +1578,33 @@ void register_launcher_tests()
 
             // Availability is a pure question of a bool, not of the disk: the pages ask the world once and
             // hand the answer down, so a test drives both states with no file anywhere.
-            t.IsTrue(launcher::gameRevisionAvailable(launcher::kGameRevisions[0], false),
-                     "the disc's own build is playable with nothing else installed");
-            t.IsFalse(launcher::gameRevisionAvailable(launcher::kGameRevisions[1], false),
+            t.IsTrue(launcher::gameRevisionAvailable(0, 0u),
+                     "the disc's own build is playable with nothing else installed: it IS this launcher");
+            t.IsFalse(launcher::gameRevisionAvailable(1, 0u),
                       "the community build is not, while its executable is missing");
-            t.IsTrue(launcher::gameRevisionAvailable(launcher::kGameRevisions[1], true), "and is, once it is there");
+            t.IsTrue(launcher::gameRevisionAvailable(1, 1u << 1), "and is, once its own executable is there");
+            t.IsFalse(launcher::gameRevisionAvailable(launcher::kGameRevisionCount, ~0u),
+                      "a row that is not in the table is never available, whatever is installed");
+
+            // The mask, not a bool (Sprint 11 review, Important 1). This is the assertion the old
+            // `bool present` could not make: plant the presence of a row this build does not have yet and
+            // no OTHER row may claim it. With a single flag, every executable-bearing row went available
+            // together -- a third revision would have been reported installed the moment r0004 was.
+            const uint32_t onlyAThirdRow = 1u << 2;
+            t.IsFalse(launcher::gameRevisionAvailable(1, onlyAThirdRow),
+                      "another row's executable does not make r0004 installed");
+            for (size_t i = 0; i < launcher::kGameRevisionCount; ++i)
+            {
+                if (launcher::kGameRevisions[i].exeName[0] == '\0')
+                    continue;   // that row is this build; it needs no file and no bit
+                t.IsTrue(launcher::gameRevisionAvailable(i, 1u << i),
+                         std::string("row ") + launcher::kGameRevisions[i].id + " is available on its own bit");
+                t.IsFalse(launcher::gameRevisionAvailable(i, ~(1u << i)),
+                          std::string("row ") + launcher::kGameRevisions[i].id +
+                              " is NOT available on every other bit -- each row is gated by its own file alone");
+            }
+            t.IsTrue(launcher::gameRevisionIndex("r0004") == 1u, "the id names its row");
+            t.IsTrue(launcher::gameRevisionIndex("nope") == launcher::kGameRevisionCount, "and an id of no row says so");
 
             t.Equals(launcher::normalizeGameRevision("r0007"), std::string("r0001"), "an unknown revision plays the disc's own");
             t.Equals(launcher::normalizeGameRevision(""), std::string("r0001"), "and so does an empty one");
@@ -1606,14 +1628,14 @@ void register_launcher_tests()
                                               ui::Rect{0.0f, 0.0f, 800.0f, 520.0f}})
                 {
                     ui::LayoutInputs in;
-                    in.r0004Present = false;
+                    in.gameRevisionsInstalled = 0u;
                     std::vector<ui::Node> nodes = ui::layoutFor(page, window, in);
                     t.IsTrue(ui::hasNode(nodes, slug + ".revision.0"), "the disc's own build is always on offer");
                     t.IsFalse(ui::hasNode(nodes, slug + ".revision.1"),
                               "the community build is not, with no executable for it");
                     t.IsTrue(ui::drawable(ui::revisionCell(window, page, 1)),
                              "but its cell is still drawn, greyed, so the player learns the version exists");
-                    in.r0004Present = true;
+                    in.gameRevisionsInstalled = 1u << 1;
                     nodes = ui::layoutFor(page, window, in);
                     t.IsTrue(ui::hasNode(nodes, slug + ".revision.1"),
                              "with the executable beside the launcher the cell becomes a control");
@@ -1626,6 +1648,11 @@ void register_launcher_tests()
                     const ui::Frame f = ui::frameFor(window);
                     if (window.w >= 1100.0f && window.h >= 700.0f)
                         t.IsTrue(drawn.inside(f.body), std::string("and the row is inside the body on ") + slug);
+                    // Sprint 11 review, Minor 8: hold the re-tuned ONLINE rhythm -- the row belongs above
+                    // the fields, not among them, whatever a later edit does to the pitch.
+                    if (page == ui::Page::Online)
+                        t.IsTrue(ui::revisionCell(window, page, 0).bottom() <= ui::rectOf(nodes, "online.profile").y,
+                                 "the GAME VERSION row sits above PROFILE in the same column");
                 }
             }
         });

@@ -56,12 +56,18 @@ namespace launcher
         return {};
     }
 
+    size_t gameRevisionIndex(const std::string &id)
+    {
+        for (size_t i = 0; i < kGameRevisionCount; ++i)
+            if (id == kGameRevisions[i].id)
+                return i;
+        return kGameRevisionCount;
+    }
+
     const GameRevision *findGameRevision(const std::string &id)
     {
-        for (const GameRevision &g : kGameRevisions)
-            if (id == g.id)
-                return &g;
-        return nullptr;
+        const size_t i = gameRevisionIndex(id);
+        return i < kGameRevisionCount ? &kGameRevisions[i] : nullptr;
     }
 
     std::string normalizeGameRevision(const std::string &value)
@@ -69,10 +75,13 @@ namespace launcher
         return findGameRevision(value) != nullptr ? value : std::string(kGameRevisions[0].id);
     }
 
-    bool gameRevisionAvailable(const GameRevision &revision, bool present)
+    bool gameRevisionAvailable(size_t index, uint32_t installed)
     {
-        // A version that names no executable IS this build: it is there whenever the launcher is.
-        return revision.exeName[0] == '\0' || present;
+        if (index >= kGameRevisionCount)
+            return false;   // not a row of ours: nothing to start
+        // A row that names no executable IS this build: it is there whenever the launcher is. Every other
+        // row is gated by ITS OWN bit -- another row's presence says nothing about this one.
+        return kGameRevisions[index].exeName[0] == '\0' || (installed & (1u << index)) != 0u;
     }
 
     std::string revisionWarning(const std::string &presetId, const std::string &gameRevision)

@@ -51,7 +51,7 @@ namespace ui
         // Task 11: whether socom2_r0004.exe sits beside the launcher. Asked of the world ONCE, in main.cpp,
         // and handed down -- a page never touches the disk (and under --screenshot it is fixed, like
         // everything else the walk draws).
-        bool r0004Present = false;
+        uint32_t gameRevisionsInstalled = 0;
 
         // the game
         bool running = false;
@@ -189,10 +189,11 @@ namespace ui
             text(ctx, "GAME VERSION", Vec2{first.x, first.y - 20.0f}, metrics::labelSize, theme::dim, Face::Bold, 0.06f);
 
         float right = first.right();
+        bool anyGreyed = false;
         for (size_t i = 0; i < launcher::kGameRevisionCount; ++i)
         {
             const launcher::GameRevision &rev = launcher::kGameRevisions[i];
-            const bool available = launcher::gameRevisionAvailable(rev, app.r0004Present);
+            const bool available = launcher::gameRevisionAvailable(i, app.gameRevisionsInstalled);
             const std::string id = slug + ".revision." + std::to_string(i);
             const Rect r = revisionCell(app.frame.window, page, static_cast<int>(i));
             if (!drawable(r))
@@ -200,6 +201,7 @@ namespace ui
             right = r.right();
             if (!available)
             {
+                anyGreyed = true;
                 const Rgba off = theme::mix(theme::dim, theme::ground, 0.45f);
                 strokeRect(ctx, r, off, 2.0f);
                 const float size = metrics::labelSize + 1.0f;
@@ -214,11 +216,19 @@ namespace ui
             }
         }
 
-        // Beside the cells: why the greyed one is greyed. The mismatch WARNING is not drawn here -- it is a
+        // Beside the cells: why a greyed one is greyed. The mismatch WARNING is not drawn here -- it is a
         // whole sentence, and on ONLINE this strip is 254 units wide -- so each page places it where it
         // has room (PLAY under the row, ONLINE on the SERVER strip, which is the widest line it has).
+        //
+        // ONLINE already prints this very sentence on the row of every server that cannot be played,
+        // right-aligned to nearly the same column two rows above, so a copy here was the same words twice
+        // in one picture (Sprint 11 review, Minor 4).
+        bool alreadyOnPage = false;
+        if (page == Page::Online)
+            for (const launcher::ServerPreset &p : launcher::kServerPresets)
+                alreadyOnPage = alreadyOnPage || !launcher::presetAvailable(p);
         const Rect strip{right + 12.0f, first.y, app.frame.body.right() - right - 12.0f, first.h};
-        if (!app.r0004Present && drawable(strip))
+        if (anyGreyed && !alreadyOnPage && drawable(strip))
         {
             const float size = metrics::captionSize - 1.0f;
             textRightIn(ctx, ellipsizeEnd(ctx, launcher::kRevisionMissingNote, strip.w, size).c_str(), strip, size,

@@ -77,7 +77,7 @@ namespace ui
         // Task 11: whether socom2_r0004.exe sits beside the launcher. The GAME VERSION selector's second
         // cell is DRAWN either way -- greyed, with the note -- but it is only a focusable node when the
         // build it names exists, because a control a player cannot use must not be reachable by the pad.
-        bool r0004Present = false;
+        uint32_t gameRevisionsInstalled = 0;
     };
 
     // Whether an ADVANCED section MUST be open whatever the player last chose, because something inside it

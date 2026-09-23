@@ -3,6 +3,7 @@
 #include "launcher/mapping.h"   // Sprint 10 Goal 8 (R174): the input mapping, a field of Config
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -50,11 +51,19 @@ namespace launcher
     constexpr const char *kRevisionMissingNote = "needs the r0004 game update -- planned";
 
     const GameRevision *findGameRevision(const std::string &id);
+    // The ROW `id` names, or kGameRevisionCount when it is not one of ours.
+    size_t gameRevisionIndex(const std::string &id);
     // One of kGameRevisions' ids; anything else (a typo, a value from a newer build, empty) is "r0001".
     std::string normalizeGameRevision(const std::string &value);
-    // Can this version actually be started? `present` is whether its executable was found beside the
-    // launcher -- asked of the world ONCE, by main.cpp, and handed down: a page never touches the disk.
-    bool gameRevisionAvailable(const GameRevision &revision, bool present);
+    // Can the version in row `index` actually be started? `installed` is a bitmask over kGameRevisions --
+    // bit i set when row i's own executable was found beside the launcher. Asked of the world ONCE, by
+    // main.cpp, and handed down: a page never touches the disk.
+    //
+    // A MASK, not a bool: this took a single `present` until the Sprint 11 review, which is the one place
+    // the task's own rule ("a revision is a row, not a branch") was still a branch -- main.cpp probed for
+    // kGameRevisions[1] by name, and every executable-bearing row was then reported installed whenever
+    // that one was. Each row is now gated by its own bit and by no other's, so a third row needs no code.
+    bool gameRevisionAvailable(size_t index, uint32_t installed);
 
     struct ServerPreset
     {

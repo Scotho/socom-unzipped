@@ -50,6 +50,21 @@ namespace ui
             return onlinePresetRow(window, static_cast<int>(launcher::kServerPresetCount) - 1).bottom() + 10.0f;
         }
 
+        // One focusable cell per game version that can actually be started -- by the TABLE, not by a pair
+        // of ifs (Sprint 11 review, Important 1). A version whose executable is missing is drawn greyed by
+        // the page and is deliberately not a node, so the pad cannot reach a game that is not there; and a
+        // cell with no room to be drawn is not a node either, so no window can leave a focusable control
+        // that nothing paints (review, Minor 9).
+        void addRevisionCells(std::vector<Node> &out, Page page, Rect window, const LayoutInputs &in)
+        {
+            for (size_t i = 0; i < launcher::kGameRevisionCount; ++i)
+            {
+                const Rect r = revisionCell(window, page, static_cast<int>(i));
+                if (launcher::gameRevisionAvailable(i, in.gameRevisionsInstalled) && drawable(r))
+                    add(out, page, pageSlug(page) + ".revision." + std::to_string(i), r);
+            }
+        }
+
         // Sprint 10 Goal 8: the BUTTONS grid's order -- bind_flow.cpp's kCells, which the tests hold equal to this.
         uint8_t bindCellButtonId(int cell)
         {
@@ -139,9 +154,7 @@ namespace ui
                 add(out, page, ids[i], Rect{b.x, b.y + 4.0f + static_cast<float>(i) * 66.0f, b.w, 56.0f});
             }
             // Task 11: what LAUNCH will start, just above the button that starts it.
-            add(out, page, "play.revision.0", revisionCell(window, page, 0));
-            if (in.r0004Present)
-                add(out, page, "play.revision.1", revisionCell(window, page, 1));
+            addRevisionCells(out, page, window, in);
             const float y = b.bottom() - 64.0f;
             add(out, page, "play.launch", Rect{b.x, y, 300.0f, 64.0f});
             add(out, page, "play.diagnostics", Rect{b.x + 320.0f, y + 12.0f, 200.0f, 40.0f});
@@ -247,9 +260,7 @@ namespace ui
             // caption still end inside the body at the design size (the small window scrolls, as before).
             // Task 11: the GAME VERSION row, between the server list and the fields -- the server and the
             // build have to agree, so the two choices sit together and the warning between them is short.
-            add(out, page, "online.revision.0", revisionCell(window, page, 0));
-            if (in.r0004Present)
-                add(out, page, "online.revision.1", revisionCell(window, page, 1));
+            addRevisionCells(out, page, window, in);
             const float y = revisionCell(window, page, 0).bottom() + 10.0f;
             if (in.customServer)
                 add(out, page, "online.server", Rect{b.x + metrics::labelW, y, 420.0f, 40.0f});

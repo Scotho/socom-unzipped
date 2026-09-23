@@ -956,11 +956,19 @@ int main(int argc, char **argv)
         return line.empty() ? 1 : 0;   // silent when unreachable, as the ONLINE page is
     }
 
-    // Task 11: is the community build installed? Asked here, once, and handed to the UI -- a page never
-    // touches the disk. kGameRevisions[1] names the file rather than main.cpp, so the table stays the one
-    // place a revision is described.
-    std::error_code r0004Ec;
-    const bool r0004Present = fs::is_regular_file(dir / launcher::kGameRevisions[1].exeName, r0004Ec);
+    // Task 11: which game builds are installed beside the launcher -- one bit per kGameRevisions row, each
+    // probed by that row's OWN exeName. Asked here, once, and handed to the UI: a page never touches the
+    // disk. The loop is the point (Sprint 11 review, Important 1): this named kGameRevisions[1] directly
+    // until then, so a third revision would have been invisible here and reported installed whenever
+    // r0004 was. A row is a row -- adding one needs no change in this file.
+    uint32_t gameRevisionsInstalled = 0;
+    for (size_t i = 0; i < launcher::kGameRevisionCount; ++i)
+    {
+        const char *exe = launcher::kGameRevisions[i].exeName;
+        std::error_code ec;
+        if (exe[0] != '\0' && fs::is_regular_file(dir / exe, ec))
+            gameRevisionsInstalled |= 1u << i;
+    }
 
     launcher::Config config;
     {
@@ -970,8 +978,7 @@ int main(int argc, char **argv)
         // Task 11: fromJson cannot see the disk, so the clamp is here -- a config naming a build that is
         // not installed (a folder copied from a machine that had it) plays the disc's own build rather
         // than leaving the launcher pointing at an executable that is not there.
-        const launcher::GameRevision *chosen = launcher::findGameRevision(config.gameRevision);
-        if (chosen == nullptr || !launcher::gameRevisionAvailable(*chosen, r0004Present))
+        if (!launcher::gameRevisionAvailable(launcher::gameRevisionIndex(config.gameRevision), gameRevisionsInstalled))
             config.gameRevision = launcher::kGameRevisions[0].id;
     }
 
@@ -1118,7 +1125,7 @@ int main(int argc, char **argv)
     }
     else
     {
-        app.r0004Present = r0004Present;   // Task 11 (the walk fixes it per shot instead)
+        app.gameRevisionsInstalled = gameRevisionsInstalled;   // Task 11 (the walk fixes it per shot instead)
         const DiscStatus st = checkDisc(app.config.isoPath);
         app.discChecked = st.checked;
         app.discOk = st.ok;
@@ -1292,7 +1299,7 @@ int main(int argc, char **argv)
         // OUT here -- inside the block above it would be skipped under --screenshot, and the
         // ADVANCED capture would show a section that says "in use" over nothing at all.
         app.layout.advancedOpen = app.advancedOpen || ui::advancedForced(app.config);
-        app.layout.r0004Present = app.r0004Present;   // Task 11: the greyed cell is drawn, never focusable
+        app.layout.gameRevisionsInstalled = app.gameRevisionsInstalled;   // Task 11: a greyed cell is drawn, never focusable
         // Sprint 10 Goal 8: the CONTROLLER page's section, and whether a bind dialog has replaced its controls.
         app.layout.padButtons = app.padSection == 1;
         app.layout.padDialogButtons = ui::dialogButtonCount(app.bind);
@@ -2065,8 +2072,9 @@ int main(int argc, char **argv)
                 // that runs r0001 -- the reverse mismatch warning. Set on EVERY shot, not only that one:
                 // the walk reuses a single App, so a version left behind by one capture would otherwise
                 // reappear in every picture after it.
-                app.r0004Present = std::strcmp(shot.suffix, "_r0004") == 0;
-                app.config.gameRevision = app.r0004Present ? "r0004" : "r0001";
+                const bool r0004Shot = std::strcmp(shot.suffix, "_r0004") == 0;
+                app.gameRevisionsInstalled = r0004Shot ? (1u << launcher::gameRevisionIndex("r0004")) : 0u;
+                app.config.gameRevision = r0004Shot ? "r0004" : "r0001";
                 if (std::strcmp(shot.suffix, "_community_healed") == 0)
                 {
                     // A saved config naming the unplayable preset: fromJson moves it to the one that exists.
