@@ -1118,6 +1118,7 @@ int main(int argc, char **argv)
     }
     else
     {
+        app.r0004Present = r0004Present;   // Task 11 (the walk fixes it per shot instead)
         const DiscStatus st = checkDisc(app.config.isoPath);
         app.discChecked = st.checked;
         app.discOk = st.ok;
@@ -1185,6 +1186,18 @@ int main(int argc, char **argv)
         // and its two-answer conflict dialog.
         shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_buttons_switch"});
         shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_buttons_switch_conflict"});
+        // Task 11: the GAME VERSION selector at the plan's two sizes, on both pages that carry it. The
+        // 1100x700 captures are the plain ones above; 900x600 is not in the generic pair (which is
+        // 1100x700 and the 800x520 minimum), so it is asked for here.
+        shots.push_back(Shot{ui::Page::Play, 900, 600, ""});
+        shots.push_back(Shot{ui::Page::Online, 900, 600, ""});
+        // ... and the state the selector cannot reach until an r0004 build exists: that build installed and
+        // chosen, against the project server, which is the REVERSE mismatch warning. The forward one (the
+        // community server on the r0001 build) gets no picture on purpose -- it cannot be reached without
+        // forcing a preset the launcher heals away, and the forced page then shows a placeholder address
+        // that misrepresents it. Its sentence is asserted in launcher_tests.cpp instead.
+        shots.push_back(Shot{ui::Page::Play, 1100, 700, "_r0004"});
+        shots.push_back(Shot{ui::Page::Online, 1100, 700, "_r0004"});
         // The owner's own config named the community server; this is what the page does with it.
         shots.push_back(Shot{ui::Page::Online, 1100, 700, "_community_healed"});
         // Sprint 9 P4: the ADVANCED section in both of its states. Shut is the ordinary `online`
@@ -1279,6 +1292,7 @@ int main(int argc, char **argv)
         // OUT here -- inside the block above it would be skipped under --screenshot, and the
         // ADVANCED capture would show a section that says "in use" over nothing at all.
         app.layout.advancedOpen = app.advancedOpen || ui::advancedForced(app.config);
+        app.layout.r0004Present = app.r0004Present;   // Task 11: the greyed cell is drawn, never focusable
         // Sprint 10 Goal 8: the CONTROLLER page's section, and whether a bind dialog has replaced its controls.
         app.layout.padButtons = app.padSection == 1;
         app.layout.padDialogButtons = ui::dialogButtonCount(app.bind);
@@ -2047,6 +2061,12 @@ int main(int argc, char **argv)
                 app.config.loginPassword = credentialsShot ? "hunter2" : "";
                 if (credentialsShot)
                     shotPendingFocus = "online.password";
+                // Task 11: "_r0004" installs the community build and picks it, against the project server
+                // that runs r0001 -- the reverse mismatch warning. Set on EVERY shot, not only that one:
+                // the walk reuses a single App, so a version left behind by one capture would otherwise
+                // reappear in every picture after it.
+                app.r0004Present = std::strcmp(shot.suffix, "_r0004") == 0;
+                app.config.gameRevision = app.r0004Present ? "r0004" : "r0001";
                 if (std::strcmp(shot.suffix, "_community_healed") == 0)
                 {
                     // A saved config naming the unplayable preset: fromJson moves it to the one that exists.

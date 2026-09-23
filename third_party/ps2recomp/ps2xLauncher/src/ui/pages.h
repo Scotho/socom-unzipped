@@ -48,6 +48,10 @@ namespace ui
         bool discChecked = false;
         bool discOk = false;
         std::string discMessage;
+        // Task 11: whether socom2_r0004.exe sits beside the launcher. Asked of the world ONCE, in main.cpp,
+        // and handed down -- a page never touches the disk (and under --screenshot it is fixed, like
+        // everything else the walk draws).
+        bool r0004Present = false;
 
         // the game
         bool running = false;
@@ -162,6 +166,71 @@ namespace ui
 
         // A forced-open section still takes the focus (it is a landmark on the page); it just will not shut.
         return hit(ctx, r, id) && !forced;
+    }
+
+    // Task 11 (Sprint 11 Goal D): the GAME VERSION selector, drawn the same way on PLAY and on ONLINE.
+    // One function, because two copies of a control that must agree about which build the game will start
+    // is how they come to disagree. The cell for a version whose executable is missing is DRAWN -- greyed,
+    // with the note beside it -- rather than hidden: a player has to learn the version exists and why it is
+    // not there, which is the rule the unplayable server preset already follows (page_online.cpp).
+    inline void gameVersionRow(const Ctx &ctx, App &app, const std::vector<Node> &nodes, Page page)
+    {
+        const std::string slug = pageSlug(page);
+        const std::string chosen = launcher::normalizeGameRevision(app.config.gameRevision);
+        const Rect first = revisionCell(app.frame.window, page, 0);
+        if (!drawable(first))
+            return;
+        // ONLINE keeps its label column -- the row lines up with ADDRESS, PROFILE and the rest, and a
+        // heading above the cells would sit inside the last preset row. PLAY has no label column, so its
+        // heading goes above, where LAST RUN's does.
+        if (page == Page::Online)
+            rowLabel(ctx, first, "GAME VERSION");
+        else
+            text(ctx, "GAME VERSION", Vec2{first.x, first.y - 20.0f}, metrics::labelSize, theme::dim, Face::Bold, 0.06f);
+
+        float right = first.right();
+        for (size_t i = 0; i < launcher::kGameRevisionCount; ++i)
+        {
+            const launcher::GameRevision &rev = launcher::kGameRevisions[i];
+            const bool available = launcher::gameRevisionAvailable(rev, app.r0004Present);
+            const std::string id = slug + ".revision." + std::to_string(i);
+            const Rect r = revisionCell(app.frame.window, page, static_cast<int>(i));
+            if (!drawable(r))
+                continue;
+            right = r.right();
+            if (!available)
+            {
+                const Rgba off = theme::mix(theme::dim, theme::ground, 0.45f);
+                strokeRect(ctx, r, off, 2.0f);
+                const float size = metrics::labelSize + 1.0f;
+                textCenteredIn(ctx, ellipsizeEnd(ctx, rev.label, r.w - 16.0f, size, Face::Bold).c_str(), r, size, off,
+                               Face::Bold, 0.04f);
+                continue;
+            }
+            if (radioCell(ctx, r, rev.label, id, chosen == rev.id) && chosen != rev.id)
+            {
+                app.config.gameRevision = rev.id;
+                app.dirty = true;
+            }
+        }
+
+        // Beside the cells: why the greyed one is greyed. The mismatch WARNING is not drawn here -- it is a
+        // whole sentence, and on ONLINE this strip is 254 units wide -- so each page places it where it
+        // has room (PLAY under the row, ONLINE on the SERVER strip, which is the widest line it has).
+        const Rect strip{right + 12.0f, first.y, app.frame.body.right() - right - 12.0f, first.h};
+        if (!app.r0004Present && drawable(strip))
+        {
+            const float size = metrics::captionSize - 1.0f;
+            textRightIn(ctx, ellipsizeEnd(ctx, launcher::kRevisionMissingNote, strip.w, size).c_str(), strip, size,
+                        theme::mix(theme::dim, theme::ground, 0.45f));
+        }
+    }
+
+    // The sentence to draw when the chosen server and the chosen build are different revisions; "" when
+    // they agree. Both pages ask this, each drawing it where its own layout has room for a full line.
+    inline std::string revisionMismatchLine(const App &app)
+    {
+        return launcher::revisionWarning(app.config.serverPreset, launcher::normalizeGameRevision(app.config.gameRevision));
     }
 
     // ---- one per page -------------------------------------------------------------------------------------
