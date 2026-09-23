@@ -83,10 +83,12 @@ proved a stranger's clone-to-game path at 42 minutes, and ran eleven agent chunk
 ## 2. Where we are now
 
 **Read `docs/STATUS.md`'s "Current state" block — it is kept current and this section is not a copy of it.** The
-one-paragraph version, 2026-09-22: the game boots, plays single-player missions and plays online against another
-instance on a hosted server over the internet, on Windows and Linux, from the player's own disc; the repository is
-public; a stranger can clone it and reach a running game in 42 minutes; and a fix wave against the owner's playtest
-notes is in flight on `sprint-10`.
+one-paragraph version, and it is deliberately the kind of sentence that does not go stale: the game boots, plays
+single-player missions and plays online against another instance on a hosted server over the internet, on Windows and
+Linux, from the player's own disc; the repository is public; and a stranger can clone it and reach a running game in
+well under an hour. Which sprint is open, what is in flight and what the current numbers are belong to
+`docs/CURRENT_SPRINT.md` and `docs/STATUS.md`. (This paragraph named a fix wave "in flight on `sprint-10`" until
+2026-09-23; the wave had closed the day it was written. Live state in a narrative document rots on its own.)
 
 What is *not* true and should not be claimed: that it is finished, that multiplayer is safe against a hostile peer
 (see `SECURITY.md`, and the Sprint 11 r0004 spec's Goal A), or that the gate proves correctness. That last point is
@@ -132,9 +134,11 @@ EE game logic is allowed for diagnosis, rewriting it natively is not**.
 **Passed 2026-09-13** — an automated two-instance online match driven to a kill, scored by two independent scorers on
 different signals (`KNOWN.md` §1 top row; `logs/parity/s5_t5_ladder2`; evidence archived with hashes).
 
-**Repeatability is the live number, and it is not yet met.** The bar is seven consecutive clean scheduled-ladder runs;
-the streak stands at **4 of 7** (`docs/LADDER.md`). The remaining failures are lobby-stage, not gameplay-stage, which
-is the good kind of remaining failure.
+**Repeatability is the bar, and this document does not hold the number.** The bar is seven consecutive clean
+scheduled-ladder runs; **the streak is in `docs/LADDER.md`**, which is generated from the run ledger and has never
+been wrong, with the sprint's reading of it in `docs/CURRENT_SPRINT.md`. What is worth saying here, because it is
+narrative rather than a number: the failures that break a streak have been lobby-stage, not gameplay-stage, which is
+the good kind of remaining failure.
 
 What a green ladder still does not prove: that a *stranger* can do it. Every online result so far is either two
 instances on one host or the owner's two machines. And a repeatability number says nothing about the security of the
@@ -165,13 +169,18 @@ The archived §5's advice has mostly been taken. What is left, plus what this au
 
 ## 6. What is next
 
-**Sprint 10 is open** on branch `sprint-10`. Its autonomous stack is done and on `main` in four slices; fix wave A
-(the owner's playtest notes) closed at **eight of eleven chunks** with two slices on `main` — W6 and W10 did not run,
-and W10 is explicitly to be **re-decided rather than executed** (R237 assumed the card path was doubtful because the
-owner's save failed, and that failure was the `'..'` refusal the wave itself fixed). `v0.10.0` waits on the sprint's
-close. The seven items on the road to that tag, with owners, are in `docs/CURRENT_SPRINT.md`.
+**The live answer is `docs/CURRENT_SPRINT.md`** — which sprint is open, what stands between here and the next tag,
+and who owns each item. This section holds no queue and no task list, by this document's own rule.
 
-**Sprint 11 is drafted, in two independent specs:**
+> **Superseded 2026-09-23.** What stood here until the Sprint 10 close is kept as the worked example of why the rule
+> exists: *"**Sprint 10 is open** on branch `sprint-10`. Its autonomous stack is done and on `main` in four slices;
+> fix wave A (the owner's playtest notes) closed at **eight of eleven chunks** with two slices on `main` — W6 and
+> W10 did not run, and W10 is explicitly to be **re-decided rather than executed** … `v0.10.0` waits on the sprint's
+> close."* Within a day of being written it was wrong three ways: Sprint 10 closed, and W6 and W10 both **ran** —
+> W10 was executed rather than re-decided, and it failed, which is what rewrote R237.
+
+**Sprint 11 is drafted, in two independent specs**, and its plan
+(`docs/superpowers/plans/2026-09-23-sprint-11.md`) is where its eighteen tasks actually live:
 - `specs/2026-09-20-sprint-11-release-hardening-design.md` — a public repository a stranger can trust: git and
   releases, the history and disc-derived-bytes audit, the progress story, the bug pipeline, the PII gate, owner
   decisions D1–D6.
@@ -180,7 +189,10 @@ close. The seven items on the road to that tag, with owners, are in `docs/CURREN
   B–D are provable without the r0004 package; E–G are blocked on the owner's memory card and on PSRewired.
 
 **The standing backlog no sprint owns** — carried here because that is what a roadmap is for, and because two of
-these have now survived three sprints without an owner:
+these have now survived three sprints without an owner. **It is a register, not a queue:** nothing here is scheduled,
+and the moment a sprint takes one of these it becomes a row in `docs/CURRENT_SPRINT.md` and this entry becomes a
+pointer to it. Two of the eight already have live homes elsewhere and are repeated here only as narrative — item 4's
+online freeze and item 7's voice peek (R221) are both `docs/KNOWN.md` rows with their experiments attached.
 
 1. **The EE soft-double chain** (`litodp → dpmul → dpdiv → exp → dptofp`) against host `double`, and a faithful
    `__ieee754_rem_pio2f` port against a reference. Open and unowned since 2026-09-12.

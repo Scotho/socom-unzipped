@@ -8,7 +8,8 @@ from `RUN/RAW/APACHE00.ZDB` with libdnas2. We recovered the plaintext overlays o
 (`tools_py/decrypt_apache.py`, Unicorn-driven), merged them with the loader into one ELF
 (`game/overlays/socom2_game.elf`), and statically recompile that ELF to C++ with a vendored fork
 of PS2Recomp (`third_party/ps2recomp`, GPL-3.0). The fork's runtime provides the EE kernel,
-DMAC/VIF/GIF, a software GS, a VU1 interpreter and IOP services emulated at the SIF-RPC level.
+DMAC/VIF/GIF, a GS (an OpenGL backend with an integer up-scale is the default path; the CPU
+rasteriser is the test path), a VU1 interpreter and IOP services emulated at the SIF-RPC level.
 SOCOM-specific behaviour lives in `third_party/ps2recomp/ps2xRuntime/src/lib/game_overrides_socom2.cpp`
 (EE-side hooks) and `third_party/ps2recomp/ps2xIOP/src/modules/*.cpp` (IOP services). The
 online server is Horizon Private Server configured for SOCOM II under `server/`.
@@ -166,9 +167,12 @@ fastest way to check a scoring change. A gate refuses to start under 4 GB free o
 while another launch holds the loop lock (`scripts/loop_lock.sh status`). Anything else: `docs/STATUS.md` has the
 day-by-day, `docs/KNOWN.md` what is proven and what is believed, `docs/HUMAN_TASKS.md` the checks only a person can do.
 
-**Knobs, since Sprint 10 Q2 (2026-09-21):** `docs/KNOBS.md` is the complete, generated list (151 names; `python -m
-tools_py.knobs write` regenerates it and `test_knobs_registry` fails when the source and the registry disagree in either
-direction). The 20 **Shipping** names are `config.json` settings the launcher sends. Everything else is a **Dev** knob
+**Knobs, since Sprint 10 Q2 (2026-09-21):** `docs/KNOBS.md` is the complete, generated list, and it states its own count by
+class on its first lines -- read it there rather than here (`python -m tools_py.knobs write` regenerates it and
+`test_knobs_registry` fails when the source and the registry disagree in either direction). This paragraph said
+"151 names" and "the 20 Shipping names" until 2026-09-23, against the generated file's 150 and 18: a count repeated
+outside its one home, which is exactly what this document's own single-source rule forbids. The **Shipping** names
+are `config.json` settings the launcher sends. Everything else is a **Dev** knob
 and is ignored unless the run is in developer mode -- `--dev` on `socom2`'s command line or `PS2X_DEV=1`; `run.sh`, the
 gate and every script under `scripts/parity/` are developer-mode launches already. The game's first log line, `[knobs]
 dev=<0|1> set: ... | ignored without --dev: ...`, says what was honoured and what was not; the launcher passes the game

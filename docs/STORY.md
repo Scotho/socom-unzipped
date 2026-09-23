@@ -714,24 +714,43 @@ The owner asked for a second way to remap: hold any pad button on the CONTROLLER
 
 ---
 
-## Where it stands tonight, 2026-09-22
+## Where it stands tonight, 2026-09-22 — and what the night answered
 
 *Not an entry and no `Cited:` line. This is the view from the end of the record on the night it ends, and it gets
-replaced by real entries as things land.*
+replaced by real entries as things land. **It is kept exactly as written and answered underneath**, because the
+answers arrived within hours and a paragraph that is wrong with its correction beside it is worth more than a
+paragraph quietly rewritten.*
 
-The tree is at `e6a924d`, 1,028 commits, on `sprint-10`, with two tags: `playtest-1` and `v0.9.0`. The repository is
-public. Sprint 10's autonomous work is on `main`, slice by slice, the last two slices from the owner's playthrough. The
-scheduled ladder has four clean runs of the seven it needs. Sprint 11 has a spec: the r0004 update the community
-server requires, costed against the tree, waiting on a package only my memory card can supply.
+> The tree is at `e6a924d`, 1,028 commits, on `sprint-10`, with two tags: `playtest-1` and `v0.9.0`. The repository
+> is public. Sprint 10's autonomous work is on `main`, slice by slice, the last two slices from the owner's
+> playthrough. The scheduled ladder has four clean runs of the seven it needs. Sprint 11 has a spec: the r0004 update
+> the community server requires, costed against the tree, waiting on a package only my memory card can supply.
+>
+> The open question is still the music, and it has moved from the mixer to the speaker. Every fix so far was measured
+> on the mix as rendered. The one instrument that listens at the speaker heard 31 dropouts in ten minutes on my
+> Bluetooth speaker that the mix doesn't contain. One run on a wired speaker decides whether that's the cable or us.
+> Behind it, two decisions: whether the login the launcher prefills can go now that the save works on a fresh card,
+> and how far a driven walk into the first mission should go before a death counts as "the music stopped".
 
-The open question is still the music, and it has moved from the mixer to the speaker. Every fix so far was measured on
-the mix as rendered. The one instrument that listens at the speaker heard 31 dropouts in ten minutes on my Bluetooth
-speaker that the mix doesn't contain. One run on a wired speaker decides whether that's the cable or us. Behind it, two
-decisions: whether the login the launcher prefills can go now that the save works on a fresh card, and how far a driven
-walk into the first mission should go before a death counts as "the music stopped".
+**2026-09-23, the morning after.** Three of those sentences have moved.
 
-No stranger has played yet. No two humans have played each other. Those are the two sentences this page most wants to
-lose.
+The 31 dropouts were re-scored to 11 the same day — twenty of them were the scorer's own matching, not the game's —
+and then the wired run happened. It gave 14 on the cable against 11 on the Bluetooth speaker over sixteen minutes.
+**It's us.** Not the cable, not the speaker: something between the mixer's own output and the write that proves what
+the mixer did. That is a smaller question than the one I had, and a much better one, because it can be instrumented
+instead of argued about.
+
+The two decisions were both taken by running them rather than deciding them. The prefilled login **stays** — a
+virgin card keeps the persona through a restart and loses the saved password, so the game's own way in doesn't yet
+reach the lobby on its own. And the driven walk is not enough: twelve minutes of walking in place produced ten
+perfectly clean HELP popups, and the garbled one I saw was after the church, which a walk that never leaves the
+insertion point can never reach. The experiment wasn't wrong; the route was too short, and the capture didn't even
+record which settings it ran with — which is its own lesson, now written down.
+
+Sprint 10 is closed. Sprint 11 is open, and the specs became a plan with eighteen tasks in it.
+
+No stranger has played yet. No two humans have played each other. Those are still the two sentences this page most
+wants to lose.
 
 ---
 

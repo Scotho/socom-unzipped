@@ -40,14 +40,14 @@ hosted server.**
 
 ## Status
 
-As of September 2026 (Sprint 10, tag `v0.9.0`):
+As of 2026-09-23 (**Sprint 10 is closed**; its merge and the annotated tag `v0.10.0` are the last step of the close, so `v0.9.0` is the newest tag until then):
 
 | Works | Not yet |
 |---|---|
 | Boots from the ISO to the title, through the menus, into a mission; Xbox/DirectInput pads for play, the keyboard for the menus and typing | A public release download. Builds are handed to testers by hand; the download and its page are Sprint 11 |
 | Rendering through an OpenGL backend with an integer up-scale (`PS2X_GS_SCALE` 1-4; 3-4 are untested); a CPU rasteriser for tests | Frame rate: 43-45 fps in a mission and 52-60 in the menus, against the console's 60 |
-| Online: login, lobby, and full rounds on the hosted Horizon server -- two of our instances, and one of ours against a console client through PCSX2 | Music and mission ambience are mid-fix (the stream ring and a conductor-sound path); voice chat is untested end to end |
-| A launcher that owns the settings, checks the disc, picks the server, and files bug reports | Linux: the runtime, tests and launcher build in CI; the playable build is being brought up in a VM |
+| Online: login, lobby, and full rounds on the hosted Horizon server -- two of our instances, and one of ours against a console client through PCSX2 | Mission music: the stems play correctly and the pauses are the game's own design, but about a dozen 50 ms dropouts a mission still reach the speaker that are not in the mix as rendered -- proven on 2026-09-23 to be **ours** rather than the listener's audio device, and not yet located. Voice chat is untested end to end (the protocol is read and the headset path is proven as far as `docs/KNOWN.md`'s voice row takes it -- notably, the game's protocol has no headset button) |
+| A launcher that owns the settings, checks the disc, picks the server, and files bug reports | Linux: CI builds and proves the runtime library, both test suites and the launcher on every push; the *playable* build has not been rebuilt in the VM since the knob flip -- that ring is carried into Sprint 11 |
 | An automated parity gate (title / transition / mission) and an online "ladder" that plays rounds unattended | Anything but the NTSC r0001 disc |
 
 The live, audited version of this table is `docs/KNOWN.md` (proven, believed, and retracted, each with its evidence),
