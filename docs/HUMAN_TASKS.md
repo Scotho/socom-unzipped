@@ -20,6 +20,26 @@ is **not** the cause of the music dropouts (they survive a wired endpoint, so th
 **stays** for now because a virgin card keeps the persona but loses the saved password, and the garbled HELP glyphs
 did not reproduce on a walk that never reaches the church.
 
+### Ten quiet minutes for the music dropouts (audio-out, `agent/audio-out`)
+
+The overnight capture that was to say WHERE the 50 ms music holes go was spoiled by a Chrome tab playing music
+into the HyperX endpoint for its whole sixteen minutes, and later by Discord as well (KNOWN §4); the instrument
+itself worked -- no late audio callback in 38,422 -- but a capture with anything else rendering is not a device
+measurement. **What to do:** close or mute whatever plays audio (`python -m tools_py.parity.app_volume list` shows
+the endpoint's sessions; the browser's music tab and Discord are the two seen tonight), then run
+`bash C:\projects\wt-audio-out\logs\capture_audio_out.sh` (it takes the loop lock, launches the instrumented runner
+from the worktree over the main tree's game, records the endpoint for the ten-minute briefing capture, and scores
+it -- about sixteen minutes; leave the machine alone until it prints `capture done` to
+`C:\projects\wt-audio-out\logs\capture_audio_out.log`), and read `logs/parity/<the new audio_out_*>/sessions_verdict.txt`
+first: it must say `clean`, or the run is another spoiled one. Then
+`python -m tools_py.parity.cb_trace logs/parity/<same>/cb_trace.csv --dips logs/parity/<same>/dips.txt` from the
+worktree. After the branch merges, the same thing from the main tree is
+`PS2X_DEV=1 PS2X_AUDIO_TRACE=1 bash scripts/parity/mission_music_long.sh --stage briefing --minutes 10` on
+`dist/socom2.exe`. **What it decides:** a DEVICE count back near 14 with the trace still at 0 late callbacks means
+the dropouts are not the device thread's and the search moves to the audio engine, the recorder's silent overflow
+drops and the scorer's alignment; late or dry callbacks in the trace mean each dip is attributed to the callback
+that rendered it and the fix is on our side of the callback.
+
 ### The eight decisions, and the default each one proceeds on
 
 **The loop proceeds on the default in the last column; say a word to change any of them and the affected task is
