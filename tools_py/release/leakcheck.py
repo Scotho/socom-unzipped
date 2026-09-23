@@ -647,7 +647,15 @@ def self_test():
     false_alarm = [r for r, fn in trules if fn(clean)]
     if false_alarm:
         missed.append("false alarm on the project's own identifiers: " + ", ".join(sorted(set(false_alarm))))
-    total = len(cases) + len(PLANTED_NAMES) + 1
+    # The product-word exception, both directions. The rules above are built with an explicit `users=`,
+    # so nothing else here reaches drop_product_words -- and it is the one piece of this gate that can
+    # switch a whole rule off. A regression in either direction has to fail the control the pre-commit
+    # hook runs, not only a unit test somebody may not be running.
+    if R.drop_product_words(["socom"], log=False):
+        missed.append("owner-user-name: the product's own name is still hunted as this machine's user")
+    if R.drop_product_words([PLANTED_USER], log=False) != {PLANTED_USER}:
+        missed.append("owner-user-name: a real user name was dropped as a product word")
+    total = len(cases) + len(PLANTED_NAMES) + 3
     return {"planted": total, "caught": total - len(missed), "missed": missed}
 
 

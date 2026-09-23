@@ -188,27 +188,42 @@ def assign_matches(text):
 
 # What the project calls itself. A machine user named after the product is not a secret: the socom-linux
 # VM's account is `socom`, and on 2026-09-22 the owner-user-name rule -- built from whoami -- turned
-# README.md:1, "# SOCOM Unzipped", into a finding and refused the tree. The repository's own directory name
-# is in the list because a checkout is usually named after the thing it holds (~/socom_pc in that VM).
-# Nothing else changes: a real account name is still hunted everywhere, and the home-directory rule (which
-# has always allowed "socom") is untouched.
-PRODUCT_WORDS = ("socom", "unzipped", "socom unzipped", "socom_pc", "socom-pc", "ps2x", "ps2recomp",
-                 os.path.basename(os.path.dirname(os.path.dirname(HERE))))
+# README.md:1, "# SOCOM Unzipped", into a finding and refused the tree. Nothing else changes: a real
+# account name is still hunted everywhere, and the home-directory rule (which has always allowed "socom")
+# is untouched.
+#
+# The match is over WHOLE NAMES, not substrings, and the list is fixed (review I3). Both halves were
+# wrong before: `name in word` exempted any user called `zip`, `ps2`, `comp` or `oco` -- owner_names()
+# admits anything three characters or longer -- and the list ended with the checkout's own directory
+# name, so which users the gate exempted differed between C:\projects\socom_pc and a worktree. Switching
+# a leak rule off for somebody is not something a clone path gets to decide.
+# The list is spelled out in full rather than derived by splitting the names on separators: splitting
+# "ps2 recomp" hands back "ps2", which is a three-character fragment that owner_names() would accept, and
+# that is the very trap this finding is about. Every spelling that should be exempt is written here.
+PRODUCT_TOKENS = frozenset((
+    "socom", "unzipped", "socom unzipped", "socomunzipped",
+    "socom_pc", "socom-pc", "socompc", "socom pc",
+    "ps2x", "ps2recomp",
+))
 _DROPPED = set()          # so the note below is one line per name per process, not one per rule build
 
 
 def is_product_word(name):
-    """True when `name` is a case-insensitive substring of one of the product's own words."""
+    """True when `name` IS one of the product's own names, case-insensitively -- not a fragment of one."""
     low = (name or "").strip().lower()
-    return bool(low) and any(low in word.lower() for word in PRODUCT_WORDS if word)
+    return bool(low) and low in PRODUCT_TOKENS
 
 
-def drop_product_words(names):
-    """Candidate user names, minus the ones that are only the product's own name -- with a line saying so."""
+def drop_product_words(names, log=True):
+    """Candidate user names, minus the ones that are only the product's own name -- with a line saying so.
+
+    `log=False` for a caller that is probing the rule rather than using it (leakcheck.self_test runs on
+    every commit through the pre-commit hook; its two control names are not this machine's user, and a
+    line about them on every commit would be noise that teaches people to ignore the real one)."""
     kept = set()
     for name in names:
         if is_product_word(name):
-            if name.lower() not in _DROPPED:
+            if log and name.lower() not in _DROPPED:
                 _DROPPED.add(name.lower())
                 print("leakcheck: this machine's user is %r, which is part of the project's own name -- "
                       "not hunted as a secret (it would fire on every line that says SOCOM Unzipped)."
