@@ -107,11 +107,13 @@ reach a commit message. The product name is
 1. `git status --short`, `git log --oneline -15`, `gh run list --branch sprint-10 --limit 3`,
    `bash scripts/loop_lock.sh check`. Know who else is in the tree before you edit anything. Then
    `bash scripts/install_hooks.sh` -- the leak check before every commit and push (rule 2 below is enforced, not
-   just written); `git config core.hooksPath` says `scripts/hooks` when it is on.
+   just written); `git config core.hooksPath` says `scripts/hooks` when it is on. Then
+   `gh issue list --label known-issue --limit 100` -- the open defects, each with the bar that closes it (rule 14).
 2. Read, in this order: this file; `docs/CURRENT_SPRINT.md` (the ordered work); `docs/KNOWN.md` (what is proven, what
    is only believed, what was retracted -- where anything disagrees with KNOWN, KNOWN wins); `docs/HUMAN_TASKS.md` and
    `docs/PLAYTEST.md` (what is the owner's); **`docs/DOC_MAINTENANCE.md` (the schema: which document may hold which
-   kind of fact, and what the sprint close checks)**; the open sprint's spec and plan; the top block of
+   kind of fact, and what the sprint close checks)**; **`docs/GIT_STRATEGY.md` §7 (the known-issue stack: how a
+   defect becomes an issue, how it is cited, closed and reviewed)**; the open sprint's spec and plan; the top block of
    `docs/STATUS.md`.
 3. Then `docs/LOOP_PROMPT.md` -- the shape of one iteration -- and begin at the first open item of the current
    plan's task list (`docs/superpowers/plans/2026-09-23-sprint-11.md`), with `docs/CURRENT_SPRINT.md`'s road table as
@@ -203,6 +205,14 @@ eleven in the order they matter. Nothing was dropped.
 13. **Owner-only actions stay the owner's:** publishing a release, flipping the repository public, branch protection
     and permissions, signing, spending money, deploying the site. Prepare them; do not perform them unless the owner
     says so in words.
+14. **A defined, unresolved defect is one open GitHub issue, cited from its `docs/KNOWN.md` row as `issue #N`, and
+    it closes with the artefact that met its bar** (`docs/GIT_STRATEGY.md` §7; `python -m tools_py.issues` opens,
+    closes and audits; the label set is `scripts/github_labels.sh`). Open one in the commit that writes the row;
+    close one in the commit that settles it; never delete one. Nothing sensitive in an issue, ever, and nothing from a
+    bug report but its id. *The repository is public and a stranger who wants to help needs the list; and a row is a
+    belief while an issue is a record with its closing bar and its trail.* `python -m tools_py.issues audit` runs
+    before any commit that touches the stack or a KNOWN row, and the whole stack is read, deep, at every sprint
+    close (`docs/DOC_MAINTENANCE.md` §7) -- a sprint without that review is not closed.
 
 **Giving an agent a worktree (2026-09-21, learned the hard way; `scripts/agent_worktree.sh` now does all of this).**
 A worktree is a second tree with the same scripts in it, and that is the trap underneath both of these stories: the
@@ -336,6 +346,9 @@ rather than rule. At most two C++-building agents at once.
   KNOWN §1 names as evidence) has not been applied since it was written. Run its dry run, read it, then `-Apply` in a
   quiet window -- it is filler, and it is evidence you are moving, so read before you apply.
 - **Bug reports:** `.claude/skills/s2u-bug-reports/` (git-ignored, local). Read its SKILL.md before use.
+- **The known-issue stack** (2026-09-23): `python -m tools_py.issues skeleton | check-body | open | close | audit`
+  over the repository's issues labelled `known-issue`, one milestone per sprint. `audit` exits 0 or names the row,
+  citation, label or body that is wrong; `--json FILE` replays a saved `gh issue list` listing offline.
 - **The hosted box:** agent instructions are git-ignored in `vm/lightsail/README.md`. It is the server session's.
 
 ## 8. Who else is in this tree

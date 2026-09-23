@@ -65,6 +65,20 @@ documentation that a stranger followed successfully. Large refactors and new fea
   directory and credentials removed; attach that if a maintainer asks.
 - **Security problems:** not in a public issue -- see `SECURITY.md`.
 
+## Known issues, and taking one
+
+The open defects the project knows about are the issues labelled
+[`known-issue`](https://github.com/Scotho/socom-unzipped/issues?q=is%3Aissue+is%3Aopen+label%3Aknown-issue): each
+says what happens, what evidence shows it, where it is written in `docs/KNOWN.md`, and the **closing bar** -- the
+test, measurement or gate result that would show it fixed. `help wanted` marks the ones that need no disc;
+`needs-disc-gate` marks the ones that do. The milestone says which sprint intends to close it; no milestone is the
+backlog. The conventions behind the list are `docs/GIT_STRATEGY.md` §7, and the stack is reviewed in full at every
+sprint close.
+
+To take one: comment on the issue first so two people do not do the same work; your pull request says `Closes #N`
+and quotes the bar it met. If you find a defect that is not listed, open it with the bug template -- the maintainers
+move it onto the stack once it is reproduced from the project's own code and harness.
+
 ## Conduct
 
 Be civil and specific. This is a preservation project run by one person and a set of AI agents working under that

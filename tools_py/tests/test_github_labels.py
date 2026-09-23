@@ -17,11 +17,15 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPT = os.path.join(ROOT, "scripts", "github_labels.sh")
 
-# The set Goal 7 names: two kinds, three states, eight areas. Adding a label here without adding it to the
-# script (or the other way round) fails: the two lists are meant to be read together.
+# The set Goal 7 names -- two kinds, three states, eight areas -- plus the known-issue stack's additions of
+# 2026-09-23 (docs/GIT_STRATEGY.md section 7): four more areas, so every row of docs/KNOWN.md has exactly one
+# area to sit under, and the stack's two markers. Adding a label here without adding it to the script (or the
+# other way round) fails: the two lists are meant to be read together.
 EXPECTED = [
     "bug", "from-launcher", "enhancement", "needs-repro", "needs-disc-gate",
     "audio", "render", "online", "launcher", "input", "linux", "packaging", "docs",
+    "harness", "server", "build", "recomp",
+    "known-issue", "carried",
 ]
 
 
@@ -54,6 +58,12 @@ class TestGithubLabels(unittest.TestCase):
             self.assertRegex(colour, r"^[0-9a-f]{6}$", "%s: a colour must be six lower-case hex digits" % name)
             self.assertGreaterEqual(len(description.strip()), 20,
                                     "%s: a label with no useful description is a label nobody applies" % name)
+
+    def test_descriptions_fit_githubs_limit(self):
+        # GitHub answers HTTP 422 "description is too long (maximum is 100 characters)" -- seen on the first real
+        # run of the stack's labels, 2026-09-23, which is why this case exists.
+        for name, _colour, description in self.entries:
+            self.assertLessEqual(len(description), 100, "%s: GitHub refuses a description over 100 characters" % name)
 
     def test_the_names_are_the_ones_goal_7_names(self):
         self.assertEqual([e[0] for e in self.entries], EXPECTED)
