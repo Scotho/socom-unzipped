@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Sprint 11 Goal 7, the bug pipeline's GitHub half: the repository's label set, as code.
+# Sprint 11 Goal 7, the bug pipeline's GitHub half: the repository's label set, as code -- plus, since 2026-09-23,
+# the known-issue stack's four extra areas and its two markers (docs/GIT_STRATEGY.md section 7).
 #
 # Run once per repository (and again whenever a label is added or its wording changes):
 #
@@ -41,6 +42,12 @@ LABELS=(
   "linux|c5def5|The Linux build and anything specific to it, including the Steam Deck."
   "packaging|c5def5|The portable build, the release artefacts, installation and first run."
   "docs|c5def5|Documentation: the README, the guides, the site's pages."
+  "harness|c5def5|The parity harness, the gate, the ladder, the loop lock, CI and the VM ring."
+  "server|c5def5|The Horizon server we host and its box; never a server the project does not run."
+  "build|c5def5|build.sh, CMake, the toolchains, the recompile pipeline from a disc to an exe."
+  "recomp|c5def5|The recompiled game and its HLE: the emitter, VU, the kernel stubs, memory cards, GS registers."
+  "known-issue|b60205|Known-issue stack (GIT_STRATEGY 7): a defined, evidenced, unresolved defect cited by a KNOWN row."
+  "carried|b60205|Survived a sprint close unresolved; the close review said why and set the next milestone or none."
 )
 
 if [ "$DRY_RUN" -eq 0 ] && ! command -v gh >/dev/null 2>&1; then

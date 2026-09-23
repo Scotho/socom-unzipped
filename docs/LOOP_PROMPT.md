@@ -19,7 +19,9 @@ suggestions, stop rules and the owner-only list are not.
    If the lock is held, or a `socom2*` / `pcsx2-qt` process is running, start no build and no run; **do not idle** --
    take lock-free work (step 3).
 2. **Read the aim.** The first open item in `docs/CURRENT_SPRINT.md`, in its order. `docs/KNOWN.md` before forming any
-   hypothesis -- it is the fastest way to avoid re-deriving a dead one. The item's spec section and plan, if it has one.
+   hypothesis -- it is the fastest way to avoid re-deriving a dead one. The item's spec section and plan, if it has one,
+   and its issue if it has one (`issue #N` in the row; `gh issue view N --comments`): the comment trail is where the
+   last agent left it, and the Closing bar section is what you are trying to meet.
    A new item that needs more than an hour gets a plan first (`docs/superpowers/plans/`, the existing ones are the
    pattern: handoff notes, global constraints, tasks with RED/GREEN steps and exact commands, rulings).
 3. **Work in bounded steps:** one hypothesis -> a failing test -> the change -> one build -> one run -> read the
@@ -42,7 +44,10 @@ suggestions, stop rules and the owner-only list are not.
    this on 2026-09-21 and it is now how the loop works: `main` is never more than one proven item behind, so anyone who
    clones the public repository gets work that has passed its bar. Unproven work stays on the sprint branch.
 6. **Write it down where it will be read:** a dated entry on top of `docs/STATUS.md` and its "Current state" block if
-   the state changed; **audit `docs/KNOWN.md`** -- promote, retire or retract every row this step touched; tick the
+   the state changed; **audit `docs/KNOWN.md`** -- promote, retire or retract every row this step touched -- **and
+   the issue behind each such row** (`docs/GIT_STRATEGY.md` §7: a new §2 row or a fixable hazard opens one, a
+   settled row closes it with the artefact, a rewritten row gets a comment; `python -m tools_py.issues audit` exits 0
+   before the commit); tick the
    plan's boxes; update the item's row in `docs/CURRENT_SPRINT.md`; a numbered ruling for every moved default or
    skipped measurement; `docs/HUMAN_TASKS.md` for anything only the owner can verify; `docs/HANDOFF.md` §2, §4, §8, §10
    when the pick-up point changes. **A committed sentence found false is corrected the same hour, where it is
@@ -63,9 +68,12 @@ it. A sub-agent never commits a file it was not given, and never stages with `gi
 
 ## When the sprint closes
 
-`docs/CURRENT_SPRINT.md`'s close-out item; `docs/GIT_STRATEGY.md` for the merge and the tag; then open the next sprint:
-its spec is already drafted, its plan is written against the tree as it then is, and the sprint file's header block is
-rewritten -- it is the only sprint pointer in the project.
+`docs/CURRENT_SPRINT.md`'s close-out item; the two reviews that a close cannot skip -- the documents
+(`docs/DOC_MAINTENANCE.md` §5) and, deep, the known-issue stack (`docs/DOC_MAINTENANCE.md` §7: every open issue read
+against the tree, every KNOWN row ruled on, the carry, the milestone closed); `docs/GIT_STRATEGY.md` for the merge and
+the tag; then open the next sprint: its spec is already drafted, its plan is written against the tree as it then is,
+its milestone exists on GitHub, and the sprint file's header block is rewritten -- it is the only sprint pointer in
+the project.
 
 ## The acceptance bar that has never changed (owner, 2026-09-09)
 

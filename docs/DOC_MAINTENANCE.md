@@ -168,6 +168,11 @@ This was demonstrated the hour the check was written — on 2026-09-22 the suite
 `DEVELOPING.md` still carried the previous day's number. That is why the Python row now says **`OK`, with no failures, is the bar** and treats
 the count as a dated fact that only grows. Prefer a bar a reader can check over a number they must match.
 
+**One check lives outside the suite on purpose.** `python -m tools_py.issues audit` holds the known-issue stack on
+GitHub to the live documents (§7; the conventions are `docs/GIT_STRATEGY.md` §7). It needs the network and the
+owner's `gh` login, so it is not a unit test: its logic is tested by `tools_py/tests/test_issues.py` on planted stacks
+and saved listings, and its run is a step -- before any commit that touches the stack or a `docs/KNOWN.md` row, and in full at the sprint close.
+
 **What is deliberately *not* enforced.** Nothing here fails on a calendar. A test that reddens because a week has
 passed gets disabled within a fortnight, and a disabled check is worse than no check because it reads as coverage.
 Cadence is §5, a human step with a stamp. Likewise, "an N document contains no live state" is only half mechanical —
@@ -191,6 +196,8 @@ the count half is check 3; the rest is a reading, and §5 is where it happens.
    *wrong* is archived, never quietly deleted — things cite it.
 6. **Stamp this file's "Last full review" line** with the date and the sprint, and name in the close-out commit what
    the review changed. A review that changed nothing says so explicitly; that is a result too.
+7. **The known-issue stack, in full** -- §7 below. Its result goes into the same close-out commit, in the same
+   sentence as this review's.
 
 **When a document is found wrong, record the wrongness, not just the fix.** The audit table in `ROADMAP.md` §0 is the
 pattern: what was claimed, what is actually true, how long it had been wrong. That is the only way the next review
@@ -209,3 +216,45 @@ knows which documents to distrust.
   archived roadmap is readable *because* its wrong turns are still in it.
 - **If a claim cannot be checked, do not make it.** "The game runs well" ages badly; "43-45 fps in a mission,
   measured on <date>, against the console's 60" does not — it simply becomes a dated fact.
+
+## 7. The known-issue stack review — deep, at every sprint close
+
+`docs/GIT_STRATEGY.md` §7 puts every technically well-defined, unresolved defect on GitHub issues, one each, cited
+from its `docs/KNOWN.md` row as `issue #N`. Between closes the loop keeps the pair true per task (`docs/LOOP_PROMPT.md`
+step 6). At the close the whole stack is read, because an issue tracker rots exactly the way a document does: a
+fixed thing left open, an open thing nobody owns, a bar that no longer says what would close it, a milestone that
+became a wish list. This runs beside §5, under the same rule (a sprint without it is not closed), and its result is
+written into the same close-out commit. Budget: about an hour for a stack under fifty, which holds only because
+step 3's §4 half is limited to the `HAZARD` / `Open:` headlines (the first run of the unlimited scan listed 75 of
+§4's 84 bullets, nearly all lessons). A fresh read-only agent can do steps 2-4 and hand back a table; the controller
+acts on it.
+
+1. **`python -m tools_py.issues audit --stale-since <the day the sprint opened>`** — exit 0 before anything else. A
+   problem is fixed on the side that is wrong: the row, the citation, the label, or the issue. Never the check.
+2. **Every open issue, read against the tree.** Four questions each, answered in a comment only when the answer
+   changes something. *Is it still true?* — a commit may have met the bar without saying `Closes`: close it with the
+   artefact. *Is the bar still the right bar?* — the experiment may have been superseded: rewrite the Closing bar
+   section and say why. *Is the evidence still where the body says?* — an archived log moved to `D:`: say where.
+   *Is the area right?*
+3. **Every KNOWN §2 row and every live §4 hazard, the other way round.** Each either cites an open issue, cites a
+   closed one and reads as settled, or is ruled not to qualify — and the audit's "rows neither cited, settled nor
+   ruled out" list is exactly the set to rule on. A row ruled out says why in a few words at its end (*no issue: the
+   owner's ears*; *no issue: a lesson, nothing left to fix*), so the next review does not re-ask. In §4 the audit
+   lists only a bullet whose headline says `HAZARD` or `Open:` — the two forms KNOWN already uses for a hazard that
+   is still live — because most of §4 is lessons, which `docs/GIT_STRATEGY.md` §7.1 keeps out of the stack; a §4
+   entry that is a live defect is written in one of those two forms, or the audit will not ask about it.
+4. **Every issue closed this sprint** (`gh issue list --state closed --label known-issue --search "closed:>=<open
+   date>"`): its closing comment names an artefact, and the KNOWN row says the same thing. A close with no artefact is
+   reopened -- **unless the owner closed it.** An owner's close stands (`docs/HANDOFF.md` rule 13: the loop does not
+   undo the owner), and the row records their words in place of an artefact, struck and led with the verdict, as
+   `docs/KNOWN.md`'s dropped rows are. The audit notes every completed close whose last comment is not the tool's
+   "Closing bar met" line, so the reviewer sees the case instead of acting on it blind.
+5. **The carry.** What is still open in the closing sprint's milestone either moves to the next sprint's milestone
+   (because the next plan names it) or to no milestone (the backlog) — with the `carried` label and one comment
+   saying why it did not close. Then the milestone is closed and the next sprint's is created. **An issue carried
+   twice is a question for the owner** (`docs/HUMAN_TASKS.md`): keep it, or close it as not planned under a ruling.
+6. **Duplicates and contributor handles.** Merge duplicates (close as not planned, "duplicate of #M"; the survivor
+   gets the evidence). Put `help wanted` on what a stranger without a disc could take, `good first issue` only where
+   the bar is a test they can run themselves.
+7. **The record.** The close-out commit and `docs/STATUS.md`'s entry say, dated: opened, closed and carried this
+   sprint, the highest issue number, and what the review changed. A review that changed nothing says so.
