@@ -6,7 +6,11 @@
 #include <cstdlib>
 #include "runtime/ps2_audio.h"
 #include "runtime/audio_volume.h"
+#include "runtime/audio_cb_trace.h"
 #include "runtime/mix_device.h"
+#include <atomic>
+#include <memory>
+#include <thread>
 // miniaudio.h WITHOUT MINIAUDIO_IMPLEMENTATION, as host_mic.cpp: the implementation is raylib's raudio.c
 #include "external/miniaudio.h"
 #include "ps2_runtime.h"
@@ -94,6 +98,18 @@ struct PS2AudioBackend::Impl
     size_t dumpFrames = 0;
     std::string dumpPath;
     std::mutex dumpMutex;
+    // PS2X_AUDIO_CB_TRACE=<csv> (Sprint 11 audio-out): every callback's wall-clock entry and exit, recorded on the
+    // audio thread without I/O and appended to the file by a flusher thread once a second, so a hole at the endpoint
+    // can be laid against the callback that was late -- or against none (KNOWN §2, the 50 ms dips).
+    std::unique_ptr<ps2x::AudioCallbackTrace> cbTrace;
+    std::string cbTracePath;
+    FILE *cbTraceFile = nullptr;
+    size_t cbTraceFlushed = 0;
+    bool cbTraceHeaderDue = true;
+    int64_t cbTraceT0EpochUs = 0;
+    std::chrono::steady_clock::time_point cbTraceT0{};
+    std::thread cbTraceFlusher;
+    std::atomic<bool> cbTraceStop{false};
     struct TrackedSound
     {
         Sound snd;
@@ -356,6 +372,24 @@ void PS2AudioBackend::stopAll()
 namespace
 {
     constexpr size_t kDumpMaxFrames = 48000u * 600u;   // ten minutes
+    constexpr size_t kCbTraceCapacity = 200000u;       // 20 ms callbacks for 66 minutes
+
+    // Append what the audio thread has recorded since the last flush. Called from the flusher thread once a
+    // second and once more at close, after the device is stopped; never from the callback.
+    void flushCbTraceRows(const ps2x::AudioCallbackTrace &trace, FILE *file, size_t &flushed, bool &headerDue, int64_t t0EpochUs)
+    {
+        if (!file)
+            return;
+        const size_t n = trace.size();
+        if (!headerDue && n == flushed)
+            return;
+        std::ostringstream rows;
+        flushed = trace.flush(rows, flushed, headerDue, t0EpochUs);
+        headerDue = false;
+        const std::string text = rows.str();
+        std::fwrite(text.data(), 1, text.size(), file);
+        std::fflush(file);
+    }
 
     void mixDeviceCallback(ma_device *device, void *output, const void *, ma_uint32 frames)
     {
@@ -439,6 +473,27 @@ void PS2AudioBackend::openMixerStream()
         std::cout << "[audio] 989snd mix device: could not open the playback device" << std::endl;
         return;
     }
+    if (const char *cbPath = ps2x::knob("PS2X_AUDIO_CB_TRACE"); cbPath != nullptr && *cbPath != 0)
+    {
+        m_impl->cbTrace = std::make_unique<ps2x::AudioCallbackTrace>(kCbTraceCapacity, static_cast<int64_t>(spec.periodMs) * 1000, spec.periods);
+        m_impl->cbTracePath = cbPath;
+        m_impl->cbTraceFile = std::fopen(cbPath, "wb");
+        m_impl->cbTraceFlushed = 0;
+        m_impl->cbTraceHeaderDue = true;
+        m_impl->cbTraceT0 = std::chrono::steady_clock::now();
+        m_impl->cbTraceT0EpochUs = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        m_impl->cbTraceStop = false;
+        Impl *impl = m_impl.get();
+        m_impl->cbTraceFlusher = std::thread([impl]
+        {
+            while (!impl->cbTraceStop.load(std::memory_order_acquire))
+            {
+                for (int i = 0; i < 10 && !impl->cbTraceStop.load(std::memory_order_acquire); ++i)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                flushCbTraceRows(*impl->cbTrace, impl->cbTraceFile, impl->cbTraceFlushed, impl->cbTraceHeaderDue, impl->cbTraceT0EpochUs);
+            }
+        });
+    }
     if (ma_device_start(&m_impl->mixDevice) != MA_SUCCESS)
     {
         ma_device_uninit(&m_impl->mixDevice);
@@ -463,6 +518,24 @@ void PS2AudioBackend::closeMixerStream()
         m_impl->mixCtxOk = false;
     }
     m_impl->mixStreamOpen = false;
+    if (m_impl->cbTrace)
+    {
+        // The device is stopped: the audio thread has recorded its last callback. Stop the flusher, write the rest.
+        m_impl->cbTraceStop.store(true, std::memory_order_release);
+        if (m_impl->cbTraceFlusher.joinable())
+            m_impl->cbTraceFlusher.join();
+        flushCbTraceRows(*m_impl->cbTrace, m_impl->cbTraceFile, m_impl->cbTraceFlushed, m_impl->cbTraceHeaderDue, m_impl->cbTraceT0EpochUs);
+        if (m_impl->cbTraceFile)
+        {
+            std::fclose(m_impl->cbTraceFile);
+            m_impl->cbTraceFile = nullptr;
+        }
+        const auto s = m_impl->cbTrace->stats();
+        std::cout << "[audio] wrote " << m_impl->cbTracePath << " (" << m_impl->cbTrace->size() << " callbacks, holes " << s.holes
+                  << ", jitter " << s.jittered << ", max gap " << (s.maxGapUs / 1000.0) << " ms, max render " << (s.maxRenderUs / 1000.0)
+                  << " ms, dropped " << m_impl->cbTrace->dropped() << ")" << std::endl;
+        m_impl->cbTrace.reset();
+    }
     std::lock_guard<std::mutex> lock(m_impl->dumpMutex);
     if (m_impl->dumpFile)
     {
@@ -613,9 +686,18 @@ void PS2AudioBackend::mixerRender(int16_t *interleaved, size_t frames)
         const double elapsedS = std::chrono::duration<double>(now - t0).count();
         if (elapsedS >= nextReportS)
         {
-            std::fprintf(stderr, "[audio-trace] t=%.1fs rendered=%.2fs of wall (%.0f%%) calls=%llu frames/call=%zu max_render=%.2fms pcm_underruns=%llu\n",
+            std::fprintf(stderr, "[audio-trace] t=%.1fs rendered=%.2fs of wall (%.0f%%) calls=%llu frames/call=%zu max_render=%.2fms pcm_underruns=%llu",
                          elapsedS, framesTotal / 48000.0, 100.0 * (framesTotal / 48000.0) / elapsedS,
                          static_cast<unsigned long long>(calls), frames, maxRenderMs, static_cast<unsigned long long>(m_mixer.pcmUnderruns()));
+            if (m_impl && m_impl->cbTrace)
+            {
+                // Sprint 11 audio-out: the callback trace's running counts -- a hole is a gap the device buffer could not cover.
+                const auto s = m_impl->cbTrace->stats();
+                std::fprintf(stderr, " cb_holes=%llu cb_jitter=%llu cb_max_gap=%.1fms cb_hole_silence=%.0fms",
+                             static_cast<unsigned long long>(s.holes), static_cast<unsigned long long>(s.jittered),
+                             s.maxGapUs / 1000.0, s.holeUsSum / 1000.0);
+            }
+            std::fputc('\n', stderr);
             nextReportS += 5.0;
             maxRenderMs = 0.0;
         }
@@ -630,6 +712,14 @@ void PS2AudioBackend::mixerRender(int16_t *interleaved, size_t frames)
             if ((m_impl->dumpFrames / frames) % 64 == 0)
                 std::fflush(m_impl->dumpFile);
         }
+    }
+    if (m_impl && m_impl->cbTrace)
+    {
+        // Sprint 11 audio-out: this callback's wall clock, recorded last so the exit stamp covers the dump's write too.
+        const auto exit = std::chrono::steady_clock::now();
+        const auto us = [&](std::chrono::steady_clock::time_point tp)
+        { return static_cast<int64_t>(std::chrono::duration_cast<std::chrono::microseconds>(tp - m_impl->cbTraceT0).count()); };
+        m_impl->cbTrace->record(us(renderStart), us(exit), static_cast<uint32_t>(frames), m_mixer.renderedFrames());
     }
 }
 

@@ -64,6 +64,7 @@ add_library(ps2_test_lib STATIC
     src/socom2_libnetb_tests.cpp
     src/socom2_chat_tests.cpp   # Sprint 11 milestone S
     src/socom2_audio_tests.cpp
+    src/audio_cb_trace_tests.cpp   # Sprint 11 audio-out
     src/socom2_lgaud_tests.cpp
     src/host_config_tests.cpp
     src/launcher_tests.cpp
