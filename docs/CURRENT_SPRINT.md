@@ -28,7 +28,7 @@ sprint 10:    OPENED 2026-09-20 on the owner's instruction ("proceed on with the
               develop deleted, this branch opened. Q0b, Q1b-Q7 carry into Sprint 10 as filler unless the owner reorders;
               no GitHub release (Sprint 11 / D2, owner-only).
 git strategy: docs/GIT_STRATEGY.md     contributing: CONTRIBUTING.md
-next ruling:  R245 -- unchanged, and nothing is renumbered. The sprint's sixty-four numbers R181-R244 are
+next ruling:  R246 (R245, 2026-09-23: option B not scheduled -- the Sprint 11 plan's rulings section) -- nothing is renumbered. The sprint's sixty-four numbers R181-R244 are
               reconciled row by row in ONE table below ("Sprint 10's rulings ledger, R181-R244"): the decision
               in its own words, where it is written, and its status. R229 is deliberately vacant. This line used
               to carry that index as a single 2,700-character paragraph, which no reader could use; the table is
