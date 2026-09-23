@@ -75,7 +75,7 @@ had always claimed it was.
 
 **W8 was answered without a run (R244).** The join driver's R240 path -- REFRESH LIST before JOIN GAME, then a
 channel -- is exercised by every ladder run, so the ladder proves it and the two-instance self-join was dropped
-rather than scheduled. The ladder streak at the close: `<streak: to be filled by the controller>`.
+rather than scheduled. The ladder streak at the close: `**7 of 7** (runs 5, 6 and 7 KILL on 2026-09-23 at 03:03Z, 03:36Z and 04:21Z, exe 3f3a5011; the bar "seven consecutive runs with no LOBBY-FAIL and no CRASH" met; `docs/LADDER.md` is the ledger)`.
 
 **The close's documentation half.** Every live document was read for truth against the tree
 (`docs/DOC_MAINTENANCE.md` §5). Sprint 10's rulings are reconciled into **one** table in `docs/CURRENT_SPRINT.md`:

@@ -92,7 +92,7 @@ unproven from the artefact. Both are carried.
 -- is exercised by every ladder run, so ladder runs 5-7 prove it and the two-instance self-join was dropped rather
 than scheduled.
 
-**The ladder streak:** `<streak: to be filled by the controller>`.
+**The ladder streak:** `**7 of 7** (runs 5, 6 and 7 KILL on 2026-09-23 at 03:03Z, 03:36Z and 04:21Z, exe 3f3a5011; the bar "seven consecutive runs with no LOBBY-FAIL and no CRASH" met; `docs/LADDER.md` is the ledger)`.
 
 **Also tonight, outside the runs:** the loop lock was found to resolve to a *private* lock inside a worktree, so a
 build ran beside a running capture; fixed machine-wide in `9b39523` (the default follows git's common dir) and
