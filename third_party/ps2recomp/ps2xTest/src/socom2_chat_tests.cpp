@@ -158,6 +158,14 @@ void register_socom2_chat_tests()
             t.IsTrue(socom2_chat::kRecordsPerCall > 999u, "the budget is past the largest list the game asks for");
             t.IsTrue(socom2_chat::kRecordsPerCall < socom2_chat::kMaxRecords * socom2_chat::kMaxHolders,
                      "the budget really does bound the work a call can be given");
+            // The whole list, every holder at the cap: one call still costs exactly the budget (review, round 2).
+            uint32_t budget = socom2_chat::kRecordsPerCall, total = 0;
+            for (uint32_t h = 0; h < socom2_chat::kMaxHolders; ++h)
+            {
+                const uint32_t w = socom2_chat::walkWithin(socom2_chat::kMaxRecords, socom2_chat::kMaxRecords, budget);
+                budget -= w; total += w;
+            }
+            t.Equals(total, socom2_chat::kRecordsPerCall, "a list claiming every holder at the cap costs one call the budget, no more");
         });
         tc.Run("a run far past the budget bounds the budget's worth and touches nothing beyond it", [](TestCase &t)
         {
