@@ -88,6 +88,8 @@ the exact step is written on `agent/audio-out` (`05de0e7`) and arrives here with
 
 ### The r0004 patch, received 2026-09-23
 
+**Decoded the same morning (R249): the capsule is a DNAS bypass and nothing else** — one game function stubbed (`DNASAuthenticate` answers "done"), which our runtime has replaced since the online path first worked. In PSRewired's sense this build already *is* r0004; the launcher download you asked for has nothing to apply, so **Task 11b is withdrawn unless you say otherwise**. Two things only you can settle: (1) ask PSRewired whether their players also carry an `mc0:UPDATE.DAT` feature stack (the capsule looks for one; r0005's is 3,065 writes) — if yes, that file is the real "r0004" and the decoder is ready for it; (2) Goal F, connecting, is still your Discord answer. The default while you decide: no download, the GAME VERSION row says what the patch is.
+
 Downloaded from https://psrewired.com/downloads/r0004v002.elf to `game/r0004/r0004v002.elf` (git-ignored; sha256 `ad0ed7511b2c2d540c7918a5e00906e6b292e6cf365d55eaad6e71b30412049e`). It is PSRewired's **resident patch capsule** for the r0001 disc, not the console's memory-card package — the finding and what it changes are R248 in the plan and the corrected §1.1 of the r0004 spec. Two things to know: the capsule carries **anti-cheat scanners that freeze the game on a code checksum mismatch** (the r0005 README describes them; ours will disable them by ruling, since our code is native and the README will say so), and its patch body is an **encrypted code stack** — decoding it is Task 19's first step. Nothing connects to PSRewired's server; that is still Goal F and yours.
 
 ### The v0.10.0 draft is waiting for its archives
