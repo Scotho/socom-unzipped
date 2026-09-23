@@ -10,16 +10,19 @@ hosted server.**
 A green badge means the runtime library, the test suites and the launcher build without the game and the leak check is
 clean; the parity gate needs a disc and runs on the maintainer's machine, its stamps are in the release notes.
 
-> ## ⚠️ Multiplayer is UNTESTED for security. Proceed at your own risk.
+> ## ⚠️ Multiplayer: one reported hole closed, the rest unaudited. Proceed at your own risk.
 >
-> SOCOM II's original network code has **known, exploitable vulnerabilities**: a hostile player in the same room can
-> attack the other clients in it. The community servers patched these on the console years ago. **This project has
-> not.** Its network code is the game's own, recompiled as-is, and here it runs as a native program on your PC, so a
-> successful exploit is not a crashed console -- it is code running on your machine with your user's access.
+> SOCOM II's original network code has **known vulnerabilities**: a hostile player in the same room can attack the
+> other clients in it. The community servers patched these on the console years ago. On 2026-09-23 this project
+> closed the one hole that was reported to it, on both sides: the chat receive path is bounded on the client
+> (installed on every launch -- the game log says so) and clamped on the project's server. No mechanics are
+> published, and the reporter's confirmation is still pending.
 >
-> Until this is audited and fixed: **only play online with people you trust**, on a server you trust, and never
-> with a build you did not compile or verify yourself. Do not point this at any community server. Nothing in the
-> multiplayer path has been reviewed for security. See `SECURITY.md`.
+> Everything else in the network path is the game's own code, recompiled as-is and **not audited**, running as a
+> native program on your PC -- so a successful exploit is not a crashed console, it is code running on your machine
+> with your user's access. **Only play online with people you trust**, on the project's server or one you run
+> yourself, and never with a build you did not compile or verify. Do not point this at any community server. See
+> `SECURITY.md`.
 
 > **Early stage.** This is a working prototype, not a finished port. It boots, renders the menus and missions, and two
 > players have finished online rounds against each other on the hosted server -- but audio, some maps, and the rough
