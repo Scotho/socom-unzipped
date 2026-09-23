@@ -89,6 +89,8 @@ namespace launcher
         const ServerPreset *preset = findServerPreset(presetId);
         if (preset == nullptr || findGameRevision(gameRevision) == nullptr)
             return {};   // not a server of ours, or not a version of ours: say nothing rather than guess
+        if (preset->requiresRevision[0] == '\0')
+            return {};   // a preset whose revision is UNKNOWN (Custom): the same rule, for the same reason
         for (const RevisionMismatch &m : kRevisionWarnings)
             if (gameRevision == m.buildRevision && std::string(preset->requiresRevision) == m.serverRevision)
                 return m.warning;

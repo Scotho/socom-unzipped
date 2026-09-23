@@ -71,8 +71,9 @@ namespace launcher
         const char *label;
         const char *address;
         const char *note;
-        // Task 11: the game revision that server runs. Every preset names one -- a preset with none would
-        // leave the GAME VERSION selector with nothing to compare itself against.
+        // Task 11: the game revision that server runs, or "" for UNKNOWN -- say nothing. Only the two
+        // named servers have a revision we can state; a custom address is any server on earth, and the
+        // launcher guessing one is how it comes to contradict the player (see kServerPresets below).
         const char *requiresRevision;
     };
 
@@ -92,8 +93,13 @@ namespace launcher
     constexpr ServerPreset kServerPresets[] = {
         {"community",   "SOCOM Community (public Horizon)", "COMMUNITY_SERVER_ADDRESS_TBC", "the public community server",          "r0004"},
         {"unzipped",    "SOCOM Unzipped (project server)",  "socom.scotho.com",             "the project's hosted server (US East)", "r0001"},
-        {"custom",      "Custom",                            "",                             "any address or hostname",              "r0001"},
+        {"custom",      "Custom",                            "",                             "any address or hostname",              ""},
     };
+    // Custom's revision is EMPTY, not "r0001". The Task 11 brief said r0001 and the Sprint 11 review
+    // overruled it, rightly: a typed address is any server there is -- including PSRewired, which is
+    // exactly how a player reaches r0004 before the community preset has an address of its own. Telling
+    // them "the r0001 servers run r0001" would be the launcher contradicting the one route that works.
+    // The two named presets are the only servers whose revision this project can state.
     // Ids a shipped build once wrote and this one no longer offers, each with the preset it means today.
     // fromJson reads through this before findServerPreset, so retiring a preset never costs a player their
     // server. `unzipped-ip` was the same box by its raw address (Sprint 9 P6; removed 2026-09-20).

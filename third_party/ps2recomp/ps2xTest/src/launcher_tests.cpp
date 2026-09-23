@@ -1544,21 +1544,26 @@ void register_launcher_tests()
                      "an unknown digest resolves to nothing at all -- the disc is refused exactly as before");
             t.IsTrue(launcher::discRevisionForDigest("").empty(), "and an empty digest is not a revision either");
 
-            // Every preset, including one a later sprint adds: a preset with no revision would leave the
-            // GAME VERSION selector with nothing to compare itself against.
+            // Every preset, including one a later sprint adds: the field is always there to read, and
+            // whatever it holds is either a revision the launcher knows or the empty "we do not know".
             for (const launcher::ServerPreset &p : launcher::kServerPresets)
             {
-                t.IsTrue(p.requiresRevision != nullptr && p.requiresRevision[0] != '\0',
-                         std::string("preset ") + p.id + " names the revision its server runs");
-                t.IsTrue(launcher::findGameRevision(p.requiresRevision) != nullptr,
-                         std::string("preset ") + p.id + " names a revision the launcher knows");
+                t.IsTrue(p.requiresRevision != nullptr, std::string("preset ") + p.id + " carries the field");
+                // Empty is a legitimate answer -- "unknown, say nothing". Anything else has to be a
+                // revision the launcher knows, or the selector would compare against a name it cannot draw.
+                t.IsTrue(p.requiresRevision[0] == '\0' || launcher::findGameRevision(p.requiresRevision) != nullptr,
+                         std::string("preset ") + p.id + " names a revision the launcher knows, or none at all");
             }
             t.Equals(std::string(launcher::findServerPreset("community")->requiresRevision), std::string("r0004"),
                      "PSRewired runs r0004");
             t.Equals(std::string(launcher::findServerPreset("unzipped")->requiresRevision), std::string("r0001"),
                      "the project's own server runs the disc's own revision");
-            t.Equals(std::string(launcher::findServerPreset("custom")->requiresRevision), std::string("r0001"),
-                     "and so does whatever a player types, until an r0004 build exists");
+            // Custom is NOT r0001 (the brief said it was; the Sprint 11 review overruled that). A typed
+            // address is any server on earth -- including PSRewired, which is precisely how a player will
+            // reach r0004 before the community preset is enabled -- so the launcher cannot state its
+            // revision and must not guess one.
+            t.IsTrue(std::string(launcher::findServerPreset("custom")->requiresRevision).empty(),
+                     "a custom address names no revision: the launcher does not know what it is");
         });
 
         tc.Run("the GAME VERSION selector offers r0004 only when its build sits beside the launcher", [](TestCase &t)
@@ -1679,11 +1684,19 @@ void register_launcher_tests()
             t.Equals(launcher::revisionWarning("unzipped", "r0004"),
                      std::string("the r0001 servers run r0001; this is the r0004 build"),
                      "the reverse warning, with the server named first exactly as the forward one is");
-            t.Equals(launcher::revisionWarning("custom", "r0004"),
-                     std::string("the r0001 servers run r0001; this is the r0004 build"),
-                     "and an address the player typed is one of those servers until it says otherwise");
             t.IsTrue(launcher::revisionWarning("community", "r0004").empty(),
                      "the community server and the community build agree: no warning");
+
+            // A preset whose required revision is empty is never warned about, on either build. Custom is
+            // how a player reaches PSRewired before the community preset is enabled, so warning them that
+            // "the r0001 servers run r0001" would be wrong about the one route that works.
+            t.IsTrue(launcher::revisionWarning("custom", "r0004").empty(),
+                     "a typed address on the r0004 build is not second-guessed");
+            t.IsTrue(launcher::revisionWarning("custom", "r0001").empty(),
+                     "nor on the r0001 build: the launcher does not know what that server runs");
+            t.Equals(launcher::revisionWarning("unzipped", "r0004"),
+                     std::string("the r0001 servers run r0001; this is the r0004 build"),
+                     "while a server whose revision we DO know still warns");
             // Both sentences are in the table, once each: the pages read them, nothing retypes them.
             t.IsTrue(launcher::kRevisionWarningCount == 2u, "two mismatches are named");
             for (const launcher::RevisionMismatch &m : launcher::kRevisionWarnings)
