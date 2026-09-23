@@ -13,6 +13,7 @@ set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 . "$(dirname "$0")/env.sh"
+socom_require_python mixed_match2_leg2
 OUT="${1:-logs/parity/mixed2_pcsx2_hosts}"
 PERSONA="${2:-socomp}"
 EXISTING="${3:-}"

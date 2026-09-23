@@ -17,6 +17,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$ROOT/scripts/python_env.sh"   # $PYTHON, resolved once for every script
+socom_require_python make_portable
 SUFFIX=""
 if [ "${1:-}" = "--release" ]; then SUFFIX="-release"; shift; fi
 AUDIT="$ROOT/tools_py/portable_audit.py"

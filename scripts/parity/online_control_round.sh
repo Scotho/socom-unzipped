@@ -10,6 +10,7 @@ set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 . "$(dirname "$0")/env.sh"
+socom_require_python online_control_round
 MAP="${1:?map name}"
 SLUG="$("$PYTHON" -c "import sys; from tools_py.parity import online_login_ours as L; print(L.map_slug(sys.argv[1]))" "$MAP")"
 OUT="${2:-logs/parity/ours_control_${SLUG}}"

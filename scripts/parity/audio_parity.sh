@@ -20,6 +20,7 @@
 set -u
 ROOT=/c/projects/socom_pc; cd "$ROOT"
 . "$ROOT/scripts/python_env.sh"    # $PYTHON, resolved once for every script
+socom_require_python audio_parity
 cmd=${1:-}; shift || true
 case "$cmd" in
   capture)

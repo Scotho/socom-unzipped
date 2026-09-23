@@ -7,6 +7,7 @@
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 . "$ROOT/scripts/python_env.sh"    # $PYTHON, resolved once for every script
+socom_require_python online_control_queue
 cd "$ROOT"
 if [ "$#" -gt 0 ]; then MAPS=("$@"); else
 MAPS=("the mixer" "foxhunt" "sujo" "enowapi" "shadow falls" "fish hook" "crossroads" "sandstorm" "chain reaction"

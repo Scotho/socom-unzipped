@@ -19,6 +19,7 @@
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 . "$ROOT/scripts/python_env.sh"    # $PYTHON, resolved once for every script
+socom_require_python two_machine_readout
 cd "$ROOT"
 if [ "$#" -lt 2 ]; then
   echo "usage: bash scripts/parity/two_machine_readout.sh <log_A> <log_B> [<harness log>...]" >&2

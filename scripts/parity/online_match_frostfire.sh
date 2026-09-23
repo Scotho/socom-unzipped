@@ -34,6 +34,7 @@ set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 . "$(dirname "$0")/env.sh"
+socom_require_python online_match_frostfire
 OUT="${1:-logs/parity/ours_frostfire}"
 NAME="$(basename "$OUT")"
 mkdir -p "$(dirname "$OUT")"

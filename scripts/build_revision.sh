@@ -42,6 +42,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export PATH="$ROOT/tools/llvm-mingw/bin:$ROOT/tools/cmake/bin:$ROOT/tools/ninja:$PATH"
 . "$ROOT/scripts/python_env.sh"   # $PYTHON, resolved once for every script
+socom_require_python build_revision
 
 die2() { echo "build_revision: $*" >&2; exit 2; }
 say() { echo "$*"; }

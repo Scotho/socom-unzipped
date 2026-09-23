@@ -12,6 +12,7 @@ set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 . "$(dirname "$0")/env.sh"
+socom_require_python mixed_match
 OUT="${1:-logs/parity/mixed_ours_hosts}"
 NAME="$(basename "$OUT")"
 PCSX2_OUT="$OUT/pcsx2"

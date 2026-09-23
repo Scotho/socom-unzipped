@@ -5,6 +5,7 @@
 # Installed by scripts/install_hooks.sh (git config core.hooksPath scripts/hooks).
 cd "$(git rev-parse --show-toplevel)" || exit 2
 . scripts/python_env.sh            # $PYTHON, resolved once for every script
+socom_require_python pre-push
 py="$PYTHON"
 zero=0000000000000000000000000000000000000000
 status=0

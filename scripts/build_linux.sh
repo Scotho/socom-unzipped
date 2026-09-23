@@ -25,6 +25,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$ROOT/scripts/python_env.sh"   # $PYTHON, resolved once for every script
+socom_require_python build_linux
 CC="${CC:-clang}"
 CXX="${CXX:-clang++}"
 export CC CXX

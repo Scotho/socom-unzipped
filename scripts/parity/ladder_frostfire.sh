@@ -47,6 +47,7 @@ set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 . "$(dirname "$0")/env.sh"
+socom_require_python ladder_frostfire
 export PATH="/usr/bin:/bin:$PATH"
 
 MODE=launch

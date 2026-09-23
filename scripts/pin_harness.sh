@@ -48,6 +48,7 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 . "$ROOT/scripts/python_env.sh"   # $PYTHON, resolved once for every script
+socom_require_python pin_harness
 cd "$ROOT"
 
 if [ $# -lt 1 ]; then

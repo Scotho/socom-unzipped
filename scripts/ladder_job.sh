@@ -13,6 +13,7 @@
 set -u
 ROOT=/c/projects/socom_pc; cd "$ROOT" || exit 1
 . "$ROOT/scripts/python_env.sh"   # $PYTHON, resolved once for every script
+socom_require_python ladder_job
 export PATH="/usr/bin:/mingw64/bin:$HOME/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
 ROUNDS="${1:-4}"
 export SOCOM_SERVER_IP=3.143.65.100

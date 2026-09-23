@@ -61,6 +61,7 @@
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 . "$ROOT/scripts/python_env.sh"    # $PYTHON, resolved once for every script
+socom_require_python mission_music_long
 cd "$ROOT"
 
 MINUTES=12

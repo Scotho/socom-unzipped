@@ -220,20 +220,58 @@ class EveryScriptUsesIt(unittest.TestCase):
         self.assertEqual(offenders, [],
                          "a bare `python` is not on a Linux PATH -- resolve it through scripts/python_env.sh")
 
+    @staticmethod
+    def _needs_an_interpreter(rel, text):
+        """A script that really invokes it -- not one that only mentions it in a comment.
+        scripts/parity/env.sh is the case: it carries the helper for the six online scripts and names
+        $PYTHON in a comment, but runs nothing itself, and being sourced it must never exit."""
+        if rel == "scripts/python_env.sh":
+            return False
+        body = strip_comments(text)
+        return "$PYTHON" in body or "${PYTHON" in body
+
     def test_a_script_that_needs_an_interpreter_sources_the_helper(self):
         """Directly, or through scripts/parity/env.sh, which the online harness already sources."""
         offenders = []
         for rel, path in shell_scripts():
-            if rel == "scripts/python_env.sh":
-                continue
             with open(path, encoding="utf-8") as fh:
                 text = fh.read()
-            if "$PYTHON" not in text and "${PYTHON" not in text:
+            if not self._needs_an_interpreter(rel, text):
                 continue
             if "python_env.sh" in text or re.search(r'^\s*\.\s+"\$\(dirname "\$0"\)/env\.sh"', text, re.M):
                 continue
             offenders.append(rel)
         self.assertEqual(offenders, [], "these use $PYTHON without reaching scripts/python_env.sh")
+
+    def test_a_script_that_needs_an_interpreter_also_requires_one(self):
+        """Review C2. Sourcing the helper only gives a script `$PYTHON`; on a machine with no
+        interpreter that is the empty string, and `"" -m foo` is bash running the empty command name --
+        exit 127 with the message ": command not found", blanker than the "python3: command not found"
+        the hand-rolled fallbacks used to print. It is worst in the two git hooks, where a bare 127 is
+        indistinguishable from the leak gate itself crashing. Every script that invokes the interpreter
+        must call socom_require_python first."""
+        offenders = []
+        for rel, path in shell_scripts():
+            with open(path, encoding="utf-8") as fh:
+                text = fh.read()
+            if not self._needs_an_interpreter(rel, text):
+                continue
+            if "socom_require_python" not in strip_comments(text):
+                offenders.append(rel)
+        self.assertEqual(offenders, [],
+                         "these invoke $PYTHON without socom_require_python: an absent interpreter is a "
+                         "bare exit 127 from the empty command name, not a sentence")
+
+    def test_the_empty_command_name_is_what_it_saves_them_from(self):
+        """The failure the call prevents, shown once rather than asserted twenty times."""
+        shim = PathShim(tempfile.mkdtemp(), [])
+        bare = run('set -euo pipefail; . scripts/python_env.sh; "$PYTHON" -m tools_py.docmaint', shim.env())
+        self.assertEqual(bare.returncode, 127, bare.stderr)
+        self.assertIn("command not found", bare.stderr)
+        guarded = run('set -euo pipefail; . scripts/python_env.sh; socom_require_python demo; '
+                      '"$PYTHON" -m tools_py.docmaint', shim.env())
+        self.assertEqual(guarded.returncode, 2, guarded.stderr)
+        self.assertIn("no Python on the PATH", guarded.stderr)
 
     def test_only_the_helper_resolves_the_interpreter(self):
         """One rule, one place. Three scripts and the two hooks each carried their own

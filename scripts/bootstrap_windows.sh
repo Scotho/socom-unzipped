@@ -16,6 +16,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$ROOT/scripts/python_env.sh"   # $PYTHON, resolved once for every script
+socom_require_python bootstrap_windows
 TOOLS="${SOCOM_TOOLS_DIR:-$ROOT/tools}"     # the override exists for the script's own test
 CACHE="$TOOLS/.bootstrap"
 
