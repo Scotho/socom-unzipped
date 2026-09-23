@@ -80,6 +80,8 @@ Rulings (numbered ones are in the plan's rulings section; all reversible):
   said; your browser's audio session was left alone when it contaminated a capture (below); the ladder's check-then-
   acquire race and the lock's `--wait` unit are recorded, not patched, while nine processes were polling the script.
 
+One disclosure note: the Sprint 11 spec and plan carried the chat path's mechanics (function names, offsets, sizes) in prose from 2026-09-21 to 2026-09-23; both are narrowed now, but the repository is public and its history keeps the earlier wording (`f8cdbb4`, `0e3eeaf`). Only a history rewrite removes it — your call, and SECURITY.md's rule stands either way.
+
 What only you can do is unchanged and listed below; one addition from the audio work: **a quiet-endpoint capture**
 (close the music tab and Discord, then `C:\projects\wt-audio-out\logs\capture_audio_out.sh`, ten minutes) —
 the exact step is written on `agent/audio-out` (`05de0e7`) and arrives here with that branch's merge.
