@@ -170,6 +170,8 @@ clone 5 s (115 MB) · `install_hooks.sh` 1 s · `bootstrap_windows.sh` **16 s** 
 `build.sh runtime` **624 s** → `dist/socom2.exe`, 236,852,224 bytes. **42 minutes from `git clone` to the game**, and
 about 15 GB of disk for the clone, the toolchain, the disc tree, the generated code and the build trees.
 
+The Linux side, in the VM (`socom-linux`, 8 cores of the same host, llvmpipe), 2026-09-23: `scripts/build_linux.sh runtime` from **wiped** build trees **1261 s** → `dist-linux/socom2` and the launcher; the test step (both suites) **284 s** — and not green there yet: the Linux-only residue is `docs/KNOWN.md` §2's row of that date. The tree reaches the VM by `scripts/vm_sync.sh tree` (seconds; since 2026-09-23 it also prunes what the host removed).
+
 Five commands, in this order, on a clean checkout with the tools under `tools/` on the PATH
 (`export PATH="$PWD/tools/llvm-mingw/bin:$PWD/tools/cmake/bin:$PWD/tools/ninja:$PATH"`; `build.sh` does this itself) and the disc image at
 your own ISO (the command in the previous section puts the disc tree and the overlays where these expect them). The

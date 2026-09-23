@@ -56,19 +56,39 @@ proceeds on its default. Markers as below.
 
 **Opened with six tasks already landed overnight** (the night of the Sprint 10 close, in agent worktrees, each
 reviewed and fix-rounded before the merge-forward `4732892`): **Task 2** the chat receive wrap (`f2064d3`; the
-two-instance proof and gate are the opening chain's); **Task 3** the server clamp (`5b7d20e`, `4d7e481` — the
-Lightsail redeploy waits for the next server restart); **Task 10** the fingerprint matcher and the address table
+two-instance proof and gate are the opening chain's); **Task 3** the server clamp (`5b7d20e`, `4d7e481` — deployed
+to the project box 06:58Z); **Task 10** the fingerprint matcher and the address table
 (`a201221`…`86c2912`; identity on the real image 99.66 % = 14,828/14,879, the 51 unreadable bodies honestly
 unresolved); **Task 12** the leak gate's external leg (`c0e60e3`, `a021c52`); **Task 14** `docs/INSTALL.md` and
 `docs/FAQ.md`; **Task 15** `docs/HOW_IT_WAS_BUILT.md`. Also in: **U1** (research/40 §9: the real 989SND.IRX agrees
 with our model on 1,775 of 1,794 calls; R245 — option B not scheduled; the two alignments `7b44d70`, `776e423`),
 **U4** (research/41), and **U3 parked**: the SOCOM 1 demo disc (`SCUS-972.05`) is not on this machine — HUMAN_TASKS.
-**Task 9** is in flight (socom-pc-09, `agent/revision`: the ELF half byte-identical; the exe half on the lock).
+**Where the twelve hours ended (2026-09-23 14:00Z).** Landed on `sprint-11` after review: **Task 16** (the
+dead history archived, check 6, the badges; `3615dbb`), **Task 9** (`scripts/build_revision.sh`, socom-pc-09;
+r0001check byte-identical, one fix round, `5a2dc44`'s parent), **Task 4** (README and SECURITY narrowed, `3efa6a7`)
+once the **server clamp was deployed** to the project box at 06:58Z (chain 8b — the owner's local Horizon stack
+held the Release DLLs and was stopped for the build and started again), **Task 5** (KNOWN's #244 row), **Task 18
+Step 2** (release-draft eligibility `4d10d71`; tags `v0.5.0`–`v0.8.0` pushed; the `v0.10.0` draft's archives are the
+owner's) and **Step 1 measured** (the VM ring: runtime from wiped build trees 1261 s; the suites are not green there
+— KNOWN §2), plus the **Linux-ring follow-up** those failures forced (`5a2dc44`: a python/python3 resolver for the
+scripts, the leak gate's product-word exception, a sync that prunes, two tests that skip or isolate, both suites
+run). Rulings R246 (the chat bound's install is the Milestone S proof) and R247 (the vendored baggage goes).
 
-**Not yet started:** Task 2b (the game-list record readers), Task 4 (README narrowed — after the proof), Task 6 (the
-cherry-picks, one worktree each), Task 7 (parked on the disc), 8a–8c, Task 11 (the launcher's revision plumbing),
-Task 13 (labels, the triage half, the launcher's post-SEND sentence), Task 16 (the link check and the archive move),
-Task 17 (the vendored baggage), Task 18 (the VM ring, the tag backfill, the branch sweep — the last is the owner's).
+**Cut off by the session limit at ~13:55Z, unfinished, each in its agent worktree — do not delete them:**
+| Task | Worktree / branch | State at the cut |
+|---|---|---|
+| 11 launcher revision plumbing | `wt-launcher` / `agent/launcher` | `098ef08` review-approved after fix round 1 (790/0); the Custom-preset ruling (its revision is unknown, no warning) is edited but uncommitted and never built; scoped re-review then merge |
+| 2b record readers bounded | `wt-chatrec` / `agent/chatrec` | `6aed718` reviewed: 1 Critical (the cap fails open past 256 holders; the game requests 999), 3 Important; fix round 1 mid-edit, uncommitted |
+| 8a three recompiler fixes | `wt-recompfix` / `agent/recompfix` | `7a4605b` reviewed: fixes correct; fix round 1 (own FTOI fixture, four link forms) not started. After the merge: `./build.sh recomp` + runtime + gate `s11_u_translators_gate` are the controller's |
+| 8c save-state container | `wt-savestate` / `agent/savestate` | `dca1eb4` committed, never built or reviewed |
+| 6 upstream cherry-picks | `wt-cherry` + `agent/pr<N>` | picks on pr227 229 230 231 232 237(+3) 240 241 243 246; research/42 (the per-PR table, on `agent/cherry` `ae6f849` only) <!-- docmaint: future -->; nothing built; Step 3's gates are the controller's |
+| 13 bug pipeline GitHub half | `wt-bugpipe` / `agent/bugpipe` | `6a7d5b4` (labels script + test) `864a427` (triage routine) committed; 4 launcher files dirty (the post-SEND sentence), never built; run `scripts/github_labels.sh` once after the merge |
+| 17 vendored baggage | `wt-baggage` / `agent/baggage` | 34 files staged/dirty (the deletions, CMake, NOTICES, embed_font.py), nothing committed, never built |
+| 8b RuntimeState refactor | `wt-rtstate` / `agent/rtstate` | first subsystem (StubLog) RED in progress, 5 files, nothing committed |
+| audio-out (filler: the music dips) | `wt-audio-out` / `agent/audio-out` (socom-pc-09) | `2103690` + fix round 1 `9d9da69` + the docs `05de0e7` (HUMAN_TASKS step, KNOWN rows) awaiting scoped re-review; finding: the device thread was never late in a 16-minute run, the capture's DEVICE count measured the owner's browser; the quiet-endpoint capture is the owner's (HUMAN_TASKS) |
+
+Resume each from its ledger line in `.superpowers/sdd/2026-09-23-sprint-11/progress.md` (on disk, git-ignored)
+and its report/review under the same directory; every review names its findings with file:line.
 
 **Filler added at the open** (carried from Sprint 10's close and the night's findings): Goal 3's tasks 5 and 7 (two
 mixed-match runs); the speed-freeze re-measure from the ladder logs (R242); **the mission-music dropouts, now known

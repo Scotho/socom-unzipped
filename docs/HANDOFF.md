@@ -23,11 +23,14 @@ reach a commit message. The product name is
 
 ## 2. Where it stands
 
-> **Picking up after the Sprint 10 close (2026-09-23)?** Start at `docs/CURRENT_SPRINT.md`'s "Sprint 10 -- CLOSED"
-> block -- the night's five runs and their verdicts, the reconciled rulings ledger, and what carries -- then
-> `docs/superpowers/plans/2026-09-23-sprint-11.md`, which is the open plan. The 2026-09-22 fix wave's own handoff
-> (`docs/superpowers/plans/2026-09-22-fix-wave-handoff.md`) is still worth reading for its five traps, but the two
-> judgment calls it left open have been answered: the endpoint A/B ran, and the prefilled login stays.
+> **Picking up after the Sprint 11 night (2026-09-23, 14:00Z)?** Start at `docs/CURRENT_SPRINT.md`'s "Sprint 11 —
+> OPEN" block: what landed, and the table of eight agent worktrees holding unfinished, part-reviewed work — each row
+> says the branch, the last commit, the review verdict and the next step. Then the plan
+> (`docs/superpowers/plans/2026-09-23-sprint-11.md`) and, on disk, the ledger
+> `.superpowers/sdd/2026-09-23-sprint-11/progress.md` with every report and review beside it. The night ended on the
+> session limit, not on a decision: nothing in those worktrees is wrong, it is unfinished. Two harness facts first
+> (KNOWN §4): `loop_lock.sh --wait N` is a retry count, and a fresh worktree needs `./build.sh runtime --no-runner`
+> before `test`.
 
 - **Plays:** boot, movies, title, menus, single-player missions, online login, lobby, a full round with kills between
   two instances on the hosted server (`s8_hosted_control2`, `s8_hosted_kill`). Twenty of twenty maps play a control

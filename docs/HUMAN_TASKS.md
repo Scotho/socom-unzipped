@@ -59,6 +59,31 @@ on 2026-09-22 between 14:29 and 14:56 were still open** and held the executable 
 is lost: the launcher saves its settings on every change). If you had one of them parked on purpose, that is why it is
 gone.
 
+### What the twelve hours produced, and the rulings made in your name (2026-09-23, 14:00Z)
+
+Sprint 11 ran autonomously from the Sprint 10 close until the session limit stopped every agent at about 13:55Z.
+Landed: Milestone S is closed on both sides and the README says so (the chat receive path bounded on the client,
+the server clamp **deployed to the project box at 06:58Z** — your local Horizon stack was stopped for the build and
+started again); `scripts/build_revision.sh` (the pipeline for another disc revision, proven byte-identical on
+r0001); the dead history archived with a link check that fails; the release-draft workflow's eligibility step and
+the backfilled tags `v0.5.0`–`v0.8.0`; the Linux VM ring measured and its five Linux-only defects fixed. Eight more
+tasks are part-done in agent worktrees — `docs/CURRENT_SPRINT.md`'s table; **do not delete `C:\projects\wt-*`**.
+
+Rulings (numbered ones are in the plan's rulings section; all reversible):
+- **R241–R245** (the Sprint 10 close and the open): the external-repo items slotted; option B (a native libsd) not
+  scheduled — the differential test showed 1,775 of 1,794 calls agree.
+- **R246** the chat bound's *install* (seen in every launch's log) is the proof Milestone S ships on; a line seen
+  crossing it end to end is a filler row, because the harness cannot type a chat line yet.
+- **R247** the vendored Vita/Android/ps2xStudio trees and the 6.8 MB of embedded font headers go (Task 17, in
+  progress in `wt-baggage`).
+- Unnumbered: the Custom server preset's revision is *unknown* (no mismatch warning) rather than r0001 as the plan
+  said; your browser's audio session was left alone when it contaminated a capture (below); the ladder's check-then-
+  acquire race and the lock's `--wait` unit are recorded, not patched, while nine processes were polling the script.
+
+What only you can do is unchanged and listed below; one addition from the audio work: **a quiet-endpoint capture**
+(close the music tab and Discord, then `C:\projects\wt-audio-out\logs\capture_audio_out.sh`, ten minutes) —
+the exact step is written on `agent/audio-out` (`05de0e7`) and arrives here with that branch's merge.
+
 ### The v0.10.0 draft is waiting for its archives
 
 The tag went up at the Sprint 10 close and `release-draft.yml` made the draft (its checklist is the notes). It has no
