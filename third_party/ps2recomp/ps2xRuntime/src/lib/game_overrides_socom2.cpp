@@ -16,6 +16,7 @@
 #include "runtime/ee_scheduler.h"
 #include "runtime/socom2_freeze_fields.h"
 #include "runtime/socom2_music_trace.h"
+#include "runtime/socom2_addresses.h"
 #include "runtime/socom2_osk_prefill.h"
 #include "runtime/ps2_audio.h"
 #include "socom2_rsa_key.h"
@@ -501,7 +502,9 @@ namespace
         // constructor; one guest call per overlay keeps the scheduler's invocation stack shallow.
         constexpr uint32_t kInitCppRts = 0x00182840u;
         struct Table { uint32_t begin, end; const char *name; };
-        const Table tables[] = {{0x00404d10u, 0x00404f04u, "FTSCore"}, {0x006690e0u, 0x00669120u, "ZSealEtc"}};
+        const socom2_addresses::Table &addr = socom2_addresses::current();
+        const Table tables[] = {{addr.ctorTableFtsBegin, addr.ctorTableFtsEnd, "FTSCore"},
+                                {addr.ctorTableZsealBegin, addr.ctorTableZsealEnd, "ZSealEtc"}};
         std::vector<GuestInvocation> invocations;
         if (!runtime->hasFunction(kInitCppRts))
         {
@@ -1408,8 +1411,8 @@ namespace
     {
         if (!ps2x::knob("PS2X_SOCOM2_MUSIC_TRACE"))
             return;
-        constexpr uint32_t kManager = 0x0034afd0u;   // FUN_0034afd0: the per-frame music manager
-        constexpr uint32_t kPush = 0x0034b6c0u;      // FUN_0034b6c0: the cue push
+        const uint32_t kManager = socom2_addresses::current().musicManager;   // r0001: FUN_0034afd0, the per-frame music manager
+        const uint32_t kPush = socom2_addresses::current().cuePush;           // r0001: FUN_0034b6c0, the cue push
         if (!runtime.hasFunction(kManager) || !runtime.hasFunction(kPush))
         {
             std::cout << "[music] trace: FUN_0034afd0 / FUN_0034b6c0 not in the function table" << std::endl;
@@ -1473,13 +1476,14 @@ namespace
     {
         if (socom2UdpShift() == 0)
             return;
-        if (!runtime.hasFunction(0x00620648u))
+        const uint32_t kRtNetCfgInit = socom2_addresses::current().rtNetConfigInit;   // r0001: FUN_00620648
+        if (!runtime.hasFunction(kRtNetCfgInit))
         {
             std::cout << "[socom2] no function at 0x620648; peer UDP port shift stays host-side only" << std::endl;
             return;
         }
-        g_rtNetCfgOriginal = runtime.lookupFunction(0x00620648u);
-        runtime.replaceFunction(0x00620648u, socom2_RtNetConfigInit);
+        g_rtNetCfgOriginal = runtime.lookupFunction(kRtNetCfgInit);
+        runtime.replaceFunction(kRtNetCfgInit, socom2_RtNetConfigInit);
     }
 
     // ------------------------------------------------------------------------------------------
@@ -1802,7 +1806,7 @@ namespace
         if (!g_cullTraceFile)
             return;
         uint32_t holder = 0, cam = 0; float lod[2] = {0.0f, 0.0f};
-        if (const uint8_t *ph = getConstMemPtr(rdram, 0x00415ff0u)) std::memcpy(&holder, ph, 4);
+        if (const uint8_t *ph = getConstMemPtr(rdram, socom2_addresses::current().cameraHolder)) std::memcpy(&holder, ph, 4);
         if (holder) if (const uint8_t *pc = getConstMemPtr(rdram, holder + 0xb4u)) std::memcpy(&cam, pc, 4);
         if (cam) if (const uint8_t *pl = getConstMemPtr(rdram, cam + 0x2c8u)) std::memcpy(lod, pl, sizeof(lod));
         const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
@@ -1838,13 +1842,14 @@ namespace
     void installPackTrace(PS2Runtime &runtime)
     {
         const char *path = ps2x::knob("PS2X_PACK_TRACE");
-        if (!path || !*path || !runtime.hasFunction(0x0025a5d0u))
+        const uint32_t kPack = socom2_addresses::current().packTrace;   // r0001: FUN_0025a5d0
+        if (!path || !*path || !runtime.hasFunction(kPack))
             return;
         g_packTraceFile = std::fopen(path, "w");
         if (!g_packTraceFile)
             return;
-        g_packOriginal = runtime.lookupFunction(0x0025a5d0u);
-        runtime.replaceFunction(0x0025a5d0u, socom2_PackTrace);
+        g_packOriginal = runtime.lookupFunction(kPack);
+        runtime.replaceFunction(kPack, socom2_PackTrace);
         std::cout << "[pack-trace] FUN_0025a5d0 -> " << path << std::endl;
     }
 
@@ -1896,14 +1901,15 @@ namespace
 
     void installCullTrace(PS2Runtime &runtime)
     {
+        const socom2_addresses::Table &addr = socom2_addresses::current();
         const char *spec = ps2x::knob("PS2X_CULL_TRACE");
         if (!spec || !*spec)
         {
-            if (ps2x::knob("PS2X_CULL_PARTIAL_CLIP") && runtime.hasFunction(0x00290c30u))
+            if (ps2x::knob("PS2X_CULL_PARTIAL_CLIP") && runtime.hasFunction(addr.cull))
             {
                 g_cullTraceStart = std::chrono::steady_clock::now();
-                g_cullOriginal = runtime.lookupFunction(0x00290c30u);
-                runtime.replaceFunction(0x00290c30u, socom2_CullTrace);
+                g_cullOriginal = runtime.lookupFunction(addr.cull);
+                runtime.replaceFunction(addr.cull, socom2_CullTrace);
                 std::cout << "[cull-trace] PS2X_CULL_PARTIAL_CLIP: partial boxes take the clipped family" << std::endl;
             }
             return;
@@ -1926,7 +1932,7 @@ namespace
             rest = rest.substr(0, colon);
         }
         g_cullTraceAfter = std::atof(rest.c_str());
-        if (!runtime.hasFunction(0x00290c30u))
+        if (!runtime.hasFunction(addr.cull))
         {
             std::cout << "[cull-trace] no function at 0x290c30" << std::endl;
             return;
@@ -1939,42 +1945,42 @@ namespace
         }
         g_cullTraceLeft = count > 0 ? count : 4000;
         g_cullTraceStart = std::chrono::steady_clock::now();
-        g_cullOriginal = runtime.lookupFunction(0x00290c30u);
-        runtime.replaceFunction(0x00290c30u, socom2_CullTrace);
-        if (runtime.hasFunction(0x00338480u))
+        g_cullOriginal = runtime.lookupFunction(addr.cull);
+        runtime.replaceFunction(addr.cull, socom2_CullTrace);
+        if (runtime.hasFunction(addr.node))
         {
-            g_nodeOriginal = runtime.lookupFunction(0x00338480u);
-            runtime.replaceFunction(0x00338480u, socom2_NodeTrace);
+            g_nodeOriginal = runtime.lookupFunction(addr.node);
+            runtime.replaceFunction(addr.node, socom2_NodeTrace);
         }
-        if (runtime.hasFunction(0x003389c0u))
+        if (runtime.hasFunction(addr.node2))
         {
-            g_nodeOriginal2 = runtime.lookupFunction(0x003389c0u);
-            runtime.replaceFunction(0x003389c0u, socom2_NodeTrace2);
+            g_nodeOriginal2 = runtime.lookupFunction(addr.node2);
+            runtime.replaceFunction(addr.node2, socom2_NodeTrace2);
         }
-        if (runtime.hasFunction(0x003b7b90u))
+        if (runtime.hasFunction(addr.lod))
         {
-            g_lodOriginal = runtime.lookupFunction(0x003b7b90u);
-            runtime.replaceFunction(0x003b7b90u, socom2_LodTrace);
+            g_lodOriginal = runtime.lookupFunction(addr.lod);
+            runtime.replaceFunction(addr.lod, socom2_LodTrace);
         }
-        if (runtime.hasFunction(0x003b6e10u))
+        if (runtime.hasFunction(addr.detail))
         {
-            g_detailOriginal = runtime.lookupFunction(0x003b6e10u);
-            runtime.replaceFunction(0x003b6e10u, socom2_DetailTrace);
+            g_detailOriginal = runtime.lookupFunction(addr.detail);
+            runtime.replaceFunction(addr.detail, socom2_DetailTrace);
         }
-        if (runtime.hasFunction(0x002918b0u))
+        if (runtime.hasFunction(addr.camCfg))
         {
-            g_camCfgOriginal = runtime.lookupFunction(0x002918b0u);
-            runtime.replaceFunction(0x002918b0u, socom2_CamCfgTrace);
+            g_camCfgOriginal = runtime.lookupFunction(addr.camCfg);
+            runtime.replaceFunction(addr.camCfg, socom2_CamCfgTrace);
         }
-        if (runtime.hasFunction(0x003371b0u))
+        if (runtime.hasFunction(addr.defer))
         {
-            g_deferOriginal = runtime.lookupFunction(0x003371b0u);
-            runtime.replaceFunction(0x003371b0u, socom2_DeferTrace);
+            g_deferOriginal = runtime.lookupFunction(addr.defer);
+            runtime.replaceFunction(addr.defer, socom2_DeferTrace);
         }
-        if (runtime.hasFunction(0x00336cb0u))
+        if (runtime.hasFunction(addr.flush))
         {
-            g_flushOriginal = runtime.lookupFunction(0x00336cb0u);
-            runtime.replaceFunction(0x00336cb0u, socom2_FlushTrace);
+            g_flushOriginal = runtime.lookupFunction(addr.flush);
+            runtime.replaceFunction(addr.flush, socom2_FlushTrace);
         }
         std::cout << "[cull-trace] FUN_00290c30 -> " << path << " from t=" << g_cullTraceAfter << "s, " << g_cullTraceLeft << " calls" << std::endl;
     }
@@ -1993,19 +1999,23 @@ namespace
     {
         std::cout << "[socom2] applying SOCOM II overrides" << std::endl;
         installCrashHandler(runtime);
+        {
+            // The FTSCore data segment carries the build stamp ("SOCOM 2 r0001 17:22:21 Oct 11 2003").
+            // Reading it here does double duty: it proves the overlay is resident, and it chooses the
+            // address column every install below reads (runtime/socom2_addresses.h). It has to run first:
+            // an install that ran before the choice would have wrapped an r0001 address in another build.
+            const uint8_t *p = getConstMemPtr(runtime.memory().getRDRAM(), socom2_addresses::kR0001.versionString);
+            std::string s;
+            for (int i = 0; p && i < 40 && p[i]; ++i) s.push_back(static_cast<char>(p[i]));
+            std::cout << "[socom2] mem@0x3e5c60 = \"" << s << "\"" << std::endl;
+            socom2_addresses::selectFromVersionString(s.c_str());
+        }
         startPcSampler(runtime);
         startRdramDump(runtime);
         installCallTrace(runtime);
         installMusicTrace(runtime);
         installCullTrace(runtime);
         installPackTrace(runtime);
-        {
-            // sanity check that the FTSCore data segment is resident: should print the boot path string
-            const uint8_t *p = getConstMemPtr(runtime.memory().getRDRAM(), 0x003e5c60u);
-            std::string s;
-            for (int i = 0; p && i < 24 && p[i]; ++i) s.push_back(static_cast<char>(p[i]));
-            std::cout << "[socom2] mem@0x3e5c60 = \"" << s << "\"" << std::endl;
-        }
         // newlib rand()/srand() share `struct _reent._rand_next`: _impure_ptr lives at 0x001cc750
         // and points at 0x001cc460, _rand_next is at +0xa8 (SCUS_972.75 FUN_00197728/FUN_00197740).
         // rand() is stubbed (recomp/socom2.toml) but srand() is not, and the game boots with
@@ -2013,6 +2023,10 @@ namespace
         ps2_stubs::setLibcRandState(0x001CC750u, 0xA8u);
         ps2_stubs::setMpegDemuxIdleYields(true);   // research/32 section 7.1: the movie thread re-polls the demux in a loop
         configureCdImage();
+        // The addresses below socom2_addresses::kOverlayBase (0x1d5600) are the BOOT LOADER's and stay
+        // literal on purpose: the loader is the same binary in every pressing of the game -- it is what
+        // loads the overlays that differ -- so there is nothing for a per-revision table to vary. Only
+        // overlay addresses belong in socom2_addresses.h, and its suite fails on a loader address in it.
         runtime.replaceFunction(0x001c59c0u, socom2_LoadGameCodeFromDisc);
         runtime.replaceFunction(0x001c5b30u, socom2_LoadGameCodeFromMemcard);
         runtime.replaceFunction(0x00181c90u, socom2_LoadOverlayFile);
@@ -2022,7 +2036,10 @@ namespace
         runtime.replaceFunction(0x001bd050u, ps2_stubs::socom2_MsifBind);
         runtime.replaceFunction(0x001bd320u, ps2_stubs::socom2_MsifCall);
         runtime.replaceFunction(0x001bd200u, ps2_stubs::socom2_MsifUnbind);
-        // libnetb_ex ring-buffer path -> host sockets (socom2_libnetb.cpp).
+        // libnetb_ex ring-buffer path -> host sockets (socom2_libnetb.cpp). These and the libdnas2 crypto
+        // entry points below are overlay addresses that socom2_addresses.h does not name yet: they are a
+        // block of neighbours rather than scattered sites, so a second revision takes them as a block from
+        // what tools_py/address_matcher.py reports once an r0004 image exists to match against.
         runtime.replaceFunction(0x002472c8u, socom2_libnetb::exOpen);
         runtime.replaceFunction(0x002474f8u, socom2_libnetb::exTcpRecv);
         runtime.replaceFunction(0x00247738u, socom2_libnetb::exTcpSend);
@@ -2045,7 +2062,7 @@ namespace
         runtime.replaceFunction(0x0062a7c8u, socom2_crypto::rc4DecryptFn);
         // DNAS authentication object (FTSCore FUN_002cc670): the published r0001 bypass patches
         // `jr ra` at its entry; a private Horizon server needs no DNAS.
-        runtime.replaceFunction(0x002cc670u, ps2_stubs::socom2_DnasTickDone);
+        runtime.replaceFunction(socom2_addresses::current().dnasCheck, ps2_stubs::socom2_DnasTickDone);
         // _InitSys kernel-patch search (FindAddress loop over the BIOS): nothing to find here.
         ps2_game_overrides::bindAddressHandler(runtime, 0x001ac9d8u, "ret0");
         // PS2X_HLE_STATS=1 wraps the bound stubs' table entries: last, so it wraps whatever
