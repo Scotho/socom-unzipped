@@ -11,13 +11,29 @@
 // (tools_py/fingerprint.py: FNV-1a 64 over the instruction stream with every relocated immediate zeroed)
 // and reports where each r0001 routine went, with how it knows. tools_py/addresses_from_match.py then
 // prints the column below out of that report -- one value per member, in this order, with the method on
-// each line. The kR0004 column was printed by (Task 19, 2026-09-23):
+// each line. THIS COMMAND REPRODUCES THE kR0004 COLUMN EXACTLY, value for value (Task 19, 2026-09-23):
 //
 //   python -m tools_py.addresses_from_match game/r0004/match.json --revision r0004 \
-//       --override versionString=0x0040cc60:build-banner --override dnasCheck=0x002cf330:capsule-table ...
+//       --override packTrace=0x0025ac10:hand,relinked-body \
+//       --override defer=0x00354750:hand,bracketed-neighbours \
+//       --override cameraHolder=0x004429b0:hand,data-via-twin \
+//       --override versionString=0x0040cc60:hand,build-banner \
+//       --override oskOpenThunk=0x00281be0:hand,thunk-target \
+//       --override oskTextBuffer=0x004a2440:hand,data-via-twin \
+//       --override chatListHolders=0x00452928:hand,data-via-twin \
+//       --override ctorTableFtsBegin=0x004315a0:hand,ctor-run \
+//       --override ctorTableFtsEnd=0x00431798:hand,ctor-run \
+//       --override ctorTableZsealBegin=0x00668a60:hand,ctor-run \
+//       --override ctorTableZsealEnd=0x00668aa0:hand,ctor-run
 //
-// ...one --override per field the matcher itself could not place, each naming the evidence that did.
-// Every one of them is written up, field by field, in
+// Thirty of the forty-one fields need no --override at all: the matcher places them itself, and since
+// its fourth pass landed (relinked-body, e92691a) that includes the ten this column originally had to
+// establish by hand -- node, node2, detail, camCfg, flush, musicManager, oskOpen, chatFanoutRecv,
+// chatListRender and dnasCheck, every one reproduced on the same address with tie-breaker `unique`, by
+// an independently written masking rule. The eleven overrides above are the eight DATA fields (the
+// matcher places functions), oskOpenThunk (seed+delta, which this table does not accept as evidence on
+// its own), and the two the matcher deliberately leaves unresolved: packTrace, whose body moved a
+// vtable slot index, and defer, which lost two instructions. Each is written up, field by field, in
 // .superpowers/sdd/2026-09-23-sprint-11/task-19-addresses-report.md.
 //
 // A field a revision's column could not establish is kUnavailable (0), never the other revision's
@@ -31,8 +47,10 @@
 //
 // current() is what call sites use. It answers r0001 until the runtime has read the loaded image's build
 // banner and handed it over. The banner MOVES WITH THE RELINK, so there is no one address to read it at:
-// selectFromImage() probes every column's own versionString and takes the column whose text names that
-// column (game_overrides_socom2.cpp does this once, at the top of applySocom2, before any install). An
+// selectFromImage() probes every column's own versionString, NEWEST ROW FIRST, and takes the column
+// whose text names that column (game_overrides_socom2.cpp does this once, at the top of applySocom2,
+// before any install). Newest first because an image can answer at more than one row's address and
+// r0001's row is the fallback every unknown image lands on -- see selectFromImage() for the whole of it. An
 // image whose stamps name no revision, or one this table has no column for, keeps r0001 AND logs: a
 // silently wrong address does not present as a bad address, it presents as a crash somewhere else
 // entirely, hours later. That is not hypothetical -- until Task 19 the runtime read one fixed address
@@ -42,6 +60,7 @@
 #include "runtime/socom2_osk_prefill.h"
 
 #include <cctype>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
@@ -85,6 +104,28 @@ namespace socom2_addresses
         uint32_t ctorTableFtsEnd;
         uint32_t ctorTableZsealBegin;   // DATA: ZSealEtc's static constructor table
         uint32_t ctorTableZsealEnd;
+
+        // The libnetb_ex ring-buffer transport (socom2_libnetb.cpp answers all of these on host sockets).
+        // Task 10 left them literal because its Table did not name them; on an r0004 image that meant ten
+        // r0001 addresses, which is the defect this table exists to stop. They are columns now.
+        uint32_t netbExOpen;
+        uint32_t netbExTcpRecv;
+        uint32_t netbExTcpSend;
+        uint32_t netbExUdpRecv;
+        uint32_t netbExUdpSend;
+        uint32_t netbExAvailable;
+        uint32_t netbExConnected;
+        uint32_t netbExStartAsync;      // two entry points share one host implementation
+        uint32_t netbExStartAsync2;
+        uint32_t netbExDescriptorDma;   // the descriptor DMA helper, bound to "ret0" rather than replaced
+
+        // libdnas2's crypto entry points (socom2_crypto.cpp does these on the host).
+        uint32_t dnasRsaBlock;
+        uint32_t dnasSha1Hash;
+        uint32_t dnasRc4SetKeyHash;
+        uint32_t dnasRc4SetKey;
+        uint32_t dnasRc4Encrypt;
+        uint32_t dnasRc4Decrypt;
     };
 
     // SCUS_972.75, "SOCOM 2 r0001 17:22:21 Oct 11 2003" -- the build this port was made against.
@@ -118,6 +159,22 @@ namespace socom2_addresses
         0x00404f04u,   // ctorTableFtsEnd
         0x006690e0u,   // ctorTableZsealBegin
         0x00669120u,   // ctorTableZsealEnd
+        0x002472c8u,   // netbExOpen
+        0x002474f8u,   // netbExTcpRecv
+        0x00247738u,   // netbExTcpSend
+        0x00247d30u,   // netbExUdpRecv
+        0x00247fe8u,   // netbExUdpSend
+        0x002479b8u,   // netbExAvailable
+        0x00247bd8u,   // netbExConnected
+        0x00248350u,   // netbExStartAsync
+        0x002483f8u,   // netbExStartAsync2
+        0x00247c98u,   // netbExDescriptorDma
+        0x0062b948u,   // dnasRsaBlock
+        0x0062eec0u,   // dnasSha1Hash
+        0x0062a638u,   // dnasRc4SetKeyHash
+        0x0062a5a8u,   // dnasRc4SetKey
+        0x0062a720u,   // dnasRc4Encrypt
+        0x0062a7c8u,   // dnasRc4Decrypt
     };
 
     // SCUS_972.75 relinked, "SOCOM 2 r0004 10:14:38 Nov  3 2004" -- the pressing PSRewired's community
@@ -172,6 +229,32 @@ namespace socom2_addresses
         0x00431798u,   // ctorTableFtsEnd      r0001 0x00404f04  ctor-run
         0x00668a60u,   // ctorTableZsealBegin  r0001 0x006690e0  ctor-run (16 entries, as r0001)
         0x00668aa0u,   // ctorTableZsealEnd    r0001 0x00669120  ctor-run + data-via-twin (3 twins agree)
+        // libnetb_ex DID NOT MOVE. Every entry point is at its r0001 address in r0004, eight of the ten
+        // byte for byte and the other two differing only in `jal` targets into code that did move. That
+        // is a finding, not a copied column: it is why the suite pins these ten as equal across the two
+        // columns and every other field as different.
+        0x002472c8u,   // netbExOpen           r0001 0x002472c8  identity (exact; bytes unchanged)
+        0x002474f8u,   // netbExTcpRecv        r0001 0x002474f8  identity (exact; 2 relocation words differ)
+        0x00247738u,   // netbExTcpSend        r0001 0x00247738  identity (exact; 4 relocation words differ)
+        0x00247d30u,   // netbExUdpRecv        r0001 0x00247d30  identity (exact; bytes unchanged)
+        0x00247fe8u,   // netbExUdpSend        r0001 0x00247fe8  identity (exact; bytes unchanged)
+        0x002479b8u,   // netbExAvailable      r0001 0x002479b8  identity (exact; bytes unchanged)
+        0x00247bd8u,   // netbExConnected      r0001 0x00247bd8  identity (exact; bytes unchanged)
+        // These two are byte-identical to EACH OTHER, so no fingerprint can tell them apart in either
+        // image -- address_matcher.py leaves both unresolved. What places them is that each is byte for
+        // byte the same at its own address in r0004, and a function starts there: identity, the one
+        // piece of evidence an ambiguous pair cannot spoil.
+        0x00248350u,   // netbExStartAsync     r0001 0x00248350  identity (bytes unchanged at the same address)
+        0x002483f8u,   // netbExStartAsync2    r0001 0x002483f8  identity (bytes unchanged at the same address)
+        0x00247c98u,   // netbExDescriptorDma  r0001 0x00247c98  identity (exact; bytes unchanged)
+        // libdnas2 moved WHOLESALE: every entry point by the same +0x7ac0, four of the six byte for byte
+        // after the move. One delta for the whole library is itself a check on the six.
+        0x00633408u,   // dnasRsaBlock         r0001 0x0062b948  exact, block +0x7ac0 (1 relocation word)
+        0x00636980u,   // dnasSha1Hash         r0001 0x0062eec0  exact, block +0x7ac0 (3 relocation words)
+        0x006320f8u,   // dnasRc4SetKeyHash    r0001 0x0062a638  exact, block +0x7ac0 (bytes unchanged)
+        0x00632068u,   // dnasRc4SetKey        r0001 0x0062a5a8  exact, block +0x7ac0 (bytes unchanged)
+        0x006321e0u,   // dnasRc4Encrypt       r0001 0x0062a720  exact, block +0x7ac0 (bytes unchanged)
+        0x00632288u,   // dnasRc4Decrypt       r0001 0x0062a7c8  exact, block +0x7ac0 (bytes unchanged)
     };
 
     // Every column this build knows. A second revision is one more entry here and one more Table above.
@@ -270,27 +353,68 @@ namespace socom2_addresses
     // Choose the column by probing the loaded image. selectFromVersionString() can only judge a string
     // somebody has already read -- but the address to read it AT is itself per-revision (r0001's banner
     // is at 0x003e17e0, r0004's at 0x0040cc60, and in an r0004 image 0x003e17e0 is code). So each
-    // column's own versionString is read and the column whose text names that column wins. This is what
+    // column's own versionString is read and the column whose text names THAT column wins. This is what
     // the r0004 capsule does too: it probes both builds' layouts and takes the one that answers.
     //
-    // No column answering keeps r0001 AND logs, through the same warning as an unreadable stamp.
+    // NEWEST FIRST. kTables is oldest first, so the walk runs backwards. An image can answer at more
+    // than one row's stamp address -- a second copy of an older banner, a library's own stamp, an older
+    // overlay still resident in RAM from before the newer one was loaded -- and r0001's row is exactly
+    // the one every unknown image falls back to, so checking it first would let a stale r0001 answer
+    // decide before the newer rows had been read at all. A row only ever claims an image whose text
+    // names that row's own revision, so this changes which row gets to answer first, never what
+    // counts as an answer.
+    //
+    // Every stamp read is logged, chosen or not: when this picks the wrong column the log is the only
+    // place the reason can be. No column answering keeps r0001 AND logs, through the same warning as
+    // an unreadable stamp.
     inline const Table &selectFromImage(StampReader read, void *user = nullptr)
     {
-        std::string firstText;
-        for (const Table *t : kTables)
+        // EVERY row's stamp is read and logged before any of them is acted on -- not just up to the one
+        // that answers. When this picks the wrong column the log is the only place the reason can be,
+        // and "what the other rows said" is exactly the part that tells a wrong column apart from a
+        // wrong image. (It is how the s11_r0004_gate2 run was diagnosed: the r0001 row answered on an
+        // r0004 build, and only the r0004 row's stamp -- unread, so unlogged -- could say whether the
+        // table or the resident overlay was at fault. It was the overlay.)
+        const std::size_t n = sizeof(kTables) / sizeof(kTables[0]);
+        std::string fallbackText;
+        const Table *chosen = nullptr;
+        for (std::size_t i = n; i-- > 0;)
         {
+            const Table *t = kTables[i];
             const std::string text = read ? read(t->versionString, user) : std::string();
+            const std::string rev = revisionOf(text.c_str());
+            std::cout << "[socom2] address table: stamp@0x" << std::hex << t->versionString << std::dec
+                      << " (the " << t->revision << " row) = \"" << text << "\""
+                      << (rev == t->revision ? "  <- names this row" : "") << std::endl;
             if (t == &kR0001)
-                firstText = text;
-            if (revisionOf(text.c_str()) == t->revision)
-            {
-                select(*t);
-                std::cout << "[socom2] address table: stamp@0x" << std::hex << t->versionString << std::dec
-                          << " = \"" << text << "\" -- using the " << t->revision << " addresses" << std::endl;
-                return *t;
-            }
+                fallbackText = text;
+            if (!chosen && rev == t->revision)
+                chosen = t;                                   // newest first, so the first is the newest
         }
-        selectFromVersionString(firstText.c_str());
+        if (chosen)
+        {
+            select(*chosen);
+            std::cout << "[socom2] address table: the image names itself " << chosen->revision
+                      << " -- using the " << chosen->revision << " addresses" << std::endl;
+            return *chosen;
+        }
+        // No row named itself. r0001, and never silently.
+        //
+        // The fallback does NOT ask selectFromVersionString() what the r0001 slot's text names, except
+        // when it names nothing -- which is the real case, and gets that function's warning verbatim. A
+        // stamp that names some OTHER revision while sitting at r0001's address has not identified the
+        // image; it has only proved that something is where it should not be, and choosing a column on
+        // it would be choosing on exactly the evidence this ordering exists to distrust.
+        if (revisionOf(fallbackText.c_str()).empty())
+        {
+            selectFromVersionString(fallbackText.c_str());
+            return current();
+        }
+        select(kR0001);
+        std::cout << "[socom2] address table: no row's stamp named its own revision (the "
+                  << kR0001.revision << " row read \"" << fallbackText << "\") -- using "
+                  << kR0001.revision << ", every override address is an " << kR0001.revision
+                  << " address" << std::endl;
         return current();
     }
 }

@@ -2235,31 +2235,51 @@ namespace
         runtime.replaceFunction(0x001bd050u, ps2_stubs::socom2_MsifBind);
         runtime.replaceFunction(0x001bd320u, ps2_stubs::socom2_MsifCall);
         runtime.replaceFunction(0x001bd200u, ps2_stubs::socom2_MsifUnbind);
-        // libnetb_ex ring-buffer path -> host sockets (socom2_libnetb.cpp). These and the libdnas2 crypto
-        // entry points below are overlay addresses that socom2_addresses.h does not name yet: they are a
-        // block of neighbours rather than scattered sites, so a second revision takes them as a block from
-        // what tools_py/address_matcher.py reports once an r0004 image exists to match against.
-        runtime.replaceFunction(0x002472c8u, socom2_libnetb::exOpen);
-        runtime.replaceFunction(0x002474f8u, socom2_libnetb::exTcpRecv);
-        runtime.replaceFunction(0x00247738u, socom2_libnetb::exTcpSend);
-        runtime.replaceFunction(0x00247d30u, socom2_libnetb::exUdpRecv);
-        runtime.replaceFunction(0x00247fe8u, socom2_libnetb::exUdpSend);
-        runtime.replaceFunction(0x002479b8u, socom2_libnetb::exAvailable);
-        runtime.replaceFunction(0x00247bd8u, socom2_libnetb::exConnected);
-        runtime.replaceFunction(0x00248350u, socom2_libnetb::exStartAsync);
-        runtime.replaceFunction(0x002483f8u, socom2_libnetb::exStartAsync);
+        // libnetb_ex ring-buffer path -> host sockets (socom2_libnetb.cpp). Task 19: these and the
+        // libdnas2 crypto entry points below are columns of socom2_addresses.h now, not literals. They
+        // were the last overlay addresses an r0004 image still reached at r0001 values -- libnetb_ex
+        // happens not to have moved, but that is a fact the table records, not one the code may assume.
+        {
+            const socom2_addresses::Table &addr = socom2_addresses::current();
+            struct Bind { uint32_t address; const char *field; PS2Runtime::RecompiledFunction fn; };
+            const Bind netb[] = {
+                {addr.netbExOpen, "netbExOpen", socom2_libnetb::exOpen},
+                {addr.netbExTcpRecv, "netbExTcpRecv", socom2_libnetb::exTcpRecv},
+                {addr.netbExTcpSend, "netbExTcpSend", socom2_libnetb::exTcpSend},
+                {addr.netbExUdpRecv, "netbExUdpRecv", socom2_libnetb::exUdpRecv},
+                {addr.netbExUdpSend, "netbExUdpSend", socom2_libnetb::exUdpSend},
+                {addr.netbExAvailable, "netbExAvailable", socom2_libnetb::exAvailable},
+                {addr.netbExConnected, "netbExConnected", socom2_libnetb::exConnected},
+                {addr.netbExStartAsync, "netbExStartAsync", socom2_libnetb::exStartAsync},
+                {addr.netbExStartAsync2, "netbExStartAsync2", socom2_libnetb::exStartAsync},
+            };
+            for (const Bind &b : netb)
+                if (socom2_addresses::require(b.address, b.field))
+                    runtime.replaceFunction(b.address, b.fn);
+        }
         installRtNetPortShift(runtime);
         installOskPrefill(runtime);   // Sprint 10 Goal 9: only when PS2X_SOCOM2_LOGIN_NAME/_PASS is set
         installChatBound(runtime);    // Sprint 11 milestone S: unconditional, no knob
 
-        ps2_game_overrides::bindAddressHandler(runtime, 0x00247c98u, "ret0");   // descriptor DMA helper
-        // rt_crypt: RSA block transform and SHA-1 on the host (socom2_crypto.cpp).
-        runtime.replaceFunction(0x0062b948u, socom2_crypto::rsaBlock);
-        runtime.replaceFunction(0x0062eec0u, socom2_crypto::sha1Hash);
-        runtime.replaceFunction(0x0062a638u, socom2_crypto::rc4SetKeyHash);
-        runtime.replaceFunction(0x0062a5a8u, socom2_crypto::rc4SetKey);
-        runtime.replaceFunction(0x0062a720u, socom2_crypto::rc4EncryptFn);
-        runtime.replaceFunction(0x0062a7c8u, socom2_crypto::rc4DecryptFn);
+        {
+            const socom2_addresses::Table &addr = socom2_addresses::current();
+            if (socom2_addresses::require(addr.netbExDescriptorDma, "netbExDescriptorDma"))
+                ps2_game_overrides::bindAddressHandler(runtime, addr.netbExDescriptorDma, "ret0");   // descriptor DMA helper
+            // rt_crypt: RSA block transform, SHA-1 and RC4 on the host (socom2_crypto.cpp). libdnas2
+            // moved wholesale between the two builds (+0x7ac0), which is exactly what a column is for.
+            struct Bind { uint32_t address; const char *field; PS2Runtime::RecompiledFunction fn; };
+            const Bind crypto[] = {
+                {addr.dnasRsaBlock, "dnasRsaBlock", socom2_crypto::rsaBlock},
+                {addr.dnasSha1Hash, "dnasSha1Hash", socom2_crypto::sha1Hash},
+                {addr.dnasRc4SetKeyHash, "dnasRc4SetKeyHash", socom2_crypto::rc4SetKeyHash},
+                {addr.dnasRc4SetKey, "dnasRc4SetKey", socom2_crypto::rc4SetKey},
+                {addr.dnasRc4Encrypt, "dnasRc4Encrypt", socom2_crypto::rc4EncryptFn},
+                {addr.dnasRc4Decrypt, "dnasRc4Decrypt", socom2_crypto::rc4DecryptFn},
+            };
+            for (const Bind &b : crypto)
+                if (socom2_addresses::require(b.address, b.field))
+                    runtime.replaceFunction(b.address, b.fn);
+        }
         // DNAS authentication object (FTSCore FUN_002cc670 in r0001, FUN_002cf330 in r0004 -- the same
         // address the r0004 capsule's second patch table writes): the published r0001 bypass patches
         // `jr ra` at its entry; a private Horizon server needs no DNAS. This is the login gate, so a

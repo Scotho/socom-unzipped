@@ -24,14 +24,20 @@ HEADER = os.path.join(ROOT, "third_party", "ps2recomp", "ps2xRuntime", "include"
 
 
 def match_file(entries, path):
-    """A minimal match.json in address_matcher.py's own shape."""
+    """A minimal match.json in address_matcher.py's own shape.
+
+    An entry is (a_addr, b_addr, how) or (a_addr, b_addr, how, tie) -- `tie` is the field the
+    relinked-body pass fills with what separated the candidates ("unique", "callees", "string").
+    """
     doc = {"a": {"csv": "a.csv", "elf": "a.elf"}, "b": {"csv": "b.csv", "elf": "b.elf"},
            "matches": {}}
-    for a_addr, b_addr, how in entries:
+    for entry in entries:
+        a_addr, b_addr, how = entry[:3]
         doc["matches"]["0x%08x" % a_addr] = {
             "b": None if b_addr is None else "0x%08x" % b_addr,
             "how": how,
             "name": "FUN_%08x" % a_addr,
+            "tie": entry[3] if len(entry) > 3 else None,
         }
     with open(path, "w") as fh:
         json.dump(doc, fh)
@@ -76,6 +82,34 @@ class ColumnFromMatches(unittest.TestCase):
         rows = self.rows([(lod, 0x003D9CE0, "hash+callees")])
         self.assertEqual(rows["lod"].b, 0x003D9CE0)
         self.assertEqual(rows["lod"].method, "hash+callees")
+
+    def test_a_relinked_body_match_fills_the_field_and_records_its_tie_breaker(self):
+        # address_matcher.py's fourth method (e92691a). It is what places most of this table: ten of
+        # the fields filled by hand on 2026-09-23 come back from it, so leaving it out of ACCEPT would
+        # zero ten addresses that are right the next time anyone regenerates the column.
+        node = afm.by_name("node").a
+        rows = self.rows([(node, 0x00355A10, "relinked-body", "unique")])
+        self.assertEqual(rows["node"].b, 0x00355A10)
+        self.assertIn("relinked-body", rows["node"].method)
+        self.assertIn("unique", rows["node"].method,
+                      "the tie-breaker is what the method rests on; it has to reach the column")
+
+    def test_each_relinked_body_tie_breaker_reaches_the_rendered_column(self):
+        for tie in ("unique", "callees", "string"):
+            rows = self.rows([(afm.by_name("node").a, 0x00355A10, "relinked-body", tie)])
+            text = afm.render(afm.column({"0x%08x" % afm.by_name("node").a:
+                                          {"b": "0x00355a10", "how": "relinked-body", "tie": tie}}),
+                              "r0004")
+            self.assertIn(tie, text, "%s is not in the printed column" % tie)
+            self.assertIn(tie, rows["node"].method)
+
+    def test_a_relinked_body_match_with_no_tie_recorded_still_fills_the_field(self):
+        # An older match.json has no "tie" key at all. The method degrades to the bare name rather
+        # than the field degrading to UNAVAILABLE.
+        node = afm.by_name("node").a
+        rows = self.rows([(node, 0x00355A10, "relinked-body")])
+        self.assertEqual(rows["node"].b, 0x00355A10)
+        self.assertEqual(rows["node"].method, "relinked-body")
 
     def test_an_address_that_did_not_move_is_reported_as_identity(self):
         cull = afm.by_name("cull").a

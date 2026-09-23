@@ -12,6 +12,7 @@
 #include "runtime/socom2_osk_prefill.h"
 
 #include <cstddef>
+#include <cstring>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -59,7 +60,11 @@ namespace
                 a.defer, a.flush, a.musicManager, a.cuePush, a.cameraHolder, a.versionString,
                 a.oskOpen, a.oskOpenThunk, a.oskTextBuffer, a.chatFanoutRecv, a.chatListRender,
                 a.chatListHolders, a.dnasCheck, a.ctorTableFtsBegin, a.ctorTableFtsEnd,
-                a.ctorTableZsealBegin, a.ctorTableZsealEnd};
+                a.ctorTableZsealBegin, a.ctorTableZsealEnd,
+                a.netbExOpen, a.netbExTcpRecv, a.netbExTcpSend, a.netbExUdpRecv, a.netbExUdpSend,
+                a.netbExAvailable, a.netbExConnected, a.netbExStartAsync, a.netbExStartAsync2,
+                a.netbExDescriptorDma, a.dnasRsaBlock, a.dnasSha1Hash, a.dnasRc4SetKeyHash,
+                a.dnasRc4SetKey, a.dnasRc4Encrypt, a.dnasRc4Decrypt};
     }
 
     // A stand-in for the loaded image: the text at each address a table's versionString names.
@@ -168,16 +173,78 @@ void register_socom2_addresses_tests()
             t.Equals(b.ctorTableZsealEnd, 0x00668aa0u, "ctorTableZsealEnd");
         });
 
-        tc.Run("not one field of the r0004 column is an r0001 address", [](TestCase &t)
+        tc.Run("not one field of the r0004 column is an r0001 address by accident", [](TestCase &t)
         {
             // The defect this task exists for: the r0004 exe ran the whole session on r0001's override
             // addresses. A field that could not be established is 0 and its override is skipped; it is
             // never quietly the other revision's address.
+            //
+            // Ten fields ARE the same address in both columns, and that is a finding, not an omission:
+            // the whole libnetb_ex block sits at the same addresses in both builds (eight of the ten
+            // byte for byte). They are named here so that "equal" has to be the proven kind -- any
+            // OTHER field turning up equal means somebody copied a column instead of establishing it.
             const std::vector<uint32_t> a = fieldsOf(socom2_addresses::kR0001);
             const std::vector<uint32_t> b = fieldsOf(socom2_addresses::kR0004);
             t.Equals(a.size(), b.size(), "the two columns have the same fields");
+            const std::size_t kNetbFirst = 25, kNetbLast = 35;   // netbExOpen .. netbExDescriptorDma
             for (std::size_t i = 0; i < a.size(); ++i)
-                t.IsTrue(a[i] != b[i], "field " + std::to_string(i) + " differs between the revisions");
+            {
+                if (i >= kNetbFirst && i < kNetbLast)
+                    t.IsTrue(a[i] == b[i], "field " + std::to_string(i) + " is libnetb_ex: unmoved, proven");
+                else
+                    t.IsTrue(a[i] != b[i], "field " + std::to_string(i) + " differs between the revisions");
+            }
+        });
+
+        tc.Run("the libnetb_ex and libdnas2 entry points are columns, not literals", [](TestCase &t)
+        {
+            // Task 10 left these sixteen overlay addresses literal in game_overrides_socom2.cpp because
+            // its Table did not name them. On an r0004 image every one of them was an r0001 address --
+            // the last place this defect's shape survived.
+            const socom2_addresses::Table &a = socom2_addresses::kR0001;
+            const socom2_addresses::Table &b = socom2_addresses::kR0004;
+            t.Equals(a.netbExOpen, 0x002472c8u, "r0001 netbExOpen");
+            t.Equals(a.netbExTcpRecv, 0x002474f8u, "r0001 netbExTcpRecv");
+            t.Equals(a.netbExTcpSend, 0x00247738u, "r0001 netbExTcpSend");
+            t.Equals(a.netbExUdpRecv, 0x00247d30u, "r0001 netbExUdpRecv");
+            t.Equals(a.netbExUdpSend, 0x00247fe8u, "r0001 netbExUdpSend");
+            t.Equals(a.netbExAvailable, 0x002479b8u, "r0001 netbExAvailable");
+            t.Equals(a.netbExConnected, 0x00247bd8u, "r0001 netbExConnected");
+            t.Equals(a.netbExStartAsync, 0x00248350u, "r0001 netbExStartAsync");
+            t.Equals(a.netbExStartAsync2, 0x002483f8u, "r0001 netbExStartAsync2");
+            t.Equals(a.netbExDescriptorDma, 0x00247c98u, "r0001 netbExDescriptorDma");
+            t.Equals(a.dnasRsaBlock, 0x0062b948u, "r0001 dnasRsaBlock");
+            t.Equals(a.dnasSha1Hash, 0x0062eec0u, "r0001 dnasSha1Hash");
+            t.Equals(a.dnasRc4SetKeyHash, 0x0062a638u, "r0001 dnasRc4SetKeyHash");
+            t.Equals(a.dnasRc4SetKey, 0x0062a5a8u, "r0001 dnasRc4SetKey");
+            t.Equals(a.dnasRc4Encrypt, 0x0062a720u, "r0001 dnasRc4Encrypt");
+            t.Equals(a.dnasRc4Decrypt, 0x0062a7c8u, "r0001 dnasRc4Decrypt");
+
+            // libnetb_ex did not move at all: same addresses, and eight of the ten byte for byte.
+            t.Equals(b.netbExOpen, 0x002472c8u, "r0004 netbExOpen: unmoved");
+            t.Equals(b.netbExTcpRecv, 0x002474f8u, "r0004 netbExTcpRecv: unmoved");
+            t.Equals(b.netbExTcpSend, 0x00247738u, "r0004 netbExTcpSend: unmoved");
+            t.Equals(b.netbExUdpRecv, 0x00247d30u, "r0004 netbExUdpRecv: unmoved");
+            t.Equals(b.netbExUdpSend, 0x00247fe8u, "r0004 netbExUdpSend: unmoved");
+            t.Equals(b.netbExAvailable, 0x002479b8u, "r0004 netbExAvailable: unmoved");
+            t.Equals(b.netbExConnected, 0x00247bd8u, "r0004 netbExConnected: unmoved");
+            t.Equals(b.netbExStartAsync, 0x00248350u, "r0004 netbExStartAsync: unmoved");
+            t.Equals(b.netbExStartAsync2, 0x002483f8u, "r0004 netbExStartAsync2: unmoved");
+            t.Equals(b.netbExDescriptorDma, 0x00247c98u, "r0004 netbExDescriptorDma: unmoved");
+            // libdnas2 moved wholesale, every entry point by the same +0x7ac0.
+            t.Equals(b.dnasRsaBlock, 0x00633408u, "r0004 dnasRsaBlock");
+            t.Equals(b.dnasSha1Hash, 0x00636980u, "r0004 dnasSha1Hash");
+            t.Equals(b.dnasRc4SetKeyHash, 0x006320f8u, "r0004 dnasRc4SetKeyHash");
+            t.Equals(b.dnasRc4SetKey, 0x00632068u, "r0004 dnasRc4SetKey");
+            t.Equals(b.dnasRc4Encrypt, 0x006321e0u, "r0004 dnasRc4Encrypt");
+            t.Equals(b.dnasRc4Decrypt, 0x00632288u, "r0004 dnasRc4Decrypt");
+            const uint32_t kDnasDelta = 0x7ac0u;
+            t.Equals(b.dnasRsaBlock - a.dnasRsaBlock, kDnasDelta, "libdnas2 moved as one block");
+            t.Equals(b.dnasSha1Hash - a.dnasSha1Hash, kDnasDelta, "... every entry point by the same delta");
+            t.Equals(b.dnasRc4SetKeyHash - a.dnasRc4SetKeyHash, kDnasDelta, "...");
+            t.Equals(b.dnasRc4SetKey - a.dnasRc4SetKey, kDnasDelta, "...");
+            t.Equals(b.dnasRc4Encrypt - a.dnasRc4Encrypt, kDnasDelta, "...");
+            t.Equals(b.dnasRc4Decrypt - a.dnasRc4Decrypt, kDnasDelta, "...");
         });
 
         tc.Run("both shipped columns are complete -- no field left unestablished", [](TestCase &t)
@@ -308,8 +375,9 @@ void register_socom2_addresses_tests()
             FakeImage r0004Image;
             r0004Image.put(socom2_addresses::kR0001.versionString, "\xe0\xff\xbd\x27");   // r0004: code lives there
             r0004Image.put(socom2_addresses::kR0004.versionString, kR0004Version);
-            capture([&r0004Image] { socom2_addresses::selectFromImage(readFake, &r0004Image); });
+            const std::string chosen = capture([&r0004Image] { socom2_addresses::selectFromImage(readFake, &r0004Image); });
             t.IsTrue(std::string(socom2_addresses::current().revision) == "r0004", "the r0004 image picks r0004");
+            t.IsTrue(contains(chosen, "SOCOM 2 r0004"), "the log carries the stamp it read: " + chosen);
 
             FakeImage r0001Image;
             r0001Image.put(socom2_addresses::kR0001.versionString, kR0001Version);
@@ -323,6 +391,47 @@ void register_socom2_addresses_tests()
             const std::string log = capture([&stranger] { socom2_addresses::selectFromImage(readFake, &stranger); });
             t.IsTrue(std::string(socom2_addresses::current().revision) == "r0001", "an unknown image keeps r0001");
             t.IsTrue(contains(log, "names no revision"), "and is never silent about it: " + log);
+        });
+
+        tc.Run("an image holding BOTH stamps is the newest revision that names itself", [](TestCase &t)
+        {
+            // The rows are probed newest first. An image that answers at more than one row's stamp
+            // address -- a second copy of an older banner, a library's own stamp, a stale overlay left
+            // in RAM -- must not be decided by whichever row happens to be checked first, and r0001's
+            // row is exactly the one every unknown image falls back to.
+            SelectionGuard guard;
+            FakeImage both;
+            both.put(socom2_addresses::kR0001.versionString, kR0001Version);
+            both.put(socom2_addresses::kR0004.versionString, kR0004Version);
+            const std::string log = capture([&both] { socom2_addresses::selectFromImage(readFake, &both); });
+            t.IsTrue(std::string(socom2_addresses::current().revision) == "r0004", "the newest row that names itself wins");
+            t.IsTrue(contains(log, "SOCOM 2 r0001") || contains(log, "0x3e17e0"),
+                     "and both stamps read are on the record: " + log);
+
+            // A row only ever claims an image that names THAT row's revision: r0004's banner sitting at
+            // r0001's stamp address decides nothing, because "r0004" is not "r0001".
+            SelectionGuard guard2;
+            FakeImage crossed;
+            crossed.put(socom2_addresses::kR0001.versionString, kR0004Version);
+            const std::string cross = capture([&crossed] { socom2_addresses::selectFromImage(readFake, &crossed); });
+            t.IsTrue(std::string(socom2_addresses::current().revision) == "r0001", "no row claimed it, so r0001");
+            t.IsTrue(contains(cross, "every override address is an r0001 address"),
+                     "and it says what that costs: " + cross);
+            t.IsTrue(contains(cross, "SOCOM 2 r0004"), "naming the text it would not act on: " + cross);
+        });
+
+        tc.Run("kTables is oldest first, so probing it backwards really is newest first", [](TestCase &t)
+        {
+            // selectFromImage walks kTables in reverse to get newest-first. That is only true while the
+            // array is in ascending revision order, and kR0001 must stay the first entry because it is
+            // the fallback. Both are invariants of the array, not of the loop, so they are pinned here.
+            const std::size_t n = sizeof(socom2_addresses::kTables) / sizeof(socom2_addresses::kTables[0]);
+            t.IsTrue(n >= 2, "there is more than one column to order");
+            t.IsTrue(socom2_addresses::kTables[0] == &socom2_addresses::kR0001, "r0001 is first: it is the fallback");
+            for (std::size_t i = 1; i < n; ++i)
+                t.IsTrue(std::strcmp(socom2_addresses::kTables[i - 1]->revision,
+                                     socom2_addresses::kTables[i]->revision) < 0,
+                         std::string("kTables[") + std::to_string(i) + "] is newer than the one before it");
         });
 
         tc.Run("an unknown revision name falls back to r0001", [](TestCase &t)

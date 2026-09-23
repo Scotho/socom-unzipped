@@ -35,7 +35,18 @@ from typing import Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple
 OVERLAY_BASE = 0x001D5600
 
 # What the matcher is allowed to fill a field with, by default.
-ACCEPT = ("identity", "exact", "hash+callees")
+#
+# `relinked-body` (address_matcher.py's fourth pass, e92691a) is in this list because it proves the
+# same thing the others do -- the same instruction stream, with only relocations differing -- and it is
+# what places most of this table: ten of the kR0004 fields established by hand on 2026-09-23 come back
+# from it unchanged. Leaving it out would zero ten addresses that are right, the next time anyone
+# regenerates the column. What it does NOT prove on its own is which of several candidates sharing a
+# masked hash is the one, so the matcher records its tie-breaker ("unique", "callees", "string") and
+# this tool carries that into the column: `relinked-body (unique)` and `relinked-body (string)` are not
+# the same claim, and a reader deciding whether to trust a line needs to see which was made.
+#
+# `seed+delta` is still not here: a delta says where to look, not what was found.
+ACCEPT = ("identity", "exact", "hash+callees", "relinked-body")
 
 
 class Field(NamedTuple):
@@ -74,6 +85,22 @@ FIELDS: Tuple[Field, ...] = (
     Field("ctorTableFtsEnd", 0x00404F04, True, "DATA"),
     Field("ctorTableZsealBegin", 0x006690E0, True, "DATA: ZSealEtc's static constructor table"),
     Field("ctorTableZsealEnd", 0x00669120, True, "DATA"),
+    Field("netbExOpen", 0x002472C8, False, "libnetb_ex: open"),
+    Field("netbExTcpRecv", 0x002474F8, False, "libnetb_ex: TCP receive"),
+    Field("netbExTcpSend", 0x00247738, False, "libnetb_ex: TCP send"),
+    Field("netbExUdpRecv", 0x00247D30, False, "libnetb_ex: UDP receive"),
+    Field("netbExUdpSend", 0x00247FE8, False, "libnetb_ex: UDP send"),
+    Field("netbExAvailable", 0x002479B8, False, "libnetb_ex: bytes available"),
+    Field("netbExConnected", 0x00247BD8, False, "libnetb_ex: connected"),
+    Field("netbExStartAsync", 0x00248350, False, "libnetb_ex: start async"),
+    Field("netbExStartAsync2", 0x002483F8, False, "libnetb_ex: start async, second entry point"),
+    Field("netbExDescriptorDma", 0x00247C98, False, "libnetb_ex: descriptor DMA helper"),
+    Field("dnasRsaBlock", 0x0062B948, False, "libdnas2: RSA block transform"),
+    Field("dnasSha1Hash", 0x0062EEC0, False, "libdnas2: SHA-1"),
+    Field("dnasRc4SetKeyHash", 0x0062A638, False, "libdnas2: RC4 set key from hash"),
+    Field("dnasRc4SetKey", 0x0062A5A8, False, "libdnas2: RC4 set key"),
+    Field("dnasRc4Encrypt", 0x0062A720, False, "libdnas2: RC4 encrypt"),
+    Field("dnasRc4Decrypt", 0x0062A7C8, False, "libdnas2: RC4 decrypt"),
 )
 
 
@@ -133,12 +160,16 @@ def column(matches: Dict[str, dict],
             out.append(Row(f.name, f.a, None, how, f.note))
             continue
         b_addr = int(b, 16)
-        if b_addr == f.a and how in ("exact", "hash+callees", "seed+delta"):
+        if b_addr == f.a and how in ("exact", "hash+callees", "relinked-body", "seed+delta"):
             how = "identity"
         if how not in accept:
             out.append(Row(f.name, f.a, None, "rejected:%s" % how, f.note))
             continue
-        out.append(Row(f.name, f.a, b_addr, how, f.note))
+        # The tie-breaker is part of the claim, not decoration: it says what separated this candidate
+        # from the others that shared its masked hash.
+        tie = entry.get("tie")
+        method = "%s (%s)" % (how, tie) if tie else how
+        out.append(Row(f.name, f.a, b_addr, method, f.note))
     return out
 
 
