@@ -43,7 +43,7 @@ Probes, traces, dumps and A/B switches. **Ignored unless the process is in devel
 
 | Name | Kind | Default | Meaning |
 |---|---|---|---|
-| `PS2X_AUDIO_CB_TRACE` | Path | unset | Write every host audio callback's wall-clock entry/exit and frame clock to this CSV (a late one is a hole). |
+| `PS2X_AUDIO_CB_TRACE` | Path | unset | Every host audio callback's wall clock to this CSV; the live counts in [audio-trace] need PS2X_AUDIO_TRACE. |
 | `PS2X_AUDIO_DUMP` | Path | unset | Write the mixed host audio (48 kHz stereo s16) to this file. |
 | `PS2X_AUDIO_INSTRUMENT` | Presence | unset | Stamp every 989snd command that can change a route level with the output-frame clock (research/36). |
 | `PS2X_AUDIO_PCM_DUMP` | Path | unset | Write what the EE DMAs into the 989snd PCM ring to this file (first 16 MiB). |

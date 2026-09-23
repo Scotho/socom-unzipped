@@ -9,6 +9,7 @@ a substring names another; the capture's rate is the endpoint's own (a 44.1 kHz 
 Anything else the machine plays during the capture lands in the file too -- run it on a quiet machine.
 Needs pyaudiowpatch (pip; WASAPI loopback is not in stock PyAudio). Windows only.
 """
+import os
 import struct
 import sys
 import time
@@ -50,6 +51,9 @@ def main(argv):
         # first packet's stamp is the file's first frame, give or take one 1024-frame read.
         start = time.time()
         print(f"start_epoch={start:.3f}", flush=True)
+        # The session monitor (app_volume monitor) sees this process too: its loopback capture stream is a session
+        # on the render endpoint whose meter reads the endpoint's mix. The pid lets the verdict leave it out.
+        print(f"pid={os.getpid()}", flush=True)
         deadline = start + seconds
         first = True
         try:

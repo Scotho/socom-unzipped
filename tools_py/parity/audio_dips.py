@@ -344,12 +344,17 @@ def _command(ev: Events, f0: int, f1: int, slack: int, live_handles: List[str]) 
 
 
 def classify(endpoint_dips: List[Dip], dump_dips: Optional[List[Dip]], offset_s: float, ev: Events,
-             window_s: float = DEFAULT_WINDOW_S, match_s: float = 0.25, offsets: Optional[List[float]] = None) -> List[Row]:
+             window_s: float = DEFAULT_WINDOW_S, match_s: float = 0.25, offsets: Optional[List[float]] = None,
+             dump_end_s: Optional[float] = None) -> List[Row]:
     """One row per dip. An endpoint dip is matched to the dump dip it OVERLAPS most in aligned time (`match_s` of
     slack either side); one with no overlapping dump dip is DEVICE. A matched or dump-side dip is STARVATION,
     COMMAND or UNEXPLAINED by the log within `window_s` of the dump dip's interval. One dump dip may explain
     several endpoint dips; dump dips no endpoint dip touched are listed too (label suffixed "(dump only)").
-    `offsets`, one per endpoint dip (local_offsets), replaces the single `offset_s` for that dip's mapping."""
+    `offsets`, one per endpoint dip (local_offsets), replaces the single `offset_s` for that dip's mapping.
+    `dump_end_s` (the dump's length): an endpoint dip whose aligned time is before the dump's start or past its
+    end is NODUMP, never DEVICE -- the dump is capped at ten minutes (ps2_audio.cpp kDumpMaxFrames) and the game
+    may die before the recorder stops, and "in the endpoint, not in the dump" means nothing where there is no
+    dump (2026-09-23 audio-out: 410 of 562 "DEVICE" rows sat past the dump's end)."""
     slack = int(window_s * MIXER_RATE)
     rows: List[Row] = []
     used = set()
@@ -380,6 +385,11 @@ def classify(endpoint_dips: List[Dip], dump_dips: Optional[List[Dip]], offset_s:
     for d, off in zip(endpoint_dips, per_dip):
         t_dump = d.start_s - off
         t_end = t_dump + d.dur_s
+        if dump_end_s is not None and (t_dump < 0.0 or t_dump >= dump_end_s):
+            where = "before the dump's start" if t_dump < 0.0 else "past the dump's end (%.0f s)" % dump_end_s
+            rows.append(Row(d.start_s, d.dur_s, d.depth_db, "none", "NODUMP",
+                            "in the endpoint at dump time %.2f s, %s: no dump to compare (offset %.2f s)" % (t_dump, where, off)))
+            continue
         match, best = None, 0.0
         for k, dd in enumerate(dump_dips):
             overlap = min(t_end, dd.end_s) - max(t_dump, dd.start_s) + match_s   # a gap up to match_s still touches
@@ -470,7 +480,8 @@ def main(argv=None) -> int:
     seg = ep[int(e0 * ep_rate): int(e1 * ep_rate)]
     ep_dips = find_dips(seg, ep_rate, hop_s=args.hop, drop_db=args.drop_db, t0_s=e0)
     offsets = local_offsets(ep, ep_rate, dump, dump_rate, ep_dips, offset) if args.dump else None
-    rows = classify(ep_dips, dump_dips, offset, ev, offsets=offsets)
+    rows = classify(ep_dips, dump_dips, offset, ev, offsets=offsets,
+                    dump_end_s=(len(dump) / dump_rate) if args.dump else None)
     print(report(rows, offset if args.dump else None, corr, total_s=e1 - e0))
     return 0
 
