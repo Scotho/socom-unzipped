@@ -4,6 +4,12 @@ Things only the owner can do: hands-on checks on the real machine with real ears
 adds items here when it reaches a step it cannot verify itself, and moves on. Report back in one line each; the
 loop picks the answer up from the next session's prompt or from a note in `docs/STATUS.md`.
 
+> **2026-09-22 evening — parked by the owner's instruction** (*"save the human tasks for later"*). Nothing below is
+> waited on tonight; the loop is closing Sprint 10 and opening Sprint 11 under the owner's authority
+> (`docs/superpowers/plans/2026-09-22-sprint-10-close.md`). The endpoint A/B, the W10 proof and the W7/W6 captures
+> listed under "Start here (midday)" are **machine runs** and ran overnight; their results are in the sprint record.
+> A fresh "Start here" block for the morning is written at the close.
+
 ## Start here (2026-09-22 midday: three runs are built and waiting for a window)
 
 You were at the machine all morning (Teams, Jira, Sublime), so nothing lock-bound ran -- the host-load rule. Everything

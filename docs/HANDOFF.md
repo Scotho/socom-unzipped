@@ -41,7 +41,7 @@ supplies their own disc. The owner is Craig (GitHub `Scotho`); the repository is
   this line deliberately does not repeat them (they were `686/686` and `1457` here until 2026-09-22, four sprints after
   they stopped being true). `PS2X_TEST_REPEAT=3 ./build.sh test` exit 0. Last gates 3/3: `s9_q0_children_gate`,
   `s9_q0_prefill_gate`, `s9_q0_device_gate`, `s9_q0_trace_gate`, `s9_p7_playtest_gate`.
-- **Next free ruling number: R241.** (It read **R179** from 2026-09-20 to 2026-09-22 while R240 was in use -- and a
+- **Next free ruling number: R243.** (It read **R179** from 2026-09-20 to 2026-09-22 while R240 was in use -- and a
   collision had already happened once, an agent numbering from R200 into taken ground. `tools_py/tests/test_doc_maintenance.py`
   now fails when this line is not `max(R<n>) + 1`, so take your number from here and update this line in the same commit.)
 - **Where the loop is now (2026-09-21 evening, LATEST) -- Sprint 10's autonomous stack is DONE and on `main` in four
