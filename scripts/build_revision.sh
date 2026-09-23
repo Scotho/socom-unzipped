@@ -122,7 +122,17 @@ if [ "$TAIL" = 0 ]; then
     say "decrypt: ftscore.bin and zsealetc.bin are already in $(rel "$OVERLAYS") -- skipped (--force redoes it)"
   else
     [ -n "$LOADER" ] || die2 "no loader ELF (SCUS_*, SCES_*, SLUS_*, SLES_*) in $GAME -- pass --loader, or --game with the extracted disc tree"
-    [ -f "$GAME/OVERLAY/REL/DNAS.dec.bin" ] || die2 "$GAME/OVERLAY/REL/DNAS.dec.bin is missing: the decryption needs the decrypted DNAS overlay (scripts/disc_to_elf.sh --stages dnas makes it)"
+    if [ ! -f "$GAME/OVERLAY/REL/DNAS.dec.bin" ]; then
+      # The decryption loads the decrypted DNAS overlay first; a tree made before disc_to_elf's dnas stage existed
+      # (or one whose derived files were cleaned) lacks it. It is two seconds under Unicorn, verified against
+      # tools_py/disc_to_elf_expected.json, so make it here rather than send the reader to another command.
+      [ -f "$GAME/OVERLAY/REL/DNAS.BIN" ] || die2 "$GAME/OVERLAY/REL/DNAS.BIN is missing: $GAME is not an extracted disc tree (scripts/disc_to_elf.sh makes one)"
+      say "dnas: $(rel "$GAME")/OVERLAY/REL/DNAS.dec.bin is missing -- decrypting the DNAS overlay first (tools_py.disc_to_elf.stage_dnas, a few seconds)"
+      if ! (cd "$ROOT" && "$py" -c 'import json, sys; from tools_py import disc_to_elf as d; e = json.load(open(d.EXPECTED_PATH, encoding="utf-8")); d.stage_dnas(sys.argv[1], sys.argv[2], e)' "$GAME" "$OVERLAYS") > "$OVERLAYS/build_revision-dnas.log" 2>&1; then
+        tail -20 "$OVERLAYS/build_revision-dnas.log" >&2
+        echo "build_revision: the DNAS stage failed (the log above); for a disc other than r0001 run scripts/disc_to_elf.sh on its ISO first" >&2; exit 1
+      fi
+    fi
     [ "$ZDB" = "$GAME/RUN/RAW/APACHE00.ZDB" ] || die2 "the package must be the tree's own RUN/RAW/APACHE00.ZDB ($GAME/RUN/RAW/APACHE00.ZDB): the decryption runs the tree's loader on it"
     say "decrypt: running the loader's decryption under Unicorn (about eight minutes; the progress lines go to $(rel "$OVERLAYS")/build_revision-decrypt.log)"
     if ! (cd "$ROOT" && "$py" -c 'import sys; from tools_py import decrypt_apache; decrypt_apache.main(sys.argv[1], sys.argv[2])' "$GAME" "$OVERLAYS") > "$OVERLAYS/build_revision-decrypt.log" 2>&1; then
