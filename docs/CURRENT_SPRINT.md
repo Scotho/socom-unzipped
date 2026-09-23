@@ -74,13 +74,13 @@ owner's) and **Step 1 measured** (the VM ring: runtime from wiped build trees 12
 scripts, the leak gate's product-word exception, a sync that prunes, two tests that skip or isolate, both suites
 run). Rulings R246 (the chat bound's install is the Milestone S proof) and R247 (the vendored baggage goes).
 
-**Cut off by the session limit at ~13:55Z, unfinished, each in its agent worktree — do not delete them:**
+**The state of each task at the cut (13:55Z) and after the owner's two-hour window (17:00Z) — the unfinished ones sit in their agent worktrees, do not delete them:**
 | Task | Worktree / branch | State at the cut |
 |---|---|---|
-| 11 launcher revision plumbing | `wt-launcher` / `agent/launcher` | `098ef08` review-approved after fix round 1 (790/0); the Custom-preset ruling (its revision is unknown, no warning) is edited but uncommitted and never built; scoped re-review then merge |
-| 2b record readers bounded | `wt-chatrec` / `agent/chatrec` | `6aed718` reviewed: 1 Critical (the cap fails open past 256 holders; the game requests 999), 3 Important; fix round 1 mid-edit, uncommitted |
-| 8a three recompiler fixes | `wt-recompfix` / `agent/recompfix` | `7a4605b` reviewed: fixes correct; fix round 1 (own FTOI fixture, four link forms) not started. After the merge: `./build.sh recomp` + runtime + gate `s11_u_translators_gate` are the controller's |
-| 8c save-state container | `wt-savestate` / `agent/savestate` | `dca1eb4` committed, never built or reviewed |
+| 11 launcher revision plumbing | merged 2026-09-23 16:55Z | **complete** — 098ef08 + 50831a0 (the Custom preset's revision is unknown), re-review clean, two nits on `sprint-11`; proven by chain 11 (suite 805/805, gate 3/3) |
+| 2b record readers bounded | merged 2026-09-23 16:55Z | **complete** — 6aed718 + two fix rounds (7bf0d72 fbc59ab: caps clamp not skip, shared log type, per-call budget 8192, saturating counters), re-review clean; proven by chain 11 |
+| 8a three recompiler fixes | merged 2026-09-23 16:55Z | **complete** — 5e3bf6b f9f83d4 7a4605b + e0190ea (own FTOI fixture, the four link forms); the re-recompilation, runtime, suite and gate `s11_u_translators_gate` all green (chain 11, exe dc7dc98c…) |
+| 8c save-state container | merged 2026-09-23 16:55Z, **unbuilt on the merged branch** | **complete pending chain 12** — dca1eb4 + 1a364a2 (rewritten in our idiom, fsync seam, refusals tested, clearing behind usableCardRoot), re-review clean; chain 12 (runtime, suite, gate) runs in the owner's window, then the push |
 | 6 upstream cherry-picks | `wt-cherry` + `agent/pr<N>` | picks on pr227 229 230 231 232 237(+3) 240 241 243 246; research/42 (the per-PR table, on `agent/cherry` `ae6f849` only) <!-- docmaint: future -->; nothing built; Step 3's gates are the controller's |
 | 13 bug pipeline GitHub half | `wt-bugpipe` / `agent/bugpipe` | `6a7d5b4` (labels script + test) `864a427` (triage routine) committed; 4 launcher files dirty (the post-SEND sentence), never built; run `scripts/github_labels.sh` once after the merge |
 | 17 vendored baggage | `wt-baggage` / `agent/baggage` | 34 files staged/dirty (the deletions, CMake, NOTICES, embed_font.py), nothing committed, never built |
