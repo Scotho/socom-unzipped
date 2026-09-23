@@ -12,6 +12,8 @@ paths = [
   # the leak check's planted controls: every secret shape, invented, so the scanner proves it still catches each
   '''tools_py/release/leakcheck\.py''',
   '''tools_py/tests/test_leakcheck\.py''',
+  # the same, for the sixth leg: the fake siblings print an invented token so this end proves it masks it
+  '''tools_py/tests/test_leakcheck_external\.py''',
   '''tools_py/release/leakrules\.py''',
 ]
 regexTarget = "line"

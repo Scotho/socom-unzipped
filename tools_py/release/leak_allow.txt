@@ -59,6 +59,7 @@ commit-author    "<git metadata>"  "dependabot[bot] <49699333+dependabot[bot]@us
 #    still catches each one. Reviewed code; nothing real may be pasted here either.
 *  tools_py/release/leakcheck.py         # the planted controls (PLANTED, PLANTED_NAMES)
 *  tools_py/tests/test_leakcheck.py      # the same controls, as tests
+*  tools_py/tests/test_leakcheck_external.py   # the sixth leg's controls: an invented token the fake siblings print
 *  tools_py/release/leakrules.py         # the rules spell out the shapes they recognise, in comments and names
 *  tools_py/release/leak_allow.txt       # this file names what it allows (a literal here is never a real secret)
 key-file-name  .gitignore                # the patterns that refuse key files are spelled like key files

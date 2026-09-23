@@ -25,7 +25,12 @@ Not sure your disc is r0001? The launcher checks it and says so (exit code 67 is
 0. **Install the hooks, once per clone:** `bash scripts/install_hooks.sh`. It points git at `scripts/hooks/`, where a
    leak check (`python -m tools_py.release.leakcheck`) runs over what you are about to commit and, again, over every
    commit you are about to push: key material, tokens, a home directory with your user name in it, an address, a
-   file the `.gitignore` refuses. CI runs the same check plus gitleaks on every push. If it stops you, fix the hit;
+   file the `.gitignore` refuses. One command covers all of it: `python -m tools_py.release.leakcheck all` --
+   the tree, the ignored paths, the commit identities, the full history, and `external`, which calls the site's
+   and the monitor's own scanners when those repositories sit beside this one. You almost certainly do not have
+   them, so `external` prints SKIPPED and changes nothing: **SKIPPED is not clean**, it is the gate saying it did
+   not look, and a maintainer who does have them runs `leakcheck external --require`, where a missing one is
+   exit 2. CI runs the same check plus gitleaks on every push. If it stops you, fix the hit;
    if the hit is a reviewed non-secret (a test fixture, a version string it misread), add one line with its reason
    to `tools_py/release/leak_allow.txt` in the same PR. Do not bypass it with `--no-verify` -- the push hook and CI
    will refuse the same thing, and a secret in a pushed commit means rewriting history.
