@@ -28,7 +28,7 @@ sprint 10:    OPENED 2026-09-20 on the owner's instruction ("proceed on with the
               develop deleted, this branch opened. Q0b, Q1b-Q7 carry into Sprint 10 as filler unless the owner reorders;
               no GitHub release (Sprint 11 / D2, owner-only).
 git strategy: docs/GIT_STRATEGY.md     contributing: CONTRIBUTING.md
-next ruling:  R248 (R245-R247, 2026-09-23: option B not scheduled; the chat bound's install is the Milestone S proof, the traversal a filler row; the vendored baggage deleted -- the Sprint 11 plan's rulings section) -- nothing is renumbered. The sprint's sixty-four numbers R181-R244 are
+next ruling:  R249 (R245-R248, 2026-09-23: the r0004 patch is PSRewired's resident capsule (R248); option B not scheduled; the chat bound's install is the Milestone S proof, the traversal a filler row; the vendored baggage deleted -- the Sprint 11 plan's rulings section) -- nothing is renumbered. The sprint's sixty-four numbers R181-R244 are
               reconciled row by row in ONE table below ("Sprint 10's rulings ledger, R181-R244"): the decision
               in its own words, where it is written, and its status. R229 is deliberately vacant. This line used
               to carry that index as a single 2,700-character paragraph, which no reader could use; the table is
@@ -89,6 +89,8 @@ run). Rulings R246 (the chat bound's install is the Milestone S proof) and R247 
 
 Resume each from its ledger line in `.superpowers/sdd/2026-09-23-sprint-11/progress.md` (on disk, git-ignored)
 and its report/review under the same directory; every review names its findings with file:line.
+
+**14:30Z — the r0004 patch arrived (owner: "patch is here").** The patch in hand is **PSRewired's capsule** `r0004v002.elf` (https://psrewired.com/downloads/r0004v002.elf, 67,267 bytes, sha256 `ad0ed7511b2c2d54…`; a git-ignored copy at `game/r0004/`). It is not the memory-card package: a MIPS ELF packed with ps2-packer (one LOAD at `0x01cf3400`, zlib payload at +0x18 → 125,838 bytes that load at `0x00100000`, entry `0x001000e0`), the Based_Skid/Harry62 tooling whose r0005 source is in `research/r0005-patch/` — the same `PasteASM`/`systemHook` shape. Its strings say what it does: loads SIO2MAN/CDVDMAN/PADMAN/MCMAN/MCSERV, hooks a kernel syscall through the vector table, looks for `mc0:UPDATE.DAT` ("Checking mc0 for patch… no update found"), shows "SOCOM II: Server — Patch: r0004", then `LoadExecPS2("cdrom0:\\SCUS_972.75;1")` — it boots the r0001 disc and patches it in memory. The patch body is an encrypted code stack (the high-entropy block at `0x0011c800`; r0005's `update.dat` has the same shape: a version string, then XOR-keyed address/value pairs) applied by the hook once the game is loaded; only 77 constant stores are in the ELF's own code, all its own globals and the GIF/DMAC registers of its splash screen. R248 and the plan's new **Task 19** (decode the stack, classify the writes, apply them to the r0001 image through `build_revision.sh`, the anti-cheat scanners disabled by ruling) and **Task 11b** (the launcher downloads it per user on a click, with a file picker as the fallback, against a pinned sha256) are the r0004 work that remains; Goal F stays owner-gated.
 
 **Filler added at the open** (carried from Sprint 10's close and the night's findings): Goal 3's tasks 5 and 7 (two
 mixed-match runs); the speed-freeze re-measure from the ladder logs (R242); **the mission-music dropouts, now known

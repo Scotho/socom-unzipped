@@ -33,7 +33,7 @@ reworked, nothing is lost.** None of these is waited on.
 | D5 | Signing | unsigned; the FAQ says what SmartScreen will show |
 | D6 | The landing page's deploy; wording about the community server | deploy owner-only; wording drafted here, in `docs/INSTALL.md` |
 | H7-A / H7-C | Disc-derived bytes: the audio/VU1 fixtures; the ~240 pictures | nothing moves |
-| r0004 D1-D4 | distribution of r0004; ordering; disclosure wording; HDD maps in scope? | D2 ordering as recommended; D4 = HDD maps **out** of scope for v1 (Goal G not scheduled) |
+| r0004 D1-D4 | distribution of r0004; ordering; disclosure wording; HDD maps in scope? | **D1 answered by you 2026-09-23:** a git-ignored copy in the tree, the launcher downloads PSRewired's capsule per user, upload as the fallback (Task 11b); D2 ordering as recommended; D4 = HDD maps **out** of scope for v1 (Goal G not scheduled) |
 | G7 reply policy | do fixed reports get an answer to the contact left? | no |
 
 ### Send this to the PSRewired moderator
@@ -83,6 +83,10 @@ Rulings (numbered ones are in the plan's rulings section; all reversible):
 What only you can do is unchanged and listed below; one addition from the audio work: **a quiet-endpoint capture**
 (close the music tab and Discord, then `C:\projects\wt-audio-out\logs\capture_audio_out.sh`, ten minutes) —
 the exact step is written on `agent/audio-out` (`05de0e7`) and arrives here with that branch's merge.
+
+### The r0004 patch, received 2026-09-23
+
+Downloaded from https://psrewired.com/downloads/r0004v002.elf to `game/r0004/r0004v002.elf` (git-ignored; sha256 `ad0ed7511b2c2d540c7918a5e00906e6b292e6cf365d55eaad6e71b30412049e`). It is PSRewired's **resident patch capsule** for the r0001 disc, not the console's memory-card package — the finding and what it changes are R248 in the plan and the corrected §1.1 of the r0004 spec. Two things to know: the capsule carries **anti-cheat scanners that freeze the game on a code checksum mismatch** (the r0005 README describes them; ours will disable them by ruling, since our code is native and the README will say so), and its patch body is an **encrypted code stack** — decoding it is Task 19's first step. Nothing connects to PSRewired's server; that is still Goal F and yours.
 
 ### The v0.10.0 draft is waiting for its archives
 
