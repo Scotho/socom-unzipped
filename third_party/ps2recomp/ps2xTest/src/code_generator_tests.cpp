@@ -1097,6 +1097,12 @@ void register_code_generator_tests()
                 {"BGEZ", OPCODE_REGIMM, REGIMM_BGEZ, "GPR_S64(ctx, 9) >= 0"},
                 {"BLTZL", OPCODE_REGIMM, REGIMM_BLTZL, "GPR_S64(ctx, 9) < 0"},
                 {"BGEZL", OPCODE_REGIMM, REGIMM_BGEZL, "GPR_S64(ctx, 9) >= 0"},
+                // The link forms share the REGIMM returns today; drive them anyway so a future
+                // split of that switch cannot leave them behind on the 32-bit compare.
+                {"BLTZAL", OPCODE_REGIMM, REGIMM_BLTZAL, "GPR_S64(ctx, 9) < 0"},
+                {"BGEZAL", OPCODE_REGIMM, REGIMM_BGEZAL, "GPR_S64(ctx, 9) >= 0"},
+                {"BLTZALL", OPCODE_REGIMM, REGIMM_BLTZALL, "GPR_S64(ctx, 9) < 0"},
+                {"BGEZALL", OPCODE_REGIMM, REGIMM_BGEZALL, "GPR_S64(ctx, 9) >= 0"},
             };
 
             for (const ZeroCompareCase &branchCase : cases)
@@ -1115,6 +1121,11 @@ void register_code_generator_tests()
                 branch.rt = branchCase.regimmField;
                 branch.simmediate = 1; // target 0x4008
                 branch.isBranch = true;
+                branch.isCall = branchCase.opcode == OPCODE_REGIMM &&
+                                (branchCase.regimmField == REGIMM_BLTZAL ||
+                                 branchCase.regimmField == REGIMM_BGEZAL ||
+                                 branchCase.regimmField == REGIMM_BLTZALL ||
+                                 branchCase.regimmField == REGIMM_BGEZALL);
                 branch.hasDelaySlot = true;
 
                 CodeGenerator gen({}, {});

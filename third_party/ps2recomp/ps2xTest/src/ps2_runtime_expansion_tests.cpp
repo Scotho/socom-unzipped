@@ -1803,26 +1803,60 @@ void register_ps2_runtime_expansion_tests()
         {
             uint32_t lanes[4]{};
 
-            // _mm_set_ps takes w,z,y,x, so lanes[0] is the last argument.
-            __m128i converted = Ps2VuFtoi(_mm_set_ps(-2147483904.0f, 2147483648.0f, -123.75f, 123.75f), 1.0f);
-            std::memcpy(lanes, &converted, sizeof(lanes));
-            t.Equals(lanes[0], 123u, "a positive value in range truncates toward zero");
-            t.Equals(lanes[1], 0xFFFFFF85u, "a negative value in range truncates toward zero");
-            t.Equals(lanes[2], 0x7FFFFFFFu, "a positive value too large for int32 clamps to INT_MAX");
-            t.Equals(lanes[3], 0x80000000u, "a negative value too large for int32 clamps to INT_MIN");
+            // _mm_setr_ps takes the lanes in memory order, so lanes[n] is the n-th argument.
+            auto convert = [&lanes](__m128 value, float scale)
+            {
+                const __m128i converted = Ps2VuFtoi(value, scale);
+                std::memcpy(lanes, &converted, sizeof(lanes));
+            };
 
-            converted = Ps2VuFtoi(_mm_set_ps(NAN, -INFINITY, INFINITY, 2147483520.0f), 1.0f);
-            std::memcpy(lanes, &converted, sizeof(lanes));
-            t.Equals(lanes[0], 0x7FFFFF80u, "the largest float below 2^31 is not treated as an overflow");
-            t.Equals(lanes[1], 0x7FFFFFFFu, "+inf clamps to INT_MAX");
-            t.Equals(lanes[2], 0x80000000u, "-inf clamps to INT_MIN");
-            t.Equals(lanes[3], 0x80000000u, "a NaN keeps the indefinite value");
+            // Rounding: the VU truncates toward zero, in both signs, and a signed zero stays zero.
+            convert(_mm_setr_ps(4096.9375f, -1234.5625f, -0.0f, 0.5f), 1.0f);
+            t.Equals(lanes[0], 4096u, "a positive fraction truncates toward zero rather than to nearest");
+            t.Equals(lanes[1], 0xFFFFFB2Eu, "a negative fraction truncates toward zero rather than down");
+            t.Equals(lanes[2], 0u, "a negative zero converts to zero and is not read as an overflow");
+            t.Equals(lanes[3], 0u, "a magnitude below one truncates away entirely");
 
-            // The FTOI4/12/15 scale is applied before the clamp, so it can push a small value out of range.
-            converted = Ps2VuFtoi(_mm_set_ps(0.0f, 0.0f, -134217728.0f, 134217728.0f), 16.0f);
-            std::memcpy(lanes, &converted, sizeof(lanes));
-            t.Equals(lanes[0], 0x7FFFFFFFu, "scaling up past INT_MAX clamps rather than wrapping");
-            t.Equals(lanes[1], 0x80000000u, "scaling down past INT_MIN clamps rather than wrapping");
+            // The int32 boundaries and the first float past each of them. INT32_MAX itself is not
+            // representable as a float: the nearest below it is 2147483520, and the first value
+            // past it is 2^31, so INT_MAX only ever appears here as an output of the clamp.
+            convert(_mm_setr_ps(-2147483648.0f, 2147483520.0f, -2147483904.0f, 2147483648.0f), 1.0f);
+            t.Equals(lanes[0], 0x80000000u, "INT32_MIN is exactly representable and converts without clamping");
+            t.Equals(lanes[1], 0x7FFFFF80u, "the largest float below 2^31 converts exactly, it is not an overflow");
+            t.Equals(lanes[2], 0x80000000u, "the first float below INT32_MIN clamps to INT_MIN");
+            t.Equals(lanes[3], 0x7FFFFFFFu, "2^31 exactly is the first value past INT32_MAX and clamps to INT_MAX");
+
+            // Non-finite lanes and magnitudes far outside the range.
+            convert(_mm_setr_ps(INFINITY, -INFINITY, NAN, -NAN), 1.0f);
+            t.Equals(lanes[0], 0x7FFFFFFFu, "+inf clamps to INT_MAX");
+            t.Equals(lanes[1], 0x80000000u, "-inf clamps to INT_MIN");
+            t.Equals(lanes[2], 0x80000000u, "a NaN keeps the indefinite value");
+            t.Equals(lanes[3], 0x80000000u, "a NaN keeps the indefinite value whatever its sign bit");
+
+            convert(_mm_setr_ps(1.0e10f, -1.0e10f, 0.0f, 0.0f), 1.0f);
+            t.Equals(lanes[0], 0x7FFFFFFFu, "a magnitude far past INT32_MAX clamps to INT_MAX");
+            t.Equals(lanes[1], 0x80000000u, "a magnitude far past INT32_MIN clamps to INT_MIN");
+
+            // FTOI4: the scale multiplies before the truncation, so it can carry an in-range input
+            // out of range -- and can also land exactly on INT32_MIN, which is not a clamp.
+            convert(_mm_setr_ps(-134217728.0f, 0.5f, 200000000.0f, -200000000.0f), 16.0f);
+            t.Equals(lanes[0], 0x80000000u, "x16 landing exactly on INT32_MIN converts exactly");
+            t.Equals(lanes[1], 8u, "the x16 scale is applied before the truncation");
+            t.Equals(lanes[2], 0x7FFFFFFFu, "a value the x16 scale carries past INT32_MAX clamps to INT_MAX");
+            t.Equals(lanes[3], 0x80000000u, "a value the x16 scale carries past INT32_MIN clamps to INT_MIN");
+
+            // FTOI12 and FTOI15 use the same helper with the other two scales.
+            convert(_mm_setr_ps(0.25f, -0.125f, 1.0e6f, -1.0e6f), 4096.0f);
+            t.Equals(lanes[0], 1024u, "the x4096 scale is applied before the truncation");
+            t.Equals(lanes[1], 0xFFFFFE00u, "the x4096 scale keeps the sign of a negative fraction");
+            t.Equals(lanes[2], 0x7FFFFFFFu, "a value the x4096 scale carries past INT32_MAX clamps to INT_MAX");
+            t.Equals(lanes[3], 0x80000000u, "a value the x4096 scale carries past INT32_MIN clamps to INT_MIN");
+
+            convert(_mm_setr_ps(1.5f, -1.0f, 100000.0f, -100000.0f), 32768.0f);
+            t.Equals(lanes[0], 49152u, "the x32768 scale is applied before the truncation");
+            t.Equals(lanes[1], 0xFFFF8000u, "the x32768 scale keeps the sign of a negative value");
+            t.Equals(lanes[2], 0x7FFFFFFFu, "a value the x32768 scale carries past INT32_MAX clamps to INT_MAX");
+            t.Equals(lanes[3], 0x80000000u, "a value the x32768 scale carries past INT32_MIN clamps to INT_MIN");
         });
 
         tc.Run("GS sprite draw applies XYOFFSET and fully-outside scissor should not render", [](TestCase &t)
