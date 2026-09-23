@@ -24,12 +24,32 @@
 # to source from a script that has already set its own shell options (the `|| true` keeps the command
 # substitution from tripping `set -e` on a machine with no interpreter at all).
 
-PYTHON="${PYTHON:-$(command -v python 2>/dev/null || command -v python3 2>/dev/null || true)}"
+# Each candidate is PROVED to be a Python before it is accepted -- `command -v` only answers "there is a
+# file with that name on the PATH". Windows 11 ships an App Execution Alias at
+# %LOCALAPPDATA%\Microsoft\WindowsApps\python.exe on a machine where Python was never installed: it is
+# found, it prints nothing and it exits 9009. Accepting it would move this very defect from Linux to
+# Windows, in scripts/bootstrap_windows.sh -- the first script a contributor with no Python yet runs.
+if [ -z "${PYTHON:-}" ]; then
+  for _socom_cand in python python3; do
+    _socom_path="$(command -v "$_socom_cand" 2>/dev/null || true)"
+    # the resolved path, not the bare name: three callers prepend to PATH after sourcing this
+    # (scripts/ladder_job.sh puts WindowsApps -- i.e. the stub -- ahead of the real interpreter), and a
+    # name would be re-resolved against that new PATH at every invocation.
+    if [ -n "$_socom_path" ] && "$_socom_path" -c '' >/dev/null 2>&1; then
+      PYTHON="$_socom_path"
+      break
+    fi
+  done
+  unset _socom_cand _socom_path
+fi
+PYTHON="${PYTHON:-}"
 export PYTHON
 
 # socom_require_python [name] -- exit 2 with a sentence when there is no interpreter to run.
+# It re-proves the interpreter rather than asking `command -v` a second time, so an explicit PYTHON that
+# names something unrunnable is refused here too.
 socom_require_python() {
-  if [ -z "${PYTHON:-}" ] || ! command -v "$PYTHON" >/dev/null 2>&1; then
+  if [ -z "${PYTHON:-}" ] || ! "$PYTHON" -c '' >/dev/null 2>&1; then
     echo "${1:-${0##*/}}: no Python on the PATH -- neither \`python\` nor \`python3\`. Python 3 is what does the work here; install it (Debian/Ubuntu: apt install python3) or set PYTHON to the interpreter, and run this again." >&2
     exit 2
   fi

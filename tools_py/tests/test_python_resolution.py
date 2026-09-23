@@ -51,16 +51,27 @@ def strip_comments(text):
 
 
 class PathShim(object):
-    """A PATH holding exactly the interpreters asked for, and never the host's own."""
+    """A PATH holding exactly the interpreters asked for, and never the host's own.
+
+    A name given as `("python", 9009)` is a STUB: a file of that name that is on the PATH and is not a
+    Python. That is what Windows 11 puts at %LOCALAPPDATA%\\Microsoft\\WindowsApps\\python.exe on a
+    machine where Python was never installed -- an App Execution Alias that prints nothing and exits
+    9009 (review C1)."""
 
     def __init__(self, tmp, names):
         self.dir = os.path.join(tmp, "bin")
         os.makedirs(self.dir, exist_ok=True)
         real = sys.executable.replace("\\", "/")
         for name in names:
+            rc = None
+            if isinstance(name, tuple):
+                name, rc = name
             path = os.path.join(self.dir, name)
             with open(path, "w", newline="\n", encoding="utf-8") as fh:
-                fh.write("#!/bin/sh\nexec '%s' \"$@\"\n" % real)
+                if rc is None:
+                    fh.write("#!/bin/sh\nexec '%s' \"$@\"\n" % real)
+                else:
+                    fh.write("#!/bin/sh\nexit %d\n" % rc)
             os.chmod(path, 0o755)
 
     def env(self, **extra):
@@ -117,6 +128,32 @@ class PythonEnvSh(unittest.TestCase):
                 shim.env(PYTHON=os.path.join(shim.dir, "python3").replace("\\", "/")))
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertTrue(p.stdout.strip().endswith("python3"), p.stdout)
+
+    def test_a_python_that_is_not_an_interpreter_is_stepped_over(self):
+        """Review C1. Windows 11 ships an App Execution Alias called python.exe on a machine where
+        Python was never installed: `command -v` finds it, it prints nothing and exits 9009. Finding a
+        file is not proving it is a Python, and scripts/bootstrap_windows.sh -- the first script a
+        contributor with no Python yet is told to run -- is one of the callers."""
+        shim = PathShim(self.tmp.name, [("python", 9009), "python3"])
+        p = run('. scripts/python_env.sh; echo "$PYTHON"; "$PYTHON" -c "print(7*6)"', shim.env())
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertTrue(p.stdout.splitlines()[0].endswith("python3"), p.stdout)
+        self.assertIn("42", p.stdout)
+
+    def test_a_stub_python_does_not_satisfy_the_requirement_either(self):
+        """The guard re-proves it rather than asking `command -v` a second time."""
+        shim = PathShim(self.tmp.name, [("python", 9009), ("python3", 9009)])
+        p = run('. scripts/python_env.sh; socom_require_python demo; echo REACHED', shim.env())
+        self.assertNotEqual(p.returncode, 0, p.stdout)
+        self.assertNotIn("REACHED", p.stdout)
+        self.assertIn("python3", p.stderr)
+
+    def test_an_explicit_python_that_cannot_run_is_still_refused(self):
+        shim = PathShim(self.tmp.name, [("python", 9009), "python3"])
+        p = run('. scripts/python_env.sh; socom_require_python demo; echo REACHED',
+                shim.env(PYTHON=os.path.join(shim.dir, "python").replace("\\", "/")))
+        self.assertNotEqual(p.returncode, 0, p.stdout)
+        self.assertNotIn("REACHED", p.stdout)
 
     def test_no_interpreter_at_all_dies_with_a_sentence(self):
         shim = PathShim(self.tmp.name, [])
