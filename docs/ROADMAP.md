@@ -167,7 +167,7 @@ The archived §5's advice has mostly been taken. What is left, plus what this au
 
 ---
 
-## 6. What is next
+## 6. Where the work is planned
 
 **The live answer is `docs/CURRENT_SPRINT.md`** — which sprint is open, what stands between here and the next tag,
 and who owns each item. This section holds no queue and no task list, by this document's own rule.
@@ -188,31 +188,9 @@ and who owns each item. This section holds no queue and no task list, by this do
   (bounding the chat receive path a PSRewired moderator reported) is blocked on nothing and should run first; Goals
   B–D are provable without the r0004 package; E–G are blocked on the owner's memory card and on PSRewired.
 
-**The standing backlog no sprint owns** — carried here because that is what a roadmap is for, and because two of
-these have now survived three sprints without an owner. **It is a register, not a queue:** nothing here is scheduled,
-and the moment a sprint takes one of these it becomes a row in `docs/CURRENT_SPRINT.md` and this entry becomes a
-pointer to it. Two of the eight already have live homes elsewhere and are repeated here only as narrative — item 4's
-online freeze and item 7's voice peek (R221) are both `docs/KNOWN.md` rows with their experiments attached.
-
-1. **The EE soft-double chain** (`litodp → dpmul → dpdiv → exp → dptofp`) against host `double`, and a faithful
-   `__ieee754_rem_pio2f` port against a reference. Open and unowned since 2026-09-12.
-2. **HLE audit leg three** — consumer readings for research/20's flagged rows. Never started.
-3. **The gameplay-state correctness probe** as the gate's correctness leg. Never built.
-4. **The online freeze root cause** — research/29's **shape 2** (`socom2_libnetb::waitReadable` blocking the EE
-   executor for up to 10 s, not excluded from the guest clock) is still a live candidate; the CLUT and clock fixes
-   addressed a different freeze. It needs a peer that stops sending, and the mixed match that can produce one now
-   runs **both ways** on the hosted server (Sprint 10 Goal 3) — so this is testable in a way it was not when
-   research/29 was written.
-5. **The live teleport count.** The single-player turn teleport itself is **fixed and proven** (`a81eb74`,
-   2026-09-15: our `sceGsExecLoadImage`/`StoreImage` HLE multiplied the BITBLTBUF block pointer by 8, smearing the
-   motion-pack restore) — *not* by the root-motion trace the archived roadmap planned, which is worth recording as
-   another finding-A case. What is still owed is the `rx`-hold teleport count from the guest-value probe, which is
-   item 3's instrument and lands with it.
-6. **The transition residual strip** and **the intro-cinematic freeze** — both still *believed*, both still with the
-   experiment that would settle them unrun (`KNOWN.md:119-120`).
-7. **Voice** — R221: one peek of `0x4415c4/0x4415c5` in a live round says whether the talk slot is bound at all.
-8. **Multiplayer security** — `SECURITY.md`'s known, unfixed item. The largest gap between what the project is and
-   what its README has to warn about.
+**The standing backlog no sprint owns** lives in `docs/CURRENT_SPRINT.md`, under "Standing backlog, carried from the
+roadmap 2026-09-23" — its eight items were written here until that date, which was a task list in a narrative
+document and is the very thing §5 above says to retire.
 
 ---
 

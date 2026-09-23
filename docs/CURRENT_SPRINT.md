@@ -111,6 +111,34 @@ recorded as a standing hazard in `docs/KNOWN.md` §4 and in `docs/HANDOFF.md`'s 
 - **The capture's environment dump** -- every capture used as evidence writes its `PS2X_*` beside its output, the way
   the gate's pins do (R185-R187).
 
+#### Standing backlog, carried from the roadmap 2026-09-23 (filler; no sprint owns these)
+
+Moved here verbatim from `docs/ROADMAP.md` §6, which is class N and may hold no task list. Nothing here is
+scheduled: these are the items a sprint takes when it has lock-free time and nothing better ranked. Two of them
+already have live homes and are repeated here only so the queue is in one place -- item 4's online freeze and item
+7's voice peek (R221) are both `docs/KNOWN.md` §2 rows with their experiments attached. Two have survived three
+sprints without an owner.
+
+1. **The EE soft-double chain** (`litodp -> dpmul -> dpdiv -> exp -> dptofp`) against host `double`, and a faithful
+   `__ieee754_rem_pio2f` port against a reference. Open and unowned since 2026-09-12.
+2. **HLE audit leg three** -- consumer readings for research/20's flagged rows. Never started.
+3. **The gameplay-state correctness probe** as the gate's correctness leg. Never built.
+4. **The online freeze root cause** -- research/29's **shape 2** (`socom2_libnetb::waitReadable` blocking the EE
+   executor for up to 10 s, not excluded from the guest clock) is still a live candidate; the CLUT and clock fixes
+   addressed a different freeze. It needs a peer that stops sending, and the mixed match that can produce one now
+   runs **both ways** on the hosted server (Sprint 10 Goal 3) -- so this is testable in a way it was not when
+   research/29 was written.
+5. **The live teleport count.** The single-player turn teleport itself is **fixed and proven** (`a81eb74`,
+   2026-09-15: our `sceGsExecLoadImage`/`StoreImage` HLE multiplied the BITBLTBUF block pointer by 8, smearing the
+   motion-pack restore) -- *not* by the root-motion trace the archived roadmap planned, which is worth recording as
+   another finding-A case. What is still owed is the `rx`-hold teleport count from the guest-value probe, which is
+   item 3's instrument and lands with it.
+6. **The transition residual strip** and **the intro-cinematic freeze** -- both still *believed*, both still with the
+   experiment that would settle them unrun (`docs/KNOWN.md` §2).
+7. **Voice** -- R221: one peek of `0x4415c4/0x4415c5` in a live round says whether the talk slot is bound at all.
+8. **Multiplayer security** -- `SECURITY.md`'s known, unfixed item. The largest gap between what the project is and
+   what its README has to warn about. Sprint 11's milestone S closes the one reported hole on both sides.
+
 **One citation that does not resolve in this tree:** R243 cites `docs/research/40-upstream-divergence.md`, which lives
 on branch `agent/upstream` (`83c02d9`) and has not been merged forward. `docs/research/41-cucumber-fork.md` is here
 (`18b8c78`). Merging `agent/upstream` is milestone U's first act in Sprint 11.
@@ -151,7 +179,7 @@ working notes behind this table are `.superpowers/sdd/2026-09-22-sprint-10-close
 | R206 | `SchedTrace.cpp`'s two later helpers "are **migrated under rule 2**"; a no-raw-`getenv` check joins `test_knobs_registry` | `plans/2026-09-20-sprint-9-goal-3-knob-retirement.md` | stands |
 | R207 | "Every **Path-kind** knob is constrained to the portable folder, or refused -- **but not in this pass**" | `plans/2026-09-20-sprint-9-goal-3-knob-retirement.md` | stands; its work is still queued |
 | R208 | "the `[knobs]` line **never writes a credential's value**: `PS2X_SOCOM2_LOGIN_PASS` is printed as `[redacted]`" | `plans/2026-09-20-sprint-9-goal-3-knob-retirement.md` | stands |
-| R209 | "Q2's **Task 8 VM ring deferred** to the sprint close, **CI is the Linux ring**, the VM stays off" | the `next ruling:` index above; the deferral row in the road table | stands -- it has no written block of its own; the VM ring did not run at the close and carries to Sprint 11 Task 18 |
+| R209 | "Q2's **Task 8 VM ring deferred** to the sprint close, **CI is the Linux ring**, the VM stays off" | road-table row 6 below, which carries its parenthetical ("R209 deferred it here") | stands -- it has no written block of its own; the VM ring did not run at the close and carries to Sprint 11 Task 18 |
 | R210 | "the keyboard's **gameplay mapping** is honoured **only in developer mode**" | `plans/2026-09-21-sprint-10-q3-mouse-leaves-keyboard-narrowed.md` | stands; made, and Q3 merged `0c172a6` |
 | R211 | "while the game runs the pad drives the launcher **NEVER**; the switch is the one button" | `plans/2026-09-21-sprint-10-q4-launcher-rest.md` | stands |
 | R212 | "the switch is **a binding, in BUTTONS**, with OFF beside it; **the guide by default**" | `plans/2026-09-21-sprint-10-q4-launcher-rest.md` | stands |
@@ -171,7 +199,7 @@ working notes behind this table are `.superpowers/sdd/2026-09-22-sprint-10-close
 | R226 | "the microphone resampler walks the product **`phase + step * k`, not a running sum**" | `plans/2026-09-21-sprint-10-q7-residuals.md` | stands |
 | R227 | "the stub helpers live in **namespace `stub_support`** with a global using-directive in the header" | `plans/2026-09-21-sprint-10-q7-residuals.md` | stands |
 | R228 | "the synthetic Linux packaging test asserts the **executable bit on Linux only**" | `plans/2026-09-21-sprint-10-q7-residuals.md` | stands |
-| R229 | -- | the `next ruling:` index above ("R229 is free") | **deliberately vacant**: no ruling was ever issued under this number. It is not missing and it is not reused |
+| R229 | -- | this table, and nowhere else since 2026-09-23 (it was declared free in words in the index line this table replaced) | **deliberately vacant**: no ruling was ever issued under this number. It is not missing and it is not reused |
 | R230 | "the expectations file holds **sha256 digests of whole game files, in the tree**" | `plans/2026-09-21-sprint-10-disc-to-elf.md` | stands |
 | R231 | "a difference in the image's *shape* is **a note, not a refusal**" | `plans/2026-09-21-sprint-10-disc-to-elf.md` | stands |
 | R232 | "the four **DNAS cipher addresses are recorded rather than derived**" | `plans/2026-09-21-sprint-10-disc-to-elf.md` | stands |
@@ -330,19 +358,22 @@ and step 5b of `docs/LOOP_PROMPT.md`, so it outlives this controller. What stand
 
 | # | What | Whose | Cost |
 |---|---|---|---|
-| 1 | **The playthrough** and whatever it finds; each fix lands as its own slice | the owner tonight, then the loop | unknown until the notes come back |
+| 1 | ~~**The playthrough** and whatever it finds; each fix lands as its own slice~~ **DONE: the owner played on 2026-09-22.** The eight findings and R236-R240 are in "The playthrough, 2026-09-22" below; fix wave A took them in eleven chunks, two slices on `main`, and its last two runs (W6, W10) finished at the close | the owner, then the loop | paid |
 | 2 | **The ladder streak** -- the bar is seven consecutive clean runs (`docs/LADDER.md`, generated). It stood at 4 of 7 when this row was written; chain 2's run 5 was REFUSED (exit 75) at 02:43Z and the chain stopped by design, so the streak did not move on that attempt, and chain 3 relaunched runs 5-7 with a retry on 75. **The number at the close is in the "Sprint 10 -- CLOSED" block above**, which is also where R244 records that these runs are what prove W8 | the loop, in away windows | ~35 min each, one at a time |
 | 3 | ~~**Goal 4, per-map kill routes** for the sweep maps (the last big [A] item of this sprint)~~ **SUPERSEDED by R242 (2026-09-22): the routes carry to Sprint 11 as [A] filler and do NOT hold the tag**; the speed-freeze half is re-measured from existing logs | the loop, away windows | hours of game runs, in Sprint 11 |
-| 4 | **Goal 3's tasks 5 and 7** (the parked-opponent row; "seen by the other" read from the peer entity) | the loop | two mixed-match runs |
-| 5 | **H7's two decisions** (class A: the audio fixtures and the VU1 dumps; class C: the line on pictures of the game's art) | **the owner** | minutes to decide, then the loop does the work |
-| 6 | **Q2's Task 8 VM ring** (the Linux runtime rebuilt in the VM with the flip) -- R209 deferred it here | the loop | one VM session, the host quiet |
+| 4 | ~~**Goal 3's tasks 5 and 7** (the parked-opponent row; "seen by the other" read from the peer entity)~~ **CARRIED to Sprint 11 at the close (2026-09-23): they did not run and they do not hold the tag** -- see the carry list in the "Sprint 10 -- CLOSED" block above | the loop | two mixed-match runs, in Sprint 11 |
+| 5 | ~~**H7's two decisions** (class A: the audio fixtures and the VU1 dumps; class C: the line on pictures of the game's art)~~ **CARRIED to Sprint 11 at the close (2026-09-23), and never waited on:** they are in `docs/HUMAN_TASKS.md`'s morning block as H7-A / H7-C, with "nothing moves" as the default the loop proceeds on | **the owner** | minutes to decide, then the loop does the work |
+| 6 | ~~**Q2's Task 8 VM ring** (the Linux runtime rebuilt in the VM with the flip) -- R209 deferred it here~~ **CARRIED to Sprint 11 at the close (2026-09-23): it did not run.** R209 deferred it to this close, the close did not pay it, and it is now Sprint 11's Task 18 Step 1, with its times recorded in `docs/DEVELOPING.md` beside the Windows numbers | the loop | one VM session, the host quiet |
 | 7 | **Q8, the close** -- KNOWN audit, STATUS rewritten, the sprint's rulings reconciled into one list (**R181-R244 is sixty-four numbers, sixty-three rulings** -- this row said "R181-R235 is fifty-five" until 2026-09-23; the reconciled list is the ledger table in the "Sprint 10 -- CLOSED" block above), `PS2X_TEST_REPEAT=3 ./build.sh test`, a full gate on the close commit, the PR `sprint-10 -> main` as a merge commit, the annotated tag `v0.10.0` on it, `sprint-10` deleted, Sprint 11 opened | the loop | ~3 h of machine time |
 
 **What carries to Sprint 11 rather than holding the tag** (the controller's proposal; the owner can overturn any of
 it): the two-machine match (needs a friend, carried since Sprint 7); Q7's six gate-scored performance residuals, which
 are written up with their measurements and are filler by definition; the stub-state header, back on the filler list
-with its finding; Goal 12's site wording (the site session's). **What does NOT carry:** the ladder streak, because
-"it stays up" is this sprint's title and 4 of 7 does not prove it.
+with its finding; Goal 12's site wording (the site session's). **What does NOT carry:** the ladder streak. "It stays up" is this sprint's
+title, so the bar -- seven consecutive clean scheduled-ladder runs -- is paid here or not at all. **This document does
+not hold the count:** it is `docs/LADDER.md`'s, generated from the run ledger, and the figure as it stood at the close
+is in the "Sprint 10 -- CLOSED" block above, filled in when the tag is cut. (This sentence carried an undated "4 of 7"
+until 2026-09-23.)
 
 ### The playthrough, 2026-09-22 (live, as the owner played; R236-R240)
 
