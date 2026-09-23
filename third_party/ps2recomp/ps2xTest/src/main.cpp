@@ -23,6 +23,7 @@ void register_ps2_sif_dma_tests();
 void register_ps2_recompiler_tests();
 void register_ps2_runtime_expansion_tests();
 void register_socom2_libnetb_tests();
+void register_socom2_chat_tests();   // Sprint 11 milestone S
 void register_socom2_audio_tests();
 void register_socom2_lgaud_tests();
 void register_host_config_tests();
@@ -98,6 +99,7 @@ int main()
     register_ps2_recompiler_tests();
     register_ps2_runtime_expansion_tests();
     register_socom2_libnetb_tests();
+    register_socom2_chat_tests();
     register_socom2_audio_tests();
     register_socom2_lgaud_tests();
     register_host_config_tests();
