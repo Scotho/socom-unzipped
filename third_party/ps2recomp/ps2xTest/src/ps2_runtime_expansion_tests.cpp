@@ -1799,6 +1799,32 @@ void register_ps2_runtime_expansion_tests()
                      "TPC should point at the first instruction not executed");
         });
 
+        tc.Run("Ps2VuFtoi clamps what will not fit instead of answering the indefinite value", [](TestCase &t)
+        {
+            uint32_t lanes[4]{};
+
+            // _mm_set_ps takes w,z,y,x, so lanes[0] is the last argument.
+            __m128i converted = Ps2VuFtoi(_mm_set_ps(-2147483904.0f, 2147483648.0f, -123.75f, 123.75f), 1.0f);
+            std::memcpy(lanes, &converted, sizeof(lanes));
+            t.Equals(lanes[0], 123u, "a positive value in range truncates toward zero");
+            t.Equals(lanes[1], 0xFFFFFF85u, "a negative value in range truncates toward zero");
+            t.Equals(lanes[2], 0x7FFFFFFFu, "a positive value too large for int32 clamps to INT_MAX");
+            t.Equals(lanes[3], 0x80000000u, "a negative value too large for int32 clamps to INT_MIN");
+
+            converted = Ps2VuFtoi(_mm_set_ps(NAN, -INFINITY, INFINITY, 2147483520.0f), 1.0f);
+            std::memcpy(lanes, &converted, sizeof(lanes));
+            t.Equals(lanes[0], 0x7FFFFF80u, "the largest float below 2^31 is not treated as an overflow");
+            t.Equals(lanes[1], 0x7FFFFFFFu, "+inf clamps to INT_MAX");
+            t.Equals(lanes[2], 0x80000000u, "-inf clamps to INT_MIN");
+            t.Equals(lanes[3], 0x80000000u, "a NaN keeps the indefinite value");
+
+            // The FTOI4/12/15 scale is applied before the clamp, so it can push a small value out of range.
+            converted = Ps2VuFtoi(_mm_set_ps(0.0f, 0.0f, -134217728.0f, 134217728.0f), 16.0f);
+            std::memcpy(lanes, &converted, sizeof(lanes));
+            t.Equals(lanes[0], 0x7FFFFFFFu, "scaling up past INT_MAX clamps rather than wrapping");
+            t.Equals(lanes[1], 0x80000000u, "scaling down past INT_MIN clamps rather than wrapping");
+        });
+
         tc.Run("GS sprite draw applies XYOFFSET and fully-outside scissor should not render", [](TestCase &t)
         {
             std::vector<uint8_t> vram(PS2_GS_VRAM_SIZE, 0u);

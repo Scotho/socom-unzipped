@@ -1130,6 +1130,28 @@ void register_code_generator_tests()
             }
         });
 
+        tc.Run("VU FTOI converts through the saturating runtime helper", [](TestCase &t) {
+            Instruction ftoi4{};
+            ftoi4.opcode = OPCODE_COP2;
+            ftoi4.rs = COP2_CO | 0x6; // format + destination mask bits
+            ftoi4.rt = 7;
+            ftoi4.rd = 11;
+            ftoi4.function = 0x3C; // force Special2 path
+            ftoi4.vectorInfo.vectorField = 0xF;
+
+            const uint32_t upper = (VU0_S2_VFTOI4 >> 2) & 0x1F;
+            const uint32_t lower = VU0_S2_VFTOI4 & 0x3;
+            ftoi4.raw = (upper << 6) | lower;
+
+            CodeGenerator gen({}, {});
+            const std::string out = gen.translateInstruction(ftoi4);
+
+            t.IsTrue(out.find("Ps2VuFtoi(ctx->vu0_vf[11], 16.0f)") != std::string::npos,
+                     "VFTOI4 should scale by 16 and convert through the saturating helper");
+            t.IsTrue(out.find("_mm_cvttps_epi32") == std::string::npos,
+                     "VFTOI must not truncate with the bare intrinsic: it answers INT_MIN for positive overflow");
+        });
+
         tc.Run("SC requires matching LL reservation address", [](TestCase &t) {
             CodeGenerator gen({}, {});
 
