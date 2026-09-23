@@ -19,6 +19,7 @@
 #include "runtime/socom2_music_trace.h"
 #include "runtime/socom2_addresses.h"
 #include "runtime/socom2_osk_prefill.h"
+#include "runtime/socom2_revision_guard.h"
 #include "runtime/ps2_audio.h"
 #include "socom2_rsa_key.h"
 #include "socom2_host_input.h"
@@ -2208,6 +2209,18 @@ namespace
             // the relink (r0001 0x003e17e0, r0004 0x0040cc60), and in an r0004 image r0001's address is
             // code. Reading only r0001's is exactly what made the r0004 exe run on r0001's addresses.
             socom2_addresses::selectFromImage(readGuestStamp, runtime.memory().getRDRAM());
+
+            // Task 19 round 3: and now the OTHER half of the question. Which column to read is one thing;
+            // whether this executable's generated code belongs on this image at all is another, and until
+            // here nothing asked it. On 2026-09-23 two parity gates ran the r0004 executable against
+            // r0001's image (the launch scripts hard-coded game/disc/socom2_game.elf): it booted, walked
+            // r0001's constructor table into r0004 function bodies, and hung at the loading screen on a
+            // jalr through a slot the constructors never filled -- with nothing in the log to say the code
+            // and the image disagreed. One comparison, and a refusal rather than a warning: past a
+            // mismatch every address, every table and every body is the other build's.
+            socom2_revision::enforce(socom2_addresses::imageRevision().c_str(),
+                                     PS2Runtime::getIoPaths().elfPath.string(),
+                                     socom2_addresses::imageBanner());
         }
         startPcSampler(runtime);
         startRdramDump(runtime);

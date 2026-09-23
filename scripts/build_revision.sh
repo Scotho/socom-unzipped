@@ -318,7 +318,8 @@ if [ "$FORCE" = 0 ] && [ -f "$EXE" ] && [ -f "$EXE.complete" ]; then
 else
   cmake -S "$PS2R" -B "$RTBUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
-        -DPS2X_RUNNER_GENERATED_DIR="$GEN" -DPS2X_ENABLE_LTO="${LTO:-OFF}" -DPS2X_GENERATED_OPT="${GENOPT:--O1}" >/dev/null
+        -DPS2X_RUNNER_GENERATED_DIR="$GEN" -DPS2X_ENABLE_LTO="${LTO:-OFF}" -DPS2X_GENERATED_OPT="${GENOPT:--O1}" \
+        -DPS2X_GAME_REVISION="$REV" >/dev/null
   cmake --build "$RTBUILD" --target ps2EntryRunner -j "$(nproc)"
   mkdir -p "$DIST"
   cp "$RTBUILD/ps2xRuntime/ps2EntryRunner.exe" "$EXE"

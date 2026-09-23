@@ -39,6 +39,7 @@ void register_socom2_osk_prefill_tests();
 void register_knobs_tests();
 void register_menu_sounds_tests();   // Sprint 10 Q4
 void register_socom2_addresses_tests();   // Sprint 11 Task 10
+void register_socom2_revision_guard_tests();   // Sprint 11 Task 19
 void register_ps2_save_state_tests();   // Sprint 11 Task 8c
 void reset_ps2_test_function_table();
 
@@ -117,6 +118,7 @@ int main()
     register_knobs_tests();
     register_menu_sounds_tests();
     register_socom2_addresses_tests();
+    register_socom2_revision_guard_tests();
     register_ps2_save_state_tests();
     int res = MiniTest::Run();
     std::cout.flush();

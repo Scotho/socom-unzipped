@@ -465,6 +465,20 @@ target_compile_definitions(ps2_runtime PRIVATE
     PS2X_HAS_FFMPEG=$<BOOL:${PS2X_ENABLE_FFMPEG}>
 )
 
+# Sprint 11 Task 19: WHICH PRESSING OF THE GAME THIS BUILD'S GENERATED CODE CAME FROM.
+#
+# The recompiled code is one revision's; the overlay image it runs against is a separate file chosen at
+# launch. Nothing tied the two together until this define, and two parity gates on 2026-09-23 ran the
+# r0004 executable on r0001's image and hung at the loading screen with nothing in the log to say why.
+# build.sh passes r0001 (the default chain) and scripts/build_revision.sh passes the revision it builds;
+# runtime/socom2_revision_guard.h compares it with the image's own build banner at boot and REFUSES a
+# mismatch with ExitCodes::kRevisionMismatch (73). PUBLIC, so the runner, the library and ps2x_tests --
+# which pins that the define really arrives -- all see the same value.
+set(PS2X_GAME_REVISION "r0001" CACHE STRING "Disc revision this build's generated code was recompiled from (r0001, r0004, ...)")
+target_compile_definitions(ps2_runtime PUBLIC
+    PS2X_GAME_REVISION="${PS2X_GAME_REVISION}"
+)
+
 file(GLOB_RECURSE KERNEL_SRC_FILES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/lib/Kernel/*.cpp"
 )

@@ -55,7 +55,8 @@ recomp() {
 runtime() {
   cmake -S "$PS2R" -B "$RTBUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
-        -DPS2X_RUNNER_GENERATED_DIR="$GEN" -DPS2X_ENABLE_LTO="${LTO:-OFF}" -DPS2X_GENERATED_OPT="${GENOPT:--O1}" >/dev/null
+        -DPS2X_RUNNER_GENERATED_DIR="$GEN" -DPS2X_ENABLE_LTO="${LTO:-OFF}" -DPS2X_GENERATED_OPT="${GENOPT:--O1}" \
+        -DPS2X_GAME_REVISION=r0001 >/dev/null
   mkdir -p "$ROOT/dist"
   if [ -n "$GEN" ]; then
     cmake --build "$RTBUILD" --target ps2EntryRunner -j "$(nproc)"
@@ -94,7 +95,7 @@ release() {
         -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
         -DPS2X_RUNNER_GENERATED_DIR="$GEN" -DPS2X_GENERATED_OPT="$genopt" \
         -DPS2X_ENABLE_LTO="$lto" -DPS2X_LTO_SCOPE="$scope" \
-        -DPS2X_RELEASE_LINK=ON -DPS2X_LINK_ICF="$icf" ${fc[@]+"${fc[@]}"} >/dev/null
+        -DPS2X_RELEASE_LINK=ON -DPS2X_LINK_ICF="$icf" -DPS2X_GAME_REVISION=r0001 ${fc[@]+"${fc[@]}"} >/dev/null
   cmake --build "$RELBUILD" --target ps2EntryRunner socom_unzipped_launcher -j "${REL_JOBS:-$(nproc)}"
   local stage="$RELDIST/.stage" tag
   tag="$(git -C "$ROOT" describe --always --dirty 2>/dev/null || echo unknown)"

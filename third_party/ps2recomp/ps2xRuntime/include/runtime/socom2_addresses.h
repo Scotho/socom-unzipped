@@ -306,7 +306,29 @@ namespace socom2_addresses
             static const Table *t = &kR0001;   // until the image says otherwise
             return t;
         }
+
+        // What the IMAGE said about itself, which is not the same thing as which column is in use: an
+        // image that names nothing still gets the r0001 column (the fallback), and reading the fallback
+        // back off current() would make every unknown image look like an r0001 image. Empty until a row's
+        // stamp names that row's own revision. Task 19's revision guard is the caller that needs the
+        // difference: it must refuse a mismatch and boot an image that simply did not say.
+        inline std::string &identifiedSlot()
+        {
+            static std::string rev;
+            return rev;
+        }
+
+        inline std::string &bannerSlot()
+        {
+            static std::string text;
+            return text;
+        }
     }
+
+    // The revision the loaded image named for ITSELF, or empty when no column's stamp claimed it, and the
+    // text that said so (the r0001 row's text when nothing claimed it). Set by selectFromImage().
+    inline const std::string &imageRevision() { return detail::identifiedSlot(); }
+    inline const std::string &imageBanner() { return detail::bannerSlot(); }
 
     // The table every call site reads. Process-wide: one image is loaded per run.
     inline const Table &current() { return *detail::slot(); }
@@ -377,6 +399,7 @@ namespace socom2_addresses
         // table or the resident overlay was at fault. It was the overlay.)
         const std::size_t n = sizeof(kTables) / sizeof(kTables[0]);
         std::string fallbackText;
+        std::string chosenText;
         const Table *chosen = nullptr;
         for (std::size_t i = n; i-- > 0;)
         {
@@ -389,8 +412,15 @@ namespace socom2_addresses
             if (t == &kR0001)
                 fallbackText = text;
             if (!chosen && rev == t->revision)
+            {
                 chosen = t;                                   // newest first, so the first is the newest
+                chosenText = text;
+            }
         }
+        // What the image said about itself, for the revision guard (runtime/socom2_revision_guard.h) and
+        // for anyone else who needs "what the IMAGE is" rather than "which column is in use".
+        detail::identifiedSlot() = chosen ? std::string(chosen->revision) : std::string();
+        detail::bannerSlot() = chosen ? chosenText : fallbackText;
         if (chosen)
         {
             select(*chosen);

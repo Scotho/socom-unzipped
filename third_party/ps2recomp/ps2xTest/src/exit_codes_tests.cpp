@@ -27,10 +27,11 @@ void register_exit_codes_tests()
                 t.IsTrue(!s.empty() && s.back() == '.', std::string(e.name) + ": ends with a full stop");
                 t.IsTrue(s.find('"') == std::string::npos, std::string(e.name) + ": no double quote (tools_py/exit_codes.py reads the table with a regex)");
             }
-            t.Equals(ExitCodes::kTableSize, 11, "eleven codes: 0, 1, 3, 65 and the seven this goal adds");
+            // Twelve since Sprint 11 Task 19 added 73, the revision guard's refusal.
+            t.Equals(ExitCodes::kTableSize, 12, "twelve codes: 0, 1, 3, 65, Sprint 9 Goal 1's seven, and 73");
         });
 
-        tc.Run("the codes themselves: 65 kept, 66-72 added, GsGlCaps agrees with the table", [](TestCase &t)
+        tc.Run("the codes themselves: 65 kept, 66-73 added, GsGlCaps agrees with the table", [](TestCase &t)
         {
             t.Equals(ExitCodes::kOk, 0, "ok");
             t.Equals(ExitCodes::kFailed, 1, "the runner's unnamed failure, as it leaves today");
@@ -44,8 +45,11 @@ void register_exit_codes_tests()
             t.Equals(ExitCodes::kCrashed, 70, "crash");
             t.Equals(ExitCodes::kOutOfMemory, 71, "out of memory");
             t.Equals(ExitCodes::kCardDirUnwritable, 72, "memory-card directory unwritable");
+            // Sprint 11 Task 19: the generated code and the overlay image name different pressings of the
+            // game. Its own code, not 67's: the disc is beside the point, it is the ELF that disagrees.
+            t.Equals(ExitCodes::kRevisionMismatch, 73, "the executable and the image are different revisions");
             t.IsNull(ExitCodes::find(64), "64 is not ours");
-            t.IsNotNull(ExitCodes::find(72), "72 is");
+            t.IsNotNull(ExitCodes::find(73), "73 is");
         });
 
         tc.Run("classify: a native crash status is 70 on both platforms, a plain code is itself", [](TestCase &t)

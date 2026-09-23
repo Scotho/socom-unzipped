@@ -78,6 +78,7 @@ add_library(ps2_test_lib STATIC
     src/knobs_tests.cpp
     src/menu_sounds_tests.cpp   # Sprint 10 Q4
     src/socom2_addresses_tests.cpp   # Sprint 11 Task 10
+    src/socom2_revision_guard_tests.cpp   # Sprint 11 Task 19
     src/ps2_save_state_tests.cpp   # Sprint 11 Task 8c
 )
 

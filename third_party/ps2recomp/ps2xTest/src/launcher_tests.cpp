@@ -1,6 +1,7 @@
 // Task 8b: the launcher's logic -- the ISO 9660 lookup, SHA-256, config.json and the environment it becomes.
 #include "MiniTest.h"
 #include "launcher/iso9660.h"
+#include "ps2x/exit_codes.h"   // the selftest lists one line per row of that table
 #include "launcher/launcher_config.h"
 #include "launcher/launcher_layout.h"
 #include "launcher/mic_devices.h"
@@ -413,11 +414,12 @@ void register_launcher_tests()
         tc.Run("the selftest lists every exit code with its sentence", [](TestCase &t)
         {
             const std::vector<std::string> lines = launcher::selftestExitLines();
-            t.Equals(static_cast<int>(lines.size()), 11, "one line per code in the table");
+            t.Equals(static_cast<int>(lines.size()), ExitCodes::kTableSize, "one line per code in the table");
             auto has = [&](const std::string &l) { return std::find(lines.begin(), lines.end(), l) != lines.end(); };
             t.IsTrue(has("exit   0 ok: The last run exited normally."), "0");
             t.IsTrue(has("exit  65 no-usable-gl: Your GPU or driver is missing OpenGL 3.3 with dual-source blending; the game ran on the slow CPU renderer."), "65");
             t.IsTrue(has("exit  72 card-dir-unwritable: The memory-card folder cannot be written. Move the game out of a protected folder and try again."), "72");
+            t.IsTrue(has("exit  73 revision-mismatch: These game files are a different disc revision than this copy of the game was built for. Unpack the download again."), "73");
         });
 
         tc.Run("the environment: the verified ISO reaches the runtime as PS2X_CD_IMAGE", [](TestCase &t)
