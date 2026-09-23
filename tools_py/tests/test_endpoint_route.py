@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import unittest
+from unittest import mock
 
 from tools_py.parity import endpoint_route as er
 
@@ -84,6 +85,101 @@ class TheSelection(unittest.TestCase):
         self.assertEqual(p.returncode, 0)
         for c in ("status", "set", "restore", "check"):
             self.assertIn(c, p.stdout)
+
+
+class FakeRegistry:
+    """The handful of winreg calls the deletion makes, over a dict of key path -> its subkey names.
+
+    It reproduces the one rule that broke the first A/B run: RegDeleteKey (winreg.DeleteKey) refuses a key that
+    still has subkeys, and refuses it with the same WinError 5 an ACL denial gives. `deny` is the second cause,
+    so a test can tell the two apart.
+    """
+    HKEY_CURRENT_USER = object()
+
+    class _Key:
+        def __init__(self, reg, path):
+            self.reg, self.path = reg, path
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self.reg.closed.append(self.path)
+            return False
+
+    def __init__(self, tree, deny=()):
+        self.tree = {p: list(kids) for p, kids in tree.items()}
+        self.deny = set(deny)
+        self.deleted = []
+        self.opened = []
+        self.closed = []
+
+    def OpenKey(self, root, path):
+        assert root is self.HKEY_CURRENT_USER
+        if path not in self.tree:
+            raise FileNotFoundError(2, "The system cannot find the file specified")
+        self.opened.append(path)
+        return self._Key(self, path)
+
+    def EnumKey(self, key, index):
+        kids = self.tree[key.path]
+        if index >= len(kids):
+            raise OSError(22, "No more data is available")
+        return kids[index]
+
+    def DeleteKey(self, root, path):
+        assert root is self.HKEY_CURRENT_USER
+        if path in self.deny:
+            raise PermissionError(13, "Access is denied", None, 5)
+        if path not in self.tree:
+            raise FileNotFoundError(2, "The system cannot find the file specified")
+        if self.tree[path]:
+            raise PermissionError(13, "Access is denied", None, 5)   # non-empty: RegDeleteKey will not
+        del self.tree[path]
+        parent, _sep, leaf = path.rpartition("\\")
+        if leaf in self.tree.get(parent, []):
+            self.tree[parent].remove(leaf)
+        self.deleted.append(path)
+
+
+class TheRoutingEntryDeletion(unittest.TestCase):
+    """2026-09-22: `set` died with WinError 5 on the first entry it tried to remove. The entry has a
+    {219ED5A0-...} property-store subkey (the per-app volume Windows writes when the app's slider is touched),
+    and RegDeleteKey will not delete a key that has one."""
+    SUB = "2130659e_0"
+    PATH = er.POLICY_KEY + "\\" + SUB
+    PROPS_NAME = "{219ED5A0-9CBF-4F3A-B927-37C9E5C5F14F}"
+    PROPS = PATH + "\\" + PROPS_NAME
+
+    def run_delete(self, fake):
+        with mock.patch.dict(sys.modules, {"winreg": fake}):
+            er.delete_routing_entry(self.SUB)
+
+    def test_an_entry_with_a_property_store_subkey_is_removed_children_first(self):
+        fake = FakeRegistry({er.POLICY_KEY: [self.SUB], self.PATH: [self.PROPS_NAME], self.PROPS: []})
+        self.run_delete(fake)
+        self.assertEqual(fake.deleted, [self.PROPS, self.PATH])
+        self.assertNotIn(self.PATH, fake.tree)
+        self.assertEqual(fake.tree[er.POLICY_KEY], [])
+
+    def test_a_whole_subtree_goes_deepest_first(self):
+        deep = self.PROPS + "\\" + "deeper"
+        fake = FakeRegistry({er.POLICY_KEY: [self.SUB], self.PATH: [self.PROPS_NAME],
+                             self.PROPS: ["deeper"], deep: []})
+        self.run_delete(fake)
+        self.assertEqual(fake.deleted, [deep, self.PROPS, self.PATH])
+
+    def test_a_leaf_entry_is_removed_as_before(self):
+        fake = FakeRegistry({er.POLICY_KEY: [self.SUB], self.PATH: []})
+        self.run_delete(fake)
+        self.assertEqual(fake.deleted, [self.PATH])
+
+    def test_a_denied_entry_is_not_swallowed(self):
+        # the other cause of WinError 5: the ACL. It must still reach the operator, not be hidden by the retry.
+        fake = FakeRegistry({er.POLICY_KEY: [self.SUB], self.PATH: []}, deny={self.PATH})
+        with self.assertRaises(PermissionError):
+            self.run_delete(fake)
+        self.assertIn(self.PATH, fake.tree)
 
 
 if __name__ == "__main__":

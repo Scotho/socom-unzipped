@@ -133,8 +133,28 @@ def routing_entries() -> Dict[str, str]:
 
 
 def delete_routing_entry(sub: str) -> None:
+    """Remove one PropertyStore entry, whatever it holds underneath.
+
+    2026-09-22: the plain winreg.DeleteKey died with WinError 5 on the first entry `set` tried. Not an ACL --
+    RegDeleteKey refuses a key that still has subkeys, and an entry whose app volume or mute has been touched
+    has one ({219ED5A0-9CBF-4F3A-B927-37C9E5C5F14F}, the per-app property store). So delete depth-first. A
+    WinError 5 that survives this one IS the ACL, and it reaches the operator unchanged.
+    """
     import winreg
-    winreg.DeleteKey(winreg.HKEY_CURRENT_USER, POLICY_KEY + "\\" + sub)
+    _delete_tree(winreg, POLICY_KEY + "\\" + sub)
+
+
+def _delete_tree(winreg, path: str) -> None:
+    """The key at `path` under HKCU and everything below it, children before parents. `winreg` is passed in so
+    the tests can hand it a registry that is not the machine's."""
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, path) as k:
+        while True:
+            try:
+                child = winreg.EnumKey(k, 0)     # index 0 each time: the list shrinks as children go
+            except OSError:
+                break
+            _delete_tree(winreg, path + "\\" + child)
+    winreg.DeleteKey(winreg.HKEY_CURRENT_USER, path)
 
 
 def export_key(path_reg: str) -> None:
