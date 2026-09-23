@@ -76,6 +76,11 @@ table in `docs/CURRENT_SPRINT.md` is the binding list. **Ledger:** `.superpowers
   any #244 adoption, recorded for the plan: a prefer-HLE load policy — #244 loads physical IRXs first and would take
   the real LIBNETB/INET/DEV9/MCMAN over our network and card HLE. Cost if wrong: a day of the peer's time on a test
   whose count turns out uninformative — the table it produces is wanted regardless.
+- **R244 — W8's fallback run is not run separately: the ladder streak proves the join driver's R240 path.** The
+  ladder's joiner is `online_match_ours.py:4679` → `join_game(B.sh, …)` with REFRESH LIST on by default (the post-R240
+  path; `--no-refresh` is the old one), against the hosted server's real lobby, so ladder runs 5–7 exercise exactly
+  what W8's self-join would have, three times. The owner's channel line stays parked. Cost if wrong: the owner's
+  lobby was on another channel and `--channel 2+` is unexercised (the driver says so) — one run when the line comes.
 - Further rulings are appended here and in the ledger as they are made.
 
 ## Outcome
