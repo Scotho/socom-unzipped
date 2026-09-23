@@ -13,7 +13,7 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
 
 ## Start here (2026-09-23 morning)
 
-Sprint 10 is **closed** -- what is left of it is the merge to `main` and the tag `v0.10.0`, both the loop's. Sprint 11
+Sprint 10 is **closed** -- merged to `main` (PR #24, `f15acfa`) and tagged `v0.10.0` -- the draft release exists, with no archives yet (below). Sprint 11
 is open on `docs/superpowers/plans/2026-09-23-sprint-11.md`. The night's results are in `docs/STATUS.md`'s newest
 entry and in `docs/CURRENT_SPRINT.md`'s "Sprint 10 -- CLOSED" block; the short version is that your Bluetooth speaker
 is **not** the cause of the music dropouts (they survive a wired endpoint, so they are ours), the prefilled login
@@ -58,6 +58,19 @@ At 04:25Z the close's build could not copy `dist/socom_unzipped_launcher.exe` --
 on 2026-09-22 between 14:29 and 14:56 were still open** and held the executable locked. The loop closed them (nothing
 is lost: the launcher saves its settings on every change). If you had one of them parked on purpose, that is why it is
 gone.
+
+### The v0.10.0 draft is waiting for its archives
+
+The tag went up at the Sprint 10 close and `release-draft.yml` made the draft (its checklist is the notes). It has no
+archives: building and attaching them is yours by the rule in `docs/GIT_STRATEGY.md` (whether code recompiled from
+the game's executable may be distributed at all is your call, every release). When you decide to: `./build.sh
+release`, `scripts/make_portable.sh --release`, the Linux pair in the VM, `SHA256SUMS` and `THIRD_PARTY_NOTICES.md`
+attached to the draft with `gh release upload v0.10.0 <files>`; then run the workflow by hand with the tag
+(Actions -> release-draft -> Run workflow -> `v0.10.0`) and it verifies every archive and appends the verdict to the
+draft. That run is the verify half's first real trial. Publishing stays your click.
+
+Tags `v0.5.0`-`v0.8.0` now sit on the Sprint 5-8 close commits (backfilled 2026-09-23, annotated as historical);
+they make no drafts.
 
 ### The two things still only you can do
 
