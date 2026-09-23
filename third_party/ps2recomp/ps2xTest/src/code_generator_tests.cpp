@@ -1049,6 +1049,120 @@ void register_code_generator_tests()
                      "SPECIAL logical ops should not use vector emission");
         });
 
+        tc.Run("MOVZ and MOVN move the low doubleword and leave the upper 64 bits alone", [](TestCase &t) {
+            CodeGenerator gen({}, {});
+
+            Instruction movz{};
+            movz.opcode = OPCODE_SPECIAL;
+            movz.function = SPECIAL_MOVZ;
+            movz.rs = 4;
+            movz.rt = 5;
+            movz.rd = 3;
+
+            std::string movzCode = gen.translateInstruction(movz);
+            t.IsTrue(movzCode.find("if (GPR_U64(ctx, 5) == 0) SET_GPR_U64(ctx, 3, GPR_U64(ctx, 4));") != std::string::npos,
+                     "MOVZ should copy only the low 64-bit lane of rs into rd");
+            t.IsTrue(movzCode.find("SET_GPR_VEC") == std::string::npos,
+                     "MOVZ must not write the whole 128-bit register: the upper doubleword of rd survives the move");
+
+            Instruction movn{};
+            movn.opcode = OPCODE_SPECIAL;
+            movn.function = SPECIAL_MOVN;
+            movn.rs = 6;
+            movn.rt = 7;
+            movn.rd = 8;
+
+            std::string movnCode = gen.translateInstruction(movn);
+            t.IsTrue(movnCode.find("if (GPR_U64(ctx, 7) != 0) SET_GPR_U64(ctx, 8, GPR_U64(ctx, 6));") != std::string::npos,
+                     "MOVN should copy only the low 64-bit lane of rs into rd");
+            t.IsTrue(movnCode.find("GPR_VEC") == std::string::npos,
+                     "MOVN must neither read nor write the upper 64 bits of the 128-bit register");
+        });
+
+        tc.Run("zero-compare branches weigh all 64 bits of the register", [](TestCase &t) {
+            struct ZeroCompareCase
+            {
+                const char *mnemonic;
+                uint32_t opcode;
+                uint32_t regimmField;
+                const char *condition;
+            };
+
+            const ZeroCompareCase cases[] = {
+                {"BLEZ", OPCODE_BLEZ, 0u, "GPR_S64(ctx, 9) <= 0"},
+                {"BGTZ", OPCODE_BGTZ, 0u, "GPR_S64(ctx, 9) > 0"},
+                {"BLEZL", OPCODE_BLEZL, 0u, "GPR_S64(ctx, 9) <= 0"},
+                {"BGTZL", OPCODE_BGTZL, 0u, "GPR_S64(ctx, 9) > 0"},
+                {"BLTZ", OPCODE_REGIMM, REGIMM_BLTZ, "GPR_S64(ctx, 9) < 0"},
+                {"BGEZ", OPCODE_REGIMM, REGIMM_BGEZ, "GPR_S64(ctx, 9) >= 0"},
+                {"BLTZL", OPCODE_REGIMM, REGIMM_BLTZL, "GPR_S64(ctx, 9) < 0"},
+                {"BGEZL", OPCODE_REGIMM, REGIMM_BGEZL, "GPR_S64(ctx, 9) >= 0"},
+                // The link forms share the REGIMM returns today; drive them anyway so a future
+                // split of that switch cannot leave them behind on the 32-bit compare.
+                {"BLTZAL", OPCODE_REGIMM, REGIMM_BLTZAL, "GPR_S64(ctx, 9) < 0"},
+                {"BGEZAL", OPCODE_REGIMM, REGIMM_BGEZAL, "GPR_S64(ctx, 9) >= 0"},
+                {"BLTZALL", OPCODE_REGIMM, REGIMM_BLTZALL, "GPR_S64(ctx, 9) < 0"},
+                {"BGEZALL", OPCODE_REGIMM, REGIMM_BGEZALL, "GPR_S64(ctx, 9) >= 0"},
+            };
+
+            for (const ZeroCompareCase &branchCase : cases)
+            {
+                Function func;
+                func.name = "zero_compare_branch";
+                func.start = 0x4000;
+                func.end = 0x4010;
+                func.isRecompiled = true;
+                func.isStub = false;
+
+                Instruction branch{};
+                branch.address = 0x4000;
+                branch.opcode = branchCase.opcode;
+                branch.rs = 9;
+                branch.rt = branchCase.regimmField;
+                branch.simmediate = 1; // target 0x4008
+                branch.isBranch = true;
+                branch.isCall = branchCase.opcode == OPCODE_REGIMM &&
+                                (branchCase.regimmField == REGIMM_BLTZAL ||
+                                 branchCase.regimmField == REGIMM_BGEZAL ||
+                                 branchCase.regimmField == REGIMM_BLTZALL ||
+                                 branchCase.regimmField == REGIMM_BGEZALL);
+                branch.hasDelaySlot = true;
+
+                CodeGenerator gen({}, {});
+                const std::string generated =
+                    gen.generateFunction(func, {branch, makeNop(0x4004), makeNop(0x4008)}, false);
+
+                t.IsTrue(generated.find(branchCase.condition) != std::string::npos,
+                         std::string(branchCase.mnemonic) +
+                             " should weigh the register as a 64-bit signed value against zero");
+                t.IsTrue(generated.find("GPR_S32(ctx, 9)") == std::string::npos,
+                         std::string(branchCase.mnemonic) +
+                             " must not throw away bits 63:32 before taking the sign");
+            }
+        });
+
+        tc.Run("VU FTOI converts through the saturating runtime helper", [](TestCase &t) {
+            Instruction ftoi4{};
+            ftoi4.opcode = OPCODE_COP2;
+            ftoi4.rs = COP2_CO | 0x6; // format + destination mask bits
+            ftoi4.rt = 7;
+            ftoi4.rd = 11;
+            ftoi4.function = 0x3C; // force Special2 path
+            ftoi4.vectorInfo.vectorField = 0xF;
+
+            const uint32_t upper = (VU0_S2_VFTOI4 >> 2) & 0x1F;
+            const uint32_t lower = VU0_S2_VFTOI4 & 0x3;
+            ftoi4.raw = (upper << 6) | lower;
+
+            CodeGenerator gen({}, {});
+            const std::string out = gen.translateInstruction(ftoi4);
+
+            t.IsTrue(out.find("Ps2VuFtoi(ctx->vu0_vf[11], 16.0f)") != std::string::npos,
+                     "VFTOI4 should scale by 16 and convert through the saturating helper");
+            t.IsTrue(out.find("_mm_cvttps_epi32") == std::string::npos,
+                     "VFTOI must not truncate with the bare intrinsic: it answers INT_MIN for positive overflow");
+        });
+
         tc.Run("SC requires matching LL reservation address", [](TestCase &t) {
             CodeGenerator gen({}, {});
 
