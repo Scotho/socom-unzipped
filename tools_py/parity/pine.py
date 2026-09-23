@@ -80,3 +80,34 @@ class Pine:
                 break
             out.append(b)
         return out.decode("ascii", "replace")
+
+    # ---- batched reads ---------------------------------------------------------------------
+    # One PINE message may carry several commands back to back; the reply carries their results
+    # in the same order behind one length+status word. Reading a megabyte of EE RAM eight bytes
+    # at a time is 130,000 round trips, which is minutes on loopback; a batch of a few hundred
+    # turns it into seconds. The batch size is bounded because PCSX2's read buffer is finite
+    # (MAX_IPC_SIZE): 1,024 read64 commands is 9 KB out and 8 KB back, well inside it.
+    BATCH = 1024
+
+    def _batch_read64(self, addrs):
+        msg = b"".join(struct.pack("<BI", OP_READ64, a) for a in addrs)
+        self.s.sendall(struct.pack("<I", 4 + len(msg)) + msg)   # the length word covers itself
+        total, res = struct.unpack("<IB", self._recv(5))
+        data = self._recv(total - 5) if total > 5 else b""
+        if res != 0:
+            raise RuntimeError("PINE batch read failed")
+        if len(data) != 8 * len(addrs):
+            raise RuntimeError(f"PINE batch read returned {len(data)} bytes for {len(addrs)} reads")
+        return data
+
+    def read_block(self, addr, size, progress=None):
+        """`size` bytes of guest memory from `addr`, as bytes. Reads in 8-byte units, so a
+        request that is not a multiple of 8 is rounded up and trimmed."""
+        words = (size + 7) // 8
+        out = bytearray()
+        for i in range(0, words, self.BATCH):
+            chunk = [addr + 8 * j for j in range(i, min(i + self.BATCH, words))]
+            out += self._batch_read64(chunk)
+            if progress:
+                progress(min(len(out), size), size)
+        return bytes(out[:size])
