@@ -14,6 +14,7 @@
 #include "ps2_runtime_macros.h"
 #include "runtime/ps2_memory.h"
 #include "runtime/ee_scheduler.h"
+#include "runtime/socom2_chat.h"
 #include "runtime/socom2_freeze_fields.h"
 #include "runtime/socom2_music_trace.h"
 #include "runtime/socom2_osk_prefill.h"
@@ -1561,6 +1562,53 @@ namespace
                   << ", password " << (havePass ? std::to_string(std::strlen(pass)) + " chars" : "unset") << std::endl;
     }
 
+    // Sprint 11 milestone S: hardening of the chat receive path. Two fixed-width fields are given the terminator
+    // the game's readers assume, BEFORE the original runs and never after (the OSK wrap's rule above: the original
+    // may unwind through a scheduler checkpoint, so host code placed after the call runs too late). Nothing
+    // further about it is written up here (SECURITY.md).
+    PS2Runtime::RecompiledFunction g_chatFanoutOriginal = nullptr;
+    // Written from whatever guest thread runs the callback; only the log line reads them.
+    static std::atomic<uint32_t> g_chatFanoutSeen{0}, g_chatFanoutFixed{0};
+
+    void socom2_ChatFanoutBound(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        // The mask is the OSK wrap's precedent (it indexes rdram the same way); getMemPtr is not a one-line swap here.
+        const uint32_t pkt = GPR_U32(ctx, 7) & PS2_RAM_MASK;      // $a3
+        if (pkt != 0 && pkt + socom2_chat::kPacketBytes <= PS2_RAM_SIZE)
+        {
+            const int changed = socom2_chat::terminateFields(rdram + pkt);
+            const uint32_t seen = g_chatFanoutSeen.fetch_add(1) + 1;
+            const uint32_t fixed = changed ? g_chatFanoutFixed.fetch_add(1) + 1 : g_chatFanoutFixed.load();
+            // The first call always says so; after that only the calls that changed something, and of those the
+            // first 8 and then every 64th -- a busy room must not turn the log into this one line.
+            if (seen == 1 || (changed != 0 && (fixed <= 8 || fixed % 64 == 0)))
+                std::cout << "[socom2] chat receive bound: seen=" << seen << " fixed=" << fixed << std::endl;
+        }
+        else
+        {
+            // Once, so that "the wrap ran and skipped one" is distinguishable from "the wrap was never entered"
+            // when a run's log is read back.
+            static std::atomic<bool> saidOutOfRange{false};
+            if (!saidOutOfRange.exchange(true))
+                std::cerr << "[socom2] chat receive bound: packet pointer out of range; skipped (reported once)" << std::endl;
+        }
+        if (g_chatFanoutOriginal)
+            g_chatFanoutOriginal(rdram, ctx, runtime);
+        // Nothing here: the original may leave through a scheduler checkpoint and resume later.
+    }
+
+    void installChatBound(PS2Runtime &runtime)
+    {
+        if (!runtime.hasFunction(socom2_chat::kFanoutRecvAddr))
+        {
+            std::cout << "[socom2] no function at 0x" << std::hex << socom2_chat::kFanoutRecvAddr << std::dec << "; chat receive not bound" << std::endl;
+            return;
+        }
+        g_chatFanoutOriginal = runtime.lookupFunction(socom2_chat::kFanoutRecvAddr);
+        runtime.replaceFunction(socom2_chat::kFanoutRecvAddr, socom2_ChatFanoutBound);
+        std::cout << "[socom2] chat receive bound (name 32, message 64)" << std::endl;
+    }
+
     // ------------------------------------------------------------------------------------------
     // PS2X_CULL_TRACE="<file>:t<seconds>[:<count>]" -- research/31 section 16. From <seconds> after start,
     // log the next <count> (default 4000) calls of the object box-frustum cull FUN_00290c30(camera,
@@ -2034,6 +2082,7 @@ namespace
         runtime.replaceFunction(0x002483f8u, socom2_libnetb::exStartAsync);
         installRtNetPortShift(runtime);
         installOskPrefill(runtime);   // Sprint 10 Goal 9: only when PS2X_SOCOM2_LOGIN_NAME/_PASS is set
+        installChatBound(runtime);    // Sprint 11 milestone S: unconditional, no knob
 
         ps2_game_overrides::bindAddressHandler(runtime, 0x00247c98u, "ret0");   // descriptor DMA helper
         // rt_crypt: RSA block transform and SHA-1 on the host (socom2_crypto.cpp).
