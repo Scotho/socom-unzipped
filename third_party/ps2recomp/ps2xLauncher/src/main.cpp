@@ -112,11 +112,16 @@ namespace
         return static_cast<bool>(out);
     }
 
-    // The disc check: SCUS_972.75 in the root directory, hashed against the pinned r0001 digest.
+    // The disc check: SCUS_972.75 in the root directory, hashed against the revisions the launcher knows
+    // (launcher::kDiscRevisions -- one row today, r0001). Task 11: what it answers is now WHICH revision the
+    // image is, not merely whether it is the pinned one, because the launcher has a GAME VERSION to name.
+    // An image in no row is refused exactly as before, with the same sentence, and the runner's own
+    // preflight still exits 67 on it (ps2xShared/src/preflight.cpp; ExitCodes::kDiscNotR0001 unchanged).
     struct DiscStatus
     {
         bool checked = false;
         bool ok = false;
+        std::string revision;   // "r0001" for an image in the table; empty for anything else
         std::string message;
     };
 
@@ -148,13 +153,14 @@ namespace
             return st;
         }
         const std::string digest = sha256::hex(bytes.data(), bytes.size());
-        if (digest != launcher::kSocom2R0001ElfSha256)
+        st.revision = launcher::discRevisionForDigest(digest);
+        if (st.revision.empty())
         {
             st.message = "not SOCOM II NTSC r0001 (SCUS_972.75 differs)";
             return st;
         }
         st.ok = true;
-        st.message = "SOCOM II U.S. Navy SEALs NTSC r0001";
+        st.message = "SOCOM II U.S. Navy SEALs NTSC " + st.revision;
         return st;
     }
 
@@ -950,11 +956,23 @@ int main(int argc, char **argv)
         return line.empty() ? 1 : 0;   // silent when unreachable, as the ONLINE page is
     }
 
+    // Task 11: is the community build installed? Asked here, once, and handed to the UI -- a page never
+    // touches the disk. kGameRevisions[1] names the file rather than main.cpp, so the table stays the one
+    // place a revision is described.
+    std::error_code r0004Ec;
+    const bool r0004Present = fs::is_regular_file(dir / launcher::kGameRevisions[1].exeName, r0004Ec);
+
     launcher::Config config;
     {
         const std::string text = readText(configPath);
         if (!text.empty() && !launcher::fromJson(text, config))
             std::fprintf(stderr, "config.json is malformed; using the defaults\n");
+        // Task 11: fromJson cannot see the disk, so the clamp is here -- a config naming a build that is
+        // not installed (a folder copied from a machine that had it) plays the disc's own build rather
+        // than leaving the launcher pointing at an executable that is not there.
+        const launcher::GameRevision *chosen = launcher::findGameRevision(config.gameRevision);
+        if (chosen == nullptr || !launcher::gameRevisionAvailable(*chosen, r0004Present))
+            config.gameRevision = launcher::kGameRevisions[0].id;
     }
 
     if (argc > 1 && std::strcmp(argv[1], "--selftest") == 0)
