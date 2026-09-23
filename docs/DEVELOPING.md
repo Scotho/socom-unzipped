@@ -128,19 +128,24 @@ the volume descriptor's own size and file by file -- or any other output that do
 **Another revision of the disc -- `scripts/build_revision.sh` (Sprint 11 Task 9).** The chain above is r0001's;
 `bash scripts/build_revision.sh <rev> <tree>/RUN/RAW/APACHE00.ZDB` runs the same pieces for any revision under names
 that never collide with r0001's: `game/overlays_<rev>/{ftscore,zsealetc}.bin` and `socom2_game_<rev>.elf`,
-`recomp/socom2_<rev>.toml` (`input`, `output` and `ghidra_output` rewritten; `socom2_ghidra_<rev>.csv` starts as a copy
-of r0001's function map until the revision has its own), `recomp/output_<rev>/`,
+`recomp/socom2_<rev>.toml` (`input`, `output` and `ghidra_output` rewritten), `recomp/output_<rev>/`,
 `third_party/ps2recomp/build-clang-<rev>/` and `dist/socom2_<rev>.exe` with the ELF beside it. Each step is skipped
-when its product is already there (`--force` redoes it); the recomp and the runtime build take the loop lock
-themselves; `--stop-after elf|recomp` stops early, `--check-against <elf>` compares the produced ELF's sha256 with a
-known one, `--out <dir>` puts every product under one directory, `--dry-run` prints the five steps with their paths.
-`<rev>` is `r` and four digits with an optional letters-and-digits suffix. The package must sit in its extracted disc
-tree (the decryption runs that tree's loader on it, after making `OVERLAY/REL/DNAS.dec.bin` when the tree lacks it).
+when its product is already there (`--force` redoes it) — the recomp and the runtime build skip only on the
+`.complete` mark they write when they finish, so a tree left half-written by a failed run is redone rather than
+reported as done; both take the loop lock themselves. `--stop-after elf|recomp` stops early, `--check-against <elf>`
+compares the produced ELF's sha256 with a known one, `--out <dir>` puts every product under one directory,
+`--dry-run` prints the five steps with their paths. `<rev>` is `r` and four digits with an optional suffix that
+starts with a letter. The package must sit in its extracted disc tree, whose loader must be named `SCUS_972.75`
+(`tools_py/decrypt_apache.py` joins that name onto the tree and runs that loader's own code on the package, after
+making `OVERLAY/REL/DNAS.dec.bin` when the tree lacks it). The revision's function map
+`recomp/socom2_ghidra_<rev>.csv` must already be there or be named with `--ghidra <csv>`: only an `r0001*` revision
+falls back to r0001's map silently, any other revision has to ask for it with `--ghidra-from-r0001` and is warned
+that the generated code will be wrong until Task 10's matcher writes that revision its own map.
 **Proven on r0001 (2026-09-23):** `bash scripts/build_revision.sh r0001check game/disc/RUN/RAW/APACHE00.ZDB
 --check-against dist/socom2_game.elf` -- the ELF identical (sha256 `06b83684...8872`), `diff -rq` of the 14,882
 generated files against `recomp/output` empty, the exe built (236,856,320 B; not byte-identical to `dist/socom2.exe`,
-which embeds its own build's paths and source revision). DNAS 2 s, the decryption 6.5 min, the ELF instant, the recomp
-seconds, the runtime build about twenty minutes from a cold build tree.
+which embeds its own build's paths and source revision). Measured in that run (2026-09-23): DNAS 2 s, the decryption
+6.5 min, the ELF instant, the recomp seconds, the runtime build about twenty minutes from a cold build tree.
 
 Everything below this line works on a fresh clone with no disc at all.
 

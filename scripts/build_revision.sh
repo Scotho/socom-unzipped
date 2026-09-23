@@ -3,12 +3,14 @@
 #
 #   bash scripts/build_revision.sh <rev> <APACHE00.ZDB> [--check-against <elf>] [--dry-run] [--stop-after <step>]
 #                                  [--force] [--out <dir>] [--game <disc tree>] [--loader <elf>] [--loader-text-end 0x..]
+#                                  [--ghidra <csv>] [--ghidra-from-r0001]
 #
-#   rev   r + four digits, optionally followed by letters and digits (r0001, r0004, r0001check). The suffix form
-#         exists so a check build of the r0001 disc never overwrites r0001's own products.
+#   rev   r + four digits, optionally followed by a letter and then letters and digits (r0001, r0004, r0001check).
+#         The suffix form exists so a check build of the r0001 disc never overwrites r0001's own products.
 #   zdb   the revision's RUN/RAW/APACHE00.ZDB inside its extracted disc tree (scripts/disc_to_elf.sh makes the
-#         tree; the tree must also hold the loader SCUS_972.xx and OVERLAY/REL/DNAS.dec.bin, because the
-#         decryption runs the loader's own code under Unicorn -- tools_py/decrypt_apache.py's docstring).
+#         tree; the tree must also hold OVERLAY/REL/DNAS.dec.bin and its loader under the name SCUS_972.75 --
+#         the only name step 1 can decrypt with, because tools_py/decrypt_apache.py:206 joins it onto the tree
+#         itself and then runs that loader's own code under Unicorn).
 #
 # Five steps, each skipped when its product is already there (--force redoes it), the last two under the machine's
 # loop lock (scripts/loop_lock.sh, owner build-revision):
@@ -16,16 +18,24 @@
 #   2 make_overlay_elf  loader + both overlays                                    -> game/overlays_<rev>/socom2_game_<rev>.elf
 #     --check-against <elf>: sha256 of that ELF against the given one; a mismatch prints both digests and exits 1
 #   3 toml              recomp/socom2.toml with input/output/ghidra_output rewritten -> recomp/socom2_<rev>.toml;
-#                       recomp/socom2_ghidra_<rev>.csv starts as a copy of r0001's map when the revision has none yet
+#                       the revision's function map recomp/socom2_ghidra_<rev>.csv must already be there or be
+#                       named with --ghidra <csv>. Only an r0001* revision falls back to r0001's own map
+#                       silently; any other revision must ask for it with --ghidra-from-r0001, which warns that
+#                       the generated code will be wrong until Task 10's matcher writes that revision a map.
 #   4 recomp   [lock]   ps2_recomp socom2_<rev>.toml                               -> recomp/output_<rev>/
 #   5 runtime  [lock]   cmake third_party/ps2recomp/build-clang-<rev>              -> dist/socom2_<rev>.exe (+ the ELF beside it)
+#
+#   Steps 4 and 5 mark their product with a .complete file when the step returns 0, and skip on that mark alone:
+#   a tree or an exe left half-written by a failed or interrupted run is redone, never reported as done. The mark
+#   is not generated code, so compare two generated trees with: diff -rq --exclude=.complete <a> <b>
 #
 #   --stop-after elf|recomp|runtime   stop after that step (runtime is the default); elf takes no lock at all
 #   --out <dir>       every product under <dir> instead (overlays_<rev>/, recomp_<rev>/, build-clang-<rev>/, dist/),
 #                     so a check build run from the main tree can land in a worktree
 #   --dry-run         print the five steps with their paths and exit 0, touching nothing
 #
-# Exit 2 on a bad argument, 1 on a failed step or a --check-against mismatch, 0 otherwise. The shape is
+# Exit 2 on a bad argument or a missing input, 1 on a failed step or a --check-against mismatch, 75 when the loop
+# lock could not be taken within --wait (BUILD_REVISION_LOCK_WAIT, 60 minutes), 0 otherwise. The shape is
 # scripts/disc_to_elf.sh's (idempotent stages, one line per stage, --force); the pieces are build.sh's recomp() and
 # runtime() (build.sh:31-70), which this script mirrors for one revision at a time.
 set -euo pipefail
@@ -38,7 +48,7 @@ say() { echo "$*"; }
 py=python
 command -v python >/dev/null 2>&1 || py=python3
 
-REV="" ZDB="" CHECK="" DRY=0 STOP="runtime" FORCE=0 OUT="" GAME="" LOADER="" LTE="" TAIL=0
+REV="" ZDB="" CHECK="" DRY=0 STOP="runtime" FORCE=0 OUT="" GAME="" LOADER="" LTE="" TAIL=0 GHIDRA="" GHIDRA_R0001=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --check-against) [ $# -ge 2 ] || die2 "--check-against needs a path"; CHECK="$2"; shift 2 ;;
@@ -49,8 +59,10 @@ while [ $# -gt 0 ]; do
     --game) [ $# -ge 2 ] || die2 "--game needs the extracted disc tree"; GAME="$2"; shift 2 ;;
     --loader) [ $# -ge 2 ] || die2 "--loader needs the loader ELF"; LOADER="$2"; shift 2 ;;
     --loader-text-end) [ $# -ge 2 ] || die2 "--loader-text-end needs a hex address"; LTE="$2"; shift 2 ;;
+    --ghidra) [ $# -ge 2 ] || die2 "--ghidra needs the revision's function map (a Ghidra ExportPS2Functions CSV)"; GHIDRA="$2"; shift 2 ;;
+    --ghidra-from-r0001) GHIDRA_R0001=1; shift ;;
     --_tail) TAIL=1; shift ;;      # internal: the lock-bound steps, re-entered under loop_lock.sh run
-    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,40p' "$0"; exit 0 ;;
     -*) die2 "unknown option $1" ;;
     *) if [ -z "$REV" ]; then REV="$1"; elif [ -z "$ZDB" ]; then ZDB="$1"; else die2 "unexpected argument $1"; fi; shift ;;
   esac
@@ -61,7 +73,7 @@ if [ "$TAIL" = 1 ]; then
 fi
 
 [ -n "$REV" ] || die2 "usage: build_revision.sh <rev> <APACHE00.ZDB> [--check-against <elf>] [--dry-run] [--stop-after <step>]"
-[[ "$REV" =~ ^r[0-9]{4}[a-z0-9]*$ ]] || die2 "revision must look like r0004 (r + four digits, an optional letters-and-digits suffix such as r0001check): got '$REV'"
+[[ "$REV" =~ ^r[0-9]{4}([a-z][a-z0-9]*)?$ ]] || die2 "revision must look like r0004 (r + four digits, an optional suffix that starts with a letter, such as r0001check): got '$REV'"
 case "$STOP" in elf|recomp|runtime) ;; *) die2 "--stop-after must be one of elf, recomp, runtime: got '$STOP'" ;; esac
 
 # ---- where everything is ------------------------------------------------------------------------------------
@@ -94,10 +106,33 @@ if [ "$TAIL" = 0 ]; then
       if [ -f "$cand" ]; then LOADER="$cand"; break; fi
     done
   fi
-  [ -n "$LTE" ] || LTE="$(cat "$ROOT/recomp/loader_text_end.txt")"
+  if [ -z "$LTE" ]; then
+    [ -f "$ROOT/recomp/loader_text_end.txt" ] || die2 "recomp/loader_text_end.txt is missing -- pass --loader-text-end 0x..."
+    LTE="$(cat "$ROOT/recomp/loader_text_end.txt")"
+  fi
   if [ -n "$CHECK" ] && [ "$DRY" = 0 ]; then
     [ -f "$CHECK" ] || die2 "no such ELF to check against: $CHECK"
   fi
+  # The revision's function map, decided here so a wrong one is refused before the eight minutes of step 1 and
+  # not after them. r0001's map is the right starting point for the r0001 disc and for nothing else: handed to
+  # another revision it is a knowingly wrong map whose recompiled code still exits 0, so it must be asked for.
+  GHIDRA_SRC="" GHIDRA_NEED=0
+  if [ -n "$GHIDRA" ]; then
+    [ -f "$GHIDRA" ] || die2 "no such function map: $GHIDRA"
+    GHIDRA_SRC="$(cd "$(dirname "$GHIDRA")" && pwd)/$(basename "$GHIDRA")"
+  elif [ ! -f "$CSV" ]; then
+    case "$REV" in
+      r0001*) GHIDRA_SRC="$ROOT/recomp/socom2_ghidra.csv" ;;
+      *) if [ "$GHIDRA_R0001" = 1 ]; then
+           GHIDRA_SRC="$ROOT/recomp/socom2_ghidra.csv"
+           echo "WARNING: $REV has no function map of its own; starting from r0001's. The generated code will be wrong until Sprint 11 Task 10's matcher writes socom2_ghidra_$REV.csv." >&2
+         else
+           GHIDRA_NEED=1
+         fi ;;
+    esac
+  fi
+  [ "$GHIDRA_NEED" = 0 ] || [ "$DRY" = 1 ] \
+    || die2 "$REV has no function map of its own ($(rel "$CSV")): pass --ghidra <csv>, or --ghidra-from-r0001 to start from r0001's map knowing the generated code will be wrong until Sprint 11 Task 10's matcher writes one"
 fi
 
 # ---- dry run ------------------------------------------------------------------------------------------------
@@ -107,7 +142,14 @@ if [ "$DRY" = 1 ]; then
   say "  disc tree      $(rel "$GAME")   loader $(rel "${LOADER:-<none found: SCUS_*/SCES_*/SLUS_*/SLES_* in the tree, or --loader>}")"
   say "  step 1  decrypt           tools_py.decrypt_apache.main(tree, overlays) -> $(rel "$OVERLAYS")/{ftscore,zsealetc}.bin"
   say "  step 2  make_overlay_elf  loader + overlays (--loader-text-end=$LTE) -> $(rel "$ELF")${CHECK:+   check-against $(rel "$CHECK")}"
-  say "  step 3  toml              recomp/socom2.toml -> $(rel "$TOML") (input/output/ghidra_output rewritten); $(rel "$CSV") from socom2_ghidra.csv when absent"
+  if [ "$GHIDRA_NEED" = 1 ]; then
+    MAPNOTE="$(rel "$CSV") is not there -- the run will refuse it: pass --ghidra <csv>, or --ghidra-from-r0001"
+  elif [ -n "$GHIDRA_SRC" ]; then
+    MAPNOTE="$(rel "$CSV") copied from $(rel "$GHIDRA_SRC")"
+  else
+    MAPNOTE="$(rel "$CSV") is already there"
+  fi
+  say "  step 3  toml              recomp/socom2.toml -> $(rel "$TOML") (input/output/ghidra_output rewritten); $MAPNOTE"
   say "  step 4  recomp   [lock]   ps2_recomp socom2_$REV.toml -> $(rel "$GEN")/"
   say "  step 5  runtime  [lock]   cmake $(rel "$RTBUILD") -> $(rel "$EXE") (+ $(rel "$DIST")/socom2_game_$REV.elf)"
   [ "$STOP" = runtime ] || say "  stop after $STOP"
@@ -122,6 +164,9 @@ if [ "$TAIL" = 0 ]; then
     say "decrypt: ftscore.bin and zsealetc.bin are already in $(rel "$OVERLAYS") -- skipped (--force redoes it)"
   else
     [ -n "$LOADER" ] || die2 "no loader ELF (SCUS_*, SCES_*, SLUS_*, SLES_*) in $GAME -- pass --loader, or --game with the extracted disc tree"
+    # decrypt_apache.py:206 is load_elf(ee, os.path.join(game, 'SCUS_972.75')) -- the name is hardcoded, so a
+    # tree whose loader is any other one cannot get past step 1, and says so here rather than eight minutes in.
+    [ -f "$GAME/SCUS_972.75" ] || die2 "step 1 can only decrypt with SCUS_972.75 (tools_py/decrypt_apache.py:206 joins that name onto the tree): $GAME holds $(basename "$LOADER") -- decrypt that tree with scripts/disc_to_elf.sh first, or give decrypt_apache a loader parameter"
     if [ ! -f "$GAME/OVERLAY/REL/DNAS.dec.bin" ]; then
       # The decryption loads the decrypted DNAS overlay first; a tree made before disc_to_elf's dnas stage existed
       # (or one whose derived files were cleaned) lacks it. It is two seconds under Unicorn, verified against
@@ -130,10 +175,10 @@ if [ "$TAIL" = 0 ]; then
       say "dnas: $(rel "$GAME")/OVERLAY/REL/DNAS.dec.bin is missing -- decrypting the DNAS overlay first (tools_py.disc_to_elf.stage_dnas, a few seconds)"
       if ! (cd "$ROOT" && "$py" -c 'import json, sys; from tools_py import disc_to_elf as d; e = json.load(open(d.EXPECTED_PATH, encoding="utf-8")); d.stage_dnas(sys.argv[1], sys.argv[2], e)' "$GAME" "$OVERLAYS") > "$OVERLAYS/build_revision-dnas.log" 2>&1; then
         tail -20 "$OVERLAYS/build_revision-dnas.log" >&2
-        echo "build_revision: the DNAS stage failed (the log above); for a disc other than r0001 run scripts/disc_to_elf.sh on its ISO first" >&2; exit 1
+        echo "build_revision: the DNAS stage failed (the log above); a disc whose DNAS.BIN is not r0001's needs its own entry in tools_py/disc_to_elf_expected.json (Sprint 11 Task 10) -- the stage refuses an unrecorded one" >&2; exit 1
       fi
     fi
-    [ "$ZDB" = "$GAME/RUN/RAW/APACHE00.ZDB" ] || die2 "the package must be the tree's own RUN/RAW/APACHE00.ZDB ($GAME/RUN/RAW/APACHE00.ZDB): the decryption runs the tree's loader on it"
+    [ "$ZDB" = "$GAME/RUN/RAW/APACHE00.ZDB" ] || die2 "the package must be the tree's own RUN/RAW/APACHE00.ZDB ($GAME/RUN/RAW/APACHE00.ZDB): the decryption runs that tree's SCUS_972.75 on it"
     say "decrypt: running the loader's decryption under Unicorn (about eight minutes; the progress lines go to $(rel "$OVERLAYS")/build_revision-decrypt.log)"
     if ! (cd "$ROOT" && "$py" -c 'import sys; from tools_py import decrypt_apache; decrypt_apache.main(sys.argv[1], sys.argv[2])' "$GAME" "$OVERLAYS") > "$OVERLAYS/build_revision-decrypt.log" 2>&1; then
       tail -20 "$OVERLAYS/build_revision-decrypt.log" >&2
@@ -162,10 +207,10 @@ if [ "$TAIL" = 0 ]; then
     fi
   fi
   [ "$STOP" = elf ] && { say "stop after elf"; exit 0; }
-  # 3 toml (+ the revision's Ghidra map, r0001's as the starting point)
-  if [ ! -f "$CSV" ]; then
-    cp "$ROOT/recomp/socom2_ghidra.csv" "$CSV"
-    say "toml: $(rel "$CSV") starts as a copy of r0001's function map (socom2_ghidra.csv); a revision's own map replaces it"
+  # 3 toml (+ the revision's function map, whose source was settled before step 1)
+  if [ -n "$GHIDRA_SRC" ]; then
+    cp "$GHIDRA_SRC" "$CSV"
+    say "toml: $(rel "$CSV") copied from $(rel "$GHIDRA_SRC")"
   fi
   sed -e "s|^input *=.*|input = \"$TOML_INPUT\"|" \
       -e "s|^output *=.*|output = \"$TOML_OUTPUT\"|" \
@@ -182,7 +227,7 @@ fi
 command -v clang >/dev/null 2>&1 && command -v cmake >/dev/null 2>&1 && command -v ninja >/dev/null 2>&1 \
   || die2 "no toolchain under tools/ -- run: bash scripts/bootstrap_windows.sh"
 # 4 recomp
-if [ "$FORCE" = 0 ] && [ -d "$GEN" ] && [ -n "$(ls -A "$GEN" 2>/dev/null)" ]; then
+if [ "$FORCE" = 0 ] && [ -f "$GEN/.complete" ]; then
   say "recomp: $(ls "$GEN" | wc -l) files already in $(rel "$GEN") -- skipped (--force redoes it)"
 else
   "$py" "$ROOT/tools_py/fix_ghidra_csv.py" "$CSV" "$ROOT/recomp/extra_functions.txt"
@@ -193,10 +238,11 @@ else
   (cd "$RECOMP_DIR" && "$TOOLBUILD/ps2xRecomp/ps2_recomp.exe" "socom2_$REV.toml" > "recomp_run_$REV.log" 2>&1) \
       || { tail -20 "$RECOMP_DIR/recomp_run_$REV.log" >&2; echo "build_revision: recomp failed (the log above)" >&2; exit 1; }
   say "recomp: $(ls "$GEN" | wc -l) files in $(rel "$GEN"), unhandled=$(grep -c unhandled-instruction "$RECOMP_DIR/recomp_run_$REV.log" || true)"
+  : > "$GEN/.complete"      # the mark the skip above trusts: written only when ps2_recomp returned 0
 fi
 [ "$STOP" = recomp ] && { say "stop after recomp"; exit 0; }
 # 5 runtime
-if [ "$FORCE" = 0 ] && [ -f "$EXE" ]; then
+if [ "$FORCE" = 0 ] && [ -f "$EXE" ] && [ -f "$EXE.complete" ]; then
   say "runtime: $(rel "$EXE") is already there -- skipped (--force redoes it)"
 else
   cmake -S "$PS2R" -B "$RTBUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release \
@@ -206,6 +252,7 @@ else
   mkdir -p "$DIST"
   cp "$RTBUILD/ps2xRuntime/ps2EntryRunner.exe" "$EXE"
   cp "$ELF" "$DIST/socom2_game_$REV.elf"
+  : > "$EXE.complete"       # after both copies, so an interrupted copy is redone rather than shipped
   say "runtime: $(rel "$EXE") ($(stat -c %s "$EXE") B) + $(rel "$DIST")/socom2_game_$REV.elf"
 fi
 say "build_revision $REV: done"
