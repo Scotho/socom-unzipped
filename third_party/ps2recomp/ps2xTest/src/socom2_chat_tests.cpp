@@ -108,6 +108,43 @@ void register_socom2_chat_tests()
             t.Equals(socom2_chat::terminateRecords(run.data(), 0), 0, "nothing changed");
             t.IsTrue(run == before, "the first record was not touched");
         });
+        // A count read out of guest memory decides how MUCH is walked, never WHETHER anything is: the cap
+        // cuts the walk, it does not call the walk off. The caps also sit past anything the game asks for.
+        tc.Run("a holder count past its cap is cut to the cap, never to nothing", [](TestCase &t)
+        {
+            t.Equals(socom2_chat::walkCount(socom2_chat::kMaxHolders + 1, socom2_chat::kMaxHolders),
+                     socom2_chat::kMaxHolders, "one past the cap walks the cap");
+            t.Equals(socom2_chat::walkCount(socom2_chat::kMaxHolders, socom2_chat::kMaxHolders),
+                     socom2_chat::kMaxHolders, "exactly the cap walks all of it");
+            t.Equals(socom2_chat::walkCount(7, socom2_chat::kMaxHolders), 7u, "under the cap walks every one");
+            t.Equals(socom2_chat::walkCount(0xFFFFFFFFu, socom2_chat::kMaxHolders), socom2_chat::kMaxHolders,
+                     "the largest count there is still walks the cap");
+            t.IsTrue(socom2_chat::kMaxHolders > 999u, "the cap is past the largest list the game asks for");
+        });
+        tc.Run("a record count past its cap bounds the records up to the cap, not zero of them", [](TestCase &t)
+        {
+            const uint32_t cap = 3, count = cap + 1;
+            std::vector<uint8_t> run(socom2_chat::kRecordBytes * count, 0xAA);
+            for (uint32_t i = 0; i < count; ++i)
+            {
+                uint8_t *rec = &run[i * socom2_chat::kRecordBytes];
+                std::memset(rec + socom2_chat::kNameOff, 'N', socom2_chat::kNameLen);
+                std::memset(rec + socom2_chat::kMessageOff, 'M', socom2_chat::kMessageLen);
+            }
+            std::vector<uint8_t> before = run;
+            t.Equals(socom2_chat::terminateRecords(run.data(), socom2_chat::walkCount(count, cap)), 6,
+                     "two fields in each of the three records the cap allows");
+            for (uint32_t i = 0; i < cap; ++i)
+            {
+                const uint8_t *rec = &run[i * socom2_chat::kRecordBytes];
+                t.Equals(std::strlen(reinterpret_cast<const char *>(rec + socom2_chat::kNameOff)), size_t(31), "name reads 31 chars");
+                t.Equals(std::strlen(reinterpret_cast<const char *>(rec + socom2_chat::kMessageOff)), size_t(63), "message reads 63 chars");
+            }
+            t.IsTrue(std::memcmp(&run[cap * socom2_chat::kRecordBytes], &before[cap * socom2_chat::kRecordBytes],
+                                 socom2_chat::kRecordBytes) == 0,
+                     "the record past the cap is byte-for-byte what it was");
+            t.IsTrue(socom2_chat::kMaxRecords > 999u, "the real cap is past the largest run the game asks for");
+        });
         // A count and a base read out of guest memory are not trusted: the run is walked only when it is
         // whole and inside the machine's memory.
         tc.Run("a run is accepted only when it is whole and inside memory", [](TestCase &t)

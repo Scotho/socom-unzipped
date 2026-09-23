@@ -23,6 +23,7 @@
 // this table has no column for, keeps r0001 AND logs: a silently wrong address does not present as a bad
 // address, it presents as a crash somewhere else entirely, hours later.
 #pragma once
+#include "runtime/socom2_chat.h"
 #include "runtime/socom2_osk_prefill.h"
 
 #include <cctype>
@@ -87,7 +88,7 @@ namespace socom2_addresses
         socom2_osk::kOskOpenAddr,         // oskOpen -- one definition, in the header that documents the handler
         socom2_osk::kOskOpenThunkAddr,    // oskOpenThunk -- ditto; the table dispatches here, not at the handler
         socom2_osk::kOskTextBufferAddr,   // oskTextBuffer -- ditto
-        0x002f4ef0u,   // chatFanoutRecv
+        socom2_chat::kFanoutRecvAddr,     // chatFanoutRecv -- one definition, in the header that documents it
         0x002f5020u,   // chatListRender
         0x0044f568u,   // chatListHolders
         0x002cc670u,   // dnasCheck

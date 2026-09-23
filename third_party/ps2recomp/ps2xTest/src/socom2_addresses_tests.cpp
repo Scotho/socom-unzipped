@@ -8,6 +8,7 @@
 // somewhere else entirely.
 #include "MiniTest.h"
 #include "runtime/socom2_addresses.h"
+#include "runtime/socom2_chat.h"
 #include "runtime/socom2_osk_prefill.h"
 
 #include <iostream>
@@ -70,6 +71,7 @@ void register_socom2_addresses_tests()
             t.Equals(a.oskTextBuffer, 0x0049EC70u, "oskTextBuffer: the keyboard's initial-text buffer");
             t.Equals(a.oskTextBuffer, socom2_osk::kOskTextBufferAddr, "oskTextBuffer: one definition, not a second copy");
             t.Equals(a.chatFanoutRecv, 0x002f4ef0u, "chatFanoutRecv: FUN_002f4ef0");
+            t.Equals(a.chatFanoutRecv, socom2_chat::kFanoutRecvAddr, "chatFanoutRecv: socom2_chat::kFanoutRecvAddr, not a second copy");
             t.Equals(a.chatListRender, 0x002f5020u, "chatListRender: FUN_002f5020");
             t.Equals(a.chatListHolders, 0x0044f568u, "chatListHolders: the holder list it renders from");
             t.Equals(a.dnasCheck, 0x002cc670u, "dnasCheck: FUN_002cc670");
@@ -106,6 +108,29 @@ void register_socom2_addresses_tests()
             t.IsTrue(a.oskOpen >= socom2_addresses::kOverlayBase, "the handler is overlay content");
             t.IsTrue(a.oskOpenThunk >= socom2_addresses::kOverlayBase, "the thunk is overlay content");
             t.IsTrue(a.oskTextBuffer >= socom2_addresses::kOverlayBase, "the buffer is overlay content");
+        });
+
+        // The chat wraps reach into the image by two things: the addresses above, and the record layout in
+        // socom2_chat.h. The addresses are pinned here to the literals they replaced; the layout is pinned
+        // the same way, because every case in socom2_chat_tests.cpp spells it symbolically and would pass
+        // unchanged against a wrong constant.
+        tc.Run("the chat record layout is the offsets and widths it was written from", [](TestCase &t)
+        {
+            t.Equals(socom2_chat::kNameOff, 0x1cu, "kNameOff");
+            t.Equals(socom2_chat::kNameLen, 32u, "kNameLen");
+            t.Equals(socom2_chat::kTypeOff, 0x3cu, "kTypeOff");
+            t.Equals(socom2_chat::kMessageOff, 0x40u, "kMessageOff");
+            t.Equals(socom2_chat::kMessageLen, 64u, "kMessageLen");
+            t.Equals(socom2_chat::kPacketBytes, 0x80u, "kPacketBytes");
+            t.Equals(socom2_chat::kRecordBytes, 0x80u, "kRecordBytes: the run's stride");
+            t.Equals(socom2_chat::kListCountOff, 0x8cu, "kListCountOff");
+            t.Equals(socom2_chat::kListDataOff, 0x90u, "kListDataOff");
+            t.Equals(socom2_chat::kListHeaderBytes, 0x94u, "kListHeaderBytes: through the last of the two");
+            t.Equals(socom2_chat::kHolderCountOff, 0x04u, "kHolderCountOff");
+            t.Equals(socom2_chat::kHolderDataOff, 0x08u, "kHolderDataOff");
+            t.Equals(socom2_chat::kHolderPtrBytes, 4u, "kHolderPtrBytes");
+            t.IsTrue(socom2_chat::kMessageOff + socom2_chat::kMessageLen <= socom2_chat::kRecordBytes,
+                     "both fields lie inside one record");
         });
 
         tc.Run("the revision token is read out of the version string", [](TestCase &t)

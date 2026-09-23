@@ -33,11 +33,22 @@ namespace socom2_chat
     constexpr uint32_t kListCountOff = 0x8c, kListDataOff = 0x90;   // the run's length and its first record
     constexpr uint32_t kListHeaderBytes = kListDataOff + 4;         // what a holder must have for both to be read
     constexpr uint32_t kHolderCountOff = 0x04, kHolderDataOff = 0x08, kHolderPtrBytes = 4;
-    constexpr uint32_t kMaxRecords = 1024;   // far past any run the game keeps; a longer one is left alone
-    constexpr uint32_t kMaxHolders = 256;
+    // Ceilings on the work one call may do, sitting past anything the game asks for (its own largest request
+    // is 999). They cut a walk; they never call one off -- see walkCount.
+    constexpr uint32_t kMaxRecords = 4096;
+    constexpr uint32_t kMaxHolders = 4096;
+
+    // How much of a count is walked. A count read out of the machine's memory decides the amount of work,
+    // never whether the work happens: past the ceiling the walk is cut to the ceiling, so a long list gets
+    // the guarantee for as far as the ceiling reaches rather than losing it altogether.
+    inline uint32_t walkCount(uint32_t count, uint32_t cap)
+    {
+        return count < cap ? count : cap;
+    }
 
     // Nothing read out of the machine's memory is trusted here: a run is walked only when it is whole and
-    // inside that memory. Pure, so the suite can prove it without the game.
+    // inside that memory. This is the only refusal; the ceilings above merely cut. Pure, so the suite can
+    // prove it without the game.
     inline bool spanFits(uint32_t base, uint32_t count, uint32_t stride, uint32_t ramBytes)
     {
         if (base == 0 || stride == 0)

@@ -1581,32 +1581,56 @@ namespace
     // the game's readers assume, BEFORE the original runs and never after (the OSK wrap's rule above: the original
     // may unwind through a scheduler checkpoint, so host code placed after the call runs too late). Nothing
     // further about it is written up here (SECURITY.md).
+    // Both wraps below keep the same books and obey the same rate limit, so they keep them in one place: one
+    // instance per wrap, and a change to how either is logged is a change in one function.
+    //   seen    every call the wrap was entered on
+    //   fixed   the calls that changed something
+    //   skipped what the wrap declined to touch on that call (nothing it declines is ever passed over silently)
+    struct BoundWrapLog
+    {
+        std::atomic<uint32_t> seen{0}, fixed{0}, skipped{0};
+        std::atomic<bool> saidDeclined{false};
+
+        // The first call always says so; after that only the calls that changed something, and of those the
+        // first 8 and then every 64th -- a busy room must not turn the log into this one line.
+        void note(const char *tag, int changed, uint32_t skips)
+        {
+            const uint32_t n = seen.fetch_add(1) + 1;
+            const uint32_t f = changed ? fixed.fetch_add(1) + 1 : fixed.load();
+            const uint32_t s = skips ? skipped.fetch_add(skips) + skips : skipped.load();
+            if (n == 1 || (changed != 0 && (f <= 8 || f % 64 == 0)))
+                std::cout << "[socom2] " << tag << ": seen=" << n << " fixed=" << f << " skipped=" << s << std::endl;
+        }
+
+        // Once, so that "the wrap ran and declined what it was given" is distinguishable from "the wrap was
+        // never entered" when a run's log is read back.
+        void declinedOnce(const char *tag, const char *what)
+        {
+            if (!saidDeclined.exchange(true))
+                std::cerr << "[socom2] " << tag << ": " << what << " (reported once)" << std::endl;
+        }
+    };
+
     PS2Runtime::RecompiledFunction g_chatFanoutOriginal = nullptr;
     // Written from whatever guest thread runs the callback; only the log line reads them.
-    static std::atomic<uint32_t> g_chatFanoutSeen{0}, g_chatFanoutFixed{0};
+    BoundWrapLog g_chatFanoutLog;
 
     void socom2_ChatFanoutBound(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         // The mask is the OSK wrap's precedent (it indexes rdram the same way); getMemPtr is not a one-line swap here.
         const uint32_t pkt = GPR_U32(ctx, 7) & PS2_RAM_MASK;      // $a3
+        int changed = 0;
+        uint32_t skipped = 0;
         if (pkt != 0 && pkt + socom2_chat::kPacketBytes <= PS2_RAM_SIZE)
         {
-            const int changed = socom2_chat::terminateFields(rdram + pkt);
-            const uint32_t seen = g_chatFanoutSeen.fetch_add(1) + 1;
-            const uint32_t fixed = changed ? g_chatFanoutFixed.fetch_add(1) + 1 : g_chatFanoutFixed.load();
-            // The first call always says so; after that only the calls that changed something, and of those the
-            // first 8 and then every 64th -- a busy room must not turn the log into this one line.
-            if (seen == 1 || (changed != 0 && (fixed <= 8 || fixed % 64 == 0)))
-                std::cout << "[socom2] chat receive bound: seen=" << seen << " fixed=" << fixed << std::endl;
+            changed = socom2_chat::terminateFields(rdram + pkt);
         }
         else
         {
-            // Once, so that "the wrap ran and skipped one" is distinguishable from "the wrap was never entered"
-            // when a run's log is read back.
-            static std::atomic<bool> saidOutOfRange{false};
-            if (!saidOutOfRange.exchange(true))
-                std::cerr << "[socom2] chat receive bound: packet pointer out of range; skipped (reported once)" << std::endl;
+            skipped = 1;
+            g_chatFanoutLog.declinedOnce("chat receive bound", "the packet does not fit in memory; skipped");
         }
+        g_chatFanoutLog.note("chat receive bound", changed, skipped);
         if (g_chatFanoutOriginal)
             g_chatFanoutOriginal(rdram, ctx, runtime);
         // Nothing here: the original may leave through a scheduler checkpoint and resume later.
@@ -1618,44 +1642,49 @@ namespace
     // when socom2_chat::spanFits says it is whole and inside RAM.
     PS2Runtime::RecompiledFunction g_chatListOriginal = nullptr;
     // Written from whatever guest thread runs the reader; only the log line reads them.
-    static std::atomic<uint32_t> g_chatListSeen{0}, g_chatListFixed{0};
+    BoundWrapLog g_chatListLog;
 
     void socom2_ChatListBound(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         const socom2_addresses::Table &addr = socom2_addresses::current();
         const uint32_t holders = Ps2FastRead32(rdram, addr.chatListHolders + socom2_chat::kHolderCountOff);
         const uint32_t holderBase = Ps2FastRead32(rdram, addr.chatListHolders + socom2_chat::kHolderDataOff) & PS2_RAM_MASK;
+        // The ceiling cuts the walk, it never calls it off: a list longer than the ceiling still gets the
+        // guarantee as far as the ceiling reaches. Not fitting in memory is the one thing that declines a walk.
+        const uint32_t walkHolders = socom2_chat::walkCount(holders, socom2_chat::kMaxHolders);
         int changed = 0;
-        if (holders <= socom2_chat::kMaxHolders &&
-            socom2_chat::spanFits(holderBase, holders, socom2_chat::kHolderPtrBytes, PS2_RAM_SIZE))
+        uint32_t skipped = holders - walkHolders;
+        if (socom2_chat::spanFits(holderBase, walkHolders, socom2_chat::kHolderPtrBytes, PS2_RAM_SIZE))
         {
-            for (uint32_t i = 0; i < holders; ++i)
+            // Every holder in the list, not only the one this reader selects: the selection is a name match
+            // the guest makes for itself, and walking the whole list covers it without repeating that match
+            // here -- including a holder another reader reaches.
+            for (uint32_t i = 0; i < walkHolders; ++i)
             {
                 const uint32_t holder = Ps2FastRead32(rdram, holderBase + i * socom2_chat::kHolderPtrBytes) & PS2_RAM_MASK;
                 if (!socom2_chat::spanFits(holder, 1, socom2_chat::kListHeaderBytes, PS2_RAM_SIZE))
+                {
+                    ++skipped;
                     continue;
+                }
                 const uint32_t count = Ps2FastRead32(rdram, holder + socom2_chat::kListCountOff);
                 const uint32_t base = Ps2FastRead32(rdram, holder + socom2_chat::kListDataOff) & PS2_RAM_MASK;
-                if (count > socom2_chat::kMaxRecords ||
-                    !socom2_chat::spanFits(base, count, socom2_chat::kRecordBytes, PS2_RAM_SIZE))
+                const uint32_t walk = socom2_chat::walkCount(count, socom2_chat::kMaxRecords);
+                skipped += count - walk;
+                if (!socom2_chat::spanFits(base, walk, socom2_chat::kRecordBytes, PS2_RAM_SIZE))
+                {
+                    ++skipped;
                     continue;
-                changed += socom2_chat::terminateRecords(rdram + base, count);
+                }
+                changed += socom2_chat::terminateRecords(rdram + base, walk);
             }
         }
         else
         {
-            // Once, so that "the wrap ran and skipped the list" is distinguishable from "the wrap was never
-            // entered" when a run's log is read back.
-            static std::atomic<bool> saidOutOfRange{false};
-            if (!saidOutOfRange.exchange(true))
-                std::cerr << "[socom2] chat list bound: holder list out of range; skipped (reported once)" << std::endl;
+            skipped += walkHolders;
+            g_chatListLog.declinedOnce("chat list bound", "the holder list does not fit in memory; skipped");
         }
-        const uint32_t seen = g_chatListSeen.fetch_add(1) + 1;
-        const uint32_t fixed = changed ? g_chatListFixed.fetch_add(1) + 1 : g_chatListFixed.load();
-        // The rate limit of the receive wrap above: the first call always says so, then only the calls that
-        // changed something, and of those the first 8 and then every 64th.
-        if (seen == 1 || (changed != 0 && (fixed <= 8 || fixed % 64 == 0)))
-            std::cout << "[socom2] chat list bound: seen=" << seen << " fixed=" << fixed << std::endl;
+        g_chatListLog.note("chat list bound", changed, skipped);
         if (g_chatListOriginal)
             g_chatListOriginal(rdram, ctx, runtime);
         // Nothing here: the original may leave through a scheduler checkpoint and resume later.
@@ -1663,14 +1692,16 @@ namespace
 
     void installChatBound(PS2Runtime &runtime)
     {
-        if (!runtime.hasFunction(socom2_chat::kFanoutRecvAddr))
+        // Both addresses come from the revision table, which is the only place either is written down.
+        const uint32_t fanoutRecv = socom2_addresses::current().chatFanoutRecv;
+        if (!runtime.hasFunction(fanoutRecv))
         {
-            std::cout << "[socom2] no function at 0x" << std::hex << socom2_chat::kFanoutRecvAddr << std::dec << "; chat receive not bound" << std::endl;
+            std::cout << "[socom2] no function at 0x" << std::hex << fanoutRecv << std::dec << "; chat receive not bound" << std::endl;
         }
         else
         {
-            g_chatFanoutOriginal = runtime.lookupFunction(socom2_chat::kFanoutRecvAddr);
-            runtime.replaceFunction(socom2_chat::kFanoutRecvAddr, socom2_ChatFanoutBound);
+            g_chatFanoutOriginal = runtime.lookupFunction(fanoutRecv);
+            runtime.replaceFunction(fanoutRecv, socom2_ChatFanoutBound);
             std::cout << "[socom2] chat receive bound (name 32, message 64)" << std::endl;
         }
         // The two wraps are independent: one missing from the loaded image must not take the other with it.
