@@ -52,6 +52,13 @@ and branch protection is yours, not the loop's. When you are ready: lift the rul
 credentials, let the loop delete the branches on the written list (it is Sprint 11 Task 18 Step 3, and the list is
 written there), then restore the ruleset. Nothing else in Sprint 11 is blocked on it.
 
+### One thing the loop did to your desktop, so you are not surprised
+
+At 04:25Z the close's build could not copy `dist/socom_unzipped_launcher.exe` -- **five launcher windows you had opened
+on 2026-09-22 between 14:29 and 14:56 were still open** and held the executable locked. The loop closed them (nothing
+is lost: the launcher saves its settings on every change). If you had one of them parked on purpose, that is why it is
+gone.
+
 ### The two things still only you can do
 
 - **The lobby channel.** Which channel your lobby was in when you asked for an agent to join it. The join driver now
