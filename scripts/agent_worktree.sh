@@ -36,6 +36,7 @@ create() {
     powershell -NoProfile -Command "New-Item -ItemType Junction -Path '$(win_path "$path/tools")' -Target '$(win_path "$ROOT/tools")' | Out-Null" || { echo "agent_worktree: junction failed" >&2; exit 1; }
     [ -d "$path/tools/llvm-mingw" ] || { echo "agent_worktree: junction made but tools/llvm-mingw not visible through it" >&2; exit 1; }
   fi
+  mkdir -p "$path/logs"   # loop_lock.sh keeps its mutex under logs/; a fresh worktree has none and reports BUSY (T10, 2026-09-23)
   echo "created $path on agent/$name (base $(git -C "$path" rev-parse --short HEAD)); push disabled; tools/ junctioned"
   echo "build there with: bash scripts/loop_lock.sh run agent-$name --purpose \"...\" -- ./build.sh test --no-runner"
 }
