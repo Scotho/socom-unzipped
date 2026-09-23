@@ -20,7 +20,7 @@
 // The only chunk this file knows how to build is the simulated memory card (mc0, the host directory the
 // kernel's MemoryCard stub reads and writes -- Kernel/Syscalls/Helpers/Path.h's getConfiguredMcRoot). It is the
 // proof that the container carries real state, and it takes the folder as an argument so this translation unit
-// depends on nothing but the standard library.
+// depends on nothing in the runtime (the standard library, and the platform's file-sync call).
 #pragma once
 
 #include <array>

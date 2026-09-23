@@ -851,7 +851,12 @@ void register_ps2_save_state_tests()
             t.IsTrue(error.find("not a directory") != std::string::npos, "and says so: " + error);
             t.IsTrue(readBytes(notAFolder) == pattern(89u, 4), "and the file is untouched");
             t.IsFalse(unpackMemoryCard(chunk, fs::path(), &error), "an empty path is refused");
-            t.IsFalse(unpackMemoryCard(chunk, card.root_path(), &error), "and so is a filesystem root");
+            #ifdef _WIN32
+            // A drive that does not exist: a regression in usableCardRoot must not be able to write into C:\.
+            t.IsFalse(unpackMemoryCard(chunk, fs::path("Q:/"), &error), "and so is a filesystem root");
+#else
+            t.IsFalse(unpackMemoryCard(chunk, fs::path("/"), &error), "and so is a filesystem root");
+#endif
             dropTree(root);
         });
 
