@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 from tools_py.release import leakcheck as L
 from tools_py.release import leakrules as R
@@ -136,6 +137,36 @@ class PlantedSecretsAreCaught(unittest.TestCase):
         self.assertEqual(st["missed"], [])
         self.assertEqual(st["caught"], st["planted"])
         self.assertGreater(st["planted"], 20)
+
+    def test_a_machine_user_named_after_the_product_is_not_a_secret(self):
+        """The socom-linux VM's account is `socom`, so on 2026-09-22 the owner-user-name rule matched the
+        product's own name and README.md:1 -- "# SOCOM Unzipped" -- became a leak. A user name that is part
+        of what the project calls itself is not a secret; anything else still is."""
+        with mock.patch.dict(os.environ, {"USERNAME": "socom", "USER": "socom", "LOGNAME": "socom"}, clear=False), \
+                mock.patch.object(R.os.path, "expanduser", lambda p: "/home/socom"):
+            names = R.owner_names()
+        self.assertEqual(names, set(), "the product's own name is not this machine's secret")
+
+        with mock.patch.dict(os.environ, {"USERNAME": "craigs", "USER": "craigs", "LOGNAME": "craigs"}, clear=False), \
+                mock.patch.object(R.os.path, "expanduser", lambda p: "/home/craigs"):
+            self.assertEqual(R.owner_names(), {"craigs"})
+
+    def test_the_product_s_own_words_are_the_only_ones_dropped(self):
+        for name in ("socom", "SOCOM", "Socom", "unzipped", "socom_pc", "Ps2x"):
+            with self.subTest(name=name):
+                self.assertTrue(R.is_product_word(name), name)
+        for name in ("craigs", "socomx7", "seal", "navy"):
+            with self.subTest(name=name):
+                self.assertFalse(R.is_product_word(name), name)
+
+    def test_a_user_named_socom_leaves_the_readme_alone(self):
+        """End to end: the rules built for that machine, over the line that fired."""
+        line = "# SOCOM Unzipped"
+        self.assertNotIn("owner-user-name",
+                         {r for r, fn in R.text_rules(users=R.drop_product_words(["socom"])) if fn(line)})
+        self.assertIn("owner-user-name",
+                      {r for r, fn in R.text_rules(users=R.drop_product_words(["craigs"]))
+                       if fn("built by craigs")})
 
     def test_the_mask_never_shows_the_middle(self):
         self.assertEqual(R.mask("AKIAQ2W3E4R5T6Y7U8I9"), "AKIA...I9 (20 chars)")
