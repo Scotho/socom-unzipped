@@ -99,7 +99,7 @@ mixed-match runs); the speed-freeze re-measure from the ladder logs (R242); **th
 to be ours** — 50 ms DEVICE dips after the mixer's dump point on any endpoint (the A/B, KNOWN §1): the output path
 between `render()` and the device is where to look; a route to the church for the W6 capture, and the capture
 recording its own `PS2X_*` environment; `ladder_job.sh`'s pre-check race (let `run_detached` take the lock without a
-separate check; KNOWN §4); **a harness chat step** (open the briefing-room chat box and type a line, A hosts before B joins) so a line is seen crossing the client bound (R246, KNOWN §2); the streamer half of the real-IRX oracle (research/40 §6's price); the three #244 patches as
+separate check; KNOWN §4); **a harness chat step** (open the briefing-room chat box and type a line, A hosts before B joins) so a line is seen crossing the client bound (R246, KNOWN §2); the three unclamped FTOI casts in `Kernel/Stubs/VU.cpp` and the PMULT{W,UW,H} row of research/41 (Task 8a's out-of-scope finds); the `shift == 0` arm of the FTOI emitter asserted (8a M3); the streamer half of the real-IRX oracle (research/40 §6's price); the three #244 patches as
 upstream issues; the standing backlog below.
 
 ## The close, 2026-09-22 evening → 2026-09-23 morning (the owner's twelve-hour mandate)
