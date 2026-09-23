@@ -86,6 +86,10 @@ What only you can do is unchanged and listed below; one addition from the audio 
 (close the music tab and Discord, then `C:\projects\wt-audio-out\logs\capture_audio_out.sh`, ten minutes) —
 the exact step is written on `agent/audio-out` (`05de0e7`) and arrives here with that branch's merge.
 
+### One build to run when the machine is free (35 min): chain 12
+
+Task 8c (the save-state container) is merged on `sprint-11` but not yet built on the merged branch; the branch is held unpushed until it is. Say the word and the controller runs chain 12 (runtime, the C++ suite, the gate `s11_savestate_gate`) — it takes the lock for about 35 minutes and lags the machine while it runs, which is why it did not start into your return.
+
 ### The r0004 patch, received 2026-09-23
 
 **Decoded the same morning (R249): the capsule is a DNAS bypass and nothing else** — one game function stubbed (`DNASAuthenticate` answers "done"), which our runtime has replaced since the online path first worked. In PSRewired's sense this build already *is* r0004; the launcher download you asked for has nothing to apply, so **Task 11b is withdrawn unless you say otherwise**. Two things only you can settle: (1) ask PSRewired whether their players also carry an `mc0:UPDATE.DAT` feature stack (the capsule looks for one; r0005's is 3,065 writes) — if yes, that file is the real "r0004" and the decoder is ready for it; (2) Goal F, connecting, is still your Discord answer. The default while you decide: no download, the GAME VERSION row says what the patch is.

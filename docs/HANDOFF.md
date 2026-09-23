@@ -24,7 +24,7 @@ reach a commit message. The product name is
 ## 2. Where it stands
 
 > **Picking up after the Sprint 11 night (2026-09-23, 14:00Z)?** Start at `docs/CURRENT_SPRINT.md`'s "Sprint 11 —
-> OPEN" block: what landed, and the table of eight agent worktrees holding unfinished, part-reviewed work — each row
+> OPEN" block: what landed (Tasks 11, 2b, 8a, 8c and 19 followed on 2026-09-23 afternoon), and the table of agent worktrees holding unfinished, part-reviewed work — each row
 > says the branch, the last commit, the review verdict and the next step. Then the plan
 > (`docs/superpowers/plans/2026-09-23-sprint-11.md`) and, on disk, the ledger
 > `.superpowers/sdd/2026-09-23-sprint-11/progress.md` with every report and review beside it. The night ended on the
