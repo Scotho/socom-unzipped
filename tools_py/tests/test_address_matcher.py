@@ -82,6 +82,14 @@ def build_image(delta=0, twins=False, call_twins=False):
     return funcs, [(BASE + delta, blob)]
 
 
+def build_custom(names_bodies, delta=0):
+    """(funcs, segments) for an image of fixed-size functions with exactly the bodies given."""
+    at = {n: BASE + delta + i * SIZE for i, (n, _b) in enumerate(names_bodies)}
+    blob = b"".join(w.to_bytes(4, "little") for _n, body in names_bodies for w in _pad(body))
+    funcs = [(at[n], at[n] + SIZE, n) for n, _b in names_bodies]
+    return funcs, [(BASE + delta, blob)]
+
+
 def replace_body(segments, funcs, name, words):
     """A copy of `segments` with `name`'s eight words overwritten (the "one function rewritten" case)."""
     start = next(s for s, _e, n in funcs if n == name)
@@ -167,6 +175,78 @@ class TestOneFunctionRewritten(unittest.TestCase):
         for start, _end, name in funcs:
             if name != "mathy":
                 self.assertEqual(m[start], (start, "exact"), name)
+
+
+class TestSeedDeltaIsVerified(unittest.TestCase):
+    """A seed is a hint, not a licence. The delta says WHERE to look; the fingerprint still has to agree,
+    or one wrong seed turns the whole report into confident nonsense."""
+
+    def test_a_wrong_seed_never_invents_a_match(self):
+        a_funcs, a_segs = build_custom([
+            ("one", [addu(V0, A0, A1), jr_ra()]),
+            ("two", [subu(V0, A0, A1), jr_ra()]),
+            ("three", [lw(V0, S0, 0xB4), addu(V0, V0, A0), jr_ra()]),
+        ])
+        # Three unrelated bodies, laid out so the bad delta lands exactly on a function start each time.
+        b_funcs, b_segs = build_custom([
+            ("alpha", [sw(V0, S0, 0x10), jr_ra()]),
+            ("beta", [lw(V0, A0, 0x20), subu(V0, A0, A1), jr_ra()]),
+            ("gamma", [addiu(SP, SP, -32), jr_ra()]),
+        ], delta=RELOC)
+        m = am.match(a_funcs, a_segs, b_funcs, b_segs, seeds={DATA: DATA + RELOC})
+        for start, _end, name in a_funcs:
+            self.assertEqual(m[start], (None, "unresolved"), name)
+        self.assertEqual(am.summary(m)["rate"], 0.0)
+
+    def test_a_relocated_body_at_the_seed_delta_resolves(self):
+        """Two leaves with the same body: only the seed can place them, and the bytes back it up."""
+        def body(data):
+            hi, lo = ((data + 0x8000) >> 16) & 0xFFFF, data & 0xFFFF
+            return [lui(A0, hi), addiu(A0, A0, lo), lw(V0, A0, 0), jr_ra()]
+
+        a_funcs, a_segs = build_custom([("t1", body(DATA)), ("t2", body(DATA))])
+        b_funcs, b_segs = build_custom([("t1", body(DATA + RELOC)), ("t2", body(DATA + RELOC))],
+                                       delta=RELOC)
+        self.assertNotEqual(a_segs[0][1], b_segs[0][1], "the bodies really were relocated, not copied")
+        m = am.match(a_funcs, a_segs, b_funcs, b_segs, seeds={DATA: DATA + RELOC})
+        for start, _end, name in a_funcs:
+            self.assertEqual(m[start], (start + RELOC, "seed+delta"), name)
+
+    def test_a_seed_that_lands_on_nothing_leaves_it_unresolved(self):
+        a_funcs, a_segs = build_image(0, twins=True)
+        b_funcs, b_segs = build_image(RELOC, twins=True)
+        m = am.match(a_funcs, a_segs, b_funcs, b_segs, seeds={DATA: DATA + RELOC + 0x40})
+        left = sorted(n for s, _e, n in a_funcs if m[s][1] == "unresolved")
+        self.assertEqual(left, ["twin1", "twin2"])
+
+
+class TestUnreadableBodies(unittest.TestCase):
+    """A function row whose bytes are not in the image has no evidence at all. It must not be hashed:
+    fingerprint(b"") is the FNV basis, so every such row would otherwise share one fingerprint and the
+    single-occurrence rule would marry two of them as `exact`."""
+
+    def rows_with_a_body_off_the_end(self, delta=0):
+        funcs, segs = build_custom([("one", [addu(V0, A0, A1), jr_ra()]),
+                                    ("two", [subu(V0, A0, A1), jr_ra()])], delta=delta)
+        base, blob = segs[0]
+        ghost = base + len(blob) + 0x1000            # a CSV row pointing outside every segment
+        return funcs + [(ghost, ghost + SIZE, "ghost")], segs
+
+    def test_a_body_outside_every_segment_is_unresolved(self):
+        a_funcs, a_segs = self.rows_with_a_body_off_the_end()
+        b_funcs, b_segs = self.rows_with_a_body_off_the_end()
+        m = am.match(a_funcs, a_segs, b_funcs, b_segs)
+        by_name = {n: m[s] for s, _e, n in a_funcs}
+        self.assertEqual(by_name["one"][1], "exact")
+        self.assertEqual(by_name["two"][1], "exact")
+        self.assertEqual(by_name["ghost"], (None, "unresolved"), "no bytes, no evidence, no match")
+
+    def test_a_seed_cannot_place_a_body_that_cannot_be_read(self):
+        a_funcs, a_segs = self.rows_with_a_body_off_the_end()
+        b_funcs, b_segs = self.rows_with_a_body_off_the_end()
+        m = am.match(a_funcs, a_segs, b_funcs, b_segs, seeds={BASE: BASE})
+        ghost = next(s for s, _e, n in a_funcs if n == "ghost")
+        self.assertEqual(m[ghost], (None, "unresolved"))
 
 
 class TestCli(unittest.TestCase):

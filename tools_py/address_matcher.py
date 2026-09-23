@@ -20,8 +20,10 @@ How a function is placed, in order, each pass taking only what it can prove:
                 placed. The call target is zeroed out of the hash, so this is independent evidence.
   seed+delta    a seed pair (an address known in both builds by other means: a string, a static, a
                 symbol) gives a constant offset, and this function's address plus that offset is a
-                function start in the other image. One seed places a whole relinked segment.
-  unresolved    none of the above. The table keeps the row so the count is honest.
+                function start in the other image WHOSE FINGERPRINT AND LENGTH STILL AGREE. One seed
+                places a whole relinked segment; a wrong one places nothing, which is the point.
+  unresolved    none of the above -- including a row whose bytes are not in the image at all. The table
+                keeps the row so the count is honest.
 """
 import argparse
 import csv
@@ -111,6 +113,7 @@ class _Side:
         self.starts = set()
         self.name = {}
         self.fp = {}
+        self.size = {}
         self.calls = {}
         self.by_fp = {}
         for start, end, name in self.funcs:
@@ -119,9 +122,17 @@ class _Side:
             body = self.image.code(start, end)
             self.starts.add(start)
             self.name[start] = name
-            self.fp[start] = fingerprint(body)
+            self.size[start] = len(body)
             self.calls[start] = call_targets(body, start)
-            self.by_fp.setdefault(self.fp[start], []).append(start)
+            # A row whose bytes are not in the image (a CSV entry outside every PT_LOAD, a body that
+            # straddles two segments) has NO evidence. It is not fingerprinted and never indexed:
+            # fingerprint(b"") is the FNV basis, so hashing it would file every unreadable row under one
+            # value, and the single-occurrence rule would then marry two of them as `exact` on nothing at
+            # all. fp is None for these, and every pass skips them, so they end `unresolved` -- which is
+            # the truth about them. The real r0001 table has 51 such rows.
+            self.fp[start] = fingerprint(body) if body else None
+            if self.fp[start] is not None:
+                self.by_fp.setdefault(self.fp[start], []).append(start)
 
 
 # ---- the matcher ---------------------------------------------------------------------------
@@ -151,8 +162,8 @@ def match(a_funcs: Sequence[Func], a_bytes, b_funcs: Sequence[Func], b_bytes,
     # with the calls already placed. Repeat while it keeps resolving: each round feeds the next.
     while True:
         progress = False
-        for a_addr in a.starts:
-            if a_addr in out:
+        for a_addr in sorted(a.starts):
+            if a_addr in out or a.fp[a_addr] is None:
                 continue
             cands = [x for x in b.by_fp.get(a.fp[a_addr], ()) if x not in taken]
             if not cands:
@@ -186,7 +197,10 @@ def match(a_funcs: Sequence[Func], a_bytes, b_funcs: Sequence[Func], b_bytes,
         if not progress:
             break
 
-    # Pass 3 -- seed+delta: a seed pair's offset, applied to the address itself.
+    # Pass 3 -- seed+delta: a seed pair's offset, applied to the address itself. The delta says WHERE to
+    # look; it is never on its own a reason to match. The candidate has to be the same function by the
+    # same test the other passes use -- same fingerprint, same body length -- or one mistyped seed turns
+    # the whole report into confident nonsense: unrelated functions paired at "rate 1.0, all seed+delta".
     deltas = []
     for a_addr, b_addr in (seeds or {}).items():
         d = int(b_addr) - int(a_addr)
@@ -194,15 +208,18 @@ def match(a_funcs: Sequence[Func], a_bytes, b_funcs: Sequence[Func], b_bytes,
             deltas.append(d)
     if deltas:
         for a_addr in sorted(a.starts):
-            if a_addr in out:
+            if a_addr in out or a.fp[a_addr] is None:
                 continue
             for d in deltas:
                 cand = a_addr + d
-                if cand in b.starts and cand not in taken:
-                    take(a_addr, cand, "seed+delta")
-                    break
+                if cand not in b.starts or cand in taken:
+                    continue
+                if b.fp.get(cand) != a.fp[a_addr] or b.size.get(cand) != a.size[a_addr]:
+                    continue                                  # the delta landed on a different function
+                take(a_addr, cand, "seed+delta")
+                break
 
-    for a_addr in a.starts:
+    for a_addr in sorted(a.starts):
         out.setdefault(a_addr, (None, "unresolved"))
     return out
 
