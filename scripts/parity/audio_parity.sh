@@ -36,6 +36,17 @@ case "$cmd" in
       export PS2X_DEV=1
       echo "PS2X_AUDIO_DUMP=$PS2X_AUDIO_DUMP PS2X_DEV=1" > "$OUT/audio_dump.txt"
     fi
+    if [ "$target" != pcsx2 ]; then
+      # Sprint 11 audio-out: every host audio callback's wall clock, beside the endpoint recording and the dump, so a
+      # DEVICE dip can be laid against the callback that was late (tools_py/parity/cb_trace.py). A Dev knob, like
+      # the dump; the path is handed over in the native spelling for the same reason the dump's is.
+      cb="$ROOT/$OUT/cb_trace.csv"
+      if command -v cygpath >/dev/null 2>&1; then cb="$(cygpath -w "$cb")"; fi
+      export PS2X_AUDIO_CB_TRACE="$cb"
+      export PS2X_DEV=1
+    fi
+    # KNOWN §4: a capture that does not record the PS2X_* it ran under proves nothing about a later one.
+    env | grep '^PS2X_' | LC_ALL=C sort > "$OUT/env_ps2x.txt"
     restore=""
     if [ "$target" = pcsx2 ]; then
       restore="$OUT/pcsx2_override_backup.txt"

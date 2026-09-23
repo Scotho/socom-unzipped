@@ -45,11 +45,20 @@ def main(argv):
         zeros = bytes(1024 * 2 * 2)   # one silent buffer, stereo s16
         stream = p.open(format=pa.paInt16, channels=ch, rate=rate, input=True, input_device_index=dev["index"],
                         frames_per_buffer=1024)
-        deadline = time.time() + seconds
+        # Sprint 11 audio-out: the capture's own wall clock, so tools_py/parity/cb_trace.py can lay an endpoint dip
+        # (seconds into this file) against the game's callback trace (microseconds since a wall-clock t0). The
+        # first packet's stamp is the file's first frame, give or take one 1024-frame read.
+        start = time.time()
+        print(f"start_epoch={start:.3f}", flush=True)
+        deadline = start + seconds
+        first = True
         try:
             while time.time() < deadline:
                 keepalive.write(zeros, exception_on_underflow=False)
                 frames.append(stream.read(1024, exception_on_overflow=False))
+                if first:
+                    print(f"first_packet_epoch={time.time():.3f}", flush=True)
+                    first = False
         finally:
             stream.stop_stream(); stream.close()
             keepalive.stop_stream(); keepalive.close()
