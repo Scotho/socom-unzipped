@@ -28,7 +28,10 @@ HELPER = os.path.join(ROOT, "scripts", "python_env.sh")
 # A `python` spelled out in a script, as a word of its own. `python3`, `$PYTHON`, `PYTHONPATH` and
 # `python_env.sh` are not it; neither is `/^python/`, which is awk's process-name regex in
 # scripts/loop_lock.sh (it has to keep matching a real python3 process).
-BARE_PYTHON = re.compile(r"(?<![\w./$^-])python(?![\w.-])")
+# `-` is deliberately NOT in the lookbehind: it would hide `"${PYTHON:-python}"`, which is how two of
+# these scripts spelled it before this task and the likeliest way for it to come back (review I1). The
+# only thing `-` bought was the prose "python-is-python3", and whole-line comments are stripped anyway.
+BARE_PYTHON = re.compile(r"(?<![\w./$^])python(?![\w.-])")
 
 
 def shell_scripts():
@@ -136,6 +139,31 @@ class PythonEnvSh(unittest.TestCase):
         p = run('set -euo pipefail; . scripts/python_env.sh; echo "$PYTHON"', shim.env())
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertTrue(p.stdout.strip().endswith("python3"), p.stdout)
+
+
+class TheSweepItself(unittest.TestCase):
+    """BARE_PYTHON is what stands between the tree and the defect coming back; it gets its own control.
+
+    Review finding I1: `-` was in the negative lookbehind, so `"${PYTHON:-python}"` -- the exact spelling
+    this task removed from make_portable.sh and two_machine_readout.sh, and the most likely way for it to
+    return -- was invisible to the sweep."""
+
+    CAUGHT = ('python -m tools_py.x', 'py=python', 'PY="${PYTHON:-python}"', 'exec "${PYTHON:-python}" -m x',
+              'PYTHONPATH="$ROOT" python -m x', 'slug="$(python -c "import x")"', 'python - "$OUT" <<EOF',
+              'PY=(env PYTHONSAFEPATH=1 python -m x)')
+    LEFT_ALONE = ('python3 -m x', '"${PYTHON3:-python3}"', '"$PYTHON" -m x', 'PYTHONPATH="$ROOT"',
+                  '. "$ROOT/scripts/python_env.sh"', 'if (name ~ /^python/ && cmd ~ /unittest/)',
+                  'PY3="${PYTHON3:-python3}"')
+
+    def test_it_sees_every_way_a_script_can_name_the_interpreter(self):
+        for line in self.CAUGHT:
+            with self.subTest(line=line):
+                self.assertTrue(BARE_PYTHON.search(line), line)
+
+    def test_it_leaves_the_resolved_spellings_alone(self):
+        for line in self.LEFT_ALONE:
+            with self.subTest(line=line):
+                self.assertIsNone(BARE_PYTHON.search(line), line)
 
 
 @unittest.skipUnless(BASH, "no Git Bash on this machine (tools_py/tests/shell.py)")
