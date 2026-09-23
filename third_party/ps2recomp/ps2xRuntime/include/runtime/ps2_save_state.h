@@ -1,24 +1,30 @@
 // ps2_save_state.h -- the save-state CONTAINER: a magic, a version, a chunk table and an atomic publish.
 //
-// Origin: adapted from the MrCoolTheCucumber/PS2Recomp fork of ran-j/PS2Recomp, commit 7978365
-// ("feat(runtime): add portable save states"), files ps2xRuntime/include/runtime/ps2_save_state.h and
-// ps2xRuntime/src/lib/ps2_save_state.cpp. Both trees are GPL-3.0-only, so this is a GPL-3.0 -> GPL-3.0 move
-// (docs/research/41-cucumber-fork.md section 9); MrCoolTheCucumber is named on the ps2recomp row of
-// THIRD_PARTY_NOTICES.md. Sprint 11 Task 8c.
+// Origin: the MrCoolTheCucumber/PS2Recomp fork of ran-j/PS2Recomp, commit 7978365 ("feat(runtime): add
+// portable save states"), files ps2xRuntime/include/runtime/ps2_save_state.h and
+// ps2xRuntime/src/lib/ps2_save_state.cpp. **The byte format and this public API are the fork's, deliberately:
+// a state file written by either tree reads in the other.** The implementation in ps2_save_state.cpp is this
+// project's own -- the primitives go through one little-endian helper instead of nine hand-rolled shift loops,
+// the file and chunk headers are named structs with their own readers and writers, every guard answers through
+// one `fail()`, the walk of the card folder takes the std::filesystem error_code overloads throughout, and the
+// publish flushes the temporary to the disk before the rename, which the fork's does not.
+// Both trees are GPL-3.0-only, so this is a GPL-3.0 -> GPL-3.0 move (docs/research/41-cucumber-fork.md
+// section 9); MrCoolTheCucumber is named on the ps2recomp row of THIRD_PARTY_NOTICES.md. Sprint 11 Task 8c.
 //
-// What was taken: the byte format (little-endian primitives, 32-byte file header, 32-byte chunk header with an
-// FNV-1a payload checksum), the bounded reader, and writeFileAtomically's temp-then-rename publish. What was NOT
-// taken: the fork's chunk writer, which enumerates the fork's own runtime state (its EE scheduler, its timing, its
-// device registers) and does not describe ours. Full save states are Sprint 12; nothing here is wired into the
-// game loop.
+// What was taken: the byte format (little-endian primitives, a 32-byte file header, a 32-byte chunk header with
+// an FNV-1a payload checksum), the bounded reader's contract, and the temp-then-rename publish. What was NOT
+// taken: the fork's chunk writer, which enumerates the fork's own runtime state (its EE scheduler, its timing,
+// its device registers) and does not describe ours. Full save states are Sprint 12; nothing here is wired into
+// the game loop.
 //
-// The only chunk this file knows how to build is the simulated memory card (mc0, the host directory the kernel's
-// MemoryCard stub reads and writes -- Kernel/Syscalls/Helpers/Path.h's getConfiguredMcRoot). It is the proof that
-// the container carries real state, and it takes the folder as an argument so this translation unit depends on
-// nothing but the standard library.
+// The only chunk this file knows how to build is the simulated memory card (mc0, the host directory the
+// kernel's MemoryCard stub reads and writes -- Kernel/Syscalls/Helpers/Path.h's getConfiguredMcRoot). It is the
+// proof that the container carries real state, and it takes the folder as an argument so this translation unit
+// depends on nothing but the standard library.
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -75,7 +81,7 @@ namespace ps2x::savestate
         std::vector<uint8_t> m_data;
     };
 
-    // Every read is bounded by the input span and returns false rather than reading past it; a length prefix is
+    // Every read is bounded by the input span and returns false rather than running past it; a length prefix is
     // checked against both its caller's maximum and what is actually left.
     class Reader
     {
@@ -125,13 +131,24 @@ namespace ps2x::savestate
 
     [[nodiscard]] bool decode(std::span<const uint8_t> input, Document &document, std::string *error = nullptr);
 
-    // Writes the whole encoded document to a sibling temporary and renames it over `path`. Nothing ever opens
-    // `path` for writing, so a failure at any step -- encode, create, write, rename -- leaves whatever was already
-    // there byte-for-byte, and leaves no temporary behind.
+    // Writes the whole encoded document to a sibling temporary, flushes that temporary to the disk, and renames
+    // it over `path` (flushing the containing directory afterwards where the platform has such a thing). Nothing
+    // ever opens `path` for writing, so a failure at any step -- encode, create, write, flush, rename -- leaves
+    // whatever was already there byte-for-byte and leaves no temporary behind; and because the bytes are on the
+    // disk before the rename is asked for, a power cut cannot publish a name whose contents never landed.
     [[nodiscard]] bool writeFileAtomically(const std::filesystem::path &path, const Document &document,
                                            std::string *error = nullptr);
 
     [[nodiscard]] bool readFile(const std::filesystem::path &path, Document &document, std::string *error = nullptr);
+
+    namespace detail
+    {
+        // Test seam. The suite cannot cut the power, so it counts the flushes instead -- g_fileSyncCount rises
+        // once per published file -- and makes one fail through g_failNextFileSync to walk the failure path.
+        // Nothing outside the suite touches either.
+        extern std::atomic<uint64_t> g_fileSyncCount;
+        extern std::atomic<bool> g_failNextFileSync;
+    }
 
     // ---- the first chunk: the simulated memory card folder -------------------------------------------------
     //
@@ -142,6 +159,9 @@ namespace ps2x::savestate
     //   u32 entryCount
     //   entryCount x { string relativePath (always '/'-separated), u8 kind (0 = directory, 1 = file),
     //                  sizedBytes contents (files only) }
+    //
+    // This is the card as the HLE keeps it -- host files in a host folder. It is not a `.ps2` card image and
+    // cannot be handed to PCSX2 or to a real console.
 
     inline constexpr uint32_t kMemoryCardChunkId = makeChunkId('M', 'C', 'R', 'D');
     inline constexpr uint32_t kMemoryCardChunkVersion = 1u;
@@ -156,8 +176,11 @@ namespace ps2x::savestate
     [[nodiscard]] bool packMemoryCard(const std::filesystem::path &cardDirectory, Chunk &chunk,
                                       std::string *error = nullptr);
 
-    // Recreates the packed folder under `cardDirectory`, which is created if it does not exist. Entries already
-    // there are left alone unless the chunk names them; a file the chunk names is overwritten.
+    // Restores the packed folder at `cardDirectory`, which is created if it does not exist. A restore is the
+    // chunk's contents **exactly**: an entry the chunk does not name is removed, because a card that is neither
+    // the saved one nor the current one is a card the guest's own free-space accounting would disagree with.
+    // The removal never leaves `cardDirectory`: the path must name a directory (or nothing yet), never a file,
+    // and never a filesystem root. The chunk is decoded whole before anything is written or removed.
     [[nodiscard]] bool unpackMemoryCard(const Chunk &chunk, const std::filesystem::path &cardDirectory,
                                         std::string *error = nullptr);
 }

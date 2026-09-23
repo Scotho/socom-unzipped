@@ -146,6 +146,18 @@ namespace
         return false;
     }
 
+    // Writes `width` little-endian bytes of `value` over an already-encoded file, so a case can craft a header
+    // field no encoder of ours would ever produce.
+    void patchLittle(std::vector<uint8_t> &bytes, size_t offset, uint64_t value, size_t width)
+    {
+        for (size_t index = 0u; index < width; ++index)
+            bytes[offset + index] = static_cast<uint8_t>(value >> (index * 8u));
+    }
+
+    // Where the fields the cases patch live: the file header is 32 bytes, the first chunk header follows it.
+    constexpr size_t kChunkCountOffset = 16u;
+    constexpr size_t kFirstChunkPayloadSizeOffset = 32u + 16u;
+
     Chunk makeChunk(uint32_t id, std::vector<uint8_t> payload, uint32_t version = 1u)
     {
         Chunk chunk;
@@ -395,6 +407,52 @@ void register_ps2_save_state_tests()
             t.IsTrue(error.find("flags") != std::string::npos, "and says flags: " + error);
         });
 
+        // The encode side of the chunk bound is case 10's; this is the read side, which is the one a corrupt
+        // file meets. The count is refused before `decode` reserves anything, so four billion costs nothing.
+        tc.Run("a header claiming four billion chunks is refused before anything is reserved", [](TestCase &t)
+        {
+            Document document;
+            document.chunks.push_back(makeChunk(makeChunkId('C', 'N', 'T', 'R'), pattern(53u, 24)));
+            std::vector<uint8_t> encoded;
+            std::string error;
+            t.IsTrue(encode(document, encoded, &error), "encodes: " + error);
+
+            // Only the count is touched: the file is the size its own header claims, so the size check passes
+            // and the chunk bound is the thing that must refuse.
+            patchLittle(encoded, kChunkCountOffset, 0xFFFFFFFFull, 4u);
+            Document back;
+            error.clear();
+            t.IsFalse(decode(encoded, back, &error), "four billion chunks are refused");
+            t.IsTrue(error.find("too many chunks") != std::string::npos, "and say so: " + error);
+            t.Equals(back.chunks.size(), size_t(0), "nothing was built");
+        });
+
+        tc.Run("a chunk claiming to be larger than the file it sits in is refused", [](TestCase &t)
+        {
+            Document document;
+            document.chunks.push_back(makeChunk(makeChunkId('H', 'U', 'G', 'E'), pattern(59u, 24)));
+            std::vector<uint8_t> encoded;
+            std::string error;
+            t.IsTrue(encode(document, encoded, &error), "encodes: " + error);
+
+            // 256 MB: under the container's own 512 MB ceiling, so the bound that has to catch it is the one
+            // that asks what is actually left in the file.
+            std::vector<uint8_t> overlong = encoded;
+            patchLittle(overlong, kFirstChunkPayloadSizeOffset, 256ull * 1024ull * 1024ull, 8u);
+            Document back;
+            error.clear();
+            t.IsFalse(decode(overlong, back, &error), "a payload larger than the file is refused");
+            t.IsTrue(error.find("payload is truncated") != std::string::npos, "and says so: " + error);
+
+            // And past the ceiling, which the earlier guard catches -- same refusal, no allocation either way.
+            std::vector<uint8_t> absurd = encoded;
+            patchLittle(absurd, kFirstChunkPayloadSizeOffset, 0xFFFFFFFFFFFFFFFFull, 8u);
+            error.clear();
+            t.IsFalse(decode(absurd, back, &error), "a payload of 2^64-1 is refused");
+            t.IsTrue(error.find("payload is truncated") != std::string::npos, "and says so: " + error);
+            t.Equals(back.chunks.size(), size_t(0), "nothing was built either time");
+        });
+
         tc.Run("a refused file leaves the caller's document exactly as it was", [](TestCase &t)
         {
             Document held;
@@ -537,14 +595,81 @@ void register_ps2_save_state_tests()
             const fs::path witness = root / "witness.link";
             std::error_code linkError;
             fs::create_hard_link(state, witness, linkError);
+            // The link is the whole proof, so a filesystem that cannot make one fails the case rather than
+            // quietly reducing it to "the destination holds new bytes".
+            t.IsFalse(static_cast<bool>(linkError),
+                      "a hard link could not be made in the temp folder, so this case proves nothing: " +
+                          linkError.message());
 
             Document second;
             second.chunks.push_back(chunk);
             second.chunks.push_back(makeChunk(makeChunkId('N', 'O', 'T', 'E'), pattern(43u, 24)));
             t.IsTrue(writeFileAtomically(state, second, &error), "the second state lands: " + error);
             t.IsTrue(readBytes(state) != published, "the destination now holds the new state");
-            if (!linkError)
-                t.IsTrue(readBytes(witness) == published, "and the old file, still named by the link, is unchanged");
+            t.IsTrue(readBytes(witness) == published, "and the old file, still named by the link, is unchanged");
+            dropTree(root);
+        });
+
+        // The suite cannot cut the power, so it proves the call that would matter if it did: the temporary is
+        // flushed to the disk (FlushFileBuffers on Windows, fsync elsewhere) before the rename is asked for.
+        tc.Run("the temporary is flushed to the disk once per published file", [](TestCase &t)
+        {
+            const fs::path root = makeTempDirectory("fsync");
+            const fs::path card = root / "mc0";
+            buildSyntheticCard(card);
+            std::string error;
+            Chunk chunk;
+            t.IsTrue(packMemoryCard(card, chunk, &error), "the card packs: " + error);
+            Document document;
+            document.chunks.push_back(chunk);
+
+            const uint64_t before = detail::g_fileSyncCount.load();
+            t.IsTrue(writeFileAtomically(root / "slot0.p2s", document, &error), "the state lands: " + error);
+            t.Equals(detail::g_fileSyncCount.load() - before, uint64_t(1), "one flush for one published file");
+            t.IsTrue(writeFileAtomically(root / "slot1.p2s", document, &error), "a second state lands: " + error);
+            t.Equals(detail::g_fileSyncCount.load() - before, uint64_t(2), "and one more for the second");
+
+            // A document that cannot be encoded never gets as far as a file to flush.
+            Document broken;
+            broken.chunks.push_back(chunk);
+            broken.chunks.push_back(chunk);
+            t.IsFalse(writeFileAtomically(root / "slot2.p2s", broken, &error), "the bad write is refused");
+            t.Equals(detail::g_fileSyncCount.load() - before, uint64_t(2), "with nothing flushed");
+            dropTree(root);
+        });
+
+        tc.Run("a flush that fails refuses the publish and leaves the previous state where it was", [](TestCase &t)
+        {
+            const fs::path root = makeTempDirectory("fsyncfail");
+            const fs::path card = root / "mc0";
+            const fs::path state = root / "slot0.p2s";
+            buildSyntheticCard(card);
+            std::string error;
+            Chunk chunk;
+            t.IsTrue(packMemoryCard(card, chunk, &error), "the card packs: " + error);
+            Document first;
+            first.chunks.push_back(chunk);
+            t.IsTrue(writeFileAtomically(state, first, &error), "the first state lands: " + error);
+            const std::vector<uint8_t> published = readBytes(state);
+
+            // This is the interruption that matters: the temporary is written, and the publish stops between
+            // the bytes and the rename, with a good state file already in place underneath.
+            Document second;
+            second.chunks.push_back(chunk);
+            second.chunks.push_back(makeChunk(makeChunkId('N', 'O', 'T', 'E'), pattern(61u, 16)));
+            detail::g_failNextFileSync.store(true);
+            error.clear();
+            t.IsFalse(writeFileAtomically(state, second, &error), "the publish is refused");
+            t.IsTrue(error.find("flush") != std::string::npos, "and says the flush failed: " + error);
+            t.IsFalse(detail::g_failNextFileSync.load(), "the injected fault was consumed, not left armed");
+            t.IsTrue(readBytes(state) == published, "the previous state is byte-for-byte what it was");
+            t.IsFalse(holdsATemporary(root), "and the temporary it had written is gone");
+            t.Equals(countEntries(root), size_t(2), "the folder holds the card and the one state file");
+
+            // The very next write, with no fault, lands normally.
+            t.IsTrue(writeFileAtomically(state, second, &error), "the retry lands: " + error);
+            Document reread;
+            t.IsTrue(readFile(state, reread, &error) && reread.chunks.size() == 2u, "as the new state: " + error);
             dropTree(root);
         });
 
@@ -604,10 +729,16 @@ void register_ps2_save_state_tests()
         {
             const fs::path root = makeTempDirectory("escape");
             const fs::path card = root / "mc0";
+            std::error_code ec;
+            fs::create_directories(card, ec);   // so "nothing was written inside it" is an assertion, not a void
 
+            // The escapes, and the names Windows would turn into something other than a file: NUL opens the
+            // null device, and a trailing dot or space is silently trimmed, so two names would become one.
             for (const std::string &name : {std::string("../escape.bin"), std::string("/absolute.bin"),
                                             std::string("SAVEDIR/../../escape.bin"), std::string("C:/escape.bin"),
-                                            std::string("")})
+                                            std::string(""), std::string("NUL"), std::string("con.txt"),
+                                            std::string("COM1"), std::string("SAVEDIR/lpt1.bin"),
+                                            std::string("trailing."), std::string("trailing ")})
             {
                 Writer writer;
                 writer.u32(1u);
@@ -651,6 +782,76 @@ void register_ps2_save_state_tests()
             error.clear();
             t.IsFalse(unpackMemoryCard(cut, card, &error), "a truncated card chunk is refused");
             t.IsFalse(fs::exists(card / "SAVEDIR"), "and the directory it named was never created");
+
+            // An entry count out of a corrupt file is bounded the same way the container's chunk count is.
+            Writer absurd;
+            absurd.u32(0xFFFFFFFFu);
+            Chunk fourBillion;
+            fourBillion.id = kMemoryCardChunkId;
+            fourBillion.version = kMemoryCardChunkVersion;
+            fourBillion.payload = absurd.take();
+            error.clear();
+            t.IsFalse(unpackMemoryCard(fourBillion, card, &error), "four billion card entries are refused");
+            t.IsTrue(error.find("entry count") != std::string::npos, "and say so: " + error);
+            t.Equals(countEntries(card), size_t(0), "with the card folder still empty");
+            dropTree(root);
+        });
+
+        // A restore is the chunk's contents exactly. Anything the card has gained since the state was taken is
+        // neither the saved card nor a card the guest's own free-space walk would agree with, so it goes.
+        tc.Run("a restore is the chunk exactly: what the chunk does not name is gone afterwards", [](TestCase &t)
+        {
+            const fs::path root = makeTempDirectory("restore");
+            const fs::path card = root / "mc0";
+            buildSyntheticCard(card);
+            const std::vector<Entry> saved = snapshot(card);
+
+            std::string error;
+            Chunk chunk;
+            t.IsTrue(packMemoryCard(card, chunk, &error), "the card packs: " + error);
+
+            // The card moves on: a stray file at the top, a whole stray directory, a stray inside a directory
+            // the chunk does name, and a named file whose bytes have changed.
+            writeBytes(card / "STRAY.bin", pattern(67u, 32));
+            writeBytes(card / "STRAYDIR" / "inside.bin", pattern(71u, 16));
+            writeBytes(card / "SAVEDIR" / "extra.bin", pattern(73u, 8));
+            writeBytes(card / "SAVEDIR" / "slot0.bin", pattern(79u, 64));
+            t.IsFalse(snapshot(card) == saved, "the card really has moved on");
+
+            t.IsTrue(unpackMemoryCard(chunk, card, &error), "the state restores over it: " + error);
+            t.IsTrue(snapshot(card) == saved, "and the card is the saved one exactly, strays and all");
+            t.IsFalse(fs::exists(card / "STRAY.bin"), "the stray file is gone");
+            t.IsFalse(fs::exists(card / "STRAYDIR"), "the stray directory is gone");
+            t.IsFalse(fs::exists(card / "SAVEDIR" / "extra.bin"), "the stray inside a named directory is gone");
+            t.IsTrue(fs::exists(card / "SAVEDIR" / "NESTED" / "deep.bin"), "and what the chunk names is still there");
+
+            // A directory the chunk does not name but a named file lives under must survive: the clearing
+            // never removes something a named entry sits inside.
+            Writer writer;
+            writer.u32(1u);
+            writer.string("SAVEDIR/slot0.bin");
+            writer.u8(1u);
+            writer.sizedBytes(pattern(83u, 12));
+            Chunk implied;
+            implied.id = kMemoryCardChunkId;
+            implied.version = kMemoryCardChunkVersion;
+            implied.payload = writer.take();
+            const fs::path second = root / "mc0-implied";
+            t.IsTrue(unpackMemoryCard(implied, second, &error), "a chunk naming only a file restores: " + error);
+            t.IsTrue(fs::is_directory(second / "SAVEDIR"), "its unnamed parent directory was kept");
+            t.IsTrue(readBytes(second / "SAVEDIR" / "slot0.bin") == pattern(83u, 12), "with the file in it");
+            t.Equals(countEntries(second), size_t(1), "and nothing else at the top");
+
+            // The clearing never leaves the folder it was handed: a path that is a file, or a filesystem root,
+            // is refused before anything is written or removed.
+            const fs::path notAFolder = root / "a-file.bin";
+            writeBytes(notAFolder, pattern(89u, 4));
+            error.clear();
+            t.IsFalse(unpackMemoryCard(chunk, notAFolder, &error), "a file is not a card folder");
+            t.IsTrue(error.find("not a directory") != std::string::npos, "and says so: " + error);
+            t.IsTrue(readBytes(notAFolder) == pattern(89u, 4), "and the file is untouched");
+            t.IsFalse(unpackMemoryCard(chunk, fs::path(), &error), "an empty path is refused");
+            t.IsFalse(unpackMemoryCard(chunk, card.root_path(), &error), "and so is a filesystem root");
             dropTree(root);
         });
 
