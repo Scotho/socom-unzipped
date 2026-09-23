@@ -1,0 +1,233 @@
+# SOCOM Unzipped FAQ
+
+Answers to the things that actually go wrong, for players. Setting it up in the first place is `INSTALL.md`.
+Building it is `DEVELOPING.md`. What the project can and cannot prove about itself is `KNOWN.md` — it wins over
+this page on any disagreement.
+
+---
+
+## The LAST RUN line: what the game's exit codes mean
+
+When a run ends, the launcher's PLAY page shows a **LAST RUN** line with one sentence. Those sentences come from a
+single table in the source (`third_party/ps2recomp/ps2xShared/include/ps2x/exit_codes.h`, which `tools_py/exit_codes.py`
+reads rather than copies), so what you see below is what the launcher says, word for word.
+
+Most of these are decided **before a window ever opens**: the game checks its own program image, the card folder,
+the disc and the disc's revision first, so a bad setup fails in a second rather than on a black screen.
+
+### 65 — no usable GL
+
+> Your GPU or driver is missing OpenGL 3.3 with dual-source blending; the game ran on the slow CPU renderer.
+
+The game **ran** — you got a picture, just far too slow to play. At startup it reads three things out of the GL
+context: the version, dual-source draw buffers, and clip control. Missing version or dual-source blending drops it
+to the software rasteriser, once and for good for that run. (Missing clip control is only noted, not fatal: depth
+falls back to a fragment-depth mapping and the game plays.)
+
+What to do: update your graphics driver from the vendor, not from Windows Update. On a laptop with two GPUs, make
+sure `socom2.exe` runs on the discrete one. If you are inside a virtual machine, its virtual GPU is probably the
+problem. There is no setting in the launcher that turns this off — it is a fact about your driver.
+
+### 66 — disc not found
+
+> The disc image was not found. Open the DISC page and choose your SOCOM II ISO again.
+
+The path in `config.json` no longer points at a file: the ISO was moved, renamed, or lives on a drive that is not
+mounted right now. Open the DISC page and pick it again.
+
+### 67 — disc not r0001
+
+> That disc image is not SOCOM II NTSC r0001 (SCUS-97275). This build plays only that disc.
+
+See *"Which disc revision do I need"* below.
+
+### 68 — ELF missing
+
+> socom2_game.elf is missing or damaged. Unpack the download again and keep every file together.
+
+`socom2_game.elf` is the game's own program image and it has to sit beside `socom2.exe`. This is usually an
+antivirus quarantine or a half-finished unzip. Unpack the archive again into a clean folder, and check it against
+the `SHA256SUMS` that ships beside it.
+
+### 69 — config unreadable
+
+> config.json could not be read. Delete it and start the launcher, which writes a new one.
+
+Exactly that. You lose your settings, not your saves — those are in `cards/`.
+
+### 70 — crashed
+
+> The game crashed. Press SAVE DIAGNOSTICS and send the zip; it holds the crash record.
+
+The game writes a crash record before the process dies, and the diagnostics zip carries it along with the log. This
+code also covers a Windows access violation and a Linux fatal signal, which are folded onto it so the launcher has
+one sentence to say. Please do send it — a crash without its record is a crash nobody can fix.
+
+### 71 — out of memory
+
+> The game ran out of memory. Close other programs, or lower the render scale on the VIDEO page.
+
+The render scale on the VIDEO page is the largest single lever.
+
+### 72 — card folder unwritable
+
+> The memory-card folder cannot be written. Move the game out of a protected folder and try again.
+
+The game keeps your saves in `cards/` **inside its own folder**, so that folder has to be writable. `Program Files`,
+a read-only network share, an archived OneDrive folder, or a still-mounted zip will all do this. Move the whole
+folder somewhere ordinary — your user folder or a second drive — and it goes away. This is checked before the
+window opens, so no save is ever lost to it.
+
+*(Two more you may see: **0** is a normal exit, and **1** or **3** mean the game stopped on an error it could not
+name. Both ask you to press SAVE DIAGNOSTICS; the end of the log says more.)*
+
+---
+
+## Setup and the disc
+
+### Why isn't the ISO included? Where do I get the game?
+
+Because it is not ours to give. SOCOM II is still the property of its rights holders, and this project distributes
+**none** of it: no game executable, no recompiled C++, no textures, audio, movies or saves. That holds for the
+repository as much as the download — a pull request containing any of it is closed unread (`../CONTRIBUTING.md`).
+What the project distributes is the machinery that runs *your* copy.
+
+So you need your own disc, and your own dump of it. This page will not tell you where to download one.
+
+### Which disc revision do I need, and how do I check mine?
+
+The US retail release, `SCUS-97275`, **disc revision r0001**. Nothing else, and not for a while: every other release
+is a different code package.
+
+**You do not have to check by hand — the launcher does it.** Point the DISC page at your ISO and it reads the file
+`SCUS_972.75` out of the image and hashes it against a digest pinned in the source
+(`kSocom2R0001ElfSha256`, in `third_party/ps2recomp/ps2xShared/include/launcher/launcher_config.h`). A green lamp
+and the line `SOCOM II U.S. Navy SEALs NTSC r0001` means you have it; `not SOCOM II NTSC r0001 (SCUS_972.75 differs)`
+means you have some other revision.
+
+Because it is the *file's* hash and not the image's, how you dumped the disc does not matter — two different tools
+that both produce a faithful r0001 image will both pass.
+
+### Windows says "Windows protected your PC" and won't run the launcher
+
+The build is not code-signed, by decision — a certificate is a cost and an identity the project has not taken on.
+So Windows SmartScreen shows its blue dialog the first time you run an executable it has never seen. Choose
+**More info**, then **Run anyway**. It stops asking after that.
+
+Your antivirus may also quarantine `socom2.exe` or `socom2_game.elf` on sight, which shows up later as exit code 68.
+Before you trust any build, check the archive against the `SHA256SUMS` published with it; after that, an exclusion
+for the game's folder is the right fix. Turning your antivirus off entirely is not.
+
+### What does Linux need installed?
+
+The tarball carries what your distribution might not have — the FFmpeg family and what it pulls in — in a `lib/`
+folder beside the binaries, found at run time through an RPATH. What it deliberately does **not** carry is your
+machine's own stack, because those libraries have to be the ones that talk to your driver and your sound server:
+glibc and the loader, libgcc and libstdc++, the GL/GLX/EGL dispatch, X11/xcb/xkbcommon/wayland, and
+ALSA/PulseAudio/dbus. Every desktop distribution ships all of those; shipping our own libstdc++ is the classic way
+to break a newer host's GL driver.
+
+So in practice: a working OpenGL driver (your distribution's Mesa or the vendor's), PulseAudio or ALSA, and a normal
+desktop. **Optional:** `zenity`, which the launcher uses for its file picker — without it, type the ISO path into
+the field instead.
+
+Linux is not a released platform yet; `KNOWN.md` has how far it has got. Builders start at `scripts/build_linux.sh`
+(`DEVELOPING.md`).
+
+---
+
+## Online
+
+### Do I need to open ports or forward anything?
+
+To **play**, normally no. Your client makes outgoing connections to the hosted server and outgoing connections are
+not what firewalls block. Let the game through the Windows firewall prompt the first time it asks, and that is
+usually the end of it.
+
+What it talks to, if you are on a network that filters outbound traffic: the Horizon server's TCP ports for the
+universe lookup, authentication, the lobby and world data, one UDP port for the address echo, and a UDP port per
+connected client from 50000 upward for game data. The exact numbers are in `../server/README.md`, which owns them —
+that page is written for someone hosting a server, and it also lists what to forward if you are the one hosting.
+
+Peer-to-peer play between clients uses the game's own **fixed** UDP ports, 3658 and 3659 — fixed because the
+console's were. That matters in exactly one case: two copies running on the same machine would both try to bind
+them, which is why the launcher's ONLINE page has a *Second instance on this machine (for testing)* toggle that
+shifts the second copy's ports (to 3660/3661) and gives it its own card directory.
+
+### Can I play on PSRewired or another community server?
+
+**No, and please do not try.**
+
+Two separate reasons, and each is enough on its own:
+
+1. **It would not work.** The community servers run SOCOM II **r0004** — a different code package from the r0001
+   disc this client is built from. That is why the launcher draws the community preset but refuses to select it,
+   with the line *"needs the r0004 game update -- planned"*. An r0004 build is on the project's list; it is not
+   here, and when it is, whether to point it anywhere is the owner's call, not this page's.
+2. **This client's network code has not been audited.** It is the game's own twenty-year-old code, recompiled
+   as-is, running as a native program with your user's access — see `../SECURITY.md`. Aiming an unaudited client at
+   other people's server is not a thing to do to them or to yourself.
+
+SOCOM Unzipped is **not affiliated with, endorsed by, or connected to** the SOCOM community servers or their
+operators. The preset row exists because a player would otherwise wonder; it is not an arrangement with anybody.
+
+The project runs its own Horizon server and the launcher already points at it. That is the supported way to play
+online.
+
+---
+
+## Things that go wrong in the game
+
+### My save didn't stick / the game says it can't save
+
+First, the boring cause: if the game's folder is not writable, you get exit code 72 before anything starts. See
+above.
+
+There was one more, and it is **fixed** as of 2026-09-22. The first save on a brand-new, never-used memory card
+failed at the control-type prompt, and the same save worked on the next launch. The cause turned out to be ours: on
+a fresh card the game asks the card for `..`, the current directory *is* the root, and our memory-card code refused
+that as an attempt to climb past the root — so the game read the answer as a card it could not use. A trailing `..`
+now resolves to the card root (a climb with anything after it is still refused, as it must be), with a regression
+test that fails on the old behaviour. Fixed in commit `152579a`.
+
+The instrument that found it stays: **every** build prints a line naming the failing card command and its result
+code whenever a card command fails, with no setting to turn on. So if a save still fails on you, that log has the
+answer — press **SAVE DIAGNOSTICS** and send the zip.
+
+### The game won't remember my online password
+
+It does not yet, and this is the current state rather than a mystery. Found by a driven two-launch test on
+2026-09-23 (runs `w10_virgin_a` / `w10_virgin_b`; the record is the Sprint 10 close entry in `STATUS.md`): launch
+one created a persona on an empty card with the game's own SAVE PASSWORD ticked and reached the lobby; launch two,
+from that same card, got the **persona name** back and an **empty password field**. Whether the game only writes the
+saved password on a clean exit, or our memory-card code drops it, is the open question — `KNOWN.md` §2 carries it.
+
+Until that is fixed, use the launcher's ONLINE page: type your PLAYER NAME and PASSWORD there and the game's
+keyboards open already filled. Be aware of what the launcher itself tells you on that page — the password is stored
+in plain text in `config.json` next to the exe, so do not hand that file to anyone.
+
+### The music cuts out, wobbles, or comes and goes
+
+Music and mission ambience are mid-fix; the README's status table is honest about it. But before you report it,
+**one question decides which fault you have found: are you listening over Bluetooth?**
+
+The project's own longest-running "the music is wrong" thread turned out to live in the listening path, not in the
+game's mixer: a capture that recorded what the mixer produced *and* what the speaker actually played found short
+dropouts present in the speaker's recording and absent from the mixer's at the same instant — on a Bluetooth
+speaker. `KNOWN.md` §2 carries that entry with its numbers and the experiment that settles it; this page will not
+restate them.
+
+So: if you can, try the same scene on a wired output. Then report it either way, and **say which output you used** —
+a report about audio that does not name the device it came out of cannot be acted on. Include the log; the game
+writes the audio device it opened, its period and its rate into every run's log.
+
+---
+
+## Sending something useful
+
+Whatever the problem, the two things worth sending are the run log (`logs/run_<stamp>.log`) and the diagnostics zip
+(**SAVE DIAGNOSTICS** on the PLAY page). The zip is assembled with your home directory scrubbed out of every file in
+it and your ISO path cut down to its file name.
+
+Use **REPORT A BUG** in the launcher, or the same form at <https://s2u.scotho.com>. Nothing leaves your machine
+until you press SEND, and the page shows you what it would send before you do. `INSTALL.md` §10 walks through it.

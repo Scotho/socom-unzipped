@@ -53,7 +53,11 @@ As of 2026-09-23 (**Sprint 10 is closed**; its merge and the annotated tag `v0.1
 The live, audited version of this table is `docs/KNOWN.md` (proven, believed, and retracted, each with its evidence),
 and `docs/STATUS.md` is the day-by-day.
 
-## For players
+## For players: get it
+
+**[`docs/INSTALL.md`](docs/INSTALL.md)** is the whole setup, in the order a first run happens, and
+**[`docs/FAQ.md`](docs/FAQ.md)** answers what goes wrong — every exit code, the disc revision, SmartScreen, ports,
+saves and audio.
 
 There is no public download yet. When there is, it will be announced at <https://s2u.scotho.com>, which also carries the
 setup guide and the server's live status. The shape of it: unzip a folder, run `socom_unzipped_launcher.exe`, point it

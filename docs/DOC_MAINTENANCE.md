@@ -95,6 +95,8 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/HANDOFF.md` | **L** | controller | What a new controller reads first. Holds the **ruling counter**, checked mechanically |
 | `docs/HUMAN_TASKS.md` | **L** | controller | The owner's queue |
 | `docs/DEVELOPING.md` | **L** | controller | **Owns the suite counts.** No other registered document may state them |
+| `docs/INSTALL.md` | **L** | controller | The player's setup page. Live because it quotes the launcher's own sentences and describes a download that does not exist yet — the "get the archive" paragraph changes the day the distribution decision is answered |
+| `docs/FAQ.md` | **L** | controller | The player's failure page. Every exit-code sentence is quoted from `ps2x/exit_codes.h`; a change to that table changes this file |
 | `docs/story/PICTURES.md` | **L** | story | The inventory of what `STORY.md` shows; the citation test keeps them honest |
 | `docs/KNOBS.md` | **G** | `tools_py.knobs` | Generated from `ps2x/knobs.h`; a test fails on a stale row, an unregistered read or a row nothing reads |
 | `docs/LADDER.md` | **G** | `ladder_ledger.py` | One row per scheduled ladder run, written from `logs/ladder/ledger.jsonl`, committed by a person |
