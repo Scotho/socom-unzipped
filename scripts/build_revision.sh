@@ -3,7 +3,7 @@
 #
 #   bash scripts/build_revision.sh <rev> <APACHE00.ZDB> [--check-against <elf>] [--dry-run] [--stop-after <step>]
 #                                  [--force] [--out <dir>] [--game <disc tree>] [--loader <elf>] [--loader-text-end 0x..]
-#                                  [--ghidra <csv>] [--ghidra-from-r0001]
+#                                  [--ghidra <csv>] [--ghidra-from-r0001] [--extra <extra_functions.txt>]
 #
 #   rev   r + four digits, optionally followed by a letter and then letters and digits (r0001, r0004, r0001check).
 #         The suffix form exists so a check build of the r0001 disc never overwrites r0001's own products.
@@ -23,6 +23,12 @@
 #                       silently; any other revision must ask for it with --ghidra-from-r0001, which warns that
 #                       the generated code will be wrong until Task 10's matcher writes that revision a map.
 #   4 recomp   [lock]   ps2_recomp socom2_<rev>.toml                               -> recomp/output_<rev>/
+#                       fix_ghidra_csv.py first folds the revision's FORCED ENTRY POINTS into the map:
+#                       recomp/extra_functions_<rev>.txt when it is there, or --extra <file>, else
+#                       recomp/extra_functions.txt -- which is r0001's, and 1,453 of whose 1,619 entries are
+#                       overlay addresses that mean nothing in another revision, so a foreign revision
+#                       falling back to it is warned. tools_py/find_imm_targets.py writes a revision its own:
+#                         python tools_py/find_imm_targets.py <rev elf> <rev csv> recomp/extra_functions_<rev>.txt
 #   5 runtime  [lock]   cmake third_party/ps2recomp/build-clang-<rev>              -> dist/socom2_<rev>.exe (+ the ELF beside it)
 #
 #   Steps 4 and 5 mark their product with a .complete file when the step returns 0, and skip on that mark alone:
@@ -49,7 +55,7 @@ say() { echo "$*"; }
 
 py="$PYTHON"
 
-REV="" ZDB="" CHECK="" DRY=0 STOP="runtime" FORCE=0 OUT="" GAME="" LOADER="" LTE="" TAIL=0 GHIDRA="" GHIDRA_R0001=0
+REV="" ZDB="" CHECK="" DRY=0 STOP="runtime" FORCE=0 OUT="" GAME="" LOADER="" LTE="" TAIL=0 GHIDRA="" GHIDRA_R0001=0 EXTRA=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --check-against) [ $# -ge 2 ] || die2 "--check-against needs a path"; CHECK="$2"; shift 2 ;;
@@ -62,6 +68,7 @@ while [ $# -gt 0 ]; do
     --loader-text-end) [ $# -ge 2 ] || die2 "--loader-text-end needs a hex address"; LTE="$2"; shift 2 ;;
     --ghidra) [ $# -ge 2 ] || die2 "--ghidra needs the revision's function map (a Ghidra ExportPS2Functions CSV)"; GHIDRA="$2"; shift 2 ;;
     --ghidra-from-r0001) GHIDRA_R0001=1; shift ;;
+    --extra) [ $# -ge 2 ] || die2 "--extra needs the revision's forced entry points (one hex address per line)"; EXTRA="$2"; shift 2 ;;
     --_tail) TAIL=1; shift ;;      # internal: the lock-bound steps, re-entered under loop_lock.sh run
     -h|--help) sed -n '2,40p' "$0"; exit 0 ;;
     -*) die2 "unknown option $1" ;;
@@ -70,7 +77,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ "$TAIL" = 1 ]; then
-  REV="$BR_REV"; STOP="$BR_STOP"; FORCE="$BR_FORCE"; OUT="$BR_OUT"
+  REV="$BR_REV"; STOP="$BR_STOP"; FORCE="$BR_FORCE"; OUT="$BR_OUT"; EXTRA="${BR_EXTRA:-}"
 fi
 
 [ -n "$REV" ] || die2 "usage: build_revision.sh <rev> <APACHE00.ZDB> [--check-against <elf>] [--dry-run] [--stop-after <step>]"
@@ -95,6 +102,19 @@ TOML="$RECOMP_DIR/socom2_$REV.toml"
 CSV="$RECOMP_DIR/socom2_ghidra_$REV.csv"
 EXE="$DIST/socom2_$REV.exe"
 rel() { case "$1" in "$ROOT"/*) echo "${1#"$ROOT"/}" ;; *) echo "$1" ;; esac; }
+# The revision's forced entry points, settled here so both halves of the script (and the dry run) say the
+# same thing. r0001's list is address-keyed like its map is: handed to another revision, its 1,453 overlay
+# entries land inside whatever r0004 put at those addresses and truncate the real functions there.
+EXTRA_BORROWED=0
+if [ -n "$EXTRA" ]; then
+  [ -f "$EXTRA" ] || die2 "no such forced-entry-point list: $EXTRA"
+  EXTRA="$(cd "$(dirname "$EXTRA")" && pwd)/$(basename "$EXTRA")"
+elif [ -f "$ROOT/recomp/extra_functions_$REV.txt" ]; then
+  EXTRA="$ROOT/recomp/extra_functions_$REV.txt"
+else
+  EXTRA="$ROOT/recomp/extra_functions.txt"
+  case "$REV" in r0001*) ;; *) EXTRA_BORROWED=1 ;; esac
+fi
 sha() { sha256sum "$1" | cut -d' ' -f1; }
 
 if [ "$TAIL" = 0 ]; then
@@ -134,6 +154,8 @@ if [ "$TAIL" = 0 ]; then
   fi
   [ "$GHIDRA_NEED" = 0 ] || [ "$DRY" = 1 ] \
     || die2 "$REV has no function map of its own ($(rel "$CSV")): pass --ghidra <csv>, or --ghidra-from-r0001 to start from r0001's map knowing the generated code will be wrong until Sprint 11 Task 10's matcher writes one"
+  [ "$EXTRA_BORROWED" = 0 ] || [ "$DRY" = 1 ] \
+    || echo "WARNING: $REV has no forced entry points of its own (recomp/extra_functions_$REV.txt); using r0001's, whose overlay entries are another build's addresses. Write one with: python tools_py/find_imm_targets.py $(rel "$ELF") $(rel "$CSV") recomp/extra_functions_$REV.txt" >&2
 fi
 
 # ---- dry run ------------------------------------------------------------------------------------------------
@@ -145,13 +167,15 @@ if [ "$DRY" = 1 ]; then
   say "  step 2  make_overlay_elf  loader + overlays (--loader-text-end=$LTE) -> $(rel "$ELF")${CHECK:+   check-against $(rel "$CHECK")}"
   if [ "$GHIDRA_NEED" = 1 ]; then
     MAPNOTE="$(rel "$CSV") is not there -- the run will refuse it: pass --ghidra <csv>, or --ghidra-from-r0001"
+  elif [ "$GHIDRA_SRC" = "$CSV" ]; then
+    MAPNOTE="$(rel "$CSV") is the map named by --ghidra -- nothing to copy"
   elif [ -n "$GHIDRA_SRC" ]; then
     MAPNOTE="$(rel "$CSV") copied from $(rel "$GHIDRA_SRC")"
   else
     MAPNOTE="$(rel "$CSV") is already there"
   fi
   say "  step 3  toml              recomp/socom2.toml -> $(rel "$TOML") (input/output/ghidra_output rewritten); $MAPNOTE"
-  say "  step 4  recomp   [lock]   ps2_recomp socom2_$REV.toml -> $(rel "$GEN")/"
+  say "  step 4  recomp   [lock]   ps2_recomp socom2_$REV.toml -> $(rel "$GEN")/; forced entry points $(rel "$EXTRA")$([ "$EXTRA_BORROWED" = 1 ] && echo ' (r0001'"'"'s -- another build'"'"'s overlay addresses)')"
   say "  step 5  runtime  [lock]   cmake $(rel "$RTBUILD") -> $(rel "$EXE") (+ $(rel "$DIST")/socom2_game_$REV.elf)"
   [ "$STOP" = runtime ] || say "  stop after $STOP"
   exit 0
@@ -209,9 +233,13 @@ if [ "$TAIL" = 0 ]; then
   fi
   [ "$STOP" = elf ] && { say "stop after elf"; exit 0; }
   # 3 toml (+ the revision's function map, whose source was settled before step 1)
-  if [ -n "$GHIDRA_SRC" ]; then
+  if [ -n "$GHIDRA_SRC" ] && [ "$GHIDRA_SRC" != "$CSV" ]; then
     cp "$GHIDRA_SRC" "$CSV"
     say "toml: $(rel "$CSV") copied from $(rel "$GHIDRA_SRC")"
+  elif [ -n "$GHIDRA_SRC" ]; then
+    # `--ghidra recomp/socom2_ghidra_<rev>.csv` names the map the run would use anyway. cp refuses a file
+    # onto itself, which under `set -e` killed the run between step 2 and step 3.
+    say "toml: $(rel "$CSV") is the map named by --ghidra -- nothing to copy"
   fi
   sed -e "s|^input *=.*|input = \"$TOML_INPUT\"|" \
       -e "s|^output *=.*|output = \"$TOML_OUTPUT\"|" \
@@ -219,7 +247,7 @@ if [ "$TAIL" = 0 ]; then
       "$ROOT/recomp/socom2.toml" > "$TOML"
   say "toml: $(rel "$TOML") (input $TOML_INPUT, output $TOML_OUTPUT, ghidra_output socom2_ghidra_$REV.csv)"
   # 4-5 under the lock, re-entering this script
-  export BR_REV="$REV" BR_STOP="$STOP" BR_FORCE="$FORCE" BR_OUT="$OUT"
+  export BR_REV="$REV" BR_STOP="$STOP" BR_FORCE="$FORCE" BR_OUT="$OUT" BR_EXTRA="$EXTRA"
   exec bash "$ROOT/scripts/loop_lock.sh" run build-revision --purpose "build_revision $REV: recomp$([ "$STOP" = runtime ] && echo ' + runtime')" \
        --wait "${BUILD_REVISION_LOCK_WAIT:-60}" -- bash "$ROOT/scripts/build_revision.sh" --_tail
 fi
@@ -231,7 +259,8 @@ command -v clang >/dev/null 2>&1 && command -v cmake >/dev/null 2>&1 && command 
 if [ "$FORCE" = 0 ] && [ -f "$GEN/.complete" ]; then
   say "recomp: $(ls "$GEN" | wc -l) files already in $(rel "$GEN") -- skipped (--force redoes it)"
 else
-  "$py" "$ROOT/tools_py/fix_ghidra_csv.py" "$CSV" "$ROOT/recomp/extra_functions.txt"
+  say "recomp: forced entry points from $(rel "$EXTRA")"
+  "$py" "$ROOT/tools_py/fix_ghidra_csv.py" "$CSV" "$EXTRA"
   cmake -S "$PS2R" -B "$TOOLBUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ >/dev/null
   cmake --build "$TOOLBUILD" --target ps2_recomp ps2_analyzer -j "$(nproc)"

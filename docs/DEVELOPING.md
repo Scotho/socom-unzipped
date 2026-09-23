@@ -146,7 +146,18 @@ starts with a letter. The package must sit in its extracted disc tree, whose loa
 making `OVERLAY/REL/DNAS.dec.bin` when the tree lacks it). The revision's function map
 `recomp/socom2_ghidra_<rev>.csv` must already be there or be named with `--ghidra <csv>`: only an `r0001*` revision
 falls back to r0001's map silently, any other revision has to ask for it with `--ghidra-from-r0001` and is warned
-that the generated code will be wrong until Task 10's matcher writes that revision its own map.
+that the generated code will be wrong until Task 10's matcher writes that revision its own map. The **forced entry
+points** are a per-revision input for the same reason (`recomp/extra_functions.txt` is 1,619 addresses, 1,453 of them
+inside the overlays): step 4 takes `recomp/extra_functions_<rev>.txt` when it is there, or `--extra <file>`, else
+r0001's with a warning. `python tools_py/find_imm_targets.py <rev elf> <rev csv> recomp/extra_functions_<rev>.txt`
+writes a revision its own.
+**A revision's function map comes out of Ghidra with `bash scripts/ghidra_export_functions.sh <elf> <out.csv>`** —
+the recipe that made `recomp/socom2_ghidra.csv` (stock ELF loader → `r5900:LE:32:default:default` from the EE
+extension, `MakeFunctions.java` on the three entry points no flow reaches before analysis, then two
+`FindPointerTargets.java` passes and `ExportPS2Functions.java`), written down from Ghidra's own log. It writes the
+**raw** export; `tools_py/carry_names.py <match.json> <raw.csv> <out.csv>` then carries the named functions of an
+older revision onto their matched addresses (`tools_py/address_matcher.py` says which) and leaves every
+address-derived Ghidra name where it is.
 **Proven on r0001 (2026-09-23):** `bash scripts/build_revision.sh r0001check game/disc/RUN/RAW/APACHE00.ZDB
 --check-against dist/socom2_game.elf` -- the ELF identical (sha256 `06b83684...8872`), `diff -rq --exclude=.complete` of the 14,882
 generated files against `recomp/output` empty (the mark is the script's own, since the review round), the exe built (236,856,320 B; not byte-identical to `dist/socom2.exe`,

@@ -177,9 +177,64 @@ class BuildRevisionFunctionMapTest(unittest.TestCase):
         self.assertNotIn("WARNING", p.stderr)
 
     def test_the_dry_run_says_which_map_step_3_will_use(self):
-        p = run_bash(SCRIPT, "r0004", EMPTY_ZDB, "--dry-run")
+        # `r0009fake` rather than r0004: once a revision's own map is in recomp/, the dry run says "is
+        # already there" instead, and this case is about what it says when there is none.
+        p = run_bash(SCRIPT, "r0009fake", EMPTY_ZDB, "--dry-run")
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         self.assertIn("--ghidra", p.stdout)
+
+    def test_ghidra_naming_the_revisions_own_map_is_not_a_copy_onto_itself(self):
+        """`--ghidra recomp/socom2_ghidra_<rev>.csv` names the map step 3 would use anyway; cp refuses a
+        file onto itself, and under `set -e` that killed the run between the ELF and the TOML."""
+        p = run_bash(SCRIPT, "r0004", EMPTY_ZDB, "--dry-run",
+                     "--ghidra", "recomp/socom2_ghidra_r0004.csv")
+        if "no such function map" in p.stderr:
+            self.skipTest("this tree has no recomp/socom2_ghidra_r0004.csv")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("nothing to copy", p.stdout)
+
+
+@unittest.skipUnless(BASH, "needs a bash that is not WSL's launcher")
+class BuildRevisionForcedEntryPointsTest(unittest.TestCase):
+    """recomp/extra_functions.txt is r0001's list of addresses, so it is a per-revision input like the map.
+
+    A revision with no list of its own falls back to r0001's -- 1,453 of whose 1,619 entries are overlay
+    addresses that mean something only in r0001 -- so the fallback has to say so. `r0009fake` is used where
+    the case must not depend on which recomp/extra_functions_<rev>.txt the working tree happens to hold.
+    """
+
+    def test_a_missing_list_is_refused(self):
+        p = run_bash(SCRIPT, "r0004", EMPTY_ZDB, "--dry-run", "--extra", "recomp/no_such_list.txt")
+        self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+        self.assertIn("no such forced-entry-point list", p.stderr)
+
+    def test_extra_needs_a_path(self):
+        p = run_bash(SCRIPT, "r0004", EMPTY_ZDB, "--dry-run", "--extra")
+        self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+
+    def test_the_dry_run_names_the_list_step_4_will_use(self):
+        p = run_bash(SCRIPT, "r0004", EMPTY_ZDB, "--dry-run", "--extra", EMPTY_ZDB)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("forced entry points", p.stdout)
+        self.assertIn("empty.zdb", p.stdout)
+
+    def test_a_foreign_revision_borrowing_r0001s_list_says_so(self):
+        p = run_bash(SCRIPT, "r0009fake", EMPTY_ZDB, "--dry-run")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("recomp/extra_functions.txt", p.stdout)
+        self.assertIn("another build's overlay addresses", p.stdout)
+
+    def test_the_r0001_disc_uses_its_own_list_without_that_note(self):
+        p = run_bash(SCRIPT, "r0001check", EMPTY_ZDB, "--dry-run")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("recomp/extra_functions.txt", p.stdout)
+        self.assertNotIn("another build's overlay addresses", p.stdout)
+
+    def test_a_foreign_revision_is_warned_on_stderr_outside_the_dry_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = run_bash(SCRIPT, "r0009fake", EMPTY_ZDB, "--ghidra-from-r0001",
+                         "--out", sh(os.path.join(tmp, "out")))
+            self.assertIn("find_imm_targets.py", p.stderr)
 
 
 @unittest.skipUnless(BASH, "needs a bash that is not WSL's launcher")
