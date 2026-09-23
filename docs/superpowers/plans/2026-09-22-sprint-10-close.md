@@ -65,6 +65,17 @@ table in `docs/CURRENT_SPRINT.md` is the binding list. **Ledger:** `.superpowers
   the sweep already proved 20/20 maps play a control round (research/33); nineteen routes is days of runs against a
   twelve-hour night that also has to close the sprint and open the next. Cost if wrong: the owner wanted every map
   killable at the tag — the work is not lost, only later, and the tag says so.
+- **R243 — milestone U item 1's step (b) is redefined as a differential test, not a music-parity number.** The
+  divergence audit (socom-pc-09, `agent/upstream` 83c02d9, `docs/research/40-upstream-divergence.md`) established
+  that upstream since our base `14b1e5c` is exactly one commit, PR #244, and that #244 has **no SPU2** — its
+  `0x1F900000` range is a register bag, so the real 989SND.IRX would sequence correctly into silence and the brief's
+  number is zero by construction. Step (b) becomes: build #244's `ps2xIOP` standalone, load the disc's own
+  LIBSD/989SND/989DSTRM into it, feed them the RPC sequences `socom2_audio_tests.cpp` feeds our `snd989.cpp`, and
+  count the answers where the real IRX and our model disagree. That count sizes "option B" (a native libsd provider
+  on a voice-level model over our mixer's VAG decoder, est. 1,500–2,500 lines) as a Sprint 11 goal. Prerequisite for
+  any #244 adoption, recorded for the plan: a prefer-HLE load policy — #244 loads physical IRXs first and would take
+  the real LIBNETB/INET/DEV9/MCMAN over our network and card HLE. Cost if wrong: a day of the peer's time on a test
+  whose count turns out uninformative — the table it produces is wanted regardless.
 - Further rulings are appended here and in the ledger as they are made.
 
 ## Outcome
