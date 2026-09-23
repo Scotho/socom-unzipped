@@ -287,6 +287,15 @@ verdict on our model; it is the shape of the two emulator gaps of run 1 at missi
 5. **`stream_priority=18` was silently ignored** by #244's argument ABI (patch 1); thread priorities are part of the
    sequencer's timing and any future run of the real IRX must carry the patch.
 
+**R245 (controller, 2026-09-23):** option B is NOT scheduled -- 19 of 1,794 with none a sequencer-semantics
+difference, thirteen of them the emulator's own gaps, means the model is right on the half that can be measured, and
+the audible defect was located the same night elsewhere (the endpoint A/B: the 50 ms dropouts survive a wired
+endpoint, so they sit in the output path after the mixer's dump, not in the sequencer). Sprint 11 gets instead: the
+two cheap alignments of items 1 and 3 above as one test-first task (`snd_CallExtension(0x12c4e67a, …)` answers 0;
+`makeHandle` sets bit 31; the EE's use of a handle's sign stays a named unknown for the gate); a filler row "the
+real-IRX oracle is blind for the streamer until #244's cdvdman safe-read form and SPU DMA completion exist", priced
+at §6; and the three #244 patches written up as upstream-reportable findings, which §9's opening list is.
+
 Stop-rule accounting: the harness reached a full replay on the second lock gap after the builds landed; the day was
 spent mostly waiting on the lock behind the Sprint 10 chain, and on the five tooling defects above. No game build, no
 merge, nothing in the main tree.
