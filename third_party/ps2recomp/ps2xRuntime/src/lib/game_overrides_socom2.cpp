@@ -1612,16 +1612,77 @@ namespace
         // Nothing here: the original may leave through a scheduler checkpoint and resume later.
     }
 
+    // Sprint 11 Task 2b: the same two fields, at the second reader of the same records. That reader is handed a
+    // run of them rather than one, so each record in the run is given the guarantee before the original walks it,
+    // by the rule above (before, never after). Nothing read out of guest memory is trusted: a run is walked only
+    // when socom2_chat::spanFits says it is whole and inside RAM.
+    PS2Runtime::RecompiledFunction g_chatListOriginal = nullptr;
+    // Written from whatever guest thread runs the reader; only the log line reads them.
+    static std::atomic<uint32_t> g_chatListSeen{0}, g_chatListFixed{0};
+
+    void socom2_ChatListBound(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const socom2_addresses::Table &addr = socom2_addresses::current();
+        const uint32_t holders = Ps2FastRead32(rdram, addr.chatListHolders + socom2_chat::kHolderCountOff);
+        const uint32_t holderBase = Ps2FastRead32(rdram, addr.chatListHolders + socom2_chat::kHolderDataOff) & PS2_RAM_MASK;
+        int changed = 0;
+        if (holders <= socom2_chat::kMaxHolders &&
+            socom2_chat::spanFits(holderBase, holders, socom2_chat::kHolderPtrBytes, PS2_RAM_SIZE))
+        {
+            for (uint32_t i = 0; i < holders; ++i)
+            {
+                const uint32_t holder = Ps2FastRead32(rdram, holderBase + i * socom2_chat::kHolderPtrBytes) & PS2_RAM_MASK;
+                if (!socom2_chat::spanFits(holder, 1, socom2_chat::kListHeaderBytes, PS2_RAM_SIZE))
+                    continue;
+                const uint32_t count = Ps2FastRead32(rdram, holder + socom2_chat::kListCountOff);
+                const uint32_t base = Ps2FastRead32(rdram, holder + socom2_chat::kListDataOff) & PS2_RAM_MASK;
+                if (count > socom2_chat::kMaxRecords ||
+                    !socom2_chat::spanFits(base, count, socom2_chat::kRecordBytes, PS2_RAM_SIZE))
+                    continue;
+                changed += socom2_chat::terminateRecords(rdram + base, count);
+            }
+        }
+        else
+        {
+            // Once, so that "the wrap ran and skipped the list" is distinguishable from "the wrap was never
+            // entered" when a run's log is read back.
+            static std::atomic<bool> saidOutOfRange{false};
+            if (!saidOutOfRange.exchange(true))
+                std::cerr << "[socom2] chat list bound: holder list out of range; skipped (reported once)" << std::endl;
+        }
+        const uint32_t seen = g_chatListSeen.fetch_add(1) + 1;
+        const uint32_t fixed = changed ? g_chatListFixed.fetch_add(1) + 1 : g_chatListFixed.load();
+        // The rate limit of the receive wrap above: the first call always says so, then only the calls that
+        // changed something, and of those the first 8 and then every 64th.
+        if (seen == 1 || (changed != 0 && (fixed <= 8 || fixed % 64 == 0)))
+            std::cout << "[socom2] chat list bound: seen=" << seen << " fixed=" << fixed << std::endl;
+        if (g_chatListOriginal)
+            g_chatListOriginal(rdram, ctx, runtime);
+        // Nothing here: the original may leave through a scheduler checkpoint and resume later.
+    }
+
     void installChatBound(PS2Runtime &runtime)
     {
         if (!runtime.hasFunction(socom2_chat::kFanoutRecvAddr))
         {
             std::cout << "[socom2] no function at 0x" << std::hex << socom2_chat::kFanoutRecvAddr << std::dec << "; chat receive not bound" << std::endl;
+        }
+        else
+        {
+            g_chatFanoutOriginal = runtime.lookupFunction(socom2_chat::kFanoutRecvAddr);
+            runtime.replaceFunction(socom2_chat::kFanoutRecvAddr, socom2_ChatFanoutBound);
+            std::cout << "[socom2] chat receive bound (name 32, message 64)" << std::endl;
+        }
+        // The two wraps are independent: one missing from the loaded image must not take the other with it.
+        const uint32_t listRender = socom2_addresses::current().chatListRender;
+        if (!runtime.hasFunction(listRender))
+        {
+            std::cout << "[socom2] no function at 0x" << std::hex << listRender << std::dec << "; chat list not bound" << std::endl;
             return;
         }
-        g_chatFanoutOriginal = runtime.lookupFunction(socom2_chat::kFanoutRecvAddr);
-        runtime.replaceFunction(socom2_chat::kFanoutRecvAddr, socom2_ChatFanoutBound);
-        std::cout << "[socom2] chat receive bound (name 32, message 64)" << std::endl;
+        g_chatListOriginal = runtime.lookupFunction(listRender);
+        runtime.replaceFunction(listRender, socom2_ChatListBound);
+        std::cout << "[socom2] chat list bound (name 32, message 64)" << std::endl;
     }
 
     // ------------------------------------------------------------------------------------------

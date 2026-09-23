@@ -70,6 +70,8 @@ void register_socom2_addresses_tests()
             t.Equals(a.oskTextBuffer, 0x0049EC70u, "oskTextBuffer: the keyboard's initial-text buffer");
             t.Equals(a.oskTextBuffer, socom2_osk::kOskTextBufferAddr, "oskTextBuffer: one definition, not a second copy");
             t.Equals(a.chatFanoutRecv, 0x002f4ef0u, "chatFanoutRecv: FUN_002f4ef0");
+            t.Equals(a.chatListRender, 0x002f5020u, "chatListRender: FUN_002f5020");
+            t.Equals(a.chatListHolders, 0x0044f568u, "chatListHolders: the holder list it renders from");
             t.Equals(a.dnasCheck, 0x002cc670u, "dnasCheck: FUN_002cc670");
             t.Equals(a.ctorTableFtsBegin, 0x00404d10u, "ctorTableFtsBegin: FTSCore static constructors");
             t.Equals(a.ctorTableFtsEnd, 0x00404f04u, "ctorTableFtsEnd");
@@ -86,7 +88,7 @@ void register_socom2_addresses_tests()
             const uint32_t fields[] = {a.rtNetConfigInit, a.packTrace, a.cull, a.node, a.node2, a.lod,
                                        a.detail, a.camCfg, a.defer, a.flush, a.musicManager, a.cuePush,
                                        a.cameraHolder, a.versionString, a.oskOpen, a.oskOpenThunk,
-                                       a.oskTextBuffer, a.chatFanoutRecv,
+                                       a.oskTextBuffer, a.chatFanoutRecv, a.chatListRender, a.chatListHolders,
                                        a.dnasCheck, a.ctorTableFtsBegin, a.ctorTableFtsEnd,
                                        a.ctorTableZsealBegin, a.ctorTableZsealEnd};
             for (uint32_t v : fields)

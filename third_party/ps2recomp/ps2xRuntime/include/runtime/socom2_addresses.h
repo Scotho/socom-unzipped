@@ -58,6 +58,8 @@ namespace socom2_addresses
         uint32_t oskOpenThunk;          // the one-instruction thunk the UI action table dispatches through
         uint32_t oskTextBuffer;         // DATA: the keyboard's initial-text buffer the prefill writes
         uint32_t chatFanoutRecv;        // the chat receive fan-out (milestone S)
+        uint32_t chatListRender;        // the second reader of the same records (milestone S, Task 2b)
+        uint32_t chatListHolders;       // DATA: the holder list that reader's records are reached through
         uint32_t dnasCheck;             // the DNAS tick the runtime answers done
         uint32_t ctorTableFtsBegin;     // DATA: FTSCore's static constructor table
         uint32_t ctorTableFtsEnd;
@@ -86,6 +88,8 @@ namespace socom2_addresses
         socom2_osk::kOskOpenThunkAddr,    // oskOpenThunk -- ditto; the table dispatches here, not at the handler
         socom2_osk::kOskTextBufferAddr,   // oskTextBuffer -- ditto
         0x002f4ef0u,   // chatFanoutRecv
+        0x002f5020u,   // chatListRender
+        0x0044f568u,   // chatListHolders
         0x002cc670u,   // dnasCheck
         0x00404d10u,   // ctorTableFtsBegin
         0x00404f04u,   // ctorTableFtsEnd
