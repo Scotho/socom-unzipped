@@ -1079,6 +1079,57 @@ void register_code_generator_tests()
                      "MOVN must neither read nor write the upper 64 bits of the 128-bit register");
         });
 
+        tc.Run("zero-compare branches weigh all 64 bits of the register", [](TestCase &t) {
+            struct ZeroCompareCase
+            {
+                const char *mnemonic;
+                uint32_t opcode;
+                uint32_t regimmField;
+                const char *condition;
+            };
+
+            const ZeroCompareCase cases[] = {
+                {"BLEZ", OPCODE_BLEZ, 0u, "GPR_S64(ctx, 9) <= 0"},
+                {"BGTZ", OPCODE_BGTZ, 0u, "GPR_S64(ctx, 9) > 0"},
+                {"BLEZL", OPCODE_BLEZL, 0u, "GPR_S64(ctx, 9) <= 0"},
+                {"BGTZL", OPCODE_BGTZL, 0u, "GPR_S64(ctx, 9) > 0"},
+                {"BLTZ", OPCODE_REGIMM, REGIMM_BLTZ, "GPR_S64(ctx, 9) < 0"},
+                {"BGEZ", OPCODE_REGIMM, REGIMM_BGEZ, "GPR_S64(ctx, 9) >= 0"},
+                {"BLTZL", OPCODE_REGIMM, REGIMM_BLTZL, "GPR_S64(ctx, 9) < 0"},
+                {"BGEZL", OPCODE_REGIMM, REGIMM_BGEZL, "GPR_S64(ctx, 9) >= 0"},
+            };
+
+            for (const ZeroCompareCase &branchCase : cases)
+            {
+                Function func;
+                func.name = "zero_compare_branch";
+                func.start = 0x4000;
+                func.end = 0x4010;
+                func.isRecompiled = true;
+                func.isStub = false;
+
+                Instruction branch{};
+                branch.address = 0x4000;
+                branch.opcode = branchCase.opcode;
+                branch.rs = 9;
+                branch.rt = branchCase.regimmField;
+                branch.simmediate = 1; // target 0x4008
+                branch.isBranch = true;
+                branch.hasDelaySlot = true;
+
+                CodeGenerator gen({}, {});
+                const std::string generated =
+                    gen.generateFunction(func, {branch, makeNop(0x4004), makeNop(0x4008)}, false);
+
+                t.IsTrue(generated.find(branchCase.condition) != std::string::npos,
+                         std::string(branchCase.mnemonic) +
+                             " should weigh the register as a 64-bit signed value against zero");
+                t.IsTrue(generated.find("GPR_S32(ctx, 9)") == std::string::npos,
+                         std::string(branchCase.mnemonic) +
+                             " must not throw away bits 63:32 before taking the sign");
+            }
+        });
+
         tc.Run("SC requires matching LL reservation address", [](TestCase &t) {
             CodeGenerator gen({}, {});
 
