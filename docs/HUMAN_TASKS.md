@@ -8,8 +8,8 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
 > waited on tonight; the loop is closing Sprint 10 and opening Sprint 11 under the owner's authority
 > (`docs/superpowers/plans/2026-09-22-sprint-10-close.md`). The endpoint A/B, the W10 proof and the W7/W6 captures
 > listed under "Start here (midday)" are **machine runs** and ran overnight; their results are in the sprint record.
-> A fresh "Start here" block for the morning is written at the close -- **it is above, `## Start here (2026-09-23
-> morning)`**, and it carries the results of those runs.
+> A fresh "Start here" block for the morning is written at the close -- **it is immediately below, `## Start here
+> (2026-09-23 morning)`**, and it carries the results of those runs.
 
 ## Start here (2026-09-23 morning)
 
@@ -174,11 +174,17 @@ owed from you here, and the remaining work is a Sprint 11 audio item.
 
 **What still needs you, and none of it is urgent:**
 
-- **The prefilled login.** You asked for a persona saved on the card with remember-password checked, or the prefill
-  removed. Taken as R237: it leaves the player path and survives as a developer knob (the drive scripts type personas
-  with it). Before it is removed for good, the thing to prove is that the game's own persona + remember-password
-  survives a restart on a **virgin** card -- which is the same save path that failed you the first time. The loop can
-  drive that; you would only be asked to confirm it feels right.
+- **The prefilled login -- SETTLED 2026-09-23, and the answer is that it STAYS.** The proof this bullet asked for
+  ran overnight and failed: on a virgin card the persona survives a restart, the **saved password does not**
+  (`LOBBY-FAIL login:saved-password:empty`). So the game's own way in does not yet reach the lobby unattended, and
+  the prefill is not removed. See the morning block at the top of this file for the verdict and what settles the
+  remaining question (whether the game writes the password only on a clean exit, which the test driver's kill skips,
+  or whether our card code loses it). Nothing is owed from you here.
+  > ~~You asked for a persona saved on the card with remember-password checked, or the prefill removed. Taken as
+  > R237: it leaves the player path and survives as a developer knob (the drive scripts type personas with it).
+  > Before it is removed for good, the thing to prove is that the game's own persona + remember-password survives a
+  > restart on a **virgin** card -- which is the same save path that failed you the first time. The loop can drive
+  > that; you would only be asked to confirm it feels right.~~
 - **The CONTROLLER page**: the better pad graphic and hold-a-button-to-remap with hints were chunk W9, and **W9 is
   built** (`668c7f5`). It is waiting on your eye now: you are the only one who can say whether the hold gesture reads
   clearly.
