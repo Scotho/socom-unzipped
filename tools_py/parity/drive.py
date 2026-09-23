@@ -94,7 +94,7 @@ def launch(target, seconds):
         pass
     handle = open(log, "wb")
     return subprocess.Popen(["timeout", str(seconds), os.path.abspath(hostplatform.runtime_exe()),
-                             os.path.abspath(os.path.join("game", "disc", "socom2_game.elf"))],
+                             os.path.abspath(env.get("SOCOM_GAME_ELF") or os.path.join("game", "disc", "socom2_game.elf"))],
                             env=env, stdout=handle, stderr=subprocess.STDOUT)
 
 
