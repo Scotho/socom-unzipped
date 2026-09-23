@@ -40,8 +40,14 @@ The repository is public. `python -m tools_py.release.leakcheck <mode>` is the g
 Sprint 11 Goal 9): `tree` every tracked file, `staged` the index (the pre-commit hook), `ignored` proves the paths that
 hold real secrets (`vm/`, `logs/`, `game/`, `server/config/simulated.db`, ...) are ignored, untracked and never
 committed, `metadata` the commit identities, `history [range]` every added line of every commit (the pre-push hook),
-`artifact <dir>` an unpacked release, `all` the four repository modes. Exit 0 clean, 1 findings, **2 did not run** (a
-shallow clone, a missing target, a missed planted control) -- a caller never reads 2 as a pass. Output is masked;
+`artifact <dir>` an unpacked release, `external` the sibling repositories' own scanners (`../scotho`'s
+`scripts/check-secrets.mjs` and `../socom_monitor`'s `leakcheck.py`, folded into this report with their excerpts
+masked), `all` the four repository modes plus `external`. A sibling that is not beside this repository prints
+SKIPPED and leaves the exit code alone -- CI has neither, and SKIPPED is never "clean"; `external --require` makes
+a missing one exit 2, and a sibling that IS there whose scanner could not scan is exit 2 either way. `--siblings-root`
+(or `$SOCOM_LEAK_SIBLINGS`) says where they are. Exit 0 clean, 1 findings, **2 did not run** (a
+shallow clone, a missing target, a missed planted control, an external scanner that never ran) -- a caller never
+reads 2 as a pass. Output is masked;
 `--reveal` for the terminal, `--json` for a report. Decisions live in `tools_py/release/leak_allow.txt` with reasons;
 owner-specific literals in the git-ignored `leak_extra.txt`. Install the hooks with `bash scripts/install_hooks.sh`.
 

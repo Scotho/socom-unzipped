@@ -36,7 +36,11 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.12'
-      - name: The leak check over the tagged tree, its history, the identities and the ignored paths
+      # `all` includes the `external` leg, which calls ../scotho's and ../socom_monitor's own scanners. A runner
+      # has neither repository, so both print SKIPPED and the step stays green -- and SKIPPED is printed as what
+      # it is, "did not run", never as clean. `--require` (which would make a missing sibling exit 2) belongs on
+      # the owner's machine, where the siblings exist; it must never be added here.
+      - name: The leak check over the tagged tree, its history, the identities, the ignored paths and the siblings
         run: python -m tools_py.release.leakcheck all
       - name: Create the DRAFT release with the checklist as its notes
         env:
