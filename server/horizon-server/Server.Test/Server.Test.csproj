@@ -3,18 +3,26 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net9.0</TargetFramework>
+    <!-- LOCAL (socom_pc): the vendored harness is a live-connect console program; xunit is added here so the
+         solution has somewhere to put unit tests. Keep the harness's own Main as the entry point. -->
+    <IsTestProject>true</IsTestProject>
+    <GenerateProgramFile>false</GenerateProgramFile>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="DotNetty.Handlers" Version="0.7.6" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.10" />
     <PackageReference Include="NReco.Logging.File" Version="1.2.2" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\RT.Common\RT.Common.csproj" />
     <ProjectReference Include="..\RT.Cryptography\RT.Cryptography.csproj" />
     <ProjectReference Include="..\Server.Common\Server.Common.csproj" />
+    <ProjectReference Include="..\Server.Medius\Server.Medius.csproj" />
     <ProjectReference Include="..\Server.Pipeline\Server.Pipeline.csproj" />
   </ItemGroup>
 

@@ -121,6 +121,9 @@ namespace Server.Medius.Models
 
         public void BroadcastChatMessage(IEnumerable<ClientObject> targets, ClientObject source, string message)
         {
+            // The name we forward is clamped to leave room for the terminator; the caller clamps the message.
+            var originatorAccountName = ChatClamp.Fit(source.AccountName, Constants.ACCOUNTNAME_MAXLEN);
+
             foreach (var target in targets)
             {
                 if (target.MediusVersion >= 112)
@@ -128,7 +131,7 @@ namespace Server.Medius.Models
                     target?.Queue(new MediusGenericChatFwdMessage1()
                     {
                         OriginatorAccountID = source.AccountId,
-                        OriginatorAccountName = source.AccountName,
+                        OriginatorAccountName = originatorAccountName,
                         Message = message,
                         MessageType = MediusChatMessageType.Broadcast,
                         TimeStamp = Utils.GetUnixTime()
@@ -139,7 +142,7 @@ namespace Server.Medius.Models
                     target?.Queue(new MediusGenericChatFwdMessage()
                     {
                         OriginatorAccountID = source.AccountId,
-                        OriginatorAccountName = source.AccountName,
+                        OriginatorAccountName = originatorAccountName,
                         Message = message,
                         MessageType = MediusChatMessageType.Broadcast,
                         TimeStamp = Utils.GetUnixTime()
