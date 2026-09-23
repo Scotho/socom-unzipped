@@ -148,8 +148,8 @@ making `OVERLAY/REL/DNAS.dec.bin` when the tree lacks it). The revision's functi
 falls back to r0001's map silently, any other revision has to ask for it with `--ghidra-from-r0001` and is warned
 that the generated code will be wrong until Task 10's matcher writes that revision its own map.
 **Proven on r0001 (2026-09-23):** `bash scripts/build_revision.sh r0001check game/disc/RUN/RAW/APACHE00.ZDB
---check-against dist/socom2_game.elf` -- the ELF identical (sha256 `06b83684...8872`), `diff -rq` of the 14,882
-generated files against `recomp/output` empty, the exe built (236,856,320 B; not byte-identical to `dist/socom2.exe`,
+--check-against dist/socom2_game.elf` -- the ELF identical (sha256 `06b83684...8872`), `diff -rq --exclude=.complete` of the 14,882
+generated files against `recomp/output` empty (the mark is the script's own, since the review round), the exe built (236,856,320 B; not byte-identical to `dist/socom2.exe`,
 which embeds its own build's paths and source revision). Measured in that run (2026-09-23): DNAS 2 s, the decryption
 6.5 min, the ELF instant, the recomp seconds, the runtime build about twenty minutes from a cold build tree.
 
