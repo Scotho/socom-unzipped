@@ -183,19 +183,24 @@ online.
 First, the boring cause: if the game's folder is not writable, you get exit code 72 before anything starts. See
 above.
 
-Beyond that there is one open report worth knowing about. On 2026-09-22 the owner's **first** save on a brand-new,
-never-used memory card failed at the control-type prompt, and the same save worked on the next launch. The cause is
-still unknown, because the build being played recorded nothing at all about the card — and that, rather than the
-save, is what has been fixed: **every** build now prints a line naming the failing card command and its result code
-when a card command fails, with no setting to turn on. So if it happens to you: restart the game and try the save
-again, then send the log (`logs/run_<stamp>.log`, or press SAVE DIAGNOSTICS) — that log now contains the answer
-nobody had the first time. `KNOWN.md` §2 tracks it.
+There was one more, and it is **fixed** as of 2026-09-22. The first save on a brand-new, never-used memory card
+failed at the control-type prompt, and the same save worked on the next launch. The cause turned out to be ours: on
+a fresh card the game asks the card for `..`, the current directory *is* the root, and our memory-card code refused
+that as an attempt to climb past the root — so the game read the answer as a card it could not use. A trailing `..`
+now resolves to the card root (a climb with anything after it is still refused, as it must be), with a regression
+test that fails on the old behaviour. Fixed in commit `152579a`.
+
+The instrument that found it stays: **every** build prints a line naming the failing card command and its result
+code whenever a card command fails, with no setting to turn on. So if a save still fails on you, that log has the
+answer — press **SAVE DIAGNOSTICS** and send the zip.
 
 ### The game won't remember my online password
 
-It does not yet, and this is the current state rather than a mystery. A driven two-launch test on 2026-09-22 —
-create a persona with the game's own SAVE PASSWORD ticked, restart from that same card — found the **persona name**
-coming back from the card and the **password** not.
+It does not yet, and this is the current state rather than a mystery. Found by a driven two-launch test on
+2026-09-23 (runs `w10_virgin_a` / `w10_virgin_b`; the record is the Sprint 10 close entry in `STATUS.md`): launch
+one created a persona on an empty card with the game's own SAVE PASSWORD ticked and reached the lobby; launch two,
+from that same card, got the **persona name** back and an **empty password field**. Whether the game only writes the
+saved password on a clean exit, or our memory-card code drops it, is the open question — `KNOWN.md` §2 carries it.
 
 Until that is fixed, use the launcher's ONLINE page: type your PLAYER NAME and PASSWORD there and the game's
 keyboards open already filled. Be aware of what the launcher itself tells you on that page — the password is stored

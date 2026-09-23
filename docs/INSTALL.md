@@ -140,9 +140,10 @@ Two things to expect on your first round:
 
 - **Your first login on any server is a create-persona login** — the name keyboard comes first. The game keeps saved
   personas per server, so a persona made on one server is not there on another.
-- **The game's own SAVE PASSWORD does not survive a restart yet.** A driven two-launch test on 2026-09-22 found the
-  persona name coming back from the memory card and the password not. Until that is fixed, fill in the launcher's
-  PLAYER NAME and PASSWORD fields and let them do the remembering.
+- **The game's own SAVE PASSWORD does not survive a restart yet.** Found by a driven two-launch test on 2026-09-23
+  (runs `w10_virgin_a` / `w10_virgin_b`; the record is the Sprint 10 close entry in `STATUS.md`): the persona name
+  comes back from the memory card, the password does not. Until that is fixed, fill in the launcher's PLAYER NAME
+  and PASSWORD fields and let them do the remembering.
 
 ## 9. Where your saves, settings and logs live
 
