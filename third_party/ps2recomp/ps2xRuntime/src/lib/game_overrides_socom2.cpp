@@ -1597,7 +1597,17 @@ namespace
         {
             const uint32_t n = seen.fetch_add(1) + 1;
             const uint32_t f = changed ? fixed.fetch_add(1) + 1 : fixed.load();
-            const uint32_t s = skips ? skipped.fetch_add(skips) + skips : skipped.load();
+            // The running total stops at the top rather than coming round to a small number (socom2_chat::satAdd).
+            uint32_t s = skipped.load();
+            while (skips != 0)
+            {
+                const uint32_t next = socom2_chat::satAdd(s, skips);
+                if (skipped.compare_exchange_weak(s, next))
+                {
+                    s = next;
+                    break;
+                }
+            }
             if (n == 1 || (changed != 0 && (f <= 8 || f % 64 == 0)))
                 std::cout << "[socom2] " << tag << ": seen=" << n << " fixed=" << f << " skipped=" << s << std::endl;
         }
@@ -1650,11 +1660,18 @@ namespace
         const uint32_t holders = Ps2FastRead32(rdram, addr.chatListHolders + socom2_chat::kHolderCountOff);
         const uint32_t holderBase = Ps2FastRead32(rdram, addr.chatListHolders + socom2_chat::kHolderDataOff) & PS2_RAM_MASK;
         // The ceiling cuts the walk, it never calls it off: a list longer than the ceiling still gets the
-        // guarantee as far as the ceiling reaches. Not fitting in memory is the one thing that declines a walk.
+        // guarantee as far as the ceiling reaches. Not fitting in memory is the one thing that declines a walk,
+        // and having nothing to walk is not that: an empty list returns quietly, saying nothing.
         const uint32_t walkHolders = socom2_chat::walkCount(holders, socom2_chat::kMaxHolders);
+        uint32_t budget = socom2_chat::kRecordsPerCall;   // spent across this call, carried to no other
         int changed = 0;
         uint32_t skipped = holders - walkHolders;
-        if (socom2_chat::spanFits(holderBase, walkHolders, socom2_chat::kHolderPtrBytes, PS2_RAM_SIZE))
+        if (socom2_chat::declines(walkHolders, holderBase, socom2_chat::kHolderPtrBytes, PS2_RAM_SIZE))
+        {
+            skipped = socom2_chat::satAdd(skipped, walkHolders);
+            g_chatListLog.declinedOnce("chat list bound", "the holder list does not fit in memory; skipped");
+        }
+        else
         {
             // Every holder in the list, not only the one this reader selects: the selection is a name match
             // the guest makes for itself, and walking the whole list covers it without repeating that match
@@ -1664,25 +1681,23 @@ namespace
                 const uint32_t holder = Ps2FastRead32(rdram, holderBase + i * socom2_chat::kHolderPtrBytes) & PS2_RAM_MASK;
                 if (!socom2_chat::spanFits(holder, 1, socom2_chat::kListHeaderBytes, PS2_RAM_SIZE))
                 {
-                    ++skipped;
+                    skipped = socom2_chat::satAdd(skipped, 1);
                     continue;
                 }
                 const uint32_t count = Ps2FastRead32(rdram, holder + socom2_chat::kListCountOff);
                 const uint32_t base = Ps2FastRead32(rdram, holder + socom2_chat::kListDataOff) & PS2_RAM_MASK;
-                const uint32_t walk = socom2_chat::walkCount(count, socom2_chat::kMaxRecords);
-                skipped += count - walk;
-                if (!socom2_chat::spanFits(base, walk, socom2_chat::kRecordBytes, PS2_RAM_SIZE))
+                // Once the call's budget is gone every remaining walk is nothing; the rest of the loop only
+                // finishes the count of what was left alone, which is a handful of reads per holder.
+                const uint32_t walk = socom2_chat::walkWithin(count, socom2_chat::kMaxRecords, budget);
+                budget -= walk;
+                skipped = socom2_chat::satAdd(skipped, count - walk);
+                if (socom2_chat::declines(walk, base, socom2_chat::kRecordBytes, PS2_RAM_SIZE))
                 {
-                    ++skipped;
+                    skipped = socom2_chat::satAdd(skipped, walk);
                     continue;
                 }
                 changed += socom2_chat::terminateRecords(rdram + base, walk);
             }
-        }
-        else
-        {
-            skipped += walkHolders;
-            g_chatListLog.declinedOnce("chat list bound", "the holder list does not fit in memory; skipped");
         }
         g_chatListLog.note("chat list bound", changed, skipped);
         if (g_chatListOriginal)

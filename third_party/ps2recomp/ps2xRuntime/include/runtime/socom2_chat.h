@@ -37,6 +37,10 @@ namespace socom2_chat
     // is 999). They cut a walk; they never call one off -- see walkCount.
     constexpr uint32_t kMaxRecords = 4096;
     constexpr uint32_t kMaxHolders = 4096;
+    // The ceilings bound each walk; this bounds all of them together, so what one call costs does not
+    // multiply out with the counts it reads. Spent across the call and never carried: the next call starts
+    // with the whole budget again.
+    constexpr uint32_t kRecordsPerCall = 8192;
 
     // How much of a count is walked. A count read out of the machine's memory decides the amount of work,
     // never whether the work happens: past the ceiling the walk is cut to the ceiling, so a long list gets
@@ -44,6 +48,19 @@ namespace socom2_chat
     inline uint32_t walkCount(uint32_t count, uint32_t cap)
     {
         return count < cap ? count : cap;
+    }
+
+    // The same cut, against the ceiling AND what is left of the call's budget, whichever binds first.
+    inline uint32_t walkWithin(uint32_t count, uint32_t cap, uint32_t budget)
+    {
+        return walkCount(count, budget < cap ? budget : cap);
+    }
+
+    // Counting what a call left alone: it stops at the top rather than coming round to a small number,
+    // because a small number reads as "almost nothing was left alone", which would be the opposite of true.
+    inline uint32_t satAdd(uint32_t a, uint32_t b)
+    {
+        return a > 0xFFFFFFFFu - b ? 0xFFFFFFFFu : a + b;
     }
 
     // Nothing read out of the machine's memory is trusted here: a run is walked only when it is whole and
@@ -56,6 +73,14 @@ namespace socom2_chat
         if (count > ramBytes / stride)
             return false;                        // after this the multiply below cannot wrap
         return base <= ramBytes - count * stride;
+    }
+
+    // Whether a walk of `count` items at `base` is declined. Having nothing to walk is not a refusal --
+    // an empty list is a quiet return, and an empty list has no base -- so only something to walk that
+    // does not fit is one.
+    inline bool declines(uint32_t count, uint32_t base, uint32_t stride, uint32_t ramBytes)
+    {
+        return count != 0 && !spanFits(base, count, stride, ramBytes);
     }
 
     // Every record in the run gets exactly what one gets, and nothing past the run is touched.

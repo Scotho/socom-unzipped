@@ -145,6 +145,60 @@ void register_socom2_chat_tests()
                      "the record past the cap is byte-for-byte what it was");
             t.IsTrue(socom2_chat::kMaxRecords > 999u, "the real cap is past the largest run the game asks for");
         });
+        // One call's work is budgeted across everything it walks, so no single call can be talked into an
+        // unbounded amount of it by the counts it reads.
+        tc.Run("a budget spent across a call cuts every walk once it runs out", [](TestCase &t)
+        {
+            const uint32_t cap = socom2_chat::kMaxRecords;
+            t.Equals(socom2_chat::walkWithin(10, cap, 4), 4u, "the budget is tighter than the cap");
+            t.Equals(socom2_chat::walkWithin(10, 6, 100), 6u, "the cap is tighter than the budget");
+            t.Equals(socom2_chat::walkWithin(3, cap, 100), 3u, "neither binds: the whole count walks");
+            t.Equals(socom2_chat::walkWithin(10, cap, 0), 0u, "a spent budget walks nothing more");
+            t.Equals(socom2_chat::walkWithin(0, cap, 100), 0u, "nothing to walk stays nothing");
+            t.IsTrue(socom2_chat::kRecordsPerCall > 999u, "the budget is past the largest list the game asks for");
+            t.IsTrue(socom2_chat::kRecordsPerCall < socom2_chat::kMaxRecords * socom2_chat::kMaxHolders,
+                     "the budget really does bound the work a call can be given");
+        });
+        tc.Run("a run far past the budget bounds the budget's worth and touches nothing beyond it", [](TestCase &t)
+        {
+            const uint32_t budget = 2, count = 5;
+            std::vector<uint8_t> run(socom2_chat::kRecordBytes * count, 0xAA);
+            for (uint32_t i = 0; i < count; ++i)
+            {
+                uint8_t *rec = &run[i * socom2_chat::kRecordBytes];
+                std::memset(rec + socom2_chat::kNameOff, 'N', socom2_chat::kNameLen);
+                std::memset(rec + socom2_chat::kMessageOff, 'M', socom2_chat::kMessageLen);
+            }
+            std::vector<uint8_t> before = run;
+            const uint32_t walk = socom2_chat::walkWithin(count, socom2_chat::kMaxRecords, budget);
+            t.Equals(walk, budget, "the budget decides the walk");
+            t.Equals(socom2_chat::terminateRecords(run.data(), walk), 4, "two fields in each of the two records");
+            t.IsTrue(std::memcmp(&run[budget * socom2_chat::kRecordBytes], &before[budget * socom2_chat::kRecordBytes],
+                                 socom2_chat::kRecordBytes * (count - budget)) == 0,
+                     "every record past the budget is byte-for-byte what it was");
+        });
+        // The counter that says how much a call declined must not be able to read low by overflowing.
+        tc.Run("the declined count saturates instead of wrapping", [](TestCase &t)
+        {
+            t.Equals(socom2_chat::satAdd(2, 3), 5u, "an ordinary sum");
+            t.Equals(socom2_chat::satAdd(0, 0), 0u, "nothing plus nothing");
+            t.Equals(socom2_chat::satAdd(0xFFFFFFFFu, 1), 0xFFFFFFFFu, "the top plus one stays at the top");
+            t.Equals(socom2_chat::satAdd(0xFFFFFFF0u, 0x20u), 0xFFFFFFFFu, "a sum that would wrap saturates");
+            t.Equals(socom2_chat::satAdd(0xFFFFFFFFu, 0xFFFFFFFFu), 0xFFFFFFFFu, "the top plus the top");
+            t.Equals(socom2_chat::satAdd(1, 0xFFFFFFFEu), 0xFFFFFFFFu, "the last sum that still fits");
+        });
+        // An empty list is not a refusal: there is nothing to walk, so there is nothing to decline and
+        // nothing to say about it. A list with entries that does not fit in memory IS a refusal.
+        tc.Run("an empty list is a quiet return, not a refusal", [](TestCase &t)
+        {
+            const uint32_t ram = 32u * 1024u * 1024u;
+            const uint32_t stride = socom2_chat::kRecordBytes;
+            t.IsFalse(socom2_chat::declines(0, 0, stride, ram), "no entries and no base at all");
+            t.IsFalse(socom2_chat::declines(0, 0x100000u, stride, ram), "no entries at a real base");
+            t.IsFalse(socom2_chat::declines(4, 0x100000u, stride, ram), "entries that fit");
+            t.IsTrue(socom2_chat::declines(4, 0, stride, ram), "entries with no base");
+            t.IsTrue(socom2_chat::declines(4, ram - stride, stride, ram), "entries that run past the end");
+        });
         // A count and a base read out of guest memory are not trusted: the run is walked only when it is
         // whole and inside the machine's memory.
         tc.Run("a run is accepted only when it is whole and inside memory", [](TestCase &t)
