@@ -153,6 +153,9 @@ namespace Server.Medius.Models
 
         public void SendSystemMessage(ClientObject client, string message)
         {
+            // Clamped to leave room for the terminator, so this path cannot reintroduce the hole.
+            message = ChatClamp.Fit(message, Constants.CHATMESSAGE_MAXLEN);
+
             if (client.MediusVersion >= 112)
             {
                 client.Queue(new MediusGenericChatFwdMessage1()
@@ -179,6 +182,9 @@ namespace Server.Medius.Models
 
         public void BroadcastSystemMessage(IEnumerable<ClientObject> targets, string message)
         {
+            // Clamped to leave room for the terminator, so this path cannot reintroduce the hole.
+            message = ChatClamp.Fit(message, Constants.CHATMESSAGE_MAXLEN);
+
             foreach (var target in targets)
             {
                 if (target.MediusVersion >= 112)
