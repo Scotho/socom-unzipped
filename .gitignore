@@ -10,6 +10,8 @@
 __pycache__/
 /recomp/output/
 /recomp/output_*/
+/recomp/*.raw.csv
+/recomp/*.raw.toml
 /recomp/*.log
 /third_party/ps2recomp/build*/
 *.log
