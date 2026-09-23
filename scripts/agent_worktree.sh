@@ -27,9 +27,14 @@ create() {
   [ -e "$path" ] && { echo "agent_worktree: $path exists" >&2; exit 2; }
   git -C "$ROOT" rev-parse --verify -q "$base" >/dev/null || { echo "agent_worktree: no such base $base" >&2; exit 2; }
   git -C "$ROOT" worktree add -b "agent/$name" "$path" "$base" || exit 1
-  # The dead push first: nothing else happens in this worktree until it cannot reach the remote.
-  git -C "$path" config remote.origin.pushurl "$NOPUSH"
-  [ "$(git -C "$path" config remote.origin.pushurl)" = "$NOPUSH" ] || { echo "agent_worktree: pushurl not set" >&2; exit 1; }
+  # The dead push first: nothing else happens in this worktree until it cannot reach the remote. It MUST be
+  # worktree-scoped: a plain `git config` in a worktree writes the repository's shared .git/config, and the first
+  # night this script ran it silently disabled pushing from the MAIN tree too (the sprint close's push failed with
+  # "remote helper 'no-push' aborted"). extensions.worktreeConfig makes `--worktree` config real.
+  git -C "$ROOT" config extensions.worktreeConfig true
+  git -C "$path" config --worktree remote.origin.pushurl "$NOPUSH"
+  [ "$(git -C "$path" config --get remote.origin.pushurl)" = "$NOPUSH" ] || { echo "agent_worktree: pushurl not set" >&2; exit 1; }
+  [ -z "$(git -C "$ROOT" config --get remote.origin.pushurl)" ] || { echo "agent_worktree: the MAIN tree's pushurl is set -- refusing" >&2; exit 1; }
   # tools/ only. A real junction (git sees a directory, never a symlink), made by PowerShell: `cmd /c mklink /J`
   # from Git Bash loses its switches to MSYS path conversion (the first run of this script proved it).
   if [ -d "$ROOT/tools" ]; then
