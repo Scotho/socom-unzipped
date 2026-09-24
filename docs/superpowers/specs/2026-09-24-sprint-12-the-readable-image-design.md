@@ -64,6 +64,13 @@ A readable name is the demo's mangled name rendered as `Class_Method`, with thes
 
 ### 1.3 Provenance — **[decided here; the reader and the audit are Task 1's]**
 
+> **Superseded in substance (2026-09-24, research/57, S12-R13): the sidecar is not beside the name, it IS the name.**
+> The recompiler reads `recomp/socom2_names.csv` (`[general] names`) and uses its `Name` only for the generated
+> identifier, the filename and the `// Function:` header; `recomp/socom2_ghidra.csv`'s `Name` column stays Ghidra's
+> export and is never rewritten, because in this recompiler a csv name is function identity (it fixes the extent,
+> stubs by name, and flips the correctness-critical prefixes). Every sentence below that says "the csv's `Name`"
+> for an applied name reads "the sidecar's `Name`"; the audit rule is restated in S12-R13.
+
 One tracked file beside the csv, `recomp/socom2_names.csv`, with the columns
 `Address, Name, Mangled, Pass, Score, Evidence, Source, Date`:
 
@@ -138,6 +145,11 @@ row without writing the sidecar row in the same run.
 
 ### Goal 3 — vtable slots through RTTI (Task 7c) **[A]** — the lever aimed at the 78 %
 
+> *Amended (2026-09-24, research/51, S12-R16): rule 1's lookup key is the demo's own qualified RTTI string plus a
+> layout filter (211 classes, templates included); rule 2 counts the vtable start as a fixed point and names
+> equal-count vtables whole (169 slots, holdout 0 wrong); rule 3 admits a shared body two or more vtables name the same
+> way; rule 4 (constructors) is withdrawn as written. The plan's Task 4 carries the amended rule.*
+
 From `tools_py/research/symbols/vtable_rtti.py` and `vtable_anchors.py`: a third proposals file
 (`game/demo_symbol_renames_7c.csv`) under its own rule, pass name `vtable-slot`, in `tools_py/ghidra_symbol_match.py`
 and `tools_py/symbol_levers.py` (both the cloud's on `sprint-12` from the branch's first commit). The rule:
@@ -193,6 +205,12 @@ until the access pattern confirms it (R262).**
   contradiction, never applied.
 
 ### Goal 6 — the toml's 656 stub names reach the generated output **[A]**
+
+> *Amended (2026-09-24, research/57, S12-R13): the names reach the output through the sidecar and the recompiler's
+> `[general] names` key, not through the csv; 41 of the 656 are not csv rows and no route names them (none is a call
+> target; 9 are stub selectors that bind nothing, KNOWN §4's nine); the 338 auto-named toml addresses apply as
+> `toml-stub` rows, the 134 names starting with `_` rendered by research/47's R6 and S12-R14, and the six names the
+> toml gives to several addresses refused by R10, not scored 0.90.*
 
 Today `ps2_recompiled_stubs.h` declares `sceCdDelayThread` as `sub_0018DBB8`: the toml's `name@addr` selects a runtime
 handler and never names the function. Research Q12 finds the smallest change that carries every known name into
