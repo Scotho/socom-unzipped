@@ -62,8 +62,10 @@
 #   changed rule re-merges the ELF instead of silently carrying a stale image into steps 3-5; a sidecar that
 #   cannot be parsed counts as stale.
 #
-#   --stop-after elf|recomp|runtime   stop after that step (runtime is the default); elf takes no lock at all,
-#                     and covers step 0, so it is the cheapest way to see that a build leaves git status clean
+#   --stop-after elf|toml|recomp|runtime   stop after that step (runtime is the default); elf and toml take
+#                     no lock at all. elf covers step 0, so it is the cheapest way to see that a build leaves
+#                     git status clean; toml goes one further and writes recomp/socom2_<rev>.toml, which is
+#                     tracked and regenerated on every build, so it is how that file is checked the same way.
 #   --out <dir>       every product under <dir> instead (overlays_<rev>/, recomp_<rev>/, build-clang-<rev>/, dist/),
 #                     so a check build run from the main tree can land in a worktree
 #   --dry-run         print the six steps with their paths and exit 0, touching nothing
@@ -88,7 +90,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --check-against) [ $# -ge 2 ] || die2 "--check-against needs a path"; CHECK="$2"; shift 2 ;;
     --dry-run) DRY=1; shift ;;
-    --stop-after) [ $# -ge 2 ] || die2 "--stop-after needs one of elf, recomp, runtime"; STOP="$2"; shift 2 ;;
+    --stop-after) [ $# -ge 2 ] || die2 "--stop-after needs one of elf, toml, recomp, runtime"; STOP="$2"; shift 2 ;;
     --force) FORCE=1; shift ;;
     --out) [ $# -ge 2 ] || die2 "--out needs a directory"; OUT="$2"; shift 2 ;;
     --game) [ $# -ge 2 ] || die2 "--game needs the extracted disc tree"; GAME="$2"; shift 2 ;;
@@ -111,7 +113,7 @@ fi
 
 [ -n "$REV" ] || die2 "usage: build_revision.sh <rev> <APACHE00.ZDB> [--check-against <elf>] [--dry-run] [--stop-after <step>]"
 [[ "$REV" =~ ^r[0-9]{4}([a-z][a-z0-9]*)?$ ]] || die2 "revision must look like r0004 (r + four digits, an optional suffix that starts with a letter, such as r0001check): got '$REV'"
-case "$STOP" in elf|recomp|runtime) ;; *) die2 "--stop-after must be one of elf, recomp, runtime: got '$STOP'" ;; esac
+case "$STOP" in elf|toml|recomp|runtime) ;; *) die2 "--stop-after must be one of elf, toml, recomp, runtime: got '$STOP'" ;; esac
 
 # ---- where everything is ------------------------------------------------------------------------------------
 PS2R="$ROOT/third_party/ps2recomp"
@@ -361,6 +363,9 @@ if [ "$TAIL" = 0 ]; then
         "$ROOT/recomp/socom2.toml" > "$TOML"
   fi
   say "toml: $(rel "$TOML") (input $TOML_INPUT, output $TOML_OUTPUT, ghidra_output $TOML_GHIDRA)"
+  # The last lock-free product. recomp/socom2_<rev>.toml is tracked and step 3 rewrites it every run, so
+  # --stop-after toml is how a change to what step 3 writes is checked against the tree without the lock.
+  [ "$STOP" = toml ] && { say "stop after toml"; exit 0; }
   # 4-5 under the lock, re-entering this script
   export BR_REV="$REV" BR_STOP="$STOP" BR_FORCE="$FORCE" BR_OUT="$OUT" BR_EXTRA="$EXTRA"
   exec bash "$ROOT/scripts/loop_lock.sh" run build-revision --purpose "build_revision $REV: recomp$([ "$STOP" = runtime ] && echo ' + runtime')" \

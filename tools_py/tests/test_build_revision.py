@@ -110,6 +110,15 @@ class BuildRevisionArgsTest(unittest.TestCase):
         self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
         self.assertIn("--stop-after", p.stderr)
 
+    def test_stop_after_toml_is_the_last_step_that_takes_no_lock(self):
+        """Step 3 writes the tracked recomp/socom2_<rev>.toml, so a change to what it writes has to be
+        checkable against the tree without waiting for the loop lock."""
+        p = run_bash(SCRIPT, "r0004", EMPTY_ZDB, "--dry-run", "--stop-after", "toml")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("stop after toml", p.stdout)
+        p = run_bash(SCRIPT, "r0004", EMPTY_ZDB, "--dry-run", "--stop-after", "lunch")
+        self.assertIn("toml", p.stderr, "the refusal must list the value it now accepts: " + p.stderr)
+
     def test_an_unknown_option_is_refused(self):
         p = run_bash(SCRIPT, "r0004", EMPTY_ZDB, "--wat")
         self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
@@ -529,14 +538,52 @@ class BuildRevisionFixedMapTest(unittest.TestCase):
 @unittest.skipUnless(os.path.isfile(os.path.join(ROOT, "recomp", "socom2_r0004.toml")),
                      "this tree has no recomp/socom2_r0004.toml")
 class RevisionTomlReadsTheBuildProductTest(unittest.TestCase):
-    """The recompiler reads the map named by `ghidra_output`, so the tracked r0004 config has to name the
-    build product too -- otherwise step 3 would rewrite that tracked file on every build and we would have
-    moved the dirty-working-tree defect from the CSV to the TOML."""
+    """`recomp/socom2_r0004.toml` is TRACKED and step 3 rewrites it on every build, so everything that
+    file says has to be true in every clone -- otherwise the dirty-working-tree defect this task fixed in
+    the CSV simply moves one file over."""
+    PATH = os.path.join(ROOT, "recomp", "socom2_r0004.toml")
 
     def test_the_tracked_r0004_config_names_the_fixed_map(self):
-        with open(os.path.join(ROOT, "recomp", "socom2_r0004.toml"), encoding="utf-8") as fh:
+        with open(self.PATH, encoding="utf-8") as fh:
             lines = [ln.strip() for ln in fh if ln.strip().startswith("ghidra_output")]
         self.assertEqual(lines, ['ghidra_output = "build/socom2_ghidra_r0004.fixed.csv"'], lines)
+
+    def test_the_tracked_r0004_config_carries_no_machines_absolute_path(self):
+        import re
+        with open(self.PATH, encoding="utf-8") as fh:
+            hits = [ln.rstrip() for ln in fh if re.search(r"[A-Za-z]:[\\/]", ln)]
+        self.assertEqual(hits, [], "this file dirties on every other machine: %r" % hits)
+
+
+@unittest.skipUnless(
+    os.path.isfile(os.path.join(ROOT, "game", "overlays_r0004",
+                                "socom2_game_r0004.elf.repair.json"))
+    and os.path.isfile(os.path.join(ROOT, "recomp", "build", "socom2_ghidra_r0004.fixed.csv")),
+    "this tree has no built r0004 image beside its fixed map")
+class RepairSidecarRecordsTheBuildProductTest(unittest.TestCase):
+    """The sidecar beside the merged ELF decides whether the next build re-merges it, and one of the inputs
+    it hashes is the function map. It has to be the FIXED map -- a file derived from sources on every run --
+    and not a tracked file a build edits under the image, which is what made the old sidecar call the image
+    stale on every second build.
+
+    This reads the real products in the tree (both are git-ignored, so the case skips where they are absent);
+    the hermetic half of the same claim is the repair-inputs line asserted in BuildRevisionRepairMapTest.
+    """
+    SIDECAR = os.path.join(ROOT, "game", "overlays_r0004", "socom2_game_r0004.elf.repair.json")
+    FIXED = os.path.join(ROOT, "recomp", "build", "socom2_ghidra_r0004.fixed.csv")
+
+    def rows(self):
+        import json
+        with open(self.SIDECAR, encoding="utf-8") as fh:
+            return json.load(fh)["sources"]["rows"]
+
+    def test_the_rows_input_is_the_fixed_map_not_the_tracked_one(self):
+        path = self.rows()["path"].replace("\\", "/")
+        self.assertTrue(path.endswith("recomp/build/socom2_ghidra_r0004.fixed.csv"), path)
+        self.assertNotIn("recomp/socom2_ghidra_r0004.csv", path)
+
+    def test_the_rows_digest_is_the_fixed_maps_own(self):
+        self.assertEqual(self.rows()["sha256"], sha256_of(self.FIXED))
 
 
 if __name__ == "__main__":

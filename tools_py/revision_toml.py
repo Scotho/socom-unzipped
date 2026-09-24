@@ -793,10 +793,36 @@ def rewrite(text: str, tr: Translator, sets: Optional[Dict[str, str]] = None,
     return out, sites
 
 
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def repo_relative(path: str) -> str:
+    """A provenance path as it goes into the generated config: relative to the repository root, forward
+    slashes, no drive letter.
+
+    `scripts/build_revision.sh` hands this tool absolute paths (it resolves every input before step 1), and
+    `recomp/socom2_<rev>.toml` is TRACKED and rewritten by step 3 on every build. Writing the caller's
+    absolute paths into it meant the file said `C:/projects/socom_pc/recomp/socom2.toml` -- true on one
+    machine, and a modification in `git status` for everyone else who builds that revision. The provenance
+    is about files in this repository, so it names them the way the repository does. A path outside the
+    repository is left as it came, forward-slashed: it is still true, and there is nothing to relativise it
+    against.
+    """
+    absolute = os.path.abspath(path)
+    try:
+        inside = os.path.commonpath([absolute, _ROOT]) == _ROOT
+    except ValueError:      # different drives on Windows
+        inside = False
+    if inside:
+        return os.path.relpath(absolute, _ROOT).replace("\\", "/")
+    return path.replace("\\", "/")
+
+
 def revision_block(sites: Sequence[Site], source: str, match: str,
                    tables: Optional[Dict[int, TableFix]] = None,
                    table_why: Optional[Dict[int, str]] = None) -> List[str]:
     """The `[revision]` table: the counts, and every address this config still carries from r0001."""
+    source, match = repo_relative(source), repo_relative(match)
     kinds = {"translated": 0, "unchanged": 0, "unresolved": 0}
     interior = weak = anchored = confirmed = 0
     unresolved: "OrderedDict[int, List[str]]" = OrderedDict()
@@ -838,8 +864,8 @@ def revision_block(sites: Sequence[Site], source: str, match: str,
         "#                                       register. Where it does not, the key is UNRESOLVED.",
         "# Addresses in a region that is byte-identical in both images do not move: untouched, uncommented.",
         "[revision]",
-        'source = "%s"' % source.replace("\\", "/"),
-        'match = "%s"' % match.replace("\\", "/"),
+        'source = "%s"' % source,
+        'match = "%s"' % match,
         "translated = %d" % kinds.get("translated", 0),
         "translated_interior = %d" % interior,
         "weak = %d" % weak,

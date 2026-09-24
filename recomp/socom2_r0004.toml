@@ -2634,7 +2634,7 @@ critical = [
 
 
 # ---- what this revision's config knows, and what it does not -------------------------------
-# Written by tools_py/revision_toml.py from C:/projects/socom_pc/recomp/socom2.toml and C:/projects/socom_pc/game/r0004/match.json.
+# Written by tools_py/revision_toml.py from recomp/socom2.toml and game/r0004/match.json.
 # Every address above that moved carries, in its comment, the r0001 address it came from and the
 # method that moved it:
 #   exact / hash+callees / seed+delta   the matcher's own decision for that function;
@@ -2655,8 +2655,8 @@ critical = [
 #                                       register. Where it does not, the key is UNRESOLVED.
 # Addresses in a region that is byte-identical in both images do not move: untouched, uncommented.
 [revision]
-source = "C:/projects/socom_pc/recomp/socom2.toml"
-match = "C:/projects/socom_pc/game/r0004/match.json"
+source = "recomp/socom2.toml"
+match = "game/r0004/match.json"
 translated = 642
 translated_interior = 139
 weak = 0

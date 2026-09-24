@@ -138,7 +138,9 @@ that never collide with r0001's: `game/overlays_<rev>/{ftscore,zsealetc}.bin` an
 `third_party/ps2recomp/build-clang-<rev>/` and `dist/socom2_<rev>.exe` with the ELF beside it. Each step is skipped
 when its product is already there (`--force` redoes it) — the recomp and the runtime build skip only on the
 `.complete` mark they write when they finish, so a tree left half-written by a failed run is redone rather than
-reported as done; both take the loop lock themselves. `--stop-after elf|recomp` stops early, `--check-against <elf>`
+reported as done; both take the loop lock themselves. `--stop-after elf|toml|recomp` stops early (`elf` and `toml`
+take no lock at all; `toml` is the last step that does not, and it is how the tracked `recomp/socom2_<rev>.toml` is
+checked against the tree), `--check-against <elf>`
 compares the produced ELF's sha256 with a known one, `--out <dir>` puts every product under one directory,
 `--dry-run` prints the six steps with their paths. `<rev>` is `r` and four digits with an optional suffix that
 starts with a letter. The package must sit in its extracted disc tree, whose loader must be named `SCUS_972.75`
@@ -182,7 +184,9 @@ a region that is byte-identical in both images alone. Every line it rewrites car
 method in a comment; `--dry-run` prints the table and writes nothing. **Its limit is the matcher's:** what the
 match report cannot place, this tool does not guess — the r0001 number stays, the line says `UNRESOLVED`, and the
 address is listed in `[revision.unresolved]` with the role the config gave it, so the config states what it does not
-know. Without a report the step copies-and-renames as before, and warns. On r0004 (2026-09-23): of the config's
+know. The `[revision]` table names the two files it was written from **relative to the repository root** — that file
+is tracked and step 3 rewrites it on every build, so one machine's absolute paths in it are a modification in every
+other clone. Without a report the step copies-and-renames as before, and warns. On r0004 (2026-09-23): of the config's
 1,985 addresses, 1,357 are in the loader and do not move, **91 of the remaining 628 were translated and 537 were
 left as r0001's** (371 distinct addresses in `[revision.unresolved]`) — including all 24 overlay jump-table base
 addresses, none of which is a function start in r0001's map.

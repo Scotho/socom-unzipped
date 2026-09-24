@@ -24,6 +24,8 @@ import contextlib
 import io
 import json
 import os
+import re
+import shutil
 import struct
 import subprocess
 import sys
@@ -793,6 +795,63 @@ class MmioUnits(unittest.TestCase):
     def test_an_instruction_that_is_not_a_load_or_a_store_forms_nothing(self):
         img = self.img(with_mmio(switch_body(1, 0x00300C00), 0x1000E000))
         self.assertIsNone(img.formed_register(0x00300000 + LUI_INDEX * 4))
+
+class RepoRelativeProvenance(Bed):
+    """The `[revision]` table names the two files it was written from, and names them the way the
+    repository does.
+
+    `scripts/build_revision.sh` resolves every input to an absolute path before step 1, and step 3 rewrites
+    the TRACKED `recomp/socom2_<rev>.toml` on every build. So writing the caller's paths through meant the
+    generated file said `C:/projects/socom_pc/recomp/socom2.toml` -- true on the machine that built it, and
+    a modification in `git status` for every other machine that builds that revision. The provenance is
+    about files in this repository; it names them relative to its root.
+
+    The temporary directory these cases work in is made under `recomp/build/`, which is git-ignored, so a
+    run killed before its cleanup leaves nothing for `git status` to find either.
+    """
+
+    def setUp(self):
+        super().setUp()
+        build = os.path.join(ROOT, "recomp", "build")
+        os.makedirs(build, exist_ok=True)
+        self.inside = tempfile.mkdtemp(dir=build, prefix="revision_toml_test_")
+        self.addCleanup(shutil.rmtree, self.inside, True)
+        self.rel = "recomp/build/" + os.path.basename(self.inside)
+        self.source = shutil.copy(self.source, os.path.join(self.inside, "socom2.toml"))
+        self.match = shutil.copy(self.match, os.path.join(self.inside, "match.json"))
+
+    def test_an_absolute_path_inside_the_repository_is_written_relative_to_its_root(self):
+        _text, doc = self.translated()
+        self.assertEqual(doc["revision"]["source"], self.rel + "/socom2.toml")
+        self.assertEqual(doc["revision"]["match"], self.rel + "/match.json")
+
+    def test_the_written_config_holds_no_absolute_path_at_all(self):
+        text, _doc = self.translated()
+        hits = [ln for ln in text.splitlines() if re.search(r"[A-Za-z]:[\\/]", ln)]
+        self.assertEqual(hits, [], "a tracked generated file cannot carry one machine's paths: %r" % hits)
+
+    def test_the_comment_above_the_table_says_the_same_two_paths(self):
+        text, _doc = self.translated()
+        line = self.line_with(text, "Written by tools_py/revision_toml.py from")
+        self.assertIn(self.rel + "/socom2.toml", line)
+        self.assertIn(self.rel + "/match.json", line)
+
+
+class RepoRelativeHelper(unittest.TestCase):
+    def test_a_path_inside_the_repository_loses_the_root_and_the_backslashes(self):
+        self.assertEqual(revision_toml.repo_relative(os.path.join(ROOT, "recomp", "socom2.toml")),
+                         "recomp/socom2.toml")
+
+    def test_a_path_relative_to_the_working_directory_is_resolved_and_stays_relative(self):
+        here = os.getcwd()
+        os.chdir(ROOT)
+        self.addCleanup(os.chdir, here)
+        self.assertEqual(revision_toml.repo_relative("recomp/socom2.toml"), "recomp/socom2.toml")
+
+    def test_a_path_outside_the_repository_is_left_as_it_came(self):
+        outside = os.path.abspath(os.path.join(ROOT, os.pardir, "elsewhere", "socom2.toml"))
+        self.assertEqual(revision_toml.repo_relative(outside), outside.replace("\\", "/"))
+
 
 if __name__ == "__main__":
     unittest.main()
