@@ -37,7 +37,11 @@ the generated image, a **proof half** (the local controller's, at a build window
 the r0001 gate 3/3 with PINS MATCH).
 
 The four git-ignored inputs the whole programme reads arrive through `scripts/fetch_private_inputs.sh` from a
-private HTTPS location (the environment's setup script runs it; the credential is an environment secret). Their
+private HTTPS location. **You run it yourself, in the session, after checking out `sprint-12`** (§2): the
+environment's variables `S2U_INPUTS_URL` and `S2U_INPUTS_AUTH` are set for the session, and the script lives on
+`sprint-12`, not on `main`. (A setup script cannot do it: the sandbox runs setup scripts before the clone and
+without the environment's variables — proven 2026-09-24 evening, exit 6.) Thirty-three seconds per fresh
+session; a session that already has them prints "present" four times. Their
 digests are in the served `SHA256SUMS`; `docs/research/44-demo-symbols.md` §1 names the demo's. **They are the
 owner's own dumps and never enter the repository in any form — not a byte, not a hex dump in a test fixture.**
 Tests use synthetic images, as `tools_py/tests/test_elf_symbols.py` and `test_ghidra_symbol_match.py` do.
@@ -47,10 +51,13 @@ is written into §4 below in plain words; follow it from here, not from memory o
 
 ## 2. First hour, all of it lock-free
 
-1. `bash scripts/fetch_private_inputs.sh` — four times "present" if the snapshot kept them, 33 s otherwise.
+1. The branch (§5): `git fetch origin`, then `git checkout sprint-12` if `origin/sprint-12` exists (a first
+   session created and pushed it on 2026-09-24), else `git checkout -b sprint-12 origin/sprint-11 && git push -u
+   origin sprint-12`. Then `git merge origin/sprint-11` so the ratified handoff and everything after it is in.
+2. `bash scripts/fetch_private_inputs.sh` — four times "fetched" (33 s) or "present". If it says the URL is not
+   set, the session started on an environment without the two variables: stop and tell the owner.
    `python -m tools_py.elf_symbols game/demo_scus_972_05/SCUS_972.05 | head -3` proves the demo ELF reads.
-2. `bash scripts/install_hooks.sh` (the leak check in pre-commit and pre-push; never `--no-verify`).
-3. The branch (§5): `git fetch origin && git checkout -b sprint-12 origin/sprint-11 && git push -u origin sprint-12`.
+3. `bash scripts/install_hooks.sh` (the leak check in pre-commit and pre-push; never `--no-verify`).
 4. Read, in this order: `docs/HANDOFF.md` §1–§2 and §5; `docs/GIT_STRATEGY.md` §2–§3; `docs/DOC_MAINTENANCE.md`
    §6; `docs/research/44-demo-symbols.md`, `45-positional-and-bridge-names.md`; `tools_py/research/symbols/README.md`
    (the measurements behind R260–R262, with the scripts that reproduce every number); the Sprint 11 plan's Task 7
@@ -223,14 +230,15 @@ the owner's (publish, deploy, spend, flip permissions — `HANDOFF.md` §5 rule 
 
 ## 7. The environment, for the owner
 
-One repository (`Scotho/socom-unzipped`) is all the session needs; the site side is deployed. Network access
-**Custom** replaces the Trusted list, so the allowlist must carry what the wave installs, not only the private
-host: `s2u.scotho.com`, `*.ubuntu.com` (apt: Java for Ghidra, build tools for ccc), `pypi.org`,
+One repository (`Scotho/socom-unzipped`) is all the session needs; the site side is deployed. The environment
+carries the two variables (`S2U_INPUTS_URL`, `S2U_INPUTS_AUTH`) and **no setup script** (see §1: setup scripts
+run before the clone and without the variables). Network access is the owner's choice: **Full** needs no list;
+**Custom** replaces the Trusted list, so it must then carry what the wave installs, not only the private host:
+`s2u.scotho.com`, `*.ubuntu.com` (apt: Java for Ghidra, build tools for ccc), `pypi.org`,
 `files.pythonhosted.org`, `github.com`, `api.github.com`, `raw.githubusercontent.com`,
 `objects.githubusercontent.com`, `release-assets.githubusercontent.com`, `codeload.github.com` (Ghidra's and
 ccc's releases), `*.zynamics.com` (BinDiff), `*.docker.io` and `*.docker.com` if the Ghidra container is used.
-Editing the list re-runs the setup script and rebuilds the snapshot. The two environment values and the setup
-script are in the owner's git-ignored `vm/lightsail/s2u-private-inputs.md`.
+The two environment values are in the owner's git-ignored `vm/lightsail/s2u-private-inputs.md`.
 
 The first prompt to the session:
 
