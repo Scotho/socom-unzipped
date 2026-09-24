@@ -2026,7 +2026,7 @@ namespace
         uint8_t *scratch = runtime->memory().getScratchpad();
         if (!scratch)
             return 0;
-        const ps2_stubs::GsGParam &gparam = ps2_stubs::gsRuntimeStateFor(nullptr).gparam;
+        const ps2_stubs::GsGParam &gparam = ps2_stubs::gsRuntimeStateFor(runtime).gparam;
         std::memcpy(scratch + kGsParamScratchOffset, &gparam, sizeof(gparam));
         return PS2_SCRATCHPAD_BASE + kGsParamScratchOffset;
     }
