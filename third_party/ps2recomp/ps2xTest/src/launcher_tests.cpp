@@ -1,5 +1,6 @@
 // Task 8b: the launcher's logic -- the ISO 9660 lookup, SHA-256, config.json and the environment it becomes.
 #include "MiniTest.h"
+#include "launcher/bug_report.h"
 #include "launcher/iso9660.h"
 #include "ps2x/exit_codes.h"   // the selftest lists one line per row of that table
 #include "launcher/launcher_config.h"
@@ -2564,6 +2565,53 @@ void register_launcher_tests()
             launcher::Config quoted;
             t.IsTrue(launcher::fromJson("{\"loginName\": \"a\\\"b\"}", quoted), "a name with a double quote loads");
             t.Equals(quoted.loginName, std::string("ab"), "and loses the quote its keyboard has no key for");
+        });
+
+        tc.Run("a received report invites a public issue; a report that was not received never does", [](TestCase &t)
+        {
+            // Sprint 11 Goal 7, the bug pipeline's GitHub half. Reports are private and their content is
+            // untrusted, so nothing crosses from the inbox to GitHub by itself. The only bridge is one
+            // sentence under SEND, inviting whoever filed the report to open an issue themselves and quote
+            // the reference. (The site's form is asked to say the same thing; that half is the site's.)
+            //
+            // It belongs to the reply that was ACCEPTED AND carries a reference -- which is exactly the
+            // reference the page prints above it. A rate-limited, refused or undelivered SEND has no id to
+            // quote, and sending someone to the issue tracker empty-handed would cost a stranger a trip and
+            // us an issue nobody can reproduce.
+            namespace br = launcher::bugreport;
+            // The suffix the service mints is lower-case hex (bug_report.cpp looksLikeOurId); parseReply
+            // upper-cases it for the screen, and an id shaped any other way leaves `id` empty.
+            const br::Reply sent = br::parseReply(201, "{\"ok\":true,\"id\":\"BR-20260923-abc123\"}");
+            t.IsTrue(sent.kind == br::Reply::Kind::Sent && sent.id == "BR-20260923-ABC123",
+                     "201 with ok and one of our ids is a received report with a reference");
+            t.Equals(br::githubLine(sent.id),
+                     std::string("Contributors can also open an issue at github.com/Scotho/socom-unzipped and quote this id."),
+                     "the success text carries the sentence, word for word");
+            t.Equals(br::githubLine(sent.id), std::string(br::kGithubIssueLine),
+                     "and it is the header's single literal, so the launcher and the site cannot drift apart");
+
+            const br::Reply rateLimited = br::parseReply(429, "", 1500);
+            const br::Reply fieldError = br::parseReply(400, "{\"error\":\"title is too short\"}");
+            const br::Reply failed = br::parseReply(0, "");
+            t.IsTrue(rateLimited.kind == br::Reply::Kind::RateLimited && fieldError.kind == br::Reply::Kind::FieldError
+                         && failed.kind == br::Reply::Kind::Failed,
+                     "the three ways a SEND does not land");
+            t.Equals(br::githubLine(rateLimited.id), std::string(), "too many reports from here: no id, no invitation");
+            t.Equals(br::githubLine(fieldError.id), std::string(), "a form the service refused: nothing to quote");
+            t.Equals(br::githubLine(failed.id), std::string(), "a report that never arrived: nothing to quote");
+            t.IsTrue(rateLimited.text.find("github") == std::string::npos
+                         && fieldError.text.find("github") == std::string::npos
+                         && failed.text.find("github") == std::string::npos,
+                     "and no failure line names the repository anywhere in it");
+
+            // 201 with an id that is not ours: the service answered, but there is no reference on screen,
+            // so "quote this id" would be a lie. This is the same empty id the page checks, which is why
+            // the page can ask about the reference and get the reply's own answer.
+            const br::Reply anonymous = br::parseReply(201, "{\"ok\":true,\"id\":\"thanks\"}");
+            t.IsTrue(anonymous.kind == br::Reply::Kind::Sent && anonymous.id.empty(), "received, but with no reference");
+            t.Equals(br::githubLine(anonymous.id), std::string(), "no reference on screen means no invitation to quote one");
+            t.IsTrue(sent.text.find("github") == std::string::npos,
+                     "the reply's own line stays the site's words; the invitation is the page's second line");
         });
     });
 }
