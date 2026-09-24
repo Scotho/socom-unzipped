@@ -4,8 +4,8 @@ A leak check that is only ever run against clean input proves nothing: it would 
 rule deleted. So most of this file plants a secret and asserts the gate finds it, names the right rule, and makes
 the process exit non-zero. The clean cases come after.
 
-The secrets here are invented. The shapes are the ones the 2026-09-16..19 incident actually exposed: an SSH
-private key, a home address, an AWS account id, a Horizon access token, the home IP -- plus the Cloudflare Access
+The secrets here are invented. The shapes are the ones the monitor's rules were built against: an SSH
+private key, a street address, an AWS account id, a Horizon access token, a home IP -- plus the Cloudflare Access
 pair the Sprint 11 spec named as the monitor's gap.
 
 The git modes run against a throwaway repository built in setUp, so they never depend on this repository's
