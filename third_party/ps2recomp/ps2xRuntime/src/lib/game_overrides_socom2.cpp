@@ -2232,7 +2232,7 @@ namespace
         // and points at 0x001cc460, _rand_next is at +0xa8 (SCUS_972.75 FUN_00197728/FUN_00197740).
         // rand() is stubbed (recomp/socom2.toml) but srand() is not, and the game boots with
         // `srand(<RTC>); srand(rand());` -- both halves have to write the same word.
-        ps2_stubs::setLibcRandState(0x001CC750u, 0xA8u);
+        ps2_stubs::setLibcRandState(&runtime, 0x001CC750u, 0xA8u);
         ps2_stubs::setMpegDemuxIdleYields(true);   // research/32 section 7.1: the movie thread re-polls the demux in a loop
         configureCdImage();
         // The addresses below socom2_addresses::kOverlayBase (0x1d5600) are the BOOT LOADER's and stay

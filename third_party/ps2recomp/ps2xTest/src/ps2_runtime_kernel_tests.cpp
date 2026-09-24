@@ -1210,7 +1210,7 @@ void register_ps2_runtime_kernel_tests()
             constexpr uint32_t kRandNextAddr = kReentAddr + kRandNextOffset;
 
             writeGuestU32(env.rdram.data(), kImpurePtrAddr, kReentAddr);
-            ps2_stubs::setLibcRandState(kImpurePtrAddr, kRandNextOffset);
+            ps2_stubs::setLibcRandState(&env.runtime, kImpurePtrAddr, kRandNextOffset);
 
             const auto readState = [&]() {
                 uint64_t state = 0u;
@@ -1271,7 +1271,7 @@ void register_ps2_runtime_kernel_tests()
                      "a _rand_next straddling the end of RDRAM must be rejected");
 
             // With no registered guest state the pair still works off an internal state.
-            ps2_stubs::setLibcRandState(0u, 0u);
+            ps2_stubs::setLibcRandState(&env.runtime, 0u, 0u);
             ps2_stubs::srand(env.rdram.data(), &env.ctx, &env.runtime);
             ps2_stubs::rand(env.rdram.data(), &env.ctx, &env.runtime);
             t.Equals(getRegS32(env.ctx, 2), static_cast<int32_t>(0x0807DC72),

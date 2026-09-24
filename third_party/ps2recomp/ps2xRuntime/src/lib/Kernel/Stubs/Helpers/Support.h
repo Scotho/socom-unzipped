@@ -570,9 +570,9 @@ namespace
     // forwarder because seven of Stubs/LibC.cpp's call sites name it; generate_file_handle had
     // exactly one caller and that call site now names allocateHandleLocked() directly, under the
     // same lock it always held.
-    FILE *get_file_ptr(uint32_t handle)
+    FILE *get_file_ptr(PS2Runtime *runtime, uint32_t handle)
     {
-        return ps2_stubs::libcRuntimeStateFor(nullptr).get(handle);
+        return ps2_stubs::libcRuntimeStateFor(runtime).get(handle);
     }
 }
 

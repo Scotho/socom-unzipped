@@ -764,7 +764,7 @@ namespace ps2_stubs
             FILE *fp = ::fopen(hostPath, hostMode);
             if (fp)
             {
-                LibCRuntimeState &files = libcRuntimeStateFor(nullptr);
+                LibCRuntimeState &files = libcRuntimeStateFor(runtime);
                 std::lock_guard<std::mutex> lock(files.mutex);
                 file_handle = files.allocateHandleLocked();
                 files.openFiles[file_handle] = fp;
@@ -793,7 +793,7 @@ namespace ps2_stubs
 
         if (file_handle != 0)
         {
-            LibCRuntimeState &files = libcRuntimeStateFor(nullptr);
+            LibCRuntimeState &files = libcRuntimeStateFor(runtime);
             std::lock_guard<std::mutex> lock(files.mutex);
             auto it = files.openFiles.find(file_handle);
             if (it != files.openFiles.end())
@@ -826,7 +826,7 @@ namespace ps2_stubs
         size_t items_read = 0;
 
         uint8_t *hostPtr = getMemPtr(rdram, ptrAddr);
-        FILE *fp = get_file_ptr(file_handle);
+        FILE *fp = get_file_ptr(runtime, file_handle);
 
         if (hostPtr && fp && size > 0 && count > 0)
         {
@@ -852,7 +852,7 @@ namespace ps2_stubs
         size_t items_written = 0;
 
         const uint8_t *hostPtr = getConstMemPtr(rdram, ptrAddr);
-        FILE *fp = get_file_ptr(file_handle);
+        FILE *fp = get_file_ptr(runtime, file_handle);
 
         if (hostPtr && fp && size > 0 && count > 0)
         {
@@ -873,7 +873,7 @@ namespace ps2_stubs
     {
         uint32_t file_handle = getRegU32(ctx, 4); // $a0
         uint32_t format_addr = getRegU32(ctx, 5); // $a1
-        FILE *fp = get_file_ptr(file_handle);
+        FILE *fp = get_file_ptr(runtime, file_handle);
         const std::string formatOwned = readPs2CStringBounded(rdram, runtime, format_addr, 1024);
         int ret = -1;
 
@@ -901,7 +901,7 @@ namespace ps2_stubs
         int whence = (int)getRegU32(ctx, 6);      // $a2 (SEEK_SET, SEEK_CUR, SEEK_END)
         int ret = -1;                             // Default error
 
-        FILE *fp = get_file_ptr(file_handle);
+        FILE *fp = get_file_ptr(runtime, file_handle);
 
         if (fp)
         {
@@ -929,7 +929,7 @@ namespace ps2_stubs
         uint32_t file_handle = getRegU32(ctx, 4); // $a0
         long ret = -1L;
 
-        FILE *fp = get_file_ptr(file_handle);
+        FILE *fp = get_file_ptr(runtime, file_handle);
 
         if (fp)
         {
@@ -963,7 +963,7 @@ namespace ps2_stubs
         }
         else
         {
-            FILE *fp = get_file_ptr(file_handle);
+            FILE *fp = get_file_ptr(runtime, file_handle);
             if (fp)
             {
                 ret = ::fflush(fp);
@@ -1195,15 +1195,8 @@ namespace ps2_stubs
     //    initialiser is, so the generic runtime still behaves.
     namespace
     {
-        // g_randMutex serialises the stub against itself. It does NOT serialise it against the
-        // guest: srand() is not stubbed (recomp/socom2.toml), so the recompiled FUN_00197728 writes
-        // the same word with no lock at all. That is harmless while EE code runs on one host thread,
-        // which is the case today -- but if EE execution is ever parallelised, this word has two
-        // writers and only one of them takes the mutex.
-        std::mutex g_randMutex;
-        uint32_t g_randImpurePtrAddr = 0u;   // guest address OF THE POINTER to struct _reent
-        uint32_t g_randNextOffset = 0u;      // offset of _rand_next within struct _reent
-        uint64_t g_randNextFallback = 1u;    // newlib's static initialiser for _rand_next
+        // The cursor, its mutex and the two registered addresses live in
+        // Helpers/LibCRuntimeState.h now, owned by the runtime (Task 8b, review F2).
 
         // Bounds-checked guest->host translation for a small fixed-size access.
         //
@@ -1236,69 +1229,72 @@ namespace ps2_stubs
         }
 
         // Host pointer to the guest's _rand_next, or nullptr when it cannot be resolved.
-        uint8_t *guestRandNextSlot(uint8_t *rdram)
+        uint8_t *guestRandNextSlot(LibCRuntimeState &libc, uint8_t *rdram)
         {
-            if (g_randImpurePtrAddr == 0u)
+            if (libc.impurePtrAddr == 0u)
             {
                 return nullptr;
             }
-            const uint8_t *impurePtr = guestFixedSlot(rdram, g_randImpurePtrAddr, sizeof(uint32_t));
+            const uint8_t *impurePtr = guestFixedSlot(rdram, libc.impurePtrAddr, sizeof(uint32_t));
             if (impurePtr == nullptr)
             {
                 return nullptr;
             }
             uint32_t reentAddr = 0u;
             std::memcpy(&reentAddr, impurePtr, sizeof(reentAddr));
-            if (reentAddr == 0u || reentAddr > 0xFFFFFFFFu - g_randNextOffset)
+            if (reentAddr == 0u || reentAddr > 0xFFFFFFFFu - libc.randNextOffset)
             {
                 return nullptr;
             }
-            return guestFixedSlot(rdram, reentAddr + g_randNextOffset, sizeof(uint64_t));
+            return guestFixedSlot(rdram, reentAddr + libc.randNextOffset, sizeof(uint64_t));
         }
 
-        uint64_t loadRandNext(uint8_t *slot)
+        uint64_t loadRandNext(LibCRuntimeState &libc, uint8_t *slot)
         {
             if (slot == nullptr)
             {
-                return g_randNextFallback;
+                return libc.randNextFallback;
             }
             uint64_t state = 0u;
             std::memcpy(&state, slot, sizeof(state));
             return state;
         }
 
-        void storeRandNext(uint8_t *slot, uint64_t state)
+        void storeRandNext(LibCRuntimeState &libc, uint8_t *slot, uint64_t value)
         {
             if (slot == nullptr)
             {
-                g_randNextFallback = state;
+                libc.randNextFallback = value;
                 return;
             }
-            std::memcpy(slot, &state, sizeof(state));
+            std::memcpy(slot, &value, sizeof(value));
         }
     }
 
-    void setLibcRandState(uint32_t impurePtrAddr, uint32_t randNextOffset)
+    void setLibcRandState(PS2Runtime *runtime, uint32_t impurePtrAddr, uint32_t randNextOffset)
     {
-        std::lock_guard<std::mutex> lock(g_randMutex);
-        g_randImpurePtrAddr = impurePtrAddr;
-        g_randNextOffset = randNextOffset;
+        LibCRuntimeState &state = libcRuntimeStateFor(runtime);
+        std::lock_guard<std::mutex> lock(state.randMutex);
+        state.impurePtrAddr = impurePtrAddr;
+        state.randNextOffset = randNextOffset;
     }
 
     void rand(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
-        std::lock_guard<std::mutex> lock(g_randMutex);
-        uint8_t *slot = guestRandNextSlot(rdram);
-        const uint64_t state = loadRandNext(slot) * 6364136223846793005ULL + 1ULL;
-        storeRandNext(slot, state);
+        LibCRuntimeState &libc = libcRuntimeStateFor(runtime);
+        std::lock_guard<std::mutex> lock(libc.randMutex);
+        uint8_t *slot = guestRandNextSlot(libc, rdram);
+        const uint64_t state = loadRandNext(libc, slot) * 6364136223846793005ULL + 1ULL;
+        storeRandNext(libc, slot, state);
         setReturnS32(ctx, static_cast<int32_t>((state >> 32) & 0x7FFFFFFFu));
     }
 
     void srand(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         // newlib stores the unsigned 32-bit argument zero-extended and returns void.
-        std::lock_guard<std::mutex> lock(g_randMutex);
-        storeRandNext(guestRandNextSlot(rdram), static_cast<uint64_t>(getRegU32(ctx, 4)));
+        LibCRuntimeState &libc = libcRuntimeStateFor(runtime);
+        std::lock_guard<std::mutex> lock(libc.randMutex);
+        storeRandNext(libc, guestRandNextSlot(libc, rdram), static_cast<uint64_t>(getRegU32(ctx, 4)));
     }
 
     void strcasecmp(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
@@ -1328,7 +1324,7 @@ namespace ps2_stubs
         uint32_t file_handle = getRegU32(ctx, 4);  // $a0
         uint32_t format_addr = getRegU32(ctx, 5);  // $a1
         uint32_t va_list_addr = getRegU32(ctx, 6); // $a2
-        FILE *fp = get_file_ptr(file_handle);
+        FILE *fp = get_file_ptr(runtime, file_handle);
         const std::string formatOwned = readPs2CStringBounded(rdram, runtime, format_addr, 1024);
         int ret = -1;
 
