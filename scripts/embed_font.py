@@ -8,9 +8,11 @@ writes
     static const unsigned char kFont_<symbol>[] = { 0x00, 0x01, ... };
     static const int kFont_<symbol>_len = N;
 
-The generated headers live in third_party/ps2recomp/ps2xLauncher/src/ui/fonts_embedded/ and ARE committed:
-the build needs no Python, and a checkout with no network still has its type. Re-run this only when a face
-is replaced (the TTFs and their OFL texts are in ps2xLauncher/assets/fonts/).
+Sprint 11 Task 17 (R247): the headers are NOT committed any more -- 6.8 MB of hex for 4.6 MB of .ttf was the
+same bytes in the tree twice. ps2xLauncher/CMakeLists.txt runs this script at build time, once per face, into
+<launcher build dir>/generated/fonts_embedded/; the tracked inputs are the TTFs and their OFL texts in
+ps2xLauncher/assets/fonts/. The build therefore needs a Python 3 interpreter (CMake's Python3::Interpreter).
+Run this by hand only to inspect a header.
 """
 import os
 import sys
