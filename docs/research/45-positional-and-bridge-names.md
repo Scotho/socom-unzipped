@@ -14,7 +14,8 @@ edit, which is the same hop Task 7 already could not cross, and the Aug 2003 dem
 of it. 130 of its 131 fresh candidates die on the second hop.
 
 The peer review that specified both levers measured the first one first: the link-order and anchor-gap
-figures below are **socom-pc-6c's measurement** (`peer_7b/link_order.py`), reproduced here by the tool
+figures below are **socom-pc-6c's measurement** (`tools_py/research/symbols/link_order.py`, committed
+in 41a6a16), reproduced here by the tool
 rather than taken on trust. Where the two disagree slightly, §1 says why.
 
 Every number names the command that produces it. There is one command:
