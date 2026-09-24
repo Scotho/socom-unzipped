@@ -107,6 +107,10 @@ What only you can do is unchanged and listed below; one addition from the audio 
 (close the music tab and Discord, then `scripts/parity/capture_audio_out.sh`, ten minutes) —
 the exact step is written on `agent/audio-out` (`05de0e7`) and arrives here with that branch's merge.
 
+### Two words the bug pipeline needs from you (Task 13's review, 2026-09-24)
+
+(1) The launcher's post-SEND line invites a public issue unconditionally; `SECURITY.md` forbids a public issue for a security report — say whether the line should carry the exception ("unless it is a security report") or the triage routine simply never opens one for those (the default while you decide: the routine, not the sentence). (2) The page's contact note still says "only if you want an answer", which promises a reply the triage routine forbids (your G7 reply policy: no) — drop the phrase, or change the policy. Both are one-line edits once you say.
+
 ### The r0004 build, where it stands (2026-09-24 morning)
 
 **It boots** — under our runtime, from PSRewired's package, to the loading screen and the intro credits — and dies at the IOP reset before the menus on a −1 the loader is handed. That is a debugging problem now, not a pipeline one (the whole r0001 tool chain runs on r0004: Ghidra, the matcher at 81%, the translated config, ~3,000 forced entries, the address table). The investigation report names the cause when it lands; nothing of it needs you. What it produced along the way is worth knowing: the image read out of PCSX2 carried PSRewired's cheat word (restored — KNOWN §4), and every r0004 gate is muted by `PS2X_AUDIO_VOLUME=0` because the first ones played through your speaker.
