@@ -356,7 +356,11 @@ class MissionSeeing(unittest.TestCase):
     def _peek_rows(root_y=5.50391, move_scale=1.0):
         from tools_py.parity.sim_walk_to_b import peek_line, _w
         actor, node = 0x01794000, 0x00C10000
-        rows = []
+        # The runtime names the address column it installed before any [peek] row (Task 19,
+        # socom2_addresses.h selectFromImage). guest_probe reads the probes with THAT column, and a log
+        # that never says is NO-DATA rather than a quiet read of r0001's addresses -- so a game log
+        # standing in for a real one carries the line a real one carries.
+        rows = ["[socom2] address table: the image names itself r0001 -- using the r0001 addresses\n"]
         for i in range(10):
             line = peek_line(500.0, 100.0, 600.0, actor=(900.0 + 2.0 * i, -145.0, 850.0), actor_addr=actor)
             line += f" @{actor + 0x2e8:x}: {node:08x}(0)"
@@ -426,7 +430,7 @@ class MissionSeeing(unittest.TestCase):
             os.environ.pop("PS2X_PEEK", None)
             os.environ.pop("PS2X_PC_SAMPLER", None)
             gate.run_gate("mission", tmp)
-            self.assertEqual(drive_env()["PS2X_PEEK"], guest_probe.peek_spec(GUEST_PROBE_CONSOLE))
+            self.assertEqual(drive_env()["PS2X_PEEK"], guest_probe.peek_spec(GUEST_PROBE_CONSOLE, guest_probe.launch_revision()))
             # The runtime prints [peek] rows only from the PC sampler's thread (game_overrides_socom2.cpp:
             # "dump guest words ... with each sample"), so PS2X_PEEK alone yields 0 rows -- s6_blockptr's
             # mission stage read "PROBE ... NO-DATA (0 reads of 0 rows)" for exactly that reason.

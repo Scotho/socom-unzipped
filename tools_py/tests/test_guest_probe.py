@@ -23,12 +23,12 @@ def _line(pos, root_y=5.50391, move_scale=1.0):
 class Evaluate(unittest.TestCase):
     def test_console_like_rows_pass_every_check(self):
         rows = [_line((900.0 + 2.0 * i, -145.0, 850.0)) for i in range(10)]
-        res = gp.evaluate(rows, CONSOLE)
+        res = gp.evaluate(rows, CONSOLE, "r0001")
         self.assertEqual({r.name: r.ok for r in res}, {"root_node_y": True, "move_scale": True, "teleport_steps": True})
 
     def test_decayed_root_node_fails_only_that_check(self):
         rows = [_line((900.0, -145.0, 850.0), root_y=0.0)] * 5
-        res = {r.name: r for r in gp.evaluate(rows, CONSOLE)}
+        res = {r.name: r for r in gp.evaluate(rows, CONSOLE, "r0001")}
         self.assertFalse(res["root_node_y"].ok)
         self.assertAlmostEqual(res["root_node_y"].ours, 0.0)
         self.assertTrue(res["move_scale"].ok)
@@ -36,7 +36,7 @@ class Evaluate(unittest.TestCase):
 
     def test_a_two_hundred_unit_jump_counts_one_teleport(self):
         rows = [_line((900.0, -145.0, 850.0))] * 3 + [_line((1100.0, -145.0, 850.0))] * 3
-        res = {r.name: r for r in gp.evaluate(rows, CONSOLE)}
+        res = {r.name: r for r in gp.evaluate(rows, CONSOLE, "r0001")}
         self.assertEqual(res["teleport_steps"].ours, 1)
         self.assertFalse(res["teleport_steps"].ok)
 
@@ -44,19 +44,19 @@ class Evaluate(unittest.TestCase):
         # s6_probe: the 8 s forward hold moved ~36-45 units per 1 s sampler row along one axis -- a run, not a
         # jump. research/25 §1.1's 30-unit bar was per 4 Hz row (> 120 u/s); at the gate's 1 s rows it is 120 units.
         rows = [_line((939.4, -146.5, 862.5 + 40.0 * i)) for i in range(9)]
-        res = {r.name: r for r in gp.evaluate(rows, CONSOLE)}
+        res = {r.name: r for r in gp.evaluate(rows, CONSOLE, "r0001")}
         self.assertEqual(res["teleport_steps"].ours, 0)
         self.assertTrue(res["teleport_steps"].ok)
 
     def test_the_guest_clock_sets_the_row_period_when_present(self):
         # The same 40-unit steps at 0.25 s rows (the ladder's cadence) are 160 u/s: teleports.
         rows = [_line((939.4, -146.5, 862.5 + 40.0 * i)) + f" @4365c0: {_w(100.0 + 0.25 * i)}" for i in range(9)]
-        res = {r.name: r for r in gp.evaluate(rows, CONSOLE)}
+        res = {r.name: r for r in gp.evaluate(rows, CONSOLE, "r0001")}
         self.assertEqual(res["teleport_steps"].ours, 8)
 
     def test_missing_read_is_no_data_not_a_pass(self):
         rows = [peek_line(500.0, 100.0, 600.0, actor=(900.0, -145.0, 850.0), actor_addr=ACTOR)] * 3   # no node, no scale
-        res = {r.name: r for r in gp.evaluate(rows, CONSOLE)}
+        res = {r.name: r for r in gp.evaluate(rows, CONSOLE, "r0001")}
         self.assertIsNone(res["root_node_y"].ours)
         self.assertFalse(res["root_node_y"].ok)
         self.assertIn("NO-DATA", res["root_node_y"].detail)
@@ -64,11 +64,11 @@ class Evaluate(unittest.TestCase):
     def test_root_node_uses_the_last_rows_not_the_first(self):
         # The bind-pose value decays over the first seconds (research/17 §4.1): the probe reads the settled value.
         rows = [_line((900.0, -145.0, 850.0), root_y=11.48)] * 3 + [_line((900.0, -145.0, 850.0), root_y=0.0)] * 7
-        res = {r.name: r for r in gp.evaluate(rows, CONSOLE)}
+        res = {r.name: r for r in gp.evaluate(rows, CONSOLE, "r0001")}
         self.assertFalse(res["root_node_y"].ok)
 
     def test_peek_spec_lists_every_chain_once(self):
-        spec = gp.peek_spec(CONSOLE)
+        spec = gp.peek_spec(CONSOLE, "r0001")
         with open(CONSOLE) as f:
             entries = [c for k, v in json.load(f).items() if not k.startswith("_") for c in v["peek"].split(",")]
         for chain in entries:
@@ -91,7 +91,7 @@ class RestWindow(unittest.TestCase):
         rows = ([_line((900.0, -145.0, 850.0), root_y=11.48)] * 12                           # bind pose plateau
                 + [_line((900.0, -145.0, 850.0), root_y=5.50391)] * (gp.REST_SETTLE_ROWS + gp.REST_WINDOW_ROWS)  # at rest
                 + [_line((900.0, -145.0, 850.0), root_y=5.03)] * 40)                       # holds change the pose
-        res = {r.name: r for r in gp.evaluate(rows, CONSOLE)}
+        res = {r.name: r for r in gp.evaluate(rows, CONSOLE, "r0001")}
         self.assertTrue(res["root_node_y"].ok, res["root_node_y"].detail)
         # The lowest sustained plateau: the holds' pose here sits 0.47 lower than the at-rest value and wins, which
         # is inside the tolerance (1.5) and, unlike the tail median, never a decay stall (s6_lum8).
@@ -106,7 +106,7 @@ class RestWindow(unittest.TestCase):
                 + [_line((900.0, -145.0, 850.0), root_y=v) for v in decay]
                 + [_line((900.0, -145.0, 850.0), root_y=v) for v in (5.56, 5.56, 5.56, 5.56, 5.51, 5.51, 5.50, 5.50, 5.50, 5.48)]
                 + [_line((900.0, -145.0, 850.0), root_y=8.2)] * 40)                        # holds raise it again
-        res = {r.name: r for r in gp.evaluate(rows, CONSOLE)}
+        res = {r.name: r for r in gp.evaluate(rows, CONSOLE, "r0001")}
         self.assertTrue(res["root_node_y"].ok, res["root_node_y"].detail)
         self.assertAlmostEqual(res["root_node_y"].ours, 5.5, delta=0.1)
 
@@ -118,11 +118,11 @@ class RestWindow(unittest.TestCase):
                   + [5.53] * 12 + [5.5] * 9 + [5.44] * 4 + [5.39] * 15 + [5.55] * 8 + [5.8] * 18 + [6.21] * 11 + [6.5] * 15
                   + [7.5] * 11 + [7.91] * 19)
         rows = [_line((900.0, -145.0, 850.0), root_y=v) for v in series]
-        res = {r.name: r for r in gp.evaluate(rows, CONSOLE)}
+        res = {r.name: r for r in gp.evaluate(rows, CONSOLE, "r0001")}
         self.assertTrue(res["root_node_y"].ok, res["root_node_y"].detail)
         self.assertAlmostEqual(res["root_node_y"].ours, 5.45, delta=0.12)
 
     def test_a_short_log_falls_back_to_what_it_has(self):
         rows = [_line((900.0, -145.0, 850.0), root_y=5.50391)] * 5
-        res = {r.name: r for r in gp.evaluate(rows, CONSOLE)}
+        res = {r.name: r for r in gp.evaluate(rows, CONSOLE, "r0001")}
         self.assertTrue(res["root_node_y"].ok, res["root_node_y"].detail)

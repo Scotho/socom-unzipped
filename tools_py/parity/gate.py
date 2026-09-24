@@ -567,7 +567,11 @@ def launch_env(name, card_dir, base=None):
         # The mission stage needs the guest-value probe's chains in PS2X_PEEK (Task 1c) for probe_lines to read
         # anything; an operator's own PS2X_PEEK (a wider spec, e.g. the ladder's) is left alone.
         if not env.get("PS2X_PEEK"):
-            env["PS2X_PEEK"] = guest_probe.peek_spec(GUEST_PROBE_CONSOLE)
+            # ... in the addresses of the REVISION this launch will run (Task 19): the console json is
+            # written in r0001's, and on an r0004 image every one of them is somebody else's memory
+            # (s11_r0004_reg2: 0 [peek] reads of 479 rows, the whole mission lane FAILed on it). The
+            # revision comes from the build banner in $SOCOM_GAME_ELF, the image drive.py/run.sh launch.
+            env["PS2X_PEEK"] = guest_probe.peek_spec(GUEST_PROBE_CONSOLE, guest_probe.launch_revision(env))
         # The runtime prints its [peek] rows from the PC sampler's thread, one row per sample
         # (game_overrides_socom2.cpp, PS2X_PC_SAMPLER=<seconds>): without it PS2X_PEEK yields nothing --
         # s6_blockptr's mission stage read "PROBE ... NO-DATA (0 reads of 0 rows)". One row per second
