@@ -151,7 +151,7 @@ cannot be repaired, only replaced.
 ## 5. How Sprint 12 runs, in one paragraph
 
 R263 made the naming programme Sprint 12, "the readable image". A Claude cloud session owns it end to end
-under `docs/superpowers/plans/2026-09-24-sprint-12-cloud-handoff.md`, ratified with amendments by the local
+under `docs/superpowers/plans/2026-09-24-sprint-12-cloud-handoff.md` (on `sprint-11` until that sprint's close reaches `main`) <!-- docmaint: future -->, ratified with amendments by the local
 Sprint 11 controller: `sprint-12` off `origin/sprint-11`, pushes only there, never to `sprint-11` or `main`;
 Sprint 11's live files off limits; rulings numbered `S12-Rn` in the Sprint 12 plan and folded into the global
 sequence at the merge; a task whose proof needs the machine (recomp, runtime, the r0001 gate) gets a
