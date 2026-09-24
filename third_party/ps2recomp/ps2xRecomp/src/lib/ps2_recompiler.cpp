@@ -806,6 +806,7 @@ namespace ps2recomp
             {
                 m_elfParser->loadGhidraFunctionMap(m_config.ghidraMapPath);
             }
+            loadDisplayNames();
 
             m_functions = m_elfParser->extractFunctions();
             m_symbols = m_elfParser->extractSymbols();
@@ -1084,7 +1085,10 @@ namespace ps2recomp
 
             auto makeName = [&](const Function &function) -> std::string
             {
-                std::string sanitized = sanitizeFunctionName(function.name);
+                // A sidecar display name replaces the identifier only; extent, stub, correctness-critical and
+                // entry_ handling keep reading function.name.
+                std::string sanitized = sanitizeFunctionName(
+                    function.displayName.empty() ? function.name : function.displayName);
                 if (sanitized.empty())
                 {
                     sanitized = "func";
@@ -1107,11 +1111,13 @@ namespace ps2recomp
                 return ss.str();
             };
 
-            for (const auto &function : m_functions)
+            for (auto &function : m_functions)
             {
                 if (!shouldGenerateCodeForFunction(function))
                     continue;
 
+                const auto displayIt = m_displayNames.find(function.start);
+                function.displayName = displayIt != m_displayNames.end() ? displayIt->second : std::string();
                 m_functionRenames[function.start] = makeName(function);
             }
 
@@ -2018,6 +2024,44 @@ namespace ps2recomp
         }
 
         return m_skipFunctions.contains(function.name);
+    }
+
+    // [general] names (research/57 §4(b)): the sidecar's first two columns, Address,Name. Later columns
+    // (Evidence) hold quoted commas, so only the first two fields are read. Absent key or file: today's names.
+    void PS2Recompiler::loadDisplayNames()
+    {
+        m_displayNames.clear();
+        std::ifstream file(m_config.namesPath);
+        if (m_config.namesPath.empty() || !file.is_open())
+        {
+            m_reporter.info("names", "no names file" +
+                                         (m_config.namesPath.empty() ? std::string() : ": " + m_config.namesPath) +
+                                         "; output names come from the function map");
+            return;
+        }
+        std::string line;
+        std::getline(file, line); // header
+        while (std::getline(file, line))
+        {
+            const size_t comma1 = line.find(',');
+            if (comma1 == std::string::npos)
+                continue;
+            const size_t comma2 = line.find(',', comma1 + 1);
+            std::string name = line.substr(comma1 + 1, comma2 == std::string::npos ? std::string::npos
+                                                                                   : comma2 - comma1 - 1);
+            name.erase(std::remove_if(name.begin(), name.end(), [](unsigned char c) { return std::isspace(c); }),
+                       name.end());
+            try
+            {
+                if (!name.empty())
+                    m_displayNames[static_cast<uint32_t>(std::stoul(line.substr(0, comma1), nullptr, 0))] = name;
+            }
+            catch (...)
+            {
+            }
+        }
+        m_reporter.info("names", "Loaded " + std::to_string(m_displayNames.size()) + " display names from " +
+                                     m_config.namesPath);
     }
 
     bool PS2Recompiler::isStubFunction(const Function &function) const

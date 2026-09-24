@@ -70,6 +70,7 @@ namespace ps2recomp
         std::unordered_set<uint32_t> m_correctnessCriticalFunctionStarts;
         std::map<uint32_t, std::string> m_generatedStubs;
         std::unordered_map<uint32_t, std::string> m_functionRenames;
+        std::unordered_map<uint32_t, std::string> m_displayNames; // [general] names: start -> display name
         std::unordered_map<uint32_t, std::vector<uint32_t>> m_resumeEntryTargetsByOwner;
         CodeGenerator::BootstrapInfo m_bootstrapInfo;
 
@@ -80,6 +81,7 @@ namespace ps2recomp
         bool isCorrectnessCriticalFunction(const Function &function) const;
         bool hasResolvedStubHandler(const Function &function) const;
         void collectCorrectnessCriticalFunctionStarts();
+        void loadDisplayNames();
         bool generateFunctionHeader();
         bool generateStubHeader();
         bool writeToFile(const std::string &path, const std::string &content);

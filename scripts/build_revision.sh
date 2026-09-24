@@ -352,7 +352,7 @@ if [ "$TAIL" = 0 ]; then
     if ! (cd "$ROOT" && "$py" -m tools_py.revision_toml "$ROOT/recomp/socom2.toml" "$MATCH" \
             --elf-b "$ELF" \
             --set-input "$TOML_INPUT" --set-output "$TOML_OUTPUT" \
-            --set-ghidra-output "$TOML_GHIDRA" --out "$TOML"); then
+            --set-ghidra-output "$TOML_GHIDRA" --set-names "socom2_names_$REV.csv" --out "$TOML"); then
       echo "build_revision: step 3 could not translate the config through $(rel "$MATCH") -- run tools_py.revision_toml by hand to see why, or drop --match to copy r0001's addresses across unchanged" >&2
       exit 1
     fi
@@ -360,6 +360,7 @@ if [ "$TAIL" = 0 ]; then
     sed -e "s|^input *=.*|input = \"$TOML_INPUT\"|" \
         -e "s|^output *=.*|output = \"$TOML_OUTPUT\"|" \
         -e "s|^ghidra_output *=.*|ghidra_output = \"$TOML_GHIDRA\"|" \
+        -e "s|^names *= *\"[^\"]*\"|names = \"socom2_names_$REV.csv\"|" \
         "$ROOT/recomp/socom2.toml" > "$TOML"
   fi
   say "toml: $(rel "$TOML") (input $TOML_INPUT, output $TOML_OUTPUT, ghidra_output $TOML_GHIDRA)"

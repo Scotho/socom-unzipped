@@ -11,6 +11,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <unordered_map>
 #include <vector>
 
@@ -153,6 +154,53 @@ static bool writeMinimalMipsElfWithJalFallbackTarget(const std::filesystem::path
     textSegment->add_section_index(text->get_index(), text->get_addr_align());
 
     return writer.save(elfPath.string());
+}
+
+// A JAL-fallback target whose JAL span (0x00100010-0x00100020) is longer than its csv row, so the scan's
+// sub_ name and span win the tie, as on 237 of research/57's rows.
+static bool writeMinimalMipsElfWithLongJalTarget(const std::filesystem::path &elfPath)
+{
+    ELFIO::elfio writer;
+    writer.create(ELFIO::ELFCLASS32, ELFIO::ELFDATA2LSB);
+    writer.set_os_abi(ELFIO::ELFOSABI_NONE);
+    writer.set_type(ELFIO::ET_EXEC);
+    writer.set_machine(ELFIO::EM_MIPS);
+    writer.set_entry(0x00100000u);
+
+    ELFIO::section *text = writer.sections.add(".text");
+    text->set_type(ELFIO::SHT_PROGBITS);
+    text->set_flags(ELFIO::SHF_ALLOC | ELFIO::SHF_EXECINSTR);
+    text->set_addr_align(4);
+    text->set_address(0x00100000u);
+
+    const std::array<uint32_t, 8> textWords = {
+        0x0C040004u, // jal 0x00100010
+        0x00000000u, // nop
+        0x03E00008u, // jr $ra
+        0x00000000u, // nop
+        0x00000000u, // 0x00100010: nop
+        0x00000000u, // nop
+        0x03E00008u, // jr $ra
+        0x00000000u  // nop
+    };
+    text->set_data(reinterpret_cast<const char *>(textWords.data()),
+                   static_cast<ELFIO::Elf_Word>(textWords.size() * sizeof(uint32_t)));
+
+    ELFIO::segment *textSegment = writer.segments.add();
+    textSegment->set_type(ELFIO::PT_LOAD);
+    textSegment->set_flags(ELFIO::PF_R | ELFIO::PF_X);
+    textSegment->set_align(0x1000);
+    textSegment->add_section_index(text->get_index(), text->get_addr_align());
+
+    return writer.save(elfPath.string());
+}
+
+static std::string readTextFile(const std::filesystem::path &path)
+{
+    std::ifstream file(path);
+    std::stringstream contents;
+    contents << file.rdbuf();
+    return contents.str();
 }
 
 static bool writeMinimalMipsElfWithInitializer(const std::filesystem::path &elfPath,
@@ -945,6 +993,99 @@ void register_ps2_recompiler_tests()
             std::error_code removeError;
             std::filesystem::remove(elfPath, removeError);
             std::filesystem::remove(mapPath, removeError);
+        });
+
+        tc.Run("display names come from the sidecar and change nothing but the identifier", [](TestCase &t) {
+            const std::string uniqueSuffix =
+                std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+            const std::filesystem::path tempRoot =
+                std::filesystem::temp_directory_path() / ("ps2recomp-names-" + uniqueSuffix);
+            const std::filesystem::path elfPath = tempRoot / "names.elf";
+            const std::filesystem::path mapPath = tempRoot / "names_ghidra.csv";
+            const std::filesystem::path namesPath = tempRoot / "names_sidecar.csv";
+            std::filesystem::create_directories(tempRoot);
+
+            t.IsTrue(ps2_runtime_calls::isStubName("sceVu0MulMatrix"),
+                     "the sidecar name is one the runtime would stub by name");
+            const bool elfWritten = writeMinimalMipsElfWithLongJalTarget(elfPath);
+            std::ofstream mapFile(mapPath);
+            mapFile << "name,start,end,size\n";
+            mapFile << "FUN_00100000,0x00100000,0x00100010,0x10\n";
+            mapFile << "FUN_00100010,0x00100010,0x00100018,0x8\n";
+            mapFile.close();
+            std::ofstream namesFile(namesPath);
+            namesFile << "Address,Name,Mangled,Pass,Score,Evidence,Source,Date\n";
+            namesFile << "0x00100010,sceVu0MulMatrix,,test,1.00,\"a comma, inside quotes\",synthetic,2026-09-24\r\n";
+            namesFile.close();
+            t.IsTrue(elfWritten && static_cast<bool>(mapFile) && static_cast<bool>(namesFile),
+                     "display-name inputs should be generated");
+
+            // The same ELF and csv twice: without the sidecar (today's output), then with it.
+            struct Run
+            {
+                bool ok = false;
+                size_t stubbed = 0;
+                size_t recompiled = 0;
+            };
+            auto runOnce = [&](const std::filesystem::path &outputPath, bool withNames) {
+                const std::filesystem::path configPath = tempRoot / (withNames ? "with.toml" : "without.toml");
+                std::ofstream config(configPath);
+                config << "[general]\n";
+                config << "input = \"" << elfPath.generic_string() << "\"\n";
+                config << "ghidra_output = \"" << mapPath.generic_string() << "\"\n";
+                if (withNames)
+                    config << "names = \"" << namesPath.generic_string() << "\"\n";
+                config << "output = \"" << outputPath.generic_string() << "\"\n";
+                config << "stubs = []\nskip = []\n";
+                config.close();
+                Run run;
+                PS2Recompiler recompiler(configPath.string());
+                run.ok = recompiler.initialize() && recompiler.recompile();
+                if (run.ok)
+                    recompiler.generateOutput();
+                run.stubbed = recompiler.reportCounters().functionsStubbed;
+                run.recompiled = recompiler.reportCounters().functionsRecompiled;
+                return run;
+            };
+            const std::filesystem::path before = tempRoot / "before";
+            const std::filesystem::path after = tempRoot / "after";
+            const Run without = runOnce(before, false);
+            const Run with = runOnce(after, true);
+            t.IsTrue(without.ok && with.ok, "both runs should recompile");
+
+            const std::string baseline = readTextFile(before / "sub_00100010_0x100010.cpp");
+            const std::string renamed = readTextFile(after / "sceVu0MulMatrix_0x100010.cpp");
+            t.IsTrue(baseline.find("// Address: 0x100010 - 0x100020\n") != std::string::npos,
+                     "baseline: the JAL span wins over the shorter csv row");
+            t.IsTrue(renamed.find("// Address: 0x100010 - 0x100020\n") != std::string::npos,
+                     "the sidecar name keeps the JAL span: extent unchanged");
+            t.IsTrue(renamed.find("void sceVu0MulMatrix_0x100010(") != std::string::npos,
+                     "the generated identifier is the sidecar name");
+            t.IsTrue(renamed.find("// Function: sceVu0MulMatrix (identity sub_00100010)\n") != std::string::npos,
+                     "the header shows the display name and the name the recompiler keeps");
+            t.IsFalse(std::filesystem::exists(after / "sub_00100010_0x100010.cpp"),
+                      "the old output name is gone");
+            t.Equals(with.stubbed, without.stubbed, "a stub-list display name must not stub the function");
+            t.Equals(with.stubbed, static_cast<size_t>(0u), "nothing is stubbed");
+            t.Equals(with.recompiled, without.recompiled, "the same functions are recompiled");
+            t.IsTrue(std::filesystem::exists(after / "FUN_00100000_0x100000.cpp"),
+                     "a start not in the sidecar keeps its csv-derived name");
+
+            // What changes is the identifier and the header's name line; every other line is today's.
+            std::string expected = baseline;
+            const std::string oldHeader = "// Function: sub_00100010\n";
+            const size_t headerAt = expected.find(oldHeader);
+            t.IsTrue(headerAt != std::string::npos, "baseline header names sub_00100010");
+            if (headerAt != std::string::npos)
+                expected.replace(headerAt, oldHeader.size(),
+                                 "// Function: sceVu0MulMatrix (identity sub_00100010)\n");
+            for (size_t at = expected.find("sub_00100010_0x100010"); at != std::string::npos;
+                 at = expected.find("sub_00100010_0x100010", at))
+                expected.replace(at, std::string("sub_00100010_0x100010").size(), "sceVu0MulMatrix_0x100010");
+            t.Equals(renamed, expected, "the body is byte-identical apart from the name");
+
+            std::error_code removeError;
+            std::filesystem::remove_all(tempRoot, removeError);
         });
 
         tc.Run("runtime call resolution includes Veronica compatibility aliases", [](TestCase &t) {

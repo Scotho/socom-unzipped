@@ -100,7 +100,7 @@ MMIO_REG_RE = re.compile(r'^\s*"0[xX][0-9A-Fa-f]+"\s*=\s*"?(0[xX][0-9A-Fa-f]+)"?
 TARGET_RE = re.compile(r'target\s*=\s*"(0[xX][0-9A-Fa-f]+)"')
 PATCH_RE = re.compile(r'address\s*=\s*"(0[xX][0-9A-Fa-f]+)"')
 TABLE_ADDR_RE = re.compile(r'^\s*address\s*=\s*"(0[xX][0-9A-Fa-f]+)"')
-SETTABLE_RE = re.compile(r'^(\s*)(input|output|ghidra_output)(\s*=\s*)"([^"]*)"(.*)$')
+SETTABLE_RE = re.compile(r'^(\s*)(input|output|ghidra_output|names)(\s*=\s*)"([^"]*)"(.*)$')
 
 SELECTOR_ARRAYS = ("stubs", "untracked_stubs", "skip")
 
@@ -923,6 +923,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--set-input", help="[general] input")
     ap.add_argument("--set-output", help="[general] output")
     ap.add_argument("--set-ghidra-output", help="[general] ghidra_output")
+    ap.add_argument("--set-names", help="[general] names (the display-name sidecar)")
     args = ap.parse_args(argv)
 
     for path in (args.source_toml, args.match_json):
@@ -977,7 +978,8 @@ def main(argv: Optional[List[str]] = None) -> int:
               "patches in unmatched functions stay unresolved")
 
     sets = {k: v for k, v in (("input", args.set_input), ("output", args.set_output),
-                              ("ghidra_output", args.set_ghidra_output)) if v is not None}
+                              ("ghidra_output", args.set_ghidra_output),
+                              ("names", args.set_names)) if v is not None}
     lines, sites = rewrite(text, tr, sets, fixes, why, anchor)
 
     if args.dry_run:
