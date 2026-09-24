@@ -25,6 +25,8 @@ Two ways to lay a DEVICE dip of audio_dips' report against the callbacks, each h
   * by the recorder's clock (--recorder-first-packet): loopback_record's first_packet_epoch is when its first
     1024-frame read returned, so the file's frame 0 is that stamp less 1024/rate; endpoint time t is then a wall
     clock, laid against the callbacks' entries. Independent of the scorer's alignment, dependent on the recorder's.
+    A dip outside the trace's own span -- before the first callback or past the last one's period -- is
+    UNATTRIBUTABLE here too, for the same reason and with the same words.
 
 The trace is not a ring: it drops on full and the flusher writes "# dropped=N recorded=M" on every pass, so a
 saturated or dropping trace is said loudly here. Everything is pure text in, text out; the test drives it on
@@ -186,17 +188,28 @@ def attribute_by_dump(dips: List[DeviceDip], rows: List[Row], late: List[Hole], 
     return out
 
 
-def attribute_by_recorder(dips: List[DeviceDip], late: List[Hole], t0_epoch_us: int, first_packet_epoch_s: float,
-                          rate: int = 48000, read_frames: int = 1024, tolerance_s: float = 0.25) -> List[Attribution]:
+def attribute_by_recorder(dips: List[DeviceDip], rows: List[Row], late: List[Hole], t0_epoch_us: int,
+                          first_packet_epoch_s: float, period_us: int, rate: int = 48000, read_frames: int = 1024,
+                          tolerance_s: float = 0.25) -> List[Attribution]:
     """Each DEVICE dip by the recorder's clock: the file's frame 0 is the first packet's stamp less the read that
-    produced it, so endpoint time t is wall first_packet - read + t, laid against the callbacks' entries. Any dip
-    off the trace's span is UNATTRIBUTABLE."""
+    produced it, so endpoint time t is wall first_packet - read + t, laid against the callbacks' entries.
+
+    The trace's span runs from the first callback's entry to one period past the last one's (the period that
+    callback rendered). A dip before it or past it is UNATTRIBUTABLE with that reason, never `cleared`: the
+    endpoint recording outlives the game (the 2026-09-23 capture ran 947 s against a trace that ended at 768 s,
+    and 201 of its 562 DEVICE dips sat past the end of the data) -- fix round 2, R3, which is C2's guard in the
+    mode that was missing it."""
     file_start_s = first_packet_epoch_s - read_frames / rate - t0_epoch_us / 1e6
+    span_start_s = rows[0].entry_us / 1e6 if rows else 0.0
+    span_end_s = (rows[-1].entry_us + period_us) / 1e6 if rows else 0.0
     out = []
     for d in dips:
         wall_s = file_start_s + d.start_s
-        if wall_s < 0:
+        if not rows or wall_s < span_start_s:
             out.append(Attribution(d, wall_s, None, 0.0, "unattributable", "before the trace"))
+            continue
+        if wall_s > span_end_s:
+            out.append(Attribution(d, wall_s, None, 0.0, "unattributable", "past the trace"))
             continue
         hole, delta = _nearest(late, wall_s, tolerance_s)
         out.append(Attribution(d, wall_s, hole, delta, "late" if hole else "cleared"))
@@ -281,13 +294,15 @@ def main(argv=None) -> int:
         with open(a.dips, "r", encoding="utf-8", errors="replace") as fh:
             dips, alignment = parse_dips(fh.read())
         if a.first_packet is not None:
-            attributions = attribute_by_recorder(dips, late, header.get("t0_epoch_us", 0), a.first_packet, a.rate,
+            attributions = attribute_by_recorder(dips, rows, late, header.get("t0_epoch_us", 0), a.first_packet,
+                                                 period, a.rate,
                                                  tolerance_s=a.tolerance if a.tolerance is not None else 0.25)
         elif a.recorder_start is not None:
             print("WARNING: --recorder-start is the recorder's start, not the file's first frame; using it anyway "
                   "(pass --recorder-first-packet from loopback.log for the file's own clock)")
-            attributions = attribute_by_recorder(dips, late, header.get("t0_epoch_us", 0), a.recorder_start + 1024 / a.rate,
-                                                 a.rate, tolerance_s=a.tolerance if a.tolerance is not None else 0.25)
+            attributions = attribute_by_recorder(dips, rows, late, header.get("t0_epoch_us", 0),
+                                                 a.recorder_start + 1024 / a.rate, period, a.rate,
+                                                 tolerance_s=a.tolerance if a.tolerance is not None else 0.25)
         else:
             attributions = attribute_by_dump(dips, rows, late, period, a.rate, a.tolerance)
     print(report(header, rows, skipped, late, attributions, alignment=alignment, min_corr=a.min_corr))

@@ -106,6 +106,7 @@ def cmd_hold(exe, seconds, volume, poll_s=0.5, log=print):
 # ends. `monitor` writes that timeline as CSV (t_s,name,state,peak); `contamination` reads it back.
 
 PEAK_FLOOR = 0.001   # a peak under this is digital silence for the purpose of "was it rendering"
+UNREADABLE = -1.0    # the meter (or the state) could not be queried: UNKNOWN, which is not the same as silent
 
 # The meter is per session, but the loopback RECORDER is a session too: its capture stream on the render endpoint
 # reports the endpoint's own mix as its peak (verified 2026-09-23: the recorder's python session read exactly
@@ -137,6 +138,13 @@ def format_samples(t_s, sessions):
     return [f"{t_s:.1f},{s.name},{int(getattr(s, 'pid', 0))},{int(s.state)},{float(s.peak):.4f}" for s in sessions]
 
 
+def parse_errors(text):
+    """The monitor's own failure lines (`# <t> error <what>`): a sampling pass that returned nothing at all.
+    They are comments so the CSV still parses, but a verdict that never mentions them reads as a full timeline
+    when it is a holed one (fix round 2, R4)."""
+    return [line for line in text.splitlines() if line.startswith("#") and " error " in line]
+
+
 def parse_samples(text):
     """Rows of a monitor CSV; the four-column form (before the pid column) is read with pid 0."""
     rows = []
@@ -164,7 +172,7 @@ def contamination(rows, allowed, peak_floor=PEAK_FLOOR, ignore_pids=()):
     found = {}
     for r in rows:
         if r.name.lower() in allowed_l or r.pid in ignored or r.state != 1 or r.peak <= peak_floor:
-            continue
+            continue   # an UNREADABLE peak (-1) is not evidence of rendering; `unreadable` counts it instead
         f = found.get(r.name)
         if f is None:
             found[r.name] = Foreign(r.name, r.t_s, r.t_s, 1, r.peak)
@@ -175,14 +183,67 @@ def contamination(rows, allowed, peak_floor=PEAK_FLOOR, ignore_pids=()):
     return sorted(found.values(), key=lambda f: f.first_s)
 
 
+def unreadable(rows, ignore_pids=()):
+    """The sessions whose state or peak meter could not be read, as (name, samples), loudest first by count. A
+    row like this says nothing about whether that session rendered -- so it may not be dropped in silence."""
+    ignored = {int(p) for p in ignore_pids}
+    counts = {}
+    for r in rows:
+        if r.pid in ignored:
+            continue
+        if r.peak <= UNREADABLE or r.state < 0:
+            counts[r.name] = counts.get(r.name, 0) + 1
+    return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
+@dataclass
+class Verdict:
+    state: str        # "clean" | "CONTAMINATED" | "INCONCLUSIVE"
+    code: int         # the process exit code: 0 clean, 1 contaminated, 2 inconclusive
+    lines: list       # what to write into sessions_verdict.txt
+
+
+def verdict(rows, errors, allowed, peak_floor=PEAK_FLOOR, ignore_pids=()):
+    """The capture's own verdict on the endpoint: clean only when the timeline is COMPLETE and shows nothing but
+    the allowed sessions rendering. An unreadable meter or a failed sampling pass makes it INCONCLUSIVE -- the
+    owner is told to throw away any capture whose verdict is not `clean`, so `clean` must mean measured, not
+    merely unobjected-to (fix round 2, R4)."""
+    samples = len({r.t_s for r in rows})
+    if not rows:
+        return Verdict("INCONCLUSIVE", 2, ["no samples: the monitor wrote nothing (COM unavailable, or it never ran)"])
+    foreign = contamination(rows, allowed, peak_floor=peak_floor, ignore_pids=ignore_pids)
+    blind = unreadable(rows, ignore_pids=ignore_pids)
+    lines = []
+    if foreign:
+        lines.append(f"CONTAMINATED: {samples} samples; sessions outside {', '.join(allowed)} rendered:")
+        for f in foreign:
+            lines.append(f"  {f.name:24s} active from {f.first_s:7.1f} s to {f.last_s:7.1f} s "
+                         f"({f.samples} samples, peak {f.peak:.3f})")
+    elif blind or errors:
+        lines.append(f"INCONCLUSIVE: {samples} samples; nothing outside {', '.join(allowed)} was SEEN rendering, "
+                     f"but the timeline has holes:")
+    else:
+        lines.append(f"clean: {samples} samples, nothing but {', '.join(allowed)} rendered")
+    for name, n in blind:
+        lines.append(f"  UNREADABLE {name:24s} {n} sample(s) with no state or meter: what it rendered is unknown")
+    if errors:
+        lines.append(f"  {len(errors)} sampling pass(es) failed outright; the first: {errors[0].strip()}")
+    if foreign:
+        return Verdict("CONTAMINATED", 1, lines)
+    if blind or errors:
+        return Verdict("INCONCLUSIVE", 2, lines)
+    return Verdict("clean", 0, lines)
+
+
 def _session_state_and_peak(raw):
-    """(state, peak) for a pycaw session; peak 0.0 when the meter interface is unavailable."""
+    """(state, peak) for a pycaw session. A state or a meter that cannot be read is UNREADABLE (-1), never 0:
+    "we could not ask" and "it was silent" are different findings, and only one of them is a measurement."""
     state = -1
     try:
         state = int(raw.State)
     except Exception:
         pass
-    peak = 0.0
+    peak = UNREADABLE
     try:
         from pycaw.pycaw import IAudioMeterInformation
         meter = raw._ctl.QueryInterface(IAudioMeterInformation)
@@ -250,20 +311,12 @@ def main(argv=None):
         return cmd_monitor(a.seconds, a.interval, a.out, log=lambda m: print(m, flush=True))
     if a.cmd == "contamination":
         with open(a.csv, "r", encoding="utf-8", errors="replace") as fh:
-            rows = parse_samples(fh.read())
+            text = fh.read()
         allowed = tuple(x.strip() for x in a.allowed.split(",") if x.strip()) + ("LEDKeeper2.exe", "(system)")
-        foreign = contamination(rows, allowed, ignore_pids=a.ignore_pid)
-        samples = len({r.t_s for r in rows})
-        if not rows:
-            print("no samples: the monitor wrote nothing (COM unavailable, or it never ran)")
-            return 2
-        if not foreign:
-            print(f"clean: {samples} samples, nothing but {', '.join(allowed)} rendered")
-            return 0
-        print(f"CONTAMINATED: {samples} samples; sessions outside {', '.join(allowed)} rendered:")
-        for f in foreign:
-            print(f"  {f.name:24s} active from {f.first_s:7.1f} s to {f.last_s:7.1f} s ({f.samples} samples, peak {f.peak:.3f})")
-        return 1
+        v = verdict(parse_samples(text), parse_errors(text), allowed, ignore_pids=a.ignore_pid)
+        for line in v.lines:
+            print(line)
+        return v.code
     cmd_hold(a.exe, a.seconds, a.volume, log=lambda m: print(m, flush=True))
     return 0
 

@@ -6,9 +6,14 @@ gap (dry: 20 ms of silence reached the endpoint), and an audio_dips report whose
 callback, off it, before the trace, past it, or without a dump time. What is NOT covered here, because only a
 capture can cover it: whether the mission music's real dips land on late callbacks.
 """
+import os
+import re
 import unittest
 
 from tools_py.parity import cb_trace
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+PS2_AUDIO = os.path.join(ROOT, "third_party", "ps2recomp", "ps2xRuntime", "src", "lib", "ps2_audio.cpp")
 
 HEADER = "# audio callback trace: t0_epoch_us=1700000000000000 period_us=20000 jitter_us=30000 late_us=60000 dry_us=80000 capacity=8\n"
 COLUMNS = "seq,entry_us,exit_us,frames,out_frame,gap_us,render_us\n"
@@ -133,6 +138,35 @@ class DumpTimeAttributionTest(unittest.TestCase):
         self.assertIsNone(cb_trace.callback_at_out_frame(rows, 6720), "the clock after the last row is past the trace")
 
 
+class RuntimePublicationTest(unittest.TestCase):
+    """Fix round 2, R1: the trace is handed to a LIVE audio thread. The call site is what decides whether a
+    callback can see a half-built trace, so it is pinned here: the trace must be created and published BEFORE
+    ma_device_start opens the callback, and the audio thread must read it through the slot's acquire load, never
+    off a unique_ptr another thread is storing into. (The slot's own semantics are pinned in C++, in
+    ps2xTest/src/audio_cb_trace_tests.cpp.)"""
+
+    def source(self):
+        with open(PS2_AUDIO, "r", encoding="utf-8", errors="replace") as fh:
+            return fh.read()
+
+    def test_the_trace_is_published_before_the_device_starts(self):
+        text = self.source()
+        opened = text.find("cbTrace.open(")
+        started = text.find("ma_device_start(")
+        self.assertGreater(opened, 0, "the callback trace is opened through the slot")
+        self.assertGreater(started, 0)
+        self.assertLess(opened, started,
+                        "the trace must exist before the audio thread does: published after ma_device_start, the "
+                        "first callbacks are lost and the publication itself is a data race (R1)")
+
+    def test_the_audio_thread_reads_the_trace_through_the_slots_acquire_load(self):
+        text = self.source()
+        self.assertEqual(text.count("m_impl->cbTrace->"), 0,
+                         "the audio thread must not dereference the owner's unique_ptr while it is being stored into")
+        self.assertTrue(re.search(r"m_impl->cbTrace\.live\(\)", text) is not None,
+                        "the callback takes the trace from the slot (an acquire load of an atomic pointer)")
+
+
 class RecorderClockAttributionTest(unittest.TestCase):
     def test_the_first_packet_stamp_less_one_read_places_the_files_first_frame(self):
         header, rows, _ = parsed()
@@ -141,10 +175,39 @@ class RecorderClockAttributionTest(unittest.TestCase):
         # so endpoint time 0.115 s is trace time 0.115 s -- the late fourth callback's entry.
         first_packet = 1700000000000000 / 1e6 + 1024 / 48000
         dip = cb_trace.DeviceDip(0.115, 0.05, 12.0, "none", None, None)
-        att = cb_trace.attribute_by_recorder([dip], late, header["t0_epoch_us"], first_packet, rate=48000)
+        att = cb_trace.attribute_by_recorder([dip], rows, late, header["t0_epoch_us"], first_packet,
+                                             period_us=header["period_us"], rate=48000)
         self.assertEqual(att[0].state, "late")
         self.assertEqual(att[0].hole.seq, 3)
         self.assertAlmostEqual(att[0].delta_s, 0.0, places=3)
+
+    def test_a_dip_outside_the_traces_span_is_unattributable_in_the_recorder_mode_too(self):
+        """Fix round 2, R3: C2's guard was in the dump mode only, so a dip past the last callback read as
+        `cleared` -- 201 of the sixteen-minute capture's 562 were exactly that (the recorder outlived the game)."""
+        header, rows, _ = parsed()
+        late = cb_trace.late_callbacks(rows, header["late_us"], header["dry_us"], header["period_us"])
+        first_packet = 1700000000000000 / 1e6 + 1024 / 48000
+        dips = [cb_trace.DeviceDip(0.115, 0.05, 12.0, "none"),     # on the late fourth callback
+                cb_trace.DeviceDip(0.280, 0.05, 10.0, "none"),     # 5 ms past the last callback's period: no data
+                cb_trace.DeviceDip(50.0, 0.05, 10.0, "none"),      # long past the trace: the game was already dead
+                cb_trace.DeviceDip(-1.0, 0.05, 10.0, "none")]      # before the trace began
+        att = cb_trace.attribute_by_recorder(dips, rows, late, header["t0_epoch_us"], first_packet,
+                                             period_us=header["period_us"], rate=48000)
+        self.assertEqual([a.state for a in att], ["late", "unattributable", "unattributable", "unattributable"])
+        self.assertEqual([a.reason for a in att[1:]], ["past the trace", "past the trace", "before the trace"])
+        text = cb_trace.report(header, rows, 0, late, att)
+        self.assertIn("DEVICE dips 4: 1 late, 0 cleared, 3 unattributable (1 before the trace, 2 past it)", text)
+
+    def test_a_dip_inside_the_last_callbacks_own_period_is_still_attributed(self):
+        """The trace's span ends one period after the last callback's entry -- that callback rendered it."""
+        header, rows, _ = parsed()
+        late = cb_trace.late_callbacks(rows, header["late_us"], header["dry_us"], header["period_us"])
+        first_packet = 1700000000000000 / 1e6 + 1024 / 48000
+        dip = cb_trace.DeviceDip(0.270, 0.05, 10.0, "none")       # 255 ms entry + 15 ms: inside the last period
+        att = cb_trace.attribute_by_recorder([dip], rows, late, header["t0_epoch_us"], first_packet,
+                                             period_us=header["period_us"], rate=48000)
+        self.assertEqual(att[0].state, "late", "the last callback's own period is still data: this dip lies on the dry sixth")
+        self.assertEqual(att[0].hole.seq, 5)
 
 
 if __name__ == "__main__":

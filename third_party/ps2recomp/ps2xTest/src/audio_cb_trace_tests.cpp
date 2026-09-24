@@ -2,10 +2,13 @@
 // callback the device thread serviced late. Pure: synthetic timestamps in, counts and CSV out; no device.
 // Fix round 1 (I1, I2): three thresholds -- jittered, late (the early warning), dry (silence reached the endpoint)
 // -- with the silence estimate tied to the WHOLE buffer, and a status line the flusher can write every pass.
+// Fix round 2 (R1): the trace carries its own t0 and reaches the audio thread through a slot, so a callback
+// never holds a half-published trace and the device's first callback is the first row.
 #include "MiniTest.h"
 #include "runtime/audio_cb_trace.h"
 #include "runtime/mix_device.h"
 
+#include <chrono>
 #include <cstdint>
 #include <sstream>
 #include <string>
@@ -85,6 +88,56 @@ void register_audio_cb_trace_tests()
             t.Equals(trace.lateThresholdUs(), static_cast<int64_t>(60000), "the buffer less one period: the early warning");
             t.Equals(trace.dryThresholdUs(), static_cast<int64_t>(80000), "the whole buffer: past this the endpoint got silence");
             t.Equals(trace.dryThresholdUs(), static_cast<int64_t>(spec.bufferMs()) * 1000, "and it IS the spec's buffer");
+        });
+
+        // Fix round 2, R1: the trace is handed to a LIVE audio thread. Round 1 moved its creation after
+        // ma_device_start (so a failed start could not leak the flusher) and set t0 after the pointer was
+        // already visible: a data race on the unique_ptr, and a first row stamped against a default clock.
+        // The slot is the answer -- the object is complete, t0 and all, before anything can see it.
+        tc.Run("a trace carries its own t0: whoever holds one can stamp against it, there is no second step", [](TestCase &t)
+        {
+            const auto t0 = std::chrono::steady_clock::now();
+            ps2x::AudioCallbackTrace trace(8, 20000, 4, t0, 1700000000123456LL);
+            t.Equals(trace.stampUs(t0), static_cast<int64_t>(0), "t0 itself is 0 us");
+            t.Equals(trace.stampUs(t0 + std::chrono::milliseconds(5)), static_cast<int64_t>(5000), "5 ms after t0");
+            t.Equals(trace.t0EpochUs(), static_cast<int64_t>(1700000000123456LL), "and the wall clock of that instant");
+            t.IsTrue(trace.t0() == t0, "the clock is the one it was built with");
+        });
+
+        tc.Run("the slot publishes a complete trace and nothing before it: the device's first callback is row 0", [](TestCase &t)
+        {
+            ps2x::AudioCallbackTraceSlot slot;
+            t.IsTrue(slot.live() == nullptr, "before it is opened the audio thread gets nothing");
+            const auto t0 = std::chrono::steady_clock::now();
+            ps2x::AudioCallbackTrace *published = slot.open(8, 20000, 4, t0, 1700000000123456LL);
+            t.IsTrue(slot.live() == published, "opened: the callback's acquire load sees it");
+            t.IsTrue(slot.live()->t0() == t0, "and it is complete -- a trace is never visible without its t0");
+
+            // The device starts HERE, after the slot is open (openMixerStream's order). Each callback renders one
+            // 960-frame period and stamps itself the way mixerRender does: the mixer's frame clock afterwards.
+            uint64_t renderedFrames = 0;
+            for (int i = 0; i < 6; ++i)
+            {
+                ps2x::AudioCallbackTrace *tr = slot.live();
+                if (tr == nullptr)
+                    continue;
+                const auto entry = t0 + std::chrono::milliseconds(20 * i);
+                renderedFrames += 960;
+                tr->record(tr->stampUs(entry), tr->stampUs(entry + std::chrono::microseconds(500)), 960u, renderedFrames);
+            }
+            t.Equals(slot.get()->size(), static_cast<size_t>(6), "every callback of the device's life is in the trace");
+            const ps2x::AudioCallbackRecord &first = slot.get()->at(0);
+            t.Equals(first.seq, static_cast<uint64_t>(0), "the first callback is row 0");
+            t.Equals(first.entryUs, static_cast<int64_t>(0), "stamped against a t0 that was set before it could run");
+            t.Equals(first.outFrame - first.frames, static_cast<uint64_t>(0),
+                     "the frame clock BEFORE the first row is 0: no callback ran before the trace existed (the "
+                     "2026-09-23 capture's first row was out_frame 5760 -- six callbacks lost)");
+
+            slot.close();
+            t.IsTrue(slot.live() == nullptr, "the device is stopped: the audio thread is given nothing more");
+            t.IsTrue(slot.get() != nullptr, "but the owner still has it for the last flush and the summary");
+            slot.reset();
+            t.IsTrue(slot.get() == nullptr && slot.live() == nullptr, "and then it is gone");
         });
     });
 }

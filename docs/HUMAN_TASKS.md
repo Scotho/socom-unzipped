@@ -27,11 +27,12 @@ into the HyperX endpoint for its whole sixteen minutes, and later by Discord as 
 itself worked -- no late audio callback in 38,422 -- but a capture with anything else rendering is not a device
 measurement. **What to do:** close or mute whatever plays audio (`python -m tools_py.parity.app_volume list` shows
 the endpoint's sessions; the browser's music tab and Discord are the two seen tonight), then run
-`bash C:\projects\wt-audio-out\logs\capture_audio_out.sh` (it takes the loop lock, launches the instrumented runner
-from the worktree over the main tree's game, records the endpoint for the ten-minute briefing capture, and scores
-it -- about sixteen minutes; leave the machine alone until it prints `capture done` to
+`bash C:\projects\wt-audio-out\scripts\parity\capture_audio_out.sh` (it takes the loop lock, launches the
+instrumented runner from the worktree over the main tree's game, records the endpoint for the ten-minute briefing
+capture, and scores it -- about sixteen minutes; leave the machine alone until it prints `capture done` to
 `C:\projects\wt-audio-out\logs\capture_audio_out.log`), and read `logs/parity/<the new audio_out_*>/sessions_verdict.txt`
-first: it must say `clean`, or the run is another spoiled one. Then
+first: it must say `clean` -- `CONTAMINATED` names what else rendered, and `INCONCLUSIVE` means the timeline itself
+has holes -- or the run is another spoiled one. Then
 `python -m tools_py.parity.cb_trace logs/parity/<same>/cb_trace.csv --dips logs/parity/<same>/dips.txt` from the
 worktree. After the branch merges, the same thing from the main tree is
 `PS2X_DEV=1 PS2X_AUDIO_TRACE=1 bash scripts/parity/mission_music_long.sh --stage briefing --minutes 10` on

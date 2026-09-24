@@ -23,9 +23,17 @@
 // Single producer (the audio thread: record()), any number of readers after the fact (flush(), stats()); the
 // producer publishes with a release store on the count and never allocates. The running counters the readers may
 // look at while the producer runs are atomics, read relaxed: a snapshot, not a sum that must balance.
+//
+// The trace ITSELF is handed to a running audio thread, so it carries its own t0 (fix round 2, R1): the clock a
+// callback stamps against is a member fixed at construction, and AudioCallbackTraceSlot publishes the finished
+// object with a release store the callback reads with an acquire load. There is no window in which the audio
+// thread can hold a trace whose t0 has not been set -- the first round set it AFTER the pointer was visible, and
+// a callback landing in between stamped against a default-constructed time_point.
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstddef>
+#include <memory>
 #include <ostream>
 #include <vector>
 
@@ -43,12 +51,27 @@ namespace ps2x
     class AudioCallbackTrace
     {
     public:
-        AudioCallbackTrace(size_t capacity, int64_t periodUs, uint32_t periods)
+        // `t0` is the steady-clock zero every row is stamped against and `t0EpochUs` the same instant as a
+        // wall-clock epoch (the header's, so a recorder's stamps can be laid against the rows). Both are fixed
+        // here, before the object can be seen by the audio thread; the defaults are this moment.
+        AudioCallbackTrace(size_t capacity, int64_t periodUs, uint32_t periods,
+                           std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now(),
+                           int64_t t0EpochUs = 0)
             : m_records(capacity), m_periodUs(periodUs),
               m_jitterUs(periodUs + periodUs / 2),
               m_lateUs(periods > 1 ? periodUs * static_cast<int64_t>(periods - 1) : periodUs),
-              m_dryUs(periodUs * static_cast<int64_t>(periods > 0 ? periods : 1))
+              m_dryUs(periodUs * static_cast<int64_t>(periods > 0 ? periods : 1)),
+              m_t0(t0), m_t0EpochUs(t0EpochUs)
         {
+        }
+
+        std::chrono::steady_clock::time_point t0() const { return m_t0; }
+        int64_t t0EpochUs() const { return m_t0EpochUs; }
+
+        // Audio thread: a wall-clock instant on this trace's own clock, in microseconds.
+        int64_t stampUs(std::chrono::steady_clock::time_point tp) const
+        {
+            return static_cast<int64_t>(std::chrono::duration_cast<std::chrono::microseconds>(tp - m_t0).count());
         }
 
         // Audio thread only. Returns false (and counts a drop) once the capacity is used up; the counters keep
@@ -169,6 +192,8 @@ namespace ps2x
         int64_t m_jitterUs;
         int64_t m_lateUs;
         int64_t m_dryUs;
+        std::chrono::steady_clock::time_point m_t0{};
+        int64_t m_t0EpochUs = 0;
         int64_t m_lastEntryUs = 0;                 // producer-owned
         std::atomic<uint64_t> m_calls{0};
         std::atomic<uint64_t> m_dropped{0};
@@ -178,5 +203,45 @@ namespace ps2x
         std::atomic<int64_t> m_silenceUs{0};
         std::atomic<int64_t> m_maxGapUs{0};
         std::atomic<int64_t> m_maxRenderUs{0};
+    };
+
+    // The one way the trace reaches the audio thread (fix round 2, R1). open() builds the whole object -- rows,
+    // thresholds and t0 -- and only then publishes the pointer with a release store; the callback takes it with
+    // live()'s acquire load. Two consequences the tests pin:
+    //   * a callback either sees no trace at all or a complete one; there is no half-published state, and the
+    //     pointer is never a unique_ptr another thread is assigning into (that was the data race);
+    //   * opened BEFORE the device starts, the trace sees the device's first callback -- the frame clock before
+    //     its first row is 0. Opened after ma_device_start, the first callbacks are simply missing (the evidence
+    //     capture of 2026-09-23 began at out_frame 5760: six callbacks had already run).
+    // Owner thread only: open(), close(), get(). Audio thread: live().
+    class AudioCallbackTraceSlot
+    {
+    public:
+        AudioCallbackTrace *open(size_t capacity, int64_t periodUs, uint32_t periods,
+                                 std::chrono::steady_clock::time_point t0, int64_t t0EpochUs)
+        {
+            auto built = std::make_unique<AudioCallbackTrace>(capacity, periodUs, periods, t0, t0EpochUs);
+            AudioCallbackTrace *raw = built.get();
+            m_owned = std::move(built);
+            m_live.store(raw, std::memory_order_release);
+            return raw;
+        }
+
+        AudioCallbackTrace *live() const { return m_live.load(std::memory_order_acquire); }   // audio thread
+        AudioCallbackTrace *get() const { return m_owned.get(); }                             // owner thread
+        explicit operator bool() const { return m_owned != nullptr; }
+
+        // The device is stopped (no callback can be running): take the trace away from the audio thread but keep
+        // it for the last flush and the close summary. reset() throws it away.
+        void close() { m_live.store(nullptr, std::memory_order_release); }
+        void reset()
+        {
+            close();
+            m_owned.reset();
+        }
+
+    private:
+        std::unique_ptr<AudioCallbackTrace> m_owned;
+        std::atomic<AudioCallbackTrace *> m_live{nullptr};
     };
 }

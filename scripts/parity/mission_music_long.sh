@@ -65,7 +65,8 @@ set -u
 TOOLS_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 ROOT="${SOCOM_DATA_ROOT:-$TOOLS_ROOT}"
 cd "$ROOT"
-PYA="env PYTHONPATH=$TOOLS_ROOT python -P"
+# A function, not a variable used unquoted: a tools root with a space in it word-split (fix round 2, R7).
+pya() { PYTHONPATH="$TOOLS_ROOT" python -P "$@"; }
 
 MINUTES=12
 # Which music to capture. `mission` holds at the insertion point, which is what this script was written for.
@@ -216,14 +217,14 @@ if [ "$SCORE" = 1 ]; then
     [ -s "$wav" ] || { echo "no capture at $wav -- skipping its score"; continue; }
     name=$(basename "$wav" .wav)
     echo "=== audio_envelope --segment 60  $wav ==="
-    $PYA -m tools_py.parity.audio_envelope "$wav" --segment 60 \
+    pya -m tools_py.parity.audio_envelope "$wav" --segment 60 \
       > "$OUT/envelope_$name.txt" 2>&1 || true
     cat "$OUT/envelope_$name.txt"
   done
   if [ -s "$OUT/endpoint.wav" ] && [ -s "$OUT/mix.wav" ]; then
     echo "=== audio_dips  endpoint vs mix ==="
     log=$(ls -t logs/run_*.log 2>/dev/null | head -1)
-    $PYA -m tools_py.parity.audio_dips "$OUT/endpoint.wav" --dump "$OUT/mix.wav" \
+    pya -m tools_py.parity.audio_dips "$OUT/endpoint.wav" --dump "$OUT/mix.wav" \
       ${log:+--log "$log"} > "$OUT/dips.txt" 2>&1 || true
     tail -40 "$OUT/dips.txt"
     # The endpoint this run rendered to, beside its dips: a DEVICE count that does not name its device proves

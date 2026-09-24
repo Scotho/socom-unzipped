@@ -352,7 +352,7 @@ def classify(endpoint_dips: List[Dip], dump_dips: Optional[List[Dip]], offset_s:
     several endpoint dips; dump dips no endpoint dip touched are listed too (label suffixed "(dump only)").
     `offsets`, one per endpoint dip (local_offsets), replaces the single `offset_s` for that dip's mapping.
     `dump_end_s` (the dump's length): an endpoint dip whose aligned time is before the dump's start or past its
-    end is NODUMP, never DEVICE -- the dump is capped at ten minutes (ps2_audio.cpp kDumpMaxFrames) and the game
+    end is NODUMP, never DEVICE -- the dump is capped at twenty minutes (ps2_audio.cpp kDumpMaxFrames) and the game
     may die before the recorder stops, and "in the endpoint, not in the dump" means nothing where there is no
     dump (2026-09-23 audio-out: 410 of 562 "DEVICE" rows sat past the dump's end)."""
     slack = int(window_s * MIXER_RATE)
