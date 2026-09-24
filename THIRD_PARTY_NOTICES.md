@@ -14,12 +14,11 @@ is in this repository or in the download**; the player supplies their own disc.
 
 | Component | Where | Version | Licence | Copyright | Ships |
 |---|---|---|---|---|---|
-| PS2Recomp (ps2xRecomp, ps2xRuntime, ps2xAnalyzer, ps2xIOP, ps2xShared, ps2xStudio, ps2xTest, ps2xLauncher) | `third_party/ps2recomp/` | fork of ran-j/PS2Recomp at upstream `14b1e5c` (#214, 2026-08-19; vendored 2026-09-04 as `8736759`), heavily modified; upstream since the base is the single squash commit `75d729c` (#244), see `docs/research/40-upstream-divergence.md`; the save-state container (`ps2xRuntime/.../ps2_save_state.*`) takes its byte format and API from the MrCoolTheCucumber/PS2Recomp fork at `7978365`, see `docs/research/41-cucumber-fork.md` | GPL-3.0-only | ran-j and PS2Recomp contributors; MrCoolTheCucumber; SOCOM Unzipped contributors | yes (the executables) |
-| PS2Recomp's Vita and Android modules (`.suprx`, Gradle) | `third_party/ps2recomp/vita/`, `android/` | upstream, unmodified, NOT built | GPL-3.0-only | ran-j and PS2Recomp contributors | no |
+| PS2Recomp (ps2xRecomp, ps2xRuntime, ps2xAnalyzer, ps2xIOP, ps2xShared, ps2xTest, ps2xLauncher) | `third_party/ps2recomp/` | fork of ran-j/PS2Recomp at upstream `14b1e5c` (#214, 2026-08-19; vendored 2026-09-04 as `8736759`), heavily modified; upstream since the base is the single squash commit `75d729c` (#244), see `docs/research/40-upstream-divergence.md`; the save-state container (`ps2xRuntime/.../ps2_save_state.*`) takes its byte format and API from the MrCoolTheCucumber/PS2Recomp fork at `7978365`, see `docs/research/41-cucumber-fork.md` | GPL-3.0-only | ran-j and PS2Recomp contributors; MrCoolTheCucumber; SOCOM Unzipped contributors | yes (the executables) |
 | Horizon Server (Medius/DME/NAT/MUIS for the PS2 online stack) | `server/horizon-server/` | fork, app id 10472 configuration | MIT | 2020 Daniel Gerendasy | no (the hosted box runs it) |
 | HighResolutionTimer | `server/horizon-server/HighResolutionTimer/` | as vendored by Horizon | MIT | 2020 Hakan Lindestaf | no |
-| Saira Stencil One (font) | `third_party/ps2recomp/ps2xLauncher/assets/fonts/` | 2019 | OFL-1.1 | 2019 The Saira Stencil Project Authors (Omnibus-Type) | yes (embedded in the launcher) |
-| Rajdhani (font) | `third_party/ps2recomp/ps2xLauncher/assets/fonts/` | 2014 | OFL-1.1 | 2014 Indian Type Foundry | yes (embedded in the launcher) |
+| Saira Stencil One (font) | `third_party/ps2recomp/ps2xLauncher/assets/fonts/` | 2019 | OFL-1.1 | 2019 The Saira Stencil Project Authors (Omnibus-Type) | yes (embedded in the launcher at build time by `scripts/embed_font.py`) |
+| Rajdhani (font) | `third_party/ps2recomp/ps2xLauncher/assets/fonts/` | 2014 | OFL-1.1 | 2014 Indian Type Foundry | yes (embedded in the launcher at build time by `scripts/embed_font.py`) |
 
 ## Fetched at configure time (CMake FetchContent / ExternalProject)
 
@@ -33,7 +32,7 @@ is in this repository or in the download**; the player supplies their own disc.
 | libwebp (via the FFmpeg prebuilt) | `ps2xRuntime/CMakeLists.txt` | as bundled | BSD-3-Clause | 2010 Google Inc. | yes (`libwebp.dll`, `libwebpmux.dll`, `libsharpyuv.dll`) |
 | Brotli (via the FFmpeg prebuilt) | `ps2xRuntime/CMakeLists.txt` | as bundled | MIT | 2009, 2010, 2013-2016 the Brotli Authors | yes (`brotlicommon.dll`, `brotlidec.dll`, `brotlienc.dll`) |
 | zlib (via the FFmpeg prebuilt) | `ps2xRuntime/CMakeLists.txt` | as bundled | Zlib | 1995-2024 Jean-loup Gailly and Mark Adler | yes (`zlib1.dll`) |
-| SDL2 (via the FFmpeg prebuilt, and ps2xStudio) | `ps2xRuntime/CMakeLists.txt`, `ps2xStudio/CMakeLists.txt` | as bundled | Zlib | 1997-2025 Sam Lantinga | no (not in the release closure) |
+| SDL2 (via the FFmpeg prebuilt) | `ps2xRuntime/CMakeLists.txt` | as bundled | Zlib | 1997-2025 Sam Lantinga | no (not in the release closure) |
 | OpenEXR and Imath (via the FFmpeg prebuilt) | `ps2xRuntime/CMakeLists.txt` | as bundled | BSD-3-Clause | Contributors to the OpenEXR Project | no (the developer `dist/` only; not in the release closure) |
 | FreeType (via the FFmpeg prebuilt) | `ps2xRuntime/CMakeLists.txt` | as bundled | FTL OR GPL-2.0-only | The FreeType Project (David Turner, Robert Wilhelm, Werner Lemberg) | no (developer `dist/` only) |
 | HarfBuzz (via the FFmpeg prebuilt) | `ps2xRuntime/CMakeLists.txt` | as bundled | MIT | 2010-2024 Google, Inc. and the HarfBuzz contributors | no (developer `dist/` only) |
@@ -44,7 +43,6 @@ is in this repository or in the download**; the player supplies their own disc.
 | rabbitizer | `ps2xRecomp/CMakeLists.txt` | 1.14.3 | MIT | 2022 Decompollaborate | no (build tool) |
 | nlohmann/json | `ps2xAnalyzer/CMakeLists.txt` | as fetched | MIT | 2013-2022 Niels Lohmann | no (build tool) |
 | sse2neon | `third_party/ps2recomp/CMakeLists.txt` | v1.9.1 | MIT | DLTcollab and contributors | no (ARM builds only) |
-| imgui_club, ImGuiColorTextEdit, ImGuiFileDialog | `ps2xStudio/CMakeLists.txt` | as fetched | MIT | Omar Cornut; 2017 BalazsJako; 2018-2025 Stephane Cuillerdier | no (ps2xStudio, not built here) |
 
 ## The toolchain's runtime, copied beside the executables
 

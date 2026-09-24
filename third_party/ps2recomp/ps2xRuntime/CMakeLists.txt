@@ -660,23 +660,10 @@ if(PS2X_IS_VITA)
     set(VITA_MKSFOEX_FLAGS "${VITA_MKSFOEX_FLAGS} -d ATTRIBUTE2=12")
 
     if(PS2X_VITA_CREATE_PACKAGE AND PS2X_BUILD_RUNNER)
+        # Sprint 11 Task 17 (R247): the five prebuilt PowerVR/GL .suprx modules were vendored here (3.4 MB of
+        # binaries nobody in this project builds or ships) and are deleted. A vpk built here bundles no modules;
+        # it relies on ur0:data/external/ for them, as it already did whenever a module was missing.
         set(PS2X_VITA_VPK_FILES "")
-
-        foreach(PS2X_VITA_MODULE IN ITEMS
-            libgpu_es4_ext.suprx
-            libIMGEGL.suprx
-            libGLESv2.suprx
-            libpvrPSP2_WSEGL.suprx
-            libGL.suprx)
-            set(PS2X_VITA_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/vita/module/${PS2X_VITA_MODULE}")
-
-            if(EXISTS "${PS2X_VITA_MODULE_PATH}")
-                list(APPEND PS2X_VITA_VPK_FILES FILE "${PS2X_VITA_MODULE_PATH}" "module/${PS2X_VITA_MODULE}")
-            else()
-                message(WARNING
-                    "Missing ${PS2X_VITA_MODULE_PATH}; the vpk will rely on ur0:data/external/ for it")
-            endif()
-        endforeach()
 
         vita_create_self(eboot.bin ps2EntryRunner UNSAFE)
         vita_create_vpk(ps2EntryRunner.vpk ${PS2X_VITA_TITLEID} eboot.bin

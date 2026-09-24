@@ -32,7 +32,8 @@ if(PS2X_IOP_ENABLE_PLUGINS AND (WIN32 OR (UNIX AND NOT APPLE)))
     endforeach()
 endif()
 
-# Static library with test logic (no main), used by ps2xStudio
+# Static library with test logic (no main). Upstream's workbench was its only consumer and that tree is gone
+# (Sprint 11 Task 17, R247); the object library stays because ps2x_tests links its objects (below).
 add_library(ps2_test_function_table OBJECT
     src/test_function_table.cpp
 )
