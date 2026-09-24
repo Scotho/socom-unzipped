@@ -31,6 +31,11 @@ neither; the file is `tools_py/name_provenance.py`'s). Every carried name gets a
 `Mangled`, `Score`, `Source` and `Date`, `Pass=carried:<A pass>` and `Evidence=match.json <how> from
 0x<A addr>; <A evidence>`. A carried name with no A row of that address and name is a defect (R261): it is
 printed, no B row is written for it, and the exit is 1.
+
+**The sidecar's renames travel too** (S12-R13: a display name lives in the sidecar, and the csv's Name is not
+rewritten). An A sidecar row on a placeholder A csv name (match.json's `name` is the A csv name) gets a B row
+the same way, when match.json places it on a B row still auto-named and no other A rename lands there; the B
+csv keeps its placeholder. Counted apart: `carried (sidecar renames) N, refused (sidecar renames) K`.
 """
 import argparse
 import csv
@@ -103,6 +108,38 @@ def carry_names_sidecar(carried: List[Carried], a_names: Dict[int, dict]) -> Tup
     return out, missing
 
 
+def carry_sidecar_renames(matches: Dict[str, dict], rows: List[dict],
+                          a_names: Dict[int, dict]) -> Tuple[List[dict], int]:
+    """S12-R13: the B sidecar rows for the A sidecar's renames, and how many were refused.
+
+    A rename is an A sidecar row whose A csv Name is a placeholder (match.json's `name` for that address is the
+    A csv name). It travels when match.json places its address on a B row whose (already carried) Name is still
+    a placeholder and no other A rename lands there; both of two renames on one B address are refused. The B
+    csv is not rewritten for these: a display name lives in the sidecar only."""
+    b_names = {int(r["Start"], 16): r["Name"] for r in rows}
+    want: Dict[int, List[Tuple[int, str]]] = {}
+    refused = 0
+    for a, src in sorted(a_names.items()):
+        m = matches.get("0x%08x" % a)
+        if m is None or not name_provenance.is_placeholder(m.get("name") or ""):
+            continue                                     # not placed, or not a rename: the Name carry's job
+        b = m.get("b")
+        if not b:
+            continue                                     # unresolved: stays A-only
+        want.setdefault(int(b, 16), []).append((a, m.get("how") or ""))
+    out = []
+    for b, srcs in sorted(want.items()):
+        if len(srcs) > 1 or b not in b_names or not name_provenance.is_placeholder(b_names[b]):
+            refused += len(srcs)
+            continue
+        a, how = srcs[0]
+        src = a_names[a]
+        out.append({"Address": b, "Name": src["Name"], "Mangled": src["Mangled"], "Pass": "carried:" + src["Pass"],
+                    "Score": src["Score"], "Evidence": "match.json %s from 0x%08x; %s" % (how, a, src["Evidence"]),
+                    "Source": src["Source"], "Date": src["Date"]})
+    return out, refused
+
+
 def write_csv(path: str, rows: List[dict]) -> None:
     """The exact shape ExportPS2Functions.java writes, which fix_ghidra_csv.py and ps2_recomp read."""
     with open(path, "w", newline="", encoding="utf-8") as fh:
@@ -140,10 +177,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     if a_names is None:
         return 0
     b_rows, missing = carry_names_sidecar(carried, a_names)
-    name_provenance.write(args.names_out, b_rows)
+    renamed, refused = carry_sidecar_renames(doc.get("matches", {}), rows, a_names)
+    name_provenance.write(args.names_out, b_rows + renamed)
     for line in missing:
         print("NO-PROVENANCE:", line)
-    print("names sidecar: %d rows, %d carried names without an A row" % (len(b_rows), len(missing)))
+    print("carried (sidecar renames) %d, refused (sidecar renames) %d (B address named or shared)"
+          % (len(renamed), refused))
+    print("names sidecar: %d rows, %d carried names without an A row" % (len(b_rows) + len(renamed), len(missing)))
     print("wrote", args.names_out)
     return 1 if missing else 0
 

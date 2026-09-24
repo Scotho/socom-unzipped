@@ -33,6 +33,7 @@ ip-address  third_party/ps2recomp/ps2xAnalyzer/include/ps2recomp/sce_symbol_data
 
 # -- upstream ps2recomp data (12 MB of symbol names, a Sprint 11 Goal 1 baggage row); not ours and not secret
 opaque-secret  third_party/ps2recomp/ps2xAnalyzer/include/ps2recomp/sce_symbol_database_data.h   # upstream ps2recomp's symbol names
+opaque-secret  recomp/socom2_names*.csv   # the names sidecar's Mangled column: Metrowerks-mangled C++ names (template argument lists, the @unnamed@ anonymous-namespace marker) read as opaque tokens; names from the demo's .symtab, not secrets (S12-R7, research/48)
 
 # -- test fixtures and examples: the canonical joke password, the recompiler's long-name test, a fixed test token
 secret-assignment  *  hunter2                          # the password every test uses; never a real one

@@ -190,6 +190,58 @@ class SidecarCarry(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(cn.main([mj, raw, out, "--names", a_side, "--names-out", b_side]), 1)
 
+    def _paths(self):
+        return tuple(os.path.join(self.dir, x) for x in ("m.json", "raw.csv", "out.csv", "a.csv", "b.csv"))
+
+    @staticmethod
+    def _rename(addr, name, mangled):
+        return {"Address": addr, "Name": name, "Mangled": mangled, "Pass": "string-set&callgraph", "Score": "0.80",
+                "Evidence": "string-set: strings=3", "Source": "demo_symbol_renames_strings.csv; research/53",
+                "Date": "2026-09-24"}
+
+    def test_a_sidecar_rename_on_a_placeholder_reaches_the_b_sidecar_and_not_the_b_csv(self):
+        """S12-R13: the display name travels in the sidecar; the B csv keeps its placeholder."""
+        mj, raw, out, a_side, b_side = self._paths()
+        doc = report({0x200000: ("FUN_00200000", 0x300000)})
+        doc["matches"]["0x00200000"]["how"] = "relinked-body"
+        with open(mj, "w", encoding="utf-8") as fh:
+            json.dump(doc, fh)
+        cn.write_csv(raw, rows([("FUN_00300000", 0x300000, 0x300100)]))
+        npv.write(a_side, [self._rename(0x200000, "CPlayer_Update", "Update__7CPlayerFv")])
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.assertEqual(cn.main([mj, raw, out, "--names", a_side, "--names-out", b_side]), 0)
+        self.assertIn("carried (sidecar renames) 1", buf.getvalue())
+        got = npv.read(b_side)
+        self.assertEqual(got[0x300000], {
+            "Address": 0x300000, "Name": "CPlayer_Update", "Mangled": "Update__7CPlayerFv",
+            "Pass": "carried:string-set&callgraph", "Score": "0.80",
+            "Evidence": "match.json relinked-body from 0x00200000; string-set: strings=3",
+            "Source": "demo_symbol_renames_strings.csv; research/53", "Date": "2026-09-24"})
+        with open(out, newline="", encoding="utf-8") as fh:
+            b_rows = list(csv.DictReader(fh))
+        self.assertEqual([r["Name"] for r in b_rows], ["FUN_00300000"])
+        self.assertEqual(npv.audit(b_rows, got), [])
+
+    def test_a_rename_onto_a_named_or_shared_b_address_is_refused_and_counted(self):
+        mj, raw, out, a_side, b_side = self._paths()
+        doc = {"matches": {
+            "0x00200000": {"name": "FUN_00200000", "b": "0x00300000", "how": "exact"},   # two A renames, one B
+            "0x00200100": {"name": "FUN_00200100", "b": "0x00300000", "how": "seed+delta"},
+            "0x00200200": {"name": "FUN_00200200", "b": "0x00300200", "how": "exact"},   # B named by B's export
+            "0x00200300": {"name": "FUN_00200300", "b": "0x00300300", "how": "exact"}}}
+        with open(mj, "w", encoding="utf-8") as fh:
+            json.dump(doc, fh)
+        cn.write_csv(raw, rows([("FUN_00300000", 0x300000, 0x300100), ("SetGsCrt", 0x300200, 0x300210),
+                                ("FUN_00300300", 0x300300, 0x300400)]))
+        npv.write(a_side, [self._rename(0x200000, "CA_X", "X__2CAFv"), self._rename(0x200100, "CB_Y", "Y__2CBFv"),
+                           self._rename(0x200200, "CC_Z", "Z__2CCFv"), self._rename(0x200300, "CD_W", "W__2CDFv")])
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            cn.main([mj, raw, out, "--names", a_side, "--names-out", b_side])
+        self.assertEqual(list(npv.read(b_side)), [0x300300])
+        self.assertIn("carried (sidecar renames) 1, refused (sidecar renames) 3", buf.getvalue())
+
     def test_names_and_names_out_come_together(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             cn.main(["m.json", "raw.csv", "out.csv", "--names", "a.csv"])
