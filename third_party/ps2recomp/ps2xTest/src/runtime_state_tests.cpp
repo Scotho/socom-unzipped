@@ -62,6 +62,22 @@ namespace
         return it != state.pendingPolls.end() && it->second > 0;
     }
 
+    uint32_t registerGuestFile(PS2Runtime &runtime, FILE *file)
+    {
+        ps2_stubs::LibCRuntimeState &state = runtime.libcRuntimeState();
+        std::lock_guard<std::mutex> lock(state.mutex);
+        const uint32_t handle = state.allocateHandleLocked();
+        state.openFiles[handle] = file;
+        return handle;
+    }
+
+    bool guestFileOpen(PS2Runtime &runtime, uint32_t handle)
+    {
+        ps2_stubs::LibCRuntimeState &state = runtime.libcRuntimeState();
+        std::lock_guard<std::mutex> lock(state.mutex);
+        return state.openFiles.count(handle) != 0;
+    }
+
     uint32_t stubWarningsFor(PS2Runtime &runtime, const char *name)
     {
         ps2_stubs::StubLogRuntimeState &state = runtime.stubLogRuntimeState();
@@ -184,38 +200,65 @@ void register_runtime_state_tests()
                      "including its own field mode");
         });
 
-        tc.Run("Stubs/LibC.cpp's fclose closes the handle this TU opened", [](TestCase &t)
+        tc.Run("Stubs/LibC.cpp's fclose closes the handle in the runtime it was handed", [](TestCase &t)
         {
-            FILE *fp = std::tmpfile();
-            t.IsTrue(fp != nullptr, "the host should give this test a temporary FILE to hand over");
-            if (!fp)
+            FILE *first_fp = std::tmpfile();
+            FILE *second_fp = std::tmpfile();
+            t.IsTrue(first_fp != nullptr && second_fp != nullptr,
+                     "the host should give this test two temporary FILEs to hand over");
+            if (!first_fp || !second_fp)
                 return;
 
-            ps2_stubs::LibCRuntimeState &files = ps2_stubs::libcRuntimeStateFor(nullptr);
-            uint32_t handle = 0;
-            {
-                std::lock_guard<std::mutex> lock(files.mutex);
-                handle = files.allocateHandleLocked();
-                files.openFiles[handle] = fp;
-            }
+            PS2Runtime first;
+            PS2Runtime second;
+            // Both runtimes hand out handle 1, for two different host files. That is the whole
+            // point: one shared table could not.
+            const uint32_t firstHandle = registerGuestFile(first, first_fp);
+            const uint32_t secondHandle = registerGuestFile(second, second_fp);
+            t.Equals(firstHandle, secondHandle,
+                     "each runtime numbers its own guest files from 1");
 
             R5900Context ctx{};
-            setRegU32(ctx, 4, handle);
-            ps2_stubs::fclose(nullptr, &ctx, nullptr);
-            const int32_t ret = static_cast<int32_t>(getRegU32(&ctx, 2));
+            setRegU32(ctx, 4, firstHandle);
+            ps2_stubs::fclose(nullptr, &ctx, &first);
 
-            bool stillOpen = false;
-            {
-                std::lock_guard<std::mutex> lock(files.mutex);
-                auto it = files.openFiles.find(handle);
-                stillOpen = (it != files.openFiles.end());
-                files.openFiles.erase(handle);
-            }
+            t.Equals(static_cast<int32_t>(getRegU32(&ctx, 2)), 0,
+                     "fclose should have found the handle registered with THIS runtime; EOF means "
+                     "Stubs/LibC.cpp searched process-wide state instead (docs/KNOWN.md #4)");
+            t.IsFalse(guestFileOpen(first, firstHandle),
+                      "fclose should have erased the handle from that runtime's table");
+            t.IsTrue(guestFileOpen(second, secondHandle),
+                     "and it must not touch a second runtime's file of the same handle number");
+        });
 
-            t.Equals(ret, 0,
-                     "fclose should have found the handle this TU registered");
-            t.IsFalse(stillOpen,
-                      "fclose should have erased the handle from the table this TU reads");
+        tc.Run("Stubs/LibC.cpp's rand keeps its cursor in the runtime it was handed", [](TestCase &t)
+        {
+            PS2Runtime first;
+            PS2Runtime second;
+
+            // With no registered guest _impure_ptr the pair runs off the runtime's own fallback
+            // cursor, so two runtimes seeded the same way must produce the same first number and
+            // then diverge only because each advanced its own.
+            R5900Context ctx{};
+            setRegU32(ctx, 4, 12345u);
+            ps2_stubs::srand(nullptr, &ctx, &first);
+            ps2_stubs::rand(nullptr, &ctx, &first);
+            const uint32_t firstDraw = getRegU32(&ctx, 2);
+
+            setRegU32(ctx, 4, 12345u);
+            ps2_stubs::srand(nullptr, &ctx, &second);
+            ps2_stubs::rand(nullptr, &ctx, &second);
+            const uint32_t secondDraw = getRegU32(&ctx, 2);
+
+            t.Equals(secondDraw, firstDraw,
+                     "the same seed in a fresh runtime should give the same first draw");
+
+            ps2_stubs::rand(nullptr, &ctx, &first);
+            const uint32_t firstSecondDraw = getRegU32(&ctx, 2);
+            ps2_stubs::rand(nullptr, &ctx, &second);
+            t.Equals(getRegU32(&ctx, 2), firstSecondDraw,
+                     "and each runtime should advance its OWN cursor; a differing second draw "
+                     "means Stubs/LibC.cpp shares one process-wide rand cursor");
         });
     });
 }
