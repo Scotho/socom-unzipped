@@ -8,9 +8,19 @@ Usage:
 Each overlay contributes one PT_LOAD (RWX) at its header load address; text
 and data come from the file, bss is memsz - filesz.  Overlays that overlap
 (DNAS vs zsealetc at 0x4c5380) cannot share one image: pass only one of them.
+
+Every executable segment goes through tools_py/overlay_repair.py on the way in: the
+r0004 overlay carries a foreign `jr $ra; nop` stub pair inside one function's epilogue,
+over the two `lq` that restore $s0 and $s1 (see that module's header).  Pass
+--no-repair to write the segments exactly as they were decrypted.
 """
 import struct
 import sys
+
+try:
+    from tools_py import overlay_repair
+except ImportError:                                     # run as a script from tools_py/
+    import overlay_repair
 
 
 def mwo3_info(d):
@@ -32,7 +42,7 @@ def elf_segments(d):
     return e_entry, segs
 
 
-def build(out, elf_path, overlay_paths, loader_text_end=None):
+def build(out, elf_path, overlay_paths, loader_text_end=None, repair=True):
     """Segments get accurate flags so recompilers do not treat data as code:
     loader: [vaddr, loader_text_end) R-X, rest RW-;  overlay: header+text R-X, data+bss RW-."""
     elf = open(elf_path, 'rb').read()
@@ -53,6 +63,15 @@ def build(out, elf_path, overlay_paths, loader_text_end=None):
         loads.append((info['load'], d, info['memsz'], 7, info['name']))
         print(f"{p}: {info['name']} @ {info['load']:#x} text {info['text']:#x} data {info['data']:#x} bss {info['bss']:#x}")
     loads.sort(key=lambda x: x[0])
+    if repair:
+        repaired_loads = []
+        for va, data, memsz, flags, name in loads:
+            if flags & 1:                                # executable: a stub write can hide in it
+                data, repairs = overlay_repair.apply_repairs(data, va)
+                for r in repairs:
+                    print(f"repair {name}: {r.describe()}")
+            repaired_loads.append((va, data, memsz, flags, name))
+        loads = repaired_loads
     for (a, d1, m1, f1, n1), (b, d2, m2, f2, n2) in zip(loads, loads[1:]):
         if a + m1 > b:
             raise SystemExit(f"overlapping images {n1} and {n2}")
@@ -79,6 +98,13 @@ def build(out, elf_path, overlay_paths, loader_text_end=None):
 if __name__ == '__main__':
     args = sys.argv[1:]
     lte = None
-    if args and args[0].startswith('--loader-text-end='):
-        lte = int(args.pop(0).split('=')[1], 16)
-    build(args[0], args[1], args[2:], lte)
+    repair = True
+    while args and args[0].startswith('--'):
+        if args[0].startswith('--loader-text-end='):
+            lte = int(args.pop(0).split('=')[1], 16)
+        elif args[0] == '--no-repair':
+            args.pop(0)
+            repair = False
+        else:
+            raise SystemExit(f"unknown option {args[0]}")
+    build(args[0], args[1], args[2:], lte, repair)

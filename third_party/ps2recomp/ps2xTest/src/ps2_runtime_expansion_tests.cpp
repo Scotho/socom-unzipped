@@ -178,6 +178,62 @@ namespace
         gGuestJumpTargetCount.fetch_add(1u, std::memory_order_relaxed);
     }
 
+    // A map row that ends before the function's own `jr $ra` leaves through the dispatcher: the
+    // truncated body sets ctx->pc to the continuation, dispatchGuestBranch sees a pc that is
+    // neither entry nor fallthrough, every host frame unwinds, and the EE scheduler resumes at
+    // that pc. Task 19 suspected that path of losing the caller's callee-saved registers (the
+    // Add2dNode shape at ps2_runtime.cpp:1480-1490). It does not: the guest register file lives in
+    // the context the scheduler keeps, a resume entry is registered to its owner and jumps to a
+    // label instead of re-running a prologue, and nothing on the way back touches $s1. The 44
+    // jal-called split rows in the r0004 map ride on that, so it is pinned here.
+    constexpr uint32_t kSplitCallerPc = 0x00126000u;
+    constexpr uint32_t kSplitCallerResumePc = 0x00126010u;
+    constexpr uint32_t kSplitCalleeRowPc = 0x00126100u;
+    constexpr uint32_t kSplitContinuationPc = 0x00126200u;
+    constexpr uint32_t kSplitCallerS1 = 0xC0FFEE01u;
+    constexpr uint32_t kSplitCalleeS1 = 0x0BADBAD0u;
+
+    std::atomic<uint32_t> gSplitObservedS1{0u};
+    std::atomic<uint32_t> gSplitCalleeSavedS1{0u};
+    std::atomic<bool> gSplitCallerReturnedNormally{false};
+
+    void testSplitRowCallerHandler(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        if (ctx->pc == kSplitCallerResumePc)
+        {
+            // The resume entry: what the generated `switch (ctx->pc)` jumps to.
+            gSplitObservedS1.store(::getRegU32(ctx, 17), std::memory_order_relaxed);
+            ctx->pc = 0u;
+            return;
+        }
+
+        setRegU32(*ctx, 17, kSplitCallerS1);            // the value that must survive the call
+        setRegU32(*ctx, 31, kSplitCallerResumePc);      // $ra, as the generated jal sets it
+        if (!runtime->dispatchGuestBranch(rdram, ctx, kSplitCalleeRowPc, kSplitCallerPc + 8u,
+                                          kSplitCallerResumePc,
+                                          PS2Runtime::GuestBranchKind::DirectCall, "split-jal"))
+        {
+            return;                                     // unwound; the scheduler resumes at ctx->pc
+        }
+        gSplitCallerReturnedNormally.store(true, std::memory_order_relaxed);
+        ctx->pc = 0u;
+    }
+
+    void testSplitRowCalleeHandler(uint8_t *, R5900Context *ctx, PS2Runtime *)
+    {
+        // The truncated row: it saves $s1, uses it, and runs out of body before the epilogue.
+        gSplitCalleeSavedS1.store(::getRegU32(ctx, 17), std::memory_order_relaxed);
+        setRegU32(*ctx, 17, kSplitCalleeS1);
+        ctx->pc = kSplitContinuationPc;
+    }
+
+    void testSplitRowContinuationHandler(uint8_t *, R5900Context *ctx, PS2Runtime *)
+    {
+        // The next row, which holds the rest of the same function: it restores $s1 and returns.
+        setRegU32(*ctx, 17, gSplitCalleeSavedS1.load(std::memory_order_relaxed));
+        ctx->pc = ::getRegU32(ctx, 31);
+    }
+
     std::atomic<uint32_t> gMpegStreamCallbackCount{0u};
     std::atomic<uint32_t> gMpegStreamCallbackMpeg{0u};
     std::atomic<uint32_t> gMpegStreamCallbackType{0u};
@@ -714,6 +770,35 @@ void register_ps2_runtime_expansion_tests()
                       "call-like dispatch should stop caller flow when callee transfers elsewhere");
             t.Equals(ctx.pc, 0x33330000u,
                      "callee transfer PC should be preserved");
+        });
+
+        tc.Run("a split row's scheduler resume keeps the caller's callee-saved registers", [](TestCase &t)
+        {
+            PS2Runtime runtime;
+            runtime.registerFunction(kSplitCallerPc, &testSplitRowCallerHandler);
+            runtime.registerFunction(kSplitCallerResumePc, &testSplitRowCallerHandler);  // resume entry, same owner
+            runtime.registerFunction(kSplitCalleeRowPc, &testSplitRowCalleeHandler);
+            runtime.registerFunction(kSplitContinuationPc, &testSplitRowContinuationHandler);
+            gSplitObservedS1.store(0u, std::memory_order_relaxed);
+            gSplitCalleeSavedS1.store(0u, std::memory_order_relaxed);
+            gSplitCallerReturnedNormally.store(false, std::memory_order_relaxed);
+
+            // What EeScheduler::run does with the pc every unwind leaves behind.
+            R5900Context ctx{};
+            ctx.pc = kSplitCallerPc;
+            uint32_t steps = 0u;
+            while (ctx.pc != 0u && steps++ < 8u)
+            {
+                runtime.lookupFunction(ctx.pc)(nullptr, &ctx, &runtime);
+            }
+
+            t.IsFalse(gSplitCallerReturnedNormally.load(std::memory_order_relaxed),
+                      "a callee that leaves through its continuation must not look like a return");
+            t.Equals(gSplitCalleeSavedS1.load(std::memory_order_relaxed), kSplitCallerS1,
+                     "the callee should see the caller's $s1 on entry");
+            t.Equals(gSplitObservedS1.load(std::memory_order_relaxed), kSplitCallerS1,
+                     "the caller resumed from the scheduler must still hold its own $s1");
+            t.IsTrue(steps <= 4u, "caller, split row, continuation, resume -- four dispatches");
         });
 
         tc.Run("dispatchGuestBranch rejects missing exact targets", [](TestCase &t)
