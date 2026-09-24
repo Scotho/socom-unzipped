@@ -115,6 +115,19 @@ namespace launcher::bugreport
     // The line that follows a report that could not be sent and was written to `path` instead.
     std::string savedLocallyLine(const std::string &path);
 
+    // Sprint 11 Goal 7, the bug pipeline's GitHub half. The inbox is private and every word in it is
+    // untrusted, so nothing crosses from a report to the public issue tracker by itself: the whole bridge is
+    // this one sentence, shown under SEND after a report is received, inviting the person who filed it to
+    // open the issue themselves and quote the reference. (The site's own form is asked to say the same
+    // thing -- that request belongs to the site session, sites/s2u; this is the launcher's half.)
+    constexpr const char *kGithubIssueLine =
+        "Contributors can also open an issue at github.com/Scotho/socom-unzipped and quote this id.";
+    // kGithubIssueLine for a reply's reference, "" when there is none: a rate-limited, refused or undelivered
+    // SEND has no reference, and neither has a report the service received under an id that is not one of
+    // ours (parseReply leaves `id` empty there). With no reference on the screen there is nothing to quote,
+    // and the invitation would cost a stranger a wasted trip.
+    std::string githubLine(const std::string &referenceId);
+
     // GET /api/stats -> "SOCOM Unzipped: online, 3 players, 1 game" | "SOCOM Unzipped: offline" | "" on junk
     // (stats.ts parseStats's rules: online only when status == "online" and players is an object).
     std::string statusLine(const std::string &statsJson);

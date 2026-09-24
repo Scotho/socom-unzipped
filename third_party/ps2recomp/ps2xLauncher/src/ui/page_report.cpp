@@ -100,6 +100,12 @@ namespace ui
                                                           (rep.copied ? " -- copied to the clipboard." : ".");
             text(ctx, ellipsizeEnd(ctx, under, app.frame.body.right() - send.x, metrics::captionSize).c_str(),
                  Vec2{send.x, send.bottom() + 12.0f}, metrics::captionSize, theme::lampGreen);
+            // Sprint 11 Goal 7: the second line, only once there is a reference to quote (br::githubLine).
+            // It is an invitation, not a transfer -- the report itself stays in the private inbox, and this
+            // page still sends nothing on its own.
+            if (const std::string github = br::githubLine(rep.id); !github.empty())
+                text(ctx, ellipsizeEnd(ctx, github, app.frame.body.right() - send.x, metrics::captionSize).c_str(),
+                     Vec2{send.x, send.bottom() + 32.0f}, metrics::captionSize, theme::caption);
             break;
         }
         case ReportUi::State::FieldError:
