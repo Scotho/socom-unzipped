@@ -101,14 +101,88 @@ namespace ps2recomp
             result.externalEntryPoints.insert(target);
         };
 
-        auto queueResumeEntryTarget = [&](uint32_t resumeAddr)
+        // Is this address inside any row of the map at all -- stubs, skipped rows and entry_
+        // slices included? Used only to decide whether a continuation is worth warning about.
+        auto isCoveredByAnyFunction = [&](uint32_t address) -> bool
         {
-            if (resumeAddr >= function.start && resumeAddr < function.end &&
-                instructionAddresses.contains(resumeAddr))
+            if (!allFunctions)
             {
-                result.entryPoints.insert(resumeAddr);
-                result.resumeEntryPoints.insert(resumeAddr);
+                // No map to judge against (unit fixtures): say nothing.
+                return true;
             }
+
+            for (const auto &candidateFn : *allFunctions)
+            {
+                if (address >= candidateFn.start && address < candidateFn.end)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        // Where a thread resumes: a call's return pc, a syscall's return pc, a not-taken branch's
+        // fallthrough, a loop's back edge. The scheduler dispatches on that pc, so some recompiled
+        // function has to own it.
+        //
+        // Ghidra's map sometimes starts the next row ON a delay slot (FUN_00544550 begins at the
+        // delay slot of the jal at 0x54454c), which puts the continuation one instruction inside
+        // the *next* row. Registering it only when it falls in the producing row -- what this did
+        // before -- left those pcs owned by nobody and the thread died at
+        // [guest-branch:missing-target]. Register it wherever it lands, the way an external branch
+        // target is resolved, and say so at build time when it lands in no row at all.
+        enum class ContinuationScope
+        {
+            AnyRow,      // the producing row may own it (a resume entry of this function)
+            CrossRowOnly // only another row may own it
+        };
+
+        auto queueContinuationTarget = [&](uint32_t continuationPc,
+                                           uint32_t sourcePc,
+                                           const char *kind,
+                                           ContinuationScope scope)
+        {
+            if (continuationPc >= function.start && continuationPc < function.end &&
+                instructionAddresses.contains(continuationPc))
+            {
+                if (scope == ContinuationScope::AnyRow)
+                {
+                    result.entryPoints.insert(continuationPc);
+                    result.resumeEntryPoints.insert(continuationPc);
+                }
+
+                // A continuation inside the producing row needs nothing when the row itself is
+                // what runs it: the generated function simply carries on at that instruction.
+                return;
+            }
+
+            if (const Function *containingFn = findContainingExternalFunction(continuationPc))
+            {
+                if (containingFn->start != function.start && continuationPc != containingFn->start)
+                {
+                    // Owned by another row: that row registers it, exactly as it does for a
+                    // cross-function branch target.
+                    result.externalEntryPoints.insert(continuationPc);
+                }
+
+                return;
+            }
+
+            if (isCoveredByAnyFunction(continuationPc))
+            {
+                return;
+            }
+
+            if (m_reporter)
+            {
+                m_reporter->recordUnmappedContinuation(function.name, sourcePc, continuationPc, kind);
+            }
+        };
+
+        auto queueResumeEntryTarget = [&](uint32_t resumeAddr, uint32_t sourcePc, const char *kind)
+        {
+            queueContinuationTarget(resumeAddr, sourcePc, kind, ContinuationScope::AnyRow);
         };
 
         auto queueLoopResumeEntryTarget = [&](uint32_t target, uint32_t sourcePc)
@@ -118,7 +192,13 @@ namespace ps2recomp
                 return;
             }
 
-            queueResumeEntryTarget(target);
+            queueResumeEntryTarget(target, sourcePc, "loop back edge");
+        };
+
+        // `b`/`bl` are assembled as beq/beql over two equal registers: nothing reaches their +8.
+        auto branchAlwaysTaken = [](const Instruction &inst) -> bool
+        {
+            return (inst.opcode == OPCODE_BEQ || inst.opcode == OPCODE_BEQL) && inst.rs == inst.rt;
         };
 
         for (const auto &inst : instructions)
@@ -140,7 +220,7 @@ namespace ps2recomp
             // entry point there. +4, not +8: syscall has no delay slot.
             if (inst.opcode == OPCODE_SPECIAL && inst.function == SPECIAL_SYSCALL)
             {
-                queueResumeEntryTarget(inst.address + 4u);
+                queueResumeEntryTarget(inst.address + 4u, inst.address, "syscall return");
             }
 
             bool isStaticJump = (inst.opcode == OPCODE_J || inst.opcode == OPCODE_JAL);
@@ -160,6 +240,14 @@ namespace ps2recomp
                 {
                     queueExternalEntryTarget(target);
                 }
+
+                // The not-taken path continues at +8. Only another row can need that registered:
+                // inside this row the generated code falls through to it on its own.
+                if (!branchAlwaysTaken(inst))
+                {
+                    queueContinuationTarget(inst.address + 8u, inst.address, "branch fallthrough",
+                                            ContinuationScope::CrossRowOnly);
+                }
             }
             else if (isStaticJump)
             {
@@ -172,7 +260,7 @@ namespace ps2recomp
 
                     if (inst.opcode == OPCODE_JAL)
                     {
-                        queueResumeEntryTarget(inst.address + 8u);
+                        queueResumeEntryTarget(inst.address + 8u, inst.address, "call return");
                     }
                 }
                 else
@@ -181,7 +269,7 @@ namespace ps2recomp
 
                     if (inst.opcode == OPCODE_JAL)
                     {
-                        queueResumeEntryTarget(inst.address + 8u);
+                        queueResumeEntryTarget(inst.address + 8u, inst.address, "call return");
                     }
                 }
             }
@@ -194,7 +282,7 @@ namespace ps2recomp
             {
                 if (jrInst->function == SPECIAL_JALR)
                 {
-                    queueResumeEntryTarget(jrInst->address + 8u);
+                    queueResumeEntryTarget(jrInst->address + 8u, jrInst->address, "call return");
                 }
 
                 bool foundTable = false;

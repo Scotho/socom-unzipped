@@ -2,6 +2,7 @@
 #include "ps2recomp/code_generator.h"
 #include "ps2recomp/instructions.h"
 #include "ps2recomp/ps2_recompiler.h"
+#include "ps2recomp/recompiler_reporter.h"
 #include "ps2recomp/types.h"
 #include <filesystem>
 #include <fstream>
@@ -141,6 +142,23 @@ static Instruction makeJr(uint32_t address, uint8_t rs)
     inst.rs = rs;
     inst.hasDelaySlot = true;
     inst.raw = (OPCODE_SPECIAL << 26) | (rs << 21) | SPECIAL_JR;
+    return inst;
+}
+
+// makeBranch() is `beq $1,$1` -- always taken, so nothing reaches its +8. This is the ordinary
+// conditional shape, whose not-taken path continues at address + 8.
+static Instruction makeConditionalBranch(uint32_t address, int16_t targetOffsetWords)
+{
+    Instruction inst{};
+    inst.address = address;
+    inst.opcode = OPCODE_BEQ;
+    inst.rs = 4;
+    inst.rt = 5;
+    inst.immediate = static_cast<uint16_t>(targetOffsetWords);
+    inst.simmediate = signExtend16(static_cast<uint16_t>(targetOffsetWords));
+    inst.isBranch = true;
+    inst.hasDelaySlot = true;
+    inst.raw = (OPCODE_BEQ << 26) | (4u << 21) | (5u << 16) | static_cast<uint16_t>(targetOffsetWords);
     return inst;
 }
 
@@ -480,6 +498,167 @@ void register_code_generator_tests()
 
         t.IsTrue(analysis.externalEntryPoints.contains(0x5004u),
                  "cross-function jump into the middle of a function should become an external entry candidate");
+    });
+
+    // Sprint 11 / task 19. Ghidra's map starts some rows ON a delay slot (FUN_00544550 is the
+    // delay slot of the jal at 0x54454c, FUN_00541d80 the delay slot of the beq at 0x541d7c), so
+    // the continuation is that row's start + 4 and belongs to nobody. The scheduler died on both:
+    // [guest-branch:missing-target] kind=DirectJump op=EE at 0x544554 and 0x541d84.
+    tc.Run("a call return that lands in the next row is registered as that row's entry", [](TestCase &t) {
+        Function rowA;                 // ends ON the jal: its delay slot starts row B
+        rowA.name = "row_a";
+        rowA.start = 0x1000;
+        rowA.end = 0x100C;
+        rowA.isRecompiled = true;
+        rowA.isStub = false;
+
+        Function rowB;
+        rowB.name = "row_b";
+        rowB.start = 0x100C;           // the delay slot of the call at 0x1008
+        rowB.end = 0x1030;
+        rowB.isRecompiled = true;
+        rowB.isStub = false;
+
+        std::vector<Instruction> rowAInstructions{makeNop(0x1000), makeNop(0x1004), makeJal(0x1008, 0x2000)};
+        std::vector<Function> functions{rowA, rowB};
+        std::vector<Section> sections = {
+            {".text", 0x1000u, 0x2000u, 0u, true, false, false, true, nullptr}
+        };
+
+        CodeGenerator gen({}, sections);
+        CodeGenerator::AnalysisResult analysis =
+            gen.collectInternalBranchTargets(rowA, rowAInstructions, &functions);
+
+        t.IsTrue(analysis.externalEntryPoints.contains(0x1010u),
+                 "a call return one instruction inside the next row should become that row's entry");
+        t.IsFalse(analysis.resumeEntryPoints.contains(0x1010u),
+                  "the producing row cannot own a pc it does not contain");
+    });
+
+    tc.Run("a branch fallthrough that lands in the next row is registered as that row's entry", [](TestCase &t) {
+        Function rowA;                 // ends ON the branch: its delay slot starts row B
+        rowA.name = "row_a";
+        rowA.start = 0x3000;
+        rowA.end = 0x300C;
+        rowA.isRecompiled = true;
+        rowA.isStub = false;
+
+        Function rowB;
+        rowB.name = "row_b";
+        rowB.start = 0x300C;
+        rowB.end = 0x3030;
+        rowB.isRecompiled = true;
+        rowB.isStub = false;
+
+        std::vector<Instruction> rowAInstructions{
+            makeNop(0x3000), makeNop(0x3004), makeConditionalBranch(0x3008, 0x40)};
+        std::vector<Function> functions{rowA, rowB};
+        std::vector<Section> sections = {
+            {".text", 0x3000u, 0x2000u, 0u, true, false, false, true, nullptr}
+        };
+
+        CodeGenerator gen({}, sections);
+        CodeGenerator::AnalysisResult analysis =
+            gen.collectInternalBranchTargets(rowA, rowAInstructions, &functions);
+
+        t.IsTrue(analysis.externalEntryPoints.contains(0x3010u),
+                 "the not-taken path leaving the row should become the next row's entry");
+    });
+
+    tc.Run("a continuation that is already a row start needs no entry", [](TestCase &t) {
+        Function rowA;
+        rowA.name = "row_a";
+        rowA.start = 0x5000;
+        rowA.end = 0x5010;             // the delay slot is the row's own last instruction
+        rowA.isRecompiled = true;
+        rowA.isStub = false;
+
+        Function rowB;
+        rowB.name = "row_b";
+        rowB.start = 0x5010;
+        rowB.end = 0x5030;
+        rowB.isRecompiled = true;
+        rowB.isStub = false;
+
+        std::vector<Instruction> rowAInstructions{
+            makeNop(0x5000), makeNop(0x5004), makeJal(0x5008, 0x6000), makeNop(0x500C)};
+        std::vector<Function> functions{rowA, rowB};
+        std::vector<Section> sections = {
+            {".text", 0x5000u, 0x2000u, 0u, true, false, false, true, nullptr}
+        };
+
+        CodeGenerator gen({}, sections);
+        CodeGenerator::AnalysisResult analysis =
+            gen.collectInternalBranchTargets(rowA, rowAInstructions, &functions);
+
+        t.IsFalse(analysis.externalEntryPoints.contains(0x5010u),
+                  "a continuation that is a function start is already dispatchable");
+    });
+
+    tc.Run("an in-row call return stays a resume entry of its own row", [](TestCase &t) {
+        Function row;
+        row.name = "row";
+        row.start = 0x7000;
+        row.end = 0x7020;
+        row.isRecompiled = true;
+        row.isStub = false;
+
+        std::vector<Instruction> instructions{makeNop(0x7000), makeJal(0x7004, 0x8000),
+                                              makeNop(0x7008), makeNop(0x700C), makeNop(0x7010)};
+        std::vector<Function> functions{row};
+        std::vector<Section> sections = {
+            {".text", 0x7000u, 0x2000u, 0u, true, false, false, true, nullptr}
+        };
+
+        CodeGenerator gen({}, sections);
+        CodeGenerator::AnalysisResult analysis =
+            gen.collectInternalBranchTargets(row, instructions, &functions);
+
+        t.IsTrue(analysis.resumeEntryPoints.contains(0x700Cu),
+                 "a return inside the row is still the row's own resume entry");
+        t.IsFalse(analysis.externalEntryPoints.contains(0x700Cu),
+                  "a return inside the row is not another row's entry");
+    });
+
+    tc.Run("a continuation that lies in no row at all is a named build-time warning", [](TestCase &t) {
+        Function row;
+        row.name = "row_with_a_hole_after_it";
+        row.start = 0x9000;
+        row.end = 0x900C;              // nothing is mapped past the call's delay slot
+        row.isRecompiled = true;
+        row.isStub = false;
+
+        std::vector<Instruction> instructions{makeNop(0x9000), makeNop(0x9004), makeJal(0x9008, 0xA000)};
+        std::vector<Function> functions{row};
+        std::vector<Section> sections = {
+            {".text", 0x9000u, 0x2000u, 0u, true, false, false, true, nullptr}
+        };
+
+        RecompilerReporter reporter;
+        CodeGenerator gen({}, sections);
+        gen.setReporter(&reporter);
+        CodeGenerator::AnalysisResult analysis =
+            gen.collectInternalBranchTargets(row, instructions, &functions);
+
+        t.IsFalse(analysis.externalEntryPoints.contains(0x9010u),
+                  "there is no row to register an unmapped continuation against");
+        t.IsTrue(reporter.counters().unmappedContinuations == 1u,
+                 "an unmapped continuation should be counted once");
+
+        std::ostringstream summary;
+        reporter.printSummary(summary);
+        const std::string text = summary.str();
+        t.IsTrue(text.find("unmapped-continuation") != std::string::npos,
+                 "the build report should name the unmapped-continuation category");
+        t.IsTrue(text.find("0x9010") != std::string::npos,
+                 "the build report should name the continuation pc");
+        t.IsTrue(text.find("row_with_a_hole_after_it") != std::string::npos,
+                 "the build report should name the function that produces it");
+
+        // The analyzer runs once per entry-discovery pass; the same hole is reported once.
+        gen.collectInternalBranchTargets(row, instructions, &functions);
+        t.IsTrue(reporter.counters().unmappedContinuations == 1u,
+                 "repeated analysis passes should not repeat the warning");
     });
 
     tc.Run("control-flow analysis promotes JALR fallthrough as a resumable entry", [](TestCase &t) {
