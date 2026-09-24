@@ -164,6 +164,42 @@ class Plan(Fixture):
         self.assertEqual(npv.read(self.names)[0x200000]["Name"], "CPlayer_Update")
         self.assertNotIn("HELD 0x00200000", out)
 
+    def test_a_hold_un_applies_a_sidecar_row_and_nothing_else(self):
+        # S12-R24: a sidecar row whose (Address, Mangled) is a hold pair is removed, and printed
+        side = npv.read(self.names)
+        side[0x200000] = dict(GHIDRA_ROW, Address=0x200000, Name="start", Mangled="_start", Pass="toml-stub")
+        side[0x200100] = dict(GHIDRA_ROW, Address=0x200100, Name="CPlayer_Draw", Mangled="Draw__7CPlayerFv",
+                              Pass="exact")
+        npv.write(self.names, side.values())
+        self.put("holds.csv", "Address,Proposed,Reason,Source\n0x00200000,_start,D2 keeps entry,S12-R24\n")
+        code, out = self.run_cli(self.put("demo_symbol_renames.csv", TASK7.replace("0x00200000,FUN_00200000",
+                                                                                   "0x00200200,FUN_00200200")))
+        self.assertEqual(code, 0, out)
+        got = npv.read(self.names)
+        self.assertEqual(sorted(got), [0x1A3720, 0x200100, 0x200200])
+        self.assertEqual(got[0x200100], side[0x200100])
+        self.assertEqual(got[0x1A3720], side[0x1A3720])
+        self.assertIn("UN-APPLIED by hold 0x00200000: start (D2 keeps entry)", out)
+
+    def test_a_project_prefixed_alias_is_one_name_not_a_contradiction(self):
+        # S12-R24: equal after lower-casing and stripping `socom2_` -> the unprefixed spelling, both passes
+        toml = self.put("demo_symbol_renames_toml.csv",
+                        "# docs/research/57-recompiler-naming-pipeline.md\n"
+                        "Address,Current,Proposed,Mangled,How,Score,Evidence,Source,Key,Line,Duplicated\n"
+                        "0x00200200,FUN_00200200,socom2_RsaGenerateKeyPair,socom2_RsaGenerateKeyPair,toml-stub,0.90,"
+                        "recomp/socom2.toml line 25,research/57,general.stubs,25,1\n"
+                        "0x00200300,FUN_00200300,socom2_Other,socom2_Other,toml-stub,0.90,line 26,research/57,"
+                        "general.stubs,26,1\n")
+        loose = self.put("demo_symbol_renames_callgraph_loose.csv", CALLGRAPH_LOOSE_HEAD
+                         + callgraph_row(0x200200, "RSAGenerateKeyPair", 3, "0.75")
+                         + callgraph_row(0x200300, "Different", 3, "0.75"))
+        p = self.plan_of(toml, loose)
+        got = {d.address: d.status for d in p.decisions}
+        self.assertEqual(got, {0x200200: "applied", 0x200300: "contradiction"})
+        (row,) = p.rows
+        self.assertEqual((row["Name"], row["Mangled"], row["Pass"], row["Score"]),
+                         ("RSAGenerateKeyPair", "RSAGenerateKeyPair", "toml-stub&callgraph", "0.90"))
+
     def test_a_csv_named_address_is_refused(self):
         text = "Address,Current,Proposed,Mangled,Score,How,Size\n0x001a3720,SetGsCrt,Foo,Foo__4CBarFv,1.00,exact,96\n"
         p = self.plan_of(self.put("demo_symbol_renames.csv", text))

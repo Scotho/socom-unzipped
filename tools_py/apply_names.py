@@ -12,14 +12,18 @@ recompiler emits):
 Every proposals file a lever writes is read (`read_proposals`, tolerant of each lever's columns). Per address,
 every proposal is gathered and ONE outcome decided (`plan`), in this order:
 
+0. an existing sidecar row whose (Address, Mangled) is a holds-file (Address, Proposed) pair is REMOVED
+   and printed `UN-APPLIED by hold` (S12-R24: a hold can un-apply);
 1. not a csv start -> `refused: not a csv start`;
 2. a proposal whose (Address, Mangled) is a holds-file (Address, Proposed) pair -> `held` (printed with the
    hold's reason; S12-R9, S12-R17, S12-R20); another name at a held address is judged like any other (S12-R21);
 3. a csv `Name` that is not a placeholder -> `refused: csv already names it` (D2);
 4. already in the sidecar: the same `Mangled` -> `noop`; another -> `refused: sidecar disagrees` (a rename
    of a rename is a hand edit);
-5. proposals disagreeing on `Mangled` -> every one `contradiction`, printed with each file (S12-R18); a loose
-   row counts here too, the safe direction;
+5. proposals whose `Mangled` are equal after lower-casing and stripping a leading `socom2_` (the project's
+   prefix in the toml) are an ALIAS: one name, the unprefixed spelling, every pass joined (S12-R24);
+   otherwise proposals disagreeing on `Mangled` -> every one `contradiction`, printed with each file
+   (S12-R18); a loose row counts here too, the safe direction;
 6. all agreeing: applied when at least one row is STRICT; a loose row joins it only when its lever family
    differs from every strict row's (the promotion rule: two keys agreeing; a loose row plus another loose row
    is not promotion); loose-only -> `deferred: loose without a second lever`. `Pass` = the agreeing passes
@@ -49,6 +53,7 @@ from tools_py import name_provenance as npv
 from tools_py import readable_names as rn
 
 LOOSE_DEFAULT = 0.75
+PROJECT_PREFIX = "socom2_"   # the project's own prefix in the toml's stub names (S12-R24's alias rule)
 PASS_JOIN = "&"      # agreeing passes (S12-R18); `+` is inside pass names (`prefix+offsets`, `hash+callees`)
 # A strict file that has no Score column: the pass's score from spec §1.4's table.
 PASS_SCORE = {"positional": 0.80}
@@ -84,8 +89,9 @@ class Decision(NamedTuple):
 class Plan(NamedTuple):
     decisions: List[Decision]       # one per proposed address, by address
     rows: List[dict]                # the new sidecar rows (no Date yet), by address
-    findings: List[str]             # name_provenance.audit over (csv, old sidecar + rows)
-    sidecar: Dict[int, dict]        # the old sidecar
+    findings: List[str]             # name_provenance.audit over (csv, kept sidecar + rows)
+    sidecar: Dict[int, dict]        # the old sidecar less the rows a hold un-applies
+    unapplied: List[dict] = []      # S12-R24: old sidecar rows whose (Address, Mangled) is a hold pair
 
 
 def _family(base: str) -> str:
@@ -159,6 +165,12 @@ def read_proposals(path: str) -> List[Proposal]:
     return out
 
 
+def alias_key(mangled: str) -> str:
+    """S12-R24: two spellings are one name when equal after lower-casing and stripping `socom2_`."""
+    k = mangled.lower()
+    return k[len(PROJECT_PREFIX):] if k.startswith(PROJECT_PREFIX) else k
+
+
 def _uniq(items):
     out = []
     for i in items:
@@ -171,6 +183,9 @@ def plan(csv_rows: List[dict], sidecar: Dict[int, dict], holds: Dict[int, dict],
          demo_counts: Optional[Dict[str, int]] = None) -> Plan:
     """The whole decision, per address; nothing is written here."""
     demo_counts = demo_counts or {}
+    unapplied = [dict(r, Reason=holds[a].get("Reason", "")) for a, r in sorted(sidecar.items())
+                 if a in holds and r.get("Mangled") and r["Mangled"] == holds[a].get("Proposed", "")]
+    sidecar = {a: r for a, r in sidecar.items() if a not in {u["Address"] for u in unapplied}}
     names: Dict[int, str] = {}
     for r in csv_rows:
         names.setdefault(int(r["Start"], 16), r["Name"])
@@ -196,6 +211,13 @@ def plan(csv_rows: List[dict], sidecar: Dict[int, dict], holds: Dict[int, dict],
                     continue
                 by_addr[a] = ps
         mangled = _uniq(p.mangled for p in ps)
+        if len(mangled) > 1 and len({alias_key(m) for m in mangled}) == 1:     # S12-R24: an alias
+            plain = [m for m in mangled if not m.lower().startswith(PROJECT_PREFIX)]
+            chosen = (plain or mangled)[0]
+            ps = [p if p.mangled == chosen else p._replace(mangled=chosen, evidence="%s (spelled %s)"
+                                                                  % (p.evidence, p.mangled)) for p in ps]
+            by_addr[a] = ps
+            mangled = [chosen]
         if a not in names:
             decided[a] = Decision(a, "refused", "not a csv start", ps)
         elif not npv.is_placeholder(names[a]):
@@ -253,11 +275,11 @@ def plan(csv_rows: List[dict], sidecar: Dict[int, dict], holds: Dict[int, dict],
         merged[r["Address"]] = dict(r, Date="")
     findings = npv.audit(csv_rows, merged)
     decisions = sorted(list(decided.values()) + held, key=lambda d: (d.address, d.status != "held"))
-    return Plan(decisions, rows, findings, sidecar)
+    return Plan(decisions, rows, findings, sidecar, unapplied)
 
 
 def apply(p: Plan, sidecar_path: str, date: str) -> None:
-    """Write the old sidecar plus the plan's new rows, each dated `date`."""
+    """Write the kept sidecar (less the rows a hold un-applies) plus the plan's new rows, dated `date`."""
     rows = [dict(r) for r in p.sidecar.values()]
     rows += [dict(r, Date=date) for r in p.rows]
     npv.write(sidecar_path, rows)
@@ -313,6 +335,7 @@ def census_lines(p: Plan, files: List[str]) -> List[str]:
     for f, c in per_file.items():
         out.append("  %-46s rows %4d: %s" % (f, sum(c.values()), fmt(c)))
     out.append("census total (addresses): %d: %s" % (sum(total.values()), fmt(total)))
+    out.append("un-applied by a hold (S12-R24): %d" % len(p.unapplied))
     return out
 
 
@@ -347,6 +370,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     csv_rows = npv.read_map(args.ghidra_csv)
     p = plan(csv_rows, npv.read(args.names_csv), holds, props, demo_counts)
 
+    for u in p.unapplied:
+        print("UN-APPLIED by hold 0x%08x: %s (%s)" % (u["Address"], u["Name"], u["Reason"]))
     for d in p.decisions:
         if d.status == "contradiction":
             print("CONTRADICTION 0x%08x: %s" % (d.address, "; ".join(
@@ -368,8 +393,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("report only: nothing written (%d rows would be added)" % len(p.rows))
     else:
         apply(p, args.names_csv, args.date)
-        print("wrote %s: %d rows added, %d rows in all" % (args.names_csv, len(p.rows),
-                                                           len(p.sidecar) + len(p.rows)))
+        print("wrote %s: %d rows added, %d removed by a hold, %d rows in all"
+              % (args.names_csv, len(p.rows), len(p.unapplied), len(p.sidecar) + len(p.rows)))
     return 1 if args.strict and refused else 0
 
 

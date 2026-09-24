@@ -1,20 +1,34 @@
 Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x00181b00,_delete_vec,_delete_vec__FPvPCci,exact,1.00,"exact: fingerprint exact, 64 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x00181c90,mwLoadOverlay,mwLoadOverlay,toml-stub,0.90,toml-stub: recomp/socom2.toml line 255 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00181d80,mwOverlayInit,mwOverlayInit,toml-stub,0.90,toml-stub: recomp/socom2.toml line 256 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00181e30,destroy_new_array,__destroy_new_array,toml-stub,0.90,toml-stub: recomp/socom2.toml line 257 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x00181ed0,destroy_arr,__destroy_arr,callgraph,0.80,callgraph: callgraph round 1; key=caller+pair; |K|=5+5; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
+0x00181f40,construct_array,__construct_array,toml-stub&callgraph,0.90,toml-stub: recomp/socom2.toml line 259 (general.untracked_stubs): the project's own stub selector | callgraph: callgraph round 2; key=caller+pair; |K|=4+4; order=between,demo_symbol_renames_toml.csv; research/57 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
+0x00182070,construct_new_array,__construct_new_array,toml-stub,0.90,toml-stub: recomp/socom2.toml line 260 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001821d0,ps2_dynamic_cast,__dynamic_cast,string-set&callgraph,0.80,string-set: strings=1;order=anchors-out-of-order;callees=overlap | callgraph: callgraph round 1; key=caller+pair; |K|=4+5; order=between,demo_symbol_renames_strings.csv; research/53 | demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x00182410,std_exception_dtor,__dt__Q23std9exceptionFv,vtable-slot,0.75,vtable-slot: vtable std::exception slot 0; fixed points start..1:1; ratio=1.00,"demo_symbol_renames_7c.csv; research/51, research/60",2026-09-24
 0x00182460,std_bad_cast_dtor,__dt__Q23std8bad_castFv,vtable-slot,0.75,vtable-slot: vtable std::bad_cast slot 0; fixed points start..1:1; ratio=0.96,"demo_symbol_renames_7c.csv; research/51, research/60",2026-09-24
 0x001824e0,throw_catch_compare,__throw_catch_compare,offset-multiset,0.75,"offset-multiset: offset multiset unique both sides, 26 accesses, ratio 0.97",demo_symbol_renames_offsets.csv; research/54,2026-09-24
+0x00182840,initialize_cpp_rts,__initialize_cpp_rts,toml-stub,0.90,toml-stub: recomp/socom2.toml line 264 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001828a0,ptmf_scall,__ptmf_scall,toml-stub,0.90,toml-stub: recomp/socom2.toml line 265 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001828e0,ptmf_cmpr,__ptmf_cmpr,toml-stub,0.90,toml-stub: recomp/socom2.toml line 266 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x00182930,DecodeUnsignedNumber,__DecodeUnsignedNumber__FPcPUi,prefix+offsets,0.80,"prefix+offsets: prologue unique both sides + offset multiset unique both sides, 8 accesses",demo_symbol_renames_prefix_offsets.csv; research/54,2026-09-24
 0x001829e0,DecodeSignedNumber,__DecodeSignedNumber__FPcPi,prefix+offsets,0.80,"prefix+offsets: prologue unique both sides + offset multiset unique both sides, 8 accesses",demo_symbol_renames_prefix_offsets.csv; research/54,2026-09-24
+0x00182a90,end_catch,__end__catch,toml-stub,0.90,toml-stub: recomp/socom2.toml line 269 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x00182ad0,ThrowHandler,__ThrowHandler__FP12ThrowContext,callgraph,0.80,callgraph: callgraph round 1; key=callee+pair; |K|=7+8; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
-0x00183024,unexpected,__unexpected,string-set,0.80,string-set: strings=2;order=between;callees=overlap,demo_symbol_renames_strings.csv; research/53,2026-09-24
+0x00182c80,FindExceptionHandler,FindExceptionHandler__FP12ThrowContextP13ExceptionInfoPl,toml-stub,0.90,toml-stub: recomp/socom2.toml line 271 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00182fc0,unexpected,__unexpected,toml-stub,0.90,toml-stub: recomp/socom2.toml line 272 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001831d0,std_bad_exception_dtor,__dt__Q23std13bad_exceptionFv,vtable-slot,0.75,vtable-slot: vtable std::bad_exception slot 0; fixed points start..1:1; ratio=0.96,"demo_symbol_renames_7c.csv; research/51, research/60",2026-09-24
+0x00183230,FindMostRecentException,FindMostRecentException__FP12ThrowContextP13ExceptionInfo,toml-stub,0.90,toml-stub: recomp/socom2.toml line 273 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001833b0,UnwindStack,UnwindStack__FP12ThrowContextP13ExceptionInfoPc,callgraph,0.80,callgraph: callgraph round 1; key=pair; |K|=5; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x00183c00,NextAction,NextAction__FP14ActionIterator,callgraph,0.80,callgraph: callgraph round 1; key=pair; |K|=6; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x00183f50,FindExceptionRecord,FindExceptionRecord__FPcP13ExceptionInfo,prefix+offsets,0.80,"prefix+offsets: prologue unique both sides + offset multiset unique both sides, 16 accesses",demo_symbol_renames_prefix_offsets.csv; research/54,2026-09-24
 0x00184120,TransferControl,__TransferControl__FP12ThrowContextP13ExceptionInfoPc,exact,1.00,"exact: fingerprint exact, 100 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x00184190,ps2_throw,__throw,toml-stub,0.90,toml-stub: recomp/socom2.toml line 278 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00184210,SkipUnwindInfo,__SkipUnwindInfo__FPc,toml-stub,0.90,toml-stub: recomp/socom2.toml line 279 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x00184280,SetupFrameInfo,__SetupFrameInfo__FP12ThrowContextP13ExceptionInfo,prefix+offsets,0.80,"prefix+offsets: prologue unique both sides + offset multiset unique both sides, 13 accesses",demo_symbol_renames_prefix_offsets.csv; research/54,2026-09-24
+0x00184340,PopStackFrame,__PopStackFrame__FP12ThrowContextP13ExceptionInfo,toml-stub,0.90,toml-stub: recomp/socom2.toml line 281 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x00184660,std_ios_base_failure_dtor,__dt__Q33std8ios_base7failureFv,vtable-slot,0.75,vtable-slot: vtable std::ios_base::failure slot 0; fixed points start..end; ratio=0.97,"demo_symbol_renames_7c.csv; research/51, research/60",2026-09-24
 0x001846e0,std_ios_base_dtor,__dt__Q23std8ios_baseFv,vtable-slot&prefix+offsets,0.80,"vtable-slot: vtable std::ios_base slot 0; fixed points start..end; ratio=0.98 | prefix+offsets: prologue unique both sides + offset multiset unique both sides, 9 accesses","demo_symbol_renames_7c.csv; research/51, research/60 | demo_symbol_renames_prefix_offsets.csv; research/54",2026-09-24
 0x001847e0,std_ios_base_init,init__Q23std8ios_baseFPv,exact,1.00,"exact: fingerprint exact, 208 B",demo_symbol_renames.csv; research/44,2026-09-24
@@ -76,9 +90,11 @@ Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x0018dbb8,sceCdDelayThread,sceCdDelayThread,exact,1.00,"exact: fingerprint exact, 104 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x0018dc20,sceCdCallback,sceCdCallback,callgraph,0.80,callgraph: callgraph round 1; key=callee+pair; |K|=3+3; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x0018dc88,_sceCd_cd_callback,_sceCd_cd_callback,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 160 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x0018dec8,_sceCd_cd_read_intr,_sceCd_cd_read_intr,toml-stub,0.90,toml-stub: recomp/socom2.toml line 283 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x0018df80,cmd_sem_init,cmd_sem_init,callgraph,0.80,callgraph: callgraph round 1; key=caller+pair; |K|=4+4; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x0018e038,cdvd_exit,cdvd_exit,callgraph,0.80,callgraph: callgraph round 1; key=callee+pair; |K|=2+3; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x0018e0d8,sceCdPOffCallback,sceCdPOffCallback,callgraph,0.80,callgraph: callgraph round 1; key=callee+pair; |K|=3+3; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
+0x0018e158,_sceCd_Poff_Intr,_sceCd_Poff_Intr,toml-stub,0.90,toml-stub: recomp/socom2.toml line 287 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x0018e1b0,PowerOffCB,PowerOffCB,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 120 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x0018e228,sceCdLayerSearchFile,sceCdLayerSearchFile,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 788 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x0018e560,_sceCd_ncmd_prechk,_sceCd_ncmd_prechk,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 368 B",demo_symbol_renames.csv; research/44,2026-09-24
@@ -87,74 +103,186 @@ Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x0018e808,sceCdSyncS,sceCdSyncS,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 108 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x0018e878,_sceCd_scmd_prechk,_sceCd_scmd_prechk,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 368 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x0018ea98,sceCdInit,sceCdInit,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 736 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x0018ef70,sceCdDiskReady,sceCdDiskReady,toml-stub,0.90,toml-stub: recomp/socom2.toml line 42 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x0018f178,sceCdRead,sceCdRead,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 480 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x0018f358,sceCdSeek,sceCdSeek,toml-stub,0.90,toml-stub: recomp/socom2.toml line 44 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x0018f428,sceCdGetDiskType,sceCdGetDiskType,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 152 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x0018f4c0,sceCdGetError,sceCdGetError,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 152 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x0018f558,sceCdPowerOff,sceCdPowerOff,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 180 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x0018f610,sceCdMmode,sceCdMmode,toml-stub,0.90,toml-stub: recomp/socom2.toml line 47 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x0018f6e0,sceCdReadClock,sceCdReadClock,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 248 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x0018f7d8,sceCdStInit,sceCdStInit,toml-stub,0.90,toml-stub: recomp/socom2.toml line 49 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0018f808,sceCdStStart,sceCdStStart,toml-stub,0.90,toml-stub: recomp/socom2.toml line 50 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0018f840,sceCdStSeekF,sceCdStSeekF,toml-stub,0.90,toml-stub: recomp/socom2.toml line 51 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0018f870,sceCdStSeek,sceCdStSeek,toml-stub,0.90,toml-stub: recomp/socom2.toml line 52 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0018f8a0,sceCdStStop,sceCdStStop,toml-stub,0.90,toml-stub: recomp/socom2.toml line 53 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0018f8d8,sceCdStRead,sceCdStRead,toml-stub,0.90,toml-stub: recomp/socom2.toml line 54 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0018fa60,sceCdStPause,sceCdStPause,toml-stub,0.90,toml-stub: recomp/socom2.toml line 55 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0018fab0,sceCdStResume,sceCdStResume,toml-stub,0.90,toml-stub: recomp/socom2.toml line 56 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0018fb08,sceCdStStat,sceCdStStat,toml-stub,0.90,toml-stub: recomp/socom2.toml line 57 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0018fb50,sceCdStream,sceCdStream,toml-stub,0.90,toml-stub: recomp/socom2.toml line 58 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0018fcb8,sceDbcGetModVersion,sceDbcGetModVersion,toml-stub,0.90,toml-stub: recomp/socom2.toml line 292 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0018fd10,sceDbcInit,sceDbcInit,toml-stub,0.90,toml-stub: recomp/socom2.toml line 293 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0018ff50,sceDbcEnd,sceDbcEnd,toml-stub,0.90,toml-stub: recomp/socom2.toml line 294 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0018ff98,sceDbcSetWorkAddr,sceDbcSetWorkAddr,toml-stub,0.90,toml-stub: recomp/socom2.toml line 295 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00190008,sceDbcCreateSocket,sceDbcCreateSocket,toml-stub,0.90,toml-stub: recomp/socom2.toml line 296 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001900e0,sceDbcDeleteSocket,sceDbcDeleteSocket,toml-stub,0.90,toml-stub: recomp/socom2.toml line 297 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00190168,sceDbcGetDepNumber,sceDbcGetDepNumber,toml-stub,0.90,toml-stub: recomp/socom2.toml line 298 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001902b0,sceDbcGetConnection,sceDbcGetConnection,toml-stub,0.90,toml-stub: recomp/socom2.toml line 299 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001903a8,sceDbcInitSocket,sceDbcInitSocket,toml-stub,0.90,toml-stub: recomp/socom2.toml line 300 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00190418,sceDbcResetSocket,sceDbcResetSocket,toml-stub,0.90,toml-stub: recomp/socom2.toml line 301 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00190488,sceDbcGetDeviceStatus,sceDbcGetDeviceStatus,toml-stub,0.90,toml-stub: recomp/socom2.toml line 302 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001904f8,sceDbcSearchPortSpecific,sceDbcSearchPortSpecific,toml-stub,0.90,toml-stub: recomp/socom2.toml line 303 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00190580,sceDbcSRData,sceDbcSRData,toml-stub,0.90,toml-stub: recomp/socom2.toml line 304 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001906c8,sceDbcSendData,sceDbcSendData,toml-stub,0.90,toml-stub: recomp/socom2.toml line 305 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001907f8,sceDbcSendData2,sceDbcSendData2,toml-stub,0.90,toml-stub: recomp/socom2.toml line 306 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00190958,sceDbcSendData3,sceDbcSendData3,toml-stub,0.90,toml-stub: recomp/socom2.toml line 307 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00190ab0,sceDbcReceiveData,sceDbcReceiveData,toml-stub,0.90,toml-stub: recomp/socom2.toml line 308 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x00190bc8,WaitDma,WaitDma,exact,1.00,"exact: fingerprint exact, 112 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x00190c38,WatchDma,WatchDma,exact,1.00,"exact: fingerprint exact, 132 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x00190cc0,CheckAddress,CheckAddress,toml-stub,0.90,toml-stub: recomp/socom2.toml line 311 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00190ce8,memclr,memclr,toml-stub,0.90,toml-stub: recomp/socom2.toml line 59 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00190d20,sceDmaGetChan,sceDmaGetChan,toml-stub,0.90,toml-stub: recomp/socom2.toml line 60 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x00190d48,sceDmaReset,sceDmaReset,exact,1.00,"exact: fingerprint exact, 220 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x00190e28,sceDmaPutEnv,sceDmaPutEnv,exact,1.00,"exact: fingerprint exact, 472 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x00191050,sceDmaSend,sceDmaSend,exact,1.00,"exact: fingerprint exact, 104 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001910b8,sceDmaSendN,sceDmaSendN,toml-stub,0.90,toml-stub: recomp/socom2.toml line 65 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00191130,sceDmaSendI,sceDmaSendI,toml-stub,0.90,toml-stub: recomp/socom2.toml line 66 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001911a8,sceDmaRecv,sceDmaRecv,exact,1.00,"exact: fingerprint exact, 72 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001911f0,sceDmaRecvN,sceDmaRecvN,exact,1.00,"exact: fingerprint exact, 124 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x00191270,sceDmaRecvI,sceDmaRecvI,exact,1.00,"exact: fingerprint exact, 128 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001912f0,sceDmaSync,sceDmaSync,toml-stub,0.90,toml-stub: recomp/socom2.toml line 70 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00191328,sceDmaWatch,sceDmaWatch,toml-stub,0.90,toml-stub: recomp/socom2.toml line 71 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x00191360,sceDmaPause,sceDmaPause,exact,1.00,"exact: fingerprint exact, 152 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x00191440,assert,__assert,toml-stub,0.90,toml-stub: recomp/socom2.toml line 312 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00191490,atoi,atoi,toml-stub,0.90,toml-stub: recomp/socom2.toml line 313 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001914f8,bsearch,bsearch,toml-stub,0.90,toml-stub: recomp/socom2.toml line 314 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00191630,_calloc_r,_calloc_r,toml-stub&callgraph,0.90,toml-stub: recomp/socom2.toml line 73 (general.stubs): the project's own stub selector | callgraph: callgraph round 7; key=pair; |K|=3; order=between,demo_symbol_renames_toml.csv; research/57 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
 0x00191740,quorem,quorem,offset-multiset,0.75,"offset-multiset: offset multiset unique both sides, 19 accesses, ratio 0.96",demo_symbol_renames_offsets.csv; research/54,2026-09-24
 0x00191970,_dtoa_r,_dtoa_r,string-set&callgraph,0.80,string-set: strings=1;order=between;callees=overlap | callgraph: callgraph round 1; key=callee+pair; |K|=9+9; order=between,demo_symbol_renames_strings.csv; research/53 | demo_symbol_renames_callgraph.csv; research/52,2026-09-24
+0x00192bf8,exit,exit,toml-stub,0.90,toml-stub: recomp/socom2.toml line 74 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x00192da8,fflush,fflush,offset-multiset&callgraph,0.75,"offset-multiset: offset multiset unique both sides, 15 accesses, ratio 0.94 | callgraph: callgraph round 3; key=caller+pair; |K|=2+3; order=between",demo_symbol_renames_offsets.csv; research/54 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
+0x00192ec0,fgets,fgets,toml-stub,0.90,toml-stub: recomp/socom2.toml line 317 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00192ff8,std,std,toml-stub,0.90,toml-stub: recomp/socom2.toml line 318 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00193058,sfmoreglue,__sfmoreglue,toml-stub,0.90,toml-stub: recomp/socom2.toml line 319 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001930d0,sfp,__sfp,toml-stub,0.90,toml-stub: recomp/socom2.toml line 320 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x00193208,sinit,__sinit,offset-multiset&callgraph,0.80,"offset-multiset: offset multiset unique both sides, 5 accesses, ratio 1.00 + callees | callgraph: callgraph round 1; key=callee; |K|=1; order=between",demo_symbol_renames_offsets.csv; research/54 | demo_symbol_renames_callgraph.csv; research/52,2026-09-24
+0x001932f0,sflags,__sflags,toml-stub,0.90,toml-stub: recomp/socom2.toml line 322 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001933a8,_fopen_r,_fopen_r,toml-stub,0.90,toml-stub: recomp/socom2.toml line 323 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x00193508,fread,fread,offset-multiset&callgraph,0.75,"offset-multiset: offset multiset unique both sides, 12 accesses, ratio 1.00 | callgraph: callgraph round 4; key=callee; |K|=2; order=between",demo_symbol_renames_offsets.csv; research/54 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
+0x00193628,_free_r,_free_r,toml-stub&callgraph,0.90,toml-stub: recomp/socom2.toml line 78 (general.stubs): the project's own stub selector | callgraph: callgraph round 4; key=pair; |K|=3; order=between,demo_symbol_renames_toml.csv; research/57 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
+0x00193920,_malloc_trim_r,_malloc_trim_r,toml-stub,0.90,toml-stub: recomp/socom2.toml line 79 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x00193a90,fseek,fseek,offset-multiset&callgraph,0.75,"offset-multiset: offset multiset unique both sides, 79 accesses, ratio 0.97 | callgraph: callgraph round 2; key=callee; |K|=2; order=between",demo_symbol_renames_offsets.csv; research/54 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
 0x00193f40,_fstat_r,_fstat_r,callgraph,0.80,callgraph: callgraph round 1; key=callee; |K|=1; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x00193fa0,ftell,ftell,offset-multiset&callgraph,0.75,"offset-multiset: offset multiset unique both sides, 18 accesses, ratio 0.97 | callgraph: callgraph round 7; key=callee; |K|=2; order=between",demo_symbol_renames_offsets.csv; research/54 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
 0x001940a8,sfvwrite,__sfvwrite,callgraph,0.80,callgraph: callgraph round 1; key=callee; |K|=2; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
+0x00194488,_fwalk,_fwalk,toml-stub,0.90,toml-stub: recomp/socom2.toml line 325 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00194520,fwrite,fwrite,toml-stub,0.90,toml-stub: recomp/socom2.toml line 82 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001945f8,_findenv_r,_findenv_r,toml-stub,0.90,toml-stub: recomp/socom2.toml line 327 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00194760,_setlocale_r,_setlocale_r,toml-stub,0.90,toml-stub: recomp/socom2.toml line 328 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001948a8,smakebuf,__smakebuf,offset-multiset&callgraph,0.75,"offset-multiset: offset multiset unique both sides, 28 accesses, ratio 0.99 | callgraph: callgraph round 2; key=callee; |K|=1; order=between",demo_symbol_renames_offsets.csv; research/54 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
 0x00194a68,_memalign_r,_memalign_r,offset-multiset&callgraph,0.75,"offset-multiset: offset multiset unique both sides, 10 accesses, ratio 0.98 + callees | callgraph: callgraph round 5; key=callee; |K|=2; order=between",demo_symbol_renames_offsets.csv; research/54 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
+0x00194c30,malloc,malloc,toml-stub,0.90,toml-stub: recomp/socom2.toml line 84 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00194c88,free,free,toml-stub,0.90,toml-stub: recomp/socom2.toml line 85 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00194cd0,malloc_extend_top,malloc_extend_top,toml-stub&callgraph,0.90,toml-stub: recomp/socom2.toml line 86 (general.stubs): the project's own stub selector | callgraph: callgraph round 5; key=callee; |K|=2; order=between,demo_symbol_renames_toml.csv; research/57 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
+0x00194f28,_malloc_r,_malloc_r,toml-stub&callgraph,0.90,toml-stub: recomp/socom2.toml line 87 (general.stubs): the project's own stub selector | callgraph: callgraph round 6; key=callee+caller+pair; |K|=1+3+4; order=between,demo_symbol_renames_toml.csv; research/57 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
+0x00195650,_mbtowc_r,_mbtowc_r,toml-stub,0.90,toml-stub: recomp/socom2.toml line 88 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x00195688,memchr,memchr,exact,1.00,"exact: fingerprint exact, 224 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x00195768,memcmp,memcmp,exact,1.00,"exact: fingerprint exact, 148 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x00195800,memcpy,memcpy,prefix+offsets,0.80,"prefix+offsets: prologue unique both sides + offset multiset unique both sides, 8 accesses",demo_symbol_renames_prefix_offsets.csv; research/54,2026-09-24
 0x001958b0,memmove,memmove,prefix+offsets,0.80,"prefix+offsets: prologue unique both sides + offset multiset unique both sides, 10 accesses",demo_symbol_renames_prefix_offsets.csv; research/54,2026-09-24
 0x001959b8,memset,memset,prefix+offsets,0.80,"prefix+offsets: prologue unique both sides + offset multiset unique both sides, 4 accesses",demo_symbol_renames_prefix_offsets.csv; research/54,2026-09-24
+0x00195a78,malloc_lock,__malloc_lock,toml-stub,0.90,toml-stub: recomp/socom2.toml line 94 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00195af8,malloc_unlock,__malloc_unlock,toml-stub,0.90,toml-stub: recomp/socom2.toml line 95 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00195b48,Balloc,_Balloc,toml-stub&callgraph,0.90,toml-stub: recomp/socom2.toml line 330 (general.untracked_stubs): the project's own stub selector | callgraph: callgraph round 3; key=caller+pair; |K|=5+5; order=between,demo_symbol_renames_toml.csv; research/57 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
+0x00195bf0,Bfree,_Bfree,toml-stub,0.90,toml-stub: recomp/socom2.toml line 331 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x00195c20,_multadd,_multadd,callgraph,0.80,callgraph: callgraph round 1; key=callee; |K|=2; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
+0x00195d28,_s2b,_s2b,toml-stub&callgraph,0.90,toml-stub: recomp/socom2.toml line 333 (general.untracked_stubs): the project's own stub selector | callgraph: callgraph round 2; key=callee; |K|=1; order=between,demo_symbol_renames_toml.csv; research/57 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
+0x00195e58,_hi0bits,_hi0bits,toml-stub,0.90,toml-stub: recomp/socom2.toml line 334 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00195ed8,_lo0bits,_lo0bits,toml-stub,0.90,toml-stub: recomp/socom2.toml line 335 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00195f98,_i2b,_i2b,toml-stub,0.90,toml-stub: recomp/socom2.toml line 336 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00195fd0,_multiply,_multiply,toml-stub,0.90,toml-stub: recomp/socom2.toml line 337 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001961e0,_pow5mult,_pow5mult,toml-stub&callgraph,0.90,toml-stub: recomp/socom2.toml line 338 (general.untracked_stubs): the project's own stub selector | callgraph: callgraph round 2; key=callee+pair; |K|=2+4; order=between,demo_symbol_renames_toml.csv; research/57 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
 0x001962e0,_lshift,_lshift,offset-multiset&callgraph,0.75,"offset-multiset: offset multiset unique both sides, 12 accesses, ratio 0.91 | callgraph: callgraph round 2; key=callee+pair; |K|=1+3; order=between",demo_symbol_renames_offsets.csv; research/54 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
+0x00196438,mcmp,__mcmp,toml-stub,0.90,toml-stub: recomp/socom2.toml line 340 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001964a0,mdiff,__mdiff,offset-multiset,0.75,"offset-multiset: offset multiset unique both sides, 17 accesses, ratio 1.00",demo_symbol_renames_offsets.csv; research/54,2026-09-24
+0x00196630,_ulp,_ulp,toml-stub,0.90,toml-stub: recomp/socom2.toml line 342 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00196700,_b2d,_b2d,toml-stub,0.90,toml-stub: recomp/socom2.toml line 343 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00196898,_d2b,_d2b,toml-stub,0.90,toml-stub: recomp/socom2.toml line 344 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x00196a20,_ratio,_ratio,callgraph,0.80,callgraph: callgraph round 1; key=callee; |K|=1; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x00196af0,_mprec_log10,_mprec_log10,callgraph,0.80,callgraph: callgraph round 1; key=callee; |K|=1; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
+0x00196bc0,_printf_r,_printf_r,toml-stub,0.90,toml-stub: recomp/socom2.toml line 96 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00196c20,printf,printf,toml-stub,0.90,toml-stub: recomp/socom2.toml line 97 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00196c90,_puts_r,_puts_r,toml-stub&callgraph,0.90,toml-stub: recomp/socom2.toml line 347 (general.untracked_stubs): the project's own stub selector | callgraph: callgraph round 2; key=callee; |K|=2; order=between,demo_symbol_renames_toml.csv; research/57 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
 0x00196d38,qsort,qsort,offset-multiset,0.75,"offset-multiset: offset multiset unique both sides, 88 accesses, ratio 0.98",demo_symbol_renames_offsets.csv; research/54,2026-09-24
+0x00197740,rand,rand,toml-stub,0.90,toml-stub: recomp/socom2.toml line 98 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001977a8,_read_r,_read_r,callgraph,0.80,callgraph: callgraph round 1; key=callee; |K|=1; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
+0x00197870,_realloc_r,_realloc_r,toml-stub&callgraph,0.90,toml-stub: recomp/socom2.toml line 99 (general.stubs): the project's own stub selector | callgraph: callgraph round 5; key=callee; |K|=2; order=between,demo_symbol_renames_toml.csv; research/57 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
+0x00197e10,lflush,lflush,toml-stub,0.90,toml-stub: recomp/socom2.toml line 349 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x00197e48,srefill,__srefill,offset-multiset&callgraph,0.75,"offset-multiset: offset multiset unique both sides, 34 accesses, ratio 0.99 | callgraph: callgraph round 3; key=pair; |K|=3; order=between",demo_symbol_renames_offsets.csv; research/54 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
+0x00197fc8,srget,__srget,toml-stub,0.90,toml-stub: recomp/socom2.toml line 351 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x00198010,copysign,copysign,exact,1.00,"exact: fingerprint exact, 68 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x00198058,isinf,isinf,exact,1.00,"exact: fingerprint exact, 72 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001980e0,scalbn,scalbn,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 484 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001982c8,_sbrk_r,_sbrk_r,callgraph,0.80,callgraph: callgraph round 1; key=callee; |K|=1; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
+0x00198320,setjmp,setjmp,toml-stub,0.90,toml-stub: recomp/socom2.toml line 352 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00198378,longjmp,longjmp,toml-stub,0.90,toml-stub: recomp/socom2.toml line 353 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x00198420,scalbnf,scalbnf,exact,1.00,"exact: fingerprint exact, 200 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001984e8,_init_signal_r,_init_signal_r,toml-stub,0.90,toml-stub: recomp/socom2.toml line 354 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00198558,_signal_r,_signal_r,toml-stub,0.90,toml-stub: recomp/socom2.toml line 355 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001985d8,_raise_r,_raise_r,toml-stub,0.90,toml-stub: recomp/socom2.toml line 356 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001986b0,sigtramp_r,__sigtramp_r,toml-stub,0.90,toml-stub: recomp/socom2.toml line 357 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001987d0,_kill_r,_kill_r,callgraph,0.80,callgraph: callgraph round 1; key=callee; |K|=1; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x001988d0,sprintf,sprintf,callgraph,0.80,callgraph: callgraph round 1; key=caller+pair; |K|=8+8; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
+0x00198968,sscanf,sscanf,toml-stub,0.90,toml-stub: recomp/socom2.toml line 359 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x00198a10,sread,__sread,toml-stub&callgraph,0.90,toml-stub: recomp/socom2.toml line 360 (general.untracked_stubs): the project's own stub selector | callgraph: callgraph round 2; key=callee; |K|=1; order=between,demo_symbol_renames_toml.csv; research/57 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
+0x00198a78,swrite,__swrite,toml-stub&callgraph,0.90,toml-stub: recomp/socom2.toml line 361 (general.untracked_stubs): the project's own stub selector | callgraph: callgraph round 2; key=callee; |K|=1; order=between,demo_symbol_renames_toml.csv; research/57 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
+0x00198af8,sseek,__sseek,toml-stub,0.90,toml-stub: recomp/socom2.toml line 362 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x00198b80,strcasecmp,strcasecmp,callgraph,0.80,callgraph: callgraph round 1; key=caller; |K|=2; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x00198c58,strcat,strcat,exact,1.00,"exact: fingerprint exact, 300 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x00198d88,strchr,strchr,exact,1.00,"exact: fingerprint exact, 400 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x00198f18,strcmp,strcmp,exact,1.00,"exact: fingerprint exact, 324 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x00199060,strcpy,strcpy,prefix+offsets,0.80,"prefix+offsets: prologue unique both sides + offset multiset unique both sides, 8 accesses",demo_symbol_renames_prefix_offsets.csv; research/54,2026-09-24
+0x00199218,_strdup_r,_strdup_r,toml-stub&callgraph,0.90,toml-stub: recomp/socom2.toml line 364 (general.untracked_stubs): the project's own stub selector | callgraph: callgraph round 7; key=callee+pair; |K|=3+3; order=between,demo_symbol_renames_toml.csv; research/57 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
 0x00199288,strlen,strlen,exact,1.00,"exact: fingerprint exact, 312 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001993c0,strncasecmp,strncasecmp,toml-stub,0.90,toml-stub: recomp/socom2.toml line 365 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x00199498,strncat,strncat,exact,1.00,"exact: fingerprint exact, 428 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x00199648,strncmp,strncmp,exact,1.00,"exact: fingerprint exact, 440 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x00199800,strncpy,strncpy,prefix+offsets,0.80,"prefix+offsets: prologue unique both sides + offset multiset unique both sides, 13 accesses",demo_symbol_renames_prefix_offsets.csv; research/54,2026-09-24
 0x001999c0,strrchr,strrchr,exact,1.00,"exact: fingerprint exact, 80 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x00199a10,strstr,strstr,toml-stub,0.90,toml-stub: recomp/socom2.toml line 110 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x00199a98,_strtod_r,_strtod_r,callgraph,0.80,callgraph: callgraph round 1; key=callee+pair; |K|=11+11; order=unknown,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
+0x0019aae8,_strtol_r,_strtol_r,toml-stub,0.90,toml-stub: recomp/socom2.toml line 369 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0019ad50,_strtoul_r,_strtoul_r,toml-stub,0.90,toml-stub: recomp/socom2.toml line 370 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x0019aff0,submore,__submore,offset-multiset&callgraph,0.75,"offset-multiset: offset multiset unique both sides, 12 accesses, ratio 0.97 | callgraph: callgraph round 6; key=callee; |K|=2; order=between",demo_symbol_renames_offsets.csv; research/54 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
+0x0019b0d8,ungetc,ungetc,toml-stub&callgraph,0.90,toml-stub: recomp/socom2.toml line 372 (general.untracked_stubs): the project's own stub selector | callgraph: callgraph round 7; key=callee+pair; |K|=3+3; order=between,demo_symbol_renames_toml.csv; research/57 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
+0x0019b260,sprint,__sprint,toml-stub,0.90,toml-stub: recomp/socom2.toml line 373 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0019b2a8,sbprintf,__sbprintf,toml-stub,0.90,toml-stub: recomp/socom2.toml line 374 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x0019b360,_vfiprintf_r,_vfiprintf_r,string-set&callgraph,0.80,string-set: strings=6;order=anchors-out-of-order;callees=overlap | callgraph: callgraph round 1; key=callee+pair; |K|=4+4; order=unknown,demo_symbol_renames_strings.csv; research/53 | demo_symbol_renames_callgraph.csv; research/52,2026-09-24
+0x0019bfd0,sprint,__sprint,toml-stub,0.90,toml-stub: recomp/socom2.toml line 376 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0019c018,sbprintf,__sbprintf,toml-stub,0.90,toml-stub: recomp/socom2.toml line 377 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x0019c148,_vfprintf_r,_vfprintf_r,string-set&callgraph,0.80,string-set: strings=6;order=anchors-out-of-order;callees=overlap | callgraph: callgraph round 1; key=callee+pair; |K|=7+7; order=unknown,demo_symbol_renames_strings.csv; research/53 | demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x0019d7b8,cvt,cvt,offset-multiset&callgraph,0.80,"offset-multiset: offset multiset unique both sides, 8 accesses, ratio 0.96 + callees | callgraph: callgraph round 1; key=callee; |K|=2; order=unknown",demo_symbol_renames_offsets.csv; research/54 | demo_symbol_renames_callgraph.csv; research/52,2026-09-24
+0x0019d978,exponent,exponent,toml-stub,0.90,toml-stub: recomp/socom2.toml line 380 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0019da58,svfscanf,__svfscanf,toml-stub,0.90,toml-stub: recomp/socom2.toml line 381 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0019e6e8,sccl,__sccl,toml-stub,0.90,toml-stub: recomp/socom2.toml line 382 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0019e7e8,vsprintf,vsprintf,toml-stub,0.90,toml-stub: recomp/socom2.toml line 111 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0019e840,vsprintf_r,vsprintf_r,toml-stub,0.90,toml-stub: recomp/socom2.toml line 383 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0019e898,swbuf,__swbuf,toml-stub&callgraph,0.90,toml-stub: recomp/socom2.toml line 384 (general.untracked_stubs): the project's own stub selector | callgraph: callgraph round 3; key=callee+pair; |K|=2+3; order=between,demo_symbol_renames_toml.csv; research/57 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
 0x0019e9a8,_write_r,_write_r,callgraph,0.80,callgraph: callgraph round 1; key=callee; |K|=1; order=unknown,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x0019ea08,swsetup,__swsetup,offset-multiset&callgraph,0.75,"offset-multiset: offset multiset unique both sides, 25 accesses, ratio 1.00 | callgraph: callgraph round 2; key=pair; |K|=4; order=unknown",demo_symbol_renames_offsets.csv; research/54 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
 0x0019eb18,muldi3,__muldi3,exact,1.00,"exact: fingerprint exact, 116 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x0019eb90,divdi3,__divdi3,toml-stub,0.90,toml-stub: recomp/socom2.toml line 112 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0019f228,moddi3,__moddi3,toml-stub,0.90,toml-stub: recomp/socom2.toml line 387 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0019f8b8,udivdi3,__udivdi3,toml-stub,0.90,toml-stub: recomp/socom2.toml line 388 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0019fe38,umoddi3,__umoddi3,toml-stub,0.90,toml-stub: recomp/socom2.toml line 389 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001a03a0,floatdidf,__floatdidf,exact,1.00,"exact: fingerprint exact, 168 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a0448,fixunsdfdi,__fixunsdfdi,exact,1.00,"exact: fingerprint exact, 280 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a0560,fixdfdi,__fixdfdi,exact,1.00,"exact: fingerprint exact, 120 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a05d8,pack_f,__pack_f,exact,1.00,"exact: fingerprint exact, 180 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a0690,unpack_f,__unpack_f,exact,1.00,"exact: fingerprint exact, 92 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001a06f0,make_fp,__make_fp,toml-stub,0.90,toml-stub: recomp/socom2.toml line 395 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001a0720,fptodp,fptodp,toml-stub,0.90,toml-stub: recomp/socom2.toml line 396 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001a0760,pack_d,__pack_d,exact,1.00,"exact: fingerprint exact, 216 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a0838,unpack_d,__unpack_d,exact,1.00,"exact: fingerprint exact, 188 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a08f8,_fpadd_parts,_fpadd_parts,exact,1.00,"exact: fingerprint exact, 604 B",demo_symbol_renames.csv; research/44,2026-09-24
@@ -166,6 +294,7 @@ Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x001a1100,dpcmp,dpcmp,exact,1.00,"exact: fingerprint exact, 76 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a1150,litodp,litodp,exact,1.00,"exact: fingerprint exact, 184 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a1208,dptoli,dptoli,exact,1.00,"exact: fingerprint exact, 156 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001a12a8,make_dp,__make_dp,toml-stub,0.90,toml-stub: recomp/socom2.toml line 408 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001a12d8,dptofp,dptofp,exact,1.00,"exact: fingerprint exact, 84 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a1330,dptoul,dptoul,exact,1.00,"exact: fingerprint exact, 160 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a13d0,sceGsResetGraph,sceGsResetGraph,exact,1.00,"exact: fingerprint exact, 400 B",demo_symbol_renames.csv; research/44,2026-09-24
@@ -184,9 +313,12 @@ Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x001a2708,sceGsSetDefStoreImage,sceGsSetDefStoreImage,exact,1.00,"exact: fingerprint exact, 320 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a2848,sceGsExecLoadImage,sceGsExecLoadImage,exact,1.00,"exact: fingerprint exact, 380 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a29c8,sceGsExecStoreImage,sceGsExecStoreImage,exact,1.00,"exact: fingerprint exact, 1676 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001a30b8,setD3_CHCR,setD3_CHCR,toml-stub,0.90,toml-stub: recomp/socom2.toml line 413 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001a3130,setD4_CHCR,setD4_CHCR,toml-stub,0.90,toml-stub: recomp/socom2.toml line 414 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001a31a8,sceIpuStopDMA,sceIpuStopDMA,exact,1.00,"exact: fingerprint exact, 228 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a3290,sceIpuRestartDMA,sceIpuRestartDMA,exact,1.00,"exact: fingerprint exact, 336 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a33e0,sceIpuSync,sceIpuSync,exact,1.00,"exact: fingerprint exact, 104 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001a3448,setD4_CHCR,setD4_CHCR,toml-stub,0.90,toml-stub: recomp/socom2.toml line 415 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001a34b0,sceIpuInit,sceIpuInit,exact,1.00,"exact: fingerprint exact, 568 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a3720,SetGsCrt,,ghidra,1.00,"EE kernel syscall stub, 16 B (li v1 + syscall); the Ghidra export's name, in the csv since f69790b",scripts/ghidra_export_functions.sh; research/48 [3],2026-09-04
 0x001a3740,_Exit,,ghidra,1.00,"EE kernel syscall stub, 16 B (li v1 + syscall); the Ghidra export's name, in the csv since f69790b",scripts/ghidra_export_functions.sh; research/48 [3],2026-09-04
@@ -253,6 +385,7 @@ Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x001a40e8,write,write,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 124 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a4168,read,read,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 116 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a4220,sbrk,sbrk,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 172 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001a42f8,kill,kill,toml-stub,0.90,toml-stub: recomp/socom2.toml line 419 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001a4370,_sceSDC,_sceSDC,exact,1.00,"exact: fingerprint exact, 164 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a4418,SyncDCache,SyncDCache,hash+callees,0.95,"hash+callees: fingerprint hash+callees, 124 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a44b0,_sceIDC,_sceIDC,exact,1.00,"exact: fingerprint exact, 164 B",demo_symbol_renames.csv; research/44,2026-09-24
@@ -266,25 +399,50 @@ Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x001a4a68,iRotateThreadReadyQueue,iRotateThreadReadyQueue,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 124 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a4ae8,iSuspendThread,iSuspendThread,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 152 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a4b80,sceDeci2Open,sceDeci2Open,exact,1.00,"exact: fingerprint exact, 68 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001a4bc8,sceDeci2Close,sceDeci2Close,toml-stub,0.90,toml-stub: recomp/socom2.toml line 139 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001a4bf0,sceDeci2ReqSend,sceDeci2ReqSend,toml-stub,0.90,toml-stub: recomp/socom2.toml line 140 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001a4c20,sceDeci2Poll,sceDeci2Poll,toml-stub,0.90,toml-stub: recomp/socom2.toml line 141 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001a4c48,sceDeci2ExRecv,sceDeci2ExRecv,toml-stub,0.90,toml-stub: recomp/socom2.toml line 142 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001a4c80,sceDeci2ExSend,sceDeci2ExSend,toml-stub,0.90,toml-stub: recomp/socom2.toml line 143 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001a4ce8,sceDeci2ExLock,sceDeci2ExLock,toml-stub,0.90,toml-stub: recomp/socom2.toml line 145 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001a4d10,sceDeci2ExUnLock,sceDeci2ExUnLock,toml-stub,0.90,toml-stub: recomp/socom2.toml line 146 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001a4d38,kputs,kputs,toml-stub,0.90,toml-stub: recomp/socom2.toml line 422 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001a4d88,QueuePeekWriteDone,QueuePeekWriteDone,toml-stub,0.90,toml-stub: recomp/socom2.toml line 423 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001a4dc8,QueuePeekReadDone,QueuePeekReadDone,toml-stub,0.90,toml-stub: recomp/socom2.toml line 424 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001a4e08,sceTtyHandler,sceTtyHandler,exact,1.00,"exact: fingerprint exact, 404 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001a4fa0,sceTtyWrite,sceTtyWrite,toml-stub,0.90,toml-stub: recomp/socom2.toml line 148 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001a50f0,sceTtyRead,sceTtyRead,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 208 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a51c0,sceTtyInit,sceTtyInit,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 188 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001a5280,kputchar,kputchar,toml-stub,0.90,toml-stub: recomp/socom2.toml line 425 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001a52b8,deci2Putchar,deci2Putchar,positional,0.80,positional: B; image-wide; keypeers=1/1; ratio=1.00; gap=1,demo_symbol_renames_7b.csv; research/45,2026-09-24
+0x001a5368,serialPutchar,serialPutchar,toml-stub,0.90,toml-stub: recomp/socom2.toml line 427 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001a53a0,ftoi,ftoi,exact,1.00,"exact: fingerprint exact, 144 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a5430,printfloat,printfloat,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 360 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a5598,_printf,_printf,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 1516 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001a5b88,kprintf,kprintf,toml-stub,0.90,toml-stub: recomp/socom2.toml line 430 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001a5bc0,scePrintf,scePrintf,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 96 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a5c98,sceSifInitCmd,sceSifInitCmd,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 640 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001a5f18,sceSifExitCmd,sceSifExitCmd,toml-stub,0.90,toml-stub: recomp/socom2.toml line 154 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001a5f80,sceSifAddCmdHandler,sceSifAddCmdHandler,toml-stub,0.90,toml-stub: recomp/socom2.toml line 155 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001a5fb0,sceSifRemoveCmdHandler,sceSifRemoveCmdHandler,toml-stub,0.90,toml-stub: recomp/socom2.toml line 156 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001a5fd8,_sceSifSendCmd,_sceSifSendCmd,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 308 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001a6110,sceSifSendCmd,sceSifSendCmd,toml-stub,0.90,toml-stub: recomp/socom2.toml line 158 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001a6150,isceSifSendCmd,isceSifSendCmd,toml-stub,0.90,toml-stub: recomp/socom2.toml line 431 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001a6190,_sceSifCmdIntrHdlr,_sceSifCmdIntrHdlr,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 296 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001a62b8,sceSifWriteBackDCache,sceSifWriteBackDCache,toml-stub,0.90,toml-stub: recomp/socom2.toml line 160 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001a6368,sceSifInitRpc,sceSifInitRpc,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 412 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001a65f8,_sceRpcGetFPacket,_sceRpcGetFPacket,toml-stub,0.90,toml-stub: recomp/socom2.toml line 162 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001a6628,_sceRpcGetFPacket2,_sceRpcGetFPacket2,exact,1.00,"exact: fingerprint exact, 64 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001a6668,_request_end,_request_end,toml-stub,0.90,toml-stub: recomp/socom2.toml line 432 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001a6720,_alarm_rdata,_alarm_rdata,toml-stub,0.90,toml-stub: recomp/socom2.toml line 433 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001a6780,_request_rdata,_request_rdata,toml-stub,0.90,toml-stub: recomp/socom2.toml line 434 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001a6850,sceSifGetOtherData,sceSifGetOtherData,exact,1.00,"exact: fingerprint exact, 344 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a69a8,_search_svdata,_search_svdata,exact,1.00,"exact: fingerprint exact, 76 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a69f8,_request_bind,_request_bind,exact,1.00,"exact: fingerprint exact, 176 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a6aa8,sceSifBindRpc,sceSifBindRpc,exact,1.00,"exact: fingerprint exact, 320 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a6be8,_request_call,_request_call,prefix+offsets,0.80,"prefix+offsets: prologue unique both sides + offset multiset unique both sides, 25 accesses",demo_symbol_renames_prefix_offsets.csv; research/54,2026-09-24
 0x001a6c78,sceSifCallRpc,sceSifCallRpc,exact,1.00,"exact: fingerprint exact, 492 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001a6e68,sceSifCheckStatRpc,sceSifCheckStatRpc,toml-stub,0.90,toml-stub: recomp/socom2.toml line 167 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001a6ea8,sceSifSetRpcQueue,sceSifSetRpcQueue,exact,1.00,"exact: fingerprint exact, 148 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a7010,sceSifRemoveRpc,sceSifRemoveRpc,exact,1.00,"exact: fingerprint exact, 148 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a70a8,sceSifRemoveRpcQueue,sceSifRemoveRpcQueue,exact,1.00,"exact: fingerprint exact, 144 B",demo_symbol_renames.csv; research/44,2026-09-24
@@ -294,11 +452,16 @@ Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x001a7398,_sceFsIobSemaMK,_sceFsIobSemaMK,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 92 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a73f8,new_iob,new_iob,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 136 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a7480,get_iob,get_iob,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 108 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001a74f0,_sceFs_Rcv_Intr,_sceFs_Rcv_Intr,toml-stub,0.90,toml-stub: recomp/socom2.toml line 441 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001a7898,_sceFsSemInit,_sceFsSemInit,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 76 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001a78e8,_sceFsWaitS,_sceFsWaitS,toml-stub,0.90,toml-stub: recomp/socom2.toml line 442 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001a79c0,_sceFs_Poff_Intr,_sceFs_Poff_Intr,toml-stub,0.90,toml-stub: recomp/socom2.toml line 444 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001a79f0,sceFsInit,sceFsInit,callgraph,0.80,callgraph: callgraph round 1; key=callee+caller+pair; |K|=7+16+23; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
+0x001a7c88,sceFsReset,sceFsReset,toml-stub,0.90,toml-stub: recomp/socom2.toml line 177 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001a7cc0,sceOpen,sceOpen,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 644 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a7f48,sceClose,sceClose,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 380 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a80c8,sceLseek,sceLseek,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 568 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001a8300,sceRead,sceRead,toml-stub,0.90,toml-stub: recomp/socom2.toml line 181 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001a8560,sceWrite,sceWrite,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 704 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001a8820,sceIoctl,sceIoctl,prefix+offsets,0.80,"prefix+offsets: prologue unique both sides + offset multiset unique both sides, 20 accesses",demo_symbol_renames_prefix_offsets.csv; research/54,2026-09-24
 0x001a8b98,sceIoctl2,sceIoctl2,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 476 B",demo_symbol_renames.csv; research/44,2026-09-24
@@ -323,33 +486,49 @@ Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x001aab70,sceSifAllocSysMemory,sceSifAllocSysMemory,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 128 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001aabf0,sceSifFreeSysMemory,sceSifFreeSysMemory,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 120 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001aac88,sceSifLoadIopHeap,sceSifLoadIopHeap,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 240 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001aad78,sceSifQueryMemSize,sceSifQueryMemSize,toml-stub,0.90,toml-stub: recomp/socom2.toml line 462 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001aade8,sceSifQueryMaxFreeMemSize,sceSifQueryMaxFreeMemSize,toml-stub,0.90,toml-stub: recomp/socom2.toml line 463 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001aae58,sceSifQueryTotalFreeMemSize,sceSifQueryTotalFreeMemSize,toml-stub,0.90,toml-stub: recomp/socom2.toml line 464 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001aaec8,sceSifQueryBlockTopAddress,sceSifQueryBlockTopAddress,toml-stub,0.90,toml-stub: recomp/socom2.toml line 465 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001aaf48,sceSifQueryBlockSize,sceSifQueryBlockSize,toml-stub,0.90,toml-stub: recomp/socom2.toml line 466 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001aafc8,_lf_bind,_lf_bind,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 256 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001ab0c8,_lf_version,_lf_version,callgraph,0.80,callgraph: callgraph round 1; key=caller+pair; |K|=3+4; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
+0x001ab158,sceSifLoadFileReset,sceSifLoadFileReset,toml-stub,0.90,toml-stub: recomp/socom2.toml line 188 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001ab190,_sceSifLoadModuleBuffer,_sceSifLoadModuleBuffer,callgraph,0.80,callgraph: callgraph round 1; key=pair; |K|=4; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x001ab398,sceSifStopModule,sceSifStopModule,callgraph,0.80,callgraph: callgraph round 1; key=pair; |K|=3; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
+0x001ab5a0,sceSifUnloadModule,sceSifUnloadModule,toml-stub,0.90,toml-stub: recomp/socom2.toml line 469 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001ab630,sceSifSearchModuleByName,sceSifSearchModuleByName,exact,1.00,"exact: fingerprint exact, 160 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001ab6d0,sceSifSearchModuleByAddress,sceSifSearchModuleByAddress,toml-stub,0.90,toml-stub: recomp/socom2.toml line 471 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001ab7a0,_sceSifLoadModule,_sceSifLoadModule,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 548 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001aba08,_sceSifLoadElfPart,_sceSifLoadElfPart,exact,1.00,"exact: fingerprint exact, 260 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001abb58,sceSifGetIopAddr,sceSifGetIopAddr,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 236 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001abc48,sceSifSetIopAddr,sceSifSetIopAddr,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 220 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001abd28,sceSifResetIop,sceSifResetIop,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 316 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001abe68,sceSifIsAliveIop,sceSifIsAliveIop,toml-stub,0.90,toml-stub: recomp/socom2.toml line 196 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001abe90,sceSifSyncIop,sceSifSyncIop,toml-stub,0.90,toml-stub: recomp/socom2.toml line 197 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001abec8,sceSifRebootIop,sceSifRebootIop,exact,1.00,"exact: fingerprint exact, 272 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001abfd8,SetTLBHandler,SetTLBHandler,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 96 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001ac108,RFU091,,ghidra,1.00,"EE kernel syscall stub, reserved slot, 16 B; the number in the name is the one it loads; the Ghidra export's name, in the csv since f69790b",scripts/ghidra_export_functions.sh; research/48 [3],2026-09-04
 0x001ac118,RFU116_SetSyscall,,ghidra,1.00,"EE kernel syscall stub, reserved slot, 16 B; the number in the name is the one it loads; the Ghidra export's name, in the csv since f69790b",scripts/ghidra_export_functions.sh; research/48 [3],2026-09-04
 0x001ac128,InitTLBFunctions,InitTLBFunctions,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 196 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001ac210,RFU086_WaitEvnetFlag,,ghidra,1.00,"EE kernel syscall stub, reserved slot, 16 B; the number in the name is the one it loads; the Ghidra export's name, in the csv since f69790b",scripts/ghidra_export_functions.sh; research/48 [3],2026-09-04
+0x001ac220,SetTLBEntry,SetTLBEntry,toml-stub,0.90,toml-stub: recomp/socom2.toml line 476 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001ac2b0,InitTLB,InitTLB,exact,1.00,"exact: fingerprint exact, 64 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001ac2f0,InitTLB32MB,InitTLB32MB,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 500 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001ac500,_kTLBException,_kTLBException,toml-stub,0.90,toml-stub: recomp/socom2.toml line 478 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001ac740,_kDebugException,_kDebugException,toml-stub,0.90,toml-stub: recomp/socom2.toml line 480 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001ac860,DIntr,DIntr,exact,1.00,"exact: fingerprint exact, 72 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001ac8c0,supplement_crt0,supplement_crt0,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 72 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001ac950,kFindAddress,kFindAddress,exact,1.00,"exact: fingerprint exact, 64 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001ac9a0,GetSystemCallEntry,GetSystemCallEntry,toml-stub,0.90,toml-stub: recomp/socom2.toml line 485 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001ac9d8,InitSystemCallTableAddress,InitSystemCallTableAddress,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 252 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001acad8,RFU116_SetSyscall,,ghidra,1.00,"EE kernel syscall stub, reserved slot, 16 B; the number in the name is the one it loads; the Ghidra export's name, in the csv since f69790b",scripts/ghidra_export_functions.sh; research/48 [3],2026-09-04
+0x001acae8,InitSys,_InitSys,toml-stub,0.90,toml-stub: recomp/socom2.toml line 487 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001acb28,RFU116_SetSyscall,,ghidra,1.00,"EE kernel syscall stub, reserved slot, 16 B; the number in the name is the one it loads; the Ghidra export's name, in the csv since f69790b",scripts/ghidra_export_functions.sh; research/48 [3],2026-09-04
 0x001acb80,RFU091,,ghidra,1.00,"EE kernel syscall stub, reserved slot, 16 B; the number in the name is the one it loads; the Ghidra export's name, in the csv since f69790b",scripts/ghidra_export_functions.sh; research/48 [3],2026-09-04
 0x001acb90,PatchIsNeeded,PatchIsNeeded,exact,1.00,"exact: fingerprint exact, 104 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001acbf8,InitExecPS2,InitExecPS2,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 172 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001accb8,kCopy,kCopy,toml-stub,0.90,toml-stub: recomp/socom2.toml line 491 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001acce8,RFU116_SetSyscall,,ghidra,1.00,"EE kernel syscall stub, reserved slot, 16 B; the number in the name is the one it loads; the Ghidra export's name, in the csv since f69790b",scripts/ghidra_export_functions.sh; research/48 [3],2026-09-04
 0x001accf8,SetArg,SetArg,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 280 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001ace88,LoadExecPS2,LoadExecPS2,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 72 B",demo_symbol_renames.csv; research/44,2026-09-24
@@ -357,12 +536,18 @@ Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x001acf48,RFU116_SetSyscall,,ghidra,1.00,"EE kernel syscall stub, reserved slot, 16 B; the number in the name is the one it loads; the Ghidra export's name, in the csv since f69790b",scripts/ghidra_export_functions.sh; research/48 [3],2026-09-04
 0x001acfa0,RFU091,,ghidra,1.00,"EE kernel syscall stub, reserved slot, 16 B; the number in the name is the one it loads; the Ghidra export's name, in the csv since f69790b",scripts/ghidra_export_functions.sh; research/48 [3],2026-09-04
 0x001acfb0,InitAlarm,InitAlarm,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 212 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001ad088,ieee754_exp,__ieee754_exp,toml-stub,0.90,toml-stub: recomp/socom2.toml line 497 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001ad528,ieee754_pow,__ieee754_pow,toml-stub,0.90,toml-stub: recomp/socom2.toml line 498 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001ae478,ieee754_rem_pio2,__ieee754_rem_pio2,toml-stub,0.90,toml-stub: recomp/socom2.toml line 499 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001aea30,ieee754_sqrt,__ieee754_sqrt,exact,1.00,"exact: fingerprint exact, 796 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001aed50,ieee754_acosf,__ieee754_acosf,exact,1.00,"exact: fingerprint exact, 1060 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001af178,ieee754_asinf,__ieee754_asinf,exact,1.00,"exact: fingerprint exact, 928 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001af518,ieee754_atan2f,__ieee754_atan2f,exact,1.00,"exact: fingerprint exact, 480 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001af6f8,ieee754_expf,__ieee754_expf,positional,0.80,positional: B; image-wide; keypeers=1/1; ratio=1.00; gap=1,demo_symbol_renames_7b.csv; research/45,2026-09-24
 0x001af950,ieee754_logf,__ieee754_logf,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 736 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001afc30,ieee754_log10f,__ieee754_log10f,toml-stub,0.90,toml-stub: recomp/socom2.toml line 506 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001afd18,ieee754_powf,__ieee754_powf,toml-stub,0.90,toml-stub: recomp/socom2.toml line 507 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001b04f8,ieee754_rem_pio2f,__ieee754_rem_pio2f,toml-stub,0.90,toml-stub: recomp/socom2.toml line 201 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001b08a8,ieee754_sqrtf,__ieee754_sqrtf,exact,1.00,"exact: fingerprint exact, 204 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001b0978,kernel_cos,__kernel_cos,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 724 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001b0c50,kernel_rem_pio2,__kernel_rem_pio2,callgraph,0.80,callgraph: callgraph round 1; key=callee+pair; |K|=8+9; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
@@ -373,22 +558,44 @@ Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x001b28f8,kernel_sinf,__kernel_sinf,exact,1.00,"exact: fingerprint exact, 260 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001b2a00,kernel_tanf,__kernel_tanf,exact,1.00,"exact: fingerprint exact, 644 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001b2c88,cos,cos,exact,1.00,"exact: fingerprint exact, 292 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001b2db0,fabs,fabs,toml-stub,0.90,toml-stub: recomp/socom2.toml line 205 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001b2de8,floor,floor,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 532 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001b3000,sin,sin,exact,1.00,"exact: fingerprint exact, 308 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001b3138,tan,tan,exact,1.00,"exact: fingerprint exact, 168 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001b31e0,atanf,atanf,toml-stub,0.90,toml-stub: recomp/socom2.toml line 515 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001b3470,ceilf,ceilf,exact,1.00,"exact: fingerprint exact, 216 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001b3548,cosf,cosf,exact,1.00,"exact: fingerprint exact, 212 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001b3620,fabsf,fabsf,toml-stub,0.90,toml-stub: recomp/socom2.toml line 518 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001b3648,floorf,floorf,exact,1.00,"exact: fingerprint exact, 216 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001b3720,sinf,sinf,exact,1.00,"exact: fingerprint exact, 232 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001b3808,tanf,tanf,exact,1.00,"exact: fingerprint exact, 120 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001b3970,sceMcInit,sceMcInit,string-set&callgraph,0.80,string-set: strings=3;order=between;callees=overlap | callgraph: callgraph round 1; key=callee+pair; |K|=5+5; order=between,demo_symbol_renames_strings.csv; research/53 | demo_symbol_renames_callgraph.csv; research/52,2026-09-24
+0x001b3b40,sceMcEnd,sceMcEnd,toml-stub,0.90,toml-stub: recomp/socom2.toml line 210 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001b3b90,_lmcGetClientPtr,_lmcGetClientPtr,toml-stub,0.90,toml-stub: recomp/socom2.toml line 522 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001b3bc0,sceMcChangeThreadPriority,sceMcChangeThreadPriority,toml-stub,0.90,toml-stub: recomp/socom2.toml line 211 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001b3c78,sceMcGetSlotMax,sceMcGetSlotMax,toml-stub,0.90,toml-stub: recomp/socom2.toml line 212 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001b3d40,sceMcOpen,sceMcOpen,callgraph,0.80,callgraph: callgraph round 1; key=pair; |K|=3; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
+0x001b3e68,sceMcMkdir,sceMcMkdir,toml-stub,0.90,toml-stub: recomp/socom2.toml line 214 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001b3ea0,sceMcClose,sceMcClose,toml-stub,0.90,toml-stub: recomp/socom2.toml line 215 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001b3f58,sceMcSeek,sceMcSeek,toml-stub,0.90,toml-stub: recomp/socom2.toml line 216 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001b4030,mceIntrReadFixAlign,mceIntrReadFixAlign,exact,1.00,"exact: fingerprint exact, 144 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001b40c0,sceMcRead,sceMcRead,toml-stub,0.90,toml-stub: recomp/socom2.toml line 218 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001b41d8,sceMcWrite,sceMcWrite,offset-multiset,0.75,"offset-multiset: offset multiset unique both sides, 3 accesses, ratio 0.98 + callees",demo_symbol_renames_offsets.csv; research/54,2026-09-24
+0x001b4358,mcDelayThread,mcDelayThread,toml-stub,0.90,toml-stub: recomp/socom2.toml line 523 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001b4390,sceMcSync,sceMcSync,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 224 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001b4470,mceGetInfoApdx,mceGetInfoApdx,positional&offset-multiset,0.80,"positional: B; image-wide; keypeers=1/1; ratio=0.95; gap=2 | offset-multiset: offset multiset unique both sides, 6 accesses, ratio 0.95 + prologue",demo_symbol_renames_7b.csv; research/45 | demo_symbol_renames_offsets.csv; research/54,2026-09-24
+0x001b44c8,sceMcGetInfo,sceMcGetInfo,toml-stub,0.90,toml-stub: recomp/socom2.toml line 222 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001b4648,sceMcUdCheckNewCard,sceMcUdCheckNewCard,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 108 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001b46b8,sceMcGetDir,sceMcGetDir,toml-stub,0.90,toml-stub: recomp/socom2.toml line 223 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001b4800,mceStorePwd,mceStorePwd,exact,1.00,"exact: fingerprint exact, 132 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001b4888,sceMcChdir,sceMcChdir,toml-stub,0.90,toml-stub: recomp/socom2.toml line 225 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001b49c8,sceMcFormat,sceMcFormat,toml-stub,0.90,toml-stub: recomp/socom2.toml line 226 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001b4a98,sceMcDelete,sceMcDelete,toml-stub,0.90,toml-stub: recomp/socom2.toml line 227 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001b4bb0,sceMcFlush,sceMcFlush,toml-stub,0.90,toml-stub: recomp/socom2.toml line 228 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001b4c68,sceMcSetFileInfo,sceMcSetFileInfo,toml-stub,0.90,toml-stub: recomp/socom2.toml line 229 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001b4e30,sceMcRename,sceMcRename,toml-stub,0.90,toml-stub: recomp/socom2.toml line 230 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001b4f88,sceMcUnformat,sceMcUnformat,toml-stub,0.90,toml-stub: recomp/socom2.toml line 231 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001b5058,sceMcGetEntSpace,sceMcGetEntSpace,toml-stub,0.90,toml-stub: recomp/socom2.toml line 232 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001b5160,_motionComp0,_motionComp0,exact,1.00,"exact: fingerprint exact, 592 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001b53b0,_getAllRefs,_getAllRefs,exact,1.00,"exact: fingerprint exact, 1796 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001b5ab8,_getRef0,_getRef0,exact,1.00,"exact: fingerprint exact, 1052 B",demo_symbol_renames.csv; research/44,2026-09-24
@@ -399,15 +606,19 @@ Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x001b6790,_ri0_100,_ri0_100,exact,1.00,"exact: fingerprint exact, 172 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001b6de8,_copyAddRefImage,_copyAddRefImage,exact,1.00,"exact: fingerprint exact, 92 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001b6e48,_copyRefImage,_copyRefImage,exact,1.00,"exact: fingerprint exact, 96 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001b6ea8,_ipuSetMPEG1,_ipuSetMPEG1,toml-stub,0.90,toml-stub: recomp/socom2.toml line 547 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001b6ed0,_waitBdecOut,_waitBdecOut,string-set&callgraph,0.80,string-set: strings=1;order=between;callees=overlap | callgraph: callgraph round 1; key=callee+pair; |K|=5+7; order=between,demo_symbol_renames_strings.csv; research/53 | demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x001b7190,_dualPrimeVector,_dualPrimeVector,exact,1.00,"exact: fingerprint exact, 388 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001b7318,_mbAddressIncrement,_mbAddressIncrement,exact,1.00,"exact: fingerprint exact, 272 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001b7428,_pictureData0,_pictureData0,toml-stub,0.90,toml-stub: recomp/socom2.toml line 551 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001b7548,_sliceA0,_sliceA0,exact,1.00,"exact: fingerprint exact, 300 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001b7678,_slice0,_slice0,toml-stub,0.90,toml-stub: recomp/socom2.toml line 553 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001b7870,_skipMB0,_skipMB0,exact,1.00,"exact: fingerprint exact, 188 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001b7930,_decMB0,_decMB0,exact,1.00,"exact: fingerprint exact, 1192 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001b7dd8,_decode_motion_vector,_decode_motion_vector,exact,1.00,"exact: fingerprint exact, 136 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001b7e60,_motionVectors,_motionVectors,exact,1.00,"exact: fingerprint exact, 412 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001b8000,_motionVector,_motionVector,exact,1.00,"exact: fingerprint exact, 332 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001b8150,_sendIpuCommand,_sendIpuCommand,toml-stub,0.90,toml-stub: recomp/socom2.toml line 558 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001b8180,_waitIpuIdle,_waitIpuIdle,exact,1.00,"exact: fingerprint exact, 164 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001b8228,_waitIpuIdle64,_waitIpuIdle64,exact,1.00,"exact: fingerprint exact, 176 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001b82d8,_ipuVdec,_ipuVdec,exact,1.00,"exact: fingerprint exact, 376 B",demo_symbol_renames.csv; research/44,2026-09-24
@@ -439,11 +650,14 @@ Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x001b9ee0,_doCSC,_doCSC,exact,1.00,"exact: fingerprint exact, 296 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001ba008,_ch3dmaCSC,_ch3dmaCSC,offset-multiset,0.75,"offset-multiset: offset multiset unique both sides, 15 accesses, ratio 0.98",demo_symbol_renames_offsets.csv; research/54,2026-09-24
 0x001ba150,_doCSC2,_doCSC2,exact,1.00,"exact: fingerprint exact, 448 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001ba310,_ch4dma,_ch4dma,toml-stub,0.90,toml-stub: recomp/socom2.toml line 591 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001ba3e8,_csc_storeRefImage,_csc_storeRefImage,exact,1.00,"exact: fingerprint exact, 648 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001ba670,_sysbitInit,_sysbitInit,toml-stub,0.90,toml-stub: recomp/socom2.toml line 593 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001ba6c8,_sysbitFlush,_sysbitFlush,exact,1.00,"exact: fingerprint exact, 152 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001ba760,_sysbitGet,_sysbitGet,exact,1.00,"exact: fingerprint exact, 76 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001ba7b0,_sysbitMarker,_sysbitMarker,exact,1.00,"exact: fingerprint exact, 68 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001ba7f8,_sysbitJump,_sysbitJump,exact,1.00,"exact: fingerprint exact, 84 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001ba850,_sysbitPtr,_sysbitPtr,toml-stub,0.90,toml-stub: recomp/socom2.toml line 598 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001ba880,_type2id,_type2id,exact,1.00,"exact: fingerprint exact, 136 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001ba908,_id2type,_id2type,exact,1.00,"exact: fingerprint exact, 508 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001bab08,sceMpegDemuxPssRing,sceMpegDemuxPssRing,exact,1.00,"exact: fingerprint exact, 760 B",demo_symbol_renames.csv; research/44,2026-09-24
@@ -451,14 +665,18 @@ Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x001baf18,_pack_header,_pack_header,exact,1.00,"exact: fingerprint exact, 336 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001bb068,_system_header,_system_header,exact,1.00,"exact: fingerprint exact, 108 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001bb0d8,PES_packet,_PES_packet,exact,1.00,"exact: fingerprint exact, 1456 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001bb688,sceMpegInit,sceMpegInit,toml-stub,0.90,toml-stub: recomp/socom2.toml line 235 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001bb738,sceMpegCreate,sceMpegCreate,prefix+offsets,0.80,"prefix+offsets: prologue unique both sides + offset multiset unique both sides, 62 accesses",demo_symbol_renames_prefix_offsets.csv; research/54,2026-09-24
 0x001bb990,sceMpegGetPicture,sceMpegGetPicture,exact,1.00,"exact: fingerprint exact, 72 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001bb9d8,sceMpegGetPictureRAW8,sceMpegGetPictureRAW8,exact,1.00,"exact: fingerprint exact, 68 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001bba20,sceMpegGetPictureRAW8xy,sceMpegGetPictureRAW8xy,exact,1.00,"exact: fingerprint exact, 80 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001bbad8,sceMpegReset,sceMpegReset,offset-multiset&callgraph,0.75,"offset-multiset: offset multiset unique both sides, 8 accesses, ratio 0.91 + callees | callgraph: callgraph round 2; key=caller; |K|=2; order=between",demo_symbol_renames_offsets.csv; research/54 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
 0x001bbb30,sceMpegClearRefBuff,sceMpegClearRefBuff,exact,1.00,"exact: fingerprint exact, 84 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001bbb88,sceMpegAddCallback,sceMpegAddCallback,toml-stub,0.90,toml-stub: recomp/socom2.toml line 244 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001bbbb0,_dispatchMpegCallback,_dispatchMpegCallback,exact,1.00,"exact: fingerprint exact, 80 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001bbc00,_dispatchMpegCbNodata,_dispatchMpegCbNodata,toml-stub,0.90,toml-stub: recomp/socom2.toml line 604 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001bbd08,_alalcAlloc,_alalcAlloc,exact,1.00,"exact: fingerprint exact, 108 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001bbd90,_getpic,_getpic,toml-stub,0.90,toml-stub: recomp/socom2.toml line 605 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001bbf00,_decodeOrSkipFrame,_decodeOrSkipFrame,exact,1.00,"exact: fingerprint exact, 276 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001bc018,_decodeOrSkip,_decodeOrSkip,exact,1.00,"exact: fingerprint exact, 68 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001bc060,_decodeOrSkipField,_decodeOrSkipField,exact,1.00,"exact: fingerprint exact, 348 B",demo_symbol_renames.csv; research/44,2026-09-24
@@ -466,29 +684,77 @@ Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x001bc238,_lastFrame,_lastFrame,exact,1.00,"exact: fingerprint exact, 124 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001bc2b8,_clearOnce,_clearOnce,exact,1.00,"exact: fingerprint exact, 96 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001bc318,_clearEach,_clearEach,exact,1.00,"exact: fingerprint exact, 200 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001bc3f0,Error1,_Error1,toml-stub,0.90,toml-stub: recomp/socom2.toml line 612 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001bc428,Error,_Error,exact,1.00,"exact: fingerprint exact, 84 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001bc480,_sendDataToIPU,_sendDataToIPU,exact,1.00,"exact: fingerprint exact, 256 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001bc580,RefImageInit,_RefImageInit,toml-stub,0.90,toml-stub: recomp/socom2.toml line 615 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bc5a0,_sequenceHeader,_sequenceHeader,toml-stub,0.90,toml-stub: recomp/socom2.toml line 616 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001bc970,_initRefImages,_initRefImages,exact,1.00,"exact: fingerprint exact, 224 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001bca50,_setDefaultQM,_setDefaultQM,exact,1.00,"exact: fingerprint exact, 224 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001bcb30,_sequenceExtension,_sequenceExtension,exact,1.00,"exact: fingerprint exact, 304 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001bcc60,_sequenceDisplayExtension,_sequenceDisplayExtension,exact,1.00,"exact: fingerprint exact, 140 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001bcd80,sceSifMInitRpc,sceSifMInitRpc,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 196 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001bcf20,_request_end,_request_end,toml-stub,0.90,toml-stub: recomp/socom2.toml line 623 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bd028,sceSifMBindRpc,sceSifMBindRpc,toml-stub,0.90,toml-stub: recomp/socom2.toml line 624 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bd050,sceSifMBindRpcParam,sceSifMBindRpcParam,toml-stub,0.90,toml-stub: recomp/socom2.toml line 625 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001bd200,sceSifMUnBindRpc,sceSifMUnBindRpc,exact,1.00,"exact: fingerprint exact, 284 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001bd320,sceSifMCallRpc,sceSifMCallRpc,exact,1.00,"exact: fingerprint exact, 612 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001bd588,scePad2Init,scePad2Init,toml-stub,0.90,toml-stub: recomp/socom2.toml line 27 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bd5c8,scePad2End,scePad2End,toml-stub,0.90,toml-stub: recomp/socom2.toml line 628 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bd630,scePad2CreateSocket,scePad2CreateSocket,toml-stub,0.90,toml-stub: recomp/socom2.toml line 28 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bd738,scePad2DeleteSocket,scePad2DeleteSocket,toml-stub,0.90,toml-stub: recomp/socom2.toml line 629 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bd790,scePad2Read,scePad2Read,toml-stub,0.90,toml-stub: recomp/socom2.toml line 30 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bd868,scePad2GetButtonProfile,scePad2GetButtonProfile,toml-stub,0.90,toml-stub: recomp/socom2.toml line 32 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bd938,scePad2GetState,scePad2GetState,toml-stub,0.90,toml-stub: recomp/socom2.toml line 29 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bda78,scePad2GetButtonInfo,scePad2GetButtonInfo,toml-stub,0.90,toml-stub: recomp/socom2.toml line 31 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bdb58,scePad2InitDmaDBuff,scePad2InitDmaDBuff,toml-stub,0.90,toml-stub: recomp/socom2.toml line 630 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bdbd0,scePad2LinkDriver,scePad2LinkDriver,toml-stub,0.90,toml-stub: recomp/socom2.toml line 631 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bdc28,scePad2GetSide,scePad2GetSide,toml-stub,0.90,toml-stub: recomp/socom2.toml line 632 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bdcf8,scePad2CheckDma,scePad2CheckDma,toml-stub,0.90,toml-stub: recomp/socom2.toml line 633 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bdd58,scePad2SetButtonOrder,scePad2SetButtonOrder,toml-stub,0.90,toml-stub: recomp/socom2.toml line 634 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001bde40,GetRomName,GetRomName,string-set,0.80,string-set: strings=1;order=between;callees=overlap,demo_symbol_renames_strings.csv; research/53,2026-09-24
 0x001bdeb0,IsT10K,IsT10K,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 64 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001bdef0,sceScfGetLanguage,sceScfGetLanguage,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 96 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001bdf70,sceScfGetAspect,sceScfGetAspect,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 64 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001bdfb0,sceScfGetSpdif,sceScfGetSpdif,toml-stub,0.90,toml-stub: recomp/socom2.toml line 638 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001bdff0,sceScfGetTimeZone,sceScfGetTimeZone,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 76 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001be040,sceScfGetDateNotation,sceScfGetDateNotation,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 100 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001be0a8,sceScfGetSummerTime,sceScfGetSummerTime,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 104 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001be110,sceScfGetTimeNotation,sceScfGetTimeNotation,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 104 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001be178,tobcd,tobcd,toml-stub,0.90,toml-stub: recomp/socom2.toml line 643 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001be1a8,frombcd,frombcd,toml-stub,0.90,toml-stub: recomp/socom2.toml line 644 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001be1c8,convertfrombcd,convertfrombcd,hash+callees,0.95,"hash+callees: fingerprint hash+callees, 104 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001be230,converttobcd,converttobcd,hash+callees,0.95,"hash+callees: fingerprint hash+callees, 104 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001be298,adddate,adddate,exact,1.00,"exact: fingerprint exact, 180 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001be350,subdate,subdate,exact,1.00,"exact: fingerprint exact, 164 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001be3f8,addhour,addhour,toml-stub,0.90,toml-stub: recomp/socom2.toml line 647 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001be428,subhour,subhour,toml-stub,0.90,toml-stub: recomp/socom2.toml line 648 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001be450,AdjustTime,AdjustTime,exact,1.00,"exact: fingerprint exact, 140 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001be4e8,sceScfGetLocalTimefromRTC,sceScfGetLocalTimefromRTC,exact,1.00,"exact: fingerprint exact, 72 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001be530,sceVibGetProfile,sceVibGetProfile,toml-stub,0.90,toml-stub: recomp/socom2.toml line 33 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001be5b0,sceVibSetActParam,sceVibSetActParam,toml-stub,0.90,toml-stub: recomp/socom2.toml line 34 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001be6a0,sceUsbKbInit,sceUsbKbInit,toml-stub,0.90,toml-stub: recomp/socom2.toml line 651 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001be898,sceUsbKbEnd,sceUsbKbEnd,toml-stub,0.90,toml-stub: recomp/socom2.toml line 652 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001be960,sceUsbKbGetInfo,sceUsbKbGetInfo,toml-stub,0.90,toml-stub: recomp/socom2.toml line 653 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bea08,sceUsbKbRead,sceUsbKbRead,toml-stub,0.90,toml-stub: recomp/socom2.toml line 654 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001beae8,sceUsbKbGetLocation,sceUsbKbGetLocation,toml-stub,0.90,toml-stub: recomp/socom2.toml line 655 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bebc8,sceUsbKbSetLEDStatus,sceUsbKbSetLEDStatus,toml-stub,0.90,toml-stub: recomp/socom2.toml line 656 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001beca0,sceUsbKbSetLEDMode,sceUsbKbSetLEDMode,toml-stub,0.90,toml-stub: recomp/socom2.toml line 657 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001beda0,sceUsbKbSetRepeat,sceUsbKbSetRepeat,toml-stub,0.90,toml-stub: recomp/socom2.toml line 658 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bede8,sceUsbKbSetCodeType,sceUsbKbSetCodeType,toml-stub,0.90,toml-stub: recomp/socom2.toml line 659 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bee88,sceUsbKbSync,sceUsbKbSync,toml-stub,0.90,toml-stub: recomp/socom2.toml line 661 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bef38,SetResult,SetResult,toml-stub,0.90,toml-stub: recomp/socom2.toml line 662 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001befa0,SetResult_GetInfo,SetResult_GetInfo,toml-stub,0.90,toml-stub: recomp/socom2.toml line 663 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001beff8,SetResult_Read,SetResult_Read,toml-stub,0.90,toml-stub: recomp/socom2.toml line 664 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bf570,SetResult_GetLocation,SetResult_GetLocation,toml-stub,0.90,toml-stub: recomp/socom2.toml line 665 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bf600,vblank_e_handler,vblank_e_handler,toml-stub,0.90,toml-stub: recomp/socom2.toml line 666 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bf688,clear_repbuf,clear_repbuf,toml-stub,0.90,toml-stub: recomp/socom2.toml line 667 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bf6b8,push_repbuf,push_repbuf,toml-stub,0.90,toml-stub: recomp/socom2.toml line 668 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bf728,pop_repbuf,pop_repbuf,toml-stub,0.90,toml-stub: recomp/socom2.toml line 669 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bf790,cnv_keycode,cnv_keycode,toml-stub,0.90,toml-stub: recomp/socom2.toml line 670 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bf8e0,sceUsbKbCnvRawCode,sceUsbKbCnvRawCode,toml-stub,0.90,toml-stub: recomp/socom2.toml line 671 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bfa38,cnv_keypad,cnv_keypad,toml-stub,0.90,toml-stub: recomp/socom2.toml line 672 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001bfb18,sceUsbKbClearRbuf,sceUsbKbClearRbuf,toml-stub,0.90,toml-stub: recomp/socom2.toml line 674 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001bfc30,sceVu0MulMatrix,sceVu0MulMatrix,exact,1.00,"exact: fingerprint exact, 68 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001bfd00,sceVu0TransposeMatrix,sceVu0TransposeMatrix,exact,1.00,"exact: fingerprint exact, 68 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001bfd48,sceVu0InversMatrix,sceVu0InversMatrix,exact,1.00,"exact: fingerprint exact, 108 B",demo_symbol_renames.csv; research/44,2026-09-24
@@ -506,6 +772,9 @@ Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x001c0700,sceVu0RotTransPers,sceVu0RotTransPers,exact,1.00,"exact: fingerprint exact, 68 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001c07b0,sceVu0ClipScreen,sceVu0ClipScreen,exact,1.00,"exact: fingerprint exact, 72 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x001c07f8,sceVu0ClipScreen3,sceVu0ClipScreen3,exact,1.00,"exact: fingerprint exact, 96 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x001c0858,sceVu0ClipAll,sceVu0ClipAll,prefix+bindiff,0.80,"prefix+bindiff: prologue unique both sides + BinDiff hash matching 1.000, 140/240 B",demo_symbol_renames_bindiff.csv; research/49,2026-09-24
+0x001c1348,sceInsockInetAddr,sceInsockInetAddr,toml-stub,0.90,toml-stub: recomp/socom2.toml line 675 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x001c1858,sceEENetInetNtoa,sceEENetInetNtoa,toml-stub,0.90,toml-stub: recomp/socom2.toml line 676 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x001e7100,COurGame_dtor,__dt__8COurGameFv,vtable-slot,0.75,vtable-slot: vtable COurGame slot 0; fixed points start..end; ratio=0.87,"demo_symbol_renames_7c.csv; research/51, research/60",2026-09-24
 0x001e7430,COurGame_StartEngine,StartEngine__8COurGameFv,vtable-slot&string-set,0.80,vtable-slot: vtable COurGame slot 3; fixed points start..end; ratio=0.80 | string-set: strings=2;order=edge;callees=overlap,"demo_symbol_renames_7c.csv; research/51, research/60 | demo_symbol_renames_strings.csv; research/53",2026-09-24
 0x001e7f98,openmic,openmic,exact,1.00,"exact: fingerprint exact, 256 B",demo_symbol_renames.csv; research/44,2026-09-24
@@ -535,6 +804,7 @@ Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x001f5d40,CLoadState_UnInit,UnInit__10CLoadStateFv,callgraph,0.80,callgraph: callgraph round 1; key=callee; |K|=2; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x001f5e70,CLoadState_Tick,Tick__10CLoadStateFf,callgraph,0.80,callgraph: callgraph round 1; key=callee+pair; |K|=4+4; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x001f69f0,CLoadState_ctor,__ct__10CLoadStateFv,string-set&callgraph,0.80,string-set: strings=1;order=between;callees=overlap | callgraph: callgraph round 1; key=callee; |K|=1; order=between,demo_symbol_renames_strings.csv; research/53 | demo_symbol_renames_callgraph.csv; research/52,2026-09-24
+0x001f7e80,CHUD_Flash,Flash__4CHUDFfRC6CPnt3Dfff,prefix+bindiff,0.80,"prefix+bindiff: prologue unique both sides + BinDiff edges flowgraph MD index 0.966, 236/248 B",demo_symbol_renames_bindiff.csv; research/49,2026-09-24
 0x001fa360,CHUD_Init,Init__4CHUDFPQ23zdb6CWorld,string-set,0.80,string-set: strings=4;order=between;callees=overlap,demo_symbol_renames_strings.csv; research/53,2026-09-24
 0x001fbae0,CHUD_dtor,__dt__4CHUDFv,callgraph,0.80,callgraph: callgraph round 1; key=callee; |K|=1; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x001fd840,PoseBitmap_dtor,__dt__10PoseBitmapFv,vtable-slot,0.75,vtable-slot: vtable PoseBitmap slot 0; fixed points start..1:1; ratio=0.97,"demo_symbol_renames_7c.csv; research/51, research/60",2026-09-24
@@ -599,6 +869,7 @@ Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x00244ab8,lgAudStartPlayback,lgAudStartPlayback,string-set,0.80,string-set: strings=1;order=between;callees=overlap,demo_symbol_renames_strings.csv; research/53,2026-09-24
 0x00244c68,lgAudResumePlayback,lgAudResumePlayback,string-set,0.80,string-set: strings=1;order=between;callees=overlap,demo_symbol_renames_strings.csv; research/53,2026-09-24
 0x00245030,lgAudASync,lgAudASync,exact,1.00,"exact: fingerprint exact, 80 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x00245100,lgAudARead,lgAudARead,prefix+bindiff,0.80,"prefix+bindiff: prologue unique both sides + BinDiff MD index matching (flowgraph MD index, top down) 0.956, 320/316 B",demo_symbol_renames_bindiff.csv; research/49,2026-09-24
 0x00245298,lgAudAWrite,lgAudAWrite,string-set,0.80,string-set: strings=4;order=between;callees=overlap,demo_symbol_renames_strings.csv; research/53,2026-09-24
 0x00245690,libnetb_is_data_waiting,libnetb_is_data_waiting,prefix+offsets,0.80,"prefix+offsets: prologue unique both sides + offset multiset unique both sides, 12 accesses",demo_symbol_renames_prefix_offsets.csv; research/54,2026-09-24
 0x00245748,libnetb_udp_init_buffer,libnetb_udp_init_buffer,exact,1.00,"exact: fingerprint exact, 64 B",demo_symbol_renames.csv; research/44,2026-09-24
@@ -607,6 +878,7 @@ Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x00245e60,sceInetAddress2String,sceInetAddress2String,callgraph,0.80,callgraph: callgraph round 1; key=caller; |K|=2; order=unknown,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x002460f8,sceInetRecv,sceInetRecv,offset-multiset,0.75,"offset-multiset: offset multiset unique both sides, 11 accesses, ratio 0.74",demo_symbol_renames_offsets.csv; research/54,2026-09-24
 0x00246a38,libnet_init,libnet_init,callgraph,0.80,callgraph: callgraph round 1; key=callee+pair; |K|=2+3; order=unknown,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
+0x00247008,sceLibnetWaitGetAddress,sceLibnetWaitGetAddress,toml-stub,0.90,toml-stub: recomp/socom2.toml line 678 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x00247050,sceBInetGetBuildTimestamp,sceBInetGetBuildTimestamp,exact,1.00,"exact: fingerprint exact, 340 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x00247460,sceBInetClose,sceBInetClose,exact,1.00,"exact: fingerprint exact, 152 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x00247640,sceBInetRecvFrom,sceBInetRecvFrom,exact,1.00,"exact: fingerprint exact, 140 B",demo_symbol_renames.csv; research/44,2026-09-24
@@ -919,6 +1191,7 @@ Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x002bb7f0,ZAnimNetworkPacketHandler,ZAnimNetworkPacketHandler__FiiiPv,callgraph,0.80,callgraph: callgraph round 1; key=callee; |K|=1; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x002bbaf0,NetSendPushBlend,NetSendPushBlend__FUiiib,callgraph,0.80,callgraph: callgraph round 1; key=callee; |K|=2; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x002bbbd0,HitPacketHandler,HitPacketHandler__FiiiPv,callgraph,0.80,callgraph: callgraph round 1; key=callee; |K|=1; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
+0x002bbf10,SaveFireMessage,SaveFireMessage__FP10CZSealBodyPC6CPnt3D,prefix+bindiff,0.80,"prefix+bindiff: prologue unique both sides + BinDiff prime signature matching 1.000, 132/132 B",demo_symbol_renames_bindiff.csv; research/49,2026-09-24
 0x002bc080,zDoClientLeavesCallback,zDoClientLeavesCallback__Fi,callgraph,0.80,callgraph: callgraph round 1; key=callee; |K|=1; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x002be150,CZSealState_IncrementalUpdateRemoteSeal,IncrementalUpdateRemoteSeal__11CZSealStateFiii,callgraph,0.80,callgraph: callgraph round 1; key=callee+pair; |K|=3+3; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x002bf2c0,CZSealState_zNetRegisterSeal,zNetRegisterSeal__11CZSealStateFv,string-set,0.80,string-set: strings=1;order=between;callees=overlap,demo_symbol_renames_strings.csv; research/53,2026-09-24
@@ -1018,6 +1291,7 @@ Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x0030b770,setLoadImageTagsYX,setLoadImageTagsYX__FPUiPviiiUi,offset-multiset,0.75,"offset-multiset: offset multiset unique both sides, 32 accesses, ratio 0.95",demo_symbol_renames_offsets.csv; research/54,2026-09-24
 0x0030c910,TRC_PowerOffThread_Aux,TRC_PowerOffThread_Aux__Fv,string-set,0.80,string-set: strings=3;order=anchors-out-of-order;callees=overlap,demo_symbol_renames_strings.csv; research/53,2026-09-24
 0x0030cdf0,CZNetwork_zNetRemoteObjectUpdateCallback,zNetRemoteObjectUpdateCallback__9CZNetworkFiii,prefix+offsets,0.80,"prefix+offsets: prologue unique both sides + offset multiset unique both sides, 4 accesses",demo_symbol_renames_prefix_offsets.csv; research/54,2026-09-24
+0x0030ce80,CZNetwork_zNetRegisterRemoteObjectCallback,zNetRegisterRemoteObjectCallback__9CZNetworkFiPFii_vPFiii_vPFiii_vPFii_v,prefix+bindiff,0.80,"prefix+bindiff: prologue unique both sides + BinDiff prime signature matching 1.000, 108/108 B",demo_symbol_renames_bindiff.csv; research/49,2026-09-24
 0x0030cef0,CZNetwork_zNetSendApplicationMessage,zNetSendApplicationMessage__9CZNetworkFciiiiPUcb,prefix+offsets,0.80,"prefix+offsets: prologue unique both sides + offset multiset unique both sides, 5 accesses",demo_symbol_renames_prefix_offsets.csv; research/54,2026-09-24
 0x0030d870,CZNetwork_AddToFixList,AddToFixList__9CZNetworkFPQ29CZNetwork18TypeRTimeFixStruct,offset-multiset,0.75,"offset-multiset: offset multiset unique both sides, 14 accesses, ratio 0.97",demo_symbol_renames_offsets.csv; research/54,2026-09-24
 0x00310c80,zdb_CLight_Read,Read__Q23zdb6CLightFRQ23zdb9CSaveLoad,string-set&callgraph,0.80,string-set: strings=3;order=between;callees=none | callgraph: callgraph round 3; key=callee; |K|=2; order=between,demo_symbol_renames_strings.csv; research/53 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
@@ -1230,6 +1504,7 @@ Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x003aff30,zVid_Swap,zVid_Swap__Fb,callgraph,0.80,callgraph: callgraph round 1; key=callee; |K|=2; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x003b1200,zVid_Init,zVid_Init__F10_zvid_mode,string-set,0.80,string-set: strings=1;order=between;callees=one side,demo_symbol_renames_strings.csv; research/53,2026-09-24
 0x003b18d0,CVideo_WriteGsMemory,WriteGsMemory__6CVideoFUiP1Ui,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 192 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x003b24c0,socom2_LumReadPixel,socom2_LumReadPixel,toml-stub,0.90,toml-stub: recomp/socom2.toml line 26 (general.stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x003b6540,zdb_CVisual_VuExecuteState0,VuExecuteState0__Q23zdb7CVisualFP8_word128P8_word128,offset-multiset,0.75,"offset-multiset: offset multiset unique both sides, 12 accesses, ratio 0.86",demo_symbol_renames_offsets.csv; research/54,2026-09-24
 0x003b6d10,zdb_CVisual_NodeSetup,NodeSetup__Q23zdb7CVisualFPQ23zdb5CNodePQ23zdb5CNodeP7CMatrixi,callgraph,0.80,callgraph: callgraph round 1; key=callee; |K|=1; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x003b6fa0,zdb_CVisual_SaveTextureSelect,SaveTextureSelect__Q23zdb7CVisualFP8_word128PQ23zdb8CTextureUl,offset-multiset,0.75,"offset-multiset: offset multiset unique both sides, 13 accesses, ratio 0.89",demo_symbol_renames_offsets.csv; research/54,2026-09-24
@@ -1369,6 +1644,7 @@ Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x00533db0,AI_PARAMS_Merge,Merge__9AI_PARAMSFRC9AI_PARAMSRC9AI_PARAMS,offset-multiset,0.75,"offset-multiset: offset multiset unique both sides, 69 accesses, ratio 0.93",demo_symbol_renames_offsets.csv; research/54,2026-09-24
 0x0053ce00,CCharacterType_Parse,Parse__14CCharacterTypeFP5_zrdr,string-set,0.80,string-set: strings=15;order=anchors-out-of-order;callees=overlap,demo_symbol_renames_strings.csv; research/53,2026-09-24
 0x0053e220,CCharacterType_Open,Open__14CCharacterTypeFPCc,string-set&callgraph,0.80,string-set: strings=8;order=anchors-out-of-order;callees=overlap | callgraph: callgraph round 1; key=pair; |K|=3; order=unknown,demo_symbol_renames_strings.csv; research/53 | demo_symbol_renames_callgraph.csv; research/52,2026-09-24
+0x0053eee0,CCharacterWeap_SetupCharacterWeapon,SetupCharacterWeapon__14CCharacterWeapF10EQUIP_ITEM,prefix+bindiff,0.80,"prefix+bindiff: prologue unique both sides + BinDiff MD index matching (flowgraph MD index, bottom up) 0.976, 104/108 B",demo_symbol_renames_bindiff.csv; research/49,2026-09-24
 0x00543b40,CZSealBody_OpenHeartbeatSounds,OpenHeartbeatSounds__10CZSealBodyFv,relinked-body,0.85,"relinked-body: fingerprint relinked-body, 80 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x005442c0,CZSealBody_NetworkPlayerCreate,NetworkPlayerCreate__10CZSealBodyFv,string-set&callgraph,0.80,string-set: strings=2;order=between;callees=overlap | callgraph: callgraph round 2; key=callee+pair; |K|=3+4; order=between,demo_symbol_renames_strings.csv; research/53 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
 0x00546a40,CZSealBody_ExecuteAction_CQBAttack,ExecuteAction_CQBAttack__10CZSealBodyFP10CZSealBody,string-set,0.80,string-set: strings=1;order=between;callees=none,demo_symbol_renames_strings.csv; research/53,2026-09-24
@@ -1463,13 +1739,17 @@ Address,Name,Mangled,Pass,Score,Evidence,Source,Date
 0x00627270,QUO,QUO,offset-multiset,0.75,"offset-multiset: offset multiset unique both sides, 72 accesses, ratio 0.97",demo_symbol_renames_offsets.csv; research/54,2026-09-24
 0x006277e8,GCD,GCD,offset-multiset,0.75,"offset-multiset: offset multiset unique both sides, 96 accesses, ratio 0.99",demo_symbol_renames_offsets.csv; research/54,2026-09-24
 0x00627f68,LucasTest,LucasTest,callgraph,0.80,callgraph: callgraph round 1; key=callee; |K|=1; order=between,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
+0x00629b38,sceEENetMD5Init,__sceEENetMD5Init,toml-stub,0.90,toml-stub: recomp/socom2.toml line 684 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
+0x0062b168,RSAGenerateKeyPair,RSAGenerateKeyPair,toml-stub&callgraph,0.90,toml-stub: recomp/socom2.toml line 25 (general.stubs): the project's own stub selector (spelled socom2_RsaGenerateKeyPair) | callgraph: callgraph round 3; key=callee; |K|=2; order=between,demo_symbol_renames_toml.csv; research/57 | demo_symbol_renames_callgraph_loose.csv; research/52,2026-09-24
 0x0062b948,RSADecryptBlock,RSADecryptBlock,offset-multiset,0.75,"offset-multiset: offset multiset unique both sides, 112 accesses, ratio 1.00",demo_symbol_renames_offsets.csv; research/54,2026-09-24
+0x0062bfa8,eh_context_free,eh_context_free,toml-stub,0.90,toml-stub: recomp/socom2.toml line 685 (general.untracked_stubs): the project's own stub selector,demo_symbol_renames_toml.csv; research/57,2026-09-24
 0x0062c1b8,rt_circ_buf_create,rt_circ_buf_create,exact,1.00,"exact: fingerprint exact, 156 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x0062c258,rt_circ_buf_destroy,rt_circ_buf_destroy,exact,1.00,"exact: fingerprint exact, 80 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x0062cac0,rt_comm_startup,rt_comm_startup,callgraph,0.80,callgraph: callgraph round 1; key=callee; |K|=1; order=unknown,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x0062ccc0,rt_comm_destroy,rt_comm_destroy,offset-multiset&callgraph,0.80,"offset-multiset: offset multiset unique both sides, 3 accesses, ratio 0.96 + callees | callgraph: callgraph round 1; key=callee; |K|=2; order=unknown",demo_symbol_renames_offsets.csv; research/54 | demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x0062ce30,rt_comm_send_to,rt_comm_send_to,callgraph,0.80,callgraph: callgraph round 1; key=callee+pair; |K|=3+3; order=unknown,demo_symbol_renames_callgraph.csv; research/52,2026-09-24
 0x0062d0b0,rt_comm_receive_from,rt_comm_receive_from,exact,1.00,"exact: fingerprint exact, 200 B",demo_symbol_renames.csv; research/44,2026-09-24
+0x0062d340,rt_comm_get_remote_ip,rt_comm_get_remote_ip,prefix+bindiff,0.80,"prefix+bindiff: prologue unique both sides + BinDiff prime signature matching 1.000, 108/112 B",demo_symbol_renames_bindiff.csv; research/49,2026-09-24
 0x0062d3b0,rt_comm_get_metrics,rt_comm_get_metrics,exact,1.00,"exact: fingerprint exact, 176 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x0062d5c8,rt_comm_get_new_channel_id,rt_comm_get_new_channel_id,exact,1.00,"exact: fingerprint exact, 108 B",demo_symbol_renames.csv; research/44,2026-09-24
 0x0062d680,rt_comm_get_valid_channel,rt_comm_get_valid_channel,exact,1.00,"exact: fingerprint exact, 76 B",demo_symbol_renames.csv; research/44,2026-09-24
