@@ -53,8 +53,8 @@ is written into §4 below in plain words; follow it from here, not from memory o
 
 ## 3. Phase 1 — the spec and the plan (the first day)
 
-The spec goes to `docs/superpowers/specs/2026-09-2N-sprint-12-the-readable-image-design.md`, the plan to
-`docs/superpowers/plans/2026-09-2N-sprint-12.md`, in the shape of the Sprint 11 pair (read
+The spec goes under `docs/superpowers/specs/` as `<date>-sprint-12-the-readable-image-design.md`, the plan
+under `docs/superpowers/plans/` as `<date>-sprint-12.md`, in the shape of the Sprint 11 pair (read
 `2026-09-21-sprint-11-r0004-and-the-community-server-design.md` and `2026-09-23-sprint-11.md` for the shape: goals
 with a bar each, tasks with Files / Interfaces / Steps with pasted evidence, global constraints, owner decisions
 with the default each proceeds on, rulings). The spec must answer, with numbers where the notes already have them:
