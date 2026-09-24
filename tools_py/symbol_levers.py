@@ -84,6 +84,19 @@ MIN_BODY = 64
 # the key is ambiguous -- which is the definition of not image-wide unique.
 EVIDENCE = ("image-wide", "gap-only", "no")
 
+# `positional`'s census carries a second, overlapping breakdown under this prefix: how many
+# candidates cleared each tier at each evidence level. It exists so that the structural claim above
+# -- that tier A can essentially never be image-wide -- is a number a command prints rather than a
+# sentence in a note. Anything summing the census's exclusive buckets must skip these keys.
+TIER_KEY_PREFIX = "tier "
+
+# The default proposals path is reserved for rows that cleared `image-wide`. A run at a looser level
+# writes beside it, at <name>_loose.csv, and `write_proposals_7b` REFUSES to put a `gap-only` or `no`
+# row at the strict path. Without that, a looser file has the same name and the same columns as the
+# strict one and a reader who does not reach column 7 cannot tell them apart -- which makes "behind
+# the flag" a convention rather than a boundary.
+LOOSE_MARK = "_loose"
+
 POSITIONAL_RULE = (
     "positional: the i-th unplaced function between two consecutive Task 7 anchors that are in order "
     "on both sides and inside one PT_LOAD of ours, when both builds hold the same count in that gap. "
@@ -420,12 +433,19 @@ def positional(demo_funcs, demo_segments, our_funcs, our_segments, anchors,
       "gap-only"    ...or merely by one per gap: the twins exist, they just fell elsewhere. Position
                     alone is choosing, and a reader of the file cannot see that from the row.
       "any"         ...or not even that: the wrapper families. Their name rests on link order alone.
-                    That order is source order and a reordering is unlikely, and the holdout saw six
-                    such pairs and got all six right; six is not a measurement, and a silently
-                    swapped `sceSifQueryMemSize` is the kind of wrong name nobody ever catches.
+                    That order is source order and a reordering is unlikely, but a silently swapped
+                    `sceSifQueryMemSize` is the kind of wrong name nobody ever catches, and the
+                    holdout has caught `gap-only` being wrong where it has never caught
+                    `image-wide`. The counts move with every run, so they are not typed here:
+                    `--holdout` prints them and docs/research/45 sec 3 quotes them with the command.
 
     Every accepted row carries the level it cleared and its image-wide peer counts, so a file written
-    at a looser level says so row by row as well as in its header.
+    at a looser level says so row by row as well as in its header -- and `write_proposals_7b` refuses
+    to put such a row at the strict default path at all, so the flag is a boundary and not a
+    convention.
+
+    `census` also carries a `tier <A|B> x <level>` breakdown, because the claim in `EVIDENCE` that
+    tier A can essentially never be image-wide is a measurement and should read as one.
     """
     if min_evidence not in ("image-wide", "gap-only", "any"):
         raise ValueError("min_evidence is image-wide, gap-only or any, not %r" % (min_evidence,))
@@ -446,12 +466,17 @@ def positional(demo_funcs, demo_segments, our_funcs, our_segments, anchors,
               for t in ("A", "B")}
 
     # Buckets that SUM to `candidates`, whatever `min_evidence` is: a candidate is counted once, by
-    # the level it reached and whether that level was admitted.
+    # the level it reached and whether that level was admitted. The `tier ... x ...` keys below are a
+    # SECOND, independent breakdown of the same candidates and are excluded from that sum by their
+    # prefix -- `TIER_KEY_PREFIX` is what the CLI and the tests filter on.
     counts = {"anchors": len(rows), "gaps": len(gaps), "candidates": sum(len(g) for g in gaps),
               "no body evidence": 0, "our row already named": 0}
     for level in EVIDENCE:
         counts["evidence %s: taken" % level] = 0
         counts["evidence %s: refused" % level] = 0
+    for tier_name in ("A", "B"):
+        for level in EVIDENCE:
+            counts["%s%s x %s" % (TIER_KEY_PREFIX, tier_name, level)] = 0
     accepted: List[Candidate] = []
     for gap in gaps:
         for o_addr, d_addr in gap:
@@ -460,6 +485,7 @@ def positional(demo_funcs, demo_segments, our_funcs, our_segments, anchors,
                 counts["no body evidence"] += 1
                 continue
             level, peers = _evidence(gap, demo, ours, o_addr, d_addr, tier, census, prologue_words)
+            counts["%s%s x %s" % (TIER_KEY_PREFIX, tier, level)] += 1
             if level not in allowed:
                 counts["evidence %s: refused" % level] += 1
                 continue
@@ -680,15 +706,34 @@ def proposals_7b(candidates: Sequence[Tuple[str, Candidate]], taken: Sequence[st
     return rows, held
 
 
+def loose_path(path: str) -> str:
+    """`path` with `_loose` before its extension -- where a below-`image-wide` run writes."""
+    root, ext = os.path.splitext(path)
+    return path if root.endswith(LOOSE_MARK) else root + LOOSE_MARK + ext
+
+
+def is_loose_path(path: str) -> bool:
+    return os.path.splitext(path)[0].endswith(LOOSE_MARK)
+
+
 def write_proposals_7b(path: str, rows: Sequence[Dict], header: Sequence[str]) -> None:
     """The proposals file, its own rule stated in `#` lines above the column header.
 
-    A bad output path is one sentence, not a traceback: this module's callers all report `NO-DATA:`
-    and exit 2, and a proposals file is the last thing that should end a run in a stack trace.
+    Two refusals, both `ValueError` so that `main` can turn them into one `NO-DATA:` line: a bad
+    output path is one sentence rather than a traceback, and a row that did not clear `image-wide`
+    may not be written to the strict default path. The second is the boundary `LOOSE_MARK` describes
+    -- enforced here, at the write, rather than only in the CLI that happens to call it.
     """
     directory = os.path.dirname(os.path.abspath(path))
     if not os.path.isdir(directory):
         raise ValueError("cannot write %s: %s is not a directory" % (path, directory))
+    if not is_loose_path(path):
+        loose = sorted({r.get("Evidence", "") for r in rows} - {"image-wide", ""})
+        if loose:
+            raise ValueError(
+                "cannot write %s: %d row(s) at evidence %s belong at %s, not at the strict path"
+                % (path, sum(1 for r in rows if r.get("Evidence") in loose), ", ".join(loose),
+                   loose_path(path)))
     with open(path, "w", newline="") as fh:
         for line in header:
             fh.write("# %s\n" % line if line else "#\n")

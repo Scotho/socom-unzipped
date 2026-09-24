@@ -254,6 +254,18 @@ class PositionalTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.run_lever(min_evidence="whatever")
 
+    def test_the_census_breaks_the_candidates_down_by_tier_as_well(self):
+        # The `tier ... x ...` keys are a SECOND view of the same candidates, so they sum to the
+        # tiered ones (not to `candidates`) and must not disturb the exclusive buckets.
+        _found, census = self.run_lever()
+        by_tier = {k: v for k, v in census.items() if k.startswith(sl.TIER_KEY_PREFIX)}
+        self.assertEqual(sum(by_tier.values()),
+                         census["candidates"] - census["no body evidence"])
+        self.assertEqual(by_tier["tier B x image-wide"], 1)          # `edited`
+        self.assertEqual(by_tier["tier A x gap-only"], 2)            # the twins
+        self.assertEqual(by_tier["tier A x image-wide"], 0,
+                         "a tier-A key unique on both sides would already be an anchor")
+
 
 class EvidenceLevelTest(unittest.TestCase):
     """The twins wear one body key between them, so the image-wide rule is what decides them."""
@@ -340,22 +352,37 @@ class TierTest(unittest.TestCase):
     def test_tier_b_is_the_prologue_when_the_lengths_differ(self):
         self.assertEqual(sl._tier(self.demo, self.d["edited"], self.ours, self.o["FUN_edited"]), "B")
 
-    def test_tier_b_refuses_a_size_ratio_under_the_cut(self):
-        # Same prologue, a tail long enough to put the ratio under SIZE_RATIO. 0.63 accepts, 0.49
-        # does not: this is the rule the loosest row of the real proposals file rests on.
+    def test_tier_b_straddles_the_size_ratio_cut(self):
+        """The same prologue with our body grown until the ratio crosses SIZE_RATIO.
+
+        0.63 accepts and 0.49 refuses -- and both legs are checked to LAND where they claim to,
+        because the first version of this test computed the accept tail as `d_size * 0.63` instead
+        of `d_size / 0.63`, got a negative word count, clamped it to 3 and ran the accept leg at
+        ratio 0.86. That passes without going anywhere near the cut, which is precisely the boundary
+        the loosest row of the real proposals file (`RemoteRespawn`, 0.63) rests on.
+        """
         demo_rows, demo_segs = demo_side()
         demo = am.Side(demo_rows, demo_segs)
         d_addr = self.d["edited"]
         d_size = demo.size[d_addr]
-        for our_tail, expect in ((round(d_size * 0.63 / 4) - 16, "B"),
-                                 (round(d_size / 0.49 / 4) - 16, None)):
-            rows, segs = our_side(edit_tail=max(3, our_tail))
+        seen = []
+        for target, expect in ((0.63, "B"), (0.49, None)):
+            our_tail = round(d_size / target / 4) - 16      # OURS is the larger side
+            self.assertGreater(our_tail, 3, "the fixture must not need clamping at %.2f" % target)
+            rows, segs = our_side(edit_tail=our_tail)
             ours = am.Side(rows, segs)
             o_addr = next(s for s, _e, n in rows if n == "FUN_edited")
-            got = sl._tier(demo, d_addr, ours, o_addr)
             ratio = min(d_size, ours.size[o_addr]) / max(d_size, ours.size[o_addr])
-            self.assertEqual(got, expect, "ratio %.2f" % ratio)
-            self.assertEqual(ratio >= sl.SIZE_RATIO, expect is not None)
+            seen.append(ratio)
+            self.assertAlmostEqual(ratio, target, delta=0.02,
+                                   msg="asked for %.2f, the fixture gives %.3f" % (target, ratio))
+            self.assertEqual(sl._tier(demo, d_addr, ours, o_addr), expect,
+                             "ratio %.3f, sizes %d/%d" % (ratio, d_size, ours.size[o_addr]))
+        # Both legs straddle the cut rather than sitting comfortably either side of it.
+        self.assertLess(seen[0] - sl.SIZE_RATIO, 0.15, "accept leg %.3f is too far above the cut"
+                        % seen[0])
+        self.assertLess(sl.SIZE_RATIO - seen[1], 0.15, "refuse leg %.3f is too far below the cut"
+                        % seen[1])
 
     def test_a_body_under_min_body_clears_no_tier(self):
         short = _blob([lui(AT, 1), lw(V0, AT, 4), jr_ra(), NOP])       # sixteen bytes
@@ -673,6 +700,64 @@ class ProposalsTest(unittest.TestCase):
         with self.assertRaises(ValueError) as caught:
             sl.write_proposals_7b(os.path.join(os.sep, "no", "such", "dir", "x.csv"), [], [])
         self.assertIn("not a directory", str(caught.exception))
+
+
+class LoosePathTest(unittest.TestCase):
+    """A below-`image-wide` row may not be written to the strict default path.
+
+    Without this, a `gap-only` run produces a file with the same name and the same columns as the
+    default one, and a reader who does not reach the Evidence column cannot tell them apart. The
+    boundary is enforced at the write, not only in the CLI that calls it.
+    """
+
+    def rows(self, evidence):
+        cand = sl.Candidate(0x400000, 0x100000, "Draw__5CHUDFv", "FUN_00400000", 64, 64, "B", 2,
+                            evidence, (1, 1) if evidence == "image-wide" else (2, 2))
+        rows, _held = sl.proposals_7b([("positional", cand)], [])
+        return rows
+
+    def test_loose_path_inserts_the_mark_once(self):
+        self.assertEqual(sl.loose_path("game/demo_symbol_renames_7b.csv"),
+                         "game/demo_symbol_renames_7b_loose.csv")
+        self.assertEqual(sl.loose_path(sl.loose_path("a/b.csv")), "a/b_loose.csv")
+        self.assertTrue(sl.is_loose_path("a/b_loose.csv"))
+        self.assertFalse(sl.is_loose_path("a/b.csv"))
+
+    def test_the_default_file_never_holds_a_gap_only_or_blurred_row(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            strict = os.path.join(tmp, "demo_symbol_renames_7b.csv")
+            for evidence in ("gap-only", "no"):
+                with self.assertRaises(ValueError) as caught:
+                    sl.write_proposals_7b(strict, self.rows(evidence), [])
+                self.assertIn("strict path", str(caught.exception))
+                self.assertIn(evidence, str(caught.exception))
+                self.assertFalse(os.path.exists(strict), "nothing may be written on the refusal")
+            sl.write_proposals_7b(strict, self.rows("image-wide"), [])
+            self.assertTrue(os.path.exists(strict))
+
+    def test_the_loose_path_accepts_every_level(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            loose = sl.loose_path(os.path.join(tmp, "demo_symbol_renames_7b.csv"))
+            for evidence in sl.EVIDENCE:
+                sl.write_proposals_7b(loose, self.rows(evidence), [])
+                with open(loose) as fh:
+                    body = [ln for ln in fh.read().splitlines() if not ln.startswith("#")]
+                parsed = list(csv.DictReader(io.StringIO("\n".join(body))))
+                self.assertEqual(parsed[0]["Evidence"], evidence)
+
+    def test_a_default_level_run_only_ever_produces_image_wide_rows(self):
+        demo_rows, demo_segs = demo_side()
+        our_rows, our_segs = our_side()
+        anchors = task7_anchors(demo_rows, demo_segs, our_rows, our_segs)
+        found, _census = sl.positional(demo_rows, demo_segs, our_rows, our_segs, anchors,
+                                       gsm.PREFIX_WORDS)
+        self.assertTrue(found)
+        self.assertEqual({c.evidence for c in found}, {"image-wide"})
+        rows, _held = sl.proposals_7b([("positional", c) for c in found], [])
+        with tempfile.TemporaryDirectory() as tmp:
+            strict = os.path.join(tmp, "demo_symbol_renames_7b.csv")
+            sl.write_proposals_7b(strict, rows, [])        # must not raise
+            self.assertTrue(os.path.exists(strict))
 
 
 class CliTest(unittest.TestCase):

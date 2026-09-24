@@ -137,9 +137,12 @@ stay as anchors throughout; only the proved ones are ever held out. Both figures
 
 Two lines to read. **`untiered` says the body rule is doing the work**: position alone is right about
 96–97 % of the time, which over 528 candidates would be sixteen-odd wrong names with nothing to mark
-them. And **`gap-only` gets one wrong out of thirteen**, where `image-wide` gets none out of 422 — which
-is §4's whole argument arriving from the other direction. The level that decides the file is the level
-that has never been caught being wrong here; the one immediately below it has.
+them. And **at block 1 `gap-only` gets one wrong out of eleven**, where `image-wide` gets none out of
+274 — which is §4's whole argument arriving from the other direction. Across the two runs above that is
+13 `gap-only` with one wrong against 422 `image-wide` with none; both readings say the same thing, and
+neither number is printed by a single command, so the per-run figures are the ones to quote. The level
+that decides the file is the level that has never been caught being wrong here; the one immediately
+below it has.
 
 `--holdout-block` exists because the obvious holdout is misleading. Holding out single pairs leaves gaps
 that contain one held-out function each, and a gap of one is gap-unique by definition — so `block 1`
@@ -174,21 +177,36 @@ So the check is now image-wide and the column says which level a row cleared:
 
 Only `image-wide` reaches the file. The other two are counted, named here, and reachable with
 `--positional-min-evidence gap-only` (11 rows — the 6 plus 5, two `_sceRpcGetPacket` candidates being
-lost to the identifier rule) or `any` (25 rows). §3's block-1 holdout is the independent check on that
-choice: it re-derived 422 `image-wide` pairs with none wrong and 13 `gap-only` pairs with **one wrong**.
+lost to the identifier rule) or `any` (25 rows), and those runs write to
+`game/demo_symbol_renames_7b_loose.csv` — the strict path refuses a below-`image-wide` row outright, so
+the flag is a boundary and not a convention. §3's holdout is the independent check on the choice:
+`--holdout-block 1` re-derived 274 `image-wide` pairs with none wrong and 11 `gap-only` pairs with **one
+wrong** (`--holdout-block 8`: 148 and 2, both clean).
 
 **Tier A cannot reach `image-wide`, and that is structural rather than a fact about this data.** A
 tier-A key that is unique on both sides at the same length is precisely `address_matcher`'s
 relinked-body acceptance condition — Task 7 would already have placed that pair, and it would be an
-anchor, not a candidate. Tier A exists only where the key is ambiguous. Sure enough, all 6 accepted rows
-are tier B and all 13 tier-A candidates are `gap-only` or `no`.
+anchor, not a candidate. Tier A exists only where the key is ambiguous. The census prints the breakdown
+rather than leaving it to be asserted:
+
+```
+by tier: tier A x image-wide 0, tier A x gap-only 6, tier A x no 13,
+         tier B x image-wide 6, tier B x gap-only 1, tier B x no 1
+```
+
+All 19 tier-A candidates are `gap-only` or `no`; none is `image-wide`. All 6 accepted rows are tier B.
+Tier A is kept all the same: it is live at the two looser levels, where it is the *stronger* of the two
+rules, and the `Tier` column is what tells a reader of a loose file which rule a row rests on. The
+"never" is also contingent on `address_matcher`'s pass-3 shape, and a lever that deletes its own hurdle
+because a sibling module currently subsumes it becomes coupled to that module's internals.
 
 The `gap-only` 7 are `seekoff__…basic_filebuf<w,…>`, `_sceRpcGetPacket` (twice — the same
 `static`-in-two-translation-units shape as Task 7's `_request_end`), `sceSifUnloadModule`,
 `sceSifSearchModuleByAddress`, `_fs_version`, `_lf_version`. The `no` 14 are wrapper families:
 `sceSifQueryMemSize`/`MaxFreeMemSize`/`TotalFreeMemSize`/`BlockTopAddress`/`BlockSize`,
 `_sceSifLoadModuleBuffer`/`sceSifStopModule`, `sceDmaSendN`/`sceDmaSendI`,
-`Copy__12CZAnimArgCmdFv`/`Copy__14CZAnimArgValveFv`, and four `rt_msg_client_*`. Each pair is the same
+`Copy__12CZAnimArgCmdFv`/`Copy__14CZAnimArgValveFv`, and three `rt_msg_client_*`
+(`get_local_ip`, `iget_local_ip`, `is_valid_outgoing_msg`). Each pair is the same
 instruction stream differing only in an immediate — a syscall number, a query selector — and
 `fingerprint` zeroes `addiu`/`ori` immediates **on purpose**, because that is how it sees through a
 relink. Their masked hashes are equal by construction.
@@ -348,15 +366,22 @@ not a name. `game/demo_symbol_renames_7b.csv` has no `Source=bridge` row and, on
   untouched: with none of those flags the run prints and writes exactly what §3 of note 44 quotes, and
   `--renames` produces a byte-identical file. Flags that would be silent no-ops are refused rather than
   ignored, and a bad output path is one `NO-DATA:` line, not a traceback.
-* `tools_py/tests/test_symbol_levers.py`, **52 tests**, on synthetic MIPS fixtures — an anchor gap that
+* `tools_py/tests/test_symbol_levers.py`, **57 tests**, on synthetic MIPS fixtures — an anchor gap that
   lines up and one that does not, anchors out of order, a gap in another `PT_LOAD`, the three evidence
-  levels, a split and a merge that cancel inside one gap, tier B accepted at ratio 0.63 and refused at
-  0.49, a holdout that re-derives a pair *wrongly*, a bridge that agrees, one that contradicts, and one
-  whose demo2 table is mis-bounded. No disc, no demo, no ELF on disk. `test_elf_symbols`,
-  `test_ghidra_symbol_match`, `test_address_matcher` and `test_carry_names` still pass: 162 together.
+  levels, the tier×evidence census, a split and a merge that cancel inside one gap, tier B straddling
+  the size-ratio cut (accepted at 0.629, refused at 0.489 — and each leg asserts the ratio it actually
+  produced, because the first version of that test computed the accept tail as `d_size * 0.63` instead
+  of `d_size / 0.63` and silently ran at 0.86), the strict path refusing a loose row, a holdout that
+  re-derives a pair *wrongly*, a bridge that agrees, one that contradicts, and one whose demo2 table is
+  mis-bounded. No disc, no demo, no ELF on disk. `test_elf_symbols`, `test_ghidra_symbol_match`,
+  `test_address_matcher` and `test_carry_names` still pass: 167 together.
 * `game/demo_symbol_renames_7b.csv` — git-ignored, 6 rows, `Address, Current, Proposed, Mangled, Source,
   Tier, Evidence, KeyPeers, DemoAddr, DemoSize, OurSize, Ratio, GapSize`, with both acceptance rules,
-  the holdout's bias, and the anchor composition written into `#` lines above the column header.
+  the holdout's bias, the anchor composition, and every Task 7 threshold the file's contents depend on
+  (`--min-score`, `--good`, `--min-size`, and how many Task 7 identifiers are already spent) written
+  into `#` lines above the column header. A run below `image-wide` writes
+  `game/demo_symbol_renames_7b_loose.csv` instead; `write_proposals_7b` refuses the strict path for
+  such a row whoever calls it.
 
 Not delivered, on purpose: **no rename was applied**, `recomp/socom2_ghidra.csv` is byte-for-byte
 unchanged, `docs/research/44-demo-symbols.md` is untouched (the controller owns it), and **no demo bytes
@@ -369,8 +394,9 @@ are in the repository** — names and addresses only.
 * **The 21 candidates behind `--positional-min-evidence`** (5 more rows at `gap-only`, 19 at `any`) need
   one decision, not more evidence: are we willing to trust link order alone for a wrapper family, or for
   a routine whose twin lives in another gap? Every such row carries `Evidence` and `KeyPeers` saying
-  exactly what it rests on — and §3 has already caught `gap-only` being wrong once in thirteen, so the
-  honest recommendation is no.
+  exactly what it rests on, and they land in their own file — and §3's block-1 holdout has already
+  caught `gap-only` being wrong once in eleven where `image-wide` was never wrong in 274, so the honest
+  recommendation is no.
 * **One inherited gap, deliberately not fixed here.** Neither this file's `proposals_7b` nor Task 7's
   `proposals` checks a proposed identifier against the 113 names already in `recomp/socom2_ghidra.csv`'s
   own `Name` column. None of these 6 collides today. Whatever APPLIES either file is the right place for

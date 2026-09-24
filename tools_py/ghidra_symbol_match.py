@@ -659,8 +659,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         level = args.positional_min_evidence or "image-wide"
         found, census = sl.positional(demo_rows, demo_segs, our_rows, our_segs, anchors,
                                       PREFIX_WORDS, min_evidence=level)
+        flat = {k: v for k, v in census.items() if not k.startswith(sl.TIER_KEY_PREFIX)}
+        by_tier = {k: v for k, v in census.items() if k.startswith(sl.TIER_KEY_PREFIX)}
         print("lever 1 (positional, min evidence %s): " % level
-              + ", ".join("%s %d" % kv for kv in sorted(census.items())))
+              + ", ".join("%s %d" % kv for kv in sorted(flat.items())))
+        # The same candidates again, by tier: this is what says "no tier-A candidate is image-wide"
+        # is a measurement rather than a claim (symbol_levers.EVIDENCE).
+        print("  by tier: " + ", ".join("%s %d" % kv for kv in sorted(by_tier.items())))
         lever_rows += [("positional", c) for c in found]
         lever_header.append(sl.POSITIONAL_RULE)
         lever_header.append(sl.POSITIONAL_CAVEAT)
@@ -695,24 +700,40 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     if args.renames_7b:
         from tools_py import symbol_levers as sl
+        # A run below `image-wide` writes BESIDE the strict file, never over it: same columns, same
+        # rules, a different name, so a file handed on out of context cannot be mistaken for the
+        # default one. `write_proposals_7b` refuses the strict path for such a row in any case.
+        out_path = args.renames_7b
+        if args.positional and (args.positional_min_evidence or "image-wide") != "image-wide":
+            out_path = sl.loose_path(out_path)
+            print("\n--positional-min-evidence %s: writing %s, not %s"
+                  % (args.positional_min_evidence, out_path, args.renames_7b))
         lever_out, lever_held = sl.proposals_7b(lever_rows, [r["Proposed"] for r in rows])
         print("\n7b proposals: %d" % len(lever_out))
         for reason in sorted(lever_held):
             print("    held back: %-34s %d" % (reason, lever_held[reason]))
-        header = ["%s -- Sprint 11 Task 7b proposals. PROPOSALS ONLY:" % args.renames_7b,
+        # Every Task 7 threshold this file's contents depend on, quoted. --min-score filters
+        # `details` and so the ANCHOR set; --good/--min-size shrink Task 7's own proposals and so
+        # the identifier set `proposals_7b` is told is already spent, which can only LOOSEN this
+        # file. Inert at the defaults -- nothing is held back at `image-wide` -- but a tightened
+        # Task 7 run would otherwise write more 7b rows with nothing in the file saying why.
+        thresholds = ("Task 7 thresholds this file depends on: --min-score %.2f, --good %.2f, "
+                      "--min-size %d; %d Task 7 identifiers already spent."
+                      % (args.min_score, good, min_size, len(rows)))
+        header = ["%s -- Sprint 11 Task 7b proposals. PROPOSALS ONLY:" % out_path,
                   "recomp/socom2_ghidra.csv is unchanged; applying these is a separate, reviewed step.",
                   "Names come from the SOCOM 1 demo's .symtab. Addresses are OURS (r0001).",
                   "Every row here failed Task 7's six-hurdle rule and is proposed under a DIFFERENT",
                   "one, named in its Source column -- except hurdle 2 (body >= 64 bytes), which",
                   "these rules keep unchanged. docs/research/45-positional-and-bridge-names.md",
+                  "", thresholds,
                   ""] + [line for rule in lever_header for line in (rule, "")]
         try:
-            sl.write_proposals_7b(args.renames_7b, lever_out, header)
+            sl.write_proposals_7b(out_path, lever_out, header)
         except (ValueError, OSError) as exc:
             print("NO-DATA: %s" % exc)
             return 2
-        print("wrote %s (proposals only -- applying them is a separate, reviewed step)"
-              % args.renames_7b)
+        print("wrote %s (proposals only -- applying them is a separate, reviewed step)" % out_path)
 
     if args.out:
         payload = {
