@@ -11,6 +11,7 @@ NOT covered here, because only a disc can cover it: that the pipeline reproduces
 bar the controller runs from the main tree (`r0001check` against dist/socom2_game.elf and recomp/output); the
 numbers are in docs/DEVELOPING.md "From your own disc to a buildable ELF".
 """
+import hashlib
 import os
 import subprocess
 import tempfile
@@ -30,6 +31,16 @@ def run_bash(*args, **kwargs):
 def sh(path):
     """A Windows path as the script's bash reads it: C:/x resolves, C:\\x does not."""
     return path.replace("\\", "/")
+
+
+def sha256_of(path):
+    with open(path, "rb") as handle:
+        return hashlib.sha256(handle.read()).hexdigest()
+
+
+def read_bytes(path):
+    with open(path, "rb") as handle:
+        return handle.read()
 
 
 def touch(*parts):
@@ -396,17 +407,19 @@ class BuildRevisionRepairMapTest(unittest.TestCase):
                              "step 2 resolved the repair against the map --ghidra replaces: " + p.stdout)
 
     def test_the_repair_inputs_line_carries_the_maps_sha256(self):
+        """The digest that goes into the sidecar is step 0's FIXED map -- the rows the recompiler
+        will compile -- not the source map, which step 0 read and did not write."""
         with tempfile.TemporaryDirectory() as tmp:
             zdb, out = self._disc(tmp)
             named = self._map(os.path.join(tmp, "named_map.csv"),
                               [("FUN_002cc5f0", 0x002CC5F0, 0x002CC678)])
-            import hashlib
-            with open(named, "rb") as fh:
-                want = hashlib.sha256(fh.read()).hexdigest()
             p = run_bash(SCRIPT, self.REV, sh(zdb), "--game", sh(os.path.join(tmp, "tree")),
                          "--ghidra", sh(named), "--out", sh(out))
-            self.assertIn(want, p.stdout, "a map that changes under the image must be visible: "
-                                          + p.stdout + p.stderr)
+            fixed = os.path.join(out, f"recomp_{self.REV}", "build",
+                                 f"socom2_ghidra_{self.REV}.fixed.csv")
+            self.assertTrue(os.path.isfile(fixed), "step 0 wrote no fixed map: " + p.stdout + p.stderr)
+            self.assertIn(sha256_of(fixed), p.stdout,
+                          "a map that changes under the image must be visible: " + p.stdout + p.stderr)
 
     def test_without_the_r0001_image_step_2_says_what_to_build_not_which_file_is_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -419,6 +432,111 @@ class BuildRevisionRepairMapTest(unittest.TestCase):
                          "--ghidra", sh(named), "--out", sh(out))
             self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
             self.assertIn("build.sh elf", p.stderr)
+
+
+@unittest.skipUnless(BASH, "needs a bash that is not WSL's launcher")
+class BuildRevisionFixedMapTest(unittest.TestCase):
+    """Step 0 writes the fixed map to a build PRODUCT; the map it reads is a source and keeps its bytes.
+
+    The fix (non-contiguous ranges cut to size, forced entry points folded in, merge_ranges applied) used to
+    run at step 4 over `recomp/socom2_ghidra_<rev>.csv` IN PLACE. So every r0004 build split six rows of the
+    tracked map, left `M recomp/socom2_ghidra_r0004.csv` in `git status` for the controller to restore by
+    hand, and -- because `<elf>.repair.json` hashes that map as a repair input -- made step 2 call the merged
+    image stale on the next build and re-merge it to the same bytes.
+
+    `r0009map` is a throwaway revision name and every path these cases touch is under --out or a temporary
+    directory: nothing is written inside the repository, and no case reaches a lock or a toolchain.
+    """
+    REV = "r0009map"
+    ROW = ("FUN_00100000", 0x00100000, 0x00100028)   # one Ghidra row ...
+    FORCED = 0x00100010                              # ... that this forced entry point splits in two
+
+    def _tree(self, tmp):
+        """A synthetic disc tree, and an out/ that already holds step 1's two products and the map."""
+        tree = os.path.join(tmp, "tree")
+        zdb = touch(tree, "RUN", "RAW", "APACHE00.ZDB")
+        touch(tree, "SCUS_972.75")
+        touch(tree, "OVERLAY", "REL", "DNAS.dec.bin")
+        out = os.path.join(tmp, "out")
+        touch(out, f"overlays_{self.REV}", "ftscore.bin")
+        touch(out, f"overlays_{self.REV}", "zsealetc.bin")
+        source = os.path.join(out, f"recomp_{self.REV}", f"socom2_ghidra_{self.REV}.csv")
+        os.makedirs(os.path.dirname(source), exist_ok=True)
+        name, start, end = self.ROW
+        with open(source, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("Name,Start,End,Size\n")
+            fh.write(f"{name},0x{start:08X},0x{end:08X},{end - start}\n")
+        extra = os.path.join(tmp, "extra.txt")
+        with open(extra, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(f"0x{self.FORCED:08X}\n")
+        return tree, zdb, out, source, extra
+
+    def _run(self, tmp):
+        tree, zdb, out, source, extra = self._tree(tmp)
+        before = read_bytes(source)
+        p = run_bash(SCRIPT, self.REV, sh(zdb), "--game", sh(tree), "--out", sh(out),
+                     "--extra", sh(extra), "--stop-after", "elf")
+        fixed = os.path.join(out, f"recomp_{self.REV}", "build", f"socom2_ghidra_{self.REV}.fixed.csv")
+        return p, source, before, fixed
+
+    def test_the_map_the_step_read_is_not_written(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p, source, before, _ = self._run(tmp)
+            self.assertEqual(before, read_bytes(source),
+                             "step 0 rewrote the map it read -- that is the `M recomp/socom2_ghidra_r0004.csv` "
+                             "a build used to leave behind: " + p.stdout + p.stderr)
+
+    def test_the_fixed_rows_go_to_a_build_product(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p, source, _, fixed = self._run(tmp)
+            self.assertTrue(os.path.isfile(fixed), "step 0 wrote no fixed map: " + p.stdout + p.stderr)
+            name, start, end = self.ROW
+            self.assertIn(f"0x{start:08X},0x{end:08X}", read_bytes(source).decode(),
+                          "the source map lost its unsplit row")
+            body = read_bytes(fixed).decode()
+            self.assertIn(f"0x{start:08X},0x{self.FORCED:08X}", body,
+                          "the fixed map does not hold the truncated parent row: " + body)
+            self.assertIn(f"0x{self.FORCED:08X},0x{end:08X}", body,
+                          "the fixed map does not hold the forced entry point's row: " + body)
+
+    def test_the_run_names_the_product_and_the_source_it_did_not_write(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p, _, _, fixed = self._run(tmp)
+            self.assertIn("was not written", p.stdout, p.stdout + p.stderr)
+            self.assertIn(f"socom2_ghidra_{self.REV}.fixed.csv", p.stdout, p.stdout + p.stderr)
+
+    def test_the_dry_run_prints_the_step_and_where_its_product_goes(self):
+        p = run_bash(SCRIPT, "r0004", EMPTY_ZDB, "--dry-run")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("step 0  map", p.stdout)
+        self.assertIn("recomp/build/socom2_ghidra_r0004.fixed.csv", p.stdout)
+        self.assertIn("the tracked map is never written", p.stdout)
+
+    def test_the_lock_bound_tail_refuses_when_step_0_left_no_fixed_map(self):
+        """Step 4 reads that map and no longer writes one, so the tail entered on its own says so rather
+        than falling back to rewriting the tracked map the way it used to."""
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "out")
+            gen = os.path.join(out, f"recomp_{self.REV}", "output")
+            os.makedirs(gen)
+            env = tail_env(tmp, out, rev=self.REV)
+            p = run_bash(SCRIPT, "--_tail", env=env)
+            self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+            self.assertIn("fixed.csv", p.stderr)
+            self.assertIn("Step 0 writes it", p.stderr)
+
+
+@unittest.skipUnless(os.path.isfile(os.path.join(ROOT, "recomp", "socom2_r0004.toml")),
+                     "this tree has no recomp/socom2_r0004.toml")
+class RevisionTomlReadsTheBuildProductTest(unittest.TestCase):
+    """The recompiler reads the map named by `ghidra_output`, so the tracked r0004 config has to name the
+    build product too -- otherwise step 3 would rewrite that tracked file on every build and we would have
+    moved the dirty-working-tree defect from the CSV to the TOML."""
+
+    def test_the_tracked_r0004_config_names_the_fixed_map(self):
+        with open(os.path.join(ROOT, "recomp", "socom2_r0004.toml"), encoding="utf-8") as fh:
+            lines = [ln.strip() for ln in fh if ln.strip().startswith("ghidra_output")]
+        self.assertEqual(lines, ['ghidra_output = "build/socom2_ghidra_r0004.fixed.csv"'], lines)
 
 
 if __name__ == "__main__":

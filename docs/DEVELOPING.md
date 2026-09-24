@@ -140,7 +140,7 @@ when its product is already there (`--force` redoes it) — the recomp and the r
 `.complete` mark they write when they finish, so a tree left half-written by a failed run is redone rather than
 reported as done; both take the loop lock themselves. `--stop-after elf|recomp` stops early, `--check-against <elf>`
 compares the produced ELF's sha256 with a known one, `--out <dir>` puts every product under one directory,
-`--dry-run` prints the five steps with their paths. `<rev>` is `r` and four digits with an optional suffix that
+`--dry-run` prints the six steps with their paths. `<rev>` is `r` and four digits with an optional suffix that
 starts with a letter. The package must sit in its extracted disc tree, whose loader must be named `SCUS_972.75`
 (`tools_py/decrypt_apache.py` joins that name onto the tree and runs that loader's own code on the package, after
 making `OVERLAY/REL/DNAS.dec.bin` when the tree lacks it). The revision's function map
@@ -148,9 +148,19 @@ making `OVERLAY/REL/DNAS.dec.bin` when the tree lacks it). The revision's functi
 falls back to r0001's map silently, any other revision has to ask for it with `--ghidra-from-r0001` and is warned
 that the generated code will be wrong until Task 10's matcher writes that revision its own map. The **forced entry
 points** are a per-revision input for the same reason (`recomp/extra_functions.txt` is 1,619 addresses, 1,453 of them
-inside the overlays): step 4 takes `recomp/extra_functions_<rev>.txt` when it is there, or `--extra <file>`, else
+inside the overlays): step 0 takes `recomp/extra_functions_<rev>.txt` when it is there, or `--extra <file>`, else
 r0001's with a warning. `python tools_py/find_imm_targets.py <rev elf> <rev csv> recomp/extra_functions_<rev>.txt`
 writes a revision its own.
+**A build never writes its own inputs (Sprint 11 Task 19).** Step 0 folds those forced entry points into the map,
+cuts the non-contiguous ranges to size and applies `recomp/merge_ranges.txt`, and writes the result to
+**`recomp/build/socom2_ghidra_<rev>.fixed.csv`** — a build product, under a git-ignored directory. Steps 2-5 all
+read that file: the merged ELF is repaired against exactly the rows the recompiler will compile, the config's
+`ghidra_output` names it, and `<elf>.repair.json` records its sha256. Until 2026-09-24 the fix ran at step 4 over
+`recomp/socom2_ghidra_<rev>.csv` **in place**, so every r0004 build split six rows of the tracked map, left
+`M recomp/socom2_ghidra_r0004.csv` in `git status` for the controller to restore by hand, and then — because the
+sidecar had hashed that map — declared the image stale on the next build and re-merged it to the same bytes.
+`build.sh`'s r0001 lane still rewrites `recomp/socom2_ghidra.csv` in place; that file is a fixed point of the fix
+(rewriting it changes no byte), so the habit is there but leaves nothing behind.
 **The executable knows which pressing it was recompiled from, and refuses another one (Sprint 11 Task 19).** Step 5 passes `-DPS2X_GAME_REVISION=<rev>` to the cmake configure (`build.sh` passes `r0001`, the default chain's), so `PS2X_GAME_REVISION` is a PUBLIC compile definition on `ps2_runtime` and the recompiled game carries the revision its generated code came from. At boot, right after `socom2_addresses::selectFromImage` has read the loaded image's own build banner, `runtime/socom2_revision_guard.h` compares the two. They agree, or the image names no revision at all (an image this table has no column for): the run carries on, the second case with the r0001 fallback and its existing warning, unchanged. They name **different** revisions and the run stops on one line -- `[socom2] REFUSED: this executable was recompiled from r0004 but the image at <path> is r0001 (banner "..."); pass the matching image (SOCOM_GAME_ELF) or the matching executable` -- and the process leaves with **73** (`revision-mismatch`, `ps2x/exit_codes.h`, distinct from the preflight's 66/67/68). A refusal rather than a warning because nothing past a mismatch is meaningful: every override address, every static-constructor table and every function body belongs to the other build. That is not hypothetical -- two parity gates on 2026-09-23 ran the r0004 executable on r0001's image (the launch scripts hard-coded `game/disc/socom2_game.elf`), booted, walked r0001's constructor table into r0004 bodies and hung at the loading screen on a `jalr` through a slot the constructors never filled, with nothing in the log to say so. A `<rev>` with a suffix compares as its base, so an `r0001check` build belongs on an r0001 image.
 **A revision's function map comes out of Ghidra with `bash scripts/ghidra_export_functions.sh <elf> <out.csv>`** —
 the recipe that made `recomp/socom2_ghidra.csv` (stock ELF loader → `r5900:LE:32:default:default` from the EE

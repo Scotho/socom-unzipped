@@ -10,6 +10,7 @@
 __pycache__/
 /recomp/output/
 /recomp/output_*/
+/recomp/build/
 /recomp/*.raw.csv
 /recomp/*.raw.toml
 /recomp/*.log

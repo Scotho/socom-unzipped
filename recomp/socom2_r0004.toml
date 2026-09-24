@@ -6,7 +6,7 @@
 input = "../game/overlays_r0004/socom2_game_r0004.elf"
 
 # Path to Ghidra exported function map (optional CSV)
-ghidra_output = "socom2_ghidra_r0004.csv"
+ghidra_output = "build/socom2_ghidra_r0004.fixed.csv"
 
 # Path to output directory
 output = "./output_r0004/"

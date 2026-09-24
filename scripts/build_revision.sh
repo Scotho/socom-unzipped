@@ -13,12 +13,29 @@
 #         the only name step 1 can decrypt with, because tools_py/decrypt_apache.py:206 joins it onto the tree
 #         itself and then runs that loader's own code under Unicorn).
 #
-# Five steps, each skipped when its product is already there (--force redoes it), the last two under the machine's
+# Six steps, each skipped when its product is already there (--force redoes it), the last two under the machine's
 # loop lock (scripts/loop_lock.sh, owner build-revision):
+#   0 map               tools_py/fix_ghidra_csv.py --out                           -> recomp/build/socom2_ghidra_<rev>.fixed.csv
+#                       The revision's function map (recomp/socom2_ghidra_<rev>.csv, or --ghidra <csv>) with its
+#                       non-contiguous ranges cut to size, its FORCED ENTRY POINTS folded in and merge_ranges.txt
+#                       applied. It is written EVERY run, before anything else, and it is a build PRODUCT:
+#                       recomp/build/ is git-ignored and THE TRACKED MAP IS NEVER WRITTEN BY A BUILD. It used to be
+#                       rewritten in place at step 4, so every r0004 build left `M recomp/socom2_ghidra_r0004.csv`
+#                       in git status, the controller restored it by hand, and step 2's sidecar -- which hashes the
+#                       map as a repair input -- then called the image stale and re-merged it to the same bytes.
+#                       Steps 2-5 all read the fixed file: the ELF is repaired against exactly the rows the
+#                       recompiler will compile, and its sha256 in the sidecar is stable across builds.
+#                       The forced entry points are recomp/extra_functions_<rev>.txt when it is there, or
+#                       --extra <file>, else recomp/extra_functions.txt -- which is r0001's, and 1,453 of whose
+#                       1,619 entries are overlay addresses that mean nothing in another revision, so a foreign
+#                       revision falling back to it is warned. tools_py/find_imm_targets.py writes a revision its own:
+#                         python tools_py/find_imm_targets.py <rev elf> <rev csv> recomp/extra_functions_<rev>.txt
 #   1 decrypt           tools_py.decrypt_apache.main(<tree>, game/overlays_<rev>)  -> ftscore.bin, zsealetc.bin
 #   2 make_overlay_elf  loader + both overlays                                    -> game/overlays_<rev>/socom2_game_<rev>.elf
 #     --check-against <elf>: sha256 of that ELF against the given one; a mismatch prints both digests and exits 1
 #   3 toml              recomp/socom2.toml with input/output/ghidra_output rewritten -> recomp/socom2_<rev>.toml;
+#                       ghidra_output names step 0's fixed map (build/socom2_ghidra_<rev>.fixed.csv, relative to
+#                       the directory ps2_recomp runs in), never the tracked map.
 #                       the revision's function map recomp/socom2_ghidra_<rev>.csv must already be there or be
 #                       named with --ghidra <csv>. Only an r0001* revision falls back to r0001's own map
 #                       silently; any other revision must ask for it with --ghidra-from-r0001, which warns that
@@ -30,12 +47,7 @@
 #                       tools_py.revision_toml, which translates each of them and lists in [revision.unresolved]
 #                       the ones it could not place. Without one it copies-and-renames as before, and warns.
 #   4 recomp   [lock]   ps2_recomp socom2_<rev>.toml                               -> recomp/output_<rev>/
-#                       fix_ghidra_csv.py first folds the revision's FORCED ENTRY POINTS into the map:
-#                       recomp/extra_functions_<rev>.txt when it is there, or --extra <file>, else
-#                       recomp/extra_functions.txt -- which is r0001's, and 1,453 of whose 1,619 entries are
-#                       overlay addresses that mean nothing in another revision, so a foreign revision
-#                       falling back to it is warned. tools_py/find_imm_targets.py writes a revision its own:
-#                         python tools_py/find_imm_targets.py <rev elf> <rev csv> recomp/extra_functions_<rev>.txt
+#                       against step 0's fixed map (the toml's ghidra_output names it); this step writes no map.
 #   5 runtime  [lock]   cmake third_party/ps2recomp/build-clang-<rev>              -> dist/socom2_<rev>.exe (+ the ELF beside it)
 #
 #   Steps 4 and 5 mark their product with a .complete file when the step returns 0, and skip on that mark alone:
@@ -50,10 +62,11 @@
 #   changed rule re-merges the ELF instead of silently carrying a stale image into steps 3-5; a sidecar that
 #   cannot be parsed counts as stale.
 #
-#   --stop-after elf|recomp|runtime   stop after that step (runtime is the default); elf takes no lock at all
+#   --stop-after elf|recomp|runtime   stop after that step (runtime is the default); elf takes no lock at all,
+#                     and covers step 0, so it is the cheapest way to see that a build leaves git status clean
 #   --out <dir>       every product under <dir> instead (overlays_<rev>/, recomp_<rev>/, build-clang-<rev>/, dist/),
 #                     so a check build run from the main tree can land in a worktree
-#   --dry-run         print the five steps with their paths and exit 0, touching nothing
+#   --dry-run         print the six steps with their paths and exit 0, touching nothing
 #
 # Exit 2 on a bad argument or a missing input, 1 on a failed step or a --check-against mismatch, 75 when the loop
 # lock could not be taken within --wait (BUILD_REVISION_LOCK_WAIT, 60 minutes), 0 otherwise. The shape is
@@ -116,6 +129,11 @@ fi
 ELF="$OVERLAYS/socom2_game_$REV.elf"
 TOML="$RECOMP_DIR/socom2_$REV.toml"
 CSV="$RECOMP_DIR/socom2_ghidra_$REV.csv"
+# Step 0's product. The tracked map above is a SOURCE: the build reads it and never writes it. This one is
+# git-ignored (.gitignore /recomp/build/) and is what steps 2-5 read -- including the repair sidecar's input
+# hash, so the ELF is repaired against the same rows the recompiler compiles.
+FIXED="$RECOMP_DIR/build/socom2_ghidra_$REV.fixed.csv"
+TOML_GHIDRA="build/socom2_ghidra_$REV.fixed.csv"   # as ps2_recomp reads it: relative to $RECOMP_DIR, its cwd
 EXE="$DIST/socom2_$REV.exe"
 rel() { case "$1" in "$ROOT"/*) echo "${1#"$ROOT"/}" ;; *) echo "$1" ;; esac; }
 # The revision's forced entry points, settled here so both halves of the script (and the dry run) say the
@@ -194,6 +212,7 @@ if [ "$DRY" = 1 ]; then
   say "build_revision $REV (dry run): nothing is touched"
   say "  package        $(rel "$ZDB")"
   say "  disc tree      $(rel "$GAME")   loader $(rel "${LOADER:-<none found: SCUS_*/SCES_*/SLUS_*/SLES_* in the tree, or --loader>}")"
+  say "  step 0  map               $(rel "${GHIDRA_SRC:-$CSV}") + forced entry points $(rel "$EXTRA")$([ "$EXTRA_BORROWED" = 1 ] && echo ' (r0001'"'"'s -- another build'"'"'s overlay addresses)') -> $(rel "$FIXED") (a build product; the tracked map is never written)"
   say "  step 1  decrypt           tools_py.decrypt_apache.main(tree, overlays) -> $(rel "$OVERLAYS")/{ftscore,zsealetc}.bin"
   say "  step 2  make_overlay_elf  loader + overlays (--loader-text-end=$LTE) -> $(rel "$ELF")${CHECK:+   check-against $(rel "$CHECK")}"
   if [ "$GHIDRA_NEED" = 1 ]; then
@@ -211,7 +230,7 @@ if [ "$DRY" = 1 ]; then
     TOMLNOTE="input/output/ghidra_output rewritten; every other address stays r0001's"
   fi
   say "  step 3  toml              recomp/socom2.toml -> $(rel "$TOML") ($TOMLNOTE); $MAPNOTE"
-  say "  step 4  recomp   [lock]   ps2_recomp socom2_$REV.toml -> $(rel "$GEN")/; forced entry points $(rel "$EXTRA")$([ "$EXTRA_BORROWED" = 1 ] && echo ' (r0001'"'"'s -- another build'"'"'s overlay addresses)')"
+  say "  step 4  recomp   [lock]   ps2_recomp socom2_$REV.toml -> $(rel "$GEN")/; function map $(rel "$FIXED")"
   say "  step 5  runtime  [lock]   cmake $(rel "$RTBUILD") -> $(rel "$EXE") (+ $(rel "$DIST")/socom2_game_$REV.elf)"
   [ "$STOP" = runtime ] || say "  stop after $STOP"
   exit 0
@@ -219,7 +238,16 @@ fi
 
 # ---- steps 1-3, lock-free -----------------------------------------------------------------------------------
 if [ "$TAIL" = 0 ]; then
-  mkdir -p "$OVERLAYS" "$RECOMP_DIR" "$DIST"
+  mkdir -p "$OVERLAYS" "$RECOMP_DIR" "$DIST" "$(dirname "$FIXED")"
+  # 0 map -- before step 1 for the same reason the map's source was settled before it: a map this step cannot
+  # read is a refusal in a second, not eight minutes of Unicorn later. Written every run (it is seconds over
+  # 16,000 rows, and a map derived from stale inputs is worse than none), and written OUT OF TREE: the tracked
+  # map keeps its bytes, so `git status` after a build is empty and step 2's sidecar hash stays put.
+  MAP_SRC="${GHIDRA_SRC:-$CSV}"
+  [ -f "$MAP_SRC" ] || die2 "step 0: $(rel "$MAP_SRC") is not there, and steps 2-5 all need the revision's function map. Name the map they will use: --ghidra <csv> (or --ghidra-from-r0001 to start from r0001's)"
+  say "map: $(rel "$MAP_SRC") + forced entry points $(rel "$EXTRA")"
+  "$py" "$ROOT/tools_py/fix_ghidra_csv.py" "$MAP_SRC" "$EXTRA" --out "$FIXED"
+  say "map: $(rel "$FIXED") sha256 $(sha "$FIXED") -- a build product; $(rel "$MAP_SRC") was not written"
   # 1 decrypt
   if [ "$FORCE" = 0 ] && [ -f "$OVERLAYS/ftscore.bin" ] && [ -f "$OVERLAYS/zsealetc.bin" ]; then
     say "decrypt: ftscore.bin and zsealetc.bin are already in $(rel "$OVERLAYS") -- skipped (--force redoes it)"
@@ -252,17 +280,17 @@ if [ "$TAIL" = 0 ]; then
   # supplies the replacement words, and the two function maps bound the functions. All four or none --
   # make_overlay_elf rewrites nothing without --stub-writes.
   #
-  # The revision's map is "$GHIDRA_SRC" when --ghidra named one, because that is the map steps 3-5
-  # will recompile against and step 3 has not copied it onto "$CSV" yet. Reading "$CSV" here instead
-  # would refuse a revision that is being bootstrapped with --ghidra (its own map does not exist
-  # yet), and -- worse -- would silently repair against the OLD map when --ghidra names a new one.
+  # The revision's map is step 0's fixed one -- the rows the recompiler will actually compile, derived from
+  # "$GHIDRA_SRC" when --ghidra named one and from "$CSV" otherwise. Reading "$CSV" here instead would refuse
+  # a revision being bootstrapped with --ghidra (its own map does not exist yet), and -- worse -- would
+  # silently repair against the OLD map when --ghidra names a new one. Reading the fixed file rather than
+  # either source is what makes the sidecar's "rows" digest stable: it is derived, not edited under the image.
   REPAIR_ARGS=()
   STACK="$ROOT/game/$REV/decoded/stack.txt"
   TWIN_ELF="$ROOT/game/disc/socom2_game.elf"
   TWIN_ROWS="$ROOT/recomp/socom2_ghidra.csv"
-  ROWS_CSV="${GHIDRA_SRC:-$CSV}"
+  ROWS_CSV="$FIXED"
   if [ -f "$STACK" ]; then
-    [ -f "$ROWS_CSV" ] || die2 "step 2: $(rel "$STACK") is $REV's capsule write stack, so the merged ELF is repaired against $REV's function map -- but $(rel "$ROWS_CSV") is not there. Name the map steps 3-5 will use: --ghidra <csv> (or --ghidra-from-r0001 to start from r0001's)"
     [ -f "$TWIN_ELF" ] || die2 "step 2: the repair takes its replacement words from the r0001 image, but $(rel "$TWIN_ELF") is not there. Build the r0001 lane first (bash build.sh elf), or drop $(rel "$STACK") to merge without a repair"
     [ -f "$TWIN_ROWS" ] || die2 "step 2: the repair needs r0001's own function map to find the twin function, but $(rel "$TWIN_ROWS") is not there. It is tracked: git checkout -- $(rel "$TWIN_ROWS") (or regenerate it with the r0001 Ghidra pass, docs/DEVELOPING.md)"
     REPAIR_ARGS=(--stub-writes "$STACK" --twin "$TWIN_ELF" --rows "$ROWS_CSV" --twin-rows "$TWIN_ROWS")
@@ -322,17 +350,17 @@ if [ "$TAIL" = 0 ]; then
     if ! (cd "$ROOT" && "$py" -m tools_py.revision_toml "$ROOT/recomp/socom2.toml" "$MATCH" \
             --elf-b "$ELF" \
             --set-input "$TOML_INPUT" --set-output "$TOML_OUTPUT" \
-            --set-ghidra-output "socom2_ghidra_$REV.csv" --out "$TOML"); then
+            --set-ghidra-output "$TOML_GHIDRA" --out "$TOML"); then
       echo "build_revision: step 3 could not translate the config through $(rel "$MATCH") -- run tools_py.revision_toml by hand to see why, or drop --match to copy r0001's addresses across unchanged" >&2
       exit 1
     fi
   else
     sed -e "s|^input *=.*|input = \"$TOML_INPUT\"|" \
         -e "s|^output *=.*|output = \"$TOML_OUTPUT\"|" \
-        -e "s|^ghidra_output *=.*|ghidra_output = \"socom2_ghidra_$REV.csv\"|" \
+        -e "s|^ghidra_output *=.*|ghidra_output = \"$TOML_GHIDRA\"|" \
         "$ROOT/recomp/socom2.toml" > "$TOML"
   fi
-  say "toml: $(rel "$TOML") (input $TOML_INPUT, output $TOML_OUTPUT, ghidra_output socom2_ghidra_$REV.csv)"
+  say "toml: $(rel "$TOML") (input $TOML_INPUT, output $TOML_OUTPUT, ghidra_output $TOML_GHIDRA)"
   # 4-5 under the lock, re-entering this script
   export BR_REV="$REV" BR_STOP="$STOP" BR_FORCE="$FORCE" BR_OUT="$OUT" BR_EXTRA="$EXTRA"
   exec bash "$ROOT/scripts/loop_lock.sh" run build-revision --purpose "build_revision $REV: recomp$([ "$STOP" = runtime ] && echo ' + runtime')" \
@@ -346,8 +374,10 @@ command -v clang >/dev/null 2>&1 && command -v cmake >/dev/null 2>&1 && command 
 if [ "$FORCE" = 0 ] && [ -f "$GEN/.complete" ]; then
   say "recomp: $(ls "$GEN" | wc -l) files already in $(rel "$GEN") -- skipped (--force redoes it)"
 else
-  say "recomp: forced entry points from $(rel "$EXTRA")"
-  "$py" "$ROOT/tools_py/fix_ghidra_csv.py" "$CSV" "$EXTRA"
+  # Step 0 wrote the map; this step only reads it. It used to run fix_ghidra_csv.py over "$CSV" in place here,
+  # which is why every build left the tracked map modified in git status.
+  [ -f "$FIXED" ] || die2 "recomp: $(rel "$FIXED") is not there. Step 0 writes it; run scripts/build_revision.sh from the top rather than re-entering the lock-bound tail with --_tail"
+  say "recomp: function map $(rel "$FIXED") sha256 $(sha "$FIXED")"
   cmake -S "$PS2R" -B "$TOOLBUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ >/dev/null
   cmake --build "$TOOLBUILD" --target ps2_recomp ps2_analyzer -j "$(nproc)"
