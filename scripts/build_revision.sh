@@ -206,7 +206,7 @@ if [ "$TAIL" = 0 ]; then
   [ "$EXTRA_BORROWED" = 0 ] || [ "$DRY" = 1 ] \
     || echo "WARNING: $REV has no forced entry points of its own (recomp/extra_functions_$REV.txt); using r0001's, whose overlay entries are another build's addresses. Write one with: $PYTHON tools_py/find_imm_targets.py $(rel "$ELF") $(rel "$CSV") recomp/extra_functions_$REV.txt" >&2
   [ "$TOML_BORROWED" = 0 ] || [ "$DRY" = 1 ] \
-    || echo "WARNING: $REV has no address match report (game/$REV/match.json, or --match <json>); $(rel "$TOML") will keep r0001's stub selectors, instruction patches, jump-table sites and [mmio] annotations, which are another build's addresses. Write one with: $PYTHON -m tools_py.address_matcher dist/socom2_game.elf recomp/socom2_ghidra.csv $(rel "$ELF") $(rel "$CSV") --out game/$REV/match.json" >&2
+    || echo "WARNING: $REV has no address match report (game/$REV/match.json, or --match <json>); $(rel "$TOML") will keep r0001's stub selectors, instruction patches, jump-table sites and [mmio] annotations, which are another build's addresses. Write one in two passes (the second reads the seeds the first derives): $PYTHON -m tools_py.address_matcher game/disc/socom2_game.elf recomp/socom2_ghidra.csv $(rel "$ELF") $(rel "$CSV") --out game/$REV/match_noseed.json && $PYTHON -m tools_py.derive_seeds game/$REV/match_noseed.json --out recomp/${REV}_seeds.txt && $PYTHON -m tools_py.address_matcher game/disc/socom2_game.elf recomp/socom2_ghidra.csv $(rel "$ELF") $(rel "$CSV") \$(sed 's/^/--seed /' recomp/${REV}_seeds.txt | grep -v '^--seed #') --out game/$REV/match.json" >&2
 fi
 
 # ---- dry run ------------------------------------------------------------------------------------------------
