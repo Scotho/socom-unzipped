@@ -312,5 +312,114 @@ class BuildRevisionRecompSkipTest(unittest.TestCase):
             self.assertIn("stop after recomp", p.stdout)
 
 
+@unittest.skipUnless(BASH, "needs a bash that is not WSL's launcher")
+class BuildRevisionRepairMapTest(unittest.TestCase):
+    """Step 2 repairs the merged ELF against the map steps 3-5 will recompile against.
+
+    The capsule write stack lives beside the revision's capsule (`game/<rev>/decoded/stack.txt`) and
+    the map it is resolved against is `$GHIDRA_SRC` when `--ghidra` named one -- which step 3 has not
+    yet copied onto `recomp/socom2_ghidra_<rev>.csv`. Reading that copy instead refused a revision
+    being bootstrapped with `--ghidra`, and silently repaired against the *old* map when `--ghidra`
+    named a new one.
+
+    `r0009repair` is a throwaway revision name. Its stack (under the git-ignored `game/`) and, in one
+    case, its own map under `recomp/` are created here and removed again; nothing else reads either.
+    Each case stops inside step 2 on the synthetic overlay, well before any lock or toolchain.
+    """
+    REV = "r0009repair"
+
+    def setUp(self):
+        self.stack = os.path.join(ROOT, "game", self.REV, "decoded", "stack.txt")
+        os.makedirs(os.path.dirname(self.stack), exist_ok=True)
+        with open(self.stack, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("w 80031250 002CC670\nw 80031254 03E00008\n"
+                     "w 80031258 002CC674\nw 8003125C 00000000\n"
+                     "w 80031260 00000000\nw 80031264 00000000\n")
+        self.addCleanup(self._remove_tree, os.path.join(ROOT, "game", self.REV))
+        self.own_map = os.path.join(ROOT, "recomp", f"socom2_ghidra_{self.REV}.csv")
+        self.addCleanup(self._remove_file, self.own_map)
+
+    @staticmethod
+    def _remove_file(path):
+        if os.path.isfile(path):
+            os.remove(path)
+
+    @staticmethod
+    def _remove_tree(path):
+        import shutil
+        shutil.rmtree(path, ignore_errors=True)
+
+    def _disc(self, tmp):
+        """A synthetic tree and an overlays dir that already holds step 1's two products."""
+        tree = os.path.join(tmp, "tree")
+        zdb = touch(tree, "RUN", "RAW", "APACHE00.ZDB")
+        touch(tree, "SCUS_972.75")
+        touch(tree, "OVERLAY", "REL", "DNAS.dec.bin")
+        out = os.path.join(tmp, "out")
+        touch(out, f"overlays_{self.REV}", "ftscore.bin")
+        touch(out, f"overlays_{self.REV}", "zsealetc.bin")
+        return zdb, out
+
+    def _map(self, path, rows):
+        with open(path, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("Name,Start,End,Size\n")
+            for name, start, end in rows:
+                fh.write(f"{name},0x{start:08X},0x{end:08X},{end - start}\n")
+        return path
+
+    def test_a_revision_bootstrapped_with_ghidra_is_repaired_against_the_map_it_named(self):
+        """It has no map of its own yet -- that is what --ghidra is for -- and step 2 must not
+        refuse it by naming the copy step 3 has not made."""
+        with tempfile.TemporaryDirectory() as tmp:
+            zdb, out = self._disc(tmp)
+            named = self._map(os.path.join(tmp, "named_map.csv"),
+                              [("FUN_002cc5f0", 0x002CC5F0, 0x002CC678)])
+            p = run_bash(SCRIPT, self.REV, sh(zdb), "--game", sh(os.path.join(tmp, "tree")),
+                         "--ghidra", sh(named), "--out", sh(out))
+            self.assertNotIn(f"socom2_ghidra_{self.REV}.csv is not there", p.stderr,
+                             "step 2 refused the map step 3 would have written: " + p.stderr)
+            self.assertIn("repair inputs", p.stdout, p.stdout + p.stderr)
+            self.assertIn("named_map.csv", p.stdout, p.stdout + p.stderr)
+
+    def test_when_ghidra_names_a_new_map_step_2_does_not_use_the_old_one(self):
+        """The silent divergence: the ELF repaired against yesterday's map, steps 3-5 compiled
+        against today's."""
+        with tempfile.TemporaryDirectory() as tmp:
+            zdb, out = self._disc(tmp)
+            self._map(self.own_map, [("FUN_00100000", 0x00100000, 0x00100028)])
+            named = self._map(os.path.join(tmp, "named_map.csv"),
+                              [("FUN_002cc5f0", 0x002CC5F0, 0x002CC678)])
+            p = run_bash(SCRIPT, self.REV, sh(zdb), "--game", sh(os.path.join(tmp, "tree")),
+                         "--ghidra", sh(named), "--out", sh(out))
+            self.assertIn("named_map.csv", p.stdout, p.stdout + p.stderr)
+            self.assertNotIn(f"map recomp/socom2_ghidra_{self.REV}.csv", p.stdout,
+                             "step 2 resolved the repair against the map --ghidra replaces: " + p.stdout)
+
+    def test_the_repair_inputs_line_carries_the_maps_sha256(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            zdb, out = self._disc(tmp)
+            named = self._map(os.path.join(tmp, "named_map.csv"),
+                              [("FUN_002cc5f0", 0x002CC5F0, 0x002CC678)])
+            import hashlib
+            with open(named, "rb") as fh:
+                want = hashlib.sha256(fh.read()).hexdigest()
+            p = run_bash(SCRIPT, self.REV, sh(zdb), "--game", sh(os.path.join(tmp, "tree")),
+                         "--ghidra", sh(named), "--out", sh(out))
+            self.assertIn(want, p.stdout, "a map that changes under the image must be visible: "
+                                          + p.stdout + p.stderr)
+
+    def test_without_the_r0001_image_step_2_says_what_to_build_not_which_file_is_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            zdb, out = self._disc(tmp)
+            named = self._map(os.path.join(tmp, "named_map.csv"),
+                              [("FUN_002cc5f0", 0x002CC5F0, 0x002CC678)])
+            if os.path.isfile(os.path.join(ROOT, "game", "disc", "socom2_game.elf")):
+                self.skipTest("this tree has the r0001 image, so the refusal cannot fire")
+            p = run_bash(SCRIPT, self.REV, sh(zdb), "--game", sh(os.path.join(tmp, "tree")),
+                         "--ghidra", sh(named), "--out", sh(out))
+            self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+            self.assertIn("build.sh elf", p.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

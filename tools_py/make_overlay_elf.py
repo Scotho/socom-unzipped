@@ -52,7 +52,8 @@ def build(out, elf_path, overlay_paths, loader_text_end=None,
     `stub_writes` is the capsule's [(address, value)] pair-table list; without it no byte of any
     segment is rewritten.  `repair_log` writes `<out>.repair.json` beside the image (always, even
     for zero repairs, because its presence is what tells a rebuild that this ELF has been through
-    the repair).  Returns the [Repair] applied.
+    the repair), recording `sources` -- a `{name: path}` map of the repair's inputs -- by sha256.
+    Returns the [Repair] applied.
     """
     with open(elf_path, 'rb') as fh:
         elf = fh.read()
@@ -114,7 +115,10 @@ def build(out, elf_path, overlay_paths, loader_text_end=None,
     print(f"wrote {out}: {phnum} segments, entry {entry:#x}")
     if repair_log:
         path = out + '.repair.json'
-        digest = overlay_repair.write_log(path, all_repairs, all_notes, sources or {})
+        # sources are recorded by sha256, not by path: the next build compares them and re-merges
+        # when any of them has moved under the image (tools_py/overlay_repair.py:log_is_current).
+        digest = overlay_repair.write_log(path, all_repairs, all_notes,
+                                          overlay_repair.source_digests(sources))
         print(f"wrote {path}: {len(all_repairs)} repair(s), sha256 {digest}")
     return all_repairs
 

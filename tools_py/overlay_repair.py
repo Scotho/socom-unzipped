@@ -39,8 +39,11 @@ own `socom2_ghidra_<rev>.csv`, and its **r0001 twin is found by a masked body ha
 r0001 row, the two bodies are compared with the fired words masked out, and a twin is accepted only
 when the rest of the body matches exactly.  (`game/r0004/match.json` has no row for `0x002CC5F0` --
 the matcher could not place it *because* of these two words -- so the twin has to be found this
-way.)  The twin's words at the masked offsets are the replacement, and the assertion is that after
-the substitution **the two bodies are identical over the whole function**.
+way.)  **That masked compare is the assertion**: byte-for-byte equality with the fired words zeroed,
+over `max(this image's row, the twin's row)` bytes, so a twin shorter than the image's function
+cannot match its prefix.  The twin's words at those offsets are then the replacement -- which makes
+"the two bodies are identical after the substitution" an invariant that restates the compare, not a
+second check.
 
 As an independent cross-check the frame's own prologue is read: the saves it makes with
 `sq/sd $rX, K($sp)` that no load off `$sp` of any width restores are re-derived as `lq/ld`
@@ -195,6 +198,61 @@ def _row_containing(rows, address):
     return None
 
 
+# ---- what the answer depends on, and whether a sidecar is still current ----------------------------
+
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# The code that decides, beside the data that decides: the pair tables come out of capsule.py, and
+# both of the other two turn its answer into bytes on disk.
+_MODULES = ("tools_py/overlay_repair.py", "tools_py/make_overlay_elf.py", "tools_py/r0004/capsule.py")
+
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def source_digests(paths=None):
+    """`{name: {path, sha256}}` for every input a repair's answer depends on.
+
+    Recorded in the sidecar and compared on the next build: a re-decoded capsule stack, a corrected
+    `find_pair_tables`, a rebuilt r0001 image or a new function map all change an answer that a
+    merged ELF has already baked in, and an mtime comparison against two modules did not see any of
+    them.
+    """
+    out = {}
+    for name, path in sorted((paths or {}).items()):
+        out[name] = {"path": path,
+                     "sha256": sha256_file(path) if os.path.isfile(path) else None}
+    for module in _MODULES:
+        full = os.path.join(_ROOT, module)
+        out[os.path.basename(module)] = {"path": module,
+                                         "sha256": sha256_file(full) if os.path.isfile(full) else None}
+    return out
+
+
+def log_is_current(log_path, digests):
+    """`(bool, reason)`: does `<elf>.repair.json` record exactly the inputs in hand?"""
+    try:
+        with open(log_path, "r", encoding="utf-8") as fh:
+            recorded = json.load(fh)["sources"]
+    except (OSError, ValueError, KeyError) as exc:
+        return False, f"{os.path.basename(log_path)} could not be read ({exc.__class__.__name__})"
+    if not isinstance(recorded, dict):
+        return False, f"{os.path.basename(log_path)} records no table of sources"
+    if set(recorded) != set(digests):
+        missing = sorted(set(digests) - set(recorded)) + sorted(set(recorded) - set(digests))
+        return False, f"the set of repair inputs changed ({', '.join(missing)})"
+    for name, want in sorted(digests.items()):
+        got = recorded.get(name)
+        if not isinstance(got, dict) or got.get("sha256") != want["sha256"]:
+            return False, f"{name} changed since the image was merged ({want['path']})"
+    return True, f"all {len(digests)} repair inputs match the sha256 recorded beside the image"
+
+
 # ---- the twin search ------------------------------------------------------------------------------
 
 def _mask(body, offsets):
@@ -208,14 +266,21 @@ def _word(body, offset):
     return struct.unpack_from("<I", body, offset)[0]
 
 
-def _find_twin(image, twin, start, offsets, twin_rows):
-    """(twin_start, length, replacement words) for the function at `start`, from its r0001 twin."""
+def _find_twin(image, twin, start, offsets, twin_rows, row_length):
+    """(twin_start, length, replacement words) for the function at `start`, from its r0001 twin.
+
+    **The assertion is the masked compare**: a twin is accepted only when the two bodies are equal
+    byte for byte with the fired words zeroed out, over
+    `max(this image's row, the twin's row)` bytes. Taking the longer of the two is what stops a
+    twin that is shorter than the image's function from matching its prefix; a twin whose row is
+    shorter is still read (and must still match) out to the image row's end.
+    """
     need = max(offsets) + 4
     head = image.word(start) if 0 not in offsets else None
     agreed = None
     matches = []
     for tstart, tend in twin_rows:
-        length = tend - tstart
+        length = max(row_length, tend - tstart)
         if length < need or length < _MIN_TWIN_WORDS * 4:
             continue
         if head is not None and twin.word(tstart) != head:   # cheap reject: the prologue word
@@ -232,23 +297,20 @@ def _find_twin(image, twin, start, offsets, twin_rows):
         elif words != agreed:
             raise RepairError(
                 f"the function at 0x{start:08X} matches several r0001 twins that disagree on the "
-                f"replacement words: 0x{matches[0]:08X} says {['0x%08X' % w for w in agreed]}, "
+                f"replacement words: 0x{matches[0][0]:08X} says {['0x%08X' % w for w in agreed]}, "
                 f"0x{tstart:08X} says {['0x%08X' % w for w in words]}")
-        matches.append(tstart)
+        matches.append((tstart, length))
     if not matches:
         raise RepairError(
-            f"no r0001 twin for the function at 0x{start:08X} (masked body hash over "
+            f"no r0001 twin for the function at 0x{start:08X} (a masked body compare over "
             f"{len(twin_rows)} rows found none); refusing to invent {len(offsets)} word(s)")
-    tstart = matches[0]
-    length = next(e - s for s, e in twin_rows if s == tstart)
-    tbody = twin.body(tstart, length)
-    # The assertion: with the twin's words in place the two bodies are identical, word for word.
+    tstart, length = matches[0]
+    # Restating the masked compare with the words put back: it cannot fail, because `agreed` was
+    # read out of the same `tbody` the compare matched. It is here as an invariant, not a check.
     repaired = bytearray(image.body(start, length))
     for o, w in zip(offsets, agreed):
         struct.pack_into("<I", repaired, o, w)
-    if bytes(repaired) != tbody:
-        raise RepairError(f"the function at 0x{start:08X} does not equal its twin at 0x{tstart:08X} "
-                          f"after the restore; refusing")
+    assert bytes(repaired) == twin.body(tstart, length)
     return tstart, length, agreed
 
 
@@ -330,9 +392,9 @@ def plan_repairs(image, writes, twin=None, rows=None, twin_rows=None):
         groups.setdefault(row, []).append(address)
 
     repairs = []
-    for (start, _end), addresses in sorted(groups.items()):
+    for (start, end), addresses in sorted(groups.items()):
         offsets = sorted(a - start for a in addresses)
-        tstart, length, words = _find_twin(image, twin, start, offsets, twin_rows)
+        tstart, length, words = _find_twin(image, twin, start, offsets, twin_rows, end - start)
         implied = implied_restores(image.body(start, length), offsets)
         if implied is None:
             cross_check = "unavailable"
@@ -384,15 +446,28 @@ def write_log(path, repairs, notes, sources):
 # ---- the command ------------------------------------------------------------------------------------
 
 def main(argv):
-    """Report (never rewrite) what the repair would do to an image."""
+    """Report (never rewrite) what the repair would do to an image, or test a sidecar's freshness."""
     import argparse
     ap = argparse.ArgumentParser(prog="tools_py.overlay_repair", description=__doc__.split("\n")[0])
-    ap.add_argument("image", help="the overlay (MWo3) or merged ELF to examine")
+    ap.add_argument("image", nargs="?", help="the overlay (MWo3) or merged ELF to examine")
+    ap.add_argument("--check", metavar="REPAIR_JSON",
+                    help="instead of examining an image, say whether that <elf>.repair.json was "
+                         "written from the inputs named here (exit 0 current, 1 stale)")
     ap.add_argument("--stub-writes", help="game/<rev>/decoded/stack.txt (without it: nothing to do)")
     ap.add_argument("--twin", help="the r0001 image the replacement words come from")
     ap.add_argument("--rows", help="recomp/socom2_ghidra_<rev>.csv")
     ap.add_argument("--twin-rows", help="recomp/socom2_ghidra.csv")
     args = ap.parse_args(argv)
+
+    named = {name: path for name, path in (("stub-writes", args.stub_writes), ("twin", args.twin),
+                                           ("rows", args.rows), ("twin-rows", args.twin_rows))
+             if path}
+    if args.check:
+        current, why = log_is_current(args.check, source_digests(named))
+        print(("current: " if current else "stale: ") + why)
+        return 0 if current else 1
+    if not args.image:
+        ap.error("an image to examine, or --check <elf>.repair.json")
 
     image = Image.from_file(args.image)
     writes = stub_writes(read_stack(args.stub_writes)) if args.stub_writes else []

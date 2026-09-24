@@ -43,9 +43,12 @@
 #   is not generated code, so compare two generated trees with: diff -rq --exclude=.complete <a> <b>
 #   Step 2's mark is different in kind: "<elf>.repair.json" is the ELF's own provenance (which capsule stub
 #   writes were undone in it, from which r0001 twin), written by make_overlay_elf on every build including the
-#   ones that repair nothing. Step 2 skips only when that sidecar is present AND not older than
-#   tools_py/overlay_repair.py or tools_py/make_overlay_elf.py -- so an ELF merged before the repair existed,
-#   or before its rule changed, is rebuilt instead of silently carrying a stale image into steps 3-5.
+#   ones that repair nothing. It records the sha256 of every input the repair's answer depends on -- the
+#   revision's decoded capsule stack, the r0001 image, both function maps, and overlay_repair.py /
+#   make_overlay_elf.py / r0004/capsule.py -- and step 2 skips only when all of them still match
+#   (tools_py.overlay_repair --check). So a re-decoded stack, a rebuilt r0001 image, a new function map or a
+#   changed rule re-merges the ELF instead of silently carrying a stale image into steps 3-5; a sidecar that
+#   cannot be parsed counts as stale.
 #
 #   --stop-after elf|recomp|runtime   stop after that step (runtime is the default); elf takes no lock at all
 #   --out <dir>       every product under <dir> instead (overlays_<rev>/, recomp_<rev>/, build-clang-<rev>/, dist/),
@@ -248,26 +251,42 @@ if [ "$TAIL" = 0 ]; then
   # The repair inputs: the revision's own decoded capsule stack names the addresses, the r0001 image
   # supplies the replacement words, and the two function maps bound the functions. All four or none --
   # make_overlay_elf rewrites nothing without --stub-writes.
+  #
+  # The revision's map is "$GHIDRA_SRC" when --ghidra named one, because that is the map steps 3-5
+  # will recompile against and step 3 has not copied it onto "$CSV" yet. Reading "$CSV" here instead
+  # would refuse a revision that is being bootstrapped with --ghidra (its own map does not exist
+  # yet), and -- worse -- would silently repair against the OLD map when --ghidra names a new one.
   REPAIR_ARGS=()
   STACK="$ROOT/game/$REV/decoded/stack.txt"
   TWIN_ELF="$ROOT/game/disc/socom2_game.elf"
   TWIN_ROWS="$ROOT/recomp/socom2_ghidra.csv"
+  ROWS_CSV="${GHIDRA_SRC:-$CSV}"
   if [ -f "$STACK" ]; then
-    for f in "$TWIN_ELF" "$TWIN_ROWS" "$CSV"; do
-      [ -f "$f" ] || die2 "step 2: $(rel "$STACK") is a capsule write stack, so the merged ELF must be checked against it, but $(rel "$f") is missing"
-    done
-    REPAIR_ARGS=(--stub-writes "$STACK" --twin "$TWIN_ELF" --rows "$CSV" --twin-rows "$TWIN_ROWS")
+    [ -f "$ROWS_CSV" ] || die2 "step 2: $(rel "$STACK") is $REV's capsule write stack, so the merged ELF is repaired against $REV's function map -- but $(rel "$ROWS_CSV") is not there. Name the map steps 3-5 will use: --ghidra <csv> (or --ghidra-from-r0001 to start from r0001's)"
+    [ -f "$TWIN_ELF" ] || die2 "step 2: the repair takes its replacement words from the r0001 image, but $(rel "$TWIN_ELF") is not there. Build the r0001 lane first (bash build.sh elf), or drop $(rel "$STACK") to merge without a repair"
+    [ -f "$TWIN_ROWS" ] || die2 "step 2: the repair needs r0001's own function map to find the twin function, but $(rel "$TWIN_ROWS") is not there"
+    REPAIR_ARGS=(--stub-writes "$STACK" --twin "$TWIN_ELF" --rows "$ROWS_CSV" --twin-rows "$TWIN_ROWS")
+    say "elf: repair inputs -- stack $(rel "$STACK"), twin $(rel "$TWIN_ELF"), map $(rel "$ROWS_CSV") sha256 $(sha "$ROWS_CSV")"
   fi
+  # Freshness is decided by the sha256s the sidecar records for every one of those inputs (and for
+  # the three modules that turn them into bytes), not by an mtime against two files: a re-decoded
+  # stack or a new function map changes the answer a merged ELF has already baked in. A sidecar that
+  # cannot be read is stale, so a malformed one re-merges instead of dying.
   ELF_REPAIR_JSON="$ELF.repair.json"
-  if [ "$FORCE" = 0 ] && [ -f "$ELF" ] && [ -f "$ELF_REPAIR_JSON" ] \
-     && [ ! "$ROOT/tools_py/overlay_repair.py" -nt "$ELF_REPAIR_JSON" ] \
-     && [ ! "$ROOT/tools_py/make_overlay_elf.py" -nt "$ELF_REPAIR_JSON" ]; then
-    say "elf: $(rel "$ELF") is already there and $(rel "$ELF_REPAIR_JSON") is current -- skipped (--force redoes it)"
-    say "elf: repairs recorded: $("$py" -c 'import json,sys; d=json.load(open(sys.argv[1])); print(len(d["repairs"]))' "$ELF_REPAIR_JSON")"
+  ELF_FRESH=0
+  ELF_FRESH_WHY="there is no $(rel "$ELF_REPAIR_JSON") beside the image"
+  if [ "$FORCE" = 0 ] && [ -f "$ELF" ] && [ -f "$ELF_REPAIR_JSON" ]; then
+    if ELF_FRESH_WHY="$(cd "$ROOT" && "$py" -m tools_py.overlay_repair --check "$ELF_REPAIR_JSON" ${REPAIR_ARGS[@]+"${REPAIR_ARGS[@]}"} 2>&1)"; then
+      ELF_FRESH=1
+    fi
+  fi
+  if [ "$ELF_FRESH" = 1 ]; then
+    say "elf: $(rel "$ELF") is already there and $(rel "$ELF_REPAIR_JSON") is $ELF_FRESH_WHY -- skipped (--force redoes it)"
+    say "elf: $(rel "$ELF_REPAIR_JSON") sha256 $(sha "$ELF_REPAIR_JSON"), $("$py" -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["repairs"]))' "$ELF_REPAIR_JSON") repair(s)"
   else
     [ -n "$LOADER" ] || die2 "no loader ELF (SCUS_*, SCES_*, SLUS_*, SLES_*) in $GAME -- pass --loader"
     if [ -f "$ELF" ]; then
-      say "elf: rebuilding $(rel "$ELF") -- no current $(rel "$ELF_REPAIR_JSON") beside it"
+      say "elf: re-merging $(rel "$ELF") -- $ELF_FRESH_WHY"
     fi
     rm -f "$ELF" "$ELF_REPAIR_JSON"
     "$py" "$ROOT/tools_py/make_overlay_elf.py" "--loader-text-end=$LTE" \

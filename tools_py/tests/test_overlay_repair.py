@@ -154,6 +154,22 @@ class TwinTest(unittest.TestCase):
         self.assertEqual(len(repairs), 2)
         self.assertEqual(out, image(WHOLE))
 
+    def test_a_twin_row_shorter_than_the_image_function_must_match_past_its_own_end(self):
+        """The compare runs over max(image row, twin row): a prefix match is not a twin."""
+        prefix_only = WHOLE[:7] + [NOP, NOP, NOP]      # agrees for 28 B, diverges after
+        twin = make(prefix_only, TWIN_BASE)
+        with self.assertRaises(overlay_repair.RepairError) as ctx:
+            overlay_repair.plan_repairs(make(BROKEN), STUB, twin, rows(BASE, 40),
+                                        [(TWIN_BASE, TWIN_BASE + 28)])
+        self.assertIn("no r0001 twin", str(ctx.exception))
+
+    def test_a_twin_whose_row_is_short_but_whose_body_matches_is_accepted_over_the_longer_window(self):
+        twin = make(WHOLE, TWIN_BASE)                  # 40 B of body behind a 28 B row
+        repairs, _notes = overlay_repair.plan_repairs(make(BROKEN), STUB, twin, rows(BASE, 40),
+                                                      [(TWIN_BASE, TWIN_BASE + 28)])
+        self.assertEqual([r.after for r in repairs], [LQ_S1, LQ_S0])
+        self.assertEqual({r.twin_bytes for r in repairs}, {40})
+
     def test_a_twin_window_too_short_to_identify_is_not_used(self):
         short = [addiu_sp(-0x40), SD_RA, SQ_S1, SQ_S0, NOP]
         twin = make(short, TWIN_BASE)
@@ -211,6 +227,73 @@ class StackParsingTest(unittest.TestCase):
             self.assertEqual(len(writes), 6)
             self.assertEqual(overlay_repair.stub_writes(writes),
                              [(0x00ABC670, JR_RA), (0x00ABC674, NOP)])
+
+
+class SidecarFreshnessTest(unittest.TestCase):
+    """`<elf>.repair.json` records the sha256 of everything the answer depends on, and the next
+    build compares them. An mtime against two modules saw neither a re-decoded capsule stack nor a
+    new function map, both of which change an answer the merged ELF has already baked in."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.input = os.path.join(self.tmp.name, "stack.txt")
+        with open(self.input, "w", encoding="utf-8") as fh:
+            fh.write("w 80031250 002CC670\n")
+        self.log = os.path.join(self.tmp.name, "merged.elf.repair.json")
+
+    def write(self):
+        overlay_repair.write_log(self.log, [], [], overlay_repair.source_digests({"stub-writes": self.input}))
+
+    def test_a_sidecar_written_from_the_same_inputs_is_current(self):
+        self.write()
+        current, why = overlay_repair.log_is_current(
+            self.log, overlay_repair.source_digests({"stub-writes": self.input}))
+        self.assertTrue(current, why)
+        self.assertIn("match the sha256", why)
+
+    def test_an_input_that_changed_under_the_image_makes_it_stale(self):
+        self.write()
+        with open(self.input, "a", encoding="utf-8") as fh:
+            fh.write("w 80031258 002CC674\n")
+        current, why = overlay_repair.log_is_current(
+            self.log, overlay_repair.source_digests({"stub-writes": self.input}))
+        self.assertFalse(current)
+        self.assertIn("stub-writes changed", why)
+
+    def test_a_different_set_of_inputs_makes_it_stale(self):
+        self.write()
+        current, why = overlay_repair.log_is_current(self.log, overlay_repair.source_digests({}))
+        self.assertFalse(current)
+        self.assertIn("set of repair inputs changed", why)
+
+    def test_a_malformed_sidecar_is_stale_rather_than_a_traceback(self):
+        with open(self.log, "w", encoding="utf-8") as fh:
+            fh.write("{not json")
+        current, why = overlay_repair.log_is_current(self.log, overlay_repair.source_digests({}))
+        self.assertFalse(current)
+        self.assertIn("could not be read", why)
+
+    def test_a_missing_sidecar_is_stale(self):
+        current, why = overlay_repair.log_is_current(
+            os.path.join(self.tmp.name, "nope.json"), overlay_repair.source_digests({}))
+        self.assertFalse(current)
+        self.assertIn("could not be read", why)
+
+    def test_the_three_modules_that_decide_are_hashed_alongside_the_data(self):
+        digests = overlay_repair.source_digests({"stub-writes": self.input})
+        self.assertEqual(sorted(digests),
+                         ["capsule.py", "make_overlay_elf.py", "overlay_repair.py", "stub-writes"])
+        for name, entry in digests.items():
+            self.assertEqual(len(entry["sha256"]), 64, name)
+
+    def test_an_input_that_does_not_exist_is_recorded_as_absent_and_compares_equal(self):
+        gone = os.path.join(self.tmp.name, "not-there")
+        digests = overlay_repair.source_digests({"twin": gone})
+        self.assertIsNone(digests["twin"]["sha256"])
+        overlay_repair.write_log(self.log, [], [], digests)
+        current, why = overlay_repair.log_is_current(self.log, overlay_repair.source_digests({"twin": gone}))
+        self.assertTrue(current, why)
 
 
 # ---- the make_overlay_elf integration -------------------------------------------------------------
