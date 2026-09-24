@@ -596,7 +596,7 @@ namespace ps2_stubs
                 const std::string logLine = sanitizeForLog(rendered);
                 uint32_t count = 0;
                 {
-                    StubLogRuntimeState &stubLog = stubLogRuntimeStateFor(nullptr);
+                    StubLogRuntimeState &stubLog = stubLogRuntimeStateFor(runtime);
                     std::lock_guard<std::mutex> lock(stubLog.printfMutex);
                     count = ++stubLog.printfLogCount;
                 }
