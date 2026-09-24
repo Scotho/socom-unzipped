@@ -95,7 +95,7 @@ PEEK_SPEC = ",".join([
     "*%#x+0x100:64" % ACTOR_STATIC,
     "*%#x+0x200:64" % ACTOR_STATIC,
     "*%#x+0x300:64" % ACTOR_STATIC,
-    "*%#x+%#x:1" % (ACTOR_STATIC, DEATH_TIME_OFFSET),
+    "*%#x+0x%X:1" % (ACTOR_STATIC, DEATH_TIME_OFFSET),   # uppercase: the string the ladder has always launched with
     "*%#x+%#x:1" % (ACTOR_STATIC, MOVE_SCALE_OFFSET),
 ])
 

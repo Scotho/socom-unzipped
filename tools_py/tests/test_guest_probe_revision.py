@@ -362,5 +362,21 @@ class CameraOrbit(unittest.TestCase):
         self.assertLess(hi - lo, 3 * (22.737 - 17.156))
 
 
+
+class LadderPeekSpecBytes(unittest.TestCase):
+    """The ladder's PEEK_SPEC is launched as an environment string and pinned by past runs: deriving its
+    addresses from guest_addresses (Task 19 re-review N4) must leave the bytes exactly as the literals were,
+    including the case of the hex digits (re-review 2, N5)."""
+
+    def test_peek_spec_is_the_historical_string(self):
+        from tools_py.parity import sp_death_probe as sp
+        historical = ",".join([
+            "0x416054:3", "*0x408c58:64", "*0x408c58+0xF78:1", "*0x408c58+0x1044:1", "*0x408c58+0xc0*:32",
+            "0x408c58:4", "*0x408c58+0x100:64", "*0x408c58+0x200:64", "*0x408c58+0x300:64",
+            "*0x408c58+0xFB4:1", "*0x408c58+0x1368:1",
+        ])
+        self.assertEqual(sp.PEEK_SPEC, historical)
+
+
 if __name__ == "__main__":
     unittest.main()
