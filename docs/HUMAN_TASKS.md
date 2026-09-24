@@ -111,13 +111,9 @@ the exact step is written on `agent/audio-out` (`05de0e7`) and arrives here with
 
 (1) The launcher's post-SEND line invites a public issue unconditionally; `SECURITY.md` forbids a public issue for a security report — say whether the line should carry the exception ("unless it is a security report") or the triage routine simply never opens one for those (the default while you decide: the routine, not the sentence). (2) The page's contact note still says "only if you want an answer", which promises a reply the triage routine forbids (your G7 reply policy: no) — drop the phrase, or change the policy. Both are one-line edits once you say.
 
-### The r0004 build, where it stands (2026-09-24 morning)
+### The r0004 build, where it stands (2026-09-24, 13:00Z)
 
-**It boots** — under our runtime, from PSRewired's package, to the loading screen and the intro credits — and dies at the IOP reset before the menus on a −1 the loader is handed. That is a debugging problem now, not a pipeline one (the whole r0001 tool chain runs on r0004: Ghidra, the matcher at 81%, the translated config, ~3,000 forced entries, the address table). The investigation report names the cause when it lands; nothing of it needs you. What it produced along the way is worth knowing: the image read out of PCSX2 carried PSRewired's cheat word (restored — KNOWN §4), and every r0004 gate is muted by `PS2X_AUDIO_VOLUME=0` because the first ones played through your speaker.
-
-### One build to run when the machine is free (35 min): chain 12
-
-Task 8c (the save-state container) is merged on `sprint-11` but not yet built on the merged branch; the branch is held unpushed until it is. Say the word and the controller runs chain 12 (runtime, the C++ suite, the gate `s11_savestate_gate`) — it takes the lock for about 35 minutes and lags the machine while it runs, which is why it did not start into your return.
+**It boots to the title menus and into a mission** — under our runtime, from PSRewired's package. The reboot that stopped it at the credits was not the game and not our recompilation: the overlay we read out of PCSX2's memory carried two words that PSRewired's resident capsule had written over a function's epilogue, and the game lost a register there. Undone at the image build; the r0004 gate stands at 2/3, and the last lane fails only because our own gate harness reads r0001's addresses — the per-revision fix is running. Nothing of it needs you. Two things worth knowing: the runtime had been answering −1 to five kernel calls on every run of *both* revisions (fixed, r0001 re-proven 3/3); and the capsule carries a second stub table for the r0004 layout that our image never received — whatever PSRewired switches off there, our build runs, which is Goal F's question and stays with your Discord answer.
 
 ### The r0004 patch, received 2026-09-23
 

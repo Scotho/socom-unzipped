@@ -23,6 +23,8 @@ reach a commit message. The product name is
 
 ## 2. Where it stands
 
+> **Picking up after the second Sprint 11 night (2026-09-24, 13:00Z)?** `docs/CURRENT_SPRINT.md`'s "Sprint 11 — OPEN" block, its **13:00Z, 2026-09-24** paragraph and the worktree table (one row left, `wt-cherry`); then the r0004 row in KNOWN §2 — the reboot is solved to its root and the gate is 2/3 with the last lane a harness fix in flight; the ledger `.superpowers/sdd/2026-09-23-sprint-11/progress.md` names what was running at the hand-back (a probe agent and the repair's fix round, both lock-bound). The lock's priority order is the r0004 critical path first (R255).
+>
 > **Picking up after the Sprint 11 night (2026-09-23, 14:00Z)?** Start at `docs/CURRENT_SPRINT.md`'s "Sprint 11 —
 > OPEN" block: what landed (Tasks 11, 2b, 8a, 8c and 19 followed on 2026-09-23 afternoon), and the table of agent worktrees holding unfinished, part-reviewed work — each row
 > says the branch, the last commit, the review verdict and the next step. Then the plan
@@ -46,10 +48,11 @@ reach a commit message. The product name is
   this line deliberately does not repeat them (they were `686/686` and `1457` here until 2026-09-22, four sprints after
   they stopped being true). `PS2X_TEST_REPEAT=3 ./build.sh test` exit 0. Last gates 3/3: `s9_q0_children_gate`,
   `s9_q0_prefill_gate`, `s9_q0_device_gate`, `s9_q0_trace_gate`, `s9_p7_playtest_gate`.
-- **Next free ruling number: R253.** (It read **R179** from 2026-09-20 to 2026-09-22 while R240 was in use -- and a
+- **Next free ruling number: R257.** (It read **R179** from 2026-09-20 to 2026-09-22 while R240 was in use -- and a
   collision had already happened once, an agent numbering from R200 into taken ground. `tools_py/tests/test_doc_maintenance.py`
   now fails when this line is not `max(R<n>) + 1`, so take your number from here and update this line in the same commit.)
-- **Where the loop is now (2026-09-23 05:10Z, LATEST) -- Sprint 10 is on `main` (`f15acfa`, PR #24, tag `v0.10.0`);
+- **Where the loop is now (2026-09-24 13:00Z, LATEST) -- `sprint-11` at `07dc937`+, pushed through `2381c8a`; `main` at `a548dd1`.** The second night: Tasks 17, 13, 8b, 6 Step 2, audio-out and the cross-row recompiler fix merged and gate-proven; the r0004 build's reboot traced to two capsule words in our dumped image and repaired (KNOWN §2's r0004 row is the whole chain), r0004 gate 2/3 with the mission lane's harness fix in flight; one KNOWN row retired from the public docs on both branches at the owner's word. Next: r0004 3/3 and Task 19's close, then Task 6 Step 3 (the picks gated in research/42 §4's order), then the plan's remaining tasks. Traps this night taught, all in KNOWN §4: `--accept-pins` rewrites the shared standard at gate start-up (even a cancelled gate); a dumped image carries the resident patcher's writes; an agent's bare `git config` killed the main tree's push once more (per-worktree config, `scripts/agent_worktree.sh`).
+- **Where the loop is now (2026-09-23 05:10Z) -- Sprint 10 is on `main` (`f15acfa`, PR #24, tag `v0.10.0`);
   `sprint-11` is open off it with seven agent branches merged forward (`4732892`) and its opening chain running
   (the runner rebuilt with the chat wrap and the address table, the suite, gate `s11_open_gate`, the two-instance
   chat proof). Read `docs/CURRENT_SPRINT.md` "Sprint 11 -- OPEN" for what landed overnight and what is next; the plan
