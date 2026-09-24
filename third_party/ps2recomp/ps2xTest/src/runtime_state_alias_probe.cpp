@@ -9,11 +9,17 @@
 // Nothing in here may be `inline`, `static` or in an anonymous namespace: that would defeat it.
 
 #include "Kernel/Stubs/Helpers/StubLogRuntimeState.h"
+#include "Kernel/Stubs/Helpers/DmaRuntimeState.h"
 
 namespace ps2x_test_rtstate_probe
 {
     const void *stubLogStateAddress()
     {
         return &ps2_stubs::stubLogRuntimeState();
+    }
+
+    const void *dmaStateAddress()
+    {
+        return &ps2_stubs::dmaRuntimeState();
     }
 }

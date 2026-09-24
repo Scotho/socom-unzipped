@@ -1,6 +1,12 @@
 #include <algorithm>
 #include <cctype>
 
+// Sprint 11 Task 8b: the per-subsystem runtime state this header reaches. Support.h has no include
+// guard of its own but each of these does, and three ps2xTest translation units include Support.h
+// directly rather than through Stubs/Common.h -- so the includes belong here, not in Common.h.
+#include "StubLogRuntimeState.h"
+#include "DmaRuntimeState.h"
+
 namespace
 {
     constexpr uint32_t kCdSectorSize = 2048;
@@ -1231,10 +1237,9 @@ namespace
     constexpr std::array<uint32_t, 10> kDmaChannelBases = {
         0x10008000u, 0x10009000u, 0x1000A000u, 0x1000B000u, 0x1000B400u,
         0x1000C000u, 0x1000C400u, 0x1000C800u, 0x1000D000u, 0x1000D400u};
-    std::mutex g_dmaStubMutex;
-    std::unordered_map<uint32_t, uint32_t> g_dmaPendingPolls;
-    uint32_t g_dmaStubLogCount = 0;
-    constexpr uint32_t kMaxDmaStubLogs = 64;
+    // Sprint 11 Task 8b: the DMA stub's in-flight model moved to ps2_stubs::dmaRuntimeState()
+    // in Helpers/DmaRuntimeState.h -- one object for the program instead of one copy per stub
+    // translation unit (docs/KNOWN.md #4). kMaxDmaStubLogs moved with it.
 
     bool isKnownDmaChannelBase(uint32_t value)
     {
@@ -1400,9 +1405,10 @@ namespace
         }
 
         {
-            std::lock_guard<std::mutex> lock(g_dmaStubMutex);
-            g_dmaPendingPolls[channelBase] = 1;
-            if (g_dmaStubLogCount < kMaxDmaStubLogs)
+            ps2_stubs::DmaRuntimeState &dma = ps2_stubs::dmaRuntimeState();
+            std::lock_guard<std::mutex> lock(dma.mutex);
+            dma.pendingPolls[channelBase] = 1;
+            if (dma.stubLogCount < ps2_stubs::kMaxDmaStubLogs)
             {
                 RUNTIME_LOG("[sceDmaSend] ch=0x" << std::hex << channelBase
                           << " madr=0x" << madr
@@ -1430,7 +1436,7 @@ namespace
                                   << std::dec << std::endl);
                     }
                 }
-                ++g_dmaStubLogCount;
+                ++dma.stubLogCount;
             }
         }
 
@@ -1459,9 +1465,10 @@ namespace
 
         bool modelBusy = false;
         {
-            std::lock_guard<std::mutex> lock(g_dmaStubMutex);
-            auto it = g_dmaPendingPolls.find(channelBase);
-            if (it != g_dmaPendingPolls.end() && it->second > 0)
+            ps2_stubs::DmaRuntimeState &dma = ps2_stubs::dmaRuntimeState();
+            std::lock_guard<std::mutex> lock(dma.mutex);
+            auto it = dma.pendingPolls.find(channelBase);
+            if (it != dma.pendingPolls.end() && it->second > 0)
             {
                 modelBusy = true;
                 if (mode != 0)
@@ -1469,13 +1476,13 @@ namespace
                     --it->second;
                     if (it->second == 0)
                     {
-                        g_dmaPendingPolls.erase(it);
+                        dma.pendingPolls.erase(it);
                     }
                 }
                 else
                 {
                     // Blocking mode: complete immediately in this runtime.
-                    g_dmaPendingPolls.erase(it);
+                    dma.pendingPolls.erase(it);
                 }
             }
         }
