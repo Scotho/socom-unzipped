@@ -23,6 +23,8 @@ word in the actor.**
 | ZSealEtc `PT_LOAD3` @0x004C5380 | 1,723,520 → 1,721,912 B (**−1,608**) | ELF program headers |
 | Ghidra rows | 14,879 → 16,423 | `recomp/socom2_ghidra*.csv` |
 | matcher placements | 12,071 of 14,879 (81.1 %) | `game/r0004/match.json` |
+
+> **Note (2026-09-24, Sprint 12, S12-R5 in `docs/superpowers/plans/2026-09-24-sprint-12.md`):** the 81.1 % is not reproducible from tracked inputs. The first three passes reproduce commit `e92691a`'s counts on the r0004 map of `a9707ce`; the remaining 2,733 placements came from 285 `--seed` pairs that were never committed. `tools_py/addresses_from_match.py`'s documented recipe (the identity seed alone) gives `resolved 10008/14879 = 67.26%` on today's tracked map. Sprint 12's Task 5 derives and commits a seed list so the rate is reproducible; the rows below that cite `match.json` were computed from the 81.1 % run and stand as that run's facts.
 | of those: byte-identical / relocation-only / length changed | 5,105 / 6,810 / 156 | recomputed here from the two images |
 | object-relative displacements that moved | **331 functions, 654 sites** | reproduced exactly (Task 19 `task-19-node-report.md` §4b) |
 | r0001 rows with no placement / r0004 rows never used as a target | 2,808 / 4,351 | `match.json` + the r0004 CSV |
