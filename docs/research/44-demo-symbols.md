@@ -113,6 +113,7 @@ way for a rename to be wrong:
 4. **not a colliding demo name.** One demo name on two of our addresses cannot be applied to both: one C
    `static` is not two functions, and two CSV rows sharing a `Name` give the recompiler two definitions
    of one symbol.
+   > *Correction (2026-09-24, research/46 §1.4): the recompiler suffixes every identifier with `_0x<start>`, so two rows sharing a `Name` build (48 rows share 17 names today). The hurdle stands for readability and for the filename, not for the linker.*
 5. **our row is still `FUN_…`.** A function we named by hand keeps its name.
 6. **a unique, legal C identifier.** Metrowerks mangling is not identifier-safe — templates carry `<`,
    `>` and `,`, an anonymous namespace carries `@`, a static initialiser is named after its source file
@@ -141,6 +142,7 @@ demo functions 9703, ours 14879, matched 987 (10.2%)
 ```
 
 * **Match count 987. Rate 10.2 % of the demo's functions; 6.6 % of our 14,879 rows.**
+  > *Correction (2026-09-24, research/53 §4.3 and a body read, Sprint 12 S12-R9): one of the 632 `exact` pairs is wrong — `NetGetBuildTimeStamp` → 0x006473f0 (proposal row 478). That address is `MediusGetBuildTimeStamp`: SOCOM II's Medius routine has the instruction scheduling SOCOM 1's Net routine had, and the mask cannot see which strings a body names. The pass's error class is two sibling routines differing only in their string references; the rename holds the row.*
 * All 987 land on a row that is still `FUN_xxxxxxxx` — not one collides with a name we set by hand.
 * **479 proposals** (338 `exact`, 126 `relinked-body`, 15 `hash+callees`), at 479 distinct addresses
   under 479 distinct identifiers, 9 of them sanitised from a template, an anonymous namespace or a

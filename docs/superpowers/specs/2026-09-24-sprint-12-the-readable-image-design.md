@@ -51,7 +51,8 @@ A readable name is the demo's mangled name rendered as `Class_Method`, with thes
    over 607 functions across the demo's 9,703). The suffix is the mangled argument list after the `F`, sanitised and cut
    to 24 characters (research Q2 decides between this and a short hash; the default is the argument list because it
    reads). A name that still collides after the suffix is refused, both rows.
-3. **Legality.** Every applied name is a legal C identifier that `sanitizeIdentifier` returns **unchanged** (no leading
+3. > *Superseded in part (2026-09-24, research/46 §1.5): the sanitiser that runs is `PS2Recompiler::sanitizeFunctionName` (`ps2_recompiler.cpp:2190`): characters outside `[A-Za-z0-9_]` → `_`, `_` before a leading digit, `ps2_` before a keyword or a reserved spelling (`__x`, `_X`); a leading `_` + lower-case letter is kept. "Returned unchanged" is measured against that function (31 of the 485 readable names fail it today, mostly `__ieee754_*`, `__sinit_*`; research/47 decides their rendering). Filenames are cut at 100 characters of `<name>_0x<addr>`.*
+   **Legality.** Every applied name is a legal C identifier that `sanitizeIdentifier` returns **unchanged** (no leading
    underscore or digit, no keyword, no reserved spelling), a legal Windows filename, at most 96 characters (over that,
    the cut plus eight hex digits of SHA-1 of the original, as `ghidra_symbol_match.c_identifier` does today), and unique
    across the whole csv — including the 113 hand-named rows, which neither proposals file checks today (research/45 §9's
@@ -245,6 +246,7 @@ and one sidecar row away from reversal.
 
 - It does not touch the game's behaviour: no hook, probe or HLE path changes what it does; only what it is called and
   what stands beside the number.
+  > *Qualified (2026-09-24, research/46 §4–§5): a rename CAN change behaviour in two ways the recompiler has — a name on `ps2_call_list.h`'s stub list makes the recompiler stub the function by name (19 of the 485; held, S12-R10), and a non-auto name makes the csv End final where the JAL scan's larger End won before (237 of the 485; accepted only when the cloud's own recomp shows no new `unmapped`/`unhandled` continuation, S12-R11). The promise stands as a bar, enforced by the applier's holds and the recomp census, not as an assumption.*
 - It does not propose a name on a prologue alone, on position alone, or on a SOCOM 1 layout alone.
 - It does not merge to `main`, open a PR, or write `docs/CURRENT_SPRINT.md`, `HANDOFF.md`, `STATUS.md`,
   `HUMAN_TASKS.md` or Sprint 11's KNOWN rows (handoff §5); its live state is the plan's log and its research notes.
@@ -261,7 +263,8 @@ and one sidecar row away from reversal.
 - The seed rulings: R257–R263 in `docs/superpowers/plans/2026-09-23-sprint-11.md`.
 - The notes: `docs/research/44-demo-symbols.md`, `45-positional-and-bridge-names.md`; the measurement scripts and the
   corrected voice-codec record: `tools_py/research/symbols/README.md`.
-- The consumers: `recomp/socom2.toml`, `recomp/socom2_ghidra.csv`, `third_party/ps2recomp/ps2xAnalyzer/src/elf_analyzer.cpp`
-  (`importGhidraMap`), `ps2xRecomp/src/lib/code_generator.cpp` (`sanitizeIdentifier`),
+- The consumers: `recomp/socom2.toml`, `recomp/socom2_ghidra.csv`, `third_party/ps2recomp/ps2xRecomp/src/lib/elf_parser.cpp`
+  (`loadGhidraFunctionMap`, the auto-name rule, the End tie-break), `ps2xRecomp/src/lib/ps2_recompiler.cpp`
+  (`sanitizeFunctionName`, `makeName`, `isStubFunction`, `clampFilenameLength`) — research/46 §1 is the map,
   `ps2xRuntime/include/runtime/socom2_addresses.h`, `ps2xRuntime/src/lib/game_overrides_socom2.cpp`,
   `tools_py/parity/guest_addresses.py`, `tools_py/carry_names.py`.
