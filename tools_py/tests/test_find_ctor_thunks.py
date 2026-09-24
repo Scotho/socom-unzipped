@@ -290,7 +290,11 @@ class RealOverlayTest(unittest.TestCase):
                          os.path.join("overlays", "zsealetc.bin"),
                          os.path.join("overlays_r0004", "ftscore.bin"),
                          os.path.join("overlays_r0004", "zsealetc.bin")):
-            addresses.update(a for a, _i in self.overlay_or_skip(relative).thunks)
+            # raw table entries, accepted and rejected both: the claim is "in no ctor table",
+            # not "in no table the filters kept"
+            found = self.overlay_or_skip(relative)
+            addresses.update(a for a, _i in found.thunks)
+            addresses.update(a for a, _i, _reason in found.rejected)
         self.assertIn(0x003FD680, addresses)
         self.assertNotIn(0x003D9E40, addresses)
 

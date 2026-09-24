@@ -2208,6 +2208,11 @@ namespace ps2recomp
         return sanitized;
     }
 
+    // Only the test suite calls this. It means something different by an external entry than the
+    // production path does: here every one *slices* its containing row into an entry_ function,
+    // where discoverAdditionalEntryPoints() below registers it against the owning wrapper and
+    // never cuts. Since cross-row continuations joined that set, wiring this into the pipeline
+    // would start splitting rows at a call's return pc -- read this before you do.
     size_t PS2Recompiler::DiscoverAdditionalEntryPoints(
         std::vector<Function> &functions,
         std::unordered_map<uint32_t, std::vector<Instruction>> &decodedFunctions,

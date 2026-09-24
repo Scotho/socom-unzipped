@@ -49,7 +49,10 @@ recomp() {
   rm -rf "$GEN"
   (cd "$ROOT/recomp" && "$TOOLBUILD/ps2xRecomp/ps2_recomp.exe" socom2.toml > recomp_run.log 2>&1) \
       || { tail -20 "$ROOT/recomp/recomp_run.log"; exit 1; }
-  echo "recomp: $(ls "$GEN" | wc -l) files, unhandled=$(grep -c unhandled-instruction "$ROOT/recomp/recomp_run.log" || true)"
+  # unmapped= counts continuation pcs (a call's return, a syscall's return, a not-taken branch's
+  # fallthrough) that no recompiled row owns: each one is a [guest-branch:missing-target] waiting
+  # for a thread to reach it. Read, not gated -- like unhandled=.
+  echo "recomp: $(ls "$GEN" | wc -l) files, unhandled=$(grep -c unhandled-instruction "$ROOT/recomp/recomp_run.log" || true), unmapped=$(grep -c unmapped-continuation "$ROOT/recomp/recomp_run.log" || true)"
 }
 
 runtime() {

@@ -157,15 +157,11 @@ namespace ps2recomp
                 return;
             }
 
-            if (const Function *containingFn = findContainingExternalFunction(continuationPc))
+            if (findContainingExternalFunction(continuationPc))
             {
-                if (containingFn->start != function.start && continuationPc != containingFn->start)
-                {
-                    // Owned by another row: that row registers it, exactly as it does for a
-                    // cross-function branch target.
-                    result.externalEntryPoints.insert(continuationPc);
-                }
-
+                // Owned by another row: register it exactly as a cross-function branch target is
+                // registered, guards and all -- one source of truth for "this entry is legitimate".
+                queueExternalEntryTarget(continuationPc);
                 return;
             }
 
@@ -199,6 +195,94 @@ namespace ps2recomp
         auto branchAlwaysTaken = [](const Instruction &inst) -> bool
         {
             return (inst.opcode == OPCODE_BEQ || inst.opcode == OPCODE_BEQL) && inst.rs == inst.rt;
+        };
+
+        auto readImageWord = [&](uint32_t address, uint32_t &out) -> bool
+        {
+            if (address & 3u)
+            {
+                return false;
+            }
+
+            for (const auto &section : m_sections)
+            {
+                if (!section.data || address < section.address ||
+                    (static_cast<uint64_t>(address) + 4ull) >
+                        (static_cast<uint64_t>(section.address) + section.size))
+                {
+                    continue;
+                }
+
+                std::memcpy(&out, section.data + (address - section.address), sizeof(out));
+                return true;
+            }
+
+            return false;
+        };
+
+        // The primary opcodes the R5900 does not define -- the same table
+        // tools_py/find_data_entries.py screens data words with. A word out of a string table or a
+        // float array picks one of these often enough to be worth asking.
+        auto decodesAsInstruction = [](uint32_t raw) -> bool
+        {
+            switch (raw >> 26)
+            {
+            case 0x13u:                                       // COP3
+            case 0x1Du:                                       // unassigned
+            case 0x30u: case 0x32u: case 0x34u: case 0x35u:   // ll and the unassigned COPz loads
+            case 0x38u: case 0x3Au: case 0x3Bu:               // sc and the unassigned COPz stores
+            case 0x3Cu: case 0x3Du:
+                return false;
+            default:
+                return true;
+            }
+        };
+
+        auto isTransferWord = [](uint32_t raw) -> bool
+        {
+            const uint32_t op = raw >> 26;
+            if (op == OPCODE_J || op == OPCODE_JAL || op == OPCODE_REGIMM ||
+                (op >= OPCODE_BEQ && op <= OPCODE_BGTZ) ||
+                (op >= OPCODE_BEQL && op <= OPCODE_BGTZL))
+            {
+                return true;
+            }
+            return op == OPCODE_SPECIAL && ((raw & 0x3Fu) == SPECIAL_JR || (raw & 0x3Fu) == SPECIAL_JALR);
+        };
+
+        // A row the map laid over data decodes data words as branches. A garbage *target* mostly
+        // resolves to nothing and is dropped; a garbage *fallthrough* is the next two words, so it
+        // lands inside a genuine row almost every time and would be registered -- handing the
+        // runtime a function-table slot for a pc that should have faulted, and silencing the very
+        // [guest-branch:missing-target] this whole change exists to expose. Four shapes say "data",
+        // each one find_data_entries.py already earns its keep with. (That the row the
+        // continuation lands in is text is enforced by findContainingExternalFunction, which
+        // resolves only inside a code section.)
+        auto fallthroughLooksLikeCode = [&](const Instruction &inst, uint32_t target) -> bool
+        {
+            if (!isExecutableAddress(target))
+            {
+                return false;                     // a branch out of the image is table data
+            }
+
+            if (target == inst.address + 4u)
+            {
+                return false;                     // 0x04210000, "bgez at,+0": a float, not code
+            }
+
+            uint32_t word = 0;
+            if (readImageWord(inst.address + 4u, word) &&
+                (!decodesAsInstruction(word) || isTransferWord(word)))
+            {
+                return false;                     // no delay slot holds a branch: this is not code
+            }
+
+            if (readImageWord(inst.address + 8u, word) && !decodesAsInstruction(word))
+            {
+                return false;                     // the continuation itself is not an instruction
+            }
+
+            return true;
         };
 
         for (const auto &inst : instructions)
@@ -242,10 +326,18 @@ namespace ps2recomp
                 }
 
                 // The not-taken path continues at +8. Only another row can need that registered:
-                // inside this row the generated code falls through to it on its own.
-                if (!branchAlwaysTaken(inst))
+                // inside this row the generated code falls through to it on its own. Both cheap
+                // questions -- is there a map at all, does the continuation even leave this row --
+                // come before the gate, which reads the image and is the only thing here that
+                // touches the sections.
+                const uint32_t fallthroughPc = inst.address + 8u;
+                const bool insideThisRow = fallthroughPc >= function.start &&
+                                           fallthroughPc < function.end &&
+                                           instructionAddresses.contains(fallthroughPc);
+                if (allFunctions && !insideThisRow && !branchAlwaysTaken(inst) &&
+                    fallthroughLooksLikeCode(inst, target))
                 {
-                    queueContinuationTarget(inst.address + 8u, inst.address, "branch fallthrough",
+                    queueContinuationTarget(fallthroughPc, inst.address, "branch fallthrough",
                                             ContinuationScope::CrossRowOnly);
                 }
             }

@@ -4,6 +4,7 @@
 #include "ps2recomp/ps2_recompiler.h"
 #include "ps2recomp/recompiler_reporter.h"
 #include "ps2recomp/types.h"
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <regex>
@@ -563,6 +564,113 @@ void register_code_generator_tests()
 
         t.IsTrue(analysis.externalEntryPoints.contains(0x3010u),
                  "the not-taken path leaving the row should become the next row's entry");
+    });
+
+    // Fix round 1 / I1. A row the map laid over data decodes data words as branches. A garbage
+    // target mostly resolves to nothing; a garbage fallthrough is the next two words and would
+    // land in a real row, where registering it gives the runtime a function-table slot for a pc
+    // that should have faulted -- silencing the [guest-branch:missing-target] this change exists
+    // to expose.
+    tc.Run("a data word whose branch leaves the image mints no fallthrough entry", [](TestCase &t) {
+        Function rowA;
+        rowA.name = "row_over_data";
+        rowA.start = 0xB000;
+        rowA.end = 0xB00C;
+        rowA.isRecompiled = true;
+        rowA.isStub = false;
+
+        Function rowB;
+        rowB.name = "row_b";
+        rowB.start = 0xB00C;
+        rowB.end = 0xB030;
+        rowB.isRecompiled = true;
+        rowB.isStub = false;
+
+        // beq $4,$5,+0x4000 words: the target is far outside the section, the shape of a string
+        // table or a float decoded as a branch.
+        std::vector<Instruction> rowAInstructions{
+            makeNop(0xB000), makeNop(0xB004), makeConditionalBranch(0xB008, 0x4000)};
+        std::vector<Function> functions{rowA, rowB};
+        std::vector<Section> sections = {
+            {".text", 0xB000u, 0x1000u, 0u, true, false, false, true, nullptr}
+        };
+
+        CodeGenerator gen({}, sections);
+        CodeGenerator::AnalysisResult analysis =
+            gen.collectInternalBranchTargets(rowA, rowAInstructions, &functions);
+
+        t.IsFalse(analysis.externalEntryPoints.contains(0xB010u),
+                  "a branch out of the image is table data: its fallthrough is not an entry");
+    });
+
+    tc.Run("a branch to its own delay slot mints no fallthrough entry", [](TestCase &t) {
+        Function rowA;
+        rowA.name = "row_over_data";
+        rowA.start = 0xC000;
+        rowA.end = 0xC00C;
+        rowA.isRecompiled = true;
+        rowA.isStub = false;
+
+        Function rowB;
+        rowB.name = "row_b";
+        rowB.start = 0xC00C;
+        rowB.end = 0xC030;
+        rowB.isRecompiled = true;
+        rowB.isStub = false;
+
+        // offset 0: "bgez at,+0" (0x04210000) and friends -- the branch targets its own delay
+        // slot, which no compiler emits and float tables produce all the time.
+        std::vector<Instruction> rowAInstructions{
+            makeNop(0xC000), makeNop(0xC004), makeConditionalBranch(0xC008, 0)};
+        std::vector<Function> functions{rowA, rowB};
+        std::vector<Section> sections = {
+            {".text", 0xC000u, 0x1000u, 0u, true, false, false, true, nullptr}
+        };
+
+        CodeGenerator gen({}, sections);
+        CodeGenerator::AnalysisResult analysis =
+            gen.collectInternalBranchTargets(rowA, rowAInstructions, &functions);
+
+        t.IsFalse(analysis.externalEntryPoints.contains(0xC010u),
+                  "a branch to its own delay slot is table data: its fallthrough is not an entry");
+    });
+
+    tc.Run("a delay slot that is itself a branch mints no fallthrough entry", [](TestCase &t) {
+        // Section data present, so the analyzer can read the words it is about to vouch for.
+        static std::vector<uint8_t> image(0x100, 0u);
+        auto put = [](uint32_t offset, uint32_t word)
+        { std::memcpy(image.data() + offset, &word, sizeof(word)); };
+        put(0x08, 0x10850010u);   // 0xD008: beq $4,$5,+0x10
+        put(0x0C, 0x1000FFFFu);   // 0xD00C: a branch in the delay slot -- impossible in real code
+        put(0x10, 0x27BDFFF0u);   // 0xD010: addiu sp,sp,-16
+
+        Function rowA;
+        rowA.name = "row_over_data";
+        rowA.start = 0xD000;
+        rowA.end = 0xD00C;
+        rowA.isRecompiled = true;
+        rowA.isStub = false;
+
+        Function rowB;
+        rowB.name = "row_b";
+        rowB.start = 0xD00C;
+        rowB.end = 0xD030;
+        rowB.isRecompiled = true;
+        rowB.isStub = false;
+
+        std::vector<Instruction> rowAInstructions{
+            makeNop(0xD000), makeNop(0xD004), makeConditionalBranch(0xD008, 0x10)};
+        std::vector<Function> functions{rowA, rowB};
+        std::vector<Section> sections = {
+            {".text", 0xD000u, 0x100u, 0u, true, false, false, true, image.data()}
+        };
+
+        CodeGenerator gen({}, sections);
+        CodeGenerator::AnalysisResult analysis =
+            gen.collectInternalBranchTargets(rowA, rowAInstructions, &functions);
+
+        t.IsFalse(analysis.externalEntryPoints.contains(0xD010u),
+                  "no delay slot holds a branch: this row is data, not code");
     });
 
     tc.Run("a continuation that is already a row start needs no entry", [](TestCase &t) {

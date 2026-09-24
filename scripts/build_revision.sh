@@ -308,7 +308,8 @@ else
   rm -rf "$GEN"
   (cd "$RECOMP_DIR" && "$TOOLBUILD/ps2xRecomp/ps2_recomp.exe" "socom2_$REV.toml" > "recomp_run_$REV.log" 2>&1) \
       || { tail -20 "$RECOMP_DIR/recomp_run_$REV.log" >&2; echo "build_revision: recomp failed (the log above)" >&2; exit 1; }
-  say "recomp: $(ls "$GEN" | wc -l) files in $(rel "$GEN"), unhandled=$(grep -c unhandled-instruction "$RECOMP_DIR/recomp_run_$REV.log" || true)"
+  # unmapped= : continuation pcs no recompiled row owns (build.sh has the same field and why)
+  say "recomp: $(ls "$GEN" | wc -l) files in $(rel "$GEN"), unhandled=$(grep -c unhandled-instruction "$RECOMP_DIR/recomp_run_$REV.log" || true), unmapped=$(grep -c unmapped-continuation "$RECOMP_DIR/recomp_run_$REV.log" || true)"
   : > "$GEN/.complete"      # the mark the skip above trusts: written only when ps2_recomp returned 0
 fi
 [ "$STOP" = recomp ] && { say "stop after recomp"; exit 0; }
