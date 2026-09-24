@@ -25,6 +25,7 @@ void register_ps2_runtime_expansion_tests();
 void register_socom2_libnetb_tests();
 void register_socom2_chat_tests();   // Sprint 11 milestone S
 void register_socom2_audio_tests();
+void register_audio_cb_trace_tests();   // Sprint 11 audio-out: the per-callback trace
 void register_socom2_lgaud_tests();
 void register_host_config_tests();
 void register_launcher_tests();
@@ -104,6 +105,7 @@ int main()
     register_socom2_libnetb_tests();
     register_socom2_chat_tests();
     register_socom2_audio_tests();
+    register_audio_cb_trace_tests();
     register_socom2_lgaud_tests();
     register_host_config_tests();
     register_launcher_tests();

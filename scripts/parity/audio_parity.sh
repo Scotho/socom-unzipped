@@ -18,9 +18,45 @@
 # launched game as PS2X_AUDIO_DUMP, so a capture can have the mixer's own pre-device WAV beside the endpoint
 # recording (scripts/parity/mission_music_long.sh is the caller that sets it; unset, nothing is written).
 set -u
-ROOT=/c/projects/socom_pc; cd "$ROOT"
-. "$ROOT/scripts/python_env.sh"    # $PYTHON, resolved once for every script
+# Two roots (audio-out fix round 1, I3). The game, its data and the capture directories live in the DATA root
+# (game/, dist/, logs/): the main tree, or SOCOM_DATA_ROOT -- an agent's worktree never holds game/ (HANDOFF). The
+# audio tools come from beside this script (TOOLS_ROOT), so a capture run from a worktree exercises the worktree's
+# recorder, monitor and scorers: `python -P` keeps the cwd off sys.path and PYTHONPATH names the tools' tree. The
+# drive and run.sh stay the data root's: they find the game by their own tree.
+TOOLS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ROOT="${SOCOM_DATA_ROOT:-$TOOLS_ROOT}"
+. "$TOOLS_ROOT/scripts/python_env.sh"    # $PYTHON, resolved once for every script
 socom_require_python audio_parity
+# The audio tools, from the tools root, with the cwd kept off sys.path. A function, not a PYA variable used
+# unquoted at four call sites: a tools root with a space in it word-split into "env PYTHONPATH=/c/a" and "dir/..."
+# and the capture ran the wrong package (fix round 2, R7).
+pya() { PYTHONPATH="$TOOLS_ROOT" "$PYTHON" -P "$@"; }
+# The scorer's meta for a capture: the target and the script, as TWO arguments. A missing space here glued them
+# into `--target ours--script` and every capture this script took recorded `target: "ours--script"` with no script
+# key at all, so `compare` fell back to the launch_to_mission_xl reference whatever had been run (R2).
+score_meta_args() { META_ARGS=(--target "$1" --script "$(basename "$2")"); }
+# The loopback recorder's own pid, from its log (loopback_record.py prints `pid=`); empty when the log has none.
+recorder_pid() { grep -m1 -o 'pid=[0-9]*' "$1" 2>/dev/null | cut -d= -f2; }
+# The endpoint verdict for a capture: which sessions outside the game rendered while it ran. The recorder's own
+# loopback session reads the endpoint's WHOLE mix as its peak, so it is left out by pid -- and when its log
+# carries no pid the verdict says so rather than quietly re-acquiring that false positive: the owner is told to
+# discard any capture whose verdict is not `clean`, so an unearned word costs a capture either way (R5).
+write_sessions_verdict() {   # <capture dir> <the exe that may render>
+  local out=$1 exe=$2 pid
+  pid=$(recorder_pid "$out/loopback.log")
+  : > "$out/sessions_verdict.txt"
+  if [ -z "$pid" ]; then
+    echo "# no recorder pid in loopback.log -- the loopback recorder's own session is IN this verdict, and its" >> "$out/sessions_verdict.txt"
+    echo "# capture stream reads the endpoint's whole mix: an interpreter process here may be this script, not a contaminant." >> "$out/sessions_verdict.txt"
+    pya -m tools_py.parity.app_volume contamination "$out/sessions.csv" --allowed "$exe" >> "$out/sessions_verdict.txt" 2>&1 || true
+  else
+    pya -m tools_py.parity.app_volume contamination "$out/sessions.csv" --allowed "$exe" --ignore-pid "$pid" >> "$out/sessions_verdict.txt" 2>&1 || true
+    echo "# the loopback recorder (pid $pid) was left out: its capture stream reads the endpoint's whole mix" >> "$out/sessions_verdict.txt"
+  fi
+}
+# Sourced by tools_py/tests/test_audio_capture_script.py to exercise those four seams without a capture.
+if [ "${AUDIO_PARITY_SOURCE_ONLY:-0}" = 1 ]; then return 0; fi
+cd "$ROOT"
 cmd=${1:-}; shift || true
 case "$cmd" in
   capture)
@@ -38,6 +74,17 @@ case "$cmd" in
       export PS2X_DEV=1
       echo "PS2X_AUDIO_DUMP=$PS2X_AUDIO_DUMP PS2X_DEV=1" > "$OUT/audio_dump.txt"
     fi
+    if [ "$target" != pcsx2 ]; then
+      # Sprint 11 audio-out: every host audio callback's wall clock, beside the endpoint recording and the dump, so a
+      # DEVICE dip can be laid against the callback that was late (tools_py/parity/cb_trace.py). A Dev knob, like
+      # the dump; the path is handed over in the native spelling for the same reason the dump's is.
+      cb="$ROOT/$OUT/cb_trace.csv"
+      if command -v cygpath >/dev/null 2>&1; then cb="$(cygpath -w "$cb")"; fi
+      export PS2X_AUDIO_CB_TRACE="$cb"
+      export PS2X_DEV=1
+    fi
+    # (The environment record, env_ps2x.txt, is written just before the drive launches -- below -- so it is what
+    # the game ran under and not what this script had assembled so far.)
     restore=""
     if [ "$target" = pcsx2 ]; then
       restore="$OUT/pcsx2_override_backup.txt"
@@ -48,14 +95,28 @@ case "$cmd" in
     # 620 s, not 480: the drive runs 600 s and PCSX2 reaches the mission HUD at ~350 s, so a 480 s recording ended
     # 130 s into the console's mission and every later reference window scored digital silence (run 8, 2026-09-20).
     # `record_s` keeps that margin by default (drive_s + 20).
-    "$PYTHON" -m tools_py.parity.loopback_record "$OUT/endpoint.wav" "$rec_s" > "$OUT/loopback.log" 2>&1 &
+    pya -m tools_py.parity.loopback_record "$OUT/endpoint.wav" "$rec_s" > "$OUT/loopback.log" 2>&1 &
     REC=$!
+    # What ELSE renders to the endpoint, sampled every 5 s for the recording's length (state and peak meter per
+    # session): a session LIST proves nothing -- pycaw returns idle and expired sessions too -- but a timeline of
+    # sessions actually rendering does. The 2026-09-23 audio-out capture scored 562 "DEVICE" events with a browser
+    # playing music into the same endpoint; sessions_verdict.txt is what says so (audio-out fix round 1, I5).
+    pya -m tools_py.parity.app_volume monitor "$OUT/sessions.csv" --seconds "$rec_s" --interval 5 > "$OUT/sessions_monitor.log" 2>&1 &
+    MON=$!
     sleep 1
     # The per-app session volume Windows remembers for the exe on this endpoint sits BEFORE the loopback tap: hold
     # the launched game at 1.0 / unmuted while it runs and log what it was (music round four, 2026-09-20).
     exe=socom2.exe; [ "$target" = pcsx2 ] && exe=pcsx2-qt.exe
-    PYTHONPATH="$ROOT" "$PYTHON" -m tools_py.parity.app_volume hold "$exe" --seconds "$drive_s" > "$OUT/app_volume.log" 2>&1 &
+    pya -m tools_py.parity.app_volume hold "$exe" --seconds "$drive_s" > "$OUT/app_volume.log" 2>&1 &
     VOL=$!
+    # KNOWN §4: what the game ran under, written the moment before it launches -- every PS2X_* exported here (run.sh
+    # adds PS2X_DEV=1 itself when it is unset), the executable and its digest (the "off" half of an A/B needs the
+    # binary's identity, not only the knobs). A file with no PS2X_* says so rather than reading as a failure.
+    game_exe="${SOCOM_EXE:-$ROOT/dist/socom2.exe}"
+    { env | grep '^PS2X_' | LC_ALL=C sort || echo '# no PS2X_* in the environment'
+      echo "SOCOM_EXE=$game_exe"
+      sha256sum "$game_exe" 2>/dev/null || echo "# no executable at $game_exe to hash"
+      echo "# run.sh exports PS2X_DEV=1 when it is unset above"; } > "$OUT/env_ps2x.txt"
     date +%s.%N > "$OUT/.drive_started"
     # --seconds is OUR game's run length (drive.py defaults to 400): launch_to_mission_xl runs past 400 s, and a game
     # killed at 400 s leaves the last eleven windows as digital silence that reads as a FAIL of the mix (s9_q1_parity_ours).
@@ -70,8 +131,13 @@ case "$cmd" in
     powershell -NoProfile -Command 'Get-Process pcsx2-qt -ErrorAction SilentlyContinue | Stop-Process -Force' >/dev/null 2>&1
     offset=$("$PYTHON" -c "print(round(float(open('$OUT/.drive_started').read())-float(open('$OUT/.capture_started').read()),2))")
     rate=$("$PYTHON" -c "import wave; print(wave.open('$OUT/endpoint.wav').getframerate())")
-    echo "target=$target script=$script drive_rc=$rc offset=${offset}s rate=$rate drive_s=$drive_s record_s=$rec_s dump=${PS2X_AUDIO_DUMP:-none}" > "$OUT/capture.txt"
-    PYTHONPATH="$ROOT" "$PYTHON" -m tools_py.parity.audio_parity score "$OUT/endpoint.wav" "$rate" "$OUT/drive.stdout" "$offset" "$OUT/audio_scores.json" --target "$target" --script "$(basename "$script")" > "$OUT/scores.txt" 2>&1
+    wait $MON 2>/dev/null
+    # The endpoint's other sessions, with the recorder left out by pid -- or a line saying it was not (R5).
+    write_sessions_verdict "$OUT" "$exe"
+    echo "target=$target script=$script drive_rc=$rc offset=${offset}s rate=$rate drive_s=$drive_s record_s=$rec_s dump=${PS2X_AUDIO_DUMP:-none} exe=${SOCOM_EXE:-dist/socom2.exe} tools=$TOOLS_ROOT" > "$OUT/capture.txt"
+    cat "$OUT/sessions_verdict.txt"
+    score_meta_args "$target" "$script"
+    pya -m tools_py.parity.audio_parity score "$OUT/endpoint.wav" "$rate" "$OUT/drive.stdout" "$offset" "$OUT/audio_scores.json" "${META_ARGS[@]}" > "$OUT/scores.txt" 2>&1
     echo "scored -> $OUT/audio_scores.json ($(grep -c ':' "$OUT/scores.txt") windows)"; cat "$OUT/capture.txt"
     exit $rc ;;
   compare)
@@ -81,7 +147,7 @@ case "$cmd" in
       script=$("$PYTHON" -c "import json; print(json.load(open('$OUT/audio_scores.json'))['meta'].get('script','launch_to_mission_xl.txt'))")
       ref="scripts/parity/refs/audio_${script%.txt}.pcsx2.json"
     fi
-    PYTHONPATH="$ROOT" "$PYTHON" -m tools_py.parity.audio_parity compare "$ref" "$OUT/audio_scores.json" | tee "$OUT/audio_parity.txt"
+    pya -m tools_py.parity.audio_parity compare "$ref" "$OUT/audio_scores.json" | tee "$OUT/audio_parity.txt"
     exit ${PIPESTATUS[0]} ;;
   *) sed -n '2,12p' "$0"; exit 2 ;;
 esac

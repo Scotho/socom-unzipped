@@ -38,6 +38,7 @@
 #include <vector>
 
 #define PS2X_KNOB_TABLE(X) \
+    X("PS2X_AUDIO_CB_TRACE", Dev, Path, "", "Every host audio callback's wall clock to this CSV; the live counts in [audio-trace] need PS2X_AUDIO_TRACE.") \
     X("PS2X_AUDIO_DUMP", Dev, Path, "", "Write the mixed host audio (48 kHz stereo s16) to this file.") \
     X("PS2X_AUDIO_INSTRUMENT", Dev, Presence, "", "Stamp every 989snd command that can change a route level with the output-frame clock (research/36).") \
     X("PS2X_AUDIO_PCM_DUMP", Dev, Path, "", "Write what the EE DMAs into the 989snd PCM ring to this file (first 16 MiB).") \

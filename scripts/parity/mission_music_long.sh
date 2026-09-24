@@ -59,10 +59,16 @@
 #     still compare ours to the console rather than the capture's start to its end. `audio_parity.sh capture`
 #     writes its audio_scores.json anyway as a by-product; it is evidence, not the verdict.
 set -u
-ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-. "$ROOT/scripts/python_env.sh"    # $PYTHON, resolved once for every script
+# Two roots, as scripts/parity/audio_parity.sh (audio-out fix round 1, I3): the DATA root holds the game, the
+# capture directories and the run logs (SOCOM_DATA_ROOT, or the tree this script is in); the audio tools and the
+# capture script come from beside this script, so a worktree run exercises the worktree's tools.
+TOOLS_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+ROOT="${SOCOM_DATA_ROOT:-$TOOLS_ROOT}"
+. "$TOOLS_ROOT/scripts/python_env.sh"    # $PYTHON, resolved once for every script
 socom_require_python mission_music_long
 cd "$ROOT"
+# A function, not a variable used unquoted: a tools root with a space in it word-split (fix round 2, R7).
+pya() { PYTHONPATH="$TOOLS_ROOT" "$PYTHON" -P "$@"; }
 
 MINUTES=12
 # Which music to capture. `mission` holds at the insertion point, which is what this script was written for.
@@ -201,7 +207,7 @@ if [ "$DRY" = 1 ]; then
   echo "--dry-run: nothing launched. $(grep -c '^wait+8.0:NONE' "$SCRIPT") hold steps, $(grep -c '^hold+8.0:[WS]' "$SCRIPT") walking legs, $(grep -cv '^[[:space:]]*\(#.*\)\?$' "$SCRIPT") steps in all."
   exit 0
 fi
-AUDIO_DUMP="$DUMP_ENV" scripts/parity/audio_parity.sh capture "$TARGET" "$STAMP" "$SCRIPT" "$DRIVE_S" "$REC_S"
+AUDIO_DUMP="$DUMP_ENV" SOCOM_DATA_ROOT="$ROOT" bash "$TOOLS_ROOT/scripts/parity/audio_parity.sh" capture "$TARGET" "$STAMP" "$SCRIPT" "$DRIVE_S" "$REC_S"
 rc=$?
 echo "capture rc=$rc"
 
@@ -213,14 +219,14 @@ if [ "$SCORE" = 1 ]; then
     [ -s "$wav" ] || { echo "no capture at $wav -- skipping its score"; continue; }
     name=$(basename "$wav" .wav)
     echo "=== audio_envelope --segment 60  $wav ==="
-    PYTHONPATH="$ROOT" "$PYTHON" -m tools_py.parity.audio_envelope "$wav" --segment 60 \
+    pya -m tools_py.parity.audio_envelope "$wav" --segment 60 \
       > "$OUT/envelope_$name.txt" 2>&1 || true
     cat "$OUT/envelope_$name.txt"
   done
   if [ -s "$OUT/endpoint.wav" ] && [ -s "$OUT/mix.wav" ]; then
     echo "=== audio_dips  endpoint vs mix ==="
     log=$(ls -t logs/run_*.log 2>/dev/null | head -1)
-    PYTHONPATH="$ROOT" "$PYTHON" -m tools_py.parity.audio_dips "$OUT/endpoint.wav" --dump "$OUT/mix.wav" \
+    pya -m tools_py.parity.audio_dips "$OUT/endpoint.wav" --dump "$OUT/mix.wav" \
       ${log:+--log "$log"} > "$OUT/dips.txt" 2>&1 || true
     tail -40 "$OUT/dips.txt"
     # The endpoint this run rendered to, beside its dips: a DEVICE count that does not name its device proves
