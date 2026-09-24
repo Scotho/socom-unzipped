@@ -494,13 +494,32 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     help="add the weak prologue pass; its pairs can never be proposed")
     ap.add_argument("--verify", action="store_true",
                     help="print the .relmain mask coverage, the class clustering and the buckets")
+    # Task 7b's two levers. Each produces its own candidates under its own rule (tools_py/
+    # symbol_levers.py), and they share ONE output file, --renames-7b, which is separate from
+    # --renames because the rule that fills it is not the six-hurdle rule that fills that one.
+    ap.add_argument("--positional", action="store_true",
+                    help="Task 7b lever 1: name by position between anchor pairs, per PT_LOAD")
+    ap.add_argument("--positional-blurred", action="store_true",
+                    help="also propose pairs whose body evidence cannot tell them from a sibling "
+                         "in the same gap (the sceSifQuery*-style wrapper families)")
+    ap.add_argument("--bridge", metavar="DEMO2_ELF",
+                    help="Task 7b lever 2: compose demo1 -> demo2 -> ours through a third build")
+    ap.add_argument("--holdout", type=int, default=0, metavar="K",
+                    help="measure lever 1's error rate by holding out every K-th Task 7 pair")
+    ap.add_argument("--holdout-block", type=int, default=1, metavar="B",
+                    help="hold out RUNS of B consecutive pairs, so the gaps hold B functions")
+    ap.add_argument("--renames-7b", dest="renames_7b",
+                    help="CSV: the lever 1 + lever 2 proposals (never applied here)")
     args = ap.parse_args(list(argv) if argv is not None else None)
 
-    missing = [p for p in (args.demo_elf, args.our_elf, args.our_csv) if not os.path.exists(p)]
+    wanted = [args.demo_elf, args.our_elf, args.our_csv]
+    if args.bridge:
+        wanted.append(args.bridge)
+    missing = [p for p in wanted if not os.path.exists(p)]
     if missing:
         for path in missing:
             print("NO-DATA: missing %s" % path)
-        print("NO-DATA: the SOCOM 1 demo ELF is git-ignored; see docs/research/44-demo-symbols.md §1")
+        print("NO-DATA: the demo ELFs are git-ignored; see docs/research/44-demo-symbols.md §1")
         return 2
     try:
         demo_rows, demo_segs = load_demo(args.demo_elf)
@@ -562,6 +581,74 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print("where the %d pairs land in our image, per PT_LOAD:" % len(pairs))
         for vaddr, end, total, prefix in region_split(pairs, details, our_segs):
             print("  0x%06x-0x%06x  %4d  (of which prefix %d)" % (vaddr, end, total, prefix))
+
+    # ---- Task 7b: the two levers, each under its own rule -----------------------------------
+    lever_rows = []                      # [(source, symbol_levers.Candidate)]
+    lever_header: List[str] = []
+    anchors: List[Tuple[int, int]] = []
+    if args.positional or args.bridge or args.holdout or args.renames_7b:
+        from tools_py import symbol_levers as sl
+        # Keyed by the DEMO address, which `details` carries and a name cannot be trusted for: one
+        # demo name can sit on two demo addresses (a `static` in two translation units), and Task 7's
+        # §5 collision is exactly that case.
+        anchors = [(info["demo_addr"], addr) for (_n, addr), info in details.items()]
+        print("\nTask 7b: %d anchors (every Task 7 pair, by demo address)" % len(anchors))
+
+    if args.holdout:
+        from tools_py import symbol_levers as sl
+        folds = sl.holdout(demo_rows, demo_segs, our_rows, our_segs, anchors, PREFIX_WORDS,
+                           folds=args.holdout, block=args.holdout_block)
+        print("lever 1 holdout (%d folds, blocks of %d, held-out rows the walk re-derived):"
+              % (args.holdout, args.holdout_block))
+        for tier in ("A", "B", "blurred", "untiered"):
+            got, bad = folds[tier]
+            print("  tier %-8s %4d re-derived, %d wrong (%.2f%% right)"
+                  % (tier, got, bad, 100 * (got - bad) / got if got else 0.0))
+
+    if args.positional:
+        from tools_py import symbol_levers as sl
+        found, census = sl.positional(demo_rows, demo_segs, our_rows, our_segs, anchors,
+                                      PREFIX_WORDS, allow_blurred=args.positional_blurred)
+        print("lever 1 (positional): " + ", ".join("%s %d" % kv for kv in sorted(census.items())))
+        lever_rows += [("positional", c) for c in found]
+        lever_header.append(sl.POSITIONAL_RULE)
+        if args.positional_blurred:
+            lever_header.append("--positional-blurred was given: rows with Discriminating=no are "
+                                "included. Their name rests on link order alone.")
+
+    if args.bridge:
+        from tools_py import symbol_levers as sl
+        demo2 = read_elf(args.bridge)
+        acc = sl.scan_accuracy(read_elf(args.demo_elf))
+        print("lever 2 (bridge): the boundary scan, checked on demo1's own .symtab: %d ranges for "
+              "%d real functions, %d starts right, %d with both boundaries right (%.1f%%)"
+              % (acc["ranges"], acc["real"], acc["starts_right"], acc["both_right"],
+                 100 * acc["both_right"] / acc["real"] if acc["real"] else 0.0))
+        demo2_rows = sl.scan_functions(demo2.segments)
+        print("  demo2 %s: %d PT_LOAD bytes, %d symbols, %d scanned ranges"
+              % (os.path.basename(args.bridge), sum(len(d) for _v, d in demo2.segments),
+                 len(demo2.symbols), len(demo2_rows)))
+        found, census = sl.bridge(demo_rows, demo_segs, demo2_rows, demo2.segments,
+                                  our_rows, our_segs, anchors)
+        print("  " + ", ".join("%s %d" % kv for kv in sorted(census.items())))
+        lever_rows += [("bridge", c) for c in found]
+        lever_header.append(sl.BRIDGE_RULE)
+
+    if args.renames_7b:
+        from tools_py import symbol_levers as sl
+        lever_out, lever_held = sl.proposals_7b(lever_rows, [r["Proposed"] for r in rows])
+        print("\n7b proposals: %d" % len(lever_out))
+        for reason in sorted(lever_held):
+            print("    held back: %-34s %d" % (reason, lever_held[reason]))
+        header = ["game/demo_symbol_renames_7b.csv -- Sprint 11 Task 7b proposals. PROPOSALS ONLY:",
+                  "recomp/socom2_ghidra.csv is unchanged; applying these is a separate, reviewed step.",
+                  "Names come from the SOCOM 1 demo's .symtab. Addresses are OURS (r0001).",
+                  "Every row here failed Task 7's six-hurdle rule and is proposed under a DIFFERENT",
+                  "one, named in its Source column. docs/research/45-positional-and-bridge-names.md",
+                  ""] + [line for rule in lever_header for line in (rule, "")]
+        sl.write_proposals_7b(args.renames_7b, lever_out, header)
+        print("wrote %s (proposals only -- applying them is a separate, reviewed step)"
+              % args.renames_7b)
 
     if args.out:
         payload = {
