@@ -160,7 +160,7 @@ eleven in the order they matter. Nothing was dropped.
    hook runs `staged`, the pre-push hook `history` over the range, CI `all` plus gitleaks) refuses any of it. A hit
    is fixed, or -- when it is a reviewed non-secret -- recorded with its reason in `tools_py/release/leak_allow.txt`.
    Never `--no-verify`: the push hook and CI see the same thing and a hit in a pushed commit means a history rewrite.
-   Owner-specific literals (the address, an old account name) go in the git-ignored `tools_py/release/leak_extra.txt`.
+   Owner-specific literals (personal literals, old account names) go in the git-ignored `tools_py/release/leak_extra.txt`.
 3. **End every commit message with the `Co-Authored-By` trailer your session is given** -- not one copied from an older
    commit or document. Subjects are `type(scope): what and why`, long, and say the finding (`docs/GIT_STRATEGY.md`).
 4. **Push to the OPEN sprint's branch on `origin` and check CI** (`gh run list --branch <that branch> --limit 1`;

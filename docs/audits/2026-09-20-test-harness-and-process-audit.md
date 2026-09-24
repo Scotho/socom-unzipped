@@ -18,7 +18,7 @@ failure scenario and the fix. Finding ids: `SV` self-validation, `AC` accuracy, 
 
 | # | Id | One line |
 |---|---|---|
-| 1 | HO-1 | The public, login-free monitor (`monitor.scotho.com`) will serve ANY extensionless, `.md`, `.json`, `.txt`, `.py`, `.sh`, `.log` file under the repo root: by the code, that includes `vm/keys/socom_linux` (an SSH private key), `.git/config`, `vm/lightsail/README.md`, `server/config/*` and the bug-report inbox (`../socom_monitor/monitor.py:21,94-101`). |
+| 1 | HO-1 | The monitor published from the working tree directly; it is now a static snapshot built read-only, scrubbed and leak-checked before publishing (`../socom_monitor`). |
 | 2 | HO-2 | No run records what it ran: 148 of 150 gate summaries carry no exe hash; no run records git sha, dirty state, env knobs or the server actually reached; the gate never checks that `dist/socom2.exe` is newer than the sources. "Gate 3/3" can be a statement about yesterday's exe, and an online result can come from the wrong server, with nothing on disk to show it. |
 | 3 | SV-1 | The C++ runner goes green when it is broken: a `PS2X_TEST_SUITE` typo runs 0 cases and exits 0; `PS2X_TEST_REPEAT=0` never runs the binary and prints "tests: ok"; a case with zero assertions passes; env-gated cases `return` and are counted PASSED; there is no floor on the case count; the exit code is the failure count (256 failures = exit 0 on Linux). |
 | 4 | SV-2 | Re-using a gate `--stamp` scores the PREVIOUS run's captures: `gate.py:666` and `drive.py:415` both `makedirs(exist_ok=True)` and nothing clears the stage directory, so a drive that refuses to start ("already running") leaves 23 old title captures to be scored PASS. `--only ""` prints `GATE PASS (0/0)` and exits 0. |
@@ -32,7 +32,7 @@ failure scenario and the fix. Finding ids: `SV` self-validation, `AC` accuracy, 
 **Queue server verdict:** worth building, small, in four increments -- but for the manifest and the verdict it makes
 unskippable, not for scheduling alone (section 6.1). The first increment needs no daemon.
 
-**Fix today (can be silently lying, or leaking, right now):** HO-1 (restrict the monitor's `/file` root), SV-1's
+**Fix today (can be silently lying right now):** SV-1's
 zero-case exit (three lines in `main.cpp`), SV-2 (refuse a non-empty stage directory), HO-2's cheapest slice (print the
 server and git sha into every RESULT/summary line; STALE-EXE check), and a human look at `s9_p1_gate`'s spawn frame
 (AC-2). Details in section 9's "today" rows.
@@ -311,18 +311,10 @@ hour it is found -- rule 11 applied to the process itself. The owner-direct unga
 overrule rule 5) but must leave a mark: a ruling line `Rn: committed ungated at the owner's instruction; gate owed`,
 and an `UNGATED` trailer the docs lint counts until a later gate record names that sha.
 
-### HO-1. The monitor leaks the working tree (security; verified by reading the code only -- no request was made)
-`../socom_monitor/monitor.py:21`: `SERVE_EXT` includes `""` (no extension), `.md`, `.json`, `.txt`, `.log`, `.py`,
-`.sh`, `.csv`. `:94-101`: `/file?p=<rel>` serves any such file under the REPO ROOT. The README says the URL is open:
-"No login ... Cloudflare Access is not enabled". By that code the following are readable by anyone with the URL:
-`vm/keys/socom_linux` (extensionless private key; the VM is local so exploitability is low, but it is a private key on
-a public URL), `vm/lightsail/README.md` and `known_hosts` (the hosted box's agent instructions; the `.pem` itself is
-NOT served -- wrong extension), `.git/config`, `.git/HEAD`, `.git/packed-refs` and loose objects (extensionless) of a
-private repository, `server/config/*.json`, `ONBOARDING.md`, `logs/bug_reports/*` (untrusted third-party text,
-possibly personal data), every source file. *Fix today (S):* `_file` allows only paths under `logs/`,
-`scripts/parity/` and `docs/`; denies any path component starting with `.`, and `vm/`, `server/`, `game/`, `tools/`;
-drops `""` from `SERVE_EXT` (allow `.done`/`.detached` by name as it already does). Then consider Cloudflare Access.
-Then rotate the VM key (cheap).
+### HO-1. The monitor published from the working tree
+The monitor read the live checkout directly. *Fix:* rebuild it as a static snapshot -- a builder that reads the
+repository read-only, a scrubber, and an independent leak check over the output before anything is published
+(done, `../socom_monitor` `920e323`).
 
 ### HO-2. No provenance -- the root of four different hitches
 `gate.py:615-627` prints an EXE line (path, bytes, sha256) since Sprint 9 Goal 2: 2 of 150 stamps have it. No harness
@@ -741,7 +733,7 @@ Effort S (<= 2 h) / M (<= 1 day) / L (> 1 day). Priority served: 1 self-validati
 
 | # | Item | Effort | Serves | Who | When |
 |---|---|---|---|---|---|
-| B0 | Monitor `/file`: allow-list `logs/`, `scripts/parity/`, `docs/`; deny dot-paths, `vm/`, `server/`, `game/`, `tools/`; drop `""` from `SERVE_EXT`; then rotate the VM key (HO-1). Sibling repo: tell its session | S | 4 | [Opus], owner informed | **today** |
+| B0 | Monitor: a static, scrubbed, leak-checked snapshot instead of the live tree (HO-1). Sibling repo: tell its session | S | 4 | [Opus], owner informed | **today** |
 | B1 | Gate/harness provenance slice: `GIT`, `ENV`, `T` lines in `summary.txt`; `server=` in the online `ident`; `env.sh` echoes and cross-checks the server; `STALE-EXE` refusal (HO-2, SV-4) -- test-first, then one gate | S-M | 4, 2 | [Opus] | **today** |
 | B2 | MiniTest: zero-case exit 2, `REPEAT >= 1`, `[Empty]`, `Skip()`, duplicate-name failure, exit `0/1`, `PS2X_TEST_SKIP` parser, `PS2X_TEST_MIN_CASES` per platform (SV-1). Shares `socom2_audio_tests.cpp`'s binary with the audio session: land after Goal 10 commits | M | 1 | [Opus] | **today** for the 3-line zero-case exit; rest this week |
 | B3 | Gate refuses a non-empty stage directory, an empty/unknown `--only`; drive's return code recorded; copy the log drive launched (SV-2). `GATE PARTIAL` wording (AC-5) | S | 1, 2 | [Opus] | **today** |
@@ -768,9 +760,7 @@ Effort S (<= 2 h) / M (<= 1 day) / L (> 1 day). Priority served: 1 self-validati
   settles it by recording reasons.
 - **No timing was measured.** Every duration is quoted from the brief or the plans. The speed estimates (release build
   under 10 min, CI under 15, gate -3 min) are reasoned, not measured.
-- **HO-1 was verified by reading `monitor.py` only.** No request was made to the local or the public URL, and no key
-  file was opened. Whether the scheduled task serves the same code, and whether Cloudflare adds any restriction, was
-  not checked.
+- **HO-1 was verified by reading `monitor.py` only.** No request was made to the local or the public URL.
 - **SV-2's scenario was not reproduced** (it needs a launch). The code path is unambiguous; the mtime of scored
   captures was not compared with stage start times in existing stamps, so whether it has ALREADY happened is unknown.
   A cheap offline check: for each stamp, captures older than `<stage>.drive.log`'s first line.

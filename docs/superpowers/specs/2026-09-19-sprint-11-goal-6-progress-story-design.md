@@ -107,8 +107,7 @@ questions in §9, and the release itself.
 
 ## Status, 2026-09-20 (third pass: the owner's rewrite)
 
-On the owner's instruction, the same day: (1) the security-incident entry removed entirely (the do-not-say row that
-demanded it is struck above, with the ruling); (2) every entry rewritten shorter and plainer — casual, to the point,
+On the owner's instruction, the same day: (1) one entry removed at the owner's instruction; (2) every entry rewritten shorter and plainer — casual, to the point,
 the technical detail kept in the `How:` line and the interesting numbers kept in the body, the hedging cut; (3) the
 pruning audit done: 52 entries became 44 by merging ten pairs that told one story (a mission loads / its first frames;
 the title labels / the world stops coming apart; the speed-up / the first scripted walk; the round that "would not
@@ -291,8 +290,8 @@ executed at all (`docs/process-audit.md` item 2). The runner is one line of `bui
 **What it must not read, ever:** `logs/parity/*/server-side.log` (account names, session tokens, client addresses —
 withheld by `scan.is_withheld` for that reason, and cited by KNOWN only as a local path), `logs/bug_reports/` (another
 session's, and report text is untrusted data), anything under `vm/keys/` or `server/config/*.json`. This is not
-hypothetical caution: the monitor served the working tree with no login for about 2.5 days in September (KNOWN §2),
-and a tool whose job is to copy evidence into a published document is exactly the shape of tool that repeats it.
+hypothetical caution: a tool whose job is to copy evidence into a published document is exactly the shape of tool
+that publishes what it should not.
 
 ### 3.3 What it emits
 
@@ -451,14 +450,14 @@ will never have `logs/` — which is the whole point of publishing the story.
 
 ### 4.4 What happens when D1 rewrites history and every hash changes
 
-The Sprint 11 spec is explicit that this is live: Goal 1.3a records that the owner's home address is still in history
+The Sprint 11 spec is explicit that this is live: Goal 1.3a records that a personal literal is still in history
 in two commits, so *"D1 cannot be 'as it is': either a targeted `git filter-repo --replace-text` with an
 owner-approved force-push, or a fresh history"*, and Goal 1.4 adds: *"The progress story (Goal 6) cites commits by
 hash; a fresh-history public repository keeps those citations true only if the story links to the archive or quotes
 instead of linking. Say which before writing the story."* This section is that answer.
 
 **What actually happens, mechanically.** `git filter-repo --replace-text` rewrites every commit from the first
-affected commit forward. The address landed in a Sprint 8 plan and was redacted in `a87e4b2`, but the rewrite is not
+affected commit forward. The literal landed in a Sprint 8 plan and was redacted in the tree, but the rewrite is not
 local to those two commits: every descendant is re-parented and re-hashed, so in practice **every hash in the story
 changes**. A fresh-import public repository is worse and simpler: there is one commit, and every citation is dangling.
 In both cases the citation test goes red. **That is the test working.** The design goal is not to avoid the red; it is
@@ -716,7 +715,6 @@ this table disagree, KNOWN wins and this table is what gets fixed.
 | "the kill1 / kill2 / kill3 runs" | `ours_task8_kill1/2/3` contain **no kills** — the bursts hit nothing because the players were never within range in three dimensions. The first kill is `s5_t5_ladder2`. |
 | "the Horizon server" as SOCOM's original service | It is a community server emulator this project self-hosts. **Nothing has ever connected to PSRewired**, and nothing will until the owner reports their answer. |
 | Any celebration of the honesty culture that omits its own failures | The project's rule is *retract on discovery*; the first three retractions happened at close-out anyway, about a day late, and the freeze description stayed false for roughly two weeks. The 2026-09-20 audit's verdict: *"What is weak is that every guard is a sentence."* |
-| ~~Any account of the development that omits the 2.5-day leak~~ | **Overruled by the owner, 2026-09-20: the security incident is not part of the public story.** The entry that told it was removed from `docs/STORY.md` in the second rewrite. The incident itself stays where it belongs, in `docs/KNOWN.md` §2 and the audit; the story does not mention it and does not allude to it. |
 
 ### 7.3 The one mechanical guard that is possible
 
