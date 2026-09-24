@@ -378,6 +378,7 @@ command string joins the two builds.
   `LobbyConnect`, `MediusInit`, the friends/ignore/clan-message family, the MUIS persona commands,
   `DNASAuthenticate` and `InitializeOnlineArmory`.
 - The check available today is Task 7's pairs on the same addresses: **3 agree, 0 disagree**.
+  > *Correction (2026-09-24, Task 14's join, S12-R20): checked on the DEMO side too, one Task 7 anchor disagrees — the 40-byte `exact` pair demo `UIGameStatePopCommand` 0x1d23a0 → our 0x27a250 (the GetClanRanking handler's 40-byte stub, the same fingerprint), where the table binds GameStatePopCommand to 0x278df0. Never a proposal (under 64 B), but an anchor; held in `recomp/socom2_name_holds.csv`. So: 3 agree, 1 disagree.*
 
 The 38 network commands the demo also names include every wrapper around `CNetCnf`: `NetCnfInit`,
 `NetCnfUninit`, `NetCnfOpen`, `NetCnfClose`, `NetCnfCurrCombo`, `NetCnfSelectCombo` and
