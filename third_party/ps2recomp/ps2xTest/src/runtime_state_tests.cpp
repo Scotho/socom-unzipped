@@ -47,6 +47,21 @@ namespace
         ctx.r[reg] = _mm_set_epi64x(0, static_cast<int64_t>(value));
     }
 
+    void markDmaChannelPending(PS2Runtime &runtime, uint32_t channelBase)
+    {
+        ps2_stubs::DmaRuntimeState &state = runtime.dmaRuntimeState();
+        std::lock_guard<std::mutex> lock(state.mutex);
+        state.pendingPolls[channelBase] = 1u;
+    }
+
+    bool dmaChannelPending(PS2Runtime &runtime, uint32_t channelBase)
+    {
+        ps2_stubs::DmaRuntimeState &state = runtime.dmaRuntimeState();
+        std::lock_guard<std::mutex> lock(state.mutex);
+        auto it = state.pendingPolls.find(channelBase);
+        return it != state.pendingPolls.end() && it->second > 0;
+    }
+
     uint32_t stubWarningsFor(PS2Runtime &runtime, const char *name)
     {
         ps2_stubs::StubLogRuntimeState &state = runtime.stubLogRuntimeState();
@@ -88,35 +103,58 @@ void register_runtime_state_tests()
                      "stub-warning count");
         });
 
-        tc.Run("Stubs/DMA.cpp's sceDmaSync consumes the pending mark this TU wrote", [](TestCase &t)
+        tc.Run("Stubs/DMA.cpp's sceDmaSync reads the pending-poll map of the runtime it was handed", [](TestCase &t)
         {
-            ps2_stubs::DmaRuntimeState &dma = ps2_stubs::dmaRuntimeStateFor(nullptr);
-            {
-                std::lock_guard<std::mutex> lock(dma.mutex);
-                dma.pendingPolls[kVif1ChannelBase] = 1u;
-            }
+            PS2Runtime first;
+            PS2Runtime second;
+
+            markDmaChannelPending(first, kVif1ChannelBase);
 
             // sceDmaSync lives in Stubs/DMA.cpp -- a different translation unit. Non-blocking mode
-            // ($a1 != 0) must report the transfer busy ONCE and consume the mark.
-            PS2Runtime runtime;
+            // ($a1 != 0) reports the transfer busy once and consumes the mark.
             R5900Context ctx{};
             setRegU32(ctx, 4, kVif1ChannelBase);
             setRegU32(ctx, 5, 1u);
-            ps2_stubs::sceDmaSync(nullptr, &ctx, &runtime);
-            const uint32_t firstReturn = getRegU32(&ctx, 2);
 
-            bool stillPending = false;
-            {
-                std::lock_guard<std::mutex> lock(dma.mutex);
-                auto it = dma.pendingPolls.find(kVif1ChannelBase);
-                stillPending = (it != dma.pendingPolls.end() && it->second > 0);
-                dma.pendingPolls.erase(kVif1ChannelBase);
-            }
+            ps2_stubs::sceDmaSync(nullptr, &ctx, &second);
+            t.Equals(getRegU32(&ctx, 2), 0u,
+                     "a second runtime in the same process must not see the transfer the first one "
+                     "has in flight");
+            t.IsTrue(dmaChannelPending(first, kVif1ChannelBase),
+                     "and it must not consume the first runtime's pending mark either");
 
-            t.Equals(firstReturn, 1u,
-                     "sceDmaSync should report busy for the channel this TU marked pending");
-            t.IsFalse(stillPending,
-                      "sceDmaSync should have consumed the pending mark in the state this TU reads");
+            ps2_stubs::sceDmaSync(nullptr, &ctx, &first);
+            t.Equals(getRegU32(&ctx, 2), 1u,
+                     "sceDmaSync should report busy for the channel THIS runtime marked pending; "
+                     "0 means Stubs/DMA.cpp read process-wide state instead of the runtime's "
+                     "(docs/KNOWN.md #4)");
+            t.IsFalse(dmaChannelPending(first, kVif1ChannelBase),
+                      "and it should have consumed that runtime's mark");
+        });
+
+        tc.Run("Stubs/DMA.cpp's sceDmaReset clears only its own runtime's DMA state", [](TestCase &t)
+        {
+            PS2Runtime first;
+            PS2Runtime second;
+            // sceDmaReset writes the DMAC's control registers, so this pair needs real memory.
+            t.IsTrue(first.memory().initialize(), "runtime memory initialize should succeed");
+            markDmaChannelPending(first, kVif1ChannelBase);
+            markDmaChannelPending(second, kVif1ChannelBase);
+            first.dmaRuntimeState().currentEnvironment.pcr = 0xFFu;
+            second.dmaRuntimeState().currentEnvironment.pcr = 0xFFu;
+
+            R5900Context ctx{};
+            ps2_stubs::sceDmaReset(nullptr, &ctx, &first);
+
+            t.IsFalse(dmaChannelPending(first, kVif1ChannelBase),
+                      "a controller reset means no transfer is in flight, so sceDmaReset clears "
+                      "the pending-poll map as well as the environment block");
+            t.Equals(static_cast<uint32_t>(first.dmaRuntimeState().currentEnvironment.pcr), 0u,
+                     "sceDmaReset should clear its runtime's environment block");
+            t.IsTrue(dmaChannelPending(second, kVif1ChannelBase),
+                     "and it must leave a second runtime's DMA state alone");
+            t.Equals(static_cast<uint32_t>(second.dmaRuntimeState().currentEnvironment.pcr), 0xFFu,
+                     "including that runtime's environment block");
         });
 
         tc.Run("Stubs/GS.cpp's sceGsResetGraph writes the GParam this TU reads", [](TestCase &t)
