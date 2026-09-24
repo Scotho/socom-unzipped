@@ -25,7 +25,7 @@ injectivity) to R6:
 The invariant every rendered name holds (`is_legal`, plus uniqueness in `render`), S12-R19: the recompiler's
 LIVE sanitiser returns it unchanged (`sanitize_recomp`, ps2_recompiler.cpp:2190). `sanitize_codegen`
 (code_generator.cpp:181) is kept as a documented replica only and is not a bar: it is the symbol-table
-fallback, which never runs on this image (research/46 §1.5), and it would prefix every `_x` S12-R14 keeps.
+fallback, which never runs on this image (research/61 §1.5), and it would prefix every `_x` S12-R14 keeps.
 Also: at most 87 characters (the filename budget, research/47 §3); not a Windows device name; no trailing `.` or space; not
 a placeholder; unique case-insensitively among the outputs and against `taken`.
 
@@ -128,7 +128,7 @@ def sanitize_codegen(name: str) -> str:
     """CodeGenerator::sanitizeFunctionName (code_generator.cpp:181): the symbol-table fallback.
 
     A replica for reference only (S12-R19): it never runs on this image, which has no ELF symbols
-    (research/46 §1.5), so `is_legal` and `render` do not consult it."""
+    (research/61 §1.5), so `is_legal` and `render` do not consult it."""
     s = _sanitize_body(name)
     if not s:
         return s

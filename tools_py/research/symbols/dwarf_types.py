@@ -25,7 +25,7 @@ What it prints, by section:
            the 40 largest by member count, and the classes the project names by hand, with sizes.
   units    which translation unit each of research/44's 987 matched demo functions came from, where the
            .debug says so; the top 15 units by matched count; where the rest sit.
-  offsets  for every raw field offset research/46 section 3 lists (the parity tools' and the hooks'): the
+  offsets  for every raw field offset research/61 section 3 lists (the parity tools' and the hooks'): the
            demo's field at that offset in the candidate class (flattened through bases, nested members
            resolved), then SOCOM II's access pattern -- demo member functions twinned into r0001 and
            aligned instruction for instruction on the `this` register (the actor also through its

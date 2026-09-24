@@ -52,7 +52,7 @@ A readable name is the demo's mangled name rendered as `Class_Method`, with thes
    to 24 characters (research Q2 decides between this and a short hash; the default is the argument list because it
    reads). A name that still collides after the suffix is refused, both rows.
 3. > *Superseded (2026-09-24, research/47): the rule set a test pins is research/47's R1–R12, with R6 amended by S12-R14; the length limit is 87 characters (the recompiler's 100-character filename budget minus `_0x<addr>`); the overload suffix is the argument list where it splits the whole collision group and a six-hex hash otherwise; a name the demo itself defines at several addresses is kept unsuffixed when the demo holds it that many times; `@n@` is a this-adjusting thunk (`_thunk<n>`), not an anonymous namespace.*
-   > *Superseded in part (2026-09-24, research/46 §1.5): the sanitiser that runs is `PS2Recompiler::sanitizeFunctionName` (`ps2_recompiler.cpp:2190`): characters outside `[A-Za-z0-9_]` → `_`, `_` before a leading digit, `ps2_` before a keyword or a reserved spelling (`__x`, `_X`); a leading `_` + lower-case letter is kept. "Returned unchanged" is measured against that function (31 of the 485 readable names fail it today, mostly `__ieee754_*`, `__sinit_*`; research/47 decides their rendering). Filenames are cut at 100 characters of `<name>_0x<addr>`.*
+   > *Superseded in part (2026-09-24, research/61 §1.5): the sanitiser that runs is `PS2Recompiler::sanitizeFunctionName` (`ps2_recompiler.cpp:2190`): characters outside `[A-Za-z0-9_]` → `_`, `_` before a leading digit, `ps2_` before a keyword or a reserved spelling (`__x`, `_X`); a leading `_` + lower-case letter is kept. "Returned unchanged" is measured against that function (31 of the 485 readable names fail it today, mostly `__ieee754_*`, `__sinit_*`; research/47 decides their rendering). Filenames are cut at 100 characters of `<name>_0x<addr>`.*
    **Legality.** Every applied name is a legal C identifier that `sanitizeIdentifier` returns **unchanged** (no leading
    underscore or digit, no keyword, no reserved spelling), a legal Windows filename, at most 96 characters (over that,
    the cut plus eight hex digits of SHA-1 of the original, as `ghidra_symbol_match.c_identifier` does today), and unique
@@ -265,7 +265,7 @@ and one sidecar row away from reversal.
 
 - It does not touch the game's behaviour: no hook, probe or HLE path changes what it does; only what it is called and
   what stands beside the number.
-  > *Qualified (2026-09-24, research/46 §4–§5): a rename CAN change behaviour in two ways the recompiler has — a name on `ps2_call_list.h`'s stub list makes the recompiler stub the function by name (19 of the 485; held, S12-R10), and a non-auto name makes the csv End final where the JAL scan's larger End won before (237 of the 485; accepted only when the cloud's own recomp shows no new `unmapped`/`unhandled` continuation, S12-R11). The promise stands as a bar, enforced by the applier's holds and the recomp census, not as an assumption.*
+  > *Qualified (2026-09-24, research/61 §4–§5): a rename CAN change behaviour in two ways the recompiler has — a name on `ps2_call_list.h`'s stub list makes the recompiler stub the function by name (19 of the 485; held, S12-R10), and a non-auto name makes the csv End final where the JAL scan's larger End won before (237 of the 485; accepted only when the cloud's own recomp shows no new `unmapped`/`unhandled` continuation, S12-R11). The promise stands as a bar, enforced by the applier's holds and the recomp census, not as an assumption.*
 - It does not propose a name on a prologue alone, on position alone, or on a SOCOM 1 layout alone.
 - It does not merge to `main`, open a PR, or write `docs/CURRENT_SPRINT.md`, `HANDOFF.md`, `STATUS.md`,
   `HUMAN_TASKS.md` or Sprint 11's KNOWN rows (handoff §5); its live state is the plan's log and its research notes.
@@ -284,6 +284,6 @@ and one sidecar row away from reversal.
   corrected voice-codec record: `tools_py/research/symbols/README.md`.
 - The consumers: `recomp/socom2.toml`, `recomp/socom2_ghidra.csv`, `third_party/ps2recomp/ps2xRecomp/src/lib/elf_parser.cpp`
   (`loadGhidraFunctionMap`, the auto-name rule, the End tie-break), `ps2xRecomp/src/lib/ps2_recompiler.cpp`
-  (`sanitizeFunctionName`, `makeName`, `isStubFunction`, `clampFilenameLength`) — research/46 §1 is the map,
+  (`sanitizeFunctionName`, `makeName`, `isStubFunction`, `clampFilenameLength`) — research/61 §1 is the map,
   `ps2xRuntime/include/runtime/socom2_addresses.h`, `ps2xRuntime/src/lib/game_overrides_socom2.cpp`,
   `tools_py/parity/guest_addresses.py`, `tools_py/carry_names.py`.

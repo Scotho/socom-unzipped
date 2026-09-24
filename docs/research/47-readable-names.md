@@ -145,7 +145,7 @@ characters in B.
 **There is no `sanitizeIdentifier`.** There are two `sanitizeFunctionName`s, and their rules differ. **The one
 that runs on this image is makeName's** (`PS2Recompiler::sanitizeFunctionName`, `ps2_recompiler.cpp` 2190).
 The code-generator copy is only the fallback for addresses that have an ELF symbol, and it never runs because the
-retail ELF has no symbol table (research/46 §5). Both copies are measured below. The makeName path's count is the
+retail ELF has no symbol table (research/61 §5). Both copies are measured below. The makeName path's count is the
 live figure, in brackets:
 
 | path | where | rules (applied after `sanitizeIdentifierBody`) |
@@ -164,7 +164,7 @@ typename union unsigned using virtual void volatile wchar_t while xor xor_eq`. T
 on top.
 
 Names altered by either path, with the **live makeName path's** count in brackets (§4). The sketch figure for A,
-31 live and 121 by either path, matches research/46's 31 and 121:
+31 live and 121 by either path, matches research/61's 31 and 121:
 
 | set | raw names | sketch | final |
 |---|---|---|---|
@@ -322,7 +322,7 @@ except for the R10 groups that were kept.
    that same string as the file. Duplicate names cannot clash in the build. Uniqueness matters for readers, for
    grep and for `carry_names`.
 2. **§1.1: "`sanitizeIdentifier` prefixes `ps2` to a leading underscore" describes only the code-generator
-   fallback, which never runs on this image (research/46).** The live makeName path leaves `_x` alone and rewrites
+   fallback, which never runs on this image (research/61).** The live makeName path leaves `_x` alone and rewrites
    `__x`/`_X`. Both paths also rewrite `main`. R6–R8 satisfy both.
 3. **§1.2 rule 2's "255 over 607" is the sketch's count.** The rule as written gives 353 / 1,532 in B (§1). The
    argument suffix alone does not make B unique (147 distinct-mangled groups left, §2). R9's hash fallback does.

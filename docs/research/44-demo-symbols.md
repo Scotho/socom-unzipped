@@ -113,7 +113,7 @@ way for a rename to be wrong:
 4. **not a colliding demo name.** One demo name on two of our addresses cannot be applied to both: one C
    `static` is not two functions, and two CSV rows sharing a `Name` give the recompiler two definitions
    of one symbol.
-   > *Correction (2026-09-24, research/46 §1.4): the recompiler suffixes every identifier with `_0x<start>`, so two rows sharing a `Name` build (48 rows share 17 names today). The hurdle stands for readability and for the filename, not for the linker.*
+   > *Correction (2026-09-24, research/61 §1.4): the recompiler suffixes every identifier with `_0x<start>`, so two rows sharing a `Name` build (48 rows share 17 names today). The hurdle stands for readability and for the filename, not for the linker.*
 5. **our row is still `FUN_…`.** A function we named by hand keeps its name.
 6. **a unique, legal C identifier.** Metrowerks mangling is not identifier-safe — templates carry `<`,
    `>` and `,`, an anonymous namespace carries `@`, a static initialiser is named after its source file

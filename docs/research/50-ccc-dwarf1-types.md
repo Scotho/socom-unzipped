@@ -160,7 +160,7 @@ The classes the project names by hand, and every type name matching `Chat|Lobby|
 
 | class | SOCOM 1 layout |
 |---|---|
-| CZSealBody (the actor, research/46 §3) | 0x1140; CEntity at 0, CBody at 0x110 |
+| CZSealBody (the actor, research/61 §3) | 0x1140; CEntity at 0, CBody at 0x110 |
 | CEntity / CBody | 0x110 / 0x48 |
 | CMission | 0x670 |
 | CPnt3D / CQuat / CMatrix | 0xc / 0x10 / 0x40 |
@@ -208,7 +208,7 @@ their matched members has a compile unit. The class-name clustering remains the 
 
 ## 4. The offsets the tools use, against SOCOM II's own access pattern (the table Goal 5 consumes)
 
-**The method (D).** The candidate for an offset is the demo field at that offset in the class research/46 §3
+**The method (D).** The candidate for an offset is the demo field at that offset in the class research/61 §3
 names. The field is looked up through the base classes and resolved into nested members (`deep_name`). The
 evidence about SOCOM II comes from four sources:
 
@@ -278,7 +278,7 @@ stores) and +0x3a0 (`m_aim_norm` … `m_prev_reticle_pt`, 12 stores). SOCOM II's
 (demo 0x112c + 0x3a0), against the demo's 0x1140. The shift changes a dozen times along the object, and some fields
 (`m_health`, `m_look_dir`, `m_weapons`) left their SOCOM 1 neighbourhood altogether.
 
-### 4b. The other classes research/46 §3 names
+### 4b. The other classes research/61 §3 names
 
 | r0001 offset (tool) | class | the demo field at the same offset | SOCOM 1 field that aligns (offset) | evidence (D) | r0004 (D) | verdict |
 |---|---|---|---|---|---|---|

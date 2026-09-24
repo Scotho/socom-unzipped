@@ -1,4 +1,4 @@
-# 46. The name consumers, exhaustively: who reads a function name or a raw guest offset
+# 61. The name consumers, exhaustively: who reads a function name or a raw guest offset
 
 Date: 2026-09-24. Sprint 12 research wave, question 1 of the handoff §4
 (`docs/superpowers/plans/2026-09-24-sprint-12-cloud-handoff.md`), completing the spec's §1.1 table

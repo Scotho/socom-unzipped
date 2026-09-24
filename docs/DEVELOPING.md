@@ -103,7 +103,7 @@ if it says `no names file` instead, the path did not resolve and the output carr
 the recompiler treats that as information, not an error, so look for the line.
 
 How many names are applied, by which pass, and what is proven on the owner's machine: the task table and the Log of
-`docs/superpowers/plans/2026-09-24-sprint-12.md`, and research/46–57 for what each pass measured.
+`docs/superpowers/plans/2026-09-24-sprint-12.md`, and research/61–57 for what each pass measured.
 
 ## Build and run (developer machine)
 ```
