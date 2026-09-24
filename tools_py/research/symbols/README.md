@@ -2,6 +2,32 @@
 
 Kept for Sprint 12 (R263). Each reproduces the figures cited in research/44's addenda; none touches a tracked file or emits game bytes.
 
+## The Sprint 12 research wave: one script per note (added 2026-09-25, Task 9)
+
+Twelve more read-only scripts, one behind each note of the wave (`docs/superpowers/plans/2026-09-24-sprint-12.md`,
+Task 0b). Each is run from the repo root on the git-ignored inputs under `game/` plus tracked files, prints names,
+addresses and counts only, and writes nothing tracked; the note it serves names its exact command and owns every
+figure it prints, so this table gives none. The runtime is the note's own statement unless marked *(Task 9)*,
+measured on the cloud container on 2026-09-25.
+
+| note | script | what it measures | runtime |
+|---|---|---|---|
+| 46 | `name_consumers.py` | every reader of a function name or a raw guest offset: the toml's keys and which the recompiler reads, the live and the unused identifier sanitiser over each name set, the names that change what the recompiler *does* (stub by name, correctness-critical prefixes), the recompiler's function list replayed, the parity tools' hex literals | about 1 s *(Task 9)* |
+| 47 | `readable_proof.py` | the readable-name rule set R1–R12 over four name sets (the proposals, the demo's 9,703, the toml's 656, the coexisting set): collisions before and after the overload suffix, lengths against the filename budget, what either sanitiser would alter | about 3 s |
+| 48 | `sidecar_census.py` | the csv's name census by class, where `sub_` comes from, the history of every non-auto name (`git log`), the syscall-stub check, the carry to r0004 and the audit prototype; `--rows` prints the 69 backfill rows | about 10 s (`--no-git` less) |
+| 49 | `bindiff_join.py` | BinDiff's demo→r0001 result joined to Task 7's 987 pairs: agree / disagree / absent / new, the contradiction rate against the proved pairs, the zero-contradiction rule, the 159 prologue pairs' verdicts, each proposals file against BinDiff | 7 s for the join; the Ghidra imports, BinExport and BinDiff before it about 8 minutes (research/49 §1) |
+| 50 | `dwarf_types.py` | the demo's DWARF1 `.debug` through ccc's raw DIE dump: the tag census, the class layouts, the compile units, each raw offset the tools use against SOCOM II's own access pattern, the layout-age caveat | about three minutes for all six sections (needs ccc under `/home/user/tools/`) |
+| 51 | `vtable_coverage.py` | the classes the bare-name RTTI walk cannot open and what opens them: the retail vtable census by layout, the qualified RTTI string, fixed points and the positional rule in four readings, the constructor rule | about 6 s |
+| 52 | `callgraph_propagation.py` | callee / caller / (caller, callee) keys unique both ways from the placed pairs, their holdout error, iteration to a fixed point, the ORDERED rule, research/45's positional candidates against them | about 90 s |
+| 53 | `string_correlator.py` | the set of shared strings a body references as a key: the census, the key variants at two scopes, the holdout, rule R3 and its confirming signals | about 10 s |
+| 54 | `offset_multiset.py` | (opcode, displacement) multisets as a looser body key (K1–K3), link order as the key-independent check, the prologue pairs it confirms | about 25–30 s |
+| 55 | `class_inventory.py` | the demo's classes as an architecture map, the subsystems, the UI script-binding table in both images, what the runtime's hooks touch, the online and voice classes, the gap map; writes the git-ignored `game/class_inventory.csv` | about 30–35 s |
+| 56 | `sase_probe.py` | SASE, SOCOM II's voice codec: source paths, code range and entry points, parameters, the tables it reads (addresses and lengths only), the three SOCOM II builds compared; `--dis` prints one span's mnemonics | under 10 s |
+| 57 | `toml_names.py` | the recompiler's naming pipeline replayed: the toml's keys and selectors, where `FUN_` / `sub_` / real names in `recomp/output` come from, the rename hazards, filename lengths, the what-if of writing names into the csv | about 2 s *(Task 9)* |
+
+The levers these notes led to are not here: each is a tracked module, `tools_py/*_lever.py`, with its own CLI,
+tests and proposals file, and `tools_py/apply_names.py` is the one thing that turns their files into sidecar rows.
+
 ## 7b: link order, readable names, toml overlap, debug paths
 
 # Task 7 review measurements (from socom-pc-6c, 2026-09-24)

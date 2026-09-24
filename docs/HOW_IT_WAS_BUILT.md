@@ -126,6 +126,67 @@ are written down in `docs/KNOWN.md` §4 rather than hidden:
 - **A cited timeline**, where every dated claim carries its commit hashes and run records, and a test fails if a
   citation stops pointing at something real.
 
+## How the generated code got its names
+
+For most of the project the recompiled game read as numbers: every function was `FUN_` or `sub_` followed by its
+address, because the disc's executable carries no symbols and Ghidra's function map names what it cannot know by
+where it is. Sprint 12 (2026-09-24 onward) is the attempt to give those functions their real names without letting a
+single name in on a guess. How it is done is the part worth describing; how far it has got is not this page's to say
+(the pointers are at the end of this section).
+
+**Where the names come from.** A demo disc of the *first* SOCOM, from 2002, was shipped with its debug symbol table
+still in it — the real C++ names of its functions, in the compiler's mangled form. A year of edits separates that
+game from SOCOM II, so most of its bodies no longer match ours byte for byte; the ones that do carry their names
+across (`007d651`, research/44). Every later method is another way of recognising the same routine in two builds:
+its position between routines already placed, the vtable slot it sits in, the functions it calls and is called by,
+the strings it references, the member offsets it touches, the game's own table binding UI commands to handlers, and
+BinDiff as an outside opinion.
+
+**Each method is a proposals file under a rule stated in code.** No method writes a name anywhere. Each writes a
+file of proposals, whose header must repeat the acceptance rule its code enforces, and a test must show the code
+refusing a row the rule refuses — the sprint's bar is a rule that can fail, not one written in prose. The two rules
+a reader can check against their notes, because every later one is built on them, are the six hurdles in research/44
+§2 ("What a proposal has to clear") and the positional rule in research/45 §2 ("The rule"). Each method is measured
+against pairs already proved before it is admitted — or its note says why those pairs cannot measure it and what
+does instead — and when two methods name one function differently, neither name is applied. The rulings that
+admitted each later method, with what each costs if wrong, are in the plan
+(`docs/superpowers/plans/2026-09-24-sprint-12.md`, "Rulings made on the owner's behalf").
+
+**A name lives in one place, with its reason beside it.** `recomp/socom2_names.csv` is the provenance sidecar: one
+row per name, holding the address, the readable name, the mangled original, the pass that proposed it, the pass's
+score, the evidence in that pass's own words, the source (the proposals file and the note), and the date it was
+applied (`6c96ef8`). The readable form is a fixed rendering of the mangled one, pinned rule by rule in research/47,
+so `Class_Method` can always be traced back. One program, `tools_py/apply_names.py`, is the only writer of the
+sidecar, and it re-audits the whole file before it writes a row (`cd2fbfc`, 2026-09-24).
+
+**The recompiler reads the sidecar, and nothing else changes.** The plan first had names written into Ghidra's
+function map. research/57 replayed the recompiler and found that in this recompiler a name in that map is not a
+label — it decides the function's extent and can make the recompiler replace the game's own body with a runtime
+stand-in by name, including some the project had removed on purpose because they broke rendering. So the map keeps
+Ghidra's names, and the recompiler gained one optional setting, `[general] names` in `recomp/socom2.toml`, which
+changes only the identifier, the output filename and a comment line (`d83afc9`, ruling S12-R13). A census of the
+recompiled output proves each rename moved no function's range (the tool `9381e3c`; its verdict on the first names
+in `cd2fbfc`).
+
+**The negatives are recorded too.** `recomp/socom2_name_holds.csv` lists each (address, name) pair the evidence
+overturned — a proposal that one method made and another, or a person reading the two bodies, showed to be wrong —
+with the reason and the source. The applier never applies a held pair, and prints every decision it makes at a held
+address. The first line of that file is the first measured error of the most trusted method: two sibling routines,
+identical in shape, that differ only in which strings they reference (ruling S12-R9).
+
+**Who did what, here.** The agents wrote the matchers, the notes, the applier, the recompiler change and the audits,
+and reviewed one another's numbers; the sprint's rule is that a figure a decision rests on is re-derived by an agent
+that did not write it. The owner's share is the inputs and the verdicts: the private inputs the names come from, the question that made
+naming a sprint of its own rather than an afterthought (R263), the decisions the sprint proceeds on only as defaults
+(the naming style, whether a named function may be renamed — spec §3), the build windows on their machine where a
+renamed tree must build and pass the gate before any of it counts, and the hand review of the few large engine
+routines no mechanical method could place, which the sprint leaves to them rather than admit a guess. A name given
+by hand goes through the same applier as any other, marked as such, with its reason.
+
+What is true now — how many functions carry a name, which methods have been applied, what is proven on the owner's
+machine — is in the plan's task table and Log, and `docs/DEVELOPING.md` ("Names in the generated code") says how to
+look a name up or propose one. research/59 reads the result as a stranger would.
+
 ## The things that went wrong, and were kept
 
 These are on the record deliberately. They are also the only part of the method that generalises.
