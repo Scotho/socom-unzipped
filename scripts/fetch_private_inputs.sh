@@ -14,7 +14,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 : "${S2U_INPUTS_URL:?set S2U_INPUTS_URL to the private base URL (with a trailing slash)}"
 curl_args=(-fsSL --retry 3 --retry-delay 2)
-[ -n "${S2U_INPUTS_AUTH:-}" ] && curl_args+=(-u "$S2U_INPUTS_AUTH")
 
 # served name -> destination under game/ (the paths the tools and research notes use)
 declare -A DEST=(
@@ -25,6 +24,12 @@ declare -A DEST=(
 )
 
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+# The credential goes to curl through a private config file, never on its command line, so it is not
+# visible in the process list of a shared host. The file lives in the temp dir and dies with it.
+if [ -n "${S2U_INPUTS_AUTH:-}" ]; then
+  (umask 077 && printf 'user = "%s"\n' "$S2U_INPUTS_AUTH" > "$tmp/auth")
+  curl_args+=(-K "$tmp/auth")
+fi
 curl "${curl_args[@]}" -o "$tmp/SHA256SUMS" "${S2U_INPUTS_URL}SHA256SUMS"
 for name in "${!DEST[@]}"; do
   dest="$ROOT/game/${DEST[$name]}"
