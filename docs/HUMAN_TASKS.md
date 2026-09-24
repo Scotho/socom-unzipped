@@ -238,7 +238,7 @@ checks are a paid feature and stayed off; the project's own gate covers those sh
 1. ~~**The old, pre-rewrite commits are still fetchable by hash**~~ **Answered ("fine as is", relayed by the flip session 2026-09-21): left alone.** They stay fetchable through the merged PR #1 (`refs/pull/1/head`) until
    GitHub garbage-collects them. GitHub's documented step after a sensitive-data rewrite is to ask support to purge
    the unreachable objects: https://support.github.com -> "Remove cached views and references" -- one message naming
-   the repository. Or leave it: the objects hold the home address that `a87e4b2` redacted, nothing else.
+   the repository. Or leave it: the objects hold one personal literal since redacted in the tree, nothing else.
 2. **`server/config/simulated.db` is in public history** (`a3cef6c`; untracked in the sweep `9253026`). It is the LOCAL
    simulated Horizon account store, encrypted with the dev key that sits beside it in `db.config.json`. If it only ever
    held local test accounts, nothing to do (that is the leak check's recorded assumption, `leak_allow.txt`); if the

@@ -1,8 +1,8 @@
 """The shapes a leak takes, as regular expressions -- one set, shared by every mode of `leakcheck`.
 
 Vendored from the monitor (`../socom_monitor/scrub.py` and `leakcheck.py`, commit `920e323`), where they were
-built against what the 2026-09-16..19 incident actually exposed -- an SSH private key, a home address, an AWS
-account id, a Horizon access token, the home IP -- and burned in against two false positives that only a run
+built against real shapes -- an SSH private key, a street address, an AWS account id, a Horizon access
+token, a home IP -- and burned in against two false positives that only a run
 over real data found (a thoroughfare word under `re.I`; a float's fraction read as an account id). The Sprint
 11 spec (Goal 9) says: do not invent a third set. Two additions the spec named as a gap in the monitor's copy:
 the Cloudflare Access service-token pair (the site's `secret-scan.mjs` had them first).

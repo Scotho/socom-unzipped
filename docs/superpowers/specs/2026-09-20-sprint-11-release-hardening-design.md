@@ -72,10 +72,9 @@ Markers: **[A]** autonomous; **[O]** the owner's; **[B: x]** blocked on x.
      D2). For each fixture the engineering answer is the same: **generate it from the contributor's own disc at test
      time, skip the test cleanly when there is no disc, and keep a disc-free synthetic fixture for CI** -- which is
      work, so it is scheduled here and not assumed;
-  3a. **personal data, a known hit (2026-09-20):** the owner's home address was written in one tracked file
-      (`docs/superpowers/plans/2026-09-19-sprint-8-hosted-server.md`, a Goal 12 results line) and redacted in
-      `a87e4b2`; **it is still in history** (the commit that added it and the one that removed it). The sweep must
-      cover personal data as well as secrets: `git log --all -S` for the address string, the owner's name and e-mail
+  3a. **personal data:** a personal literal was once written in one tracked plan file and redacted in the tree;
+      **it is still in history** (the commit that added it and the one that removed it). The sweep must
+      cover personal data as well as secrets: `git log --all -S` for personal literals, the owner's name and e-mail
       beyond commit metadata, the AWS account id (in no tracked file today; it lives under the git-ignored `vm/`),
       phone numbers, and the Windows user name in absolute paths. This hit alone means D1 cannot be "as it is":
       either a targeted `git filter-repo --replace-text` with an owner-approved force-push, or a fresh history.
@@ -189,8 +188,8 @@ The owner: *"Include a PII and cred scrub in the git release prep sprint for whe
 sure."* This is deliberately NOT part of Goal 1. Goal 1's history audit is an investigation whose output is a
 **decision** (D1: which history goes public); this goal's output is a **command that exits non-zero**, run immediately
 before the visibility flip and before every release after it. An audit is read once by whoever ran it; a gate keeps
-working after everyone has stopped paying attention. The 2026-09-19 incident is the argument: the monitor's file route
-was reviewed by the person who wrote it and still served an SSH private key for 2.5 days.
+working after everyone has stopped paying attention. The argument: a route reviewed by the person who wrote it
+has been reviewed once, and a review is not a gate.
 
 **Do not invent a third set of rules.** The instrument already exists and has been run against real data:
 `../socom_monitor/scrub.py` and `leakcheck.py` (commit `920e323`) carry one shared set of regexes -- home directories
@@ -226,8 +225,7 @@ their tests, or depend on the monitor's copy and pin it -- the sprint decides wh
      follows that rule for the same reason. 295 published files clean at the time of writing, 8 tests on the scanner.
    - the monitor: `python leakcheck.py out/site` after `build.py` (`../socom_monitor` `920e323`).
    **A named gap in the monitor's copy, found 2026-09-19 by the site session and not yet closed:** neither scrubber
-   nor leak check recognises a **Cloudflare Access service token**. It would have missed the one this project now
-   holds. The site's scanner has the rules (`f9ea240`): the client id is a 32-hex name carrying `.access`, and the
+   nor leak check recognises a **Cloudflare Access service token**. The site's scanner has the rules (`f9ea240`): the client id is a 32-hex name carrying `.access`, and the
    secret is a finding only beside its own `CF-Access-Client-Secret` header -- a bare 64-hex run stays clean on
    purpose, because that is usually a sha256 and flagging those would make the gate useless. Port both into
    `leakcheck.py`, with the client id in the planted control so the rule proves itself on every run. This matters
@@ -244,9 +242,8 @@ checkers, so each one should be able to emit `--json`: a single object `{"tool",
 JSON exactly as it is on the terminal -- a machine-readable report is MORE likely to be pasted, logged or attached,
 not less -- and `self_test` is part of the report, so an aggregator can refuse a result whose control never ran.
 
-**Owner-specific literals** (the street address, an old account name) live in a git-ignored file, as they do for the
-monitor -- committing a secret in order to scrub it defeats the exercise. The seeded file for the monitor already holds
-the home IP recovered from `a87e4b2`.
+**Owner-specific literals** (personal literals, old account names) live in a git-ignored file, as they do for the
+monitor -- committing a secret in order to scrub it defeats the exercise.
 
 **Bar:** one command, documented in `CONTRIBUTING.md` and wired into the release workflow, that sweeps all six and
 exits non-zero on any hit naming `file:line: rule: excerpt`; a negative control in CI that plants a secret of each
