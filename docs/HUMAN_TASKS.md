@@ -410,7 +410,7 @@ workflows, and the visibility flip itself. Publishing any Release is always your
 
 **A second request for the site session (Sprint 11 Task 13, 2026-09-23):** after a successful SEND, the launcher now
 shows a second line under the reference -- *"Contributors can also open an issue at github.com/Scotho/socom-unzipped
-and quote this id."* The site's REPORT A BUG form (`../scotho/sites/s2u/src/report.ts`) should show the same sentence,
+and quote this id."* The site's REPORT A BUG form (`../scotho/apps/s2u/src/report.ts`) should show the same sentence,
 word for word, in the same place. It is one string in the site's repository, so it is that session's edit, not this
 one's; the launcher's copy is the single literal `kGithubIssueLine` in `launcher/bug_report.h`. Nothing else about the
 pipeline changes: reports stay private, and no report's text ever crosses to GitHub (`docs/HANDOFF.md` rule 12).

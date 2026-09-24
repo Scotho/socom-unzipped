@@ -6,7 +6,7 @@ referenced from `img/`, so the page and its images can be copied anywhere togeth
 no git; it is a build step, not a server.
 
 The shared chrome (tokens, top bar, sections, buttons, footer) is the site's `src/ui.css`, with its markup written
-down in `src/chrome.md` (both in ../scotho/sites/s2u). The site copy links `/src/ui.css` for Vite to bundle; the
+down in `src/chrome.md` (both in ../scotho/apps/s2u). The site copy links `/src/ui.css` for Vite to bundle; the
 repository's own copy (docs/story/index.html, the artifact preview) inlines it and makes every chrome link absolute
 to https://s2u.scotho.com/. Only the timeline's own styles are inline in both. The timeline is a spine down the page with a node per entry and a
 band per era; entries reveal as they scroll into view (not at all when the viewer prefers reduced motion), and
@@ -18,7 +18,7 @@ Usage:
                                   [--repo https://github.com/Scotho/socom-unzipped] [--full-document]
     For the site copy, under Git Bash:
         MSYS_NO_PATHCONV=1 python -m tools_py.story.site --full-document
-            --out C:/projects/scotho/sites/s2u/story.html --img /story/img --logo /img/logo.webp
+            --out C:/projects/scotho/apps/s2u/story.html --img /story/img --logo /img/logo.webp
     Without MSYS_NO_PATHCONV=1, "/story/img" arrives as "C:/Program Files/Git/story/img" (it did, once, and the live
     page lost every picture); with it, --out must be a Windows path, since "/c/..." is not translated either.
 """

@@ -141,7 +141,7 @@ upstream's own two lines kept as the credit); the channel and location are the b
 `StatsLocation`: Medius then answers `GET /stats` with one JSON snapshot (status, server, location, uptime, players
 online / in game / in lobby with names, open games with name, host, slots, level, status and roster, lobby channels,
 and since-start counters: games created, distinct players, peak players). The provider's firewall opens 10080 to the
-website's box only; s2u.scotho.com's nginx proxies and micro-caches it as `/api/stats` (`../scotho/sites/s2u`). On
+website's box only; s2u.scotho.com's nginx proxies and micro-caches it as `/api/stats` (`../scotho/apps/s2u`). On
 Windows use `"http://127.0.0.1:10080/"` (a `+` prefix needs a URL ACL there). Empty or absent = off, which is the
 tracked config.
 
