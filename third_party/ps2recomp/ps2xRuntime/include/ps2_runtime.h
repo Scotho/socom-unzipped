@@ -376,6 +376,7 @@ public:
     void handleTLBWR(uint8_t *rdram, R5900Context *ctx);
     void handleTLBP(uint8_t *rdram, R5900Context *ctx);
     void clearLLBit(R5900Context *ctx);
+    void noteLoadedImageEnd(uint32_t maxLoadedRdramEnd);
     void configureGuestHeap(uint32_t guestBase, uint32_t guestLimit = PS2_RAM_SIZE);
     uint32_t guestMalloc(uint32_t size, uint32_t alignment = 16u);
     uint32_t guestCalloc(uint32_t count, uint32_t size, uint32_t alignment = 16u);

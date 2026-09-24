@@ -417,8 +417,30 @@ namespace ps2_syscalls
 
         if (!runtime->hasFunction(handler))
         {
-            setReturnS32(ctx, KE_ERROR);
-            return true;
+            // Sprint 11 Task 19. An override we cannot execute is not an override. SOCOM II's
+            // loader (FUN_001ac128) copies 0x330 bytes of its own code to 0x80075000 and registers
+            // that copy as the handler for syscall 0x5B, then installs GetEntryAddress' answers as
+            // the handlers for the event-flag five (0x55-0x59). None of those addresses is in any
+            // function table, so claiming the override and answering KE_ERROR made every later
+            // call of those syscalls return -1 for the rest of the run -- in r0001 as much as in
+            // r0004. Fall through instead: dispatchNumericSyscall then runs the runtime's own
+            // implementation, which is the closest thing to what the guest's copy would have done.
+            static std::mutex s_unrunnableMutex;
+            static std::unordered_set<uint64_t> s_unrunnableSeen;
+            const uint64_t key = (static_cast<uint64_t>(syscallNumber) << 32) | handler;
+            bool first = false;
+            {
+                std::lock_guard<std::mutex> lock(s_unrunnableMutex);
+                first = s_unrunnableSeen.insert(key).second;
+            }
+            if (first)
+            {
+                std::cerr << "[SetSyscall] syscall 0x" << std::hex << syscallNumber
+                          << " was overridden with handler 0x" << handler
+                          << ", which is in no function table (guest-copied code?); running the"
+                             " built-in implementation instead." << std::dec << std::endl;
+            }
+            return false;
         }
 
         GuestInvocation invocation{};

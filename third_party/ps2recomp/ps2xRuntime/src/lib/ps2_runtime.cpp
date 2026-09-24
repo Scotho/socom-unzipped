@@ -1006,32 +1006,7 @@ bool PS2Runtime::loadELF(const std::string &elfPath)
         return false;
     }
 
-    if (maxLoadedRdramEnd > PS2_RAM_SIZE)
-    {
-        maxLoadedRdramEnd = PS2_RAM_SIZE;
-    }
-
-    const uint32_t paddedEnd = (maxLoadedRdramEnd > (PS2_RAM_SIZE - kGuestHeapSafetyPad))
-                                   ? PS2_RAM_SIZE
-                                   : (maxLoadedRdramEnd + kGuestHeapSafetyPad);
-    const uint32_t suggestedHeapBase = alignGuestHeapValue(paddedEnd, kGuestHeapDefaultAlignment);
-    {
-        std::lock_guard<std::mutex> lock(m_guestHeapMutex);
-        if (!m_guestHeapConfigured)
-        {
-            const uint32_t hardLimit = std::min(kGuestHeapHardLimit, PS2_RAM_SIZE);
-            m_guestHeapSuggestedBase = std::min(suggestedHeapBase, hardLimit);
-            m_guestHeapBase = m_guestHeapSuggestedBase;
-            m_guestHeapEnd = m_guestHeapSuggestedBase;
-            m_guestHeapLimit = hardLimit;
-        }
-    }
-    {
-        std::lock_guard<std::mutex> lock(m_asyncCallbackStackMutex);
-        const uint32_t hardLimit = std::min(kGuestHeapHardLimit, PS2_RAM_SIZE);
-        m_asyncCallbackStackFloor = std::min(std::max(hardLimit, suggestedHeapBase), PS2_RAM_SIZE);
-        m_asyncCallbackStackTop = PS2_RAM_SIZE;
-    }
+    noteLoadedImageEnd(maxLoadedRdramEnd);
 
     LoadedModule module;
     module.name = elfPath.substr(elfPath.find_last_of("/\\") + 1);
@@ -1939,6 +1914,38 @@ void PS2Runtime::freeGuestBlockLocked(uint32_t guestAddr)
     coalesceGuestHeapLocked();
 }
 
+// Where a loaded image ends decides where the runtime's own guest allocations start -- never where
+// the guest's heap ENDS. loadELF calls this once per image; it is public so a revision's segment
+// layout can be tested without an ELF on disk (Sprint 11 Task 19).
+void PS2Runtime::noteLoadedImageEnd(uint32_t maxLoadedRdramEnd)
+{
+    if (maxLoadedRdramEnd > PS2_RAM_SIZE)
+    {
+        maxLoadedRdramEnd = PS2_RAM_SIZE;
+    }
+
+    const uint32_t paddedEnd = (maxLoadedRdramEnd > (PS2_RAM_SIZE - kGuestHeapSafetyPad))
+                                   ? PS2_RAM_SIZE
+                                   : (maxLoadedRdramEnd + kGuestHeapSafetyPad);
+    const uint32_t suggestedHeapBase = alignGuestHeapValue(paddedEnd, kGuestHeapDefaultAlignment);
+    const uint32_t hardLimit = std::min(kGuestHeapHardLimit, PS2_RAM_SIZE);
+    {
+        std::lock_guard<std::mutex> lock(m_guestHeapMutex);
+        if (!m_guestHeapConfigured)
+        {
+            m_guestHeapSuggestedBase = std::min(suggestedHeapBase, hardLimit);
+            m_guestHeapBase = m_guestHeapSuggestedBase;
+            m_guestHeapEnd = m_guestHeapSuggestedBase;
+            m_guestHeapLimit = hardLimit;
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lock(m_asyncCallbackStackMutex);
+        m_asyncCallbackStackFloor = std::min(std::max(hardLimit, suggestedHeapBase), PS2_RAM_SIZE);
+        m_asyncCallbackStackTop = PS2_RAM_SIZE;
+    }
+}
+
 void PS2Runtime::configureGuestHeap(uint32_t guestBase, uint32_t guestLimit)
 {
     std::lock_guard<std::mutex> lock(m_guestHeapMutex);
@@ -2115,7 +2122,13 @@ uint32_t PS2Runtime::guestHeapEnd() const
 uint32_t PS2Runtime::guestHeapLimit() const
 {
     std::lock_guard<std::mutex> lock(m_guestHeapMutex);
-    return m_guestHeapConfigured ? m_guestHeapLimit : m_guestHeapSuggestedBase;
+    // EndOfHeap answers with this, and EndOfHeap is a LIMIT, not a base. Before the guest calls
+    // SetupHeap the PS2 kernel's heap already ends at the top of usable RAM -- answering
+    // m_guestHeapSuggestedBase (the loaded image's top plus a 0x1000 pad) told the guest's sbrk
+    // that it had a few hundred bytes of headroom above its own _brk, which is the whole heap
+    // minus the pad. m_guestHeapLimit is the hard limit until SetupHeap replaces it, so both
+    // states are the honest answer (Sprint 11 Task 19).
+    return m_guestHeapLimit;
 }
 
 uint32_t PS2Runtime::reserveAsyncCallbackStack(uint32_t size, uint32_t alignment)
