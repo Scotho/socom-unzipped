@@ -2949,3 +2949,10 @@
 0x00665438  # new find: find_escaping_branches
 0x006658d4  # new find: find_escaping_branches
 0x00665e58  # new find: find_escaping_branches
+# --- data-referenced entries (2026-09-24) ---
+0x0018e044  # data word at 0x657990
+0x00313064  # data word at 0x661c10
+0x00350004  # data word at 0x64e0dc
+0x004c6c2c  # branch-fallthrough of 0x4c6c24
+0x00540384  # data word at 0x6504bc
+0x005448fc  # branch-fallthrough of 0x5448f4
