@@ -1396,7 +1396,7 @@ namespace
         }
 
         {
-            ps2_stubs::DmaRuntimeState &dma = ps2_stubs::dmaRuntimeStateFor(nullptr);
+            ps2_stubs::DmaRuntimeState &dma = ps2_stubs::dmaRuntimeStateFor(runtime);
             std::lock_guard<std::mutex> lock(dma.mutex);
             dma.pendingPolls[channelBase] = 1;
             if (dma.stubLogCount < ps2_stubs::kMaxDmaStubLogs)
@@ -1456,7 +1456,7 @@ namespace
 
         bool modelBusy = false;
         {
-            ps2_stubs::DmaRuntimeState &dma = ps2_stubs::dmaRuntimeStateFor(nullptr);
+            ps2_stubs::DmaRuntimeState &dma = ps2_stubs::dmaRuntimeStateFor(runtime);
             std::lock_guard<std::mutex> lock(dma.mutex);
             auto it = dma.pendingPolls.find(channelBase);
             if (it != dma.pendingPolls.end() && it->second > 0)

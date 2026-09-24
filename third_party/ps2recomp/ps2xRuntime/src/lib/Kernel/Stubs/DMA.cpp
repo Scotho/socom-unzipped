@@ -5,8 +5,6 @@ namespace ps2_stubs
 {
     namespace
     {
-        // SceDmaEnv and its 0x14 static_assert live in Helpers/DmaRuntimeState.h (Task 8b).
-
         constexpr uint32_t DMA_REG_CTRL = 0x1000E000u;
         constexpr uint32_t DMA_REG_PCR = 0x1000E020u;
         constexpr uint32_t DMA_REG_SQWC = 0x1000E030u;
@@ -18,8 +16,8 @@ namespace ps2_stubs
         constexpr std::array<uint8_t, 10> kStdTable = {0u, 1u, 2u, 0u, 0u, 0u, 3u, 0u, 0u, 0u};
         constexpr std::array<uint8_t, 10> kMfdTable = {0u, 2u, 3u, 0u, 0u, 0u, 0u, 0u, 0u, 0u};
 
-        std::mutex g_dmaEnvMutex;
-        SceDmaEnv g_dmaCurrentEnv;
+        // SceDmaEnv, the environment block and the in-flight model all live in
+        // Helpers/DmaRuntimeState.h now, owned by the runtime (Task 8b, review F2).
     }
 
     void DmaAddr(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
@@ -49,8 +47,9 @@ namespace ps2_stubs
         const uint32_t envAddr = getRegU32(ctx, 4);
         if (uint8_t *dst = getMemPtr(rdram, envAddr))
         {
-            std::lock_guard<std::mutex> lock(g_dmaEnvMutex);
-            std::memcpy(dst, &g_dmaCurrentEnv, sizeof(g_dmaCurrentEnv));
+            DmaRuntimeState &state = dmaRuntimeStateFor(runtime);
+            std::lock_guard<std::mutex> lock(state.environmentMutex);
+            std::memcpy(dst, &state.currentEnvironment, sizeof(state.currentEnvironment));
         }
         setReturnU32(ctx, envAddr);
     }
@@ -120,8 +119,9 @@ namespace ps2_stubs
         mem.writeIORegister(DMA_REG_RBSR, env.rbsr);
 
         {
-            std::lock_guard<std::mutex> lock(g_dmaEnvMutex);
-            g_dmaCurrentEnv = env;
+            DmaRuntimeState &state = dmaRuntimeStateFor(runtime);
+            std::lock_guard<std::mutex> lock(state.environmentMutex);
+            state.currentEnvironment = env;
         }
 
         setReturnS32(ctx, 0);
@@ -174,10 +174,10 @@ namespace ps2_stubs
             mem.writeIORegister(DMA_REG_CTRL, 1u);
         }
 
-        {
-            std::lock_guard<std::mutex> lock(g_dmaEnvMutex);
-            g_dmaCurrentEnv = {};
-        }
+        // A controller reset means no transfer is in flight: clear the pending-poll map with
+        // the environment block, which is the fork's resetDmaState (its Stubs/DMA.cpp:91-97) and
+        // closes the asymmetry our version had.
+        dmaRuntimeStateFor(runtime).reset();
 
         setReturnS32(ctx, 0);
     }
