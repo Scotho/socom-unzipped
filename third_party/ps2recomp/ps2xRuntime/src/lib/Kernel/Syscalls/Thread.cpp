@@ -1,6 +1,7 @@
 #include "Common.h"
 #include "Thread.h"
 #include "runtime/ee_scheduler.h"
+#include "ps2x/exit_codes.h"
 
 namespace ps2_syscalls
 {
@@ -177,7 +178,11 @@ namespace ps2_syscalls
 
     // LoadExecPS2(const char *filename, int argc, char **argv): the game asks the kernel to
     // replace itself with another ELF (self-relaunch with arguments, or the network GUI).
-    // Not supported yet: log the request and stop so the reason is visible.
+    // This runtime cannot re-exec, so the honest answer is to say so loudly and leave with a code
+    // of its own (74, reboot-requested). Reaching here is the game's own decision -- SOCOM II's
+    // FUN_0022ed10 tears the sound system and the SIF RPCs down and reboots into
+    // "--menu_state dlgAfterErrorReboot.rdr" after an internal error -- so a log that states the
+    // decision beats a process that dies further downstream (Sprint 11 Task 19).
     void LoadExecPS2(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
     {
         const uint32_t pathAddr = getRegU32(ctx, 4);
@@ -196,14 +201,26 @@ namespace ps2_syscalls
         auto u32 = [rdram](uint32_t addr) {
             uint32_t v; std::memcpy(&v, rdram + (addr & PS2_RAM_MASK), 4); return v;
         };
-        std::cerr << "[LoadExecPS2] path=\"" << cstr(pathAddr) << "\" argc=" << argc;
+        const std::string path = cstr(pathAddr);
+        std::cerr << "[LoadExecPS2] path=\"" << path << "\" argc=" << argc;
+        std::string argvLine;
         for (uint32_t i = 0; i < argc && i < 16; ++i)
         {
-            std::cerr << " argv[" << i << "]=\"" << cstr(u32(argvAddr + i * 4)) << "\"";
+            const std::string arg = cstr(u32(argvAddr + i * 4));
+            std::cerr << " argv[" << i << "]=\"" << arg << "\"";
+            if (!argvLine.empty())
+                argvLine.push_back(' ');
+            argvLine += arg;
         }
         std::cerr << std::endl;
-        std::cerr << "[LoadExecPS2] reboot not implemented; exiting." << std::endl;
-        std::exit(3);
+        const ExitCodes::Entry *code = ExitCodes::find(ExitCodes::kRebootRequested);
+        std::cerr << "[LoadExecPS2] REBOOT requested: " << path
+                  << (argvLine.empty() ? "" : " ") << argvLine
+                  << " -- this build cannot re-exec; exiting with "
+                  << ExitCodes::kRebootRequested << " ("
+                  << (code ? code->slug : "reboot-requested") << ")." << std::endl;
+        std::cerr.flush();
+        std::exit(ExitCodes::kRebootRequested);
     }
 
     void SetMemoryMode(uint8_t *, R5900Context *ctx, PS2Runtime *)

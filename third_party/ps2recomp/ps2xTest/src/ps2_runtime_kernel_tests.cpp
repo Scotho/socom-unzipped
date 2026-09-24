@@ -1709,6 +1709,78 @@ void register_ps2_runtime_kernel_tests()
                      "SetSyscall should treat the syscall index as a signed offset from the kernel table base");
         });
 
+        // Sprint 11 Task 19. GetEntryAddress (0x5B) used to return the raw mirror word, which for an
+        // entry nobody overrode is untouched low RAM. On the r0004 title run that was 0xFFFFFFFF,
+        // the loader cached it in *0x001CD0F0 as the kernel-side home for the LoadExecPS2 argument
+        // block, and the first byte of the copy faulted (`store8 vaddr=0xffffffff pc=0x1accd0`).
+        // The kernel always has a real entry there, so the runtime must answer with one.
+        tc.Run("GetEntryAddress hands out a mapped, writable, stable entry, never raw low memory", [](TestCase &t)
+        {
+            TestEnv env;
+            initializeGuestKernelState(env.rdram.data(), &env.runtime);
+
+            // Kernel/Syscalls/Helpers/State.h: the block the runtime reserves for syscall entries.
+            constexpr uint32_t kScratchBase = 0x00090000u;
+            constexpr uint32_t kScratchStride = 0x00000400u;
+            constexpr uint32_t kScratchBytes = kScratchStride * 0x80u;
+            constexpr uint32_t kGuestSyscallTableGuestBase = 0x80011F80u;
+            constexpr uint32_t kEntry = 3u;   // what the LoadExecPS2 marshaller asks for
+            constexpr uint32_t kMirrorPhys = (kGuestSyscallTableGuestBase + (kEntry * 4u)) & 0x1FFFFFFFu;
+
+            // Reproduce the fault's precondition exactly: the mirror word holds -1.
+            writeGuestU32(env.rdram.data(), kMirrorPhys, 0xFFFFFFFFu);
+
+            setRegU32(env.ctx, 4, kEntry);
+            t.IsTrue(callSyscall(0x5Bu, env.rdram.data(), &env.ctx, &env.runtime),
+                     "GetEntryAddress should dispatch");
+            const uint32_t entry = static_cast<uint32_t>(getRegS32(env.ctx, 2));
+
+            t.IsTrue(entry != 0xFFFFFFFFu && entry != 0u,
+                     "an entry nobody overrode must not answer with the contents of low RAM");
+            t.IsTrue(entry >= kScratchBase && (entry + kScratchStride) <= (kScratchBase + kScratchBytes),
+                     "the answer lies inside the block the runtime reserves");
+            t.IsTrue(entry >= 0x00080000u && (entry + kScratchStride) <= 0x00100000u,
+                     "clear of the syscall mirror below it and of the guest image above it");
+            t.IsNotNull(getMemPtr(env.rdram.data(), entry), "getMemPtr accepts the address");
+
+            setRegU32(env.ctx, 4, kEntry);
+            t.IsTrue(callSyscall(0x5Bu, env.rdram.data(), &env.ctx, &env.runtime),
+                     "GetEntryAddress should dispatch a second time");
+            t.Equals(static_cast<uint32_t>(getRegS32(env.ctx, 2)), entry,
+                     "the address is stable across calls: the guest caches it and writes through it later");
+
+            setRegU32(env.ctx, 4, kEntry + 1u);
+            t.IsTrue(callSyscall(0x5Bu, env.rdram.data(), &env.ctx, &env.runtime),
+                     "GetEntryAddress should dispatch for a second entry");
+            t.IsTrue(static_cast<uint32_t>(getRegS32(env.ctx, 2)) != entry,
+                     "two entries do not share one block");
+
+            // The LoadExecPS2 path: FUN_001accf8 copies the argument block to this address through
+            // syscall 0x5A. The copy must land in RAM, not fault.
+            constexpr uint32_t kArgSrc = 0x00300000u;
+            const uint32_t argWords[2] = {0x12345678u, 0x9ABCDEF0u};
+            writeGuestWords(env.rdram.data(), kArgSrc, argWords, 2);
+            setRegU32(env.ctx, 4, entry);
+            setRegU32(env.ctx, 5, kArgSrc);
+            setRegU32(env.ctx, 6, 8u);
+            t.IsTrue(callSyscall(0x5Au, env.rdram.data(), &env.ctx, &env.runtime),
+                     "Copy should dispatch");
+            t.Equals(readGuestU32(env.rdram.data(), entry), argWords[0],
+                     "the argument block's first word lands in the entry the kernel handed out");
+            t.Equals(readGuestU32(env.rdram.data(), entry + 4u), argWords[1],
+                     "and so does the second");
+
+            // A syscall the guest replaced still answers with the guest's own handler.
+            constexpr uint32_t kOverriddenIndex = 0x5Au;
+            constexpr uint32_t kHandler = 0x001ACCB8u;
+            env.runtime.setEeSyscallOverride(env.rdram.data(), kOverriddenIndex, kHandler);
+            setRegU32(env.ctx, 4, kOverriddenIndex);
+            t.IsTrue(callSyscall(0x5Bu, env.rdram.data(), &env.ctx, &env.runtime),
+                     "GetEntryAddress should dispatch for an overridden entry");
+            t.Equals(static_cast<uint32_t>(getRegS32(env.ctx, 2)), kHandler,
+                     "an overridden syscall answers with the handler the guest installed");
+        });
+
         tc.Run("guest kernel syscall overrides and mirrors are isolated per runtime", [](TestCase &t)
         {
             TestEnv first;
@@ -1961,7 +2033,11 @@ void register_ps2_runtime_kernel_tests()
             }
         });
 
-        tc.Run("GetEntryAddress syscall (0x5B) returns handler from guest table", [](TestCase &t)
+        // Sprint 11 Task 19 narrowed this case. It used to poke a word straight into the mirror and
+        // expect GetEntryAddress to read it back, which is what made the syscall hand the guest an
+        // uninitialised word for every entry nobody had overridden. The registry the guest writes
+        // through SetSyscall is the source of truth now; the mirror is a view of it.
+        tc.Run("GetEntryAddress syscall (0x5B) returns the handler the guest installed", [](TestCase &t)
         {
             TestEnv env;
             initializeGuestKernelState(env.rdram.data(), &env.runtime);
@@ -1971,16 +2047,22 @@ void register_ps2_runtime_kernel_tests()
             constexpr uint32_t kExpectedHandler = 0x00383548u;
             constexpr uint32_t kEntryPhysAddr = (kGuestSyscallTableGuestBase + (kSyscallIndex * 4u)) & 0x1FFFFFFFu;
 
-            writeGuestU32(env.rdram.data(), kEntryPhysAddr, kExpectedHandler);
+            setRegU32(env.ctx, 4, kSyscallIndex);
+            setRegU32(env.ctx, 5, kExpectedHandler);
+            t.IsTrue(callSyscall(0x74u, env.rdram.data(), &env.ctx, &env.runtime),
+                     "SetSyscall syscall should dispatch");
+            t.Equals(readGuestU32(env.rdram.data(), kEntryPhysAddr),
+                     kExpectedHandler,
+                     "SetSyscall should mirror the handler into the guest kernel table");
 
             setRegU32(env.ctx, 4, kSyscallIndex);
 
             t.IsTrue(callSyscall(0x5Bu, env.rdram.data(), &env.ctx, &env.runtime),
                      "GetEntryAddress syscall should dispatch");
-            
+
             t.Equals(static_cast<uint32_t>(getRegS32(env.ctx, 2)),
                      kExpectedHandler,
-                     "GetEntryAddress should read and return the handler address from the table");
+                     "GetEntryAddress should return the handler address the guest registered");
         });
     });
 }

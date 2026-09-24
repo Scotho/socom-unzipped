@@ -27,15 +27,16 @@ void register_exit_codes_tests()
                 t.IsTrue(!s.empty() && s.back() == '.', std::string(e.name) + ": ends with a full stop");
                 t.IsTrue(s.find('"') == std::string::npos, std::string(e.name) + ": no double quote (tools_py/exit_codes.py reads the table with a regex)");
             }
-            // Twelve since Sprint 11 Task 19 added 73, the revision guard's refusal.
-            t.Equals(ExitCodes::kTableSize, 12, "twelve codes: 0, 1, 3, 65, Sprint 9 Goal 1's seven, and 73");
+            // Thirteen since Sprint 11 Task 19 added 73, the revision guard's refusal, and 74,
+            // the reboot LoadExecPS2 cannot carry out.
+            t.Equals(ExitCodes::kTableSize, 13, "thirteen codes: 0, 1, 3, 65, Sprint 9 Goal 1's seven, 73 and 74");
         });
 
-        tc.Run("the codes themselves: 65 kept, 66-73 added, GsGlCaps agrees with the table", [](TestCase &t)
+        tc.Run("the codes themselves: 65 kept, 66-74 added, GsGlCaps agrees with the table", [](TestCase &t)
         {
             t.Equals(ExitCodes::kOk, 0, "ok");
             t.Equals(ExitCodes::kFailed, 1, "the runner's unnamed failure, as it leaves today");
-            t.Equals(ExitCodes::kAborted, 3, "abort() on the mingw CRT, and LoadExecPS2");
+            t.Equals(ExitCodes::kAborted, 3, "abort() on the mingw CRT");
             t.Equals(ExitCodes::kNoUsableGl, 65, "Sprint 7's code keeps its number");
             t.Equals(GsGlCaps::kExitCode, ExitCodes::kNoUsableGl, "gs_gl_caps.h takes its number from the table");
             t.Equals(ExitCodes::kDiscNotFound, 66, "disc not found");
@@ -48,8 +49,12 @@ void register_exit_codes_tests()
             // Sprint 11 Task 19: the generated code and the overlay image name different pressings of the
             // game. Its own code, not 67's: the disc is beside the point, it is the ELF that disagrees.
             t.Equals(ExitCodes::kRevisionMismatch, 73, "the executable and the image are different revisions");
+            // Sprint 11 Task 19: LoadExecPS2 is the game asking to restart itself, a decision it made;
+            // this build cannot re-exec, and 3 ("stopped itself after an internal error") hid that.
+            t.Equals(ExitCodes::kRebootRequested, 74, "the game asked for a reboot this build cannot carry out");
             t.IsNull(ExitCodes::find(64), "64 is not ours");
             t.IsNotNull(ExitCodes::find(73), "73 is");
+            t.IsNotNull(ExitCodes::find(74), "and so is 74");
         });
 
         tc.Run("classify: a native crash status is 70 on both platforms, a plain code is itself", [](TestCase &t)

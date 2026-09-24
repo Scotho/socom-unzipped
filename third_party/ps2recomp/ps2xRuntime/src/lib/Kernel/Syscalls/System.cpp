@@ -979,17 +979,23 @@ namespace ps2_syscalls
         setReturnS32(ctx, 0);
     }
 
+    // 0x5B GetEntryAddress(syscall) -> the address of that syscall's kernel entry.
+    // A syscall the guest replaced answers with the guest's own handler, as the kernel would. For
+    // everything else the kernel still has a real entry, and guests write through the address they
+    // get back (see the note on kSyscallEntryScratchBase), so the runtime answers from a block it
+    // reserves -- never with whatever an untouched word of low RAM happens to hold.
     void GetEntryAddress(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         const uint32_t syscallNum = getRegU32(ctx, 4);
 
-        const uint32_t entryAddr = kGuestSyscallTableGuestBase + (syscallNum * 4u);
         uint32_t handler = 0;
-        if (const uint8_t *ptr = getConstMemPtr(rdram, entryAddr))
+        if (runtime && runtime->findEeSyscallOverride(syscallNum, handler) && handler != 0u)
         {
-            std::memcpy(&handler, ptr, sizeof(handler));
+            setReturnU32(ctx, handler);
+            return;
         }
-        setReturnU32(ctx, handler);
+
+        setReturnU32(ctx, guestSyscallEntryScratchAddr(syscallNum));
     }
 
     // 0x74 RegisterExitHandler (stub): return 0
