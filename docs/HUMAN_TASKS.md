@@ -86,6 +86,10 @@ What only you can do is unchanged and listed below; one addition from the audio 
 (close the music tab and Discord, then `C:\projects\wt-audio-out\logs\capture_audio_out.sh`, ten minutes) —
 the exact step is written on `agent/audio-out` (`05de0e7`) and arrives here with that branch's merge.
 
+### The r0004 build, where it stands (2026-09-24 morning)
+
+**It boots** — under our runtime, from PSRewired's package, to the loading screen and the intro credits — and dies at the IOP reset before the menus on a −1 the loader is handed. That is a debugging problem now, not a pipeline one (the whole r0001 tool chain runs on r0004: Ghidra, the matcher at 81%, the translated config, ~3,000 forced entries, the address table). The investigation report names the cause when it lands; nothing of it needs you. What it produced along the way is worth knowing: the image read out of PCSX2 carried PSRewired's cheat word (restored — KNOWN §4), and every r0004 gate is muted by `PS2X_AUDIO_VOLUME=0` because the first ones played through your speaker.
+
 ### One build to run when the machine is free (35 min): chain 12
 
 Task 8c (the save-state container) is merged on `sprint-11` but not yet built on the merged branch; the branch is held unpushed until it is. Say the word and the controller runs chain 12 (runtime, the C++ suite, the gate `s11_savestate_gate`) — it takes the lock for about 35 minutes and lags the machine while it runs, which is why it did not start into your return.
