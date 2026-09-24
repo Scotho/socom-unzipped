@@ -157,26 +157,31 @@ void register_runtime_state_tests()
                      "including that runtime's environment block");
         });
 
-        tc.Run("Stubs/GS.cpp's sceGsResetGraph writes the GParam this TU reads", [](TestCase &t)
+        tc.Run("Stubs/GS.cpp's sceGsResetGraph writes the GParam of the runtime it was handed", [](TestCase &t)
         {
-            ps2_stubs::GsRuntimeState &gs = ps2_stubs::gsRuntimeStateFor(nullptr);
-            const ps2_stubs::GsGParam saved = gs.gparam;
-            gs.gparam = ps2_stubs::GsGParam{1, 2, 1, 3};
+            PS2Runtime first;
+            PS2Runtime second;
+            // sceGsResetGraph's mode-0 path runs syncCoreSubsystems and kicks a GIF packet, so
+            // this pair needs real memory.
+            t.IsTrue(first.memory().initialize(), "runtime memory initialize should succeed");
 
             R5900Context ctx{};
             setRegU32(ctx, 4, 0u);    // $a0 = mode 0
             setRegU32(ctx, 5, 1u);    // $a1 = interlace
             setRegU32(ctx, 6, 3u);    // $a2 = omode  (3, not the default 2)
             setRegU32(ctx, 7, 0u);    // $a3 = ffmode (0, not the default 1)
-            ps2_stubs::sceGsResetGraph(nullptr, &ctx, nullptr);
+            ps2_stubs::sceGsResetGraph(nullptr, &ctx, &first);
 
-            const ps2_stubs::GsGParam seen = gs.gparam;
-            gs.gparam = saved;
-
-            t.Equals(static_cast<uint32_t>(seen.omode), 3u,
-                     "the GParam this TU reads should hold the omode Stubs/GS.cpp just stored");
-            t.Equals(static_cast<uint32_t>(seen.ffmode), 0u,
-                     "sceGsResetGraph's ffmode should have reached the state this TU reads");
+            t.Equals(static_cast<uint32_t>(first.gsRuntimeState().gparam.omode), 3u,
+                     "the GParam of the runtime the stub was called with should hold the omode "
+                     "Stubs/GS.cpp just stored; 2 (the default) means that TU wrote process-wide "
+                     "state instead of this runtime's (docs/KNOWN.md #4)");
+            t.Equals(static_cast<uint32_t>(first.gsRuntimeState().gparam.ffmode), 0u,
+                     "sceGsResetGraph's ffmode should have reached that runtime's state");
+            t.Equals(static_cast<uint32_t>(second.gsRuntimeState().gparam.omode), 2u,
+                     "a second runtime in the same process must keep its own video mode");
+            t.Equals(static_cast<uint32_t>(second.gsRuntimeState().gparam.ffmode), 1u,
+                     "including its own field mode");
         });
 
         tc.Run("Stubs/LibC.cpp's fclose closes the handle this TU opened", [](TestCase &t)
