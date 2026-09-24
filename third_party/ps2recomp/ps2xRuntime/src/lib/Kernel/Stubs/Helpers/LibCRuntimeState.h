@@ -81,15 +81,22 @@ namespace ps2_stubs
         uint32_t randNextOffset = 0u;   // offset of _rand_next within struct _reent
         uint64_t randNextFallback = 1u; // newlib's static initialiser for _rand_next
 
-        // Back to a freshly constructed runtime's libc state, open host files closed. No guest
-        // path calls it -- the libc stubs have no "reset the C library" service -- so this is the
-        // entry point PS2Runtime::resetStubRuntimeState() and a save-state restore (Task 8c) use.
+        // Back to a freshly constructed runtime's libc SESSION state, open host files closed.
+        // PS2Runtime::run() reaches it through resetStubRuntimeState(), beside resetSifState(),
+        // resetIop(), resetAudioStubState() and resetMpegStubState(); a save-state restore
+        // (Task 8c) is the other caller.
+        //
+        // impurePtrAddr and randNextOffset are deliberately NOT cleared. They are not guest state:
+        // they are the game override's registration (setLibcRandState, from applySocom2, which
+        // runs inside PS2Runtime::loadELF -- BEFORE run()), and clearing them on the run path
+        // would silently drop rand() back to its internal cursor, which is the exact defect the
+        // long comment above ps2_stubs::rand in Stubs/LibC.cpp records. resetMpegStubState()
+        // leaves its own override-installed knob (g_mpegDemuxIdleYields) alone for the same
+        // reason; this follows that convention rather than inventing a second one.
         void reset()
         {
             closeAllFiles();
             std::lock_guard<std::mutex> lock(randMutex);
-            impurePtrAddr = 0u;
-            randNextOffset = 0u;
             randNextFallback = 1u;
         }
 

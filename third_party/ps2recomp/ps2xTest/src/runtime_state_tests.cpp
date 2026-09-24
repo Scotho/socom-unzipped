@@ -37,8 +37,9 @@
 
 namespace
 {
-    // A stub name no other test uses, so the counter's value is ours alone.
+    // Stub names no other test uses, so the counters' values are ours alone.
     const char *const kProbeStubName = "s11t8b_probe_stub";
+    const char *const kResetProbeStubName = "s11t8b_reset_probe_stub";
 
     constexpr uint32_t kVif1ChannelBase = 0x10009000u;
 
@@ -259,6 +260,78 @@ void register_runtime_state_tests()
             t.Equals(getRegU32(&ctx, 2), firstSecondDraw,
                      "and each runtime should advance its OWN cursor; a differing second draw "
                      "means Stubs/LibC.cpp shares one process-wide rand cursor");
+        });
+
+        tc.Run("PS2Runtime::resetStubRuntimeState, which run() calls, clears every subsystem's session state", [](TestCase &t)
+        {
+            PS2Runtime runtime;
+            R5900Context ctx{};
+
+            // StubLog: a warning count put there by the stub in Stubs/Unimplemented.cpp, and a
+            // printf budget partly spent.
+            try
+            {
+                ps2_stubs::TODO_NAMED(kResetProbeStubName, nullptr, &ctx, &runtime);
+            }
+            catch (const std::runtime_error &)
+            {
+            }
+            {
+                ps2_stubs::StubLogRuntimeState &log = runtime.stubLogRuntimeState();
+                std::lock_guard<std::mutex> lock(log.printfMutex);
+                log.printfLogCount = 7u;
+            }
+            t.Equals(stubWarningsFor(runtime, kResetProbeStubName), 1u,
+                     "the stub-warning count should be set before the reset");
+
+            // GS: a video mode that is not the default {1, 2, 1, 3}.
+            runtime.gsRuntimeState().gparam = ps2_stubs::GsGParam{0, 3, 0, 3};
+
+            // DMA: a transfer in flight.
+            markDmaChannelPending(runtime, kVif1ChannelBase);
+
+            // libc: an open guest FILE, and the rand registration the game override installs
+            // during loadELF -- which runs BEFORE run().
+            FILE *fp = std::tmpfile();
+            t.IsTrue(fp != nullptr, "the host should give this test a temporary FILE");
+            if (!fp)
+                return;
+            const uint32_t handle = registerGuestFile(runtime, fp);
+            ps2_stubs::setLibcRandState(&runtime, 0x6000u, 0xA8u);
+
+            runtime.resetStubRuntimeState();
+
+            t.Equals(stubWarningsFor(runtime, kResetProbeStubName), 0u,
+                     "resetStubRuntimeState should clear the stub-warning counts; a non-zero count "
+                     "means StubLogRuntimeState::reset() never ran");
+            {
+                ps2_stubs::StubLogRuntimeState &log = runtime.stubLogRuntimeState();
+                std::lock_guard<std::mutex> lock(log.printfMutex);
+                t.Equals(log.printfLogCount, 0u,
+                         "and it should give the run a fresh PS2-printf budget");
+            }
+            t.Equals(static_cast<uint32_t>(runtime.gsRuntimeState().gparam.omode), 2u,
+                     "the GParam should be back to the default video mode; 3 means "
+                     "GsRuntimeState::reset() never ran");
+            t.Equals(static_cast<uint32_t>(runtime.gsRuntimeState().gparam.ffmode), 1u,
+                     "including the default field mode");
+            t.IsFalse(dmaChannelPending(runtime, kVif1ChannelBase),
+                      "a new run starts with no DMA transfer in flight");
+            t.IsFalse(guestFileOpen(runtime, handle),
+                      "and with no guest FILE open; a surviving handle means "
+                      "LibCRuntimeState::reset() never ran");
+
+            // What the reset must NOT clear: the registration is the override's, installed before
+            // run(), and wiping it would drop rand() back to its internal cursor.
+            {
+                ps2_stubs::LibCRuntimeState &libc = runtime.libcRuntimeState();
+                std::lock_guard<std::mutex> lock(libc.randMutex);
+                t.Equals(libc.impurePtrAddr, 0x6000u,
+                         "the game override's _impure_ptr registration must survive the run-path "
+                         "reset -- applySocom2 installs it inside loadELF, before run()");
+                t.Equals(libc.randNextOffset, 0xA8u,
+                         "and so must the _rand_next offset beside it");
+            }
         });
     });
 }

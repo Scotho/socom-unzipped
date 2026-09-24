@@ -2569,6 +2569,7 @@ void PS2Runtime::run()
     resetIop();
     ps2_stubs::resetAudioStubState();
     ps2_stubs::resetMpegStubState();
+    resetStubRuntimeState();   // Sprint 11 Task 8b review N1: the stub *RuntimeState group
     initializeEeKernelState(m_memory.getRDRAM());
     m_cpuContext.r[4] = _mm_setzero_si128();
     m_cpuContext.r[5] = _mm_setzero_si128();
