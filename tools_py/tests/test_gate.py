@@ -57,6 +57,9 @@ FAILURE_SCREEN = os.path.join(MISSION_FIXTURES, "failure_screen.png")
 GAMEPLAY_SPAWN = os.path.join(MISSION_FIXTURES, "gameplay_spawn.png")
 CONSOLE_SPAWN = os.path.join(ROOT, "scripts", "parity", "refs", "console_spawn_slot8.png")
 GUEST_PROBE_CONSOLE = os.path.join(ROOT, "scripts", "parity", "guest_probe_console.json")
+# A stand-in game image: guest_addresses.launch_revision reads the build banner and nothing else, so a
+# file carrying one is all a test of the gate's revision wiring needs (`% b"r0004 10:14:38 Nov  3 2004"`).
+BANNER_STAND_IN = b"\x7fELF" + b"\0" * 64 + b"SOCOM 2 %s\0" + b"\0" * 64
 # A real HUD capture from a gate run; /logs/ is gitignored, so it is only on a host that has run one.
 HUD_FRAME_S6_GAMEPAD4 = os.path.join(ROOT, "logs", "parity", "gate", "s6_gamepad4", "mission", "s28_none.png")
 CLEAN_TRANSITION_RUN = os.path.join(ROOT, "logs", "parity", "gate", "tfix3", "transition")   # 18 frames at/after the burst step
@@ -362,7 +365,11 @@ class MissionSeeing(unittest.TestCase):
         # standing in for a real one carries the line a real one carries.
         rows = ["[socom2] address table: the image names itself r0001 -- using the r0001 addresses\n"]
         for i in range(10):
-            line = peek_line(500.0, 100.0, 600.0, actor=(900.0 + 2.0 * i, -145.0, 850.0), actor_addr=actor)
+            # The camera record ORBITS the player (~19 units of ground separation on every archived gate
+            # run), and the camera_orbit probe reads that distance, so a stand-in row has to place it
+            # where a real one does rather than 479 units away.
+            ax, az = 900.0 + 2.0 * i, 850.0
+            line = peek_line(ax - 3.0, -120.0, az - 19.0, actor=(ax, -145.0, az), actor_addr=actor)
             line += f" @{actor + 0x2e8:x}: {node:08x}(0)"
             line += f" @{node:x}: 00000000(0) {_w(root_y)}"
             line += f" @{actor + 0x1368:x}: {_w(move_scale)}"
@@ -429,12 +436,35 @@ class MissionSeeing(unittest.TestCase):
                 mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("PS2X_PEEK", None)
             os.environ.pop("PS2X_PC_SAMPLER", None)
+            os.environ.pop("SOCOM_GAME_ELF", None)
             gate.run_gate("mission", tmp)
-            self.assertEqual(drive_env()["PS2X_PEEK"], guest_probe.peek_spec(GUEST_PROBE_CONSOLE, guest_probe.launch_revision()))
+            # The LITERAL r0001 spec, not `peek_spec(...)` compared with itself -- the old assertion called
+            # the same two functions on both sides and held for any implementation, including one that
+            # always answered r0001 (review F4). This string is also, character for character, the
+            # PS2X_PEEK line in scripts/parity/pins.json's detail.env, which is what keeps the r0001 env
+            # pin from moving.
+            self.assertEqual(drive_env()["PS2X_PEEK"],
+                             "0x416054:3,*0x408c58+0x2e8:1,*0x408c58+0x2e8*:2,*0x408c58+0x1368:1,"
+                             "*0x408c58:64,0x4365c0:1")
             # The runtime prints [peek] rows only from the PC sampler's thread (game_overrides_socom2.cpp:
             # "dump guest words ... with each sample"), so PS2X_PEEK alone yields 0 rows -- s6_blockptr's
             # mission stage read "PROBE ... NO-DATA (0 reads of 0 rows)" for exactly that reason.
             self.assertEqual(drive_env()["PS2X_PC_SAMPLER"], "1")
+            # ... and an r0004 image gets the r0004 spec. This is the single integration point the whole
+            # per-revision change exists for, and before the review nothing exercised it: an implementation
+            # that always answered r0001 passed the suite (review F4). The image is a stand-in carrying
+            # only the build banner, which is all launch_revision reads.
+            calls.clear()
+            elf = os.path.join(tmp, "r0004_stand_in.elf")
+            with open(elf, "wb") as f:
+                f.write(BANNER_STAND_IN % b"r0004 10:14:38 Nov  3 2004")
+            os.environ["SOCOM_GAME_ELF"] = elf
+            gate.run_gate("mission", tmp)
+            self.assertEqual(drive_env()["PS2X_PEEK"],
+                             "0x442a14:3,*0x435618+0x2e8:1,*0x435618+0x2e8*:2,*0x435618+0x136c:1,"
+                             "*0x435618:64,0x442fd0:1")
+            self.assertEqual(drive_env()["PS2X_PEEK"], guest_probe.peek_spec(GUEST_PROBE_CONSOLE, "r0004"))
+            os.environ.pop("SOCOM_GAME_ELF", None)
             calls.clear()
             os.environ["PS2X_PEEK"] = "0x416054:3"
             gate.run_gate("mission", tmp)
@@ -1259,7 +1289,7 @@ class BaselineScoring(unittest.TestCase):
             with mock.patch.object(gate, "score_title", lambda d: (calls.append(("title", d)) or (True, "t"))), \
                  mock.patch.object(gate, "score_transition", lambda d: (calls.append(("transition", d)) or (True, "x"))), \
                  mock.patch.object(gate, "score_mission_log",
-                                   lambda log, run_log=None, probe_required=False: (calls.append(("mission", log, probe_required)) or (False, "m"))):
+                                   lambda log, run_log=None, probe_required=False, revision=None: (calls.append(("mission", log, probe_required, revision)) or (False, "m"))):
                 out = io.StringIO()
                 with redirect_stdout(out):
                     rc = gate.main(["--baseline", stamp])
@@ -1268,6 +1298,10 @@ class BaselineScoring(unittest.TestCase):
             self.assertEqual(calls[0][1], os.path.join(stamp, "title"))
             self.assertEqual(calls[2][1], os.path.join(stamp, "mission.drive.log"))
             self.assertTrue(calls[2][2], "the mission is scored with the probe required, as the live gate does")
+            # This stamp records no PS2X_PEEK and has no game log, so nothing says which column its rows
+            # are in: the re-score passes None and the probe says UNKNOWN-REVISION rather than reading
+            # r0001's addresses (review F1).
+            self.assertIsNone(calls[2][3])
             self.assertIn("PASS title (t)", out.getvalue())
             self.assertIn("FAIL mission (m)", out.getvalue())
             self.assertIn("GATE FAIL (2/3) [baseline", out.getvalue())

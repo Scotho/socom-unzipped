@@ -17,11 +17,20 @@ steps > 30 units (research/25 §1.1).
 EVERY GUEST ADDRESS HERE IS PER REVISION (Sprint 11 Task 19). They were r0001 literals -- `0x416054` in the chain
 list, `*0x408c58+0x2e8` and `0x4365c0` in the console json, the actor vtable `0x6691a0` the position read keys on --
 and on the r0004 build all four are somebody else's memory: logs/parity/gate/s11_r0004_reg2 read 0 rows of 479 and
-the mission lane failed `GUEST PROBE FAILED: root_node_y` with all three probes NO-DATA. PROBE_ADDRESSES below is
-one column per revision and `address(name, revision)` is the only way in; a revision the table has no column for
-raises, and so does an image or a run log that will not say which revision it is. Falling back to r0001 is the one
-thing this must never do: an instrument reading another build's addresses does not present as a bad address, it
-presents as silence -- or, worse, as a number."""
+the mission lane failed `GUEST PROBE FAILED: root_node_y` with all three probes NO-DATA. The table is
+`tools_py/parity/guest_addresses.py` -- one column per revision, `address(name, revision)` the only way in, and the
+one home verdict_core and sp_death_probe read their r0001 constants from too. A revision the table has no column
+for raises, and so does an image, or a run log, that will not say which revision it is. Falling back to r0001 is
+the one thing this must never do: an instrument reading another build's addresses does not present as a bad
+address, it presents as silence -- or, worse, as a number.
+
+AND SO IS THE LAYOUT (Sprint 11 Task 19, the move_scale lane). The address column alone was not enough:
+s11_r0004_probe1 reached the right actor -- vtable 0x668b20, root_node_y 4.707, teleport_steps 0 -- and still failed
+`move_scale ours=0 console=1`, because r0004's actor gained a word at +0x1334 and MoveScale sits at +0x136c there,
+not +0x1368. `+0x1368` on r0004 is the field below it, and that field is 0. PROBE_OFFSETS is the layout column and
+`offset(name, revision)` the only way in; `translate_chain` moves a `+0xNNN` displacement through it exactly as it
+moves a bare address through PROBE_ADDRESSES. This was the fourth concern of the addresses report, arriving."""
+import argparse
 import json
 import math
 import os
@@ -30,6 +39,7 @@ import statistics
 import sys
 from collections import namedtuple
 
+from tools_py.parity import guest_addresses as ga
 from tools_py.parity import sp_death_probe as sp
 from tools_py.parity import verdict_core as vc
 
@@ -41,53 +51,44 @@ Result = namedtuple("Result", "name ours console tol ok detail")
 # PS2X_PC_SAMPLER=1.
 TELEPORT_SPEED_UPS = 120.0
 DEFAULT_ROW_PERIOD_S = 1.0
-ROOT_NODE_OFF = 0x2E8
-MOVE_SCALE_OFF = 0x1368
 
-# The four guest addresses the probes reach in with, one column per revision.
+# camera_orbit (Task 19 review F7). camera_record is the one address in the table that the gate LAUNCHES
+# and never READS, so a wrong r0004 value for it would have had no symptom at all -- while the other three
+# announce themselves as NO-DATA. It is also the entry resting on the fewest twinned referrers (one). So
+# the probe reads it: the camera record orbits the player, and the median ground distance between the two
+# is a number with a known shape.
 #
-# The r0004 column was established the way runtime/socom2_addresses.h's data fields were -- `data-via-twin`:
-# every r0001 function that materialises the address with a lui/lo pair, kept when match.json
-# (game/r0004/match.json) places its r0004 twin by evidence (identity/exact/hash+callees/relinked-body), read at
-# the SAME instruction offset in the twin's body. The control is cameraHolder 0x415ff0, whose committed r0004
-# value 0x4429b0 the same procedure reproduces from 60 twinned referrers, unanimously.
-#
-#   camera_record  0x416054 -> 0x00442a14   1 twinned referrer; +0x2c9c0, the delta its neighbour cameraHolder
-#                                           (0x415ff0, +0x64 below it) moves by over 60 unanimous twins. The
-#                                           record's other two words, 0x416058 and 0x41605c, give 0x00442a18 and
-#                                           0x00442a1c: the three the chain reads move together.
-#   player_actor   0x408c58 -> 0x00435618   15 twinned referrers of 16 sites, unanimous. Independently, it is
-#                                           the seed tools_py/address_matcher.py's own usage line carries
-#                                           (`--seed 0x408c58=0x435618`).
-#   guest_clock    0x4365c0 -> 0x00442fd0   50 twinned referrers of 57 sites, unanimous (+0xca10 -- a different
-#                                           region from the three above, and the same delta 0x437ce8 moves by).
-#   actor_vtable   0x6691a0 -> 0x00668b20   not a referenced address but a VALUE in word 0 of the actor block,
-#                                           so it is placed by its CONTENTS: of its twelve slots, four are
-#                                           functions match.json places by evidence, and exactly one place in
-#                                           the whole r0004 image holds those four translated pointers at those
-#                                           four offsets. Its delta, -0x680, is the one ctorTableZsealBegin
-#                                           (0x6690e0 -> 0x668a60) moves by.
-REVISIONS = ("r0001", "r0004")
-PROBE_ADDRESSES = {
-    "camera_record": {"r0001": 0x00416054, "r0004": 0x00442A14},
-    "player_actor": {"r0001": 0x00408C58, "r0004": 0x00435618},
-    "guest_clock": {"r0001": 0x004365C0, "r0004": 0x00442FD0},
-    "actor_vtable": {"r0001": 0x006691A0, "r0004": 0x00668B20},
-}
+# Calibrated on what the gate itself measures, not on a target. Median |camera - actor| in the xz plane,
+# over every row that carries both, across twelve archived r0001 mission stamps: 17.16 (s11_rtstate_gate)
+# to 20.13 (s11_merge19_gate), and 19.35 on the r0004 lane s11_r0004_probe1 -- consistent with, and a
+# little inside, the 24.9-unit steady orbit radius online_match_ours.CAMERA_ORBIT_RADIUS measured on the
+# ladder. The band below is 7.5..31.5, roughly 1.6x outside that spread either way, and it rejects what a
+# WRONG address reads: the five stamps that aimed r0001 chains at an r0004 image (s11_r0004_reg2 and
+# friends) all measure 0.90, every row.
+CAMERA_ORBIT_U = 19.5
+CAMERA_ORBIT_TOL_U = 12.0
+# THE GUEST ADDRESSES ARE NOT HERE. They are tools_py/parity/guest_addresses.py -- the one home this
+# module, verdict_core and sp_death_probe all read them from, so the r0001 column cannot drift into three
+# different values (Task 19 review F6). That module also owns the rule for deciding WHICH revision, and
+# tools_py/data_via_twin.py regenerates its r0004 column from the two images. Re-exported here because
+# gate.py and the suite reach for them through this module.
+address = ga.address
+offset = ga.offset
+PROBE_ADDRESSES = ga.PROBE_ADDRESSES
+PROBE_OFFSETS = ga.PROBE_OFFSETS
+REVISIONS = ga.REVISIONS
+BANNER_RE = ga.BANNER_RE
+GAME_ELF_ENV = ga.GAME_ELF_ENV
+DEFAULT_GAME_ELF = ga.DEFAULT_GAME_ELF
+revision_of_image = ga.revision_of_image
+launch_revision = ga.launch_revision
+revision_of_peek_spec = ga.revision_of_peek_spec
 
 
-def address(name, revision):
-    """This revision's address for one probe input. A name or a revision the table does not carry is a
-    ValueError naming what it does have -- never the other column's number."""
-    col = PROBE_ADDRESSES.get(name)
-    if col is None:
-        raise ValueError("guest_probe: no probe address called %r (have: %s)"
-                         % (name, ", ".join(sorted(PROBE_ADDRESSES))))
-    if revision not in col:
-        raise ValueError("guest_probe: no %s address for revision %r -- this table has columns for %s. "
-                         "Reading another revision's address is the defect this table exists to stop."
-                         % (name, revision, ", ".join(REVISIONS)))
-    return col[revision]
+def log_revision(lines):
+    """The revision the runtime says it installed, off its own run log -- the name `evaluate` and the gate
+    have always used. guest_addresses.log_revision returns (revision, how); this keeps the revision."""
+    return ga.log_revision(lines)[0]
 
 
 # The build banner in the game image ("SOCOM 2 r0001 17:22:21 Oct 11 2003"): the same evidence
@@ -141,16 +142,28 @@ def log_revision(lines):
                      "cannot know which column to read -- pass one explicitly")
 
 
-_HEX_RE = re.compile(r"0[xX][0-9a-fA-F]+")
+_HEX_RE = re.compile(r"(\+?)(0[xX][0-9a-fA-F]+)")
 _BY_R0001 = {col["r0001"]: name for name, col in PROBE_ADDRESSES.items()}
+_FIELD_BY_R0001 = {col["r0001"]: name for name, col in PROBE_OFFSETS.items()}
+
+
+def _translate_token(match, revision):
+    plus, literal = match.group(1), match.group(2)
+    value = int(literal, 16)
+    if plus:                                    # `+0x2e8` -- a displacement inside the object
+        name = _FIELD_BY_R0001.get(value)
+        return "+0x%x" % offset(name, revision) if name else match.group(0)
+    name = _BY_R0001.get(value)                 # a bare literal -- a guest address
+    return "0x%x" % address(name, revision) if name else match.group(0)
 
 
 def translate_chain(chain, revision):
-    """One PS2X_PEEK chain, with every literal that is an r0001 PROBE ADDRESS moved to `revision`'s column.
-    A hex literal that is not one of those is left exactly as it is -- `*0x408c58+0x2e8` carries a field
-    offset inside the actor, and a relink does not move a struct field."""
-    return _HEX_RE.sub(lambda m: ("0x%x" % address(_BY_R0001[int(m.group(0), 16)], revision))
-                       if int(m.group(0), 16) in _BY_R0001 else m.group(0), chain)
+    """One PS2X_PEEK chain in `revision`'s numbers. A bare hex literal that is an r0001 PROBE ADDRESS
+    moves to that revision's address column; a literal written as `+0xNNN` is a field displacement inside
+    the object and moves to that revision's LAYOUT column (PROBE_OFFSETS). Both halves are needed: on
+    r0004 `*0x408c58+0x2e8` keeps its 0x2e8 and `*0x408c58+0x1368` becomes `+0x136c`, because r0004's
+    actor gained a word below MoveScale. Anything the two tables do not name is left exactly as it is."""
+    return _HEX_RE.sub(lambda m: _translate_token(m, revision), chain)
 
 
 def load_console(path):
@@ -183,18 +196,11 @@ def _rows(lines):
     return [sp.parse_peek_line(l) for l in lines if l.startswith("[peek]")]
 
 
-def _actor_addr(items, actor_static, vtable):
-    """The actor base: this revision's actor static, word 0 (robust when the block's own word 0 changes at
-    death), else the item whose word 0 is this revision's actor vtable. sp_death_probe.actor_addr does the
-    same thing on r0001's two literals -- the online ladder's build -- which is why this one is here."""
-    s = sp.item_at(items, actor_static)
-    if s and s[0]:
-        return s[0]
-    return next((a for a, w in items if w and w[0] == vtable), None)
-
-
 def _actor_pos(items, actor_static, vtable):
-    a = _actor_addr(items, actor_static, vtable)
+    """The actor base and its position. The base is sp_death_probe.actor_addr -- the same selection rule
+    the ladder uses (the static's word 0, else the item whose word 0 is the vtable), given this revision's
+    pair instead of r0001's, rather than a second copy of the rule here (Task 19 review F11)."""
+    a = sp.actor_addr(items, actor_static, vtable)
     blk = sp.item_at(items, a) if a else None
     if blk and blk[0] == vtable and len(blk) >= 10:
         x, y, z = (sp.f32(blk[k]) for k in vc.ACTOR_POS_WORDS)
@@ -251,21 +257,29 @@ def evaluate(lines_or_path, console_json, revision=None):
     actor_static = address("player_actor", revision)
     vtable = address("actor_vtable", revision)
     clock = address("guest_clock", revision)
+    root_node_off = offset("root_node", revision)
+    move_scale_off = offset("move_scale", revision)
+    camera = address("camera_record", revision)
     rows = _rows(lines)
-    root, scale, positions = [], [], []
+    root, scale, positions, orbit = [], [], [], []
     for items in rows:
         a, pos = _actor_pos(items, actor_static, vtable)
         if pos:
             clock_w = sp.word_at(items, clock)
             positions.append((pos, sp.f32(clock_w) if clock_w is not None else None))
+            cam = sp.item_at(items, camera)
+            if cam and len(cam) >= 3:
+                cx, _cy, cz = (sp.f32(cam[k]) for k in range(3))
+                if cx or cz:
+                    orbit.append(math.dist((pos[0], pos[2]), (cx, cz)))
         if not a:
             continue
-        node = sp.word_at(items, a + ROOT_NODE_OFF)
+        node = sp.word_at(items, a + root_node_off)
         if node:
             w = sp.word_at(items, node + 4)
             if w is not None:
                 root.append(sp.f32(w))
-        w = sp.word_at(items, a + MOVE_SCALE_OFF)
+        w = sp.word_at(items, a + move_scale_off)
         if w is not None:
             scale.append(sp.f32(w))
     steps = 0
@@ -277,7 +291,12 @@ def evaluate(lines_or_path, console_json, revision=None):
                 "move_scale": (_settled(scale), len(scale)),
                 "teleport_steps": (steps if positions else None, len(positions))}
     out = []
-    for name, spec in console.items():
+    # camera_orbit's console number is a code constant, not a row of guest_probe_console.json: the json is
+    # a PINNED file (every gate compares its sha256), and a probe that exists to check an ADDRESS does not
+    # need to move the standard every stage is measured against.
+    checks = list(console.items()) + [("camera_orbit", {"console": CAMERA_ORBIT_U, "tol": CAMERA_ORBIT_TOL_U})]
+    measured["camera_orbit"] = (float(statistics.median(orbit)) if orbit else None, len(orbit))
+    for name, spec in checks:
         ours, n = measured.get(name, (None, 0))
         con, tol = spec["console"], spec["tol"]
         if ours is None:
@@ -292,17 +311,17 @@ def evaluate(lines_or_path, console_json, revision=None):
 
 
 def main(argv=None):
-    argv = sys.argv[1:] if argv is None else argv
-    if not argv:
-        print(__doc__)
-        return 2
-    revision = None
-    if "--revision" in argv:
-        i = argv.index("--revision")
-        revision = argv[i + 1]
-        argv = argv[:i] + argv[i + 2:]
-    console_json = argv[1] if len(argv) > 1 else os.path.join("scripts", "parity", "guest_probe_console.json")
-    results = evaluate(argv[0], console_json, revision)
+    # argparse rather than the hand-rolled flag scan this had: `--revision` last on the line used to read
+    # argv[i + 1] unguarded and raise IndexError (Task 19 review F10).
+    ap = argparse.ArgumentParser(prog="tools_py.parity.guest_probe",
+                                 description=__doc__.splitlines()[0])
+    ap.add_argument("run_log", help="the game's run log (the [peek] rows)")
+    ap.add_argument("console_json", nargs="?", default=os.path.join("scripts", "parity", "guest_probe_console.json"))
+    ap.add_argument("--revision", choices=sorted(REVISIONS),
+                    help="the address column to read the rows with (default: what the run log says the "
+                         "runtime installed)")
+    args = ap.parse_args(sys.argv[1:] if argv is None else argv)
+    results = evaluate(args.run_log, args.console_json, args.revision)
     for r in results:
         print(f"PROBE {r.name:15s} {'PASS' if r.ok else 'FAIL'} {r.detail}")
     return 0 if all(r.ok for r in results) else 1

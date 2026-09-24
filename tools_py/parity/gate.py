@@ -38,8 +38,8 @@ from collections import OrderedDict
 import numpy as np
 from PIL import Image
 
-from tools_py.parity import (black_rows, compare, console_compare, drive, guest_probe, hostplatform,
-                             mission_fail, pins, screen_bands, sp_death_probe)
+from tools_py.parity import (black_rows, compare, console_compare, drive, guest_addresses, guest_probe,
+                             hostplatform, mission_fail, pins, screen_bands, sp_death_probe)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_MIN_FREE_GB = 4.0
@@ -453,19 +453,49 @@ def console_spawn_line(drive_log, run_dir):
         s, st["flat"], st["dark"], "PASS" if ok else "FAIL", os.path.basename(cap), console_compare.CONSOLE_REF)
 
 
-def probe_lines(run_log):
+def probe_lines(run_log, revision=None):
     """One `PROBE <name> PASS|FAIL <detail>` per guest_probe result over the game's run log, or a single
-    `PROBE NO-DATA` when there is no log to read. Print-only (R78)."""
+    `PROBE NO-DATA` when there is no log to read.
+
+    `revision` is the address column the run's [peek] ROWS are in -- for a live stage, the column
+    launch_env built PS2X_PEEK in; for a --baseline re-score, the column the stamp's own record says
+    (stamp_revision). Left out, it falls back to what the runtime's log says it installed.
+
+    The two are not the same question, and when they disagree the gate says so before the PROBE lines
+    (review F8). It is not hypothetical: s11_r0004_gate2 launched an r0004 image whose resident overlay
+    made the runtime pick r0001, and all that reached the summary was a plain NO-DATA.
+    """
     if not run_log or not os.path.isfile(run_log):
         return ["PROBE NO-DATA (no game run log beside the drive log)"]
+    head = []
     try:
-        results = guest_probe.evaluate(run_log, GUEST_PROBE_CONSOLE)
-    except (OSError, ValueError, KeyError) as e:
+        with open(run_log, "r", errors="replace") as f:
+            lines = f.readlines()
+    except OSError as e:
         return ["PROBE NO-DATA (%s)" % e]
-    return ["PROBE %s %s %s" % (r.name, "PASS" if r.ok else "FAIL", r.detail) for r in results]
+    try:
+        installed, how = guest_addresses.log_revision(lines)
+    except ValueError:
+        installed, how = None, None
+    if revision is None and installed is None:
+        # Nothing said which column these rows are in -- not the caller, not the runtime. That is a
+        # different silence from "0 reads of N rows" (which means the addresses were read and found
+        # nothing), and it must not be the verdict of a re-score: score_mission_log treats this line as
+        # print-only (review F1).
+        return ["PROBE UNKNOWN-REVISION (the run does not say which address column its [peek] rows are "
+                "in, so they were not read; pass --revision, or re-score a stamp that recorded its "
+                "PS2X_PEEK)"]
+    if revision and installed and installed != revision:
+        head.append("PROBE COLUMNS DISAGREE: the rows are %s chains, the runtime installed %s (%s) -- "
+                    "the image the gate launched is not the image the runtime read" % (revision, installed, how))
+    try:
+        results = guest_probe.evaluate(lines, GUEST_PROBE_CONSOLE, revision)
+    except (OSError, ValueError, KeyError) as e:
+        return head + ["PROBE NO-DATA (%s)" % e]
+    return head + ["PROBE %s %s %s" % (r.name, "PASS" if r.ok else "FAIL", r.detail) for r in results]
 
 
-def score_mission_log(drive_log, run_dir=None, run_log=None, probe_required=False):
+def score_mission_log(drive_log, run_dir=None, run_log=None, probe_required=False, revision=None):
     """HUD matched in the drive log, >= MISSION_MIN_HOLDS hold steps, one capture per logged hold,
     >= MISSION_MIN_GAMEPLAY_HOLDS of the hold captures gameplay, and >= MISSION_MIN_LIVE_PAIRS live pairs
     (consecutive gameplay captures that differ: the game was running while the holds were sent). A log alone
@@ -528,10 +558,11 @@ def score_mission_log(drive_log, run_dir=None, run_log=None, probe_required=Fals
     # run_gate set PS2X_PEEK and the sampler, so rows must exist), never on a --score-mission re-score of an
     # older run that carries no game log.
     lines = [detail, console_spawn_line(drive_log, run_dir)]
-    probes = probe_lines(run_log or mission_game_log(drive_log))
+    probes = probe_lines(run_log or mission_game_log(drive_log), revision)
     lines += probes
     failed = [l for l in probes if " FAIL " in l and ("NO-DATA" not in l or probe_required)]
     failed += [l for l in probes if l.startswith("PROBE NO-DATA") and probe_required]
+    failed = [l for l in failed if not l.startswith("PROBE UNKNOWN-REVISION")]
     if failed:
         head = failed[0].split(" ", 2)
         name = head[1] if len(head) > 1 else "?"
@@ -547,10 +578,13 @@ def _lock(cmd, owner):
                          "the repo root." % e)
 
 
-def launch_env(name, card_dir, base=None):
+def launch_env(name, card_dir, base=None, default_ok=False):
     """The environment a stage's drive is launched with: `base` (default os.environ) plus the gate's own
     knobs. drive.py launches the exe with its own environment, so PS2X_* set here reach the runtime.
-    Pure -- the card copy is run_gate's -- so that collect_pins can hash exactly what a launch would get."""
+    Pure -- the card copy is run_gate's -- so that collect_pins can hash exactly what a launch would get.
+
+    `default_ok` is passed through to gate_revision: collect_pins takes it (a checkout with no disc assets
+    still has to be able to hash the launch environment), a launch does not (review F3)."""
     env = dict(os.environ if base is None else base)
     # A gate run is defined as a boot with NO controller: with an Xbox pad plugged in the libpad HLE reported a
     # configured controller and the game skipped its PRECISION SHOOTER CONFIGURATION screens and the 'save to
@@ -571,7 +605,8 @@ def launch_env(name, card_dir, base=None):
             # written in r0001's, and on an r0004 image every one of them is somebody else's memory
             # (s11_r0004_reg2: 0 [peek] reads of 479 rows, the whole mission lane FAILed on it). The
             # revision comes from the build banner in $SOCOM_GAME_ELF, the image drive.py/run.sh launch.
-            env["PS2X_PEEK"] = guest_probe.peek_spec(GUEST_PROBE_CONSOLE, guest_probe.launch_revision(env))
+            env["PS2X_PEEK"] = guest_probe.peek_spec(GUEST_PROBE_CONSOLE,
+                                                     gate_revision(env, default_ok=default_ok))
         # The runtime prints its [peek] rows from the PC sampler's thread, one row per sample
         # (game_overrides_socom2.cpp, PS2X_PC_SAMPLER=<seconds>): without it PS2X_PEEK yields nothing --
         # s6_blockptr's mission stage read "PROBE ... NO-DATA (0 reads of 0 rows)". One row per second
@@ -613,16 +648,37 @@ def run_gate(name, out_root):
         return score_title(out_dir)
     if name == "transition":
         return score_transition(out_dir)
-    return score_mission_log(drive_log, run_log=mission_game_log(drive_log), probe_required=True)
+    # The probe reads the rows with the column launch_env built PS2X_PEEK in -- the chains ARE the
+    # addresses in the rows. probe_lines compares that with what the runtime says it INSTALLED and prints
+    # a line when they disagree (review F8).
+    return score_mission_log(drive_log, run_log=mission_game_log(drive_log), probe_required=True,
+                             revision=gate_revision(default_ok=False))
 
 
-def score_baseline(stamp):
+def score_baseline(stamp, revision=None):
     """Sprint 6 Task 8: score a saved run directory (a stamp name under logs/parity/gate, or a path) without
     launching anything -- each stage it holds through the same scorer the live gate used; nothing written.
     Prints the gate's lines and summary; returns the gate's exit code, 4 when there is nothing to score,
     7 when the stamp's recorded pins or today's pinned files do not match the standard (baseline_pins)."""
     out_root = stamp if os.path.isdir(stamp) else os.path.join("logs", "parity", "gate", stamp)
-    refused = baseline_pins(out_root)
+    # Which addresses are this ARCHIVED run's rows in? From the stamp's own record -- never from whatever
+    # image game/disc holds today, and never assumed (review F1). Before this, a re-score of any stamp
+    # written before the runtime printed its revision line scored the mission lane as a FAIL on
+    # "PROBE NO-DATA", discarding eight standards including s10_close_gate and s11_open_gate.
+    try:
+        if revision:
+            how = "--revision"
+        else:
+            revision, how = stamp_revision(out_root)
+        print("REVISION %s (%s) [baseline %s]" % (revision, how, out_root))
+    except ValueError as e:
+        # Unknown is not r0001. The stage is still scored -- a re-score that refuses outright discards a
+        # standard over a question it does not need answered to check the screens -- but the probe says
+        # UNKNOWN-REVISION rather than reading a column nobody proved (review F1). The pin standard falls
+        # back to r0001's file, which is the only one a stamp with no record can have been made under.
+        revision, how = None, None
+        print("REVISION unknown (%s)" % e)
+    refused = baseline_pins(out_root, revision or "r0001")
     if refused is not None:
         return refused
     results = []
@@ -635,7 +691,7 @@ def score_baseline(stamp):
     drive_log = os.path.join(out_root, "mission.drive.log")
     if os.path.isfile(drive_log):
         results.append(("mission",) + tuple(score_mission_log(drive_log, run_log=mission_game_log(drive_log),
-                                                              probe_required=True)))
+                                                              probe_required=True, revision=revision)))
     if not results:
         print("gate: nothing to score in %s (no title/, transition/ or mission.drive.log)" % out_root)
         return 4
@@ -660,6 +716,28 @@ def exe_line(env=None):
         return "EXE %s bytes=%d sha256=%s" % (path, os.path.getsize(full), digest.hexdigest())
     except OSError as e:
         return "EXE %s UNREADABLE (%s)" % (path, e.strerror or e)
+
+
+def elf_line(env=None):
+    """Which GAME IMAGE this gate ran, and which revision it names: path, size, SHA-256, banner revision.
+    The EXE line says which recompiled runtime was launched; it does not say which pressing of the game
+    that runtime loaded, and since Task 19 those are two independent choices ($SOCOM_EXE and
+    $SOCOM_GAME_ELF). A 3/3 record that does not name the image proves nothing about the revision."""
+    env = os.environ if env is None else env
+    path = env.get(guest_addresses.GAME_ELF_ENV) or guest_addresses.DEFAULT_GAME_ELF
+    full = path if os.path.isabs(path) else os.path.join(ROOT, path)
+    try:
+        digest = hashlib.sha256()
+        with open(full, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                digest.update(chunk)
+        try:
+            revision = guest_addresses.revision_of_image(full)
+        except ValueError as e:
+            revision = "NO BANNER (%s)" % e
+        return "ELF %s bytes=%d sha256=%s %s" % (_rel(path), os.path.getsize(full), digest.hexdigest(), revision)
+    except OSError as e:
+        return "ELF %s UNREADABLE (%s)" % (_rel(path), e.strerror or e)
 
 
 # Sprint 10 Q1b -- what a score is computed against, beyond the EXE. Each stage reads its drive script, the
@@ -722,46 +800,133 @@ def collect_pins(base=None, game_logs=()):
         out[rel] = pins.file_pin(rel, os.path.join(ROOT, rel))
     src = card_source(base)
     out["card"] = pins.tree_pin("card", src if os.path.isabs(src) else os.path.join(ROOT, src), label=_rel(src))
-    out["env"] = pins.env_pin(launch_env("mission", "<the stamp's copy of the card>", base=base))
-    out["harness"] = pins.harness_pin(ROOT, HARNESS_TREES, exclude=(_rel(pins.EXPECTED),))
+    out["env"] = pins.env_pin(launch_env("mission", "<the stamp's copy of the card>", base=base,
+                                         default_ok=True))
+    out["harness"] = pins.harness_pin(ROOT, HARNESS_TREES, exclude=_pins_files())
     out["mapping"] = pins.mapping_pin(game_logs)
     return out
 
 
-def expected_pins_path():
-    return pins.EXPECTED if os.path.isabs(pins.EXPECTED) else os.path.join(ROOT, pins.EXPECTED)
+# Exit 8: the gate cannot say which revision it is about to run (or re-score), so it cannot say which
+# addresses its probes read or which pin standard to compare against. Distinct from the disk refusal (3),
+# the busy lock (2) and a drifted pin (7) -- and a refusal line rather than the traceback launch_env's
+# ValueError used to produce out of collect_pins, i.e. out of EVERY lane including title (review F9).
+REFUSE_REVISION = 8
 
 
-def pins_verdict(drifts, accepted, compared):
+def gate_revision(base=None, default_ok=False):
+    """Which revision a launch from this environment would run, for the pin standard and the probe column.
+    `default_ok` is guest_addresses.launch_revision's one relaxation, asked for by name (review F3):
+    collect_pins takes it (a bare clone has no image and no launch to make), a launch does not."""
+    return guest_addresses.launch_revision(os.environ if base is None else base, default_ok=default_ok)
+
+
+def expected_pins_rel(revision):
+    """The committed pin standard for a revision.
+
+    r0001's is pins.EXPECTED -- scripts/parity/pins.json, byte for byte the file it has always been --
+    and every other revision gets its own beside it. PS2X_PEEK is part of the `env` pin and is now
+    revision-dependent, so with ONE standard an r0004 gate necessarily drifts, and the --accept-pins that
+    lets it run REWRITES THE r0001 STANDARD. That is not a hazard in the abstract: on 2026-09-24 at 10:25
+    an unattended `gate --accept-pins --stamp s11_r0004_reg3` replaced this file's r0001 env pin with the
+    r0004 spec and dropped the mapping pin, exactly as review F2 predicted it would. Two files, and
+    neither revision's gate can reach the other's (KNOWN §4's accept-pins hazard, closed)."""
+    if revision == "r0001":
+        return pins.EXPECTED
+    stem, ext = os.path.splitext(pins.EXPECTED)
+    return "%s_%s%s" % (stem, revision, ext)
+
+
+def expected_pins_path(revision):
+    rel = expected_pins_rel(revision)
+    return rel if os.path.isabs(rel) else os.path.join(ROOT, rel)
+
+
+# Every revision's standard lives under scripts/parity, which is a HARNESS_TREES member: a new
+# pins_r0004.json must not move the harness hash of an r0001 run, and vice versa.
+def _pins_files():
+    return tuple(_rel(expected_pins_rel(r)) for r in guest_addresses.REVISIONS)
+
+
+STAMP_PEEK_RE = re.compile(r"PS2X_PEEK=(\S+)")
+
+
+def stamp_revision(out_root):
+    """(revision, how) -- which address column an ARCHIVED run's [peek] rows are in, read from the stamp's
+    OWN record, never from whatever image game/disc holds today (review F1).
+
+    1. The PS2X_PEEK the run was launched with -- its pins.json record's `detail.env`, else the `PIN env`
+       line in summary.txt. The chains ARE the addresses in the rows, so this is the strongest evidence
+       there is, and every stamp on disk carries it, including the eight from before the runtime printed
+       a revision line at all (s10_close_gate, s11_open_gate and six more).
+    2. Else what the runtime said it installed, off the stage's own game log.
+
+    Neither: raise. A re-score that cannot establish the column does not fall back to r0001."""
+    record = pins.load_record(os.path.join(out_root, pins.RECORD_NAME)) or {}
+    texts = []
+    env = record["env"].detail if "env" in record else None
+    if env:
+        texts.extend(env if isinstance(env, list) else [env])
+    summary = os.path.join(out_root, "summary.txt")
+    if os.path.isfile(summary):
+        with open(summary, encoding="utf-8", errors="replace") as f:
+            texts.extend(f.readlines())
+    for text in texts:
+        m = STAMP_PEEK_RE.search(text)
+        if m:
+            try:
+                return guest_addresses.revision_of_peek_spec(m.group(1)), "the stamp's own PS2X_PEEK"
+            except ValueError:
+                pass
+    for name in ("mission", "title", "transition"):
+        log = os.path.join(out_root, name + ".game.log")
+        if os.path.isfile(log):
+            with open(log, "r", errors="replace") as f:
+                try:
+                    rev, how = guest_addresses.log_revision(f.readlines())
+                    return rev, "%s.game.log (%s)" % (name, how)
+                except ValueError:
+                    pass
+    raise ValueError("gate: %s does not say which address column its rows are in (no PS2X_PEEK in its "
+                     "pins.json or summary.txt, and no revision line in its game logs) -- it cannot be "
+                     "re-scored without one" % out_root)
+
+
+def pins_verdict(drifts, accepted, compared, revision="r0001"):
     """(word, line): the PINS line of a summary -- MATCH, ACCEPTED (the standard was rewritten) or DRIFTED
-    (refused) -- and its one-word form for the record."""
+    (refused) -- and its one-word form for the record. The line names the revision's OWN standard, so a
+    summary says which file it was measured against."""
+    standard = expected_pins_rel(revision)
     names = ", ".join(d.name for d in drifts)
     if not drifts:
-        return "MATCH", "PINS MATCH %s (%d compared)" % (pins.EXPECTED, compared)
+        return "MATCH", "PINS MATCH %s (%d compared)" % (standard, compared)
     if accepted:
-        return "ACCEPTED", "PINS ACCEPTED: %s -> %s rewritten" % (names, pins.EXPECTED)
+        return "ACCEPTED", "PINS ACCEPTED: %s -> %s rewritten" % (names, standard)
     return "DRIFTED", ("PINS DRIFTED: %s -- refused to score (pass --accept-pins to make the measured values the "
-                       "standard, or restore the input)" % names)
+                       "standard in %s, or restore the input)" % (names, standard))
 
 
-def check_pins(current, accept=False, note=""):
-    """(drifts, expected, accepted) for `current` against the committed standard; with `accept`, a drift
-    rewrites the standard from `current` and is reported as accepted rather than refused."""
-    expected = pins.load_expected(expected_pins_path()) or {}
+def check_pins(current, accept=False, note="", revision="r0001"):
+    """(drifts, expected, accepted) for `current` against THIS REVISION's committed standard; with
+    `accept`, a drift rewrites that standard from `current` and is reported as accepted rather than
+    refused. An r0004 gate reads and writes scripts/parity/pins_r0004.json and can no more reach r0001's
+    file than an r0001 gate can reach its (review F2)."""
+    path = expected_pins_path(revision)
+    expected = pins.load_expected(path) or {}
     drifts = pins.compare(current, expected)
     accepted = bool(drifts) and accept
     if accepted:
-        pins.write_expected(current, expected_pins_path(), note=note)
+        pins.write_expected(current, path, note=note)
     return drifts, expected, accepted
 
 
-def baseline_pins(out_root):
+def baseline_pins(out_root, revision="r0001"):
     """The pin checks of a --baseline re-score, printed; None when it may proceed, else the exit code.
     Two questions: was the run made under the standard (its recorded pins.json, every pin it recorded --
     a stamp from before Q1b has none and is scored with a line saying so), and is the standard what is on
     disk now (today's pinned FILES: the re-score reads today's reference images; today's card and shell
     boot nothing and are not asked)."""
-    expected = pins.load_expected(expected_pins_path()) or {}
+    expected = pins.load_expected(expected_pins_path(revision)) or {}
     record = pins.load_record(os.path.join(out_root, pins.RECORD_NAME))
     if record is None:
         print("PINS unrecorded (no %s in the stamp: a run from before Q1b)" % pins.RECORD_NAME)
@@ -775,6 +940,7 @@ def baseline_pins(out_root):
             return 7
     files = pinned_files()
     current = OrderedDict((n, p) for n, p in collect_pins(base={}).items() if n in files)
+    # (files only: the re-score reads today's reference images, but today's card and shell boot nothing)
     drifts = pins.compare(current, {n: s for n, s in expected.items() if n in files})
     if drifts:
         for line in pins.lines(current, drifts, expected=expected):
@@ -782,7 +948,8 @@ def baseline_pins(out_root):
                 print(line)
         print("GATE REFUSED (pins drifted: %s) [baseline %s]" % (", ".join(d.name for d in drifts), out_root))
         return 7
-    print("PINS MATCH %s (%d recorded, %d files on disk)" % (pins.EXPECTED, len(record or {}), len(current)))
+    print("PINS MATCH %s (%d recorded, %d files on disk)"
+          % (expected_pins_rel(revision), len(record or {}), len(current)))
     return None
 
 
@@ -796,24 +963,40 @@ def main(argv=None):
     ap.add_argument("--mission-frames", help="capture dir for --score-mission (default: <log minus .drive.log>)")
     ap.add_argument("--baseline", help="re-score a saved stamp (a logs/parity/gate/<stamp> name or a path) without "
                                        "launching: every stage it holds, through the live gate's scorers; writes nothing")
+    ap.add_argument("--revision", choices=sorted(guest_addresses.REVISIONS),
+                    help="with --baseline: the address column the stamp's [peek] rows are in, when the stamp "
+                         "itself does not say (it normally does -- its recorded PS2X_PEEK names it)")
     ap.add_argument("--pins", action="store_true",
-                    help="compare the tree's pinned inputs to %s and exit (0 match, 7 drifted); no launch, no lock" % pins.EXPECTED)
+                    help="compare the tree's pinned inputs to this revision's standard (%s for r0001) and exit "
+                         "(0 match, 7 drifted); no launch, no lock" % pins.EXPECTED)
     ap.add_argument("--accept-pins", action="store_true",
-                    help="a launch (or --pins) whose pins drifted rewrites %s from the measured values instead of "
-                         "refusing; the summary says so" % pins.EXPECTED)
+                    help="a launch (or --pins) whose pins drifted rewrites the standard from the measured values "
+                         "instead of refusing; the summary says so. It rewrites THIS REVISION's file only -- an "
+                         "r0004 gate cannot reach %s" % pins.EXPECTED)
     args = ap.parse_args(argv)
 
     if args.baseline:
         if args.accept_pins:
             ap.error("--accept-pins is a launch flag: a --baseline re-score compares the record, it does not set the standard")
-        return score_baseline(args.baseline)
+        return score_baseline(args.baseline, args.revision)
+    if args.revision:
+        ap.error("--revision is a --baseline flag: a launch reads its revision from the image it launches")
 
     if args.pins:
-        current = collect_pins()
-        drifts, expected, accepted = check_pins(current, args.accept_pins, note="gate --pins --accept-pins")
+        try:
+            # A dry check launches nothing, so it is allowed the bare-clone default -- CI runs it with no
+            # disc assets at all.
+            revision = gate_revision(default_ok=True)
+            current = collect_pins()
+        except ValueError as e:
+            print("gate: %s" % e)
+            return REFUSE_REVISION
+        print("REVISION %s (standard %s)" % (revision, expected_pins_rel(revision)))
+        drifts, expected, accepted = check_pins(current, args.accept_pins, note="gate --pins --accept-pins",
+                                                revision=revision)
         for line in pins.lines(current, drifts, accepted, expected):
             print(line)
-        print(pins_verdict(drifts, accepted, len(pins.comparable(current)))[1])
+        print(pins_verdict(drifts, accepted, len(pins.comparable(current)), revision)[1])
         return 7 if drifts and not accepted else 0
 
     # --score-title/--score-mission re-score an existing run: no game launch, nothing large written
@@ -840,21 +1023,33 @@ def main(argv=None):
     os.makedirs(out_root, exist_ok=True)
     exe = exe_line()
     print(exe, flush=True)
+    elf = elf_line()
+    print(elf, flush=True)
+    # Which revision is this? It decides the probes' address column AND which pin standard is the
+    # standard. A launch does not get the bare-clone default: it has an image, and if it cannot be read
+    # the gate refuses with its own line rather than a traceback out of collect_pins (review F3, F9).
+    try:
+        revision = gate_revision(default_ok=False)
+    except ValueError as e:
+        print("gate: %s" % e)
+        return REFUSE_REVISION
+    print("REVISION %s (probe addresses and pin standard %s)" % (revision, expected_pins_rel(revision)), flush=True)
     # The pins are checked BEFORE the lock and the launch: a drifted standard refuses without spending a
     # run. The record (pins.json) and the summary are written either way, so the refusal is on file.
     current = collect_pins()
     drifts, expected, accepted = check_pins(current, args.accept_pins,
-                                            note="gate --accept-pins, stamp %s" % args.stamp)
+                                            note="gate --accept-pins, stamp %s" % args.stamp,
+                                            revision=revision)
     compared = len(pins.comparable(current))
 
     def write_summary(stage_lines, all_drifts):
         """summary.txt (stage lines, EXE, PIN lines, PINS verdict) and pins.json; returns the lines."""
-        word, verdict = pins_verdict(all_drifts, accepted, compared)
+        word, verdict = pins_verdict(all_drifts, accepted, compared, revision)
         pin_lines = pins.lines(current, all_drifts, accepted, expected)
         with open(os.path.join(out_root, "summary.txt"), "w", encoding="utf-8") as f:
-            f.write("".join(l + "\n" for l in stage_lines + [exe] + pin_lines + [verdict]))
+            f.write("".join(l + "\n" for l in stage_lines + [exe, elf] + pin_lines + [verdict]))
         pins.write_record(current, os.path.join(out_root, pins.RECORD_NAME), all_drifts, accepted, word,
-                          exe, pins.EXPECTED)
+                          exe, expected_pins_rel(revision))
         return pin_lines, verdict
 
     if drifts and not accepted:
@@ -891,7 +1086,8 @@ def main(argv=None):
         current["mapping"] = pins.mapping_pin([os.path.join(out_root, name + ".game.log") for name in wanted])
         late = [d for d in pins.compare(current, expected) if d.name == "mapping"]
         if late and args.accept_pins:
-            pins.write_expected(current, expected_pins_path(), note="gate --accept-pins, stamp %s" % args.stamp)
+            pins.write_expected(current, expected_pins_path(revision),
+                                note="gate --accept-pins, stamp %s" % args.stamp)
             accepted = True
         all_drifts = drifts + late
         refused = bool(all_drifts) and not accepted

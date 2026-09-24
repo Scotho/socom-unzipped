@@ -12,8 +12,11 @@ CONSOLE = "scripts/parity/guest_probe_console.json"
 
 
 def _line(pos, root_y=5.50391, move_scale=1.0):
-    """One peek row: camera, the actor block (vtable + position), the node item and the MoveScale item."""
-    line = peek_line(500.0, 100.0, 600.0, actor=pos, actor_addr=ACTOR)
+    """One peek row: camera, the actor block (vtable + position), the node item and the MoveScale item.
+
+    The camera is placed where a real run's is -- orbiting the player at ~19 ground units, which is what
+    every archived gate stamp measures -- because camera_orbit is a scored probe (Task 19 review F7)."""
+    line = peek_line(pos[0] - 3.0, pos[1] + 25.0, pos[2] - 19.0, actor=pos, actor_addr=ACTOR)
     line += f" @{ACTOR + 0x2e8:x}: {NODE:08x}(0)"
     line += f" @{NODE:x}: 00000000(0) {_w(root_y)}"
     line += f" @{ACTOR + 0x1368:x}: {_w(move_scale)}"
@@ -24,7 +27,8 @@ class Evaluate(unittest.TestCase):
     def test_console_like_rows_pass_every_check(self):
         rows = [_line((900.0 + 2.0 * i, -145.0, 850.0)) for i in range(10)]
         res = gp.evaluate(rows, CONSOLE, "r0001")
-        self.assertEqual({r.name: r.ok for r in res}, {"root_node_y": True, "move_scale": True, "teleport_steps": True})
+        self.assertEqual({r.name: r.ok for r in res},
+                         {"root_node_y": True, "move_scale": True, "teleport_steps": True, "camera_orbit": True})
 
     def test_decayed_root_node_fails_only_that_check(self):
         rows = [_line((900.0, -145.0, 850.0), root_y=0.0)] * 5

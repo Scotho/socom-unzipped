@@ -41,6 +41,8 @@ import sys
 from collections import namedtuple
 from dataclasses import dataclass, field
 
+from tools_py.parity import guest_addresses as ga
+
 # ---------------------------------------------------------------------------------------------
 # verdict words
 # ---------------------------------------------------------------------------------------------
@@ -55,9 +57,17 @@ SAMPLER_PERIOD_S = 0.25            # PS2X_PC_SAMPLER=0.25 in every Sprint 4 laun
 CLOCK_ANCHOR_MIN_SPACING_S = 5.0   # [call] stamps have 0.1 s resolution and arrive ~2/s: anchors this
                                    # far apart give a local period good to ~2 %, where adjacent stamps
                                    # would give a jittering one
-ACTOR_VTABLE = 0x006691A0          # word 0 of the player actor block (*0x408c58)
-ACTOR_POS_WORDS = (7, 8, 9)        # actor +0x1c/+0x20/+0x24 = x, y, z
-CAMERA_RECORD_ADDR = 0x416054      # the camera-orbit record; NOT the player (research/18 §4.1)
+# These three, and sp_death_probe's ACTOR_STATIC, are the r0001 column of guest_addresses.PROBE_ADDRESSES
+# -- read from it, not repeated here (Task 19 review F6: this module, sp_death_probe and guest_probe each
+# held their own copy of the same four numbers, and nothing would have noticed them drifting apart). The
+# ladder these constants serve runs on the r0001 build, so it takes the r0001 column by name; guest_probe,
+# which has to read an r0004 run, takes a revision.
+ACTOR_VTABLE = ga.address("actor_vtable", "r0001")     # 0x6691a0, word 0 of the player actor block
+# actor +0x1c/+0x20/+0x24 = x, y, z, as WORD INDICES into a peeked block. Layout, so it comes from
+# guest_addresses.PROBE_OFFSETS' r0001 column like move_scale and root_node do -- one home for
+# displacements as well as addresses (Task 19 review F6 + the move lane's concern 2).
+ACTOR_POS_WORDS = tuple(ga.offset("actor_pos", "r0001") // 4 + i for i in range(3))
+CAMERA_RECORD_ADDR = ga.address("camera_record", "r0001")   # 0x416054, the camera-orbit record; NOT the player (research/18 §4.1)
 MOVE_SCALE_NAME = "MoveScale"      # PS2X_CALL_TRACE="0x553dc0:MoveScale"
 NET_IDLE_NAME = "NetIdleMs"        # PS2X_CALL_TRACE="0x30cd80:NetIdleMs" (the thunk, research/18 §3.12a)
 NET_IDLE_NAMES = ("NetIdle", NET_IDLE_NAME)   # launch 1 (research/21 §6.1) and Task 5 name the slot NetIdle
@@ -877,7 +887,7 @@ def row_round_state(items):
 # ---------------------------------------------------------------------------------------------
 ACTOR_ALIVE_OFFSET = 0xF7A         # byte, 1 = alive (research/19 F1); byte 2 of the word at +0xF78
 ACTOR_STAMP_OFFSET = 0x420         # float, the position-apply timestamp R6 compares (research/21 §6.4)
-ROUND_TIME_ADDR = 0x4365C0         # float, DAT_004365c0: round time, counts up from 0 at round start
+ROUND_TIME_ADDR = ga.address("guest_clock", "r0001")   # 0x4365c0, float DAT_004365c0: round time, counts up from 0 at round start
 MP_FLAG_WORD_ADDR = 0x45A0C0       # the word holding DAT_0045a0c1 as its byte 1
 R6_GAP_S = 0.6                     # FUN_00594cf0's snap-back: 0x45a0c1 && clock - actor+0x420 > 0.6
 
