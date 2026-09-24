@@ -6,6 +6,7 @@
 #include "runtime/gs/ps2_gs_psmt8.h"
 #include "runtime/gs/ps2_gs_memory.h"
 #include "ps2_log.h"
+#include "ps2x/knobs.h"
 #include <atomic>
 extern std::atomic<uint64_t> g_gsPixelCount;
 extern std::atomic<uint64_t> g_gsFirstFbp;
@@ -1273,7 +1274,7 @@ void GSCpuBackend::DrawTriangle(const GSPrimitiveBatch &batch)
     const float winding = (denom < 0.0f) ? -1.0f : 1.0f;
     const float invAbsDenom = 1.0f / std::fabs(denom);
     constexpr float kEdgeEpsilon = 1.0e-4f;
-    static const bool disableEarlyDepth = std::getenv("PS2X_GS_DISABLE_EARLY_DEPTH") != nullptr;
+    static const bool disableEarlyDepth = ps2x::knob("PS2X_GS_DISABLE_EARLY_DEPTH") != nullptr;
     const uint32_t depthMethod = static_cast<uint32_t>((ctx.test >> 17u) & 3u);
     const bool earlyDepth = !disableEarlyDepth && ((ctx.test >> 16u) & 1u) != 0u && depthMethod >= 2u;
     const uint32_t depthBase = GSInternal::framePageBaseToBlock(ctx.zbuf.zbp);
