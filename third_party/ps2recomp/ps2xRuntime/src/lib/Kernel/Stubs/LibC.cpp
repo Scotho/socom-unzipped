@@ -764,9 +764,10 @@ namespace ps2_stubs
             FILE *fp = ::fopen(hostPath, hostMode);
             if (fp)
             {
-                std::lock_guard<std::mutex> lock(g_file_mutex);
-                file_handle = generate_file_handle();
-                g_file_map[file_handle] = fp;
+                LibCFileRuntimeState &files = libcFileRuntimeState();
+                std::lock_guard<std::mutex> lock(files.mutex);
+                file_handle = files.allocateHandle();
+                files.openFiles[file_handle] = fp;
                 RUNTIME_LOG("  -> handle=0x" << std::hex << file_handle << std::dec);
             }
             else
@@ -792,13 +793,14 @@ namespace ps2_stubs
 
         if (file_handle != 0)
         {
-            std::lock_guard<std::mutex> lock(g_file_mutex);
-            auto it = g_file_map.find(file_handle);
-            if (it != g_file_map.end())
+            LibCFileRuntimeState &files = libcFileRuntimeState();
+            std::lock_guard<std::mutex> lock(files.mutex);
+            auto it = files.openFiles.find(file_handle);
+            if (it != files.openFiles.end())
             {
                 FILE *fp = it->second;
                 ret = ::fclose(fp);
-                g_file_map.erase(it);
+                files.openFiles.erase(it);
             }
             else
             {

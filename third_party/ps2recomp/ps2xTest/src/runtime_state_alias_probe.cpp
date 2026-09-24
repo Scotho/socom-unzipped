@@ -11,6 +11,7 @@
 #include "Kernel/Stubs/Helpers/StubLogRuntimeState.h"
 #include "Kernel/Stubs/Helpers/DmaRuntimeState.h"
 #include "Kernel/Stubs/Helpers/GsRuntimeState.h"
+#include "Kernel/Stubs/Helpers/LibCFileRuntimeState.h"
 
 namespace ps2x_test_rtstate_probe
 {
@@ -27,5 +28,10 @@ namespace ps2x_test_rtstate_probe
     const void *gsStateAddress()
     {
         return &ps2_stubs::gsRuntimeState();
+    }
+
+    const void *libcFileStateAddress()
+    {
+        return &ps2_stubs::libcFileRuntimeState();
     }
 }

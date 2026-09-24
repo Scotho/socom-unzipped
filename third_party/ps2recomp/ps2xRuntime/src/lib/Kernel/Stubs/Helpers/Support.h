@@ -7,6 +7,7 @@
 #include "StubLogRuntimeState.h"
 #include "DmaRuntimeState.h"
 #include "GsRuntimeState.h"
+#include "LibCFileRuntimeState.h"
 
 namespace
 {
@@ -562,29 +563,15 @@ namespace
         return static_cast<uint32_t>(((value >> 4) & 0x0F) * 10 + (value & 0x0F));
     }
 
-    std::unordered_map<uint32_t, FILE *> g_file_map;
-    uint32_t g_next_file_handle = 1; // Start file handles > 0 (0 is NULL)
-    std::mutex g_file_mutex;
-
-    uint32_t generate_file_handle()
-    {
-        uint32_t handle = 0;
-        do
-        {
-            handle = g_next_file_handle++;
-            if (g_next_file_handle == 0)
-                g_next_file_handle = 1;
-        } while (handle == 0 || g_file_map.count(handle));
-        return handle;
-    }
-
+    // Sprint 11 Task 8b: the libc FILE* table moved to ps2_stubs::libcFileRuntimeState() in
+    // Helpers/LibCFileRuntimeState.h -- one object for the program instead of one copy per stub
+    // translation unit (docs/KNOWN.md #4). generate_file_handle and get_file_ptr moved with it as
+    // the struct's allocateHandle() and get(). get_file_ptr stays as a forwarder because seven of
+    // Stubs/LibC.cpp's call sites name it; generate_file_handle had exactly one caller and that
+    // call site now names allocateHandle() directly, under the same lock it always held.
     FILE *get_file_ptr(uint32_t handle)
     {
-        if (handle == 0)
-            return nullptr;
-        std::lock_guard<std::mutex> lock(g_file_mutex);
-        auto it = g_file_map.find(handle);
-        return (it != g_file_map.end()) ? it->second : nullptr;
+        return ps2_stubs::libcFileRuntimeState().get(handle);
     }
 }
 

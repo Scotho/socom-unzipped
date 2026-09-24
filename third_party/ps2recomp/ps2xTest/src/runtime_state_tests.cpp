@@ -25,8 +25,11 @@
 #include "Kernel/Stubs/DMA.h"
 #include "Kernel/Stubs/Helpers/GsRuntimeState.h"
 #include "Kernel/Stubs/GS.h"
+#include "Kernel/Stubs/Helpers/LibCFileRuntimeState.h"
+#include "Kernel/Stubs/LibC.h"
 
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <stdexcept>
 #include <string>
@@ -36,6 +39,7 @@ namespace ps2x_test_rtstate_probe
     const void *stubLogStateAddress();
     const void *dmaStateAddress();
     const void *gsStateAddress();
+    const void *libcFileStateAddress();
 }
 
 namespace
@@ -174,6 +178,52 @@ void register_runtime_state_tests()
                      "(the default) means that TU wrote its own private copy");
             t.Equals(static_cast<uint32_t>(seen.ffmode), 0u,
                      "sceGsResetGraph's ffmode should have reached the state this TU reads");
+        });
+
+        tc.Run("LibCFileRuntimeState is one object across translation units", [](TestCase &t)
+        {
+            t.Equals(static_cast<const void *>(&ps2_stubs::libcFileRuntimeState()),
+                     ps2x_test_rtstate_probe::libcFileStateAddress(),
+                     "runtime_state_tests.cpp and runtime_state_alias_probe.cpp must name one "
+                     "LibCFileRuntimeState; two addresses means the header is handing every "
+                     "translation unit its own copy again (docs/KNOWN.md #4)");
+        });
+
+        tc.Run("Stubs/LibC.cpp's fclose closes the handle this TU opened", [](TestCase &t)
+        {
+            FILE *fp = std::tmpfile();
+            t.IsTrue(fp != nullptr, "the host should give this test a temporary FILE to hand over");
+            if (!fp)
+                return;
+
+            ps2_stubs::LibCFileRuntimeState &files = ps2_stubs::libcFileRuntimeState();
+            uint32_t handle = 0;
+            {
+                std::lock_guard<std::mutex> lock(files.mutex);
+                handle = files.allocateHandle();
+                files.openFiles[handle] = fp;
+            }
+
+            // fclose lives in Stubs/LibC.cpp -- a different translation unit. It must find THIS
+            // table's entry, close the FILE and erase it.
+            R5900Context ctx{};
+            setRegU32(ctx, 4, handle);
+            ps2_stubs::fclose(nullptr, &ctx, nullptr);
+            const int32_t ret = static_cast<int32_t>(getRegU32(&ctx, 2));
+
+            bool stillOpen = false;
+            {
+                std::lock_guard<std::mutex> lock(files.mutex);
+                auto it = files.openFiles.find(handle);
+                stillOpen = (it != files.openFiles.end());
+                files.openFiles.erase(handle);
+            }
+
+            t.Equals(ret, 0,
+                     "fclose should have found the handle this TU registered; EOF means "
+                     "Stubs/LibC.cpp searched its own private copy of the FILE table");
+            t.IsFalse(stillOpen,
+                      "fclose should have erased the handle from the table this TU reads");
         });
     });
 }
