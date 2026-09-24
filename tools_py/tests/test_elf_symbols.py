@@ -4,10 +4,11 @@ The real input is the SOCOM 1 demo, which is git-ignored and 10 MB; this builds 
 has the same shape -- one PT_LOAD, a `.symtab` with a FUNC, an OBJECT, a zero-size FUNC and a duplicate,
 and a SHT_REL section -- so the suite runs with no disc and no demo present.
 """
+import os
 import struct
 import unittest
 
-from tools_py.elf_symbols import parse_elf
+from tools_py.elf_symbols import main, parse_elf
 
 CODE = bytes(range(0x40))
 VADDR = 0x00100000
@@ -97,6 +98,50 @@ class ElfSymbolsTest(unittest.TestCase):
                          [(VADDR + 4, 5, 1), (VADDR + 0x100, 6, 1)])
         # The second one is past the loaded bytes, so it is not a word of the image.
         self.assertEqual(self.elf.relocated_words(), {VADDR + 4})
+
+    def test_unnamed_symbols_are_kept_so_relocation_indices_stay_aligned(self):
+        # The null symbol is entry 0 and `funcA` is entry 1; a relocation whose r_info names symbol 1
+        # has to find `funcA` there. Dropping unnamed entries would slide every index down by one.
+        self.assertEqual(self.elf.symbols[0].name, "")
+        self.assertEqual(self.elf.symbols[1].name, "funcA")
+        index = self.elf.relocations()[0][2]
+        self.assertEqual(self.elf.symbols[index].name, "funcA")
+
+    def test_a_relocation_in_a_gap_between_segments_is_not_a_loaded_word(self):
+        # Our own image has four PT_LOADs with gaps; a global lowest/highest bound would count the
+        # gaps as loaded. Two segments here, with the second relocation in the hole between them.
+        elf = parse_elf(tiny_elf())
+        two = elf._replace(segments=[(VADDR, CODE), (VADDR + 0x200, CODE)])
+        self.assertEqual(two.relocated_words(), {VADDR + 4})
+
+    def test_a_truncated_string_table_is_a_sentence_not_an_index_error(self):
+        raw = bytearray(tiny_elf())
+        del raw[-1:]                       # lop a byte so the last section header is short
+        with self.assertRaises(Exception):
+            parse_elf(bytes(raw))
+
+    def test_main_reports_a_missing_file_and_exits_2(self):
+        import contextlib
+        import io as _io
+        out = _io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = main(["no-such-file.elf"])
+        self.assertEqual(code, 2)
+        self.assertIn("NO-DATA: missing", out.getvalue())
+
+    def test_main_reports_a_non_elf_and_exits_2(self):
+        import contextlib
+        import io as _io
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as fh:
+            fh.write(b"MZ" + bytes(64))
+            path = fh.name
+        self.addCleanup(os.unlink, path)
+        out = _io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = main([path])
+        self.assertEqual(code, 2)
+        self.assertIn("NO-DATA:", out.getvalue())
 
     def test_rejects_a_non_elf(self):
         with self.assertRaises(ValueError):

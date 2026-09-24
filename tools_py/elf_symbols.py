@@ -18,6 +18,7 @@ section at 0x100000 and symbol values are absolute guest addresses. So the symbo
 bias. `.relmain` is still useful as a second opinion on which words carry an address -- see
 `relocated_words()`, used to check the fingerprint's mask covers them.
 """
+import os
 import struct
 from typing import Dict, List, NamedTuple, Optional, Sequence, Tuple
 
@@ -61,7 +62,8 @@ class Elf(NamedTuple):
 
     @property
     def functions(self) -> List[Tuple[int, int, str]]:
-        """(start, end, name) for every sized STT_FUNC symbol, sorted, duplicates by address dropped.
+        """(start, end, name) for every sized, NAMED STT_FUNC symbol, sorted, duplicate addresses
+        dropped.
 
         A zero-size FUNC symbol has no body to fingerprint, so it is left out rather than emitted with
         an empty range: an empty body would hash to the FNV basis and file every one of them under a
@@ -69,16 +71,21 @@ class Elf(NamedTuple):
         """
         seen: Dict[int, Tuple[int, int, str]] = {}
         for s in self.symbols:
-            if s.kind != STT_FUNC or s.size <= 0:
+            if s.kind != STT_FUNC or s.size <= 0 or not s.name:
                 continue
             seen.setdefault(s.value, (s.value, s.value + s.size, s.name))
         return sorted(seen.values())
 
     @property
     def objects(self) -> List[Tuple[int, int, str]]:
-        """The same for STT_OBJECT -- the named globals, for a later data pass."""
+        """The same for STT_OBJECT -- the named globals.
+
+        Its caller today is `main()`'s summary line, which is how the demo's 10,182 OBJECT symbols got
+        into §1 of `docs/research/44-demo-symbols.md`. They are also the obvious next lever after the
+        functions: a named global is a name for a whole data structure.
+        """
         out = [(s.value, s.value + s.size, s.name) for s in self.symbols
-               if s.kind == STT_OBJECT and s.size > 0]
+               if s.kind == STT_OBJECT and s.size > 0 and s.name]
         return sorted(out)
 
     def section(self, name: str) -> Optional[Section]:
@@ -88,7 +95,11 @@ class Elf(NamedTuple):
         return None
 
     def relocations(self) -> List[Tuple[int, int, int]]:
-        """(r_offset, r_type, r_symbol) from every SHT_REL section, in file order."""
+        """(r_offset, r_type, r_symbol) from every SHT_REL section, in file order.
+
+        `r_symbol` indexes `symbols`, which is why `parse_elf` keeps unnamed and section symbols as
+        placeholder entries: dropping them would silently shift every index past the first hole.
+        """
         out = []
         for sec in self.sections:
             if sec.type != SHT_REL or sec.entsize != 8:
@@ -103,15 +114,22 @@ class Elf(NamedTuple):
 
         `r_offset` in a linked Metrowerks image is already the guest address of the word (it lands
         inside the loaded range), so this is a set of addresses, aligned down to the instruction.
+        Containment is tested per segment, not against the global lowest/highest: our own image has
+        four PT_LOADs with gaps between them (0x100000, 0x1D5000, 0x1E7000, 0x4C5380), and a global
+        bound would count those gaps as loaded.
         """
-        lo = min((v for v, _ in self.segments), default=0)
-        hi = max((v + len(d) for v, d in self.segments), default=0)
-        return {off & ~3 for off, _t, _s in self.relocations() if lo <= off < hi}
+        def loaded(addr: int) -> bool:
+            return any(v <= addr < v + len(d) for v, d in self.segments)
+
+        return {off & ~3 for off, _t, _s in self.relocations() if loaded(off)}
 
 
 def _cstr(data: bytes, base: int, offset: int) -> str:
     start = base + offset
-    end = data.index(b"\x00", start)
+    end = data.find(b"\x00", start)
+    if start < 0 or start > len(data) or end < 0:
+        raise ValueError("string table entry at 0x%x+0x%x runs past the end of the file"
+                         % (base, offset))
     return data[start:end].decode("latin-1")
 
 
@@ -144,9 +162,11 @@ def parse_elf(data: bytes) -> Elf:
         for i in range(sec.size // 16):
             st_name, st_value, st_size, st_info, _other, st_shndx = struct.unpack_from(
                 "<IIIBBH", data, sec.offset + i * 16)
-            name = _cstr(data, strtab, st_name)
-            if name:
-                symbols.append(Symbol(name, st_value, st_size, st_info, st_shndx))
+            # Every entry is kept, named or not: a relocation's `r_symbol` is an INDEX into this
+            # list, and dropping the unnamed and section symbols would shift every index past the
+            # first hole. `functions` and `objects` do the filtering instead.
+            symbols.append(Symbol(_cstr(data, strtab, st_name), st_value, st_size, st_info,
+                                  st_shndx))
     return Elf(data, e_type, e_machine, entry, sections, sorted(segments), symbols)
 
 
@@ -161,7 +181,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("elf")
     ap.add_argument("--limit", type=int, default=20, help="how many of the largest functions to print")
     args = ap.parse_args(list(argv) if argv is not None else None)
-    elf = read_elf(args.elf)
+    if not os.path.exists(args.elf):
+        print("NO-DATA: missing %s" % args.elf)
+        return 2
+    try:
+        elf = read_elf(args.elf)
+    except ValueError as exc:
+        print("NO-DATA: %s: %s" % (args.elf, exc))
+        return 2
     print("type %d machine %d entry 0x%08x" % (elf.e_type, elf.e_machine, elf.entry))
     for s in elf.sections:
         if s.name:
