@@ -596,7 +596,7 @@ namespace ps2_stubs
                 const std::string logLine = sanitizeForLog(rendered);
                 uint32_t count = 0;
                 {
-                    StubLogRuntimeState &stubLog = stubLogRuntimeState();
+                    StubLogRuntimeState &stubLog = stubLogRuntimeStateFor(nullptr);
                     std::lock_guard<std::mutex> lock(stubLog.printfMutex);
                     count = ++stubLog.printfLogCount;
                 }
@@ -764,9 +764,9 @@ namespace ps2_stubs
             FILE *fp = ::fopen(hostPath, hostMode);
             if (fp)
             {
-                LibCFileRuntimeState &files = libcFileRuntimeState();
+                LibCRuntimeState &files = libcRuntimeStateFor(nullptr);
                 std::lock_guard<std::mutex> lock(files.mutex);
-                file_handle = files.allocateHandle();
+                file_handle = files.allocateHandleLocked();
                 files.openFiles[file_handle] = fp;
                 RUNTIME_LOG("  -> handle=0x" << std::hex << file_handle << std::dec);
             }
@@ -793,7 +793,7 @@ namespace ps2_stubs
 
         if (file_handle != 0)
         {
-            LibCFileRuntimeState &files = libcFileRuntimeState();
+            LibCRuntimeState &files = libcRuntimeStateFor(nullptr);
             std::lock_guard<std::mutex> lock(files.mutex);
             auto it = files.openFiles.find(file_handle);
             if (it != files.openFiles.end())

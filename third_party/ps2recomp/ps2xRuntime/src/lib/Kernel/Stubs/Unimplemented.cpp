@@ -12,7 +12,7 @@ namespace ps2_stubs
     {
         const std::string stubName = name ? name : "unknown";
 
-        StubLogRuntimeState &stubLog = stubLogRuntimeState();
+        StubLogRuntimeState &stubLog = stubLogRuntimeStateFor(nullptr);
         uint32_t callCount = 0;
         {
             std::lock_guard<std::mutex> lock(stubLog.warningMutex);

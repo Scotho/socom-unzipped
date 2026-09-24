@@ -810,7 +810,7 @@ namespace ps2_stubs
                 return;
             }
 
-            GsGParam &gparam = gsRuntimeState().gparam;
+            GsGParam &gparam = gsRuntimeStateFor(nullptr).gparam;
             gparam.interlace = static_cast<uint8_t>(interlace & 0x1);
             gparam.omode = static_cast<uint8_t>(omode & 0xFF);
             gparam.ffmode = static_cast<uint8_t>(ffmode & 0x1);
@@ -902,8 +902,8 @@ namespace ps2_stubs
         const uint32_t fbw = std::max<uint32_t>(1u, (w + 63u) / 64u);
         const uint64_t pmode = makePmode(1u, 1u, 0u, 0u, 0u, 0x80u);
         const uint64_t smode2 =
-            (static_cast<uint64_t>(gsRuntimeState().gparam.interlace & 0x1u) << 0) |
-            (static_cast<uint64_t>(gsRuntimeState().gparam.ffmode & 0x1u) << 1);
+            (static_cast<uint64_t>(gsRuntimeStateFor(nullptr).gparam.interlace & 0x1u) << 0) |
+            (static_cast<uint64_t>(gsRuntimeStateFor(nullptr).gparam.ffmode & 0x1u) << 1);
         const uint64_t display = makeDisplay(636u, 32u, 0u, 0u, w - 1u, h - 1u);
 
         const int32_t drawWidth = static_cast<int32_t>(w);
@@ -974,8 +974,8 @@ namespace ps2_stubs
         const uint32_t fbw = std::max<uint32_t>(1u, (w + 63u) / 64u);
         const uint64_t pmode = makePmode(1u, 1u, 0u, 0u, 0u, 0x80u);
         const uint64_t smode2 =
-            (static_cast<uint64_t>(gsRuntimeState().gparam.interlace & 0x1u) << 0) |
-            (static_cast<uint64_t>(gsRuntimeState().gparam.ffmode & 0x1u) << 1);
+            (static_cast<uint64_t>(gsRuntimeStateFor(nullptr).gparam.interlace & 0x1u) << 0) |
+            (static_cast<uint64_t>(gsRuntimeStateFor(nullptr).gparam.ffmode & 0x1u) << 1);
         const uint64_t dispfb = makeDispFb(0u, fbw, psm, 0u, 0u);
         const uint64_t display = makeDisplay(636u, 32u, 0u, 0u, w - 1u, h - 1u);
 
@@ -1323,7 +1323,7 @@ namespace ps2_stubs
         ps2_syscalls::WaitVSyncTick(rdram,
                                     ctx,
                                     runtime,
-                                    gsRuntimeState().gparam.interlace != 0u ? -1 : 1);
+                                    gsRuntimeStateFor(nullptr).gparam.interlace != 0u ? -1 : 1);
     }
 
     void sceGsSyncVCallback(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)

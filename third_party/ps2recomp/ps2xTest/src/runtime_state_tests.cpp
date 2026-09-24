@@ -1,55 +1,58 @@
 // Sprint 11 Task 8b: the per-subsystem *RuntimeState split, adapted from the MrCoolTheCucumber fork.
 //
-// docs/KNOWN.md #4: Kernel/Stubs/Helpers/Support.h defines its state in an anonymous namespace, so
-// each of the nineteen stub translation units that pull it in through Stubs/Common.h gets its own
+// docs/KNOWN.md #4: Kernel/Stubs/Helpers/Support.h defined its state in an anonymous namespace, so
+// each of the nineteen stub translation units that pull it in through Stubs/Common.h got its own
 // private copy. 955539c moved the whole 2041-line header to a .cpp in one go -- one definition
 // instead of nineteen -- the C++ suite stayed green, and the gate's mission stage then never
-// reached the HUD. It was reverted. This suite is what makes the same move safe one subsystem at a
-// time: for each subsystem moved to a named struct, a test that a SECOND translation unit
-// (runtime_state_alias_probe.cpp) and the stub that actually reads the state both see the one
-// instance -- so a regression to per-TU copies fails here rather than in a 280-second gate run.
+// reached the HUD. It was reverted.
 //
-// Each case does it twice over:
-//   1. address identity  -- this TU and the probe TU name the same object;
-//   2. cross-TU observation -- the test TU writes (or reads) the state and a stub compiled in a
-//      DIFFERENT translation unit sees (or produced) it. This second half is the one that goes red
-//      before the subsystem is moved, because the stub is still reading its own private copy.
+// The shape that makes the same move safe is the fork's: one named struct per subsystem, OWNED BY
+// the PS2Runtime the stub was called with. These cases are what pins that ownership. Each drives a
+// stub compiled in a DIFFERENT translation unit with TWO PS2Runtime instances and asserts that
+//   (a) the stub reached the state of the runtime it was handed, and
+//   (b) the other runtime saw none of it.
+// Process-global state -- an anonymous namespace per TU, or the single function-local static this
+// task's first pass used -- fails (b) or (a) respectively, which is exactly what a regression to
+// either would look like.
 
 #include "MiniTest.h"
 #include "ps2_runtime.h"
 #include "ps2_runtime_macros.h"
 #include "ps2_stubs.h"
 #include "Kernel/Stubs/Unimplemented.h"
+#include "Kernel/Stubs/DMA.h"
+#include "Kernel/Stubs/GS.h"
+#include "Kernel/Stubs/LibC.h"
 #include "Kernel/Stubs/Helpers/StubLogRuntimeState.h"
 #include "Kernel/Stubs/Helpers/DmaRuntimeState.h"
-#include "Kernel/Stubs/DMA.h"
 #include "Kernel/Stubs/Helpers/GsRuntimeState.h"
-#include "Kernel/Stubs/GS.h"
-#include "Kernel/Stubs/Helpers/LibCFileRuntimeState.h"
-#include "Kernel/Stubs/LibC.h"
+#include "Kernel/Stubs/Helpers/LibCRuntimeState.h"
 
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 
-namespace ps2x_test_rtstate_probe
-{
-    const void *stubLogStateAddress();
-    const void *dmaStateAddress();
-    const void *gsStateAddress();
-    const void *libcFileStateAddress();
-}
-
 namespace
 {
-    // A stub name no other test uses, so the shared counter's value is ours alone.
+    // A stub name no other test uses, so the counter's value is ours alone.
     const char *const kProbeStubName = "s11t8b_probe_stub";
+
+    constexpr uint32_t kVif1ChannelBase = 0x10009000u;
 
     void setRegU32(R5900Context &ctx, int reg, uint32_t value)
     {
         ctx.r[reg] = _mm_set_epi64x(0, static_cast<int64_t>(value));
+    }
+
+    uint32_t stubWarningsFor(PS2Runtime &runtime, const char *name)
+    {
+        ps2_stubs::StubLogRuntimeState &state = runtime.stubLogRuntimeState();
+        std::lock_guard<std::mutex> lock(state.warningMutex);
+        auto it = state.warningCount.find(name);
+        return (it != state.warningCount.end()) ? it->second : 0u;
     }
 }
 
@@ -57,30 +60,18 @@ void register_runtime_state_tests()
 {
     MiniTest::Case("Kernel stub runtime state (Sprint 11 Task 8b)", [](TestCase &tc)
     {
-        tc.Run("StubLogRuntimeState is one object across translation units", [](TestCase &t)
+        tc.Run("Stubs/Unimplemented.cpp bumps the stub-warning counter of the runtime it was handed", [](TestCase &t)
         {
-            t.Equals(static_cast<const void *>(&ps2_stubs::stubLogRuntimeState()),
-                     ps2x_test_rtstate_probe::stubLogStateAddress(),
-                     "runtime_state_tests.cpp and runtime_state_alias_probe.cpp must name one "
-                     "StubLogRuntimeState; two addresses means the header is handing every "
-                     "translation unit its own copy again (docs/KNOWN.md #4)");
-        });
+            PS2Runtime first;
+            PS2Runtime second;
 
-        tc.Run("Stubs/Unimplemented.cpp shares the stub-warning counter with this TU", [](TestCase &t)
-        {
-            ps2_stubs::StubLogRuntimeState &state = ps2_stubs::stubLogRuntimeState();
-            {
-                std::lock_guard<std::mutex> lock(state.warningMutex);
-                state.warningCount.erase(kProbeStubName);
-            }
-
-            // TODO_NAMED lives in Stubs/Unimplemented.cpp -- a different translation unit. It bumps
-            // the counter and then throws (its first kMaxStubWarningsPerName calls do).
+            // TODO_NAMED lives in Stubs/Unimplemented.cpp -- a different translation unit. Its
+            // first kMaxStubWarningsPerName calls bump the counter and then throw.
             R5900Context ctx{};
             bool threw = false;
             try
             {
-                ps2_stubs::TODO_NAMED(kProbeStubName, nullptr, &ctx, nullptr);
+                ps2_stubs::TODO_NAMED(kProbeStubName, nullptr, &ctx, &first);
             }
             catch (const std::runtime_error &)
             {
@@ -88,34 +79,18 @@ void register_runtime_state_tests()
             }
             t.IsTrue(threw, "TODO_NAMED should still throw on an unimplemented stub");
 
-            uint32_t seen = 0;
-            {
-                std::lock_guard<std::mutex> lock(state.warningMutex);
-                auto it = state.warningCount.find(kProbeStubName);
-                if (it != state.warningCount.end())
-                    seen = it->second;
-            }
-            t.Equals(seen, 1u,
-                     "the counter this TU reads should hold the call Stubs/Unimplemented.cpp just "
-                     "made; 0 means that TU bumped its own private copy");
-        });
-
-        tc.Run("DmaRuntimeState is one object across translation units", [](TestCase &t)
-        {
-            t.Equals(static_cast<const void *>(&ps2_stubs::dmaRuntimeState()),
-                     ps2x_test_rtstate_probe::dmaStateAddress(),
-                     "runtime_state_tests.cpp and runtime_state_alias_probe.cpp must name one "
-                     "DmaRuntimeState; two addresses means the header is handing every translation "
-                     "unit its own copy again (docs/KNOWN.md #4)");
+            t.Equals(stubWarningsFor(first, kProbeStubName), 1u,
+                     "the counter of the runtime the stub was called with should hold that call; "
+                     "0 means Stubs/Unimplemented.cpp bumped process-wide state instead of this "
+                     "runtime's (docs/KNOWN.md #4)");
+            t.Equals(stubWarningsFor(second, kProbeStubName), 0u,
+                     "a second runtime in the same process must not see the first one's "
+                     "stub-warning count");
         });
 
         tc.Run("Stubs/DMA.cpp's sceDmaSync consumes the pending mark this TU wrote", [](TestCase &t)
         {
-            // VIF1. resolveDmaChannelBase takes a known channel base straight through, so this
-            // needs no rdram at all.
-            constexpr uint32_t kVif1ChannelBase = 0x10009000u;
-
-            ps2_stubs::DmaRuntimeState &dma = ps2_stubs::dmaRuntimeState();
+            ps2_stubs::DmaRuntimeState &dma = ps2_stubs::dmaRuntimeStateFor(nullptr);
             {
                 std::lock_guard<std::mutex> lock(dma.mutex);
                 dma.pendingPolls[kVif1ChannelBase] = 1u;
@@ -139,30 +114,17 @@ void register_runtime_state_tests()
             }
 
             t.Equals(firstReturn, 1u,
-                     "sceDmaSync should report busy for the channel this TU marked pending; 0 means "
-                     "Stubs/DMA.cpp looked in its own private copy of the pending-poll map");
+                     "sceDmaSync should report busy for the channel this TU marked pending");
             t.IsFalse(stillPending,
                       "sceDmaSync should have consumed the pending mark in the state this TU reads");
         });
 
-        tc.Run("GsRuntimeState is one object across translation units", [](TestCase &t)
-        {
-            t.Equals(static_cast<const void *>(&ps2_stubs::gsRuntimeState()),
-                     ps2x_test_rtstate_probe::gsStateAddress(),
-                     "runtime_state_tests.cpp and runtime_state_alias_probe.cpp must name one "
-                     "GsRuntimeState; two addresses means the header is handing every translation "
-                     "unit its own copy again (docs/KNOWN.md #4)");
-        });
-
         tc.Run("Stubs/GS.cpp's sceGsResetGraph writes the GParam this TU reads", [](TestCase &t)
         {
-            ps2_stubs::GsRuntimeState &gs = ps2_stubs::gsRuntimeState();
+            ps2_stubs::GsRuntimeState &gs = ps2_stubs::gsRuntimeStateFor(nullptr);
             const ps2_stubs::GsGParam saved = gs.gparam;
             gs.gparam = ps2_stubs::GsGParam{1, 2, 1, 3};
 
-            // sceGsResetGraph lives in Stubs/GS.cpp -- a different translation unit. With mode 0
-            // and no runtime it takes only the branch that stores the three fields: the GIF packet,
-            // the scratchpad copy and syncCoreSubsystems are all behind `if (runtime)`.
             R5900Context ctx{};
             setRegU32(ctx, 4, 0u);    // $a0 = mode 0
             setRegU32(ctx, 5, 1u);    // $a1 = interlace
@@ -174,19 +136,9 @@ void register_runtime_state_tests()
             gs.gparam = saved;
 
             t.Equals(static_cast<uint32_t>(seen.omode), 3u,
-                     "the GParam this TU reads should hold the omode Stubs/GS.cpp just stored; 2 "
-                     "(the default) means that TU wrote its own private copy");
+                     "the GParam this TU reads should hold the omode Stubs/GS.cpp just stored");
             t.Equals(static_cast<uint32_t>(seen.ffmode), 0u,
                      "sceGsResetGraph's ffmode should have reached the state this TU reads");
-        });
-
-        tc.Run("LibCFileRuntimeState is one object across translation units", [](TestCase &t)
-        {
-            t.Equals(static_cast<const void *>(&ps2_stubs::libcFileRuntimeState()),
-                     ps2x_test_rtstate_probe::libcFileStateAddress(),
-                     "runtime_state_tests.cpp and runtime_state_alias_probe.cpp must name one "
-                     "LibCFileRuntimeState; two addresses means the header is handing every "
-                     "translation unit its own copy again (docs/KNOWN.md #4)");
         });
 
         tc.Run("Stubs/LibC.cpp's fclose closes the handle this TU opened", [](TestCase &t)
@@ -196,16 +148,14 @@ void register_runtime_state_tests()
             if (!fp)
                 return;
 
-            ps2_stubs::LibCFileRuntimeState &files = ps2_stubs::libcFileRuntimeState();
+            ps2_stubs::LibCRuntimeState &files = ps2_stubs::libcRuntimeStateFor(nullptr);
             uint32_t handle = 0;
             {
                 std::lock_guard<std::mutex> lock(files.mutex);
-                handle = files.allocateHandle();
+                handle = files.allocateHandleLocked();
                 files.openFiles[handle] = fp;
             }
 
-            // fclose lives in Stubs/LibC.cpp -- a different translation unit. It must find THIS
-            // table's entry, close the FILE and erase it.
             R5900Context ctx{};
             setRegU32(ctx, 4, handle);
             ps2_stubs::fclose(nullptr, &ctx, nullptr);
@@ -220,8 +170,7 @@ void register_runtime_state_tests()
             }
 
             t.Equals(ret, 0,
-                     "fclose should have found the handle this TU registered; EOF means "
-                     "Stubs/LibC.cpp searched its own private copy of the FILE table");
+                     "fclose should have found the handle this TU registered");
             t.IsFalse(stillOpen,
                       "fclose should have erased the handle from the table this TU reads");
         });

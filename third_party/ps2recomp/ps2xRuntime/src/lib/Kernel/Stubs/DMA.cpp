@@ -5,19 +5,7 @@ namespace ps2_stubs
 {
     namespace
     {
-        struct SceDmaEnv
-        {
-            uint8_t sts = 0;
-            uint8_t std = 0;
-            uint8_t mfd = 0;
-            uint8_t rele = 0;
-            uint32_t pcr = 0;
-            uint32_t sqwc = 0;
-            uint32_t rbor = 0;
-            uint32_t rbsr = 0;
-        };
-
-        static_assert(sizeof(SceDmaEnv) == 0x14, "sceDmaEnv must match the guest ABI");
+        // SceDmaEnv and its 0x14 static_assert live in Helpers/DmaRuntimeState.h (Task 8b).
 
         constexpr uint32_t DMA_REG_CTRL = 0x1000E000u;
         constexpr uint32_t DMA_REG_PCR = 0x1000E020u;

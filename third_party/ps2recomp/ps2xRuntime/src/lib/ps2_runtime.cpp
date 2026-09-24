@@ -18,6 +18,10 @@
 #include "Kernel/Stubs/Audio.h"
 #include "Kernel/Stubs/GS.h"
 #include "Kernel/Stubs/MPEG.h"
+#include "Kernel/Stubs/Helpers/StubLogRuntimeState.h"   // Sprint 11 Task 8b
+#include "Kernel/Stubs/Helpers/DmaRuntimeState.h"
+#include "Kernel/Stubs/Helpers/GsRuntimeState.h"
+#include "Kernel/Stubs/Helpers/LibCRuntimeState.h"
 #include "ps2_host_backend.h"
 #include "rlgl.h"
 #include "ps2_iop_host.h"
@@ -515,6 +519,12 @@ static void UploadFrame(Texture2D &tex, PS2Runtime *rt, uint32_t &outWidth, uint
 
 PS2Runtime::PS2Runtime()
 {
+    // Sprint 11 Task 8b: the EE stub subsystems' state is this runtime's, not the process's.
+    m_stubLogRuntimeState = std::make_unique<ps2_stubs::StubLogRuntimeState>();
+    m_dmaRuntimeState = std::make_unique<ps2_stubs::DmaRuntimeState>();
+    m_gsRuntimeState = std::make_unique<ps2_stubs::GsRuntimeState>();
+    m_libcRuntimeState = std::make_unique<ps2_stubs::LibCRuntimeState>();
+
     m_iopHost = std::make_unique<PS2IopHostAdapter>(*this);
     m_iopSubsystem = std::make_unique<ps2x::iop::IopSubsystem>(*m_iopHost);
     m_eeScheduler = std::make_unique<EeScheduler>(*this);
@@ -2964,4 +2974,58 @@ bool ps2_fpu_trap_site_ok(uint32_t pc)
         return true;
     }
     return false;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sprint 11 Task 8b: the EE stub subsystems' state.
+//
+// Each object is a member of the runtime, so two PS2Runtime instances in one process share none
+// of it. The ps2_stubs::*RuntimeStateFor(runtime) helpers are what the stubs call, because an EE
+// stub can be reached with no runtime at all (TODO_NAMED, sceGsResetGraph, fopen/fclose and the
+// libc rand pair all tolerate runtime == nullptr, and several tests use that); those calls share
+// one process-wide fallback instance each, which is the only state here that is not per-runtime.
+// ---------------------------------------------------------------------------------------------
+
+ps2_stubs::StubLogRuntimeState &PS2Runtime::stubLogRuntimeState() { return *m_stubLogRuntimeState; }
+const ps2_stubs::StubLogRuntimeState &PS2Runtime::stubLogRuntimeState() const { return *m_stubLogRuntimeState; }
+ps2_stubs::DmaRuntimeState &PS2Runtime::dmaRuntimeState() { return *m_dmaRuntimeState; }
+const ps2_stubs::DmaRuntimeState &PS2Runtime::dmaRuntimeState() const { return *m_dmaRuntimeState; }
+ps2_stubs::GsRuntimeState &PS2Runtime::gsRuntimeState() { return *m_gsRuntimeState; }
+const ps2_stubs::GsRuntimeState &PS2Runtime::gsRuntimeState() const { return *m_gsRuntimeState; }
+ps2_stubs::LibCRuntimeState &PS2Runtime::libcRuntimeState() { return *m_libcRuntimeState; }
+const ps2_stubs::LibCRuntimeState &PS2Runtime::libcRuntimeState() const { return *m_libcRuntimeState; }
+
+void PS2Runtime::resetStubRuntimeState()
+{
+    m_stubLogRuntimeState->reset();
+    m_dmaRuntimeState->reset();
+    m_gsRuntimeState->reset();
+    m_libcRuntimeState->reset();
+}
+
+namespace ps2_stubs
+{
+    StubLogRuntimeState &stubLogRuntimeStateFor(PS2Runtime *runtime)
+    {
+        static StubLogRuntimeState noRuntimeFallback;
+        return runtime ? runtime->stubLogRuntimeState() : noRuntimeFallback;
+    }
+
+    DmaRuntimeState &dmaRuntimeStateFor(PS2Runtime *runtime)
+    {
+        static DmaRuntimeState noRuntimeFallback;
+        return runtime ? runtime->dmaRuntimeState() : noRuntimeFallback;
+    }
+
+    GsRuntimeState &gsRuntimeStateFor(PS2Runtime *runtime)
+    {
+        static GsRuntimeState noRuntimeFallback;
+        return runtime ? runtime->gsRuntimeState() : noRuntimeFallback;
+    }
+
+    LibCRuntimeState &libcRuntimeStateFor(PS2Runtime *runtime)
+    {
+        static LibCRuntimeState noRuntimeFallback;
+        return runtime ? runtime->libcRuntimeState() : noRuntimeFallback;
+    }
 }
