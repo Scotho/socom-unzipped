@@ -44,6 +44,7 @@ under `game/`, which `.gitignore` excludes, and neither is committed.
 | its `.relmain` | `SHT_REL`, 115,142 entries — a Metrowerks link leaves its relocations in place |
 | our image | `game/disc/socom2_game.elf` (r0001), four `PT_LOAD`s: 0x100000, 0x1D5000, 0x1E7000, 0x4C5380 |
 | our table | `recomp/socom2_ghidra.csv`, 14,879 rows, 113 already named by hand, 51 with no bytes in any segment (command B's `our table:` line) |
+| | > *Correction (2026-09-24, research/48 §1): the 113 are not hand names — 69 Ghidra syscall-stub names, 42 `caseD_` labels, `entry` and one `thunk_EXT_FUN_`; none was written by a person. Hurdle 5 below ("our row is still `FUN_…`") is unaffected.* |
 
 Command C prints the section table, that symbol census, the relocation count and the twenty largest
 functions. The demo's size and sha256 are the filesystem's and `sha256sum`'s, not a tool's.
