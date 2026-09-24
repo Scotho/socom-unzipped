@@ -208,5 +208,17 @@ class ElfSymbolsTest(unittest.TestCase):
             parse_elf(b"MZ" + bytes(64))
 
 
+
+class HeaderTooShortTest(unittest.TestCase):
+    """A file that begins with the ELF magic and ends five bytes later is a truncation, not an ELF: it must be
+    the same ValueError sentence as every other short read, never an IndexError (Task 7 re-review 2, N5)."""
+
+    def test_five_bytes_with_the_magic_is_a_sentence(self):
+        from tools_py.elf_symbols import parse_elf
+        with self.assertRaises(ValueError) as cm:
+            parse_elf(b"\x7fELF\x01")
+        self.assertIn("truncated ELF header", str(cm.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

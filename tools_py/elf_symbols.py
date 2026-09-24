@@ -165,6 +165,8 @@ def parse_elf(data: bytes) -> Elf:
     """
     if data[:4] != b"\x7fELF":
         raise ValueError("not an ELF file")
+    if len(data) < 52:   # the ELF32 header itself; a shorter file with the magic is a truncation, not an ELF
+        raise ValueError("truncated ELF header: %d bytes, the ELF32 header needs 52" % len(data))
     if data[4] != 1 or data[5] != 1:
         raise ValueError("expected a little-endian ELF32")
     e_type, e_machine = _unpack("<HH", data, 16, "ELF header")

@@ -62,7 +62,7 @@ to the project box 06:58Z); **Task 10** the fingerprint matcher and the address 
 unresolved); **Task 12** the leak gate's external leg (`c0e60e3`, `a021c52`); **Task 14** `docs/INSTALL.md` and
 `docs/FAQ.md`; **Task 15** `docs/HOW_IT_WAS_BUILT.md`. Also in: **U1** (research/40 §9: the real 989SND.IRX agrees
 with our model on 1,775 of 1,794 calls; R245 — option B not scheduled; the two alignments `7b44d70`, `776e423`),
-**U4** (research/41), and **U3 parked**: the SOCOM 1 demo disc (`SCUS-972.05`) is not on this machine — HUMAN_TASKS.
+**U4** (research/41), and **U3 unparked 2026-09-24 evening**: the owner brought the SOCOM 1 demo disc (`SCUS-972.05`, Zero1UP's dump; its ELF is the symbol-bearing build reCOM names, 9,703 named functions, git-ignored under `game/`) and, a surprise, the SOCOM II demo of 2003-08-18 (`SCUS-973.68`, stripped, research value only) — Task 7 dispatched.
 **Where the twelve hours ended (2026-09-23 14:00Z).** Landed on `sprint-11` after review: **Task 16** (the
 dead history archived, check 6, the badges; `3615dbb`), **Task 9** (`scripts/build_revision.sh`, socom-pc-09;
 r0001check byte-identical, one fix round, `5a2dc44`'s parent), **Task 4** (README and SECURITY narrowed, `3efa6a7`)
