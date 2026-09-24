@@ -2493,6 +2493,18 @@ void PS2Runtime::setEeSyscallOverride(uint8_t *rdram, uint32_t syscallNumber, ui
     }
 }
 
+bool PS2Runtime::noteUnrunnableSyscallOverride(uint32_t syscallNumber, uint32_t handler)
+{
+    const uint64_t key = (static_cast<uint64_t>(syscallNumber) << 32) | static_cast<uint64_t>(handler);
+    std::lock_guard lock(m_eeKernelStateMutex);
+    if (m_unrunnableSyscallOverrides.size() >= kMaxUnrunnableSyscallOverridesReported &&
+        m_unrunnableSyscallOverrides.find(key) == m_unrunnableSyscallOverrides.end())
+    {
+        return false;
+    }
+    return m_unrunnableSyscallOverrides.insert(key).second;
+}
+
 void PS2Runtime::initializeEeKernelState(uint8_t *rdram)
 {
     if (!rdram)
@@ -2505,6 +2517,9 @@ void PS2Runtime::initializeEeKernelState(uint8_t *rdram)
     constexpr uint32_t kProbeBase = 0x000002F0u;
 
     std::lock_guard lock(m_eeKernelStateMutex);
+    // The guest kernel is starting over, so the "override we cannot execute" diagnostic starts
+    // over with it.
+    m_unrunnableSyscallOverrides.clear();
     for (const uint32_t address : m_eeSyscallMirrorAddresses)
     {
         const uint32_t zero = 0u;

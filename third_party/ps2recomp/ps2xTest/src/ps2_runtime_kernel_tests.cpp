@@ -25,6 +25,17 @@ namespace
     constexpr uint32_t K_PARAM_ADDR = 0x1000u;
     constexpr uint32_t K_STATUS_ADDR = 0x1400u;
 
+    // Measured facts about the two SOCOM II discs: max(vaddr + memsz) over their PT_LOAD segments.
+    // r0004's image ends 0xC48 LOWER than r0001's. Both heap cases below pose both layouts, so
+    // they live here rather than being repeated (Sprint 11 Task 19).
+    constexpr uint32_t K_IMAGE_END_R0001 = 0x00686F80u;
+    constexpr uint32_t K_IMAGE_END_R0004 = 0x00686338u;
+    // SOCOM II's crt0 is byte-identical in both discs: SetupHeap(0x00686F80, -1), and the loader's
+    // _brk starts at that same address.
+    constexpr uint32_t K_GUEST_BRK_START = 0x00686F80u;
+    // The top of usable guest RAM: kGuestHeapHardLimit in ps2_runtime.cpp.
+    constexpr uint32_t K_USABLE_RAM_TOP = 0x01F00000u;
+
     constexpr int KE_OK = 0;
     constexpr int KE_ERROR = -1;
     constexpr int KE_ILLEGAL_THID = -406;
@@ -2073,9 +2084,9 @@ void register_ps2_runtime_kernel_tests()
         // loader's operator new rebooted the game the first time malloc came back NULL.
         tc.Run("EndOfHeap answers the top of usable RAM for either revision's image layout", [](TestCase &t)
         {
-            constexpr uint32_t kUsableTop = 0x01F00000u;
-            constexpr uint32_t kGuestBrkStart = 0x00686F80u;
-            const uint32_t imageEnds[] = {0x00686F80u /* r0001 */, 0x00686338u /* r0004 */};
+            constexpr uint32_t kUsableTop = K_USABLE_RAM_TOP;
+            constexpr uint32_t kGuestBrkStart = K_GUEST_BRK_START;
+            const uint32_t imageEnds[] = {K_IMAGE_END_R0001, K_IMAGE_END_R0004};
 
             for (const uint32_t imageEnd : imageEnds)
             {
@@ -2105,9 +2116,44 @@ void register_ps2_runtime_kernel_tests()
             }
         });
 
+        // The other half of the same syscall: a finite size means exactly that size, not "the rest
+        // of RAM". Without this, a change to clampGuestHeapLimit or to SetupHeap's
+        // heapLimit <= heapBase fallback could silently turn every SetupHeap into the hard limit
+        // with the case above still green.
+        tc.Run("SetupHeap(start, size) ends the heap at start + size, and clamps an oversize one", [](TestCase &t)
+        {
+            TestEnv env;
+            env.runtime.noteLoadedImageEnd(K_IMAGE_END_R0004);
+
+            setRegU32(env.ctx, 4, K_GUEST_BRK_START);
+            setRegU32(env.ctx, 5, 0x00400000u);
+            t.IsTrue(callSyscall(0x3Du, env.rdram.data(), &env.ctx, &env.runtime),
+                     "SetupHeap syscall should dispatch for a finite size");
+            t.Equals(static_cast<uint32_t>(getRegS32(env.ctx, 2)),
+                     K_GUEST_BRK_START,
+                     "SetupHeap should return the base it was given");
+
+            t.IsTrue(callSyscall(0x3Eu, env.rdram.data(), &env.ctx, &env.runtime),
+                     "EndOfHeap syscall should dispatch after a sized SetupHeap");
+            t.Equals(static_cast<uint32_t>(getRegS32(env.ctx, 2)),
+                     K_GUEST_BRK_START + 0x00400000u,
+                     "a finite SetupHeap size must end the heap at start + size, not at the hard limit");
+
+            // Past the top of usable RAM: the limit is clamped, never handed out raw.
+            setRegU32(env.ctx, 4, K_GUEST_BRK_START);
+            setRegU32(env.ctx, 5, 0x02000000u);
+            t.IsTrue(callSyscall(0x3Du, env.rdram.data(), &env.ctx, &env.runtime),
+                     "SetupHeap syscall should dispatch for an oversize size");
+            t.IsTrue(callSyscall(0x3Eu, env.rdram.data(), &env.ctx, &env.runtime),
+                     "EndOfHeap syscall should dispatch after an oversize SetupHeap");
+            t.Equals(static_cast<uint32_t>(getRegS32(env.ctx, 2)),
+                     K_USABLE_RAM_TOP,
+                     "a size past the top of usable RAM must clamp to the top of usable RAM");
+        });
+
         tc.Run("the runtime heap base clears the loaded image in either revision", [](TestCase &t)
         {
-            const uint32_t imageEnds[] = {0x00686F80u /* r0001 */, 0x00686338u /* r0004 */};
+            const uint32_t imageEnds[] = {K_IMAGE_END_R0001, K_IMAGE_END_R0004};
             for (const uint32_t imageEnd : imageEnds)
             {
                 TestEnv env;
@@ -2199,6 +2245,33 @@ void register_ps2_runtime_kernel_tests()
                      "PollEventFlag syscall should dispatch");
             t.Equals(getRegS32(env.ctx, 2), KE_OK,
                      "the event-flag five must not answer KE_ERROR after the loader's poisoned SetSyscall");
+        });
+
+        // The diagnostic that goes with the fall-through is once per (syscall, handler) per
+        // guest-kernel lifetime, and it belongs to a runtime rather than to the process: ps2xTest
+        // builds several PS2Runtimes, and each one deserves to say it.
+        tc.Run("the unrunnable-override diagnostic is once per pair, per runtime, and resets with the kernel", [](TestCase &t)
+        {
+            TestEnv env;
+            constexpr uint32_t kHandlerA = 0x80075000u;
+            constexpr uint32_t kHandlerB = 0xFFFFFFFFu;
+
+            t.IsTrue(env.runtime.noteUnrunnableSyscallOverride(0x5Bu, kHandlerA),
+                     "the first sighting of a pair should report");
+            t.IsTrue(!env.runtime.noteUnrunnableSyscallOverride(0x5Bu, kHandlerA),
+                     "the same pair should not report twice");
+            t.IsTrue(env.runtime.noteUnrunnableSyscallOverride(0x5Bu, kHandlerB),
+                     "the same syscall with a different handler is a different pair");
+            t.IsTrue(env.runtime.noteUnrunnableSyscallOverride(0x57u, kHandlerA),
+                     "a different syscall with the same handler is a different pair");
+
+            TestEnv other;
+            t.IsTrue(other.runtime.noteUnrunnableSyscallOverride(0x5Bu, kHandlerA),
+                     "a second runtime in the same process should report the pair too");
+
+            initializeGuestKernelState(env.rdram.data(), &env.runtime);
+            t.IsTrue(env.runtime.noteUnrunnableSyscallOverride(0x5Bu, kHandlerA),
+                     "the guest kernel starting over should let the pair report again");
         });
     });
 }

@@ -416,6 +416,11 @@ public:
     bool findEeSyscallOverride(uint32_t syscallNumber, uint32_t &handler) const;
     void setEeSyscallOverride(uint8_t *rdram, uint32_t syscallNumber, uint32_t handler);
     void initializeEeKernelState(uint8_t *rdram);
+    // True the first time this (syscall, handler) pair is seen to be unrunnable on THIS runtime,
+    // so the dispatcher's diagnostic prints once per pair per guest-kernel lifetime rather than
+    // once per process. Capped, so a guest registering many distinct handlers cannot grow it
+    // without bound; past the cap it answers false and stays quiet.
+    bool noteUnrunnableSyscallOverride(uint32_t syscallNumber, uint32_t handler);
 
     uint8_t Load8(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr);
     uint16_t Load16(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr);
@@ -506,6 +511,10 @@ private:
     std::unordered_map<int, std::vector<EeExitHandlerRegistration>> m_eeExitHandlers;
     std::unordered_map<uint32_t, uint32_t> m_eeSyscallOverrides;
     std::unordered_set<uint32_t> m_eeSyscallMirrorAddresses;
+    // (syscall << 32) | handler pairs already reported as unrunnable; see
+    // noteUnrunnableSyscallOverride. Guarded by m_eeKernelStateMutex.
+    std::unordered_set<uint64_t> m_unrunnableSyscallOverrides;
+    static constexpr size_t kMaxUnrunnableSyscallOverridesReported = 64u;
     mutable std::mutex m_guestHeapMutex;
     mutable std::mutex m_asyncCallbackStackMutex;
     std::vector<GuestHeapBlock> m_guestHeapBlocks;

@@ -7,10 +7,9 @@ namespace ps2_syscalls
 {
     bool dispatchNumericSyscall(uint32_t syscallNumber, uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
-        if (dispatchSyscallOverride(syscallNumber, rdram, ctx, runtime))
-        {
-            return true;
-        }
+        // Does not return when the guest's handler runs (invokeCurrent is [[noreturn]]); returns
+        // having touched nothing when there is no handler, or none the runtime can execute.
+        dispatchSyscallOverride(syscallNumber, rdram, ctx, runtime);
 
         switch (syscallNumber)
         {
