@@ -23,6 +23,8 @@
 #include "Kernel/Stubs/Helpers/StubLogRuntimeState.h"
 #include "Kernel/Stubs/Helpers/DmaRuntimeState.h"
 #include "Kernel/Stubs/DMA.h"
+#include "Kernel/Stubs/Helpers/GsRuntimeState.h"
+#include "Kernel/Stubs/GS.h"
 
 #include <cstdint>
 #include <cstring>
@@ -33,6 +35,7 @@ namespace ps2x_test_rtstate_probe
 {
     const void *stubLogStateAddress();
     const void *dmaStateAddress();
+    const void *gsStateAddress();
 }
 
 namespace
@@ -136,6 +139,41 @@ void register_runtime_state_tests()
                      "Stubs/DMA.cpp looked in its own private copy of the pending-poll map");
             t.IsFalse(stillPending,
                       "sceDmaSync should have consumed the pending mark in the state this TU reads");
+        });
+
+        tc.Run("GsRuntimeState is one object across translation units", [](TestCase &t)
+        {
+            t.Equals(static_cast<const void *>(&ps2_stubs::gsRuntimeState()),
+                     ps2x_test_rtstate_probe::gsStateAddress(),
+                     "runtime_state_tests.cpp and runtime_state_alias_probe.cpp must name one "
+                     "GsRuntimeState; two addresses means the header is handing every translation "
+                     "unit its own copy again (docs/KNOWN.md #4)");
+        });
+
+        tc.Run("Stubs/GS.cpp's sceGsResetGraph writes the GParam this TU reads", [](TestCase &t)
+        {
+            ps2_stubs::GsRuntimeState &gs = ps2_stubs::gsRuntimeState();
+            const ps2_stubs::GsGParam saved = gs.gparam;
+            gs.gparam = ps2_stubs::GsGParam{1, 2, 1, 3};
+
+            // sceGsResetGraph lives in Stubs/GS.cpp -- a different translation unit. With mode 0
+            // and no runtime it takes only the branch that stores the three fields: the GIF packet,
+            // the scratchpad copy and syncCoreSubsystems are all behind `if (runtime)`.
+            R5900Context ctx{};
+            setRegU32(ctx, 4, 0u);    // $a0 = mode 0
+            setRegU32(ctx, 5, 1u);    // $a1 = interlace
+            setRegU32(ctx, 6, 3u);    // $a2 = omode  (3, not the default 2)
+            setRegU32(ctx, 7, 0u);    // $a3 = ffmode (0, not the default 1)
+            ps2_stubs::sceGsResetGraph(nullptr, &ctx, nullptr);
+
+            const ps2_stubs::GsGParam seen = gs.gparam;
+            gs.gparam = saved;
+
+            t.Equals(static_cast<uint32_t>(seen.omode), 3u,
+                     "the GParam this TU reads should hold the omode Stubs/GS.cpp just stored; 2 "
+                     "(the default) means that TU wrote its own private copy");
+            t.Equals(static_cast<uint32_t>(seen.ffmode), 0u,
+                     "sceGsResetGraph's ffmode should have reached the state this TU reads");
         });
     });
 }

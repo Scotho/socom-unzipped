@@ -6,6 +6,7 @@
 // directly rather than through Stubs/Common.h -- so the includes belong here, not in Common.h.
 #include "StubLogRuntimeState.h"
 #include "DmaRuntimeState.h"
+#include "GsRuntimeState.h"
 
 namespace
 {
@@ -1496,14 +1497,6 @@ namespace
 
 namespace
 {
-    struct GsGParam
-    {
-        uint8_t interlace;
-        uint8_t omode;
-        uint8_t ffmode;
-        uint8_t version;
-    };
-
     struct GsDispEnvMem
     {
         uint64_t pmode;
@@ -1604,7 +1597,9 @@ namespace
     static_assert(sizeof(GsDBuffDcMem) == 0x330, "GsDBuffDcMem size mismatch");
 
     constexpr uint32_t kGsParamScratchOffset = 0x100;
-    GsGParam g_gparam{1, 2, 1, 3}; // Default: interlaced NTSC, frame mode.
+    // Sprint 11 Task 8b: the GParam block moved to ps2_stubs::gsRuntimeState().gparam in
+    // Helpers/GsRuntimeState.h -- one object for the program instead of one copy per stub
+    // translation unit (docs/KNOWN.md #4). GsGParam's definition moved with it.
 
     static uint64_t makePmode(uint32_t en1, uint32_t en2, uint32_t mmod, uint32_t amod, uint32_t slbg, uint32_t alp)
     {
@@ -2041,7 +2036,8 @@ namespace
         uint8_t *scratch = runtime->memory().getScratchpad();
         if (!scratch)
             return 0;
-        std::memcpy(scratch + kGsParamScratchOffset, &g_gparam, sizeof(g_gparam));
+        const ps2_stubs::GsGParam &gparam = ps2_stubs::gsRuntimeState().gparam;
+        std::memcpy(scratch + kGsParamScratchOffset, &gparam, sizeof(gparam));
         return PS2_SCRATCHPAD_BASE + kGsParamScratchOffset;
     }
 }

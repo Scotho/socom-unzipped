@@ -10,6 +10,7 @@
 
 #include "Kernel/Stubs/Helpers/StubLogRuntimeState.h"
 #include "Kernel/Stubs/Helpers/DmaRuntimeState.h"
+#include "Kernel/Stubs/Helpers/GsRuntimeState.h"
 
 namespace ps2x_test_rtstate_probe
 {
@@ -21,5 +22,10 @@ namespace ps2x_test_rtstate_probe
     const void *dmaStateAddress()
     {
         return &ps2_stubs::dmaRuntimeState();
+    }
+
+    const void *gsStateAddress()
+    {
+        return &ps2_stubs::gsRuntimeState();
     }
 }
