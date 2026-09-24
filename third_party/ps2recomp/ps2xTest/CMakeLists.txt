@@ -82,6 +82,8 @@ add_library(ps2_test_lib STATIC
     src/socom2_addresses_tests.cpp   # Sprint 11 Task 10
     src/socom2_revision_guard_tests.cpp   # Sprint 11 Task 19
     src/ps2_save_state_tests.cpp   # Sprint 11 Task 8c
+    src/runtime_state_tests.cpp         # Sprint 11 Task 8b
+    src/runtime_state_alias_probe.cpp   # Sprint 11 Task 8b: the second TU the aliasing tests compare against
 )
 
 target_include_directories(ps2_test_lib PRIVATE
