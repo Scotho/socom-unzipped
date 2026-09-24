@@ -3,8 +3,14 @@
 Everything here is synthetic: a three-row match report and a three-row CSV. The point of the tool is one
 rule -- a name that embeds an address does not travel -- and the cases are that rule and the two ways it
 can be got wrong (a carried name overwriting a live one; Start/End/Size drifting).
+
+Sprint 12 Task 2 (research/48 §4-§5, S12-R7): the rule is now `name_provenance.is_placeholder`, anchored, so
+`caseD_6` no longer travels and `C2DBitmapPoly_SetUV_ffffffff` no longer silently drops; a refused placeholder
+is counted; `--names/--names-out` carry the names sidecar with the names.
 """
+import contextlib
 import csv
+import io
 import json
 import os
 import shutil
@@ -12,6 +18,7 @@ import tempfile
 import unittest
 
 from tools_py import carry_names as cn
+from tools_py import name_provenance as npv
 
 
 def report(pairs):
@@ -104,6 +111,88 @@ class Cli(unittest.TestCase):
         with open(raw, "w", encoding="utf-8") as fh:
             fh.write("Name,Start,End,Size\n")
         self.assertEqual(cn.main([mj, raw, os.path.join(self.dir, "o.csv")]), 2)
+
+
+class PlaceholderRule(unittest.TestCase):
+    """research/48 §4: the 8-hex run let `caseD_` travel and dropped a readable name without counting it."""
+
+    def test_a_refused_placeholder_is_counted_apart_from_collisions(self):
+        r = rows([("FUN_00435618", 0x435618, 0x435640), ("FUN_00500000", 0x500000, 0x500020)])
+        counts = cn.carry(report({0x408C58: ("FUN_00408c58", 0x435618),
+                                  0x180008: ("entry", 0x500000)})["matches"], r)
+        self.assertEqual(counts["refused_placeholder"], 2)
+        self.assertEqual(counts["refused"], 0)
+        self.assertEqual([x["Name"] for x in r], ["FUN_00435618", "FUN_00500000"])
+
+    def test_a_case_label_does_not_travel(self):
+        r = rows([("FUN_00268378", 0x268378, 0x268380)])
+        counts = cn.carry(report({0x267808: ("caseD_6", 0x268378)})["matches"], r)
+        self.assertEqual(r[0]["Name"], "FUN_00268378")
+        self.assertEqual((counts["carried"], counts["refused_placeholder"]), (0, 1))
+
+    def test_a_readable_name_with_an_ffffffff_suffix_travels(self):
+        r = rows([("FUN_00359140", 0x359140, 0x359200)])
+        counts = cn.carry(report({0x359140: ("C2DBitmapPoly_SetUV_ffffffff", 0x359140)})["matches"], r)
+        self.assertEqual(r[0]["Name"], "C2DBitmapPoly_SetUV_ffffffff")
+        self.assertEqual((counts["carried"], counts["refused_placeholder"]), (1, 0))
+
+    def test_the_cli_prints_the_placeholder_count(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        mj, raw, out = (os.path.join(d, x) for x in ("m.json", "raw.csv", "out.csv"))
+        with open(mj, "w", encoding="utf-8") as fh:
+            json.dump(report({0x267808: ("caseD_6", 0x268378)}), fh)
+        cn.write_csv(raw, rows([("FUN_00268378", 0x268378, 0x268380)]))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.assertEqual(cn.main([mj, raw, out]), 0)
+        self.assertIn("refused 1 (placeholder)", buf.getvalue())
+        self.assertIn("refused 0 (name collision)", buf.getvalue())
+
+
+class SidecarCarry(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir, True)
+
+    def test_a_carried_name_takes_its_provenance_with_it(self):
+        mj, raw, out, a_side, b_side = (os.path.join(self.dir, x) for x in
+                                        ("m.json", "raw.csv", "out.csv", "a.csv", "b.csv"))
+        doc = report({0x359140: ("C2DBitmapPoly_SetUV_ffffffff", 0x35A000),
+                      0x408C58: ("FUN_00408c58", 0x435618)})
+        doc["matches"]["0x00359140"]["how"] = "hash+callees"
+        with open(mj, "w", encoding="utf-8") as fh:
+            json.dump(doc, fh)
+        cn.write_csv(raw, rows([("FUN_0035a000", 0x35A000, 0x35A0C0), ("FUN_00435618", 0x435618, 0x435640)]))
+        npv.write(a_side, [{"Address": 0x359140, "Name": "C2DBitmapPoly_SetUV_ffffffff",
+                            "Mangled": "SetUV__13C2DBitmapPolyFffffffff", "Pass": "exact", "Score": "0.95",
+                            "Evidence": "demo .symtab, tier A", "Source": "game/demo_symbol_renames.csv",
+                            "Date": "2026-09-25"}])
+        self.assertEqual(cn.main([mj, raw, out, "--names", a_side, "--names-out", b_side]), 0)
+        got = npv.read(b_side)
+        self.assertEqual(list(got), [0x35A000])
+        self.assertEqual(got[0x35A000], {
+            "Address": 0x35A000, "Name": "C2DBitmapPoly_SetUV_ffffffff",
+            "Mangled": "SetUV__13C2DBitmapPolyFffffffff", "Pass": "carried:exact", "Score": "0.95",
+            "Evidence": "match.json hash+callees from 0x00359140; demo .symtab, tier A",
+            "Source": "game/demo_symbol_renames.csv", "Date": "2026-09-25"})
+        with open(out, newline="", encoding="utf-8") as fh:
+            self.assertEqual(npv.audit(list(csv.DictReader(fh)), got), [])
+
+    def test_a_carried_name_without_an_a_row_fails(self):
+        """A name without a recorded reason is a defect (R261): the carry says so and exits 1."""
+        mj, raw, out, a_side, b_side = (os.path.join(self.dir, x) for x in
+                                        ("m.json", "raw.csv", "out.csv", "a.csv", "b.csv"))
+        with open(mj, "w", encoding="utf-8") as fh:
+            json.dump(report({0x1A3720: ("SetGsCrt", 0x1A3720)}), fh)
+        cn.write_csv(raw, rows([("FUN_001a3720", 0x1A3720, 0x1A3730)]))
+        npv.write(a_side, [])
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(cn.main([mj, raw, out, "--names", a_side, "--names-out", b_side]), 1)
+
+    def test_names_and_names_out_come_together(self):
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            cn.main(["m.json", "raw.csv", "out.csv", "--names", "a.csv"])
 
 
 if __name__ == "__main__":
