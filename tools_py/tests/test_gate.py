@@ -387,6 +387,27 @@ class MissionSeeing(unittest.TestCase):
         self.assertIn("PROBE move_scale PASS", detail)
         self.assertIn("PROBE teleport_steps PASS", detail)
 
+    def test_a_fallback_branch_log_still_names_its_column(self):
+        """Re-review N1, end to end. The runtime prints "the image names itself rNNNN" only when a row's
+        own stamp named that row; on its two fallback branches it prints "... -- using rNNNN, every
+        override address is an rNNNN address" instead. s11_open_gate reached the gate on that branch. A
+        --score-mission of such a log has no stamp record to consult, so it reads the wording -- and
+        while guest_probe kept its own copy of log_revision, which matched only the first form, it read
+        PROBE NO-DATA instead of the rows that are right there."""
+        fallback = ("[socom2] address table: the version string names no revision "
+                    "(a boot path) -- using r0001, every override address is an r0001 address\n")
+        with tempfile.TemporaryDirectory() as tmp:
+            log = self._run(tmp)
+            with open(os.path.join(tmp, "mission.game.log"), "w", encoding="utf-8") as f:
+                f.write(fallback + "".join(r for r in self._peek_rows() if r.startswith("[peek]")))
+            ok, detail = gate.score_mission_log(log, probe_required=True)
+        self.assertTrue(ok, detail)
+        self.assertIn("PROBE root_node_y PASS", detail)
+        self.assertIn("(r0001 addresses)", detail)
+        probes = [p for p in detail.split("; ") if p.startswith("PROBE ")]
+        self.assertEqual(len(probes), 4, probes)
+        self.assertTrue(all(" PASS " in p for p in probes), probes)
+
     def test_probe_failure_fails_the_stage(self):
         # R80 (2026-09-15): s6_probe read root node 5.5039, MoveScale 1.0 and 0 teleports on the block-pointer exe,
         # so the three probe values are scored from that run on -- R78's print-only period for them is over.

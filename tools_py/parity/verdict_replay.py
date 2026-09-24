@@ -141,6 +141,10 @@ ACTOR_POS_WORDS = (7, 8, 9)
 HEALTH_OFFSET = 0x1044             # float, <= 0 dead (research/19 F1)
 ALIVE_OFFSET = 0xF7A               # byte, 1 = alive
 TEAM_WORD_OFFSET = 0xC8            # word, meaning OPEN (research/21 §9.6): reported, never gated
+# Deliberately a LITERAL, unlike every other copy of this number (Task 19 re-review N4): this module
+# is the independently written second scorer, and TestImportSet pins it to the standard library so it
+# shares no code -- and so no bug -- with verdict_core/online_match_ours. The r0001 column it agrees
+# with is tools_py/parity/guest_addresses.py's `guest_clock`; an r0004 replay would need it from there.
 GUEST_CLOCK_ADDR = 0x4365C0
 CLOCK_STRING_ADDR = 0x408F10
 MOVE_SCALE_NAME = "MoveScale"

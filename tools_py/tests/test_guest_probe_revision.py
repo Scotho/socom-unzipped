@@ -232,13 +232,32 @@ class RevisionOfImage(unittest.TestCase):
             gp.launch_revision({"SOCOM_GAME_ELF": os.path.join("no", "such", "image.elf")})
         self.assertIn("SOCOM_GAME_ELF", str(e.exception))
 
-    def test_the_default_path_answers_r0001_on_a_bare_clone(self):
+    def test_the_default_path_answers_r0001_only_when_asked(self):
         """game/ is git-ignored, so a clone with no disc assets has no image to read -- and no launch to
-        make either (collect_pins still hashes the launch environment, which is why this must not raise).
-        Either way the answer is r0001: read from the banner when the default image is there, and the
-        revision that path NAMES when it is not. Never a fallback for an image that is present and says
+        make either (collect_pins still hashes the launch environment, which is why that caller must not
+        get an exception). The answer is r0001 from the path's NAME, and only for a caller that asked:
+        the same call without `default_ok` raises. Never a fallback for an image that is present and says
         something else -- that case is test_launch_revision_reads_the_elf_the_launch_will_use."""
-        self.assertEqual(gp.launch_revision({}), "r0001")
+        if os.path.isfile(ga.DEFAULT_GAME_ELF):
+            self.assertEqual(gp.launch_revision({}), "r0001")        # read from the banner
+        else:
+            self.assertEqual(gp.launch_revision({}, default_ok=True), "r0001")
+            with self.assertRaises(ValueError):
+                gp.launch_revision({})
+
+    def test_the_module_re_exports_the_shared_table_rather_than_copying_it(self):
+        """Re-review N1: guest_probe kept a pre-fix COPY of these below the re-exports, so it shadowed
+        them -- `gp.launch_revision` had no `default_ok` and answered r0001 unconditionally (F3's defect,
+        exported), and `gp.log_revision` rejected the fallback wording, so evaluate() read NO-DATA on a
+        fallback-branch log. Identity, not equality: a second definition cannot pass this."""
+        for name in ("address", "offset", "revision_of_image", "launch_revision", "revision_of_peek_spec",
+                     "PROBE_ADDRESSES", "PROBE_OFFSETS", "REVISIONS", "BANNER_RE", "GAME_ELF_ENV",
+                     "DEFAULT_GAME_ELF"):
+            self.assertIs(getattr(gp, name), getattr(ga, name), name)
+        self.assertFalse(hasattr(gp, "LOG_REVISION_RE"), "the copy's regex is gone with the copy")
+        # log_revision is the one wrapper: ga's returns (revision, how), this keeps the revision.
+        names_itself = ["[socom2] address table: the image names itself r0004 -- using the r0004 addresses"]
+        self.assertEqual(gp.log_revision(names_itself), ga.log_revision(names_itself)[0])
 
     def test_the_bare_clone_default_has_to_be_asked_for(self):
         """Review F3: answering r0001 from the PATH'S NAME is the one place the table's rule ("never
@@ -329,14 +348,18 @@ class CameraOrbit(unittest.TestCase):
         self.assertFalse({r.name: r for r in gp.evaluate(far, CONSOLE, "r0004")}["camera_orbit"].ok)
 
     def test_the_band_holds_what_every_archived_stamp_measured(self):
-        """Calibrated on the gate's own runs: 17.16 (s11_rtstate_gate) .. 20.13 (s11_merge19_gate) across
-        twelve archived r0001 mission stamps, 19.35 on the r0004 lane -- and 0.90, every row, on the five
-        stamps that aimed r0001 chains at an r0004 image."""
+        """Re-review N3 re-measured every stamp on disk: 15 r0001-column stamps span 17.156
+        (s11_rtstate_gate) .. 20.659 (s11_probe_r0001b), 3 r0004-column ones 17.807 .. 22.737
+        (s11_r0004_reg3). The band holds all of them with room, holds the ladder's 24.9-unit steady orbit
+        radius, and rejects the 0.90 the wrong-column stamps read on every row."""
         lo = gp.CAMERA_ORBIT_U - gp.CAMERA_ORBIT_TOL_U
         hi = gp.CAMERA_ORBIT_U + gp.CAMERA_ORBIT_TOL_U
-        for measured in (17.16, 19.35, 20.13, 24.9):
+        for measured in (17.156, 18.366, 20.659, 17.807, 22.737, 24.9):
             self.assertTrue(lo <= measured <= hi, measured)
         self.assertFalse(lo <= 0.90 <= hi)
+        # ... and it is not so wide that it has stopped being about this address: the observed spread is
+        # 17.156..22.737, and the band is under 3x it.
+        self.assertLess(hi - lo, 3 * (22.737 - 17.156))
 
 
 if __name__ == "__main__":

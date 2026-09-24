@@ -81,18 +81,22 @@ MATRIX_OFFSET = 0x80                   # 4x4, rows at +0x80/+0x90/+0xa0/+0xb0
 # The plan's Step 2 peek, widened for the heading search. Every item <= 64 words (the exe caps an item
 # at 64 silently -- KNOWN.md). +0x200:64 covers the stick axes at +0x23c..+0x244; +0x100 and +0x300
 # are the brief's wider actor windows.
+# The two guest addresses and the MoveScale offset come from guest_addresses' r0001 column, not from
+# literals in these strings (Task 19 re-review N4): a literal 0x1368 four lines under a derived
+# MOVE_SCALE_OFFSET is the drift F6 removed, written back in as text. The rest of the displacements are
+# this module's own ladder fields (HEALTH_OFFSET and friends below), which stay r0001 -- see the note there.
 PEEK_SPEC = ",".join([
-    "0x416054:3",
-    "*0x408c58:64",
-    "*0x408c58+0xF78:1",
-    "*0x408c58+0x1044:1",
-    "*0x408c58+0xc0*:32",
-    "0x408c58:4",
-    "*0x408c58+0x100:64",
-    "*0x408c58+0x200:64",
-    "*0x408c58+0x300:64",
-    "*0x408c58+0xFB4:1",
-    "*0x408c58+0x1368:1",
+    "%#x:3" % CAMERA_ADDR,
+    "*%#x:64" % ACTOR_STATIC,
+    "*%#x+0xF78:1" % ACTOR_STATIC,
+    "*%#x+%#x:1" % (ACTOR_STATIC, HEALTH_OFFSET),
+    "*%#x+0xc0*:32" % ACTOR_STATIC,
+    "%#x:4" % ACTOR_STATIC,
+    "*%#x+0x100:64" % ACTOR_STATIC,
+    "*%#x+0x200:64" % ACTOR_STATIC,
+    "*%#x+0x300:64" % ACTOR_STATIC,
+    "*%#x+%#x:1" % (ACTOR_STATIC, DEATH_TIME_OFFSET),
+    "*%#x+%#x:1" % (ACTOR_STATIC, MOVE_SCALE_OFFSET),
 ])
 
 SAMPLER_PERIOD_S = 0.25

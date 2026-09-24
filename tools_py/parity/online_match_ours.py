@@ -44,7 +44,7 @@ winshot = hostplatform.shot_module()
 # facing (STATUS 2026-09-10 20:10), so the player is at camera + R * facing. The rows are the only
 # trustworthy movement signal this harness has: screenshots go stale and are written whether or not
 # the match ever launched (research/18 §3.5, §3.10).
-POSITION_ADDR = 0x416054
+POSITION_ADDR = vc.CAMERA_RECORD_ADDR   # 0x416054, guest_addresses r0001 column (Task 19 re-review N4)
 # `PS2X_CALL_TRACE="0x553dc0:MoveScale"` logs FUN_00553dc0's f12 -- the multiplayer movement scale
 # actor+0x1368. It is 1.0 while the network has been active within 5500 ms and decays to 0.0 at
 # 6500 ms of idle (research/18 §3.12). A hold measured while it is not 1.0 measures the lag freeze,
@@ -1965,7 +1965,7 @@ MOVE_PATH_MAX_EVERY = 20         # at ~17-27 MoveScale calls/s, EVERY <= 20 logs
 MOVE_PATH_POLL_S = 1.0
 DEFAULT_HEALTH_OFFSET = 0x1044   # research/19 F1; Sprint 5 Task 2 read damage steps live in SP, no death (research/22)
 DEFAULT_ALIVE_OFFSET = vc.ACTOR_ALIVE_OFFSET   # 0xF7A, same sources
-ALIVE_PEEK_BASE = 0x408C58       # *0x408c58 = the player actor
+ALIVE_PEEK_BASE = vc.ga.address("player_actor", "r0001")   # 0x408c58 = the player actor
 ROUND_LIVE_MAX_AGE_S = 5.0       # valves read within this long count as live (20 rows at 4 Hz,
                                  # ~8 at kill2 B's 0.6 s/row under load)
 FRAME_MAX_AGE_S = 2.0            # evidence screens (kill, final) must be fresher than this (spec Goal 6)

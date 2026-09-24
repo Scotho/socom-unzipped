@@ -58,15 +58,24 @@ DEFAULT_ROW_PERIOD_S = 1.0
 # the probe reads it: the camera record orbits the player, and the median ground distance between the two
 # is a number with a known shape.
 #
-# Calibrated on what the gate itself measures, not on a target. Median |camera - actor| in the xz plane,
-# over every row that carries both, across twelve archived r0001 mission stamps: 17.16 (s11_rtstate_gate)
-# to 20.13 (s11_merge19_gate), and 19.35 on the r0004 lane s11_r0004_probe1 -- consistent with, and a
-# little inside, the 24.9-unit steady orbit radius online_match_ours.CAMERA_ORBIT_RADIUS measured on the
-# ladder. The band below is 7.5..31.5, roughly 1.6x outside that spread either way, and it rejects what a
-# WRONG address reads: the five stamps that aimed r0001 chains at an r0004 image (s11_r0004_reg2 and
-# friends) all measure 0.90, every row.
-CAMERA_ORBIT_U = 19.5
-CAMERA_ORBIT_TOL_U = 12.0
+# The band is set by what the gate itself measures -- median |camera - actor| in the xz plane over every
+# row that carries both, across EVERY stamp on disk (re-review N3 re-measured them all):
+#
+#   r0001 column, 15 stamps   17.16 (s11_rtstate_gate) .. 20.66 (s11_probe_r0001b)
+#   r0004 column,  3 stamps   17.81 .. 22.74 (s11_r0004_reg3)
+#
+# so 17.16..22.74 observed, centre 19.95, half-spread 2.79. 20.0 +/- 7.0 keeps roughly 1.5x that spread of
+# headroom at each end (13.0 .. 27.0) -- wide enough that a pose or a map the gate has not run cannot fail
+# it, narrow enough to be about this address. For reference the ladder measures the steady orbit radius at
+# 24.9 (online_match_ours.CAMERA_ORBIT_RADIUS); the gate's holds keep the median below that.
+#
+# WHAT THIS IS: a smoke test on the address, not proof of it. It rejects what a wrong address actually
+# reads here -- the five resolvable wrong-column stamps measure 0.90 on every row, and the other eight
+# read nothing at all -- but nothing constrains where an ARBITRARY wrong address lands, and one that
+# happened to yield 13..27 would pass. It turns "no symptom at all" into "a symptom in the common case",
+# which is what F7 asked for.
+CAMERA_ORBIT_U = 20.0
+CAMERA_ORBIT_TOL_U = 7.0
 # THE GUEST ADDRESSES ARE NOT HERE. They are tools_py/parity/guest_addresses.py -- the one home this
 # module, verdict_core and sp_death_probe all read them from, so the r0001 column cannot drift into three
 # different values (Task 19 review F6). That module also owns the rule for deciding WHICH revision, and
@@ -89,57 +98,6 @@ def log_revision(lines):
     """The revision the runtime says it installed, off its own run log -- the name `evaluate` and the gate
     have always used. guest_addresses.log_revision returns (revision, how); this keeps the revision."""
     return ga.log_revision(lines)[0]
-
-
-# The build banner in the game image ("SOCOM 2 r0001 17:22:21 Oct 11 2003"): the same evidence
-# socom2_addresses.h's selectFromImage() picks its column by, read here off the file instead of out of guest
-# memory, because PS2X_PEEK has to be built BEFORE the launch. It occurs exactly once in each image.
-BANNER_RE = re.compile(rb"SOCOM 2 (r\d{4}) ")
-# ... and what the runtime says it actually installed, once it has run. This is the stronger of the two for
-# scoring a finished run: it is the column the overrides were installed with, not the column we expected.
-LOG_REVISION_RE = re.compile(r"address table: the image names itself (r\d{4})")
-GAME_ELF_ENV = "SOCOM_GAME_ELF"
-DEFAULT_GAME_ELF = os.path.join("game", "disc", "socom2_game.elf")
-
-
-def revision_of_image(path):
-    """The revision of a game image, from its build banner. No banner, or more than one revision's worth,
-    raises: an image that will not name itself is not an r0001 image."""
-    with open(path, "rb") as f:
-        found = sorted({m.group(1).decode() for m in BANNER_RE.finditer(f.read())})
-    if len(found) != 1:
-        raise ValueError("guest_probe: %s carries no single build banner (found %s) -- it cannot say which "
-                         "revision's addresses to read" % (path, found or "none"))
-    return found[0]
-
-
-def launch_revision(env=None):
-    """The revision of the image a launch would use: $SOCOM_GAME_ELF, else game/disc/socom2_game.elf. An
-    image that is NAMED but absent or unreadable raises. The default path missing is not an error -- game/
-    is git-ignored, so a bare clone has no image and no launch to make, and r0001 is the revision that path
-    itself names (gate.collect_pins still hashes the launch environment there)."""
-    env = os.environ if env is None else env
-    named = env.get(GAME_ELF_ENV)
-    path = named or DEFAULT_GAME_ELF
-    if not os.path.isfile(path):
-        if named:
-            raise ValueError("guest_probe: %s names %s, which is not a file -- the probe cannot tell which "
-                             "revision's addresses to read" % (GAME_ELF_ENV, named))
-        return "r0001"
-    return revision_of_image(path)
-
-
-def log_revision(lines):
-    """The revision the runtime says it installed, off its own run log
-    (`[socom2] address table: the image names itself r0004 -- using the r0004 addresses`). A log that never
-    says raises: the probe does not guess, and it never assumes r0001."""
-    for line in lines:
-        m = LOG_REVISION_RE.search(line)
-        if m:
-            return m.group(1)
-    raise ValueError("guest_probe: the run log never says which revision the runtime installed "
-                     "(no '[socom2] address table: the image names itself rNNNN' line), so the probe "
-                     "cannot know which column to read -- pass one explicitly")
 
 
 _HEX_RE = re.compile(r"(\+?)(0[xX][0-9a-fA-F]+)")
