@@ -305,12 +305,17 @@ def _find_twin(image, twin, start, offsets, twin_rows, row_length):
             f"no r0001 twin for the function at 0x{start:08X} (a masked body compare over "
             f"{len(twin_rows)} rows found none); refusing to invent {len(offsets)} word(s)")
     tstart, length = matches[0]
-    # Restating the masked compare with the words put back: it cannot fail, because `agreed` was
-    # read out of the same `tbody` the compare matched. It is here as an invariant, not a check.
+    # Restating the masked compare with the words put back: it cannot fail today, because `agreed` was
+    # read out of the same `tbody` the compare matched. It stays a RepairError, not an assert, so that a
+    # future change to how `agreed` is chosen refuses loudly instead of writing something (the module's
+    # rule), and so `python -O` cannot strip it.
     repaired = bytearray(image.body(start, length))
     for o, w in zip(offsets, agreed):
         struct.pack_into("<I", repaired, o, w)
-    assert bytes(repaired) == twin.body(tstart, length)
+    if bytes(repaired) != twin.body(tstart, length):
+        raise RepairError(
+            f"0x{start:08X}: the repaired body does not equal the twin's at 0x{tstart:08X} after "
+            f"substitution -- refusing to write (the masked compare and the substitution disagree)")
     return tstart, length, agreed
 
 

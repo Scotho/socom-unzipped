@@ -264,7 +264,7 @@ if [ "$TAIL" = 0 ]; then
   if [ -f "$STACK" ]; then
     [ -f "$ROWS_CSV" ] || die2 "step 2: $(rel "$STACK") is $REV's capsule write stack, so the merged ELF is repaired against $REV's function map -- but $(rel "$ROWS_CSV") is not there. Name the map steps 3-5 will use: --ghidra <csv> (or --ghidra-from-r0001 to start from r0001's)"
     [ -f "$TWIN_ELF" ] || die2 "step 2: the repair takes its replacement words from the r0001 image, but $(rel "$TWIN_ELF") is not there. Build the r0001 lane first (bash build.sh elf), or drop $(rel "$STACK") to merge without a repair"
-    [ -f "$TWIN_ROWS" ] || die2 "step 2: the repair needs r0001's own function map to find the twin function, but $(rel "$TWIN_ROWS") is not there"
+    [ -f "$TWIN_ROWS" ] || die2 "step 2: the repair needs r0001's own function map to find the twin function, but $(rel "$TWIN_ROWS") is not there. It is tracked: git checkout -- $(rel "$TWIN_ROWS") (or regenerate it with the r0001 Ghidra pass, docs/DEVELOPING.md)"
     REPAIR_ARGS=(--stub-writes "$STACK" --twin "$TWIN_ELF" --rows "$ROWS_CSV" --twin-rows "$TWIN_ROWS")
     say "elf: repair inputs -- stack $(rel "$STACK"), twin $(rel "$TWIN_ELF"), map $(rel "$ROWS_CSV") sha256 $(sha "$ROWS_CSV")"
   fi
