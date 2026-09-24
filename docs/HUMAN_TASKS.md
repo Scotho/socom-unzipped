@@ -54,7 +54,7 @@ reworked, nothing is lost.** None of these is waited on.
 | D5 | Signing | unsigned; the FAQ says what SmartScreen will show |
 | D6 | The landing page's deploy; wording about the community server | deploy owner-only; wording drafted here, in `docs/INSTALL.md` |
 | H7-A / H7-C | Disc-derived bytes: the audio/VU1 fixtures; the ~240 pictures | nothing moves |
-| r0004 D1-D4 | distribution of r0004; ordering; disclosure wording; HDD maps in scope? | **D1 answered by you 2026-09-23:** a git-ignored copy in the tree, the launcher downloads PSRewired's capsule per user, upload as the fallback (Task 11b); D2 ordering as recommended; D4 = HDD maps **out** of scope for v1 (Goal G not scheduled) |
+| r0004 D1-D4 | distribution of r0004; ordering; disclosure wording; HDD maps in scope? | **D1 answered by you 2026-09-23** (a git-ignored copy in the tree, the launcher downloads PSRewired's capsule per user, upload as the fallback — Task 11b) **— and reopened by R251 (2026-09-24): the capsule alone gives a player nothing.** r0004 is a full rebuild whose package only comes from PSRewired's server after a login, lands on a memory card, and decrypts with a key bound to the console id; so today r0004 is a per-player pipeline (PCSX2 + their login + our build on their machine, ~40 min). **Decide: is that per-player path acceptable for v1, or does r0004 wait for another route?** Task 11b stays withdrawn until then. D2 ordering as recommended; D4 = HDD maps **out** of scope for v1 (Goal G not scheduled) |
 | G7 reply policy | do fixed reports get an answer to the contact left? | no |
 
 ### Send this to the PSRewired moderator
