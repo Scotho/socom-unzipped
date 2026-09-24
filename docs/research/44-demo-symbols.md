@@ -12,7 +12,7 @@ whole Sony SDK and C runtime, and about 236 real engine routines — `CZSealBody
 not the matcher: 7,595 of the demo's functions (78 %) have no byte-identical counterpart anywhere in
 our image at all, because SOCOM II is a year of edits later.
 
-Every number below names the command that produces it. The two commands are:
+Every number below names the command that produces it. The three commands are:
 
 ```
 # A -- the match, the proposals and the engine table (§3, §4, §7)
@@ -21,14 +21,17 @@ python -m tools_py.ghidra_symbol_match \
     --prefix --engine --top 50 --out game/demo_symbol_matches.json \
     --renames game/demo_symbol_renames.csv
 
-# B -- the checks and the buckets (§5, §6): the same run with --verify
+# B -- the checks, the buckets, our table's census and the region split (§1, §3, §5, §6)
 python -m tools_py.ghidra_symbol_match \
     game/demo_scus_972_05/SCUS_972.05 game/disc/socom2_game.elf recomp/socom2_ghidra.csv \
     --prefix --verify --top 0
+
+# C -- the demo's own shape: sections, the symbol census, the relocation count (§1)
+python -m tools_py.elf_symbols game/demo_scus_972_05/SCUS_972.05
 ```
 
-Seven seconds with `--verify`, three and a half without. Both outputs are under `game/`, which
-`.gitignore` excludes, and neither is committed.
+Seven seconds with `--verify`, three and a half without, under a second for C. The two outputs are
+under `game/`, which `.gitignore` excludes, and neither is committed.
 
 ## 1. The inputs
 
@@ -36,13 +39,14 @@ Seven seconds with `--verify`, three and a half without. Both outputs are under 
 |---|---|
 | demo ELF | `game/demo_scus_972_05/SCUS_972.05`, 10,765,300 B, sha256 `00c9cee7f75b921fda1e848d04f64881b5a0b7841300591cac91371bb23d4f8a` (git-ignored; never committed) |
 | its build | Metrowerks MIPS C 2.4.1 — debug format is Metrowerks/DWARF1-ish in `.debug` (5.1 MB) and `.line`, **not** STABS |
-| its `.symtab` | 350,304 B: 21,894 symbols — 9,703 `STT_FUNC`, 10,182 `STT_OBJECT`. Every FUNC has a non-zero size; every one is in section `main` |
+| its `.symtab` | 350,304 B: **21,894 entries — 9,703 `STT_FUNC`, 10,182 `STT_OBJECT`** (command C). Every FUNC has a non-zero size and a name, so all 9,703 are usable; of the OBJECTs **10,179 are sized**, and it is those that `Elf.objects` returns. Two measurements, not one — C prints both |
 | its shape | `ET_EXEC`, EM_MIPS, one `PT_LOAD` at 0x00100000 (3,626,496 B) + a 4-byte `heap`. Symbol values are **absolute guest addresses**; no section bias is needed |
 | its `.relmain` | `SHT_REL`, 115,142 entries — a Metrowerks link leaves its relocations in place |
 | our image | `game/disc/socom2_game.elf` (r0001), four `PT_LOAD`s: 0x100000, 0x1D5000, 0x1E7000, 0x4C5380 |
-| our table | `recomp/socom2_ghidra.csv`, 14,879 rows, 113 already named by hand, 51 with no bytes in any segment |
+| our table | `recomp/socom2_ghidra.csv`, 14,879 rows, 113 already named by hand, 51 with no bytes in any segment (command B's `our table:` line) |
 
-(`python -m tools_py.elf_symbols game/demo_scus_972_05/SCUS_972.05` prints the first five rows.)
+Command C prints the section table, that symbol census, the relocation count and the twenty largest
+functions. The demo's size and sha256 are the filesystem's and `sha256sum`'s, not a tool's.
 
 A second disc sits beside it, `game/demo_scus_973_68/SCUS_973.68` (the SOCOM II demo of 2003-08-18). It
 is **stripped** — no symbol table — and is not used here.
@@ -54,7 +58,7 @@ the demo, run `ExportPS2Functions.java`) was **skipped, deliberately**: everythi
 name, a start and a size, and the ELF's own `.symtab` already carries all three for all 9,703 functions.
 A Ghidra import would have produced the same three columns after a CPU-heavy headless analysis pass, and
 `ccc`'s value is the `.debug` section — types, locals, line numbers — which this task does not read.
-`tools_py/elf_symbols.py` (205 lines, 13 tests) replaces it.
+`tools_py/elf_symbols.py` (247 lines, 17 tests) replaces it.
 
 **Reopen this when a later task wants the demo's types, its struct layouts, or its translation units.**
 The last of those is the sharpest: `ccc` recovers which source file each function came from, and a
@@ -140,9 +144,21 @@ demo functions 9703, ours 14879, matched 987 (10.2%)
 * **479 proposals** (338 `exact`, 126 `relinked-body`, 15 `hash+callees`), at 479 distinct addresses
   under 479 distinct identifiers, 9 of them sanitised from a template, an anonymous namespace or a
   `__sinit_*.cpp`.
-* Where the 987 land: 429 in the boot loader (0x100000–0x1D5000 — the Sony SDK and C runtime, which is
-  byte-identical between the two games), 230 in FTSCore (0x1E7000–0x407000), 169 in ZSealEtc
-  (0x4C5380–0x66A040), the rest spread by the prefix pass.
+* Where the 987 land in our image, per `PT_LOAD` (command B's last block, verbatim):
+
+  ```
+  where the 987 pairs land in our image, per PT_LOAD:
+    0x100000-0x1d5000    474  (of which prefix 45)
+    0x1d5000-0x1d5600      0  (of which prefix 0)
+    0x1e7000-0x408480    322  (of which prefix 92)
+    0x4c5380-0x66a000    191  (of which prefix 22)
+  ```
+
+  The first is the boot loader — the Sony SDK and C runtime, which is byte-identical between the two
+  games and so carries nearly half the matches on its own; the third is FTSCore and the fourth
+  ZSealEtc, the two overlays where the engine lives. The prefix pairs do not land somewhere else:
+  they fall in the same three ranges, and are broken out because they are a weaker claim, not a
+  different place.
 
 ## 4. The top 50 named engine functions, by size
 
@@ -299,8 +315,11 @@ message. `--min-size` on the command line is clamped upward only.
 
 ## 8. What was delivered, and what was deliberately not
 
-Delivered: `tools_py/elf_symbols.py` (+13 tests), `tools_py/ghidra_symbol_match.py` (+44 tests), this
-note, and two git-ignored outputs under `game/`.
+Delivered: `tools_py/elf_symbols.py` (+17 tests), `tools_py/ghidra_symbol_match.py` (+46 tests), this
+note, and two git-ignored outputs under `game/`. One change outside this task's own files:
+`address_matcher._Side` became `address_matcher.Side`, because `--verify` reads it and the evidence in
+§5 and §6 should not rest on a private name. The old spelling still resolves, and
+`test_address_matcher.SidePublicSurfaceTest` pins the attributes `--verify` depends on.
 
 Not delivered, on purpose:
 

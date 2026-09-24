@@ -500,6 +500,25 @@ class VerifyHelpersTest(unittest.TestCase):
                  ("C__8CMissionFv", 0x1200, 1.0), ("D__5CQuatFv", 0x9000, 1.0)]
         self.assertEqual(gsm.class_clusters(pairs), [("CMission", 3, 0x1000, 0x1200)])
 
+    def test_the_region_split_accounts_for_every_pair(self):
+        demo_rows, demo_segs = demo_side()
+        our_rows, our_segs = our_side()
+        details = {}
+        pairs = gsm.match(demo_rows, our_rows, demo_segs, our_segs, details=details, prefix=True)
+        split = gsm.region_split(pairs, details, our_segs)
+        self.assertEqual(sum(total for _v, _e, total, _p in split), len(pairs))
+        self.assertLessEqual(sum(pre for _v, _e, _t, pre in split), len(pairs))
+
+    def test_the_table_census_counts_hand_named_and_bodiless_rows(self):
+        our_rows, our_segs = our_side()
+        rows = [(s, e, n, c) for s, e, n, c in our_rows]
+        rows[0] = (rows[0][0], rows[0][1], "NamedByHand", rows[0][3])
+        rows.append((0x900000, 0x900010, "FUN_00900000", None))   # outside every segment
+        census = gsm.table_census(rows, our_segs)
+        self.assertEqual(census["rows"], len(rows))
+        self.assertEqual(census["named_by_hand"], 1)
+        self.assertEqual(census["without_bytes"], 1)
+
     def test_buckets_and_the_histogram_partition_the_demo(self):
         demo_rows, demo_segs = demo_side()
         our_rows, our_segs = our_side()

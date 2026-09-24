@@ -399,7 +399,7 @@ def fingerprint_buckets(demo_rows, demo_segs, our_rows, our_segs, details: Dict[
     """
     demo_funcs, demo_segs = _split(demo_rows, demo_segs)
     our_funcs, our_segs = _split(our_rows, our_segs)
-    a, b = am._Side(demo_funcs, demo_segs), am._Side(our_funcs, our_segs)
+    a, b = am.Side(demo_funcs, demo_segs), am.Side(our_funcs, our_segs)
     placed = {info["demo_addr"] for info in details.values()}
     out: Dict[str, List[int]] = {k: [0, 0] for k in ("absent", "ambiguous", "unique")}
     for start in a.starts:
@@ -417,11 +417,36 @@ def fingerprint_buckets(demo_rows, demo_segs, our_rows, our_segs, details: Dict[
     return {k: tuple(v) for k, v in out.items()}
 
 
+def region_split(pairs: Sequence[Pair], details: Dict[Key, Dict], our_segments):
+    """[(vaddr, end, total, prefix)] -- where in OUR image the pairs land, per PT_LOAD.
+
+    Reported with the prefix subset broken out because the two are different claims: the non-prefix
+    pairs are the ones a rename could ever be built on. Reproduces §3's last bullet, which was
+    previously three numbers from a session script that summed to 828, not 987.
+    """
+    out = []
+    for vaddr, data in sorted(our_segments):
+        end = vaddr + len(data)
+        inside = [p for p in pairs if vaddr <= p[1] < end]
+        prefix = [p for p in inside if details[(p[0], p[1])]["how"].startswith("prefix")]
+        out.append((vaddr, end, len(inside), len(prefix)))
+    return out
+
+
+def table_census(our_rows, our_segments) -> Dict[str, int]:
+    """{rows, named_by_hand, without_bytes} for our Ghidra table -- §1's last row."""
+    funcs, segments = _split(our_rows, our_segments)
+    image = am.Image.of(segments, funcs)
+    return {"rows": len(funcs),
+            "named_by_hand": sum(1 for _s, _e, name in funcs if not is_anonymous(name)),
+            "without_bytes": sum(1 for start, end, _n in funcs if not image.code(start, end))}
+
+
 def small_body_histogram(demo_rows, demo_segs, our_rows, our_segs):
     """{threshold: how many AMBIGUOUS demo bodies are that size or smaller} -- §6's second claim."""
     demo_funcs, demo_segs = _split(demo_rows, demo_segs)
     our_funcs, our_segs = _split(our_rows, our_segs)
-    a, b = am._Side(demo_funcs, demo_segs), am._Side(our_funcs, our_segs)
+    a, b = am.Side(demo_funcs, demo_segs), am.Side(our_funcs, our_segs)
     sizes = []
     for start in a.starts:
         fp = a.fp[start]
@@ -531,6 +556,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print("  %-10s %5d  placed %d" % ((kind,) + buckets[kind]))
         print("ambiguous by body size: %s"
               % small_body_histogram(demo_rows, demo_segs, our_rows, our_segs))
+        census = table_census(our_rows, our_segs)
+        print("our table: %d rows, %d already named by hand, %d with no bytes in any segment"
+              % (census["rows"], census["named_by_hand"], census["without_bytes"]))
+        print("where the %d pairs land in our image, per PT_LOAD:" % len(pairs))
+        for vaddr, end, total, prefix in region_split(pairs, details, our_segs):
+            print("  0x%06x-0x%06x  %4d  (of which prefix %d)" % (vaddr, end, total, prefix))
 
     if args.out:
         payload = {

@@ -114,11 +114,71 @@ class ElfSymbolsTest(unittest.TestCase):
         two = elf._replace(segments=[(VADDR, CODE), (VADDR + 0x200, CODE)])
         self.assertEqual(two.relocated_words(), {VADDR + 4})
 
-    def test_a_truncated_string_table_is_a_sentence_not_an_index_error(self):
+    # ---- a malformed file is a ValueError that names the table, never a struct.error ----------
+    #
+    # `struct.error` is NOT a subclass of ValueError, so an `except ValueError` around a parse does
+    # not catch it: before this, a truncated ELF came out of `main()` as a traceback. Each of the
+    # three tests below asserts the exact type AND the message, because a test that accepts
+    # `Exception` passes on the very error it was written to rule out.
+
+    def _shdr_offset(self, raw, name):
+        """Where section `name`'s 40-byte header starts in the file."""
+        e_shoff = struct.unpack_from("<I", bytes(raw), 32)[0]
+        index = [s.name for s in parse_elf(bytes(raw)).sections].index(name)
+        return e_shoff + index * 40
+
+    def test_a_truncated_section_header_table_names_the_section_header(self):
         raw = bytearray(tiny_elf())
-        del raw[-1:]                       # lop a byte so the last section header is short
-        with self.assertRaises(Exception):
+        del raw[-20:]                       # the last 40-byte section header is now half there
+        with self.assertRaises(ValueError) as caught:
             parse_elf(bytes(raw))
+        self.assertIn("section header", str(caught.exception))
+        self.assertIn("run past the end", str(caught.exception))
+        self.assertNotIsInstance(caught.exception, struct.error)
+
+    def test_a_truncated_symbol_table_names_the_entry(self):
+        raw = bytearray(tiny_elf())
+        # Point .symtab at the last eight bytes of the file: entry 0 needs sixteen.
+        struct.pack_into("<I", raw, self._shdr_offset(raw, ".symtab") + 16, len(raw) - 8)
+        with self.assertRaises(ValueError) as caught:
+            parse_elf(bytes(raw))
+        self.assertIn(".symtab entry 0", str(caught.exception))
+        self.assertIn("run past the end", str(caught.exception))
+
+    def test_a_string_offset_past_the_file_names_the_string_table(self):
+        raw = bytearray(tiny_elf())
+        symtab = [s for s in parse_elf(bytes(raw)).sections if s.name == ".symtab"][0]
+        struct.pack_into("<I", raw, symtab.offset + 16, 0xFFFFFF)     # funcA's st_name
+        with self.assertRaises(ValueError) as caught:
+            parse_elf(bytes(raw))
+        self.assertIn("string table", str(caught.exception))
+        self.assertIn("NUL-terminated", str(caught.exception))
+
+    def test_a_truncated_file_reaches_main_as_one_sentence(self):
+        import contextlib
+        import io as _io
+        import tempfile
+        raw = bytearray(tiny_elf())
+        del raw[-20:]
+        with tempfile.NamedTemporaryFile(suffix=".elf", delete=False) as fh:
+            fh.write(bytes(raw))
+            path = fh.name
+        self.addCleanup(os.unlink, path)
+        out = _io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = main([path])
+        self.assertEqual(code, 2)
+        self.assertIn("NO-DATA:", out.getvalue())
+        self.assertIn("section header", out.getvalue())
+
+    def test_the_census_separates_the_raw_counts_from_the_sized_ones(self):
+        # 4 real entries + the null one; `stub` is a zero-size FUNC, `twin` duplicates funcA.
+        census = self.elf.census()
+        self.assertEqual(census["symbols"], 5)
+        self.assertEqual(census["func_entries"], 3)          # funcA, stub, twin
+        self.assertEqual(census["object_entries"], 1)
+        self.assertEqual(len(self.elf.functions), 1)         # sized, named, de-duplicated
+        self.assertEqual(len(self.elf.objects), 1)
 
     def test_main_reports_a_missing_file_and_exits_2(self):
         import contextlib

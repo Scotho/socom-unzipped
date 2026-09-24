@@ -329,8 +329,8 @@ class TestRelinkedBody(unittest.TestCase):
     def test_the_plain_fingerprint_really_cannot_place_these(self):
         """The premise of the whole pass: without it these bodies are unresolved, not merely slower."""
         (a_funcs, a_segs), (b_funcs, b_segs) = self.pair(("gpUser",))
-        a = am._Side(a_funcs, a_segs)
-        b = am._Side(b_funcs, b_segs)
+        a = am.Side(a_funcs, a_segs)
+        b = am.Side(b_funcs, b_segs)
         at_a = {n: s for s, _e, n in a_funcs}
         at_b = {n: s for s, _e, n in b_funcs}
         for name in ("globalUser", "gpUser"):
@@ -476,7 +476,7 @@ class TestMaskingUnit(unittest.TestCase):
 
     def test_the_strings_a_body_reaches_are_read_out_of_the_image(self):
         funcs, segs = build_relinked(0, ("strTwinA", "strTwinB"))
-        side = am._Side(funcs, segs)
+        side = am.Side(funcs, segs)
         at = {n: s for s, _e, n in funcs}
         self.assertEqual(side.anchors(at["strTwinA"]), (b"ALPHA",))
         self.assertEqual(side.anchors(at["strTwinB"]), (b"BETA",))
@@ -556,6 +556,38 @@ def minimal_elf32(segments):
         phdrs += struct.pack("<8I", 1, off + len(body), vaddr, vaddr, len(data), len(data), 5, 0x10)
         body += data
     return bytes(header) + phdrs + body
+
+
+class SidePublicSurfaceTest(unittest.TestCase):
+    """`Side` is public because tools_py/ghidra_symbol_match.py's --verify reads it.
+
+    That module reports which demo functions our image can see at all -- the evidence behind §5 and
+    §6 of docs/research/44-demo-symbols.md -- by building two of these. Before, it reached in for
+    `_Side`; a rename here would have broken it with no signal from this suite. These assertions are
+    that signal.
+    """
+
+    def setUp(self):
+        funcs, segs = build_image()
+        self.side = am.Side(funcs, segs)
+        self.leafA = funcs[0][0]
+
+    def test_the_old_private_name_still_resolves(self):
+        self.assertIs(am._Side, am.Side)
+
+    def test_the_attributes_ghidra_symbol_match_reads(self):
+        for attr in ("starts", "name", "size", "fp", "by_fp", "calls", "body", "image"):
+            self.assertTrue(hasattr(self.side, attr), attr)
+        self.assertIn(self.leafA, self.side.starts)
+        self.assertEqual(self.side.name[self.leafA], "leafA")
+        self.assertEqual(self.side.size[self.leafA], SIZE)
+        self.assertIn(self.side.fp[self.leafA], self.side.by_fp)
+        self.assertIn(self.leafA, self.side.by_fp[self.side.fp[self.leafA]])
+
+    def test_the_methods_it_calls(self):
+        self.assertEqual(self.side.relfp(self.leafA),
+                         am.relinked_fingerprint(self.side.body[self.leafA]))
+        self.assertIsInstance(self.side.anchors(self.leafA), tuple)
 
 
 if __name__ == "__main__":

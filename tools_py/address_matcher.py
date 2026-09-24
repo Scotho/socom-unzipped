@@ -248,8 +248,15 @@ def call_targets(code: bytes, start: int) -> List[int]:
     return out
 
 
-class _Side:
-    """One image's functions with everything the passes read off them."""
+class Side:
+    """One image's functions with everything the passes read off them.
+
+    PUBLIC, and deliberately so: `tools_py/ghidra_symbol_match.py`'s `--verify` builds two of these to
+    report which demo functions our image can see at all (the note's §5 and §6 evidence). It reached
+    in for the private name once; making it a contract means a refactor here has to keep -- or
+    knowingly break -- `starts`, `name`, `size`, `fp`, `by_fp`, `calls`, `body`, `relfp()` and
+    `anchors()`, and `test_address_matcher.SidePublicSurfaceTest` is what says so.
+    """
 
     def __init__(self, funcs: Sequence[Func], segments):
         self.funcs = sorted(funcs)
@@ -321,7 +328,7 @@ def match(a_funcs: Sequence[Func], a_bytes, b_funcs: Sequence[Func], b_bytes,
     only `relinked-body`, as "unique", "callees" or "string". It is an out-parameter rather than a third
     element of the tuple so that every existing caller of `match` keeps reading the same shape.
     """
-    a, b = _Side(a_funcs, a_bytes), _Side(b_funcs, b_bytes)
+    a, b = Side(a_funcs, a_bytes), Side(b_funcs, b_bytes)
     out: Dict[int, Match] = {}
     taken: set = set()
     tie_of: Dict[int, str] = ties if ties is not None else {}
@@ -486,6 +493,9 @@ def match(a_funcs: Sequence[Func], a_bytes, b_funcs: Sequence[Func], b_bytes,
     for a_addr in sorted(a.starts):
         out.setdefault(a_addr, (None, "unresolved"))
     return out
+
+
+_Side = Side          # the name this class had before ghidra_symbol_match made it a contract
 
 
 def summary(matches: Dict[int, Match]) -> Dict[str, object]:
