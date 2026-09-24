@@ -145,6 +145,50 @@ def offset(name, revision):
                          % (name, revision, ", ".join(sorted(col))))
     return col[revision]
 
+# What each PROBE_OFFSETS number IS, per revision (Sprint 12 Task 7, spec Goal 5, research/50 §4a). A name
+# here is a SOCOM 1 field (the demo's DWARF1 layout, `Type::field`) that SOCOM II's OWN access pattern has
+# confirmed at this offset, by research/50 §4's rule: two twin functions agree on the SOCOM 1 -> SOCOM II
+# displacement, or at least half of the >= 2 demo neighbours share the shift. A SOCOM 1 offset alone is a
+# hypothesis, never a value (R262: the actor's constructor moves all 133 demo fields it stores), so
+# `socom1_offset` is provenance, and a named entry's number satisfies socom1_offset + shift == the value.
+# Only `confirmed` and `shifted by N` carry a name; a `single-twin` field is a `candidate`, a
+# `contradicted` one records what `contradicts` it, and every other entry is UNNAMED with the note's
+# reason. The r0004 entries rest on the r0001 verdict plus research/50 D's r0001 -> r0004 follow of every
+# use. These names are documentation for the reader, NEVER read by the harness: offset() answers from
+# PROBE_OFFSETS alone, and a name changes no probe (the test pins both).
+UNNAMED = "unnamed"
+OFFSET_NAMES = {
+    "root_node": {
+        "r0001": {"name": "CZSealBody::m_root", "verdict": "shifted by +0x7c", "socom1_offset": 0x26C,
+                  "note": "research/50 §4a",
+                  "evidence": "the actor constructor's run of 25 body-part pointer stores (demo 0x26c m_root "
+                              "... 0x2cc m_rtoe) lands at +0x7c; 8 of 11 demo neighbours share the shift"},
+        "r0004": {"name": "CZSealBody::m_root", "verdict": "shifted by +0x7c", "socom1_offset": 0x26C,
+                  "note": "research/50 §4a",
+                  "evidence": "r0001's verdict, and all 26 twinned r0001 uses read 0x2e8 in r0004 (18 fns): "
+                              "below the word r0004 inserted at 0x1334"},
+    },
+    "move_scale": {
+        "r0001": {"name": UNNAMED, "verdict": "unknown", "socom1_offset": None, "note": "research/50 §4a",
+                  "reason": "no demo twin: FUN_00551ec0, FUN_00553dc0 and FUN_00553ea0 have none (best "
+                            "ratio 0.47) and the constructor has no aligned store; the position alone "
+                            "suggests CZSealBody::m_jumpImpulse, which a clamped multiplier of the throttle "
+                            "triple is not"},
+        "r0004": {"name": UNNAMED, "verdict": "unknown", "socom1_offset": None, "note": "research/50 §4a",
+                  "reason": "no demo twin (as r0001); the value is r0001's field moved +4 by the word r0004 "
+                            "inserted at 0x1334 (all 6 uses -> 0x136c, KNOWN §4)"},
+    },
+    "actor_pos": {
+        "r0001": {"name": UNNAMED, "verdict": "contradicted", "socom1_offset": None, "note": "research/50 §4a",
+                  "contradicts": "CEntity::m_node, the demo field at 0x1c, which r0001 holds at 0x28 (8 "
+                                 "uses); r0001's 0x1c-0x27 is 12 bytes SOCOM 1 does not have",
+                  "reason": "new in SOCOM II: SOCOM 1 read the position through m_node"},
+        "r0004": {"name": UNNAMED, "verdict": "contradicted", "socom1_offset": None, "note": "research/50 §4a",
+                  "contradicts": "CEntity::m_node, as r0001 (738 uses of 0x1c unchanged in r0004, 393 fns)",
+                  "reason": "new in SOCOM II: SOCOM 1 read the position through m_node"},
+    },
+}
+
 # The ladder's OTHER actor field offsets (sp_death_probe's HEALTH_OFFSET, ALIVE_OFFSET,
 # DEATH_TIME_OFFSET, ANGVEL_OFFSET, verdict_core's ACTOR_STAMP_OFFSET) are deliberately NOT here: they are
 # r0001 literals used only by the online ladder, which runs on the r0001 build, and no r0004 value for any

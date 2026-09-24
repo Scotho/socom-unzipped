@@ -12,6 +12,7 @@ probe cannot establish (an image with no build banner, a run log that never says
 installed) raises rather than falling back to r0001.
 """
 import os
+import re
 import tempfile
 import unittest
 
@@ -376,6 +377,110 @@ class LadderPeekSpecBytes(unittest.TestCase):
             "*0x408c58+0xFB4:1", "*0x408c58+0x1368:1",
         ])
         self.assertEqual(sp.PEEK_SPEC, historical)
+
+
+
+class OffsetNames(unittest.TestCase):
+    """Sprint 12 Task 7 (Goal 5): a name beside each PROBE_OFFSETS number, per revision, from research/50.
+    A name is a SOCOM 1 field that SOCOM II's own access pattern confirmed (research/50 §4's rule); every
+    other entry says `unnamed` and why. The names are documentation: this also pins the numbers, so a
+    later edit that moves one without revisiting its name fails here."""
+
+    VERDICTS = ("confirmed", "single-twin", "contradicted", "unknown")      # plus "shifted by <N>"
+    SHIFTED_RE = re.compile(r"^shifted by ([+-]0x[0-9a-f]+)$")
+
+    def _is_shift(self, verdict):
+        return self.SHIFTED_RE.match(verdict)
+
+    def test_the_numbers_are_the_numbers_they_were(self):
+        """The whole table as it stood before any name was written beside it (Sprint 11 Task 19)."""
+        self.assertEqual(ga.PROBE_OFFSETS, {
+            "root_node": {"r0001": 0x2E8, "r0004": 0x2E8},
+            "move_scale": {"r0001": 0x1368, "r0004": 0x136C},
+            "actor_pos": {"r0001": 0x1C, "r0004": 0x1C},
+        })
+
+    def test_every_offset_in_every_revision_has_an_entry(self):
+        self.assertEqual(set(ga.OFFSET_NAMES), set(ga.PROBE_OFFSETS))
+        for name, col in ga.PROBE_OFFSETS.items():
+            self.assertEqual(set(ga.OFFSET_NAMES[name]), set(col), name)
+
+    def test_every_verdict_is_one_of_the_five(self):
+        for name, col in ga.OFFSET_NAMES.items():
+            for revision, entry in col.items():
+                v = entry["verdict"]
+                self.assertTrue(v in self.VERDICTS or self._is_shift(v), "%s/%s: %r" % (name, revision, v))
+                self.assertTrue(entry["note"].startswith("research/50 §"), "%s/%s" % (name, revision))
+
+    def test_only_a_confirmed_or_shifted_verdict_carries_a_name(self):
+        for name, col in ga.OFFSET_NAMES.items():
+            for revision, entry in col.items():
+                where = "%s/%s" % (name, revision)
+                if entry["name"] == ga.UNNAMED:
+                    self.assertTrue(entry["reason"], where)
+                    self.assertIsNone(entry["socom1_offset"], where)
+                    continue
+                v = entry["verdict"]
+                self.assertTrue(v == "confirmed" or self._is_shift(v), where)
+                self.assertRegex(entry["name"], r"^[A-Za-z_]\w*::[A-Za-z_][\w.]*$", where)
+
+    def test_a_named_offset_is_its_socom1_offset_plus_the_shift(self):
+        """The name and the number are tied: SOCOM 1 offset + the verdict's shift = this revision's value.
+        A number moved without its name being revisited breaks this, not just the pin above."""
+        for name, col in ga.OFFSET_NAMES.items():
+            for revision, entry in col.items():
+                if entry["name"] == ga.UNNAMED:
+                    continue
+                m = self._is_shift(entry["verdict"])
+                shift = int(m.group(1), 16) if m else 0
+                self.assertEqual(entry["socom1_offset"] + shift, ga.PROBE_OFFSETS[name][revision],
+                                 "%s/%s" % (name, revision))
+
+    def test_a_candidate_or_a_contradiction_is_recorded_as_such_never_as_a_name(self):
+        for name, col in ga.OFFSET_NAMES.items():
+            for revision, entry in col.items():
+                where = "%s/%s" % (name, revision)
+                if entry["verdict"] == "single-twin":
+                    self.assertEqual(entry["name"], ga.UNNAMED, where)
+                    self.assertTrue(entry["candidate"], where)
+                if entry["verdict"] == "contradicted":
+                    self.assertEqual(entry["name"], ga.UNNAMED, where)
+                    self.assertTrue(entry["contradicts"], where)
+
+    def test_the_names_research_50_gives_and_the_ones_it_refuses(self):
+        """research/50 §4a: root_node is CZSealBody::m_root (SOCOM 1 0x26c, +0x7c); actor_pos is
+        contradicted (the same-offset field CEntity::m_node sits at 0x28 in r0001; the position triple is
+        new in SOCOM II); move_scale has no demo twin. The stop rule: those two stay unnamed."""
+        got = {(n, r): (e["name"], e["verdict"]) for n, col in ga.OFFSET_NAMES.items() for r, e in col.items()}
+        self.assertEqual(got, {
+            ("root_node", "r0001"): ("CZSealBody::m_root", "shifted by +0x7c"),
+            ("root_node", "r0004"): ("CZSealBody::m_root", "shifted by +0x7c"),
+            ("actor_pos", "r0001"): (ga.UNNAMED, "contradicted"),
+            ("actor_pos", "r0004"): (ga.UNNAMED, "contradicted"),
+            ("move_scale", "r0001"): (ga.UNNAMED, "unknown"),
+            ("move_scale", "r0004"): (ga.UNNAMED, "unknown"),
+        })
+        self.assertIn("no demo twin", ga.OFFSET_NAMES["move_scale"]["r0001"]["reason"])
+        self.assertIn("new in SOCOM II", ga.OFFSET_NAMES["actor_pos"]["r0001"]["reason"])
+
+    def test_a_name_is_never_read_by_the_harness(self):
+        """Documentation for the reader: no module outside the tests refers to OFFSET_NAMES, and the
+        module itself only defines it."""
+        root = os.path.join("tools_py")
+        for dirpath, _dirs, files in os.walk(root):
+            if os.path.join("tools_py", "tests") in dirpath:
+                continue
+            for f in files:
+                if not f.endswith(".py"):
+                    continue
+                path = os.path.join(dirpath, f)
+                with open(path, encoding="utf-8", errors="replace") as fh:
+                    code = [l for l in fh if "OFFSET_NAMES" in l and not l.lstrip().startswith("#")]
+                if path == os.path.join("tools_py", "parity", "guest_addresses.py"):
+                    self.assertEqual(len(code), 1, code)
+                    self.assertTrue(code[0].startswith("OFFSET_NAMES = "), code)
+                else:
+                    self.assertEqual(code, [], path)
 
 
 if __name__ == "__main__":
