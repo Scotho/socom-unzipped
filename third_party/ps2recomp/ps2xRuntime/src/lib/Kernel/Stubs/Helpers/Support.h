@@ -1221,13 +1221,12 @@ namespace
             { return readPs2CStringBounded(rdram, runtime, addr); });
     }
 
-    constexpr uint32_t kMaxStubWarningsPerName = 8;
-    std::unordered_map<std::string, uint32_t> g_stubWarningCount;
-    std::mutex g_stubWarningMutex;
-    constexpr uint32_t kMaxPrintfLogs = 200;
+    // Sprint 11 Task 8b: the stub-warning and PS2-printf throttles used to live here, in this
+    // anonymous namespace, which gave each of the nineteen stub translation units its own copy
+    // (docs/KNOWN.md #4). They are now ps2_stubs::stubLogRuntimeState(), one object for the
+    // program, in Helpers/StubLogRuntimeState.h -- along with kMaxStubWarningsPerName and
+    // kMaxPrintfLogs, which the stubs still name unqualified from inside namespace ps2_stubs.
     constexpr size_t kMaxFormattedOutputBytes = 4096;
-    uint32_t g_printfLogCount = 0;
-    std::mutex g_printfLogMutex;
 
     constexpr std::array<uint32_t, 10> kDmaChannelBases = {
         0x10008000u, 0x10009000u, 0x1000A000u, 0x1000B000u, 0x1000B400u,

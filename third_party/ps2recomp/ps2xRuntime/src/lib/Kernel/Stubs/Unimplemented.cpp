@@ -12,10 +12,11 @@ namespace ps2_stubs
     {
         const std::string stubName = name ? name : "unknown";
 
+        StubLogRuntimeState &stubLog = stubLogRuntimeState();
         uint32_t callCount = 0;
         {
-            std::lock_guard<std::mutex> lock(g_stubWarningMutex);
-            callCount = ++g_stubWarningCount[stubName];
+            std::lock_guard<std::mutex> lock(stubLog.warningMutex);
+            callCount = ++stubLog.warningCount[stubName];
         }
 
         if (callCount > kMaxStubWarningsPerName)

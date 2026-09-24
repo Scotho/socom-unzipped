@@ -27,4 +27,5 @@
 #include <limits>
 
 #include "ps2_host_backend.h"
+#include "Helpers/StubLogRuntimeState.h"   // Sprint 11 Task 8b: one named state, not one copy per TU
 #include "Helpers/Support.h"
