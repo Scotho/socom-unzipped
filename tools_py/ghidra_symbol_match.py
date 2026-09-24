@@ -499,18 +499,47 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # --renames because the rule that fills it is not the six-hurdle rule that fills that one.
     ap.add_argument("--positional", action="store_true",
                     help="Task 7b lever 1: name by position between anchor pairs, per PT_LOAD")
-    ap.add_argument("--positional-blurred", action="store_true",
-                    help="also propose pairs whose body evidence cannot tell them from a sibling "
-                         "in the same gap (the sceSifQuery*-style wrapper families)")
+    ap.add_argument("--positional-min-evidence", dest="positional_min_evidence",
+                    choices=("image-wide", "gap-only", "any"), default=None,
+                    help="how far a candidate's body key must be unique: image-wide (the default -- "
+                         "one demo function and one of our rows in the whole image), gap-only (its "
+                         "twins may live in other gaps), or any (the sceSifQuery* wrapper families, "
+                         "whose name then rests on link order alone)")
     ap.add_argument("--bridge", metavar="DEMO2_ELF",
                     help="Task 7b lever 2: compose demo1 -> demo2 -> ours through a third build")
     ap.add_argument("--holdout", type=int, default=0, metavar="K",
-                    help="measure lever 1's error rate by holding out every K-th Task 7 pair")
+                    help="measure lever 1's error rate by holding out every K-th PROVED Task 7 pair")
     ap.add_argument("--holdout-block", type=int, default=1, metavar="B",
                     help="hold out RUNS of B consecutive pairs, so the gaps hold B functions")
+    ap.add_argument("--size-ratio-calibration", dest="size_ratio_calibration",
+                    action="store_true",
+                    help="print the size-ratio distribution SIZE_RATIO is calibrated on")
     ap.add_argument("--renames-7b", dest="renames_7b",
                     help="CSV: the lever 1 + lever 2 proposals (never applied here)")
     args = ap.parse_args(list(argv) if argv is not None else None)
+
+    # A flag that silently does nothing is worse than one that is refused: --positional-min-evidence
+    # is read only by lever 1, and --renames-7b with no lever would write a file whose header states
+    # no acceptance rule at all, which is the one thing this file must never be.
+    if args.positional_min_evidence and not args.positional:
+        print("--positional-min-evidence needs --positional")
+        return 2
+    # Lever 1 IMPLIES the prefix pass, and this is a rule about evidence rather than a convenience.
+    # Whether a prologue-only pair is an ANCHOR or a CANDIDATE decides the proposals file: with
+    # --prefix the 159 of them anchor gaps and the file holds 6 rows; without it they fall into the
+    # gaps as candidates, where a prologue hash unique image-wide clears tier B, and the file holds
+    # 28 -- re-admitting through the back door exactly what note 44 hurdle 3 refuses ("a prologue
+    # agreeing is not a body agreeing, at any length or any --good"). A prologue match is a fine
+    # POSITION marker and not proof of identity, so its place is on the anchor side. Rather than let
+    # one unpassed flag quietly swap those roles, lever 1 turns the pass on and says so.
+    if args.positional and not args.prefix:
+        args.prefix = True
+        print("--positional implies --prefix: the 159 prologue pairs anchor gaps here rather than "
+              "falling into them as candidates (note 45 sec 2).")
+    if args.renames_7b and not (args.positional or args.bridge):
+        print("--renames-7b needs --positional and/or --bridge: a proposals file with no rule in "
+              "its header is not a proposals file")
+        return 2
 
     wanted = [args.demo_elf, args.our_elf, args.our_csv]
     if args.bridge:
@@ -585,36 +614,66 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     # ---- Task 7b: the two levers, each under its own rule -----------------------------------
     lever_rows = []                      # [(source, symbol_levers.Candidate)]
     lever_header: List[str] = []
-    anchors: List[Tuple[int, int]] = []
-    if args.positional or args.bridge or args.holdout or args.renames_7b:
+    anchors: List[Tuple[int, int, str]] = []
+    anchor_note = ""
+    if args.positional or args.bridge or args.holdout or args.size_ratio_calibration:
         from tools_py import symbol_levers as sl
         # Keyed by the DEMO address, which `details` carries and a name cannot be trusted for: one
         # demo name can sit on two demo addresses (a `static` in two translation units), and Task 7's
-        # §5 collision is exactly that case.
-        anchors = [(info["demo_addr"], addr) for (_n, addr), info in details.items()]
-        print("\nTask 7b: %d anchors (every Task 7 pair, by demo address)" % len(anchors))
+        # §5 collision is exactly that case. The PASS comes along because the anchor set depends on
+        # --prefix and the two sets produce different files: with it, 987 anchors of which 159 are
+        # prologue-only pairs that note 44 hurdle 3 forbids from ever being proposed; without it, 828.
+        anchors = sl.anchors_from_details(details)
+        composition = sl.anchor_composition(anchors)
+        anchor_note = ("Anchors: %d Task 7 pairs (%s); %d of them PROVED, the rest prologue-only"
+                       % (len(anchors),
+                          ", ".join("%s %d" % kv for kv in sorted(composition.items())),
+                          len(sl.proved_anchors(anchors))))
+        print("\nTask 7b: " + anchor_note)
+
+    if args.size_ratio_calibration:
+        from tools_py import symbol_levers as sl
+        cal = sl.size_ratio_calibration(details, our_rows)
+        print("size-ratio calibration (Task 7's prefix-pass pairs -- the same routine, edited):")
+        print("  %d pairs; six lowest ratios %s; cut %.2f keeps %d (%.1f%%); lowest kept %s"
+              % (cal["pairs"], cal["six lowest"], cal["cut"], cal["kept"], cal["percent kept"],
+                 cal["lowest kept"]))
 
     if args.holdout:
         from tools_py import symbol_levers as sl
-        folds = sl.holdout(demo_rows, demo_segs, our_rows, our_segs, anchors, PREFIX_WORDS,
-                           folds=args.holdout, block=args.holdout_block)
-        print("lever 1 holdout (%d folds, blocks of %d, held-out rows the walk re-derived):"
-              % (args.holdout, args.holdout_block))
-        for tier in ("A", "B", "blurred", "untiered"):
-            got, bad = folds[tier]
-            print("  tier %-8s %4d re-derived, %d wrong (%.2f%% right)"
-                  % (tier, got, bad, 100 * (got - bad) / got if got else 0.0))
+        print("lever 1 holdout (%d folds, blocks of %d; a one-off run, not a suite test; every "
+              "figure is an UPPER BOUND -- see note 45 section 3):" % (args.holdout, args.holdout_block))
+        for label, holdable in (("proved pairs only", sl.proved_anchors(anchors)),
+                                ("all anchors", None)):
+            folds = sl.holdout(demo_rows, demo_segs, our_rows, our_segs, anchors, PREFIX_WORDS,
+                               folds=args.holdout, block=args.holdout_block, holdable=holdable)
+            n = len(holdable) if holdable is not None else len(anchors)
+            print("  held-out truth = %s (%d):" % (label, n))
+            for level in sl.EVIDENCE + ("untiered",):
+                got, bad = folds[level]
+                rate = "%.2f%% right" % (100 * (got - bad) / got) if got else "--"
+                print("    %-12s %4d re-derived, %d wrong (%s)" % (level, got, bad, rate))
 
     if args.positional:
         from tools_py import symbol_levers as sl
+        level = args.positional_min_evidence or "image-wide"
         found, census = sl.positional(demo_rows, demo_segs, our_rows, our_segs, anchors,
-                                      PREFIX_WORDS, allow_blurred=args.positional_blurred)
-        print("lever 1 (positional): " + ", ".join("%s %d" % kv for kv in sorted(census.items())))
+                                      PREFIX_WORDS, min_evidence=level)
+        print("lever 1 (positional, min evidence %s): " % level
+              + ", ".join("%s %d" % kv for kv in sorted(census.items())))
         lever_rows += [("positional", c) for c in found]
         lever_header.append(sl.POSITIONAL_RULE)
-        if args.positional_blurred:
-            lever_header.append("--positional-blurred was given: rows with Discriminating=no are "
-                                "included. Their name rests on link order alone.")
+        lever_header.append(sl.POSITIONAL_CAVEAT)
+        lever_header.append(
+            anchor_note + ". --positional implies --prefix so that the prologue-only pairs anchor "
+            "gaps rather than falling into them as tier-B candidates; run the other way the file "
+            "holds 28 rows instead of 6, which is note 44 hurdle 3 re-admitted by the back door.")
+        if level != "image-wide":
+            lever_header.append(
+                "--positional-min-evidence %s was given, so rows whose body key is NOT unique "
+                "image-wide are included. Read the Evidence and KeyPeers columns: a `gap-only` row's "
+                "twins live in other gaps and position alone chose between them; a `no` row could "
+                "not even be told from its own gap siblings." % level)
 
     if args.bridge:
         from tools_py import symbol_levers as sl
@@ -640,13 +699,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print("\n7b proposals: %d" % len(lever_out))
         for reason in sorted(lever_held):
             print("    held back: %-34s %d" % (reason, lever_held[reason]))
-        header = ["game/demo_symbol_renames_7b.csv -- Sprint 11 Task 7b proposals. PROPOSALS ONLY:",
+        header = ["%s -- Sprint 11 Task 7b proposals. PROPOSALS ONLY:" % args.renames_7b,
                   "recomp/socom2_ghidra.csv is unchanged; applying these is a separate, reviewed step.",
                   "Names come from the SOCOM 1 demo's .symtab. Addresses are OURS (r0001).",
                   "Every row here failed Task 7's six-hurdle rule and is proposed under a DIFFERENT",
-                  "one, named in its Source column. docs/research/45-positional-and-bridge-names.md",
+                  "one, named in its Source column -- except hurdle 2 (body >= 64 bytes), which",
+                  "these rules keep unchanged. docs/research/45-positional-and-bridge-names.md",
                   ""] + [line for rule in lever_header for line in (rule, "")]
-        sl.write_proposals_7b(args.renames_7b, lever_out, header)
+        try:
+            sl.write_proposals_7b(args.renames_7b, lever_out, header)
+        except (ValueError, OSError) as exc:
+            print("NO-DATA: %s" % exc)
+            return 2
         print("wrote %s (proposals only -- applying them is a separate, reviewed step)"
               % args.renames_7b)
 

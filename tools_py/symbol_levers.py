@@ -8,13 +8,13 @@ image at all, because SOCOM II is a year of edits later. This module adds the tw
 and its own proposals file. Neither ever touches `recomp/socom2_ghidra.csv`.
 
 LEVER 1 -- POSITION BETWEEN ANCHORS (`positional`). Link order survives between the two games. Sorted
-by our address, consecutive Task 7 pairs keep the demo's order 97.2 % of the time in the boot-loader
-region, 90.7 % in FTSCore, 92.1 % in ZSealEtc. (The whole-image longest increasing subsequence is only
-492/984, because the demo's single PT_LOAD interleaves what we split into three overlays -- so the walk
-runs PER REGION, never over the whole image.) Between two consecutive anchors that are in order on both
-sides, when both builds hold the same number of unplaced functions, the i-th on one side is the i-th on
-the other. That is a correspondence, not yet evidence, so every candidate then has to buy its name with
-a size ratio and a body or prologue hash -- see `POSITIONAL_RULE`.
+by our address, consecutive Task 7 pairs keep the demo's order 92-98 % of the time inside each of our
+overlays. (The whole-image longest increasing subsequence is only 492/984, because the demo's single
+PT_LOAD interleaves what we split into three overlays -- so the walk runs PER REGION, never over the
+whole image.) Between two consecutive anchors that are in order on both sides, when both builds hold
+the same number of unplaced functions, the i-th on one side is the i-th on the other. That is a
+CORRESPONDENCE, not evidence, so every candidate then has to buy its name with a size ratio and a body
+or prologue hash whose key is unique across the WHOLE image -- see `POSITIONAL_RULE` and `EVIDENCE`.
 
 LEVER 2 -- THE BRIDGE THROUGH THE AUG 18 2003 SOCOM II DEMO (`bridge`). `game/demo_scus_973_68/
 SCUS_973.68` sits between SOCOM 1 and retail r0001 in time. It is STRIPPED -- zero symbols -- so it can
@@ -29,54 +29,86 @@ this lever adds ZERO names, and why is the interesting part -- see docs/research
         --renames-7b game/demo_symbol_renames_7b.csv
 """
 import bisect
+import csv
+import os
 from typing import Dict, List, NamedTuple, Optional, Sequence, Tuple
 
 from tools_py import address_matcher as am
 from tools_py.fingerprint import fingerprint
+# Imported rather than re-spelt: `is_anonymous` decides which of our rows a rename may take over, and
+# a second copy of that predicate here would let the levers drift from Task 7 the day the placeholder
+# set grows. `ghidra_symbol_match` does not import this module at import time (only inside `main`),
+# so there is no cycle. PREFIX_WORDS is the prologue window, so "the prologue" means one thing in both.
+from tools_py.ghidra_symbol_match import PREFIX_WORDS, c_identifier, is_anonymous
 
 JR_RA = 0x03E00008
 JAL = 0x03
 
 # -- lever 1's thresholds, and where each number comes from -----------------------------------
 #
-# PROLOGUE_WORDS is `ghidra_symbol_match.PREFIX_WORDS`: the same 16-instruction window the prefix
-# pass hashes, so "the prologue agrees" means the same thing in both modules. It is imported rather
-# than re-spelt at the bottom of this file, to keep the two from drifting apart.
-#
 # SIZE_RATIO 0.5 -- neither body more than twice the other -- is MEASURED, not chosen. Task 7's 159
-# prefix-pass pairs are the sample of "the same routine, edited between the two games": their
-# min/max size ratio has a 5th percentile of 0.478 and 153 of the 159 (96.2 %) clear 0.5. A tighter
-# cut starts refusing routines we have independent reason to believe are the same one; a looser one
-# stops refusing anything at all.
+# prefix-pass pairs are the sample of "the same routine, edited between the two games". Their min/max
+# size ratios, six lowest first, are 0.090, 0.299, 0.394, 0.409, 0.478, 0.487 -- so exactly those six
+# are under 0.50, 153 of the 159 (96.2 %) clear it, and the lowest ratio the cut keeps is 0.506.
+# `size_ratio_calibration` prints that distribution; `--size-ratio-calibration` runs it. (An earlier
+# draft called 0.478 "the 5th percentile". It is the fifth lowest OBSERVATION; the 5th percentile by
+# nearest rank is 0.557. The corrected reading argues for a slightly tighter cut, not a looser one:
+# 0.55 would keep 152 of the 159 instead of 153.)
 #
-# TIER_A_MIN_SIZE 32 bytes (eight instructions) is the floor under the body-hash tier. A `jr $ra;
-# nop` thunk hashes the same in every program ever compiled, so under eight instructions the hash
-# adds nothing to the position and the pair would rest on position alone.
-#
-# TIER_B_MIN_SIZE 64 bytes is Task 7's own `PROPOSE_MIN_SIZE`, kept because tier B's evidence is a
-# prologue -- and a prologue that IS the whole function is not a prologue.
+# MIN_BODY 64 bytes is note 44's own hurdle 2, applied here unchanged and to BOTH tiers. An earlier
+# draft gave tier A a 32-byte floor on the argument that tier A's hash is stronger; the reason note 44
+# gives for its hurdle -- the `Name` column becomes a C identifier AND an output filename, inherited by
+# every later reader with no record that it was a guess -- does not care which rule proposed the row.
+# Raising it to 64 costs the default file nothing (every row that clears EVIDENCE's top level is over
+# 64 B anyway) and costs the two weaker levels five rows.
 SIZE_RATIO = 0.5
-TIER_A_MIN_SIZE = 32
-TIER_B_MIN_SIZE = 64
-# For the rule text only. The window itself is passed in from `ghidra_symbol_match.PREFIX_WORDS`,
-# so that "the prologue" means one thing in both modules; this is that number spelt for a reader.
-PROLOGUE_WORDS_DOC = 16
+MIN_BODY = 64
+
+# How much the body evidence is worth, strongest first. The distinction is the whole of finding F1 of
+# the Task 7b review, and it decides what reaches the file:
+#
+#   image-wide  the candidate's body key is worn by exactly one demo function AND one of our rows in
+#               the whole image. Nothing but this candidate could have produced that key on either
+#               side, so the body really has checked the positional guess.
+#   gap-only    the key is unique among the candidate's own GAP siblings but not image-wide. The
+#               twins fell in other gaps; position is still the only thing choosing between them, and
+#               a reader of the file cannot tell that from the row.
+#   no          not even unique inside the gap -- the `sceSifQuery*` wrapper families, whose masked
+#               hashes are equal BY CONSTRUCTION because `fingerprint` zeroes the immediate that
+#               distinguishes them.
+#
+# Only `image-wide` reaches the file by default. Note that tier A can essentially never reach it, and
+# that is structural rather than a property of this data: a tier-A key that is unique on both sides at
+# the same length is exactly `address_matcher`'s relinked-body acceptance condition, so Task 7 would
+# already have placed the pair and it would be an anchor, not a candidate. Tier A exists only where
+# the key is ambiguous -- which is the definition of not image-wide unique.
+EVIDENCE = ("image-wide", "gap-only", "no")
 
 POSITIONAL_RULE = (
     "positional: the i-th unplaced function between two consecutive Task 7 anchors that are in order "
     "on both sides and inside one PT_LOAD of ours, when both builds hold the same count in that gap. "
-    "Accepted only with body evidence -- tier A: equal body length and equal address-masked "
-    "fingerprint (address_matcher's own relinked-body test, which the matcher refused only for want "
-    "of a unique hash; position supplies it), body >= %d bytes. Tier B: equal address-masked "
-    "%d-instruction prologue hash, both bodies >= %d bytes, size ratio >= %.2f (the 5th percentile "
-    "of Task 7's 159 prefix-pass pairs, which ARE the same routine after a year of edits, is 0.478). "
-    "And that evidence must be GAP-DISCRIMINATING: a candidate whose body key equals a sibling's in "
-    "the same gap has not been checked by it, only re-asserted. Never overrides a Task 7 pair or a "
-    "hand-chosen name; the identifier hurdles are Task 7's. Error measured by holding out Task 7's "
-    "own 984 pairs in 3 folds and re-deriving them: singly, tier A 360 with 1 wrong and tier B 32 "
-    "with 0; in blocks of 8, tier A 127 and tier B 8 with 0 wrong, against 19 untiered with 2 wrong. "
-    "Reproduce with --holdout 3 --holdout-block 8."
-) % (TIER_A_MIN_SIZE, PROLOGUE_WORDS_DOC, TIER_B_MIN_SIZE, SIZE_RATIO)
+    "A correspondence is not evidence, so each candidate must also clear a body rule -- tier A: equal "
+    "body length and equal address-masked fingerprint (address_matcher's own relinked-body test, "
+    "which it refused only for want of a unique hash). Tier B: equal address-masked %d-instruction "
+    "prologue hash and size ratio >= %.2f (six of Task 7's 159 prefix-pass pairs, which ARE the same "
+    "routine after a year of edits, fall under 0.50; the lowest ratio this keeps is 0.506). Both "
+    "tiers: body >= %d bytes, which is note 44's hurdle 2 unchanged. AND the body key must be unique "
+    "IMAGE-WIDE -- worn by one demo function and one of our rows in the whole image, not merely by "
+    "one per gap: where a key has peers elsewhere, position alone is choosing between them and the "
+    "body has checked nothing. The KeyPeers column gives both counts; Evidence says which level the "
+    "row cleared. Never overrides a Task 7 pair or a hand-chosen name; the identifier hurdles are "
+    "Task 7's."
+) % (PREFIX_WORDS, SIZE_RATIO, MIN_BODY)
+
+POSITIONAL_CAVEAT = (
+    "How wrong the walk can be was measured by holding out Task 7's own pairs and re-deriving them "
+    "(--holdout 3 --holdout-block 8, a one-off run, not a suite test). READ ITS BIAS WITH ITS RESULT: "
+    "a held-out pair is by construction a function Task 7 COULD match -- one that survived into SOCOM "
+    "II nearly intact -- while the candidates this file is drawn from are the ones it could not. The "
+    "holdout measures the walk, not this population, and every accuracy figure from it is an UPPER "
+    "BOUND. It also cannot speak for the image-wide rule at all, since a held-out pair's key is "
+    "usually image-wide unique by construction. See docs/research/45-positional-and-bridge-names.md."
+)
 
 BRIDGE_RULE = (
     "bridge: a demo1 name reaches a retail row only when demo1 -> demo2 (SCUS_973.68, Aug 18 2003) "
@@ -96,12 +128,59 @@ class Candidate(NamedTuple):
     our_size: int
     tier: Optional[str]                    # "A" / "B" for positional; "exact+exact" etc. for bridge
     gap: int                               # how many functions shared this anchor gap (0 for bridge)
-    discriminating: bool = True            # could the body evidence tell it from its gap siblings?
+    evidence: str = "image-wide"           # one of EVIDENCE; see the block comment above
+    key_peers: Tuple[int, int] = (1, 1)    # (demo functions, our rows) image-wide wearing this key
 
     @property
     def ratio(self) -> float:
         hi = max(self.demo_size, self.our_size)
         return min(self.demo_size, self.our_size) / hi if hi else 0.0
+
+
+def _anchor_rows(anchors) -> List[Tuple[int, int, str]]:
+    """`anchors` as (demo_addr, our_addr, how), accepting the two-element form as how=""."""
+    out = []
+    for row in anchors:
+        if len(row) > 2:
+            out.append((int(row[0]), int(row[1]), str(row[2])))
+        else:
+            out.append((int(row[0]), int(row[1]), ""))
+    return out
+
+
+def anchors_from_details(details: Dict) -> List[Tuple[int, int, str]]:
+    """Task 7's pairs as anchors, keyed by the DEMO ADDRESS `details` carries.
+
+    Never by name: one demo name can sit on two demo addresses -- a C `static` compiled into two
+    translation units -- and a name-keyed anchor would put one of those two pairs at the other's
+    address, which is the one error a positional walk cannot survive.
+    """
+    return sorted((info["demo_addr"], addr, info["how"]) for (_n, addr), info in details.items())
+
+
+def anchor_composition(anchors) -> Dict[str, int]:
+    """{pass: count} over the anchor set -- what the gaps are actually anchored on.
+
+    This exists because the answer depends on `--prefix`: with it the anchor set is 987 pairs of
+    which 159 are PROLOGUE-only matches that note 44's hurdle 3 forbids from ever being proposed;
+    without it, 828. Both are legitimate anchor sets -- a prologue unique on both sides is a fine
+    position marker even when it is not proof of identity -- but they produce different files, so the
+    composition is printed by the CLI and written into the proposals file's header.
+    """
+    out: Dict[str, int] = {}
+    for _d, _o, how in _anchor_rows(anchors):
+        out[how or "unknown"] = out.get(how or "unknown", 0) + 1
+    return out
+
+
+def proved_anchors(anchors) -> set:
+    """The demo addresses of the anchors Task 7 PROVED -- i.e. not the prologue-only ones.
+
+    `holdout` draws its held-out truth from these and from nothing else. Note 44 §2 hurdle 3 refuses
+    to treat a prologue agreement as proof of identity, and tier B's own evidence is a prologue, so
+    holding out a prefix pair and re-deriving it at tier B is a prologue confirming a prologue.
+    """
+    return {d for d, _o, how in _anchor_rows(anchors) if not how.startswith("prefix")}
 
 
 # ---- a function table for an image with no symbols ------------------------------------------
@@ -114,7 +193,7 @@ def scan_functions(segments, jal_seed: bool = True, ptr_seed: bool = False) -> L
       * what follows a `jr $ra` and its delay slot (past any zero padding) is a function start. On
         MIPS you cannot fall through a return, so this one is nearly exact and it does the work.
       * every `jal` target inside the image is a function start. This catches the first function of
-        a run and anything the rule above lands one instruction off.
+        a run and keeps a leading data block out of it.
       * every 32-bit word in the image that points at an aligned address inside it -- a vtable or
         constructor-table entry. OFF by default: it is measured below to make the table WORSE.
 
@@ -126,10 +205,17 @@ def scan_functions(segments, jal_seed: bool = True, ptr_seed: bool = False) -> L
     real functions get their start right (recall 96.4 %, precision 98.1 %), and 9,177 (94.6 %) get
     BOTH boundaries right and so fingerprint like the real thing. Turning `ptr_seed` on drops that to
     92.2 %: a vtable slot pointing into the middle of a function splits it. The 5 % whose extent is
-    wrong cost RECALL, not correctness -- a wrongly cut body simply fingerprints like nothing else.
-    A function that is never a `jal` target and never follows a return (reached only through a
-    register, in the middle of a run) is invisible to this, and its bytes are absorbed by its
-    predecessor, which spoils that one too. `scan_accuracy` is this paragraph as a measurement.
+    wrong cost RECALL, not correctness -- a wrongly cut body fingerprints like nothing else, and
+    `am.match` needs equal length AND an equal masked hash, so a mis-bounded range can only suppress
+    a match, never manufacture one (`BridgeSafetyTest` asserts this). A function that is never a
+    `jal` target and never follows a return (reached only through a register, in the middle of a run)
+    is invisible to this, and its bytes are absorbed by its predecessor, which spoils that one too.
+    `scan_accuracy` is this paragraph as a measurement.
+
+    The same three boundary rules are spelt again in `tools_py/find_interior_functions.py`, which
+    cannot be reused because it is a script that wants a Ghidra CSV to compare against. That script
+    also seeds on `lui`+`addiu`-formed addresses, which this does not try; whether that seed beats
+    94.6 % is unmeasured.
     """
     out: List[Tuple[int, int, str]] = []
     for vaddr, data in segments:
@@ -193,7 +279,7 @@ def scan_accuracy(elf) -> Dict[str, int]:
 
 # ---- lever 1: position between anchors -------------------------------------------------------
 
-def _prologue(side: am.Side, start: int, words: int) -> Optional[str]:
+def _prologue(side: am.Side, start: int, words: int = PREFIX_WORDS) -> Optional[str]:
     """The address-masked hash of this body's first `words` instructions, or None if it is shorter.
 
     Masked, where `ghidra_symbol_match._prefix_pass` hashes the raw stream: a prologue that reaches a
@@ -207,17 +293,42 @@ def _prologue(side: am.Side, start: int, words: int) -> Optional[str]:
     return fingerprint(am.mask_address_operands(body)[:width])
 
 
-def _tier(demo: am.Side, d_addr: int, ours: am.Side, o_addr: int, prologue_words: int) -> Optional[str]:
-    """"A", "B" or None -- which body rule, if either, this candidate clears."""
+def _body_key(side: am.Side, addr: int, tier: str, prologue_words: int = PREFIX_WORDS):
+    """What the tier's body evidence actually sees of this function -- its discriminating power."""
+    if tier == "A":
+        return ("A", side.size.get(addr, 0), side.relfp(addr))
+    return ("B", _prologue(side, addr, prologue_words))
+
+
+def key_census(side: am.Side, tier: str, prologue_words: int = PREFIX_WORDS) -> Dict:
+    """{body key: how many of this image's functions wear it} for one tier.
+
+    The image-wide multiplicity finding F1 of the review asked for. Computed once per side per tier
+    and handed to `_evidence`, because the alternative -- asking per candidate -- is 14,879 masked
+    fingerprints per question.
+    """
+    out: Dict = {}
+    for start in side.starts:
+        key = _body_key(side, start, tier, prologue_words)
+        out[key] = out.get(key, 0) + 1
+    return out
+
+
+def _tier(demo: am.Side, d_addr: int, ours: am.Side, o_addr: int,
+          prologue_words: int = PREFIX_WORDS) -> Optional[str]:
+    """"A", "B" or None -- which body rule, if either, this candidate clears.
+
+    Both tiers carry `MIN_BODY`, which is note 44's hurdle 2 unchanged: the `Name` column becomes a C
+    identifier and an output filename whichever rule proposed the row.
+    """
     d_size, o_size = demo.size.get(d_addr, 0), ours.size.get(o_addr, 0)
-    if not d_size or not o_size:
+    if not d_size or not o_size or d_size < MIN_BODY or o_size < MIN_BODY:
         return None
-    if d_size == o_size and d_size >= TIER_A_MIN_SIZE:
+    if d_size == o_size:
         rel = demo.relfp(d_addr)
         if rel is not None and rel == ours.relfp(o_addr):
             return "A"
-    if d_size >= TIER_B_MIN_SIZE and o_size >= TIER_B_MIN_SIZE \
-            and min(d_size, o_size) / max(d_size, o_size) >= SIZE_RATIO:
+    if min(d_size, o_size) / max(d_size, o_size) >= SIZE_RATIO:
         pro = _prologue(demo, d_addr, prologue_words)
         if pro is not None and pro == _prologue(ours, o_addr, prologue_words):
             return "B"
@@ -229,24 +340,26 @@ def _slice(sorted_starts: Sequence[int], lo: int, hi: int) -> List[int]:
     return list(sorted_starts[bisect.bisect_right(sorted_starts, lo):bisect.bisect_left(sorted_starts, hi)])
 
 
-def anchor_gaps(anchors: Sequence[Tuple[int, int]], our_starts: Sequence[int],
-                demo_starts: Sequence[int], regions: Sequence[Tuple[int, int]],
-                placed_ours: set, placed_demo: set) -> List[List[Tuple[int, int]]]:
+def anchor_gaps(anchors, our_starts: Sequence[int], demo_starts: Sequence[int],
+                regions: Sequence[Tuple[int, int]], placed_ours: set,
+                placed_demo: set) -> List[List[Tuple[int, int]]]:
     """[[(our_addr, demo_addr), ...], ...] -- one list per usable gap, before any body check.
 
-    `anchors` is [(our address, demo address)]. The walk is PER REGION because the demo's single
-    PT_LOAD interleaves our three overlays: run over the whole image, consecutive pairs disagree with
-    the demo's order often enough to make nonsense of the gaps (the peer's whole-image LIS is 492 of
-    984, against 90-97 % agreement inside each region). Within a region, a gap is used only when its
-    two anchors are in order on BOTH sides and both sides hold the same number of unplaced starts.
+    `anchors` is [(demo address, our address[, how])]. The walk is PER REGION because the demo's
+    single PT_LOAD interleaves our three overlays: run over the whole image, consecutive pairs
+    disagree with the demo's order often enough to make nonsense of the gaps (the whole-image longest
+    increasing subsequence is 492 of 984, against 92-98 % agreement inside each region). Within a
+    region, a gap is used only when its two anchors are in order on BOTH sides and both sides hold
+    the same number of unplaced starts.
 
     The GROUPING is kept rather than flattened because the acceptance rule needs it: a candidate's
-    real rivals are the other functions in its own gap, and `_discriminating` asks whether the body
-    evidence can tell it from them.
+    nearest rivals are the other functions in its own gap, and `_evidence` asks first whether the
+    body evidence can tell it from them and then whether it can tell it from the whole image.
     """
     out: List[List[Tuple[int, int]]] = []
+    rows = [(o, d) for d, o, _h in _anchor_rows(anchors)]
     for lo, hi in regions:
-        inside = sorted((o, d) for o, d in anchors if lo <= o < hi)
+        inside = sorted((o, d) for o, d in rows if lo <= o < hi)
         for (o1, d1), (o2, d2) in zip(inside, inside[1:]):
             if d2 <= d1:
                 continue                                   # the pair is out of order: no gap here
@@ -258,124 +371,178 @@ def anchor_gaps(anchors: Sequence[Tuple[int, int]], our_starts: Sequence[int],
     return out
 
 
-def _body_key(side: am.Side, addr: int, tier: str, prologue_words: int):
-    """What the tier's body evidence actually sees of this function -- its discriminating power."""
-    if tier == "A":
-        return ("A", side.size.get(addr, 0), side.relfp(addr))
-    return ("B", _prologue(side, addr, prologue_words))
+def _evidence(gap: Sequence[Tuple[int, int]], demo: am.Side, ours: am.Side, o_addr: int,
+              d_addr: int, tier: str, census, prologue_words: int = PREFIX_WORDS):
+    """(level, (demo peers, our peers)) -- how far the body evidence actually reaches.
 
+    `census` is {"A": (demo counter, our counter), "B": (...)} from `key_census`.
 
-def _discriminating(gap: Sequence[Tuple[int, int]], demo: am.Side, ours: am.Side,
-                    o_addr: int, d_addr: int, tier: str, prologue_words: int) -> bool:
-    """Can the body evidence tell this pairing from the other functions in its own gap?
+    The two questions are different and the review's finding F1 is that only the second one supports
+    the argument this hurdle is made of. The gap-local question -- can the body tell this candidate
+    from its own gap siblings? -- catches the wrapper families (five `sceSifQuery*`, `stat`/`unlink`,
+    `sceDmaSendN`/`sceDmaSendI`), whose masked hashes are equal by construction because `fingerprint`
+    zeroes the immediate that distinguishes them. But the ARGUMENT for refusing them -- that a
+    silently swapped `sceSifQueryMemSize` is a wrong name nobody ever catches -- is about the key
+    being worn by more than one function, not about the twin happening to land in the same gap. On
+    the real inputs 9 of the 16 rows an earlier draft accepted had a key with peers elsewhere in the
+    image; `__ct__7CMatrixFv` is a 64-byte-rule-failing 40-byte body whose key 22 of our 14,879 rows
+    wear. So the image-wide question is the one that decides the file.
 
-    This is the hurdle the first cut of this module did not have, and the measurement that put it
-    there: of 37 pairs that cleared tier A or B, 18 shared their body key with a SIBLING IN THE SAME
-    GAP -- the five `sceSifQuery*` wrappers, `stat` and `unlink`, `sceDmaSendN`/`sceDmaSendI`. Those
-    families are the same instruction stream differing only in an immediate, and `fingerprint` zeroes
-    `addiu`/`ori` immediates on purpose, so their masked hashes are equal by construction. For such a
-    pair the body check confirms nothing that position did not already assert, and a reordering of
-    two siblings between the two games would swap `sceSifQueryMemSize` and `sceSifQueryBlockSize`
-    with no evidence anywhere that it had happened. The body evidence exists to CHECK the positional
-    guess; where it cannot separate the candidate from its own neighbours it has not checked it.
+    A cheaper strengthener was measured and does not work: `am.Side.anchors()` (the distinct strings
+    a body forms the address of) rescues ZERO of the rows the image-wide rule refuses, because those
+    bodies -- SDK thunks and tiny constructors -- reach no strings at all.
     """
-    mine_d = _body_key(demo, d_addr, tier, prologue_words)
-    mine_o = _body_key(ours, o_addr, tier, prologue_words)
+    d_keys, o_keys = census[tier]
+    d_key = _body_key(demo, d_addr, tier, prologue_words)
+    o_key = _body_key(ours, o_addr, tier, prologue_words)
+    peers = (d_keys.get(d_key, 0), o_keys.get(o_key, 0))
     for o_other, d_other in gap:
-        if d_other != d_addr and _body_key(demo, d_other, tier, prologue_words) == mine_d:
-            return False
-        if o_other != o_addr and _body_key(ours, o_other, tier, prologue_words) == mine_o:
-            return False
-    return True
+        if d_other != d_addr and _body_key(demo, d_other, tier, prologue_words) == d_key:
+            return "no", peers
+        if o_other != o_addr and _body_key(ours, o_other, tier, prologue_words) == o_key:
+            return "no", peers
+    return ("image-wide" if peers == (1, 1) else "gap-only"), peers
 
 
-def positional(demo_funcs, demo_segments, our_funcs, our_segments, pairs_with_demo_addr,
-               prologue_words: int, regions=None, allow_blurred: bool = False):
+def positional(demo_funcs, demo_segments, our_funcs, our_segments, anchors,
+               prologue_words: int = PREFIX_WORDS, regions=None,
+               min_evidence: str = "image-wide"):
     """(accepted, census) -- lever 1.
 
-    `pairs_with_demo_addr` is [(demo_addr, our_addr)] for every Task 7 pair; those are the anchors AND
-    the rows a candidate may never take. `accepted` is [Candidate] with a tier; `census` counts every
-    stage so the note's numbers have a source.
+    `anchors` is [(demo_addr, our_addr[, how])] for every Task 7 pair; those are the anchors AND the
+    rows a candidate may never take. `accepted` is [Candidate]; `census` counts every stage so the
+    note's numbers have a source.
 
-    `allow_blurred` (the CLI's `--positional-blurred`) admits the pairs `_discriminating` refuses.
-    It is the one JUDGEMENT in this rule rather than a measurement, so it is a knob and its default
-    is off: the 19 pairs it admits on the real inputs are wrapper families -- five `sceSifQuery*`,
-    `stat`/`unlink`, `sceDmaSendN`/`sceDmaSendI`, `rt_mutex_platform_lock`/`_destroy` -- where the
-    only thing separating a name from its sibling is the order the linker emitted them in. That
-    order is source order and a reordering is unlikely; the holdout saw 10 such pairs and got all
-    ten right. Ten is not a measurement, and a silently swapped `sceSifQueryMemSize` is the kind of
-    wrong name nobody ever catches, so the default file leaves them out and the note names them.
+    `min_evidence` is the one JUDGEMENT in this rule rather than a measurement, so it is a knob and
+    its default is the strictest level:
+
+      "image-wide"  the body key is worn by one demo function and one of our rows in the whole image.
+      "gap-only"    ...or merely by one per gap: the twins exist, they just fell elsewhere. Position
+                    alone is choosing, and a reader of the file cannot see that from the row.
+      "any"         ...or not even that: the wrapper families. Their name rests on link order alone.
+                    That order is source order and a reordering is unlikely, and the holdout saw six
+                    such pairs and got all six right; six is not a measurement, and a silently
+                    swapped `sceSifQueryMemSize` is the kind of wrong name nobody ever catches.
+
+    Every accepted row carries the level it cleared and its image-wide peer counts, so a file written
+    at a looser level says so row by row as well as in its header.
     """
+    if min_evidence not in ("image-wide", "gap-only", "any"):
+        raise ValueError("min_evidence is image-wide, gap-only or any, not %r" % (min_evidence,))
+    allowed = {"image-wide": ("image-wide",),
+               "gap-only": ("image-wide", "gap-only"),
+               "any": EVIDENCE}[min_evidence]
+
     demo = am.Side(demo_funcs, demo_segments)
     ours = am.Side(our_funcs, our_segments)
     if regions is None:
         regions = [(v, v + len(d)) for v, d in ours.image.segments]
-    placed_demo = {d for d, _o in pairs_with_demo_addr}
-    placed_ours = {o for _d, o in pairs_with_demo_addr}
-    anchors = [(o, d) for d, o in pairs_with_demo_addr]
-    gaps = anchor_gaps(anchors, sorted(ours.starts), sorted(demo.starts), regions,
+    rows = _anchor_rows(anchors)
+    placed_demo = {d for d, _o, _h in rows}
+    placed_ours = {o for _d, o, _h in rows}
+    gaps = anchor_gaps(rows, sorted(ours.starts), sorted(demo.starts), regions,
                        placed_ours, placed_demo)
+    census = {t: (key_census(demo, t, prologue_words), key_census(ours, t, prologue_words))
+              for t in ("A", "B")}
 
-    census = {"anchors": len(anchors), "gaps": len(gaps),
-              "candidates": sum(len(g) for g in gaps), "tier A": 0, "tier B": 0,
-              "no body evidence": 0, "body evidence not gap-discriminating": 0,
-              "our row already named": 0}
+    # Buckets that SUM to `candidates`, whatever `min_evidence` is: a candidate is counted once, by
+    # the level it reached and whether that level was admitted.
+    counts = {"anchors": len(rows), "gaps": len(gaps), "candidates": sum(len(g) for g in gaps),
+              "no body evidence": 0, "our row already named": 0}
+    for level in EVIDENCE:
+        counts["evidence %s: taken" % level] = 0
+        counts["evidence %s: refused" % level] = 0
     accepted: List[Candidate] = []
     for gap in gaps:
         for o_addr, d_addr in gap:
             tier = _tier(demo, d_addr, ours, o_addr, prologue_words)
             if tier is None:
-                census["no body evidence"] += 1
+                counts["no body evidence"] += 1
                 continue
-            sharp = _discriminating(gap, demo, ours, o_addr, d_addr, tier, prologue_words)
-            if not sharp:
-                census["body evidence not gap-discriminating"] += 1
-                if not allow_blurred:
-                    continue
+            level, peers = _evidence(gap, demo, ours, o_addr, d_addr, tier, census, prologue_words)
+            if level not in allowed:
+                counts["evidence %s: refused" % level] += 1
+                continue
             our_name = ours.name.get(o_addr, "")
-            if not (our_name.startswith("FUN_") or our_name.startswith("thunk_FUN_")):
-                census["our row already named"] += 1
+            if not is_anonymous(our_name):
+                counts["our row already named"] += 1
                 continue
-            census["tier " + tier] += 1
+            counts["evidence %s: taken" % level] += 1
             accepted.append(Candidate(o_addr, d_addr, demo.name[d_addr], our_name,
-                                      demo.size[d_addr], ours.size[o_addr], tier, len(gap), sharp))
-    return accepted, census
+                                      demo.size[d_addr], ours.size[o_addr], tier, len(gap),
+                                      level, peers))
+    return accepted, counts
 
 
-def holdout(demo_funcs, demo_segments, our_funcs, our_segments, pairs_with_demo_addr,
-            prologue_words: int, folds: int = 3, regions=None, block: int = 1):
-    """{tier: (re-derived, of those wrong)} -- lever 1's error rate, measured on known answers.
+def size_ratio_calibration(details: Dict, our_funcs) -> Dict:
+    """The distribution `SIZE_RATIO` is calibrated on, as a measurement rather than a comment.
+
+    `details` is `ghidra_symbol_match.match`'s out-parameter. The prefix-pass pairs are the sample:
+    a prologue unique on both sides says "the same routine, edited", which is precisely the
+    population a positional candidate is drawn from, and their size ratios are what a real edit does
+    to a body length. Reproduced by `--size-ratio-calibration`; pinned by `SizeRatioTest`.
+    """
+    our_size = {s: e - s for s, e, _n in our_funcs}
+    ratios = []
+    for (_name, addr), info in details.items():
+        if not str(info.get("how", "")).startswith("prefix"):
+            continue
+        d, o = int(info.get("size", 0)), our_size.get(addr, 0)
+        if d and o:
+            ratios.append(round(min(d, o) / max(d, o), 4))
+    ratios.sort()
+    kept = [r for r in ratios if r >= SIZE_RATIO]
+    return {"pairs": len(ratios), "six lowest": ratios[:6], "cut": SIZE_RATIO,
+            "kept": len(kept), "lowest kept": kept[0] if kept else None,
+            "percent kept": round(100 * len(kept) / len(ratios), 1) if ratios else 0.0}
+
+
+def holdout(demo_funcs, demo_segments, our_funcs, our_segments, anchors,
+            prologue_words: int = PREFIX_WORDS, folds: int = 3, regions=None, block: int = 1,
+            holdable=None):
+    """{level: (re-derived, of those wrong)} -- lever 1's error rate, measured on known answers.
 
     Hold out every k-th Task 7 pair, run the walk with the rest as anchors, and check the held-out
     rows against the answer Task 7 already proved. This is the only honest way to put a number on
-    "position implies identity", and it is why the rule above is two tiers rather than one.
+    "position implies identity", and it is why the rule above is tiered rather than flat.
+
+    `holdable` is the set of demo addresses eligible to be held out, and the CLI passes
+    `proved_anchors(anchors)` -- the 828 pairs Task 7 PROVED. Note 44 hurdle 3 refuses to treat a
+    prologue agreement as proof of identity, and tier B's own evidence is a prologue, so holding out
+    a prefix pair and re-deriving it at tier B is a prologue confirming a prologue. Pass None to hold
+    out everything and get the looser figure the first draft of this module reported.
 
     `block` holds out RUNS of that many consecutive pairs instead of single ones. It exists because
-    `block=1` produces gaps that hold one held-out function each, and a gap of one is discriminating
-    by definition -- so a single-pair holdout never exercises `_discriminating` at all and says
-    nothing about the multi-function gaps the real run actually scores. `--holdout K --holdout-block
-    B` reports both.
+    `block=1` produces gaps that hold one held-out function each, and a gap of one is gap-unique by
+    definition -- so a single-pair holdout never exercises the `no` level at all and says little
+    about the multi-function gaps the real run scores.
 
-    Its BIAS is worth stating with its result: a held-out pair is by construction a function Task 7
-    COULD match, i.e. one that survived into SOCOM II nearly intact. The candidates the real run
-    scores are the ones Task 7 could not match. So this measures the walk, not the population, and
-    it is an upper bound on the real accuracy.
+    TWO BIASES, both one-directional, both to be read with the result. A held-out pair is by
+    construction a function Task 7 COULD match, i.e. one that survived into SOCOM II nearly intact,
+    where the candidates the real run scores are the ones it could not -- so this is an UPPER BOUND.
+    And a held-out pair's body key is usually image-wide unique by construction (that is often WHY
+    Task 7 matched it), so the holdout can barely speak for the image-wide rule at all: it measures
+    the positional walk and the tiers, not the hurdle that decides the file.
     """
     demo = am.Side(demo_funcs, demo_segments)
     ours = am.Side(our_funcs, our_segments)
     if regions is None:
         regions = [(v, v + len(d)) for v, d in ours.image.segments]
     our_starts, demo_starts = sorted(ours.starts), sorted(demo.starts)
-    pp = sorted((o, d) for d, o in pairs_with_demo_addr)
+    rows = _anchor_rows(anchors)
+    pp = sorted((o, d) for d, o, _h in rows)
     truth = dict(pp)
     all_ours, all_demo = {o for o, _d in pp}, {d for _o, d in pp}
+    census = {t: (key_census(demo, t, prologue_words), key_census(ours, t, prologue_words))
+              for t in ("A", "B")}
+    eligible = [i for i, (_o, d) in enumerate(pp) if holdable is None or d in holdable]
 
-    out: Dict[str, List[int]] = {k: [0, 0] for k in ("A", "B", "blurred", "untiered")}
+    out: Dict[str, List[int]] = {k: [0, 0] for k in EVIDENCE + ("untiered",)}
     block = max(1, int(block))
     for phase in range(folds):
-        hold_i = [i for i in range(len(pp)) if (i // block) % folds == phase]
-        held = [pp[i] for i in hold_i]
-        keep = [pp[i] for i in range(len(pp)) if i not in set(hold_i)]
+        hold_i = {eligible[j] for j in range(len(eligible)) if (j // block) % folds == phase}
+        held = [pp[i] for i in sorted(hold_i)]
+        keep = [(d, o, "") for i, (o, d) in enumerate(pp) if i not in hold_i]
         held_ours = {o for o, _d in held}
         gaps = anchor_gaps(keep, our_starts, demo_starts, regions,
                            all_ours - held_ours, all_demo - {d for _o, d in held})
@@ -387,10 +554,9 @@ def holdout(demo_funcs, demo_segments, our_funcs, our_segments, pairs_with_demo_
                 tier = _tier(demo, d_addr, ours, o_addr, prologue_words)
                 if tier is None:
                     bucket = "untiered"
-                elif _discriminating(gap, demo, ours, o_addr, d_addr, tier, prologue_words):
-                    bucket = tier
                 else:
-                    bucket = "blurred"          # a tier the gap's siblings make unfalsifiable
+                    bucket, _peers = _evidence(gap, demo, ours, o_addr, d_addr, tier, census,
+                                               prologue_words)
                 out[bucket][0] += 1
                 out[bucket][1] += int(wrong)
     return {k: tuple(v) for k, v in out.items()}
@@ -402,7 +568,7 @@ STRONG_HOPS = ("exact", "relinked-body")
 
 
 def bridge(demo_funcs, demo_segments, demo2_funcs, demo2_segments, our_funcs, our_segments,
-           pairs_with_demo_addr, strong=STRONG_HOPS):
+           anchors, strong=STRONG_HOPS):
     """(accepted, census) -- lever 2.
 
     Two independent runs of `address_matcher.match`, composed. A demo1 name reaches one of our rows
@@ -418,8 +584,15 @@ def bridge(demo_funcs, demo_segments, demo2_funcs, demo2_segments, our_funcs, ou
     demo_size = {s: e - s for s, e, _n in demo_funcs}
     our_name = {s: n for s, _e, n in our_funcs}
     our_size = {s: e - s for s, e, _n in our_funcs}
-    t7_by_demo = dict(pairs_with_demo_addr)
-    t7_by_our = {o: d for d, o in pairs_with_demo_addr}
+    rows = _anchor_rows(anchors)
+    # Keyed by demo address on one side and our address on the other, as SETS of pairs rather than a
+    # dict either way: a dict() over the demo address would silently drop the second of two anchors
+    # sharing one (the `_request_end` shape), and the contradiction test is the last place to blur it.
+    t7_by_demo: Dict[int, set] = {}
+    t7_by_our: Dict[int, set] = {}
+    for d, o, _h in rows:
+        t7_by_demo.setdefault(d, set()).add(o)
+        t7_by_our.setdefault(o, set()).add(d)
 
     census = {"hop1 resolved": sum(1 for b, _h in hop1.values() if b is not None),
               "hop2 resolved": sum(1 for b, _h in hop2.values() if b is not None),
@@ -438,14 +611,14 @@ def bridge(demo_funcs, demo_segments, demo2_funcs, demo2_segments, our_funcs, ou
             continue
         census["composed (both hops strong)"] += 1
         if d_addr in t7_by_demo:
-            key = "agrees with Task 7" if t7_by_demo[d_addr] == o_addr else "contradicts Task 7"
+            key = "agrees with Task 7" if o_addr in t7_by_demo[d_addr] else "contradicts Task 7"
             census[key] += 1
             continue
         if o_addr in t7_by_our:
             census["contradicts Task 7"] += 1
             continue
         name = our_name.get(o_addr, "")
-        if not (name.startswith("FUN_") or name.startswith("thunk_FUN_")):
+        if not is_anonymous(name):
             census["our row already named"] += 1
             continue
         census["new"] += 1
@@ -457,7 +630,8 @@ def bridge(demo_funcs, demo_segments, demo2_funcs, demo2_segments, our_funcs, ou
 # ---- the second proposals file ---------------------------------------------------------------
 
 PROPOSAL_COLUMNS_7B = ["Address", "Current", "Proposed", "Mangled", "Source", "Tier",
-                       "Discriminating", "DemoAddr", "DemoSize", "OurSize", "Ratio", "GapSize"]
+                       "Evidence", "KeyPeers", "DemoAddr", "DemoSize", "OurSize", "Ratio",
+                       "GapSize"]
 
 
 def proposals_7b(candidates: Sequence[Tuple[str, Candidate]], taken: Sequence[str]):
@@ -467,9 +641,12 @@ def proposals_7b(candidates: Sequence[Tuple[str, Candidate]], taken: Sequence[st
     identifier Task 7's own proposals file already spends. The identifier hurdles are Task 7's,
     because the two files are applied to one CSV: a name the recompiler would see twice is two
     definitions of one C symbol whichever file proposed it.
-    """
-    from tools_py.ghidra_symbol_match import c_identifier
 
+    Known gap, inherited from `ghidra_symbol_match.proposals` and not fixed here because fixing it in
+    one of the two would be worse than in neither: neither file checks its proposed identifier
+    against the 113 names already in `recomp/socom2_ghidra.csv`'s own `Name` column. None of the rows
+    this produces collides today. Whatever APPLIES either file is the right place for that check.
+    """
     held: Dict[str, int] = {}
 
     def hold(reason: str) -> None:
@@ -495,17 +672,23 @@ def proposals_7b(candidates: Sequence[Tuple[str, Candidate]], taken: Sequence[st
         seen_addr.add(cand.our_addr)
         rows.append({"Address": "0x%08x" % cand.our_addr, "Current": cand.our_name,
                      "Proposed": ident, "Mangled": cand.demo_name, "Source": source,
-                     "Tier": cand.tier, "DemoAddr": "0x%08x" % cand.demo_addr,
-                     "Discriminating": "yes" if cand.discriminating else "no",
+                     "Tier": cand.tier, "Evidence": cand.evidence,
+                     "KeyPeers": "%d/%d" % cand.key_peers,
+                     "DemoAddr": "0x%08x" % cand.demo_addr,
                      "DemoSize": cand.demo_size, "OurSize": cand.our_size,
                      "Ratio": "%.2f" % cand.ratio, "GapSize": cand.gap})
     return rows, held
 
 
 def write_proposals_7b(path: str, rows: Sequence[Dict], header: Sequence[str]) -> None:
-    """The proposals file, its own rule stated in `#` lines above the column header."""
-    import csv
+    """The proposals file, its own rule stated in `#` lines above the column header.
 
+    A bad output path is one sentence, not a traceback: this module's callers all report `NO-DATA:`
+    and exit 2, and a proposals file is the last thing that should end a run in a stack trace.
+    """
+    directory = os.path.dirname(os.path.abspath(path))
+    if not os.path.isdir(directory):
+        raise ValueError("cannot write %s: %s is not a directory" % (path, directory))
     with open(path, "w", newline="") as fh:
         for line in header:
             fh.write("# %s\n" % line if line else "#\n")
