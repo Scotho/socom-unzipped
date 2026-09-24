@@ -1,69 +1,80 @@
-"""Undo a foreign two-word stub write baked into a decrypted overlay's text.
+"""Undo the r0004 capsule's baked-in stub writes in a decrypted overlay.
 
-Why this exists
----------------
-The r0004 overlay that `tools_py/decrypt_apache.py` recovers from the card's
-`APACHE00.ZDB` carries two words that no compiler emitted.  At `0x002CC670`, in the
-middle of the epilogue of the function that starts at `0x002CC5F0`, the image holds
+What is wrong with the image
+----------------------------
+At `0x002CC670`, in the middle of the epilogue of the function that starts at `0x002CC5F0`,
+the r0004 overlay decrypted out of the card's `APACHE00.ZDB` holds
 
-    0x002cc668  daddu $v0, $s1, $zero
-    0x002cc66c  ld    $ra, 0x20($sp)
-    0x002cc670  jr    $ra              <- should be  lq $s1, 0x10($sp)
-    0x002cc674  nop                    <- should be  lq $s0, 0x00($sp)
-    0x002cc678  jr    $ra
-    0x002cc67c  addiu $sp, $sp, 0x40
+    002cc668  daddu $v0, $s1, $zero        002cc670  jr    $ra      <- 0x03E00008
+    002cc66c  ld    $ra, 0x20($sp)         002cc674  nop             <- 0x00000000
+                                           002cc678  jr    $ra
+                                           002cc67c  addiu $sp, $sp, 0x40
 
-Two returns back to back, the first of them without restoring `$sp`: that is not code.
-It is the `jr $ra` / `nop` pair of a *stub this function out* patch, and the r0004
-capsule's own decoded write stack (`game/r0004/decoded/stack.txt`, tables at
-`0x80031250` and `0x80031268`) names exactly those two addresses --
-`0x002CC670 <- 0x03E00008`, `0x002CC674 <- 0x00000000` -- next to the same patch for the
-r0004 layout at `0x002CF330`.  The address is a function *entry* in the r0001 layout;
-in the r0004 layout the same two words land inside somebody else's epilogue, and the
-two `lq` they replaced are the restores of `$s0` and `$s1`.
+Two returns back to back, the first without giving the frame back.  Every call to that function
+therefore returns with `$s0`, `$s1` and `$sp` still holding the callee's own values, and
+`CButtonSpec::Clone` at `0x003A90E0`, which calls it at `0x003A9178`, then reads its `std::vector`
+member through `$s1` out of a stranger and asks `operator new` for 111.5 MiB.  That is the r0004
+title reboot.
 
-The consequence is not subtle: every call to `0x002CC5F0` returns with `$s0` and `$s1`
-holding the callee's values.  `CButtonSpec::Clone` (`0x003A90E0`) calls it at
-`0x003A9178` and then reads its `std::vector` member through `$s1` -- from a stranger --
-and asks `operator new` for 111.5 MiB, which fails and reboots the title.
+How this module decides -- the capsule's write stack, not a shape
+-----------------------------------------------------------------
+Nothing here looks for that shape.  An address is repaired only when **the r0004 capsule's own
+decoded write stack says the capsule writes that exact word there and the image already holds it**.
+`tools_py/r0004/capsule.py:find_pair_tables` parses the decoded stack into
+`[(base, [(address, value), ...])]`; for r0004 it yields two tables,
 
-The repair is derived from the image, never from a table of addresses
----------------------------------------------------------------------
-`find_repairs` looks for the impossible shape -- `jr $ra` + `nop` immediately followed by
-another `jr $ra` -- then walks back to that frame's prologue, pairs every
-`sq/sd $rX, K($sp)` with its `lq/ld $rX, K($sp)`, and only acts when
+    table at 80031250:  0x002CC670 <- 0x03E00008,  0x002CC674 <- 0x00000000
+    table at 80031268:  0x002CF330 <- 0x03E00008,  0x002CF334 <- 0x00000000
 
-  * some saves have no restore at all,
-  * the number of missing restores is exactly the two words the stub overwrote, and
-  * the real return that follows restores `$sp` by the amount the prologue took.
+which are one *stub this function out* patch per revision layout: the function the capsule wants
+disabled sits at `0x002CC670` in r0001 and at `0x002CF330` in r0004.  Our image carries table 1's
+effect and not table 2's (`0x002CF330` in it is an intact prologue), so exactly two words fire and
+table 2 is a measured no-op.  Where the stack is not available -- every r0001 build -- there are no
+candidate addresses at all and this module is the identity function by construction.
 
-The replacement words are then rebuilt from the frame's own saves, in save order.  A
-frame whose restores are all present -- the ordinary `jr $ra; nop` of an early return
-sitting in front of a later `jr $ra` -- is left alone; there are 65 such sites in the two
-r0004 overlays and 0 repairs among them, and the r0001 overlays and the loader yield no
-repair at all.
+Where the replacement words come from
+-------------------------------------
+Not from a guess.  The function containing a fired address is located by its row in the revision's
+own `socom2_ghidra_<rev>.csv`, and its **r0001 twin is found by a masked body hash**: for every
+r0001 row, the two bodies are compared with the fired words masked out, and a twin is accepted only
+when the rest of the body matches exactly.  (`game/r0004/match.json` has no row for `0x002CC5F0` --
+the matcher could not place it *because* of these two words -- so the twin has to be found this
+way.)  The twin's words at the masked offsets are the replacement, and the assertion is that after
+the substitution **the two bodies are identical over the whole function**.
+
+As an independent cross-check the frame's own prologue is read: the saves it makes with
+`sq/sd $rX, K($sp)` that no load off `$sp` of any width restores are re-derived as `lq/ld`
+instructions, and they must agree with the twin's words.  The cross-check can veto a repair; it can
+never supply one.
+
+Anything unresolved refuses loudly (`RepairError`) rather than writing something plausible.
 """
+import csv
+import hashlib
+import json
 import os
 import struct
 import sys
 from dataclasses import dataclass
 
-JR_RA = 0x03E00008
-NOP = 0x00000000
-
-_SQ, _SD = 0x1F, 0x3F          # opcodes of the stores a Metrowerks frame saves with
-_LQ, _LD = 0x1E, 0x37          # and of their restores
+_SQ, _SD = 0x1F, 0x3F           # the stores a Metrowerks frame saves a callee-saved register with
+_LQ, _LD = 0x1E, 0x37           # and their restores
 _RESTORE_OF = {_SQ: _LQ, _SD: _LD}
+_LOADS_OFF_SP = (0x20, 0x21, 0x23, 0x24, 0x25, 0x27, 0x37, 0x1E)   # lb lh lw lbu lhu lwu ld lq
 
-_SP = 29                        # $sp
-_ADDIU = 0x27BD0000             # addiu $sp, $sp, imm  (top half)
+_SP = 29
+_ADDIU_SP = 0x27BD              # addiu $sp, $sp, imm
+_DADDIU_SP = 0x67BD             # daddiu $sp, $sp, imm
 
-# The stub is a pair: the branch and its delay slot.
-_STUB_WORDS = 2
+# Only these can be displaced by a stub pair in an epilogue: $s0-$s7, $gp, $fp, $ra.
+_CALLEE_SAVED = frozenset(list(range(16, 24)) + [28, 30, 31])
 
-# A frame's prologue is never far from its epilogue in this image; the bound keeps a
-# scan that lost its footing from walking the whole segment backwards.
-_MAX_FRAME_WORDS = 4096
+# A window shorter than this is not enough body to identify a twin by.
+_MIN_TWIN_WORDS = 6
+
+
+class RepairError(RuntimeError):
+    """A fired capsule write that could not be resolved. Never repaired silently."""
 
 
 @dataclass(frozen=True)
@@ -72,128 +83,332 @@ class Repair:
     address: int
     before: int
     after: int
-    register: int
-    slot: int
     function: int
+    twin_function: int
+    twin_bytes: int
+    cross_check: str
 
     def describe(self):
-        op = "lq" if (self.after >> 26) == _LQ else "ld"
         return (f"0x{self.address:08X}: 0x{self.before:08X} -> 0x{self.after:08X}"
-                f"  ({op} $r{self.register}, 0x{self.slot:X}($sp) in the frame at 0x{self.function:08X})")
+                f"  (capsule stub in the function at 0x{self.function:08X}; from the r0001 twin at"
+                f" 0x{self.twin_function:08X}, {self.twin_bytes} B, prologue cross-check {self.cross_check})")
+
+    def as_dict(self):
+        return {"address": f"0x{self.address:08X}",
+                "before": f"0x{self.before:08X}",
+                "after": f"0x{self.after:08X}",
+                "function": f"0x{self.function:08X}",
+                "twin_function": f"0x{self.twin_function:08X}",
+                "twin_bytes": self.twin_bytes,
+                "cross_check": self.cross_check}
 
 
-def _words(data):
-    return list(struct.unpack_from("<%dI" % (len(data) // 4), data, 0))
+# ---- images -------------------------------------------------------------------------------------
+
+class Image:
+    """Executable bytes addressed by guest address, with a text window per span."""
+
+    def __init__(self, spans=()):
+        # span: (base, data, text_start, text_end)
+        self._spans = list(spans)
+
+    def add(self, base, data, text_start=None, text_end=None):
+        self._spans.append((base, data,
+                            base if text_start is None else text_start,
+                            base + len(data) if text_end is None else text_end))
+        return self
+
+    def in_text(self, address):
+        return any(ts <= address < te for _b, _d, ts, te in self._spans)
+
+    def word(self, address):
+        for base, data, _ts, _te in self._spans:
+            if base <= address < base + len(data) - 3:
+                return struct.unpack_from("<I", data, address - base)[0]
+        return None
+
+    def body(self, address, length):
+        """`length` bytes starting at `address`, or None when they are not all in one span."""
+        for base, data, _ts, _te in self._spans:
+            if base <= address and address + length <= base + len(data):
+                return data[address - base:address - base + length]
+        return None
+
+    @classmethod
+    def from_file(cls, path):
+        """An ELF's executable PT_LOADs, or one MWo3 overlay (its header is loaded, its text follows)."""
+        with open(path, "rb") as fh:
+            d = fh.read()
+        image = cls()
+        if d[:4] == b"MWo3":
+            load, text = struct.unpack_from("<2I", d, 8)
+            return image.add(load, d, load + 0x80, load + 0x80 + text)
+        e_phoff = struct.unpack_from("<I", d, 0x1C)[0]
+        e_phnum = struct.unpack_from("<H", d, 0x2C)[0]
+        for i in range(e_phnum):
+            p_type, p_off, p_va, _pa, p_filesz, _memsz, p_flags = struct.unpack_from("<7I", d, e_phoff + i * 32)
+            if p_type == 1 and p_filesz and (p_flags & 1):
+                image.add(p_va, d[p_off:p_off + p_filesz])
+        return image
 
 
-def _frame_take(word):
-    """The bytes an `addiu $sp,$sp,-N` prologue takes, or None."""
-    if (word >> 16) != _ADDIU >> 16:
+# ---- the capsule's write stack and the function maps ---------------------------------------------
+
+def read_stack(path):
+    """`game/<rev>/decoded/stack.txt` as tools_py.r0004.capsule writes it: [(kind, address, value)]."""
+    writes = []
+    with open(path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            parts = line.split()
+            if len(parts) != 3:
+                continue
+            writes.append((parts[0], int(parts[1], 16), int(parts[2], 16)))
+    return writes
+
+
+def stub_writes(writes):
+    """The (address, value) pairs of every NUL-terminated pair table in the capsule's stack."""
+    try:                                        # imported here: the repair is inert without a stack
+        from tools_py.r0004 import capsule
+    except ImportError:                         # make_overlay_elf.py run as a script from tools_py/
+        from r0004 import capsule
+    pairs = []
+    for _base, entries in capsule.find_pair_tables(writes):
+        pairs.extend(entries)
+    return sorted(set(pairs))
+
+
+def read_rows(path):
+    """`recomp/socom2_ghidra*.csv` as a sorted [(start, end)]."""
+    rows = []
+    with open(path, "r", encoding="utf-8", newline="") as fh:
+        for row in csv.DictReader(fh):
+            rows.append((int(row["Start"], 16), int(row["End"], 16)))
+    rows.sort()
+    return rows
+
+
+def _row_containing(rows, address):
+    for start, end in rows:
+        if start <= address < end:
+            return start, end
+    return None
+
+
+# ---- the twin search ------------------------------------------------------------------------------
+
+def _mask(body, offsets):
+    out = bytearray(body)
+    for o in offsets:
+        out[o:o + 4] = b"\0\0\0\0"
+    return bytes(out)
+
+
+def _word(body, offset):
+    return struct.unpack_from("<I", body, offset)[0]
+
+
+def _find_twin(image, twin, start, offsets, twin_rows):
+    """(twin_start, length, replacement words) for the function at `start`, from its r0001 twin."""
+    need = max(offsets) + 4
+    head = image.word(start) if 0 not in offsets else None
+    agreed = None
+    matches = []
+    for tstart, tend in twin_rows:
+        length = tend - tstart
+        if length < need or length < _MIN_TWIN_WORDS * 4:
+            continue
+        if head is not None and twin.word(tstart) != head:   # cheap reject: the prologue word
+            continue
+        body = image.body(start, length)
+        tbody = twin.body(tstart, length)
+        if body is None or tbody is None:
+            continue
+        if _mask(body, offsets) != _mask(tbody, offsets):
+            continue
+        words = tuple(_word(tbody, o) for o in offsets)
+        if agreed is None:
+            agreed = words
+        elif words != agreed:
+            raise RepairError(
+                f"the function at 0x{start:08X} matches several r0001 twins that disagree on the "
+                f"replacement words: 0x{matches[0]:08X} says {['0x%08X' % w for w in agreed]}, "
+                f"0x{tstart:08X} says {['0x%08X' % w for w in words]}")
+        matches.append(tstart)
+    if not matches:
+        raise RepairError(
+            f"no r0001 twin for the function at 0x{start:08X} (masked body hash over "
+            f"{len(twin_rows)} rows found none); refusing to invent {len(offsets)} word(s)")
+    tstart = matches[0]
+    length = next(e - s for s, e in twin_rows if s == tstart)
+    tbody = twin.body(tstart, length)
+    # The assertion: with the twin's words in place the two bodies are identical, word for word.
+    repaired = bytearray(image.body(start, length))
+    for o, w in zip(offsets, agreed):
+        struct.pack_into("<I", repaired, o, w)
+    if bytes(repaired) != tbody:
+        raise RepairError(f"the function at 0x{start:08X} does not equal its twin at 0x{tstart:08X} "
+                          f"after the restore; refusing")
+    return tstart, length, agreed
+
+
+# ---- the prologue cross-check ----------------------------------------------------------------------
+
+def _frame_delta(word):
+    """(+/-N) when the word adjusts $sp, else None. `daddiu $sp` counts (F3)."""
+    if (word >> 16) not in (_ADDIU_SP, _DADDIU_SP):
         return None
     imm = word & 0xFFFF
-    return 0x10000 - imm if imm >= 0x8000 else None
-
-
-def _frame_give(word):
-    """The bytes an `addiu $sp,$sp,+N` epilogue gives back, or None."""
-    if (word >> 16) != _ADDIU >> 16:
-        return None
-    imm = word & 0xFFFF
-    return None if imm >= 0x8000 or imm == 0 else imm
+    return imm - 0x10000 if imm >= 0x8000 else imm
 
 
 def _stack_slot(word):
-    """(opcode, rt, offset) when the word is a frame save or restore off $sp."""
     op = word >> 26
-    if op not in (_SQ, _SD, _LQ, _LD):
-        return None
     if ((word >> 21) & 31) != _SP:
         return None
     return op, (word >> 16) & 31, word & 0xFFFF
 
 
-def find_repairs(data, base):
-    """Every word `apply_repairs` would rewrite in `data`, which is loaded at `base`."""
-    words = _words(data)
+def implied_restores(body, offsets):
+    """The `lq/ld` a frame's own prologue implies are missing, or None when it cannot be read.
+
+    A save counts as restored when *any* load off `$sp` touches its slot, whatever its width: a
+    64-bit spill reloaded with `lw` is a well-formed frame, not a missing restore.
+    """
+    if not body or _frame_delta(_word(body, 0)) is None or _frame_delta(_word(body, 0)) >= 0:
+        return None
+    saves, loaded_slots = [], set()
+    masked = set(offsets)
+    for off in range(0, len(body) - 3, 4):
+        if off in masked:
+            continue
+        slot = _stack_slot(_word(body, off))
+        if slot is None:
+            continue
+        op, rt, imm = slot
+        if op in _RESTORE_OF:
+            entry = (_RESTORE_OF[op], rt, imm)
+            if entry not in saves:                       # de-duplicate (F2)
+                saves.append(entry)
+        elif op in _LOADS_OFF_SP:
+            loaded_slots.add(imm)
+    missing = [s for s in saves if s[2] not in loaded_slots]
+    if any(rt not in _CALLEE_SAVED for _op, rt, _imm in missing):
+        return None
+    return [(op << 26) | (_SP << 21) | (rt << 16) | imm for op, rt, imm in missing]
+
+
+# ---- the plan -------------------------------------------------------------------------------------
+
+def plan_repairs(image, writes, twin=None, rows=None, twin_rows=None):
+    """([Repair], [note]) for `image`. With no capsule writes this is ([], [])."""
+    notes = []
+    fired = []
+    for address, value in writes or ():
+        if not image.in_text(address):
+            continue                                     # another segment's business, or data (F4)
+        current = image.word(address)
+        if current != value:
+            notes.append(f"0x{address:08X}: image holds 0x{current:08X}, the capsule writes "
+                         f"0x{value:08X} -- not baked in, no-op")
+            continue
+        fired.append(address)
+    if not fired:
+        return [], notes
+    if twin is None or rows is None or twin_rows is None:
+        raise RepairError(
+            f"{len(fired)} capsule stub write(s) are baked into this image "
+            f"({', '.join('0x%08X' % a for a in fired)}) but no twin image / function rows were "
+            f"given to resolve them")
+
+    groups = {}
+    for address in fired:
+        row = _row_containing(rows, address)
+        if row is None:
+            raise RepairError(f"0x{address:08X} is a baked-in capsule stub write but no row of the "
+                              f"revision's function map contains it")
+        groups.setdefault(row, []).append(address)
+
     repairs = []
-    for i in range(len(words) - 3):
-        if words[i] != JR_RA or words[i + 1] != NOP or words[i + 2] != JR_RA:
-            continue
-        if _frame_give(words[i + 3]) is None:
-            # The return that follows must be the real one: it gives the frame back.
-            continue
-        start = None
-        for j in range(i - 1, max(0, i - _MAX_FRAME_WORDS) - 1, -1):
-            if _frame_take(words[j]) is not None:
-                start = j
-                break
-        if start is None or _frame_take(words[start]) != _frame_give(words[i + 3]):
-            continue
-        saves, restores = [], set()
-        for k in range(start, i + 3):
-            slot = _stack_slot(words[k])
-            if slot is None:
-                continue
-            op, rt, off = slot
-            if op in _RESTORE_OF:
-                saves.append((_RESTORE_OF[op], rt, off))
-            else:
-                restores.add((op, rt, off))
-        missing = [s for s in saves if s not in restores]
-        if len(missing) != _STUB_WORDS:
-            continue
-        for k, (op, rt, off) in enumerate(missing):
-            repairs.append(Repair(address=base + (i + k) * 4,
-                                  before=words[i + k],
-                                  after=(op << 26) | (_SP << 21) | (rt << 16) | off,
-                                  register=rt,
-                                  slot=off,
-                                  function=base + start * 4))
-    return repairs
+    for (start, _end), addresses in sorted(groups.items()):
+        offsets = sorted(a - start for a in addresses)
+        tstart, length, words = _find_twin(image, twin, start, offsets, twin_rows)
+        implied = implied_restores(image.body(start, length), offsets)
+        if implied is None:
+            cross_check = "unavailable"
+            notes.append(f"0x{start:08X}: the frame's prologue could not be read; the twin is the "
+                         f"only source for this repair")
+        elif sorted(implied) == sorted(words):
+            cross_check = "agrees"
+        else:
+            raise RepairError(
+                f"the frame at 0x{start:08X} implies {['0x%08X' % w for w in implied]} but its "
+                f"r0001 twin at 0x{tstart:08X} holds {['0x%08X' % w for w in words]}; refusing")
+        for offset, word in zip(offsets, words):
+            repairs.append(Repair(address=start + offset,
+                                  before=image.word(start + offset),
+                                  after=word,
+                                  function=start,
+                                  twin_function=tstart,
+                                  twin_bytes=length,
+                                  cross_check=cross_check))
+    return repairs, notes
 
 
-def apply_repairs(data, base):
-    """`(repaired bytes, repairs)`; `data` is returned unchanged when there is nothing to do."""
-    repairs = find_repairs(data, base)
+def apply_repairs(data, base, writes=None, twin=None, rows=None, twin_rows=None,
+                  text_start=None, text_end=None):
+    """`(repaired bytes, repairs, notes)` for one segment loaded at `base`."""
+    image = Image().add(base, data, text_start, text_end)
+    repairs, notes = plan_repairs(image, writes, twin, rows, twin_rows)
     if not repairs:
-        return data, repairs
+        return data, repairs, notes
     out = bytearray(data)
     for r in repairs:
         struct.pack_into("<I", out, r.address - base, r.after)
-    return bytes(out), repairs
+    return bytes(out), repairs, notes
 
 
-def _segments(path):
-    """(vaddr, bytes, executable) for every PT_LOAD of an ELF, or the one MWo3 overlay."""
-    with open(path, "rb") as fh:
-        d = fh.read()
-    if d[:4] == b"MWo3":
-        load = struct.unpack_from("<I", d, 8)[0]
-        return [(load, d, True)]
-    e_phoff = struct.unpack_from("<I", d, 0x1C)[0]
-    e_phnum = struct.unpack_from("<H", d, 0x2C)[0]
-    out = []
-    for i in range(e_phnum):
-        p_type, p_off, p_va, _pa, p_filesz, _memsz, p_flags = struct.unpack_from("<7I", d, e_phoff + i * 32)
-        if p_type == 1 and p_filesz:
-            out.append((p_va, d[p_off:p_off + p_filesz], bool(p_flags & 1)))
-    return out
+def write_log(path, repairs, notes, sources):
+    """The durable provenance beside a built image; returns its sha256."""
+    payload = {"image": os.path.basename(path)[:-len(".repair.json")]
+                        if path.endswith(".repair.json") else os.path.basename(path),
+               "sources": sources,
+               "repairs": [r.as_dict() for r in repairs],
+               "notes": list(notes)}
+    blob = json.dumps(payload, indent=2, sort_keys=True).encode("utf-8") + b"\n"
+    with open(path, "wb") as fh:
+        fh.write(blob)
+    return hashlib.sha256(blob).hexdigest()
 
+
+# ---- the command ------------------------------------------------------------------------------------
 
 def main(argv):
-    """Report (never rewrite) what the repair would do to each file named."""
-    if not argv:
-        print("usage: python -m tools_py.overlay_repair <overlay.bin|image.elf> ...", file=sys.stderr)
-        return 2
-    total = 0
-    for path in argv:
-        for va, data, executable in _segments(path):
-            if not executable:
-                continue
-            for r in find_repairs(data, va):
-                total += 1
-                print(f"{os.path.basename(path)}  {r.describe()}")
-    print(f"{total} word(s) would be repaired")
+    """Report (never rewrite) what the repair would do to an image."""
+    import argparse
+    ap = argparse.ArgumentParser(prog="tools_py.overlay_repair", description=__doc__.split("\n")[0])
+    ap.add_argument("image", help="the overlay (MWo3) or merged ELF to examine")
+    ap.add_argument("--stub-writes", help="game/<rev>/decoded/stack.txt (without it: nothing to do)")
+    ap.add_argument("--twin", help="the r0001 image the replacement words come from")
+    ap.add_argument("--rows", help="recomp/socom2_ghidra_<rev>.csv")
+    ap.add_argument("--twin-rows", help="recomp/socom2_ghidra.csv")
+    args = ap.parse_args(argv)
+
+    image = Image.from_file(args.image)
+    writes = stub_writes(read_stack(args.stub_writes)) if args.stub_writes else []
+    twin = Image.from_file(args.twin) if args.twin else None
+    rows = read_rows(args.rows) if args.rows else None
+    twin_rows = read_rows(args.twin_rows) if args.twin_rows else None
+    try:
+        repairs, notes = plan_repairs(image, writes, twin, rows, twin_rows)
+    except RepairError as exc:
+        sys.stderr.write(f"{args.image}: {exc}\n")
+        return 1
+    for note in notes:
+        print(f"note {note}")
+    for r in repairs:
+        print(f"{os.path.basename(args.image)}  {r.describe()}")
+    print(f"{len(repairs)} word(s) would be repaired from {len(writes)} capsule stub write(s)")
     return 0
 
 

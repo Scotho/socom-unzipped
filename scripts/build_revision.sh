@@ -41,6 +41,11 @@
 #   Steps 4 and 5 mark their product with a .complete file when the step returns 0, and skip on that mark alone:
 #   a tree or an exe left half-written by a failed or interrupted run is redone, never reported as done. The mark
 #   is not generated code, so compare two generated trees with: diff -rq --exclude=.complete <a> <b>
+#   Step 2's mark is different in kind: "<elf>.repair.json" is the ELF's own provenance (which capsule stub
+#   writes were undone in it, from which r0001 twin), written by make_overlay_elf on every build including the
+#   ones that repair nothing. Step 2 skips only when that sidecar is present AND not older than
+#   tools_py/overlay_repair.py or tools_py/make_overlay_elf.py -- so an ELF merged before the repair existed,
+#   or before its rule changed, is rebuilt instead of silently carrying a stale image into steps 3-5.
 #
 #   --stop-after elf|recomp|runtime   stop after that step (runtime is the default); elf takes no lock at all
 #   --out <dir>       every product under <dir> instead (overlays_<rev>/, recomp_<rev>/, build-clang-<rev>/, dist/),
@@ -240,11 +245,33 @@ if [ "$TAIL" = 0 ]; then
     say "decrypt: ftscore.bin ($(stat -c %s "$OVERLAYS/ftscore.bin") B) + zsealetc.bin ($(stat -c %s "$OVERLAYS/zsealetc.bin") B) written"
   fi
   # 2 elf
-  if [ "$FORCE" = 0 ] && [ -f "$ELF" ]; then
-    say "elf: $(rel "$ELF") is already there -- skipped (--force redoes it)"
+  # The repair inputs: the revision's own decoded capsule stack names the addresses, the r0001 image
+  # supplies the replacement words, and the two function maps bound the functions. All four or none --
+  # make_overlay_elf rewrites nothing without --stub-writes.
+  REPAIR_ARGS=()
+  STACK="$ROOT/game/$REV/decoded/stack.txt"
+  TWIN_ELF="$ROOT/game/disc/socom2_game.elf"
+  TWIN_ROWS="$ROOT/recomp/socom2_ghidra.csv"
+  if [ -f "$STACK" ]; then
+    for f in "$TWIN_ELF" "$TWIN_ROWS" "$CSV"; do
+      [ -f "$f" ] || die2 "step 2: $(rel "$STACK") is a capsule write stack, so the merged ELF must be checked against it, but $(rel "$f") is missing"
+    done
+    REPAIR_ARGS=(--stub-writes "$STACK" --twin "$TWIN_ELF" --rows "$CSV" --twin-rows "$TWIN_ROWS")
+  fi
+  ELF_REPAIR_JSON="$ELF.repair.json"
+  if [ "$FORCE" = 0 ] && [ -f "$ELF" ] && [ -f "$ELF_REPAIR_JSON" ] \
+     && [ ! "$ROOT/tools_py/overlay_repair.py" -nt "$ELF_REPAIR_JSON" ] \
+     && [ ! "$ROOT/tools_py/make_overlay_elf.py" -nt "$ELF_REPAIR_JSON" ]; then
+    say "elf: $(rel "$ELF") is already there and $(rel "$ELF_REPAIR_JSON") is current -- skipped (--force redoes it)"
+    say "elf: repairs recorded: $("$py" -c 'import json,sys; d=json.load(open(sys.argv[1])); print(len(d["repairs"]))' "$ELF_REPAIR_JSON")"
   else
     [ -n "$LOADER" ] || die2 "no loader ELF (SCUS_*, SCES_*, SLUS_*, SLES_*) in $GAME -- pass --loader"
-    "$py" "$ROOT/tools_py/make_overlay_elf.py" "--loader-text-end=$LTE" "$ELF" "$LOADER" "$OVERLAYS/ftscore.bin" "$OVERLAYS/zsealetc.bin"
+    if [ -f "$ELF" ]; then
+      say "elf: rebuilding $(rel "$ELF") -- no current $(rel "$ELF_REPAIR_JSON") beside it"
+    fi
+    rm -f "$ELF" "$ELF_REPAIR_JSON"
+    "$py" "$ROOT/tools_py/make_overlay_elf.py" "--loader-text-end=$LTE" \
+      ${REPAIR_ARGS[@]+"${REPAIR_ARGS[@]}"} "$ELF" "$LOADER" "$OVERLAYS/ftscore.bin" "$OVERLAYS/zsealetc.bin"
   fi
   ELF_SHA="$(sha "$ELF")"
   say "elf: sha256 $ELF_SHA  $(rel "$ELF")"

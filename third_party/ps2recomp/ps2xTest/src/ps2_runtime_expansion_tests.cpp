@@ -182,31 +182,41 @@ namespace
     // truncated body sets ctx->pc to the continuation, dispatchGuestBranch sees a pc that is
     // neither entry nor fallthrough, every host frame unwinds, and the EE scheduler resumes at
     // that pc. Task 19 suspected that path of losing the caller's callee-saved registers (the
-    // Add2dNode shape at ps2_runtime.cpp:1480-1490). It does not: the guest register file lives in
-    // the context the scheduler keeps, a resume entry is registered to its owner and jumps to a
-    // label instead of re-running a prologue, and nothing on the way back touches $s1. The 44
-    // jal-called split rows in the r0004 map ride on that, so it is pinned here.
+    // Add2dNode shape at ps2_runtime.cpp:1480-1490). It does not, and this runs the real
+    // EeScheduler to say so: the caller's $s1 is carried only by the context the scheduler owns
+    // (EeScheduler::run resumes on running->activeContext()), the callee's own save and restore go
+    // through real guest memory, and every hand-off between the four rows is a dispatcher unwind
+    // followed by a scheduler resume. A runtime that resumed a caller on a different register file
+    // -- a snapshot, an invocation's context, a re-run prologue -- publishes something other than
+    // kSplitCallerS1 and this fails.
     constexpr uint32_t kSplitCallerPc = 0x00126000u;
     constexpr uint32_t kSplitCallerResumePc = 0x00126010u;
     constexpr uint32_t kSplitCalleeRowPc = 0x00126100u;
     constexpr uint32_t kSplitContinuationPc = 0x00126200u;
     constexpr uint32_t kSplitCallerS1 = 0xC0FFEE01u;
     constexpr uint32_t kSplitCalleeS1 = 0x0BADBAD0u;
+    constexpr uint32_t kSplitStackTop = 0x00128000u;     // the callee's guest frame
+    constexpr uint32_t kSplitSaveSlot = kSplitStackTop - 0x10u;
+    constexpr uint32_t kSplitResultAddr = 0x00129000u;   // where the caller publishes what it saw
+    constexpr uint32_t kSplitCalleeSeenAddr = 0x00129004u;
 
-    std::atomic<uint32_t> gSplitObservedS1{0u};
-    std::atomic<uint32_t> gSplitCalleeSavedS1{0u};
+    std::atomic<uint32_t> gSplitDispatchStage{0u};
     std::atomic<bool> gSplitCallerReturnedNormally{false};
 
     void testSplitRowCallerHandler(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         if (ctx->pc == kSplitCallerResumePc)
         {
-            // The resume entry: what the generated `switch (ctx->pc)` jumps to.
-            gSplitObservedS1.store(::getRegU32(ctx, 17), std::memory_order_relaxed);
+            // The resume entry: what a generated row's `switch (ctx->pc)` jumps to. Publish what
+            // $s1 holds into guest memory, so the assertion reads the runtime, not a host global.
+            Ps2FastWrite32(rdram, kSplitResultAddr, ::getRegU32(ctx, 17));
+            gSplitDispatchStage.fetch_add(1u, std::memory_order_relaxed);
             ctx->pc = 0u;
+            runtime->requestStop();
             return;
         }
 
+        setRegU32(*ctx, 29, kSplitStackTop);            // $sp
         setRegU32(*ctx, 17, kSplitCallerS1);            // the value that must survive the call
         setRegU32(*ctx, 31, kSplitCallerResumePc);      // $ra, as the generated jal sets it
         if (!runtime->dispatchGuestBranch(rdram, ctx, kSplitCalleeRowPc, kSplitCallerPc + 8u,
@@ -217,20 +227,26 @@ namespace
         }
         gSplitCallerReturnedNormally.store(true, std::memory_order_relaxed);
         ctx->pc = 0u;
+        runtime->requestStop();
     }
 
-    void testSplitRowCalleeHandler(uint8_t *, R5900Context *ctx, PS2Runtime *)
+    void testSplitRowCalleeHandler(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
     {
-        // The truncated row: it saves $s1, uses it, and runs out of body before the epilogue.
-        gSplitCalleeSavedS1.store(::getRegU32(ctx, 17), std::memory_order_relaxed);
+        // The truncated row: `sq $s1, 0x10($sp)` into a real guest frame, then it uses $s1 and
+        // runs out of body before the epilogue that would restore it.
+        Ps2FastWrite32(rdram, kSplitCalleeSeenAddr, ::getRegU32(ctx, 17));
+        Ps2FastWrite32(rdram, kSplitSaveSlot, ::getRegU32(ctx, 17));
         setRegU32(*ctx, 17, kSplitCalleeS1);
+        gSplitDispatchStage.fetch_add(1u, std::memory_order_relaxed);
         ctx->pc = kSplitContinuationPc;
     }
 
-    void testSplitRowContinuationHandler(uint8_t *, R5900Context *ctx, PS2Runtime *)
+    void testSplitRowContinuationHandler(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
     {
-        // The next row, which holds the rest of the same function: it restores $s1 and returns.
-        setRegU32(*ctx, 17, gSplitCalleeSavedS1.load(std::memory_order_relaxed));
+        // The next row, which holds the rest of the same function: `lq $s1, 0x10($sp)` back out of
+        // the guest frame the previous row wrote, then `jr $ra`.
+        setRegU32(*ctx, 17, Ps2FastRead32(rdram, kSplitSaveSlot));
+        gSplitDispatchStage.fetch_add(1u, std::memory_order_relaxed);
         ctx->pc = ::getRegU32(ctx, 31);
     }
 
@@ -775,30 +791,34 @@ void register_ps2_runtime_expansion_tests()
         tc.Run("a split row's scheduler resume keeps the caller's callee-saved registers", [](TestCase &t)
         {
             PS2Runtime runtime;
+            std::vector<uint8_t> rdram(PS2_RAM_SIZE, 0u);
             runtime.registerFunction(kSplitCallerPc, &testSplitRowCallerHandler);
             runtime.registerFunction(kSplitCallerResumePc, &testSplitRowCallerHandler);  // resume entry, same owner
             runtime.registerFunction(kSplitCalleeRowPc, &testSplitRowCalleeHandler);
             runtime.registerFunction(kSplitContinuationPc, &testSplitRowContinuationHandler);
-            gSplitObservedS1.store(0u, std::memory_order_relaxed);
-            gSplitCalleeSavedS1.store(0u, std::memory_order_relaxed);
+            gSplitDispatchStage.store(0u, std::memory_order_relaxed);
             gSplitCallerReturnedNormally.store(false, std::memory_order_relaxed);
+            Ps2FastWrite32(rdram.data(), kSplitResultAddr, 0u);
+            Ps2FastWrite32(rdram.data(), kSplitCalleeSeenAddr, 0u);
+            Ps2FastWrite32(rdram.data(), kSplitSaveSlot, 0u);
 
-            // What EeScheduler::run does with the pc every unwind leaves behind.
-            R5900Context ctx{};
-            ctx.pc = kSplitCallerPc;
-            uint32_t steps = 0u;
-            while (ctx.pc != 0u && steps++ < 8u)
-            {
-                runtime.lookupFunction(ctx.pc)(nullptr, &ctx, &runtime);
-            }
+            // The real scheduler drives every resume: three unwinds, three lookups of ctx->pc.
+            R5900Context mainContext{};
+            mainContext.pc = kSplitCallerPc;
+            EeScheduler &ee = runtime.eeScheduler();
+            ee.reset(rdram.data(), mainContext);
+            ee.run();
 
             t.IsFalse(gSplitCallerReturnedNormally.load(std::memory_order_relaxed),
                       "a callee that leaves through its continuation must not look like a return");
-            t.Equals(gSplitCalleeSavedS1.load(std::memory_order_relaxed), kSplitCallerS1,
+            t.Equals(gSplitDispatchStage.load(std::memory_order_relaxed), 3u,
+                     "split row, continuation and caller resume should each run once");
+            t.Equals(Ps2FastRead32(rdram.data(), kSplitCalleeSeenAddr), kSplitCallerS1,
                      "the callee should see the caller's $s1 on entry");
-            t.Equals(gSplitObservedS1.load(std::memory_order_relaxed), kSplitCallerS1,
-                     "the caller resumed from the scheduler must still hold its own $s1");
-            t.IsTrue(steps <= 4u, "caller, split row, continuation, resume -- four dispatches");
+            t.Equals(Ps2FastRead32(rdram.data(), kSplitSaveSlot), kSplitCallerS1,
+                     "the split row's guest-stack save should hold the caller's $s1");
+            t.Equals(Ps2FastRead32(rdram.data(), kSplitResultAddr), kSplitCallerS1,
+                     "the caller resumed by EeScheduler must still hold its own $s1");
         });
 
         tc.Run("dispatchGuestBranch rejects missing exact targets", [](TestCase &t)

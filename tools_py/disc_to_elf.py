@@ -425,9 +425,19 @@ def stage_elf(disc, overlays, expected, log=say, force=False):
     started = time.time()
     log(f"elf: merging the loader and the two overlays (loader text ends at {loader_text_end:#x})")
     with _quiet(os.path.join(overlays, "disc_to_elf-elf.log"), log=log):
-        make_overlay_elf.build(dest, os.path.join(disc, SCUS),
-                               [os.path.join(overlays, "ftscore.bin"), os.path.join(overlays, "zsealetc.bin")],
-                               loader_text_end)
+        # No capsule write stack is passed here and none exists for r0001, so the overlay repair
+        # (tools_py/overlay_repair.py) cannot rewrite a byte on this path. The check below is the
+        # belt on those braces: if it ever did, the player would otherwise meet it as an unrelated
+        # sha256 refusal with advice ("delete game/overlays and try again") that cannot help.
+        repairs = make_overlay_elf.build(dest, os.path.join(disc, SCUS),
+                                         [os.path.join(overlays, "ftscore.bin"), os.path.join(overlays, "zsealetc.bin")],
+                                         loader_text_end)
+    if repairs:
+        raise Refusal(EXIT_ELF_BAD,
+                      "the overlay repair rewrote "
+                      + ", ".join(f"{r.address:#010x} ({r.before:#010x} -> {r.after:#010x})" for r in repairs)
+                      + " while merging the r0001 image, which is supposed to need no repair at all. "
+                        "This is a bug in tools_py/overlay_repair.py, not something to work around.")
     entry, phnum, body = elf_facts(dest)
     check_value(expected, "elf", "entry", f"{entry:#x}", "the merged ELF's entry point",
                 code=EXIT_ELF_BAD, log=log)
