@@ -1,5 +1,8 @@
 # 43. The r0004 capsule decoded: what PSRewired's `r0004v002.elf` actually writes
 
+> **This is research 43a.** Two notes carry the number 43; from 2026-09-25 (Sprint 13 Task R3) this one is cited as
+> 43a and `43-what-changed-in-r0004.md` as 43b. Neither file is renamed, so no path citation breaks.
+
 Date: 2026-09-23. Sprint 11, Task 19 Step 1, on ruling R248 ("the r0004 patch is PSRewired's resident capsule, and
 the build applies it, not a package"). Read-only on the capsule: it stays a git-ignored copy in `game/r0004/`, and
 neither it nor any decoded byte of it is in this repository. Sources: the capsule itself; the Based_Skid/Harry62

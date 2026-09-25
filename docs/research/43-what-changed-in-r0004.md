@@ -1,5 +1,8 @@
 # 43. What SOCOM II r0004 changes against r0001, read out of the two images
 
+> **This is research 43b.** Two notes carry the number 43; from 2026-09-25 (Sprint 13 Task R3) this one is cited as
+> 43b and `43-r0004-capsule.md` as 43a. Neither file is renamed, so no path citation breaks.
+
 Date: 2026-09-24. Sprint 11, after Task 19's 3/3 gate. Read-only: two ELFs, two Ghidra tables, one match
 report, one decoded capsule stack. No game was run and no server was contacted. Companion to
 `43-r0004-capsule.md` (what *PSRewired's* capsule does — a different artefact with the same number; this

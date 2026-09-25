@@ -26,7 +26,7 @@
 
 ## Handoff notes for the executing model (read once)
 
-- **Process.** superpowers:subagent-driven-development; a fresh implementer per task; a task review after each that re-derives at least one number independently (for Task 2 that means re-reading one struct offset out of the decomp listing, not trusting this plan's table); the controller merges. Ledger at `.superpowers/sdd/2026-09-19-sprint-8-voice-headset/progress.md`. Decisions on the owner's behalf are `Ruling: ... — why — cost if wrong`, numbered from **R111** (R109 and R110 are taken by the hosted-server plan and the menu-render-cost plan's tail, both written 2026-09-19).
+- **Process.** superpowers:subagent-driven-development; a fresh implementer per task; a task review after each that re-derives at least one number independently (for Task 2 that means re-reading one struct offset out of the decomp listing, not trusting this plan's table); the controller merges. Ledger at `.superpowers/sdd/2026-09-19-sprint-8-voice-headset/progress.md`. Decisions on the owner's behalf are `Ruling: ... — why — cost if wrong`, numbered from **R111** (R109 and R110 are taken by the hosted-server plan and the menu-render-cost plan's tail, both written 2026-09-19). *(2026-09-25: taken twice -- the menu-render-cost plan's are R109 and R110, the hosted-server plan's are cited as R109b and R110b.)*
 - **Read this before Task 2, because the brief this plan was written from is wrong about four things, and the tree plus the decomp say otherwise.** Each is re-derivable with the command given; put the re-derivation in the ledger.
   1. **The format is 11025 Hz, not 16 kHz.** `host_mic.h:5-7` carries a `FORMAT ASSUMPTION: 16 kHz, mono, signed 16-bit` and says Task 9c's spike is what settles it. The spike is now settled the other way: the game's own `lgAudOpen` callers build an openparam of `{Mode=2, channels=1, bits=0x10, rate=0x2b11, latency=500}` — `0x2b11` is **11025** (`game/analysis/socom2_game.elf.decomp.c:48338-48342`, and byte-identically at `:86590-86594`). Re-derive with `sed -n '48336,48346p' game/analysis/socom2_game.elf.decomp.c`. So a linear resample from the ring's 16 kHz down to 11025 Hz is **always** needed, never conditionally.
   2. **The game never calls `0x12 GetAvailableRecordingBytes`.** `grep -n "FUN_00244820(" game/analysis/socom2_game.elf.decomp.c` finds the definition (`:91320`) and **no caller**. The capture loop (`:211478-211489`) calls `0x08 Read` directly for `0x500 - fill` bytes and reads the *actual* count back out of the reply. The brief's "GetAvailableRecordingBytes answers from HostMic's ring fill" is still implemented (Task 2 Step 7), because it is cheap and it is in the table, but **it is not on the path the proof runs through**: `0x08` must itself return short, correctly, when the ring is not full.
@@ -996,6 +996,27 @@ git push
 - [ ] **Step 4: `docs/HUMAN_TASKS.md`.** The item at `:93-110` ("Speak in an online lobby, and expect to be unheard") is now **wrong** and must be replaced, not amended: the new item is the owner's two-machine *"can you hear me"* — both machines on the hosted server, each with a microphone picked in the launcher, one speaks and the other listens, then swap. What to report in one line: (a) was the voice audible and intelligible; (b) was there a delay, and roughly how long; (c) did it need a button held, or did it carry the moment they spoke (this confirms or refutes Task 3 Step 2's answer from the other side). The numbers being confirmed: the measured game-read correlation from Task 4 Step 4, and the codec's 58 ms frame. The microphone-meter item at `:93-99` stays as it is.
 - [ ] **Step 5: `docs/STATUS.md`** — one dated paragraph, the three dumps' paths, the launches spent.
 - [ ] **Step 6: commit and push**, explicit pathspecs, the same trailer.
+
+---
+
+## Rulings made in this plan's text (recorded 2026-09-25, Sprint 13 Task R3)
+
+This plan numbered R111-R116 (its commit, `d3fbd66`) but gave them no rulings section: each was made inline, in the
+sentence its number labels. The 2026-09-25 documents audit (D56) found no text for R114 and R116 and counted R112 as
+a step's label; reading the labelled sentences, all four were made here, so they are recorded rather than declared
+vacant. Each line below is the labelled sentence, unchanged in substance. R111 is the hosted-server plan's; R115 is
+written in a ruling's own shape at Task 1 Step 4 and is not repeated.
+
+- **R112** (Handoff note 4, and Task 2 Step 3, "the one structural rule"): **the module reads the entire send block
+  before it writes one byte of reply.** Every lgaud call passes `DAT_003dcfb4` as both the send and the receive
+  buffer, so a reply written early overwrites the handle and the byte count it is about to use.
+- **R113** (Task 2 Step 4): **Enumerate's block reports zero Logitech vendor extensions** (`kEnumEntryCount` = 0).
+  The only reader, `FUN_0034ba60`, then scans nothing and moves on. Sprint 10's R219 keeps it with its meaning
+  corrected.
+- **R114** (Task 1's interface list, `MicFormat::supported()`, and Task 2 Step 5): **only mono, 16-bit, 4000-48000 Hz
+  is supported; any other format is refused at Open** with `kStatusBadParam`, and the refused triple is logged once.
+- **R116** (Task 4, the driven match's `_mic_env`): **in the driven two-instance match A talks and B listens.** A gets
+  the fake source and the game-read dump, B the playback dump and no capture source at all.
 
 ---
 

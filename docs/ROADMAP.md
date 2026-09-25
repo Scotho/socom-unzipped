@@ -60,6 +60,11 @@ since 2026-09-20 and was load-bearing for anybody reading the document as instru
 | §6 "Sprint 7 — after the kill (outline)" | Closed 2026-09-18. **Sprints 8, 9 and 10 are absent from the archived document entirely** — the Linux client, the hosted server, the launcher, packaging, the public repository and the credential path all happened after its last edit. That gap is the single largest inaccuracy in it |
 
 *Noted in passing, not a roadmap error:* `docs/research/35-*.md` does not exist — the research sequence runs 34, then 36.
+Recorded 2026-09-25 (Sprint 13 Task R3): 35 was never written on this line. Sprint 8's voice plan promised it as
+`35-voice-path.md` (Task 3 Step 3 of `docs/archive/sprints-7-12/2026-09-19-sprint-8-voice-headset.md`), and no
+commit on any branch ever created that file. Two notes numbered 35 exist only on branches never merged here: `35-browser-recreation-scoping.md` on
+`feat/web-map-viewer` (`6cddd16`, beside a second 36) and `35-android-apk-feasibility.md` on
+`origin/claude/mobile-github-cc-test-n7wyt7` (`d2035cb`). The number stays vacant, and nothing is renumbered.
 
 ---
 
