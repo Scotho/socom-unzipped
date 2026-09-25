@@ -32,7 +32,7 @@ disc. **A stranger still cannot play**, and the reasons are plumbing, not gamepl
 | G5 | Every online result is two instances on one host; NAT, advertised address, clock skew, two clients on the same RSA key have never been exercised | nothing | **owner** (a second machine) + autonomous scripts |
 | G6 | Hidden GL requirement: GL 3.3 + dual-source blending, no probe, no fallback; on failure the window stays black and the command queue grows without bound | nothing | autonomous (Sprint 7) |
 | G7 | The command queue is unbounded whenever the back-pressure latch trips (a window drag does it); memory balloons, then a hitch | nothing | autonomous (Sprint 7) |
-| G8 | The three hands-on checks (title listen, free play, pad) are unreported; the portable zip has never been run on a clean machine | `docs/HUMAN_TASKS.md` | **owner** |
+| G8 | The three hands-on checks (title listen, free play, pad) are unreported; the portable zip has never been run on a clean machine | `docs/HUMAN_TASKS.md` (since 2026-09-25 `docs/archive/HUMAN_TASKS-to-2026-09-25.md`) | **owner** |
 | G9 | Online reliability numbers: the lobby rate was never measured (Task 2 Step 4); freeze shape 2 unrooted (Task 3); 21k texture decodes/s fails the ladder's back-pressure bar | partial | autonomous (Sprint 7) |
 | G10 | Bare-run robustness: no exit-code taxonomy, "the game exited" with no reason, no `SHA256SUMS`, 285 MB unsigned | nothing | autonomous (Sprint 8), owner for signing |
 
@@ -106,7 +106,7 @@ day, M a few days, L a week or more.
 2. `socom2_hostnet::parseServerAddress`: numeric, else getaddrinfo (AF_INET, first IPv4), else one stderr line and the old value (G2). Test: `192.168.2.10`, `localhost`, `no-such-host.invalid`.
 3. `server/start-servers.ps1 -PublicIp <ip>` rewrites the advertised fields in the three configs (never the MPS loopback), `-ShowIp` prints them, `server/README.md` lists the ports to forward (G3). Test on temp copies.
 4. `scripts/parity/env.sh`: one `SOCOM_SERVER_IP` knob and the shared trace/peek block; the four online scripts source it; `dns_stub.py` reads it. The three peek copies were byte-identical; `mixed_match.sh` keeps its shorter one on purpose. Test.
-5. The launcher's server picker (owner request): SOCOM Community, SOCOM Unzipped, Custom; the address locked to the preset except for Custom; both real addresses are deliberate placeholders until the owner supplies them (`docs/HUMAN_TASKS.md`).
+5. The launcher's server picker (owner request): SOCOM Community, SOCOM Unzipped, Custom; the address locked to the preset except for Custom; both real addresses are deliberate placeholders until the owner supplies them (`docs/HUMAN_TASKS.md`; since 2026-09-25 `docs/archive/HUMAN_TASKS-to-2026-09-25.md`).
 
 ## 3. Sprint 6, as it actually stands
 

@@ -1,8 +1,9 @@
 # The playtest — one sitting, in order
 
-For the owner. This folds the open items of `docs/HUMAN_TASKS.md` into one evening, ordered so that each step sets up
+For the owner: row O8 of `docs/HUMAN_TASKS.md`. This folds the hands-on items into one evening, ordered so that each step sets up
 the next and the things you have complained about come while your ears are fresh. One line back per step is enough;
-"fine" is an answer. Anything not on this page that annoys you is the most useful note of all.
+"fine" is an answer. Anything not on this page that annoys you is the most useful note of all. The italic name after
+a step is the item as the owner's list first wrote it (`docs/archive/HUMAN_TASKS-to-2026-09-25.md`, which says where each one went).
 
 **This is the script for the next sitting.** The last one was on 2026-09-22, on the 2026-09-21 build; the steps that
 sitting answered are struck below with what it found and where each finding went, and what is left open is what the
@@ -56,7 +57,7 @@ build:    NOT BUILT. No archive exists for the current tree: the v0.12.0 draft r
    password into ONLINE first: both game keyboards should open already filled and you only press ENTER. Say which of
    these did not happen.
 
-1. **The download is whole** *(HUMAN_TASKS: the release download, c)*. `certutil -hashfile socom2-portable.zip SHA256`
+1. **The download is whole** *(the release download, c)*. `certutil -hashfile socom2-portable.zip SHA256`
    and compare with `SHA256SUMS`. Did Windows SmartScreen or your antivirus complain when you ran it? What did it say?
 2. **Double-click `socom2.exe` with no launcher** *(failures explain themselves, a)*. It should start on the
    launcher's saved settings, or tell you in a sentence why it cannot. No black console window left behind. Quit.
@@ -129,7 +130,7 @@ build:    NOT BUILT. No archive exists for the current tree: the v0.12.0 draft r
 
 ## Decisions worth making while it is fresh
 - **Who else gets this archive?** For you alone, nothing to decide. For anyone else, decision D2 comes first: the
-  archive contains code recompiled from the game, and the game's decrypted ELF (`docs/HUMAN_TASKS.md`, the decisions
+  archive contains code recompiled from the game, and the game's decrypted ELF (`docs/HUMAN_TASKS.md`, row O1 of its
   table -- its default is "no public download until answered").
 - **A profile viewer** in the launcher -- wanted?
 - **Should the download drop the built-in debugger and the dump/trace probes** to get smaller? You will get a number
@@ -139,9 +140,9 @@ build:    NOT BUILT. No archive exists for the current tree: the v0.12.0 draft r
   typing, and the gameplay keys work only in developer mode, which every harness launch is.
 - ~~**The repository going public** needs six answers from you, D1-D6 in the Sprint 11 spec.~~ *Done:* the repository
   has been public since 2026-09-20 (D1 was made by the flip), and D2-D6 proceed on the defaults in
-  `docs/HUMAN_TASKS.md`'s decisions table until you change one.
+  `docs/HUMAN_TASKS.md`'s rows O1 and O3 until you change one.
 
 ## Where your notes go
 Say them to the controller in any form. It files each one as a task, a `docs/KNOWN.md` row (and an issue, when it is
-a defect with an artefact) or a ticked item in `docs/HUMAN_TASKS.md`, and they go to the top of the open sprint's
+a defect with an artefact) or an answered row in `docs/HUMAN_TASKS.md`, and they go to the top of the open sprint's
 queue (`docs/CURRENT_SPRINT.md`). *(Until 2026-09-25 this said "Sprint 9, item Q0".)*

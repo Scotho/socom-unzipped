@@ -112,7 +112,7 @@ Annotated tags only (`git tag -a`), pushed explicitly (`git push origin <tag>`).
 
 **Every release keeps its symbols.** The release exe is stripped; `dist-release/symbols/` of that exact build is the
 only thing that makes a stranger's crash record readable. Until the release workflow (below) uploads it as a private
-artifact, keeping it is the owner's item in HUMAN_TASKS.
+artifact, keeping it is the owner's, with the archives (row O2 of `docs/HUMAN_TASKS.md`).
 
 ## 5. Releases (AT PUBLIC -- Sprint 11 Goal 0)
 

@@ -189,7 +189,7 @@ new**, by pass, and a false-pair rate against the 828 proved pairs by research/4
   BinDiff-confirmed `prefix` pair on an engine routine is the mechanical form of R257's "reviewed by hand", and may be
   proposed at 0.80 under a `prefix+bindiff` pass — S12-R3).
 - **Stop rule:** if BinDiff or Ghidra cannot be installed under the environment's network policy, the goal is retired
-  by a ruling that says so and what it cost, and R257's hand review stays a HUMAN_TASKS line.
+  by a ruling that says so and what it cost, and R257's hand review stays a HUMAN_TASKS line (row O11 since 2026-09-25).
 
 ### Goal 5 — the demo's DWARF1 types through ccc, with the layout-age caveat **[A, same condition]**
 

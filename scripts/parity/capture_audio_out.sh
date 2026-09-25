@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Sprint 11 audio-out: one briefing capture with the callback trace on, under the machine lock, for the owner's
-# quiet-endpoint measurement (docs/HUMAN_TASKS.md, "Ten quiet minutes for the music dropouts").
+# quiet-endpoint measurement (docs/archive/HUMAN_TASKS-to-2026-09-25.md, "Ten quiet minutes for the music
+# dropouts"; the loop took it on 2026-09-25, Sprint 13 V5 Step 1).
 #
 #   bash scripts/parity/capture_audio_out.sh            # ten minutes: the measurement
 #   MINUTES=2 bash scripts/parity/capture_audio_out.sh  # two: the check that the capture's own records run

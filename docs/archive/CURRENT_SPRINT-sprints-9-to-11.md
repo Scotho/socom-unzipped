@@ -13,7 +13,7 @@
 
 Four milestones, from the plan: **S** the chat hole closed on both sides (Tasks 2, 2b, 3, 4); **U** upstream and
 external (R241/R243/R245: Tasks 5–8, 8a–8c); **R** the r0004 groundwork that needs no package (Tasks 9–11); **P** the
-public repository's remaining owes (Tasks 12–18). Owner decisions are `docs/HUMAN_TASKS.md`'s top block; every task
+public repository's remaining owes (Tasks 12–18). Owner decisions are `docs/archive/HUMAN_TASKS-to-2026-09-25.md`'s top block; every task
 proceeds on its default. Markers as below.
 
 **Opened with six tasks already landed overnight** (the night of the Sprint 10 close, in agent worktrees, each
@@ -136,7 +136,7 @@ recorded as a standing hazard in `docs/KNOWN.md` §4 and in `docs/HANDOFF.md`'s 
 - **Goal 3's tasks 5 and 7** -- the parked-opponent row and "seen by the other" read from the peer entity.
 - **The VM ring** (Q2's Task 8, deferred here by R209) -- it did not run tonight; it is Sprint 11's Task 18 Step 1,
   with the times recorded in `docs/DEVELOPING.md` beside the Windows numbers.
-- **H7's two decisions** -- the owner's, in `docs/HUMAN_TASKS.md`'s morning block with the eight Sprint 11 defaults.
+- **H7's two decisions** -- the owner's, in `docs/archive/HUMAN_TASKS-to-2026-09-25.md`'s morning block with the eight Sprint 11 defaults.
 - **The mission music's DEVICE dips**, as a Sprint 11 audio item: a capture that stamps the mixer's output-frame
   clock on both the dump and the endpoint recording, plus the per-minute DEVICE count pinned into the audio gate.
 - **W6 over a route that reaches the church**, which needs the owner's route in stick directions.
@@ -275,7 +275,7 @@ and step 5b of `docs/LOOP_PROMPT.md`, so it outlives this controller. What stand
 | 2 | **The ladder streak** -- the bar is seven consecutive clean runs (`docs/LADDER.md`, generated). It stood at 4 of 7 when this row was written; chain 2's run 5 was REFUSED (exit 75) at 02:43Z and the chain stopped by design, so the streak did not move on that attempt, and chain 3 relaunched runs 5-7 with a retry on 75. **The number at the close is in the "Sprint 10 -- CLOSED" block above**, which is also where R244 records that these runs are what prove W8 | the loop, in away windows | ~35 min each, one at a time |
 | 3 | ~~**Goal 4, per-map kill routes** for the sweep maps (the last big [A] item of this sprint)~~ **SUPERSEDED by R242 (2026-09-22): the routes carry to Sprint 11 as [A] filler and do NOT hold the tag**; the speed-freeze half is re-measured from existing logs | the loop, away windows | hours of game runs, in Sprint 11 |
 | 4 | ~~**Goal 3's tasks 5 and 7** (the parked-opponent row; "seen by the other" read from the peer entity)~~ **CARRIED to Sprint 11 at the close (2026-09-23): they did not run and they do not hold the tag** -- see the carry list in the "Sprint 10 -- CLOSED" block above | the loop | two mixed-match runs, in Sprint 11 |
-| 5 | ~~**H7's two decisions** (class A: the audio fixtures and the VU1 dumps; class C: the line on pictures of the game's art)~~ **CARRIED to Sprint 11 at the close (2026-09-23), and never waited on:** they are in `docs/HUMAN_TASKS.md`'s morning block as H7-A / H7-C, with "nothing moves" as the default the loop proceeds on | **the owner** | minutes to decide, then the loop does the work |
+| 5 | ~~**H7's two decisions** (class A: the audio fixtures and the VU1 dumps; class C: the line on pictures of the game's art)~~ **CARRIED to Sprint 11 at the close (2026-09-23), and never waited on:** they are in `docs/archive/HUMAN_TASKS-to-2026-09-25.md`'s morning block as H7-A / H7-C, with "nothing moves" as the default the loop proceeds on | **the owner** | minutes to decide, then the loop does the work |
 | 6 | ~~**Q2's Task 8 VM ring** (the Linux runtime rebuilt in the VM with the flip) -- R209 deferred it here~~ **CARRIED to Sprint 11 at the close (2026-09-23): it did not run.** R209 deferred it to this close, the close did not pay it, and it is now Sprint 11's Task 18 Step 1, with its times recorded in `docs/DEVELOPING.md` beside the Windows numbers | the loop | one VM session, the host quiet |
 | 7 | **Q8, the close** -- KNOWN audit, STATUS rewritten, the sprint's rulings reconciled into one list (**R181-R244 is sixty-four numbers, sixty-three rulings** -- this row said "R181-R235 is fifty-five" until 2026-09-23; the reconciled list is the ledger table in the "Sprint 10 -- CLOSED" block above), `PS2X_TEST_REPEAT=3 ./build.sh test`, a full gate on the close commit, the PR `sprint-10 -> main` as a merge commit, the annotated tag `v0.10.0` on it, `sprint-10` deleted, Sprint 11 opened | the loop | ~3 h of machine time |
 

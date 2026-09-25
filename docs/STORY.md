@@ -776,7 +776,7 @@ functions. Writing those entries is not a one-line edit — each needs its hashe
 **carried explicitly as a Sprint 12 item** rather than left to slip (Sprint 11 close review, row A22) — *and carried a
 second time at Sprint 12's close (2026-09-25): that sprint took nothing but the naming programme, so the missing days
 are now these three plus Sprint 12's two, a line in `docs/CURRENT_SPRINT.md`'s "Sprint 12 — CLOSED" carry and an
-owner question in `docs/HUMAN_TASKS.md`*. Until it
+owner question in `docs/HUMAN_TASKS.md` (row O9 since 2026-09-25)*. Until it
 lands, `docs/STATUS.md` and `docs/CURRENT_SPRINT.md` are where those three days are written down.
 
 ---

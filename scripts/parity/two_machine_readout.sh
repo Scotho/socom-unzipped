@@ -2,7 +2,8 @@
 # Sprint 7 Task 5 (spec Goal 5): the one line the owner runs after the first TWO-MACHINE match, on
 # either machine, once both run logs are in one place. It turns the pair into the lobby class, whether
 # each side saw the other move, the clock skew between the two round clocks, and the failure class of
-# each miss -- one block to paste back into docs/HUMAN_TASKS.md.
+# each miss -- one block to paste back as the answer to row O6 of docs/HUMAN_TASKS.md (a line in the
+# next session's prompt or a note in docs/STATUS.md).
 #
 #     bash scripts/parity/two_machine_readout.sh <log_A> <log_B> [<harness/drive log>...]
 #

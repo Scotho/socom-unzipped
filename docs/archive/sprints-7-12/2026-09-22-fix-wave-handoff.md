@@ -145,7 +145,7 @@ DOWN there. `join_list_check` now refuses to re-send once the cursor has left JO
 
 The owner was at the machine for the whole session (input idle 2 s, Teams and Jira open), so by the host-load rule
 nothing lock-bound ran. Everything below is code, tests and documents; the runs are exact commands in
-`docs/HUMAN_TASKS.md` ("Start here, midday") waiting for a window.
+`docs/archive/HUMAN_TASKS-to-2026-09-25.md` ("Start here, midday") waiting for a window.
 
 **The A/B's number was wrong before the A/B ran.** Reading the 31 DEVICE rows: the last one was 365 s long (a cue
 ending at 581 s, the level never climbing back within 10 dB, its 50 ms dump twin already taken by the endpoint dip
@@ -191,6 +191,6 @@ discover run is recorded in the commit message.
 
 ## Still owed to the owner
 
-They are told all of this in `docs/HUMAN_TASKS.md` ("Start here (2026-09-22, after your playthrough)"). The two
+They are told all of this in `docs/archive/HUMAN_TASKS-to-2026-09-25.md` ("Start here (2026-09-22, after your playthrough)"). The two
 things genuinely waiting on them: **which channel their lobby was in**, and **ten minutes on a wired endpoint** for
 the A/B above. Everything else on that list is machine work.

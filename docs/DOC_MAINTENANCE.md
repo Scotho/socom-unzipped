@@ -118,6 +118,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/archive/ROADMAP-sprint-4-to-sprint-7.md` | **A** | — | Fifteen files cite it; every `ROADMAP.md §N` written before 2026-09-22 means this file |
 | `docs/archive/CURRENT_SPRINT-to-sprint-8.md` | **A** | — | |
 | `docs/archive/HANDOFF-loop-history-to-2026-09-25.md` | **A** | — | Cut 2026-09-25 (Sprint 13 Task R1, R268): HANDOFF §2's older pick-up points, §4 and §10, verbatim |
+| `docs/archive/HUMAN_TASKS-to-2026-09-25.md` | **A** | — | Cut 2026-09-25 (Sprint 13 Task R4): the owner's queue before it became one table, verbatim, under a disposition for each of its 87 items. Every HUMAN_TASKS section, item or line cited before that day means this file |
 | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` | **A** | — | Cut 2026-09-25 (Sprint 13 Task R1, R268): the Sprint 9-11 records, verbatim. The ruling counter reads it (`max_ruling()` scans all of `docs/archive/`) |
 | `docs/archive/HANDOFF-reference-to-2026-09-13.md` | **A** | — | |
 | `docs/archive/HANDOFF-2026-09-08.md` | **A** | — | Banded 2026-09-22 |

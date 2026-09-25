@@ -120,6 +120,16 @@ class CeilingsTest(unittest.TestCase):
             "over the R268 ceiling(s): %s -- archive the oldest blocks (docs/archive/, a banner, a registry "
             "row) rather than raising the number" % "; ".join(docmaint.describe_ceiling(b) for b in bad))
 
+    def test_human_tasks_stays_one_table(self):
+        """Sprint 13 R4 cut HUMAN_TASKS from 702 lines (82,968 B) to one table of the owner's decisions (9,786 B).
+
+        Its ceiling was lowered to that size plus 25 %; a number back near the old 104,000 would let the
+        stack of "Start here" blocks grow again unnoticed.
+        """
+        path, heading, limit = [c for c in docmaint.CEILINGS if c[0] == "docs/HUMAN_TASKS.md"][0]
+        self.assertIsNone(heading)
+        self.assertLessEqual(limit, 12500, "raise nothing: archive the old rows (docs/DOC_MAINTENANCE.md check 7)")
+
     def test_every_ceiling_names_a_block_that_exists(self):
         for path, heading, limit in docmaint.CEILINGS:
             self.assertIsNotNone(docmaint.block_bytes(path, heading),

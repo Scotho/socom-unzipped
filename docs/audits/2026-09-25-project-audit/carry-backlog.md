@@ -9,6 +9,8 @@ with their bodies and comments; the unticked steps and Outcome/carry paragraphs 
 §0, §4–§6; the last 40 lines of all 61 research notes; `docs/STATUS.md` Current state; `docs/PLAYTEST.md`;
 `docs/LADDER.md`.
 
+> Added 2026-09-25 (Sprint 13 Task R4): `docs/HUMAN_TASKS.md` became one table that day. Every `HUMAN_TASKS.md` line cited below is the old file, now `docs/archive/HUMAN_TASKS-to-2026-09-25.md` -- its banner gives the line offset, the quoted text finds each line, and its table gives each item's disposition.
+
 How to read the columns:
 - **times carried** counts the sprints the item appears in as open, carried, filler or backlog (the sprint list is
   in brackets). "1" means written once and never re-listed.
