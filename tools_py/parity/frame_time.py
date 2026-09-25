@@ -16,7 +16,7 @@ two-instance clock row keeps the three apart -- the guest VBlank rate (this), th
 Not used: `ee=` (the guest EE clock, which counts wall time since research/34's fix and so reads ~1.00x
 however many VBlanks are delivered), `seq=` (the kernel snapshot's sequence, a staleness marker, not a frame
 count), the `[gs-gl present]` lines (every 600th frame, no timestamp) and `[vu1-stats]` (the gate does not set
-PS2X_VU1_STATS).
+PS2X_VU_STATS).
 
 The stretch is the scripted walk: sampler rows with `t=` from the drive log's step that follows the HUD
 untilref match (s28 in gameplay_probe.txt) to the drive's last step (s48). The stage's unscripted tail after

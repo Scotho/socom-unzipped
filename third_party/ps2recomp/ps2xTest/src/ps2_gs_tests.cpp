@@ -15,6 +15,7 @@
 #include "runtime/gs/gs_gl_target_extent.h"
 #include "runtime/gs/gs_gl_upload_trace.h"
 #include "runtime/gs/gs_gl_upload_identity.h"
+#include "runtime/gs/gs_gl_upload_reasons.h"
 #include "runtime/gs/gs_gl_texture_identity.h"
 #include "Stubs/Helpers/Support.h"
 #include "Stubs/GS.h"
@@ -27,6 +28,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <memory>
 #include <set>
 #include "raylib.h"
 #include "runtime/socom2_lum_readback.h"
@@ -6308,6 +6310,135 @@ void register_ps2_gs_tests()
             const std::string line = GsGlUploadTrace::format(a, 1000.0);
             t.IsTrue(line.find("revalidated=500/s") != std::string::npos, "revalidations per second");
             t.IsTrue(line.find("revalidate_us=12.0") != std::string::npos, "and the cost of one");
+        });
+
+        // --- Sprint 13 V2 (#32): why each upload happened, and the one that need not ---
+        //
+        // gs_gl_upload_reasons.h is the Gate executeUpload runs (with PS2X_GS_STATS or
+        // PS2X_GS_UPLOAD_SKIP set): the reasons line's counters and the skip decision both come
+        // from Gate::decide, so these cases drive the backend's own code without a GL context.
+
+        tc.Run("V2: blocksOf names the 256-byte blocks a rectangle writes, and nothing for a Z format", [](TestCase &t)
+        {
+            std::vector<uint32_t> blocks;
+            GsGlUploadReasons::blocksOf(GS_PSM_CT32, 0x0c0u, 10u, 0u, 0u, 16u, 16u, blocks);
+            t.IsTrue(blocks == std::vector<uint32_t>({0x0c0u, 0x0c1u, 0x0c2u, 0x0c3u}),
+                     "a 16x16 PSMCT32 tile at (0,0) of dbp 0xc0 is the four 8x8 blocks 0xc0..0xc3");
+            std::vector<uint32_t> beside;
+            GsGlUploadReasons::blocksOf(GS_PSM_CT32, 0x0c0u, 10u, 16u, 0u, 16u, 16u, beside);
+            t.IsTrue(beside == std::vector<uint32_t>({0x0c4u, 0x0c5u, 0x0c6u, 0x0c7u}),
+                     "the tile beside it is in the same page and writes other blocks");
+            std::vector<uint32_t> frame;
+            GsGlUploadReasons::blocksOf(GS_PSM_CT32, 0u, 10u, 0u, 0u, 640u, 448u, frame);
+            t.Equals(frame.size(), static_cast<size_t>(10u * 14u * 32u), "a 640x448 frame is 140 whole pages: every block visited");
+            std::vector<uint32_t> nibbles;
+            GsGlUploadReasons::blocksOf(GS_PSM_T4, 0x0c0u, 10u, 0u, 0u, 16u, 16u, nibbles);
+            t.IsTrue(nibbles == std::vector<uint32_t>({0x0c0u}), "a 16x16 PSMT4 tile lies in one 32x16 block");
+            GsGlUploadReasons::blocksOf(GS_PSM_Z32, 0x0c0u, 10u, 0u, 0u, 16u, 16u, blocks);
+            t.IsTrue(blocks.empty(), "a Z format has no block map here: it is never a skip candidate");
+        });
+
+        tc.Run("V2: the reason counters name every branch of a synthetic upload sequence", [](TestCase &t)
+        {
+            using R = GsGlUploadReasons::Reason;
+            using X = GsGlUploadReasons::Tex;
+            auto gateOwner = std::make_unique<GsGlUploadReasons::Gate>();   // 132 KB of generations: not on the stack
+            GsGlUploadReasons::Gate &gate = *gateOwner;
+            const GsGlUploadIdentity::Key tile{0x0c0u, 10u, 0u, 0u, 16u, 16u, GS_PSM_CT32};
+            const GsGlUploadIdentity::Key beside{0x0c0u, 10u, 16u, 0u, 16u, 16u, GS_PSM_CT32};
+            std::vector<uint32_t> tileBlocks, besideBlocks;
+            GsGlUploadReasons::blocksOf(GS_PSM_CT32, 0x0c0u, 10u, 0u, 0u, 16u, 16u, tileBlocks);
+            GsGlUploadReasons::blocksOf(GS_PSM_CT32, 0x0c0u, 10u, 16u, 0u, 16u, 16u, besideBlocks);
+            const std::vector<uint8_t> a(1024u, 0x11u), b(1024u, 0x22u);
+            auto up = [&](const GsGlUploadIdentity::Key &k, const std::vector<uint8_t> &bytes,
+                          const std::vector<uint32_t> &blocks, bool whole, bool underGpu)
+            {
+                return gate.decide(k, bytes.data(), bytes.size(), whole, blocks, 6u, 1u, underGpu, false).reason;
+            };
+            t.IsTrue(up(tile, a, tileBlocks, true, false) == R::New, "the first upload of a rectangle is new");
+            t.IsTrue(up(tile, a, tileBlocks, true, false) == R::SameFree, "the same bytes again, nothing between: same_free");
+            t.IsTrue(up(beside, b, besideBlocks, true, false) == R::New, "a sibling tile in the same page is its own rectangle");
+            t.IsTrue(up(tile, a, tileBlocks, true, false) == R::SameFree,
+                     "and does not disturb this one (other blocks) -- R118's page guard refused exactly this");
+            t.IsTrue(up(tile, b, tileBlocks, true, false) == R::Changed, "different bytes: changed");
+            gate.noteForeignWrite(6u, 1u);
+            t.IsTrue(up(tile, b, tileBlocks, true, false) == R::SameRewritten,
+                     "the same bytes after a VRAM write or a download into its page: same_rewritten");
+            t.IsTrue(up(tile, b, tileBlocks, true, true) == R::SameUnderGpu, "GPU-drawn rows over it: same_gpu");
+            t.IsTrue(up(tile, b, tileBlocks, false, false) == R::Chunked, "one packet of a split rectangle: chunked");
+            for (int i = 0; i < 3; ++i)
+                gate.noteTex(X::Hit);
+            gate.noteTex(X::RtDirect);
+            gate.noteTex(X::Revalidated);
+            gate.noteTex(X::Revalidated);
+            gate.noteTex(X::Redecoded);
+            gate.noteTex(X::New);
+            const GsGlUploadReasons::Tally tally = gate.take();
+            t.Equals(tally.uploads[static_cast<size_t>(R::New)], static_cast<uint64_t>(2), "two new");
+            t.Equals(tally.uploads[static_cast<size_t>(R::SameFree)], static_cast<uint64_t>(2), "two same_free");
+            t.Equals(tally.uploads[static_cast<size_t>(R::Changed)], static_cast<uint64_t>(1), "one changed");
+            t.Equals(tally.uploads[static_cast<size_t>(R::SameRewritten)], static_cast<uint64_t>(1), "one same_rewritten");
+            t.Equals(tally.uploads[static_cast<size_t>(R::SameUnderGpu)], static_cast<uint64_t>(1), "one same_gpu");
+            t.Equals(tally.uploads[static_cast<size_t>(R::Chunked)], static_cast<uint64_t>(1), "one chunked");
+            t.Equals(tally.skipped, static_cast<uint64_t>(0), "with the knob off nothing is skipped, only counted");
+            const std::string line = GsGlUploadReasons::format(tally, false);
+            t.IsTrue(line.find("[gs-gl stats] reasons uploads: chunked=1 new=2 changed=1 same_rewritten=1 same_gpu=1 same_free=2 skipped=0 skip=off") == 0,
+                     "the reasons line, uploads half: " + line);
+            t.IsTrue(line.find("textures: hit=3 rt=1 revalidated=2 redecoded=1 new=1") != std::string::npos,
+                     "the reasons line, texture half: " + line);
+            t.Equals(gate.take().uploads[static_cast<size_t>(R::New)], static_cast<uint64_t>(0), "take() starts the next interval at zero");
+        });
+
+        tc.Run("V2 (#32): a 16x16 tile uploaded twice with the same bytes uploads once", [](TestCase &t)
+        {
+            // Before V2, executeUpload had no branch that could decline: every Upload command swizzled
+            // into the shadow, bumped the page generation of the whole base..span range and marked a
+            // dirty rectangle on every target over it, so the same bytes twice were two uploads. The
+            // only identical-bytes check was PS2X_GS_UPLOAD_TRACE's identical= counter, which counts.
+            auto gateOwner = std::make_unique<GsGlUploadReasons::Gate>();   // 132 KB of generations: not on the stack
+            GsGlUploadReasons::Gate &gate = *gateOwner;
+            const GsGlUploadIdentity::Key tile{0x0c0u, 10u, 0u, 0u, 16u, 16u, GS_PSM_CT32};
+            std::vector<uint32_t> blocks;
+            GsGlUploadReasons::blocksOf(GS_PSM_CT32, 0x0c0u, 10u, 0u, 0u, 16u, 16u, blocks);
+            const std::vector<uint8_t> a(1024u, 0x5Au), b(1024u, 0xA5u);
+            int performed = 0;
+            auto upload = [&](const std::vector<uint8_t> &bytes, bool underGpu)
+            {
+                if (!gate.decide(tile, bytes.data(), bytes.size(), true, blocks, 6u, 1u, underGpu, true).skip)
+                    ++performed;
+            };
+            upload(a, false);
+            upload(a, false);
+            t.Equals(performed, 1, "the same 16x16 tile twice with nothing between: ONE upload");
+            t.Equals(gate.tally().skipped, static_cast<uint64_t>(1), "and the reasons line says skipped=1");
+
+            // Never where the bytes may not already be everywhere:
+            upload(b, false);
+            t.Equals(performed, 2, "different bytes upload");
+            upload(b, true);
+            t.Equals(performed, 3, "under GPU-drawn rows it uploads: the GPU may have drawn over the tile");
+            const GsGlUploadIdentity::Key overlap{0x0c0u, 10u, 8u, 8u, 8u, 8u, GS_PSM_CT32};
+            std::vector<uint32_t> overlapBlocks;
+            GsGlUploadReasons::blocksOf(GS_PSM_CT32, 0x0c0u, 10u, 8u, 8u, 8u, 8u, overlapBlocks);
+            const std::vector<uint8_t> c(256u, 0x33u);
+            gate.decide(overlap, c.data(), c.size(), true, overlapBlocks, 6u, 1u, false, true);
+            upload(b, false);
+            t.Equals(performed, 4, "an upload into one of its blocks since: it uploads");
+            upload(b, false);
+            t.Equals(performed, 4, "and once it is back, the next identical one is skipped again");
+            gate.noteTargetsChanged();
+            upload(b, false);
+            t.Equals(performed, 5, "a render target created or grown since: it uploads");
+            gate.noteForeignWrite(6u, 1u);
+            upload(b, false);
+            t.Equals(performed, 6, "a VRAM write, local copy or download into its page since: it uploads");
+            t.IsFalse(gate.decide(tile, b.data(), b.size(), false, blocks, 6u, 1u, false, true).skip,
+                      "one packet of a split rectangle is never skipped");
+            t.IsFalse(gate.decide(tile, b.data(), b.size(), true, blocks, 6u, 1u, false, false).skip,
+                      "with PS2X_GS_UPLOAD_SKIP off the gate only counts");
+            gate.reset();
+            t.IsFalse(gate.decide(tile, b.data(), b.size(), true, blocks, 6u, 1u, false, true).skip,
+                      "a GS reset forgets every remembered upload");
         });
 
     });
