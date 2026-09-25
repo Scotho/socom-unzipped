@@ -1,3 +1,5 @@
+// LOCAL FIX (socom_pc): the project's own file, not upstream Horizon's -- the server clamps the chat fields it
+// forwards (SECURITY.md, "Known: the game's own network code"). Carry it across every vendor bump.
 namespace Server.Medius
 {
     // Sprint 11 milestone S: a forwarded chat field is written fixed-width (Constants.*_MAXLEN) and the client

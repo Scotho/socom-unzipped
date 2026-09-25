@@ -1,0 +1,2 @@
+# Sprint 10 Goal 2 / Sprint 13 O3: the account store backed up daily on the box (install as /etc/cron.d/socom-backup)
+20 4 * * * root OPS_ENV=/etc/socom-unzipped/ops.env /usr/local/sbin/socom-backup.sh >> /var/log/socom-backup.log 2>&1

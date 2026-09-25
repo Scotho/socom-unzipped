@@ -5,23 +5,25 @@ This folder is a self-contained, Docker-free bring-up of the
 (Medius/DME/NAT/MUIS emulator, C#/.NET 9, MIT) configured for SOCOM II NTSC
 (Medius app id **10472**, "Medius Client Library Version 1.50.0013", DME client 1.32.0070).
 
-Status as of 2026-09-19: **hosted on Linux at 3.143.65.100 and played on** (see "Hosting it on Linux"). Status as of 2026-09-04: **builds and runs**; all listeners verified; DME authenticates with MPS;
-a scripted client completes the MAS RT handshake for app id 10472. No SOCOM II client has been
-connected yet.
+Status: **hosted on Linux as `socom.scotho.com` since 2026-09-19 and played on** (see "Hosting it on Linux").
+**The running commit is `4d7e4816`** (Sprint 11 S, the chat fields clamped; redeployed 2026-09-23 06:58Z, as the
+box's git-ignored instructions record it). From the next deploy on, the server says it itself: the stats JSON's
+`build` field (the site's `/api/stats`), and the deploy records it in `ops.env` as `OPS_DEPLOYED_COMMIT`, which
+`ops/health.sh` compares (see "Build id" and "Backups, health and the off-box pull" below). The upstream base is
+Horizon `1a7b9cd` (see "Upstream base").
 
 ## Layout
 
 | Path | What |
 |---|---|
-| `horizon-server/` | Plain copy of `research/horizon-server` (no `.git`), built in place. Two tiny local fixes, see below. |
-| `horizon-server-database-middleware/` | Shallow clone, **reference only** (SQL scripts, DTO shapes). Not needed to run. |
-| `horizon-docker/` | Shallow clone, reference only (upstream sample `medius.json`/`dme.json`/`muis.json`). |
-| `config/` | The live configuration: `nat.json`, `muis.json`, `medius.json`, `dme.json`, `db.config.json`, `simulated.db`. |
-| `logs/` | Console captures (`console-<component>.log`) and the servers' own rolling logs (`medius.log`, `dme.log`, `muis.log`). |
-| `medius-plugins/`, `dme-plugins/`, `files/` | Empty dirs the servers expect relative to the working directory. |
+| `horizon-server/` | Vendored copy of upstream Horizon at `1a7b9cd` (no `.git`), built in place, with the project's changes listed in "Local source changes". |
+| `config/` | The tracked configuration: `nat.json`, `muis.json`, `medius.json`, `dme.json`, `db.config.json` (the advertised address a RFC 5737 placeholder). `simulated.db` is git-ignored: each host seeds its own. |
+| `linux/` | The Linux glue: `install.sh`, the four systemd units and `horizon.target`, `horizon-ctl.sh`, `wait-for-port.sh` ("Hosting it on Linux"). |
+| `ops/` | The hosted box's backup, health and off-box pull, with every secret, address and key path in the git-ignored `ops/ops.env` (`ops.env.example` is its shape). See "Backups, health and the off-box pull". |
 | `start-servers.ps1` | Start / `-Stop` / `-Status` / `-Build` the stack; `-PublicIp` / `-ShowIp` set and show the advertised address. |
 | `seed-simulated-db.ps1` | Write (or `-Show`) the encrypted `config/simulated.db` (test account + per-app settings). |
-| `build-release.log` | Output of the first full `dotnet build` (0 errors, 16 warnings, 17 s). |
+| `logs/`, `medius-plugins/`, `dme-plugins/`, `files/` | Not tracked: made on first run (`logs/` git-ignored), empty dirs the servers expect relative to the working directory. |
+| `horizon-server-database-middleware/`, `horizon-docker/` | Not tracked (git-ignored): optional shallow clones for reference (SQL scripts, DTO shapes, upstream sample configs). Not needed to run. |
 
 ## Quick start
 
@@ -131,7 +133,7 @@ database is not involved) and copy `config/simulated.db` up. On a cloud box the 
 (static) one, never the private address the interface carries; open the same ports in the provider's firewall
 (the table above, the UDP range included) and leave 10077 closed.
 
-**Verified on the project's hosted box (3.143.65.100, 2 vCPU / 2 GB, 2026-09-19):** from outside, 10071, 10073, 10075 and
+**Verified on the project's hosted box (`socom.scotho.com`, 2 vCPU / 2 GB, 2026-09-19):** from outside, 10071, 10073, 10075 and
 10078 accept and 10077 does not; any datagram to 10070/udp is answered with the sender's public address and port;
 `Server.Test` completes the MAS handshake for app id 10472 against the public address; the four processes hold about
 335 MB resident between them; a reboot brings every listener back unattended. **And played on (same day):** two instances of the PC client behind one home NAT logged in (a first login on a
@@ -152,8 +154,8 @@ upstream's own two lines kept as the credit); the channel and location are the b
 `config/medius.json` on the hosted box adds `"StatsPrefix": "http://+:10080/"`, `StatsServerName` and
 `StatsLocation`: Medius then answers `GET /stats` with one JSON snapshot (status, server, location, uptime, players
 online / in game / in lobby with names, open games with name, host, slots, level, status and roster, lobby channels,
-and since-start counters: games created, distinct players, peak players). The provider's firewall opens 10080 to the
-website's box only; s2u.scotho.com's nginx proxies and micro-caches it as `/api/stats` (`../scotho/apps/s2u`). On
+and since-start counters: games created, distinct players, peak players; and since Sprint 13 O3 `build`, the commit
+the package was built from -- see "Build id"). The provider's firewall opens 10080 to the website's box only; s2u.scotho.com's nginx proxies and micro-caches it as `/api/stats` (`../scotho/apps/s2u`). On
 Windows use `"http://127.0.0.1:10080/"` (a `+` prefix needs a URL ACL there). Empty or absent = off, which is the
 tracked config.
 
@@ -167,9 +169,41 @@ writes `socom-unzipped-server/` and `socom-unzipped-server.zip` -- `horizon-serv
 `"MPS": { "Ip": "127.0.0.1" }`, so that connection never leaves the host. It only becomes an external port if DME
 is split onto a separate box, and then it should be restricted to that box, not exposed to the internet.
 
-Unverified on a real hosted machine: nothing here has been run outside the LAN yet (see Status above - no SOCOM II
-client has connected). Expect the NAT/UDP path (10070 and the 50000+ range) to be where a hosted bring-up first
-bites, since that is the part that depends on the advertised address being reachable from the client's side.
+The hosted path is verified ("Hosting it on Linux" above: two PC clients behind one home NAT, 2026-09-19); the
+NAT/UDP path (10070 and the 50000+ range) is still the part that depends on the advertised address being reachable
+from the client's side, so it is where a new host's bring-up bites first.
+
+### Build id (Sprint 13 Task O3)
+
+`scripts/make_server_zip.sh` writes `BUILD_ID` at the package root: the repository commit (`git rev-parse
+--short=12 HEAD`, `-dirty` when `server/horizon-server` has uncommitted changes; `SERVER_BUILD_ID=<id>` overrides it
+for a package built from a copy). `linux/install.sh` carries it to the installed folder with the rest, Medius reads it
+from its working directory (the package root, under the units and `start-servers.ps1`) or up from its binaries at
+start, and `StatsServer.cs` serves it as `"build"` in every snapshot -- `"unknown"` for a build without the file.
+The site's nginx proxies `/stats` verbatim, so `/api/stats` carries it with no change on the site; showing it on the
+page is the site's own change (`../scotho/apps/s2u/src/stats.ts` keeps only the fields it knows). Tests:
+`Server.Test/BuildIdTests.cs` (`dotnet test server/horizon-server/Server.Test`) and
+`tools_py/tests/test_make_server_zip.py`.
+
+### Backups, health and the off-box pull (`ops/`, Sprint 13 Task O3)
+
+What the hosted box runs besides the server, tracked here since Sprint 13 (they lived only in the box's git-ignored
+instructions before). Every secret, address and key path comes from `ops.env` -- `server/ops/ops.env` on the owner's
+machine, `/etc/socom-unzipped/ops.env` (root, mode 600) on the box, or wherever `OPS_ENV` names -- which is
+git-ignored; `ops.env.example` is its tracked shape with placeholders. `tools_py/tests/test_server_ops.py` holds the
+scripts to that: each loads the file and refuses to run without it, none carries an address literal (no private
+address, not the box's public one, no key path), and the example has every key they read.
+
+| File | Where it runs | What it reads from `ops.env` | What it does |
+|---|---|---|---|
+| `ops/backup.sh` | the box, as `/usr/local/sbin/socom-backup.sh`, daily by `ops/backup.cron` (`/etc/cron.d/socom-backup`) | `OPS_SERVER_DIR`, `OPS_BACKUP_DIR`, `OPS_BACKUP_KEEP`, `OPS_BACKUP_SETTLE_SEC` | copies `config/simulated.db` (twice, compared, so a torn copy is retried) and `config/*.json` into `<OPS_BACKUP_DIR>/<UTC stamp>/` with a `SHA256SUMS`; keeps the newest `OPS_BACKUP_KEEP` sets |
+| `ops/health.sh` | the box, as `/usr/local/sbin/socom-health.sh` | `OPS_SERVER_DIR`, `OPS_BACKUP_DIR`, `OPS_STATS_URL`, `OPS_DEPLOYED_COMMIT` | one `HEALTH ok|WARN ...` line: uptime, disk, memory, the four units, the five public ports listening (TCP 10071/10073/10075/10078, UDP 10070), the database, the newest backup's age, the stats endpoint and its `build` against `OPS_DEPLOYED_COMMIT`; exit 1 on WARN |
+| `ops/backup-pull.ps1` | the owner's Windows machine | `OPS_BOX_HOST`, `OPS_BOX_USER`, `OPS_SSH_KEY`, `OPS_KNOWN_HOSTS`, `OPS_BACKUP_DIR`, `OPS_PULL_DIR` | pulls the newest set over SSH into `<OPS_PULL_DIR>/<stamp>/` and verifies it against its `SHA256SUMS`; `-VerifyOnly <folder>` re-checks a pulled set; refuses the example's placeholder address |
+
+Installing them on the box is part of a deploy (the owner's): `make_server_zip.sh` ships `ops/` without `ops.env`;
+then `install -m 0755 ops/backup.sh /usr/local/sbin/socom-backup.sh`, the same for `health.sh`, `install -m 0644
+ops/backup.cron /etc/cron.d/socom-backup`, and `ops.env` filled in at `/etc/socom-unzipped/ops.env`. Restore is
+`backup.sh`'s header (run once on 2026-09-21: stop, copy the set's `simulated.db` back, `chown horizon:`, start).
 
 App ids: MUIS has a `Universes` entry keyed `"10472"` (plus a `"0"` fallback, which MUIS uses for
 unknown app ids). DME has `"ApplicationIds": [10472]`. Medius has **no** app-id list of its own; the set of
@@ -232,18 +266,46 @@ This machine has SQL Server 2022 (`MSSQL$SQL2022`, service **stopped**) and SQL 
    Horizon's `DefaultKey` therefore carries the matching private exponent and can decrypt SOCOM II's RSA-encrypted
    `CLIENT_CONNECT_TCP`. Another 64-byte blob follows at 0x488A70 (unidentified - possibly a second key).
 
-## Local source changes (all marked `LOCAL FIX (socom_pc)` in code)
+## Upstream base
 
-No build fixes were needed. Runtime/harness fixes:
+`horizon-server/` is upstream [Horizon-Private-Server/horizon-server](https://github.com/Horizon-Private-Server/horizon-server)
+`master` at **`1a7b9cd`** (2026-02-28, "fix(medius): fix deadlocks caused from awaiting Stop() without timeout
+(#33)"), copied on 2026-09-04 (`a3cef6ce`) from the research clone. Upstream has no releases or tags, and nothing was
+merged to its `master` after that commit as of the 2026-09-25 audit (`docs/audits/2026-09-25-project-audit/external.md`
+row 4). A `diff -r` of this folder against `1a7b9cd` (bin/obj aside) shows exactly the changes in the table below,
+plus line endings in `docker/entrypoint.sh`, `docker/restart_dme.py`, `run_docker.sh` and
+`RT.Models/RT/RT_MSG_SERVER_CONNECT_ACCEPT_TCP.cs`, and the absent `.github/` (its workflow deleted by `610d28e4`).
 
-| File | Change | Why |
-|---|---|---|
-| `Server.NAT/Program.cs` | `await Task.Delay(Timeout.Infinite)` after `NATServer.Start()` | Standalone `Server.NAT.exe` exited right after binding (event-loop threads are background threads); only worked inside the unified launcher. |
-| `Server.Test/Program.cs` | Set `ScertClientAttribute.DefaultRsaAuthKey` from `config.json` key | Test harness NRE'd in `ScertClientAttribute` ctor before sending anything. |
-| `Server.Test/Test/ClientLoginLogout.cs` | `ApplicationId` from `config.json` (was hard-coded 11184) | Test with 10472. |
-| `Server.Test/Medius/BaseClientConnect.cs` | Hello version 110 -> 108 | 110 makes the server answer `CONNECT_REQUIRE`, which the harness never handled; 108 is the PS2-era path. |
-| `Server.Database/Config/DbSettings.cs`, `Server.Database/DbController.cs` | `SimulatedAnnouncementTitle`/`Body`, `SimulatedChannelName`, `SimulatedLocationName` in `db.config.json`; null keeps upstream's canned value | Simulated mode hard-coded the message of the day ("Horizon Medius Server / Source available on GitHub"), the lobby channel ("Channel 1") and the location (Sprint 8 Goal 13). |
-| `Server.Medius/StatsServer.cs` (new), `Program.cs`, `Medius/MediusManager.cs`, `Config/ServerSettings.cs` | `GET /stats` JSON on `medius.json: StatsPrefix` (empty = off), snapshot built on the tick thread every 2 s | Live server stats for s2u.scotho.com: players, games, channels, uptime, since-start counters; names and counts only, never an address or a key. |
+**Upstream PR #35** (open since 2026-06-20, "graceful disconnect + simulated mode defaults") is **not carried**:
+it sends `RT_MSG_CLIENT_DISCONNECT_WITH_REASON` before closing a client's socket, which removes the
+`DEV9: Shutdown SD_RECEIVE error: 107` line a PCSX2 client logs, and changes simulated-mode defaults. It touches
+`Server.Medius/Medius/BaseMediusComponent.cs`, which this copy has not changed. It matters only if the mixed-match
+harness sees that DEV9 error (the audit's external.md row 15); taking it is a vendor bump, with the table below as
+the list of what to carry across.
+
+## Local source changes
+
+The table is the authority (the `LOCAL FIX (socom_pc)` / `LOCAL (socom_pc)` marker in code is on the
+harness, database, stats and chat-clamp changes; the Medius 1.50 protocol changes carry a plain comment at the change).
+No build fixes were needed.
+
+| File | Change | Why | Commit |
+|---|---|---|---|
+| `Server.NAT/Program.cs` | `await Task.Delay(Timeout.Infinite)` after `NATServer.Start()` | Standalone `Server.NAT.exe` exited right after binding (event-loop threads are background threads); only worked inside the unified launcher. | `a3cef6ce` |
+| `Server.Test/Program.cs` | Set `ScertClientAttribute.DefaultRsaAuthKey` from `config.json` key | Test harness NRE'd in `ScertClientAttribute` ctor before sending anything. | `a3cef6ce` |
+| `Server.Test/Test/ClientLoginLogout.cs` | `ApplicationId` from `config.json` (was hard-coded 11184) | Test with 10472. | `a3cef6ce` |
+| `Server.Test/Medius/BaseClientConnect.cs` | Hello version 110 -> 108 | 110 makes the server answer `CONNECT_REQUIRE`, which the harness never handled; 108 is the PS2-era path. | `a3cef6ce` |
+| `RT.Models/Misc/NetConnectionInfo.cs` | The 2-byte alignment pad read and written for every Medius version | The Medius 1.50 client's AccountLoginResponse handler requires exactly 0xC4 bytes. | `5fcb9dc4` |
+| `Server.UniverseInformation/MUIS.cs`, `RT.Models/Lobby/MediusGetUniverse_ExtraInfoRequest.cs`, `MediusUniverseStatusList_ExtraInfoResponse.cs` (new) | Answer LobbyExt/0x03 with LobbyExt/0x04 entries | The Medius 1.50 client asks for its universe that way. | `5fcb9dc4` |
+| `Server.Medius/Medius/MLS.cs`, `RT.Models/Lobby/MediusChannelList_ExtraInfoRequest0.cs`, `MediusChannelList_ExtraInfoResponse0.cs` (new) | The Lobby/0xEC briefing-room list with 0x70-byte 0xED entries, four rooms made when none exist | SOCOM II lists lobby channels as briefing rooms with the 1.50 message. | `3a46ff0e` |
+| `RT.Models/Lobby/MediusCreateGameRequest1.cs` | `Attributes` read only when bytes remain | Medius 1.50 sends a 0xD0-byte request that ends at `GameHostType`. | `bad2f0ff` |
+| `Server.Medius/Medius/Models/Game.cs` | Keep the host's `GameStats` from its world report | SOCOM II carries its map and round settings there; without them the list shows "unknown" and joins are refused. | `f4ab598f` |
+| `RT.Cryptography/PS2CipherFactory.cs` | The generated session key kept below 2^511 | A key at or above the client's RSA modulus does not round-trip, which broke about one connection in twelve. | `d0caab98` |
+| `Server.Database/Config/DbSettings.cs`, `Server.Database/DbController.cs` | `SimulatedAnnouncementTitle`/`Body`, `SimulatedChannelName`, `SimulatedLocationName` in `db.config.json`; null keeps upstream's canned value | Simulated mode hard-coded the message of the day ("Horizon Medius Server / Source available on GitHub"), the lobby channel ("Channel 1") and the location (Sprint 8 Goal 13). | `36559f87` |
+| `Server.Medius/StatsServer.cs` (new), `Program.cs`, `Medius/MediusManager.cs`, `Config/ServerSettings.cs` | `GET /stats` JSON on `medius.json: StatsPrefix` (empty = off), snapshot built on the tick thread every 2 s; SOCOM II's six app ids counted (`Program.cs`); since Sprint 13 O3 the `build` field | Live server stats for s2u.scotho.com: players, games, channels, uptime, since-start counters, the running build; names and counts only, never an address or a key. | `36559f87`, O3 |
+| `Server.Medius/Medius/ChatClamp.cs` (new, **the project's own**), its call sites in `Medius/MLS.cs` and `Medius/Models/Channel.cs`, `Server.Test/ChatClampTests.cs` (new) | The server clamps the chat fields it forwards | A security fix (SECURITY.md, "Known: the game's own network code"); details are deliberately not written up here. Carry it across every vendor bump. | `5b7d20e7`, `4d7e4816` |
+| `Server.Medius/Program.cs`, `Server.Dme/Program.cs` | The initial `SERVER_IP` is the RFC 5737 placeholder `192.0.2.1` | Upstream's was a LAN address; replaced as soon as the config loads (Sprint 13 S6). | `eda61d3a` |
+| `Server.Test/Server.Test.csproj`, `Server.Test/BuildIdTests.cs` (new) | xunit added (the harness's own `Main` stays the entry point); the build-id tests | Somewhere for the project's unit tests: `dotnet test server/horizon-server/Server.Test`. | `5b7d20e7`, O3 |
 
 Known upstream issues found (not fixed, worked around by the script):
 * **Unified launcher race**: `LogSettings.Singleton` is one static shared by all four components in the process and
@@ -293,6 +355,6 @@ Things to expect, roughly in order of likelihood of biting:
 7. **DNAS / SCE-RT extras.** `MediusDnasSignaturePost` is accepted and ignored. Anything the game expects around
    `MediusGetPolicy` (usage/privacy text) is served from simulated defaults.
 
-Suggested next step: point the game (or an emulator with the network plugin) at the server host - the same address
+Suggested next step (2026-09-04, since done -- kept as the bring-up recipe for a new client): point the game (or an emulator with the network plugin) at the server host - the same address
 `-ShowIp` reports - via a DNS/hosts override for the SOCOM II MUIS hostname, watch `logs\console-MUIS.log` then
 `console-Medius.log` at Debug level, and diff the first `RT_MSG_CLIENT_*` frames against the message classes in `horizon-server\RT.Models\RT\`.

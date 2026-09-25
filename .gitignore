@@ -32,6 +32,9 @@ __pycache__/
 /server/horizon-server/**/bin/
 /server/horizon-server/**/obj/
 /server/config/simulated.db
+# Sprint 13 O3: the box scripts' secrets, addresses and key paths (server/ops/ops.env.example is the tracked shape)
+/server/ops/ops.env
+/server/ops/pulled/
 imgui.ini
 vm/
 # a local Claude skill that names a host and an SSH key (owner 2026-09-19)
