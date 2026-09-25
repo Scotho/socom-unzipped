@@ -132,14 +132,29 @@ class Notices(unittest.TestCase):
             with self.subTest(library=so):
                 self.assertIn(f"`{so}`".lower(), self.text, f"{so} is in {where} and has no row")
 
+    def _every_shipped_linux_row_is_in(self, names, where):
+        """The reverse: a Linux row claims only libraries the tarball carries (a row for one it does not is noise
+        that reads as a licence obligation)."""
+        have = set(names)
+        claimed = [so for r in self.rows if r[1].startswith("Ubuntu 24.04")
+                   for so in re.findall(r"`([^`]+\.so\.[^`]+)`", r[5])]
+        self.assertGreater(len(claimed), 50)
+        for so in claimed:
+            with self.subTest(library=so):
+                self.assertIn(so, have, f"a Linux row names {so}, which {where} does not carry")
+
     def test_every_library_in_the_linux_tarball_fixture_has_a_row(self):
         self._every_library_has_a_row(fixture_linux_libs(), "the Linux tarball's lib/ (the fixture)")
 
-    def test_every_library_in_a_real_linux_tarball_has_a_row(self):
+    def test_every_linux_row_names_only_libraries_of_the_fixture(self):
+        self._every_shipped_linux_row_is_in(fixture_linux_libs(), "the Linux tarball's lib/ (the fixture)")
+
+    def test_every_library_in_a_real_linux_tarball_has_a_row_and_back(self):
         names = real_linux_libs()
         if names is None:
             self.skipTest("no dist-linux*/portable/socom2-linux here (scripts/make_portable.sh on Linux makes it)")
         self._every_library_has_a_row(names, "the Linux tarball's lib/")
+        self._every_shipped_linux_row_is_in(names, "the real tarball's lib/")
 
     def test_the_root_licence_is_the_gpl_the_recompiler_carries(self):
         with open(os.path.join(ROOT, "LICENSE"), encoding="utf-8") as fh:

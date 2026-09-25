@@ -4,8 +4,9 @@
   by git names a full 40-hex commit in `GIT_TAG` (a branch or a tag can move under the same name), and each that
   fetches by `URL` carries a literal `URL_HASH SHA256=<64 hex>`. `GIT_SHALLOW TRUE` next to a commit pin is refused
   too: a shallow clone fetches by ref name, so CMake cannot check a bare commit out of one.
-- CI: every `pip install` a workflow runs names `package==version`, and every package its `apt-get install` names
-  is `package=version` unless the package is listed in the step's own "image-owned" comment line.
+- CI: every `pip install` a workflow runs names `package==version`, directly or through the `-r` requirements file
+  it installs; an `apt-get install` is not version-pinned (review round 1: the image upgrades the runtime packages a
+  -dev pin would hold back) but carries a reviewed marker, and the FFmpeg family's versions are printed into the log.
 
 The CMake files are read as text (no configure: that needs the toolchain and, for the runtime tree, the build
 lock); the parser is tested on synthetic blocks below so a regex drift cannot turn the real check vacuous.
@@ -136,34 +137,59 @@ def _install_args(text, pattern):
 
 
 class CiInstallsArePinned(unittest.TestCase):
+    """pip: every package a workflow installs is `==`-pinned, on its own line or in the requirements file it names
+    with `-r` (H7's root requirements.txt). apt is NOT pinned by version (review round 1): a -dev package depends on
+    its runtime package at exactly its own version and the runner image upgrades the runtime packages itself, so a
+    pin becomes a downgrade conflict; instead each install is marked reviewed and the FFmpeg family's installed
+    versions are printed into the run's log."""
     WORKFLOWS = sorted(f for f in os.listdir(WF) if f.endswith((".yml", ".yaml")))
 
+    @staticmethod
+    def _requirement_rows(path):
+        rows = []
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.split("#", 1)[0].strip()
+                if line:
+                    rows.append(line.split(";", 1)[0].strip())   # an environment marker follows the pin
+        return rows
+
     def test_every_pip_install_names_exact_versions(self):
+        if not os.path.isfile(os.path.join(ROOT, "requirements.txt")):
+            self.skipTest("no requirements.txt yet (Sprint 13 H7 brings it and the workflows' `pip install -r`)")
+        pin = r"^[A-Za-z0-9_.\-\[\]]+==[0-9][A-Za-z0-9.+!-]*$"
         seen = 0
         for wf in self.WORKFLOWS:
             for args in _install_args(_workflow_run_lines(wf), r"pip install ([^\n]+)"):
-                for a in args:
-                    if a.startswith("-r") or a.endswith(".txt"):
-                        continue          # a requirements file pins itself (H7's manifest, when it lands)
-                    seen += 1
-                    with self.subTest(workflow=wf, package=a):
-                        self.assertRegex(a, r"^[A-Za-z0-9_.\-\[\]]+==[0-9][A-Za-z0-9.+!-]*$")
-        self.assertGreater(seen, 0)
-
-    def test_every_apt_package_names_its_version(self):
-        seen = 0
-        for wf in self.WORKFLOWS:
-            text = _workflow_run_lines(wf)
-            owned = set()
-            for m in re.finditer(r"#\s*image-owned \(not pinned\):([^\n]+)", text):
-                owned |= set(m.group(1).split())
-            for args in _install_args(text, r"apt-get install ([^\n]+)"):
-                for a in args:
-                    if a in owned:
+                words = [w for w in args]
+                for i, a in enumerate(words):
+                    if a.endswith(".txt"):
+                        rows = self._requirement_rows(os.path.join(ROOT, a))
+                        self.assertTrue(rows, f"{wf}: {a} has no rows")
+                        for row in rows:
+                            seen += 1
+                            with self.subTest(workflow=wf, requirements=a, row=row):
+                                self.assertRegex(row, pin)
                         continue
                     seen += 1
                     with self.subTest(workflow=wf, package=a):
-                        self.assertRegex(a, r"^[a-z0-9][a-z0-9.+\-]*=[0-9][A-Za-z0-9.+:~\-]*$")
+                        self.assertRegex(a, pin)
+        self.assertGreater(seen, 0)
+
+    def test_every_apt_install_is_reviewed_and_the_ffmpeg_versions_are_logged(self):
+        seen = 0
+        for wf in self.WORKFLOWS:
+            text = _workflow_run_lines(wf)
+            installs = _install_args(text, r"apt-get install ([^\n]+)")
+            if not installs:
+                continue
+            seen += len(installs)
+            with self.subTest(workflow=wf):
+                self.assertEqual(len(re.findall(r"#\s*apt-unpinned \(reviewed\):", text)), len(installs),
+                                 f"{wf}: each apt-get install carries an `# apt-unpinned (reviewed):` line saying why")
+                if any(a.startswith("libavcodec") for args in installs for a in args):
+                    self.assertRegex(text, r"dpkg-query -W 'libavcodec\*'",
+                                     f"{wf} installs FFmpeg and must print the versions it built against")
         self.assertGreater(seen, 0)
 
 
