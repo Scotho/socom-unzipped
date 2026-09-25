@@ -3,7 +3,7 @@
 the vertices it kicks: PACKED-mode XYZ2/XYZF2 with the current RGBAQ/ST state, ADC flag and the
 sign of q. Summarises per packet and overall (vertices, kicked, q<0, degenerate triangles).
 
-Usage: python tools_py/gif_packets.py vu1_packets.bin [--verts] [--limit N]
+Run: python -m tools_py.gif_packets vu1_packets.bin [--verts] [--limit N]
 """
 import argparse
 import struct

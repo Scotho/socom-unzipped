@@ -2,7 +2,7 @@
 """Extract a member (default eeMemory.bin) from a PCSX2 .p2s savestate: a zip whose entries use
 compression method 93 (zstd), which Python's zipfile cannot open on its own.
 
-Usage: python -m tools_py.parity.p2s_extract <state.p2s> <out.bin> [member]
+Run: python -m tools_py.parity.p2s_extract <state.p2s> <out.bin> [member]
 """
 import struct
 import sys

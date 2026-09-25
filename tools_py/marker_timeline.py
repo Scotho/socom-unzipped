@@ -5,7 +5,7 @@ protocol: FrameBegin / AppendFlush / AppendRebase / AppendMarker / Vif1Irq call-
 the [gif-submit] events that matter (marker DIRECT packets, set flushes, background uploads,
 label / background texture binds; PS2X_GIF_TRACE).
 
-Usage: python tools_py/marker_timeline.py logs/run_X.log [--from-frame N] [--frames M]
+Run: python -m tools_py.marker_timeline logs/run_X.log [--from-frame N] [--frames M]
 """
 import argparse
 import re

@@ -2,7 +2,7 @@
 captures cannot see (Sprint 9 Q0b: the blue arrow that flies over the first mission's opening to mark the first
 enemies; drive.py samples every 8 s, and the arrow lives between samples).
 
-    python -m tools_py.parity.frame_burst <pcsx2|ours> <out_dir> <start_after_s> <count> <interval_s>
+Run: python -m tools_py.parity.frame_burst <pcsx2|ours> <out_dir> <start_after_s> <count> <interval_s>
 
 Waits for the target's window, then sleeps `start_after_s` from its own start, then writes count PNGs
 `burst_NNNN_<t>.png` (t = seconds since the burst began) at `interval_s`. Runs beside drive.py; touches nothing

@@ -1,6 +1,8 @@
 """Scan the "detail t=... comp=... flags=... dist=... near=... count=... table=... n=... [thr:c8,ca]... ret=r" lines of a
 PS2X_CULL_TRACE log: per frame the components whose triangle count was cut by the distance table, with the distance
-against the thresholds, and the distribution of distances for components with a table."""
+against the thresholds, and the distribution of distances for components with a table.
+
+Run: python -m tools_py.research.terrain.detail_trace_scan <PS2X_CULL_TRACE log>"""
 import re, sys, collections
 rx = re.compile(r"detail t=([\d.]+) comp=(\w+) flags=(\w+) dist=([^ ]+) near=(\d+) count=(\d+) table=(\w+) n=(\d+)((?: \[[^\]]*\])*) ret=(\d+)")
 rows = []

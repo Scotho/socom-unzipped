@@ -1,7 +1,7 @@
 """Set our guest RAM at the spawn view (PS2X_RDRAM_DUMP) against the PCSX2 slot-8 savestate's eeMemory.bin:
 the mesh variant headers by shape, the detail-table thresholds, the object renderer's globals, and -- for a
 detail table given as (c8,ca) pairs -- the component records holding it in each image, with their flags.
-Usage: ee_compare.py OURS.bin CONSOLE.bin [c8,ca;c8,ca...]"""
+Run: python -m tools_py.research.terrain.ee_compare OURS.bin CONSOLE.bin [c8,ca;c8,ca...]"""
 import struct, sys, collections, re
 A = open(sys.argv[1], "rb").read(); B = open(sys.argv[2], "rb").read()
 want = [tuple(int(x) for x in p.split(",")) for p in sys.argv[3].split(";")] if len(sys.argv) > 3 else [(0, 4), (4, 4)]

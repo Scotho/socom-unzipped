@@ -1,6 +1,8 @@
 """Per frame, every component FUN_003b6e10 sized: the main-pass count, the detail groups it will draw (entries up to
 the extra-section offset), the extra section, the variant header and the variant-index stack top; and the sum of
-primitives the object renderer will send, to set against the console's fan count."""
+primitives the object renderer will send, to set against the console's fan count.
+
+Run: python -m tools_py.research.terrain.detail_sections_scan <PS2X_CULL_TRACE log>"""
 import re, sys, collections
 rx = re.compile(r"detail t=([\d.]+) comp=(\w+) flags=(\w+) dist=([^ ]+) near=(\d+) count=(\d+) table=(\w+) n=(\d+)((?: \[[^\]]*\])*) extra=(\w+)/(\d+) off=(\d+) near2=(\d+) geom=(\w+)(?: hdr=([\d,]+))? vstack=(\w+),(\w+),(\w+),(\w+) ret=(\d+)")
 rows = []

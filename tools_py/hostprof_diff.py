@@ -2,7 +2,7 @@
 """Symbolize the difference of two PS2X_HOST_PROF histograms (end minus start): the samples taken
 between the two snapshots, e.g. the mission phase of a run when the file was copied at load time.
 
-Usage: python tools_py/hostprof_diff.py logs/hostprof_pre.txt logs/hostprof_end.txt [--top 40]
+Run: python -m tools_py.hostprof_diff logs/hostprof_pre.txt logs/hostprof_end.txt [--top 40]
        [--exe dist/socom2.exe] [--by-file]  (--by-file groups generated EE functions by source file
        prefix "FUN_" vs runtime)
 """

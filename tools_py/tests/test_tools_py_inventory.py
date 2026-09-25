@@ -123,7 +123,7 @@ class ToolsPyInventory(unittest.TestCase):
     def test_an_entry_point_row_names_a_module_that_exists(self):
         with open(os.path.join(ROOT, "docs", "DEVELOPING.md"), encoding="utf-8") as f:
             entries = map_entry_points(f.read())
-        names = {dotted(m) for m in modules()}
+        names = {dotted(p) for p in _git_ls("tools_py") if p.endswith(".py") and not p.startswith("tools_py/tests/")}
         self.assertEqual(sorted(set(entries) - names), [])
 
     def test_every_archived_tool_has_a_banner_and_a_row(self):
