@@ -1,4 +1,9 @@
-// SOCOM II: U.S. Navy SEALs (SCUS_972.75, r0001) — game-specific EE overrides.
+// SOCOM II: U.S. Navy SEALs (SCUS_972.75) — game-specific EE overrides, for both pressings the port supports
+// (r0001 and r0004). The guest addresses they reach into come from the per-revision table in
+// runtime/socom2_addresses.h: applySocom2 picks the column from the loaded image's own build banner before
+// any install, and refuses an executable whose generated code belongs to the other pressing
+// (runtime/socom2_revision_guard.h). Loader addresses (below the overlays) are the same in every pressing and
+// stay literal here. (Audit F19: this line used to say r0001 only.)
 //
 // The retail boot ELF is a loader that (1) looks for the r0004 update on the memory card,
 // (2) otherwise loads OVERLAY/REL/DNAS.BIN and uses libdnas2 to decrypt RUN/RAW/APACHE00.ZDB
@@ -19,7 +24,10 @@
 #include "runtime/socom2_music_trace.h"
 #include "runtime/socom2_addresses.h"
 #include "runtime/socom2_osk_prefill.h"
+#include "runtime/socom2_peek.h"
 #include "runtime/socom2_revision_guard.h"
+#include "runtime/socom2_rtnet_config.h"
+#include "runtime/socom2_trace_checkpoint.h"
 #include "runtime/socom2_server_records.h"
 #include "runtime/ps2_audio.h"
 #include "socom2_rsa_key.h"
@@ -262,8 +270,11 @@ namespace ps2_stubs
 
     // FUN_002cc670: the DNAS authentication state tick (creates the libdnas2 object on the first
     // call, returns 1 when authentication has finished). A private server needs no DNAS, so the
-    // tick reports "done" immediately; this is what the published r0001 pnach (`jr ra` at the
-    // entry, with v0 still holding the previous call's 1) achieves on PCSX2.
+    // tick reports "done" immediately. The published r0001 pnach gets the same effect on PCSX2 with a
+    // bare `jr ra` at the entry, but not because v0 still holds a previous 1: the caller reaches the
+    // tick through the dispatcher's `jalr $v0`, so v0 arrives holding the tick's own address
+    // (r0001 0x002CC670), and the caller's `andi` of it yields 0x70 -- non-zero, which reads as "done".
+    // Returning 1 here says the same thing on purpose (research/43 section 5 item 2; audit C30).
     void socom2_DnasTickDone(uint8_t *, R5900Context *ctx, PS2Runtime *)
     {
         SET_GPR_U32(ctx, 2, 1u);
@@ -746,91 +757,52 @@ namespace
                       << " prio=" << t.currentPriority   // Task 2a: SOCOM's thread priorities, logged with every sample
                       << " wait=" << static_cast<int>(t.waitReason) << "/" << t.waitId << "]";
                 std::cout << o.str() << std::endl;
-                // PS2X_PEEK="0xADDR[:words][,...]": dump guest words (hex + float) with each sample.
+                // PS2X_PEEK="<chain>[:words][,...]": dump guest words (hex + float) with each sample. The parsing,
+                // the chain walk, the 64-word cap and what a row says when a chain does not resolve are
+                // runtime/socom2_peek.h's (#39): an over-cap item earns one [peek-cap] line, an unresolved chain
+                // a cell that says so -- never a truncated block that looks whole or a missing cell.
                 if (const char *peek = ps2x::knob("PS2X_PEEK"))
                 {
-                    std::string spec(peek);
-                    size_t pos = 0;
+                    static socom2_peek::CapWarnings s_capWarned;
+                    const uint8_t *peekRam = runtime.memory().getRDRAM();
+                    const socom2_peek::ReadWord readWord = [peekRam](uint32_t a, uint32_t &out) {
+                        const uint8_t *pp = getConstMemPtr(peekRam, a & PS2_RAM_MASK);
+                        if (!pp)
+                            return false;
+                        std::memcpy(&out, pp, sizeof(out));
+                        return true;
+                    };
                     std::ostringstream po;
                     po << "[peek]";
-                    uint32_t itemCounter = 0;
-                    while (pos < spec.size())
+                    const std::vector<socom2_peek::Item> items = socom2_peek::parseSpec(peek);
+                    for (uint32_t itemIndex = 0; itemIndex < items.size(); ++itemIndex)
                     {
-                        size_t end = spec.find(',', pos);
-                        if (end == std::string::npos)
-                            end = spec.size();
-                        std::string item = spec.substr(pos, end - pos);
-                        pos = end + 1;
-                        const uint32_t itemIndex = itemCounter++;
-                        uint32_t words = 1;
-                        const size_t colon = item.find(':');
-                        if (colon != std::string::npos)
-                        {
-                            words = static_cast<uint32_t>(std::strtoul(item.c_str() + colon + 1, nullptr, 0));
-                            item = item.substr(0, colon);
-                        }
+                        const socom2_peek::Item &item = items[itemIndex];
                         // Pointer chains: "*0xADDR+0xOFF*+0xOFF2": '*' follows the pointer at the current
                         // address, "+0x.." adds an offset, in the order written. E.g. the mission camera is
-                        // "*0x488de8" (static scene 0x4887c0 + 0x628) and the actor it follows
-                        // "*0x488de8+0xbc*" (its transform at +0x1070, translation at +0x10a0).
-                        uint32_t addr = 0;
-                        bool bad = false;
+                        // "*0x488de8" (static scene 0x4887c0 + 0x628; its position at +0x320) and the player
+                        // actor is "*0x408c58" (its transform at +0x1070, translation at +0x10a0). NOT
+                        // "*0x488de8+0xbc*": +0xbc is the camera's follow pointer, null in the spawn images;
+                        // docs/KNOWN.md section 3 retracted that chain on 2026-09-13 (audit F15).
+                        const socom2_peek::Resolved at = socom2_peek::resolve(item.chain, readWord);
+                        if (!at.ok)
                         {
-                            size_t i = 0;
-                            bool haveBase = false;
-                            while (i < item.size() && !bad)
-                            {
-                                const char ch = item[i];
-                                if (ch == '*')
-                                {
-                                    if (!haveBase)
-                                    {
-                                        // leading '*': parse the base number that follows first
-                                        size_t j = i + 1;
-                                        while (j < item.size() && item[j] != '*' && item[j] != '+')
-                                            ++j;
-                                        addr = static_cast<uint32_t>(std::strtoul(item.substr(i + 1, j - i - 1).c_str(), nullptr, 0));
-                                        haveBase = true;
-                                        i = j;
-                                    }
-                                    else
-                                        ++i;
-                                    const uint8_t *pp = getConstMemPtr(runtime.memory().getRDRAM(), addr & PS2_RAM_MASK);
-                                    if (!pp)
-                                    {
-                                        bad = true;
-                                        break;
-                                    }
-                                    std::memcpy(&addr, pp, sizeof(addr));
-                                    if (addr == 0u)
-                                        bad = true;
-                                }
-                                else if (ch == '+')
-                                {
-                                    size_t j = i + 1;
-                                    while (j < item.size() && item[j] != '*' && item[j] != '+')
-                                        ++j;
-                                    addr += static_cast<uint32_t>(std::strtoul(item.substr(i + 1, j - i - 1).c_str(), nullptr, 0));
-                                    i = j;
-                                }
-                                else
-                                {
-                                    size_t j = i;
-                                    while (j < item.size() && item[j] != '*' && item[j] != '+')
-                                        ++j;
-                                    addr = static_cast<uint32_t>(std::strtoul(item.substr(i, j - i).c_str(), nullptr, 0));
-                                    haveBase = true;
-                                    i = j;
-                                }
-                            }
+                            po << socom2_peek::unresolvedCell(item, at.why);
+                            continue;
                         }
-                        if (bad)
-                            continue;
-                        const uint8_t *p = getConstMemPtr(runtime.memory().getRDRAM(), addr & PS2_RAM_MASK);
+                        const uint8_t *p = getConstMemPtr(peekRam, at.addr & PS2_RAM_MASK);
                         if (!p)
+                        {
+                            po << socom2_peek::unresolvedCell(item, "address 0x" + socom2_peek::hex(at.addr) + " is not mapped");
                             continue;
+                        }
+                        if (socom2_peek::overCap(item) && s_capWarned.firstSighting(itemIndex))
+                            std::cout << socom2_peek::capWarning(item, itemIndex) << std::endl;
+                        const uint32_t addr = at.addr;
+                        const uint32_t room = (PS2_RAM_SIZE - (addr & PS2_RAM_MASK)) / 4u;   // never read past RAM's end
+                        const uint32_t words = std::min(socom2_peek::servedWords(item.words), room);
                         po << " @" << std::hex << addr << ":";
-                        for (uint32_t w = 0; w < words && w < 64u; ++w)
+                        for (uint32_t w = 0; w < words; ++w)
                         {
                             uint32_t v = 0;
                             std::memcpy(&v, p + w * 4u, sizeof(v));
@@ -1240,8 +1212,10 @@ namespace
             std::cout << "[ret-unwound] " << g_callTrace[N].name << " #" << n << " pc=0x" << std::hex << ctx->pc
                       << " ra=0x" << entryRa << std::dec << std::endl;
         }
-        // The generated function returned normally: report v0 (and f0 for float returns).
-        if (callTraceShouldLog(n))
+        // The generated function returned normally: report v0 (and f0 for float returns). Only then -- an unwound
+        // call has said [ret-unwound] above, and its v0 and the dump's memory are not its results yet
+        // (runtime/socom2_trace_checkpoint.h, audit F11).
+        if (socom2_trace::reachedReturn(ctx->pc, entryRa) && callTraceShouldLog(n))
         {
             float f0 = 0.0f;
             std::memcpy(&f0, &ctx->f[0], sizeof(f0));
@@ -1401,7 +1375,18 @@ namespace
         const uint8_t stateBefore = musicRead8(rdram, mgr + 9u);
         const uint32_t entryBefore = musicRead32(rdram, mgr + 0x34u);
         const uint8_t interrupt = musicRead8(rdram, mgr + 10u);
+        const uint32_t entryRa = GPR_U32(ctx, 31);
         g_musicMgrOriginal(rdram, ctx, runtime);
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa))
+        {
+            // The after-state is only final at the original's own return (runtime/socom2_trace_checkpoint.h).
+            static socom2_trace::UnwoundCount s_unwound;
+            if (s_unwound.note())
+                std::fprintf(stderr, "[music] mgr 0x%08x call#%u %s at pc=0x%08x: its after-state is not logged for unwound calls\n",
+                             mgr, s_calls, socom2_trace::kUnwoundMark, ctx->pc);
+            ++s_calls;
+            return;
+        }
         const uint8_t stateAfter = musicRead8(rdram, mgr + 9u);
         const uint32_t entryAfter = musicRead32(rdram, mgr + 0x34u);
         const uint32_t n = s_calls++;
@@ -1421,7 +1406,16 @@ namespace
         const uint32_t queueBefore = musicRead32(rdram, mgr + 0x1cu);
         const uint8_t flagB = musicRead8(rdram, mgr + 0xbu);
         const uint8_t f1c = musicRead8(rdram, def + 0x1cu), f1d = musicRead8(rdram, def + 0x1du);
+        const uint32_t entryRa = GPR_U32(ctx, 31);
         g_musicPushOriginal(rdram, ctx, runtime);
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa))
+        {
+            // v0 and the queue are the push's result only at its own return (runtime/socom2_trace_checkpoint.h):
+            // an unwound push gets a row that says so, never a verdict drawn from the middle of the call.
+            std::fprintf(stderr, "[music] push name=0x%08x def=0x%08x vol=%u -> %s pc=0x%08x queue %u->? free %u->? ra=0x%08x\n",
+                         name, def, vol, socom2_trace::kUnwoundMark, ctx->pc, queueBefore, freeBefore, entryRa);
+            return;
+        }
         const uint32_t ret = GPR_U32(ctx, 2);
         const uint32_t queueAfter = musicRead32(rdram, mgr + 0x1cu);
         const socom2_music::PushVerdict v = socom2_music::pushVerdict(freeBefore, flagB, f1c, f1d, ret, queueBefore, queueAfter);
@@ -1448,7 +1442,9 @@ namespace
         g_musicPushOriginal = runtime.lookupFunction(kPush);
         runtime.replaceFunction(kManager, socom2_MusicManagerTrace);
         runtime.replaceFunction(kPush, socom2_MusicPushTrace);
-        std::cout << "[music] tracing FUN_0034afd0 (manager state) and FUN_0034b6c0 (cue push)" << std::endl;
+        // The addresses actually hooked, from the loaded image's column -- not r0001's names (audit F17).
+        std::cout << "[music] tracing 0x" << std::hex << kManager << " (manager state) and 0x" << kPush << std::dec
+                  << " (cue push), " << socom2_addresses::current().revision << " column" << std::endl;
     }
 
     // ------------------------------------------------------------------------------------------
@@ -1461,7 +1457,10 @@ namespace
     // advertised 127.0.0.1/the LAN address:3658 (A's port) internally while its external slot said
     // :3660. PCSX2's client B carries :3660 in BOTH slots, because its pnach
     // (patch=1,EE,20620678,extended,24040E4C) rewrites the same constant in the guest.
-    // This wrapper does what the pnach does: after the original ran, rewrite the base port field.
+    // The override does what the pnach does, inside the call: it performs the routine itself on the host with
+    // the shifted port (runtime/socom2_rtnet_config.h), so the object is final before control returns to the
+    // caller. It used to call the original and rewrite the field afterwards, which a scheduler checkpoint in
+    // either of the original's two calls turned into a silent no-op (audit F10; the header has the mechanism).
     // ------------------------------------------------------------------------------------------
     int32_t socom2UdpShift()
     {
@@ -1473,29 +1472,43 @@ namespace
     }
 
     PS2Runtime::RecompiledFunction g_rtNetCfgOriginal = nullptr;
+    uint32_t g_rtNetGetterGlobal = 0u;   // the word the routine's getter returns (decoded from the image at install)
 
     void socom2_RtNetConfigInit(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         const uint32_t obj = GPR_U32(ctx, 4);
-        if (g_rtNetCfgOriginal)
-            g_rtNetCfgOriginal(rdram, ctx, runtime);
-        if (obj == 0)
-            return;
-        const uint32_t field = (obj + 0xCu) & PS2_RAM_MASK;
-        if (field + 4u > PS2_RAM_SIZE)
-            return;
-        uint32_t port = 0;
-        std::memcpy(&port, rdram + field, 4);
-        if (port != 3658u)
-            return;                                  // not the base-port field we know
-        port = static_cast<uint32_t>(3658 + socom2UdpShift());
-        std::memcpy(rdram + field, &port, 4);
-        static bool s_said = false;
-        if (!s_said)
+        if (obj == 0u)
         {
-            s_said = true;
-            std::cout << "[socom2] rt_net base peer UDP port -> " << port << " (PS2X_SOCOM2_UDP_SHIFT)" << std::endl;
+            SET_GPR_U32(ctx, 2, socom2_rtnet::kNullObjectResult);   // the routine's own null exit
+            ctx->pc = GPR_U32(ctx, 31);
+            return;
         }
+        const uint32_t base = obj & PS2_RAM_MASK;
+        if (base + socom2_rtnet::kConfigBytes > PS2_RAM_SIZE)
+        {
+            // Not an object in main RAM: the original runs untouched and the port is not shifted -- said once,
+            // never passed over silently.
+            static std::atomic<bool> s_said{false};
+            if (!s_said.exchange(true))
+                std::cout << "[socom2] rt_net config object 0x" << std::hex << obj << std::dec
+                          << " is not in main RAM; the original runs and the peer UDP port stays " << socom2_rtnet::kBasePort << std::endl;
+            if (g_rtNetCfgOriginal)
+                g_rtNetCfgOriginal(rdram, ctx, runtime);
+            return;   // nothing after the original (runtime/socom2_trace_checkpoint.h)
+        }
+        uint32_t getterValue = 0u;
+        if (const uint8_t *pg = getConstMemPtr(rdram, g_rtNetGetterGlobal))
+            std::memcpy(&getterValue, pg, sizeof(getterValue));
+        const uint32_t port = socom2_rtnet::shiftedPort(socom2UdpShift());
+        // The object's whole image, written before this call returns: there is no "after" to lose.
+        socom2_rtnet::configure(rdram + base, getterValue, port);
+        SET_GPR_U32(ctx, 3, 1u);      // what the routine leaves in v1 and a0 on the way out
+        SET_GPR_U32(ctx, 4, port);
+        SET_GPR_U32(ctx, 2, 0u);      // success
+        ctx->pc = GPR_U32(ctx, 31);
+        static std::atomic<bool> s_said{false};
+        if (!s_said.exchange(true))
+            std::cout << "[socom2] rt_net base peer UDP port -> " << port << " (PS2X_SOCOM2_UDP_SHIFT)" << std::endl;
     }
 
     void installRtNetPortShift(PS2Runtime &runtime)
@@ -1509,8 +1522,37 @@ namespace
                       << "; peer UDP port shift stays host-side only" << std::endl;
             return;
         }
+        // The host does the routine only if the image's routine is the one it knows (runtime/socom2_rtnet_config.h).
+        const uint8_t *rdram = runtime.memory().getRDRAM();
+        uint32_t body[socom2_rtnet::kBodyWords] = {};
+        uint32_t getter[3] = {};
+        bool shaped = false;
+        if (const uint8_t *pb = getConstMemPtr(rdram, kRtNetCfgInit & PS2_RAM_MASK);
+            pb && (kRtNetCfgInit & PS2_RAM_MASK) + sizeof(body) <= PS2_RAM_SIZE)
+        {
+            std::memcpy(body, pb, sizeof(body));
+            if (socom2_rtnet::bodyMatches(body))
+            {
+                const uint32_t getterAddr = socom2_rtnet::jalTarget(body[socom2_rtnet::kGetterCallWord],
+                                                                    kRtNetCfgInit + static_cast<uint32_t>(socom2_rtnet::kGetterCallWord * 4u));
+                if (const uint8_t *pgt = getConstMemPtr(rdram, getterAddr & PS2_RAM_MASK);
+                    pgt && (getterAddr & PS2_RAM_MASK) + sizeof(getter) <= PS2_RAM_SIZE)
+                {
+                    std::memcpy(getter, pgt, sizeof(getter));
+                    shaped = socom2_rtnet::getterGlobal(getter, g_rtNetGetterGlobal);
+                }
+            }
+        }
+        if (!shaped)
+        {
+            std::cout << "[socom2] the routine at 0x" << std::hex << kRtNetCfgInit << std::dec
+                      << " is not the rt_net config init this runtime knows; left alone, peer UDP port shift stays host-side only" << std::endl;
+            return;
+        }
         g_rtNetCfgOriginal = runtime.lookupFunction(kRtNetCfgInit);
         runtime.replaceFunction(kRtNetCfgInit, socom2_RtNetConfigInit);
+        std::cout << "[socom2] rt_net config init at 0x" << std::hex << kRtNetCfgInit << " done on the host (getter global 0x"
+                  << g_rtNetGetterGlobal << std::dec << "), peer UDP port " << socom2_rtnet::shiftedPort(socom2UdpShift()) << std::endl;
     }
 
     // ------------------------------------------------------------------------------------------
@@ -1790,7 +1832,19 @@ namespace
         if (pc) std::memcpy(corners, pc, sizeof(corners));
         if (pm) std::memcpy(m, pm, sizeof(m));
         if (pk) std::memcpy(&planeMask, pk, sizeof(planeMask));
+        const uint32_t entryRa = GPR_U32(ctx, 31);
         g_cullOriginal(rdram, ctx, runtime);
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa))
+        {
+            // v0 and the flags word are the cull's verdict only at its return (runtime/socom2_trace_checkpoint.h):
+            // an unwound call is neither rewritten (PS2X_CULL_PARTIAL_CLIP) nor logged as a verdict. Once, then
+            // silence -- the trace file's own rows are counted per verdict.
+            static socom2_trace::UnwoundCount s_unwound;
+            if (s_unwound.note())
+                std::cout << "[cull-trace] a cull call left through a scheduler checkpoint (pc=0x" << std::hex << ctx->pc << std::dec
+                          << "); unwound calls are neither logged nor rewritten" << std::endl;
+            return;
+        }
         // PS2X_CULL_PARTIAL_CLIP=1 (experiment, research/31 section 16): a box the frustum test marks partial
         // (OR mask nonzero) that the guest then judged 'inside the guard band' (result 1) is answered 0, the
         // 'needs clipping' verdict the hardware's flag latency gives FUN_00294a30 -- the clipped VU1 family.
@@ -1900,10 +1954,19 @@ namespace
         float fadeIn = 0.0f;
         if (const uint8_t *pf = fadeAddr ? getConstMemPtr(rdram, fadeAddr) : nullptr)
             std::memcpy(&fadeIn, pf, sizeof(fadeIn));
+        const uint32_t entryRa = GPR_U32(ctx, 31);
         g_lodOriginal(rdram, ctx, runtime);
         const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
         if (!g_cullTraceFile || g_cullTraceLeft <= 0 || sec < g_cullTraceAfter)
             return;
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa))
+        {
+            // The fade and the result are final only at the original's return (runtime/socom2_trace_checkpoint.h).
+            // A tag of its own, so lod_trace_scan.py's "lod t=" rows stay results.
+            std::fprintf(g_cullTraceFile, "lod-%s t=%.3f comp=%08x dist=%g entry=%08x pc=%08x\n",
+                         socom2_trace::kUnwoundMark, sec, comp, dist, entry, ctx->pc);
+            return;
+        }
         float fadeOut = 0.0f;
         if (const uint8_t *pf = fadeAddr ? getConstMemPtr(rdram, fadeAddr) : nullptr)
             std::memcpy(&fadeOut, pf, sizeof(fadeOut));
@@ -1925,10 +1988,17 @@ namespace
         static const bool s_forceFar = ps2x::knob("PS2X_DETAIL_FAR") && std::atoi(ps2x::knob("PS2X_DETAIL_FAR")) != 0;
         if (s_forceFar)
             rdram[0x4b4a88u & PS2_RAM_MASK] = 0;
+        const uint32_t entryRa = GPR_U32(ctx, 31);
         g_detailOriginal(rdram, ctx, runtime);
         const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
         if (!g_cullTraceFile || g_cullTraceLeft <= 0 || sec < g_cullTraceAfter)
             return;
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa))
+        {
+            // The statics below are the call's choice only at its return (runtime/socom2_trace_checkpoint.h).
+            std::fprintf(g_cullTraceFile, "detail-%s t=%.3f comp=%08x pc=%08x\n", socom2_trace::kUnwoundMark, sec, comp, ctx->pc);
+            return;
+        }
         float dist = 0.0f; uint8_t nearFlag = 0; uint32_t count = 0, flags = 0, table = 0, tableCount = 0;
         if (const uint8_t *q = getConstMemPtr(rdram, 0x4b4a98u)) std::memcpy(&dist, q, 4);
         if (const uint8_t *q = getConstMemPtr(rdram, 0x4b4a88u)) nearFlag = *q;
@@ -1988,9 +2058,17 @@ namespace
         {
             std::memcpy(&o22, pr + 0x22, 2); std::memcpy(&o24, pr + 0x24, 2); std::memcpy(&o26, pr + 0x26, 2); b4 = pr[4];
         }
+        const uint32_t entryRa = GPR_U32(ctx, 31);
         g_camCfgOriginal(rdram, ctx, runtime);
         if (!g_cullTraceFile)
             return;
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa))
+        {
+            // The camera's LOD scale is the record's only at the apply's return (runtime/socom2_trace_checkpoint.h).
+            const double secU = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
+            std::fprintf(g_cullTraceFile, "camcfg-%s t=%.3f arg=%g rec=%08x pc=%08x\n", socom2_trace::kUnwoundMark, secU, t, rec, ctx->pc);
+            return;
+        }
         uint32_t holder = 0, cam = 0; float lod[2] = {0.0f, 0.0f};
         if (const uint8_t *ph = getConstMemPtr(rdram, socom2_addresses::current().cameraHolder)) std::memcpy(&holder, ph, 4);
         if (holder) if (const uint8_t *pc = getConstMemPtr(rdram, holder + 0xb4u)) std::memcpy(&cam, pc, 4);
@@ -2015,11 +2093,17 @@ namespace
             for (int i = 0; i < 95 && pn[i]; ++i)
                 name[i] = static_cast<char>(pn[i] >= 0x20 && pn[i] < 0x7f ? pn[i] : '?');
         }
+        const uint32_t entryRa = GPR_U32(ctx, 31);
         g_packOriginal(rdram, ctx, runtime);
         if (g_packTraceFile)
         {
             static uint32_t s_n = 0;
-            std::fprintf(g_packTraceFile, "#%u archive=%08x size=%u name=%s -> %u\n", s_n++, archive, size, name, GPR_U32(ctx, 2) & 0xFFu);
+            // The answer (v0) is the probe's only at its return (runtime/socom2_trace_checkpoint.h).
+            if (socom2_trace::reachedReturn(ctx->pc, entryRa))
+                std::fprintf(g_packTraceFile, "#%u archive=%08x size=%u name=%s -> %u\n", s_n++, archive, size, name, GPR_U32(ctx, 2) & 0xFFu);
+            else
+                std::fprintf(g_packTraceFile, "#%u archive=%08x size=%u name=%s -> %s pc=%08x\n", s_n++, archive, size, name,
+                             socom2_trace::kUnwoundMark, ctx->pc);
             if ((s_n & 63u) == 0u)
                 std::fflush(g_packTraceFile);
         }
@@ -2053,10 +2137,19 @@ namespace
         uint32_t base = 0, bump = 0, cflags = 0;
         if (const uint8_t *pl = getConstMemPtr(rdram, list)) { std::memcpy(&base, pl + 4, 4); std::memcpy(&bump, pl + 8, 4); }
         if (const uint8_t *pc = getConstMemPtr(rdram, comp)) std::memcpy(&cflags, pc, 4);
+        const uint32_t entryRa = GPR_U32(ctx, 31);
         g_deferOriginal(rdram, ctx, runtime);
         const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
         if (!g_cullTraceFile || g_cullTraceLeft <= 0 || sec < g_cullTraceAfter)
             return;
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa))
+        {
+            // The bump is the enqueue's only at its return (runtime/socom2_trace_checkpoint.h); a tag of its own
+            // so deferred_trace_scan.py's "defer t=" rows stay whole enqueues.
+            std::fprintf(g_cullTraceFile, "defer-%s t=%.3f obj=%08x list=%08x base=%08x bump=%08x comp=%08x pc=%08x\n",
+                         socom2_trace::kUnwoundMark, sec, obj, list, base, bump, comp, ctx->pc);
+            return;
+        }
         uint32_t bumpAfter = 0;
         if (const uint8_t *pl = getConstMemPtr(rdram, list)) std::memcpy(&bumpAfter, pl + 8, 4);
         std::fprintf(g_cullTraceFile, "defer t=%.3f obj=%08x list=%08x base=%08x bump=%08x->%08x used=%u comp=%08x cflags=%08x cull=%u\n",
@@ -2078,10 +2171,19 @@ namespace
         }
         uint32_t c0c = 0, bump = 0, base = 0;
         if (const uint8_t *pl = getConstMemPtr(rdram, list)) { std::memcpy(&c0c, pl + 0xc, 4); std::memcpy(&base, pl + 4, 4); std::memcpy(&bump, pl + 8, 4); }
+        const uint32_t entryRa = GPR_U32(ctx, 31);
         g_flushOriginal(rdram, ctx, runtime);
         const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
         if (!g_cullTraceFile || g_cullTraceLeft <= 0 || sec < g_cullTraceAfter)
             return;
+        // Everything this row prints was read BEFORE the call, so it is true either way; the tag says whether the
+        // flush then ran to its return (runtime/socom2_trace_checkpoint.h).
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa))
+        {
+            std::fprintf(g_cullTraceFile, "flush-%s t=%.3f list=%08x entries=%u field0c=%08x used=%u pc=%08x\n", socom2_trace::kUnwoundMark, sec, list, n,
+                         c0c, bump >= base ? (bump - base) / 0x70u : 0u, ctx->pc);
+            return;
+        }
         std::fprintf(g_cullTraceFile, "flush t=%.3f list=%08x entries=%u field0c=%08x used=%u\n", sec, list, n, c0c, bump >= base ? (bump - base) / 0x70u : 0u);
     }
 

@@ -83,6 +83,8 @@ add_library(ps2_test_lib STATIC
     src/socom2_revision_guard_tests.cpp   # Sprint 11 Task 19
     src/ps2_save_state_tests.cpp   # Sprint 11 Task 8c
     src/runtime_state_tests.cpp         # Sprint 11 Task 8b
+    src/socom2_after_return_tests.cpp   # Sprint 13 Task C3 (audit F10, F11)
+    src/socom2_peek_tests.cpp           # Sprint 13 Task C3 (#39)
 )
 
 target_include_directories(ps2_test_lib PRIVATE

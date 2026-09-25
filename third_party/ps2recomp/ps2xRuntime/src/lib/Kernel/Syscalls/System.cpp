@@ -1019,6 +1019,13 @@ namespace ps2_syscalls
     // everything else the kernel still has a real entry, and guests write through the address they
     // get back (see the note on kSyscallEntryScratchBase), so the runtime answers from a block it
     // reserves -- never with whatever an untouched word of low RAM happens to hold.
+    //
+    // R256 finding 9 (Sprint 13 Task C3): only a handler the runtime can RUN is handed back. The
+    // dispatcher already treats an override whose handler is in no function table as no override at
+    // all and runs the built-in (dispatchSyscallOverride, above); answering GetEntryAddress with that
+    // same handler contradicted it, and SOCOM II's loader installs those answers as the handlers for
+    // the event-flag five (0x55-0x59). An unrunnable handler is refused -- the syscall answers the
+    // runtime's own entry, as for one nobody overrode -- and says so once per (syscall, handler).
     void GetEntryAddress(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         const uint32_t syscallNum = getRegU32(ctx, 4);
@@ -1026,8 +1033,18 @@ namespace ps2_syscalls
         uint32_t handler = 0;
         if (runtime && runtime->findEeSyscallOverride(syscallNum, handler) && handler != 0u)
         {
-            setReturnU32(ctx, handler);
-            return;
+            if (runtime->hasFunction(handler))
+            {
+                setReturnU32(ctx, handler);
+                return;
+            }
+            if (runtime->noteRefusedEntryAddress(syscallNum, handler))
+            {
+                std::cerr << "[GetEntryAddress] syscall 0x" << std::hex << syscallNum
+                          << "'s handler 0x" << handler
+                          << " is in no function table (guest-copied code?); answering the runtime's entry 0x"
+                          << guestSyscallEntryScratchAddr(syscallNum) << " instead." << std::dec << std::endl;
+            }
         }
 
         setReturnU32(ctx, guestSyscallEntryScratchAddr(syscallNum));

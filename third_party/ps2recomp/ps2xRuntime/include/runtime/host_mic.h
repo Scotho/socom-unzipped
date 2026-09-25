@@ -5,7 +5,10 @@
 // Sprint 8 Goal 3 RETRACTS the old "FORMAT ASSUMPTION: 16 kHz" here: Task 9c's spike is settled, and the
 // game's own lgAudOpen callers build an openparam of {Mode=2, channels=1, bits=0x10, rate=0x2b11, latency=500}
 // (game/analysis/socom2_game.elf.decomp.c:48336-48342, byte-identically at :86590-86594) -- 0x2b11 is 11025.
-// So lgaud.cpp ALWAYS resamples this ring down to 11025 Hz; see runtime/mic_format.h for that arithmetic.
+// So lgaud.cpp ALWAYS resamples this ring down to the rate the openparam names; see runtime/mic_format.h for
+// that arithmetic. The 11025 above describes the TUNER path only: it belongs to the two other lgAudOpen
+// callers (0x1e7f98, which research/39 puts on the tuner path, and 0x23a730); the voice object opens at 8000 Hz and reads every 80 ms (docs/research/56 sections 3 and 6;
+// audit C52), and lgaud.cpp serves whichever rate is asked.
 #include "runtime/mic_format.h"
 #include <atomic>
 #include <cstddef>

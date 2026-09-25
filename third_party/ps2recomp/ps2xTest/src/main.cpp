@@ -43,6 +43,8 @@ void register_socom2_addresses_tests();   // Sprint 11 Task 10
 void register_socom2_revision_guard_tests();   // Sprint 11 Task 19
 void register_ps2_save_state_tests();   // Sprint 11 Task 8c
 void register_runtime_state_tests();      // Sprint 11 Task 8b
+void register_socom2_after_return_tests();   // Sprint 13 Task C3
+void register_socom2_peek_tests();           // Sprint 13 Task C3 (#39)
 void reset_ps2_test_function_table();
 
 namespace
@@ -124,6 +126,8 @@ int main()
     register_socom2_revision_guard_tests();
     register_ps2_save_state_tests();
     register_runtime_state_tests();
+    register_socom2_after_return_tests();
+    register_socom2_peek_tests();
     int res = MiniTest::Run();
     std::cout.flush();
     std::cerr.flush();

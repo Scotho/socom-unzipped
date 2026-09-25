@@ -430,6 +430,10 @@ public:
     // once per process. Capped, so a guest registering many distinct handlers cannot grow it
     // without bound; past the cap it answers false and stays quiet.
     bool noteUnrunnableSyscallOverride(uint32_t syscallNumber, uint32_t handler);
+    // The same bookkeeping for GetEntryAddress (0x5B) refusing to hand out such a handler (R256
+    // finding 9, Sprint 13 Task C3): its own set, so the dispatcher's line and this one each print
+    // once for a pair rather than whichever comes first silencing the other.
+    bool noteRefusedEntryAddress(uint32_t syscallNumber, uint32_t handler);
 
     uint8_t Load8(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr);
     uint16_t Load16(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr);
@@ -523,6 +527,7 @@ private:
     // (syscall << 32) | handler pairs already reported as unrunnable; see
     // noteUnrunnableSyscallOverride. Guarded by m_eeKernelStateMutex.
     std::unordered_set<uint64_t> m_unrunnableSyscallOverrides;
+    std::unordered_set<uint64_t> m_refusedEntryAddresses;   // noteRefusedEntryAddress; same mutex, same cap
     static constexpr size_t kMaxUnrunnableSyscallOverridesReported = 64u;
     mutable std::mutex m_guestHeapMutex;
     mutable std::mutex m_asyncCallbackStackMutex;

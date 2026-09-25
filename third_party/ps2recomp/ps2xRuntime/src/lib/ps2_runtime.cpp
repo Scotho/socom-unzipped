@@ -2515,6 +2515,18 @@ bool PS2Runtime::noteUnrunnableSyscallOverride(uint32_t syscallNumber, uint32_t 
     return m_unrunnableSyscallOverrides.insert(key).second;
 }
 
+bool PS2Runtime::noteRefusedEntryAddress(uint32_t syscallNumber, uint32_t handler)
+{
+    const uint64_t key = (static_cast<uint64_t>(syscallNumber) << 32) | static_cast<uint64_t>(handler);
+    std::lock_guard lock(m_eeKernelStateMutex);
+    if (m_refusedEntryAddresses.size() >= kMaxUnrunnableSyscallOverridesReported &&
+        m_refusedEntryAddresses.find(key) == m_refusedEntryAddresses.end())
+    {
+        return false;
+    }
+    return m_refusedEntryAddresses.insert(key).second;
+}
+
 void PS2Runtime::initializeEeKernelState(uint8_t *rdram)
 {
     if (!rdram)
@@ -2530,6 +2542,7 @@ void PS2Runtime::initializeEeKernelState(uint8_t *rdram)
     // The guest kernel is starting over, so the "override we cannot execute" diagnostic starts
     // over with it.
     m_unrunnableSyscallOverrides.clear();
+    m_refusedEntryAddresses.clear();
     for (const uint32_t address : m_eeSyscallMirrorAddresses)
     {
         const uint32_t zero = 0u;
