@@ -29,8 +29,12 @@ the owner's** (spec §9 Q1); `tools_py/story/cite.py` only keeps this list and t
 | `2026-09-07-flat-grey-and-a-night-sky.png` | 2026-09-07 — The first frames of a mission | 112,244 | `logs/shots_live/host_010_113s.png` | our program's window, the live-shot run of 2026-09-07 13:41, logs/shots_live |
 | `2026-09-14-the-clipped-terrain-the-owner-spotted.png` | Two things the owner spotted | 287,637 | `D:/socom_archive/gate/20260912_143356/mission/final.png` | our program's window, gate 20260912_143356 (archived to D:\socom_archive\gate on 2026-09-13) |
 | `2026-09-21-online-kill.mp4` | 2026-09-21 — One round, on film | 10,822,738 | `E:/ForClaude/online_kill.mp4` (a 4:14 screen recording of the desktop, 70.9 MB) | our program's two windows, one round on the hosted server, both clients agent-driven; the whole recording, cropped to the two windows (1022x378 at 49,216) and re-encoded (H.264 CRF 25); its poster `2026-09-21-online-kill.png` (323,661 bytes) is the frame at 3:42.5 of the recording, the killfeed on both screens |
+| `2026-09-23-r0004-types-its-credits.png` | 2026-09-23 — The update the community server asks for, taken apart | 26,352 | `logs/parity/gate/s11_r0004_loopd1/title/w00_006.png` | our program's window running the r0004 build, gate s11_r0004_loopd1 (2026-09-23 23:38, a failing run; the frame is the developer credit before the reboot) |
+| `2026-09-24-r0004-round-on-our-server.png` | 2026-09-24 — The update plays, and cannot meet the original | 330,558 | `logs/parity/s11_r0004_round2c/A_hold02.png` | our program's window running the r0004 build in a round on the project's own server, run s11_r0004_round2c; frame inspected, carries the test persona only |
+| `2026-09-25-the-sprint-11-close-frame.png` | 2026-09-25 — Sprint 11 closes, and the borrowed fixes stay | 393,090 | `logs/parity/gate/s11_close_gate/mission/final.png` | our program's window, gate s11_close_gate (the close proof on exe b74a6132) |
+| `2026-09-25-the-renamed-r0004-menu.png` | 2026-09-25 — The names come home, and both editions still pass | 289,045 | `logs/parity/gate/s12_names_r0004_gate/title/s04_none.png` | our program's window running the renamed r0004 build, gate s12_names_r0004_gate |
 
-Total: 19 pictures and 1 video with its poster, 15,006,296 bytes.
+Total: 23 pictures and 1 video with its poster, 16,045,341 bytes.
 
 *(2026-09-25: `2026-09-14-grey-hill-before.png` was an **orphan row** — a row for a picture `docs/STORY.md` no
 longer showed, which `tools_py/story/cite.py` cannot catch because it only checks the other direction. It is the
