@@ -740,8 +740,8 @@ name every Medius/DNAS host name resolves to; the launcher sends its preset's. `
 **on**) makes `sceInetInterfaceControl` code `0x200` return a real RX byte count; `0` restores the old constant and
 **reproduces the online movement defect** (the guest's ms-since-network-activity never resets, the multiplayer
 movement scale decays to 0 and the local player cannot move) -- an opt-out kept so the fix can be A/B'd on one
-binary (`socom2_libnetb.cpp`, the `0x200` case; `docs/KNOBS.md`'s one-line meaning for this knob, "the periodic
-[net-stats] line", does not describe what the code does). `PS2X_SOCOM2_NET_TRACE` (any value) enables the netcode
+binary (`socom2_libnetb.cpp`, the `0x200` case). *(Corrected 2026-09-25, Sprint 13 C9, `5ece5e3e`: `docs/KNOBS.md`'s
+one-line meaning for this knob said "the periodic [net-stats] line"; it now names the `0x200` counter.)* `PS2X_SOCOM2_NET_TRACE` (any value) enables the netcode
 trace, `PS2X_SOCOM2_NET_TRACE_PEERS=<n>` sets how many datagrams are hex-dumped per direction (default 16), and
 `PS2X_SOCOM2_NET_TRACE_ALL` (default off) hex-dumps **every** datagram rather than only the peer ports (the only way
 to content-inspect the DME aux-UDP traffic). *(Reworded 2026-09-25, Sprint 13 R2: "only the peer ports" was "only
