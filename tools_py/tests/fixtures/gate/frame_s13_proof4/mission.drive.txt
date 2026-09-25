@@ -1,2 +1,3 @@
 untilref(scripts/parity/ref_hud_ours.png): 2 presses, dist=1.9 bands=1.00, matched=True
 s28_none                 t= 320.7s stable=True waited=0.0s
+s48_none                 t= 388.8s stable=True waited=0.0s

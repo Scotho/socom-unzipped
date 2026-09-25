@@ -267,7 +267,7 @@ def informational_lines(info):
         return []
     why = "informational, S13-R3: never compared until three gates agree on its spread"
     if "frame_mean_ms" in info:
-        return ["PIN frame mean_ms=%.2f worst_ms=%.2f n=%d recorded (%s)"
+        return ["PIN frame mean_ms=%.2f worst1s_ms=%.2f n=%d recorded (%s)"
                 % (info["frame_mean_ms"], info["frame_worst_ms"], info["frame_n"], why)]
     return ["PIN frame absent (%s; %s)" % (why, info.get("frame_absent", "absent"))]
 

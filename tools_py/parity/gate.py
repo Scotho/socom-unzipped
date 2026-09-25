@@ -25,9 +25,11 @@ not match it is REFUSED before anything is launched (exit 7, distinct from a sta
 measured values the standard, written once after the run (the summary says so; a gate the lock refuses
 writes nothing -- issue #45); `--pins` is the lock-free dry check.
 
-A run with the mission stage also carries `FRAME mean=<ms> worst=<ms> n=<frames>` (Sprint 13 V4): host ms per
-guest VBlank over the HUD-reached stretch, from the sampler rows of mission.game.log (tools_py/parity/
-frame_time.py says which fields and why), and records the numbers in its pins.json as an informational
+A run with the mission stage also carries `FRAME mean=<ms> worst1s=<ms> n=<VBlanks>` (Sprint 13 V4): VBlank
+pacing -- host ms per guest VBlank, a lower bound on the time between presents, not the present rate (docs/
+KNOWN.md §1's two-instance clock row keeps the two apart) -- over the scripted walk (the HUD step to the drive's
+last step), from the sampler rows of mission.game.log (tools_py/parity/frame_time.py says which fields and
+why), and records the numbers in its pins.json as an informational
 `PIN frame` that is never compared (S13-R3: no refusal until three gates agree on its spread).
 """
 import argparse
