@@ -20,6 +20,7 @@
 #include "runtime/socom2_addresses.h"
 #include "runtime/socom2_osk_prefill.h"
 #include "runtime/socom2_revision_guard.h"
+#include "runtime/socom2_server_records.h"
 #include "runtime/ps2_audio.h"
 #include "socom2_rsa_key.h"
 #include "socom2_host_input.h"
@@ -2273,6 +2274,7 @@ namespace
         installRtNetPortShift(runtime);
         installOskPrefill(runtime);   // Sprint 10 Goal 9: only when PS2X_SOCOM2_LOGIN_NAME/_PASS is set
         installChatBound(runtime);    // Sprint 11 milestone S: unconditional, no knob
+        socom2_server_records::install(runtime, socom2_addresses::current());   // Sprint 13 U6: unconditional, no knob
 
         {
             const socom2_addresses::Table &addr = socom2_addresses::current();

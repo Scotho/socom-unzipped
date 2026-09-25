@@ -24,8 +24,11 @@
 //       --override ctorTableFtsBegin=0x004315a0:hand,ctor-run \
 //       --override ctorTableFtsEnd=0x00431798:hand,ctor-run \
 //       --override ctorTableZsealBegin=0x00668a60:hand,ctor-run \
-//       --override ctorTableZsealEnd=0x00668aa0:hand,ctor-run
+//       --override ctorTableZsealEnd=0x00668aa0:hand,ctor-run \
+//       --override serverMemRead=0x0063ef08:hand,bracketed-neighbours+dispatch-call
 //
+// (serverMemWrite and serverMemRead, Sprint 13 U6, are the forty-second and forty-third fields: the matcher
+// places the first itself, the second is the twelfth override.)
 // Thirty of the forty-one fields need no --override at all: the matcher places them itself, and since
 // its fourth pass landed (relinked-body, e92691a) that includes the ten this column originally had to
 // establish by hand -- node, node2, detail, camCfg, flush, musicManager, oskOpen, chatFanoutRecv,
@@ -126,6 +129,11 @@ namespace socom2_addresses
         uint32_t dnasRc4SetKey;
         uint32_t dnasRc4Encrypt;
         uint32_t dnasRc4Decrypt;
+
+        // Sprint 13 Task U6: two records the game's network library takes from whatever server it is
+        // connected to, which the client refuses (runtime/socom2_server_records.h).
+        uint32_t serverMemWrite;        // the handler of the record that writes game memory
+        uint32_t serverMemRead;         // the handler of the record that reads game memory back
     };
 
     // SCUS_972.75, "SOCOM 2 r0001 17:22:21 Oct 11 2003" -- the build this port was made against.
@@ -175,6 +183,8 @@ namespace socom2_addresses
         0x0062a5a8u,   // dnasRc4SetKey
         0x0062a720u,   // dnasRc4Encrypt
         0x0062a7c8u,   // dnasRc4Decrypt
+        0x00637900u,   // serverMemWrite
+        0x00637510u,   // serverMemRead
     };
 
     // SCUS_972.75 relinked, "SOCOM 2 r0004 10:14:38 Nov  3 2004" -- the pressing PSRewired's community
@@ -255,6 +265,12 @@ namespace socom2_addresses
         0x00632068u,   // dnasRc4SetKey        r0001 0x0062a5a8  exact, block +0x7ac0 (bytes unchanged)
         0x006321e0u,   // dnasRc4Encrypt       r0001 0x0062a720  exact, block +0x7ac0 (bytes unchanged)
         0x00632288u,   // dnasRc4Decrypt       r0001 0x0062a7c8  exact, block +0x7ac0 (bytes unchanged)
+        // The two handlers sit side by side in the library's receive dispatcher, called from the same
+        // instruction offset (+0x330, +0x350) of its r0004 twin as of r0001's. The read handler's body
+        // grew (976 -> 2124 bytes), so no fingerprint places it: it is the one function between two
+        // placed neighbours, and the dispatcher's call names it.
+        0x0063f788u,   // serverMemWrite       r0001 0x00637900  relinked-body (unique)
+        0x0063ef08u,   // serverMemRead        r0001 0x00637510  bracketed-neighbours + dispatch-call
     };
 
     // Every column this build knows. A second revision is one more entry here and one more Table above.

@@ -3,10 +3,79 @@
 // run of the same records (game_overrides_socom2.cpp, installChatBound); everything either wrap decides on the
 // bytes is decided in socom2_chat.h, on plain values, so the suite can prove it without the game.
 #include "MiniTest.h"
+#include "ps2_runtime.h"
+#include "runtime/ps2_memory.h"
+#include "runtime/socom2_addresses.h"
 #include "runtime/socom2_chat.h"
+#include "runtime/socom2_server_records.h"
 
 #include <cstring>
+#include <iostream>
+#include <sstream>
+#include <string>
 #include <vector>
+
+// Sprint 13 Task U6: the same hardening's second shape. Two records the game's network library takes from
+// whatever server it is connected to are refused before the library's own handler would run
+// (runtime/socom2_server_records.h). The game's handlers are not in this binary, so each case registers a
+// stand-in that does what the real one does with the record, installs the refusal through the same
+// function-table registry the runner uses, and calls the entry the way the library's dispatcher would.
+namespace
+{
+    constexpr uint32_t kRecordAt = 0x00100000u;   // where the synthetic record sits in guest memory
+    constexpr uint32_t kTargetAt = 0x00200000u;   // the guest address the record names
+    constexpr uint32_t kScratchAt = 0x00300000u;  // a second target, for proving the stand-in itself
+    constexpr uint32_t kReturnTo = 0x00123450u;   // $ra: where a handler that returned leaves the pc
+    constexpr uint32_t kPayload = 16u;            // the N bytes the record carries
+
+    void wr32(std::vector<uint8_t> &ram, uint32_t at, uint32_t v) { std::memcpy(&ram[at], &v, 4); }
+
+    // A synthetic record of that kind, passed in the registers the dispatcher uses.
+    void buildRecord(std::vector<uint8_t> &ram, R5900Context &ctx, uint32_t target)
+    {
+        wr32(ram, kRecordAt, target);
+        wr32(ram, kRecordAt + 4, kPayload);
+        std::memset(&ram[kRecordAt + 8], 0xCC, kPayload);
+        std::memset(&ctx, 0, sizeof(ctx));
+        setReturnU32(&ctx, 0xFFFFFFFFu);   // a value no handler returns, so "v0 was set" is observable
+        ctx.r[7] = _mm_set_epi64x(0, kRecordAt);
+        ctx.r[8] = _mm_set_epi64x(0, 8 + kPayload);
+        ctx.r[31] = _mm_set_epi64x(0, kReturnTo);
+    }
+
+    // The stand-in for the write handler: what the real one does with the record, then the library's "handled".
+    void standInWrite(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
+    {
+        const uint32_t rec = getRegU32(ctx, 7) & PS2_RAM_MASK;
+        const uint32_t len = getRegU32(ctx, 8);
+        uint32_t target, declared;
+        std::memcpy(&target, rdram + rec, 4);
+        std::memcpy(&declared, rdram + rec + 4, 4);
+        if (rec != 0 && len > 8 && declared == len - 8)
+            std::memcpy(rdram + (target & PS2_RAM_MASK), rdram + rec + 8, declared);
+        setReturnU32(ctx, socom2_server_records::kHandled);
+        ctx->pc = getRegU32(ctx, 31);
+    }
+
+    // The stand-in for the read-back handler: whether it ran at all is the whole question.
+    bool g_readStandInRan = false;
+    void standInRead(uint8_t *, R5900Context *ctx, PS2Runtime *)
+    {
+        g_readStandInRan = true;
+        setReturnU32(ctx, socom2_server_records::kHandled);
+        ctx->pc = getRegU32(ctx, 31);
+    }
+
+    template <typename Body>
+    std::string captureOut(Body body)
+    {
+        std::ostringstream sink;
+        std::streambuf *old = std::cout.rdbuf(sink.rdbuf());
+        body();
+        std::cout.rdbuf(old);
+        return sink.str();
+    }
+}
 
 void register_socom2_chat_tests()
 {
@@ -220,6 +289,109 @@ void register_socom2_chat_tests()
             t.IsFalse(socom2_chat::spanFits(0x100000u, 0xFFFFFFFFu, stride, ram), "a count whose span would wrap");
             t.IsFalse(socom2_chat::spanFits(0x100000u, 4, 0, ram), "a zero stride");
             t.IsTrue(socom2_chat::spanFits(0x100000u, 0, stride, ram), "an empty run at a real base");
+        });
+    });
+
+    MiniTest::Case("Socom2ServerRecords", [](TestCase &tc)
+    {
+        tc.Run("a record that writes memory leaves the bytes where they were, on both revisions", [](TestCase &t)
+        {
+            for (const socom2_addresses::Table *tab : socom2_addresses::kTables)
+            {
+                const std::string rev = tab->revision;
+                std::vector<uint8_t> ram(PS2_RAM_SIZE, 0);
+                R5900Context ctx;
+                PS2Runtime runtime;
+                runtime.registerFunction(tab->serverMemWrite, standInWrite);
+
+                // The stand-in is not vacuous: called directly, it lands the record's bytes.
+                std::memset(&ram[kScratchAt], 0x5A, kPayload);
+                buildRecord(ram, ctx, kScratchAt);
+                standInWrite(ram.data(), &ctx, &runtime);
+                t.Equals(ram[kScratchAt], uint8_t(0xCC), rev + ": the stand-in writes when it runs");
+
+                std::memset(&ram[kTargetAt], 0x5A, kPayload);
+                const std::vector<uint8_t> before(ram.begin() + kTargetAt, ram.begin() + kTargetAt + kPayload);
+                socom2_server_records::install(runtime, *tab);
+                buildRecord(ram, ctx, kTargetAt);
+                runtime.lookupFunction(tab->serverMemWrite)(ram.data(), &ctx, &runtime);
+                const std::vector<uint8_t> after(ram.begin() + kTargetAt, ram.begin() + kTargetAt + kPayload);
+                t.IsTrue(after == before, rev + ": the N bytes at the named address are unchanged");
+                t.Equals(getRegU32(&ctx, 2), socom2_server_records::kHandled, rev + ": v0 is the library's 'handled'");
+                t.Equals(ctx.pc, kReturnTo, rev + ": the call returns to its caller, the connection is not dropped");
+                runtime.registerFunction(tab->serverMemWrite, nullptr);
+            }
+        });
+
+        tc.Run("a record that reads memory back never reaches the handler, on both revisions", [](TestCase &t)
+        {
+            for (const socom2_addresses::Table *tab : socom2_addresses::kTables)
+            {
+                const std::string rev = tab->revision;
+                std::vector<uint8_t> ram(PS2_RAM_SIZE, 0);
+                R5900Context ctx;
+                PS2Runtime runtime;
+                runtime.registerFunction(tab->serverMemRead, standInRead);
+                socom2_server_records::install(runtime, *tab);
+                buildRecord(ram, ctx, kTargetAt);
+                g_readStandInRan = false;
+                runtime.lookupFunction(tab->serverMemRead)(ram.data(), &ctx, &runtime);
+                t.IsFalse(g_readStandInRan, rev + ": the handler that would answer with guest memory never runs");
+                t.Equals(getRegU32(&ctx, 2), socom2_server_records::kHandled, rev + ": v0 is the library's 'handled'");
+                t.Equals(ctx.pc, kReturnTo, rev + ": the call returns to its caller");
+                runtime.registerFunction(tab->serverMemRead, nullptr);
+            }
+        });
+
+        tc.Run("each refusal is said once, and no line carries an address", [](TestCase &t)
+        {
+            const socom2_addresses::Table &tab = socom2_addresses::kR0001;
+            std::vector<uint8_t> ram(PS2_RAM_SIZE, 0);
+            R5900Context ctx;
+            PS2Runtime runtime;
+            runtime.registerFunction(tab.serverMemWrite, standInWrite);
+            runtime.registerFunction(tab.serverMemRead, standInRead);
+            const std::string installed = captureOut([&] { socom2_server_records::install(runtime, tab); });
+            t.IsTrue(installed.find("[socom2] server memory write refused") != std::string::npos,
+                     "the install says the write record is refused: " + installed);
+            t.IsTrue(installed.find("[socom2] server memory read refused") != std::string::npos,
+                     "the install says the read record is refused: " + installed);
+            t.IsTrue(installed.find("0x") == std::string::npos, "the install lines carry no address: " + installed);
+            // Whatever the earlier cases already reported, two more of each add nothing to the log.
+            const uint32_t writesBefore = socom2_server_records::writesRefused();
+            const uint32_t readsBefore = socom2_server_records::readsRefused();
+            const std::string first = captureOut([&] {
+                buildRecord(ram, ctx, kTargetAt);
+                runtime.lookupFunction(tab.serverMemWrite)(ram.data(), &ctx, &runtime);
+            });
+            const std::string calls = captureOut([&] {
+                for (int i = 0; i < 2; ++i)
+                {
+                    buildRecord(ram, ctx, kTargetAt);
+                    runtime.lookupFunction(tab.serverMemWrite)(ram.data(), &ctx, &runtime);
+                    buildRecord(ram, ctx, kTargetAt);
+                    runtime.lookupFunction(tab.serverMemRead)(ram.data(), &ctx, &runtime);
+                }
+            });
+            t.IsTrue(first.find("0x") == std::string::npos, "a refusal's line carries no address: " + first);
+            t.IsTrue(calls.empty(), "repeat refusals are silent: '" + calls + "'");
+            t.Equals(socom2_server_records::writesRefused() - writesBefore, 3u, "every refused write is counted");
+            t.Equals(socom2_server_records::readsRefused() - readsBefore, 2u, "every refused read is counted");
+            runtime.registerFunction(tab.serverMemWrite, nullptr);
+            runtime.registerFunction(tab.serverMemRead, nullptr);
+        });
+
+        tc.Run("a revision with no function at the handler installs nothing there and says so", [](TestCase &t)
+        {
+            const socom2_addresses::Table &tab = socom2_addresses::kR0004;
+            PS2Runtime runtime;   // nothing registered: an image without the library
+            int n = -1;
+            const std::string out = captureOut([&] { n = socom2_server_records::install(runtime, tab); });
+            t.Equals(n, 0, "nothing installed");
+            t.IsFalse(runtime.hasFunction(tab.serverMemWrite), "no entry was created where there was none");
+            t.IsFalse(runtime.hasFunction(tab.serverMemRead), "... at either handler");
+            t.IsTrue(out.find("not refused") != std::string::npos, "the log says the refusal is missing: " + out);
+            t.IsTrue(out.find("0x") == std::string::npos, "and carries no address: " + out);
         });
     });
 }

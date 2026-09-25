@@ -108,6 +108,8 @@ FIELDS: Tuple[Field, ...] = (
     Field("dnasRc4SetKey", 0x0062A5A8, False, "libdnas2: RC4 set key"),
     Field("dnasRc4Encrypt", 0x0062A720, False, "libdnas2: RC4 encrypt"),
     Field("dnasRc4Decrypt", 0x0062A7C8, False, "libdnas2: RC4 decrypt"),
+    Field("serverMemWrite", 0x00637900, False, "a server record that writes game memory (refused)"),
+    Field("serverMemRead", 0x00637510, False, "a server record that reads game memory back (refused)"),
 )
 
 
