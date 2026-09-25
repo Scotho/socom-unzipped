@@ -1,7 +1,6 @@
 // Sprint 8 Goal 9: loading the embedded faces, one raster per pixel size in use.
 #include "fonts.h"
 
-#include "fonts_embedded/rajdhani_bold.h"
 #include "fonts_embedded/rajdhani_medium.h"
 #include "fonts_embedded/rajdhani_semibold.h"
 #include "fonts_embedded/saira_stencil_one.h"
