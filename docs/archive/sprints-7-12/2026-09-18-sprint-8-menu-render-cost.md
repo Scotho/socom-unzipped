@@ -100,7 +100,7 @@ exit $rc
 
 ## Task 1 — Measure per call, before changing anything (spec Goal 2: "break the cost down per call")
 
-*(done 2026-09-19 00:38: `PS2X_GS_UPLOAD_TRACE`, two tests (RED: undeclared GsGlUploadTrace; suite 555), one driven login launch `run_A_20260919_003832`. Login screen t=88-96 s at 54-59 fps: uploads 5945/s, rects 0/s, gl_calls 31/s, one destination texture; per upload shadow 7.1 us, mark 0.0, record 0.7; per GL call convert 348 us, gl 80 us. In ms/s: shadow 42.1, record 4.0, convert 10.7, gl 2.4 = 59, and `transfer=` 157-203 ms/s beside it. Only 54% of uploads are 1 KB (4k 30%, 16k 12%). **STOP RULE TRIGGERED** -- see R108.)*
+*(done 2026-09-19 00:38: `PS2X_GS_UPLOAD_TRACE`, two tests (RED: undeclared GsGlUploadTrace; suite 555), one driven login launch `run_A_20260919_003832`. Login screen t=88-96 s at 54-59 fps: uploads 5945/s, rects 0/s, gl_calls 31/s, one destination texture; per upload shadow 7.1 us, mark 0.0, record 0.7; per GL call convert 348 us, gl 80 us. In ms/s: shadow 42.1, record 4.0, convert 10.7, gl 2.4 = 59, and `transfer=` 157-203 ms/s beside it. Only 54% of uploads are 1 KB (4k 30%, 16k 12%). **STOP RULE TRIGGERED** -- see R108b.)*
 
 **Files:**
 - Create: `third_party/ps2recomp/ps2xRuntime/include/runtime/gs/gs_gl_upload_trace.h`, `logs/s8_upload_trace.sh`
@@ -449,7 +449,7 @@ git push
 
 **Steps:**
 
-- [ ] ~~**Step 1: RED — the coalescer's cases, before the header exists.** The first four are the ones that matter; the fifth is the rule that keeps the 2026-09-09 bug dead.~~ *(not run: R108)*
+- [ ] ~~**Step 1: RED — the coalescer's cases, before the header exists.** The first four are the ones that matter; the fifth is the rule that keeps the 2026-09-09 bug dead.~~ *(not run: R108b)*
 
 ```cpp
         tc.Run("GsGlUploadBatch merges a run of adjacent 16x16 tiles into one rectangle", [](TestCase &t)
@@ -543,7 +543,7 @@ cmake --build third_party/ps2recomp/build-clang --target ps2x_tests -j 8
 ```
   Expected failure: `error: use of undeclared identifier 'GsGlUploadBatch'` / `fatal error: 'runtime/gs/gs_gl_upload_batch.h' file not found`.
 
-- [ ] ~~**Step 2: Implement `gs_gl_upload_batch.h`.** Header-only, GL-free:~~ *(not run: R108)*
+- [ ] ~~**Step 2: Implement `gs_gl_upload_batch.h`.** Header-only, GL-free:~~ *(not run: R108b)*
 
 ```cpp
 #pragma once
@@ -647,7 +647,7 @@ cmake --build third_party/ps2recomp/build-clang --target ps2x_tests -j 8 && ( cd
 ```
   Expected: `Total Tests: 561`, `0 Failed`. **If the ragged case or the area case fails, the coalescer is wrong and the backend is not touched until it passes** — that case is the whole safety argument.
 
-- [ ] ~~**Step 3: RED — the end-to-end case: N adjacent tile uploads, one GL call, identical pixels.** This one needs a GL context, so it follows the console-replay case's shape (`ps2_gs_tests.cpp:1626-1637`: `SetConfigFlags(FLAG_WINDOW_HIDDEN); InitWindow(640, 448, …)`) and is guarded by `PS2X_GS_TESTS_GL` (R109), which is off in CI and in the VM and on in the host's own pre-commit run.~~ *(not run: R108)*
+- [ ] ~~**Step 3: RED — the end-to-end case: N adjacent tile uploads, one GL call, identical pixels.** This one needs a GL context, so it follows the console-replay case's shape (`ps2_gs_tests.cpp:1626-1637`: `SetConfigFlags(FLAG_WINDOW_HIDDEN); InitWindow(640, 448, …)`) and is guarded by `PS2X_GS_TESTS_GL` (R109), which is off in CI and in the VM and on in the host's own pre-commit run.~~ *(not run: R108b)*
 
 ```cpp
         tc.Run("adjacent 16x16 uploads to one page replay as ONE glTexSubImage2D with identical pixels (PS2X_GS_TESTS_GL)", [](TestCase &t)
@@ -700,7 +700,7 @@ cmake --build third_party/ps2recomp/build-clang --target ps2x_tests -j 8 && ( cd
 ```
   Expected failure, before the backend is wired: `batched: one glTexSubImage2D for the whole row  expected 1, got 0` — `glUploadCalls()` returns 0 on both paths because nothing calls `noteGlUpload` yet, and after edit 3 of Step 4 alone it would read 40 on both because nothing coalesces. Either reading is the same RED.
 
-- [ ] ~~**Step 4: Wire the coalescer into `refreshDirtyRows`.** Three edits, and no fourth:~~ *(not run: R108)*
+- [ ] ~~**Step 4: Wire the coalescer into `refreshDirtyRows`.** Three edits, and no fourth:~~ *(not run: R108b)*
 
   1. `gs_gl_backend.h:156-160`: `struct DirtyRect { uint32_t x0, y0, x1, y1; };` becomes
 
@@ -731,14 +731,14 @@ cmake --build third_party/ps2recomp/build-clang --target ps2x_tests -j 8 && ( cd
 ```
   Expected: `Total Tests: 562`, `0 Failed` — including `batched: one glTexSubImage2D for the whole row` and `the batched path writes byte-identical pixels`.
 
-- [ ] ~~**Step 5: The A/B on the real menus, from Task 1's own instrument.** Rebuild the runner; the batched measurement is **Task 3 Step 2's run** and the unbatched one is **Task 1 Step 6's log** — same machine, same screen, same hold, so no fifth launch is spent here. Compare in one table: `uploads/s`, `rects/s`, `gl_calls/s`, `upload=` ms/s, the `clear=`/`submit=`/`present=` columns (where the GL half lives, per Task 1 Step 1), and fps. **The claim to check is `gl_calls/s` collapsing while `rects/s` stays put** — that is batching working. `upload=` moving is Task 3's bar, not this step's.~~ *(not run: R108)*
+- [ ] ~~**Step 5: The A/B on the real menus, from Task 1's own instrument.** Rebuild the runner; the batched measurement is **Task 3 Step 2's run** and the unbatched one is **Task 1 Step 6's log** — same machine, same screen, same hold, so no fifth launch is spent here. Compare in one table: `uploads/s`, `rects/s`, `gl_calls/s`, `upload=` ms/s, the `clear=`/`submit=`/`present=` columns (where the GL half lives, per Task 1 Step 1), and fps. **The claim to check is `gl_calls/s` collapsing while `rects/s` stays put** — that is batching working. `upload=` moving is Task 3's bar, not this step's.~~ *(not run: R108b)*
 
 ```bash
 scripts/run_detached.sh --owner build --purpose build logs/build_runtime_job.sh logs/build_runtime.marker
 cat logs/build_runtime.marker 2>/dev/null || echo running
 ```
 
-- [ ] ~~**Step 6: Gate 3/3, then commit.** This commit touches `third_party/ps2recomp/ps2xRuntime/src/`, so the three-stage gate is mandatory and is the check that stands in for "the Windows numbers are unmoved": the mission stage renders the game's own frames through this exact path.~~ *(not run: R108)*
+- [ ] ~~**Step 6: Gate 3/3, then commit.** This commit touches `third_party/ps2recomp/ps2xRuntime/src/`, so the three-stage gate is mandatory and is the check that stands in for "the Windows numbers are unmoved": the mission stage renders the game's own frames through this exact path.~~ *(not run: R108b)*
 
 ```bash
 bash scripts/check_quiet_gate.sh
@@ -794,7 +794,7 @@ git push
 
 **Steps:**
 
-- [ ] ~~**Step 1: Write `logs/s8_menu_bar.sh` — the login-only path with `s7_freeze_loaded.sh`'s load generator.**~~ *(not run: R108)*
+- [ ] ~~**Step 1: Write `logs/s8_menu_bar.sh` — the login-only path with `s7_freeze_loaded.sh`'s load generator.**~~ *(not run: R108b)*
 
 ```bash
 #!/usr/bin/env bash
@@ -832,7 +832,7 @@ scripts/run_detached.sh --owner gate --purpose launch logs/s8_menu_bar.sh logs/s
 cat logs/s8_menu_bar.marker 2>/dev/null || echo running
 ```
 
-- [ ] ~~**Step 2: Read the numbers, and read them over the login-screen window only.** The window runs from the login screen appearing to the end of the hold — not the boot loads, which legitimately reach 35-46k uploads/s and are not what this goal is about (R110). Mark it from the harness's own screenshots and timestamps in `logs/parity/s8_menu_bar/`, and state its start and end seconds in the commit.~~ *(not run: R108)*
+- [ ] ~~**Step 2: Read the numbers, and read them over the login-screen window only.** The window runs from the login screen appearing to the end of the hold — not the boot loads, which legitimately reach 35-46k uploads/s and are not what this goal is about (R110). Mark it from the harness's own screenshots and timestamps in `logs/parity/s8_menu_bar/`, and state its start and end seconds in the commit.~~ *(not run: R108b)*
 
 ```bash
 grep -n "\[gs-gl stats\] elapsed=\|\[gs-gl stats\] calls=" logs/run_A_<stamp>.log | tail -60
@@ -841,14 +841,14 @@ python -m tools_py.parity.freeze_trace logs/run_A_<stamp>.log
 grep -c "pcm_underruns=[1-9]" logs/run_A_<stamp>.log     # expected: 0
 ```
 
-- [ ] ~~**Step 3: The `bp_pending` sweep — every row, not the mean.** The KNOWN row's failure is *four launches in ten*, and the symptom is a maximum: one row at `bp_pending=4 bp_waiters=1` fails the bar even if the mean is 0.2. A subagent brief suits this: "print every `[pc-sampler]` row between seconds A and B with `bp_pending`, `bp_waiters` and `bp_wait_ms`, then the max of each; verification command `python -m tools_py.parity.freeze_trace <log>`; no judgement."~~ *(not run: R108)*
+- [ ] ~~**Step 3: The `bp_pending` sweep — every row, not the mean.** The KNOWN row's failure is *four launches in ten*, and the symptom is a maximum: one row at `bp_pending=4 bp_waiters=1` fails the bar even if the mean is 0.2. A subagent brief suits this: "print every `[pc-sampler]` row between seconds A and B with `bp_pending`, `bp_waiters` and `bp_wait_ms`, then the max of each; verification command `python -m tools_py.parity.freeze_trace <log>`; no judgement."~~ *(not run: R108b)*
 
-- [ ] ~~**Step 4: If a bar is missed, say which and stop rather than tune.** The honest outcomes, in order of preference, each a ruling:~~ *(not run: R108)*
+- [ ] ~~**Step 4: If a bar is missed, say which and stop rather than tune.** The honest outcomes, in order of preference, each a ruling:~~ *(not run: R108b)*
   - **All four met** → Step 5.
   - **`upload=` and `gl_calls/s` fell but fps did not reach 60 under load** → the remaining cost is not the tile path. Record the new dominant term from the same run's `[gs-upload]` line and file it. Goal 2's spec bar is the fps one, so this is a partial and is reported as one; the sprint does not get a second attempt at a different subsystem under this goal's name.
   - **Nothing moved** → the spec §3 stop rule fires late: file the breakdown, keep the instrument, revert nothing (the batching is proven byte-identical and is not a risk to carry), and close the goal as measured.
   - **A menu renders wrong** → `PS2X_GS_NO_UPLOAD_BATCH=1` is the immediate bisect and the coalescer's area invariant is where the bug is. This is the one outcome that reverts.
-- [ ] ~~**Step 5: Gate 3/3 and commit the bar.**~~ *(not run: R108)*
+- [ ] ~~**Step 5: Gate 3/3 and commit the bar.**~~ *(not run: R108b)*
 
 ```bash
 python -m tools_py.parity.gate --only title,transition,mission --stamp s8_g2_bar
@@ -924,7 +924,7 @@ R107 onward; see the Goal 1 plan for R99-R106 and the Sprint 7 plan for R91-R98.
 
 - **R110** (Task 3): **the bar is read over the login-screen window, not over the whole run.** The boot loads legitimately reach 35-46k uploads/s at ~30 ms/s (KNOWN §1:89) and would drag any whole-run mean; the goal's sentence, its KNOWN row and its spec bar are all about the login screen. The window's start and end seconds go in the commit message so the number can be re-derived. *Cost if wrong:* a reader who takes the whole-run mean gets a worse number than the bar claims, which is the safe direction, and the commit tells them where to look.
 
-- **R108** (2026-09-19, Task 1's stop rule): per-call overhead is not the menus' cost, so the tile coalescer (Task 2) and its bar (Task 3) are not built. Measured on the login screen: the GL side already uploads whole bands, 31 calls a second for 5945 guest uploads (192x fewer), the exact-rectangle path never fires (rects 0/s), and everything that scales with call count is under 29% of the 59 ms/s; the shadow swizzle alone is 71% (42 ms/s, 7.1 us per upload), and `transfer=` (executeTransfer, 157-203 ms/s) is three times the whole upload column. The next experiment is a per-term trace of executeTransfer and a swizzle that skips unchanged tiles (the game re-uploads the same menu atlas every frame: one destination texture), which is Goal 2b's plan, written when Goal 2's close-out is. *Cost if wrong:* none measured -- the coalescer would have coalesced nothing on this screen; the 1:1 rects-to-calls regime exists only in the boot movie, where the per-call costs are 0.6 and 0.1 us.
+- **R108** (2026-09-19, Task 1's stop rule; *issued twice: this plan's Task 2 rule above took R108 on 2026-09-18 in `9b55ea9`, and this stop rule reused it on 2026-09-19 in `4cd42b4`; this, the second, is cited as R108b from 2026-09-25*): per-call overhead is not the menus' cost, so the tile coalescer (Task 2) and its bar (Task 3) are not built. Measured on the login screen: the GL side already uploads whole bands, 31 calls a second for 5945 guest uploads (192x fewer), the exact-rectangle path never fires (rects 0/s), and everything that scales with call count is under 29% of the 59 ms/s; the shadow swizzle alone is 71% (42 ms/s, 7.1 us per upload), and `transfer=` (executeTransfer, 157-203 ms/s) is three times the whole upload column. The next experiment is a per-term trace of executeTransfer and a swizzle that skips unchanged tiles (the game re-uploads the same menu atlas every frame: one destination texture), which is Goal 2b's plan, written when Goal 2's close-out is. *Cost if wrong:* none measured -- the coalescer would have coalesced nothing on this screen; the 1:1 rects-to-calls regime exists only in the boot movie, where the per-call costs are 0.6 and 0.1 us.
 
 
 ## Self-review

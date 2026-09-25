@@ -6,12 +6,14 @@ ruling number as R179 while R241 was in use -- a collision that had already happ
 difference between the documents that stayed true and the ones that rotted was not care; it was
 whether anything could fail. This module is the thing that fails.
 
-It is deliberately small. Eight checks, each one aimed at a rot mechanism that actually bit this
+It is deliberately small. Ten checks, each one aimed at a rot mechanism that actually bit this
 project. The sixth was added on 2026-09-23 for the opposite reason -- a rot mechanism that had not
 bitten yet only because nobody dared move anything: the Sprint 1-6 specs and plans were cited by
 path from a hundred places, and `docs/archive/README.md` recorded them as "not moved, on purpose".
 The seventh and eighth are R268's (2026-09-25): a byte ceiling on each document that grows by
 appending, and "merged to main as vX" held to origin's tags.
+The ninth and tenth are Sprint 13 Task R3's (2026-09-25): a ruling number defined twice, and a
+cited ruling number with no definition, each found by the audit of that day and by nothing before it.
 
 Nothing here fails on a calendar: a test that reddens because a week passed gets disabled,
 and then the check is worse than nothing. Cadence is the sprint-close review in
@@ -100,6 +102,34 @@ CEILINGS = (
 MERGED_AS = re.compile(r"merged to `?main`? as `?(v\d+\.\d+\.\d+)`?", re.I)   # "Merged to MAIN as" too
 STRUCK = re.compile(r"~~.*?~~")
 
+# Checks 9 and 10 (Sprint 13 Task R3, 2026-09-25): one number, one ruling; a cited number has a text. The
+# counter (check 2) only proves the NEXT number is free; it never noticed that R107, R109 and R110 had each
+# been issued by two Sprint 8 plans for unrelated decisions, or that R114, R116 and R124 were cited for a
+# week with no findable text (documents audit D55-D56). Both need a definition told apart from a citation.
+# A definition is a line in a place a ruling is MADE (HANDOFF section 5 rule 9: a plan's rulings, or
+# CURRENT_SPRINT when there is no plan, and what docs/archive/ keeps of both) in one of the house shapes:
+#   - **R107** (Task 1): ...      **R181 -- ...**      - **R169 <em dash> ...**      1. **R237, REWRITTEN ...
+#   - **R265**, **R266** (...)    ... **R173:** ...    **Ruling R115: ...**          **R264** (date, who): ...
+# and NOT "R107's", "(R107)", "see **R107**", "**R238 was wrong**", "chosen by **R143**: ...", a bold range
+# "**R241-R245**", a quoted line ("> ..."; a rewritten ruling quotes its first telling) or a code fence.
+# A ledger row ("| R181 | ... | where it is written | status |") indexes a definition rather than repeating
+# it: it counts as a definition for check 10 (R209 and R229 have only their rows) and is held to one row per
+# number among ledger rows, but a row beside its plan's bullet is not a duplicate.
+# A second issue is RECORDED, not renumbered: its definition line carries "cited as R<n>b" and is counted
+# as R<n>b, and the citations that mean it say R<n>b. A number named but never issued carries a vacancy
+# note, "R<n> -- vacant: <reason>", in the plan or ledger that owns its range.
+# A range is never a definition, spaced or not ("**R241-R245**", "- **R107 - R110** (the close)").
+RULING_DEF_LEAD = re.compile(
+    r"^\s*(?:[-*+]\s+|\d+\.\s+)?\*\*R(\d{2,3})(?!\s*(?:—|–|--?)\s*R\d)(?=\*\*|\s*[(:,.]|\s+(?:—|–|--?)\s)")
+RULING_DEF_MORE = re.compile(r"\*\*,\s*(?:and\s+)?\*\*R(\d{2,3})(?=\*\*)")
+RULING_DEF_LABEL = re.compile(r"\*\*(?:Ruling\s+)?R(\d{2,3})(?::|\*\*\s+\([^)\n]*\):)")
+RULING_LEDGER_ROW = re.compile(r"^\s*\|\s*\*{0,2}R(\d{2,3})\*{0,2}\s*\|")
+RULING_SECOND = re.compile(r"cited as R(\d{2,3})b\b")
+RULING_VACANT = re.compile(r"\bR(\d{2,3})\s*(?:—|–|--?)\s*vacant\s*:", re.I)
+# A citation: the global number, or a recorded second issue (R107b). Sprint 12 numbered its own rulings
+# S12-R<n> in their own namespace (R264), so "S12-R13" is not R13.
+RULING_CITE = re.compile(r"(?<!S\d-)(?<!S\d\d-)\bR(\d{2,3})(b?)\b")
+
 
 def _read(relpath):
     with open(os.path.join(ROOT, relpath), "r", encoding="utf-8", errors="replace") as fh:
@@ -180,6 +210,97 @@ def max_ruling():
                 if n > best:
                     best, where = n, path
     return best, where
+
+
+def _ruling_key(name):
+    """'R107b' -> (107, 'b'), so a report lists R107 before R107b before R108."""
+    m = re.match(r"R(\d+)(b?)$", name)
+    return (int(m.group(1)), m.group(2))
+
+
+def ruling_definition_sources():
+    """The documents a ruling may be MADE in (HANDOFF section 5 rule 9), as repo-relative posix paths."""
+    out = [p for p in ruling_sources()
+           if p.startswith("docs/superpowers/plans/") or p.startswith("docs/archive/")]
+    return ["docs/CURRENT_SPRINT.md"] + out   # the rule names it, whatever its registry row says
+
+
+def ruling_records():
+    """(definitions, ledger rows, vacancy notes), each {name: [(path, line), ...]}; see RULING_DEF_LEAD."""
+    defs, rows, vacant = {}, {}, {}
+    for path in ruling_definition_sources():
+        if not os.path.isfile(os.path.join(ROOT, path)):
+            continue
+        fenced = False
+        for i, line in enumerate(_read(path).split("\n"), 1):
+            if line.lstrip().startswith("```"):
+                fenced = not fenced
+                continue
+            if fenced or line.lstrip().startswith(">"):
+                continue
+            for m in RULING_VACANT.finditer(line):
+                vacant.setdefault("R" + m.group(1), []).append((path, i))
+            m = RULING_LEDGER_ROW.match(line)
+            if m:
+                rows.setdefault("R" + m.group(1), []).append((path, i))
+                continue
+            found = []
+            m = RULING_DEF_LEAD.match(line)
+            if m:
+                found.append(m.group(1))
+                pos = m.end()
+                while True:
+                    more = RULING_DEF_MORE.match(line, pos)
+                    if not more:
+                        break
+                    found.append(more.group(1))
+                    pos = more.end()
+            for m in RULING_DEF_LABEL.finditer(line):
+                if m.group(1) not in found:
+                    found.append(m.group(1))
+            seconds = set(RULING_SECOND.findall(line))
+            for n in found:
+                name = "R%s%s" % (n, "b" if n in seconds else "")
+                defs.setdefault(name, []).append((path, i))
+    return defs, rows, vacant
+
+
+def duplicate_rulings():
+    """[(name, [(path, line), ...])] for every ruling number defined more than once (check 9)."""
+    defs, rows, _ = ruling_records()
+    out = [(name, locs) for name, locs in defs.items() if len(locs) > 1]
+    out += [(name, locs) for name, locs in rows.items() if len(locs) > 1]
+    return sorted(out, key=lambda item: _ruling_key(item[0]))
+
+
+def ruling_citations():
+    """{name: [(path, line), ...]}: every R<n> and R<n>b named across the ruling scan (check 2's sources)."""
+    cites = {}
+    for path in ruling_sources():
+        if not os.path.isfile(os.path.join(ROOT, path)):
+            continue
+        for i, line in enumerate(_read(path).split("\n"), 1):
+            if RULING_LINE.search(line):
+                continue   # the counter names the number NOT yet in use
+            for m in RULING_CITE.finditer(line):
+                locs = cites.setdefault("R%s%s" % (m.group(1), m.group(2)), [])
+                if (path, i) not in locs:   # a line naming a number twice is one location
+                    locs.append((path, i))
+    return cites
+
+
+def undefined_rulings():
+    """[(name, [(path, line), ...])]: cited, at or under the highest number in use, and with no definition,
+    no ledger row and no vacancy note anywhere (check 10). The locations are the citations."""
+    defs, rows, vacant = ruling_records()
+    hi = max_ruling()[0]
+    out = []
+    for name, locs in ruling_citations().items():
+        n, _ = _ruling_key(name)
+        if n > hi or name in defs or name in rows or name in vacant:
+            continue
+        out.append((name, locs))
+    return sorted(out, key=lambda item: _ruling_key(item[0]))
 
 
 def ruling_counters():
@@ -448,6 +569,8 @@ def report():
         "dangling_doc_links": dangling_doc_links(),
         "over_ceiling": over_ceiling(),
         "unknown_tags": unknown_tags(tags) if tags is not None else [],
+        "duplicate_rulings": duplicate_rulings(),
+        "undefined_rulings": undefined_rulings(),
         "tags_on_origin": len(tags) if tags is not None else None,
         "tag_check_skipped": why,
     }
@@ -481,6 +604,18 @@ def main(argv=None):
         print("over_ceiling (R268; archive the oldest blocks, do not raise the number):")
         for item in r["over_ceiling"]:
             print("   ", describe_ceiling(item))
+    if r["duplicate_rulings"]:
+        bad += len(r["duplicate_rulings"])
+        print("duplicate_rulings (one number, one ruling; record the second as R<n>b beside it, do not renumber):")
+        for name, locs in r["duplicate_rulings"]:
+            print("    %s defined %d times: %s" % (name, len(locs), "; ".join("%s:%d" % loc for loc in locs)))
+    if r["undefined_rulings"]:
+        bad += len(r["undefined_rulings"])
+        print("undefined_rulings (cited, never defined; write its text, or 'R<n> -- vacant: <reason>' where "
+              "its range is owned):")
+        for name, locs in r["undefined_rulings"]:
+            more = " (+%d more)" % (len(locs) - 3) if len(locs) > 3 else ""
+            print("    %s cited at %s%s" % (name, "; ".join("%s:%d" % loc for loc in locs[:3]), more))
     if r["next_free_ruling"] != r["max_ruling"] + 1:
         bad += 1
         print("ruling counter: HANDOFF says R%s, should be R%d" % (r["next_free_ruling"], r["max_ruling"] + 1))

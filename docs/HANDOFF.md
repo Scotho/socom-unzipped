@@ -206,7 +206,7 @@ rather than rule. At most two C++-building agents at once.
 9. **The VM lies in two ways:** three C++ cases are wall-clock flaky there and 18 Python cases fail for environment
    reasons -- read a VM suite by suite name, not by exit code; and llvmpipe renders at a few frames a second (the measured figure is `docs/KNOWN.md` §1's Linux title-stage
    row; this trap said "about 2 fps" until 2026-09-25, Sprint 13 S1), so no audio or
-   frame-rate bar can be read there (R107).
+   frame-rate bar can be read there (R107b).
 10. **`docs/STATUS.md` is a log, newest on top, 2504 lines (2026-09-25, `wc -l`).** Only its "Current state" block
     is current.
     `docs/ROADMAP.md` was rewritten 2026-09-22 and is now narrative and pointers only, never live state -- its §0 is
@@ -228,8 +228,9 @@ rather than rule. At most two C++-building agents at once.
 14. **The owner's open launcher can hold `dist/socom_unzipped_launcher.exe` locked.** A launcher build then lands as
     `..._new.exe` beside it; say so in HUMAN_TASKS rather than failing.
 15. **Two directories are named `research`.** `docs/research/` (tracked; `ls docs/research` is the list and the newest
-    note is its highest number; there is no 35, and two notes are numbered 43 -- `43-r0004-capsule.md` and
-    `43-what-changed-in-r0004.md` -- so name the file, not only the number, when citing 43) is the one every document
+    note is its highest number; there is no 35 (`docs/ROADMAP.md` §0's closing note says why), and two notes are numbered 43
+    -- `43-r0004-capsule.md`, cited as **43a**, and `43-what-changed-in-r0004.md`, cited as **43b** -- so write 43a,
+    43b or the file, never a bare "research/43") is the one every document
     cites. *(Superseded 2026-09-25, Sprint 13 R2: this said "notes 01-34", and trap 10 said STATUS was "2400 lines"
     -- documents audit rows 18 and 57. This trap is the one place in this file that describes the numbering.)* `research/` at the repository root is git-ignored: 1.6 GB of reference checkouts (Horizon, upstream
     ps2recomp, PSRewired game info, an r0005 patch). A path like `research/06-989snd-rpc.md` in a spec means

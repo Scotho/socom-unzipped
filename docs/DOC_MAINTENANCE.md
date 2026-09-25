@@ -125,8 +125,9 @@ document gets a class, and an unclassified document is one nobody has decided th
 
 ## 4. What is enforced mechanically
 
-`tools_py/tests/test_doc_maintenance.py`, in the Python suite, so it runs in CI and needs no build. Eight checks, each
-aimed at a rot mechanism that actually bit this project (the seventh and eighth are R268's, added 2026-09-25):
+`tools_py/tests/test_doc_maintenance.py`, in the Python suite, so it runs in CI and needs no build. Ten checks, each
+aimed at a rot mechanism that actually bit this project (the seventh and eighth are R268's, the ninth and tenth
+Sprint 13 Task R3's, all added 2026-09-25):
 
 1. **Registry completeness** — every covered file has exactly one row; every row points at a file that exists. *Catches
    a new document nobody classified, and a row left behind by a move.*
@@ -158,6 +159,26 @@ aimed at a rot mechanism that actually bit this project (the seventh and eighth 
    tag or merge existed, so nobody was prompted to do either. It needs the network: when origin cannot be reached the
    check is **skipped out loud** (`python -m tools_py.docmaint` prints `tags: SKIPPED` with the reason, and the unit
    test reports a skip), never passed silently.
+9. **One number, one ruling (Sprint 13 R3)** -- no ruling number is *defined* twice; the failure prints every
+   location. *Catches the collision the counter cannot see:* check 2 proves only that the next number is free, and on
+   2026-09-25 the audit found R107, R109 and R110 each issued by two Sprint 8 plans for unrelated decisions (and this
+   check found R108 issued twice inside one of them). A second issue is **recorded, not renumbered**: its definition
+   line carries "cited as R\<n\>b", the check counts that line as R\<n\>b, and every citation that means it says R\<n\>b.
+10. **A cited ruling has a text (Sprint 13 R3)** -- every R\<n\> (and R\<n\>b) cited in the documents check 2 reads,
+   up to the highest in use, has a definition, a ledger row, or a vacancy note `R<n> -- vacant: <reason>` in the plan
+   or ledger that owns its range. *Catches a decision nobody can find to overturn:* R114, R116 and R124 were cited for
+   a week with no findable text; the check also found R112, R113 and R139 in the same state.
+
+**What counts as a definition (checks 9 and 10).** A line in a document where a ruling is *made* -- HANDOFF §5 rule 9:
+a plan's rulings, or `docs/CURRENT_SPRINT.md` when there is no plan, and what `docs/archive/` keeps of both -- in a
+house shape: `- **R107** (Task 1): ...`, `**R181 -- ...**`, `- **R169 — ...`, `1. **R237, ...`, a list
+`- **R265**, **R266** (...)`, or a bold label anywhere on the line, `**R173:**`, `**Ruling R115: ...`, `**R264** (date,
+who): ...`. A citation is not one: `R107's`, `(R107)`, `see **R107**`, `**R238 was wrong**`, `chosen by **R143**:`, a
+bold range `**R241–R245**`, a quoted line (`> ...`, where a rewritten ruling keeps its first telling) or a code fence.
+A restatement elsewhere (HUMAN_TASKS's summary of the plan's rulings) is not one either. A ledger row (`| R181 | ... |`)
+*indexes* a definition: it answers check 10 on its own (R209 and R229 have only their rows) and two rows for one number
+fire check 9, but a row beside its plan's bullet is not a duplicate. `S12-R<n>` is Sprint 12's own namespace (R264) and
+is not R\<n\>.
 
 `max_ruling()` (check 2) reads every file under `docs/archive/`, top level and subdirectories, as well as the live
 documents and the plans: a ruling does not stop existing when its block is archived, and a counter that dropped the
@@ -176,7 +197,8 @@ Run it by hand with `python -m tools_py.docmaint`, which prints the registry siz
 
 **Each check is fired once against a planted defect** (`PlantedDefectsTest`: an unregistered document, a row whose file
 is gone, a colliding ruling number, two counter lines that disagree, an undated count, an undated snapshot, a silent
-archive, a silent file in an archive subdirectory, a dangling `docs/` path in a `docs/` file and in a root file — plus
+archive, a silent file in an archive subdirectory, a dangling `docs/` path in a `docs/` file and in a root file, a ruling
+defined twice, a cited ruling with no text — plus
 the negative controls that must *not* fire, and a clean-tree control for the controls). A gate
 that has never failed is not known to work, and this one found two real defects and one bug in its own test on the day
 it was written.

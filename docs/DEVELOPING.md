@@ -232,7 +232,7 @@ are tracked because a KNOWN §1 evidence manifest hashes them.
 
 | Module | What it is for |
 |---|---|
-| `docmaint.py` | The document registry held to the tree (`docs/DOC_MAINTENANCE.md` §4's six checks) |
+| `docmaint.py` | The document registry held to the tree (`docs/DOC_MAINTENANCE.md` §4's ten checks) |
 | `issues.py` | The known-issue stack on GitHub, held to the live documents (`skeleton`, `open`, `close`, `audit`) |
 | `knobs.py` | The `PS2X_*` registry read out of `knobs.h`; `write` regenerates `docs/KNOBS.md` |
 | `exit_codes.py` | The game's exit codes read out of `exit_codes.h` |
@@ -586,8 +586,9 @@ only ever grow, so more than the number here is fine and fewer is a regression t
 
 `python -m tools_py.docmaint` checks the documentation registry (`docs/DOC_MAINTENANCE.md`): every document
 classified, the ruling counter one past the highest in use, no undated suite count outside **this file**, every
-snapshot dated and every archive banded. It needs no build and the Python suite runs it; **this table is the single
-source for the suite counts, which is why no other document may state one without a date beside it.**
+snapshot dated and every archive banded, every ruling number defined once and every cited one defined. It needs no
+build and the Python suite runs it; **this table is the single source for the suite counts, which is why no other
+document may state one without a date beside it.**
 
 `python -m tools_py.parity.gate --baseline first_run` re-scores that saved run without launching, which is the
 fastest way to check a scoring change. A gate refuses to start under 4 GB free on C: (`RUN_MIN_FREE_GB`) and
