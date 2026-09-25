@@ -976,22 +976,77 @@ class TestQueue(LockTestBase):
         # waiter must not reach the front and claim the lock for a job nobody runs.
         self.write_record("holder", 60, hb_age_s=0)
         pidf = os.path.join(self.tmp, "parent.pid")
-        parent = subprocess.Popen([BASH, "-c", "echo $$ > '%s'; bash '%s' wait orphan 3 & sleep 120" % (fwd(pidf), LOCK_SH)],
-                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=self.env(LOOP_LOCK_WAIT_SEC=60))
+        outf = os.path.join(self.tmp, "waiter.out")          # a file: Git's bash.exe launcher relays a pipe and dies
+        parent = subprocess.Popen([BASH, "-c", "echo $$ > '%s'; bash '%s' wait orphan 3 > '%s' 2>&1 & sleep 120" % (fwd(pidf), LOCK_SH, fwd(outf))],
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                  env=self.env(LOOP_LOCK_WAIT_SEC=60))
         try:
             self.assertEqual(len(self.wait_tickets(1, seconds=30)), 1, "the waiter never queued")
-            # Kill the real MSYS parent the way TaskStop does (Popen.kill would hit only Git's bash.exe launcher).
+            # Kill the calling shell -- what TaskStop kills, leaving its children running (Popen.kill would hit only
+            # Git's bash.exe launcher, not the MSYS shell).
             subprocess.run([BASH, "-c", "kill -9 %s" % _read(pidf).strip()], timeout=30)
-            deadline = time.time() + 30
-            while self.tickets() and time.time() < deadline:
-                time.sleep(0.2)
-            self.assertEqual(self.tickets(), [], "the orphaned waiter is still queued")
-            self.assertEqual(self.sh("release", "holder")[0], 0)
-            time.sleep(8)                                     # more than a slice: nobody claims the free lock
-            self.assertIsNone(self.holder())
-            self.assertTrue(self.is_free())
+            self.assert_orphan_left(self.wait_tickets_gone())
+            self.assertIn("ORPHANED: watched process %s" % _read(pidf).strip(), _read(outf))
         finally:
             self.reap_procs(parent)
+
+    def wait_tickets_gone(self, seconds=30):
+        deadline = time.time() + seconds
+        while self.tickets() and time.time() < deadline:
+            time.sleep(0.2)
+        return self.tickets()
+
+    def assert_orphan_left(self, tickets, holder="holder"):
+        self.assertEqual(tickets, [], "the orphaned waiter is still queued")
+        self.assertEqual(self.sh("release", holder)[0], 0)
+        time.sleep(8)                                         # more than a slice: nobody claims the free lock
+        self.assertIsNone(self.holder())
+        self.assertTrue(self.is_free())
+
+    def _sleeper(self):
+        """An MSYS process to watch, and its MSYS pid."""
+        pidf = os.path.join(self.tmp, "sleeper.pid")
+        s = subprocess.Popen([BASH, "-c", "echo $$ > '%s'; exec sleep 120" % fwd(pidf)])
+        deadline = time.time() + 30
+        while not (os.path.exists(pidf) and _read(pidf).strip()) and time.time() < deadline:
+            time.sleep(0.1)
+        return s, _read(pidf).strip()
+
+    def test_an_orphaned_wait_says_so_and_exits_1(self):
+        # Review round 2: the ORPHANED line and the exit code, with the waiter a direct child of this test (its
+        # watched process named by LOOP_LOCK_WAIT_PARENT).
+        self.write_record("holder", 60, hb_age_s=0)
+        sleeper, spid = self._sleeper()
+        p = self.popen("wait", "orphan", "3", env=self.env(LOOP_LOCK_WAIT_SEC=60, LOOP_LOCK_WAIT_PARENT=spid))
+        try:
+            self.assertEqual(len(self.wait_tickets(1, seconds=30)), 1, "the waiter never queued")
+            subprocess.run([BASH, "-c", "kill -9 %s" % spid], timeout=30)
+            out = p.communicate(timeout=60)[0]
+            self.assertEqual(p.returncode, 1, out)
+            self.assertIn("ORPHANED: watched process %s" % spid, out)
+            self.assert_orphan_left(self.tickets())
+        finally:
+            self.reap_procs(p, sleeper)
+
+    def test_a_killed_run_wait_leaves_no_waiter_behind(self):
+        # Review round 2: `run --wait` queues from a $(...) subshell; killing the run process must not leave that
+        # subshell to claim the lock with nobody to run the command or renew it. The ticket name carries the run
+        # process's pid ($$ is the run's own inside the subshell).
+        self.write_record("holder", 60, hb_age_s=0)
+        ran = os.path.join(self.tmp, "ran")
+        errf = os.path.join(self.tmp, "run.err")
+        p = subprocess.Popen([BASH, "-c", "exec bash '%s' run r --wait 3 -- touch '%s' 2> '%s'" % (LOCK_SH, fwd(ran), fwd(errf))],
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                             env=self.env(LOOP_LOCK_WAIT_SEC=60))
+        try:
+            name = self.wait_tickets(1, seconds=30)[0]
+            run_pid = re.search(r"-(\d+)x\d+$", name).group(1)
+            subprocess.run([BASH, "-c", "kill -9 %s" % run_pid], timeout=30)
+            self.assert_orphan_left(self.wait_tickets_gone())
+            self.assertIn("ORPHANED: watched process %s" % run_pid, _read(errf))
+            self.assertFalse(os.path.exists(ran))
+        finally:
+            self.reap_procs(p)
 
     def test_a_waiters_blob_is_the_code_it_started_with(self):
         # Review round 1 (Important 2): after a landing the file on disk has a new blob; a waiter from before it
@@ -1377,22 +1432,24 @@ class TestRunDetached(LockTestBase):
         self.assertEqual(self.record()[0], "worker")
 
     def test_detached_waiter_leaves_the_queue_when_run_detached_is_killed(self):
-        # Review round 1 (Important 3): the waiter watches run_detached itself (LOOP_LOCK_WAIT_PARENT=$$), not the
-        # $(...) subshell a killed run_detached leaves behind.
+        # Review round 1 (Important 3): the waiter watches run_detached itself (its $$ in LOOP_LOCK_WAIT_PARENT), not
+        # the $(...) subshell a killed run_detached leaves behind.
         self.write_record("worker", 60, hb_age_s=0)
         ran = os.path.join(self.tmp, "ran")
         job = self._job("touch '%s'\n" % fwd(ran))
         marker = os.path.join(self.tmp, "job.done")
-        p = subprocess.Popen([BASH, DETACHED_SH, "--wait", "3", fwd(job), fwd(marker)], stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL,
+        errf = os.path.join(self.tmp, "rd.err")
+        p = subprocess.Popen([BASH, "-c", "exec bash '%s' --wait 3 '%s' '%s' 2> '%s'" % (DETACHED_SH, fwd(job), fwd(marker), fwd(errf))],
+                             stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, text=True,
                              env=self.env(RUN_FREE_GB_CMD="echo 500", RUN_CPU_SAMPLER=0, LOOP_LOCK_WAIT_SEC=60))
         try:
             name = self.wait_tickets(1, seconds=30)[0]
-            # The waiter's pid is in its ticket name, and the pid it watches (run_detached's own) in its environment.
-            # Kill run_detached (-9, as TaskStop does) and leave its $(...) subshell and the waiter behind.
+            # The waiter's pid is in its ticket name, and the pids it watches (run_detached's own first) in its
+            # environment. Kill run_detached itself (-9: no trap runs) and leave its $(...) subshell and the waiter.
             waiter = re.search(r"-(\d+)x\d+$", name).group(1)
             find = "tr '\\0' '\\n' < /proc/%s/environ | sed -n 's/^LOOP_LOCK_WAIT_PARENT=//p'" % waiter
-            rd = subprocess.run([BASH, "-c", find], capture_output=True, text=True, timeout=30).stdout.strip()
+            rd = subprocess.run([BASH, "-c", find], capture_output=True, text=True, timeout=30).stdout.split()[0]
             self.assertTrue(rd.isdigit(), rd)
             subprocess.run([BASH, "-c", "kill -9 %s" % rd], timeout=30)
             deadline = time.time() + 30
@@ -1403,8 +1460,36 @@ class TestRunDetached(LockTestBase):
             time.sleep(8)
             self.assertIsNone(self.holder())
             self.assertFalse(os.path.exists(ran))
+            self.assertIn("ORPHANED: watched process %s" % rd, _read(errf))
         finally:
             self.reap_procs(p)
+
+    def test_detached_waiter_leaves_the_queue_when_its_caller_is_killed(self):
+        # Review round 2 (Important 1): TaskStop kills the CALLING shell -- run_detached's parent -- and leaves
+        # run_detached running. Its waiter watches that caller too: it leaves the queue, run_detached writes
+        # exit=75 ORPHANED to the marker, and the abandoned job never launches.
+        self.write_record("worker", 60, hb_age_s=0)
+        ran = os.path.join(self.tmp, "ran")
+        job = self._job("touch '%s'\n" % fwd(ran))
+        marker = os.path.join(self.tmp, "job.done")
+        pidf = os.path.join(self.tmp, "caller.pid")
+        caller = subprocess.Popen([BASH, "-c", "echo $$ > '%s'; bash '%s' --wait 3 '%s' '%s'; sleep 1"
+                                   % (fwd(pidf), DETACHED_SH, fwd(job), fwd(marker))],
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                  env=self.env(RUN_FREE_GB_CMD="echo 500", RUN_CPU_SAMPLER=0, LOOP_LOCK_WAIT_SEC=60))
+        try:
+            self.assertEqual(len(self.wait_tickets(1, seconds=30)), 1, "run_detached never queued")
+            subprocess.run([BASH, "-c", "kill -9 %s" % _read(pidf).strip()], timeout=30)
+            text = self._wait_marker(marker, 60)
+            self.assertTrue(text.startswith("exit=75"), text)
+            self.assertIn("ORPHANED", text)
+            self.assertEqual(self.tickets(), [])
+            self.assertEqual(self.sh("release", "worker")[0], 0)
+            time.sleep(8)
+            self.assertIsNone(self.holder())
+            self.assertFalse(os.path.exists(ran), "the abandoned job launched")
+        finally:
+            self.reap_procs(caller)
 
     def _git_repo_with_worktree(self):
         """A throwaway repository (main + one linked worktree) carrying the scripts under test."""

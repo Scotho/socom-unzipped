@@ -50,7 +50,8 @@
 #     decision or by `check` (a "TICKET-DROPPED" history line): a hard-killed waiter (SIGKILL; TaskStop
 #     of its whole tree) at the front idles a FREE lock for up to 180 s, never longer; `check` marks such
 #     a ticket STALE. A waiter whose CALLER was killed (TaskStop leaves children running) notices within a
-#     slice -- it watches its parent pid (LOOP_LOCK_WAIT_PARENT overrides which) -- and leaves the queue
+#     slice -- it watches its parent pid, and for `run --wait` the run process too (LOOP_LOCK_WAIT_PARENT,
+#     a pid list, overrides; run_detached.sh passes its own pid and its caller's) -- and leaves the queue
 #     ("ORPHANED", exit 1) rather than claim the lock for a job nobody runs. This is not the holder's 15 min: a holder is renewed from a job wrapper every 60-300 s and a
 #     false reap makes two holders, while a waiter renews itself every <= 5 s and a false drop costs
 #     nothing -- a live waiter whose ticket vanished re-queues under the SAME name, i.e. its old place.
@@ -106,8 +107,8 @@
 # "<ProcessId>|<ParentProcessId>|<CreationStamp>|<Name>|<CommandLine>" line per process; the stamp is a
 # sortable number or empty), LOOP_LOCK_SELF_WINPID (the Windows PID the ancestor walk starts from),
 # LOOP_LOCK_RENEW_SEC, LOOP_LOCK_WAIT_SEC (a waiter's full-attempt interval, 60; it never changes how long
-# --wait waits), LOOP_LOCK_TICKET_STALE_SEC (180), LOOP_LOCK_WAIT_PARENT (the pid a waiter watches; default its
-# parent, empty = none), LOOP_LOCK_REAP_MIN, LOOP_LOCK_STALE_MIN,
+# --wait waits), LOOP_LOCK_TICKET_STALE_SEC (180), LOOP_LOCK_WAIT_PARENT (the pids a waiter watches, space-separated;
+# default its parent, empty = none), LOOP_LOCK_REAP_MIN, LOOP_LOCK_STALE_MIN,
 # LOOP_LOCK_MUTEX_WAIT_SEC, LOOP_LOCK_MUTEX_STALE_SEC, and LOOP_LOCK_TEST_PAUSE_AT=<point>[,...] with
 # LOOP_LOCK_TEST_PAUSE_DIR: at a named point the script touches <dir>/<point>.paused and waits for
 # <dir>/<point>.go (points: reap_before_mutex, reap_inside_mutex, renew_before_mutex, renew_inside_mutex,
@@ -631,16 +632,18 @@ valid_owner() { case "$1" in ''|-*|NOREC|*[[:space:]]*) echo "owner must be a no
 # Take, queueing for up to max_seconds of WALL time (issue #35: never a count of attempts). The first
 # refusal writes this waiter's ticket; a full attempt every WAIT_SEC, and at once when a slice finds the
 # lock free; the ticket's heartbeat every slice, and a re-queue under the same name if it was dropped.
-# ORPHANS: every slice it checks that WAIT_PARENT (the process that called this script) still lives; a
-# waiter whose caller was killed (TaskStop leaves children running) leaves the queue and gives up
-# (exit 1, "ORPHANED") instead of reaching the front and claiming the lock for a job nobody runs.
+# ORPHANS: every slice it checks that every pid in WAIT_PARENTS (the caller, and for `run` the run process
+# itself) still lives; a waiter one of whose watched processes was killed (TaskStop kills the calling
+# shell and leaves its children running) leaves the queue and gives up (exit 1, "ORPHANED") instead of
+# reaching the front and claiming the lock for a job nobody runs or renews.
 do_wait() {   # owner max_seconds purpose  (sets TAKEN_ID)
-  local owner="$1" max="$2" purpose="$3" start deadline i=0 out rc last t
+  local owner="$1" max="$2" purpose="$3" start deadline i=0 out rc last t p
   start=$(now); deadline=$(( start + max ))
+  [ -n "$START_BLOB" ] || START_BLOB=$(script_blob)      # hashed when the wait begins, i.e. at start
   QTICKET=""
-  trap 'q_leave; exit 130' INT
-  trap 'q_leave; exit 143' TERM
-  trap 'q_leave; exit 129' HUP
+  trap 'q_leave; echo "[loop_lock] waiter $owner: INT -- left the queue" >&2; exit 130' INT
+  trap 'q_leave; echo "[loop_lock] waiter $owner: TERM -- left the queue" >&2; exit 143' TERM
+  trap 'q_leave; echo "[loop_lock] waiter $owner: HUP (its caller went away) -- left the queue" >&2; exit 129' HUP
   while :; do
     i=$(( i + 1 ))
     out=$(do_take "$owner" "$purpose"; rc=$?; echo "@@ID $TAKEN_ID"; exit $rc); rc=$?
@@ -660,11 +663,15 @@ do_wait() {   # owner max_seconds purpose  (sets TAKEN_ID)
       local s=$SLICE_SEC; [ $(( deadline - t )) -lt "$s" ] && s=$(( deadline - t ))
       sleep "$s"
       touch -c "$Q/$QTICKET" 2>/dev/null
-      if [ -n "$WAIT_PARENT" ] && ! kill -0 "$WAIT_PARENT" 2>/dev/null; then
+      for p in $WAIT_PARENTS; do
+        kill -0 "$p" 2>/dev/null && continue
         q_leave; trap - INT TERM HUP
-        echo "ORPHANED: the caller (pid $WAIT_PARENT) is gone; left the queue after $(( $(now) - start )) s [loop_lock.sh ${START_BLOB:0:12}]"
+        # stderr FIRST, then stdout: a killed caller's $(...) pipe is gone, and the stdout write then raises
+        # SIGPIPE, which ends this process; stderr still reaches a log.
+        t="ORPHANED: watched process $p (of:$WAIT_PARENTS) is gone; left the queue after $(( $(now) - start )) s [loop_lock.sh ${START_BLOB:0:12}]"
+        echo "[loop_lock] $t" >&2; echo "$t"
         return 1
-      fi
+      done
       held || break                                  # a free lock: try now (the grant decides who gets it)
     done
   done
@@ -674,15 +681,18 @@ do_wait() {   # owner max_seconds purpose  (sets TAKEN_ID)
   return 1
 }
 
-# Captured ONCE, when this process starts (bash then reads the file by offset as it goes): the blob of the
-# code this waiter runs, not of whatever sits on disk later -- after a landing, `version` prints the new
-# blob while a waiter from before it still prints its own. The rollout compares a waiter's own lines.
-START_BLOB=""; case "$1" in wait|run) START_BLOB=$(script_blob);; esac
-# The caller a waiter watches (do_wait): our parent, when it is a real process of this shell's world (an
-# MSYS parent; a Windows-native parent such as python shows as pid 1 and is not watched).
-WAIT_PARENT="${LOOP_LOCK_WAIT_PARENT-$PPID}"
-case "$WAIT_PARENT" in ''|0|1|*[!0-9]*) WAIT_PARENT="";; esac
-[ -n "$WAIT_PARENT" ] && ! kill -0 "$WAIT_PARENT" 2>/dev/null && WAIT_PARENT=""
+# Captured ONCE, when a wait begins (do_wait, right at the start of the process; bash then reads the file
+# by offset as it goes): the blob of the code this waiter runs, not of whatever sits on disk later --
+# after a landing, `version` prints the new blob while a waiter from before it still prints its own.
+START_BLOB=""
+# The processes a waiter watches (do_wait): LOOP_LOCK_WAIT_PARENT (a space-separated pid list;
+# run_detached.sh passes its own pid and its caller's), else our parent -- each only when it is a live
+# process of this shell's world (a Windows-native parent such as python shows as pid 1 and is skipped).
+WAIT_PARENTS=""
+for p in ${LOOP_LOCK_WAIT_PARENT-$PPID}; do
+  case "$p" in ''|0|1|*[!0-9]*) continue;; esac
+  kill -0 "$p" 2>/dev/null && WAIT_PARENTS="$WAIT_PARENTS $p"
+done
 
 case "$1" in
   take)
@@ -728,13 +738,15 @@ case "$1" in
     owner="$2"; valid_owner "$owner"; parse_opts "${@:3}"
     if [ ${#REST[@]} -eq 0 ]; then echo "$USAGE"; exit 2; fi
     if [ -n "$WAITSEC" ]; then
+      # The waiter runs in a $(...) subshell: watch this `run` process ($$) too, so a killed run never
+      # leaves a subshell that claims the lock with nobody to run the command or renew it.
+      WAIT_PARENTS="$WAIT_PARENTS $$"
       out=$(do_wait "$owner" "$WAITSEC" "$PURPOSE"; rc=$?; echo "@@ID $TAKEN_ID"; exit $rc); rc=$?
     else
       out=$(do_take "$owner" "$PURPOSE"; rc=$?; echo "@@ID $TAKEN_ID"; exit $rc); rc=$?
     fi
     held_id=$(printf '%s\n' "$out" | sed -n 's/^@@ID //p')
     out_text=$(printf '%s\n' "$out" | grep -v '^@@ID ')
-    case "$out_text" in *"[loop_lock.sh "*) ;; *) out_text="$out_text [loop_lock.sh ${START_BLOB:0:12}]";; esac
     echo "[loop_lock] $out_text"
     [ $rc -eq 0 ] || exit 75
     case "$out" in *NESTED*) exec "${REST[@]}";; esac

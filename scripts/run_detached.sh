@@ -244,11 +244,14 @@ want_quiet=$quiet_flag
 case "$purpose" in launch*) want_quiet=1;; esac
 
 if [ -n "$wait_sec" ]; then
-  # The waiter watches THIS process (not the $(...) subshell it is forked from, which a killed parent leaves
-  # behind): if run_detached is killed while queued, the waiter leaves the queue instead of claiming the
-  # lock for a job that will never launch. Its blob is recorded now -- this file is read by offset too.
-  echo "run_detached: queueing for the loop lock as $owner (up to $wait_sec s) [run_detached.sh $(git hash-object "$0" 2>/dev/null | cut -c1-12)]"
-  out=$(LOOP_LOCK_WAIT_PARENT=$$ bash "$LOCKSH" wait "$owner" --wait-seconds "$wait_sec" --purpose "$purpose" --print-id)
+  # The waiter watches THIS process and its CALLER (not the $(...) subshell it is forked from, which a
+  # killed parent leaves behind): TaskStop kills the calling shell and leaves run_detached running, so a
+  # stopped agent's queued launch must die with its caller, not launch the abandoned job hours later. A
+  # Windows-native caller (python) shows as pid 1 and is skipped. The blob is recorded now -- this file is
+  # read by offset too.
+  watch="$$"; case "$PPID" in ''|0|1) ;; *) watch="$$ $PPID";; esac
+  echo "run_detached: queueing for the loop lock as $owner (up to $wait_sec s, watching pids $watch) [run_detached.sh $(git hash-object "$0" 2>/dev/null | cut -c1-12)]"
+  out=$(LOOP_LOCK_WAIT_PARENT="$watch" bash "$LOCKSH" wait "$owner" --wait-seconds "$wait_sec" --purpose "$purpose" --print-id)
 else
   out=$(bash "$LOCKSH" take "$owner" --purpose "$purpose" --print-id)
 fi
