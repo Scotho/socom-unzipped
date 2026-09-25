@@ -218,7 +218,7 @@ Beside the modules, `tools_py/screenshot.ps1` captures a window by hand.
 | `gsdump_extract.py` | Turn a PCSX2 GS dump into the console-replay fixture `ps2x_tests` reads |
 | `gsdump_timeline.py` | Per frame of a PCSX2 GS dump, every transfer, texture bind and kick. Run it as: `python -m tools_py.gsdump_timeline <dump.gs> [--pages P:N] [--all]` |
 | `hostprof_symbolize.py` | Symbolise a `PS2X_HOST_PROF` histogram against `dist/socom2.exe` |
-| `hostprof_diff.py` | Symbolise the difference of two `PS2X_HOST_PROF` histograms. Run it as: `python -m tools_py.hostprof_diff <pre.txt> <end.txt> [--top N] [--exe dist/socom2.exe] [--by-file]` |
+| `hostprof_diff.py` | Symbolise the difference of two `PS2X_HOST_PROF` histograms. Run it as: `python -m tools_py.hostprof_diff <pre.txt> <end.txt> [--top N] [--exe dist/socom2.exe] [--start-exe <pre's exe>]`; functions pair by the `_0x<start>` guest-address suffix, so a renamed function pairs with its old profile (Sprint 13 N1) |
 | `hostprof_stacks.py` | Fold and symbolise the stacks of a `PS2X_HOST_PROF_STACKS=1` histogram. Run it as: `python -m tools_py.hostprof_stacks [logs/hostprof.txt] [--exe dist/socom2.exe] [--top N]` |
 | `marker_timeline.py` | Merge a run log's game-thread events into one stream for the texture-set marker protocol. Run it as: `python -m tools_py.marker_timeline <run.log> [--from-frame N] [--frames M]` |
 | `rdr_tree.py` | Print a parsed `.rdr` tree from a guest RAM dump (`PS2X_RDRAM_DUMP`) |
