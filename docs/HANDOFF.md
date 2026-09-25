@@ -85,13 +85,13 @@ holds: order by what the owner meets first, then by dependency, then by cost.
    Owner-specific literals (personal literals, old account names) go in the git-ignored `tools_py/release/leak_extra.txt`.
 3. **End every commit message with the `Co-Authored-By` trailer your session is given** -- not one copied from an older
    commit or document. Subjects are `type(scope): what and why`, long, and say the finding (`docs/GIT_STRATEGY.md`).
-4. **Push to the OPEN sprint's branch on `origin` and check CI** (`gh run list --branch <that branch> --limit 1`;
-   the branch is the `branch:` line of `docs/CURRENT_SPRINT.md`'s header block, and only there). Never hard-code a
-   sprint number here: this rule said `sprint-9` for two sprints. CI must stay green. Every push runs `linux`,
-   `windows` and `secrets`: on a `docs/**`-only push the first two run only their ten-second `changes` job and skip
-   the build, which reports as success (read the run, not the word), while `secrets` runs its full leak check over
-   the tree and the history either way; anything that is not docs-only costs an hour on a hosted runner. The fourth
-   workflow, `release-draft`, runs only on a pushed `v*` tag (or by hand). **Know what green means:** the `linux` and `windows` workflows
+4. **Push to the OPEN sprint's branch on `origin` and check CI** (`gh run list --commit <sha>` for the commit you
+   pushed; the branch is the `branch:` line of `docs/CURRENT_SPRINT.md`'s header block, and only there). Never
+   hard-code a sprint number here: this rule said `sprint-9` for two sprints. CI must stay green. A `docs/**`-only
+   push starts no `linux` or `windows` run at all -- only `secrets` (its full leak check over the tree and the
+   history) and `docs` (the doc checks) run; any other push runs `linux`, `windows` and `secrets`, and costs an hour
+   on a hosted runner. How to read each case, pull requests included: DEVELOPING's "Reading a CI run" (Sprint 13 H1).
+   The fifth workflow, `release-draft`, runs only on a pushed `v*` tag (or by hand). **Know what green means:** the `linux` and `windows` workflows
    build with NO generated game code and never run the gate. They prove the library, the two suites and the
    launcher. They prove nothing about the game.
    > Superseded 2026-09-25 (Sprint 13 R2): this rule named the branch as "`sprint-10` through its close, `sprint-11`
