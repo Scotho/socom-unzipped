@@ -4,7 +4,7 @@
 
 ## 1. Open issues
 
-17 open issues. *Carried* counts the sprint closes an issue has survived (its `Carried ...` comments, or one for the `carried` label alone); at 2 the next close asks the owner.
+18 open issues. *Carried* counts the sprint closes an issue has survived (its `Carried ...` comments, or one for the `carried` label alone); at 2 the next close asks the owner.
 
 | Issue | Title | Area | Milestone | Carried | Closing bar (first sentence) |
 |---|---|---|---|---|---|
@@ -25,6 +25,7 @@
 | #42 | About 50 ms of the mission music is lost between the mixer's render() and the device, on any endpoint | audio | Sprint 13 | 2 | A capture that stamps the mixer's output-frame clock on both the dump and the endpoint recording, so that each dip is attributed to a render call rather than to a wall-clock alignment; the cause it lands on fixed and the same capture re-run with the per-minute DEVICE count at zero; and that per-minute count pinned into the audio gate so it cannot drift back silently. |
 | #47 | VU0 macro-mode flag latency: MAC/STATUS flags land immediately in the recompilation | recomp | backlog | 0 | A MiniTest reproducing the hardware latency for one macro-mode sequence from research/31 section 17 against a PCSX2 trace, with the recompiled flags matching it. |
 | #48 | A revision build with --out drops the names sidecar: the toml's names path does not resolve and every function comes out FUN_/sub_ with only an info line | recomp | backlog | 0 | `build_revision.sh <rev> ... --out <dir>` produces a toml whose names path resolves (the sidecar copied beside it, or the path made absolute), a test in tools_py/tests/test_build_revision.py proving it, and the recompiler's log line for a names file that does not resolve promoted from info to a warning that build.sh's recomp step surfaces. |
+| #51 | The CD group and g_iopHeapNext are still per-TU copies in the stub helpers | recomp | backlog | 0 | The CD group and `g_iopHeapNext` are each moved out of the anonymous namespace into a `PS2Runtime`-owned struct in a commit of its own, each under a two-runtime unit test and followed by a full three-stage gate: either both gates pass 3/3 (the per-TU copies are gone and the row settles), or the group whose gate loses the mission stage is named in the row with its gate log. |
 
 ## 2. Ruled not an issue
 
