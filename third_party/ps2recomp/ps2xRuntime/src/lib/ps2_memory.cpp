@@ -216,6 +216,17 @@ namespace
         uint32_t upper = 0;
     };
 
+    // A non-SPR DMAC channel's start address (MADR, TADR): bit 31 selects the scratchpad and the low 14 bits are
+    // the SPR offset. ps2IsScratchpadAddress() keeps the EE-side meaning (a bit-31 address is SPR only as a
+    // 0xF000xxxx alias), which reads a DMAC 0x80000080 as RDRAM 0x80 (upstream ran-j/PS2Recomp #224). A DMAtag's
+    // own ADDR selector is decoded in the chain walker.
+    inline uint32_t dmacStartAddress(uint32_t address)
+    {
+        if ((address & 0x80000000u) != 0u)
+            return PS2_SCRATCHPAD_BASE + (address & (PS2_SCRATCHPAD_SIZE - 1u));
+        return address;
+    }
+
     inline DmaTagView decodeDmaTag(uint64_t tag)
     {
         DmaTagView out{};
@@ -1356,11 +1367,13 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
 
                 if (mode == 0 && qwc > 0)
                 {
-                    enqueueTransfer(madr, qwc);
+                    enqueueTransfer(dmacStartAddress(madr), qwc);
                 }
                 else if (mode == 1)
                 {
                     uint32_t tagAddr = m_ioRegisters[channelBase + 0x30];
+                    if (!mfifoDrain)   // the MFIFO drain walks the RDRAM ring; its TADR is never an SPR address
+                        tagAddr = dmacStartAddress(tagAddr);
                     uint32_t asr0 = m_ioRegisters[channelBase + 0x40];
                     uint32_t asr1 = m_ioRegisters[channelBase + 0x50];
                     uint32_t asp = (chcr >> 4) & 0x3u;

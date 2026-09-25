@@ -1240,6 +1240,81 @@ void register_ps2_memory_tests()
             t.IsTrue(contentOk, "scratchpad GIF DMA packet bytes should match scratchpad source");
         });
 
+        // Upstream ran-j/PS2Recomp #224 (GTTeancum), the start-address half: on a non-SPR channel, bit 31 of MADR or
+        // TADR selects the scratchpad (the low 14 bits are the SPR offset). The helper the walker used took a bit-31
+        // address for SPR only when its low 31 bits were 0x7000xxxx, so 0x80000080 read RDRAM 0x80. The tag-ADDR
+        // half (bit 63 of a DMAtag) was already ours (51529462).
+        tc.Run("GIF DMA mode0 honors the MADR bit-31 scratchpad selector", [](TestCase &t)
+        {
+            PS2Memory mem;
+            t.IsTrue(mem.initialize(), "PS2Memory initialize should succeed");
+
+            constexpr uint32_t kGifCh = 0x1000A000u;
+            constexpr uint32_t kSprMadr = 0x80000080u;   // SPR selector | offset 0x80
+            constexpr uint32_t kOffset = 0x80u;
+
+            uint8_t *scratch = mem.getScratchpad();
+            uint8_t *rdram = mem.getRDRAM();
+            for (uint32_t i = 0; i < 16u; ++i)
+            {
+                scratch[kOffset + i] = static_cast<uint8_t>(0xB0u + i);
+                rdram[kOffset + i] = static_cast<uint8_t>(0x11u);   // the wrong source, distinct from SPR
+            }
+
+            std::vector<std::vector<uint8_t>> captured;
+            mem.setGifPacketCallback([&](const uint8_t *data, uint32_t sizeBytes)
+            {
+                captured.emplace_back(data, data + sizeBytes);
+            });
+
+            t.IsTrue(mem.writeIORegister(kGifCh + 0x10u, kSprMadr), "write SPR-selected MADR should succeed");
+            t.IsTrue(mem.writeIORegister(kGifCh + 0x20u, 1u), "write QWC should succeed");
+            t.IsTrue(mem.writeIORegister(kGifCh + 0x00u, 0x100u), "write CHCR STR should succeed");
+
+            mem.processPendingTransfers();
+
+            t.Equals(captured.size(), static_cast<size_t>(1u), "SPR-selected MADR should emit one packet");
+            t.IsTrue(!captured.empty() && captured[0].size() == 16u &&
+                         std::equal(captured[0].begin(), captured[0].end(), scratch + kOffset),
+                     "SPR-selected MADR should read scratchpad bytes, not RDRAM");
+        });
+
+        tc.Run("GIF DMA chain honors the TADR bit-31 scratchpad selector", [](TestCase &t)
+        {
+            PS2Memory mem;
+            t.IsTrue(mem.initialize(), "PS2Memory initialize should succeed");
+
+            constexpr uint32_t kGifCh = 0x1000A000u;
+            constexpr uint32_t kSprTadr = 0x80000100u;   // SPR selector | offset 0x100
+            constexpr uint32_t kOffset = 0x100u;
+
+            uint8_t *scratch = mem.getScratchpad();
+            uint8_t *rdram = mem.getRDRAM();
+            writeDmaTag(scratch, kOffset, makeDmaTag(1u, 7u, 0u));    // END, one qword after the tag
+            writeDmaTag(rdram, kOffset, makeDmaTag(1u, 7u, 0u));      // a decoy chain in RDRAM at the same offset
+            for (uint32_t i = 0; i < 16u; ++i)
+            {
+                scratch[kOffset + 16u + i] = static_cast<uint8_t>(0xD0u + i);
+                rdram[kOffset + 16u + i] = static_cast<uint8_t>(0x22u);
+            }
+
+            std::vector<std::vector<uint8_t>> captured;
+            mem.setGifPacketCallback([&](const uint8_t *data, uint32_t sizeBytes)
+            {
+                captured.emplace_back(data, data + sizeBytes);
+            });
+
+            t.IsTrue(mem.writeIORegister(kGifCh + 0x30u, kSprTadr), "write SPR-selected TADR should succeed");
+            t.IsTrue(mem.writeIORegister(kGifCh + 0x00u, 0x104u), "write CHCR STR|CHAIN should succeed");
+
+            mem.processPendingTransfers();
+
+            t.Equals(captured.size(), static_cast<size_t>(1u), "SPR-selected TADR chain should emit one packet");
+            t.IsTrue(!captured.empty() && captured[0].size() == 16u &&
+                         std::equal(captured[0].begin(), captured[0].end(), scratch + kOffset + 16u),
+                     "SPR-selected TADR should walk the scratchpad chain, not RDRAM");
+        });
+
         tc.Run("GIF DMA chain can source tags and payload from 0xF000 scratchpad alias", [](TestCase &t)
         {
             PS2Memory mem;
