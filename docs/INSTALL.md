@@ -133,7 +133,9 @@ game exited. Every one of those sentences has an entry in `FAQ.md`.
 **SERVER.** The default is already the right one: **SOCOM Unzipped (project server)**, *"the project's hosted server
 (US East)"*, reached by name at `socom.scotho.com`. When the launcher can reach it, a status line from the server
 itself appears at the top right of the page; when you are offline the line is simply blank. **Custom** takes any
-address or hostname.
+address or hostname — your own Horizon server's, for instance. That server ships with no address of its own: its
+configs hold the documentation placeholder `192.0.2.1` and `server/start-servers.ps1` will not start until you give
+it this machine's address with `-PublicIp` (`server/README.md`, "Advertised address").
 
 The community preset, **SOCOM Community (public Horizon)**, is drawn at the top of the list but is not on offer, and the launcher says why:
 *"needs the r0004 game update -- planned"*. It cannot be selected, and pointing this client at a community server is

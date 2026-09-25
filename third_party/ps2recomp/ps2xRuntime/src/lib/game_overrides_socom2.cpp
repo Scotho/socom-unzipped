@@ -1458,7 +1458,7 @@ namespace
     // so socom2_libnetb::doCreate shifts the host bind. That shift was invisible to the guest:
     // rt_net FUN_00620648 writes the base port 3658 into its config object at +0xC and the client
     // publishes THAT value as the internal address of its DME 0x18 client record -- so instance B
-    // advertised 127.0.0.1/192.168.2.10:3658 (A's port) internally while its external slot said
+    // advertised 127.0.0.1/the LAN address:3658 (A's port) internally while its external slot said
     // :3660. PCSX2's client B carries :3660 in BOTH slots, because its pnach
     // (patch=1,EE,20620678,extended,24040E4C) rewrites the same constant in the guest.
     // This wrapper does what the pnach does: after the original ran, rewrite the base port field.

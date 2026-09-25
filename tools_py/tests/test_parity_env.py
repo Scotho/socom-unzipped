@@ -49,8 +49,8 @@ class EnvShTest(unittest.TestCase):
     def test_socom_server_ip_overrides(self):
         """SOCOM_SERVER_IP is the one knob that points the harness at another server."""
         out = run_bash(". scripts/parity/env.sh; echo $PS2X_SOCOM2_SERVER",
-                       env={"SOCOM_SERVER_IP": "10.0.0.5"})
-        self.assertEqual(out[0], "10.0.0.5")
+                       env={"SOCOM_SERVER_IP": "198.51.100.5"})
+        self.assertEqual(out[0], "198.51.100.5")
 
     def test_source_twice_is_harmless(self):
         out = run_bash(". scripts/parity/env.sh; . scripts/parity/env.sh; "

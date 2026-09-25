@@ -54,7 +54,7 @@ void register_bare_run_tests()
             c.gsScale = 2;
             c.profile = "viper";
             c.serverPreset = "custom";
-            c.server = "10.0.0.5";
+            c.server = "198.51.100.5";
             c.crouchShortcut = "l3";
             writeText(home / "config.json", launcher::toJson(c));
             const BareRun::Plan p = BareRun::plan(home);
@@ -64,7 +64,7 @@ void register_bare_run_tests()
             t.Equals(p.logDir, home / "logs", "the log goes where the launcher puts it");
             t.Equals(valueOf(p.environment, "PS2X_CD_IMAGE"), std::string("D:/discs/socom2.iso"), "the verified ISO");
             t.Equals(valueOf(p.environment, "PS2X_GS_SCALE"), std::string("2"), "the render scale");
-            t.Equals(valueOf(p.environment, "PS2X_SOCOM2_SERVER"), std::string("10.0.0.5"), "the server");
+            t.Equals(valueOf(p.environment, "PS2X_SOCOM2_SERVER"), std::string("198.51.100.5"), "the server");
             t.Equals(valueOf(p.environment, "PS2X_SOCOM2_PAD"), std::string("1"), "the pad, always");
             t.Equals(valueOf(p.environment, "PS2X_PAD_CROUCH_SHORTCUT"), std::string("l3"),
                      "the crouch shortcut (R139): a double-clicked game crouches the way the launcher's does");

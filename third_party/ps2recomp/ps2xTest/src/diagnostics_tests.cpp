@@ -20,7 +20,7 @@ namespace
         "  \"token\": \"abc123token\",\n"
         "  \"account\": {\"name\": \"viper\", \"sessionKey\": \"deadbeefcafe\"},\n"
         "  \"serverPreset\": \"custom\",\n"
-        "  \"server\": \"10.0.0.5\",\n"
+        "  \"server\": \"198.51.100.5\",\n"
         "  \"profile\": \"viper\"\n"
         "}\n";
 
@@ -85,7 +85,7 @@ void register_diagnostics_tests()
             t.IsTrue(launcher::fromJson(json, c), "what comes out is a config.json the launcher can read");
             t.Equals(c.isoPath, std::string("SOCOM II (USA).iso"), "the ISO's folder is gone, its name stays (it says which dump)");
             t.Equals(c.gsScale, 2, "settings survive");
-            t.Equals(c.server, std::string("10.0.0.5"), "the custom server stays: an online report is useless without it (R134)");
+            t.Equals(c.server, std::string("198.51.100.5"), "the custom server stays: an online report is useless without it (R134)");
             t.Equals(c.profile, std::string("viper"), "the profile stays: it names the card folder");
             t.Equals(json, launcher::toJson(c), "and it is exactly toJson of that: nothing else can be in it");
             launcher::Config forward;

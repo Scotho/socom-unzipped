@@ -2,6 +2,7 @@
 """The gate that decides whether this repository may face outward -- one command, exit non-zero on any hit.
 
     python -m tools_py.release.leakcheck tree               every tracked file, as it is in the working tree
+                                                            (and, there and in `staged`, any private address)
     python -m tools_py.release.leakcheck staged             what `git commit` is about to take (the pre-commit hook)
     python -m tools_py.release.leakcheck ignored            the paths that hold the real secrets are ignored,
                                                             untracked, and were never committed
@@ -173,6 +174,42 @@ def scan_blob(rel, blob, rules, hits, stats):
         scan_text(rel, blob.decode("utf-8", errors="replace"), trules, hits, stats)
 
 
+# A private address in a TRACKED file (Sprint 13 S6). The `private-ip` text rule runs only on artifacts, and the
+# history keeps what it keeps; but a private address in the tree AS IT IS NOW is either a default somebody copies
+# (the Horizon configs once advertised the owner's LAN) or a note that has to say why it is there. So `tree` and
+# `staged` -- not `history`, which cannot be rewritten -- report each one as `tracked-private-ip`, and every
+# allowed one is a row in leak_allow.txt with its reason. An example belongs in RFC 5737's documentation ranges
+# (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24), which this never reports.
+TRACKED_PRIVATE_RULE = "tracked-private-ip"
+
+
+def scan_private(rel, blob, hits):
+    """One `tracked-private-ip` hit per line of a text file that carries an RFC 1918 or link-local address."""
+    if is_binary(blob):
+        return
+    for i, line in enumerate(blob.decode("utf-8", errors="replace").splitlines(), 1):
+        m = R.PRIVATE_IP_RE.search(line)
+        if m:
+            hits.append(Hit(rel, i, TRACKED_PRIVATE_RULE, m.group(0), line.strip()[:200]))
+
+
+def check_tracked_private(cwd=ROOT, allow=None):
+    """The `tracked-private-ip` half of `tree` on its own: every tracked file as it is in the working tree."""
+    hits, stats = [], new_stats()
+    for rel in tracked_files(cwd):
+        full = os.path.join(cwd, rel)
+        if os.path.isdir(full):
+            continue
+        try:
+            with open(full, "rb") as fh:
+                blob = fh.read()
+        except OSError:
+            continue
+        stats["files"] += 1
+        scan_private(rel, blob, hits)
+    return _filter(hits, allow), stats
+
+
 def build_rules(users=None, extras=None, hosted=R.HOSTED_IPS, surface="tree"):
     return (R.text_rules(users, extras, hosted, surface), R.binary_rules(users, extras), R.name_rules(users, extras))
 
@@ -226,6 +263,7 @@ def check_tree(cwd=ROOT, rules=None, allow=None):
             hits.append(Hit(rel, 0, "unreadable", str(e)))
             continue
         scan_blob(rel, blob, rules, hits, stats)
+        scan_private(rel, blob, hits)
     return _filter(hits, allow), stats
 
 
@@ -263,6 +301,7 @@ def check_staged(cwd=ROOT, rules=None, allow=None):
             hits.append(Hit(rel, 0, "forced-ignored-file", rel, "staged although .gitignore ignores it"))
         blob = git(["show", f":{rel}"], cwd=cwd, binary=True)
         scan_blob(rel, blob, rules, hits, stats)
+        scan_private(rel, blob, hits)
     return _filter(hits, allow), stats
 
 
@@ -655,7 +694,16 @@ def self_test():
         missed.append("owner-user-name: the product's own name is still hunted as this machine's user")
     if R.drop_product_words([PLANTED_USER], log=False) != {PLANTED_USER}:
         missed.append("owner-user-name: a real user name was dropped as a product word")
-    total = len(cases) + len(PLANTED_NAMES) + 3
+    # Sprint 13 S6: the tracked-tree address check fires on a private address and never on a documentation one
+    got = []
+    scan_private("planted", b"lan 10.20.30.40 and 172.20.0.9\n", got)
+    if [h.rule for h in got] != [TRACKED_PRIVATE_RULE]:
+        missed.append("tracked-private-ip: a private address in a tracked file was not reported")
+    got = []
+    scan_private("planted", b"example 192.0.2.10, 198.51.100.5, 203.0.113.7, 127.0.0.1\n", got)
+    if got:
+        missed.append("tracked-private-ip: an RFC 5737 documentation address was reported")
+    total = len(cases) + len(PLANTED_NAMES) + 5
     return {"planted": total, "caught": total - len(missed), "missed": missed}
 
 

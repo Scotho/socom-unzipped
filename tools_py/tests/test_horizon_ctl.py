@@ -96,5 +96,68 @@ class HorizonCtlPublicIp(unittest.TestCase):
         self.assertIn("127.0.0.1", r.stdout)
 
 
+PLACEHOLDER = "192.0.2.1"      # what the tracked configs advertise since Sprint 13 S6 (RFC 5737)
+
+
+@unittest.skipUnless(BASH, "no bash on this host")
+class HorizonCtlRefusesThePlaceholder(unittest.TestCase):
+    """Sprint 13 S6 fix round 1: the advertised address is a required value on Linux too. `start`/`restart` and
+    `check` refuse while any advertised field holds an RFC 5737 address, naming the fields and the public-ip step;
+    `systemctl` is never reached. systemctl and sudo are shims here that record their calls, so a regression
+    records a call instead of starting anything."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="horizon_ctl_ph_")
+        for name in FILES:
+            shutil.copyfile(os.path.join(CONFIG, name), os.path.join(self.dir, name))
+        self.bin = os.path.join(self.dir, "bin")
+        os.makedirs(self.bin)
+        self.calls = os.path.join(self.dir, "calls.txt")
+        for tool, body in (("systemctl", 'echo "systemctl $*" >> "$SHIM_CALLS"'), ("sudo", '"$@"')):
+            path = os.path.join(self.bin, tool)
+            with open(path, "w", encoding="utf-8", newline="\n") as f:
+                f.write("#!/bin/sh\n" + body + "\n")
+            os.chmod(path, 0o755)
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def run_shimmed(self, *args):
+        env = dict(os.environ, SHIM_CALLS=self.calls.replace("\\", "/"))
+        env["PATH"] = self.bin + os.pathsep + env.get("PATH", "")
+        return subprocess.run([BASH, SCRIPT, *args, "--config-dir", self.dir], capture_output=True, text=True,
+                              cwd=ROOT, env=env)
+
+    def called(self):
+        if not os.path.exists(self.calls):
+            return ""
+        with open(self.calls, encoding="utf-8") as f:
+            return f.read()
+
+    def test_the_tracked_configs_hold_the_placeholder(self):
+        for name in ("medius.json", "dme.json", "muis.json"):
+            with open(os.path.join(CONFIG, name), encoding="utf-8") as f:
+                self.assertIn('"%s"' % PLACEHOLDER, f.read(), name)
+
+    def test_check_and_start_and_restart_refuse_it_and_start_nothing(self):
+        for verb in ("check", "start", "restart"):
+            with self.subTest(verb=verb):
+                r = self.run_shimmed(verb)
+                self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+                self.assertIn("RFC 5737", r.stderr)
+                self.assertIn("public-ip", r.stderr)
+                self.assertIn("medius.json PublicIpOverride", r.stderr)
+                self.assertIn("Nothing was started", r.stderr)
+        self.assertEqual(self.called(), "", "systemctl was reached")
+
+    def test_a_real_address_passes_the_check_and_start_reaches_systemctl(self):
+        self.assertEqual(self.run_shimmed("public-ip", NEW.replace("203.0.113", "198.18.0")).returncode, 0)
+        r = self.run_shimmed("check")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        r = self.run_shimmed("start")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("systemctl start horizon.target", self.called())
+
+
 if __name__ == "__main__":
     unittest.main()
