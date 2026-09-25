@@ -156,11 +156,12 @@ class KnownRowsTest(unittest.TestCase):
 
 
 def planted(number, state="OPEN", labels=("known-issue", "render"), milestone="Sprint 11",
-            updated="2026-09-23T10:00:00Z", body=GOOD_BODY, title="t", reason=None, comments=()):
+            updated="2026-09-23T10:00:00Z", body=GOOD_BODY, title="t", reason=None, comments=(),
+            created="2026-09-23T09:00:00Z", closed=None):
     return {"number": number, "state": state, "stateReason": reason, "title": title,
             "labels": [{"name": l} for l in labels],
             "milestone": {"title": milestone} if milestone else None,
-            "updatedAt": updated, "body": body,
+            "updatedAt": updated, "createdAt": created, "closedAt": closed, "body": body,
             "comments": [{"author": {"login": "someone"}, "body": c} for c in comments]}
 
 
@@ -297,6 +298,157 @@ class LabelsAgreeTest(unittest.TestCase):
         names = {line.strip()[1:].split("|")[0] for line in block.splitlines() if line.strip().startswith('"')}
         for label in issues.AREAS + (issues.STACK_LABEL, issues.CARRIED_LABEL):
             self.assertIn(label, names, "%s is not created by scripts/github_labels.sh" % label)
+
+
+RULED_OUT_TEXT = """# slug | ruling | bar or reason | where it is written
+soft-double-chain | R265 | Declined until a gate, a control round or a player names a numeric defect that points at it. | audit D14
+window-policy | no issue | One gate at `fullscreen`, its three scores against the pinned run's. | audit A13
+"""
+
+
+class PlantedTree(unittest.TestCase):
+    """A planted repository root with docs/ and the ruled-out list, and a saved listing to replay."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.tmp, "docs"))
+        self.write("docs/backlog_ruled_out.txt", RULED_OUT_TEXT)
+        self.saved_root = issues.ROOT
+        issues.ROOT = self.tmp
+
+    def tearDown(self):
+        issues.ROOT = self.saved_root
+
+    def write(self, rel, text):
+        with open(os.path.join(self.tmp, rel), "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+
+    def read(self, rel):
+        with open(os.path.join(self.tmp, rel), encoding="utf-8") as f:
+            return f.read()
+
+    def listing(self, records, name="listing.json"):
+        path = os.path.join(self.tmp, name)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(records, f)
+        return path
+
+    def run_main(self, argv):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = issues.main(argv)
+        return code, out.getvalue()
+
+
+def carry_comment(text="Carried at the Sprint 11 close (2026-09-25): not in the plan", when="2026-09-25T10:00:00Z"):
+    return {"author": {"login": "someone"}, "body": text, "createdAt": when}
+
+
+class BacklogTest(PlantedTree):
+    """`backlog` writes docs/BACKLOG.md from the open issues plus docs/backlog_ruled_out.txt (R267)."""
+
+    def stack(self):
+        carried = planted(25, labels=("known-issue", "linux", "carried"), milestone="Sprint 13",
+                          title="The VM suites are not green | on the merged tree")
+        carried["comments"] = [carry_comment(), carry_comment("A review note, not a carry"),
+                               carry_comment("Carried once into Sprint 13 (R266): the sprint has a task")]
+        backlog = planted(27, labels=("known-issue", "recomp"), milestone=None,
+                          body=GOOD_BODY.replace("The four captures score >= 90 again on a gate, or the references "
+                                                 "are re-recorded with the change written down.",
+                                                 "One clean-exit launch. If the password is read back, the row "
+                                                 "retracts."))
+        hand = planted(28, labels=("known-issue", "audio", "carried"), milestone=None)
+        closed = planted(29, state="CLOSED")
+        return [closed, hand, backlog, carried]
+
+    def test_the_file_is_written_with_both_tables_and_a_generated_head(self):
+        path = self.listing(self.stack())
+        code, text = self.run_main(["backlog", "--json", path])
+        self.assertEqual(code, 0, text)
+        out = self.read("docs/BACKLOG.md")
+        head = "\n".join(out.splitlines()[:8])
+        self.assertIn("Generated", head)
+        self.assertIn("python -m tools_py.issues backlog", head)
+        self.assertIn("docs/backlog_ruled_out.txt", head)
+        # the open issues, in number order; the closed one is not carry
+        self.assertLess(out.index("| #25 |"), out.index("| #27 |"))
+        self.assertLess(out.index("| #27 |"), out.index("| #28 |"))
+        self.assertNotIn("| #29 |", out)
+        row25 = [l for l in out.splitlines() if l.startswith("| #25 |")][0]
+        self.assertIn("linux", row25)
+        self.assertIn("Sprint 13", row25)
+        self.assertIn("| 2 |", row25, "two 'Carried' comments are two carries; a review note is not one")
+        self.assertIn(r"The VM suites are not green \| on the merged tree", row25, "a pipe in a title is escaped")
+        row27 = [l for l in out.splitlines() if l.startswith("| #27 |")][0]
+        self.assertIn("backlog", row27)
+        self.assertIn("| 0 |", row27)
+        self.assertIn("One clean-exit launch.", row27)
+        self.assertNotIn("retracts", row27, "only the closing bar's first sentence")
+        row28 = [l for l in out.splitlines() if l.startswith("| #28 |")][0]
+        self.assertIn("| 1 |", row28, "the label with no carry comment still counts once (a carry by hand)")
+        # the ruled-out rows, rendered as the second table
+        self.assertIn("| soft-double-chain | R265 |", out)
+        self.assertIn("| window-policy | no issue |", out)
+        self.assertIn("3 open issues", out)
+        self.assertIn("2 rows", out)
+
+    def test_check_passes_on_a_fresh_file_and_fails_on_a_stale_one(self):
+        path = self.listing(self.stack())
+        self.run_main(["backlog", "--json", path])
+        code, text = self.run_main(["backlog", "--json", path, "--check"])
+        self.assertEqual(code, 0, text)
+        # an issue closed since the file was written: stale
+        code, text = self.run_main(["backlog", "--json", self.listing(self.stack()[1:3], "l2.json"), "--check"])
+        self.assertEqual(code, 1, text)
+        self.assertIn("stale", text)
+
+    def test_check_never_writes(self):
+        path = self.listing(self.stack())
+        code, text = self.run_main(["backlog", "--json", path, "--check"])
+        self.assertEqual(code, 1, text)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "docs", "BACKLOG.md")))
+
+    def test_the_offline_check_reads_only_the_ruled_out_half(self):
+        # The docs test has no network: --offline holds the ruled-out table and the head to the tracked list,
+        # and takes the issue table as it stands in the file.
+        path = self.listing(self.stack())
+        self.run_main(["backlog", "--json", path])
+        code, text = self.run_main(["backlog", "--check", "--offline"])
+        self.assertEqual(code, 0, text)
+        self.write("docs/backlog_ruled_out.txt", RULED_OUT_TEXT + "new-row | no issue | A bar. | audit G3\n")
+        code, text = self.run_main(["backlog", "--check", "--offline"])
+        self.assertEqual(code, 1, text)
+        self.assertIn("stale", text)
+
+    def test_a_malformed_ruled_out_row_is_refused_with_its_line(self):
+        self.write("docs/backlog_ruled_out.txt", RULED_OUT_TEXT + "only | three | fields\n")
+        code, text = self.run_main(["backlog", "--json", self.listing(self.stack())])
+        self.assertEqual(code, 2, text)
+        self.assertIn("line 4", text)
+        self.write("docs/backlog_ruled_out.txt", RULED_OUT_TEXT + "x | maybe | A bar. | audit A1\n")
+        code, text = self.run_main(["backlog", "--json", self.listing(self.stack())])
+        self.assertEqual(code, 2, text)
+        self.assertIn("ruling", text)
+        self.write("docs/backlog_ruled_out.txt", RULED_OUT_TEXT + "window-policy | no issue | Again. | audit A1\n")
+        code, text = self.run_main(["backlog", "--json", self.listing(self.stack())])
+        self.assertEqual(code, 2, text)
+        self.assertIn("window-policy", text)
+
+
+class RuledOutListTest(unittest.TestCase):
+    """The tracked list on this tree parses, and every row the audit marked `backlog` has a place in it."""
+
+    def test_the_tracked_list_parses(self):
+        rows = issues.ruled_out_rows()
+        self.assertGreaterEqual(len(rows), 10)
+        for r in rows:
+            self.assertTrue(r["ruling"] == "no issue" or re.match(r"^R\d+$", r["ruling"]), r)
+
+    def test_every_backlog_row_of_the_audit_is_seeded(self):
+        wheres = " ".join(r["where"] for r in issues.ruled_out_rows())
+        for audit_row in ("A13", "C17", "D12", "D13", "D14", "D15", "G2", "G3", "H4", "I5"):
+            self.assertRegex(wheres, r"\baudit %s\b" % audit_row, audit_row)
+        self.assertIn("Sprint 12 Outcome", wheres)
 
 
 if __name__ == "__main__":

@@ -57,6 +57,17 @@ AREAS = ("audio", "render", "online", "launcher", "input", "linux", "packaging",
          "harness", "server", "build", "recomp")
 
 KNOWN = "docs/KNOWN.md"
+# R267: the carry's one home, generated, and the tracked list of rows ruled not to be issues that it renders.
+BACKLOG = "docs/BACKLOG.md"
+RULED_OUT_LIST = "docs/backlog_ruled_out.txt"
+RULED_OUT_HEADING = "## 2. Ruled not an issue"
+RULING_FIELD = re.compile(r"^(R\d+|no issue)$")
+FIRST_SENTENCE = re.compile(r"(.+?[.!?])(?:\s|$)")
+# What a carry comment begins with -- `carry` writes "Carried from X to Y: ...", and the hand carries of the
+# Sprint 11 close and R266 were written "Carried at the Sprint 11 close ..." and "Carried once into Sprint 13 ...".
+CARRY_COMMENT = "Carried "
+# DOC_MAINTENANCE section 7 step 5: an issue carried twice is the owner's question, not a third carry.
+CARRY_LIMIT = 2
 
 # `issue #12` is the citation form; `issue #12 (closed)` is what it becomes when the issue closes and the row is
 # kept as a record. A bare `#244` is not a citation -- it is how the tree names an upstream pull request.
@@ -254,9 +265,8 @@ def normalise(issue):
     milestone = issue.get("milestone")
     if isinstance(milestone, dict):
         milestone = milestone.get("title")
-    comments = issue.get("comments") or []
-    last = comments[-1] if comments else None
-    last_comment = (last.get("body") if isinstance(last, dict) else last) or ""
+    comments = [(c.get("createdAt") or "", c.get("body") or "") if isinstance(c, dict) else ("", c or "")
+                for c in (issue.get("comments") or [])]
     return {
         "number": int(issue["number"]),
         "state": str(issue.get("state", "")).upper(),
@@ -265,9 +275,108 @@ def normalise(issue):
         "labels": labels,
         "milestone": milestone,
         "updatedAt": issue.get("updatedAt", ""),
+        "createdAt": issue.get("createdAt") or "",
+        "closedAt": issue.get("closedAt") or "",
         "body": issue.get("body") or "",
-        "lastComment": last_comment,
+        "comments": comments,
+        "lastComment": comments[-1][1] if comments else "",
     }
+
+
+# ------------------------------------------------------------------------------------------------- the carry
+
+def carry_comments(issue):
+    """[(createdAt, body)] of the comments that record a carry: the tool's own and the hand-written ones of the
+    Sprint 11 close and R266 all begin with the word `Carried`."""
+    return [(when, body) for when, body in issue["comments"] if body.startswith(CARRY_COMMENT)]
+
+
+def carried_count(issue):
+    """How many sprint closes the issue has survived: its carry comments, or one when it bears the label with none
+    (a carry recorded by the label alone)."""
+    n = len(carry_comments(issue))
+    if n == 0 and CARRIED_LABEL in issue["labels"]:
+        return 1
+    return n
+
+
+def closing_bar_sentence(body):
+    """The closing bar's first sentence, on one line -- what the backlog shows beside the issue."""
+    text = " ".join(sections_of(body).get("## Closing bar", "").split())
+    if text.startswith("- "):
+        text = text[2:]
+    m = FIRST_SENTENCE.match(text)
+    return m.group(1) if m else text
+
+
+def _cell(text):
+    return (text or "").replace("|", r"\|").strip()
+
+
+def ruled_out_rows(text=None):
+    """The rows of docs/backlog_ruled_out.txt as dicts; ValueError with the line number on a malformed row."""
+    if text is None:
+        text = _read(RULED_OUT_LIST)
+    rows, seen = [], set()
+    for i, line in enumerate(text.splitlines(), 1):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        parts = [p.strip() for p in line.split(" | ")]
+        if len(parts) != 4 or not all(parts):
+            raise ValueError("%s line %d: want `<slug> | <ruling> | <bar or reason> | <where written>`, four "
+                             "non-empty fields split by ' | '" % (RULED_OUT_LIST, i))
+        slug, ruling, bar, where = parts
+        if not RULING_FIELD.match(ruling):
+            raise ValueError("%s line %d: the ruling field is %r -- an R-number (R265) or 'no issue'"
+                             % (RULED_OUT_LIST, i, ruling))
+        if slug in seen:
+            raise ValueError("%s line %d: the slug %r is already a row" % (RULED_OUT_LIST, i, slug))
+        seen.add(slug)
+        rows.append({"slug": slug, "ruling": ruling, "bar": bar, "where": where})
+    return rows
+
+
+def render_head():
+    return ("# Backlog: the carry in one place\n\n"
+            "> **Generated -- do not edit.** Written by `python -m tools_py.issues backlog` from the open issues on "
+            "GitHub and the tracked list `%s` (ruling R267). Change the issue, or the list, and regenerate; "
+            "`python -m tools_py.issues backlog --check` exits 1 when this file is stale (`--offline` checks the "
+            "ruled-out half without the network). The conventions are `docs/GIT_STRATEGY.md` section 7; the carry "
+            "at a sprint close is `docs/DOC_MAINTENANCE.md` section 7 step 5, and an issue carried twice is the "
+            "owner's question.\n" % RULED_OUT_LIST)
+
+
+def render_issues(issues):
+    stack = sorted((normalise(i) for i in issues), key=lambda i: i["number"])
+    stack = [i for i in stack if i["state"] == "OPEN"]
+    lines = ["", "## 1. Open issues", "",
+             "%d open issues. *Carried* counts the sprint closes an issue has survived (its `Carried ...` comments, "
+             "or one for the `carried` label alone); at 2 the next close asks the owner." % len(stack), "",
+             "| Issue | Title | Area | Milestone | Carried | Closing bar (first sentence) |",
+             "|---|---|---|---|---|---|"]
+    for i in stack:
+        areas = [l for l in i["labels"] if l in AREAS]
+        lines.append("| #%d | %s | %s | %s | %d | %s |"
+                     % (i["number"], _cell(i["title"]), ", ".join(areas) or "--", _cell(i["milestone"] or "backlog"),
+                        carried_count(i), _cell(closing_bar_sentence(i["body"])) or "--"))
+    return "\n".join(lines) + "\n"
+
+
+def render_ruled_out(rows):
+    lines = ["", RULED_OUT_HEADING, "",
+             "%d rows. Each was ruled not to be an issue -- by a ruling, or `no issue` with its reason -- and keeps "
+             "its bar here so the next review does not re-ask. Edit `%s`, never this table." % (len(rows),
+                                                                                                 RULED_OUT_LIST), "",
+             "| Item | Ruling | Bar or reason | Where it is written |",
+             "|---|---|---|---|"]
+    for r in rows:
+        lines.append("| %s | %s | %s | %s |" % (_cell(r["slug"]), _cell(r["ruling"]), _cell(r["bar"]),
+                                               _cell(r["where"])))
+    return "\n".join(lines) + "\n"
+
+
+def render_backlog(issues, rows):
+    return render_head() + render_issues(issues) + render_ruled_out(rows)
 
 
 def audit(cited, issues, stale_since=None):
@@ -332,7 +441,8 @@ def _gh(cmd):
 
 def fetch_issues(repo=REPO):
     out = _gh(["issue", "list", "--repo", repo, "--state", "all", "--limit", "1000",
-               "--json", "number,state,stateReason,title,labels,milestone,updatedAt,body,comments"])
+               "--json", "number,state,stateReason,title,labels,milestone,updatedAt,createdAt,closedAt,body,"
+                         "comments"])
     if out.returncode != 0:
         raise SystemExit("gh issue list failed (exit %d): %s" % (out.returncode, out.stderr.strip()))
     return json.loads(out.stdout)
@@ -435,6 +545,52 @@ def cmd_audit(args):
     return 1 if problems else 0
 
 
+def _listing(args):
+    """The issue listing: a saved `gh issue list --json` file when --json names one, else one gh call."""
+    if args.json:
+        with open(args.json, encoding="utf-8") as f:
+            return json.load(f)
+    return fetch_issues(args.repo)
+
+
+def cmd_backlog(args):
+    out_path = os.path.join(ROOT, args.out)
+    try:
+        rows = ruled_out_rows()
+    except ValueError as e:
+        print("backlog: %s" % e)
+        return 2
+    if args.offline:
+        if not args.check:
+            print("backlog: --offline only checks (the issue table needs the listing)")
+            return 2
+        if not os.path.isfile(out_path):
+            print("backlog: %s does not exist -- python -m tools_py.issues backlog" % args.out)
+            return 1
+        with open(out_path, encoding="utf-8") as f:
+            current = f.read()
+        fresh = current.startswith(render_head()) and current.endswith(render_ruled_out(rows))
+        print("backlog: %s (offline: the head and the ruled-out table against %s)"
+              % ("OK" if fresh else "%s is stale -- python -m tools_py.issues backlog" % args.out, RULED_OUT_LIST))
+        return 0 if fresh else 1
+    text = render_backlog(_listing(args), rows)
+    if args.check:
+        current = None
+        if os.path.isfile(out_path):
+            with open(out_path, encoding="utf-8") as f:
+                current = f.read()
+        if current != text:
+            print("backlog: %s is stale -- python -m tools_py.issues backlog" % args.out)
+            return 1
+        print("backlog: OK (%s matches the listing and %s)" % (args.out, RULED_OUT_LIST))
+        return 0
+    with open(out_path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+    n_open = text.split(RULED_OUT_HEADING)[0].count("\n| #")
+    print("backlog: wrote %s -- %d open issues, %d ruled-out rows" % (args.out, n_open, len(rows)))
+    return 0
+
+
 def main(argv=None):
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="replace")      # a KNOWN headline's dash must not crash a cp1252 console
@@ -465,6 +621,12 @@ def main(argv=None):
     p.add_argument("--json")
     p.add_argument("--stale-since")
     p.set_defaults(fn=cmd_audit)
+    p = sub.add_parser("backlog")
+    p.add_argument("--json")
+    p.add_argument("--out", default=BACKLOG)
+    p.add_argument("--check", action="store_true")
+    p.add_argument("--offline", action="store_true")
+    p.set_defaults(fn=cmd_backlog)
     args = ap.parse_args(argv)
     return args.fn(args)
 

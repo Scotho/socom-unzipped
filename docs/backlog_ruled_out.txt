@@ -1,0 +1,60 @@
+# The carry's ruled-out half (R267): every item written down as unfinished that is NOT an issue on the stack,
+# with the ruling that put it here (an R-number) or `no issue` and its reason, and the bar that would take it
+# further. `python -m tools_py.issues backlog` renders this list as docs/BACKLOG.md's second table.
+#
+# One row per item, four fields split by " | " (so a field never contains " | "):
+#     <slug> | <ruling R-number or "no issue"> | <one-sentence bar or reason> | <where it is written>
+# "audit X1" is a row of docs/audits/2026-09-25-project-audit.md section 2; "carry C1" a row of that audit's
+# carry-backlog report. A row leaves this list when it becomes an issue (`issues open`) or a task that closes it.
+#
+# Seeded 2026-09-25 (Sprint 13 Task R7) from every row the audit's section 2 marks `backlog`, with the bars as
+# the audit and its carry report wrote them; "No closing bar written" says so where none was.
+
+# A. The player's first ten minutes
+window-policy-fullscreen | no issue | One gate at `fullscreen`, its three scores against the pinned run's; the default belongs with the owner's playtest list. | audit A13; carry C104; the Sprint 10 Q7 plan section 3
+
+# C. The harness
+goal3-parked-opponent | no issue | One leg-1 round with PCSX2 standing still through ours' walk answers it, and the row is settled either way. | audit C17; carry C85; the Sprint 10 Goal 3 plan, task 5; KNOWN section 2 (the parked row)
+goal3-seen-by-the-other | no issue | One reading of the peer entity's position field settles it for both. | audit C17; carry C85; the Sprint 10 Goal 3 plan, task 7
+goal4-kill-routes | no issue | No closing bar written: per-map kill routes for the sweep maps, with the two-instance speed freeze lifted (the speed-freeze re-measure from logs is S13 H3). | audit C17; carry C86
+
+# D. The runtime, the recompiler, the build
+cd-group-iop-heap-state | no issue | One group of state at a time, each with a gate; the audit's disposition is a new issue, not yet opened. | audit D12; carry C99; KNOWN section 4
+ghidra-bounds-fix | no issue | No closing bar written; S13 N3's census of the unhandled-instruction lines comes first and the Ghidra-bounds fix stays here. | audit D13
+soft-double-chain | R265 | Declined until a gate, a control round or a player names a numeric defect that points at the EE soft-double chain or `__ieee754_rem_pio2f`. | audit D14; carry C112
+gameplay-state-probe | R265 | Declined as a gate leg (the ladder, the twenty-map queue and the online verdict are the correctness legs); its one live number, the `rx`-hold teleport count, is owed a backlog issue with a bar. | audit D14; carry C114; KNOWN section 2
+render-believed-rows | R265 | Three gates and three ladder runs on the renamed tree without a sighting of the transition strip or the intro-cinematic freeze retire both rows to KNOWN section 3. | audit D14; carry C115; KNOWN section 2
+invocation-stack-pool | no issue | A counter of distinct keys; if the number is small and flat, the warning line is the whole fix. | audit D14; carry C103; the Sprint 10 Q7 plan section 3
+display-env-darker | no issue | A Sprint 6 A/B of the display environment, PMODE and zbp against a console image (ROADMAP calls it dropped; KNOWN section 2 keeps it as the settling experiment). | audit D14; carry C109; research/26
+gs-local-host-readback | no issue | No closing bar written; the `socom2_LumReadPixel` stub (a constant grey exposure) goes when the GS local-to-host readback exists. | audit D14; carry C108; research/20
+research25-outstanding | no issue | No closing bar written: gate and fixture coverage of the fixed paths, section 8.2's three clip-header byte differences, and the console's `+0x2c` on a live turn. | audit D14; carry C110; research/25
+q7-render-performance | no issue | Decode microseconds per texture before and after the re-hash is folded into the decode, then the gate's title stage and a movie (and a readback PBO ring). | audit D14 (its source range); carry C102; the Sprint 10 Q7 plan section 3
+research20-hygiene | no issue | No closing bar written: `strcmp`/`strncmp` return the byte difference, and the `sceSifSendCmd` argument ABI. | audit D14 (its source range); carry C111; research/20
+lto-os-release | no issue | Two candidates, cheapest first, each with a cap of T_compile + 1800 seconds (the release-build plan's Step 8). | audit D15; carry C107; KNOWN section 2
+release-size-number | no issue | No closing bar written; the owner was promised the megabytes that compiling out the dump and trace families and imgui would save. | audit D15; carry C106; PLAYTEST's decisions
+
+# G. Audio and voice
+audio-level-residuals | no issue | No closing bar written: the mission bed 7-12 dB under the console, the title ring -4 to -6.5 dB, and the movie audio about 18 dB low at the source. | audit G2; carry C62; KNOWN section 4
+cue4-held-silent | no issue | No closing bar written; why the console holds cue 4 in state 1 for 120 s or more with its audio silent is unexplained (a PCSX2 poll). | audit G2; carry C63
+emitters-at-volume-zero | no issue | No closing bar written; whether the console also gives five positioned emitters volume 0 from the EE's attenuation is unmeasured. | audit G2; carry C64
+concurrency-cap | R172 | Declined until Q1's instrument (built 2026-09-20) is read against it; the play call's `flags` word is still dropped in `ps2_audio.cpp`. | audit G2; carry C65
+autovol-irx-schedule | no issue | Integer `autoVol` steps on the IRX schedule, research/36's fix-list item 4 (items 5 and 7 are S13 V5). | audit G2; carry C66; research/36
+unmodelled-grains | R178 | R178 left the LFO, XREF and plugin grains unmodelled; no closing bar written. | audit G2; carry C67
+q7-audio-residuals | no issue | Drop in pairs or drop the newest, tested by a parity check across a forced drop, and free the scratch block in the reset path (the stream-start underfill has no bar). | audit G2; carry C68; the Sprint 10 Q7 plan
+voice-hear-the-other-player | no issue | Re-run Task 4's round and the number must not fall, plus the three-stage gate 3/3 with `pcm_underruns` still 0 (the Sprint 8 voice plan's Task 5). | audit G3; carry C54
+voice-record-gain-and-dme | no issue | No closing bar written: answer lgaud `0x0e` SetRecordGain (the game's AGC) and measure the DME framing around the 32-byte voice payload. | audit G3; carry C55; research/56
+voice-research-35 | no issue | No closing bar written; research/35 (the voice path), promised by the Sprint 8 voice plan, was never written, and research/39 and /56 hold most of its content. | audit G3; carry C57
+
+# H. The naming programme's follow-ups (S13 N3 takes them if a cloud session is opened)
+loose-rows-second-lever | no issue | No closing bar written; 518 loose rows wait for a second independent lever (BinDiff under research/49's rule, or strings against the call graph). | audit H4; carry C31; Sprint 12 Outcome
+r0004-7c-derived | no issue | No closing bar written; a Task 7c vtable file for r0004 derived by the same code rather than carried. | audit H4; carry C28; research/51
+matcher-mmio-guard | no issue | No closing bar written; `address_matcher` refuses a `hash+callees` or `relinked-body` pair whose bodies form different MMIO addresses. | audit H4; carry C45; research/52
+research45-lead-corrections | no issue | No closing bar written: gaps 8, 11 and 49 misaligned, `__ct__9CGameMenuFv` at 0x00369b60, the `UIInvitePlayerToClan*` and `rt_time_get_time_string*` leads. | audit H4; carry C46; research/52, /53
+7c-anchor-count-rerun | no issue | No closing bar written; re-run 7c's fixed point and anchor count after the call-graph and string passes. | audit H4; carry C47; research/53
+hand-name-candidates | no issue | No closing bar written; `std::unexpected` 0x182760, `std::terminate` 0x182790 and the body-read leads enter through a `Pass=hand` proposals file. | audit H4; carry C38; Sprint 12 Outcome
+toml-hygiene | no issue | No closing bar written: 41 toml addresses that are not csv rows and 26 rows the toml names wrongly (research/57 section 3). | audit H4; carry C39; Sprint 12 Outcome
+csv-row-extents | no issue | Changing an extent is a codegen change, so the gate applies: the Ghidra split at 0x00183024 (and its r0004 twin) and the 64 rows that start inside vtable data. | audit H4; carry C36; Sprint 12 Outcome; research/60 section 7
+constructors-variant-c | no issue | No closing bar written; constructors under research/51's variant C, with a stated recall. | Sprint 12 Outcome follow-ups
+
+# I. Online, the server, the box
+multiplayer-security | no issue | A private read audit of the network path beyond the chat hole, under SECURITY.md's process until it is bounded (S13 U5's second half if its first half bounds it). | audit I5; carry C116
