@@ -22,7 +22,8 @@ environment, the harness revision (record only) and, once the runtime prints it,
 and a run's pins.json beside it. The committed standard is scripts/parity/pins.json; a launch whose pins do
 not match it is REFUSED before anything is launched (exit 7, distinct from a stage FAIL's 1), and so is a
 `--baseline` re-score whose recorded pins, or today's reference files, do not match. `--accept-pins` makes the
-measured values the standard (the summary says so); `--pins` is the lock-free dry check.
+measured values the standard, written once after the run (the summary says so; a gate the lock refuses
+writes nothing -- issue #45); `--pins` is the lock-free dry check.
 """
 import argparse
 import glob
@@ -924,16 +925,17 @@ def stamp_revision(out_root):
                      "re-scored without one" % out_root)
 
 
-def pins_verdict(drifts, accepted, compared, revision="r0001"):
+def pins_verdict(drifts, accepted, compared, revision="r0001", when=""):
     """(word, line): the PINS line of a summary -- MATCH, ACCEPTED (the standard was rewritten) or DRIFTED
     (refused) -- and its one-word form for the record. The line names the revision's OWN standard, so a
-    summary says which file it was measured against."""
+    summary says which file it was measured against; `when` (a launch's " after the run") says when an
+    accepted standard was written."""
     standard = expected_pins_rel(revision)
     names = ", ".join(d.name for d in drifts)
     if not drifts:
         return "MATCH", "PINS MATCH %s (%d compared)" % (standard, compared)
     if accepted:
-        return "ACCEPTED", "PINS ACCEPTED: %s -> %s rewritten" % (names, standard)
+        return "ACCEPTED", "PINS ACCEPTED: %s -> %s rewritten%s" % (names, standard, when)
     return "DRIFTED", ("PINS DRIFTED: %s -- refused to score (pass --accept-pins to make the measured values the "
                        "standard in %s, or restore the input)" % (names, standard))
 
@@ -1040,8 +1042,9 @@ def main(argv=None):
                          "(0 match, 7 drifted); no launch, no lock" % pins.EXPECTED)
     ap.add_argument("--accept-pins", action="store_true",
                     help="a launch (or --pins) whose pins drifted rewrites the standard from the measured values "
-                         "instead of refusing; the summary says so. It rewrites THIS REVISION's file only -- an "
-                         "r0004 gate cannot reach %s" % pins.EXPECTED)
+                         "instead of refusing -- a launch writes it once, after a run whose every stage PASSed "
+                         "(S13-R5), never before the lock; the summary says so. It rewrites THIS REVISION's file "
+                         "only -- an r0004 gate cannot reach %s" % pins.EXPECTED)
     args = ap.parse_args(argv)
 
     if args.baseline:
@@ -1105,15 +1108,19 @@ def main(argv=None):
     print("REVISION %s (probe addresses and pin standard %s)" % (revision, expected_pins_rel(revision)), flush=True)
     # The pins are checked BEFORE the lock and the launch: a drifted standard refuses without spending a
     # run. The record (pins.json) and the summary are written either way, so the refusal is on file.
+    # They are only CHECKED here: with --accept-pins the standard is written once, after the run, when
+    # every pin (the late `mapping` too) has been measured -- never before the lock wait, where a gate
+    # queued and then cancelled used to rewrite it anyway (issue #45: s11_r0004_node1, s11_r0004_rebuild1).
     current = collect_pins()
-    drifts, expected, accepted = check_pins(current, args.accept_pins,
-                                            note="gate --accept-pins, stamp %s" % args.stamp,
-                                            revision=revision)
+    drifts, expected, _ = check_pins(current, False, revision=revision)
+    # `pending`: a drift --accept-pins will accept IF the run completes; `accepted`: it has been written.
+    pending = bool(drifts) and args.accept_pins
+    accepted = False
     compared = len(pins.comparable(current))
 
     def write_summary(stage_lines, all_drifts):
         """summary.txt (stage lines, EXE, PIN lines, PINS verdict) and pins.json; returns the lines."""
-        word, verdict = pins_verdict(all_drifts, accepted, compared, revision)
+        word, verdict = pins_verdict(all_drifts, accepted, compared, revision, when=" after the run")
         pin_lines = pins.lines(current, all_drifts, accepted, expected)
         with open(os.path.join(out_root, "summary.txt"), "w", encoding="utf-8") as f:
             f.write("".join(l + "\n" for l in stage_lines + [exe, elf] + pin_lines + [verdict]))
@@ -1121,27 +1128,36 @@ def main(argv=None):
                           exe, expected_pins_rel(revision))
         return pin_lines, verdict
 
-    if drifts and not accepted:
+    if drifts and not pending:
         pin_lines, verdict = write_summary([], drifts)
         for line in pin_lines + [verdict]:
             print(line)
         print("GATE REFUSED (pins drifted: %s) -> %s" % (", ".join(d.name for d in drifts), out_root))
         return 7
-    for line in pins.lines(current, drifts, accepted, expected):
+    # Printed as they stand (DRIFTED), not as accepted: nothing is accepted until the run has completed,
+    # and a lock refusal below must not follow lines that say otherwise.
+    for line in pins.lines(current, drifts, False, expected):
         print(line, flush=True)
+    if pending:
+        print("PINS ACCEPT PENDING: %s -- %s is written after the run, and only if every stage PASSes"
+              % (", ".join(d.name for d in drifts), expected_pins_rel(revision)), flush=True)
     take = _lock("take", args.owner)
     if take.returncode != 0:
         print("gate: lock busy: " + take.stdout.strip())
+        if args.accept_pins:
+            print("gate: nothing ran, nothing accepted -- %s standard unchanged" % expected_pins_rel(revision))
         return 2
     wanted = [g.strip() for g in args.only.split(",") if g.strip()]
     results = []
     rc = 1
+    completed = False
     try:
         for name in wanted:
             ok, detail = run_gate(name, out_root)
             line = "%s %s (%s)" % ("PASS" if ok else "FAIL", name, detail)
             print(line, flush=True)
             results.append((ok, line))
+        completed = True
     finally:
         # Release the lock and leave a summary even when a gate raises part-way through.
         _lock("release", args.owner)
@@ -1154,12 +1170,25 @@ def main(argv=None):
         # unless --accept-pins -- and an absent line is recorded as absent, never refused.
         current["mapping"] = pins.mapping_pin([os.path.join(out_root, name + ".game.log") for name in wanted])
         late = [d for d in pins.compare(current, expected) if d.name == "mapping"]
-        if late and args.accept_pins:
+        all_drifts = drifts + late
+        if all_drifts and args.accept_pins and completed and not failed:
+            # The one write of an accepted standard (issue #45): after the run, with every pin measured
+            # that can be; accepted_standard still carries any the run could not (fccf3b5d). Only a run
+            # whose every wanted stage reached a PASS may write it (S13-R5): a standard is the measured
+            # input set of a run that passed. A stage that raised, or a Ctrl-C after the lock, is the
+            # cancelled gate #45 names; a FAILed run says nothing about whether its inputs are right, and
+            # accepting them would bake a broken input into the standard. Both leave it as they found it.
             path = expected_pins_path(revision)
             pins.write_expected(accepted_standard(current, path), path,
                                 note="gate --accept-pins, stamp %s" % args.stamp)
             accepted = True
-        all_drifts = drifts + late
+        elif all_drifts and args.accept_pins and not completed:
+            print("PINS NOT ACCEPTED: the run did not complete (%d of %d stages reached a verdict) -- %s unchanged"
+                  % (len([1 for _, l in results if "(gate did not run)" not in l]), len(wanted),
+                     expected_pins_rel(revision)))
+        elif all_drifts and args.accept_pins:
+            print("PINS NOT ACCEPTED: %d of %d stages FAILed -- %s unchanged"
+                  % (len(failed), len(results), expected_pins_rel(revision)))
         refused = bool(all_drifts) and not accepted
         pin_lines, verdict = write_summary([line for _, line in results], all_drifts)
         print(pin_lines[-1])        # the mapping line, now that the game logs exist

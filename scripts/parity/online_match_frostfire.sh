@@ -34,6 +34,7 @@ set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 . "$(dirname "$0")/env.sh"
+. "$(dirname "$0")/write_env.sh"    # write_env_ps2x: the PS2X_* record beside a capture (issue #38)
 socom_require_python online_match_frostfire
 OUT="${1:-logs/parity/ours_frostfire}"
 NAME="$(basename "$OUT")"
@@ -42,6 +43,9 @@ export PATH="/usr/bin:/bin:$PATH"
 rm -f "logs/${NAME}.done"
 # Instruments come from scripts/parity/env.sh (sourced above); the B-side key is this script's own.
 export PS2X_SOCOM2_RSA_KEY_B=b
+# Issue #38: the PS2X_* the launch is handed (env.sh's instruments and this script's own), beside its output,
+# the moment before it starts; the driver adds only per-instance plumbing (screenshot path, card dir) on top.
+write_env_ps2x "$OUT" "online_match_frostfire.sh map=${MAP:-frostfire}"
 "$PYTHON" -m tools_py.parity.online_match_ours --existing-b --hold 30 --until-kill \
        --map frostfire --engage 22 --engage-dy 10 \
        --max-steps 60 --max-walk-seconds 240 \

@@ -10,6 +10,7 @@ set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 . "$(dirname "$0")/env.sh"
+. "$(dirname "$0")/write_env.sh"    # write_env_ps2x: the PS2X_* record beside a capture (issue #38)
 socom_require_python online_control_round
 MAP="${1:?map name}"
 SLUG="$("$PYTHON" -c "import sys; from tools_py.parity import online_login_ours as L; print(L.map_slug(sys.argv[1]))" "$MAP")"
@@ -25,6 +26,9 @@ export PS2X_SOCOM2_RSA_KEY_B=b
 # exactly where the typing walk drops and doubles keys (research/28 §5: 'ocom', '', 'xmfû'); the same class
 # cost `s11_r0004_online1` its login the night this was added. Sprint 10 Goal 9, R180: the runtime prefills
 # and never submits, the harness presses.
+# Issue #38: the PS2X_* the launch is handed (env.sh's instruments and this script's own), beside its output,
+# the moment before it starts; the driver adds only per-instance plumbing (screenshot path, card dir) on top.
+write_env_ps2x "$OUT" "online_control_round.sh map=${MAP:-frostfire}"
 "$PYTHON" -m tools_py.parity.online_match_ours --existing-b --prefilled --hold 30 --control-round --rounds 1 \
        --map "$MAP" --max-steps 60 --max-walk-seconds 240 \
        --out "$OUT" --seconds 1200 \

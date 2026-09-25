@@ -65,6 +65,7 @@ set -u
 TOOLS_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 ROOT="${SOCOM_DATA_ROOT:-$TOOLS_ROOT}"
 . "$TOOLS_ROOT/scripts/python_env.sh"    # $PYTHON, resolved once for every script
+. "$TOOLS_ROOT/scripts/parity/write_env.sh"   # write_env_ps2x: the PS2X_* record beside a capture (issue #38)
 socom_require_python mission_music_long
 cd "$ROOT"
 # A function, not a variable used unquoted: a tools root with a space in it word-split (fix round 2, R7).
@@ -203,6 +204,11 @@ if command -v cygpath >/dev/null 2>&1; then DUMP_ENV="$(cygpath -w "$ROOT/$DUMP"
 
 echo "stamp=$STAMP target=$TARGET stage=$STAGE walk=$WALK minutes=$MINUTES hold=${HOLD_S}s steps=+$EXTRA legs=$LEGS popups=$POPUPS drive=${DRIVE_S}s record=${REC_S}s"
 echo "script=$SCRIPT dump=$DUMP env=$DUMP_ENV"
+# Issue #38: the PS2X_* this run was started with, beside the capture, before anything else can fail -- the W6 A/B
+# (2026-09-23) had two captures of this script and no way to say which one carried PS2X_GS_NO_TEX_REVALIDATE=1. A
+# dry run stops with this record; a launch has audio_parity.sh rewrite it at the launch, with the dump and trace
+# knobs it adds, so the file always says what the game was handed.
+write_env_ps2x "$OUT" "mission_music_long.sh stamp=$STAMP target=$TARGET stage=$STAGE walk=$WALK$([ "$DRY" = 1 ] && echo ' --dry-run: as started; nothing launched')"
 if [ "$DRY" = 1 ]; then
   echo "--dry-run: nothing launched. $(grep -c '^wait+8.0:NONE' "$SCRIPT") hold steps, $(grep -c '^hold+8.0:[WS]' "$SCRIPT") walking legs, $(grep -cv '^[[:space:]]*\(#.*\)\?$' "$SCRIPT") steps in all."
   exit 0

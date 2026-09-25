@@ -26,6 +26,7 @@ set -u
 TOOLS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ROOT="${SOCOM_DATA_ROOT:-$TOOLS_ROOT}"
 . "$TOOLS_ROOT/scripts/python_env.sh"    # $PYTHON, resolved once for every script
+. "$TOOLS_ROOT/scripts/parity/write_env.sh"   # write_env_ps2x: the PS2X_* record beside a capture (issue #38)
 socom_require_python audio_parity
 # The audio tools, from the tools root, with the cwd kept off sys.path. A function, not a PYA variable used
 # unquoted at four call sites: a tools root with a space in it word-split into "env PYTHONPATH=/c/a" and "dir/..."
@@ -109,14 +110,10 @@ case "$cmd" in
     exe=socom2.exe; [ "$target" = pcsx2 ] && exe=pcsx2-qt.exe
     pya -m tools_py.parity.app_volume hold "$exe" --seconds "$drive_s" > "$OUT/app_volume.log" 2>&1 &
     VOL=$!
-    # KNOWN §4: what the game ran under, written the moment before it launches -- every PS2X_* exported here (run.sh
-    # adds PS2X_DEV=1 itself when it is unset), the executable and its digest (the "off" half of an A/B needs the
-    # binary's identity, not only the knobs). A file with no PS2X_* says so rather than reading as a failure.
-    game_exe="${SOCOM_EXE:-$ROOT/dist/socom2.exe}"
-    { env | grep '^PS2X_' | LC_ALL=C sort || echo '# no PS2X_* in the environment'
-      echo "SOCOM_EXE=$game_exe"
-      sha256sum "$game_exe" 2>/dev/null || echo "# no executable at $game_exe to hash"
-      echo "# run.sh exports PS2X_DEV=1 when it is unset above"; } > "$OUT/env_ps2x.txt"
+    # KNOWN §4 / issue #38: what the game ran under, written the moment before it launches -- every PS2X_* exported
+    # here, the gate's env pin over them, the executable and its digest (the "off" half of an A/B needs the binary's
+    # identity, not only the knobs). The shared writer (write_env.sh); run.sh adds PS2X_DEV=1 itself when unset.
+    write_env_ps2x "$OUT" "audio_parity.sh capture $target $(basename "$script"); run.sh exports PS2X_DEV=1 when it is unset"
     date +%s.%N > "$OUT/.drive_started"
     # --seconds is OUR game's run length (drive.py defaults to 400): launch_to_mission_xl runs past 400 s, and a game
     # killed at 400 s leaves the last eleven windows as digital silence that reads as a FAIL of the mix (s9_q1_parity_ours).
