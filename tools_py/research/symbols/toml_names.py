@@ -60,6 +60,20 @@ CRITICAL_PREFIXES = ("__ct__", "__sinit_", "_GLOBAL__sub_I_", "GLOBAL__sub_I_",
                      "__static_initialization_and_destruction_0", "__do_global_ctors")
 
 
+GHIDRA_TOML = "recomp/socom2_ghidra.toml"
+GHIDRA_TOML_LAST = "c59ad14c"   # the last commit that changed it; Sprint 13 C5 took it out of the tree
+
+
+def ghidra_side_toml():
+    """Ghidra's side config (ExportPS2Functions.java's stub classification). No build ever read it, and Sprint 13
+    Task C5 removed it from the tree; block [C]'s count reads the file from history when it is not on disk."""
+    if os.path.exists(GHIDRA_TOML):
+        return open(GHIDRA_TOML, encoding="utf-8").read()
+    import subprocess
+    return subprocess.run(["git", "show", "%s:%s" % (GHIDRA_TOML_LAST, GHIDRA_TOML)],
+                          capture_output=True, text=True, encoding="utf-8", check=True).stdout
+
+
 def is_auto(name):
     return name.startswith(AUTO_PREFIXES)
 
@@ -304,7 +318,7 @@ def main() -> None:
     dup = collections.Counter(n for n, _s, _e in rows if not n.startswith("FUN_"))
     dup = {n: c for n, c in dup.items() if c > 1}
     print(f"    csv names at more than one address: {len(dup)} {sorted(dup.items(), key=lambda kv: -kv[1])[:6]}")
-    gt = open("recomp/socom2_ghidra.toml").read()
+    gt = ghidra_side_toml()
     ghidra_known = {(n, int(a, 16)) for n, a in re.findall(r'"([^"@]+)@0x([0-9A-Fa-f]+)"', gt)}
     real = [(n, s) for n, s, _e in rows if name_class(n) == "named"]
     print(f"    csv real names {len(real)}; of them in recomp/socom2_ghidra.toml's stubs ({len(ghidra_known)}): "

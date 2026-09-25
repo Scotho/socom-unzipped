@@ -29,7 +29,7 @@ online server is Horizon Private Server configured for SOCOM II under `server/`.
 | Path | What |
 |---|---|
 | `build.sh`, `run.sh` | Build (`tools`, `recomp`, `runtime`, `release`, `test`, `all`; `--no-runner` builds without generated code) and run (`./run.sh <seconds>`) — Git Bash. Linux: `scripts/build_linux.sh` |
-| `recomp/` | Recompiler config (`socom2.toml`), Ghidra function map (`socom2_ghidra.csv`), forced entry points (`extra_functions.txt`), the readable names with their provenance (`socom2_names.csv`, `socom2_names_r0004.csv`; the holds `socom2_name_holds.csv`; the r0004 seeds `r0004_seeds.txt` — "Names in the generated code" below), generated C++ in `output/` (ignored) |
+| `recomp/` | Recompiler config (`socom2.toml`, hand-maintained; `socom2_r0004.toml` is derived from it by `build_revision.sh` step 3 and held to those bytes by `tools_py/tests/test_build_products.py`), Ghidra function map (`socom2_ghidra.csv`, a source the build never writes), forced entry points (`extra_functions.txt`), the readable names with their provenance (`socom2_names.csv`, `socom2_names_r0004.csv`; the holds `socom2_name_holds.csv`; the r0004 seeds `r0004_seeds.txt` — "Names in the generated code" below), generated C++ in `output/` and the build's products under `build/` (both ignored; the fixed function map is `build/socom2_ghidra.fixed.csv`) |
 | `third_party/ps2recomp/` | Vendored PS2Recomp fork (our changes are committed in place; see `git log -- third_party`) |
 | `tools_py/` | Python tooling: 165 modules (2026-09-25 after Sprint 13 Task H4, `git ls-files 'tools_py/*.py'` less the tests and `__init__.py`), mapped by purpose in "The `tools_py/` map" below; the tests in `tools_py/tests/` |
 | `scripts/` | Shell and PowerShell entry points: the disc chain, the revision build, packaging, the loop lock, the VM sync, the hooks; `scripts/parity/` holds the harness's launch scripts, step scripts and reference images |
@@ -167,7 +167,7 @@ Beside the modules, `tools_py/screenshot.ps1` captures a window by hand.
 
 | Module | What it is for |
 |---|---|
-| `fix_ghidra_csv.py` | Normalise Ghidra's function export for PS2Recomp (End = Start + Size, the forced entries, the merge ranges); on the `./build.sh recomp` path |
+| `fix_ghidra_csv.py` | Normalise Ghidra's function export for PS2Recomp (End = Start + Size, the forced entries, the merge ranges) into a build product (`--out`, required); on the `./build.sh recomp` path and `build_revision.sh` step 0 |
 | `find_imm_targets.py` | Find code addresses built as immediates (`lui`/`addiu`) that no function covers and append them to the forced entry points |
 | `find_escaping_branches.py` | Report conditional branches whose target lies outside their own function range |
 | `find_gap_functions.py` | Report executable gaps between functions that look like real function bodies |
@@ -483,8 +483,10 @@ that never collide with r0001's: `game/overlays_<rev>/{ftscore,zsealetc}.bin` an
 when its product is already there (`--force` redoes it) — the recomp and the runtime build skip only on the
 `.complete` mark they write when they finish, so a tree left half-written by a failed run is redone rather than
 reported as done; both take the loop lock themselves. `--stop-after elf|toml|recomp` stops early (`elf` and `toml`
-take no lock at all; `toml` is the last step that does not, and it is how the tracked `recomp/socom2_<rev>.toml` is
-checked against the tree), `--check-against <elf>`
+take no lock at all; `toml` is the last step that does not, and it is how the tracked `recomp/socom2_r0004.toml` is
+checked against the tree -- every other revision's derived config is git-ignored; `test_build_products.py`
+regenerates r0004's from `game/r0004/match.json` and the two images with step 3's arguments and fails on a byte of
+drift, skipping where those git-ignored inputs are absent, `SOCOM_DATA_ROOT` naming a checkout that has them), `--check-against <elf>`
 compares the produced ELF's sha256 with a known one, `--out <dir>` puts every product under one directory,
 `--dry-run` prints the six steps with their paths. `<rev>` is `r` and four digits with an optional suffix that
 starts with a letter. The package must sit in its extracted disc tree, whose loader must be named `SCUS_972.75`
@@ -502,8 +504,12 @@ into the map, cuts the non-contiguous ranges to size and applies `recomp/merge_r
 **`recomp/build/socom2_ghidra_<rev>.fixed.csv`** — a build product, under a git-ignored directory. Steps 2-5 all
 read that file: the merged ELF is repaired against exactly the rows the recompiler will compile, the config's
 `ghidra_output` names it, and `<elf>.repair.json` records its sha256. The tracked
-`recomp/socom2_ghidra_<rev>.csv` is read, never written. `build.sh`'s r0001 lane still rewrites `recomp/socom2_ghidra.csv` in place; that file is a fixed point of
-the fix (rewriting it changes no byte), so the habit is there but leaves nothing behind.
+`recomp/socom2_ghidra_<rev>.csv` is read, never written. `build.sh`'s r0001 lane follows the same rule since Sprint 13
+Task C5: it writes `recomp/build/socom2_ghidra.fixed.csv`, which `recomp/socom2.toml`'s `ghidra_output` names, and
+`fix_ghidra_csv.py` refuses to run without `--out` or with `--out` naming its own input (until then the lane rewrote
+the tracked `recomp/socom2_ghidra.csv` in place -- a fixed point today, byte-identical, but issue #54's nested rows
+are what that habit left in a tracked file). `tools_py/tests/test_build_products.py` reads `build.sh`'s recomp step
+and holds every file it writes to an ignored, untracked path, so `git status` is empty after `./build.sh recomp`.
 **The executable knows which pressing it was recompiled from, and refuses another one (Sprint 11 Task 19).** Step 5 passes `-DPS2X_GAME_REVISION=<rev>` to the cmake configure (`build.sh` passes `r0001`, the default chain's), so `PS2X_GAME_REVISION` is a PUBLIC compile definition on `ps2_runtime` and the recompiled game carries the revision its generated code came from. At boot, right after `socom2_addresses::selectFromImage` has read the loaded image's own build banner, `runtime/socom2_revision_guard.h` compares the two. They agree, or the image names no revision at all (an image this table has no column for): the run carries on, the second case with the r0001 fallback and its existing warning, unchanged. They name **different** revisions and the run stops on one line -- `[socom2] REFUSED: this executable was recompiled from r0004 but the image at <path> is r0001 (banner "..."); pass the matching image (SOCOM_GAME_ELF) or the matching executable` -- and the process leaves with **73** (`revision-mismatch`, `ps2x/exit_codes.h`, distinct from the preflight's 66/67/68). A refusal rather than a warning because nothing past a mismatch is meaningful: every override address, every static-constructor table and every function body belongs to the other build -- run anyway, such a pairing boots, walks one build's constructor table into the other's bodies and hangs at the loading screen with nothing in the log to say so (the guard since 2026-09-24). A `<rev>` with a suffix compares as its base, so an `r0001check` build belongs on an r0001 image.
 **A revision's function map comes out of Ghidra with `bash scripts/ghidra_export_functions.sh <elf> <out.csv>`** —
 the recipe that made `recomp/socom2_ghidra.csv` (stock ELF loader → `r5900:LE:32:default:default` from the EE

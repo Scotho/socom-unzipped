@@ -13,6 +13,11 @@ __pycache__/
 /recomp/build/
 /recomp/*.raw.csv
 /recomp/*.raw.toml
+# Sprint 13 C5: Ghidra's side config (scripts/ghidra_export_functions.sh writes <out>.toml beside <out>.csv) and a
+# revision's derived config (build_revision.sh step 3) are products; r0004's derived config is the tracked record.
+/recomp/socom2_ghidra*.toml
+/recomp/socom2_r[0-9]*.toml
+!/recomp/socom2_r0004.toml
 /recomp/*.log
 /third_party/ps2recomp/build*/
 *.log
