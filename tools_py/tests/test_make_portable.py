@@ -17,8 +17,8 @@ SCRIPT = os.path.join(ROOT, "scripts", "make_portable.sh")
 FAKE_DIST = {
     "socom2.exe": tiny_pe(["KERNEL32.dll", "avcodec-61.dll", "libc++.dll"]),
     "socom_unzipped_launcher.exe": tiny_pe(["USER32.dll", "libc++.dll"]),
-    "avcodec-61.dll": tiny_pe(["zlib1.dll", "KERNEL32.dll"]),
-    "zlib1.dll": tiny_pe(["KERNEL32.dll"]),
+    "avcodec-61.dll": tiny_pe(["swresample-5.dll", "KERNEL32.dll"]),
+    "swresample-5.dll": tiny_pe(["KERNEL32.dll"]),
     "libc++.dll": tiny_pe([]),
     "avformat-61.dll": tiny_pe(["avcodec-61.dll"]),      # in dist/, imported by nothing shipped
     "OpenEXR-3_3.dll": tiny_pe(["KERNEL32.dll"]),        # likewise
@@ -49,7 +49,7 @@ class MakePortableTest(unittest.TestCase):
             r = self._run(fake_dist(tmp), out)
             self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
             pkg = os.path.join(out, "socom2")
-            for f in ("socom2.exe", "socom2_game.elf", "socom_unzipped_launcher.exe", "avcodec-61.dll", "zlib1.dll",
+            for f in ("socom2.exe", "socom2_game.elf", "socom_unzipped_launcher.exe", "avcodec-61.dll", "swresample-5.dll",
                       "libc++.dll", "README.txt", "THIRD_PARTY_NOTICES.md", os.path.join("LICENSES", "GPL-3.0-only.txt"),
                       os.path.join("LICENSES", "LGPL-2.1-or-later.txt"), os.path.join("LICENSES", "OFL-1.1.txt")):
                 self.assertTrue(os.path.isfile(os.path.join(pkg, f)), f)
@@ -69,7 +69,7 @@ class MakePortableTest(unittest.TestCase):
             for f in ("avformat-61.dll", "OpenEXR-3_3.dll", "vu1_replay.exe"):
                 self.assertFalse(os.path.exists(os.path.join(pkg, f)), f)
             self.assertEqual(portable_audit.audit(pkg, "Windows"),
-                             {"needed": ["avcodec-61.dll", "libc++.dll", "zlib1.dll"], "missing": {}, "orphans": []})
+                             {"needed": ["avcodec-61.dll", "libc++.dll", "swresample-5.dll"], "missing": {}, "orphans": []})
 
     def test_sha256sums_sits_beside_the_zip_and_verifies(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -84,9 +84,9 @@ class MakePortableTest(unittest.TestCase):
 
     def test_an_import_that_is_nowhere_stops_the_packaging(self):
         with tempfile.TemporaryDirectory() as tmp:
-            r = self._run(fake_dist(tmp, without=("zlib1.dll",)), os.path.join(tmp, "out"))
+            r = self._run(fake_dist(tmp, without=("swresample-5.dll",)), os.path.join(tmp, "out"))
             self.assertEqual(r.returncode, 3, r.stderr + r.stdout)
-            self.assertIn("zlib1.dll", r.stderr)
+            self.assertIn("swresample-5.dll", r.stderr)
             self.assertFalse(os.path.exists(os.path.join(tmp, "out", "socom2-portable.zip")))
 
     def test_release_flag_is_accepted_in_front_of_the_out_dir(self):

@@ -46,7 +46,7 @@ set(BUILD_GAMES OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     raylib
     GIT_REPOSITORY "https://github.com/raysan5/raylib.git"
-    GIT_TAG "5.5" # we will migrate to 4.2.0 later, trust me it will be better
+    GIT_TAG c1ab645ca298a2801097931d1079b10ff7eb9df8 # 5.5 # we will migrate to 4.2.0 later, trust me it will be better
     GIT_PROGRESS TRUE
 )
 FetchContent_MakeAvailable(raylib)
@@ -55,8 +55,7 @@ if(PS2X_ENABLE_DEBUG_UI)
     FetchContent_Declare(
         imgui
         GIT_REPOSITORY https://github.com/ocornut/imgui.git
-        GIT_TAG "v1.92.7-docking"
-        GIT_SHALLOW TRUE
+        GIT_TAG b1bcb12a624af7509894c8e77dd47416997777fa # v1.92.7-docking (the annotated tag's commit)
     )
     FetchContent_GetProperties(imgui)
 
@@ -78,8 +77,7 @@ if(PS2X_ENABLE_DEBUG_UI)
     FetchContent_Declare(
         rlImGui
         GIT_REPOSITORY https://github.com/raylib-extras/rlImGui.git
-        GIT_TAG "Raylib_5_5"
-        GIT_SHALLOW TRUE
+        GIT_TAG 118221c8a532501a3c2c236b62950877cbefc2b4 # Raylib_5_5
     )
     FetchContent_GetProperties(rlImGui)
 

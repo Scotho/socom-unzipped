@@ -558,6 +558,21 @@ way back; `tools_py/tests/test_workflows.py` pins the step and the fixture's sha
 documentation checks and the leak check also need no disc. **Everything else needs your own r0001 disc:** the disc chain above, `./build.sh
 recomp`, a `./build.sh runtime` that builds the game, and the gate.
 
+**The dependencies are pinned to bytes** (Sprint 13 C6; `tools_py/tests/test_supply_chain_pins.py` fails on one that
+is not). Each CMake `FetchContent_Declare` names a full 40-hex commit in `GIT_TAG`, the tag's name in a comment
+beside it (resolve a new one with `git ls-remote <repo> <tag> '<tag>^{}'`; the `^{}` line is the commit of an
+annotated tag), and never with `GIT_SHALLOW TRUE` (a shallow clone cannot check out a bare commit). The Windows
+FFmpeg is `ffmpeg-7.1.5` of System233/ffmpeg-msvc-prebuilt with a `URL_HASH SHA256=` (a bump: `gh api
+repos/System233/ffmpeg-msvc-prebuilt/releases/tags/<tag>` gives the asset's `digest`; download the file and check
+`sha256sum` matches it). CI's `pip install` takes `==` pins (through the root `requirements.txt` once H7 lands it).
+`linux.yml`'s `apt-get install` is deliberately not version-pinned -- a -dev pin holds back a runtime package the
+runner image upgrades itself, which ends in a downgrade conflict -- so the step records the last green run's
+versions in a comment and prints the FFmpeg family's installed versions (`dpkg-query -W`) into every run's log; the
+Linux release tarball is built in the socom-linux VM, not on CI. A pin change moves `THIRD_PARTY_NOTICES.md` in the
+same commit (its test walks the release DLLs and the Linux tarball's `lib/`, both ways); an FFmpeg move is a
+runtime build, `./build.sh release` (so `dist-release/` drops DLLs the new closure no longer has) and the gate 3/3,
+the movies playing.
+
 > Superseded 2026-09-25 (Sprint 13 R2): a line here said "Everything below this line works on a fresh clone with no
 > disc at all", above a table whose rows 1, 2 and 5 (`./build.sh recomp`, the game build, the gate) need the disc
 > (stranger audit S36).

@@ -56,8 +56,8 @@ class WindowsFolderTest(unittest.TestCase):
         self.dir = self._tmp.name
         put(self.dir, "socom2.exe", tiny_pe(["KERNEL32.dll", "api-ms-win-crt-heap-l1-1-0.dll", "AVCODEC-61.DLL"]))
         put(self.dir, "socom_unzipped_launcher.exe", tiny_pe(["USER32.dll", "libc++.dll"]))
-        put(self.dir, "avcodec-61.dll", tiny_pe(["zlib1.dll", "bcrypt.dll"]))
-        put(self.dir, "zlib1.dll", tiny_pe(["KERNEL32.dll"]))
+        put(self.dir, "avcodec-61.dll", tiny_pe(["swresample-5.dll", "bcrypt.dll"]))
+        put(self.dir, "swresample-5.dll", tiny_pe(["KERNEL32.dll"]))
         put(self.dir, "libc++.dll", tiny_pe([]))
 
     def tearDown(self):
@@ -65,7 +65,7 @@ class WindowsFolderTest(unittest.TestCase):
 
     def test_a_closed_folder_has_no_findings(self):
         result = portable_audit.audit(self.dir, "Windows")
-        self.assertEqual(result["needed"], ["avcodec-61.dll", "libc++.dll", "zlib1.dll"])
+        self.assertEqual(result["needed"], ["avcodec-61.dll", "libc++.dll", "swresample-5.dll"])
         self.assertEqual(result["missing"], {})
         self.assertEqual(result["orphans"], [])
 
@@ -87,17 +87,17 @@ class WindowsFolderTest(unittest.TestCase):
         self.assertEqual(portable_audit.audit(self.dir, "Windows")["orphans"], ["OpenEXR-3_3.dll", "avformat-61.dll"])
 
     def test_an_import_that_is_not_in_the_folder_is_missing_and_says_who_wanted_it(self):
-        os.remove(os.path.join(self.dir, "zlib1.dll"))
+        os.remove(os.path.join(self.dir, "swresample-5.dll"))
         put(self.dir, "socom_unzipped_launcher.exe", tiny_pe(["USER32.dll", "libc++.dll", "VCRUNTIME140.dll"]))
         self.assertEqual(portable_audit.audit(self.dir, "Windows")["missing"],
-                         {"zlib1.dll": "avcodec-61.dll", "VCRUNTIME140.dll": "socom_unzipped_launcher.exe"})
+                         {"swresample-5.dll": "avcodec-61.dll", "VCRUNTIME140.dll": "socom_unzipped_launcher.exe"})
 
     def test_the_cli_prints_the_closure_with_lf_and_fails_on_a_missing_import(self):
         tool = os.path.join(ROOT, "tools_py", "portable_audit.py")
         exes = [os.path.join(self.dir, "socom2.exe"), os.path.join(self.dir, "socom_unzipped_launcher.exe")]
         r = subprocess.run([sys.executable, tool, "closure", "--dir", self.dir] + exes, capture_output=True)
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(r.stdout, b"avcodec-61.dll\nlibc++.dll\nzlib1.dll\n")
+        self.assertEqual(r.stdout, b"avcodec-61.dll\nlibc++.dll\nswresample-5.dll\n")
         os.remove(os.path.join(self.dir, "libc++.dll"))
         r = subprocess.run([sys.executable, tool, "closure", "--dir", self.dir] + exes, capture_output=True)
         self.assertEqual(r.returncode, 3)

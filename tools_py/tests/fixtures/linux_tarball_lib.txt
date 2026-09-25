@@ -1,0 +1,84 @@
+# The Linux tarball's lib/ (socom2-linux/lib/, scripts/make_portable.sh in the socom-linux VM) -- reconstructed, not
+# an `ls`. No tarball is tracked, the VM was off on 2026-09-25 and no log keeps the listing, so it was read the way
+# make_portable.sh reads it: the .debs of Ubuntu 24.04's FFmpeg closure (the FFmpeg family at 7:6.1.1-3ubuntu5) were
+# downloaded from archive.ubuntu.com, every library's DT_NEEDED read (tools_py/portable_audit.elf_needed), and the
+# walk run from the runner's --as-needed set (libavcodec.so.60, libavutil.so.58, libswscale.so.7) stopping at
+# scripts/portable_libs.py's HOST_PREFIXES. It gives 76 libraries, the count the last measured tarball had (KNOWN
+# section 1, "A smaller, checkable download": lib/ 116 -> 76). Replace it with `ls socom2-linux/lib` from the VM's
+# next release build (Sprint 13 Task C6). One name per line; # comments.
+libaom.so.3
+libavcodec.so.60
+libavutil.so.58
+libblkid.so.1
+libbrotlicommon.so.1
+libbrotlidec.so.1
+libbrotlienc.so.1
+libbz2.so.1.0
+libcairo-gobject.so.2
+libcairo.so.2
+libcodec2.so.1.2
+libdatrie.so.1
+libdav1d.so.7
+libexpat.so.1
+libffi.so.8
+libfontconfig.so.1
+libfreetype.so.6
+libfribidi.so.0
+libgdk_pixbuf-2.0.so.0
+libgio-2.0.so.0
+libglib-2.0.so.0
+libgmodule-2.0.so.0
+libgobject-2.0.so.0
+libgomp.so.1
+libgraphite2.so.3
+libgsm.so.1
+libharfbuzz.so.0
+libhwy.so.1
+libicudata.so.74
+libicuuc.so.74
+libjpeg.so.8
+libjxl.so.0.7
+libjxl_threads.so.0.7
+liblcms2.so.2
+liblzma.so.5
+libmount.so.1
+libmp3lame.so.0
+libnuma.so.1
+libogg.so.0
+libOpenCL.so.1
+libopenjp2.so.7
+libopus.so.0
+libpango-1.0.so.0
+libpangocairo-1.0.so.0
+libpangoft2-1.0.so.0
+libpcre2-8.so.0
+libpixman-1.so.0
+libpng16.so.16
+librav1e.so.0
+librsvg-2.so.2
+libselinux.so.1
+libsharpyuv.so.0
+libshine.so.3
+libsnappy.so.1
+libsoxr.so.0
+libspeex.so.1
+libSvtAv1Enc.so.1
+libswresample.so.4
+libswscale.so.7
+libthai.so.0
+libtheoradec.so.1
+libtheoraenc.so.1
+libtwolame.so.0
+libvorbis.so.0
+libvorbisenc.so.2
+libvpl.so.2
+libvpx.so.9
+libwebp.so.7
+libwebpmux.so.3
+libx264.so.164
+libx265.so.199
+libxml2.so.2
+libXrender.so.1
+libxvidcore.so.4
+libz.so.1
+libzvbi.so.0

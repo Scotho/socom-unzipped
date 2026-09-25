@@ -142,8 +142,8 @@ def opaque_hit(s):
     Key material mixes its cases and scatters its digits; a mangled C++ name (`FindExceptionHandler__FP12Throw`),
     a build path (`RTBUILD/ps2xRuntime/ps2EntryRunner`) and a NuGet id do not. So: both cases, at least three
     separate digit runs, no path separator, no `__`, and at most two of `_-`."""
-    if re.match(r"(?i)sha\d{3}-", s):
-        return False                                  # a subresource-integrity hash (package-lock.json)
+    if re.match(r"(?i)sha\d{3}[-=]", s):
+        return False                                  # an integrity hash: `sha512-...` (package-lock.json), `SHA256=...` (CMake URL_HASH)
     return (any(c.islower() for c in s) and any(c.isupper() for c in s)
             and len(re.findall(r"\d+", s)) >= 3
             and "/" not in s and "__" not in s

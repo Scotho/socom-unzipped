@@ -1,5 +1,6 @@
 """THIRD_PARTY_NOTICES.md and LICENSES/ (Sprint 10 H5; Sprint 11 Goal 5's bar): a dependency the build fetches, a
-directory vendored under third_party/ or server/, or a DLL in the release folder that has no inventory row fails
+directory vendored under third_party/ or server/, a DLL in the release folder, or a library in the Linux tarball's
+lib/ (Sprint 13 C6: a fixture listing always, a real tarball when one is here) that has no inventory row fails
 here -- and so does a row naming a licence whose text is not in LICENSES/.
 
 The inventory is read as the tables in the notices file; the FetchContent and ExternalProject names are read from
@@ -33,8 +34,35 @@ def rows():
 
 def licence_ids(cell):
     """The SPDX ids a Licence cell names: `Apache-2.0 WITH LLVM-exception` is two, `FTL OR GPL-2.0-only` is two.
-    The cell is ids and SPDX operators only; a parenthetical belongs in another column."""
-    return set(re.findall(r"[A-Z][A-Za-z0-9.+-]*(?:-[0-9.]+(?:-(?:only|or-later))?)?", cell)) - {"WITH", "OR", "AND"}
+    The cell is ids and SPDX operators only; a parenthetical belongs in another column. An id may begin lower-case
+    (`libpng-2.0`, `bzip2-1.0.6`, `libtiff` are SPDX ids; Sprint 13 C6)."""
+    return set(re.findall(r"[A-Za-z0-9][A-Za-z0-9.+-]*", cell)) - {"WITH", "OR", "AND"}
+
+
+# Sprint 13 C6: the Linux tarball's lib/. No tarball is tracked; the fixture stands in (its header says how it was
+# derived), and a real one is walked as well when a local build made it.
+LINUX_LIB_FIXTURE = os.path.join(ROOT, "tools_py", "tests", "fixtures", "linux_tarball_lib.txt")
+LINUX_PORTABLE = [os.path.join(ROOT, d, "portable") for d in ("dist-linux-release", "dist-linux")]
+
+
+def fixture_linux_libs():
+    with open(LINUX_LIB_FIXTURE, encoding="utf-8") as fh:
+        return [ln.strip() for ln in fh if ln.strip() and not ln.startswith("#")]
+
+
+def real_linux_libs():
+    """lib/ of a local socom2-linux folder or tarball (make_portable's shape), or None when there is neither."""
+    import tarfile
+    for base in LINUX_PORTABLE:
+        lib = os.path.join(base, "socom2-linux", "lib")
+        if os.path.isdir(lib):
+            return sorted(os.listdir(lib))
+        tgz = os.path.join(base, "socom2-linux.tar.gz")
+        if os.path.isfile(tgz):
+            with tarfile.open(tgz) as tf:
+                return sorted(m.name.rsplit("/", 1)[-1] for m in tf.getmembers()
+                              if m.name.startswith("socom2-linux/lib/") and not m.isdir())
+    return None
 
 
 def cmake_dependencies():
@@ -97,6 +125,36 @@ class Notices(unittest.TestCase):
         for dll in dlls:
             with self.subTest(dll=dll):
                 self.assertIn(f"`{dll}`".lower(), self.text, f"{dll} ships and has no row")
+
+    def _every_library_has_a_row(self, names, where):
+        self.assertTrue(names, where)
+        for so in names:
+            with self.subTest(library=so):
+                self.assertIn(f"`{so}`".lower(), self.text, f"{so} is in {where} and has no row")
+
+    def _every_shipped_linux_row_is_in(self, names, where):
+        """The reverse: a Linux row claims only libraries the tarball carries (a row for one it does not is noise
+        that reads as a licence obligation)."""
+        have = set(names)
+        claimed = [so for r in self.rows if r[1].startswith("Ubuntu 24.04")
+                   for so in re.findall(r"`([^`]+\.so\.[^`]+)`", r[5])]
+        self.assertGreater(len(claimed), 50)
+        for so in claimed:
+            with self.subTest(library=so):
+                self.assertIn(so, have, f"a Linux row names {so}, which {where} does not carry")
+
+    def test_every_library_in_the_linux_tarball_fixture_has_a_row(self):
+        self._every_library_has_a_row(fixture_linux_libs(), "the Linux tarball's lib/ (the fixture)")
+
+    def test_every_linux_row_names_only_libraries_of_the_fixture(self):
+        self._every_shipped_linux_row_is_in(fixture_linux_libs(), "the Linux tarball's lib/ (the fixture)")
+
+    def test_every_library_in_a_real_linux_tarball_has_a_row_and_back(self):
+        names = real_linux_libs()
+        if names is None:
+            self.skipTest("no dist-linux*/portable/socom2-linux here (scripts/make_portable.sh on Linux makes it)")
+        self._every_library_has_a_row(names, "the Linux tarball's lib/")
+        self._every_shipped_linux_row_is_in(names, "the real tarball's lib/")
 
     def test_the_root_licence_is_the_gpl_the_recompiler_carries(self):
         with open(os.path.join(ROOT, "LICENSE"), encoding="utf-8") as fh:
