@@ -24,6 +24,13 @@ not match it is REFUSED before anything is launched (exit 7, distinct from a sta
 `--baseline` re-score whose recorded pins, or today's reference files, do not match. `--accept-pins` makes the
 measured values the standard, written once after the run (the summary says so; a gate the lock refuses
 writes nothing -- issue #45); `--pins` is the lock-free dry check.
+
+A run with the mission stage also carries `FRAME mean=<ms> worst1s=<ms> n=<VBlanks>` (Sprint 13 V4): VBlank
+pacing -- host ms per guest VBlank, a lower bound on the time between presents, not the present rate (docs/
+KNOWN.md §1's two-instance clock row keeps the two apart) -- over the scripted walk (the HUD step to the drive's
+last step), from the sampler rows of mission.game.log (tools_py/parity/frame_time.py says which fields and
+why), and records the numbers in its pins.json as an informational
+`PIN frame` that is never compared (S13-R3: no refusal until three gates agree on its spread).
 """
 import argparse
 import glob
@@ -40,8 +47,8 @@ from collections import OrderedDict
 import numpy as np
 from PIL import Image
 
-from tools_py.parity import (black_rows, compare, console_compare, drive, guest_addresses, guest_probe,
-                             hostplatform, mission_fail, pins, screen_bands, sp_death_probe)
+from tools_py.parity import (black_rows, compare, console_compare, drive, frame_time, guest_addresses,
+                             guest_probe, hostplatform, mission_fail, pins, screen_bands, sp_death_probe)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_MIN_FREE_GB = 4.0
@@ -732,6 +739,8 @@ def score_baseline(stamp, revision=None):
     for name, ok, detail in results:
         print("%s %s (%s)" % ("PASS" if ok else "FAIL", name, detail), flush=True)
         failed += 0 if ok else 1
+        if name == "mission":
+            print(frame_time.line(*frame_time.read_stamp(out_root)), flush=True)   # informational (S13-R3)
     print("GATE %s (%d/%d) [baseline %s]" % ("FAIL" if failed else "PASS", len(results) - failed, len(results), out_root))
     return 1 if failed else 0
 
@@ -1118,14 +1127,15 @@ def main(argv=None):
     accepted = False
     compared = len(pins.comparable(current))
 
-    def write_summary(stage_lines, all_drifts):
-        """summary.txt (stage lines, EXE, PIN lines, PINS verdict) and pins.json; returns the lines."""
+    def write_summary(stage_lines, all_drifts, frame_lines=(), info=None):
+        """summary.txt (stage lines, the FRAME line, EXE, PIN lines, the informational PIN frame, PINS verdict)
+        and pins.json; returns the PIN lines (the informational one last) and the verdict."""
         word, verdict = pins_verdict(all_drifts, accepted, compared, revision, when=" after the run")
-        pin_lines = pins.lines(current, all_drifts, accepted, expected)
+        pin_lines = pins.lines(current, all_drifts, accepted, expected) + pins.informational_lines(info)
         with open(os.path.join(out_root, "summary.txt"), "w", encoding="utf-8") as f:
-            f.write("".join(l + "\n" for l in stage_lines + [exe, elf] + pin_lines + [verdict]))
+            f.write("".join(l + "\n" for l in stage_lines + list(frame_lines) + [exe, elf] + pin_lines + [verdict]))
         pins.write_record(current, os.path.join(out_root, pins.RECORD_NAME), all_drifts, accepted, word,
-                          exe, expected_pins_rel(revision))
+                          exe, expected_pins_rel(revision), informational=info)
         return pin_lines, verdict
 
     if drifts and not pending:
@@ -1190,8 +1200,17 @@ def main(argv=None):
             print("PINS NOT ACCEPTED: %d of %d stages FAILed -- %s unchanged"
                   % (len(failed), len(results), expected_pins_rel(revision)))
         refused = bool(all_drifts) and not accepted
-        pin_lines, verdict = write_summary([line for _, line in results], all_drifts)
-        print(pin_lines[-1])        # the mapping line, now that the game logs exist
+        # The mission's frame time (Sprint 13 V4): printed and recorded, never compared (S13-R3).
+        frame_lines, info = [], None
+        if "mission" in wanted:
+            ft, why = frame_time.read_stamp(out_root)
+            frame_lines, info = [frame_time.line(ft, why)], pins.frame_info(ft, why)
+        pin_lines, verdict = write_summary([line for _, line in results], all_drifts, frame_lines, info)
+        for line in frame_lines:
+            print(line)
+        # the mapping line, now that the game logs exist, and the informational frame pin after it
+        for line in pin_lines[-1 - len(pins.informational_lines(info)):]:
+            print(line)
         print(verdict)
         if refused:
             print("GATE REFUSED (pins drifted: %s) -> %s" % (", ".join(d.name for d in all_drifts), out_root))
