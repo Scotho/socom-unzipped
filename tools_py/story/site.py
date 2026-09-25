@@ -304,7 +304,7 @@ FONTS = ('<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="
 
 
 def chrome_header(base):
-    """The site's top bar, from sites/s2u/src/chrome.md, with STORY current. `base` is "" on the site and the
+    """The site's top bar, from apps/s2u/src/chrome.md, with STORY current. `base` is "" on the site and the
     absolute site origin in a copy that lives elsewhere. Since 2026-09-20 (evening) the web page is the site's
     default view, so the section links are /#..., and the console menu is /classic.html."""
     w = base + "/"
@@ -469,7 +469,7 @@ def main(argv=None):
     ap.add_argument("--repo", default="https://github.com/Scotho/socom-unzipped")
     ap.add_argument("--full-document", action="store_true",
                     help="the site copy: a complete HTML document that links /src/ui.css for Vite to bundle")
-    ap.add_argument("--ui-css", default=os.path.join(os.path.dirname(ROOT), "scotho", "sites", "s2u", "src", "ui.css"),
+    ap.add_argument("--ui-css", default=os.path.join(os.path.dirname(ROOT), "scotho", "apps", "s2u", "src", "ui.css"),
                     help="the site's shared stylesheet, inlined into a copy that cannot link it (the default docs copy)")
     args = ap.parse_args(argv)
     # Git Bash rewrites an argument that looks like an absolute POSIX path ("/story/img") into a Windows path
