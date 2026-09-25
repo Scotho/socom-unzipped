@@ -1647,7 +1647,7 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
                 }
                 else if (qwc > 0)
                 {
-                    enqueueTransfer(madr, qwc);
+                    enqueueTransfer(dmacStartAddress(madr), qwc);   // interleave is SPR-only, so this is dead for GIF/VIF; kept consistent
                 }
 
                 const bool autoProcessTransfers =
@@ -2152,6 +2152,10 @@ void PS2Memory::processGIFPacket(const uint8_t *data, uint32_t sizeBytes)
         m_gifPacketCallback(data, sizeBytes);
 }
 
+// The two native GIF fast paths below take the raw TADR from kickGifDmaChainFromMMIO (the recompiler's
+// gif_dma_kick_analyzer emits that call; SOCOM II's recomp/output holds no such call, so both are latent here) and
+// do not go through dmacStartAddress(): a bit-31 TADR would be read as RDRAM. The chain walker above also writes a
+// bit-31 TADR back as 0x7000xxxx rather than 0x8000xxxx. Both are recorded, not fixed (Sprint 13 U7 review).
 bool PS2Memory::tryProcessNativeGifImageUploadChain(GS &gs, uint32_t tadr, uint32_t chcr)
 {
     static constexpr uint32_t GIF_CHANNEL = 0x1000A000u;
