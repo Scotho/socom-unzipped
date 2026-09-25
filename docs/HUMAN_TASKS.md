@@ -53,7 +53,7 @@ Sprint 11 is merged to `main` as `v0.11.0`. Sprint 12 closed the same day (its s
 
 Sprint 10 is **closed** -- merged to `main` (PR #24, `f15acfa`) and tagged `v0.10.0` -- the draft release exists, with no archives yet (below). Sprint 11
 is open on `docs/superpowers/plans/2026-09-23-sprint-11.md`. The night's results are in `docs/STATUS.md`'s newest
-entry and in `docs/CURRENT_SPRINT.md`'s "Sprint 10 -- CLOSED" block; the short version is that your Bluetooth speaker
+entry and in the "Sprint 10 -- CLOSED" block (archived 2026-09-25 to `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`); the short version is that your Bluetooth speaker
 is **not** the cause of the music dropouts (they survive a wired endpoint, so they are ours), the prefilled login
 **stays** for now because a virgin card keeps the persona but loses the saved password, and the garbled HELP glyphs
 did not reproduce on a walk that never reaches the church.
@@ -141,7 +141,7 @@ the server clamp **deployed to the project box at 06:58Z** — your local Horizo
 started again); `scripts/build_revision.sh` (the pipeline for another disc revision, proven byte-identical on
 r0001); the dead history archived with a link check that fails; the release-draft workflow's eligibility step and
 the backfilled tags `v0.5.0`–`v0.8.0`; the Linux VM ring measured and its five Linux-only defects fixed. Eight more
-tasks are part-done in agent worktrees — `docs/CURRENT_SPRINT.md`'s table; **do not delete `C:\projects\wt-*`**.
+tasks are part-done in agent worktrees — the Sprint 11 record's table (`docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` since 2026-09-25); **do not delete `C:\projects\wt-*`**.
 
 Rulings (numbered ones are in the plan's rulings section; all reversible):
 - **R241–R245** (the Sprint 10 close and the open): the external-repo items slotted; option B (a native libsd) not
@@ -271,7 +271,7 @@ refresh-then-join path, so W8 is proven by them. The channel line is still wante
 ## Start here (2026-09-22, after your playthrough)
 
 **Your findings are all recorded and the fix wave is running** -- `docs/superpowers/plans/2026-09-22-fix-wave-playthrough.md`
-is the chunk table, `docs/CURRENT_SPRINT.md` ("The playthrough, 2026-09-22") holds the findings and rulings R236-R240,
+is the chunk table, `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` ("The playthrough, 2026-09-22") holds the findings and rulings R236-R240,
 and `docs/KNOWN.md` has four new section-2 rows (each with the experiment that settles it) and two new hazards.
 
 **Done without needing you:** the launcher now defaults to **640x448** (R236, your instruction); a text field lets go
@@ -353,7 +353,7 @@ sounds, the guide-button switch, the prefilled login). About two hours without t
 ## Start here (2026-09-20)
 
 **THE OWNER GATE ON THE AUDIO LISTEN IS BYPASSED (your instruction, 2026-09-20 evening).** The music thread no longer
-waits on the fifth listen: Sprint 10 is reorganized around hardening the now-public repository (`docs/CURRENT_SPRINT.md`,
+waits on the fifth listen: Sprint 10 is reorganized around hardening the now-public repository (`docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`,
 "Sprint 10, REORGANIZED"), the music plan's open items are filler, and the fifth-round listen below stays on this list
 for whenever you want it -- the build and what to listen for are unchanged.
 
