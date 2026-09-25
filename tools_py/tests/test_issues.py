@@ -156,11 +156,12 @@ class KnownRowsTest(unittest.TestCase):
 
 
 def planted(number, state="OPEN", labels=("known-issue", "render"), milestone="Sprint 11",
-            updated="2026-09-23T10:00:00Z", body=GOOD_BODY, title="t", reason=None, comments=()):
+            updated="2026-09-23T10:00:00Z", body=GOOD_BODY, title="t", reason=None, comments=(),
+            created="2026-09-23T09:00:00Z", closed=None):
     return {"number": number, "state": state, "stateReason": reason, "title": title,
             "labels": [{"name": l} for l in labels],
             "milestone": {"title": milestone} if milestone else None,
-            "updatedAt": updated, "body": body,
+            "updatedAt": updated, "createdAt": created, "closedAt": closed, "body": body,
             "comments": [{"author": {"login": "someone"}, "body": c} for c in comments]}
 
 
@@ -297,6 +298,427 @@ class LabelsAgreeTest(unittest.TestCase):
         names = {line.strip()[1:].split("|")[0] for line in block.splitlines() if line.strip().startswith('"')}
         for label in issues.AREAS + (issues.STACK_LABEL, issues.CARRIED_LABEL):
             self.assertIn(label, names, "%s is not created by scripts/github_labels.sh" % label)
+
+
+RULED_OUT_TEXT = """# slug | ruling | bar or reason | where it is written
+soft-double-chain | R265 | Declined until a gate, a control round or a player names a numeric defect that points at it. | audit D14
+window-policy | no issue | One gate at `fullscreen`, its three scores against the pinned run's. | audit A13
+"""
+
+
+class PlantedTree(unittest.TestCase):
+    """A planted repository root with docs/ and the ruled-out list, and a saved listing to replay."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.tmp, "docs"))
+        self.write("docs/backlog_ruled_out.txt", RULED_OUT_TEXT)
+        self.saved_root = issues.ROOT
+        issues.ROOT = self.tmp
+
+    def tearDown(self):
+        issues.ROOT = self.saved_root
+
+    def write(self, rel, text):
+        with open(os.path.join(self.tmp, rel), "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+
+    def read(self, rel):
+        with open(os.path.join(self.tmp, rel), encoding="utf-8") as f:
+            return f.read()
+
+    def listing(self, records, name="listing.json"):
+        path = os.path.join(self.tmp, name)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(records, f)
+        return path
+
+    def run_main(self, argv):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = issues.main(argv)
+        return code, out.getvalue()
+
+
+def carry_comment(text="Carried at the Sprint 11 close (2026-09-25): not in the plan", when="2026-09-25T10:00:00Z"):
+    return {"author": {"login": "someone"}, "body": text, "createdAt": when}
+
+
+class BacklogTest(PlantedTree):
+    """`backlog` writes docs/BACKLOG.md from the open issues plus docs/backlog_ruled_out.txt (R267)."""
+
+    def stack(self):
+        carried = planted(25, labels=("known-issue", "linux", "carried"), milestone="Sprint 13",
+                          title="The VM suites are not green | on the merged tree")
+        carried["comments"] = [carry_comment(), carry_comment("A review note, not a carry"),
+                               carry_comment("Carried once into Sprint 13 (R266): the sprint has a task")]
+        backlog = planted(27, labels=("known-issue", "recomp"), milestone=None,
+                          body=GOOD_BODY.replace("The four captures score >= 90 again on a gate, or the references "
+                                                 "are re-recorded with the change written down.",
+                                                 "One clean-exit launch. If the password is read back, the row "
+                                                 "retracts."))
+        hand = planted(28, labels=("known-issue", "audio", "carried"), milestone=None)
+        closed = planted(29, state="CLOSED")
+        return [closed, hand, backlog, carried]
+
+    def test_the_file_is_written_with_both_tables_and_a_generated_head(self):
+        path = self.listing(self.stack())
+        code, text = self.run_main(["backlog", "--json", path])
+        self.assertEqual(code, 0, text)
+        out = self.read("docs/BACKLOG.md")
+        head = "\n".join(out.splitlines()[:8])
+        self.assertIn("Generated", head)
+        self.assertIn("python -m tools_py.issues backlog", head)
+        self.assertIn("docs/backlog_ruled_out.txt", head)
+        # the open issues, in number order; the closed one is not carry
+        self.assertLess(out.index("| #25 |"), out.index("| #27 |"))
+        self.assertLess(out.index("| #27 |"), out.index("| #28 |"))
+        self.assertNotIn("| #29 |", out)
+        row25 = [l for l in out.splitlines() if l.startswith("| #25 |")][0]
+        self.assertIn("linux", row25)
+        self.assertIn("Sprint 13", row25)
+        self.assertIn("| 2 |", row25, "two 'Carried' comments are two carries; a review note is not one")
+        self.assertIn(r"The VM suites are not green \| on the merged tree", row25, "a pipe in a title is escaped")
+        row27 = [l for l in out.splitlines() if l.startswith("| #27 |")][0]
+        self.assertIn("backlog", row27)
+        self.assertIn("| 0 |", row27)
+        self.assertIn("One clean-exit launch.", row27)
+        self.assertNotIn("retracts", row27, "only the closing bar's first sentence")
+        row28 = [l for l in out.splitlines() if l.startswith("| #28 |")][0]
+        self.assertIn("| 1 |", row28, "the label with no carry comment still counts once (a carry by hand)")
+        # the ruled-out rows, rendered as the second table
+        self.assertIn("| soft-double-chain | R265 |", out)
+        self.assertIn("| window-policy | no issue |", out)
+        self.assertIn("3 open issues", out)
+        self.assertIn("2 rows", out)
+
+    def test_the_first_sentence_does_not_end_inside_code_or_an_ellipsis(self):
+        body = GOOD_BODY.replace("The four captures score >= 90 again on a gate, or the references are "
+                                 "re-recorded with the change written down.",
+                                 "`build_revision.sh <rev> ... --out d` copies the sidecar... then e. g. more. "
+                                 "Second sentence.")
+        self.assertEqual(issues.closing_bar_sentence(body),
+                         "`build_revision.sh <rev> ... --out d` copies the sidecar... then e. g. more.")
+
+    def test_check_passes_on_a_fresh_file_and_fails_on_a_stale_one(self):
+        path = self.listing(self.stack())
+        self.run_main(["backlog", "--json", path])
+        code, text = self.run_main(["backlog", "--json", path, "--check"])
+        self.assertEqual(code, 0, text)
+        # an issue closed since the file was written: stale
+        code, text = self.run_main(["backlog", "--json", self.listing(self.stack()[1:3], "l2.json"), "--check"])
+        self.assertEqual(code, 1, text)
+        self.assertIn("stale", text)
+
+    def test_check_never_writes(self):
+        path = self.listing(self.stack())
+        code, text = self.run_main(["backlog", "--json", path, "--check"])
+        self.assertEqual(code, 1, text)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "docs", "BACKLOG.md")))
+
+    def test_the_offline_check_reads_only_the_ruled_out_half(self):
+        # The docs test has no network: --offline holds the ruled-out table and the head to the tracked list,
+        # and takes the issue table as it stands in the file.
+        path = self.listing(self.stack())
+        self.run_main(["backlog", "--json", path])
+        code, text = self.run_main(["backlog", "--check", "--offline"])
+        self.assertEqual(code, 0, text)
+        self.write("docs/backlog_ruled_out.txt", RULED_OUT_TEXT + "new-row | no issue | A bar. | audit G3\n")
+        code, text = self.run_main(["backlog", "--check", "--offline"])
+        self.assertEqual(code, 1, text)
+        self.assertIn("stale", text)
+
+    def test_a_malformed_ruled_out_row_is_refused_with_its_line(self):
+        self.write("docs/backlog_ruled_out.txt", RULED_OUT_TEXT + "only | three | fields\n")
+        code, text = self.run_main(["backlog", "--json", self.listing(self.stack())])
+        self.assertEqual(code, 2, text)
+        self.assertIn("line 4", text)
+        self.write("docs/backlog_ruled_out.txt", RULED_OUT_TEXT + "x | maybe | A bar. | audit A1\n")
+        code, text = self.run_main(["backlog", "--json", self.listing(self.stack())])
+        self.assertEqual(code, 2, text)
+        self.assertIn("ruling", text)
+        self.write("docs/backlog_ruled_out.txt", RULED_OUT_TEXT + "window-policy | no issue | Again. | audit A1\n")
+        code, text = self.run_main(["backlog", "--json", self.listing(self.stack())])
+        self.assertEqual(code, 2, text)
+        self.assertIn("window-policy", text)
+
+
+class GhRecorded(PlantedTree):
+    """A planted tree where issues._gh records each command and succeeds -- gh itself is never run."""
+
+    def setUp(self):
+        super().setUp()
+        self.calls = []
+        self.saved_gh = issues._gh
+
+        class Done:
+            returncode, stdout, stderr = 0, "", ""
+
+        def record(cmd):
+            self.calls.append(cmd)
+            return Done()
+        issues._gh = record
+
+    def tearDown(self):
+        issues._gh = self.saved_gh
+        super().tearDown()
+
+
+class CarryTest(GhRecorded):
+    """`carry N --comment ... [--milestone NAME]`: the label, the comment and the milestone in one step, and a
+    refusal once the issue has been carried twice -- that is the owner's question (DOC_MAINTENANCE section 7 step
+    5). --json replays `gh issue view`."""
+
+    def view(self, **kw):
+        return self.listing(planted(33, **kw), "view.json")
+
+    def test_a_first_carry_labels_comments_and_moves_the_milestone(self):
+        code, text = self.run_main(["carry", "33", "--comment", "not in Sprint 14's plan", "--milestone",
+                                    "Sprint 14", "--json", self.view(milestone="Sprint 13")])
+        self.assertEqual(code, 0, text)
+        self.assertEqual(len(self.calls), 2, self.calls)
+        comment, edit = self.calls
+        self.assertEqual(edit[:3], ["issue", "edit", "33"])
+        self.assertIn("--add-label", edit)
+        self.assertEqual(edit[edit.index("--add-label") + 1], "carried")
+        self.assertEqual(edit[edit.index("--milestone") + 1], "Sprint 14")
+        self.assertEqual(comment[:3], ["issue", "comment", "33"])
+        body = comment[comment.index("--body") + 1]
+        self.assertTrue(body.startswith(issues.CARRY_COMMENT), body)
+        self.assertIn("Sprint 13", body)
+        self.assertIn("Sprint 14", body)
+        self.assertIn("not in Sprint 14's plan", body)
+
+    def test_no_milestone_means_the_backlog(self):
+        code, text = self.run_main(["carry", "33", "--comment", "no plan names it", "--json", self.view()])
+        self.assertEqual(code, 0, text)
+        self.assertIn("--remove-milestone", self.calls[1])
+        self.assertIn("the backlog", self.calls[0][self.calls[0].index("--body") + 1])
+
+    def test_the_tools_comment_counts_as_a_carry(self):
+        # What `carry` writes must be what carried_count counts, or the refusal below could never fire.
+        self.run_main(["carry", "33", "--comment", "why", "--json", self.view()])
+        body = self.calls[0][self.calls[0].index("--body") + 1]
+        issue = issues.normalise(planted(33, comments=(body,)))
+        self.assertEqual(issues.carried_count(issue), 1)
+
+    def test_a_second_carry_is_allowed_and_a_third_refused(self):
+        once = self.view(labels=("known-issue", "render", "carried"),
+                         comments=("Carried at the Sprint 11 close (2026-09-25): not in the plan",))
+        code, text = self.run_main(["carry", "33", "--comment", "why", "--json", once])
+        self.assertEqual(code, 0, text)
+        self.calls[:] = []
+        twice = self.view(labels=("known-issue", "render", "carried"),
+                          comments=("Carried at the Sprint 11 close (2026-09-25): not in the plan",
+                                    "a review note",
+                                    "Carried once into Sprint 13 (R266): the sprint has a task"))
+        code, text = self.run_main(["carry", "33", "--comment", "why", "--json", twice])
+        self.assertEqual(code, 1, text)
+        self.assertEqual(self.calls, [], "a refused carry touches nothing")
+        self.assertIn("carried twice", text)
+        self.assertIn("owner", text)
+
+    def test_a_carry_recorded_by_the_label_alone_must_be_written_down_first(self):
+        # A label with no `Carried ` comment counts once; if the tool then added its own comment the count would
+        # still read 1 and a third carry would slip through. So the tool refuses until the first is written.
+        code, text = self.run_main(["carry", "33", "--comment", "why", "--json",
+                                    self.view(labels=("known-issue", "render", "carried"))])
+        self.assertEqual(code, 1, text)
+        self.assertEqual(self.calls, [])
+        self.assertIn("label alone", text)
+
+    def test_the_comment_is_posted_before_the_label_and_milestone_edit(self):
+        # A failed comment then leaves nothing half-carried: no label without its reason.
+        failing = []
+
+        class Failed:
+            returncode, stdout, stderr = 1, "", "boom"
+
+        def record(cmd):
+            failing.append(cmd)
+            return Failed()
+        issues._gh = record
+        code, _ = self.run_main(["carry", "33", "--comment", "why", "--json", self.view()])
+        self.assertEqual(code, 1)
+        self.assertEqual(len(failing), 1)
+        self.assertEqual(failing[0][:2], ["issue", "comment"])
+
+    def test_a_lower_case_home_path_is_refused_too(self):
+        code, text = self.run_main(["carry", "33", "--comment", r"see c:\users\bob\log.txt", "--json", self.view()])
+        self.assertEqual(code, 1, text)
+        self.assertIn("home directory", text)
+
+    def test_a_closed_issue_is_not_carried(self):
+        code, text = self.run_main(["carry", "33", "--comment", "why", "--json", self.view(state="CLOSED")])
+        self.assertEqual(code, 1, text)
+        self.assertEqual(self.calls, [])
+
+    def test_the_comment_is_required_and_is_held_to_the_body_rules(self):
+        code, text = self.run_main(["carry", "33", "--comment", "  ", "--json", self.view()])
+        self.assertEqual(code, 2, text)
+        code, text = self.run_main(["carry", "33", "--comment", r"see C:\Users\bob\log.txt", "--json", self.view()])
+        self.assertEqual(code, 1, text)
+        self.assertIn("home directory", text)
+        self.assertEqual(self.calls, [])
+
+    def test_dry_run_prints_and_runs_nothing(self):
+        code, text = self.run_main(["carry", "33", "--comment", "why", "--milestone", "Sprint 14", "--dry-run",
+                                    "--json", self.view()])
+        self.assertEqual(code, 0, text)
+        self.assertEqual(self.calls, [])
+        self.assertIn("gh issue edit 33", text)
+        self.assertIn("gh issue comment 33", text)
+
+
+class MilestoneTest(GhRecorded):
+    """`milestone close NAME --next NEXT`: one milestone closed and the next created, refused while an open issue
+    remains in it. --json replays the issue listing, --milestones-json the `gh api .../milestones` reply."""
+
+    MILESTONES = [{"number": 2, "title": "Sprint 12", "state": "closed"},
+                  {"number": 3, "title": "Sprint 13", "state": "open"}]
+
+    def close(self, stack, milestones=None, *extra):
+        return self.run_main(["milestone", "close", "Sprint 13", "--next", "Sprint 14",
+                              "--json", self.listing(stack),
+                              "--milestones-json", self.listing(milestones or self.MILESTONES, "ms.json")]
+                             + list(extra))
+
+    def test_an_emptied_milestone_is_closed_and_the_next_created(self):
+        stack = [planted(25, milestone="Sprint 14"), planted(38, state="CLOSED", milestone="Sprint 13")]
+        code, text = self.close(stack)
+        self.assertEqual(code, 0, text)
+        self.assertEqual(len(self.calls), 2, self.calls)
+        shut, create = self.calls
+        self.assertIn("repos/%s/milestones/3" % issues.REPO, shut)
+        self.assertIn("PATCH", shut)
+        self.assertIn("state=closed", shut)
+        self.assertIn("repos/%s/milestones" % issues.REPO, create)
+        self.assertIn("POST", create)
+        self.assertIn("title=Sprint 14", create)
+
+    def test_open_issues_left_in_it_refuse_the_close(self):
+        stack = [planted(25, milestone="Sprint 13"), planted(26, milestone="Sprint 13"), planted(27, milestone=None)]
+        code, text = self.close(stack)
+        self.assertEqual(code, 1, text)
+        self.assertEqual(self.calls, [])
+        self.assertIn("#25", text)
+        self.assertIn("#26", text)
+        self.assertNotIn("#27", text)
+        self.assertIn("carry", text)
+
+    def test_a_next_milestone_that_exists_is_not_created_twice(self):
+        ms = self.MILESTONES + [{"number": 4, "title": "Sprint 14", "state": "open"}]
+        code, text = self.close([], ms)
+        self.assertEqual(code, 0, text)
+        self.assertEqual(len(self.calls), 1, self.calls)
+        self.assertIn("already exists", text)
+
+    def test_an_unknown_or_closed_milestone_is_said_not_guessed(self):
+        code, text = self.run_main(["milestone", "close", "Sprint 99", "--next", "Sprint 100",
+                                    "--json", self.listing([]), "--milestones-json", self.listing(self.MILESTONES,
+                                                                                                  "ms.json")])
+        self.assertEqual(code, 1, text)
+        self.assertIn("no milestone", text)
+        self.assertEqual(self.calls, [])
+        code, text = self.run_main(["milestone", "close", "Sprint 12", "--next", "Sprint 13",
+                                    "--json", self.listing([]), "--milestones-json", self.listing(self.MILESTONES,
+                                                                                                  "ms.json")])
+        self.assertEqual(code, 0, text)
+        self.assertEqual(self.calls, [], "closed already and the next exists: nothing to do")
+        self.assertIn("already closed", text)
+
+    def test_dry_run_prints_and_runs_nothing(self):
+        code, text = self.close([], None, "--dry-run")
+        self.assertEqual(code, 0, text)
+        self.assertEqual(self.calls, [])
+        self.assertIn("gh api", text)
+
+
+class TallyTest(PlantedTree):
+    """`tally --since DATE`: the sentence DOC_MAINTENANCE section 7 step 7 wants -- opened, closed and carried
+    since the day the sprint opened, and the highest issue number."""
+
+    def test_the_sentence_counts_each_kind_from_the_date(self):
+        old = planted(20, created="2026-09-20T09:00:00Z")
+        opened = planted(49, created="2026-09-25T09:00:00Z")
+        opened_and_closed = planted(50, state="CLOSED", created="2026-09-25T10:00:00Z",
+                                    closed="2026-09-25T12:00:00Z")
+        closed_old = planted(38, state="CLOSED", created="2026-09-23T10:00:00Z", closed="2026-09-25T08:00:00Z")
+        closed_before = planted(30, state="CLOSED", created="2026-09-22T10:00:00Z", closed="2026-09-24T08:00:00Z")
+        carried = planted(25, labels=("known-issue", "linux", "carried"))
+        carried["comments"] = [carry_comment(when="2026-09-24T10:00:00Z"),
+                               carry_comment("Carried once into Sprint 13 (R266)", when="2026-09-25T10:00:00Z"),
+                               carry_comment("Carried from Sprint 13 to Sprint 14: again", when="2026-09-25T11:00:00Z")]
+        carried_before = planted(26, labels=("known-issue", "harness", "carried"))
+        carried_before["comments"] = [carry_comment(when="2026-09-24T10:00:00Z")]
+        path = self.listing([old, opened, opened_and_closed, closed_old, closed_before, carried, carried_before])
+        code, text = self.run_main(["tally", "--since", "2026-09-25", "--json", path])
+        self.assertEqual(code, 0, text)
+        first = text.splitlines()[0]
+        self.assertIn("opened 2", first)
+        self.assertIn("closed 2", first)
+        self.assertIn("carried 1", first, "an issue carried twice on the day is one issue carried")
+        self.assertIn("#50", first)
+        self.assertIn("2026-09-25", first)
+        self.assertIn("#49, #50", text)
+        self.assertIn("#38, #50", text)
+
+    def test_an_empty_listing_says_zero(self):
+        code, text = self.run_main(["tally", "--since", "2026-09-25", "--json", self.listing([])])
+        self.assertEqual(code, 0, text)
+        self.assertIn("opened 0, closed 0, carried 0", text)
+
+    def test_a_malformed_date_is_refused(self):
+        code, text = self.run_main(["tally", "--since", "25/09/2026", "--json", self.listing([])])
+        self.assertEqual(code, 2, text)
+
+
+class LabelsCommandTest(unittest.TestCase):
+    """`labels` prints the set scripts/github_labels.sh creates -- the one list a triager (the s2u-bug-reports
+    skill) is pointed at, instead of a copy that drifts (H48: the skill named eight areas of twelve)."""
+
+    def run_labels(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = issues.main(["labels"])
+        return code, out.getvalue()
+
+    def test_every_label_the_script_creates_is_printed_and_the_areas_are_marked(self):
+        code, text = self.run_labels()
+        self.assertEqual(code, 0, text)
+        names = [n for n, _ in issues.script_labels()]
+        self.assertGreaterEqual(len(names), 19)
+        for name in names:
+            self.assertIn(name, text)
+        area_line = [l for l in text.splitlines() if l.startswith("areas")][0]
+        self.assertEqual(area_line.split(":", 1)[1].split(), list(issues.AREAS))
+        self.assertIn("scripts/github_labels.sh", text)
+
+    def test_githubs_two_default_labels_are_printed_and_marked(self):
+        # `help wanted` and `good first issue` are on #33 #39 #40 #46 #48 but the script does not create them.
+        _, text = self.run_labels()
+        for name in ("help wanted", "good first issue"):
+            line = [l for l in text.splitlines() if name in l]
+            self.assertTrue(line, name)
+            self.assertIn("GitHub default, not created here", line[0])
+
+
+class RuledOutListTest(unittest.TestCase):
+    """The tracked list on this tree parses, and every row the audit marked `backlog` has a place in it."""
+
+    def test_the_tracked_list_parses(self):
+        rows = issues.ruled_out_rows()
+        self.assertGreaterEqual(len(rows), 10)
+        for r in rows:
+            self.assertTrue(r["ruling"] == "no issue" or re.match(r"^R\d+$", r["ruling"]), r)
+
+    def test_every_backlog_row_of_the_audit_is_seeded(self):
+        wheres = " ".join(r["where"] for r in issues.ruled_out_rows())
+        for audit_row in ("A13", "C17", "D13", "D14", "D15", "G2", "G3", "H4", "I5"):
+            self.assertRegex(wheres, r"\baudit %s\b" % audit_row, audit_row)
+        # D12 is an issue to open (review round 1), not a ruled-out row.
+        self.assertNotRegex(wheres, r"\baudit D12\b")
+        self.assertIn("Sprint 12 Outcome", wheres)
 
 
 if __name__ == "__main__":

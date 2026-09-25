@@ -176,6 +176,26 @@ class ReportTest(unittest.TestCase):
         self.assertIsNotNone(m, "docs/DOC_MAINTENANCE.md lost its 'Last full review:' stamp")
 
 
+class GeneratedBacklogTest(unittest.TestCase):
+    """docs/BACKLOG.md (R267) is class G: `python -m tools_py.issues backlog` writes it. Its issue table needs
+    the network, so this holds the half that does not -- the head and the ruled-out table against the tracked
+    docs/backlog_ruled_out.txt -- through the tool's own `--check --offline`."""
+
+    def test_the_backlog_and_its_list_are_registered(self):
+        rows = {r["path"]: r["cls"] for r in docmaint.registry()}
+        self.assertEqual(rows.get("docs/BACKLOG.md"), "G")
+        self.assertIn("docs/backlog_ruled_out.txt", rows)
+
+    def test_the_backlog_is_not_stale_against_its_ruled_out_list(self):
+        from tools_py import issues
+        import contextlib
+        import io
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = issues.main(["backlog", "--check", "--offline"])
+        self.assertEqual(code, 0, out.getvalue())
+
+
 class PlantedDefectsTest(unittest.TestCase):
     """A gate that has never failed is not known to work (KNOWN section 4).
 

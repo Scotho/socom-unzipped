@@ -104,6 +104,8 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/story/PICTURES.md` | **L** | story | The inventory of what `STORY.md` shows; the citation test keeps them honest |
 | `docs/KNOBS.md` | **G** | `tools_py.knobs` | Generated from `ps2x/knobs.h`; a test fails on a stale row, an unregistered read or a row nothing reads |
 | `docs/LADDER.md` | **G** | `ladder_ledger.py` | One row per scheduled ladder run, written from `logs/ladder/ledger.jsonl`, committed by a person |
+| `docs/BACKLOG.md` | **G** | `tools_py.issues backlog` | The carry's one home (R267): the open issues with their milestone, carried count and closing bar, then `docs/backlog_ruled_out.txt` as a second table. Regenerated and committed at every sprint close (§7 step 5) and whenever the list changes; `backlog --check` exits 1 on a stale file, and the docs test runs its `--offline` half |
+| `docs/backlog_ruled_out.txt` | **L** | controller | Not a markdown file, registered because it is the source `docs/BACKLOG.md` renders: one row per unfinished item ruled not to be an issue, with its ruling (an R-number or `no issue`) and its bar. A row leaves it when it becomes an issue or a task |
 | `docs/ROADMAP.md` | **N** | controller | Narrative and pointers only. Rewritten 2026-09-22; its §0 is the audit of what it replaced |
 | `docs/STORY.md` | **N** | story | Every entry cited; `tools_py/story/cite.py` fails on a dead hash or an unwitnessed run |
 | `docs/HOW_IT_WAS_BUILT.md` | **N** | controller | How the project was made, for a stranger: the method, the owner's share and the agents', and the process failures worth keeping. Pointers only — the live documents own every current number. `README.md` links it |
@@ -297,8 +299,14 @@ acts on it.
    (because the next plan names it) or to no milestone (the backlog) — with the `carried` label and one comment
    saying why it did not close. Then the milestone is closed and the next sprint's is created. **An issue carried
    twice is a question for the owner** (`docs/HUMAN_TASKS.md`): keep it, or close it as not planned under a ruling.
+   Two commands do it: `python -m tools_py.issues carry N --comment "..." [--milestone "Sprint N+1"]` for each
+   issue (label, comment and milestone at once; it refuses an issue already carried twice), then
+   `python -m tools_py.issues milestone close "Sprint N" --next "Sprint N+1"` (it refuses while an open issue is
+   left in it). A third records it: `python -m tools_py.issues backlog` regenerates `docs/BACKLOG.md` (R267), the carry's one home, and the close-out commit carries it; an
+   item ruled not to be an issue goes into `docs/backlog_ruled_out.txt` with its ruling and bar.
 6. **Duplicates and contributor handles.** Merge duplicates (close as not planned, "duplicate of #M"; the survivor
    gets the evidence). Put `help wanted` on what a stranger without a disc could take, `good first issue` only where
    the bar is a test they can run themselves.
 7. **The record.** The close-out commit and `docs/STATUS.md`'s entry say, dated: opened, closed and carried this
-   sprint, the highest issue number, and what the review changed. A review that changed nothing says so.
+   sprint, the highest issue number, and what the review changed. A review that changed nothing says so. The
+   first half is `python -m tools_py.issues tally --since <the day the sprint opened>`, one sentence to paste.
