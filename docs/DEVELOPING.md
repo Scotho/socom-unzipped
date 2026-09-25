@@ -805,13 +805,18 @@ scheduled form is `scripts/ladder_job.sh`, whose runs `tools_py/parity/ladder_le
 `scripts/loop_lock.sh` serialises every build and every game run on the machine (its header is the reference, and
 `docs/LOOP_PROMPT.md`'s "Lock protocol" the rules). `LOOP_LOCK_PATH` overrides the lock's base path (tests use it to
 avoid touching the real lock). `tools_py/tests/test_loop_lock.py` runs a smoke subset by default and the whole lock
-suite with `LOOP_LOCK_SLOW_TESTS=1` (~16 min: every race, interleaving, `run`/`run_detached` test and the real-scale
-`run -- sleep 130` renewal), plus a hygiene test that fails when `scripts/loop_lock.sh`'s git blob differs from
+suite with `LOOP_LOCK_SLOW_TESTS=1` (every race, interleaving, queue, `run`/`run_detached`/`ladder_job` test and the
+real-scale `run -- sleep 130` renewal; ~16 min before Sprint 13's queue tests, longer now, and much longer on a
+host whose process starts are slow -- stray `tail -f` watchers once made it fail the stale-mutex cases outright, so
+check `Get-Process tail` before trusting a red), plus a hygiene test that fails when `scripts/loop_lock.sh`'s git blob differs from
 `tools_py/tests/fixtures/loop_lock_slow_green.txt`, the blob of the last green slow run -- so an edit to the lock
 script needs a green slow run before its commit. `scripts/run_detached.sh` (launched with `--purpose launch*` for an
-online match) writes a quiet marker (`logs/.quiet`, keyed to the Windows pid) that tells other agents to stay off
-`build.sh test`, the gate, `unittest` and large-log parsing while a match runs (`build.sh test` refuses to start under
-it unless `FORCE_QUIET=1`); records a host CPU sampler into the run directory; refuses to start below 4 GB free on
+online match) writes a quiet marker (the MAIN tree's `logs/.quiet`, found through git's common dir like the lock, keyed
+to the Windows pid) that tells other agents to stay off `build.sh test`, the gate, `unittest` and large-log parsing
+while a match runs (`build.sh test` refuses to start under it unless `FORCE_QUIET=1`). The marker is machine-wide:
+**in an agent worktree, `build.sh test` exits 3 while ANY launch runs, including one from the main tree** -- wait
+for it, do not force it; `run_detached.sh --wait <minutes>` queues for the lock (in arrival order) instead of
+refusing; records a host CPU sampler into the run directory; refuses to start below 4 GB free on
 `C:`; and takes the loop lock for the job.
 
 ## The launcher

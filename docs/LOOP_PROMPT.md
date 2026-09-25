@@ -93,7 +93,8 @@ between two tool calls is not renewed, and the calling shell dies when its tool 
 **Mixed versions:** a job started under an older `loop_lock.sh` (plain `logs/.loop_lock` file, or a
 claim dir without the `logs/.loop_lock.mx` mutex) must finish before anything uses the current lock.
 A new lock script lands only by the rollout procedure (`docs/KNOWN.md` section 4: `check` exactly
-`FREE`, `busy` empty, land, restart every waiter, `loop_lock.sh version` equals the landed blob).
+`FREE`, `busy` empty, land, restart every waiter, then every waiter's OWN blob -- `blob=` in `check`'s
+`QUEUED:` lines, `[loop_lock.sh <blob12>]` in its result line -- equals the landed `git hash-object`).
 - Foreground: `bash scripts/loop_lock.sh run <owner> --purpose "<what>" [--wait 40] -- <cmd...>`
   takes the lock, renews its heartbeat every 60 s while `<cmd>` runs, releases on exit (also on
   failure) and returns `<cmd>`'s exit code; exit 75 = the lock was busy and `<cmd>` did not run.
