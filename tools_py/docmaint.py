@@ -83,15 +83,15 @@ ROW = re.compile(r"^\|\s*`([^`]+)`\s*\|\s*\*{0,2}([LGNSCA])\*{0,2}\s*\|")
 # bullets under a heading that says "keep it short". Nothing retired a block, so every close review read
 # the newest one and never the stack under it. A ceiling makes skipping the archive step a failure.
 # (path, heading prefix of the measured "## " block or None for the whole file, bytes). Set at the
-# Sprint 13 Task R1 split from the content left live, with about 25 % headroom; HUMAN_TASKS was not cut
-# in R1 (Task R4 reduces it and should lower its number). Bytes are counted with LF line ends, so a
+# Sprint 13 Task R1 split from the content left live, with about 25 % headroom; HUMAN_TASKS was cut by
+# Task R4 the same day (699 lines to one table, the old file archived) and its number lowered to match. Bytes are counted with LF line ends, so a
 # Windows checkout (CRLF) and CI measure the same document the same way. When one fires, archive the
 # oldest blocks (docs/archive/, a banner, a registry row) -- do not raise the number.
 CEILINGS = (
     ("docs/CURRENT_SPRINT.md", None, 72000),       # 57,829 after the R1 split
     ("docs/HANDOFF.md", "## 2.", 3800),           # 3,022
     ("docs/STATUS.md", "## Current state", 2900),  # 2,309
-    ("docs/HUMAN_TASKS.md", None, 104000),        # 82,968; not cut in R1 (Task R4 cuts it)
+    ("docs/HUMAN_TASKS.md", None, 11610),         # 9,288 after the R4 cut (was 104,000 over 82,968)
 )
 
 # R268 too: "merged to `main` as `vX.Y.Z`" is a claim about origin. On 2026-09-25 four live documents
