@@ -1,0 +1,78 @@
+From acf7132f71f5c71b60b890ba3e4c7ee2e2b5823b Mon Sep 17 00:00:00 2001
+From: Craig Smith <replace-me@example.com>
+Date: Fri, 25 Sep 2026 08:31:43 -0300
+Subject: [PATCH] iop: start an IRX as _start(argc, argv) the way modload does
+
+loadImage passed the argument buffer's byte count as argc and the raw buffer as argv, so a module
+that walks argv[1..argc-1] reads its argument text as string pointers. Build argv[0] = the module
+path, one argv entry per NUL-separated argument string, and a NULL terminator, in one IOP
+allocation, and pass (argc, argv).
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LKrteqDzH6QRCDUFVMduSq
+---
+ ps2xIOP/src/emulator/iop_emulator.cpp | 46 +++++++++++++++++++++++----
+ 1 file changed, 40 insertions(+), 6 deletions(-)
+
+diff --git a/ps2xIOP/src/emulator/iop_emulator.cpp b/ps2xIOP/src/emulator/iop_emulator.cpp
+index e5f63a9..9ba6e47 100644
+--- a/ps2xIOP/src/emulator/iop_emulator.cpp
++++ b/ps2xIOP/src/emulator/iop_emulator.cpp
+@@ -614,17 +614,51 @@ namespace ps2x::iop::detail
+             module.entry = loaded.entry;
+             module.gp = loaded.gp;
+ 
+-            uint32_t args = 0u;
++            // modload starts a module as _start(argc, argv): argv[0] is the module path, argv[1..] are the
++            // NUL-separated strings of the loader's argument buffer, argv[argc] is NULL. Passing
++            // (byte count, raw buffer) makes a module that parses argv read its argument text as pointers.
++            std::vector<std::string> argv;
++            argv.push_back(module.path);
+             if (arguments && argumentSize)
+             {
+-                args = allocate(argumentSize + 1u, 16u);
+-                if (args)
++                const char *bytes = static_cast<const char *>(arguments);
++                std::string cur;
++                for (uint32_t i = 0u; i < argumentSize; ++i)
+                 {
+-                    writeRam(args, arguments, argumentSize);
+-                    write8(args + argumentSize, 0u);
++                    if (bytes[i] == '\0')
++                    {
++                        if (!cur.empty())
++                            argv.push_back(cur);
++                        cur.clear();
++                    }
++                    else
++                        cur += bytes[i];
++                }
++                if (!cur.empty())
++                    argv.push_back(cur);
++            }
++            uint32_t stringsBytes = 0u;
++            for (const std::string &s : argv)
++                stringsBytes += static_cast<uint32_t>(s.size() + 1u);
++            const uint32_t tableBytes = static_cast<uint32_t>((argv.size() + 1u) * 4u);
++            const uint32_t args = allocate(((stringsBytes + 3u) & ~3u) + tableBytes, 16u);
++            uint32_t argvTable = 0u;
++            if (args)
++            {
++                uint32_t cursor = args;
++                std::vector<uint32_t> pointers;
++                for (const std::string &s : argv)
++                {
++                    writeRam(cursor, s.c_str(), s.size() + 1u);
++                    pointers.push_back(cursor);
++                    cursor += static_cast<uint32_t>(s.size() + 1u);
+                 }
++                argvTable = (cursor + 3u) & ~3u;
++                for (size_t i = 0u; i < pointers.size(); ++i)
++                    memory.write32(argvTable + static_cast<uint32_t>(4u * i), pointers[i]);
++                memory.write32(argvTable + static_cast<uint32_t>(4u * pointers.size()), 0u);
+             }
+-            const uint32_t startResult = callFunction(module.entry, argumentSize, args, 0u, 0u, module.gp);
++            const uint32_t startResult = callFunction(module.entry, static_cast<uint32_t>(argv.size()), argvTable, 0u, 0u, module.gp);
+             if (args)
+                 freeAllocation(args);
+             module.resident = startResult == 0u || startResult == 2u;

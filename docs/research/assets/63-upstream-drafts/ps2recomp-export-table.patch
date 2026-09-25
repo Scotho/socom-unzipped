@@ -1,0 +1,33 @@
+From d3df0ba8e9da9786fe7923ed64be37d232afb53d Mon Sep 17 00:00:00 2001
+From: Craig Smith <replace-me@example.com>
+Date: Fri, 25 Sep 2026 08:31:58 -0300
+Subject: [PATCH] iop: export-table walk ends at two zero words (reference
+ only, not proposed)
+
+A guard written during a debugging session: a single zero word no longer ends an export table,
+two consecutive zeros do. It was not the fix for the problem it was written for, and it reads past
+a correctly terminated table whose next word is non-zero. Kept as a reference for the issue text,
+not as a change to merge.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LKrteqDzH6QRCDUFVMduSq
+---
+ ps2xIOP/src/emulator/imports/iop_imports.cpp | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/ps2xIOP/src/emulator/imports/iop_imports.cpp b/ps2xIOP/src/emulator/imports/iop_imports.cpp
+index f13267f..2f154fc 100644
+--- a/ps2xIOP/src/emulator/imports/iop_imports.cpp
++++ b/ps2xIOP/src/emulator/imports/iop_imports.cpp
+@@ -117,7 +117,10 @@ namespace ps2x::iop::detail
+         for (uint32_t cursor = physical + 20u; cursor + 3u < IopMemory::RamSize; cursor += 4u)
+         {
+             const uint32_t function = m_memory.read32(cursor);
+-            if (function == 0u)
++            // REFERENCE ONLY, not proposed: treat two consecutive zero words as the end of the table, so an
++            // entry that reads 0 (a function at module offset 0, seen before relocation) does not end it.
++            // This over-reads when the single terminating zero is followed by a non-zero word.
++            if (function == 0u && (cursor + 7u >= IopMemory::RamSize || m_memory.read32(cursor + 4u) == 0u))
+                 break;
+             library.functions.push_back(function);
+             if (library.functions.size() > 1024u)
