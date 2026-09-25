@@ -33,7 +33,7 @@ namespace ui
         static const char *credits[][2] = {
             {"the PS2Recomp fork", "GPL-3.0-only"},
             {"raylib (window, input, audio), rlImGui, zlib", "Zlib"},
-            {"FFmpeg (video)", "LGPL-2.1-or-later"},
+            {"FFmpeg (video)", "LGPL-3.0-or-later"},
             {"libjxl, libwebp (via FFmpeg)", "BSD-3-Clause"},
             {"Dear ImGui, Brotli", "MIT"},
             {"libc++, libunwind (LLVM)", "Apache-2.0 WITH LLVM-exception"},

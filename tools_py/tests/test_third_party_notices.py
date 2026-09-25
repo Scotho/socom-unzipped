@@ -192,22 +192,52 @@ class AboutAgreesWithTheNotices(unittest.TestCase):
     'when the closure needs it' row is not shipping -- winpthreads, which nothing imports today), with the same
     licence ids, and every shipping row is credited."""
 
+    # Sprint 13 C6 widened the notices: the libraries linked INSIDE the FFmpeg DLLs and the Linux tarball's lib/ have
+    # rows too. ABOUT is the Windows launcher's page, so its scope is the Windows closure: a row in the Windows
+    # sections (vendored, fetched, the toolchain's runtime) with Ships 'yes' MUST be credited; a row inside a DLL MAY
+    # be credited (through its carrier's licence or its own) and is otherwise carried by the FFmpeg credit; the Linux
+    # section is out of scope (a Linux row's licence never overrides a Windows row's).
+    WINDOWS_SECTIONS = ("## Vendored in the tree", "## Fetched at configure time", "## The toolchain's runtime")
+    INSIDE_SECTION = "## Inside the FFmpeg DLLs"
+
+    def rows_by_section(self):
+        out, section = [], ""
+        with open(NOTICES, encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith("## "):
+                    section = line.strip()
+                elif line.startswith("|") and not line.startswith("|---") and not line.startswith("| Component"):
+                    out.append((section, [c.strip() for c in line.strip().strip("|").split("|")]))
+        return out
+
     def shipped(self):
+        """{name: licence ids} of the Windows closure's shipping rows (required on ABOUT)."""
         out = {}
-        for r in rows():
-            if r[5].lower().startswith("yes"):
+        for section, r in self.rows_by_section():
+            if section.startswith(self.WINDOWS_SECTIONS) and r[5].lower().startswith("yes"):
                 for name in component_names(r[0]):
                     out[name] = licence_ids(r[3])
         self.assertGreater(len(out), 8)
         return out
 
+    def carried(self):
+        """{name: licence ids} of the rows inside the FFmpeg DLLs (creditable, not required)."""
+        out = {}
+        for section, r in self.rows_by_section():
+            if section.startswith(self.INSIDE_SECTION) and r[5].lower().startswith("yes"):
+                for name in component_names(r[0]):
+                    out[name] = licence_ids(r[3])
+        return out
+
     def test_every_credit_ships_under_the_licence_the_notices_give(self):
         shipped = self.shipped()
+        carried = self.carried()
         for names, licence in about_credits():
             for name in names:
                 with self.subTest(credit=name):
-                    self.assertIn(name, shipped, f"ABOUT credits {name}, which the notices do not list as shipping")
-                    self.assertEqual(licence_ids(licence), shipped[name], f"{name}: ABOUT says {licence!r}")
+                    row = shipped.get(name, carried.get(name))
+                    self.assertIsNotNone(row, f"ABOUT credits {name}, which the notices do not list as shipping on Windows")
+                    self.assertEqual(licence_ids(licence), row, f"{name}: ABOUT says {licence!r}")
 
     def test_every_shipped_component_is_credited(self):
         credited = set().union(*(names for names, _ in about_credits()))
