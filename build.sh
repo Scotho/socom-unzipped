@@ -49,7 +49,12 @@ recomp() {
       "$ROOT/game/overlays/socom2_game.elf" "$ROOT/game/disc/SCUS_972.75" \
       "$ROOT/game/overlays/ftscore.bin" "$ROOT/game/overlays/zsealetc.bin"
   cp "$ROOT/game/overlays/socom2_game.elf" "$ROOT/game/disc/socom2_game.elf"
-  "$PYTHON" "$ROOT/tools_py/fix_ghidra_csv.py" "$ROOT/recomp/socom2_ghidra.csv" "$ROOT/recomp/extra_functions.txt"
+  # The function map is a SOURCE: the fixed rows are a product under the git-ignored recomp/build/, the file
+  # recomp/socom2.toml's ghidra_output names (build_revision.sh step 0's rule; Sprint 13 C5 -- until then this
+  # rewrote the tracked recomp/socom2_ghidra.csv in place on every recomp). Nothing this step writes is tracked:
+  # tools_py/tests/test_build_products.py reads this function and holds that.
+  "$PYTHON" "$ROOT/tools_py/fix_ghidra_csv.py" "$ROOT/recomp/socom2_ghidra.csv" "$ROOT/recomp/extra_functions.txt" \
+      --out "$ROOT/recomp/build/socom2_ghidra.fixed.csv"
   build_tools   # incremental; the recompiler embeds the runtime call list, keep it in sync
   rm -rf "$GEN"
   (cd "$ROOT/recomp" && "$TOOLBUILD/ps2xRecomp/ps2_recomp.exe" socom2.toml > recomp_run.log 2>&1) \

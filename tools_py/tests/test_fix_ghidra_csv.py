@@ -1,7 +1,8 @@
 """tools_py/fix_ghidra_csv.py: the function map the recompiler trusts, normalised (Sprint 13 H7, harness audit #33).
 
-It runs on every `./build.sh recomp` (in place over recomp/socom2_ghidra.csv) and in scripts/build_revision.sh step 0
-(`--out` to a build product), and had no test. These cases drive the script as the build does -- a subprocess over
+It runs on every `./build.sh recomp` and in scripts/build_revision.sh step 0, both with `--out` to a build product
+under recomp/build/ (build.sh rewrote recomp/socom2_ghidra.csv in place until Sprint 13 C5; `--out` is now required),
+and had no test. These cases drive the script as the build does -- a subprocess over
 a small synthetic map in a temporary directory -- and pin its three transformations:
 
   1. a non-contiguous Ghidra body (End far past Start + Size) is cut to Start + Size when the hole is large
@@ -37,6 +38,7 @@ class FixGhidraCsv(unittest.TestCase):
         self.dir = self._tmp.name
         self.map = os.path.join(self.dir, "map.csv")
         self.extra = os.path.join(self.dir, "extra_functions.txt")
+        self.fixed = os.path.join(self.dir, "build", "map.fixed.csv")
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -52,12 +54,16 @@ class FixGhidraCsv(unittest.TestCase):
             f.write(text)
 
     def run_fix(self, *extra_args, extra=None):
-        p = subprocess.run([sys.executable, SCRIPT, self.map, extra or self.extra] + list(extra_args),
+        # --out is required (Sprint 13 C5): unless a case names its own, the product goes to self.fixed.
+        args = list(extra_args)
+        if not any(a == "--out" or a.startswith("--out=") for a in args):
+            args += ["--out", self.fixed]
+        p = subprocess.run([sys.executable, SCRIPT, self.map, extra or self.extra] + args,
                            capture_output=True, text=True)
         return p
 
     def read(self, path=None):
-        with open(path or self.map, newline="") as f:
+        with open(path or self.fixed, newline="") as f:
             rows = list(csv.reader(f))
         self.assertEqual(rows[0], HEADER)
         return [(r[0], int(r[1], 16), int(r[2], 16), int(r[3])) for r in rows[1:]]
@@ -174,6 +180,27 @@ class FixGhidraCsv(unittest.TestCase):
         p = self.run_fix("--out=" + out)
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertTrue(os.path.isfile(out))
+
+    def test_without_out_it_refuses_and_leaves_the_map_alone(self):
+        """RED before Sprint 13 C5: no --out rewrote the map in place, which build.sh's r0001 lane did every recomp."""
+        self.write_map([row("thunk", 0x1000, 0x3000, 0x20)])
+        with open(self.map, "rb") as f:
+            before = f.read()
+        p = subprocess.run([sys.executable, SCRIPT, self.map, self.extra], capture_output=True, text=True)
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn("--out is required", p.stderr)
+        with open(self.map, "rb") as f:
+            self.assertEqual(f.read(), before)
+
+    def test_out_naming_the_map_itself_is_refused(self):
+        self.write_map([row("thunk", 0x1000, 0x3000, 0x20)])
+        with open(self.map, "rb") as f:
+            before = f.read()
+        p = self.run_fix("--out", os.path.join(self.dir, ".", "map.csv"))
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn("names the map itself", p.stderr)
+        with open(self.map, "rb") as f:
+            self.assertEqual(f.read(), before)
 
     def test_help_prints_the_usage_and_succeeds(self):
         for flag in ("--help", "-h"):

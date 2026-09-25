@@ -64,8 +64,9 @@
 #
 #   --stop-after elf|toml|recomp|runtime   stop after that step (runtime is the default); elf and toml take
 #                     no lock at all. elf covers step 0, so it is the cheapest way to see that a build leaves
-#                     git status clean; toml goes one further and writes recomp/socom2_<rev>.toml, which is
-#                     tracked and regenerated on every build, so it is how that file is checked the same way.
+#                     git status clean; toml goes one further and writes recomp/socom2_<rev>.toml -- r0004's is
+#                     tracked (the others are git-ignored), and tools_py/tests/test_build_products.py regenerates
+#                     it with step 3's arguments and holds the tracked bytes to the result (Sprint 13 C5).
 #   --out <dir>       every product under <dir> instead (overlays_<rev>/, recomp_<rev>/, build-clang-<rev>/, dist/),
 #                     so a check build run from the main tree can land in a worktree
 #   --dry-run         print the six steps with their paths and exit 0, touching nothing
@@ -364,8 +365,9 @@ if [ "$TAIL" = 0 ]; then
         "$ROOT/recomp/socom2.toml" > "$TOML"
   fi
   say "toml: $(rel "$TOML") (input $TOML_INPUT, output $TOML_OUTPUT, ghidra_output $TOML_GHIDRA)"
-  # The last lock-free product. recomp/socom2_<rev>.toml is tracked and step 3 rewrites it every run, so
-  # --stop-after toml is how a change to what step 3 writes is checked against the tree without the lock.
+  # The last lock-free product. recomp/socom2_r0004.toml is tracked and step 3 rewrites it every run (every other
+  # revision's is git-ignored), so --stop-after toml is how a change to what step 3 writes is checked against the
+  # tree without the lock; test_build_products.py makes the same check without a build.
   [ "$STOP" = toml ] && { say "stop after toml"; exit 0; }
   # 4-5 under the lock, re-entering this script
   export BR_REV="$REV" BR_STOP="$STOP" BR_FORCE="$FORCE" BR_OUT="$OUT" BR_EXTRA="$EXTRA"
