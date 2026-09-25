@@ -271,8 +271,8 @@ void register_socom2_libnetb_tests()
             // getaddrinfo needs Winsock up; init() does WSAStartup and is idempotent.
             t.IsTrue(socom2_hostnet::init(), "hostnet init must succeed");
 
-            const uint32_t numeric = socom2_hostnet::parseServerAddress("192.168.2.10");
-            t.Equals(numeric, 0xc0a8020au, "a numeric IPv4 literal must still parse unchanged");
+            const uint32_t numeric = socom2_hostnet::parseServerAddress("192.0.2.10");
+            t.Equals(numeric, 0xc000020au, "a numeric IPv4 literal must still parse unchanged");
 
             // getaddrinfo("localhost") yields 127.0.0.1 or ::1; we ask for AF_INET, so 127.0.0.1.
             const uint32_t named = socom2_hostnet::parseServerAddress("localhost");

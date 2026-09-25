@@ -18,6 +18,10 @@ SCRIPT = os.path.join(ROOT, "server", "start-servers.ps1")
 CONFIG = os.path.join(ROOT, "server", "config")
 FILES = ("medius.json", "dme.json", "muis.json")
 NEW_IP = "203.0.113.7"
+# What the tracked configs advertise since Sprint 13 S6: a documentation address (RFC 5737), never a real network.
+PLACEHOLDER = "192.0.2.1"
+SERVER_EXES = [os.path.join(ROOT, "server", "horizon-server", d, "bin", "Release", "net9.0", d + ".exe")
+               for d in ("Server.NAT", "Server.UniverseInformation", "Server.Medius", "Server.Dme", "Server.Unified.Launcher")]
 
 
 def _run(args):
@@ -84,7 +88,7 @@ class ServerPublicIpTest(unittest.TestCase):
                 if b != a:
                     self.assertIn(re.search(r'"(\w+)"\s*:', b).group(1),
                                   ("PublicIpOverride", "NATIp", "Endpoint"), "%s: %r" % (name, b))
-                    self.assertEqual(a, b.replace("192.168.2.10", NEW_IP))
+                    self.assertEqual(a, b.replace(PLACEHOLDER, NEW_IP))
 
     def test_ports_and_the_rest_of_the_config_survive(self):
         self._rewrite()
@@ -116,6 +120,31 @@ class ServerPublicIpTest(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertEqual({n: self._raw(n) for n in FILES}, self.raw_before)
 
+    # --- the placeholder is a required value (Sprint 13 S6) ------------------
+
+    def test_the_tracked_configs_advertise_only_the_documentation_placeholder(self):
+        for field, value in self._advertised().items():
+            self.assertEqual(value, PLACEHOLDER, "%s: the tracked default must be the RFC 5737 placeholder" % field)
+
+    def test_starting_on_the_placeholder_is_refused_with_the_switch_named(self):
+        # On a regression the script would go on to start the servers, so never run this where they are built.
+        if any(os.path.exists(p) for p in SERVER_EXES):
+            self.skipTest("the Horizon servers are built here; a regression would start them")
+        r = _run(["-ConfigDir", self.cfg])
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn("-PublicIp", r.stderr)
+        self.assertIn("RFC 5737", r.stderr)
+        self.assertIn("medius.json PublicIpOverride", r.stderr)
+        self.assertIn("Nothing was started", r.stderr)
+        self.assertNotIn("Started ", r.stdout)
+        self.assertEqual({n: self._raw(n) for n in FILES}, self.raw_before)
+
+    def test_a_real_address_is_not_refused_by_the_placeholder_check(self):
+        self._rewrite()
+        r = _run(["-ConfigDir", self.cfg, "-NoStart"])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("RFC 5737", r.stderr)
+
     # --- reading it back --------------------------------------------------
 
     def test_no_public_ip_leaves_the_files_alone(self):
@@ -128,7 +157,7 @@ class ServerPublicIpTest(unittest.TestCase):
         r = _run(["-ConfigDir", self.cfg, "-NoStart", "-ShowIp"])
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn(NEW_IP, r.stdout)
-        self.assertNotIn("192.168.2.10", r.stdout)
+        self.assertNotIn(PLACEHOLDER, r.stdout)
         self.assertIn("MPS.Ip", r.stdout)
         self.assertIn("127.0.0.1", r.stdout)
 

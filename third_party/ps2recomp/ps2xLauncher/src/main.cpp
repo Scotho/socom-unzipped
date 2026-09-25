@@ -2079,7 +2079,7 @@ int main(int argc, char **argv)
                 {
                     // A saved config naming the unplayable preset: fromJson moves it to the one that exists.
                     launcher::Config saved;
-                    launcher::fromJson("{\"serverPreset\": \"community\", \"server\": \"192.168.2.10\"}", saved);
+                    launcher::fromJson("{\"serverPreset\": \"community\", \"server\": \"192.0.2.10\"}", saved);
                     app.config.serverPreset = saved.serverPreset;
                     app.config.server = saved.server;
                 }

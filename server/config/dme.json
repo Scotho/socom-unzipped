@@ -7,7 +7,7 @@
   "RefreshConfigInterval": 5000,
   "ApplicationIds": [ 10472 ],
   "UsePublicIp": true,
-  "PublicIpOverride": "192.168.2.10",
+  "PublicIpOverride": "192.0.2.1",
   "Location": 0,
   "MPSReconnectInterval": 15,
   "MainLoopSleepMs": 5,

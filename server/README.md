@@ -62,7 +62,7 @@ Six fields carry it, and `start-servers.ps1` sets all six at once:
 ```powershell
 .\start-servers.ps1 -ShowIp                    # print the six fields and their current values
 .\start-servers.ps1 -PublicIp 203.0.113.7      # rewrite them, then start
-.\start-servers.ps1 -PublicIp 192.168.1.50 -NoStart   # rewrite only (also takes -ConfigDir <dir>)
+.\start-servers.ps1 -PublicIp 192.0.2.50 -NoStart     # rewrite only (also takes -ConfigDir <dir>)
 ```
 
 | File | Field | What reads it |
@@ -79,8 +79,15 @@ JSON. Without it the config files are left exactly as they are. **`dme.json: MPS
 DME reaching Medius on the same machine, not an address any client sees; `-PublicIp` never touches it and `-ShowIp`
 prints it greyed out so nobody "fixes" it.
 
-The tracked configs currently advertise `192.168.2.10` (the dev box's LAN IP). Anyone bringing the stack up
-elsewhere runs `-PublicIp <their address>` first; no hand-editing of JSON is needed.
+**The advertised address is a required value.** The tracked configs carry `192.0.2.1`, a documentation address
+(RFC 5737) that no client can reach and nobody's own network, in all six fields. `start-servers.ps1` refuses to
+start while any field still holds an RFC 5737 address -- exit 2 and one sentence naming the fields and
+`-PublicIp` -- so the first run anywhere is `-PublicIp <this machine's LAN or public address>`; no hand-editing of
+JSON is needed. The addresses in the examples above (`203.0.113.7`, `192.0.2.50`) are documentation addresses too:
+use your own. The rewrite changes tracked files, so do not commit them afterwards -- the leak check's `tree` and
+`staged` modes report any private address in a tracked file (`tracked-private-ip`, Sprint 13 S6). The vendored
+servers' own initial `SERVER_IP` (`Server.Dme/Program.cs`, `Server.Medius/Program.cs`) is the same placeholder,
+replaced as soon as the config loads.
 
 ### Hosting it on another machine: ports to forward
 

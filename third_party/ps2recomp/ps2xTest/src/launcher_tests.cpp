@@ -261,7 +261,7 @@ void register_launcher_tests()
             c.gsScale = 2;
             c.presentFilter = "integer";
             c.windowSize = "1280x896";
-            c.server = "192.168.2.10";
+            c.server = "192.0.2.10";
             c.profile = "craig";
             c.secondInstance = true;
             const std::string json = launcher::toJson(c);
@@ -319,15 +319,15 @@ void register_launcher_tests()
             t.Equals(c.serverPreset, std::string("unzipped"), "the default preset is the project's hosted server, now that it is real");
             // A config.json from before the picker existed carries a typed server and no preset: it must stay the player's own.
             launcher::Config legacy;
-            t.IsTrue(launcher::fromJson("{\"server\": \"192.168.2.10\"}", legacy), "a pre-picker config parses");
+            t.IsTrue(launcher::fromJson("{\"server\": \"192.0.2.10\"}", legacy), "a pre-picker config parses");
             t.Equals(legacy.serverPreset, std::string("custom"), "a typed server with no preset stays custom");
-            t.Equals(launcher::effectiveServer(legacy), std::string("192.168.2.10"), "and its address still applies");
+            t.Equals(launcher::effectiveServer(legacy), std::string("192.0.2.10"), "and its address still applies");
             c.serverPreset = "unzipped";
-            c.server = "192.168.2.10";
+            c.server = "192.0.2.10";
             launcher::Config back;
             t.IsTrue(launcher::fromJson(launcher::toJson(c), back), "parses its own output");
             t.Equals(back.serverPreset, std::string("unzipped"), "the preset survives the round trip");
-            t.Equals(back.server, std::string("192.168.2.10"), "... and so does the custom address behind it");
+            t.Equals(back.server, std::string("192.0.2.10"), "... and so does the custom address behind it");
             launcher::Config odd;
             t.IsTrue(launcher::fromJson("{\"serverPreset\": \"horizon-2\"}", odd), "an unknown preset parses");
             t.Equals(odd.serverPreset, std::string("custom"), "... as custom, so the player's own address still applies");
@@ -368,7 +368,7 @@ void register_launcher_tests()
             };
             launcher::Config c;
             c.serverPreset = "community";
-            c.server = "10.0.0.5";
+            c.server = "198.51.100.5";
             // Fourth pass: a preset still carrying a placeholder is not playable, so it does not win the
             // field -- it resolves to the project's own server rather than sending the game a placeholder.
             t.Equals(serverOf(c), std::string("socom.scotho.com"), "an unavailable preset resolves to the one that exists");
@@ -383,7 +383,7 @@ void register_launcher_tests()
             t.Equals(retired.serverPreset, std::string("unzipped"), "a config naming the retired id heals to the project server");
             t.Equals(serverOf(retired), std::string("socom.scotho.com"), "and reaches it by name");
             c.serverPreset = "custom";
-            t.Equals(serverOf(c), std::string("10.0.0.5"), "custom uses the typed address");
+            t.Equals(serverOf(c), std::string("198.51.100.5"), "custom uses the typed address");
             c.server.clear();
             t.Equals(serverOf(c), std::string("127.0.0.1"), "custom with nothing typed: the loopback default");
             t.Equals(launcher::effectiveServer(c), std::string("127.0.0.1"), "effectiveServer agrees");
@@ -1507,7 +1507,7 @@ void register_launcher_tests()
 
             launcher::Config c;
             c.serverPreset = "community";
-            c.server = "192.168.2.10";
+            c.server = "192.0.2.10";
             t.Equals(launcher::effectiveServer(c), std::string("socom.scotho.com"),
                      "a config still naming community plays on the project's server, not on a placeholder");
             const std::vector<std::string> env = launcher::environmentFor(c);
@@ -1528,9 +1528,9 @@ void register_launcher_tests()
             t.Equals(loaded.serverPreset, std::string("unzipped"),
                      "and is healed on load: the owner's saved choice moves to the server that exists");
             launcher::Config kept;
-            t.IsTrue(launcher::fromJson("{\"serverPreset\": \"custom\", \"server\": \"192.168.2.10\"}", kept), "a custom config parses");
+            t.IsTrue(launcher::fromJson("{\"serverPreset\": \"custom\", \"server\": \"192.0.2.10\"}", kept), "a custom config parses");
             t.Equals(kept.serverPreset, std::string("custom"), "and a playable preset is left alone");
-            t.Equals(launcher::effectiveServer(kept), std::string("192.168.2.10"), "with the address the player typed");
+            t.Equals(launcher::effectiveServer(kept), std::string("192.0.2.10"), "with the address the player typed");
         });
 
         // ---- Task 11 (Sprint 11 Goal D): the launcher's revision plumbing --------------------------------

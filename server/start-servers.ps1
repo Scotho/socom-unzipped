@@ -33,7 +33,9 @@
 .PARAMETER Status    Show which Horizon ports are currently listening (and what address is advertised).
 .PARAMETER PublicIp  Rewrite the advertised address in medius.json (PublicIpOverride, NATIp), dme.json
                      (PublicIpOverride) and muis.json (Universes[..].Endpoint) to this IP or hostname before
-                     starting. Without it the config files are left exactly as they are.
+                     starting. Without it the config files are left exactly as they are. REQUIRED once: the
+                     tracked configs carry the RFC 5737 placeholder 192.0.2.1, and the script refuses to start
+                     the servers (exit 2) while any advertised field holds a documentation address.
 .PARAMETER ShowIp    Print the currently advertised address from those three files and exit.
 .PARAMETER ConfigDir Directory holding the *.json server configs (default: <this folder>\config).
 .PARAMETER NoStart   Do the -PublicIp rewrite (and/or -ShowIp) and exit without starting anything.
@@ -46,7 +48,7 @@
   .\start-servers.ps1 -Mode Unified -Build
   .\start-servers.ps1 -ShowIp                         # what will clients be told?
   .\start-servers.ps1 -PublicIp 203.0.113.7           # hosted box: advertise its public IP, then start
-  .\start-servers.ps1 -PublicIp 192.168.1.50 -NoStart # rewrite the configs only
+  .\start-servers.ps1 -PublicIp 192.0.2.50 -NoStart   # rewrite the configs only (192.0.2.50: an RFC 5737 example; use yours)
 #>
 [CmdletBinding()]
 param(
@@ -284,6 +286,20 @@ if ($PublicIp) { Set-AdvertisedIp -Ip $PublicIp }
 if ($Status)   { Show-AdvertisedIp; Show-Status; return }
 if ($ShowIp)   { Show-AdvertisedIp; return }
 if ($NoStart)  { Write-Host 'NoStart: configuration only, no servers were started.'; return }
+
+# The advertised address is a REQUIRED value (Sprint 13 S6). The tracked configs carry a documentation placeholder
+# from RFC 5737 -- never anybody's own network -- and a stack that would hand it to clients refuses to start and
+# names the switch that sets it. (A field left empty is Horizon's own public-IP lookup, and is not refused.)
+$placeholder = @(Get-AdvertisedField | Where-Object { "$($_.Value)" -match '^(192\.0\.2|198\.51\.100|203\.0\.113)\.\d{1,3}$' })
+if ($placeholder.Count -gt 0) {
+    $where = ($placeholder | ForEach-Object { '{0} {1}' -f $_.File, $_.Field }) -join ', '
+    $values = @($placeholder | Select-Object -ExpandProperty Value -Unique) -join ', '
+    $msg = "start-servers: the advertised address is not set -- $where still hold $values, a documentation " +
+           "placeholder (RFC 5737) that no client can reach. Run .\start-servers.ps1 -PublicIp <this machine's LAN or " +
+           "public address> (it rewrites medius.json, dme.json and muis.json), then start again. Nothing was started."
+    [Console]::Error.WriteLine($msg)
+    exit 2
+}
 
 if ($Build) {
     Write-Host 'Building Horizon.Server.sln (Release)...' -ForegroundColor Cyan
