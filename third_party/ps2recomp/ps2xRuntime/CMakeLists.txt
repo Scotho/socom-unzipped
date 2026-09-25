@@ -46,7 +46,7 @@ set(BUILD_GAMES OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     raylib
     GIT_REPOSITORY "https://github.com/raysan5/raylib.git"
-    GIT_TAG c1ab645ca298a2801097931d1079b10ff7eb9df8 # 5.5 # we will migrate to 4.2.0 later, trust me it will be better
+    GIT_TAG c1ab645ca298a2801097931d1079b10ff7eb9df8 # 5.5
     GIT_PROGRESS TRUE
 )
 FetchContent_MakeAvailable(raylib)
@@ -114,18 +114,24 @@ if(NOT PS2X_ENABLE_FFMPEG)
 elseif(WIN32)
     include(ExternalProject)
 
-    set(FFMPEG_PREBUILT_TAG "n7.1-241205")
+    # Sprint 13 C6: FFmpeg 7.1.5 (was n7.1-241205, 7.1.0 of 2024-12-05, before the 7.1.1/7.1.2 CVE fixes) from the
+    # same channel, System233/ffmpeg-msvc-prebuilt, pinned to the archive's bytes. The channel's builds are vcpkg's
+    # since 2026-06: the import libraries are in lib/ (they were in bin/), and the third-party codecs are linked
+    # statically into the FFmpeg DLLs (no jxl/webp/brotli/zlib DLLs beside them; THIRD_PARTY_NOTICES.md lists what
+    # is inside). The hash is GitHub's own asset digest for this file, recomputed on download 2026-09-25.
+    set(FFMPEG_PREBUILT_TAG "ffmpeg-7.1.5")
     set(FFMPEG_PREBUILT_URL
-        "https://github.com/System233/ffmpeg-msvc-prebuilt/releases/download/${FFMPEG_PREBUILT_TAG}/ffmpeg-${FFMPEG_PREBUILT_TAG}-lgpl-amd64-shared.zip")
+        "https://github.com/System233/ffmpeg-msvc-prebuilt/releases/download/${FFMPEG_PREBUILT_TAG}/ffmpeg-7.1.5_x64-windows-shared-lgpl.zip")
 
     set(FFMPEG_PREFIX_DIR "${CMAKE_BINARY_DIR}/ThirdParty/ffmpeg-prefix")
     set(FFMPEG_SOURCE_DIR "${FFMPEG_PREFIX_DIR}/src/ffmpeg_external")
     set(FFMPEG_INCLUDE_DIR "${FFMPEG_SOURCE_DIR}/include")
-    set(FFMPEG_LIB_DIR "${FFMPEG_SOURCE_DIR}/bin")
+    set(FFMPEG_LIB_DIR "${FFMPEG_SOURCE_DIR}/lib")
     set(FFMPEG_BIN_DIR "${FFMPEG_SOURCE_DIR}/bin")
 
     ExternalProject_Add(ffmpeg_external
         URL "${FFMPEG_PREBUILT_URL}"
+        URL_HASH SHA256=6c9fcb0ef3136a1e5947319f8043ec60589da3a87e8044775f89b694d236e95c
         DOWNLOAD_EXTRACT_TIMESTAMP TRUE
         PREFIX "${FFMPEG_PREFIX_DIR}"
         CONFIGURE_COMMAND ""
