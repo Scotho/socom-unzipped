@@ -6,10 +6,12 @@ ruling number as R179 while R241 was in use -- a collision that had already happ
 difference between the documents that stayed true and the ones that rotted was not care; it was
 whether anything could fail. This module is the thing that fails.
 
-It is deliberately small. Six checks, each one aimed at a rot mechanism that actually bit this
+It is deliberately small. Eight checks, each one aimed at a rot mechanism that actually bit this
 project. The sixth was added on 2026-09-23 for the opposite reason -- a rot mechanism that had not
 bitten yet only because nobody dared move anything: the Sprint 1-6 specs and plans were cited by
 path from a hundred places, and `docs/archive/README.md` recorded them as "not moved, on purpose".
+The seventh and eighth are R268's (2026-09-25): a byte ceiling on each document that grows by
+appending, and "merged to main as vX" held to origin's tags.
 
 Nothing here fails on a calendar: a test that reddens because a week passed gets disabled,
 and then the check is worse than nothing. Cadence is the sprint-close review in
@@ -17,6 +19,7 @@ and then the check is worse than nothing. Cadence is the sprint-close review in
 """
 import os
 import re
+import subprocess
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REGISTRY = "docs/DOC_MAINTENANCE.md"   # repo-relative, so tests can point ROOT at a planted tree
@@ -74,6 +77,29 @@ RULING_ANY = re.compile(r"\bR(\d{2,3})\b")
 DATE = re.compile(r"\b20\d{2}-\d{2}-\d{2}\b")
 ROW = re.compile(r"^\|\s*`([^`]+)`\s*\|\s*\*{0,2}([LGNSCA])\*{0,2}\s*\|")
 
+# R268 (2026-09-25): the four documents that grow by appending get a byte ceiling each. The project
+# audit of that day found CURRENT_SPRINT at 190 KB with about 12 % of it live, HANDOFF section 2 holding
+# twelve pick-up points (three of them "now"), and STATUS's "Current state" block at 30 KB of dated
+# bullets under a heading that says "keep it short". Nothing retired a block, so every close review read
+# the newest one and never the stack under it. A ceiling makes skipping the archive step a failure.
+# (path, heading prefix of the measured "## " block or None for the whole file, bytes). Set at the
+# Sprint 13 Task R1 split from the content left live, with about 25 % headroom; HUMAN_TASKS was not cut
+# in R1 (Task R4 reduces it and should lower its number). Bytes are counted with LF line ends, so a
+# Windows checkout (CRLF) and CI measure the same document the same way. When one fires, archive the
+# oldest blocks (docs/archive/, a banner, a registry row) -- do not raise the number.
+CEILINGS = (
+    ("docs/CURRENT_SPRINT.md", None, 72000),       # 57,829 after the R1 split
+    ("docs/HANDOFF.md", "## 2.", 3800),           # 3,022
+    ("docs/STATUS.md", "## Current state", 2900),  # 2,309
+    ("docs/HUMAN_TASKS.md", None, 104000),        # 82,968; not cut in R1 (Task R4 cuts it)
+)
+
+# R268 too: "merged to `main` as `vX.Y.Z`" is a claim about origin. On 2026-09-25 four live documents
+# said it of v0.11.0 before the tag or the merge existed, so nobody was prompted to do either. A
+# struck-through claim (~~...~~) is a retraction and is skipped, as check 6 skips a struck path.
+MERGED_AS = re.compile(r"merged to `?main`? as `?(v\d+\.\d+\.\d+)`?")
+STRUCK = re.compile(r"~~.*?~~")
+
 
 def _read(relpath):
     with open(os.path.join(ROOT, relpath), "r", encoding="utf-8", errors="replace") as fh:
@@ -116,21 +142,33 @@ def head(relpath, lines=15):
     return "\n".join(_read(relpath).split("\n")[:lines])
 
 
-def max_ruling():
-    """The highest R<n> in use across the live documents, and where it was found."""
-    best, where = 0, None
+def ruling_sources():
+    """Every document max_ruling() reads, as repo-relative posix paths."""
     # Rulings are numbered where they are made: the live documents AND the plans' own "## Rulings"
     # sections (house convention since Sprint 5). A plan-only ruling not scanned here made the
     # counter read one too high on 2026-09-22, the first night the check ran.
-    # docs/archive/sprints-1-6/ is in the list because the Sprint 1-6 plans moved there on
-    # 2026-09-23 and their rulings did not stop existing: dropping them would let the counter walk
-    # backwards, which is the exact failure this check was written for.
-    plans = []
-    for folder in ("docs/superpowers/plans", "docs/archive/sprints-1-6"):
-        d = os.path.join(ROOT, *folder.split("/"))
-        if os.path.isdir(d):
-            plans += [folder + "/" + n for n in sorted(os.listdir(d)) if n.endswith(".md")]
-    for path in by_class("L") + ["docs/STATUS.md"] + plans:
+    # The whole of docs/archive/ is read, top level and every subdirectory, because a ruling does not
+    # stop existing when its block is archived: the Sprint 1-6 plans moved on 2026-09-23, and on
+    # 2026-09-25 (Task R1) the Sprint 9-11 record and the Sprint 7-10 plans followed. Until then only
+    # docs/archive/sprints-1-6/ was listed, so a close that archived the newest ledger would have let
+    # the counter walk backwards -- the exact failure this check was written for.
+    out = list(by_class("L")) + ["docs/STATUS.md"]
+    d = os.path.join(ROOT, "docs", "superpowers", "plans")
+    if os.path.isdir(d):
+        out += ["docs/superpowers/plans/" + n for n in sorted(os.listdir(d)) if n.endswith(".md")]
+    out += [p for p in linked_docs() if p.startswith("docs/archive/")]
+    seen, uniq = set(), []
+    for p in out:
+        if p not in seen:
+            seen.add(p)
+            uniq.append(p)
+    return uniq
+
+
+def max_ruling():
+    """The highest R<n> in use across the live documents, and where it was found."""
+    best, where = 0, None
+    for path in ruling_sources():
         if not os.path.isfile(os.path.join(ROOT, path)):
             continue
         for line in _read(path).split("\n"):
@@ -298,12 +336,103 @@ def dangling_doc_links():
     return bad
 
 
+def block_bytes(relpath, heading):
+    """Bytes (LF line ends) of a whole file, or of the "## " block whose heading starts with `heading`.
+
+    The block runs from its heading line to the next level-2 heading or the end of the file. None when
+    the file or the heading is missing.
+    """
+    full = os.path.join(ROOT, relpath)
+    if not os.path.isfile(full):
+        return None
+    with open(full, "rb") as fh:
+        data = fh.read().replace(b"\r\n", b"\n")
+    if heading is None:
+        return len(data)
+    lines = data.split(b"\n")
+    want = heading.encode("utf-8")
+    start = next((i for i, ln in enumerate(lines) if ln.startswith(want)), None)
+    if start is None:
+        return None
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith(b"## ")), len(lines))
+    return len(b"\n".join(lines[start:end]))
+
+
+def over_ceiling():
+    """[(path, heading, measured bytes or None, ceiling)] for every R268 ceiling that is broken.
+
+    A missing file is not a problem here (check 1 owns that); a file whose measured heading has gone is,
+    because renaming a heading must not quietly switch its ceiling off.
+    """
+    bad = []
+    for path, heading, limit in CEILINGS:
+        if not os.path.isfile(os.path.join(ROOT, path)):
+            continue
+        n = block_bytes(path, heading)
+        if n is None or n > limit:
+            bad.append((path, heading, n, limit))
+    return bad
+
+
+def describe_ceiling(item):
+    path, heading, n, limit = item
+    where = "%s %r block" % (path, heading) if heading else "%s (whole file)" % path
+    if n is None:
+        return "%s: heading not found (ceiling {:,} bytes)".format(limit) % where
+    return "%s: {:,} bytes, ceiling {:,}".format(n, limit) % where
+
+
+_TAGS = {}
+
+
+def remote_tags():
+    """(set of tag names on origin, None) -- or (None, why) when origin cannot be asked.
+
+    Asked once per ROOT per process (`git ls-remote --tags origin`, 30 s, no credential prompt).
+    """
+    if ROOT in _TAGS:
+        return _TAGS[ROOT]
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+    try:
+        p = subprocess.run(["git", "ls-remote", "--tags", "origin"], cwd=ROOT, env=env,
+                           capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as exc:
+        res = (None, "%s: %s" % (type(exc).__name__, exc))
+    else:
+        if p.returncode != 0:
+            err = (p.stderr or "").strip().splitlines()
+            res = (None, "git ls-remote exit %d%s" % (p.returncode, (": " + err[0]) if err else ""))
+        else:
+            tags = set()
+            for line in p.stdout.splitlines():
+                ref = line.split("\t")[-1].strip()
+                if ref.startswith("refs/tags/"):
+                    tags.add(ref[len("refs/tags/"):].replace("^{}", ""))
+            res = (tags, None)
+    _TAGS[ROOT] = res
+    return res
+
+
+def unknown_tags(tags):
+    """(path, line, tag) for every live-document "merged to main as vX" whose tag origin lacks."""
+    bad = []
+    for path in by_class("L"):
+        if not os.path.isfile(os.path.join(ROOT, path)):
+            continue
+        for i, line in enumerate(_read(path).split("\n"), 1):
+            for m in MERGED_AS.finditer(STRUCK.sub("", line)):
+                if m.group(1) not in tags:
+                    bad.append((path, i, m.group(1)))
+    return bad
+
+
 def report():
     """One dict for a human or a close-out step."""
     reg = registry()
     listed = [r["path"] for r in reg]
     files = covered_files()
     hi, where = max_ruling()
+    tags, why = remote_tags()
     return {
         "rows": len(reg),
         "unregistered": [p for p in files if p not in listed],
@@ -316,6 +445,10 @@ def report():
         "undated_snapshots": undated_snapshots(),
         "silent_archives": silent_archives(),
         "dangling_doc_links": dangling_doc_links(),
+        "over_ceiling": over_ceiling(),
+        "unknown_tags": unknown_tags(tags) if tags is not None else [],
+        "tags_on_origin": len(tags) if tags is not None else None,
+        "tag_check_skipped": why,
     }
 
 
@@ -324,14 +457,29 @@ def main(argv=None):
     print("doc registry: %d rows, %d files covered" % (r["rows"], len(covered_files())))
     print("rulings: highest in use R%d (%s); HANDOFF offers R%s"
           % (r["max_ruling"], r["max_ruling_in"], r["next_free_ruling"]))
+    for path, heading, limit in CEILINGS:
+        n = block_bytes(path, heading)
+        if n is not None and n <= limit:
+            print("ceiling: %s" % describe_ceiling((path, heading, n, limit)))
+    if r["tag_check_skipped"]:
+        # Never pass silently: the run is OK only on what it could check, and says what it could not.
+        print("tags: SKIPPED -- origin unreachable (%s); the 'merged to main as vX' check did not run"
+              % r["tag_check_skipped"])
+    else:
+        print("tags: %d on origin; every 'merged to main as vX' checked against them" % r["tags_on_origin"])
     bad = 0
     for key in ("unregistered", "missing_files", "duplicate_rows", "count_offenders",
-                "undated_snapshots", "silent_archives", "dangling_doc_links"):
+                "undated_snapshots", "silent_archives", "dangling_doc_links", "unknown_tags"):
         if r[key]:
             bad += len(r[key])
             print("%s:" % key)
             for item in r[key]:
                 print("   ", item)
+    if r["over_ceiling"]:
+        bad += len(r["over_ceiling"])
+        print("over_ceiling (R268; archive the oldest blocks, do not raise the number):")
+        for item in r["over_ceiling"]:
+            print("   ", describe_ceiling(item))
     if r["next_free_ruling"] != r["max_ruling"] + 1:
         bad += 1
         print("ruling counter: HANDOFF says R%s, should be R%d" % (r["next_free_ruling"], r["max_ruling"] + 1))

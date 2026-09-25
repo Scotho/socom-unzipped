@@ -125,8 +125,8 @@ document gets a class, and an unclassified document is one nobody has decided th
 
 ## 4. What is enforced mechanically
 
-`tools_py/tests/test_doc_maintenance.py`, in the Python suite, so it runs in CI and needs no build. Six checks, each
-aimed at a rot mechanism that actually bit this project:
+`tools_py/tests/test_doc_maintenance.py`, in the Python suite, so it runs in CI and needs no build. Eight checks, each
+aimed at a rot mechanism that actually bit this project (the seventh and eighth are R268's, added 2026-09-25):
 
 1. **Registry completeness** — every covered file has exactly one row; every row points at a file that exists. *Catches
    a new document nobody classified, and a row left behind by a move.*
@@ -143,6 +143,25 @@ aimed at a rot mechanism that actually bit this project:
    `docs/` must exist in the tree. *Catches the citation a move left pointing at nothing* — which is why the Sprint 1–6
    specs and plans sat under `docs/superpowers/` for a sprint after they were dead: nobody could move them without
    breaking citations nothing would catch. It found 44 on the tree the day it was written, in fifteen documents.
+7. **Ceilings on the appending documents (R268)** -- `docs/CURRENT_SPRINT.md`, the "## 2." section of
+   `docs/HANDOFF.md`, the "## Current state" block of `docs/STATUS.md` and `docs/HUMAN_TASKS.md` each have a byte
+   ceiling (`CEILINGS` in `tools_py/docmaint.py`, counted with LF line ends; the failure prints the measured size). A
+   measured heading that has gone fires too, so renaming it cannot switch the ceiling off. *Catches the stack nobody
+   retires:* on 2026-09-25 the sprint file was 190 KB with about 12 % of it live, HANDOFF §2 held twelve pick-up
+   points and three of them said "now", and STATUS's "keep it short" block was 30 KB. The ceilings were set at that
+   day's split (Sprint 13 Task R1) with about 25 % headroom. **When one fires, archive the oldest blocks** (a banner,
+   a registry row, the citations re-pointed) -- never raise the number to make it pass; a lower number after a cut
+   (Task R4 for HUMAN_TASKS) is the only edit it expects.
+8. **"merged to `main` as `vX.Y.Z`" names a tag origin has (R268)** -- every such phrase in an L document is checked
+   against `git ls-remote --tags origin`; a struck-through claim is a retraction and is skipped. *Catches a close
+   recorded before it happened:* on 2026-09-25 four live documents said Sprint 11 was merged as `v0.11.0` while no such
+   tag or merge existed, so nobody was prompted to do either. It needs the network: when origin cannot be reached the
+   check is **skipped out loud** (`python -m tools_py.docmaint` prints `tags: SKIPPED` with the reason, and the unit
+   test reports a skip), never passed silently.
+
+`max_ruling()` (check 2) reads every file under `docs/archive/`, top level and subdirectories, as well as the live
+documents and the plans: a ruling does not stop existing when its block is archived, and a counter that dropped the
+newest archived ledger would walk backwards.
 
 **Check 6's exception, and its scope.** A path that does not exist *yet* is legitimate in a plan or a design: put
 `<!-- docmaint: future -->` on that line and the check skips it, so the exception is visible in the document itself

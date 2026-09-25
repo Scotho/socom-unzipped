@@ -1,6 +1,6 @@
 """The documentation registry (docs/DOC_MAINTENANCE.md) held to the tree.
 
-Six checks, each aimed at a rot mechanism that actually bit this project (the reasons are in
+Eight checks, each aimed at a rot mechanism that actually bit this project (the reasons are in
 docs/DOC_MAINTENANCE.md section 0). No build needed, so this runs in CI. Nothing here fails on a
 calendar -- cadence is the sprint-close review, a human step with a stamp.
 """
@@ -105,12 +105,57 @@ class DanglingLinksTest(unittest.TestCase):
             % (bad, docmaint.FUTURE_MARK))
 
 
+class CeilingsTest(unittest.TestCase):
+    """R268: the four documents that grow by appending get a byte ceiling each.
+
+    The 2026-09-25 audit found CURRENT_SPRINT at 190 KB with 12 % of it live, HANDOFF section 2 holding
+    twelve pick-up points, and the STATUS "Current state" block at 30 KB of dated bullets under a heading
+    that says "keep it short". Nothing retired a block, so the close review read only the newest one.
+    """
+
+    def test_the_appending_documents_are_under_their_ceilings(self):
+        bad = docmaint.over_ceiling()
+        self.assertEqual(
+            bad, [],
+            "over the R268 ceiling(s): %s -- archive the oldest blocks (docs/archive/, a banner, a registry "
+            "row) rather than raising the number" % "; ".join(docmaint.describe_ceiling(b) for b in bad))
+
+    def test_every_ceiling_names_a_block_that_exists(self):
+        for path, heading, limit in docmaint.CEILINGS:
+            self.assertIsNotNone(docmaint.block_bytes(path, heading),
+                                 "%s has no %r block -- a renamed heading must not switch its ceiling off"
+                                 % (path, heading))
+
+
+class TagClaimsTest(unittest.TestCase):
+    """R268: "merged to `main` as `vX`" is a claim about origin, and Sprint 11's was written before its tag."""
+
+    def test_every_merged_as_names_a_tag_on_origin(self):
+        tags, why = docmaint.remote_tags()
+        if tags is None:
+            self.skipTest("the tag check did not run -- origin unreachable: %s" % why)
+        self.assertEqual(
+            docmaint.unknown_tags(tags), [],
+            "a live document says 'merged to main as vX' for a tag origin does not list -- write it after "
+            "the tag is pushed, or say 'merges ... as' until then")
+
+
+class RulingScanTest(unittest.TestCase):
+    def test_the_ruling_scan_reads_every_archive_file(self):
+        """A ledger archived out of a live file must not let the counter walk backwards."""
+        sources = docmaint.ruling_sources()
+        for rel in docmaint.linked_docs():
+            if rel.startswith("docs/archive/"):
+                self.assertIn(rel, sources)
+        self.assertIn("docs/archive/CURRENT_SPRINT-sprints-9-to-11.md", sources)
+
+
 class ReportTest(unittest.TestCase):
     def test_the_report_runs_clean_on_this_tree(self):
         r = docmaint.report()
         problems = {k: r[k] for k in ("unregistered", "missing_files", "duplicate_rows",
                                       "count_offenders", "undated_snapshots", "silent_archives",
-                                      "dangling_doc_links") if r[k]}
+                                      "dangling_doc_links", "over_ceiling", "unknown_tags") if r[k]}
         self.assertEqual(problems, {}, "python -m tools_py.docmaint says: %s" % problems)
 
     def test_the_review_stamp_parses(self):
@@ -129,8 +174,11 @@ class PlantedDefectsTest(unittest.TestCase):
 
     def setUp(self):
         self._root = docmaint.ROOT
+        self._tags = docmaint.remote_tags
         self._tmp = tempfile.mkdtemp(prefix="docmaint_")
         docmaint.ROOT = self._tmp
+        # The planted tree is not a clone: origin's tags are planted too, so no test here touches the network.
+        docmaint.remote_tags = lambda: ({"v0.10.0", "v0.11.0"}, None)
         for sub in ("docs", "docs/archive", "docs/parity", "docs/story"):
             os.makedirs(os.path.join(self._tmp, sub), exist_ok=True)
         self.write("README.md", "# r\n")
@@ -138,14 +186,19 @@ class PlantedDefectsTest(unittest.TestCase):
         self.write("SECURITY.md", "# s\n")
         self.write("THIRD_PARTY_NOTICES.md", "# t\n")
         self.write("docs/DEVELOPING.md", "# d\n\nTotal Tests: 764\n")
-        self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n\nR99 was decided earlier.\n")
+        self.write("docs/HANDOFF.md", "# h\n\n## 2. Where it stands\n\nNext free ruling number: R100\n\n"
+                                     "R99 was decided earlier.\n")
         self.registry([("README.md", "L"), ("CONTRIBUTING.md", "C"), ("SECURITY.md", "C"),
                        ("THIRD_PARTY_NOTICES.md", "G"), ("docs/DEVELOPING.md", "L"),
                        ("docs/HANDOFF.md", "L"), ("docs/DOC_MAINTENANCE.md", "C")])
 
     def tearDown(self):
         docmaint.ROOT = self._root
+        docmaint.remote_tags = self._tags
         shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def ceiling(self, path):
+        return [c for c in docmaint.CEILINGS if c[0] == path][0]
 
     def write(self, rel, text):
         path = os.path.join(self._tmp, rel)
@@ -168,6 +221,8 @@ class PlantedDefectsTest(unittest.TestCase):
         self.assertEqual(r["undated_snapshots"], [])
         self.assertEqual(r["silent_archives"], [])
         self.assertEqual(r["dangling_doc_links"], [])
+        self.assertEqual(r["over_ceiling"], [])
+        self.assertEqual(r["unknown_tags"], [])
         self.assertEqual(r["next_free_ruling"], r["max_ruling"] + 1, "the counter check's own control")
 
     def test_an_unregistered_document_fires_check_1(self):
@@ -270,6 +325,92 @@ class PlantedDefectsTest(unittest.TestCase):
     def test_a_glob_or_a_placeholder_is_not_a_citation(self):
         self.write("README.md", "# r\n\n`docs/research/**` and `docs/audits/*.md` and `docs/research/<n>-x.md`.\n")
         self.assertEqual(docmaint.report()["dangling_doc_links"], [])
+
+    # --- R268: the ceilings -------------------------------------------------------------------------------
+
+    def test_a_sprint_file_over_its_ceiling_fires_and_prints_its_size(self):
+        path, _, limit = self.ceiling("docs/CURRENT_SPRINT.md")
+        self.write(path, "# cs\n" + "x" * limit + "\n")
+        hits = [h for h in docmaint.report()["over_ceiling"] if h[0] == path]
+        self.assertEqual(len(hits), 1, docmaint.report()["over_ceiling"])
+        self.assertEqual(hits[0][2], limit + 6)
+        self.assertIn("{:,}".format(limit + 6), docmaint.describe_ceiling(hits[0]))
+
+    def test_a_sprint_file_under_its_ceiling_does_not_fire(self):
+        path, _, limit = self.ceiling("docs/CURRENT_SPRINT.md")
+        self.write(path, "# cs\n" + "x" * (limit - 100) + "\n")
+        self.assertEqual(docmaint.report()["over_ceiling"], [])
+
+    def test_handoff_section_2_over_its_ceiling_fires(self):
+        path, heading, limit = self.ceiling("docs/HANDOFF.md")
+        self.write(path, "# h\n\nNext free ruling number: R100\n\n## 1. What\n\nshort\n\n"
+                         "## 2. Where it stands\n\n" + "- now\n" * (limit // 6 + 10) + "\n## 3. Next\n\nshort\n")
+        self.assertTrue(any(h[0] == path and h[1] == heading for h in docmaint.report()["over_ceiling"]))
+
+    def test_only_handoff_section_2_is_measured(self):
+        """The rest of HANDOFF is reference and may be long; only the pick-up block appends."""
+        path, heading, limit = self.ceiling("docs/HANDOFF.md")
+        self.write(path, "# h\n\nNext free ruling number: R100\n\n## 2. Where it stands\n\n- now\n\n"
+                         "## 3. Next\n\n" + "y" * (limit * 2) + "\n")
+        self.assertEqual(docmaint.report()["over_ceiling"], [])
+
+    def test_the_status_state_block_over_its_ceiling_fires(self):
+        path, heading, limit = self.ceiling("docs/STATUS.md")
+        self.write(path, "# s\n\n## Current state (keep it short)\n" + "- 2026-09-25 x\n" * (limit // 15 + 10)
+                         + "\n## 2026-09-25 -- the log\n\n" + "z" * (limit * 2) + "\n")
+        hits = [h for h in docmaint.report()["over_ceiling"] if h[0] == path]
+        self.assertEqual(len(hits), 1)
+        self.assertLess(hits[0][2], limit * 2, "the log below the block must not count")
+
+    def test_human_tasks_over_its_ceiling_fires(self):
+        path, _, limit = self.ceiling("docs/HUMAN_TASKS.md")
+        self.write(path, "# ht\n" + "x" * limit + "\n")
+        self.assertTrue(any(h[0] == path for h in docmaint.report()["over_ceiling"]))
+
+    def test_a_renamed_heading_fires_rather_than_switching_the_ceiling_off(self):
+        path, heading, limit = self.ceiling("docs/STATUS.md")
+        self.write(path, "# s\n\n## State of things\n\n- short\n")
+        hits = [h for h in docmaint.report()["over_ceiling"] if h[0] == path]
+        self.assertEqual(len(hits), 1)
+        self.assertIsNone(hits[0][2])
+        self.assertIn("not found", docmaint.describe_ceiling(hits[0]))
+
+    # --- R268: "merged to main as vX" names a tag origin has ---------------------------------------------
+
+    def test_a_merged_as_for_a_missing_tag_fires(self):
+        self.write("README.md", "# r\n\nSprint 12 is merged to `main` as `v0.12.0`.\n")
+        self.assertIn(("README.md", 3, "v0.12.0"), docmaint.report()["unknown_tags"])
+
+    def test_a_merged_as_for_a_tag_origin_has_does_not_fire(self):
+        self.write("README.md", "# r\n\nSprint 11 CLOSED and merged to `main` as `v0.11.0`; also merged to main as v0.10.0.\n")
+        self.assertEqual(docmaint.report()["unknown_tags"], [])
+
+    def test_a_struck_through_merged_as_is_a_retraction(self):
+        self.write("README.md", "# r\n\n~~Sprint 12 is merged to `main` as `v0.12.0`~~ -- not yet.\n")
+        self.assertEqual(docmaint.report()["unknown_tags"], [])
+
+    def test_an_unreachable_origin_skips_the_tag_check_out_loud(self):
+        import io
+        from contextlib import redirect_stdout
+        docmaint.remote_tags = lambda: (None, "could not resolve host")
+        self.write("README.md", "# r\n\nSprint 12 is merged to `main` as `v0.12.0`.\n")
+        r = docmaint.report()
+        self.assertEqual(r["unknown_tags"], [])
+        self.assertIn("could not resolve host", r["tag_check_skipped"])
+        out = io.StringIO()
+        with redirect_stdout(out):
+            docmaint.main([])
+        self.assertIn("SKIPPED", out.getvalue())
+
+    # --- the ruling scan reads the archive --------------------------------------------------------------
+
+    def test_a_ruling_that_lives_only_in_an_archive_file_still_counts(self):
+        self.write("docs/archive/CURRENT_SPRINT-old.md", "# old\n\n> ARCHIVED.\n\n| R250 | a ruling |\n")
+        self.assertEqual(docmaint.max_ruling(), (250, "docs/archive/CURRENT_SPRINT-old.md"))
+
+    def test_a_ruling_in_an_archive_subdirectory_still_counts(self):
+        self.write("docs/archive/sprints-7-12/plan.md", "# p\n\n> ARCHIVED.\n\nR251 was ruled here.\n")
+        self.assertEqual(docmaint.max_ruling()[0], 251)
 
 
 if __name__ == "__main__":
