@@ -24,6 +24,9 @@ write_env_ps2x() {   # <out_dir> [note]
   local out="$1" note="${2:-}" exe
   exe="${SOCOM_EXE:-${SOCOM_DATA_ROOT:-${ROOT:-$_WRITE_ENV_TOOLS}}/dist/socom2.exe}"
   mkdir -p "$out"
+  # The interpreter check runs in a subshell: socom_require_python exits, and this file is sourced by a capture that
+  # must go on without its record (the absence is the finding), so the exit must not take the capture with it.
+  (socom_require_python write_env_ps2x) || { echo "write_env_ps2x: the environment was not recorded into $out" >&2; return 0; }
   PYTHONPATH="$_WRITE_ENV_TOOLS" "$PYTHON" -P -m tools_py.parity.capture_env "$out" --exe "$exe" --note "$note" \
     || echo "write_env_ps2x: could not record the environment into $out (see above)" >&2
 }
