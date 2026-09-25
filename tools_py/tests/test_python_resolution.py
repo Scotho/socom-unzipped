@@ -50,46 +50,68 @@ def strip_comments(text):
     return "\n".join("" if line.lstrip().startswith("#") else line for line in text.splitlines())
 
 
+# Every spelling an interpreter can wear on the PATH. One that the caller did not ask for is not left to
+# the host: it gets a blocker (below), so the answer is the same on every machine.
+INTERPRETER_NAMES = ("python", "python3", "python2", "py")
+
+
 class PathShim(object):
-    """A PATH holding exactly the interpreters asked for, and never the host's own.
+    """A PATH whose only reachable interpreters are the ones asked for.
 
     A name given as `("python", 9009)` is a STUB: a file of that name that is on the PATH and is not a
     Python. That is what Windows 11 puts at %LOCALAPPDATA%\\Microsoft\\WindowsApps\\python.exe on a
     machine where Python was never installed -- an App Execution Alias that prints nothing and exits
-    9009 (review C1)."""
+    9009 (review C1).
+
+    An interpreter spelling that is NOT asked for gets a BLOCKER: a file of that name, first on the PATH,
+    that says "<name>: command not found" on stderr and exits 127 -- exactly what the shell itself says
+    for a name that is nowhere. The shim directory is PREPENDED and nothing is ever taken out of the PATH.
+
+    That shape is the fix for run 36081289655 (2026-09-25). This class used to simulate "no python here"
+    by DROPPING every PATH entry that held an interpreter, which is host-dependent in the worst way: on
+    the Ubuntu runner python3 lives in /usr/bin, so /usr/bin went and took `bash`, `dirname` and every
+    other coreutil with it. test_parity_env_sh_carries_the_helper, test_vm_sync_usage and
+    test_make_portable_packages_a_linux_folder died there with "bash: command not found" while passing on
+    Windows, where Git's usr/bin holds no Python and the drop removed nothing that mattered. Shadowing
+    instead of pruning leaves the rest of the PATH -- the shell, the coreutils, tar, ssh -- exactly as the
+    host has it, and still lets no host interpreter answer.
+
+    A blocker speaks rather than failing silently on purpose: the scripts are checked with
+    assertFoundAnInterpreter, which reads stderr for "python: command not found". A script that invokes
+    the bare word must produce that sentence here just as it did in the VM, or the seam stops catching
+    the defect it was built for."""
 
     def __init__(self, tmp, names):
         self.dir = os.path.join(tmp, "bin")
         os.makedirs(self.dir, exist_ok=True)
         real = sys.executable.replace("\\", "/")
+        asked = set()
         for name in names:
             rc = None
             if isinstance(name, tuple):
                 name, rc = name
-            path = os.path.join(self.dir, name)
-            with open(path, "w", newline="\n", encoding="utf-8") as fh:
-                if rc is None:
-                    fh.write("#!/bin/sh\nexec '%s' \"$@\"\n" % real)
-                else:
-                    fh.write("#!/bin/sh\nexit %d\n" % rc)
-            os.chmod(path, 0o755)
+            asked.add(name)
+            if rc is None:
+                self._write(name, "#!/bin/sh\nexec '%s' \"$@\"\n" % real)
+            else:
+                self._write(name, "#!/bin/sh\nexit %d\n" % rc)
+        for name in INTERPRETER_NAMES:
+            if name not in asked:
+                self._write(name, '#!/bin/sh\necho "%s: command not found" >&2\nexit 127\n' % name)
+
+    def _write(self, name, body):
+        """A plain, extensionless name is enough on both hosts: the shim directory is searched first, so
+        its `python` answers before any later directory's `python.exe` is ever looked at."""
+        path = os.path.join(self.dir, name)
+        with open(path, "w", newline="\n", encoding="utf-8") as fh:
+            fh.write(body)
+        os.chmod(path, 0o755)
 
     def env(self, **extra):
         e = dict(os.environ)
         e.pop("PYTHON", None)
         e.pop("PYTHON3", None)
-        keep = []
-        for part in e.get("PATH", "").split(os.pathsep):
-            if not part:
-                continue
-            try:
-                names = {n.lower() for n in os.listdir(part)}
-            except OSError:
-                names = set()
-            if names & {"python", "python.exe", "python3", "python3.exe", "py.exe"}:
-                continue          # the host's own interpreter must not answer for the shim
-            keep.append(part)
-        e["PATH"] = os.pathsep.join([self.dir] + keep)
+        e["PATH"] = os.pathsep.join([self.dir] + [p for p in e.get("PATH", "").split(os.pathsep) if p])
         e.update(extra)
         return e
 
