@@ -477,7 +477,7 @@ class CarryTest(GhRecorded):
                                     "Sprint 14", "--json", self.view(milestone="Sprint 13")])
         self.assertEqual(code, 0, text)
         self.assertEqual(len(self.calls), 2, self.calls)
-        edit, comment = self.calls
+        comment, edit = self.calls
         self.assertEqual(edit[:3], ["issue", "edit", "33"])
         self.assertIn("--add-label", edit)
         self.assertEqual(edit[edit.index("--add-label") + 1], "carried")
@@ -492,13 +492,13 @@ class CarryTest(GhRecorded):
     def test_no_milestone_means_the_backlog(self):
         code, text = self.run_main(["carry", "33", "--comment", "no plan names it", "--json", self.view()])
         self.assertEqual(code, 0, text)
-        self.assertIn("--remove-milestone", self.calls[0])
-        self.assertIn("the backlog", self.calls[1][self.calls[1].index("--body") + 1])
+        self.assertIn("--remove-milestone", self.calls[1])
+        self.assertIn("the backlog", self.calls[0][self.calls[0].index("--body") + 1])
 
     def test_the_tools_comment_counts_as_a_carry(self):
         # What `carry` writes must be what carried_count counts, or the refusal below could never fire.
         self.run_main(["carry", "33", "--comment", "why", "--json", self.view()])
-        body = self.calls[1][self.calls[1].index("--body") + 1]
+        body = self.calls[0][self.calls[0].index("--body") + 1]
         issue = issues.normalise(planted(33, comments=(body,)))
         self.assertEqual(issues.carried_count(issue), 1)
 
@@ -517,6 +517,36 @@ class CarryTest(GhRecorded):
         self.assertEqual(self.calls, [], "a refused carry touches nothing")
         self.assertIn("carried twice", text)
         self.assertIn("owner", text)
+
+    def test_a_carry_recorded_by_the_label_alone_must_be_written_down_first(self):
+        # A label with no `Carried ` comment counts once; if the tool then added its own comment the count would
+        # still read 1 and a third carry would slip through. So the tool refuses until the first is written.
+        code, text = self.run_main(["carry", "33", "--comment", "why", "--json",
+                                    self.view(labels=("known-issue", "render", "carried"))])
+        self.assertEqual(code, 1, text)
+        self.assertEqual(self.calls, [])
+        self.assertIn("label alone", text)
+
+    def test_the_comment_is_posted_before_the_label_and_milestone_edit(self):
+        # A failed comment then leaves nothing half-carried: no label without its reason.
+        failing = []
+
+        class Failed:
+            returncode, stdout, stderr = 1, "", "boom"
+
+        def record(cmd):
+            failing.append(cmd)
+            return Failed()
+        issues._gh = record
+        code, _ = self.run_main(["carry", "33", "--comment", "why", "--json", self.view()])
+        self.assertEqual(code, 1)
+        self.assertEqual(len(failing), 1)
+        self.assertEqual(failing[0][:2], ["issue", "comment"])
+
+    def test_a_lower_case_home_path_is_refused_too(self):
+        code, text = self.run_main(["carry", "33", "--comment", r"see c:\users\bob\log.txt", "--json", self.view()])
+        self.assertEqual(code, 1, text)
+        self.assertIn("home directory", text)
 
     def test_a_closed_issue_is_not_carried(self):
         code, text = self.run_main(["carry", "33", "--comment", "why", "--json", self.view(state="CLOSED")])
@@ -663,6 +693,14 @@ class LabelsCommandTest(unittest.TestCase):
         area_line = [l for l in text.splitlines() if l.startswith("areas")][0]
         self.assertEqual(area_line.split(":", 1)[1].split(), list(issues.AREAS))
         self.assertIn("scripts/github_labels.sh", text)
+
+    def test_githubs_two_default_labels_are_printed_and_marked(self):
+        # `help wanted` and `good first issue` are on #33 #39 #40 #46 #48 but the script does not create them.
+        _, text = self.run_labels()
+        for name in ("help wanted", "good first issue"):
+            line = [l for l in text.splitlines() if name in l]
+            self.assertTrue(line, name)
+            self.assertIn("GitHub default, not created here", line[0])
 
 
 class RuledOutListTest(unittest.TestCase):

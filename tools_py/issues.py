@@ -96,7 +96,7 @@ CLOSING_COMMENT = "Closing bar met:"
 SECTIONS = ("## What happens", "## Evidence", "## Where it is written", "## Closing bar")
 BR_ID = re.compile(r"BR-\d{8}-[0-9a-z]{6}", re.I)
 BR_SENTENCE = re.compile(r"^Reported through the launcher as BR-\d{8}-[0-9a-z]{6}\.$", re.I | re.M)
-HOME_PATH = re.compile(r"(?:[A-Za-z]:\\Users\\|/home/[A-Za-z0-9_.-]+/|/Users/[A-Za-z0-9_.-]+/)")
+HOME_PATH = re.compile(r"(?:[A-Za-z]:\\Users\\|/home/[A-Za-z0-9_.-]+/|/Users/[A-Za-z0-9_.-]+/)", re.I)
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 PLACEHOLDER = re.compile(r"^\s*<[^>]*>\s*$")
 
@@ -319,7 +319,9 @@ def closing_bar_sentence(body):
     if text.startswith("- "):
         text = text[2:]
     # A sentence ends at . ! or ? outside an inline code span, followed by the end or a space and then anything
-    # but a lower-case letter -- so `a ... b` in code, "sidecar... then" and "e. g." do not end it.
+    # but a lower-case letter -- so `a ... b` in code, "sidecar... then" and "e. g." do not end it. Known edge: a
+    # double-backtick span (``a ` b``) is read as three toggles, so a sentence could end inside it; no issue body
+    # uses one, and the cost would only be a shorter first sentence.
     in_code = False
     for k, ch in enumerate(text):
         if ch == "`":
@@ -604,6 +606,14 @@ def cmd_carry(args):
     if issue["state"] != "OPEN":
         print("carry: issue #%d is %s -- only an open issue is carried" % (args.number, issue["state"]))
         return 1
+    if CARRIED_LABEL in issue["labels"] and not carry_comments(issue):
+        # The label alone counts as one carry (carried_count), but once this tool added its comment the count
+        # would read 1 again and a third carry could slip through. The earlier carry is written down first.
+        print("carry: issue #%d bears the '%s' label alone, with no comment starting %r -- that earlier carry is "
+              "recorded by the label alone and would be lost from the count. Write it down first (gh issue comment "
+              "%d --body \"Carried at the Sprint N close: <why>\"), then carry again."
+              % (args.number, CARRIED_LABEL, CARRY_COMMENT, args.number))
+        return 1
     count = carried_count(issue)
     if count >= CARRY_LIMIT:
         print("carry: issue #%d has been carried twice already (%d carry comments) -- a third carry is not the "
@@ -616,7 +626,8 @@ def cmd_carry(args):
     edit += ["--milestone", args.milestone] if args.milestone else ["--remove-milestone"]
     body = "%sfrom %s to %s: %s" % (CARRY_COMMENT, source, target, comment)
     note = ["issue", "comment", str(args.number), "--repo", args.repo, "--body", body]
-    code = _run_all([edit, note], args.dry_run)
+    # The comment first: if it fails, nothing is half-carried (no label and no moved milestone without a reason).
+    code = _run_all([note, edit], args.dry_run)
     if code == 0 and not args.dry_run:
         print("carry: issue #%d carried from %s to %s (carry %d of %d)"
               % (args.number, source, target, count + 1, CARRY_LIMIT))
@@ -692,6 +703,13 @@ def cmd_tally(args):
 
 LABELS_SCRIPT = "scripts/github_labels.sh"
 LABELS_BLOCK = re.compile(r"^LABELS=\(\n(.*?)^\)$", re.S | re.M)
+# GitHub's own default labels, which exist on every repository and which the script deliberately does not create
+# (its header says why: their names carry spaces, and DOC_MAINTENANCE section 7 step 6 hands them out). They are
+# on real issues (#33 #39 #40 #46 #48), so a triager is shown them too.
+GITHUB_DEFAULT_LABELS = (
+    ("help wanted", "A contributor without a disc could take it."),
+    ("good first issue", "Only where the closing bar is a test a newcomer can run themselves."),
+)
 
 
 def script_labels():
@@ -714,6 +732,8 @@ def cmd_labels(_args):
     for name, description in labels:
         if name not in AREAS:
             print("  %-16s %s" % (name, description))
+    for name, description in GITHUB_DEFAULT_LABELS:
+        print("  %-16s %s (GitHub default, not created here)" % (name, description))
     return 0
 
 
