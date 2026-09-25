@@ -744,11 +744,23 @@ class TestInterleavings(LockTestBase):
 
 class TestRun(LockTestBase):
     def test_run_reports_lock_lost_and_does_not_release_the_new_holder(self):
-        p = subprocess.Popen([BASH, LOCK_SH, "run", "runner", "--", "sleep", "4"], stdout=subprocess.PIPE,
+        # Sprint 13 H2 ruling: a renew costs 0.7-1.6 s of process starts on this host, so the thief takes the lock
+        # only after the first renew has landed (polled, up to 5 s), and the command outlives the next renews.
+        p = subprocess.Popen([BASH, LOCK_SH, "run", "runner", "--", "sleep", "10"], stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, text=True, env=self.env(LOOP_LOCK_RENEW_SEC=1))
         deadline = time.time() + 30
         while not os.path.exists(self.rec) and time.time() < deadline:
             time.sleep(0.1)
+        first_hb = int(self.record()[2])
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            try:
+                if int(self.record()[2]) > first_hb:
+                    break
+            except (OSError, IndexError, ValueError):
+                pass
+            time.sleep(0.1)
+        self.assertGreater(int(self.record()[2]), first_hb, "no renew landed within 5 s")
         runner_id = self.sh("id")[1].strip()
         self.assertEqual(self.sh("_release_id", runner_id)[0], 0)
         self.assertEqual(self.sh("take", "thief")[0], 0)
@@ -1118,7 +1130,7 @@ class TestRunDetached(LockTestBase):
     def test_detached_renews_releases_and_writes_exit_code(self):
         job = os.path.join(self.tmp, "job.sh")
         with open(job, "w", newline="\n") as f:
-            f.write("bash '%s' take gate\nsleep 6\nbash '%s' release gate\nexit 4\n" % (LOCK_SH, LOCK_SH))
+            f.write("bash '%s' take gate\nsleep 12\nbash '%s' release gate\nexit 4\n" % (LOCK_SH, LOCK_SH))
         marker = os.path.join(self.tmp, "job.done")
         p = subprocess.run([BASH, DETACHED_SH, "--owner", "det", fwd(job), fwd(marker)],
                            capture_output=True, text=True, env=self.env(LOOP_LOCK_DETACHED_RENEW_SEC=2),
@@ -1126,8 +1138,16 @@ class TestRunDetached(LockTestBase):
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         self.assertIn("DETACHED", p.stdout)
         epoch = int(self.record()[2])
-        time.sleep(4.5)
+        # Sprint 13 H2 ruling: poll up to 10 s for the heartbeat to advance (a renew costs 0.7-1.6 s of process
+        # starts here) instead of one look after a fixed 4.5 s; the job sleeps 12 s so it outlives the window.
+        deadline = time.time() + 10
         rec = self.record()
+        while int(rec[2]) <= epoch and time.time() < deadline:
+            time.sleep(0.2)
+            try:
+                rec = self.record()
+            except OSError:
+                pass
         self.assertEqual(rec[0], "det")
         self.assertGreater(int(rec[2]), epoch, "heartbeat not renewed while the job ran")
         self.assertEqual(self._wait_marker(marker).strip(), "exit=4")

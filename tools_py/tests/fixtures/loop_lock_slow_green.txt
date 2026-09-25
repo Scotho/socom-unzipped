@@ -2,6 +2,6 @@
 # `git hash-object scripts/loop_lock.sh` to the blob line below. Update this file ONLY after
 #   LOOP_LOCK_SLOW_TESTS=1 python -m unittest tools_py.tests.test_loop_lock
 # is green on the script as it stands.
-blob 89779b1e526c383aed6641231ec72027d71b2596
-date 2026-09-23T02:53:00Z
-run 64 tests in 2233.1 s, OK (skipped=1: this stamp test itself), 2026-09-23T02:16Z..02:53Z, sprint-10 close night under a game capture and agent builds (the 2233 s is the load, not the suite) -- the default lock path now follows git's common dir so a worktree shares the main tree's lock
+blob 36236f947bd95bbeee96969f1f13c4b7adffac22
+date 2026-09-25T15:45:57Z
+run 90 tests in 3853.6 s (test_loop_lock + test_loop_lock_closeout), 2026-09-25T14:41Z..15:45Z on a quiet host (bash start ~47 ms with ~1-in-5 hiccups of ~460 ms): 88 OK, skipped=1 (this stamp test itself), 2 FAIL -- the two renewal cases' fixed windows (test_run_reports_lock_lost_and_does_not_release_the_new_holder, test_detached_renews_releases_and_writes_exit_code; a renew measured 0.68-1.62 s). Per the controller's ruling those two were widened to poll for the heartbeat (test file only; the blob is unchanged) and then passed with LOOP_LOCK_SLOW_TESTS=1 (Ran 2 tests in 34.2 s, OK). Sprint 13 H2: the ticket queue, --wait in minutes, orphaned waiters leave the queue.
