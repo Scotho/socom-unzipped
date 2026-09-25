@@ -77,8 +77,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kill_stale_drivers.p
 # Issue #38: the PS2X_* the launch is handed (env.sh's instruments and this script's own), beside its output,
 # the moment before it starts; the driver adds only per-instance plumbing (screenshot path, card dir) on top.
 write_env_ps2x "$OUT" "mixed_match2.sh (ours; the PCSX2 side has no PS2X_* knobs)"
-"$PYTHON" -m tools_py.parity.online_match_ours --existing-b --foreign-b --hold 30 --play 4 --map "Frostfire" \
-       --out "$OUT" --seconds 900 > "logs/parity/drive_${NAME}.txt" 2>&1 &
+# MIXED_HOLD (default 30): how long ours holds the round after READY. Sprint 13 V7's paused-peer round
+# (control_round_paused_peer.sh --peer console) holds it for minutes, so the console can be paused mid-round while
+# ours is still in it; the game's own budget grows with it (900 s at the default, as before).
+MIXED_HOLD="${MIXED_HOLD:-30}"
+# --prefilled (Sprint 13 O1, the plan's "online_match_ours.py --prefilled against PCSX2"): ours ENTERs a keyboard the
+# runtime opened holding its persona and password instead of typing it -- PCSX2 beside ours on one host is the load
+# at which the typing walk drops keys (research/28 section 5). MIXED_PREFILLED=0 restores the typing walk.
+PREFILLED=(--prefilled)
+[ "${MIXED_PREFILLED:-1}" = 0 ] && PREFILLED=()
+"$PYTHON" -m tools_py.parity.online_match_ours --existing-b --foreign-b "${PREFILLED[@]}" --hold "$MIXED_HOLD" --play 4 --map "Frostfire" \
+       --out "$OUT" --seconds "$(( MIXED_HOLD + 870 ))" > "logs/parity/drive_${NAME}.txt" 2>&1 &
 OURS_PID=$!
 PYTHONPATH="$ROOT" "$PYTHON" -m tools_py.parity.pcsx2_shell join B --name "$PERSONA" $EXISTING --out "$PCSX2_OUT" > "$OUT/pcsx2_join.txt" 2>&1
 JOIN_RC=$?
