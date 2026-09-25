@@ -219,6 +219,16 @@ def _code_only(text):
                 if text[k] != "\n":
                     out[k] = " "
             i = end
+        elif c == '"' and i > 0 and text[i - 1] == "R" and (i < 2 or not (text[i - 2].isalnum() or text[i - 2] == "_")
+                                                             or text[i - 2] in "uUL8"):
+            # A raw string literal, R"TAG(...)TAG": no escapes, may span lines, may hold quotes and braces.
+            paren = text.find("(", i + 1)
+            close = text.find(")" + text[i + 1:paren] + '"', paren) if paren >= 0 else -1
+            end = n if close < 0 else close + (paren - i) + 1        # one past the closing quote
+            for j in range(i + 1, min(end, n)):
+                if text[j] != "\n":
+                    out[j] = " "
+            i = end
         elif c in "\"'":
             k = i + 1
             while k < n and text[k] != c and text[k] != "\n":
@@ -242,6 +252,9 @@ def _function_of(code, brace):
     head = code[start:brace].strip()
     if not head or _SCOPE.search(head.split("(")[0]):
         return None
+    constructor = _constructor_head(head)
+    if constructor:
+        return constructor[0]
     tail = _TAIL.search(head)
     if not tail:
         return None
@@ -261,9 +274,48 @@ def _function_of(code, brace):
     return None if name in _CONTROL else name
 
 
+def _constructor_head(head):
+    """(name, index just past the parameter list) when `head` is `Name(params) [noexcept] : inits`, else None."""
+    m = re.match(r'\s*([~A-Za-z_][\w:~]*)\s*\(', head)
+    if not m or m.group(1).split("::")[-1] in _CONTROL:
+        return None
+    depth, k = 0, m.end() - 1
+    while k < len(head):
+        depth += {"(": 1, ")": -1}.get(head[k], 0)
+        if depth == 0:
+            break
+        k += 1
+    rest = head[k + 1:].lstrip()
+    if rest.startswith("noexcept"):
+        rest = rest[len("noexcept"):].lstrip()
+    if not rest.startswith(":") or rest.startswith("::"):
+        return None
+    return m.group(1).split("::")[-1], k + 1
+
+
+def _constructor_of(code, offset):
+    """The constructor whose member-initialiser list holds `offset` (`Foo::Foo() : m_x(knob("PS2X_X")) {`), or None.
+    Such a read sits before the body's brace, so the brace stack alone cannot name it. (An initialiser written with
+    braces, m_x{...}, ends the search early: the tree has none around a knob read.)"""
+    brace = code.find("{", offset)
+    if brace < 0 or any(c in code[offset:brace] for c in ";}"):
+        return None
+    start = max(code.rfind(";", 0, offset), code.rfind("{", 0, offset), code.rfind("}", 0, offset)) + 1
+    found = _constructor_head(code[start:brace])
+    if not found or start + found[1] > offset:
+        return None
+    return found[0]
+
+
 def read_sites(root=ROOT):
     """{name: [(file relative to third_party/ps2recomp, line, enclosing function or None), ...]} for every read of
-    a PS2X_* name (_READ_CALL) in the shipped trees."""
+    a PS2X_* name (_READ_CALL) in the shipped trees.
+
+    A read is ANY call whose first argument is the name as a string literal: ps2x::knob, knobOn, the file-local
+    wrappers (envFlag, traceSkip ...) and knobs.cpp's getenv("PS2X_DEV") -- and so would a setenv("PS2X_X", ...) or a
+    find("PS2X_X"), were the shipped trees to grow one. The function is the innermost enclosing named function
+    (lambdas and control blocks are looked through); a read in a constructor's member-initialiser list names the
+    constructor. None when neither applies (a namespace-scope initialiser)."""
     found = {}
     base = os.path.join(root, RECOMP)
     for path in _files(root, SHIPPED_TREES):
@@ -283,8 +335,8 @@ def read_sites(root=ROOT):
         for pos, ch in enumerate(code):
             while ri < len(reads) and reads[ri][0] <= pos:
                 offset, name = reads[ri]
-                function = None
-                for brace in reversed(stack):
+                function = _constructor_of(code, offset)
+                for brace in ([] if function else reversed(stack)):
                     function = _function_of(code, brace)
                     if function:
                         break
@@ -334,7 +386,7 @@ def log_tag_problems(root=ROOT, rows=None):
             continue
         with open(path, "r", encoding="latin-1") as fh:
             text = fh.read()
-        seen.update(t for t in tags if "[" + t in text)
+        seen.update(t for t in tags if "[" + t + "]" in text)
     return ["%s's meaning names the log line [%s] and no shipped source prints it" % (r["name"], t)
             for r in rows for t in _LOG_TAG.findall(r["meaning"]) if t not in seen]
 

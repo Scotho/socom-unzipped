@@ -35,7 +35,7 @@ Player-facing. Each is a field of `config.json` that the launcher (and a bare ru
 
 | Name | Kind | Default | Meaning | Read in |
 |---|---|---|---|---|
-| `PS2X_DEV` | Flag | `0` | Developer mode, as --dev: Dev knobs honoured, the Path rule off, inherited PS2X_* kept, the full keyboard. | `ps2xShared/src/knobs.cpp` `devMode` |
+| `PS2X_DEV` | Flag | `0` | Developer mode (--dev): Dev knobs honoured, Path knobs may point outside the game folder, full keyboard. | `ps2xShared/src/knobs.cpp` `devMode` |
 
 ## Developer knobs
 

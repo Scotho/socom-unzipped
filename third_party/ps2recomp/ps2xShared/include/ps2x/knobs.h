@@ -9,7 +9,9 @@
 // A Shipping or Switch row ends with where its name is read, /* read: <file>:<function> [...] */ -- the file
 // relative to third_party/ps2recomp, the function the read sits in -- and the line names what that code does.
 // tools_py/tests/test_knob_read_sites.py fails when a cited function no longer reads the name or a read is not
-// cited (Sprint 13 C9: PS2X_SOCOM2_NET_STATS was described as a log line it never printed).
+// cited (Sprint 13 C9: PS2X_SOCOM2_NET_STATS was described as a log line it never printed). Any other row may
+// cite too, and is then held to the same rule. A read in a constructor's member-initialiser list names the
+// constructor; a read in a namespace-scope initialiser has no function and cannot be cited.
 //
 // Rows are sorted by name in strcmp order (find() is a binary search; the Knobs suite and
 // tools_py/tests/test_knobs_registry.py both check it). Adding a getenv of a PS2X_* name anywhere in
@@ -67,7 +69,7 @@
     X("PS2X_CULL_TRACE", Dev, Spec, "", "Trace the terrain cull/LOD/detail decisions to a file (research/31 tools read it).") \
     X("PS2X_CYCLE_CLOCK", Dev, Text, "", "guest = estimate-driven cycle accounting instead of wall time (not an A/B of pre-R54).") \
     X("PS2X_DETAIL_FAR", Dev, Int, "0", "Experiment: force the far detail level by writing guest byte 0x4b4a88.") \
-    X("PS2X_DEV", Switch, Flag, "0", "Developer mode, as --dev: Dev knobs honoured, the Path rule off, inherited PS2X_* kept, the full keyboard.") /* read: ps2xShared/src/knobs.cpp:devMode */ \
+    X("PS2X_DEV", Switch, Flag, "0", "Developer mode (--dev): Dev knobs honoured, Path knobs may point outside the game folder, full keyboard.") /* read: ps2xShared/src/knobs.cpp:devMode */ \
     X("PS2X_EE_ROUND", Dev, Text, "", "nearest = host FPU rounds to nearest on the game thread instead of toward zero.") \
     X("PS2X_FPS_OVERLAY", Shipping, Int, "0", "Any value but 0 draws host fps, guest vsync Hz and frame ms in the window (never in exported frames).") /* read: ps2xRuntime/src/lib/ps2_runtime.cpp:run */ \
     X("PS2X_FPU_TRAP", Dev, Float, "-1", "Seconds after which EE divisions by zero and saturated square roots are reported with their pc.") \
@@ -160,7 +162,7 @@
     X("PS2X_SOCOM2_LOGIN_NAME", Shipping, Text, "", "The persona name the login keyboard opens with (Goal 9, R180: prefilled, never submitted); unset = empty.") /* read: ps2xRuntime/src/lib/game_overrides_socom2.cpp:socom2_OskOpenPrefill ps2xRuntime/src/lib/game_overrides_socom2.cpp:installOskPrefill */ \
     X("PS2X_SOCOM2_LOGIN_PASS", Shipping, Text, "", "The password the login keyboard opens with (R179: plain in the player's config.json, blanked from reports).") /* read: ps2xRuntime/src/lib/game_overrides_socom2.cpp:socom2_OskOpenPrefill ps2xRuntime/src/lib/game_overrides_socom2.cpp:installOskPrefill */ \
     X("PS2X_SOCOM2_MUSIC_TRACE", Dev, Presence, "", "Log the music manager and every cue push with the mixer frame clock (music round four).") \
-    X("PS2X_SOCOM2_NET_STATS", Dev, Flag, "1", "sceInetInterfaceControl 0x200 answers the RX byte count; 0 restores the constant that froze online movement.") \
+    X("PS2X_SOCOM2_NET_STATS", Dev, Flag, "1", "sceInetInterfaceControl 0x200 answers the RX byte count; 0 restores the constant that froze online movement.") /* read: ps2xRuntime/src/lib/socom2_libnetb.cpp:netStatsEnabled */ \
     X("PS2X_SOCOM2_NET_TRACE", Dev, Presence, "", "Verbose libnetb: every RPC, socket and datagram header.") \
     X("PS2X_SOCOM2_NET_TRACE_ALL", Dev, Flag, "0", "With NET_TRACE: hex-dump datagrams on every port, not only the peer ports.") \
     X("PS2X_SOCOM2_NET_TRACE_PEERS", Dev, Int, "16", "With NET_TRACE: peer packets to hex-dump in each direction.") \

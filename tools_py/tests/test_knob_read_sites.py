@@ -81,6 +81,24 @@ class ParserTest(unittest.TestCase):
             self.assertNotIn("PS2X_D", sites)
             self.assertNotIn("PS2X_E", sites)
 
+    def test_a_constructor_initialiser_list_read_names_the_constructor(self):
+        # gs_gl_backend.cpp's GSGlBackend() reads PS2X_GS_PENDING_CAP_MB this way; the brace stack alone gave None.
+        with tempfile.TemporaryDirectory() as root:
+            _tree(root, {"ps2xRuntime/src/a.cpp": (
+                "Backend::Backend()\n    : m_a(parse(ps2x::knob(\"PS2X_A\"), 1)),\n"
+                "      m_b(ps2x::knob(\"PS2X_B\"))\n{\n    if (ps2x::knobOn(\"PS2X_C\")) {\n    }\n}\n")})
+            sites = knobs.read_sites(root)
+            self.assertEqual(sites["PS2X_A"], [("ps2xRuntime/src/a.cpp", 2, "Backend")])
+            self.assertEqual(sites["PS2X_B"], [("ps2xRuntime/src/a.cpp", 3, "Backend")])
+            self.assertEqual(sites["PS2X_C"], [("ps2xRuntime/src/a.cpp", 5, "Backend")])
+
+    def test_a_raw_string_cannot_move_the_brace_count(self):
+        with tempfile.TemporaryDirectory() as root:
+            _tree(root, {"ps2xRuntime/src/a.cpp": (
+                "void f()\n{\n    const char *s = R\"js(}}\" { )\" )js\";\n}\n"
+                "void g()\n{\n    ps2x::knob(\"PS2X_A\");\n}\n")})
+            self.assertEqual(knobs.read_sites(root)["PS2X_A"], [("ps2xRuntime/src/a.cpp", 7, "g")])
+
 
 class CitationRuleTest(unittest.TestCase):
     FILES = {"ps2xRuntime/src/a.cpp": "int f()\n{\n    return ps2x::knob(\"PS2X_A\") != nullptr;\n}\n"
@@ -129,6 +147,18 @@ class CitationRuleTest(unittest.TestCase):
                     _row("PS2X_B", cls="Dev", meaning="The periodic [net-stats] line; 0 silences it.")]
             self.assertEqual(knobs.log_tag_problems(root, rows),
                              ["PS2X_B's meaning names the log line [net-stats] and no shipped source prints it"])
+
+    def test_a_log_tag_matches_only_with_its_closing_bracket(self):
+        with tempfile.TemporaryDirectory() as root:
+            _tree(root, {"ps2xRuntime/src/a.cpp": "std::cout << \"[net-stats-old] n\";\n"})
+            rows = [_row("PS2X_B", cls="Dev", meaning="The [net-stats] line.")]
+            self.assertEqual(len(knobs.log_tag_problems(root, rows)), 1)
+
+    def test_a_dev_row_that_cites_is_held_to_the_citation(self):
+        with tempfile.TemporaryDirectory() as root:
+            _tree(root, self.FILES)
+            found = knobs.citation_problems(root, [_row("PS2X_A", cls="Dev", read=[("ps2xRuntime/src/a.cpp", "g")])])
+            self.assertEqual(len(found), 2, found)
 
 
 if __name__ == "__main__":
