@@ -678,6 +678,37 @@ void register_ps2_runtime_expansion_tests()
             }
         });
 
+        // Upstream ran-j/PS2Recomp #221 (tge-was-taken), the LWU hunk: LWU zero-extends the loaded word into the
+        // 64-bit GPR. The translator emitted SET_GPR_U32, whose macro sign-extends ((int64_t)(int32_t)val), so a
+        // word with bit 31 set came out as 0xFFFFFFFF8xxxxxxx.
+        tc.Run("LWU zero-extends a word with bit 31 set into the 64-bit GPR", [](TestCase &t)
+        {
+            R5900Decoder decoder;
+            CodeGenerator generator({}, {});
+
+            // lwu $a2, 0($a0)
+            const uint32_t raw = (static_cast<uint32_t>(OPCODE_LWU) << 26) | (4u << 21) | (6u << 16) | 0u;
+            const Instruction lwu = decoder.decodeInstruction(0x1000u, raw);
+            const std::string generated = generator.translateInstruction(lwu);
+
+            const std::string wrapper = "SET_GPR_U64(ctx, 6, (uint64_t)(uint32_t)";
+            t.IsTrue(generated.rfind(wrapper, 0) == 0,
+                     "LWU must emit a zero-extending 64-bit write, got: " + generated);
+            t.IsTrue(generated.find("SET_GPR_U32(") == std::string::npos,
+                     "LWU must not emit the sign-extending SET_GPR_U32, got: " + generated);
+
+            // The emitted wrapper, run on a loaded word 0x80000000: the low doubleword is 0x0000000080000000 and
+            // the upper 64 bits of the GPR are left alone.
+            R5900Context c{};
+            R5900Context *ctx = &c;
+            ctx->r[6] = _mm_set_epi64x(0x1122334455667788ll, -1ll);
+            const uint32_t loadedWord = 0x80000000u;
+            SET_GPR_U64(ctx, 6, (uint64_t)(uint32_t)loadedWord);
+            t.Equals(GPR_U64(ctx, 6), 0x0000000080000000ull, "LWU of 0x80000000 must leave the upper word zero");
+            t.Equals(static_cast<uint64_t>(PS2_EXTRACT_EPI64(ctx->r[6], 1)), 0x1122334455667788ull,
+                     "LWU must not touch the GPR's upper 64 bits");
+        });
+
         tc.Run("lookupFunction rejects internal resume PCs without exact registration", [](TestCase &t)
         {
             PS2Runtime runtime;
