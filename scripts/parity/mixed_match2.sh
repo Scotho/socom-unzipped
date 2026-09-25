@@ -32,6 +32,9 @@ _socom_refusal() {
 trap _socom_refusal EXIT
 . "$(dirname "$0")/env.sh"
 socom_require_python mixed_match2
+# The DNS stub binds LAN_IP and answers SOCOM_SERVER_IP: both must be IPv4, and neither has a default.
+socom_require_ipv4 LAN_IP mixed_match2 || exit 9
+socom_require_ipv4 SOCOM_SERVER_IP mixed_match2 || exit 9
 OUT="${1:-logs/parity/mixed2_ours_hosts}"
 PERSONA="${2:-socomq}"
 EXISTING="${3:-}"
@@ -58,7 +61,7 @@ fi
 eval "$_socom_mixed_peek"
 unset _socom_mixed_peek
 export PS2X_PEEK
-LAN="${LAN_IP:-192.168.2.10}"
+LAN="$LAN_IP"
 if ! netstat -an | grep -q "$LAN:53 "; then
   echo "mixed_match2: the DNS stub is not listening on $LAN:53 -- start tools_py.parity.dns_stub --bind $LAN --answer $SOCOM_SERVER_IP first" >&2
   echo "done 5" > "logs/${NAME}.done"; exit 5

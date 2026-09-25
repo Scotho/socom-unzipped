@@ -63,5 +63,39 @@ class RealImages(unittest.TestCase):
         self.assertEqual(r["corrupt_chunks"], 0, r)
 
 
+
+class PerRevision(unittest.TestCase):
+    """Sprint 13 Task H6: the pack statics come from guest_addresses, in the column the image's own build
+    banner names; r0004 has no cell for either (data_via_twin cannot place them) and is refused."""
+
+    def test_the_r0001_statics_are_the_numbers_they_always_were(self):
+        self.assertEqual(mpc.pack_addresses("r0001"), (0x415E08, 0x415E0C))
+        self.assertEqual((mpc.PACK_PTR, mpc.PACK_SIZE), (0x415E08, 0x415E0C))
+
+    def test_r0004_is_refused_not_read_at_r0001s_place(self):
+        with self.assertRaises(ValueError) as e:
+            mpc.pack_addresses("r0004")
+        self.assertIn("motion_pack_ptr", str(e.exception))
+        self.assertIn("UNPLACED", str(e.exception))
+
+    def test_the_image_names_its_revision_or_is_refused(self):
+        self.assertEqual(mpc.image_revision(b"\0" * 64 + b"SOCOM 2 r0004 17:22:21 Oct 11 2003\0"), "r0004")
+        with self.assertRaises(ValueError):
+            mpc.image_revision(b"\0" * 64)
+
+    def test_an_r0004_image_is_refused_by_the_cli(self):
+        import contextlib
+        import io
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            img = os.path.join(d, "x.rdram")
+            with open(img, "wb") as f:
+                f.write(b"\0" * 0x420000 + b"SOCOM 2 r0004 17:22:21 Oct 11 2003\0")
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                self.assertEqual(mpc.main([img, os.path.join(d, "none.zar")]), 2)
+            self.assertIn("r0004", err.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

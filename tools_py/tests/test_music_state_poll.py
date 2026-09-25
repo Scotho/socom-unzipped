@@ -699,5 +699,69 @@ class TestMusicCompare(unittest.TestCase):
             self.assertIn("A played: M51_M01@+10.0, rest 12.0s@+40.0, M51_M02@+52.0", text)
 
 
+
+class PerRevision(unittest.TestCase):
+    """Sprint 13 Task H6: the eight statics come from guest_addresses by name, and r0004 is refused rather
+    than read at r0001's place (vagstore_base has no r0004 cell)."""
+
+    def test_the_r0001_constants_are_the_tables_and_the_numbers_they_always_were(self):
+        from tools_py.parity import guest_addresses as ga
+        self.assertEqual(msp.REVISION, "r0001")
+        for const, name in msp.STATIC_NAMES.items():
+            self.assertEqual(getattr(msp, const), ga.address(name, "r0001"), const)
+        self.assertEqual((msp.ROUTE_ADDR, msp.MGR_PTR_ADDR, msp.MUSIC_ADDR, msp.MUSIC_OFF_ADDR, msp.TABLES_ADDR,
+                          msp.STORE_BASE_ADDR, msp.CLOCK_ADDR, msp.GUEST_CLOCK_ADDR),
+                         (0x49E150, 0x49E158, 0x48E080, 0x3E0080, 0x48E010, 0x48DC48, 0x408F10, 0x4365C0))
+
+    def test_r0004_is_refused_whole_and_the_module_is_left_as_it_was(self):
+        before = (msp.OURS_PEEK_SPEC, msp.MUSIC_PEEK_SPEC, msp.ROUTE_ADDR, msp.REVISION)
+        with self.assertRaises(ValueError) as e:
+            msp.bind_revision("r0004")
+        self.assertIn("vagstore_base", str(e.exception))
+        self.assertIn("UNPLACED", str(e.exception))
+        self.assertIn("offsets", str(e.exception))
+        self.assertEqual((msp.OURS_PEEK_SPEC, msp.MUSIC_PEEK_SPEC, msp.ROUTE_ADDR, msp.REVISION), before)
+
+    def test_placing_every_static_would_not_be_enough_the_offsets_refuse_too(self):
+        """A future placement of vagstore_base must not silently read r0004 through r0001's offsets."""
+        from unittest import mock
+        from tools_py.parity import guest_addresses as ga
+        fake = {n: 0x00500000 + 4 * i for i, n in enumerate(msp.STATIC_NAMES.values())}
+        with mock.patch.object(ga, "addresses", lambda names, rev: {n: fake[n] for n in names}):
+            with self.assertRaises(ValueError) as e:
+                msp.bind_revision("r0004")
+        self.assertIn("unverified on r0004", str(e.exception))
+        self.assertEqual(msp.REVISION, "r0001")
+
+    def test_the_cli_refuses_r0004_with_a_sentence(self):
+        err = io.StringIO()
+        import contextlib
+        with contextlib.redirect_stderr(err):
+            self.assertEqual(msp.main(["--spec", "--revision", "r0004"]), 2)
+        self.assertIn("vagstore_base", err.getvalue())
+
+    def test_an_ours_log_that_names_r0004_is_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            log = os.path.join(d, "run.log")
+            with open(log, "w") as f:
+                f.write("[socom2] address table: the image names itself r0004 -- using the r0004 addresses\n")
+            self.assertEqual(msp.log_revision(log), "r0004")
+            err = io.StringIO()
+            import contextlib
+            with contextlib.redirect_stderr(err):
+                code = msp.main(["--target", "ours", "--log", log, "--out", os.path.join(d, "o.txt")])
+            self.assertEqual(code, 2)
+            self.assertIn("vagstore_base", err.getvalue())
+            self.assertEqual(msp.REVISION, "r0001")
+
+    def test_a_log_that_names_no_revision_is_not_assumed_r0001(self):
+        with tempfile.TemporaryDirectory() as d:
+            log = os.path.join(d, "run.log")
+            with open(log, "w") as f:
+                f.write("[pc-sampler] nothing about the revision\n")
+            with self.assertRaises(ValueError):
+                msp.log_revision(log)
+
+
 if __name__ == "__main__":
     unittest.main()

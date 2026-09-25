@@ -1,3 +1,5 @@
+; A TEMPLATE for the [DEV9/Eth] section of a PCSX2 client's ini (research/18). Replace LAN_IP with the LAN
+; IPv4 address tools_py.parity.dns_stub binds -- there is no default (Sprint 13 Task H6).
 [DEV9/Eth]
 EthEnable = true
 EthApi = Sockets
@@ -8,8 +10,8 @@ InterceptDHCP = true
 PS2IP = 0.0.0.0
 Mask = 0.0.0.0
 Gateway = 0.0.0.0
-DNS1 = 192.168.2.10
-DNS2 = 192.168.2.10
+DNS1 = LAN_IP
+DNS2 = LAN_IP
 AutoMask = true
 AutoGateway = true
 ModeDNS1 = Manual

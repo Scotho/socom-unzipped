@@ -16,7 +16,10 @@ This is the SECOND, independent scorer: `online_match_ours.KillWatch` is primary
 this one is primary on the round-state valves (`total_mp_kills`, `aiteam_*`), corroborated by the
 actor fields. It deliberately imports neither `verdict_core` nor `online_match_ours` (a test asserts
 the import set) and has its own parser; the tests run both parsers over the same raw fixtures so a
-parser divergence shows up as a test disagreement.
+parser divergence shows up as a test disagreement. The one project module it reads is
+`tools_py/parity/guest_addresses.py` -- DATA, not code: a leaf that imports nothing from tools_py, so the
+scorers still share no logic, only the one table of guest numbers (Sprint 13 Task H6: this file's own
+copy of the pairs was the fourth copy the table had retired the other three of).
 
 The bars are spec §5.1 (Amendment A) and its §5.1.1 clarifications (R53, amended R56), pre-registered
 2026-09-13 before any ladder match. They are named constants below, each asserted verbatim by the
@@ -50,6 +53,11 @@ import re
 import struct
 import sys
 from dataclasses import dataclass, field
+
+try:
+    from tools_py.parity import guest_addresses as ga
+except ImportError:                     # run as a file (`python tools_py/parity/verdict_replay.py`)
+    import guest_addresses as ga        # noqa: E402 -- the sibling module, on sys.path as the script's dir
 
 # ---------------------------------------------------------------------------------------------
 # verdict words
@@ -139,15 +147,15 @@ SELF_GRENADE_MASK = 0xF700
 # ---------------------------------------------------------------------------------------------
 SAMPLER_PERIOD_S = 0.25
 CLOCK_ANCHOR_MIN_SPACING_S = 5.0
-ACTOR_VTABLE = 0x006691A0               # r0001; the number printed in messages
+ACTOR_VTABLE = ga.address("actor_vtable", "r0001")      # r0001; the number printed in messages
 # ... and the set a row is IDENTIFIED against. Every one of this module's guest numbers has a value per
 # revision (r0004 relinked them all) and a `[peek]` row carries exactly one column's worth, so membership
-# replays an r0004 run's rows too. LITERALS on purpose: this module imports nothing but the standard
-# library (test_verdict_replay's TestImportSet) so that it is an independently written second scorer,
-# sharing no code -- and so no bug -- with verdict_core/online_match_ours, and so that a pinned harness
-# can replay a log with no tools_py around it. Their home is tools_py/parity/guest_addresses.py, and
-# test_verdict_replay checks EVERY one of these three pairs against it rather than trusting this copy.
-ACTOR_VTABLES = frozenset({0x006691A0, 0x00668B20})
+# replays an r0004 run's rows too. READ FROM THE TABLE, by name (Sprint 13 Task H6, audit harness-tools
+# H20): these were literals here, kept equal to tools_py/parity/guest_addresses.py only by a test, and the
+# next revision's column would have had to be remembered in two places. The module still shares no CODE
+# with verdict_core/online_match_ours -- guest_addresses is a leaf of data and one lookup function -- and
+# a column added there reaches this scorer with no edit here.
+ACTOR_VTABLES = frozenset(ga.address("actor_vtable", r) for r in ga.REVISIONS)
 ACTOR_POS_WORDS = (7, 8, 9)
 HEALTH_OFFSET = 0x1044             # float, <= 0 dead (research/19 F1)
 ALIVE_OFFSET = 0xF7A               # byte, 1 = alive
@@ -157,10 +165,10 @@ TEAM_WORD_OFFSET = 0xC8            # word, meaning OPEN (research/21 §9.6): rep
 # word and then had no time base at all -- a PARTIAL read where a clean total NO-DATA was the honest
 # answer). The scalars stay r0001, because that is what every message prints; the SETS are what a row is
 # matched against.
-GUEST_CLOCK_ADDR = 0x4365C0        # r0001 guest_clock -- the float that is the time base of every window
-GUEST_CLOCK_ADDRS = frozenset({0x004365C0, 0x00442FD0})
-CLOCK_STRING_ADDR = 0x408F10       # r0001 clock_string -- the HUD "MM:SS"
-CLOCK_STRING_ADDRS = frozenset({0x00408F10, 0x004358D0})
+GUEST_CLOCK_ADDR = ga.address("guest_clock", "r0001")    # the float that is the time base of every window
+GUEST_CLOCK_ADDRS = frozenset(ga.address("guest_clock", r) for r in ga.REVISIONS)
+CLOCK_STRING_ADDR = ga.address("clock_string", "r0001")  # the HUD "MM:SS"
+CLOCK_STRING_ADDRS = frozenset(ga.address("clock_string", r) for r in ga.REVISIONS)
 MOVE_SCALE_NAME = "MoveScale"
 REQUIRED_VALVES = ("mp_round_count", "player_team", "aiteam_00", "aiteam_08", "total_mp_kills")
 TEAM_VALVE = {0: "aiteam_00", 8: "aiteam_08"}   # player_team 0 SEALS / 8 TERRORISTS (research/21 §9.6)

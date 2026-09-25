@@ -1,0 +1,78 @@
+# Guest-address literals allowed OUTSIDE tools_py/parity/guest_addresses.py (Sprint 13 Task H6).
+#
+# tools_py/tests/test_no_bare_guest_addresses.py refuses every `0x` literal of six to eight hex digits in
+# the EE's address ranges, in tools_py/parity/*.py code and in the text files under scripts/parity/, that
+# is not in the per-revision table (KNOWN.md §4: an address is read from the table BY NAME, one column per
+# revision). A survivor is listed here with the reason it is not a per-revision read of OUR exe's memory.
+#
+# Format: `<path> <literal> <reason>`, one per (file, value); the line a literal sits on is not part of the
+# key. An entry that matches nothing in the tree fails the test -- delete it, do not keep it "just in case".
+#
+# THE CLASSES (audit 2026-09-25 harness-tools §2.3), and why each is not a live per-revision read:
+#   console   PCSX2 through PINE, or a PCSX2 patch/probe file. The console boots the r0001 disc by
+#             definition (test_online_instruments.test_no_leg_sets_ps2x_peek_from_a_literal_any_more);
+#             an r0004 console would be a new lane with its own column, not this literal.
+#   render    text the harness RE-RENDERS per revision through the table before any launch reads it, or
+#             a record of a render the pin standard compares byte for byte.
+#   fixture   the simulator writes r0001-shaped log rows; it reads no memory.
+#   message   an address printed in a message or a help string; it reads nothing.
+#   bound     a range check or a scan window, not an address.
+#   notguest  a host constant that happens to fall in the range.
+
+# -- console
+scripts/parity/mixed_match2.sh 0x416054 console: cam_poll --spec over PINE on the PCSX2 client, which boots the r0001 disc
+scripts/parity/mixed_match2.sh 0x488de8 console: cam_poll's camera spec over PINE on the PCSX2 client (r0001 disc); cam_poll's own default is rendered from the table
+scripts/parity/mixed_match2_leg2.sh 0x416054 console: cam_poll --spec over PINE on the PCSX2 client, which boots the r0001 disc
+scripts/parity/mixed_match2_leg2.sh 0x488de8 console: cam_poll's camera spec over PINE on the PCSX2 client (r0001 disc); cam_poll's own default is rendered from the table
+scripts/parity/pcsx2/0F6FC6CF.pnach 0x2cc670 console: the `comment=` header's prose naming the DNAS-bypass site; the patch lines themselves (202CC670, no 0x) are keyed to disc CRC 0F6FC6CF, the r0001 disc
+scripts/parity/pcsx2/0F6FC6CF.noreverb.pnach 0x2cc670 console: the `comment=` header's prose naming the DNAS-bypass site; the patch lines themselves (202CC670, no 0x) are keyed to disc CRC 0F6FC6CF, the r0001 disc
+scripts/parity/pcsx2/0F6FC6CF.clientB.pnach 0x2cc670 console: the `comment=` header's prose naming the DNAS-bypass site; the patch lines themselves (202CC670, no 0x) are keyed to disc CRC 0F6FC6CF, the r0001 disc
+tools_py/parity/probe_poll.py 0x45c380 console: a PINE read of the collision world on PCSX2 at a savestate of the r0001 disc
+tools_py/parity/probe_poll.py 0x416054 console: a PINE read of the camera record on PCSX2 at a savestate of the r0001 disc
+tools_py/parity/addresses.py 0x00415700 console: the PINE driver's r0001 dialog-state pointer; imported by nothing today (audit finding 27's class) -- a caller on r0004 must first put it in the table
+
+# -- render
+scripts/parity/guest_probe_console.json 0x408c58 render: r0001 chain text that guest_probe.peek_spec re-renders per revision through PROBE_ADDRESSES before launch_env hands it to PS2X_PEEK
+scripts/parity/guest_probe_console.json 0x4365c0 render: r0001 chain text that guest_probe.peek_spec re-renders per revision through PROBE_ADDRESSES before launch_env hands it to PS2X_PEEK
+scripts/parity/pins.json 0x416054 render: the r0001 pin standard's record of the PS2X_PEEK gate.launch_env rendered from the table; compared byte for byte, never read as memory
+scripts/parity/pins.json 0x408c58 render: the r0001 pin standard's record of the PS2X_PEEK gate.launch_env rendered from the table; compared byte for byte, never read as memory
+scripts/parity/pins.json 0x4365c0 render: the r0001 pin standard's record of the PS2X_PEEK gate.launch_env rendered from the table; compared byte for byte, never read as memory
+scripts/parity/pins_r0004.json 0x442a14 render: the r0004 pin standard's record of the PS2X_PEEK gate.launch_env rendered from the table; compared byte for byte, never read as memory
+scripts/parity/pins_r0004.json 0x435618 render: the r0004 pin standard's record of the PS2X_PEEK gate.launch_env rendered from the table; compared byte for byte, never read as memory
+scripts/parity/pins_r0004.json 0x442fd0 render: the r0004 pin standard's record of the PS2X_PEEK gate.launch_env rendered from the table; compared byte for byte, never read as memory
+
+# -- fixture
+tools_py/parity/sim_walk_to_b.py 0x416054 fixture: the simulator's SIM_ENV spec and the [peek] rows it writes, r0001-shaped like the archived logs it imitates
+tools_py/parity/sim_walk_to_b.py 0x408c58 fixture: the simulator's SIM_ENV spec, r0001-shaped like the archived logs it imitates
+tools_py/parity/sim_walk_to_b.py 0x437ce8 fixture: the simulator's SIM_ENV spec, r0001-shaped like the archived logs it imitates
+tools_py/parity/sim_walk_to_b.py 0x408f10 fixture: the simulator's SIM_ENV spec, r0001-shaped like the archived logs it imitates
+tools_py/parity/sim_walk_to_b.py 0x553dc0 fixture: the simulator's SIM_ENV call trace, r0001-shaped like the archived logs it imitates
+tools_py/parity/sim_walk_to_b.py 0x30cd80 fixture: the simulator's SIM_ENV call trace, r0001-shaped like the archived logs it imitates
+tools_py/parity/sim_walk_to_b.py 0x45a0c0 fixture: an a0 register value in the [call] NetIdle rows the simulator writes
+tools_py/parity/sim_walk_to_b.py 0x595028 fixture: a return address in the [call] MoveScale rows the simulator writes
+tools_py/parity/sim_walk_to_b.py 0x594f88 fixture: a return address in the [call] NetIdle rows the simulator writes
+tools_py/parity/sim_walk_to_b.py 0x694C48 fixture: a valve item address in the simulated [peek] rows (a heap address in the log it imitates)
+tools_py/parity/sim_walk_to_b.py 0x694C20 fixture: a valve item address in the simulated [peek] rows (a heap address in the log it imitates)
+tools_py/parity/sim_walk_to_b.py 0x006B7F30 fixture: a valve name pointer in the simulated [peek] rows (a heap address in the log it imitates)
+tools_py/parity/sim_walk_to_b.py 0x006B7F20 fixture: a valve name pointer in the simulated [peek] rows (a heap address in the log it imitates)
+tools_py/parity/sim_walk_to_b.py 0x869360 fixture: the simulated CZNetGame block address (NG_ADDR) in the rows the simulator writes
+tools_py/parity/sim_walk_to_b.py 0x01794000 fixture: a simulated actor block address in the rows the simulator writes
+tools_py/parity/sim_walk_to_b.py 0x017a4000 fixture: a simulated second actor block address in the rows the simulator writes
+
+# -- message
+tools_py/parity/freeze_trace.py 0x4365c0 message: the source label printed beside a clock value; the value itself is read through ROUND_TIME_ADDR
+tools_py/parity/freeze_trace.py 0x408f10 message: the source label printed beside a clock value; the value itself is read through CLOCK_STRING_ADDR
+tools_py/parity/online_match_ours.py 0x4365c0 message: the FREEZE-DETECTION blind line's advice to add the clock to PS2X_PEEK
+tools_py/parity/online_match_ours.py 0x437ce8 message: argparse help text for --endgame naming the peek items it needs
+tools_py/parity/online_match_ours.py 0x408c58 message: argparse help text naming the actor chain
+tools_py/parity/two_machine_readout.py 0x408F10 message: the readout's NO-DATA line naming the clock rows it looked for
+
+# -- bound
+tools_py/parity/addresses.py 0x100000 bound: the EE user-RAM lower bound a pointer must clear before it is followed
+tools_py/parity/cam_poll.py 0x100000 bound: the EE user-RAM lower bound a pointer must clear before it is followed
+tools_py/parity/music_state_poll.py 0x100000 bound: RAM_LO, the EE user-RAM lower bound a pointer must clear before it is followed
+tools_py/parity/find_dialog_ptr.py 0x400000 bound: the default low end of the static range a RAM-dump search scans
+tools_py/parity/find_dialog_ptr.py 0x4c0000 bound: the default high end of the static range a RAM-dump search scans
+
+# -- notguest
+tools_py/parity/winshot.py 0x00CC0020 notguest: Win32 SRCCOPY, the BitBlt raster operation
