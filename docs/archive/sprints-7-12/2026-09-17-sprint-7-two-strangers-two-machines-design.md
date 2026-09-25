@@ -1,11 +1,16 @@
 # Sprint 7 — two strangers, two machines, one hosted server: design
 
-Status: written 2026-09-17 by the controller from `docs/AUDIT-2026-09-17.md` (§1 the gap to the goal, §2 the findings,
+> **ARCHIVED 2026-09-25 -- a Sprint 7 spec; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/specs/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
+Status: written 2026-09-17 by the controller from `docs/audits/2026-09-17-audit-and-code-review.md` (§1 the gap to the goal, §2 the findings,
 §6 the sprint drafts) and `docs/CURRENT_SPRINT.md`'s Sprint 7 block, under the owner's standing instruction of
 2026-09-17 ("proceed autonomously") and the owner's 2026-09-17 additions (the launcher's server picker; bounded
 mechanical work to Opus subagents). **The owner has not reviewed this document.** Branch `sprint-7` off `develop` at
 `8f57cbd` (Sprint 6 merged). Executor: the autonomous loop following
-`docs/superpowers/plans/2026-09-17-sprint-7-two-strangers-two-machines.md`. **Goal N here is Task N in the plan.**
+`docs/archive/sprints-7-12/2026-09-17-sprint-7-two-strangers-two-machines.md`. **Goal N here is Task N in the plan.**
 
 **Authority.** `docs/KNOWN.md` wins over this document wherever they disagree. Every bar names a failure class it does
 not separate. Every moved default and every skipped measurement gets a numbered ruling (R91 onward) in the plan.

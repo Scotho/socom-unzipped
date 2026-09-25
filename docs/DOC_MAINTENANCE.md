@@ -112,21 +112,21 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/PLAYTEST.md` | **C** | controller | The owner's one-sitting script |
 | `docs/DOC_MAINTENANCE.md` | **C** | controller | This file |
 | `docs/story/release-entry.template.md` | **C** | story | A template |
-| `docs/AUDIT-2026-09-17.md` | **S** | — | Sprint 6's ledger. Dated in the filename |
-| `docs/process-audit.md` | **S** | — | Written 2026-09-12, end of Sprint 4. Says so in its first line; it should move to `docs/audits/` at the next tidy |
 | `docs/parity/REPORT.md` | **S** | — | One parity run from 2026-09-07. Banded 2026-09-22 — it had read as the project's parity status for fifteen days |
 | `docs/parity/NOTES.md` | **S** | — | Dated spike notes, append-only |
 | `docs/archive/README.md` | **A** | — | |
 | `docs/archive/ROADMAP-sprint-4-to-sprint-7.md` | **A** | — | Fifteen files cite it; every `ROADMAP.md §N` written before 2026-09-22 means this file |
 | `docs/archive/CURRENT_SPRINT-to-sprint-8.md` | **A** | — | |
+| `docs/archive/HANDOFF-loop-history-to-2026-09-25.md` | **A** | — | Cut 2026-09-25 (Sprint 13 Task R1, R268): HANDOFF §2's older pick-up points, §4 and §10, verbatim |
+| `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` | **A** | — | Cut 2026-09-25 (Sprint 13 Task R1, R268): the Sprint 9-11 records, verbatim. The ruling counter reads it (`max_ruling()` scans all of `docs/archive/`) |
 | `docs/archive/HANDOFF-reference-to-2026-09-13.md` | **A** | — | |
 | `docs/archive/HANDOFF-2026-09-08.md` | **A** | — | Banded 2026-09-22 |
 | `docs/archive/HANDOFF-AUDIT-2026-09-14.md` | **A** | — | Banded 2026-09-22 |
 
 ## 4. What is enforced mechanically
 
-`tools_py/tests/test_doc_maintenance.py`, in the Python suite, so it runs in CI and needs no build. Six checks, each
-aimed at a rot mechanism that actually bit this project:
+`tools_py/tests/test_doc_maintenance.py`, in the Python suite, so it runs in CI and needs no build. Eight checks, each
+aimed at a rot mechanism that actually bit this project (the seventh and eighth are R268's, added 2026-09-25):
 
 1. **Registry completeness** — every covered file has exactly one row; every row points at a file that exists. *Catches
    a new document nobody classified, and a row left behind by a move.*
@@ -143,6 +143,25 @@ aimed at a rot mechanism that actually bit this project:
    `docs/` must exist in the tree. *Catches the citation a move left pointing at nothing* — which is why the Sprint 1–6
    specs and plans sat under `docs/superpowers/` for a sprint after they were dead: nobody could move them without
    breaking citations nothing would catch. It found 44 on the tree the day it was written, in fifteen documents.
+7. **Ceilings on the appending documents (R268)** -- `docs/CURRENT_SPRINT.md`, the "## 2." section of
+   `docs/HANDOFF.md`, the "## Current state" block of `docs/STATUS.md` and `docs/HUMAN_TASKS.md` each have a byte
+   ceiling (`CEILINGS` in `tools_py/docmaint.py`, counted with LF line ends; the failure prints the measured size). A
+   measured heading that has gone fires too, so renaming it cannot switch the ceiling off. *Catches the stack nobody
+   retires:* on 2026-09-25 the sprint file was 190 KB with about 12 % of it live, HANDOFF §2 held twelve pick-up
+   points and three of them said "now", and STATUS's "keep it short" block was 30 KB. The ceilings were set at that
+   day's split (Sprint 13 Task R1) with about 25 % headroom. **When one fires, archive the oldest blocks** (a banner,
+   a registry row, the citations re-pointed) -- never raise the number to make it pass; a lower number after a cut
+   (Task R4 for HUMAN_TASKS) is the only edit it expects.
+8. **"merged to `main` as `vX.Y.Z`" names a tag origin has (R268)** -- every such phrase in an L document is checked
+   against `git ls-remote --tags origin`; a struck-through claim is a retraction and is skipped. *Catches a close
+   recorded before it happened:* on 2026-09-25 four live documents said Sprint 11 was merged as `v0.11.0` while no such
+   tag or merge existed, so nobody was prompted to do either. It needs the network: when origin cannot be reached the
+   check is **skipped out loud** (`python -m tools_py.docmaint` prints `tags: SKIPPED` with the reason, and the unit
+   test reports a skip), never passed silently.
+
+`max_ruling()` (check 2) reads every file under `docs/archive/`, top level and subdirectories, as well as the live
+documents and the plans: a ruling does not stop existing when its block is archived, and a counter that dropped the
+newest archived ledger would walk backwards.
 
 **Check 6's exception, and its scope.** A path that does not exist *yet* is legitimate in a plan or a design: put
 `<!-- docmaint: future -->` on that line and the check skips it, so the exception is visible in the document itself
@@ -193,7 +212,9 @@ the count half is check 3; the rest is a reading, and §5 is where it happens.
 4. **Every N document, read for live state that has crept in.** A number, a task list, a "next", an instruction to go
    and edit another file: move it to its L document and leave a pointer.
 5. **Anything superseded this sprint moves to S or A** with a banner naming what replaced it. A document that is
-   *wrong* is archived, never quietly deleted — things cite it.
+   *wrong* is archived, never quietly deleted — things cite it. **The appending documents in particular** (R268,
+   check 7): keep two CLOSED blocks in the sprint file; the third moves to the archive at the close. HANDOFF §2 keeps
+   one "now" bullet and STATUS's Current state one dated bullet; the one they replace moves to the archive or the log.
 6. **Stamp this file's "Last full review" line** with the date and the sprint, and name in the close-out commit what
    the review changed. A review that changed nothing says so explicitly; that is a result too.
 7. **The known-issue stack, in full** -- §7 below. Its result goes into the same close-out commit, in the same

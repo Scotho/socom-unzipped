@@ -1,5 +1,10 @@
 # Sprint 8 Goal 1 — The Linux Client: Implementation Plan
 
+> **ARCHIVED 2026-09-25 -- a Sprint 8 plan; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/plans/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the whole client — the runner and the launcher — build and run on Linux from the same CMake tree, so a stranger on a Linux PC unpacks one tarball, points `./socom_unzipped_launcher` at their own r0001 ISO and plays; and prove it in three rings (GitHub Actions on `ubuntu-24.04` without the generated code, the VirtualBox machine `socom-linux` with the generated code and a bare X session, the owner's real Linux box or Steam Deck) without moving the Windows build, the Windows gate or the shipped `dist/` by one byte.
@@ -8,7 +13,7 @@
 
 **Tech Stack:** C++20 (llvm-mingw clang via `build.sh` on the host; the system clang/clang++ + Ninja in the VM and on `ubuntu-24.04`), CMake ≥ 3.20, Python 3 (`unittest` — **not** pytest, see Global Constraints), raylib (window/GL/miniaudio-PulseAudio-ALSA/GLFW gamepads, portable as fetched), FFmpeg via pkg-config on Linux, `xdotool` + ImageMagick `import` for the harness's Linux capture, GitHub Actions (`ubuntu-24.04`), VirtualBox VM `socom-linux`, Git Bash + PowerShell on the host.
 
-**Spec:** `docs/superpowers/specs/2026-09-18-sprint-8-linux-and-finish-design.md` — **Goal 1 only**; its "What the survey found" paragraph is the surface this plan closes and its "Design" items 1-6 are Tasks 1-11 here. **Required reading for every dispatch:** this plan's Handoff notes and Global Constraints, `docs/KNOWN.md` §1-§2, `docs/HUMAN_TASKS.md`, `docs/CURRENT_SPRINT.md`'s Sprint 8 block; for the sockets `third_party/ps2recomp/ps2xRuntime/src/lib/socom2_hostnet.h` (the whole header is the contract); for the launcher `third_party/ps2recomp/ps2xLauncher/src/win32_glue.h`; for the harness `tools_py/parity/drive.py` §`main` and `tools_py/parity/gate.py` §`STAGES`.
+**Spec:** `docs/archive/sprints-7-12/2026-09-18-sprint-8-linux-and-finish-design.md` — **Goal 1 only**; its "What the survey found" paragraph is the surface this plan closes and its "Design" items 1-6 are Tasks 1-11 here. **Required reading for every dispatch:** this plan's Handoff notes and Global Constraints, `docs/KNOWN.md` §1-§2, `docs/HUMAN_TASKS.md`, `docs/CURRENT_SPRINT.md`'s Sprint 8 block; for the sockets `third_party/ps2recomp/ps2xRuntime/src/lib/socom2_hostnet.h` (the whole header is the contract); for the launcher `third_party/ps2recomp/ps2xLauncher/src/win32_glue.h`; for the harness `tools_py/parity/drive.py` §`main` and `tools_py/parity/gate.py` §`STAGES`.
 
 ## Handoff notes for the executing model (read once)
 
@@ -2144,7 +2149,7 @@ git push
 ## Task 12 — Close-out for Goal 1
 
 **Files:**
-- Modify: `docs/KNOWN.md` (§1 Proven, one row per settled fact; §2 for anything the VM refused), `docs/STATUS.md` (the current-state bullet at :3-6 and a dated entry), `docs/CURRENT_SPRINT.md` (the Sprint 8 block at :11-25), `docs/HUMAN_TASKS.md` (the Open list), `docs/superpowers/plans/2026-09-18-sprint-8-linux-client.md` (this file: tick the boxes, and any box left open carries a one-line reason or a `STOP:`)
+- Modify: `docs/KNOWN.md` (§1 Proven, one row per settled fact; §2 for anything the VM refused), `docs/STATUS.md` (the current-state bullet at :3-6 and a dated entry), `docs/CURRENT_SPRINT.md` (the Sprint 8 block at :11-25), `docs/HUMAN_TASKS.md` (the Open list), `docs/archive/sprints-7-12/2026-09-18-sprint-8-linux-client.md` (this file: tick the boxes, and any box left open carries a one-line reason or a `STOP:`)
 
 **Steps:**
 
@@ -2155,7 +2160,7 @@ git push
   - **The tarball runs unpacked from a fresh directory** — artefact: the `--selftest` exit 0 with the r0001 verdict, and the child log's lines 1 and 3 equal to a Windows run's.
 - [x] **Step 2: `docs/KNOWN.md` §2 — what the VM refused, and what is still Windows-only.** At minimum: the six `taskkill` sites Task 9 left alone (`online_login.py:130`, `online_login_ours.py:1705`, `online_match_ours.py:5144`, `pcsx2_ctl.py:233`, `scale_shot.py:101`, `sp_death_probe.py:1061`), so the online harness is Windows-only and nobody assumes a Linux ladder run is a command away; `PS2X_HOST_PROF_ALL` and `_STACKS` (Task 5, Windows-only by decision); PCSX2 as the console reference (no Linux key map, `keys.py` raises); `keep_on_top` being a momentary raise rather than a sticky topmost; and the VM's GL result with its consequence. *(done: the 'still Windows-only' row (this commit); the VM's refusals are the falsified dump-freeze row, the unbounded admission row, R107)*
 - [x] **Step 3: `docs/STATUS.md`.** Replace the current-state bullet's opening with the branch and the Goal 1 verdict in one sentence, and add a dated entry in the file's own voice: what landed, the four bars and their numbers, and what the next goal is (Goal 2, the menus' render cost — `docs/CURRENT_SPRINT.md`'s Sprint 8 item 2). *(done: d53b045, 529f95b)*
-- [x] **Step 4: `docs/CURRENT_SPRINT.md`'s Sprint 8 block.** Mark Goal 1 done or partly done with its bars' numbers, note that `docs/superpowers/plans/2026-09-18-sprint-8-linux-client.md` is the plan it names at :14 and is now ticked, and move the pointer to Goal 2. Update the "human tasks" line's count. *(done: this commit)*
+- [x] **Step 4: `docs/CURRENT_SPRINT.md`'s Sprint 8 block.** Mark Goal 1 done or partly done with its bars' numbers, note that `docs/archive/sprints-7-12/2026-09-18-sprint-8-linux-client.md` is the plan it names at :14 and is now ticked, and move the pointer to Goal 2. Update the "human tasks" line's count. *(done: this commit)*
 - [x] **Step 5: `docs/HUMAN_TASKS.md` — the owner's item, ring (c).** One entry in the file's existing shape (what to do, what to look for, the command, and the number being confirmed): *(done: 8973839, ae597a1 (the tarball run and the audio number))*
 
 ```markdown
@@ -2187,7 +2192,7 @@ one case the VM cannot speak for.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>" -- \
   docs/KNOWN.md docs/STATUS.md docs/CURRENT_SPRINT.md docs/HUMAN_TASKS.md \
-  docs/superpowers/plans/2026-09-18-sprint-8-linux-client.md
+  docs/archive/sprints-7-12/2026-09-18-sprint-8-linux-client.md
 git push
 ```
 

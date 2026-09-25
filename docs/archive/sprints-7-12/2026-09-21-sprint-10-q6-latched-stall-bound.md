@@ -1,5 +1,10 @@
 # Sprint 10 Q6 (Goal 11) -- a latched stall must not eat the machine
 
+> **ARCHIVED 2026-09-25 -- a Sprint 10 plan; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/plans/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 *Record of the work on branch `agent/stall` (worktree `C:\projects\wt-stall`, off `sprint-10`), 2026-09-21. The
 numbers below are the ones the tests print; the gate on the rebuilt exe and a look at a real stall run are the
 controller's (section 6).*

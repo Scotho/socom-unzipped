@@ -1,5 +1,10 @@
 # Sprint 9 Goal 3 — Knob Retirement, Pass 2: Implementation Plan
 
+> **ARCHIVED 2026-09-25 -- a Sprint 9 plan; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/plans/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A stranger's environment cannot change how the game behaves by accident. Today (measured 2026-09-19 at `8e5d778`) the shipped executables read **134 distinct `PS2X_*` names** through **198 direct `getenv` calls in 32 files and 15 more reads behind seven helpers** (the spec's "190" was an estimate; the full table is below), every one of them honoured unconditionally, by whoever happens to have it set. After this goal every read goes through one accessor backed by one registry; **17 names are SHIPPING** (the launcher's own channel to the game, already fields of `config.json`), **112 are DEV** (honoured only with `--dev` or `PS2X_DEV=1`), **5 are DEAD** (deleted with the code they guard); the runner prints one `[knobs]` line at start naming what is in effect and what it ignored, and the diagnostics zip carries it; the launcher stops handing inherited `PS2X_*` variables to the game; `docs/KNOBS.md` is generated from the registry and a test fails when the source and the registry disagree in either direction.
@@ -8,7 +13,7 @@
 
 **Tech Stack:** C++20 (`ps2x_shared`, header + one `.cpp`, no dependency beyond the standard library), MiniTest (`ps2xTest`), Python 3 `unittest` (**not** pytest), Git Bash, `scripts/run_detached.sh` + `scripts/loop_lock.sh` for every build and every launch.
 
-**Spec:** `docs/superpowers/specs/2026-09-19-sprint-9-a-strangers-first-run-design.md` §2 "Goal 3 — knob retirement, pass 2" and §4 (every moved default or skipped measurement is a numbered ruling, next **R152**; at most two C++-building agents). **The bar, verbatim:** *"a generated table in `docs/KNOBS.md` checked by a test against the source (a knob read in code and absent from the table fails the suite); the gate 3/3 with an empty environment."* The second half is **not reachable as written** and is restated by R163 (Handoff note 3). **Required reading for every dispatch:** this plan's Handoff notes and Global Constraints; `third_party/ps2recomp/ps2xShared/include/ps2x/exit_codes.h` and `tools_py/exit_codes.py` (the pattern this goal copies); `third_party/ps2recomp/ps2xShared/src/launcher_config.cpp:342-451` (`mergeEnvironment`, `environmentFor`); `third_party/ps2recomp/ps2xShared/src/bare_run.cpp:66-88`; `third_party/ps2recomp/ps2xRuntime/src/main.cpp:191-275`; `run.sh` (all of it); `scripts/parity/env.sh` (all); `tools_py/parity/drive.py:57-98`; `tools_py/parity/gate.py:539-581`; `third_party/ps2recomp/ps2xTest/src/main.cpp:36-76`.
+**Spec:** `docs/archive/sprints-7-12/2026-09-19-sprint-9-a-strangers-first-run-design.md` §2 "Goal 3 — knob retirement, pass 2" and §4 (every moved default or skipped measurement is a numbered ruling, next **R152**; at most two C++-building agents). **The bar, verbatim:** *"a generated table in `docs/KNOBS.md` checked by a test against the source (a knob read in code and absent from the table fails the suite); the gate 3/3 with an empty environment."* The second half is **not reachable as written** and is restated by R163 (Handoff note 3). **Required reading for every dispatch:** this plan's Handoff notes and Global Constraints; `third_party/ps2recomp/ps2xShared/include/ps2x/exit_codes.h` and `tools_py/exit_codes.py` (the pattern this goal copies); `third_party/ps2recomp/ps2xShared/src/launcher_config.cpp:342-451` (`mergeEnvironment`, `environmentFor`); `third_party/ps2recomp/ps2xShared/src/bare_run.cpp:66-88`; `third_party/ps2recomp/ps2xRuntime/src/main.cpp:191-275`; `run.sh` (all of it); `scripts/parity/env.sh` (all); `tools_py/parity/drive.py:57-98`; `tools_py/parity/gate.py:539-581`; `third_party/ps2recomp/ps2xTest/src/main.cpp:36-76`.
 
 ## Handoff notes for the executing model (read once)
 
@@ -2049,7 +2054,7 @@ git commit -m "docs: Sprint 9 Goal 3 closed -- 134 knobs classified (17 shipping
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>" -- \
   README.md docs/HANDOFF.md docs/KNOWN.md docs/STATUS.md docs/CURRENT_SPRINT.md \
-  docs/superpowers/plans/2026-09-20-sprint-9-goal-3-knob-retirement.md
+  docs/archive/sprints-7-12/2026-09-20-sprint-9-goal-3-knob-retirement.md
 git push
 ```
 

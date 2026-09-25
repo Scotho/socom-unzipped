@@ -1,5 +1,10 @@
 # Sprint 10 — from a stranger's ISO to a buildable ELF, in one command (record)
 
+> **ARCHIVED 2026-09-25 -- a Sprint 10 plan; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/plans/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 Branch `agent/disc` off `sprint-10` at `9f0fcee`, worktree `C:\projects\wt-disc`, 2026-09-21. The brief: make the one
 step of the build chain that had never been written down reproducible, and prove it from nothing. Its specification was
 the two paragraphs committed hours earlier in `9f0fcee` — `CONTRIBUTING.md`'s "The honest state of the game build" and

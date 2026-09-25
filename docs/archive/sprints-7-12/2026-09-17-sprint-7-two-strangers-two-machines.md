@@ -1,5 +1,10 @@
 # Sprint 7 — Two Strangers, Two Machines, One Hosted Server: Implementation Plan
 
+> **ARCHIVED 2026-09-25 -- a Sprint 7 plan; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/plans/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the runtime honest on a machine that is not this one (a GL capability probe with a CPU fallback, a bounded command queue, a DPI-correct window, a native-VU1 mismatch warning, audio I/O off the callback), settle the two online-only semantics nobody has measured (equal-priority time slicing, two clients on the same RSA key), measure the lobby rate and root freeze shape 2, kill the 21k texture decodes a second so the ladder's back-pressure bar passes for real, and stand up a hosted Horizon server the launcher points at — so two strangers can download the zip, point it at their own r0001 ISOs, and play a round.
@@ -8,7 +13,7 @@
 
 **Tech Stack:** C++20 (llvm-mingw clang via `build.sh`), Python 3 (`unittest`, numpy, Pillow), the local Horizon server (`server/start-servers.ps1`), raylib for the window/input/audio, PCSX2 2.8.1 as the console reference, Ghidra decomp `game/analysis/socom2_game.elf.decomp.c`, Git Bash + PowerShell.
 
-**Spec:** `docs/superpowers/specs/2026-09-17-sprint-7-two-strangers-two-machines-design.md` (owner review pending; **Goal N there is Task N here**). **Required reading for every dispatch:** `docs/KNOWN.md`, `docs/AUDIT-2026-09-17.md` §1, §2.2, §2.3, `docs/HUMAN_TASKS.md`; for render tasks `docs/research/31-flat-grey-geometry.md` §3 and `docs/research/34-online-round-freeze-clut-serials.md`; for online tasks `docs/research/28-lobby-taxonomy.md`, `docs/research/29-online-freeze.md`, `docs/research/33-online-map-coverage.md`; for audio `docs/research/32-audio-path.md` §5–§7.
+**Spec:** `docs/archive/sprints-7-12/2026-09-17-sprint-7-two-strangers-two-machines-design.md` (owner review pending; **Goal N there is Task N here**). **Required reading for every dispatch:** `docs/KNOWN.md`, `docs/audits/2026-09-17-audit-and-code-review.md` §1, §2.2, §2.3, `docs/HUMAN_TASKS.md`; for render tasks `docs/research/31-flat-grey-geometry.md` §3 and `docs/research/34-online-round-freeze-clut-serials.md`; for online tasks `docs/research/28-lobby-taxonomy.md`, `docs/research/29-online-freeze.md`, `docs/research/33-online-map-coverage.md`; for audio `docs/research/32-audio-path.md` §5–§7.
 
 ## Handoff notes for the executing model (read once)
 
@@ -2698,7 +2703,7 @@ Expected: every commit on the branch has a test or a launch named in its message
 git commit -m "docs: Sprint 7 close-out -- the plan ticked against what landed, the KNOWN audit, STATUS, ROADMAP section 6, CURRENT_SPRINT to Sprint 8
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>" -- \
-  docs/superpowers/plans/2026-09-17-sprint-7-two-strangers-two-machines.md \
+  docs/archive/sprints-7-12/2026-09-17-sprint-7-two-strangers-two-machines.md \
   docs/KNOWN.md docs/STATUS.md docs/ROADMAP.md docs/CURRENT_SPRINT.md docs/HUMAN_TASKS.md
 git push
 ```

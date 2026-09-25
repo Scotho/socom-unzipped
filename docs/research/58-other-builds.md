@@ -203,7 +203,7 @@ and the Aug 28 beta has the better-documented identity (a serial number, even if
 "Prototypes on Hidden Palace", and research/19 §4 uses the same wording for the SOCOM 1 disc. research/19 §4
 also says that such a disc "is copyrighted game code" and that the project "should keep consuming reCOM's
 *names*, not the disc". The project took SOCOM 1 in through the owner's own dump instead
-(`docs/CURRENT_SPRINT.md`: "Zero1UP's dump"). The notes give no other source, and this note adds none. How to
+(`docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`: "Zero1UP's dump"). The notes give no other source, and this note adds none. How to
 obtain a build, and whether it is legal to, is the owner's decision.
 
 **What to check first on a candidate** (read-only, on a copy outside the repository):

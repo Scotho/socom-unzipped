@@ -1,5 +1,10 @@
 # Sprint 9 Goal 2 — A Smaller, Checkable Download: Implementation Plan
 
+> **ARCHIVED 2026-09-25 -- a Sprint 9 plan; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/plans/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** The archive a stranger downloads is as small as measurement allows, carries nothing the two shipped executables do not load, and comes with a `SHA256SUMS` they can check; the executable inside it is a `release` build that has passed the three-stage gate 3/3 *as that executable*, with its symbols kept in a separate file for crash diagnosis. Today (measured 2026-09-19 at `9d1d410`): `dist/portable/socom2-portable.zip` is **65,494,194 bytes** for a **297,839,981-byte** folder; `socom2.exe` is 236,405,760 bytes raw and 41,144,142 compressed (63 % of the zip), of which `.text` is 191,886,198; the folder carries **31 DLLs, of which the two shipped executables reach 16** through their import tables (33,474,560 bytes raw / 14,097,831 compressed) and **15 are reached by nothing** (21,999,104 raw / 8,057,620 compressed — 12.3 % of the zip); nothing writes a checksum; and nothing can point the gate at any executable other than `dist/socom2.exe`.
@@ -8,7 +13,7 @@
 
 **Tech Stack:** CMake >= 3.20 + Ninja, llvm-mingw clang 23 / lld on the host (`build.sh`), system clang in the VM and CI (`scripts/build_linux.sh`), `llvm-objcopy`/`llvm-strip` (host) and `objcopy`/`strip` (Linux), Python 3 `unittest` (**not** pytest), `scripts/run_detached.sh` + `scripts/loop_lock.sh` for every build and every gate.
 
-**Spec:** `docs/superpowers/specs/2026-09-19-sprint-9-a-strangers-first-run-design.md` §2 "Goal 2 — a smaller, checkable download" and §4 (Goal 2: two extra launches; every moved default or skipped measurement is a numbered ruling, next **R140**). **The stop rule, verbatim:** *"if LTO pushes the runner's link past 30 minutes or changes a gate score, ship without it and record why."* **Required reading for every dispatch:** this plan's Handoff notes and Global Constraints; `build.sh:1-49` and `:251-258`; `scripts/build_linux.sh` (all 110 lines); `scripts/make_portable.sh` (all 134 lines); `scripts/portable_libs.py`; `third_party/ps2recomp/CMakeLists.txt:1-30`; `third_party/ps2recomp/ps2xRuntime/cmake/ReleaseMode.cmake` (all) and `cmake/CopyFfmpegDlls.cmake`; `third_party/ps2recomp/ps2xRuntime/CMakeLists.txt:8-11`, `:255-378` (FFmpeg on each platform), `:454-475`, `:521-545`, `:653-671`; `tools_py/parity/hostplatform.py:30-38`; `tools_py/parity/drive.py:58-98`; `run.sh` (all 14 lines); `tools_py/parity/gate.py:539-581` and `:614-675`; `tools_py/tests/test_make_portable.py`; `.github/workflows/linux.yml`.
+**Spec:** `docs/archive/sprints-7-12/2026-09-19-sprint-9-a-strangers-first-run-design.md` §2 "Goal 2 — a smaller, checkable download" and §4 (Goal 2: two extra launches; every moved default or skipped measurement is a numbered ruling, next **R140**). **The stop rule, verbatim:** *"if LTO pushes the runner's link past 30 minutes or changes a gate score, ship without it and record why."* **Required reading for every dispatch:** this plan's Handoff notes and Global Constraints; `build.sh:1-49` and `:251-258`; `scripts/build_linux.sh` (all 110 lines); `scripts/make_portable.sh` (all 134 lines); `scripts/portable_libs.py`; `third_party/ps2recomp/CMakeLists.txt:1-30`; `third_party/ps2recomp/ps2xRuntime/cmake/ReleaseMode.cmake` (all) and `cmake/CopyFfmpegDlls.cmake`; `third_party/ps2recomp/ps2xRuntime/CMakeLists.txt:8-11`, `:255-378` (FFmpeg on each platform), `:454-475`, `:521-545`, `:653-671`; `tools_py/parity/hostplatform.py:30-38`; `tools_py/parity/drive.py:58-98`; `run.sh` (all 14 lines); `tools_py/parity/gate.py:539-581` and `:614-675`; `tools_py/tests/test_make_portable.py`; `.github/workflows/linux.yml`.
 
 ## Handoff notes for the executing model (read once)
 
@@ -1671,7 +1676,7 @@ git commit -m "docs: Sprint 9 Goal 2 closed -- a smaller, checkable download (th
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>" -- \
   docs/KNOWN.md docs/STATUS.md docs/CURRENT_SPRINT.md docs/HUMAN_TASKS.md \
-  docs/superpowers/plans/2026-09-20-sprint-9-goal-2-release-build.md
+  docs/archive/sprints-7-12/2026-09-20-sprint-9-goal-2-release-build.md
 git push
 ```
 

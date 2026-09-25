@@ -1,5 +1,10 @@
 # Sprint 10 Q7 — Goal 6's residuals, the ones that need no launch (record)
 
+> **ARCHIVED 2026-09-25 -- a Sprint 10 plan; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/plans/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 Branch `agent/q7` off `sprint-10` at `1f1a91c`, worktree `C:\projects\wt-q7`, 2026-09-21. The brief:
 `docs/CURRENT_SPRINT.md` row Q7 ("Goal 6 -- residuals, as filler"), `docs/KNOWN.md`'s row "Sprint 8 branch review,
 filed for later" items (a), (b), (d), its §4 rows on the console-replay test and the Linux `version.txt` test, and

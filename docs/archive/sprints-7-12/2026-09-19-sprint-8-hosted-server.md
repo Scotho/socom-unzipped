@@ -1,12 +1,17 @@
 # Sprint 8 Goal 12 — The Hosted Server, on a Machine That Exists: Implementation Plan
 
+> **ARCHIVED 2026-09-25 -- a Sprint 8 plan; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/plans/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A Horizon instance the project hosts, reachable from the internet, that the launcher lists as *SOCOM Unzipped (project server)* and that a driven two-instance match starts a round on (the bar) and registers a kill on (the hope). Owner's order, 2026-09-19: "Lightsail 2GB. Setup a sprint to create the machine and bring the server online, making the required linux changes."
 
 **Architecture:** One AWS Lightsail instance (Ubuntu 24.04, 2 GB / 2 vCPU, us-east-2, static IP). The Horizon binaries are framework-dependent `net9.0` and run unchanged under `dotnet <dll> <configdir>`; only the glue is Windows. The Linux glue is three files under `server/linux/`: four systemd units, `horizon-ctl.sh` (the PowerShell script's verbs, including the six-field advertised-address rewrite), `install.sh`. The database is seeded on Windows and copied up. The machine's particulars live git-ignored under `vm/lightsail/` (the VM's convention) with a memory note.
 
-**Spec:** `docs/superpowers/specs/2026-09-18-sprint-8-linux-and-finish-design.md` — Goal 12. **Required reading:** `server/README.md` (ports, the advertised address, simulated mode), `vm/lightsail/README.md` (the door; git-ignored, on this host only), this plan's Global Constraints.
+**Spec:** `docs/archive/sprints-7-12/2026-09-18-sprint-8-linux-and-finish-design.md` — Goal 12. **Required reading:** `server/README.md` (ports, the advertised address, simulated mode), `vm/lightsail/README.md` (the door; git-ignored, on this host only), this plan's Global Constraints.
 
 ## Global Constraints
 

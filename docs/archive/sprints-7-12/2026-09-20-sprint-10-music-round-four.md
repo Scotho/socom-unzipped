@@ -1,5 +1,10 @@
 # Sprint 10 — the mission music, round four: validate the track, not the mix
 
+> **ARCHIVED 2026-09-25 -- a Sprint 10 plan; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/plans/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 Opened 2026-09-20 ~20:10 UTC after the owner's third listen on the child-sound build: "ambiance is good. cutscene
 music sounds good. Started mission and walked a few meters forward. The music issues of jumping up and down in
 volume or skipping persists for a few moments before stopping all together ... Music started playing again when an

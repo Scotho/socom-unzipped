@@ -6,7 +6,7 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
 
 > **2026-09-22 evening — parked by the owner's instruction** (*"save the human tasks for later"*). Nothing below is
 > waited on tonight; the loop is closing Sprint 10 and opening Sprint 11 under the owner's authority
-> (`docs/superpowers/plans/2026-09-22-sprint-10-close.md`). The endpoint A/B, the W10 proof and the W7/W6 captures
+> (`docs/archive/sprints-7-12/2026-09-22-sprint-10-close.md`). The endpoint A/B, the W10 proof and the W7/W6 captures
 > listed under "Start here (midday)" are **machine runs** and ran overnight; their results are in the sprint record.
 > A fresh "Start here" block for the morning is written at the close -- **it is immediately below, `## Start here
 > (2026-09-23 morning)`**, and it carries the results of those runs.
@@ -58,7 +58,7 @@ Sprint 11 is merged to `main` as `v0.11.0`. Sprint 12 closed the same day (its s
 
 Sprint 10 is **closed** -- merged to `main` (PR #24, `f15acfa`) and tagged `v0.10.0` -- the draft release exists, with no archives yet (below). Sprint 11
 is open on `docs/superpowers/plans/2026-09-23-sprint-11.md`. The night's results are in `docs/STATUS.md`'s newest
-entry and in `docs/CURRENT_SPRINT.md`'s "Sprint 10 -- CLOSED" block; the short version is that your Bluetooth speaker
+entry and in the "Sprint 10 -- CLOSED" block (archived 2026-09-25 to `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`); the short version is that your Bluetooth speaker
 is **not** the cause of the music dropouts (they survive a wired endpoint, so they are ours), the prefilled login
 **stays** for now because a virgin card keeps the persona but loses the saved password, and the garbled HELP glyphs
 did not reproduce on a walk that never reaches the church.
@@ -146,7 +146,7 @@ the server clamp **deployed to the project box at 06:58Z** — your local Horizo
 started again); `scripts/build_revision.sh` (the pipeline for another disc revision, proven byte-identical on
 r0001); the dead history archived with a link check that fails; the release-draft workflow's eligibility step and
 the backfilled tags `v0.5.0`–`v0.8.0`; the Linux VM ring measured and its five Linux-only defects fixed. Eight more
-tasks are part-done in agent worktrees — `docs/CURRENT_SPRINT.md`'s table; **do not delete `C:\projects\wt-*`**.
+tasks are part-done in agent worktrees — the Sprint 11 record's table (`docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` since 2026-09-25); **do not delete `C:\projects\wt-*`**.
 
 Rulings (numbered ones are in the plan's rulings section; all reversible):
 - **R241–R245** (the Sprint 10 close and the open): the external-repo items slotted; option B (a native libsd) not
@@ -275,8 +275,8 @@ refresh-then-join path, so W8 is proven by them. The channel line is still wante
 
 ## Start here (2026-09-22, after your playthrough)
 
-**Your findings are all recorded and the fix wave is running** -- `docs/superpowers/plans/2026-09-22-fix-wave-playthrough.md`
-is the chunk table, `docs/CURRENT_SPRINT.md` ("The playthrough, 2026-09-22") holds the findings and rulings R236-R240,
+**Your findings are all recorded and the fix wave is running** -- `docs/archive/sprints-7-12/2026-09-22-fix-wave-playthrough.md`
+is the chunk table, `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` ("The playthrough, 2026-09-22") holds the findings and rulings R236-R240,
 and `docs/KNOWN.md` has four new section-2 rows (each with the experiment that settles it) and two new hazards.
 
 **Done without needing you:** the launcher now defaults to **640x448** (R236, your instruction); a text field lets go
@@ -358,7 +358,7 @@ sounds, the guide-button switch, the prefilled login). About two hours without t
 ## Start here (2026-09-20)
 
 **THE OWNER GATE ON THE AUDIO LISTEN IS BYPASSED (your instruction, 2026-09-20 evening).** The music thread no longer
-waits on the fifth listen: Sprint 10 is reorganized around hardening the now-public repository (`docs/CURRENT_SPRINT.md`,
+waits on the fifth listen: Sprint 10 is reorganized around hardening the now-public repository (`docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`,
 "Sprint 10, REORGANIZED"), the music plan's open items are filler, and the fifth-round listen below stays on this list
 for whenever you want it -- the build and what to listen for are unchanged.
 
@@ -388,7 +388,7 @@ checks are a paid feature and stayed off; the project's own gate covers those sh
    fixtures, harness references, research evidence, ~9 MB): all stay as illustration of our own output, the movie
    frames go, or every picture goes. Until you decide, nothing moves.
 
-**Four launcher things to try with your hands (Sprint 10 Q4, 2026-09-21; the plan `docs/superpowers/plans/2026-09-21-sprint-10-q4-launcher-rest.md`):**
+**Four launcher things to try with your hands (Sprint 10 Q4, 2026-09-21; the plan `docs/archive/sprints-7-12/2026-09-21-sprint-10-q4-launcher-rest.md`):**
 1. Xbox pad: launch the game, press the XBOX/guide button -> the launcher comes to the front ("switched windows"
    in its bar); press again -> the game is back. If nothing happens, CONTROLLER > BUTTONS > SWITCH, press it, then
    press VIEW: the REPLACE dialog should appear and VIEW becomes the switch.
@@ -426,9 +426,9 @@ literals file is the fix.
 
 **Sprint 10 Goal 1 -- name the windows for the scheduled ladder (controller, 2026-09-20 ~09:00).** A Windows Task Scheduler entry `SOCOM Unzipped ladder` now exists on this machine, **DISABLED**, set to 03:30 daily as a placeholder. It runs `scripts/ladder_job.sh 4`: it refuses unless the machine is quiet, the loop lock is free and no game is running; then plays four ladder rounds against OUR hosted server (never another), pinned and detached as the ladder always is, and appends the record to `logs/ladder/ledger.jsonl` and `docs/LADDER.md`. It is two game instances for ~30 minutes, so it only belongs in a window you are away. Say when ("enable it, 03:30 daily" or another time), or `schtasks /Change /TN "SOCOM Unzipped ladder" /ENABLE` yourself. The first run was made by hand tonight while you were dark, and is the first row of `docs/LADDER.md`.
 
-**THE MUSIC, ROUND FOUR (2026-09-20 ~20:10 UTC): one listen on PCSX2.** Your round-three report (ambience good, cutscene good, the mission music jumps, skips, stops, restarts on contact and cuts off) is recorded and the approach is being changed -- the instrument scored the whole mix, and the reference runs never walked (`docs/superpowers/plans/2026-09-20-sprint-10-music-round-four.md`). ~~One thing only you can give: on PCSX2 ... does the console's music ever stop or jump?~~ **ANSWERED ~21:00 UTC: "psx2 sounds expected"** -- the reference stands; ours is the choppy one, in the mission and on the briefing screen.
+**THE MUSIC, ROUND FOUR (2026-09-20 ~20:10 UTC): one listen on PCSX2.** Your round-three report (ambience good, cutscene good, the mission music jumps, skips, stops, restarts on contact and cuts off) is recorded and the approach is being changed -- the instrument scored the whole mix, and the reference runs never walked (`docs/archive/sprints-7-12/2026-09-20-sprint-10-music-round-four.md`). ~~One thing only you can give: on PCSX2 ... does the console's music ever stop or jump?~~ **ANSWERED ~21:00 UTC: "psx2 sounds expected"** -- the reference stands; ours is the choppy one, in the mission and on the briefing screen.
 
-**THE MUSIC, ROUND THREE (Q0, 2026-09-20 ~08:10 UTC, supersedes round two below -- listen to THIS build, not that one).** Your second listen ("stuttering, skipping, two segments at once, stopped abruptly") sent me to build the audio parity check you asked for, and it found the thing: at the mission start the console plays a continuous bed -- wind, birds, insects -- that ours never played at all, and every music stem and radio line we DO play is the right length at the right level. The bed is one "conductor" sound in the mission's bank whose script starts and stops child sounds and branches on a value the game writes every frame; our mixer skipped every one of those script commands, so the conductor ran forever in silence and the game, told it was playing, never restarted it. Modelled now, from the open 989snd reference, with tests; the parity check re-run on the new build is the machine's verdict (`docs/superpowers/plans/2026-09-20-sprint-9-q0-mission-music-investigation.md`, 6f). **What to listen for:** the ambience under the music from the moment you can move -- and then whether the music itself still stutters. If it does, say when (standing still after the flyover / walking / at the X-to-continue pop-up), because the stutter and the missing bed may be two different things and the bed's absence made the stems' gaps sound like faults. The machine's verdict on the new build: the parity check went from 10 to 31 windows of 48 within tolerance and no mission window is silent any more, but the bed is still 7-12 dB quieter than the console's -- so expect the ambience to be THERE and a little shy. One more thing I measured and have NOT fixed: the intro movies and the mission cinematic are about 20 dB quieter on ours than on the console (the game writes them quiet; the ring is fine) -- if the cinematic sounds faint, that is known.
+**THE MUSIC, ROUND THREE (Q0, 2026-09-20 ~08:10 UTC, supersedes round two below -- listen to THIS build, not that one).** Your second listen ("stuttering, skipping, two segments at once, stopped abruptly") sent me to build the audio parity check you asked for, and it found the thing: at the mission start the console plays a continuous bed -- wind, birds, insects -- that ours never played at all, and every music stem and radio line we DO play is the right length at the right level. The bed is one "conductor" sound in the mission's bank whose script starts and stops child sounds and branches on a value the game writes every frame; our mixer skipped every one of those script commands, so the conductor ran forever in silence and the game, told it was playing, never restarted it. Modelled now, from the open 989snd reference, with tests; the parity check re-run on the new build is the machine's verdict (`docs/archive/sprints-7-12/2026-09-20-sprint-9-q0-mission-music-investigation.md`, 6f). **What to listen for:** the ambience under the music from the moment you can move -- and then whether the music itself still stutters. If it does, say when (standing still after the flyover / walking / at the X-to-continue pop-up), because the stutter and the missing bed may be two different things and the bed's absence made the stems' gaps sound like faults. The machine's verdict on the new build: the parity check went from 10 to 31 windows of 48 within tolerance and no mission window is silent any more, but the bed is still 7-12 dB quieter than the console's -- so expect the ambience to be THERE and a little shy. One more thing I measured and have NOT fixed: the intro movies and the mission cinematic are about 20 dB quieter on ours than on the console (the game writes them quiet; the ring is fine) -- if the cinematic sounds faint, that is known.
 
 **THE MUSIC, ROUND TWO (Q0, 2026-09-20 07:00): play the first mission again on the NEXT build, through the JBL as before, and say whether the skips are gone.** What changed and why, in one paragraph: the game was opening your speaker through raylib with a 30 ms buffer, and under gameplay load the audio thread missed that deadline about forty times a minute -- I recorded what Windows actually sent to the JBL during a driven mission and counted 42 dropouts in one minute where the mixer's own output had 2 and the real console (PCSX2, same speaker) had none. The runtime now opens the speaker itself with an 80 ms buffer: the same driven minute recorded at the speaker has 2. Two other things you may notice: the music is centred now (it was 2.3 dB to the right, a sign bug), and enemy/squad voice lines the game raises from silence now play (they never could). If the music is STILL incoherent after this, say so in the same words -- the record has a list of what was ruled out and what is left, and the next suspect is the game's own choice of stems, which the console makes the same way. `dist/socom2.exe` has it now; the archive gets it at the next `playtest` tag.
 
@@ -450,7 +450,7 @@ open items below in the order that makes sense at the keyboard, instead of one e
 detailed reference each step points back to. The build to play is the archive the controller tags `playtest-1`
 (Sprint 9 item P7); `docs/PLAYTEST.md`'s first block says when it is ready.
 
-**Decisions only you can make, soonest first** (the reasoning for each is in `docs/HANDOFF.md` section 10 and
+**Decisions only you can make, soonest first** (the reasoning for each is in HANDOFF's old section 10, now `docs/archive/HANDOFF-loop-history-to-2026-09-25.md` §10, and
 `docs/PLAYTEST.md`): who besides you gets the playtest archive (it contains code recompiled from the game and the
 game's decrypted ELF -- Sprint 11's decision D2, which arrives early if the answer is "a friend"); the keyboard ruling
 (players get menus and typing; the test harness keeps the gameplay keys behind developer mode -- or the harness moves

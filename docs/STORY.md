@@ -418,7 +418,7 @@ The launcher is a small window that owns the settings file. It reads the disc im
 
 *But:* nobody had tried the launcher by hand, and the zip had never run on a clean machine. The audit's biggest gap was left alone: every online result was two copies on one machine behind one router.
 
-`Cited:` `770d5fb` SOCOM Unzipped launcher, first cut · `2a8f8e4` scripts/make_portable.sh -- the portable folder · `docs/STATUS.md` · `logs/parity/gate/s6_launcher_gate/summary.txt` · `logs/launcher_server_picker.png` · `docs/research/assets/launcher-first-cut.png` · `09b793a` the 2026-09-17 audit and code review · `fae7d0e` the audit's fix wave · `32aec0b` Sprint 7 opened -- two strangers, two machines, one hosted server · `a843385` the stranger's machine, defensively · `39cd17f` equal-priority guest threads are never time-sliced · `docs/AUDIT-2026-09-17.md` · `logs/parity/gate/s6_fixwave_gate/summary.txt` · `logs/parity/gate/s7_gl_gate/summary.txt` · `logs/parity/gate/s7_gl_gate2/summary.txt`
+`Cited:` `770d5fb` SOCOM Unzipped launcher, first cut · `2a8f8e4` scripts/make_portable.sh -- the portable folder · `docs/STATUS.md` · `logs/parity/gate/s6_launcher_gate/summary.txt` · `logs/launcher_server_picker.png` · `docs/research/assets/launcher-first-cut.png` · `09b793a` the 2026-09-17 audit and code review · `fae7d0e` the audit's fix wave · `32aec0b` Sprint 7 opened -- two strangers, two machines, one hosted server · `a843385` the stranger's machine, defensively · `39cd17f` equal-priority guest threads are never time-sliced · `docs/audits/2026-09-17-audit-and-code-review.md` · `logs/parity/gate/s6_fixwave_gate/summary.txt` · `logs/parity/gate/s7_gl_gate/summary.txt` · `logs/parity/gate/s7_gl_gate2/summary.txt`
 
 ## 2026-09-18 .. 2026-09-20 - Linux, a server, a stranger
 
@@ -574,7 +574,7 @@ Four hours of measuring instead of reading. Recording what Windows actually sent
 
 *But:* the owner listened again an hour later: better, not done. "Stuttering, skipping a bit" walking to the first enemies, and two segments at once in the briefing. The rest of the night is the next entry.
 
-`Cited:` `c611ad6` the mission music, investigated to the speaker · `7c0620f` R177 -- the mix device buffer · gate s9_q0_device_gate · gate s9_q0_trace_gate · docs/superpowers/plans/2026-09-20-sprint-9-q0-mission-music-investigation.md
+`Cited:` `c611ad6` the mission music, investigated to the speaker · `7c0620f` R177 -- the mix device buffer · gate s9_q0_device_gate · gate s9_q0_trace_gate · docs/archive/sprints-7-12/2026-09-20-sprint-9-q0-mission-music-investigation.md
 
 ### 2026-09-20 - An audio parity test, and the sound that was never there
 
@@ -586,7 +586,7 @@ The picture gate compares our frames to the console's. The new check does the sa
 
 *But:* the bed plays 7-12 dB quieter than the console's, the logo movies' audio is about 18 dB low at the source, and the still-playing fix is in verification as this is written. The owner's ear closes this, not a number.
 
-`Cited:` `19ae5f6` an audio parity check against the console · `842174c` the mission ambience is a CONDUCTOR sound · `77d5522` a VAG stream that played out still answers snd_SoundIsStillPlaying · gate s9_q0_children_gate · scripts/parity/audio_parity.sh · docs/superpowers/plans/2026-09-20-sprint-9-q0-mission-music-investigation.md
+`Cited:` `19ae5f6` an audio parity check against the console · `842174c` the mission ambience is a CONDUCTOR sound · `77d5522` a VAG stream that played out still answers snd_SoundIsStillPlaying · gate s9_q0_children_gate · scripts/parity/audio_parity.sh · docs/archive/sprints-7-12/2026-09-20-sprint-9-q0-mission-music-investigation.md
 
 ### 2026-09-20 - Version 0.9.0, and a robot that plays every night
 
@@ -612,7 +612,7 @@ The console side is the reference emulator running the retail disc, driven by th
 
 *But:* the "console" is an emulator on the same PC as ours, not a PlayStation 2 on a couch. Still owed: each guest's copy of the other's position, so "seen by the other" is measured rather than assumed. And still: no two humans have ever played each other.
 
-`Cited:` `93677a5` the mixed match's leg 1 on the verified flow · `136c635` leg 1 reached · `25690ad` leg 2 reached · `984a342` Sprint 10 Goal 3's bar met · run mixed2_ours_hosts_g · run mixed2_pcsx2_hosts_g · tools_py/parity/pcsx2_shell.py · docs/superpowers/plans/2026-09-20-sprint-10-goal-3-mixed-match.md
+`Cited:` `93677a5` the mixed match's leg 1 on the verified flow · `136c635` leg 1 reached · `25690ad` leg 2 reached · `984a342` Sprint 10 Goal 3's bar met · run mixed2_ours_hosts_g · run mixed2_pcsx2_hosts_g · tools_py/parity/pcsx2_shell.py · docs/archive/sprints-7-12/2026-09-20-sprint-10-goal-3-mixed-match.md
 
 ## 2026-09-21 .. 2026-09-22 - Public, and played
 
@@ -700,7 +700,7 @@ The archive was built the night before, gated on the exact executable inside it 
 
 *But:* the first cut of the diagnostics ruling was wrong. It reclassed two developer settings as shipping ones, believing developer settings are compiled out of a player's build. They aren't, and the suite refused the change. Fixing the actual hole, silence on failure, is what found the save bug.
 
-`Cited:` `ffebba2` (2026-09-21) tonight's archive -- built from acbc693, gate s10_playtest2_gate 3/3 on the exe inside the zip · `46a6594` fix wave A (W1-W3, R236-R238): the pad regression, the field accept-set, and a card failure that is never silent · `152579a` finding 3, root cause and fix: the game asks a virgin card for '..' and we answered "card refused" · gate s10_playtest2_gate · gate fixwave_a · docs/superpowers/plans/2026-09-22-fix-wave-playthrough.md
+`Cited:` `ffebba2` (2026-09-21) tonight's archive -- built from acbc693, gate s10_playtest2_gate 3/3 on the exe inside the zip · `46a6594` fix wave A (W1-W3, R236-R238): the pad regression, the field accept-set, and a card failure that is never silent · `152579a` finding 3, root cause and fix: the game asks a virgin card for '..' and we answered "card refused" · gate s10_playtest2_gate · gate fixwave_a · docs/archive/sprints-7-12/2026-09-22-fix-wave-playthrough.md
 
 ### 2026-09-22 - Hold a button to remap it, and a sound that was never there
 

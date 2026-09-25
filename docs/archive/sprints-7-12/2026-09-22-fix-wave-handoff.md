@@ -1,8 +1,13 @@
 # Handoff — the rest of fix wave A (2026-09-22, ~04:15, Opus → Fable)
 
+> **ARCHIVED 2026-09-25 -- a Sprint 10 fix-wave handoff (the 2026-09-22 playthrough); the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/plans/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 You are picking up the tail of the mini sprint that came out of the owner's playthrough. Eight of eleven chunks
 are done and on `main`; what is left is mostly **judgment**, which is why it is coming to you rather than being
-executed by a bounded agent. Read `docs/superpowers/plans/2026-09-22-fix-wave-playthrough.md` first — it is the
+executed by a bounded agent. Read `docs/archive/sprints-7-12/2026-09-22-fix-wave-playthrough.md` first — it is the
 chunk table and the reasoning. This document is only what remains and what will bite you.
 
 ## Where things stand, exactly

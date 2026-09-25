@@ -262,7 +262,7 @@ tools_py/tests/test_story_guards.py
 Constraints that come from the suite it joins, not from taste: tests live in `tools_py/tests/` and nowhere else, they
 are `unittest` and must not import pytest, and no module-level `def test_` — all three are enforced by
 `tools_py/tests/test_test_hygiene.py`, which exists because three pytest-style files in `tools_py/parity/` had never
-executed at all (`docs/process-audit.md` item 2). The runner is one line of `build.sh`:
+executed at all (`docs/audits/2026-09-12-process-audit.md` item 2). The runner is one line of `build.sh`:
 `python -m unittest discover -s tools_py/tests -t .`.
 
 ### 3.2 What it reads
@@ -701,7 +701,7 @@ this table disagree, KNOWN wins and this table is what gets fixed.
 | "SOCOM II runs on PC" | It runs from the player's own NTSC SCUS-97275 **r0001** disc. A non-r0001 image exits 67 (R130). No game data ships. The r0004 revision the community server runs would need a second, separate recompilation that does not exist. |
 | "It runs at 60 fps" | The measured numbers are 43-45 fps in one fixed Frostfire control round; 58-60 presents/s on the *login screen* under four spinning cores; 0.8-2.9 fps in the VM on software GL. There is no steady-state gameplay figure on a clean host, and KNOWN §4 says gates are host-load sensitive. |
 | "Every map works online" | Twenty previously-untested maps ran a **scripted no-kill control round**, two instances on one PC against a local server, on 2026-09-17 — two days before the hosted box existed. `docs/research/33-online-map-coverage.md`'s own headline is **18 of 20**; one straggler passed only after a fall-damage guard was added to the harness. Only Frostfire has a kill route. |
-| "Two strangers can play each other" | **No human pair has ever played.** Every online result is two driven instances on the owner's PC. The two-machine match is `docs/AUDIT-2026-09-17.md` G5, open since Sprint 7. |
+| "Two strangers can play each other" | **No human pair has ever played.** Every online result is two driven instances on the owner's PC. The two-machine match is `docs/audits/2026-09-17-audit-and-code-review.md` G5, open since Sprint 7. |
 | "A round has been played on the hosted server" (unqualified) | True — `s8_hosted_control2`, `s8_hosted_kill` — with both instances **behind one home NAT on one machine**. KNOWN's own row ends *"Still unexercised: two DIFFERENT networks."* |
 | "The kill is repeatable" | `s6_ladder8` was 4/4 on KillWatch and **KILL, KILL, NO-KILL unattributed, NO-DATA** on the second scorer. The plan's two-scorer bar is recorded as **not met**. On the hosted server it was 2 kills in 4 rounds. |
 | "The music is fixed" | Three fixes landed under watched RED tests (R169-R171, `eca5450`) and are **measured INERT in the only mission driven**: 55 stream requests, 55 played, 0 refused, 0 queued, 0 replaced. The owner's verdict on the previous round of fixes was *"no"*. **No ear has confirmed the current build.** |

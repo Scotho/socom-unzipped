@@ -25,7 +25,7 @@ encrypted. There are three routes, in rising order of polish and cost; the secon
   screenshot (`tools_py/parity/online_login_ours.py`, `OSK_*` constants). That is the blind class research/28 §5
   named; a runtime-side fill would retire it for the harness as well as for players.
 - The server side: Horizon's `CreateAccountOnNotFound=True` makes the account on first login
-  (`docs/superpowers/plans/2026-09-19-sprint-8-hosted-server.md:86`). The plaintext request the client sends
+  (`docs/archive/sprints-7-12/2026-09-19-sprint-8-hosted-server.md:86`). The plaintext request the client sends
   carries `USERNAME` and `PASS` fields (`docs/research/28-lobby-taxonomy.md:161` quotes one from the server log).
 
 ## The routes

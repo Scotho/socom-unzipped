@@ -1,5 +1,10 @@
 # Sprint 10, Goal 8 (item 8) — the controller mapping: the data path (Sprint 9 Q3b, R174) and the UI
 
+> **ARCHIVED 2026-09-25 -- a Sprint 10 plan; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/plans/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 Written 2026-09-21 by the input agent (worktree `C:\projects\wt-input`, branch `agent/input` off `sprint-10`). The
 items are `docs/CURRENT_SPRINT.md` Q3b (the data path) and Sprint 10 item 8 (the page); the design is the Sprint 9
 spec's "Goal 12 — the controller mapping UI" and the ruling R174 that split it. This plan is the record of what was

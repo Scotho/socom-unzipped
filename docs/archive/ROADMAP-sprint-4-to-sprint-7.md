@@ -487,7 +487,7 @@ reaching contact at matched height, which has never happened; the spec's §6 say
 
 ### Sprint 6 — the correctness bugs, the lobby, and whatever Sprint 5 left open (revised 2026-09-13 after the Sprint 5 broad review)
 
-> **Closed 2026-09-17.** The ledger is `docs/AUDIT-2026-09-17.md` §3; items 10-12 below were dropped, not deferred; the sprints that follow are drafted in `docs/CURRENT_SPRINT.md` (Sprint 7 "two strangers, two machines, one hosted server", Sprint 8 "it looks and sounds finished", Sprint 9 "console players in the same lobby, and it stays up").
+> **Closed 2026-09-17.** The ledger is `docs/audits/2026-09-17-audit-and-code-review.md` §3; items 10-12 below were dropped, not deferred; the sprints that follow are drafted in `docs/CURRENT_SPRINT.md` (Sprint 7 "two strangers, two machines, one hosted server", Sprint 8 "it looks and sounds finished", Sprint 9 "console players in the same lobby, and it stays up").
 
 *The earlier outline is superseded; its "if Frostfire was not fixed" conditional is dead (fixed by `b625291`). Order: what makes online results cheap and repeatable, then visible gameplay correctness, then the gate's blindness, then latent items. Source: `.superpowers/sdd/2026-09-13-sprint-5-control-readout-and-first-kill/broad-review.md` §C8.*
 

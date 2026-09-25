@@ -1,5 +1,10 @@
 # Sprint 10 Q1b — The gate states what it measured: plan and record
 
+> **ARCHIVED 2026-09-25 -- a Sprint 10 plan; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/plans/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 **Goal (from `docs/CURRENT_SPRINT.md` row Q1b, KNOWN §4 "The gate records WHICH BINARY it ran and nothing else").**
 `summary.txt` pinned one thing, the EXE line. Everything else a score depends on could drift with no record: the
 reference images, the memory card the run boots from, the drive scripts, the harness revision, the `PS2X_*`

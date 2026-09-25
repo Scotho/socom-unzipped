@@ -1,7 +1,12 @@
 # Sprint 10, Goal 3 — the mixed match, both directions
 
+> **ARCHIVED 2026-09-25 -- a Sprint 10 plan; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/plans/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 Written 2026-09-20 ~14:00 UTC by the controller, on the owner's "proceed to sprint 10". The spec is
-`docs/superpowers/specs/2026-09-20-sprint-10-console-players-and-it-stays-up-design.md`, Goal 3.
+`docs/archive/sprints-7-12/2026-09-20-sprint-10-console-players-and-it-stays-up-design.md`, Goal 3.
 
 **The goal, in the spec's words:** the PCSX2 side gets screen-verified steps like ours (its frame at 640x448, read
 with the harness's detectors, pressing on what the screen shows); then leg 1 (ours hosts, PCSX2 joins) and the

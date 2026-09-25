@@ -26,7 +26,7 @@
 #
 # --max-device-per-minute N: the pin. After the dips scorer runs, its "DEVICE total .. max K in a minute" line is
 # read and the run exits 4 when K > N. Unset = report only; the ceiling is pinned once the endpoint A/B has said
-# what a clean device looks like (docs/superpowers/plans/2026-09-22-fix-wave-handoff.md).
+# what a clean device looks like (docs/archive/sprints-7-12/2026-09-22-fix-wave-handoff.md).
 #
 # Run it under the loop lock (it launches a game):
 #   scripts/loop_lock.sh run <owner> --purpose "W7 mission music" -- scripts/parity/mission_music_long.sh --minutes 12

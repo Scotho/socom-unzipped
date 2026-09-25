@@ -1,5 +1,10 @@
 # Sprint 8 Goal 2 — The Menus' Render Cost, at the Root: Implementation Plan
 
+> **ARCHIVED 2026-09-25 -- a Sprint 8 plan; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/plans/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the login and lobby screens cost what a 2D menu should cost, by fixing the thing that makes them expensive rather than by hiding it — the 7-11k one-kilobyte 16x16 tile uploads a second that carry 80-133 ms/s of render time (four to six times gameplay's 20-28 ms/s) and drop the login screen to 12-30 fps with `bp_pending=4 bp_waiters=1` in four of ten driven launches. The bar is the login screen at 60 fps **under a four-core spinning host load**, `bp_pending` under 2 in every sampler row across the login screen, and `upload=` below 30 ms/s on the menus, with the three-stage gate still 3/3.
@@ -8,7 +13,7 @@
 
 **Tech Stack:** C++20 (llvm-mingw clang via `build.sh` on the host; system clang + Ninja in the VM and on `ubuntu-24.04`), CMake ≥ 3.20, OpenGL 3.3 through raylib's context, MiniTest (`ps2x_tests`, no filter, runs every case), Python 3 `unittest` (**not** pytest, see Global Constraints), the online harness (`tools_py/parity/online_match_ours.py`, `tools_py/parity/gate.py`, `tools_py/parity/freeze_trace.py`), `scripts/run_detached.sh` + `scripts/loop_lock.sh` for every host launch.
 
-**Spec:** `docs/superpowers/specs/2026-09-18-sprint-8-linux-and-finish-design.md` — **Goal 2 only** (§2 "Goal 2 — the menus' render cost at the root", and §3's stop rule: *"Goal 2 stops if batching does not move the ms/s number, filing the per-call breakdown instead"*). **Required reading for every dispatch:** this plan's Handoff notes and Global Constraints; `docs/KNOWN.md` §1 rows "The login screen runs at 12-30 fps under GL back-pressure in 4 of 10 launches" (:88) and "The 21k texture decodes a second: the page-marking hypothesis is falsified by its own trace, and the figure is stale" (:89), plus the uploads row at :69; `docs/research/34-online-round-freeze-clut-serials.md` §§3-4 (the 21k figure's origin and the stats-line table it came from); `docs/CURRENT_SPRINT.md`'s Sprint 8 block item 1 (:141-145); for the code `third_party/ps2recomp/ps2xRuntime/src/lib/gs/gs_gl_backend.cpp` §§`executeCommands` (:1313-1630), `executeTransfer` (:1804-1825), `executeUpload` (:1827-1877), `refreshRenderTargetsFromShadow` (:1879-1945) and `refreshDirtyRows` (:1947-2080), and `third_party/ps2recomp/ps2xRuntime/include/runtime/gs/gs_gl_backend.h:77-88` (`CmdType`) and `:156-160` (`DirtyRect`).
+**Spec:** `docs/archive/sprints-7-12/2026-09-18-sprint-8-linux-and-finish-design.md` — **Goal 2 only** (§2 "Goal 2 — the menus' render cost at the root", and §3's stop rule: *"Goal 2 stops if batching does not move the ms/s number, filing the per-call breakdown instead"*). **Required reading for every dispatch:** this plan's Handoff notes and Global Constraints; `docs/KNOWN.md` §1 rows "The login screen runs at 12-30 fps under GL back-pressure in 4 of 10 launches" (:88) and "The 21k texture decodes a second: the page-marking hypothesis is falsified by its own trace, and the figure is stale" (:89), plus the uploads row at :69; `docs/research/34-online-round-freeze-clut-serials.md` §§3-4 (the 21k figure's origin and the stats-line table it came from); `docs/CURRENT_SPRINT.md`'s Sprint 8 block item 1 (:141-145); for the code `third_party/ps2recomp/ps2xRuntime/src/lib/gs/gs_gl_backend.cpp` §§`executeCommands` (:1313-1630), `executeTransfer` (:1804-1825), `executeUpload` (:1827-1877), `refreshRenderTargetsFromShadow` (:1879-1945) and `refreshDirtyRows` (:1947-2080), and `third_party/ps2recomp/ps2xRuntime/include/runtime/gs/gs_gl_backend.h:77-88` (`CmdType`) and `:156-160` (`DirtyRect`).
 
 ## Handoff notes for the executing model (read once)
 
@@ -873,7 +878,7 @@ git push
 ## Task 4 — Close-out for Goal 2
 
 **Files:**
-- Modify: `docs/KNOWN.md` (§1 Proven; §3 Retracted if the per-call hypothesis dies), `docs/STATUS.md` (the current-state bullet and a dated entry), `docs/CURRENT_SPRINT.md` (the Sprint 8 block's item 1 and the pointer to Goal 3), `docs/superpowers/plans/2026-09-18-sprint-8-menu-render-cost.md` (this file: tick the boxes; any box left open carries a one-line reason or a `STOP:`)
+- Modify: `docs/KNOWN.md` (§1 Proven; §3 Retracted if the per-call hypothesis dies), `docs/STATUS.md` (the current-state bullet and a dated entry), `docs/CURRENT_SPRINT.md` (the Sprint 8 block's item 1 and the pointer to Goal 3), `docs/archive/sprints-7-12/2026-09-18-sprint-8-menu-render-cost.md` (this file: tick the boxes; any box left open carries a one-line reason or a `STOP:`)
 
 **Steps:**
 
@@ -901,7 +906,7 @@ and move the pointer to Goal 3 (voice).
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>" -- \
   docs/KNOWN.md docs/STATUS.md docs/CURRENT_SPRINT.md \
-  docs/superpowers/plans/2026-09-18-sprint-8-menu-render-cost.md
+  docs/archive/sprints-7-12/2026-09-18-sprint-8-menu-render-cost.md
 git push
 ```
 
