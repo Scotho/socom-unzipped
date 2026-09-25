@@ -34,9 +34,16 @@ HELPER = os.path.join(ROOT, "scripts", "python_env.sh")
 BARE_PYTHON = re.compile(r"(?<![\w./$^])python(?![\w.-])")
 
 
+# The two entry points at the root. build.sh called the bare word four times (harness audit #32) while this file
+# held every script under scripts/ to the rule; Sprint 13 H7 brought the root under it.
+ROOT_SCRIPTS = ("build.sh", "run.sh")
+
+
 def shell_scripts():
-    """Every shell script the repository ships under scripts/ -- the hooks included, they run on Linux too."""
-    out = subprocess.run(["git", "ls-files", "scripts"], cwd=ROOT, capture_output=True, text=True, check=True)
+    """Every shell script the repository ships under scripts/ -- the hooks included, they run on Linux too -- and
+    the root entry points (ROOT_SCRIPTS)."""
+    out = subprocess.run(["git", "ls-files", "scripts"] + list(ROOT_SCRIPTS), cwd=ROOT, capture_output=True,
+                         text=True, check=True)
     keep = []
     for rel in out.stdout.split():
         path = os.path.join(ROOT, rel)
