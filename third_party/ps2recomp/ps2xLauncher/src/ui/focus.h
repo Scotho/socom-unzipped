@@ -184,9 +184,21 @@ namespace ui
         void update(const FocusGraph &g, const std::string &focusId, float dt);
     };
 
+    // The disc check's sentences (main.cpp's checkDisc). The DISC page shows one; LAUNCH's blocked reason says the
+    // same one, so a state has one sentence wherever it is read (Sprint 13 V8, stranger audit row 10: a moved ISO
+    // was "cannot open the file" on DISC and "that file is not SOCOM II" under LAUNCH). The verified line names
+    // the revision and is built where it is known.
+    inline constexpr const char *kDiscNotChosen = "choose your SOCOM II disc image first";
+    inline constexpr const char *kDiscNotChecked = "not checked yet";
+    inline constexpr const char *kDiscCannotOpen = "cannot open the file";
+    inline constexpr const char *kDiscNoElf = "not a SOCOM II disc image (no SCUS_972.75)";
+    inline constexpr const char *kDiscCannotReadElf = "cannot read SCUS_972.75";
+    inline constexpr const char *kDiscWrongRevision = "not SOCOM II NTSC r0001 (SCUS_972.75 differs)";
+
     // Why LAUNCH is disabled, in the player's words; empty when it is not. The running game comes first: it is
-    // the blocker the player just created, whatever the disc field says.
-    std::string launchBlockedReason(bool discOk, bool running, bool isoPathEmpty);
+    // the blocker the player just created, whatever the disc field says. A disc that failed its check is blocked
+    // with `discMessage`, the DISC page's sentence for that state.
+    std::string launchBlockedReason(bool discOk, bool running, bool isoPathEmpty, const std::string &discMessage);
 
     // True for the controls that left/right ADJUSTS rather than navigates away from: the three sliders. The
     // bottom bar's prompts say so when one of them holds the focus.

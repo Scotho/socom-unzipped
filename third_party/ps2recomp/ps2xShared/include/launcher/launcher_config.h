@@ -127,7 +127,7 @@ namespace launcher
     struct Config
     {
         std::string isoPath;
-        int gsScale = 1;                       // 1 native, 2 sharp, 3 sharper (experimental)
+        int gsScale = 1;                       // 1 native, 2 sharp, 3 sharper (experimental), 4 sharpest
         std::string presentFilter = "linear";  // linear | integer | point
         // The launcher opens at the game's own 640x448 (the owner, 2026-09-22 playthrough: "the default res
         // should be the 640x448"), which overrides Sprint 7 Task 1c's 2x default (R92). The runtime's default was

@@ -24,6 +24,9 @@ context: the version, dual-source draw buffers, and clip control. Missing versio
 to the software rasteriser, once and for good for that run. (Missing clip control is only noted, not fatal: depth
 falls back to a fragment-depth mapping and the game plays.)
 
+Where you meet it: any run, from the launcher or from `socom2.exe` on its own — the check is made once the window
+has opened, so the game runs, slowly, and the code is what it leaves with.
+
 What to do: update your graphics driver from the vendor, not from Windows Update. On a laptop with two GPUs, make
 sure `socom2.exe` runs on the discrete one. If you are inside a virtual machine, its virtual GPU is probably the
 problem. There is no setting in the launcher that turns this off — it is a fact about your driver.
@@ -44,12 +47,15 @@ then this is the first thing that stops it.
 
 > That disc image is not SOCOM II NTSC r0001 (SCUS-97275). This build plays only that disc.
 
-See *"Which disc revision do I need"* below. The launcher's own disc check stops a wrong disc earlier — LAUNCH greys
-out with *"that file is not SOCOM II (NTSC, r0001)"* — so this code reaches you only when the file changed after that
-check, or when `socom2.exe` was started on its own.
+See *"Which disc revision do I need"* below.
+
+Where you meet it: the launcher's own disc check stops a wrong disc earlier — LAUNCH greys out with the DISC page's
+sentence, *"not SOCOM II NTSC r0001 (SCUS_972.75 differs)"* — so this code reaches you only when the file changed
+after that check, or when `socom2.exe` was started on its own. *(Until 2026-09-25 LAUNCH read "that file is not
+SOCOM II (NTSC, r0001)" for every failed disc; Sprint 13 V8.)*
 
 *(Until 2026-09-25 this entry did not say where the code can be met; the launcher's check makes it rare from the
-launcher.)*
+launcher. Since the same day every entry here says where its code can be met.)*
 
 ### 68 — ELF missing
 
@@ -59,11 +65,17 @@ launcher.)*
 antivirus quarantine or a half-finished unzip. Unpack the archive again into a clean folder, and check it against
 the `SHA256SUMS` that ships beside it.
 
+Where you meet it: from the launcher as well as on its own. The launcher checks the disc, not this file, so LAUNCH
+stays lit and the game stops a second later, before its window opens.
+
 ### 69 — config unreadable
 
 > config.json could not be read. Delete it and start the launcher, which writes a new one.
 
 Exactly that. You lose your settings, not your saves — those are in `cards/`.
+
+Where you meet it: only when `socom2.exe` is started on its own — that is the one path where the game reads
+`config.json` itself. The launcher, given a damaged file, starts from the default settings instead.
 
 ### 70 — crashed
 
@@ -73,11 +85,15 @@ The game writes a crash record before the process dies, and the diagnostics zip 
 code also covers a Windows access violation and a Linux fatal signal, which are folded onto it so the launcher has
 one sentence to say. Please do send it — a crash without its record is a crash nobody can fix.
 
+Where you meet it: at any moment of a run, from the launcher or on its own.
+
 ### 71 — out of memory
 
 > The game ran out of memory. Close other programs, or lower the render scale on the VIDEO page.
 
 The render scale on the VIDEO page is the largest single lever.
+
+Where you meet it: at any moment of a run, from the launcher or on its own.
 
 ### 72 — card folder unwritable
 
@@ -88,6 +104,9 @@ a read-only network share, an archived OneDrive folder, or a still-mounted zip w
 folder somewhere ordinary — your user folder or a second drive — and it goes away. This is checked before the
 window opens, so no save is ever lost to it.
 
+Where you meet it: before the window, from either path (the first card slot's folder); or later, when the second
+slot's folder cannot be written — then the game carries on without that card and leaves with this code when it closes.
+
 ### 73 — wrong revision
 
 > These game files are a different disc revision than this copy of the game was built for. Unpack the download again.
@@ -95,6 +114,8 @@ window opens, so no save is ever lost to it.
 The generated code and the game files it reads are built for one disc revision, and the two have to match. This
 almost always means a folder that mixes files from two downloads. Unpack the download again into an empty folder and
 point the launcher at your ISO once more.
+
+Where you meet it: at boot, from either path, before the title screen.
 
 ### 74 — the game asked to restart
 
@@ -153,6 +174,15 @@ means you have some other revision.
 
 Because it is the *file's* hash and not the image's, how you dumped the disc does not matter — two different tools
 that both produce a faithful r0001 image will both pass.
+
+### What is GAME VERSION, and why is "r0004 (community update)" greyed out?
+
+The **GAME VERSION** row sits on both the PLAY page and the ONLINE page and says which build LAUNCH starts. It has
+two cells. **r0001 (your disc)** is the one you play. **r0004 (community update)** is the revision the community
+servers run; the download does not include an r0004 build, so that cell is drawn greyed with
+*"needs the r0004 game update -- planned"* beside it and cannot be picked. It is there so you know the version exists
+and why it is not on offer, not because something is wrong with your setup. See *"Can I play on PSRewired or another
+community server?"* below for why this client stays on r0001.
 
 ### Windows says "Windows protected your PC" and won't run the launcher
 

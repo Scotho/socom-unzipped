@@ -23,13 +23,18 @@ namespace ui
         y += 40.0f;
         text(ctx, "BUILT FROM", Vec2{x, y}, 15.0f, theme::dim, Face::Bold);
         y += 22.0f;
-        // Two columns on the same grid: what it is on the left, the licence it carries on the right.
+        // Two columns on the same grid: what it is on the left, the licence it carries on the right, as the
+        // SPDX id THIRD_PARTY_NOTICES.md gives it. Sprint 13 V8 (stranger audit row 14): this credited SDL2, which
+        // does not ship, and left out Dear ImGui, libjxl, libwebp and Brotli, which do. One row per licence;
+        // test_third_party_notices.py holds these rows and the notices' shipping rows to each other.
         static const char *credits[][2] = {
-            {"the PS2Recomp fork", "GPL-3.0"},
-            {"raylib (window, input, audio)", "zlib"},
-            {"ffmpeg (video)", "LGPL-2.1-or-later"},
-            {"SDL2", "zlib"},
-            {"Saira Stencil One, Rajdhani (type)", "SIL Open Font License 1.1"},
+            {"the PS2Recomp fork", "GPL-3.0-only"},
+            {"raylib, rlImGui (window, input, audio), zlib", "Zlib"},
+            {"FFmpeg (video)", "LGPL-2.1-or-later"},
+            {"libjxl, libwebp (via FFmpeg)", "BSD-3-Clause"},
+            {"Dear ImGui, Brotli, winpthreads", "MIT"},
+            {"libc++, libunwind (LLVM)", "Apache-2.0 WITH LLVM-exception"},
+            {"Saira Stencil One, Rajdhani (type)", "OFL-1.1"},
         };
         for (const auto &line : credits)
         {

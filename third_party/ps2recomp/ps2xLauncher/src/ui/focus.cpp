@@ -622,14 +622,14 @@ namespace ui
         visible = true;
     }
 
-    std::string launchBlockedReason(bool discOk, bool running, bool isoPathEmpty)
+    std::string launchBlockedReason(bool discOk, bool running, bool isoPathEmpty, const std::string &discMessage)
     {
         if (running)
             return "the game is running";
         if (isoPathEmpty)
-            return "choose your SOCOM II disc image first";
+            return kDiscNotChosen;
         if (!discOk)
-            return "that file is not SOCOM II (NTSC, r0001)";
+            return discMessage.empty() ? std::string(kDiscNotChecked) : discMessage;
         return std::string();
     }
 

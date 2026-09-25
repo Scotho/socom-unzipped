@@ -1766,14 +1766,29 @@ void register_launcher_tests()
 
         tc.Run("why LAUNCH is disabled, in the player's words", [](TestCase &t)
         {
-            t.Equals(ui::launchBlockedReason(false, false, true), std::string("choose your SOCOM II disc image first"),
+            t.Equals(ui::launchBlockedReason(false, false, true, ""), std::string("choose your SOCOM II disc image first"),
                      "no image chosen: the first thing to do, not an error about a file");
-            t.Equals(ui::launchBlockedReason(false, false, false), std::string("that file is not SOCOM II (NTSC, r0001)"),
-                     "a file that is not the game");
-            t.Equals(ui::launchBlockedReason(true, true, false), std::string("the game is running"), "one game at a time");
-            t.Equals(ui::launchBlockedReason(false, true, true), std::string("the game is running"),
+            t.Equals(ui::launchBlockedReason(true, true, false, ""), std::string("the game is running"), "one game at a time");
+            t.Equals(ui::launchBlockedReason(false, true, true, ""), std::string("the game is running"),
                      "the running game comes first: it is the blocker the player just created");
-            t.Equals(ui::launchBlockedReason(true, false, false), std::string(), "verified and idle: nothing in the way");
+            t.Equals(ui::launchBlockedReason(true, false, false, ui::kDiscCannotOpen), std::string(),
+                     "verified and idle: nothing in the way");
+        });
+
+        // Sprint 13 V8 (stranger audit row 10): a path that does not exist was "cannot open the file" on DISC and
+        // "that file is not SOCOM II (NTSC, r0001)" under LAUNCH -- a moved ISO reported as the wrong disc. One
+        // state, one sentence: LAUNCH says what the DISC page says, for every state the disc check can end in.
+        tc.Run("LAUNCH's blocked reason is the DISC page's sentence for the same state", [](TestCase &t)
+        {
+            t.Equals(ui::launchBlockedReason(false, false, false, ui::kDiscCannotOpen), std::string("cannot open the file"),
+                     "a path that does not exist (or cannot be read) is a file that cannot be opened, not the wrong disc");
+            for (const char *state : {ui::kDiscCannotOpen, ui::kDiscNoElf, ui::kDiscCannotReadElf, ui::kDiscWrongRevision})
+                t.Equals(ui::launchBlockedReason(false, false, false, state), std::string(state),
+                         std::string("LAUNCH repeats the DISC page: ") + state);
+            t.Equals(ui::launchBlockedReason(false, false, false, ""), std::string(ui::kDiscNotChecked),
+                     "a disc not checked yet is said as the DISC page says it");
+            t.Equals(ui::launchBlockedReason(false, false, true, ui::kDiscNotChosen), std::string(ui::kDiscNotChosen),
+                     "no image: the DISC page and LAUNCH share the sentence too");
         });
 
 
