@@ -4,7 +4,7 @@
 
 ## 1. Open issues
 
-21 open issues. *Carried* counts the sprint closes an issue has survived (its `Carried ...` comments, or one for the `carried` label alone); at 2 the next close asks the owner.
+22 open issues. *Carried* counts the sprint closes an issue has survived (its `Carried ...` comments, or one for the `carried` label alone); at 2 the next close asks the owner.
 
 | Issue | Title | Area | Milestone | Carried | Closing bar (first sentence) |
 |---|---|---|---|---|---|
@@ -29,6 +29,7 @@
 | #52 | An exact match is a fingerprint match, not a proof of the same code: the matcher blanks every addiu/ori constant and pairs repeated windows by order, with no counterexample test | recomp | backlog | 0 | Synthetic cases in `tools_py/tests/test_fingerprint.py`, `test_address_matcher.py` and `test_revision_toml.py` for: two routines that differ only in a non-address `addiu`/`ori` immediate; two duplicates whose order the rebuild swapped; changed control flow of the same length; an interior patch site; two adjacent tables; a function absent from the other image -- each either refused, left `unresolved`, or placed under a label weaker than `exact` that says why, and each seen RED on the tree at `ab6d7ff3` before the change; then `game/r0004/match.json` regenerated and the number of placements whose label or target changed stated in the closing comment (zero is an answer), with the r0004 gate passing 3/3 if any target moved. |
 | #53 | Two unbound stub translators (LibC fopen, cdHostPath) hand guest paths to the host without containment | recomp | backlog | 0 | Both stubs route through `resolvePs2PathUnderRoot` (the lexical walk; links resolved only for the memory-card root, S13-R8), with a `ps2x_tests` case each that a `..` above the root, a drive letter and a Windows device name are refused, RED first; or both stubs are removed if nothing can bind them, with the reason written at the removal site. |
 | #54 | The tracked r0001 function map carries 1090 nested forced-entry rows from before fix_ghidra_csv's fix | recomp | backlog | 0 | The map rebuilt from Ghidra's raw export (or each nested row truncated at the next start) with the fixed script, the row count and the changed rows stated; then a recomp, a runtime build and the r0001 gate 3/3 with PINS MATCH under the lock, because the generated code changes; the r0004 leg unchanged (its map is already clean). |
+| #55 | The map's bounds lose to the JAL-target scan's carvings: 6,640 functions run past their row, 6,750 output files are sub_ (upstream #206) | recomp | backlog | 0 | Upstream #206 (or our own version of its rule: a map row's bounds win over a carving that shares its start) applied; the census diff stated (functions whose extents change, the `sub_` files that become `FUN_`); both revisions recompiled and their gates 3/3 with the pins re-accepted under a ruling that names the run, because a changed image shape moves every pin (S13-R5 forbids accepting pins from a failed run — the accept happens only after a green run on the new shape). |
 
 ## 2. Ruled not an issue
 
