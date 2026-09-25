@@ -222,6 +222,7 @@ namespace
                 std::error_code ec;
                 std::filesystem::remove(root / "escape", ec);
                 std::filesystem::remove(root / "inner_link", ec);
+                std::filesystem::remove(root / "RUN", ec);
             }
         }
 
@@ -1599,7 +1600,92 @@ void register_ps2_runtime_io_tests()
                       "and creates nothing outside the roots");
         });
 
-        tc.Run("a symlink planted inside hostRoot, cdRoot or mcRoot cannot lead outside it", [](TestCase &t)
+        // Ruling S13-R8: only the memory-card folder -- the one a player might be sent -- is
+        // resolved through links. A link planted inside it that points outside is refused.
+        tc.Run("a link planted inside mcRoot cannot lead outside it", [](TestCase &t)
+        {
+            PathContainmentFixture fx;
+            std::string kind;
+            if (!plantDirectoryLink(fx.mcRoot / "escape", fx.outside, kind))
+            {
+#ifdef _WIN32
+                t.Skip("no symlink or junction could be planted under " + fx.mcRoot.string());
+#else
+                t.Fail("the symlink fixture under " + fx.mcRoot.string() + " could not be created");
+#endif
+                return;
+            }
+
+            t.IsTrue(std::filesystem::exists(fx.mcRoot / "escape" / "secret.txt"),
+                     "the " + kind + " fixture under mc0: really reaches the outside file");
+
+            const std::string guest = "mc0:/escape/secret.txt";
+            t.Equals(translatePs2Path(guest.c_str()), std::string(),
+                     "'" + guest + "' through a " + kind + " to outside the root is refused");
+
+            const int32_t readFd = fx.fio(fioOpen, guest, PS2_FIO_O_RDONLY);
+            fx.closeIfOpen(readFd);
+            t.Equals(readFd, -1, "fioOpen('" + guest + "') through the " + kind + " fails with -1");
+
+            const std::string createGuest = "mc0:/escape/created_link.txt";
+            const int32_t createFd = fx.fio(fioOpen, createGuest, PS2_FIO_WRITE_CREATE_TRUNC);
+            fx.closeIfOpen(createFd);
+            t.Equals(createFd, -1, "fioOpen('" + createGuest + "', O_CREAT) through the " + kind + " fails with -1");
+            t.IsFalse(std::filesystem::exists(fx.outside / "created_link.txt"),
+                      "'" + createGuest + "' created nothing outside the root");
+
+            t.Equals(fx.fio(fioMkdir, "mc0:/escape/made_dir"), -1,
+                     "fioMkdir through the " + kind + " fails with -1");
+            t.IsFalse(std::filesystem::exists(fx.outside / "made_dir"), "and made no directory outside the root");
+
+            t.Equals(fx.fio(fioRemove, guest), -1, "fioRemove('" + guest + "') through the " + kind + " fails with -1");
+            t.IsTrue(std::filesystem::exists(fx.secret), "'" + guest + "' left the outside file in place");
+        });
+
+        // Ruling S13-R8: hostRoot and cdRoot are laid out by the operator, who may build a disc
+        // tree out of links (game/disc_r0004's RUN, OVERLAY, NETGUI and CNF are junctions into
+        // game/disc). A link there is followed wherever it points; only the lexical walk applies.
+        tc.Run("a link under cdRoot or hostRoot that points outside still translates (the operator's layout)", [](TestCase &t)
+        {
+            PathContainmentFixture fx;
+            const std::filesystem::path elsewhere = fx.paths.base / "disc_elsewhere";
+            std::filesystem::create_directories(elsewhere);
+            std::ofstream(elsewhere / "RUN.BIN", std::ios::binary) << "disc data";
+
+            struct Case
+            {
+                const char *prefix;
+                std::filesystem::path root;
+            };
+            for (const Case &c : {Case{"cdrom0:", fx.cdRoot}, Case{"host0:", fx.hostRoot}})
+            {
+                const std::string prefix = c.prefix;
+                std::string kind;
+                if (!plantDirectoryLink(c.root / "RUN", elsewhere, kind))
+                {
+#ifdef _WIN32
+                    t.Skip("no symlink or junction could be planted under " + c.root.string());
+#else
+                    t.Fail("the symlink fixture under " + c.root.string() + " could not be created");
+#endif
+                    return;
+                }
+
+                const std::string guest = prefix + "\\RUN\\RUN.BIN;1";
+                t.Equals(translatePs2Path(guest.c_str()), (c.root / "RUN" / "RUN.BIN").lexically_normal().string(),
+                         "'" + guest + "' through the operator's " + kind + " translates to the linked file");
+                const int32_t fd = fx.fio(fioOpen, guest, PS2_FIO_O_RDONLY);
+                fx.closeIfOpen(fd);
+                t.IsTrue(fd >= 0, "and fioOpen('" + guest + "') opens it");
+
+                std::error_code ec;
+                std::filesystem::remove(c.root / "RUN", ec);
+            }
+        });
+
+        // "escape/../x" is x in the root, decided on the text: the ".." cancels the component before
+        // it, whatever that component is on disk, and never walks through it.
+        tc.Run("'escape/../x' is lexical for hostRoot, cdRoot and mcRoot: x in the root, and one '..' more is refused", [](TestCase &t)
         {
             PathContainmentFixture fx;
             for (const RootUnderTest &r : kRootsUnderTest)
@@ -1607,50 +1693,47 @@ void register_ps2_runtime_io_tests()
                 const std::string prefix = r.prefix;
                 const std::filesystem::path &root = fx.*(r.root);
                 std::string kind;
-                if (!plantDirectoryLink(root / "escape", fx.outside, kind))
-                {
-#ifdef _WIN32
-                    std::cout << "[U2] no symlink or junction could be planted under " << root.string()
-                              << "; the link case is skipped for " << prefix << std::endl;
-                    continue;
-#else
-                    t.Fail("the symlink fixture under " + root.string() + " could not be created");
-                    continue;
-#endif
-                }
+                const bool linked = plantDirectoryLink(root / "escape", fx.outside, kind);
 
-                t.IsTrue(std::filesystem::exists(root / "escape" / "secret.txt"),
-                         "the " + kind + " fixture under " + prefix + " really reaches the outside file");
-
-                const std::string guest = prefix + "/escape/secret.txt";
-                t.Equals(translatePs2Path(guest.c_str()), std::string(),
-                         "'" + guest + "' through a " + kind + " to outside the root is refused");
-
-                const int32_t readFd = fx.fio(fioOpen, guest, PS2_FIO_O_RDONLY);
-                fx.closeIfOpen(readFd);
-                t.Equals(readFd, -1, "fioOpen('" + guest + "') through the " + kind + " fails with -1");
-
-                const std::string createGuest = prefix + "/escape/created_link.txt";
-                const int32_t createFd = fx.fio(fioOpen, createGuest, PS2_FIO_WRITE_CREATE_TRUNC);
-                fx.closeIfOpen(createFd);
-                t.Equals(createFd, -1, "fioOpen('" + createGuest + "', O_CREAT) through the " + kind + " fails with -1");
-                t.IsFalse(std::filesystem::exists(fx.outside / "created_link.txt"),
-                          "'" + createGuest + "' created nothing outside the root");
-
-                const std::string removeGuest = prefix + "/escape/secret.txt";
-                t.Equals(fx.fio(fioRemove, removeGuest), -1, "fioRemove('" + removeGuest + "') fails with -1");
-                t.IsTrue(std::filesystem::exists(fx.secret), "'" + removeGuest + "' left the outside file in place");
-                if (!std::filesystem::exists(fx.secret))
-                {
-                    std::ofstream(fx.secret, std::ios::binary) << "outside every root";
-                }
+                const std::string guest = prefix + "escape/../x.dat";
+                t.Equals(translatePs2Path(guest.c_str()), (root / "x.dat").lexically_normal().string(),
+                         "'" + guest + "' is x.dat in the root" +
+                             std::string(linked ? " (escape is a " + kind + " to outside)" : ""));
+                const std::string climb = prefix + "escape/../../x.dat";
+                t.Equals(translatePs2Path(climb.c_str()), std::string(), "'" + climb + "' climbs above the root and is refused");
 
                 std::error_code ec;
                 std::filesystem::remove(root / "escape", ec);
             }
         });
 
-        tc.Run("contained paths still translate: in-root '..', ISO versions, a link that stays inside the root", [](TestCase &t)
+#ifdef _WIN32
+        tc.Run("a Windows device name is refused as a path component (CON, NUL, COM1, LPT9, CONIN$, with or without an extension)", [](TestCase &t)
+        {
+            PathContainmentFixture fx;
+            for (const RootUnderTest &r : kRootsUnderTest)
+            {
+                const std::string prefix = r.prefix;
+                for (const std::string &device : {std::string("CON"), std::string("nul"), std::string("NUL.txt"),
+                                                  std::string("aux.dat"), std::string("PRN"), std::string("com1"),
+                                                  std::string("COM9.log"), std::string("lpt1"), std::string("LPT9 .txt"),
+                                                  std::string("CONIN$"), std::string("conout$.x"),
+                                                  std::string("dir/NUL")})
+                {
+                    const std::string guest = prefix + device;
+                    t.Equals(translatePs2Path(guest.c_str()), std::string(), "'" + guest + "' names a device and is refused");
+                }
+                for (const std::string &ordinary : {std::string("CONFIG.DAT"), std::string("NULL"), std::string("COM10"),
+                                                    std::string("LPT0"), std::string("console"), std::string("AUXDATA.BIN")})
+                {
+                    const std::string guest = prefix + ordinary;
+                    t.IsFalse(translatePs2Path(guest.c_str()).empty(), "'" + guest + "' is an ordinary name and still translates");
+                }
+            }
+        });
+#endif
+
+        tc.Run("contained paths still translate: in-root '..', ISO versions, a link inside mcRoot that stays inside it", [](TestCase &t)
         {
             PathContainmentFixture fx;
             t.Equals(translatePs2Path("mc0:/dir/../save.dat"), (fx.mcRoot / "save.dat").lexically_normal().string(),
@@ -1665,18 +1748,24 @@ void register_ps2_runtime_io_tests()
             t.Equals(translatePs2Path("/SYSTEM.CNF;1"), (fx.cdRoot / "SYSTEM.CNF").lexically_normal().string(),
                      "a device-less path resolves under cdRoot");
 
-            std::filesystem::create_directories(fx.cdRoot / "real_dir");
-            std::ofstream(fx.cdRoot / "real_dir" / "inner.bin", std::ios::binary) << "inside";
+            std::filesystem::create_directories(fx.mcRoot / "real_dir");
+            std::ofstream(fx.mcRoot / "real_dir" / "inner.bin", std::ios::binary) << "inside";
             std::string kind;
-            if (plantDirectoryLink(fx.cdRoot / "inner_link", fx.cdRoot / "real_dir", kind))
+            if (!plantDirectoryLink(fx.mcRoot / "inner_link", fx.mcRoot / "real_dir", kind))
             {
-                t.Equals(translatePs2Path("cdrom0:\\inner_link\\inner.bin"),
-                         (fx.cdRoot / "inner_link" / "inner.bin").lexically_normal().string(),
-                         "a " + kind + " that stays inside cdRoot is still followed");
-                const int32_t fd = fx.fio(fioOpen, "cdrom0:\\inner_link\\inner.bin", PS2_FIO_O_RDONLY);
-                fx.closeIfOpen(fd);
-                t.IsTrue(fd >= 0, "and fioOpen through it succeeds");
+#ifdef _WIN32
+                t.Skip("no symlink or junction could be planted under " + fx.mcRoot.string());
+#else
+                t.Fail("the symlink fixture under " + fx.mcRoot.string() + " could not be created");
+#endif
+                return;
             }
+            t.Equals(translatePs2Path("mc0:/inner_link/inner.bin"),
+                     (fx.mcRoot / "inner_link" / "inner.bin").lexically_normal().string(),
+                     "a " + kind + " that stays inside mcRoot is still followed");
+            const int32_t fd = fx.fio(fioOpen, "mc0:/inner_link/inner.bin", PS2_FIO_O_RDONLY);
+            fx.closeIfOpen(fd);
+            t.IsTrue(fd >= 0, "and fioOpen through it succeeds");
         });
     });
 }
