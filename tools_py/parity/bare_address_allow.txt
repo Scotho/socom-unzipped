@@ -66,6 +66,8 @@ tools_py/parity/online_match_ours.py 0x4365c0 message: the FREEZE-DETECTION blin
 tools_py/parity/online_match_ours.py 0x437ce8 message: argparse help text for --endgame naming the peek items it needs
 tools_py/parity/online_match_ours.py 0x408c58 message: argparse help text naming the actor chain
 tools_py/parity/two_machine_readout.py 0x408F10 message: the readout's NO-DATA line naming the clock rows it looked for
+tools_py/parity/control_round_readout.py 0x656340 message: the r0001 getter global the runtime's install LINE prints (it decodes the word from the image; runtime/socom2_rtnet_config.h), matched as text, never read
+tools_py/parity/control_round_readout.py 0x654e78 message: the r0004 getter global the runtime's install LINE prints (it decodes the word from the image; runtime/socom2_rtnet_config.h), matched as text, never read
 
 # -- bound
 tools_py/parity/addresses.py 0x100000 bound: the EE user-RAM lower bound a pointer must clear before it is followed

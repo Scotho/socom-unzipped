@@ -1,6 +1,6 @@
 """Tiny UDP DNS responder for the PCSX2 guest: answers the SOCOM II / DNAS hostnames with the
-Horizon host address and NXDOMAIN for everything else. Run as Administrator (binds UDP 53 on the
-LAN address). Usage: python -m tools_py.parity.dns_stub [--bind IP] [--answer IP]
+Horizon host address and NXDOMAIN for everything else. It binds UDP 53 on the LAN address; on Windows that
+needs no Administrator (Windows has no privileged ports, and nothing else listens on 53 on this host). Usage: python -m tools_py.parity.dns_stub [--bind IP] [--answer IP]
 
 --bind/--answer default to the SOCOM_SERVER_IP environment variable (scripts/parity/env.sh, the one knob
 that points the harness at another server). There is no LAN default (Sprint 13 Task H6): unset, or set to a
