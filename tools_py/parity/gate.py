@@ -27,6 +27,7 @@ measured values the standard (the summary says so); `--pins` is the lock-free dr
 import argparse
 import glob
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -906,17 +907,54 @@ def pins_verdict(drifts, accepted, compared, revision="r0001"):
                        "standard in %s, or restore the input)" % (names, standard))
 
 
+def accepted_standard(current, path):
+    """What an --accept-pins write puts in `path`: every pin `current` MEASURED, and, for a pin `current`
+    carries but could not measure (sha256 None -- `mapping` before a stage has run and the runtime has
+    printed its line), the value the standard already holds.
+
+    Carry rather than "one write, at the end", because a pin can be unmeasurable at EVERY moment a given
+    path could write: `gate --pins --accept-pins` never launches, so its `mapping` is absent whenever it
+    writes. Only a write that starts from the previous standard cannot drop a pin.
+
+    It has already dropped one. On 2026-09-25 at 01:32 the r0004 rebuild (stamp s11_r0004_rebuild1)
+    drifted on `env` alone: the write before the launch rebuilt the standard out of the measured set,
+    where `mapping` was still absent, and the write after the run only fires when `mapping` itself
+    drifted -- which it had not. scripts/parity/pins_r0004.json lost its mapping pin while the very
+    summary of that run printed `PIN mapping sha256=c393b87b99732a1f ok`, and the next gate on that
+    revision was REFUSED (exit 7) for an unpinned input. A standard that silently loses a pin is the
+    failure this mechanism exists to make impossible (pins.py's opening note).
+
+    Carrying is not hoarding: a name the tree no longer pins at all is not in `current`, so it is still
+    dropped -- that is what --accept-pins is for. Only a name the run carries and cannot measure is kept."""
+    held, detail = {}, {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            doc = json.load(f)
+        held = dict(doc.get("pins", {}) or {})
+        detail = dict(doc.get("detail", {}) or {})
+    except (OSError, ValueError):
+        pass                    # no standard yet (or an unreadable one): there is nothing to carry
+    out = OrderedDict()
+    for name, p in current.items():
+        if p.sha256 is None and held.get(name):
+            out[name] = pins.Pin(name, held[name], detail.get(name, p.detail))
+        else:
+            out[name] = p
+    return out
+
+
 def check_pins(current, accept=False, note="", revision="r0001"):
     """(drifts, expected, accepted) for `current` against THIS REVISION's committed standard; with
-    `accept`, a drift rewrites that standard from `current` and is reported as accepted rather than
-    refused. An r0004 gate reads and writes scripts/parity/pins_r0004.json and can no more reach r0001's
-    file than an r0001 gate can reach its (review F2)."""
+    `accept`, a drift rewrites that standard from `current` -- carrying forward any pin `current` cannot
+    measure yet (accepted_standard) -- and is reported as accepted rather than refused. An r0004 gate
+    reads and writes scripts/parity/pins_r0004.json and can no more reach r0001's file than an r0001 gate
+    can reach its (review F2)."""
     path = expected_pins_path(revision)
     expected = pins.load_expected(path) or {}
     drifts = pins.compare(current, expected)
     accepted = bool(drifts) and accept
     if accepted:
-        pins.write_expected(current, path, note=note)
+        pins.write_expected(accepted_standard(current, path), path, note=note)
     return drifts, expected, accepted
 
 
@@ -1086,7 +1124,8 @@ def main(argv=None):
         current["mapping"] = pins.mapping_pin([os.path.join(out_root, name + ".game.log") for name in wanted])
         late = [d for d in pins.compare(current, expected) if d.name == "mapping"]
         if late and args.accept_pins:
-            pins.write_expected(current, expected_pins_path(revision),
+            path = expected_pins_path(revision)
+            pins.write_expected(accepted_standard(current, path), path,
                                 note="gate --accept-pins, stamp %s" % args.stamp)
             accepted = True
         all_drifts = drifts + late
