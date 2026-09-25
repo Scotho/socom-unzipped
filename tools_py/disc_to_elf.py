@@ -30,8 +30,8 @@ The stages, with what each cost on the machine they were measured on (2026-09-21
   4. elf        the loader + the two overlays -> `socom2_game.elf`     instant
                 (`make_overlay_elf.py`, exactly as `build.sh recomp` calls it)
 
-Stages 2 and 3 emulate R5900 code, so they need Unicorn (`pip install unicorn`; 2.1.4 is what this
-was measured with) and they are slow -- their chatter goes to `<out>/disc_to_elf-<stage>.log`
+Stages 2 and 3 emulate R5900 code, so they need Unicorn (`pip install -r requirements.txt`, whose
+unicorn row is 2.1.4) and they are slow -- their chatter goes to `<out>/disc_to_elf-<stage>.log`
 rather than your terminal. Everything else is plain Python; no 7z, no external extractor.
 
 Nothing here writes inside the ISO or needs it after stage 1, and nothing writes outside `--out`.

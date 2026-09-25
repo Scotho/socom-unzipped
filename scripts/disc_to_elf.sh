@@ -9,7 +9,7 @@
 # code package by running the game's own code under Unicorn, merges the result into
 # game/overlays/socom2_game.elf, and verifies every step against tools_py/disc_to_elf_expected.json.
 # About ten minutes and 4.2 GB the first time; a second run is a no-op that still verifies. The two
-# decryption stages need Unicorn: pip install unicorn.
+# decryption stages need Unicorn: pip install -r requirements.txt.
 #
 # All of the work is tools_py/disc_to_elf.py -- this wrapper exists so the documented command has the
 # same shape as the other two a newcomer types (scripts/bootstrap_windows.sh, ./build.sh) and so it

@@ -598,6 +598,9 @@ only ever grow, so more than the number here is fine and fewer is a regression t
 > 764 C++; 2553, 1832, 1723 and 1104 Python; three skip counts) and three "this row said ... until 2026-09-21" notes
 > (`unhandled=0`, the C++ 500, the Python 1104 / `skipped=63`). One dated count per row stays; the earlier ones are
 > in this file's git history (`git log -p -- docs/DEVELOPING.md`).
+>
+> Superseded 2026-09-25 (Sprint 13 R2): row 5 said "about 15 min", README said "about 15 minutes" and HANDOFF's
+> per-stage figures add to 17 (documents audit row 39); the three measured gates above are the reading.
 
 **The Python packages** are `requirements.txt` at the root, pinned: `python -m pip install -r requirements.txt` (numpy,
 pillow, zstandard, unicorn, capstone, PyYAML; on Windows also pycaw, comtypes, psutil and PyAudioWPatch for the audio
@@ -614,9 +617,12 @@ lock: its command line is not on `scripts/loop_lock.sh`'s busy list (a python wh
 process-driving ones) and the cases that need `dist/`, `dist-release/`, the launcher, the .NET server or `game/`. A new
 test file is in the subset until it is measured slow. `--list` prints the modules, `-v` the verbose runner. Row 4 (the
 whole suite) is still the bar before a commit that touches anything the subset leaves out.
->
-> Superseded 2026-09-25 (Sprint 13 R2): row 5 said "about 15 min", README said "about 15 minutes" and HANDOFF's
-> per-stage figures add to 17 (documents audit row 39); the three measured gates above are the reading.
+
+**The gate's fixtures** (`tests/fixtures/gate/`, what `tools_py/tests/test_gate.py` scores on a fresh clone) are 102
+files, 3.37 MB (2026-09-25, H7's review round; 106 files and 3.69 MB before identical captures were stored once --
+a fixture's `shared.txt` lists `<name> <kept name>` and `make_gate_fixtures.materialize` expands it). They are rebuilt
+from real runs by `python -m tools_py.parity.make_gate_fixtures [--only BUILDER ...] [--search DIR ...]`, which scores
+each fixture and refuses one that does not reach its source run's verdict.
 
 `python -m tools_py.docmaint` checks the documentation registry (`docs/DOC_MAINTENANCE.md`): every document
 classified, the ruling counter one past the highest in use, no undated suite count outside **this file**, every

@@ -4,12 +4,12 @@
 # pytest here, and tools_py/tests/test_test_hygiene.py fails on a test that imports it.
 # tools_py/tests/test_requirements.py holds this file to the tree: every third-party import has a row, every row
 # is imported somewhere (or says whose dependency it is), every row is pinned.
-# The pins are the versions the Windows host runs the whole suite green on (2026-09-25); each has a wheel for
-# CPython 3.12 on win_amd64 and manylinux x86_64 (checked with `pip download --only-binary=:all:` that day).
+# The pins are the versions the last green CI runs installed (2026-09-25); each has a wheel for cp312 on ubuntu-24.04
+# (numpy and pillow need manylinux_2_28) and on windows (checked with `pip download --only-binary=:all:` that day).
 
 # The parity harness and most of tools_py: images and arrays.
 numpy==2.5.3
-pillow==12.1.1
+pillow==12.3.0
 
 # tools_py/parity/p2s_extract.py: PCSX2 save states are zstd-compressed.
 zstandard==0.25.0

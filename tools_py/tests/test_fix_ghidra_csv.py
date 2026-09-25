@@ -175,6 +175,12 @@ class FixGhidraCsv(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertTrue(os.path.isfile(out))
 
+    def test_help_prints_the_usage_and_succeeds(self):
+        for flag in ("--help", "-h"):
+            p = subprocess.run([sys.executable, SCRIPT, flag], capture_output=True, text=True)
+            self.assertEqual(p.returncode, 0, p.stderr)
+            self.assertIn("usage: fix_ghidra_csv.py", p.stdout)
+
     def test_bad_arguments_print_the_usage(self):
         self.write_map([row("a", 0x1000, 0x1100)])
         for args in (["--out"], ["--bogus"]):

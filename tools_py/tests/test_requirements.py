@@ -14,6 +14,7 @@ import re
 import subprocess
 import sys
 import unittest
+import warnings
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 REQUIREMENTS = os.path.join(ROOT, "requirements.txt")
@@ -55,7 +56,9 @@ def third_party_imports():
             continue
         with open(os.path.join(ROOT, rel), encoding="utf-8", errors="replace") as fh:
             try:
-                tree = ast.parse(fh.read())
+                with warnings.catch_warnings():         # a stray escape in some tool's string is not this test's
+                    warnings.simplefilter("ignore", SyntaxWarning)
+                    tree = ast.parse(fh.read())
             except SyntaxError:
                 continue
         for node in ast.walk(tree):

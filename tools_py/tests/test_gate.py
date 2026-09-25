@@ -36,13 +36,21 @@ HUD_REF = os.path.join(ROOT, "scripts", "parity", "ref_hud_ours.png")
 # Sprint 13 H7 (harness audit #35): the real runs below used to be the only witness for five cases, which then ran
 # on the owner's machine alone. make_gate_fixtures' real_mission / real_transition builders reduced them from the
 # archives (each fixture checked to reach its source's verdict): frozen = s5_gatefix (R34, 0 live hold pairs),
-# failed = s5_head_1x_b (the MISSION FAILURE screen; its banner frames at full size), probe5 = gameplay_probe5's
+# failed = s5_head_1x_b (the MISSION FAILURE screen; its banner frame at the source's 640x451), probe5 = gameplay_probe5's
 # captures beside good.drive.txt, and the transition runs tfix3 (clean, 18 frames) and wcap2 (stalled at the dialog).
+# Identical captures are stored once and listed in the fixture's shared.txt; _mission_run() materializes the run.
 FROZEN_MISSION_LOG = os.path.join(FIXTURES, "mission", "frozen.drive.txt")
 FROZEN_MISSION_RUN = os.path.join(FIXTURES, "mission", "frozen")
 FAILED_MISSION_LOG = os.path.join(FIXTURES, "mission", "failed.drive.txt")
 FAILED_MISSION_RUN = os.path.join(FIXTURES, "mission", "failed")
 PROBE5_MISSION_RUN = os.path.join(FIXTURES, "mission", "probe5")
+
+
+def _score_fixture_run(log, fixture_dir):
+    """score_mission_log over a fixture with its shared.txt expanded (make_gate_fixtures.materialize)."""
+    from tools_py.parity.make_gate_fixtures import materialize
+    with tempfile.TemporaryDirectory() as tmp:
+        return gate.score_mission_log(log, materialize(fixture_dir, os.path.join(tmp, "mission")))
 CLEAN_TRANSITION_FIXTURE = os.path.join(FIXTURES, "transition_runs", "tfix3")
 STALLED_TRANSITION_FIXTURE = os.path.join(FIXTURES, "transition_runs", "wcap2")
 
@@ -237,7 +245,7 @@ class MissionScoring(unittest.TestCase):
         self.assertIn("NO-DATA", detail)
 
     def test_known_good_log_passes(self):
-        ok, detail = gate.score_mission_log(GOOD_MISSION_FIXTURE, PROBE5_MISSION_RUN)
+        ok, detail = _score_fixture_run(GOOD_MISSION_FIXTURE, PROBE5_MISSION_RUN)
         self.assertTrue(ok, detail)
         self.assertIn("6/6 hold captures are gameplay", detail)
         if os.path.isfile(GOOD_MISSION_LOG) and os.path.isdir(GOOD_MISSION_FRAMES):   # the full-size run, where kept
@@ -251,7 +259,7 @@ class MissionScoring(unittest.TestCase):
         self.assertIn("0/6 hold captures are gameplay", detail)
 
     def test_real_frozen_runs_fail(self):
-        ok, detail = gate.score_mission_log(FROZEN_MISSION_LOG, FROZEN_MISSION_RUN)
+        ok, detail = _score_fixture_run(FROZEN_MISSION_LOG, FROZEN_MISSION_RUN)
         self.assertFalse(ok, detail)
         self.assertIn("6/6 hold captures are gameplay", detail)
         self.assertIn("0 live hold pairs", detail)
@@ -273,7 +281,7 @@ class MissionScoring(unittest.TestCase):
             self.assertIn("HUD never matched", detail)
 
     def test_real_runs_that_failed_the_mission_on_screen_fail(self):
-        ok, detail = gate.score_mission_log(FAILED_MISSION_LOG, FAILED_MISSION_RUN)
+        ok, detail = _score_fixture_run(FAILED_MISSION_LOG, FAILED_MISSION_RUN)
         self.assertFalse(ok, detail)
         self.assertIn("MISSION FAILED on screen", detail)
         self.assertIn("4 live hold pairs", detail)      # live: only the banner check can fail it

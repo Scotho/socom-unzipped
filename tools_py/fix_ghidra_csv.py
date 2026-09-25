@@ -24,6 +24,10 @@ argv = sys.argv[1:]
 i = 0
 while i < len(argv):
     arg = argv[i]
+    if arg in ("-h", "--help"):
+        print(USAGE)
+        print(__doc__)
+        sys.exit(0)
     if arg == "--out":
         if i + 1 >= len(argv):
             sys.exit("fix_ghidra_csv: --out needs a path\n" + USAGE)

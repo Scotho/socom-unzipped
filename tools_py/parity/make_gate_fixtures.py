@@ -199,7 +199,8 @@ SEARCH = [os.path.join(ROOT, "logs", "parity")]
 
 # fixture name: (drive log, capture dir) relative to a search root; the captures are every hold plus final.png.
 # Captures at 320x224 in a 64-colour palette, as small as the verdict allows -- except a capture that shows the MISSION
-# FAILURE banner, which mission_fail.detect does not find at 320x224 (measured 2026-09-25): it keeps its own size.
+# FAILURE banner, which mission_fail.detect does not find at 320x224 (measured 2026-09-25): it keeps the source's own
+# size (640x451 for s5_head_1x_b), and identical captures are stored once (shared.txt, materialize()).
 REAL_MISSION_RUNS = {
     "frozen": ("gate/s5_gatefix/mission.drive.log", "gate/s5_gatefix/mission"),     # R34: 0 live hold pairs
     "failed": ("gate/s5_head_1x_b/mission.drive.log", "gate/s5_head_1x_b/mission"),  # the MISSION FAILURE screen
@@ -223,7 +224,46 @@ def find_source(rel):
                      % (rel, SEARCH))
 
 
+SHARED = "shared.txt"
+
+
+def _share_duplicates(out_dir):
+    """Keep one file per identical capture and list the others in shared.txt as `<name> <kept name>` (a symlink is not
+    portable to a Windows checkout). s5_head_1x_b's s38, s40 and final.png are the same full-size MISSION FAILURE
+    frame, 101 KB each."""
+    seen, lines = {}, []
+    for n in sorted(os.listdir(out_dir)):
+        with open(os.path.join(out_dir, n), "rb") as f:
+            data = f.read()
+        if data in seen:
+            os.remove(os.path.join(out_dir, n))
+            lines.append("%s %s" % (n, seen[data]))
+        else:
+            seen[data] = n
+    if lines:
+        with open(os.path.join(out_dir, SHARED), "w", newline="\n", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+
+
+def materialize(fixture_dir, dest):
+    """The fixture as a run directory the scorer can read: every file copied into dest, and each shared.txt line
+    `<name> <kept name>` written as its own copy. Returns dest."""
+    os.makedirs(dest, exist_ok=True)
+    for n in os.listdir(fixture_dir):
+        if n != SHARED:
+            shutil.copyfile(os.path.join(fixture_dir, n), os.path.join(dest, n))
+    shared = os.path.join(fixture_dir, SHARED)
+    if os.path.isfile(shared):
+        with open(shared, encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    name, kept = line.split()
+                    shutil.copyfile(os.path.join(fixture_dir, kept), os.path.join(dest, name))
+    return dest
+
+
 def build_real_mission_fixtures():
+    import tempfile
     out_root = os.path.join(FIXTURES, "mission")
     from tools_py.parity import mission_fail
     for name, (log_rel, caps_rel) in REAL_MISSION_RUNS.items():
@@ -246,13 +286,15 @@ def build_real_mission_fixtures():
                 rgb = im.convert("RGB")
                 rgb = rgb if banner else rgb.resize((320, 224), Image.BOX)
                 rgb.quantize(colors=64, method=Image.MEDIANCUT).save(os.path.join(out_dir, cap), optimize=True)
-        ok, detail = gate.score_mission_log(log, out_dir)
+        _share_duplicates(out_dir)
+        with tempfile.TemporaryDirectory() as tmp:
+            ok, detail = gate.score_mission_log(log, materialize(out_dir, os.path.join(tmp, name)))
         failed_screen = "MISSION FAILED on screen" in want_detail
         if ok != want_ok or failed_screen != ("MISSION FAILED on screen" in detail):
             raise SystemExit("mission fixture %s: the source says (%s, %s) and the fixture (%s, %s)"
                              % (name, want_ok, want_detail, ok, detail))
-        print("mission/%s: %d captures from %s; verdict %s as the source's: %s"
-              % (name, len(caps), src_caps, "PASS" if ok else "FAIL", detail.split("; CONSOLE")[0]))
+        print("mission/%s: %d captures (%d files) from %s; verdict %s as the source's: %s"
+              % (name, len(caps), len(os.listdir(out_dir)), src_caps, "PASS" if ok else "FAIL", detail.split("; CONSOLE")[0]))
 
 
 def build_real_transition_fixtures():
