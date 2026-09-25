@@ -10,16 +10,50 @@
 #                                                the same owner (two of "main"'s chains overlapped 2026-09-09)
 #   loop_lock.sh renew <owner>                   refresh the heartbeat of a lock <owner> holds
 #   loop_lock.sh release <owner>                 exit 1 if <owner> is not the holder
-#   loop_lock.sh check                           FREE, or HELD with the heartbeat age
-#   loop_lock.sh wait <owner> [max_minutes] [--purpose <p>]   take, retrying every minute (default 40)
-#   loop_lock.sh run <owner> [--purpose <p>] [--wait <min>] -- <cmd...>
-#       take (or wait up to <min> minutes), renew the heartbeat every LOOP_LOCK_RENEW_SEC (60) from a
+#   loop_lock.sh check                           FREE, or HELD with the heartbeat age; then one QUEUED line
+#                                                per waiting ticket, oldest (the next grant) first
+#   loop_lock.sh wait <owner> [<minutes>] [--wait-seconds <s>] [--purpose <p>] [--print-id]
+#       take, QUEUEING for up to <minutes> (default 40) of wall time -- minutes whatever the poll
+#       interval (issue #35: until Sprint 13 the number was a count of attempts, so a 5 s poll turned
+#       --wait 180 into 15 minutes). --wait-seconds gives the duration in seconds instead.
+#   loop_lock.sh run <owner> [--purpose <p>] [--wait <minutes> | --wait-seconds <s>] -- <cmd...>
+#       take (or queue up to that long), renew the heartbeat every LOOP_LOCK_RENEW_SEC (60) from a
 #       background loop while <cmd> runs, release on exit (also on failure or a signal) and return
 #       <cmd>'s exit code. If the lock cannot be taken, <cmd> does not run and the exit code is 75.
 #       If a renew finds the lock no longer ours, it prints "LOCK LOST" to stderr and stops renewing
 #       (the command is not killed).
 #   loop_lock.sh id                              print "<owner> <take_id>" of the live record
 #   loop_lock.sh busy                            print the busy list as this caller sees it
+#   loop_lock.sh version                         print this script's git blob ("blob <sha1>"): a waiter
+#                                                that started before a new script landed is still running
+#                                                the OLD one (bash reads a script by offset) -- compare
+#
+# THE QUEUE (Sprint 13 H2, issue #36). Fairness is a property of the grant, not of poll speed: until
+# Sprint 13 whoever polled the moment a holder released won, so a 60 s poller lost every hand-off to a
+# 5 s poller (an hour straight on 2026-09-23; a 30 s poller lost a chain's step gap twice on 2026-09-25).
+#   - A waiter (`wait`, `run --wait`, `run_detached.sh --wait`) that is refused writes a TICKET, under the
+#     mutex, into the queue dir "$LOCK.q/": the file <arrival>-<owner>-<pid>x<rand>, where <arrival> is
+#     16 digits (epoch seconds + microseconds) so the names sort in arrival order. It holds
+#     "<owner> <purpose>"; its mtime is the waiter's own HEARTBEAT.
+#   - A FREE lock is granted only to the oldest LIVE ticket's waiter; a take with no ticket (a plain
+#     `take`, `run` without --wait, or a waiter on its first attempt) is granted only when the queue is
+#     empty -- otherwise BUSY, naming the head. The claim removes the winner's ticket in the same mutex
+#     hold. A reap of a stale HOLDER is done by anyone, but the reaper claims only if the grant is its.
+#   - A waiter re-touches its ticket every poll slice (min(LOOP_LOCK_WAIT_SEC, 5) s) and makes a full
+#     attempt every LOOP_LOCK_WAIT_SEC -- and at once whenever a slice finds the lock free, so the head
+#     takes a released lock within ~5 s whatever its poll.
+#   - A ticket whose heartbeat is LOOP_LOCK_TICKET_STALE_SEC (180) old is DROPPED by the next grant
+#     decision (a "TICKET-DROPPED" history line): a waiter killed hard (TaskStop, SIGKILL) cannot wedge the
+#     head. This is not the holder's 15 min: a holder is renewed from a job wrapper every 60-300 s and a
+#     false reap makes two holders, while a waiter renews itself every <= 5 s and a false drop costs
+#     nothing -- a live waiter whose ticket vanished re-queues under the SAME name, i.e. its old place.
+#   - A waiter leaves the queue on success (in the claim), on its timeout, and on INT/TERM/HUP.
+#   - CHAINS hold ONE lock across their steps: launch the chain script once (`run` or run_detached.sh);
+#     every step's own take/run/release inside it is NESTED (LOOP_LOCK_HELD, below) and never queues.
+#     One take per step leaves a gap between steps, and the queue then grants that gap to the head.
+#   - Mixed fleet: a script from before the queue ignores "$LOCK.q/" (it barges; nothing breaks -- the
+#     record and the mutex are unchanged). Land a new lock script only when `check` says FREE with no
+#     queue and `busy` is empty, then restart every waiter (docs/KNOWN.md section 4, the rollout row).
 #
 # Layout: the claim dir "$LOCK.d" holds the record "$LOCK.d/record":
 #   <owner> <take_id> <heartbeat_epoch> <purpose...>      take_id = <epoch>-<pid>x<random>
@@ -64,7 +98,8 @@
 # Environment (tests): LOOP_LOCK_PATH (lock base path), LOOP_LOCK_PS_CMD (a shell command printing one
 # "<ProcessId>|<ParentProcessId>|<CreationStamp>|<Name>|<CommandLine>" line per process; the stamp is a
 # sortable number or empty), LOOP_LOCK_SELF_WINPID (the Windows PID the ancestor walk starts from),
-# LOOP_LOCK_RENEW_SEC, LOOP_LOCK_WAIT_SEC (wait poll, 60), LOOP_LOCK_REAP_MIN, LOOP_LOCK_STALE_MIN,
+# LOOP_LOCK_RENEW_SEC, LOOP_LOCK_WAIT_SEC (a waiter's full-attempt interval, 60; it never changes how long
+# --wait waits), LOOP_LOCK_TICKET_STALE_SEC (180), LOOP_LOCK_REAP_MIN, LOOP_LOCK_STALE_MIN,
 # LOOP_LOCK_MUTEX_WAIT_SEC, LOOP_LOCK_MUTEX_STALE_SEC, and LOOP_LOCK_TEST_PAUSE_AT=<point>[,...] with
 # LOOP_LOCK_TEST_PAUSE_DIR: at a named point the script touches <dir>/<point>.paused and waits for
 # <dir>/<point>.go (points: reap_before_mutex, reap_inside_mutex, renew_before_mutex, renew_inside_mutex,
@@ -90,6 +125,7 @@ LOCK="${LOOP_LOCK_PATH:-$(_loop_lock_default)}"
 LOCKD="$LOCK.d"
 REC="$LOCKD/record"
 MX="$LOCK.mx"
+Q="$LOCK.q"
 HISTORY="$(dirname "$LOCK")/.loop_lock_history"
 REAP_MIN="${LOOP_LOCK_REAP_MIN:-15}"
 STALE_MIN="${LOOP_LOCK_STALE_MIN:-45}"
@@ -97,6 +133,9 @@ RENEW_SEC="${LOOP_LOCK_RENEW_SEC:-60}"
 WAIT_SEC="${LOOP_LOCK_WAIT_SEC:-60}"
 MX_WAIT_SEC="${LOOP_LOCK_MUTEX_WAIT_SEC:-10}"
 MX_STALE_SEC="${LOOP_LOCK_MUTEX_STALE_SEC:-30}"
+TICKET_STALE_SEC="${LOOP_LOCK_TICKET_STALE_SEC:-180}"
+SLICE_SEC=5; [ "$WAIT_SEC" -lt "$SLICE_SEC" ] 2>/dev/null && SLICE_SEC="$WAIT_SEC"
+[ "$SLICE_SEC" -ge 1 ] 2>/dev/null || SLICE_SEC=1
 SELF="$0"
 
 now() { printf '%(%s)T\n' -1; }
@@ -367,6 +406,75 @@ nested() {
   held && [ "$LOOP_LOCK_HELD" = "$(id_of "$(current_line)")" ]
 }
 
+# ---- the queue -------------------------------------------------------------------------------------
+# Tickets "$Q/<16-digit arrival>-<owner>-<pid>x<rand>"; the mtime is the waiter's heartbeat. Every change
+# to the set of tickets (enqueue, drop, the claim's removal, rmdir of the empty dir) runs under the mutex;
+# only the owning waiter's `touch -c` (which never re-creates a dropped ticket) runs outside it.
+QTICKET=""     # this process's own ticket name while it waits (do_wait); empty for a plain take
+Q_N=0 Q_HEAD=""
+
+new_ticket_name() {   # owner
+  local t="${EPOCHREALTIME:-}"; t="${t//[.,]/}"
+  case "$t" in ''|*[!0-9]*) t="$(now)000000";; esac
+  echo "$t-${1//[^A-Za-z0-9_.-]/_}-$$x$RANDOM$RANDOM"
+}
+ticket_owner() { local o="${1#*-}"; echo "${o%-*}"; }         # name -> owner
+ticket_arrival() { local a="${1%%-*}"; echo "${a:0:10}"; }     # name -> arrival epoch (seconds)
+
+# "<name> <heartbeat epoch>" per ticket, oldest arrival first. With "drop" (under the mutex) a ticket whose
+# heartbeat is TICKET_STALE_SEC old is removed with a history line and left out.
+q_list() {   # [drop]
+  [ -d "$Q" ] || return 0
+  local n e t; t=$(now)
+  (cd "$Q" 2>/dev/null && stat -c '%n %Y' -- [0-9]*-* 2>/dev/null) | LC_ALL=C sort |
+  while read -r n e; do
+    case "$n" in [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]*-*) ;; *) continue;; esac
+    case "$e" in ''|*[!0-9]*) continue;; esac
+    if [ "$1" = drop ] && [ $(( t - e )) -ge "$TICKET_STALE_SEC" ] && mx_mine; then
+      rm -f "$Q/$n" 2>/dev/null && mx_log "TICKET-DROPPED $n (heartbeat $(( t - e )) s old)"
+      continue
+    fi
+    echo "$n $e"
+  done
+}
+
+# Under the mutex: may this caller claim a FREE lock? Yes when no live ticket waits, or when the oldest
+# live one is the caller's own. Sets Q_N and Q_HEAD; removes the empty queue dir.
+q_may_claim() {
+  Q_N=0 Q_HEAD=""
+  [ -d "$Q" ] || return 0                      # no queue: no fork inside the mutex hold
+  local live; live=$(q_list drop)
+  Q_N=$(printf '%s' "$live" | grep -c .)
+  Q_HEAD=$(printf '%s\n' "$live" | head -n 1 | cut -d' ' -f1)
+  [ "$Q_N" -eq 0 ] && { rmdir "$Q" 2>/dev/null; return 0; }
+  [ -n "$QTICKET" ] && [ "$Q_HEAD" = "$QTICKET" ]
+}
+q_busy() {   # the BUSY line for a refusal by the queue (uses Q_N, Q_HEAD)
+  echo "BUSY: FREE, but $Q_N waiter(s) queued; the next grant goes to $(ticket_owner "$Q_HEAD") (queued $(( $(now) - $(ticket_arrival "$Q_HEAD") )) s ago)${QTICKET:+ -- this waiter is queued}"
+}
+# Under the mutex, right after a claim: the winner's ticket leaves the queue.
+q_claimed() { [ -n "$QTICKET" ] && rm -f "$Q/$QTICKET" 2>/dev/null; rmdir "$Q" 2>/dev/null; return 0; }
+
+q_enqueue() {   # owner purpose -- write (or re-write, under the same name) this waiter's ticket
+  mx_acquire || return 1
+  mkdir -p "$Q" 2>/dev/null
+  [ -f "$Q/$QTICKET" ] || { printf '%s %s\n' "$1" "$2" > "$Q/$QTICKET"; } 2>/dev/null
+  local rc=1; [ -f "$Q/$QTICKET" ] && rc=0
+  mx_release; return $rc
+}
+q_leave() {   # remove this waiter's ticket (and the dir if that empties it)
+  [ -n "$QTICKET" ] || return 0
+  if mx_acquire; then rm -f "$Q/$QTICKET" 2>/dev/null; rmdir "$Q" 2>/dev/null; mx_release
+  else rm -f "$Q/$QTICKET" 2>/dev/null; fi
+  QTICKET=""
+}
+
+script_blob() {
+  local b; b=$(git hash-object "$SELF" 2>/dev/null)
+  [ -n "$b" ] || b="sha256:$(sha256sum < "$SELF" 2>/dev/null | cut -c1-64)"
+  echo "$b"
+}
+
 # ---- verbs -----------------------------------------------------------------------------------------
 TAKEN_ID=""
 MX_BUSY_MSG='BUSY: the lock mutex stayed held (see "check")'
@@ -378,7 +486,10 @@ do_take() {   # owner purpose ; 0 = TAKEN (maybe NESTED/REAPED), 1 = BUSY
     line=$(current_line)
     if [ -z "$line" ]; then
       mx_acquire || { echo "$MX_BUSY_MSG"; return 1; }
-      if [ -z "$(current_line)" ] && claim "$owner" "$purpose"; then mx_release; echo "TAKEN by $owner"; return 0; fi
+      if [ -z "$(current_line)" ]; then
+        if ! q_may_claim; then mx_release; q_busy; return 1; fi      # FREE, but the grant is the head's
+        if claim "$owner" "$purpose"; then q_claimed; mx_release; echo "TAKEN by $owner"; return 0; fi
+      fi
       if ! mx_mine; then mx_release; echo "BUSY: the lock mutex was broken while claiming"; return 1; fi
       mx_release; continue                      # someone claimed first: re-read and judge them
     fi
@@ -392,8 +503,11 @@ do_take() {   # owner purpose ; 0 = TAKEN (maybe NESTED/REAPED), 1 = BUSY
       test_pause reap_inside_mutex
       if remove_lock; then
         printf '%s REAPED "%s" heartbeat_age_s=%s\n' "$(stamp)" "$line" "$(hb_age_sec)" >> "$HISTORY"
+        if ! q_may_claim; then
+          mx_release; echo "$(q_busy) (REAPED $reaped, heartbeat $age min old, for the queue)"; return 1
+        fi
         if claim "$owner" "$purpose"; then
-          mx_release; echo "TAKEN by $owner (REAPED $reaped, heartbeat $age min old)"; return 0
+          q_claimed; mx_release; echo "TAKEN by $owner (REAPED $reaped, heartbeat $age min old)"; return 0
         fi
       fi
       if ! mx_mine; then
@@ -486,31 +600,62 @@ do_release() {
   esac
 }
 
-parse_opts() {   # sets PURPOSE, WAITMIN, PRINT_ID, REST (the args after --)
-  PURPOSE=""; WAITMIN=""; PRINT_ID=""; REST=()
+USAGE="usage: $SELF take|renew|release|check|wait|run|id|busy|version <owner> ...
+  wait <owner> [<minutes>] [--wait-seconds <s>] [--purpose <p>] [--print-id]
+  run <owner> [--purpose <p>] [--wait <minutes> | --wait-seconds <s>] -- <cmd...>"
+parse_opts() {   # sets PURPOSE, WAITSEC (empty = no wait), PRINT_ID, REST (the args after --)
+  PURPOSE=""; WAITSEC=""; PRINT_ID=""; REST=()
   while [ $# -gt 0 ]; do
     case "$1" in
       --purpose) PURPOSE="$2"; shift 2;;
-      --wait) WAITMIN="$2"; shift 2;;
+      --wait) want_count "$2" "--wait <minutes>"; WAITSEC=$(( $2 * 60 )); shift 2;;
+      --wait-seconds) want_count "$2" "--wait-seconds <s>"; WAITSEC=$(( $2 )); shift 2;;
       --print-id) PRINT_ID=1; shift;;
       --) shift; REST=("$@"); return 0;;
       *) REST=("$@"); return 0;;
     esac
   done
 }
+want_count() { case "$1" in ''|*[!0-9]*) echo "$2: '$1' is not a whole number"; echo "$USAGE"; exit 2;; esac; }
 
 valid_owner() { case "$1" in ''|-*|NOREC|*[[:space:]]*) echo "owner must be a non-empty word"; exit 2;; esac; }
 
-do_wait() {   # owner max_minutes purpose  (sets TAKEN_ID)
-  local max="$2" i out rc
-  for i in $(seq 1 "$max"); do
-    out=$(do_take "$1" "$3"; rc=$?; echo "@@ID $TAKEN_ID"; exit $rc); rc=$?
+# Take, queueing for up to max_seconds of WALL time (issue #35: never a count of attempts). The first
+# refusal writes this waiter's ticket; a full attempt every WAIT_SEC, and at once when a slice finds the
+# lock free; the ticket's heartbeat every slice, and a re-queue under the same name if it was dropped.
+do_wait() {   # owner max_seconds purpose  (sets TAKEN_ID)
+  local owner="$1" max="$2" purpose="$3" start deadline i=0 out rc last t
+  start=$(now); deadline=$(( start + max ))
+  QTICKET=""
+  trap 'q_leave; exit 130' INT
+  trap 'q_leave; exit 143' TERM
+  trap 'q_leave; exit 129' HUP
+  while :; do
+    i=$(( i + 1 ))
+    out=$(do_take "$owner" "$purpose"; rc=$?; echo "@@ID $TAKEN_ID"; exit $rc); rc=$?
     TAKEN_ID=$(printf '%s\n' "$out" | sed -n 's/^@@ID //p')
     out=$(printf '%s\n' "$out" | grep -v '^@@ID ')
-    if [ $rc -eq 0 ]; then echo "$out after $i attempt(s)"; return 0; fi
-    [ "$i" -lt "$max" ] && sleep "$WAIT_SEC"
+    if [ $rc -eq 0 ]; then
+      QTICKET=""; trap - INT TERM HUP
+      echo "$out after $i attempt(s), $(( $(now) - start )) s [loop_lock.sh $(script_blob | cut -c1-12)]"; return 0
+    fi
+    [ -n "$QTICKET" ] || QTICKET=$(new_ticket_name "$owner")
+    last=$(now)
+    while :; do
+      t=$(now)
+      [ "$t" -ge "$deadline" ] && break 2
+      [ -f "$Q/$QTICKET" ] || q_enqueue "$owner" "$purpose"
+      [ $(( t - last )) -ge "$WAIT_SEC" ] && break
+      local s=$SLICE_SEC; [ $(( deadline - t )) -lt "$s" ] && s=$(( deadline - t ))
+      sleep "$s"
+      touch -c "$Q/$QTICKET" 2>/dev/null
+      held || break                                  # a free lock: try now (the grant decides who gets it)
+    done
   done
-  parse_line "$(current_line)"; echo "TIMEOUT waiting for lock: $(describe)"; return 1
+  q_leave; trap - INT TERM HUP
+  parse_line "$(current_line)"
+  echo "TIMEOUT waiting for lock ($max s, $i attempt(s)): $(if held; then describe; else echo "FREE, queue: $(q_list | wc -l) waiting"; fi) [loop_lock.sh $(script_blob | cut -c1-12)]"
+  return 1
 }
 
 case "$1" in
@@ -523,8 +668,15 @@ case "$1" in
   release)
     valid_owner "$2"; do_release "$2"; exit $?;;
   check)
-    line=$(current_line)
-    if [ -n "$line" ]; then parse_line "$line"; echo "HELD: $(describe) (reapable after $REAP_MIN min without a heartbeat and with the busy list empty)"; else echo "FREE"; fi;;
+    line=$(current_line); queue=$(q_list)
+    if [ -n "$line" ]; then parse_line "$line"; echo "HELD: $(describe) (reapable after $REAP_MIN min without a heartbeat and with the busy list empty)"
+    elif [ -n "$queue" ]; then echo "FREE, but $(printf '%s\n' "$queue" | grep -c .) waiter(s) queued: the next grant goes to the first QUEUED line"
+    else echo "FREE"; fi
+    t=$(now)
+    printf '%s\n' "$queue" | while read -r n e; do
+      [ -n "$n" ] || continue
+      echo "QUEUED: $(ticket_owner "$n") queued $(( t - $(ticket_arrival "$n") )) s ago, heartbeat $(( t - e )) s old ($(cut -d' ' -f2- "$Q/$n" 2>/dev/null)) [$n]"
+    done;;
   id)
     line=$(current_line)
     if [ -n "$line" ]; then id_of "$line"; else exit 1; fi;;
@@ -532,15 +684,20 @@ case "$1" in
     release_id "$2"; exit $?;;
   busy)
     busy_list;;
+  version)
+    echo "loop_lock.sh blob $(script_blob) queue=tickets ($SELF)";;
   wait)
     valid_owner "$2"
-    case "$3" in ''|-*) max=40; parse_opts "${@:3}";; *) max="$3"; parse_opts "${@:4}";; esac
-    do_wait "$2" "$max" "$PURPOSE"; exit $?;;
+    case "$3" in ''|-*) mins=40; parse_opts "${@:3}";; *) want_count "$3" "wait <owner> <minutes>"; mins="$3"; parse_opts "${@:4}";; esac
+    [ -n "$WAITSEC" ] || WAITSEC=$(( mins * 60 ))
+    do_wait "$2" "$WAITSEC" "$PURPOSE"; rc=$?
+    [ $rc -eq 0 ] && [ -n "$PRINT_ID" ] && echo "ID: $TAKEN_ID"
+    exit $rc;;
   run)
     owner="$2"; valid_owner "$owner"; parse_opts "${@:3}"
-    if [ ${#REST[@]} -eq 0 ]; then echo "usage: $SELF run <owner> [--purpose <p>] [--wait <min>] -- <cmd...>"; exit 2; fi
-    if [ -n "$WAITMIN" ]; then
-      out=$(do_wait "$owner" "$WAITMIN" "$PURPOSE"; rc=$?; echo "@@ID $TAKEN_ID"; exit $rc); rc=$?
+    if [ ${#REST[@]} -eq 0 ]; then echo "$USAGE"; exit 2; fi
+    if [ -n "$WAITSEC" ]; then
+      out=$(do_wait "$owner" "$WAITSEC" "$PURPOSE"; rc=$?; echo "@@ID $TAKEN_ID"; exit $rc); rc=$?
     else
       out=$(do_take "$owner" "$PURPOSE"; rc=$?; echo "@@ID $TAKEN_ID"; exit $rc); rc=$?
     fi
@@ -584,5 +741,5 @@ case "$1" in
     trap 'exit 143' TERM
     "${REST[@]}"
     exit $?;;
-  *) echo "usage: $SELF take|renew|release|check|wait|run|id|busy <owner> ..."; exit 2;;
+  *) echo "$USAGE"; exit 2;;
 esac

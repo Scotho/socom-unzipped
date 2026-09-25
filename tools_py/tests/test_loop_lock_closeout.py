@@ -88,7 +88,9 @@ class TestSmokeSelection(unittest.TestCase):
             "test_quiet_flag_writes_marker_even_for_a_non_launch_purpose",
             # Ruling R73 (Sprint 5 final review I2): mutual exclusion stays always on
             "test_smoke_racing_reapers_with_process_list_latency_one_wins",
-            "test_smoke_stale_mutex_takers_never_double_enter"})
+            "test_smoke_stale_mutex_takers_never_double_enter",
+            # Sprint 13 H2 (issue #36): the queue's grant -- a take never barges past a live ticket -- stays always on
+            "test_smoke_a_take_is_refused_behind_a_live_ticket_and_a_stale_ticket_is_dropped"})
         with open(TL.__file__) as f:
             src = f.read()
         self.assertIn('test.skipTest("slow lock suite: set LOOP_LOCK_SLOW_TESTS=1")', src)
