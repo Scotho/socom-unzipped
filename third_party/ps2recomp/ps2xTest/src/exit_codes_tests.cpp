@@ -28,8 +28,9 @@ void register_exit_codes_tests()
                 t.IsTrue(s.find('"') == std::string::npos, std::string(e.name) + ": no double quote (tools_py/exit_codes.py reads the table with a regex)");
             }
             // Thirteen since Sprint 11 Task 19 added 73, the revision guard's refusal, and 74,
-            // the reboot LoadExecPS2 cannot carry out.
-            t.Equals(ExitCodes::kTableSize, 13, "thirteen codes: 0, 1, 3, 65, Sprint 9 Goal 1's seven, 73 and 74");
+            // the reboot LoadExecPS2 cannot carry out; fourteen since Sprint 13 V8 added 75, a server name
+            // that does not resolve.
+            t.Equals(ExitCodes::kTableSize, 14, "fourteen codes: 0, 1, 3, 65, Sprint 9 Goal 1's seven, 73, 74 and 75");
         });
 
         tc.Run("the codes themselves: 65 kept, 66-74 added, GsGlCaps agrees with the table", [](TestCase &t)
@@ -52,6 +53,9 @@ void register_exit_codes_tests()
             // Sprint 11 Task 19: LoadExecPS2 is the game asking to restart itself, a decision it made;
             // this build cannot re-exec, and 3 ("stopped itself after an internal error") hid that.
             t.Equals(ExitCodes::kRebootRequested, 74, "the game asked for a reboot this build cannot carry out");
+            // Sprint 13 V8: PS2X_SOCOM2_SERVER names a server that does not resolve. It was loopback, silently
+            // (KNOWN section 4's hazard row); now the retail names are refused and the run leaves with this.
+            t.Equals(ExitCodes::kServerUnresolved, 75, "the server name did not resolve");
             t.IsNull(ExitCodes::find(64), "64 is not ours");
             t.IsNotNull(ExitCodes::find(73), "73 is");
             t.IsNotNull(ExitCodes::find(74), "and so is 74");

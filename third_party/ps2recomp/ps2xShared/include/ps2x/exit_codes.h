@@ -34,7 +34,8 @@
     X(OutOfMemory, 71, "out-of-memory", "The game ran out of memory. Close other programs, or lower the render scale on the VIDEO page.") \
     X(CardDirUnwritable, 72, "card-dir-unwritable", "The memory-card folder cannot be written. Move the game out of a protected folder and try again.") \
     X(RevisionMismatch, 73, "revision-mismatch", "These game files are a different disc revision than this copy of the game was built for. Unpack the download again.") \
-    X(RebootRequested, 74, "reboot-requested", "The game asked to restart itself after an error. This build cannot restart, so it stopped; the log says why.")
+    X(RebootRequested, 74, "reboot-requested", "The game asked to restart itself after an error. This build cannot restart, so it stopped; the log says why.") \
+    X(ServerUnresolved, 75, "server-unresolved", "The server name on the ONLINE page did not resolve, so the game stayed offline. Check your connection or the name.")
 
 namespace ExitCodes
 {

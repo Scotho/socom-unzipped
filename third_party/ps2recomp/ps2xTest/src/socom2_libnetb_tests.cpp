@@ -2,7 +2,9 @@
 // resets its "last network activity" timestamp only when this word changes; a constant pinned the
 // online player in place (Sprint 4, abf35bb). PS2X_SOCOM2_NET_STATS=0 restores the constant on purpose.
 #include "MiniTest.h"
+#include "launcher/launcher_config.h"
 #include "ps2_runtime.h"
+#include "ps2x/exit_codes.h"
 #include "socom2_hostnet.h"
 #include "socom2_libnetb.h"
 
@@ -37,6 +39,10 @@ namespace socom2_hostnet
     // platform half a test can pin down without a network.
     int hostnetLastError();
     bool hostnetWouldBlock(int err);
+
+    // Sprint 13 V8, also not in the header: what PS2X_SOCOM2_SERVER becomes, and the table half of it.
+    uint32_t serverForKnob(const char *value, std::string &refusal);
+    void testApplyServer(const char *value);
 
 #ifndef _WIN32
     // F6, also not in the header: the poll(2) wrapper that resumes across EINTR. A signal
@@ -278,9 +284,47 @@ void register_socom2_libnetb_tests()
             const uint32_t named = socom2_hostnet::parseServerAddress("localhost");
             t.Equals(named, 0x7f000001u, "a hostname must resolve, not be discarded");
 
-            // A name that cannot resolve returns 0 so loadHosts() keeps its previous value.
+            // A name that cannot resolve returns 0; serverForKnob turns that into a refusal (below).
             const uint32_t bad = socom2_hostnet::parseServerAddress("no-such-host.invalid");
             t.Equals(bad, 0u, "an unresolvable name must report failure rather than a stale address");
+        });
+
+        // Sprint 13 V8 (KNOWN section 4's hazard row; carry-backlog row 91): a PS2X_SOCOM2_SERVER that does not
+        // resolve silently became 127.0.0.1, so a stranger whose DNS failed met an unexplained "cannot connect".
+        // Now the value is refused: the retail names resolve to nothing, the log carries a preflight-shaped
+        // line, and the process leaves with exit 75, whose sentence is what the launcher's LAST RUN shows.
+        tc.Run("a PS2X_SOCOM2_SERVER that does not resolve is refused with exit 75, never loopback", [](TestCase &t)
+        {
+            t.IsTrue(socom2_hostnet::init(), "hostnet init must succeed");
+            std::string refusal;
+            t.Equals(socom2_hostnet::serverForKnob(nullptr, refusal), 0x7f000001u, "unset: the local Horizon stack, as always");
+            t.IsTrue(refusal.empty(), "unset is not a refusal");
+            t.Equals(socom2_hostnet::serverForKnob("", refusal), 0x7f000001u, "empty is unset");
+            t.Equals(socom2_hostnet::serverForKnob("192.0.2.5", refusal), 0xc0000205u, "an address is taken as it is (TEST-NET-1)");
+            t.IsTrue(refusal.empty(), "an address is not a refusal");
+
+            const uint32_t bad = socom2_hostnet::serverForKnob("no-such-host.invalid", refusal);
+            t.Equals(bad, 0u, "a name that does not resolve is refused, not loopback");
+            t.IsTrue(refusal.rfind("[preflight] exit 75 server-unresolved: ", 0) == 0,
+                     "the refusal is a preflight-shaped line naming exit 75: " + refusal);
+            t.IsTrue(refusal.find(ExitCodes::find(ExitCodes::kServerUnresolved)->sentence) != std::string::npos,
+                     "it carries the table's sentence");
+            t.IsTrue(refusal.find("no-such-host.invalid") != std::string::npos, "and the name that failed");
+
+            // The table half: every retail name refused, the exit code set; then put back the way init() left it.
+            const int exitBefore = ps2ProcessExitCode();
+            setPs2ProcessExitCode(0);
+            socom2_hostnet::testApplyServer("no-such-host.invalid");
+            t.Equals(socom2_hostnet::resolve("socom2-prod.muis.pdonline.scea.com"), 0u,
+                     "the game's lookup of the retail name fails (kErrDns), instead of reaching loopback or Sony");
+            t.Equals(socom2_hostnet::resolve("gate1.us.dnas.playstation.org"), 0u, "every retail name, DNAS too");
+            t.Equals(ps2ProcessExitCode(), ExitCodes::kServerUnresolved, "the run will leave with 75");
+            t.Equals(launcher::lastRunLine(ps2ProcessExitCode(), ""),
+                     std::string("The server name on the ONLINE page did not resolve, so the game stayed offline. Check your connection or the name."),
+                     "and LAST RUN says why, in the table's words");
+            socom2_hostnet::testApplyServer(nullptr);
+            t.Equals(socom2_hostnet::resolve("socom2-prod.muis.pdonline.scea.com"), 0x7f000001u, "restored to loopback");
+            setPs2ProcessExitCode(exitBefore);
         });
     });
 }

@@ -104,6 +104,26 @@ SOCOM II reboots itself when it hits certain internal errors. On a console that 
 to reboot into, so the run ends instead. The real failure is the one written just above the reboot line in the run
 log — send that log with the report.
 
+Where you meet it: in the middle of a run, from either path.
+
+### 75 — server name did not resolve
+
+> The server name on the ONLINE page did not resolve, so the game stayed offline. Check your connection or the name.
+
+The ONLINE page's server is handed to the game as a name (`socom.scotho.com` by default) and the game looks it up
+when it first touches the network. If the lookup fails — no internet, a DNS outage, a typo in **Custom** — the game
+refuses the server instead of guessing: its online menus fail to connect, you can keep playing offline, and when you
+quit this is the code.
+
+Where you meet it: from the launcher or on its own, on any run in which the game tried to go online (or looked the
+server up at start) while the name could not be resolved.
+
+What to do: check that the machine is online, and if you typed a server under **Custom**, check the spelling. Then
+launch again.
+
+*(Until 2026-09-25 an unresolvable name was silently replaced by this machine's own address, so the failure read as
+"the server is down" with nothing in LAST RUN; `KNOWN.md` §4 records the old hazard.)*
+
 *(Two more you may see: **0** is a normal exit, and **1** or **3** mean the game stopped on an error it could not
 name. Both ask you to press SAVE DIAGNOSTICS; the end of the log says more.)*
 
