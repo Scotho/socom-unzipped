@@ -216,6 +216,17 @@ namespace
         uint32_t upper = 0;
     };
 
+    // A non-SPR DMAC channel's start address (MADR, TADR): bit 31 selects the scratchpad and the low 14 bits are
+    // the SPR offset. ps2IsScratchpadAddress() keeps the EE-side meaning (a bit-31 address is SPR only as a
+    // 0xF000xxxx alias), which reads a DMAC 0x80000080 as RDRAM 0x80 (upstream ran-j/PS2Recomp #224). A DMAtag's
+    // own ADDR selector is decoded in the chain walker.
+    inline uint32_t dmacStartAddress(uint32_t address)
+    {
+        if ((address & 0x80000000u) != 0u)
+            return PS2_SCRATCHPAD_BASE + (address & (PS2_SCRATCHPAD_SIZE - 1u));
+        return address;
+    }
+
     inline DmaTagView decodeDmaTag(uint64_t tag)
     {
         DmaTagView out{};
@@ -1356,17 +1367,23 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
 
                 if (mode == 0 && qwc > 0)
                 {
-                    enqueueTransfer(madr, qwc);
+                    enqueueTransfer(dmacStartAddress(madr), qwc);
                 }
                 else if (mode == 1)
                 {
                     uint32_t tagAddr = m_ioRegisters[channelBase + 0x30];
+                    if (!mfifoDrain)   // the MFIFO drain walks the RDRAM ring; its TADR is never an SPR address
+                        tagAddr = dmacStartAddress(tagAddr);
                     uint32_t asr0 = m_ioRegisters[channelBase + 0x40];
                     uint32_t asr1 = m_ioRegisters[channelBase + 0x50];
                     uint32_t asp = (chcr >> 4) & 0x3u;
                     const bool tieEnabled = (chcr & (1u << 7)) != 0u;
                     const int kMaxChainTags = 4096;
                     std::vector<uint8_t> chainBuf;
+                    // A terminal tag (END, REFE, RET at depth 0, IRQ with TIE) completes the channel even when it
+                    // carried no data: a QWC 0 END queued nothing, so STR and D_STAT were never settled
+                    // (upstream ran-j/PS2Recomp #223).
+                    bool chainEnded = false;
 
                     auto appendData = [&](uint32_t srcAddr, uint32_t qwCount)
                     {
@@ -1581,7 +1598,10 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
                         if (irq && tieEnabled)
                             endChain = true;
                         if (endChain)
+                        {
+                            chainEnded = true;
                             break;
+                        }
                     }
 
                     m_ioRegisters[channelBase + 0x30] = ringWrap(tagAddr);
@@ -1600,7 +1620,7 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
                     }
                     m_ioRegisters[channelBase + 0x00] = chcr;
 
-                    if (!chainBuf.empty())
+                    if (!chainBuf.empty() || chainEnded)
                     {
                         PendingTransfer pt;
                         pt.fromScratchpad = false;
@@ -1627,7 +1647,7 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
                 }
                 else if (qwc > 0)
                 {
-                    enqueueTransfer(madr, qwc);
+                    enqueueTransfer(dmacStartAddress(madr), qwc);   // interleave is SPR-only, so this is dead for GIF/VIF; kept consistent
                 }
 
                 const bool autoProcessTransfers =
@@ -2132,6 +2152,10 @@ void PS2Memory::processGIFPacket(const uint8_t *data, uint32_t sizeBytes)
         m_gifPacketCallback(data, sizeBytes);
 }
 
+// The two native GIF fast paths below take the raw TADR from kickGifDmaChainFromMMIO (the recompiler's
+// gif_dma_kick_analyzer emits that call; SOCOM II's recomp/output holds no such call, so both are latent here) and
+// do not go through dmacStartAddress(): a bit-31 TADR would be read as RDRAM. The chain walker above also writes a
+// bit-31 TADR back as 0x7000xxxx rather than 0x8000xxxx. Both are recorded, not fixed (Sprint 13 U7 review).
 bool PS2Memory::tryProcessNativeGifImageUploadChain(GS &gs, uint32_t tadr, uint32_t chcr)
 {
     static constexpr uint32_t GIF_CHANNEL = 0x1000A000u;
