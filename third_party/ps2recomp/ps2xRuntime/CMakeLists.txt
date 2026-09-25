@@ -286,6 +286,7 @@ add_library(ps2_runtime STATIC
     src/lib/ps2_memory.cpp
     src/lib/ps2_pad.cpp
     src/lib/ps2_runtime.cpp
+    src/lib/ps2_trace_armed.cpp   # Sprint 13 C8: PS2X_TRIGGER's latch, the runtime's own (was the game file's)
     src/lib/ps2_save_state.cpp   # Sprint 11 Task 8c: the save-state container (no runtime dependency)
     src/lib/ps2_vif1_interpreter.cpp
     src/lib/vu/ps2_vu1_core.cpp
@@ -425,7 +426,14 @@ target_sources(ps2EntryRunner PRIVATE src/lib/socom2_host_input.cpp)
 target_sources(ps2EntryRunner PRIVATE src/lib/socom2_hostnet.cpp)
 target_sources(ps2EntryRunner PRIVATE src/lib/socom2_libnetb.cpp)
 target_sources(ps2EntryRunner PRIVATE src/lib/socom2_crypto.cpp)
+# Sprint 13 Task C8 (audit F8): the libpad2 HLE, the msifrpc HLE and the exposure readback, out of the overrides file
+# so ps2x_tests compiles the same files (ps2xTest/CMakeLists.txt) and tests them instead of linking stand-ins.
+target_sources(ps2EntryRunner PRIVATE src/lib/socom2_pad2_hle.cpp)
+target_sources(ps2EntryRunner PRIVATE src/lib/socom2_msifrpc.cpp)
+target_sources(ps2EntryRunner PRIVATE src/lib/socom2_lum_pixel.cpp)
 set_source_files_properties(src/lib/game_overrides_socom2.cpp PROPERTIES SKIP_UNITY_BUILD_INCLUSION TRUE)
+set_source_files_properties(src/lib/socom2_pad2_hle.cpp src/lib/socom2_msifrpc.cpp src/lib/socom2_lum_pixel.cpp
+    PROPERTIES SKIP_UNITY_BUILD_INCLUSION TRUE)
 set_source_files_properties(src/lib/socom2_hostnet.cpp PROPERTIES SKIP_UNITY_BUILD_INCLUSION TRUE)
 set_source_files_properties(src/lib/socom2_libnetb.cpp PROPERTIES SKIP_UNITY_BUILD_INCLUSION TRUE)
 

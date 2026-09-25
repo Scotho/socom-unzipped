@@ -45,6 +45,10 @@ void register_ps2_save_state_tests();   // Sprint 11 Task 8c
 void register_runtime_state_tests();      // Sprint 11 Task 8b
 void register_socom2_after_return_tests();   // Sprint 13 Task C3
 void register_socom2_peek_tests();           // Sprint 13 Task C3 (#39)
+void register_socom2_pad2_hle_tests();       // Sprint 13 Task C8 (audit F8)
+void register_socom2_msifrpc_tests();        // Sprint 13 Task C8 (audit F8)
+void register_socom2_crypto_tests();         // Sprint 13 Task C8 (audit F9)
+void register_runtime_seams_tests();         // Sprint 13 Task C8 (audit F22)
 void reset_ps2_test_function_table();
 
 namespace
@@ -128,6 +132,10 @@ int main()
     register_runtime_state_tests();
     register_socom2_after_return_tests();
     register_socom2_peek_tests();
+    register_socom2_pad2_hle_tests();
+    register_socom2_msifrpc_tests();
+    register_socom2_crypto_tests();
+    register_runtime_seams_tests();
     int res = MiniTest::Run();
     std::cout.flush();
     std::cerr.flush();

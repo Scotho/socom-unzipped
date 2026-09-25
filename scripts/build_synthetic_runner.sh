@@ -2,7 +2,8 @@
 # Sprint 13 Task C1: compile the game's own files and link the runner against a SYNTHETIC generated set.
 #
 # The runner (ps2EntryRunner) is the recompiled game plus the files only it compiles: game_overrides_socom2.cpp,
-# socom2_crypto.cpp, socom2_host_input.cpp, socom2_hostnet.cpp, socom2_libnetb.cpp and src/main.cpp. The real
+# socom2_crypto.cpp, socom2_host_input.cpp, socom2_hostnet.cpp, socom2_libnetb.cpp, socom2_pad2_hle.cpp,
+# socom2_msifrpc.cpp, socom2_lum_pixel.cpp (Sprint 13 C8) and src/main.cpp. The real
 # generated set (recomp/output/, 14,882 files) comes from the owner's disc and is not in the repository, so without
 # one CMake skips the runner and CI never compiled those files or linked them -- a syntax error in the overrides file
 # reached `main` unbuilt (the 2026-09-25 audit, code-runtime.md F7 and F41).

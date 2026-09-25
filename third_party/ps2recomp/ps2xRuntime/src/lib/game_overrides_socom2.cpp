@@ -30,10 +30,11 @@
 #include "runtime/socom2_trace_checkpoint.h"
 #include "runtime/socom2_server_records.h"
 #include "runtime/ps2_audio.h"
-#include "socom2_rsa_key.h"
 #include "socom2_host_input.h"
 #include "socom2_libnetb.h"
 #include "socom2_crypto.h"
+#include "socom2_msifrpc.h"
+#include "runtime/host_prof_start.h"
 #include "Kernel/HleStats.h"
 #include "Kernel/SchedTrace.h"
 #include <cstring>
@@ -68,11 +69,10 @@
 
 #include <cstdint>
 #include <atomic>
-// Set by PS2X_TRIGGER (see startPcSampler); read by the "trig" trace modes.
-std::atomic<bool> g_ps2xTraceArmed{false};
+// PS2X_TRIGGER's latch (see startPcSampler), read by the "trig" trace modes: the runtime's own since Sprint 13 C8.
+#include "runtime/ps2_trace_armed.h"
 #include <filesystem>
 #include <iomanip>
-#include "runtime/socom2_lum_readback.h"
 #include "runtime/socom2_cull_trace.h"
 #include "ps2x/knobs.h"
 #include <iostream>
@@ -81,74 +81,12 @@ std::atomic<bool> g_ps2xTraceArmed{false};
 #include <array>
 #include <utility>
 
-// Bound at recompile time via recomp/socom2.toml: "socom2_RsaGenerateKeyPair@0x0062B168".
-// rt_crypt FUN_0062b168(LargeInt *n, LargeInt *d) generates a 512-bit RSA key pair with two random
-// 256-bit primes (e = 17); the prime search takes minutes under recompiled code and a fixed key
-// pair is equivalent for a private server, so the precomputed limbs are written instead.
+// Sprint 13 Task C8 (audit F8, F9, F22): the HLE handlers that need no game-file state live in runner-only files
+// of their own, compiled into ps2x_tests as well so they are tested rather than stubbed: the libpad2 HLE in
+// socom2_pad2_hle.cpp, the msifrpc HLE in socom2_msifrpc.cpp, socom2_RsaGenerateKeyPair in socom2_crypto.cpp
+// and socom2_LumReadPixel in socom2_lum_pixel.cpp.
 namespace ps2_stubs
 {
-    void socom2_RsaGenerateKeyPair(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
-    {
-        const uint32_t nAddr = GPR_U32(ctx, 4);
-        const uint32_t dAddr = GPR_U32(ctx, 5);
-        // PS2X_SOCOM2_RSA_KEY=b selects the second precomputed pair: two instances of the exe on
-        // one host otherwise publish the *same* public key in their DME 0x18 client record, while
-        // two PCSX2 clients publish distinct random keys (server/logs/console-DME.log).
-        const char *keyEnv = ps2x::knob("PS2X_SOCOM2_RSA_KEY");
-        const bool keyB = keyEnv && (*keyEnv == 'b' || *keyEnv == 'B' || *keyEnv == '1');
-        std::memcpy(rdram + (nAddr & PS2_RAM_MASK), keyB ? kSocom2RsaNb : kSocom2RsaN, sizeof(kSocom2RsaN));
-        std::memcpy(rdram + (dAddr & PS2_RAM_MASK), keyB ? kSocom2RsaDb : kSocom2RsaD, sizeof(kSocom2RsaD));
-        std::cout << "[socom2] rt_crypt RSA key pair -> fixed precomputed key " << (keyB ? "B" : "A") << std::endl;
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
-    // Bound at recompile time via recomp/socom2.toml: "socom2_LumReadPixel@0x003B24C0".
-    // FUN_003b24c0(packet, out) is the auto-exposure thread's framebuffer readback: it sends a 7-qword VIF1
-    // packet (BITBLTBUF/TRXPOS/TRXREG/TRXDIR local->host, a 1x4 column of the frame), waits for FINISH,
-    // sets BUSDIR and reads one quadword back through the VIF1 FIFO in reverse mode into `out`; the caller
-    // (FUN_003b1dd0) takes the first pixel's R, G, B. The runtime has no reverse-FIFO DMA path, and until
-    // 2026-09-16 this answered a constant mid-grey pixel -- which made the exposure compute a zero brighten
-    // (ALPHA FIX 0 where the console writes 93) and every gameplay frame drew 1.73x too dark (research/31
-    // section 13). Now the pixels are read straight out of GS memory (the GL backend downloads GPU-drawn
-    // pages on read) and written where the DMA would have put them.
-    void socom2_LumReadPixel(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
-    {
-        const uint32_t packetAddr = GPR_U32(ctx, 4);
-        const uint32_t outAddr = GPR_U32(ctx, 5);
-        const uint8_t *packet = rdram + (packetAddr & PS2_RAM_MASK);
-        uint8_t *out = rdram + (outAddr & PS2_RAM_MASK);
-        size_t n = 0;
-        if (runtime)
-        {
-            GS &gs = runtime->gs();
-            // Never wait on the GPU here (it would hold the single EE host thread for the GL backlog): ask for an
-            // asynchronous download once per socom2_lum::kLumSyncIntervalMs and read whatever the last one left.
-            static uint64_t s_lastRequestMs = 0;
-            const uint64_t nowMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
-                                                             std::chrono::steady_clock::now().time_since_epoch()).count());
-            if (socom2_lum::syncDue(nowMs, s_lastRequestMs))
-            {
-                s_lastRequestMs = nowMs;
-                gs.requestVramReadback();
-            }
-            n = socom2_lum::readbackPixels(packet, 7, [&](uint32_t psm, uint32_t bp, uint32_t bw, uint32_t x, uint32_t y)
-                                           { return gs.PeekVram(psm, bp, bw, x, y); }, out, 16);
-        }
-        if (n == 0)
-        {
-            out[0] = 0x80;
-            out[1] = 0x80;
-            out[2] = 0x80;
-            out[3] = 0x80;
-        }
-        static int logged = 0;
-        if (logged++ < 3)
-            std::cout << "[socom2] exposure readback FUN_003b24c0 -> " << n << " bytes from GS memory"
-                      << (n ? "" : " (no transfer in the packet: grey pixel)") << std::endl;
-        SET_GPR_U32(ctx, 2, 0u);
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
     // ---- SIF sreg handshake (ONLINE path) ------------------------------------------------------
     // After loading the network IRX set (NETCNF, INET, INETCTL, PPP, PPPOE, SMAP, MSIFRPC,
     // LIBNETB) the game's FUN_001bcd80 registers a SIF command handler (0x80000018), sends the
@@ -174,99 +112,7 @@ namespace ps2_stubs
         ps2_stubs::sceSifSendCmd(rdram, ctx, runtime);
     }
 
-    // ---- msifrpc (multi-SIF RPC) HLE ----------------------------------------------------------
-    // SCE-RT's libnetb EE library (0x245ad8..0x2472xx) talks to LIBNETB.IRX through msifrpc:
-    // FUN_001bd050 bind(client, sid, 0, bufSize, p5, p6) -> SIF cmd 0x80000019 + WaitSema,
-    // FUN_001bd320 call(client, fno, 0, send, sendSize, recv, recvSize, cb, cbArg) -> 0x8000001a,
-    // FUN_001bd200 unbind(client, 0) -> 0x8000001d. The replies come back as SIF commands handled
-    // by FUN_001bcf20, which fills the client struct and signals the semaphores. With no IOP the
-    // calls are answered synchronously here: the libnetb service (sid 0x80001201) is dispatched
-    // by function number to a host implementation; the result word the EE wrappers read is the
-    // first u32 of the receive buffer.
-    // Client struct (u32 index): [0] packet, [1] ?, [2] reply sema, [4] sid, [5] IOP buffer,
-    // [9] IOP handle (non-zero = bound), [10] mutex sema, [11] unbind result,
-    // [12] buffer size (wrappers check it as +0x30), [13],[14] bind extras.
-    constexpr uint32_t kLibnetbSid = 0x80001201u;
-
-    uint32_t rd32(const uint8_t *rdram, uint32_t addr)
-    {
-        uint32_t v;
-        std::memcpy(&v, rdram + (addr & PS2_RAM_MASK), 4);
-        return v;
-    }
-
-    void wr32(uint8_t *rdram, uint32_t addr, uint32_t v)
-    {
-        std::memcpy(rdram + (addr & PS2_RAM_MASK), &v, 4);
-    }
-
-    // libnetb service 0x80001201: dispatched in socom2_libnetb.cpp (docs/research/10-libnetb-rpc.md).
-    void socom2LibnetbCall(uint8_t *rdram, uint32_t fno, uint32_t send, uint32_t sendSize,
-                           uint32_t recv, uint32_t recvSize)
-    {
-        static const bool s_netTrace = ps2x::knob("PS2X_SOCOM2_NET_TRACE") != nullptr;   // was a getenv on every libnetb RPC
-        if (s_netTrace)
-            std::cout << "[socom2/msifrpc] libnetb fno=0x" << std::hex << fno << std::dec << " send=" << sendSize << " recv=" << recvSize << std::endl;
-        socom2_libnetb::call(rdram, fno, send, sendSize, recv, recvSize);
-    }
-
-    void socom2_MsifBind(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
-    {
-        const uint32_t client = GPR_U32(ctx, 4);
-        const uint32_t sid = GPR_U32(ctx, 5);
-        const uint32_t bufSize = GPR_U32(ctx, 7);
-        wr32(rdram, client + 4u * 4u, sid);
-        wr32(rdram, client + 5u * 4u, 0u);
-        wr32(rdram, client + 9u * 4u, 1u);          // "bound"
-        wr32(rdram, client + 11u * 4u, 0u);
-        wr32(rdram, client + 12u * 4u, bufSize);
-        std::cout << "[socom2/msifrpc] bind sid=0x" << std::hex << sid << " bufSize=0x" << bufSize << std::dec
-                  << " -> host HLE" << std::endl;
-        SET_GPR_U32(ctx, 2, 0u);
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
-    void socom2_MsifUnbind(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
-    {
-        const uint32_t client = GPR_U32(ctx, 4);
-        wr32(rdram, client + 9u * 4u, 0u);
-        SET_GPR_U32(ctx, 2, 1u);                    // the wrapper loops until unbind returns 1
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
-    void socom2_MsifCall(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
-    {
-        const uint32_t client = GPR_U32(ctx, 4);
-        const uint32_t fno = GPR_U32(ctx, 5);
-        const uint32_t mode = GPR_U32(ctx, 6);
-        const uint32_t send = GPR_U32(ctx, 7);
-        // EE ABI: arguments 5..8 travel in t0..t3, the 9th on the stack.
-        const uint32_t sendSize = GPR_U32(ctx, 8);
-        const uint32_t recv = GPR_U32(ctx, 9);
-        const uint32_t recvSize = GPR_U32(ctx, 10);
-        int32_t result = -1;
-        if (mode == 0u)
-        {
-            const uint32_t sid = rd32(rdram, client + 4u * 4u);
-            if (sid == kLibnetbSid)
-            {
-                socom2LibnetbCall(rdram, fno, send, sendSize, recv, recvSize);
-                result = 0;                          // transport ok; the result word is in recv[0]
-            }
-            else
-            {
-                std::cout << "[socom2/msifrpc] call to unknown sid=0x" << std::hex << sid << " fno=0x" << fno << std::dec << std::endl;
-            }
-        }
-        SET_GPR_U32(ctx, 2, static_cast<uint32_t>(result));
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
-    // FUN_001bcd80: msifrpc init (SIF handler + sreg handshake). Nothing to set up on the host.
-    void socom2_MsifInit(uint8_t *, R5900Context *ctx, PS2Runtime *)
-    {
-        ctx->pc = GPR_U32(ctx, 31);
-    }
+    // The msifrpc HLE (socom2_MsifInit/Bind/Call/Unbind, the libnetb service 0x80001201): socom2_msifrpc.cpp.
 
     // FUN_002cc670: the DNAS authentication state tick (creates the libdnas2 object on the first
     // call, returns 1 when authentication has finished). A private server needs no DNAS, so the
@@ -281,174 +127,7 @@ namespace ps2_stubs
         ctx->pc = GPR_U32(ctx, 31);
     }
 
-    // ---- libpad2 (scePad2*) HLE ----------------------------------------------------------------
-    // The game statically links Sony's socket-based libpad2 (scePad2Init/CreateSocket/Read/
-    // GetState/GetButtonInfo) which RPCs to SIO2MAN/DS2U on the IOP. Those IOP drivers are not
-    // emulated, so the wrappers were stubbed to return 0 and the game's per-frame reader
-    // (FUN_002da930) saw no controller. We HLE the five top-level entry points to report one
-    // connected DualShock2 on port 0 with neutral input, bypassing the IOP path entirely.
-    // Button ids 0x10-0x13 are the analog axes (center 0x80); 0x00-0x0F are the digital buttons
-    // (0 = released). Host input injection (real button presses) hooks the same shared state later.
-    Socom2PadState g_socom2Pad;   // refreshed from the host by socom2HostInputPoll (socom2_host_input.cpp)
-
-    // The pad HLE is on by default (Sprint 9 Goal 3, R160); PS2X_SOCOM2_PAD=0 boots with no controller, as
-    // every boot did before input worked. When disabled these behave like the previous ret0 stubs (no
-    // controller).
-    bool socom2PadEnabled()
-    {
-        static const bool on = ps2x::knobOn("PS2X_SOCOM2_PAD", true);   // R160: on unless 0
-        return on;
-    }
-
-    void scePad2Init(uint8_t *, R5900Context *ctx, PS2Runtime *)
-    {
-        SET_GPR_U32(ctx, 2, socom2PadEnabled() ? 1u : 0u);   // > 0 = ok
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
-    // One DualShock2 only: socket 0 (the first CreateSocket) is connected; every other socket the
-    // game opens (port 2, multitap slots) reports "no controller". Reporting all of them connected
-    // made the shell count several local players and route the UI to a pad that never gets data.
-    uint32_t g_socom2NextSocket = 0u;
-
-    void scePad2CreateSocket(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
-    {
-        const uint32_t descriptor = GPR_U32(ctx, 4);
-        const uint32_t socket = g_socom2NextSocket++;
-        if (ps2x::knob("PS2X_SOCOM2_PAD_TRACE"))
-        {
-            uint32_t words[2] = {0u, 0u};
-            if (descriptor != 0u)
-                std::memcpy(words, rdram + (descriptor & PS2_RAM_MASK), sizeof(words));
-            std::cout << "[pad-trace] CreateSocket desc=0x" << std::hex << descriptor << " [" << words[0] << " " << words[1]
-                      << "] -> socket " << std::dec << socket << std::endl;
-        }
-        SET_GPR_U32(ctx, 2, socket);
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
-    void scePad2GetState(uint8_t *, R5900Context *ctx, PS2Runtime *)
-    {
-        // The game opens a socket for its controller check at boot, deletes it, then opens the
-        // one it actually reads; the HLE never sees the delete, so treat the newest socket as the
-        // live one.
-        const uint32_t socket = GPR_U32(ctx, 4);
-        const bool connected = socom2PadEnabled() && g_socom2NextSocket != 0u && socket == g_socom2NextSocket - 1u;
-        SET_GPR_U32(ctx, 2, connected ? 1u : 0u);   // 1 = connected/ready, 0 = nothing on this socket
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
-    void scePad2Read(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
-    {
-        // Write a standard DualShock2 poll report into the caller's buffer (a1) for any code that
-        // reads it raw, and return a positive data length so FUN_002da930 proceeds.
-        const uint32_t buf = GPR_U32(ctx, 5) & PS2_RAM_MASK;
-        if (socom2PadEnabled())
-            socom2HostInputPoll(g_socom2Pad);
-        uint8_t report[32] = {0};
-        report[0] = 0x00;
-        report[1] = 0x79;                   // DS2 analog + pressure mode
-        report[2] = 0x5Au;
-        report[3] = 0xFFu;                  // digital buttons, active-low
-        report[4] = 0xFFu;
-        for (int id = 0; id < 16; ++id)
-        {
-            if (g_socom2Pad.button[id])
-                report[3 + id / 8] = static_cast<uint8_t>(report[3 + id / 8] & ~(1u << (id % 8)));
-        }
-        report[5] = g_socom2Pad.axis[0];    // RX
-        report[6] = g_socom2Pad.axis[1];    // RY
-        report[7] = g_socom2Pad.axis[2];    // LX
-        report[8] = g_socom2Pad.axis[3];    // LY
-        for (int field = 0; field < 12; ++field)
-            report[9 + field] = socom2PressureOf(g_socom2Pad, field);   // R139: Triangle's may be light
-        std::memcpy(rdram + buf, report, sizeof(report));
-        // PS2X_SOCOM2_PAD_TRACE=1: log the first non-neutral reports the game reads.
-        static const bool s_padTrace = ps2x::knob("PS2X_SOCOM2_PAD_TRACE") != nullptr;
-        if (s_padTrace && (report[3] != 0xFFu || report[4] != 0xFFu))
-        {
-            static uint32_t s_lines = 0;
-            if (s_lines++ < 40u)
-                std::cout << "[pad-trace] read: buttons=" << std::hex << (unsigned)report[3] << " " << (unsigned)report[4]
-                          << " axes=" << (unsigned)report[5] << "," << (unsigned)report[6] << "," << (unsigned)report[7] << "," << (unsigned)report[8]
-                          << std::dec << std::endl;
-        }
-        SET_GPR_U32(ctx, 2, static_cast<uint32_t>(sizeof(report)));
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
-    void scePad2GetButtonInfo(uint8_t *, R5900Context *ctx, PS2Runtime *)
-    {
-        // a2 = button id. 0x10-0x13 = analog axes (center 0x80); else digital button pressure.
-        const uint32_t id = GPR_U32(ctx, 6);
-        uint32_t value;
-        if (id >= 0x10u && id <= 0x13u)
-            value = g_socom2Pad.axis[id - 0x10u];
-        else if (id < 0x10u)
-            value = g_socom2Pad.button[id];
-        else if (id >= 0x14u && id <= 0x1fu)
-            value = socom2PressureOf(g_socom2Pad, static_cast<int>(id - 0x14u));   // R139: Triangle's may be light
-        else
-            value = 0u;
-        // PS2X_SOCOM2_PAD_TRACE=1: which ids does the game poll, and what did it get for pressed ones?
-        static const bool s_padTrace = ps2x::knob("PS2X_SOCOM2_PAD_TRACE") != nullptr;
-        if (s_padTrace)
-        {
-            static uint32_t s_seenMask = 0u;
-            static uint32_t s_pressedLines = 0u;
-            const uint32_t bit = id < 32u ? (1u << id) : 0u;
-            if (bit && !(s_seenMask & bit))
-            {
-                s_seenMask |= bit;
-                std::cout << "[pad-trace] GetButtonInfo polls id 0x" << std::hex << id << std::dec << std::endl;
-            }
-            static uint32_t s_lastValue[32] = {0};
-            if (id < 32u && value != s_lastValue[id] && s_pressedLines++ < 200u)
-            {
-                std::cout << "[pad-trace] GetButtonInfo id 0x" << std::hex << id << " " << s_lastValue[id] << " -> " << value << std::dec << std::endl;
-                s_lastValue[id] = value;
-            }
-        }
-        SET_GPR_U32(ctx, 2, value);
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
-    // The three remaining libpad2 entry points the game calls each frame (FUN_002da930) are
-    // *not* covered by the socket HLE above: natively they read the DMA double buffer registered
-    // by scePad2CreateSocket (never set up by the HLE) and talk to DBCMAN through libdbc
-    // (sceDbcReceiveData / SendData2). Answering them here keeps the pad state machine consistent
-    // (state 0 -> 1 needs GetButtonProfile >= 0 and sceVibGetProfile >= 0) and keeps libdbc idle.
-    void scePad2GetButtonProfile(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
-    {
-        // a1 = destination for the 40-bit button profile (bit n = button n supported). A DualShock2
-        // reports the 16 digital buttons and the 16 analog/pressure fields (ids 0x00-0x1f).
-        const uint32_t buf = GPR_U32(ctx, 5) & PS2_RAM_MASK;
-        static const uint8_t kDs2Profile[5] = {0xFFu, 0xFFu, 0xFFu, 0xFFu, 0x00u};
-        uint32_t length = 0u;
-        if (socom2PadEnabled())
-        {
-            std::memcpy(rdram + buf, kDs2Profile, sizeof(kDs2Profile));
-            length = static_cast<uint32_t>(sizeof(kDs2Profile));
-        }
-        SET_GPR_U32(ctx, 2, socom2PadEnabled() ? length : 0xFFFFFFFFu);
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
-    void sceVibGetProfile(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
-    {
-        // a1 = actuator profile buffer; the game only sends SetActParam when byte 0 is nonzero.
-        // Report no actuators (0 bytes, buffer zeroed) so no vibration traffic is generated.
-        const uint32_t buf = GPR_U32(ctx, 5) & PS2_RAM_MASK;
-        std::memset(rdram + buf, 0, 2);
-        SET_GPR_U32(ctx, 2, 0u);            // count 0, >= 0 = success
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
-    void sceVibSetActParam(uint8_t *, R5900Context *ctx, PS2Runtime *)
-    {
-        SET_GPR_U32(ctx, 2, 1u);            // accepted
-        ctx->pc = GPR_U32(ctx, 31);
-    }
+    // The libpad2 HLE (scePad2*, sceVib*, the shared pad state): socom2_pad2_hle.cpp.
 }
 
 namespace
@@ -2349,7 +2028,7 @@ namespace
         runtime.replaceFunction(0x001c5b30u, socom2_LoadGameCodeFromMemcard);
         runtime.replaceFunction(0x00181c90u, socom2_LoadOverlayFile);
         runtime.replaceFunction(0x001a6110u, ps2_stubs::socom2_SifSendCmd); // sceSifSendCmd: sreg handshake echo
-        // msifrpc (libnetb transport) answered on the host; see the "msifrpc HLE" section.
+        // msifrpc (libnetb transport) answered on the host: socom2_msifrpc.cpp.
         runtime.replaceFunction(0x001bcd80u, ps2_stubs::socom2_MsifInit);
         runtime.replaceFunction(0x001bd050u, ps2_stubs::socom2_MsifBind);
         runtime.replaceFunction(0x001bd320u, ps2_stubs::socom2_MsifCall);

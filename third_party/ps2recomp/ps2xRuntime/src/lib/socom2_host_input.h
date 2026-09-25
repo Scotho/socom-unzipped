@@ -4,7 +4,7 @@
 
 #include <cstdint>
 
-// Host input -> DualShock2 state for the SOCOM II libpad2 HLE (game_overrides_socom2.cpp).
+// Host input -> DualShock2 state for the SOCOM II libpad2 HLE (socom2_pad2_hle.cpp).
 //
 // The HLE scePad2Read/scePad2GetButtonInfo stubs read this state; socom2HostInputPoll() refreshes it
 // from the host keyboard, the pad and an optional scripted sequence. It is called from the game thread
