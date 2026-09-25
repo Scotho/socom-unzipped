@@ -1,6 +1,6 @@
 """scripts/parity/env.sh -- the one place the online harness defines its server address and instruments.
 
-Before this file the five online scripts each carried their own `PS2X_SOCOM2_SERVER=...:-192.168.2.10` and
+Before this file the five online scripts each carried their own `PS2X_SOCOM2_SERVER=...:-<a LAN address>` and
 three of them a verbatim copy of the ~570-character PS2X_PEEK block, so a drift in one copy silently changed
 what that run measured. These tests hold the seam:
 
@@ -21,6 +21,7 @@ from tools_py.tests.shell import BASH
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 ENV_SH = os.path.join(ROOT, "scripts", "parity", "env.sh")
 PEEK_LEN = 573          # the full instrument block, as ladder_frostfire.sh carried it
+HOSTED = "socom.scotho.com"     # the hosted Horizon box, by the name the launcher's default preset uses
 
 
 def run_bash(script, env=None):
@@ -39,9 +40,10 @@ def run_bash(script, env=None):
 
 class EnvShTest(unittest.TestCase):
     def test_defaults(self):
-        """A bare source gives the owner's address and the full peek block."""
+        """A bare source gives the hosted box, by name (Sprint 13 Task H6: it was the owner's LAN address),
+        and the full peek block."""
         out = run_bash(". scripts/parity/env.sh; echo $PS2X_SOCOM2_SERVER; echo ${#PS2X_PEEK}")
-        self.assertEqual(out[0], "192.168.2.10")
+        self.assertEqual(out[0], HOSTED)
         self.assertEqual(int(out[1]), PEEK_LEN)
 
     def test_socom_server_ip_overrides(self):
@@ -53,7 +55,7 @@ class EnvShTest(unittest.TestCase):
     def test_source_twice_is_harmless(self):
         out = run_bash(". scripts/parity/env.sh; . scripts/parity/env.sh; "
                        "echo $PS2X_SOCOM2_SERVER; echo ${#PS2X_PEEK}")
-        self.assertEqual(out[0], "192.168.2.10")
+        self.assertEqual(out[0], HOSTED)
         self.assertEqual(int(out[1]), PEEK_LEN)
 
     def test_every_online_script_sources_env_sh(self):

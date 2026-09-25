@@ -802,19 +802,26 @@ class Valve:
 
 # research/21 §2.1-§2.2. Identity is the NAME BYTES (platform- and heap-independent); the pointer
 # column is kept only for the pointer-mode read and the CLI's --round-name-ptr. mission_abort's
-# name item is `*0x43668c*:3`: `*0x43668c` already lands on the valve, and launch 1c's `**:3` form
-# dereferenced the name bytes themselves (@7373696d on every row, research/21 §6.2).
+# name item is `*<mission_abort_valve>*:3`: `*<mission_abort_valve>` already lands on the valve, and
+# launch 1c's `**:3` form dereferenced the name bytes themselves (@7373696d on every row, research/21 §6.2).
+#
+# Every guest number here is READ FROM guest_addresses by name (Sprint 13 Task H6, audit harness-tools
+# H22). The chains are rendered in r0001's addresses, spelled `"%#x"` exactly as `chain_for` expects, and
+# `chain_for` re-renders them per revision. The NAME POINTERS are r0001-only: they are heap addresses
+# (above every PT_LOAD segment of the image), `data_via_twin` cannot place them, and the table leaves their
+# r0004 cells absent with that reason (guest_addresses.UNCONFIRMED_COLUMNS). So the pointer mode --
+# `valve_rows` and move-path's --round-name-ptr -- is r0001-only, and the CLI refuses it on a log that
+# is not r0001's (`pointer_mode_refusal`); everything that scores identifies a valve by its name bytes.
+_NET_GAME = "%#x" % ga.address("net_game", "r0001")
+_ABORT_VALVE = "%#x" % ga.address("mission_abort_valve", "r0001")
+_VALVE_OFFSETS = (("mp_round_count", 0x0c), ("mp_game_over", 0x10), ("player_team", 0x14),
+                  ("mp_major_game_state", 0x20), ("mp_minor_game_state", 0x24), ("late_joiner", 0x2c),
+                  ("aiteam_00", 0x58), ("aiteam_08", 0x5c), ("total_mp_kills", 0x70))
 VALVES = {v.name: v for v in (
-    Valve("mp_round_count", "*0x437ce8+0x0c*:2", "*0x437ce8+0x0c**:3", 0x006B7F30),
-    Valve("mp_game_over", "*0x437ce8+0x10*:2", "*0x437ce8+0x10**:3", 0x006B7F20),
-    Valve("player_team", "*0x437ce8+0x14*:2", "*0x437ce8+0x14**:3", 0x006CC9FC),
-    Valve("mp_major_game_state", "*0x437ce8+0x20*:2", "*0x437ce8+0x20**:3", 0x00694AE0),
-    Valve("mp_minor_game_state", "*0x437ce8+0x24*:2", "*0x437ce8+0x24**:3", 0x00694B08),
-    Valve("late_joiner", "*0x437ce8+0x2c*:2", "*0x437ce8+0x2c**:3", 0x006CCA14),
-    Valve("aiteam_00", "*0x437ce8+0x58*:2", "*0x437ce8+0x58**:3", 0x006CCAD4),
-    Valve("aiteam_08", "*0x437ce8+0x5c*:2", "*0x437ce8+0x5c**:3", 0x006CCAEC),
-    Valve("total_mp_kills", "*0x437ce8+0x70*:2", "*0x437ce8+0x70**:3", 0x006B7F70),
-    Valve("mission_abort", "*0x43668c:2", "*0x43668c*:3", 0x006B7FB0),
+    [Valve(name, f"*{_NET_GAME}+{off:#04x}*:2", f"*{_NET_GAME}+{off:#04x}**:3",
+           ga.address("valve_name." + name, "r0001")) for name, off in _VALVE_OFFSETS]
+    + [Valve("mission_abort", f"*{_ABORT_VALVE}:2", f"*{_ABORT_VALVE}*:3",
+             ga.address("valve_name.mission_abort", "r0001"))]
 )}
 ROUND_VALVES = ("mp_round_count", "mp_game_over", "aiteam_00", "aiteam_08")
 NAME_BYTES = 12                        # three words; aiteam_00/_08 differ only in byte 8
@@ -992,25 +999,55 @@ def row_static_any(items, addrs):
     return None
 
 
+def _row_static_hit(items, addrs):
+    """(address, first word) of the item at one of `addrs`, or (None, None): `row_static_any`, saying
+    WHICH column's address the row carried, so a message prints the row's own number."""
+    for a, words in items:
+        if a in addrs and words:
+            return a, words[0]
+    return None, None
+
+
 def stall_context(items):
     """The R6 snap-back inputs from one (the latest) peek row, for a move-path stall line:
-    actor+0x420, the round clock DAT_004365c0, their gap and DAT_0045a0c1. Items absent -> said."""
+    actor+0x420, the round clock DAT_004365c0, their gap and DAT_0045a0c1. Items absent -> said.
+    Addresses print as the row carried them (either revision's column)."""
     parts = []
     stamp = row_actor_field(items, ACTOR_STAMP_OFFSET, "f32")
-    clock_w = row_static_any(items, ROUND_TIME_ADDRS)
-    flag_w = row_static_any(items, MP_FLAG_WORD_ADDRS)
+    clock_a, clock_w = _row_static_hit(items, ROUND_TIME_ADDRS)
+    flag_a, flag_w = _row_static_hit(items, MP_FLAG_WORD_ADDRS)
     if not isinstance(stamp, NoData):
         parts.append(f"actor+0x420={stamp:.3f}")
     if clock_w is not None:
-        parts.append(f"clock@0x4365c0={f32(clock_w):.3f}")
+        parts.append(f"clock@{clock_a:#x}={f32(clock_w):.3f}")
     if not isinstance(stamp, NoData) and clock_w is not None:
         gap = f32(clock_w) - stamp
         parts.append(f"gap={gap:.3f}{' > ' if gap > R6_GAP_S else ' <= '}{R6_GAP_S:g}")
     if flag_w is not None:
-        parts.append(f"0x45a0c1={(flag_w >> 8) & 0xFF}")
+        parts.append(f"{flag_a + 1:#x}={(flag_w >> 8) & 0xFF}")
     if not parts:
-        return "R6 inputs not peeked (*0x408c58+0x400:12, 0x4365c0:1, 0x45a0c0:1)"
+        return (f"R6 inputs not peeked (*{ga.address('player_actor', 'r0001'):#x}+0x400:12, "
+                f"{ROUND_TIME_ADDR:#x}:1, {MP_FLAG_WORD_ADDR:#x}:1)")
     return "R6 " + " ".join(parts)
+
+
+def pointer_mode_refusal(lines, peek_rows):
+    """None when a log may be read in the pointer mode (`valve_rows` with an r0001 name pointer), else the
+    sentence that refuses it. The mode is r0001-only (see VALVES). The log's own address-table line decides;
+    a log from before that line existed decides by its rows -- an item at any other column's address makes
+    it that column's. A log that says neither, and carries no other column's address, is an r0001 log:
+    the r0004 lane began after the runtime started printing the line."""
+    try:
+        revision = ga.log_revision(lines)[0]
+    except ValueError:
+        other = {ga.address(n, r): r for n in ga.all_names() if n != "actor_vtable"
+                 for r in ga.REVISIONS if r != "r0001"}
+        revision = next((other[a] for _t, items in peek_rows for a, _w in items if a in other), "r0001")
+    if revision == "r0001":
+        return None
+    return (f"--round-name-ptr is r0001-only and this log is {revision}'s: a valve's name pointer is a heap "
+            f"address guest_addresses has no {revision} column for (data_via_twin cannot place it). Drop "
+            f"the flag -- without it the valve is found by its NAME BYTES, which read every revision.")
 
 
 def valve_rows(peek_rows, expected_name_ptr):
@@ -1264,6 +1301,11 @@ def _cmd_move_path(args):
         now = p.peek_rows[-1][0] if p.peek_rows else (calls[-1][0] if calls else 0.0)
         alive = actor_field_rows(p.peek_rows, ACTOR_ALIVE_OFFSET, "u8")
         if args.round_name_ptr is not None:
+            refusal = pointer_mode_refusal(_read(path), p.peek_rows)
+            if refusal:
+                print(f"[{tag}] MOVE-PATH refused -- {refusal}")
+                worst = max(worst, 2)
+                continue
             rounds = valve_rows(p.peek_rows, args.round_name_ptr)
         else:
             rounds = valve_rows_by_name(p.peek_rows, "mp_round_count")
@@ -1357,7 +1399,8 @@ def main(argv=None):
     m.add_argument("logs", nargs="+")
     m.add_argument("--name", default=MOVE_SCALE_NAME)
     m.add_argument("--round-name-ptr", type=lambda s: int(s, 0), default=None,
-                   help="name pointer of the mp_round_count valve (identifies its peek item)")
+                   help="name pointer of the mp_round_count valve (identifies its peek item). r0001 logs "
+                        "only: refused on any other revision's (the pointer is a heap address)")
     s = sub.add_parser("starvation", help="ng+0xde / NetIdle (exit 0 ok / 1 alarm / 2)")
     s.add_argument("logs", nargs="+")
     s.add_argument("--name", default=None, help="NetIdle slot name (default: whichever of %s logged)"

@@ -990,13 +990,25 @@ class TestImportSet(unittest.TestCase):
         for n in names:
             for bad in self.FORBIDDEN:
                 self.assertNotIn(bad, n)
-        self.assertLessEqual({n.split(".")[0] for n in names},
-                             {"argparse", "bisect", "math", "os", "re", "struct", "sys", "dataclasses"})
+        # The standard library, plus the guest-address TABLE (Sprint 13 Task H6) -- by the two spellings
+        # the import takes (package, and the sibling fallback for a run as a file), and nothing else.
+        self.assertLessEqual(names - {"tools_py.parity", "tools_py.parity.guest_addresses", "guest_addresses"},
+                             {n for n in names if n.split(".")[0] in
+                              {"argparse", "bisect", "math", "os", "re", "struct", "sys", "dataclasses"}})
 
-    # Every guest number this module carries as a literal, and the guest_addresses name that owns it.
-    # `verdict_replay` may not import that module (TestImportSet, above) -- it is the independently
-    # written second scorer -- so this is the seam that keeps the copies honest, and a new revision's
-    # column must reach both (Sprint 11 Task 19, review F6).
+    def test_the_table_it_reads_is_a_leaf(self):
+        """What keeps the second scorer independent with the table imported: guest_addresses imports
+        nothing from tools_py, so the two scorers share a table of numbers and no logic."""
+        path = os.path.join(ROOT, "tools_py", "parity", "guest_addresses.py")
+        with open(path, encoding="utf-8") as f:
+            tree = ast.parse(f.read())
+        mods = {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
+        mods |= {n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}
+        self.assertFalse({m for m in mods if m.startswith("tools_py")}, mods)
+
+    # Every guest number this module reads, and the guest_addresses name that owns it. They are read FROM
+    # the table now (Sprint 13 Task H6); this holds that they are the table's, on every column (Sprint 11
+    # Task 19, review F6).
     LITERAL_PAIRS = (("ACTOR_VTABLE", "ACTOR_VTABLES", "actor_vtable"),
                      ("GUEST_CLOCK_ADDR", "GUEST_CLOCK_ADDRS", "guest_clock"),
                      ("CLOCK_STRING_ADDR", "CLOCK_STRING_ADDRS", "clock_string"))

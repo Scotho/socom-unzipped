@@ -142,19 +142,32 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from tools_py.parity.cam_poll import pine_port, resolve  # noqa: E402
 
+# THE STATICS ARE PER REVISION (Sprint 13 Task H6, audit harness-tools H21). They were r0001 literals
+# here; they are read from tools_py/parity/guest_addresses.py's table BY NAME now. The module-level
+# constants are the r0001 column, by name and stated -- every caller and test that imports them has always
+# meant r0001 -- and `bind_revision()` re-binds all eight to another column, or refuses the whole set when
+# the table lacks any of them for it. On r0004 it refuses today: `vagstore_base` has no r0004 cell
+# (guest_addresses.UNCONFIRMED_COLUMNS says why). Reading r0001's place on an r0004 run is the one thing
+# this must not do -- the words come back, from somebody else's memory.
+STATIC_NAMES = {"ROUTE_ADDR": "cue_route", "MGR_PTR_ADDR": "cue_manager_ptr", "MUSIC_ADDR": "music_globals",
+                "MUSIC_OFF_ADDR": "music_off", "TABLES_ADDR": "music_tables", "STORE_BASE_ADDR": "vagstore_base",
+                "CLOCK_ADDR": "clock_string", "GUEST_CLOCK_ADDR": "guest_clock"}
+_R0001 = ga.addresses(list(STATIC_NAMES.values()), "r0001")
+REVISION = "r0001"               # the column the constants below are in; bind_revision() changes it
+
 # -- the cue sequencer
-ROUTE_ADDR = 0x49e150            # DAT_0049e150, byte 0 of the word
-MGR_PTR_ADDR = 0x49e158          # DAT_0049e158 -> the manager
+ROUTE_ADDR = _R0001["cue_route"]                # DAT_0049e150, byte 0 of the word
+MGR_PTR_ADDR = _R0001["cue_manager_ptr"]        # DAT_0049e158 -> the manager
 MGR_WORDS = 16                   # 0x40 bytes
 QUEUE_SLOTS = 20                 # the constructor's 0x14 free slots
 SLOT_WORDS = 3
 # -- the music machine
-MUSIC_ADDR = 0x48e080            # DAT_0048e080.. as one 14-word block (see MUSIC_W_*)
+MUSIC_ADDR = _R0001["music_globals"]            # DAT_0048e080.. as one 14-word block (see MUSIC_W_*)
 MUSIC_WORDS = 14
 MUSIC_W_ENTRY, MUSIC_W_PLAYLIST, MUSIC_W_LEVEL, MUSIC_W_LOADED = 0, 2, 4, 6      # 0x48e080/88/90/98
 MUSIC_W_ALERT, MUSIC_W_CHANGED, MUSIC_W_REQDEF, MUSIC_W_REQLVL = 8, 10, 12, 13   # 0x48e0a0/a8/b0/b4
-MUSIC_OFF_ADDR = 0x3e0080        # DAT_003e0080
-TABLES_ADDR = 0x48e010           # DAT_0048e010: 4 x {cap, count, data} playlists, then at +0x40 4 x weights
+MUSIC_OFF_ADDR = _R0001["music_off"]            # DAT_003e0080
+TABLES_ADDR = _R0001["music_tables"]            # DAT_0048e010: 4 x {cap, count, data} playlists, then at +0x40 4 x weights
 TABLES_WORDS = 28
 LEVEL_NAMES = ("STEALTH", "FIGHT", "MED_FIGHT", "HEAVY_FIGHT")
 PLAYLIST_WORDS = 6               # 0x18 bytes
@@ -166,28 +179,37 @@ TABLE_MAX = 8                    # playlists per level peeked
 ENTRY_WORDS = 10                 # 0x28 bytes
 DEF_WORDS = 16                   # the def's first 0x40 bytes (name pointers at +0x20 / +0x24)
 NAME_WORDS = 8                   # 32 bytes of the name string
-STORE_BASE_ADDR = 0x48dc48       # the VAGSTORE object 0x48dc30 + 0x18 (second store) and + 0x1c (FUN_0034d470)
-CLOCK_ADDR = 0x408f10            # the HUD timer string "MM:SS" (research/19 :217)
-GUEST_CLOCK_ADDR = ga.address("guest_clock", "r0001")   # 0x4365c0, float seconds (KNOWN.md, freeze detection)
+STORE_BASE_ADDR = _R0001["vagstore_base"]       # the VAGSTORE object 0x48dc30 + 0x18 (second store) and + 0x1c (FUN_0034d470)
+CLOCK_ADDR = _R0001["clock_string"]             # 0x408f10, the HUD timer string "MM:SS" (research/19 :217)
+GUEST_CLOCK_ADDR = _R0001["guest_clock"]        # 0x4365c0, float seconds (KNOWN.md, freeze detection)
 RAM_LO, RAM_HI = 0x100000, 0x2000000
 
 VAGSTORE_ZAR = os.path.join("game", "disc", "RUN", "SOUNDS", "VAGSTORE.ZAR")
 VAGSTORE_DATA_LBN = 0xee89a      # this disc: file LBN 0xee801 + 0x99 sectors of TOC (iso_lbn + the ZAR header)
 
-COMMON_PEEK = [f"{STORE_BASE_ADDR:#x}:2", f"{CLOCK_ADDR:#x}:2", f"{GUEST_CLOCK_ADDR:#x}:1"]
+def _specs():
+    """(COMMON_PEEK, OURS_PEEK_SPEC, MUSIC_PEEK_SPEC) in the column the module's constants are bound to."""
+    common = [f"{STORE_BASE_ADDR:#x}:2", f"{CLOCK_ADDR:#x}:2", f"{GUEST_CLOCK_ADDR:#x}:1"]
+    return common, _ours_spec(common), _music_spec(common)
+
 
 # What ours must be launched with, per mode: every block the PINE poll reads, chained from the pointers.
-OURS_PEEK_SPEC = ",".join([
+def _ours_spec(common):
+    return ",".join([
     f"{ROUTE_ADDR:#x}:1", f"{MGR_PTR_ADDR:#x}:1", f"*{MGR_PTR_ADDR:#x}:{MGR_WORDS}",
     f"*{MGR_PTR_ADDR:#x}+0x34*:{ENTRY_WORDS}",                 # the entry
     f"*{MGR_PTR_ADDR:#x}+0x34*+0x4*:{DEF_WORDS}",              # its def
     f"*{MGR_PTR_ADDR:#x}+0x34*+0x4*+0x20*:{NAME_WORDS}",       # the def's name string
     f"*{MGR_PTR_ADDR:#x}+0x20*:{QUEUE_SLOTS}",                 # the cue queue's index data
     f"*{MGR_PTR_ADDR:#x}+0x30*:{QUEUE_SLOTS * SLOT_WORDS}",    # the slot array (60 words, under the 64 cap)
-] + COMMON_PEEK)
+] + common)
+
+
 OURS_SAMPLER_S = "0.05"
 
-MUSIC_PEEK_SPEC = ",".join(
+
+def _music_spec(common):
+    return ",".join(
     [f"{MUSIC_ADDR:#x}:{MUSIC_WORDS}", f"{MUSIC_OFF_ADDR:#x}:1", f"{TABLES_ADDR:#x}:{TABLES_WORDS}"]
     + [f"*{TABLES_ADDR + 0x40 + 8 + lvl * 0xc:#x}:{TABLE_MAX}" for lvl in range(4)]     # the weights per level
     + [f"*{TABLES_ADDR + 8 + lvl * 0xc:#x}:{TABLE_MAX}" for lvl in range(4)]            # the playlist pointers per level
@@ -198,8 +220,42 @@ MUSIC_PEEK_SPEC = ",".join(
         f"*{MUSIC_ADDR + 8:#x}+0x8*+{i * 0x10:#x}*:9",                                   # entry i's def (to +0x20)
         f"*{MUSIC_ADDR + 8:#x}+0x8*+{i * 0x10:#x}*+0x20*:{NAME_WORDS}",                  # its name
         f"*{MUSIC_ADDR + 8:#x}+0x8*+{i * 0x10 + 4:#x}*:2")]                              # its sound entry (handle, def)
-    + COMMON_PEEK)
+    + common)
+
+
+COMMON_PEEK, OURS_PEEK_SPEC, MUSIC_PEEK_SPEC = _specs()
 MUSIC_SAMPLER_S = "0.1"
+
+
+def bind_revision(revision):
+    """Re-bind every static (and the two PS2X_PEEK specs built from them) to `revision`'s column. All
+    eight or none: a name the table has no `revision` cell for raises ValueError naming each absent one
+    and why (guest_addresses.UNCONFIRMED_COLUMNS), and the module is left as it was."""
+    global REVISION, COMMON_PEEK, OURS_PEEK_SPEC, MUSIC_PEEK_SPEC
+    got = ga.addresses(list(STATIC_NAMES.values()), revision)
+    g = globals()
+    for const, name in STATIC_NAMES.items():
+        g[const] = got[name]
+    REVISION = revision
+    COMMON_PEEK, OURS_PEEK_SPEC, MUSIC_PEEK_SPEC = _specs()
+    return revision
+
+
+def log_revision(path, wait_s=0.0):
+    """The column the runtime says it installed, off the run log (guest_addresses.log_revision); with
+    `wait_s`, keep re-reading a live log that has not printed its address-table line yet. A log that never
+    says raises: the poll does not assume r0001 -- pass --revision when the log predates the line."""
+    deadline = time.time() + wait_s
+    while True:
+        try:
+            with open(path, "r", errors="replace") as f:
+                head = [next(f, "") for _ in range(2000)]
+            return ga.log_revision(head)[0]
+        except (ValueError, OSError):
+            if time.time() >= deadline:
+                raise ValueError("music_state_poll: %s never says which revision the runtime installed (no "
+                                 "'[socom2] address table: ...' line) -- pass --revision" % path) from None
+            time.sleep(1.0)
 
 FIELDS = ("mode", "state", "irq", "en", "cue", "def", "vol", "q", "free", "h34", "h38", "h3c", "ih", "ef")
 HEX_FIELDS = ("cue", "def", "vol", "h34", "h38", "h3c", "ih", "ef")
@@ -1158,7 +1214,25 @@ def main(argv=None):
     ap.add_argument("--log", default="latest", help="ours: the run log (`latest` = newest logs/run_*.log)")
     ap.add_argument("--follow", action="store_true", help="ours: tail the log live (wall = now)")
     ap.add_argument("--log-start", type=float, default=None, help="ours, offline: the log's launch epoch")
+    ap.add_argument("--revision", choices=sorted(ga.REVISIONS), default=None,
+                    help="the address column. Default: --spec reads the image a launch would use "
+                         "($SOCOM_GAME_ELF, else game/disc/socom2_game.elf); --target ours reads the run log's "
+                         "address-table line; --target pcsx2 is r0001 (the console boots the r0001 disc)")
     a = ap.parse_args(argv)
+    try:
+        if a.revision:
+            revision = a.revision
+        elif a.spec:
+            revision = ga.launch_revision()
+        elif a.target == "pcsx2":
+            revision = "r0001"
+        else:
+            revision = None                     # ours: read off the log once its path is known, below
+        if revision is not None and revision != REVISION:
+            bind_revision(revision)
+    except ValueError as e:
+        sys.stderr.write("%s\n" % e)
+        return 2
     if a.spec:
         print(f"PS2X_PC_SAMPLER={sampler_period(a.what)} PS2X_PEEK=\"{peek_spec(a.what)}\"")
         return 0
@@ -1170,7 +1244,8 @@ def main(argv=None):
         started = time.time()
         if a.target == "pcsx2":
             port = a.port or pine_port()
-            out.write(f"# music_state_poll what={a.what} target=pcsx2 port={port} hz={a.hz} started={started:.3f} "
+            out.write(f"# music_state_poll what={a.what} target=pcsx2 revision={REVISION} port={port} hz={a.hz} "
+                      f"started={started:.3f} "
                       f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(started))} toc={'yes' if toc else 'no'}\n")
             tr = poll_pcsx2(port, out, a.seconds, a.hz, a.what, toc)
         else:
@@ -1183,8 +1258,17 @@ def main(argv=None):
                     path = newest_run_log()
                 if path is None:
                     raise SystemExit("no logs/run_*.log")
+            if not a.revision:
+                try:
+                    revision = log_revision(path, wait_s=60.0 if a.follow else 0.0)
+                    if revision != REVISION:
+                        bind_revision(revision)
+                except ValueError as e:
+                    sys.stderr.write("%s\n" % e)
+                    return 2
             base = a.log_start if a.log_start is not None else log_start_epoch(path)
-            out.write(f"# music_state_poll what={a.what} target=ours log={path} follow={a.follow} started={started:.3f} "
+            out.write(f"# music_state_poll what={a.what} target=ours revision={REVISION} log={path} follow={a.follow} "
+                      f"started={started:.3f} "
                       f"log_start={base:.3f} toc={'yes' if toc else 'no'} peek={peek_spec(a.what)}\n")
             tr = Tracker(out, t0=started if a.follow else base, toc=toc, what=a.what)
             if a.follow:

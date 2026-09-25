@@ -6,11 +6,14 @@
 # the sampler) lives in exactly one place -- when the peek block was copy-pasted into each script, a drift
 # in one copy silently changed what that run measured while every RESULT line still looked the same.
 #
-# SOCOM_SERVER_IP is the one knob that points the harness at another server. It must be the LAN address of
-# the machine running the Horizon stack, or the exe advertises 127.0.0.1 as its own address
-# (docs/HANDOFF.md); 192.168.2.10 is the owner's machine.
+# SOCOM_SERVER_IP is the one knob that points the harness at another server. The default is the project's
+# hosted Horizon box by its NAME, socom.scotho.com -- the launcher's default preset and the README's
+# address (R175: the runtime resolves the name to the same integer the guest has always been handed).
+# A bare run by a stranger, or by a cloud session, reaches the hosted box and nobody's private network
+# (Sprint 13 Task H6, audit harness-tools H19). A Horizon stack on your own network is one override away;
+# give that machine's LAN address, or the exe advertises 127.0.0.1 as its own (docs/HANDOFF.md):
 #
-#     SOCOM_SERVER_IP=10.0.0.5 bash scripts/parity/online_control_round.sh "foxhunt"
+#     SOCOM_SERVER_IP=<the Horizon machine's address> bash scripts/parity/online_control_round.sh "foxhunt"
 #
 # Every value uses ${VAR:-default}, so whatever is already in the operator's environment wins and sourcing
 # this file twice is harmless. No `set -e`/`set -u` here, and it is safe to source from a script that has
@@ -35,7 +38,7 @@
 # sourcing script's own name.
 . "$(dirname "${BASH_SOURCE[0]}")/../python_env.sh"
 
-SOCOM_SERVER_IP="${SOCOM_SERVER_IP:-192.168.2.10}"
+SOCOM_SERVER_IP="${SOCOM_SERVER_IP:-socom.scotho.com}"
 export SOCOM_SERVER_IP
 export PS2X_SOCOM2_SERVER="${PS2X_SOCOM2_SERVER:-$SOCOM_SERVER_IP}"
 
