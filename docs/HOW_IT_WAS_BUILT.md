@@ -133,8 +133,8 @@ are written down in `docs/KNOWN.md` §4 rather than hidden:
 
 For most of the project the recompiled game read as numbers: every function was `FUN_` or `sub_` followed by its
 address, because the disc's executable carries no symbols and Ghidra's function map names what it cannot know by
-where it is. Sprint 12 (2026-09-24 onward) is the attempt to give those functions their real names without letting a
-single name in on a guess. How it is done is the part worth describing; how far it has got is not this page's to say
+where it is. Sprint 12 (2026-09-24 to 2026-09-25) was the attempt to give those functions their real names without
+letting a single name in on a guess. How it is done is the part worth describing; how far it has got is not this page's to say
 (the pointers are at the end of this section).
 
 **Where the names come from.** A demo disc of the *first* SOCOM, from 2002, was shipped with its debug symbol table

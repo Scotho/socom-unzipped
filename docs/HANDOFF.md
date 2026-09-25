@@ -46,12 +46,14 @@ reach a commit message. The product name is
   because three of its four documentation artefacts turn out to be already written.
 - **Baselines: `docs/DEVELOPING.md` §"What a green run looks like" owns the suite counts** -- it is the single source and
   this line deliberately does not repeat them (they were `686/686` and `1457` here until 2026-09-22, four sprints after
-  they stopped being true). `PS2X_TEST_REPEAT=3 ./build.sh test` exit 0. Last gates 3/3: `s9_q0_children_gate`,
-  `s9_q0_prefill_gate`, `s9_q0_device_gate`, `s9_q0_trace_gate`, `s9_p7_playtest_gate`.
-- **Next free ruling number: R264.** (It read **R179** from 2026-09-20 to 2026-09-22 while R240 was in use -- and a
+  they stopped being true). `./build.sh test` exit 0 on the renamed tree (2026-09-25). Last gates 3/3:
+  `s12_names_gate` (the renamed tree, exe `804dd172…`, PINS MATCH, 2026-09-25); Sprint 11's `s11_close_gate`,
+  `s11_picks_keep_gate`, and `s11_r0004_rebuild1` for r0004.
+- **Next free ruling number: R269.** (It read **R179** from 2026-09-20 to 2026-09-22 while R240 was in use -- and a
   collision had already happened once, an agent numbering from R200 into taken ground. `tools_py/tests/test_doc_maintenance.py`
   now fails when this line is not `max(R<n>) + 1`, so take your number from here and update this line in the same commit.)
-- **Where the loop is now (2026-09-25, LATEST) -- Sprint 11 is CLOSED and on `main` as `v0.11.0`; Sprint 12 runs in the cloud on `sprint-12`.** Read `docs/CURRENT_SPRINT.md`'s "Sprint 11 — CLOSED" block (the outcome table, the carry, the rulings ledger R245–R263) and then the Sprint 12 handoff `docs/superpowers/plans/2026-09-24-sprint-12-cloud-handoff.md`: the cloud session owns Sprint 12 on `sprint-12`; the local half (its PROOF REQUESTED rows, the merges, the mirroring into this file and STATUS) is session socom-pc-6c's; a new local controller starts by asking the owner which of the two it is. This machine's checkout stays on `sprint-11`; nothing lands there any more except a hotfix. The close's own record: `docs/STATUS.md`'s 2026-09-25 entry and `docs/HUMAN_TASKS.md` "Sprint 11 close — what needs you".
+- **Where the loop is now (2026-09-25 morning, LATEST) -- Sprint 12 is CLOSED and merges to `main` as `v0.12.0` behind Sprint 11's `v0.11.0`; no sprint is open.** Read `docs/CURRENT_SPRINT.md`'s "Sprint 12 — CLOSED" block (the outcome, the carry, R264 on the `S12-R` names), then its "Sprint 11 — CLOSED" block. The generated image is readable now: `recomp/socom2_names.csv` is the sidecar the recompiler reads (`[general] names`), `tools_py/apply_names.py` its only writer, and `docs/DEVELOPING.md` "Names in the generated code" the contributor's page; the proof is `s12_names_gate` 3/3 with PINS MATCH on the renamed tree (2026-09-25 04:51–05:38Z, the plan's Task 3 Step 4 RESULT). The next sprint is the owner's to name; its inputs are the carry lists of both close blocks and `docs/HUMAN_TASKS.md`'s two "what needs you" sections. Two controllers shared this machine for a day (the cloud handoff `docs/superpowers/plans/2026-09-24-sprint-12-cloud-handoff.md` §5 is the procedure; it held, with one lesson: the lock has no queue, issue #36, so a second controller's poller can take a hand-off gap in the first one's chain).
+- **Where the loop was (2026-09-25 early) -- Sprint 11 is CLOSED and on `main` as `v0.11.0`; Sprint 12 runs in the cloud on `sprint-12`.** Read `docs/CURRENT_SPRINT.md`'s "Sprint 11 — CLOSED" block (the outcome table, the carry, the rulings ledger R245–R263) and then the Sprint 12 handoff `docs/superpowers/plans/2026-09-24-sprint-12-cloud-handoff.md`: the cloud session owns Sprint 12 on `sprint-12`; the local half (its PROOF REQUESTED rows, the merges, the mirroring into this file and STATUS) is session socom-pc-6c's; a new local controller starts by asking the owner which of the two it is. This machine's checkout stays on `sprint-11`; nothing lands there any more except a hotfix. The close's own record: `docs/STATUS.md`'s 2026-09-25 entry and `docs/HUMAN_TASKS.md` "Sprint 11 close — what needs you".
 - **Where the loop was (2026-09-24 16:30Z) -- `sprint-11` at `07dc937`+, pushed through `2381c8a`; `main` at `a548dd1`.** The second night: Tasks 17, 13, 8b, 6 Step 2, audio-out and the cross-row recompiler fix merged and gate-proven; the r0004 build's reboot traced to two capsule words in our dumped image and repaired (KNOWN §2's r0004 row is the whole chain), and, by 16:30Z, **the r0004 gate 3/3** (`s11_r0004_probe2`) once the gate's harness learned the revision (`tools_py/parity/guest_addresses.py`, one pin standard per revision); one KNOWN row retired from the public docs on both branches at the owner's word. Next: Task 6 Step 3 (the picks gated in research/42 §4's order), then the plan's remaining tasks. Traps this night taught, all in KNOWN §4: `--accept-pins` rewrites the shared standard at gate start-up (even a cancelled gate); a dumped image carries the resident patcher's writes; an agent's bare `git config` killed the main tree's push once more (per-worktree config, `scripts/agent_worktree.sh`).
 - **Where the loop is now (2026-09-23 05:10Z) -- Sprint 10 is on `main` (`f15acfa`, PR #24, tag `v0.10.0`);
   `sprint-11` is open off it with seven agent branches merged forward (`4732892`) and its opening chain running
@@ -149,8 +151,9 @@ Dates: the documents and commit subjects are stamped 2026-09-20 for a session th
   and **eight** owner decisions, each with the default the loop proceeds on (`docs/HUMAN_TASKS.md`).
   *(This bullet said "six owner decisions (D1-D6)" and listed the spec's draft goals until 2026-09-25.)*
 - **Sprint 12, "the readable image"** -- the demo-name rename pass into the function map, vtable slots through RTTI,
-  BinDiff as the cross-check, the ccc types with the layout-age caveat. **Open since 2026-09-24 on `sprint-12`, run
-  in the cloud** (`docs/superpowers/plans/2026-09-24-sprint-12.md` on that branch). <!-- docmaint: future -->
+  BinDiff as the cross-check, the ccc types with the layout-age caveat. **Closed 2026-09-25**: 1,771 readable names
+  from one sidecar, every one with its provenance, proven `s12_names_gate` 3/3 on the renamed tree
+  (`docs/superpowers/plans/2026-09-24-sprint-12.md`; run in a Claude cloud session, closed by the local controller).
 
 **Why this order:** by what the owner meets first (the music, every session), then by dependency (the keyboard
 narrowing needs Goal 3's developer mode; a public archive needs the
@@ -369,17 +372,17 @@ rather than rule. At most two C++-building agents at once.
   finished: Goal 10's music work closed in round four on 2026-09-21, and the knob-retirement plan ran as Sprint 10's
   Q2 on 2026-09-21 with its own rulings R203-R209. Either session may be gone by the time you read this; the working
   tree and the log say which.
-- **The Sprint 12 cloud session** (local half: session `socom-pc-6c`). It has been running Sprint 12, "the readable
-  image", on branch `sprint-12` since 2026-09-24: a spec, a plan
-  (`docs/superpowers/plans/2026-09-24-sprint-12.md` on that branch), a cloud handoff <!-- docmaint: future -->
-  (`docs/superpowers/plans/2026-09-24-sprint-12-cloud-handoff.md`), thirteen research notes, its own ruling series
-  S12-R1…R25, and every task's code half done. What it needs from this machine is its Outcome's **PROOF REQUESTED**
-  row (recomp, runtime, the C++ suite, the r0001 gate 3/3 with PINS MATCH) and, once Sprint 11 is on `main`, a merge
-  of `origin/main` into `sprint-12`. Work owed back to it is marked `LOCAL:` in its plan.
+- **The Sprint 12 cloud session** (local half: session `socom-pc-6c`) ran Sprint 12, "the readable image", on branch
+  `sprint-12` from 2026-09-24 to 2026-09-25: a spec, a plan (`docs/superpowers/plans/2026-09-24-sprint-12.md`), a
+  cloud handoff (`docs/superpowers/plans/2026-09-24-sprint-12-cloud-handoff.md`), fifteen research notes (47–61),
+  its own ruling series S12-R1…R25, and every task's code half. The local half ran its PROOF REQUESTED row on
+  2026-09-25 (green), merged Sprint 11 in, and closed the sprint; no session holds it now. Its `LOCAL:` lines are
+  all answered (the plan's Log).
 - **Agents in worktrees** (`C:\projects\wt-*`, one branch each) whenever the controller has dispatched any. They
   never touch this tree; the controller merges. `.superpowers/sdd/<plan>/progress.md` is the ledger that says who
-  holds what. As of 2026-09-25 `git worktree list` gives three -- `wt-cherry` (`agent/cherry`), `wt-ci-fix`
-  (`agent/ci-fix`, the CI test fix) and `wt-s12` (`sprint-12`) -- plus an orphan directory `C:\projects\wt-issues`
+  holds what. As of 2026-09-25 `git worktree list` gives three -- `wt-cherry` (`agent/picks-keep`, merged into Sprint 11), `wt-ci-fix`
+  (`agent/ci-fix`, merged) and `wt-s12` (`sprint-12`: the Sprint 12 proof and close ran there; remove it once the
+  Sprint 12 PR has merged) -- plus an orphan directory `C:\projects\wt-issues`
   that is not a registered worktree; leave it until someone identifies it, and **rmdir the junctions before
   `git worktree remove`**.
 - **Relays owed to the site session, not yet confirmed done:** (1) drop the "keyboard/mouse support" claim from

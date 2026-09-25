@@ -33,12 +33,13 @@ The parts marked **NOW** are in force on `sprint-11`. The **AT S9 CLOSE** and **
 | `hotfix/<version>` | A fix to something already released, branched from the release tag, merged to `main` AND to the open sprint branch. | Controller / owner. | Until merged and tagged. |
 | `develop` | **Retired and DELETED 2026-09-20 at the Sprint 9 merge** (`4415254`, `v0.9.0`). It duplicated `main` (never held anything `main` did not), and a public contributor who sees both has to ask which one to target. `git grep` found nothing outside the records naming it. | -- | Gone. Do not recreate it. |
 
-**NOW:** work goes to `sprint-11` (off `main` at `f15acfa`); push `origin sprint-11`; check CI (`gh run list --branch sprint-11 --limit 1`).
+**NOW (2026-09-25):** no sprint branch is open — Sprint 11 and Sprint 12 both closed on 2026-09-25 and merge to `main` as `v0.11.0` and `v0.12.0`; the next sprint's branch opens off `main` when the owner names it, and until then a change goes on a `fix/`, `feat/` or `docs/` topic branch with a PR.
 Never force-push a shared branch. Never rewrite `main`.
 *The open branch is always `docs/CURRENT_SPRINT.md`'s `branch:` line -- read it there rather than trusting this
-literal, which has pointed at a merged branch twice (`sprint-9` until 2026-09-25, then `sprint-10`).* A second sprint
-is live alongside this one: **Sprint 12 runs in the cloud on `sprint-12`, cut 2026-09-24**
-(`docs/superpowers/plans/2026-09-24-sprint-12.md` on that branch), and merges after Sprint 11 lands on `main`. <!-- docmaint: future -->
+literal, which has pointed at a merged branch twice (`sprint-9` until 2026-09-25, then `sprint-10`).* Sprint 12 was the
+first sprint run on a second branch beside an open one (`sprint-12` off `origin/sprint-11`, run in a Claude cloud
+session, `docs/superpowers/plans/2026-09-24-sprint-12.md`); it merged `origin/sprint-11` daily and went to `main` after
+Sprint 11 did — the procedure is that plan's cloud handoff, §5.
 
 **Slices: a proven item reaches `main` the day it is proven, not at the sprint's end (2026-09-21, the owner's
 instruction "ensure main gets all of our hardening/security fixes and developer setup info as soon as possible ... the

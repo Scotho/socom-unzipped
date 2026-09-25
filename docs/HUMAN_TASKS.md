@@ -11,9 +11,35 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
 > A fresh "Start here" block for the morning is written at the close -- **it is immediately below, `## Start here
 > (2026-09-23 morning)`**, and it carries the results of those runs.
 
+## Sprint 12 close — what needs you (2026-09-25)
+
+Sprint 12 is closed and merges to `main` as `v0.12.0` behind Sprint 11's `v0.11.0`: the generated image is readable
+(1,771 names with a recorded reason each; the proof green on this machine, `s12_names_gate` 3/3). Nothing below
+blocks anything; each is a decision the loop took a default on, or a hand only you have.
+
+1. **The seven defaults D1–D7** in the Sprint 12 plan's "Owner decisions" table
+   (`docs/superpowers/plans/2026-09-24-sprint-12.md`; S12-R1–R4, S12-R22): `Class_Method` naming with an overload
+   suffix only on collision; a hand-named row is never renamed; the 138 sub-64-byte `exact` pairs are not proposed; a
+   name cited in a comment is renamed with the comment; a prefix match needs a second mechanical signal, never a
+   prologue alone; the toml's names live in the csv + sidecar; tool installs were attempted. Say a word to overturn
+   any and the affected lever is reworked.
+2. **Five big engine routines, by hand** — item 7 of the Sprint 11 section below, now with the five addresses.
+3. **The r0004 build with its own sidecar** (`recomp/socom2_names_r0004.csv`, 1,705 rows) **and its gate** — the
+   proof row's optional fifth item, not run at the close (the lock was Sprint 11's for its close chain); about an
+   hour of the machine at a quiet window (`bash scripts/build_revision.sh r0004 …` then the r0004 gate), nothing to
+   watch. Name the window and the loop runs it.
+4. **The `v0.12.0` release archives** — the tag's workflow makes a draft; the archives and the publish are yours, as
+   for `v0.10.0` and `v0.11.0`.
+5. **The story's missing days, carried twice** — `docs/STORY.md` has no entry for three Sprint 11 days (its own note
+   at "carried explicitly as a Sprint 12 item") and none for Sprint 12's two; Sprint 12 took nothing but the naming
+   programme, so this is its second carry and, by `docs/DOC_MAINTENANCE.md` §7 step 5, your question: keep it for the
+   next sprint, or drop it under a ruling.
+6. **The next sprint** — none is planned. The inputs: both close blocks' carry lists, the two "what needs you"
+   sections, the backlog issues with the `carried` label.
+
 ## Sprint 11 close — what needs you (2026-09-25)
 
-Sprint 11 is merged to `main` as `v0.11.0`. Sprint 12 runs in the cloud on `sprint-12` (its local half is session socom-pc-6c's; its proof requests reach this machine through the Sprint 12 plan's task table). Nothing below blocks either; each is a decision or a hand only you have.
+Sprint 11 is merged to `main` as `v0.11.0`. Sprint 12 closed the same day (its section above). Nothing below blocks either; each is a decision or a hand only you have.
 
 1. **D1, the r0004 distribution** — reopened by R251: the capsule alone gives a player nothing; the package comes only from PSRewired's server after a login, lands on a memory card, and decrypts with a key bound to the console id. Today r0004 is a per-player pipeline (PCSX2 + their login + our build on their machine, ~40 min). Acceptable for v1, or does r0004 wait for another route? Task 11b stays withdrawn until you say.
 2. **Goal F, PSRewired** — your Discord answer. Two facts now sit under it: an r0004 client and an r0001 client cannot join each other's games (the client's token filter backs out silently after the server accepts), so a mixed server needs two rooms or two servers; and the capsule's second stub table for the r0004 layout was never applied to our image.
@@ -21,7 +47,7 @@ Sprint 11 is merged to `main` as `v0.11.0`. Sprint 12 runs in the cloud on `spri
 4. **The release archives** — the `v0.10.0` draft's, and now `v0.11.0`'s (the tag's workflow makes a draft; the archives and the publish are yours).
 5. **The branch sweep** — the `sprint-*` ruleset forbids deletion; `sprint-9`, `sprint-10`, `sprint-11` and the merged slice branches stay until you sweep them (one `gh` command, the section below).
 6. **The VM ring** (Task 18 Step 1, issue #25) — its suites are not green in the VM; CI proves Linux; a VM evening is yours to name.
-7. **Five big engine routines, by hand** — Task 7's prefix matches for `CMission::Init`, `CZSealBody::*` and their like are proposed by no rule; Sprint 12's plan asks for a human read of each before a name is applied (its Log's D5 line). Half an hour with the disassembly and research/44 §6.
+7. **Five big engine routines, by hand** — Task 7's prefix matches for `CMission::Init` 0x002ad290, `CSealCtrl::ThrottlesPreTick` 0x005966a0, `CZSealBody::GetNodePos` 0x005df930, `CActionTxtrMachine::Open` 0x0021f850 and `CNodeAction::Open` 0x002b4f40 are proposed by no rule (BinDiff scores them 0.002–0.200 and no vtable slot reaches them); Sprint 12's plan asks for a human read of each before a name is applied (its Log's D5 line). Half an hour with the disassembly and research/44 §6; a hand name enters as a `Pass=hand` proposals file through `tools_py/apply_names.py` (`docs/DEVELOPING.md` "Names in the generated code").
 8. **The Horizon box** — both revisions send `MediusVersionServer` (lobby 0x86) and three other messages Horizon does not model; pre-existing, harmless so far, server-side: yours to schedule.
 
 
@@ -55,7 +81,11 @@ the dropouts are not the device thread's and the search moves to the audio engin
 drops and the scorer's alignment; late or dry callbacks in the trace mean each dip is attributed to the callback
 that rendered it and the fix is on our side of the callback.
 
-### Sprint 12 is already running, in the cloud — and it needs one build window here (2026-09-25)
+### ~~Sprint 12 is already running, in the cloud — and it needs one build window here (2026-09-25)~~ DONE 2026-09-25
+
+> **Done 2026-09-25 04:51–05:38Z:** the window ran unasked once Sprint 11's last lock-bound commit was in (the owner's
+> word to the local controller), and the proof is green — `83e9696c`, gate `s12_names_gate` 3/3 with PINS MATCH. The
+> section stays as the record; what Sprint 12's close needs from you is the section at the top of this file.
 
 **Sprint 12, "the readable image", has been open on branch `sprint-12` since 2026-09-24**, run by the cloud session
 (local half: session `socom-pc-6c`). It has a spec, a plan
