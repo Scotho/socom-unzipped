@@ -48,6 +48,10 @@ LABELS=(
   "recomp|c5def5|The recompiled game and its HLE: the emitter, VU, the kernel stubs, memory cards, GS registers."
   "known-issue|b60205|Known-issue stack (GIT_STRATEGY 7): a defined, evidenced, unresolved defect cited by a KNOWN row."
   "carried|b60205|Survived a sprint close unresolved; the close review said why and set the next milestone or none."
+  # GitHub's two default labels the close review hands out (docs/DOC_MAINTENANCE.md section 7 step 6): listed here so
+  # the whole set is code (2026-09-25, Sprint 13 S3), with GitHub's own colours.
+  "help wanted|008672|A contributor without a disc can close this: its bar needs no disc, no gate and nothing on the maintainer's machine."
+  "good first issue|7057ff|help wanted, and the closing bar is a test the contributor can run themselves."
 )
 
 if [ "$DRY_RUN" -eq 0 ] && ! command -v gh >/dev/null 2>&1; then
