@@ -64,7 +64,7 @@ namespace
                 a.netbExOpen, a.netbExTcpRecv, a.netbExTcpSend, a.netbExUdpRecv, a.netbExUdpSend,
                 a.netbExAvailable, a.netbExConnected, a.netbExStartAsync, a.netbExStartAsync2,
                 a.netbExDescriptorDma, a.dnasRsaBlock, a.dnasSha1Hash, a.dnasRc4SetKeyHash,
-                a.dnasRc4SetKey, a.dnasRc4Encrypt, a.dnasRc4Decrypt};
+                a.dnasRc4SetKey, a.dnasRc4Encrypt, a.dnasRc4Decrypt, a.serverMemWrite, a.serverMemRead};
     }
 
     // A stand-in for the loaded image: the text at each address a table's versionString names.
@@ -245,6 +245,20 @@ void register_socom2_addresses_tests()
             t.Equals(b.dnasRc4SetKey - a.dnasRc4SetKey, kDnasDelta, "...");
             t.Equals(b.dnasRc4Encrypt - a.dnasRc4Encrypt, kDnasDelta, "...");
             t.Equals(b.dnasRc4Decrypt - a.dnasRc4Decrypt, kDnasDelta, "...");
+        });
+
+        tc.Run("the two refused server-record handlers are columns on both revisions (Sprint 13 U6)", [](TestCase &t)
+        {
+            // r0001: the library's receive dispatcher calls these two from adjacent arms. r0004: the write
+            // handler is game/r0004/match.json's relinked-body (unique) match; the read handler's body grew,
+            // so it is placed by hand -- the one function between two matched neighbours, and the call the
+            // r0004 dispatcher makes at the same offset as r0001's.
+            const socom2_addresses::Table &a = socom2_addresses::kR0001;
+            const socom2_addresses::Table &b = socom2_addresses::kR0004;
+            t.Equals(a.serverMemWrite, 0x00637900u, "r0001 serverMemWrite");
+            t.Equals(a.serverMemRead, 0x00637510u, "r0001 serverMemRead");
+            t.Equals(b.serverMemWrite, 0x0063f788u, "r0004 serverMemWrite: match.json relinked-body (unique)");
+            t.Equals(b.serverMemRead, 0x0063ef08u, "r0004 serverMemRead: bracketed by matched neighbours + the dispatcher's call");
         });
 
         tc.Run("both shipped columns are complete -- no field left unestablished", [](TestCase &t)
