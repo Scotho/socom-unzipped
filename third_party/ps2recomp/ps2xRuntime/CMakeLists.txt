@@ -34,99 +34,66 @@ endif()
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/ReleaseMode.cmake")
 
-set(PS2X_IS_VITA OFF)
-
-if((CMAKE_C_COMPILER MATCHES "arm-vita-eabi") OR
-    (CMAKE_CXX_COMPILER MATCHES "arm-vita-eabi"))
-    set(PS2X_IS_VITA ON)
-endif()
-
-set(PS2X_IS_ANDROID OFF)
-
-if(ANDROID)
-    set(PS2X_IS_ANDROID ON)
-endif()
-
-option(PS2X_VITA_CREATE_PACKAGE "Create Vita eboot/vpk targets" ON)
-set(PS2X_VITA_APP_NAME "PS2 Retro X" CACHE STRING "Display name for the Vita bubble")
-set(PS2X_VITA_TITLEID "RANJ00001" CACHE STRING "9-character Vita title id")
-set(PS2X_VITA_VERSION "01.00" CACHE STRING "Vita app version")
+# Sprint 13 Task C7 (audit F20): the Vita and Android backends (PS2X_IS_VITA, PS2X_IS_ANDROID, the VitaSDK
+# library list, the VPK packager, the SHARED Android runner and their two source files) are removed.
 set(PS2X_DEFAULT_BOOT_ELF "" CACHE STRING "Guest ELF path passed directly to main() when argv is unavailable")
 
-if(PS2X_IS_VITA)
-    if(NOT DEFINED ENV{VITASDK})
-        message(FATAL_ERROR "VITASDK is not defined. Configure inside the VitaSDK environment or pass the Vita toolchain file.")
+include(FetchContent)
+set(FETCHCONTENT_QUIET FALSE)
+set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(BUILD_GAMES OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(
+    raylib
+    GIT_REPOSITORY "https://github.com/raysan5/raylib.git"
+    GIT_TAG "5.5" # we will migrate to 4.2.0 later, trust me it will be better
+    GIT_PROGRESS TRUE
+)
+FetchContent_MakeAvailable(raylib)
+
+if(PS2X_ENABLE_DEBUG_UI)
+    FetchContent_Declare(
+        imgui
+        GIT_REPOSITORY https://github.com/ocornut/imgui.git
+        GIT_TAG "v1.92.7-docking"
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_GetProperties(imgui)
+
+    if(NOT imgui_POPULATED)
+        FetchContent_Populate(imgui)
     endif()
 
-    set(PS2X_VITASDK "$ENV{VITASDK}")
+    set(PS2X_IMGUI_SOURCE_DIR "${imgui_SOURCE_DIR}")
 
-    if(NOT EXISTS "${PS2X_VITASDK}/share/vita.cmake")
-        message(FATAL_ERROR "Could not find vita.cmake under ${PS2X_VITASDK}/share.")
-    endif()
-
-    include("${PS2X_VITASDK}/share/vita.cmake" REQUIRED)
-else()
-    include(FetchContent)
-    set(FETCHCONTENT_QUIET FALSE)
-    set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(BUILD_GAMES OFF CACHE BOOL "" FORCE)
-
-    if(PS2X_IS_ANDROID)
-        set(PLATFORM "Android" CACHE STRING "" FORCE)
-    endif()
+    add_library(imgui STATIC
+        "${PS2X_IMGUI_SOURCE_DIR}/imgui.cpp"
+        "${PS2X_IMGUI_SOURCE_DIR}/imgui_draw.cpp"
+        "${PS2X_IMGUI_SOURCE_DIR}/imgui_tables.cpp"
+        "${PS2X_IMGUI_SOURCE_DIR}/imgui_widgets.cpp"
+        "${PS2X_IMGUI_SOURCE_DIR}/imgui_demo.cpp"
+    )
+    target_include_directories(imgui PUBLIC "${PS2X_IMGUI_SOURCE_DIR}")
 
     FetchContent_Declare(
-        raylib
-        GIT_REPOSITORY "https://github.com/raysan5/raylib.git"
-        GIT_TAG "5.5" # we will migrate to 4.2.0 later, trust me it will be better
-        GIT_PROGRESS TRUE
+        rlImGui
+        GIT_REPOSITORY https://github.com/raylib-extras/rlImGui.git
+        GIT_TAG "Raylib_5_5"
+        GIT_SHALLOW TRUE
     )
-    FetchContent_MakeAvailable(raylib)
+    FetchContent_GetProperties(rlImGui)
 
-    if(PS2X_ENABLE_DEBUG_UI AND NOT PS2X_IS_ANDROID)
-        FetchContent_Declare(
-            imgui
-            GIT_REPOSITORY https://github.com/ocornut/imgui.git
-            GIT_TAG "v1.92.7-docking"
-            GIT_SHALLOW TRUE
-        )
-        FetchContent_GetProperties(imgui)
-
-        if(NOT imgui_POPULATED)
-            FetchContent_Populate(imgui)
-        endif()
-
-        set(PS2X_IMGUI_SOURCE_DIR "${imgui_SOURCE_DIR}")
-
-        add_library(imgui STATIC
-            "${PS2X_IMGUI_SOURCE_DIR}/imgui.cpp"
-            "${PS2X_IMGUI_SOURCE_DIR}/imgui_draw.cpp"
-            "${PS2X_IMGUI_SOURCE_DIR}/imgui_tables.cpp"
-            "${PS2X_IMGUI_SOURCE_DIR}/imgui_widgets.cpp"
-            "${PS2X_IMGUI_SOURCE_DIR}/imgui_demo.cpp"
-        )
-        target_include_directories(imgui PUBLIC "${PS2X_IMGUI_SOURCE_DIR}")
-
-        FetchContent_Declare(
-            rlImGui
-            GIT_REPOSITORY https://github.com/raylib-extras/rlImGui.git
-            GIT_TAG "Raylib_5_5"
-            GIT_SHALLOW TRUE
-        )
-        FetchContent_GetProperties(rlImGui)
-
-        if(NOT rlimgui_POPULATED)
-            FetchContent_Populate(rlImGui)
-        endif()
-
-        set(PS2X_RLIMGUI_SOURCE_DIR "${rlimgui_SOURCE_DIR}")
-
-        add_library(rlImGui STATIC
-            "${PS2X_RLIMGUI_SOURCE_DIR}/rlImGui.cpp"
-        )
-        target_include_directories(rlImGui PUBLIC "${PS2X_RLIMGUI_SOURCE_DIR}")
-        target_link_libraries(rlImGui PUBLIC raylib imgui)
+    if(NOT rlimgui_POPULATED)
+        FetchContent_Populate(rlImGui)
     endif()
+
+    set(PS2X_RLIMGUI_SOURCE_DIR "${rlimgui_SOURCE_DIR}")
+
+    add_library(rlImGui STATIC
+        "${PS2X_RLIMGUI_SOURCE_DIR}/rlImGui.cpp"
+    )
+    target_include_directories(rlImGui PUBLIC "${PS2X_RLIMGUI_SOURCE_DIR}")
+    target_link_libraries(rlImGui PUBLIC raylib imgui)
 endif()
 
 add_library(ps2_host_backend INTERFACE)
@@ -139,116 +106,9 @@ if(PS2X_DEFAULT_BOOT_ELF)
     string(REPLACE "\"" "\\\"" PS2X_DEFAULT_BOOT_ELF_DEFINE "${PS2X_DEFAULT_BOOT_ELF_DEFINE}")
 endif()
 
-if(PS2X_IS_VITA)
-    set(PS2X_VITA_PREFIX "${PS2X_VITASDK}/arm-vita-eabi")
-    set(PS2X_VITA_EXTRA_INCLUDE_DIRS "" CACHE STRING "Extra include directories for Vita host dependencies")
-    set(PS2X_VITA_LIBRARY_DIR "${PS2X_VITA_PREFIX}/lib")
-    set(PS2X_VITA_REQUIRED_LIBRARY_NAMES
-        raylib
-        SDL2
-        OpenSLES
-        taihen_stub
-        SceAppMgr_stub
-        SceCtrl_stub
-        SceGxm_stub
-        SceCommonDialog_stub
-        SceLibKernel_stub
-        SceAudio_stub
-        SceTouch_stub
-        SceHid_stub
-        SceMotion_stub
-        SceSysmodule_stub
-        SceIofilemgr_stub
-        SceNetCtl_stub
-        SceNet_stub
-        SceDisplay_stub
-        SceAppUtil_stub
-        SceAudioIn_stub
-        ScePower_stub
-        SceProcessmgr_stub
-        SceIme_stub
-        libIMGEGL_stub_weak
-        libgpu_es4_ext_stub_weak
-        libGLESv2_stub_weak
-        libGL_stub_weak
-        libGLESv1_CM_stub_weak
-    )
+target_link_libraries(ps2_host_backend INTERFACE raylib)
 
-    set(PS2X_VITA_INCLUDE_DIRS
-        "${PS2X_VITA_PREFIX}/include"
-    )
-
-    foreach(PS2X_VITA_OPTIONAL_INCLUDE_DIR IN ITEMS
-        "${PS2X_VITA_PREFIX}/include/raylib"
-        "${PS2X_VITA_PREFIX}/include/SDL2")
-        if(EXISTS "${PS2X_VITA_OPTIONAL_INCLUDE_DIR}")
-            list(APPEND PS2X_VITA_INCLUDE_DIRS "${PS2X_VITA_OPTIONAL_INCLUDE_DIR}")
-        endif()
-    endforeach()
-
-    if(PS2X_VITA_EXTRA_INCLUDE_DIRS)
-        list(APPEND PS2X_VITA_INCLUDE_DIRS ${PS2X_VITA_EXTRA_INCLUDE_DIRS})
-    endif()
-
-    if(NOT EXISTS "${PS2X_VITA_PREFIX}/include/SDL2/SDL.h")
-        message(FATAL_ERROR
-            "Missing SDL2 headers under ${PS2X_VITA_PREFIX}/include/SDL2. "
-            "Quenom/raylib-5.5-vita requires SDL2 with PVR support installed into VitaSDK.")
-    endif()
-
-    if(NOT EXISTS "${PS2X_VITA_LIBRARY_DIR}")
-        message(FATAL_ERROR "Missing Vita library directory: ${PS2X_VITA_LIBRARY_DIR}")
-    endif()
-
-    function(ps2x_find_vita_library out_var library_name)
-        string(MAKE_C_IDENTIFIER "${library_name}" library_id)
-        set(cache_var "PS2X_VITA_LIB_${library_id}")
-
-        find_library(${cache_var}
-            NAMES "${library_name}" "${library_name}.a" "lib${library_name}.a"
-            PATHS "${PS2X_VITA_LIBRARY_DIR}"
-            NO_DEFAULT_PATH
-        )
-
-        if(NOT ${cache_var})
-            message(FATAL_ERROR
-                "Could not find Vita library '${library_name}' under ${PS2X_VITA_LIBRARY_DIR}. "
-                "Install Quenom/raylib-5.5-vita and its SDL2/PVR dependencies into VitaSDK first.")
-        endif()
-
-        set(${out_var} "${${cache_var}}" PARENT_SCOPE)
-    endfunction()
-
-    set(PS2X_VITA_RESOLVED_LIBRARIES "")
-
-    foreach(PS2X_VITA_LIBRARY_NAME IN LISTS PS2X_VITA_REQUIRED_LIBRARY_NAMES)
-        ps2x_find_vita_library(PS2X_VITA_LIBRARY_PATH "${PS2X_VITA_LIBRARY_NAME}")
-        list(APPEND PS2X_VITA_RESOLVED_LIBRARIES "${PS2X_VITA_LIBRARY_PATH}")
-    endforeach()
-
-    target_compile_definitions(ps2_host_backend INTERFACE PLATFORM_VITA)
-    target_include_directories(ps2_host_backend INTERFACE ${PS2X_VITA_INCLUDE_DIRS})
-    target_link_libraries(ps2_host_backend INTERFACE
-        ${PS2X_VITA_RESOLVED_LIBRARIES}
-        m
-        c
-        pthread
-    )
-else()
-    target_link_libraries(ps2_host_backend INTERFACE raylib)
-
-    if(PS2X_IS_ANDROID)
-        target_link_libraries(ps2_host_backend INTERFACE log android)
-    endif()
-endif()
-
-if(PS2X_IS_ANDROID)
-    set(PS2X_ENABLE_FFMPEG_DEFAULT OFF)
-else()
-    set(PS2X_ENABLE_FFMPEG_DEFAULT ON)
-endif()
-
-option(PS2X_ENABLE_FFMPEG "Enable FFmpeg-backed MPEG video decoding" ${PS2X_ENABLE_FFMPEG_DEFAULT})
+option(PS2X_ENABLE_FFMPEG "Enable FFmpeg-backed MPEG video decoding" ON)
 
 if(NOT PS2X_ENABLE_FFMPEG)
     message(STATUS "FFmpeg disabled; MPEG video decode falls back to stub frames")
@@ -400,7 +260,7 @@ if(UNIX AND NOT APPLE)
     find_package(Threads REQUIRED)
     target_link_libraries(ps2x_snd989 PUBLIC Threads::Threads)   # the mixer's stream worker is a std::thread
 endif()
-set_target_properties(ps2x_snd989 PROPERTIES POSITION_INDEPENDENT_CODE ON)   # as ps2x_shared: the Android runner is SHARED
+set_target_properties(ps2x_snd989 PROPERTIES POSITION_INDEPENDENT_CODE ON)   # as ps2x_shared (kept after C7 removed the SHARED Android runner)
 
 add_library(ps2_runtime STATIC
     src/lib/game_overrides.cpp
@@ -521,17 +381,9 @@ elseif(EXISTS "${ROOT_MAIN_CPP}")
 endif()
 
 if(PS2X_BUILD_RUNNER)
-if(PS2X_IS_ANDROID)
-    add_library(ps2EntryRunner SHARED
-        ${RUNNER_SRC_FILES}
-    )
-
-    target_link_options(ps2EntryRunner PRIVATE "-Wl,--undefined=ANativeActivity_onCreate")
-else()
-    add_executable(ps2EntryRunner
-        ${RUNNER_SRC_FILES}
-    )
-endif()
+add_executable(ps2EntryRunner
+    ${RUNNER_SRC_FILES}
+)
 target_include_directories(ps2EntryRunner PRIVATE "${PS2X_GENERATED_INCLUDE_DIR}")
 if(UNIX AND NOT APPLE)
     # The portable folder keeps its non-system .so files in lib/ next to the binary.
@@ -644,7 +496,7 @@ target_link_libraries(ps2EntryRunner
     ps2_runtime
 )
 
-if(PS2X_ENABLE_DEBUG_UI AND NOT PS2X_IS_VITA AND NOT PS2X_IS_ANDROID)
+if(PS2X_ENABLE_DEBUG_UI)
     target_sources(ps2EntryRunner PRIVATE
         src/lib/ps2_debug_panel.cpp
     )
@@ -654,25 +506,6 @@ endif()
 
 ps2x_stage_ffmpeg_runtime_dlls(ps2EntryRunner)
 endif() # PS2X_BUILD_RUNNER
-
-if(PS2X_IS_VITA)
-    set(VITA_MKSFOEX_FLAGS "${VITA_MKSFOEX_FLAGS} -d PARENTAL_LEVEL=1") 
-    set(VITA_MKSFOEX_FLAGS "${VITA_MKSFOEX_FLAGS} -d ATTRIBUTE2=12")
-
-    if(PS2X_VITA_CREATE_PACKAGE AND PS2X_BUILD_RUNNER)
-        # Sprint 11 Task 17 (R247): the five prebuilt PowerVR/GL .suprx modules were vendored here (3.4 MB of
-        # binaries nobody in this project builds or ships) and are deleted. A vpk built here bundles no modules;
-        # it relies on ur0:data/external/ for them, as it already did whenever a module was missing.
-        set(PS2X_VITA_VPK_FILES "")
-
-        vita_create_self(eboot.bin ps2EntryRunner UNSAFE)
-        vita_create_vpk(ps2EntryRunner.vpk ${PS2X_VITA_TITLEID} eboot.bin
-            VERSION ${PS2X_VITA_VERSION}
-            NAME ${PS2X_VITA_APP_NAME}
-            ${PS2X_VITA_VPK_FILES}
-        )
-    endif()
-endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
     EnableFastReleaseMode(ps2_runtime)
@@ -705,20 +538,6 @@ elseif(WIN32)
 endif()
 endif() # PS2X_BUILD_RUNNER
 
-# Vita: Work around for GCC 10's LTO plugin
-if(PS2X_IS_VITA AND PS2X_BUILD_RUNNER)
-    target_link_options(ps2EntryRunner PRIVATE "-Wl,--allow-multiple-definition")
-    target_sources(ps2EntryRunner PRIVATE src/lib/ps2_vita_runtime.cpp)
-    set_source_files_properties(src/lib/ps2_vita_runtime.cpp PROPERTIES
-        SKIP_UNITY_BUILD_INCLUSION TRUE
-        COMPILE_OPTIONS "-fno-lto"
-    )
-endif()
-
-if(PS2X_IS_ANDROID AND PS2X_BUILD_RUNNER)
-    target_sources(ps2EntryRunner PRIVATE src/lib/ps2_android_runtime.cpp)
-endif()
-
 install(TARGETS ps2_runtime
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
@@ -746,10 +565,8 @@ install(DIRECTORY include/
 )
 
 # Offline VU1 program replay (tools_py/vu1dis.py + PS2X_VU1_DUMP dumps); no generated code needed.
-if(NOT PS2X_IS_VITA AND NOT PS2X_IS_ANDROID)
-    add_executable(vu1_replay src/tools/vu1_replay.cpp src/tools/vu1_gen.cpp)
-    target_link_libraries(vu1_replay PRIVATE ps2_runtime)
-    if(NOT MSVC AND (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64"))
-        target_compile_options(vu1_replay PRIVATE -msse4.1)
-    endif()
+add_executable(vu1_replay src/tools/vu1_replay.cpp src/tools/vu1_gen.cpp)
+target_link_libraries(vu1_replay PRIVATE ps2_runtime)
+if(NOT MSVC AND (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64"))
+    target_compile_options(vu1_replay PRIVATE -msse4.1)
 endif()
