@@ -399,7 +399,7 @@ Maintained by whoever is running the loop. Last audited: **2026-09-25 (Sprint 13
   `s5_gsbp2c`). Run binding gates on a quiet host.
   > Superseded in part 2026-09-17 (research/34 §6, R81; marked 2026-09-25, Sprint 13 R5, the full read): the mechanism in the headline is gone -- the guest clock counts wall time by default, so back-pressure waits no longer shift guest time (`PS2X_CLOCK_EXCLUDE=1` restores the old exclusion for an A/B). The rule stands for its other half: a heavy host still slows presentation against the mission's wall-clock press schedule, so binding gates run on a quiet host (`scripts/check_quiet_gate.sh`).
 
-- **Online instances freeze for 3–17 s under host load** *(issue #34)* (launch 8c: round clock stops, main thread parked at
+- **Online instances freeze for 3–17 s under host load** *(issue #34)* (launch 8c: round clock stops, main thread parked at **Round of 2026-09-25 (Sprint 13 V7):** our instance B suspended 28 s mid-round on the V7 exe — A's VBlanks, seq, ee, clock trace, HUD clock and guest frames all moved (`logs/parity/s13_v7_paused_peer_20260925_193109`), and `net_park` stayed 0: no recv parked, the bound was not exercised; a quiet peer of ours does not make the game block. The console-peer run (O1's mixed leg) remains the bar.
   `0x3b00a4`, memory flat ~200 MB — not the GS backlog): the other side's NetIdle then alarms (peaks 8217/10338
   ms) and MoveScale falls to ~11.5 calls/s; the live 10 s move-path rule fired three times and would end an
   `--until-kill` match. Launch 3c on the same exe had none. Keep other heavy work off the host during launches.
