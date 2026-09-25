@@ -1,6 +1,6 @@
 """The documentation registry (docs/DOC_MAINTENANCE.md) held to the tree.
 
-Eight checks, each aimed at a rot mechanism that actually bit this project (the reasons are in
+Ten checks, each aimed at a rot mechanism that actually bit this project (the reasons are in
 docs/DOC_MAINTENANCE.md section 0). No build needed, so this runs in CI. Nothing here fails on a
 calendar -- cadence is the sprint-close review, a human step with a stamp.
 """
@@ -155,7 +155,8 @@ class ReportTest(unittest.TestCase):
         r = docmaint.report()
         problems = {k: r[k] for k in ("unregistered", "missing_files", "duplicate_rows",
                                       "count_offenders", "undated_snapshots", "silent_archives",
-                                      "dangling_doc_links", "over_ceiling", "unknown_tags") if r[k]}
+                                      "dangling_doc_links", "over_ceiling", "unknown_tags",
+                                      "duplicate_rulings", "undefined_rulings") if r[k]}
         self.assertEqual(problems, {}, "python -m tools_py.docmaint says: %s" % problems)
 
     def test_the_review_stamp_parses(self):
@@ -188,6 +189,9 @@ class PlantedDefectsTest(unittest.TestCase):
         self.write("docs/DEVELOPING.md", "# d\n\nTotal Tests: 764\n")
         self.write("docs/HANDOFF.md", "# h\n\n## 2. Where it stands\n\nNext free ruling number: R100\n\n"
                                      "R99 was decided earlier.\n")
+        # ...in a plan, where a ruling is made (HANDOFF section 5 rule 9), so the clean tree cites nothing undefined.
+        self.write("docs/superpowers/plans/2026-01-01-plan.md",
+                   "# plan\n\n## Rulings made on the owner's behalf\n\n- **R99** (Task 1): the decision.\n")
         self.registry([("README.md", "L"), ("CONTRIBUTING.md", "C"), ("SECURITY.md", "C"),
                        ("THIRD_PARTY_NOTICES.md", "G"), ("docs/DEVELOPING.md", "L"),
                        ("docs/HANDOFF.md", "L"), ("docs/DOC_MAINTENANCE.md", "C")])
@@ -425,6 +429,118 @@ class PlantedDefectsTest(unittest.TestCase):
     def test_a_ruling_in_an_archive_subdirectory_still_counts(self):
         self.write("docs/archive/sprints-7-12/plan.md", "# p\n\n> ARCHIVED.\n\nR251 was ruled here.\n")
         self.assertEqual(docmaint.max_ruling()[0], 251)
+
+    # --- Sprint 13 R3: one number, one ruling; a cited number has a text ---------------------------------
+
+    def plan(self, rel, body):
+        self.write("docs/superpowers/plans/" + rel, "# a plan\n\n## Rulings made on the owner's behalf\n\n" + body)
+
+    def test_a_ruling_defined_twice_fires_with_both_locations(self):
+        """R107, R109 and R110 were each issued by two Sprint 8 plans for unrelated decisions (audit D55)."""
+        self.plan("a.md", "- **R90** (Task 1): the first decision.\n")
+        self.plan("b.md", "intro\n\n- **R90 (2026-09-19).** A different decision.\n")
+        hits = docmaint.report()["duplicate_rulings"]
+        self.assertEqual(hits, [("R90", [("docs/superpowers/plans/a.md", 5), ("docs/superpowers/plans/b.md", 7)])])
+
+    def test_every_house_shape_of_a_definition_is_a_definition(self):
+        self.plan("a.md", "- **R90** (Task 1): one.\n"
+                          "**R90 -- two.**\n"
+                          "- **R90 — three.**\n"
+                          "1. **R90, four.**\n"
+                          "Mid-line **R90:** five.\n"
+                          "  **Ruling R90: six.**\n"
+                          "and **R90** (2026-09-25, the controller): seven.\n")
+        hits = docmaint.report()["duplicate_rulings"]
+        self.assertEqual([len(locs) for _, locs in hits], [7], hits)
+
+    def test_a_citation_is_not_a_definition(self):
+        self.plan("a.md", "- **R90** (Task 1): the decision.\n\n"
+                          "R90's cost; the stop rule (R90); see **R90** below.\n"
+                          "1. **R90 was wrong on its first telling.**\n"
+                          "The winner is chosen by **R90**: the smaller wins.\n"
+                          "- **R89–R90** (the close): a range restated.\n")
+        self.assertEqual(docmaint.report()["duplicate_rulings"], [])
+
+    def test_a_quote_or_a_code_fence_is_not_a_definition(self):
+        self.plan("a.md", "- **R90** (Task 1): the decision.\n\n"
+                          "> **R90: the text as it read before it was rewritten.**\n\n"
+                          "```\n- **R90** (Task 1): a commit message template\n```\n")
+        self.assertEqual(docmaint.report()["duplicate_rulings"], [])
+
+    def test_a_restatement_outside_the_plans_is_not_a_definition(self):
+        """HANDOFF section 5 rule 9: a ruling is made in a plan, or in CURRENT_SPRINT when there is none."""
+        self.plan("a.md", "- **R90** (Task 1): the decision.\n")
+        self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n\n- **R90** the decision, restated.\n")
+        self.assertEqual(docmaint.report()["duplicate_rulings"], [])
+
+    def test_a_ledger_row_indexes_a_definition_rather_than_repeating_it(self):
+        self.plan("a.md", "- **R90** (Task 1): the decision.\n")
+        self.write("docs/CURRENT_SPRINT.md", "# cs\n\n#### The rulings ledger\n\n| R | decision | where |\n"
+                                             "|---|---|---|\n| R90 | the decision | `plans/a.md` |\n")
+        self.assertEqual(docmaint.report()["duplicate_rulings"], [])
+
+    def test_two_ledger_rows_for_one_number_fire(self):
+        self.write("docs/CURRENT_SPRINT.md", "# cs\n\n| R90 | one |\n| R90 | two |\n")
+        hits = docmaint.report()["duplicate_rulings"]
+        self.assertEqual(hits, [("R90", [("docs/CURRENT_SPRINT.md", 3), ("docs/CURRENT_SPRINT.md", 4)])])
+
+    def test_a_second_issue_recorded_as_b_does_not_fire_and_defines_the_b_name(self):
+        """Recorded, not renumbered: the second definition carries 'cited as R<n>b' and is counted as R<n>b."""
+        self.plan("a.md", "- **R90** (Task 1): the first decision.\n")
+        self.plan("b.md", "- **R90** (2026-09-19; *R90 was issued twice; this, the second, is cited as R90b "
+                          "from 2026-09-25*): a different decision.\n")
+        self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n\nR90 and R90b were decided.\n")
+        r = docmaint.report()
+        self.assertEqual(r["duplicate_rulings"], [])
+        self.assertEqual(r["undefined_rulings"], [])
+
+    def test_a_cited_ruling_with_no_definition_fires(self):
+        """R114, R116 and R124 were cited for a week with no text anywhere (audit D56)."""
+        self.plan("a.md", "- **R90** (Task 1): the decision.\n")
+        self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n\nR89 was decided (R90).\n")
+        hits = docmaint.report()["undefined_rulings"]
+        self.assertEqual([h[0] for h in hits], ["R89"])
+        self.assertEqual(hits[0][1], [("docs/HANDOFF.md", 5)])
+
+    def test_the_clean_planted_tree_defines_every_ruling_it_cites(self):
+        r = docmaint.report()
+        self.assertEqual(r["duplicate_rulings"], [])
+        self.assertEqual(r["undefined_rulings"], [])
+
+    def test_a_ledger_row_is_a_definition_for_the_undefined_check(self):
+        self.write("docs/CURRENT_SPRINT.md", "# cs\n\n| R89 | decided in the ledger itself |\n")
+        self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n\nR89 and R99 were decided.\n")
+        self.assertEqual(docmaint.report()["undefined_rulings"], [])
+
+    def test_a_vacancy_note_in_a_plan_answers_an_undefined_number(self):
+        self.plan("a.md", "R89 — vacant: named in a range, never issued.\n")
+        self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n\nR88, R89 and R99 were decided.\n")
+        hits = docmaint.report()["undefined_rulings"]
+        self.assertEqual([h[0] for h in hits], ["R88"])
+
+    def test_a_vacancy_note_outside_the_plans_and_ledgers_does_not_count(self):
+        self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n\nR89 -- vacant: says who? R99.\n")
+        self.assertEqual([h[0] for h in docmaint.report()["undefined_rulings"]], ["R89"])
+
+    def test_a_b_citation_needs_its_b_definition(self):
+        self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n\nR99 and R99b were decided.\n")
+        self.assertEqual([h[0] for h in docmaint.report()["undefined_rulings"]], ["R99b"])
+
+    def test_a_sprint_local_name_is_not_a_global_ruling(self):
+        """Sprint 12 numbered its own rulings S12-R<n>; S12-R13 is not R13."""
+        self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n\nR99 amended by S12-R13 and S12-R5.\n")
+        self.assertEqual(docmaint.report()["undefined_rulings"], [])
+
+    def test_main_prints_both_locations_of_a_duplicate(self):
+        import io
+        from contextlib import redirect_stdout
+        self.plan("a.md", "- **R90** (Task 1): one.\n")
+        self.plan("b.md", "- **R90** (Task 2): two.\n")
+        out = io.StringIO()
+        with redirect_stdout(out):
+            self.assertEqual(docmaint.main([]), 1)
+        self.assertIn("R90 defined 2 times: docs/superpowers/plans/a.md:5; docs/superpowers/plans/b.md:5",
+                      out.getvalue())
 
 
 if __name__ == "__main__":
