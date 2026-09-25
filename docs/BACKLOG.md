@@ -4,7 +4,7 @@
 
 ## 1. Open issues
 
-20 open issues. *Carried* counts the sprint closes an issue has survived (its `Carried ...` comments, or one for the `carried` label alone); at 2 the next close asks the owner.
+21 open issues. *Carried* counts the sprint closes an issue has survived (its `Carried ...` comments, or one for the `carried` label alone); at 2 the next close asks the owner.
 
 | Issue | Title | Area | Milestone | Carried | Closing bar (first sentence) |
 |---|---|---|---|---|---|
@@ -28,6 +28,7 @@
 | #51 | The CD group and g_iopHeapNext are still per-TU copies in the stub helpers | recomp | backlog | 0 | The CD group and `g_iopHeapNext` are each moved out of the anonymous namespace into a `PS2Runtime`-owned struct in a commit of its own, each under a two-runtime unit test and followed by a full three-stage gate: either both gates pass 3/3 (the per-TU copies are gone and the row settles), or the group whose gate loses the mission stage is named in the row with its gate log. |
 | #52 | An exact match is a fingerprint match, not a proof of the same code: the matcher blanks every addiu/ori constant and pairs repeated windows by order, with no counterexample test | recomp | backlog | 0 | Synthetic cases in `tools_py/tests/test_fingerprint.py`, `test_address_matcher.py` and `test_revision_toml.py` for: two routines that differ only in a non-address `addiu`/`ori` immediate; two duplicates whose order the rebuild swapped; changed control flow of the same length; an interior patch site; two adjacent tables; a function absent from the other image -- each either refused, left `unresolved`, or placed under a label weaker than `exact` that says why, and each seen RED on the tree at `ab6d7ff3` before the change; then `game/r0004/match.json` regenerated and the number of placements whose label or target changed stated in the closing comment (zero is an answer), with the r0004 gate passing 3/3 if any target moved. |
 | #53 | Two unbound stub translators (LibC fopen, cdHostPath) hand guest paths to the host without containment | recomp | backlog | 0 | Both stubs route through `resolvePs2PathUnderRoot` (the lexical walk; links resolved only for the memory-card root, S13-R8), with a `ps2x_tests` case each that a `..` above the root, a drive letter and a Windows device name are refused, RED first; or both stubs are removed if nothing can bind them, with the reason written at the removal site. |
+| #54 | The tracked r0001 function map carries 1090 nested forced-entry rows from before fix_ghidra_csv's fix | recomp | backlog | 0 | The map rebuilt from Ghidra's raw export (or each nested row truncated at the next start) with the fixed script, the row count and the changed rows stated; then a recomp, a runtime build and the r0001 gate 3/3 with PINS MATCH under the lock, because the generated code changes; the r0004 leg unchanged (its map is already clean). |
 
 ## 2. Ruled not an issue
 
