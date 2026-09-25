@@ -274,6 +274,8 @@ address, not names. The largest twelve, by demo body size, with our size beside 
 
 Read the size columns. `ai::AddNoise` is 892 bytes in SOCOM 1 and 92 in ours. That is not an edit, it is
 a rewrite — or the positional guess is simply wrong there, and nothing in this task can tell which.
+> *Note (2026-09-24, research/53 §6): a shared-string key contradicts 6 of these 501 leads (`UIInvitePlayerToClan*`, `rt_time_get_time_string*` among them); in all six the positional pairing is the less size-consistent reading. The leads stay leads. research/52 §8 adds: the call graph confirms 67 and contradicts 22 of the 501 — in gaps 49, 11 and 8 the positional pairing is one row off, so `__ct__9CGameMenuFv` is at 0x00369b60, not 0x00369eb0.*
+
 `ToQuat__7CMatrixCFP5CQuat` at 0x00308210 is the tightest lead in the set: a gap of **one**, 524 bytes
 against 432, in the middle of a `CMatrix` cluster Task 7 already placed. If any one of these is worth a
 human's half hour, it is that one.

@@ -48,14 +48,14 @@ clean; the parity gate needs a disc and runs on the maintainer's machine, its st
 
 ## Status
 
-As of 2026-09-25 (**Sprint 10 is on `main`, tagged `v0.10.0`**; the release draft is waiting for its archives, which
-are the owner's by `docs/GIT_STRATEGY.md`. Sprint 11 is closing, and **Sprint 12, "the readable image", has been
-running in the cloud on branch `sprint-12` since 2026-09-24** —
+As of 2026-09-25 (**Sprints 11 and 12 are closed and merge to `main` as `v0.11.0` and `v0.12.0`**; each tag's release
+draft waits for its archives, which are the owner's by `docs/GIT_STRATEGY.md`. **Sprint 12, "the readable image",
+gave the generated code 1,771 readable names, each with its provenance**, without changing what a player sees —
 `docs/superpowers/plans/2026-09-24-sprint-12.md` on that branch): <!-- docmaint: future -->
 
 | Works | Not yet |
 |---|---|
-| Boots from the ISO to the title, through the menus, into a mission; Xbox/DirectInput pads for play, the keyboard for the menus and typing | A public release download. Builds are handed to testers by hand; the download and its page are Sprint 11 |
+| Boots from the ISO to the title, through the menus, into a mission; Xbox/DirectInput pads for play, the keyboard for the menus and typing | A public release download. Builds are handed to testers by hand; the download waits on an owner decision (`docs/HUMAN_TASKS.md`, the r0004 distribution) |
 | Rendering through an OpenGL backend with an integer up-scale (`PS2X_GS_SCALE` 1-4; 3-4 are untested); a CPU rasteriser for tests | Frame rate: 43-45 fps in a mission and 52-60 in the menus, against the console's 60 |
 | Online: login, lobby, and full rounds on the hosted Horizon server -- two of our instances, and one of ours against a console client through PCSX2, and a build of the community revision **r0004**, rebuilt from PSRewired's package, plays a full round on the same server | r0001 and r0004 clients cannot join each other's games -- the filter is the game's own, on the client. Mission music: the stems play correctly and the pauses are the game's own design, but about a dozen 50 ms dropouts a mission still reach the speaker that are not in the mix as rendered -- proven on 2026-09-23 to be **ours** rather than the listener's audio device, and not yet located. Voice chat is untested end to end (the protocol is read and the headset path is proven as far as `docs/KNOWN.md`'s voice row takes it -- notably, the game's protocol has no headset button) |
 | A launcher that owns the settings, checks the disc, picks the server, and files bug reports | Linux: CI builds and proves the runtime library, both test suites and the launcher on every push, and the playable build was rebuilt from wiped trees in the VM on 2026-09-23; what is not green there yet is the VM's own suite run (`docs/KNOWN.md` §2) |
@@ -119,7 +119,7 @@ is Horizon configured for SOCOM II's app id, with a seed script for a local inst
 | Path | What |
 |---|---|
 | `build.sh`, `run.sh` | Build and run on Windows (Git Bash); `scripts/build_linux.sh` on Linux |
-| `recomp/` | Recompiler configuration and the function map |
+| `recomp/` | Recompiler configuration, the function map, and the readable names with their provenance (`socom2_names.csv`; `docs/DEVELOPING.md` "Names in the generated code") |
 | `third_party/ps2recomp/` | The vendored PS2Recomp fork with this project's runtime changes (`git log -- third_party`) |
 | `tools_py/` | Python tooling: the overlay decryptor, ELF builder, the parity gate and the online harness, tests |
 | `ghidra_scripts/` | Headless Ghidra scripts used for the reverse engineering |

@@ -769,7 +769,10 @@ merged and tagged; the chat receive path bounded on the client and clamped on th
 r0004 rebuilt from PSRewired's package, gated three times over and played online on the project's own server; the
 bug pipeline's GitHub half; 11.6 MB of vendored baggage deleted; a SOCOM 1 demo disc naming 987 anonymous
 functions. Writing those entries is not a one-line edit — each needs its hashes and a witnessed run — so it is
-**carried explicitly as a Sprint 12 item** rather than left to slip (Sprint 11 close review, row A22). Until it
+**carried explicitly as a Sprint 12 item** rather than left to slip (Sprint 11 close review, row A22) — *and carried a
+second time at Sprint 12's close (2026-09-25): that sprint took nothing but the naming programme, so the missing days
+are now these three plus Sprint 12's two, a line in `docs/CURRENT_SPRINT.md`'s "Sprint 12 — CLOSED" carry and an
+owner question in `docs/HUMAN_TASKS.md`*. Until it
 lands, `docs/STATUS.md` and `docs/CURRENT_SPRINT.md` are where those three days are written down.
 
 ---

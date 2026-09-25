@@ -179,6 +179,10 @@ and who owns each item. This section holds no queue and no task list, by this do
 > close."* Within a day of being written it was wrong three ways: Sprint 10 closed, and W6 and W10 both **ran** —
 > W10 was executed rather than re-decided, and it failed, which is what rewrote R237.
 
+> Superseded 2026-09-25 (the Sprint 12 close): Sprint 11 ran and closed on 2026-09-25 (`v0.11.0`), and Sprint 12,
+> "the readable image", closed the same day (`v0.12.0`); this paragraph is kept as the record of what was planned.
+> The open sprint is always `docs/CURRENT_SPRINT.md`'s `branch:` line; this file holds no queue.
+
 **Sprint 11 is drafted, in two independent specs**, and its plan
 (`docs/superpowers/plans/2026-09-23-sprint-11.md`) is where its tasks actually live:
 - `specs/2026-09-20-sprint-11-release-hardening-design.md` — a public repository a stranger can trust: git and

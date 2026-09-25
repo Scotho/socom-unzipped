@@ -72,7 +72,10 @@ namespace ps2recomp
         const std::unordered_set<uint32_t> &internalTargets = analysisResult.entryPoints;
         ConstantRegisterState constantRegisters;
         GifDmaKickPlan gifDmaKickPlan{};
-        ss << "// Function: " << function.name << "\n";
+        ss << "// Function: " << (function.displayName.empty() || function.displayName == function.name
+                                     ? function.name
+                                     : function.displayName + " (identity " + function.name + ")")
+           << "\n";
         ss << "// Address: 0x" << std::hex << function.start << " - 0x" << function.end << std::dec << "\n";
 
         std::string sanitizedName = cg.getFunctionName(function.start);

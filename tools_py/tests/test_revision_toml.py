@@ -42,6 +42,7 @@ SOURCE = '''\
 [general]
 input = "../game/overlays/socom2_game.elf"
 ghidra_output = "socom2_ghidra.csv"
+names = "socom2_names.csv"
 output = "./output/"
 
 stubs = [
@@ -294,6 +295,11 @@ class GeneralPaths(Bed):
     def test_without_them_the_paths_are_untouched(self):
         _text, doc = self.translated()
         self.assertEqual(doc["general"]["input"], "../game/overlays/socom2_game.elf")
+        self.assertEqual(doc["general"]["names"], "socom2_names.csv")
+
+    def test_the_names_sidecar_is_rewritten(self):
+        _text, doc = self.translated("--set-names", "socom2_names_r0004.csv")
+        self.assertEqual(doc["general"]["names"], "socom2_names_r0004.csv")
 
 
 class DryRun(Bed):

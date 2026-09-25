@@ -98,6 +98,7 @@ namespace ps2recomp
         bool isRecompiled = false;
         bool isStub = false;
         bool isSkipped = false;
+        std::string displayName; // from [general] names: the output identifier only, never the name rules read
     };
 
     // Symbol information
@@ -178,6 +179,7 @@ namespace ps2recomp
         std::string inputPath;
         std::string outputPath;
         std::string ghidraMapPath;
+        std::string namesPath; // [general] names: the Address,Name,... display-name sidecar (optional)
         bool singleFileOutput = false;
         bool lowMemoryMode = false;
         uint32_t outputWorkerThreads = 0;

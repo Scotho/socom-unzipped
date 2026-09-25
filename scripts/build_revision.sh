@@ -206,7 +206,7 @@ if [ "$TAIL" = 0 ]; then
   [ "$EXTRA_BORROWED" = 0 ] || [ "$DRY" = 1 ] \
     || echo "WARNING: $REV has no forced entry points of its own (recomp/extra_functions_$REV.txt); using r0001's, whose overlay entries are another build's addresses. Write one with: $PYTHON tools_py/find_imm_targets.py $(rel "$ELF") $(rel "$CSV") recomp/extra_functions_$REV.txt" >&2
   [ "$TOML_BORROWED" = 0 ] || [ "$DRY" = 1 ] \
-    || echo "WARNING: $REV has no address match report (game/$REV/match.json, or --match <json>); $(rel "$TOML") will keep r0001's stub selectors, instruction patches, jump-table sites and [mmio] annotations, which are another build's addresses. Write one with: $PYTHON -m tools_py.address_matcher dist/socom2_game.elf recomp/socom2_ghidra.csv $(rel "$ELF") $(rel "$CSV") --out game/$REV/match.json" >&2
+    || echo "WARNING: $REV has no address match report (game/$REV/match.json, or --match <json>); $(rel "$TOML") will keep r0001's stub selectors, instruction patches, jump-table sites and [mmio] annotations, which are another build's addresses. Write one in two passes (the second reads the seeds the first derives): $PYTHON -m tools_py.address_matcher game/disc/socom2_game.elf recomp/socom2_ghidra.csv $(rel "$ELF") $(rel "$CSV") --out game/$REV/match_noseed.json && $PYTHON -m tools_py.derive_seeds game/$REV/match_noseed.json --out recomp/${REV}_seeds.txt && $PYTHON -m tools_py.address_matcher game/disc/socom2_game.elf recomp/socom2_ghidra.csv $(rel "$ELF") $(rel "$CSV") \$(sed 's/^/--seed /' recomp/${REV}_seeds.txt | grep -v '^--seed #') --out game/$REV/match.json" >&2
 fi
 
 # ---- dry run ------------------------------------------------------------------------------------------------
@@ -352,7 +352,7 @@ if [ "$TAIL" = 0 ]; then
     if ! (cd "$ROOT" && "$py" -m tools_py.revision_toml "$ROOT/recomp/socom2.toml" "$MATCH" \
             --elf-b "$ELF" \
             --set-input "$TOML_INPUT" --set-output "$TOML_OUTPUT" \
-            --set-ghidra-output "$TOML_GHIDRA" --out "$TOML"); then
+            --set-ghidra-output "$TOML_GHIDRA" --set-names "socom2_names_$REV.csv" --out "$TOML"); then
       echo "build_revision: step 3 could not translate the config through $(rel "$MATCH") -- run tools_py.revision_toml by hand to see why, or drop --match to copy r0001's addresses across unchanged" >&2
       exit 1
     fi
@@ -360,6 +360,7 @@ if [ "$TAIL" = 0 ]; then
     sed -e "s|^input *=.*|input = \"$TOML_INPUT\"|" \
         -e "s|^output *=.*|output = \"$TOML_OUTPUT\"|" \
         -e "s|^ghidra_output *=.*|ghidra_output = \"$TOML_GHIDRA\"|" \
+        -e "s|^names *= *\"[^\"]*\"|names = \"socom2_names_$REV.csv\"|" \
         "$ROOT/recomp/socom2.toml" > "$TOML"
   fi
   say "toml: $(rel "$TOML") (input $TOML_INPUT, output $TOML_OUTPUT, ghidra_output $TOML_GHIDRA)"

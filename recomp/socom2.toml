@@ -7,6 +7,7 @@ input = "../game/overlays/socom2_game.elf"
 
 # Path to Ghidra exported function map (optional CSV)
 ghidra_output = "socom2_ghidra.csv"
+names = "socom2_names.csv"  # display names only (research/57 4(b)): Address,Name,... sidecar
 
 # Path to output directory
 output = "./output/"

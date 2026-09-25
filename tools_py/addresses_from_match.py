@@ -4,10 +4,17 @@
 This turns that report into the C++ column, so supporting the revision after r0004 is a re-run of two
 commands rather than a second afternoon of hand lookups:
 
-    python -m tools_py.address_matcher game/overlays/socom2_game.elf recomp/socom2_ghidra.csv \\
-        game/overlays_r0004/socom2_game_r0004.elf recomp/socom2_ghidra_r0004.raw.csv \\
-        --seed 0x180008=0x180008 --out game/r0004/match.json
+    python -m tools_py.address_matcher game/disc/socom2_game.elf recomp/socom2_ghidra.csv \\
+        game/overlays_r0004/socom2_game_r0004.elf recomp/socom2_ghidra_r0004.csv \\
+        --out game/r0004/match_noseed.json
+    python -m tools_py.derive_seeds game/r0004/match_noseed.json --out recomp/r0004_seeds.txt
+    python -m tools_py.address_matcher game/disc/socom2_game.elf recomp/socom2_ghidra.csv \\
+        game/overlays_r0004/socom2_game_r0004.elf recomp/socom2_ghidra_r0004.csv \\
+        $(sed 's/^/--seed /' recomp/r0004_seeds.txt | grep -v '^--seed #') --out game/r0004/match.json
     python -m tools_py.addresses_from_match game/r0004/match.json --revision r0004
+
+(The seed file is tracked; the middle command re-derives it and should leave it unchanged. The identity
+seed 0x180008=0x180008 is its first line: the loader did not move.)
 
 **A field is filled from evidence or not at all.** Only the three methods that name what was proved --
 `identity` (the function did not move), `exact` (a globally unique fingerprint on both sides) and

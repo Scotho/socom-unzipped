@@ -557,6 +557,18 @@ class RevisionTomlReadsTheBuildProductTest(unittest.TestCase):
             lines = [ln.strip() for ln in fh if ln.strip().startswith("ghidra_output")]
         self.assertEqual(lines, ['ghidra_output = "build/socom2_ghidra_r0004.fixed.csv"'], lines)
 
+    def test_the_tracked_r0004_config_names_its_own_sidecar(self):
+        # Step 3 rewrites this file from socom2.toml; r0001's socom2_names.csv would label r0004's addresses.
+        with open(self.PATH, encoding="utf-8") as fh:
+            lines = [ln.split("#")[0].strip() for ln in fh if ln.strip().startswith("names")]
+        self.assertEqual(lines, ['names = "socom2_names_r0004.csv"'], lines)
+
+    def test_step_3_sets_the_revisions_own_sidecar_on_both_paths(self):
+        with open(os.path.join(ROOT, SCRIPT), encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn('--set-names "socom2_names_$REV.csv"', text)
+        self.assertIn('names = \\"socom2_names_$REV.csv\\"', text)
+
     def test_the_tracked_r0004_config_carries_no_machines_absolute_path(self):
         import re
         with open(self.PATH, encoding="utf-8") as fh:
