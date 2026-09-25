@@ -71,9 +71,14 @@ it. A sub-agent never commits a file it was not given, and never stages with `gi
 `docs/CURRENT_SPRINT.md`'s close-out item; the two reviews that a close cannot skip -- the documents
 (`docs/DOC_MAINTENANCE.md` §5) and, deep, the known-issue stack (`docs/DOC_MAINTENANCE.md` §7: every open issue read
 against the tree, every KNOWN row ruled on, the carry, the milestone closed); `docs/GIT_STRATEGY.md` for the merge and
-the tag; then open the next sprint: its spec is already drafted, its plan is written against the tree as it then is,
-its milestone exists on GitHub, and the sprint file's header block is rewritten -- it is the only sprint pointer in
-the project.
+the tag; then open the next sprint when the owner names it: its spec is written (or a draft finished) and agreed, its
+plan is written against the tree as it then is, its milestone exists on GitHub, and the sprint file's header block is
+rewritten -- it is the only sprint pointer in the project. Until then no sprint branch is open, and a change goes on
+a topic branch (`docs/GIT_STRATEGY.md` §2).
+
+> Superseded 2026-09-25 (Sprint 13 R2): this said "its spec is already drafted" -- true of Sprints 10 and 11, but not a
+> rule: at Sprint 12's close no next spec existed and the sprint file said "next sprint: not yet planned" (documents
+> audit row 43).
 
 ## The acceptance bar that has never changed (owner, 2026-09-09)
 

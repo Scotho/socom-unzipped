@@ -4,8 +4,12 @@ Documents that were superseded and would mislead a reader who took them for inst
 instruction.** They are kept whole and unedited because other documents cite them as the record -- retractions marked
 in place, how a sprint was opened, what a handoff once said.
 
-Opened 2026-09-20 at the controller handoff. Sprint 11 Goal 1 decides whether this directory is published (under
-`docs/dev/`), kept private, or deleted.
+Opened 2026-09-20 at the controller handoff. It is published where it stands, with the rest of the tree: decision
+D4's default -- "all of it stays where it is; nothing moves to `docs/dev/`" -- has stood since 2026-09-23
+(`docs/HUMAN_TASKS.md`, the decisions table), and the repository has been public since 2026-09-20.
+
+> Superseded 2026-09-25 (Sprint 13 R2): this said "Sprint 11 Goal 1 decides whether this directory is published
+> (under `docs/dev/`), kept private, or deleted" -- a decided question written as open (documents audit row 65).
 
 The **Was** column gives each file's path *before* the move. Those paths are gone by definition, so they are written
 in italics rather than as backticked citations -- a backticked path in this tree is a claim that the file is there,
