@@ -5,6 +5,8 @@ Read-only. `gh` reads were made against `github.com/Scotho/socom-unzipped` on 20
 stranger lands on is `main` at `e63f9ba9` (2026-09-24), which does **not** hold Sprint 11 or 12. Several findings
 turn on that one fact.
 
+> Added 2026-09-25 (Sprint 13 Task R4): `docs/HUMAN_TASKS.md` became one table that day. Every `HUMAN_TASKS.md` line cited below is the old file, now `docs/archive/HUMAN_TASKS-to-2026-09-25.md` -- its banner gives the line offset, the quoted text finds each line, and its table gives each item's disposition.
+
 ## 1. Findings
 
 | # | item | class | who | cost | evidence | why it matters |

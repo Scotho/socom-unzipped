@@ -4,6 +4,8 @@ What has happened outside the repository since the project last looked, measured
 Live state was fetched on 2026-09-25 with `gh api` (GitHub REST), `curl -I` (headers only) and WebFetch/WebSearch.
 Where a page could not be read it says so. No game bytes were read; `game/r0004/` was listed by name and size only.
 
+> Added 2026-09-25 (Sprint 13 Task R4): `docs/HUMAN_TASKS.md` became one table that day. Every `HUMAN_TASKS.md` line cited below is the old file, now `docs/archive/HUMAN_TASKS-to-2026-09-25.md` -- its banner gives the line offset, the quoted text finds each line, and its table gives each item's disposition.
+
 ## 0. The live state, item by item (the brief's eight questions)
 
 | # | subject | last recorded by the project | live state 2026-09-25 | new? |

@@ -153,7 +153,7 @@ the good kind of remaining failure.
 What a green ladder still does not prove: that a *stranger* can do it. Every online result so far is two instances on
 one host -- two of ours, or one of ours against a console client in PCSX2 -- and no match between two machines has
 been run. *(Superseded 2026-09-25, Sprint 13 R2: this said "or the owner's two machines"; the two-machine match has
-never been run -- documents audit row 47, `docs/HUMAN_TASKS.md`.)* And a repeatability number says nothing about the security of the
+never been run -- documents audit row 47, `docs/HUMAN_TASKS.md` O6.)* And a repeatability number says nothing about the security of the
 path it exercises — see `SECURITY.md`.
 
 ---

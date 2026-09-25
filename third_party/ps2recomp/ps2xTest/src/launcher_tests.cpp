@@ -338,7 +338,8 @@ void register_launcher_tests()
 
         // Sprint 7 Task 4 Step 5: the assertion that goes live the moment the owner supplies the hosted address.
         // Until then it reports itself as skipped rather than failing - MiniTest has no Skip, so the reason is
-        // printed and nothing is asserted (docs/HUMAN_TASKS.md: "The two server addresses for the launcher's picker").
+        // printed and nothing is asserted (docs/archive/HUMAN_TASKS-to-2026-09-25.md: "The two server addresses for the
+        // launcher's picker"; ours is real since 2026-09-19, the community one is row O5 of docs/HUMAN_TASKS.md).
         tc.Run("server presets: the Unzipped preset ships a real address and is the default", [](TestCase &t)
         {
             const launcher::ServerPreset *unzipped = launcher::findServerPreset("unzipped");

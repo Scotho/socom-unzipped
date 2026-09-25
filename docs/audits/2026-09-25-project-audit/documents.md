@@ -6,6 +6,8 @@ Scope: every file under `docs/` (research/, superpowers/, archive/ only as far a
 Sprint 12 close). Line numbers are this worktree's. The Sprint 12 close's rewrite of CURRENT_SPRINT's header and its
 two CLOSED blocks are not re-reported, except where a field inside the header survived the rewrite stale.
 
+> Added 2026-09-25 (Sprint 13 Task R4): `docs/HUMAN_TASKS.md` became one table that day. Every `HUMAN_TASKS.md` line cited below is the old file, now `docs/archive/HUMAN_TASKS-to-2026-09-25.md` -- its banner gives the line offset, the quoted text finds each line, and its table gives each item's disposition.
+
 External state read with read-only commands on 2026-09-25: `git ls-remote --tags origin` lists `v0.10.0` as the
 newest `v0.x` tag (no `v0.11.0`); `git merge-base --is-ancestor origin/sprint-11 origin/main` fails (Sprint 11 is
 **not** in `main`); `origin/main` is `e63f9ba9` "Merge pull request #44"; `gh pr list --state all` shows no Sprint 11

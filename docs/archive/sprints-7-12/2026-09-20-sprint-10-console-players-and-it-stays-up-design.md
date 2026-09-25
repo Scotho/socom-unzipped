@@ -87,7 +87,7 @@ player on a real PS2 or PCSX2 can sit in the same lobby as a player on this clie
 ### Wishlist, unscheduled — the community server [B: the owner's r0004 package AND PSRewired's answer]
 - PSRewired runs SOCOM II r0004, a whole replacement of the game's code; playing there needs a second recompilation
   from a package only the owner's memory card can supply, and permission only PSRewired can give
-  (`docs/HUMAN_TASKS.md`, "Later / wishlist"). **Until the owner reports that answer, nothing connects to their
+  (`docs/archive/HUMAN_TASKS-to-2026-09-25.md`, "Later / wishlist"). **Until the owner reports that answer, nothing connects to their
   server** -- the launcher's community preset stores the address and that is all.
 
 ## What this sprint does not do

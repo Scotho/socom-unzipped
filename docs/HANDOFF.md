@@ -327,7 +327,7 @@ rather than rule. At most two C++-building agents at once.
 
 The owner's asks of 2026-09-20 and where each landed are in `docs/archive/HANDOFF-loop-history-to-2026-09-25.md` §9, verbatim (Sprint 13 Task R1;
 a third of its rows had gone stale, the 2026-09-25 audit's D15). Every row but one is done; the one still open,
-whether a profile viewer is wanted, is the owner's and is in `docs/HUMAN_TASKS.md`.
+whether a profile viewer is wanted, is the owner's and is row O7 of `docs/HUMAN_TASKS.md`.
 
 ## 10. What the owner should decide before the playtest (archived 2026-09-25)
 

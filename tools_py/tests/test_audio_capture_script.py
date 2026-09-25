@@ -29,7 +29,8 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SCRIPT = os.path.join(ROOT, "scripts", "parity", "audio_parity.sh")
 PS2_AUDIO = os.path.join(ROOT, "third_party", "ps2recomp", "ps2xRuntime", "src", "lib", "ps2_audio.cpp")
 WRAPPER = os.path.join(ROOT, "scripts", "parity", "capture_audio_out.sh")
-HUMAN_TASKS = os.path.join(ROOT, "docs", "HUMAN_TASKS.md")
+# The step R8 corrected moved with the rest of the old owner's list on 2026-09-25 (Sprint 13 R4); the loop took it.
+HUMAN_TASKS = os.path.join(ROOT, "docs", "archive", "HUMAN_TASKS-to-2026-09-25.md")
 
 SOURCE = 'export AUDIO_PARITY_SOURCE_ONLY=1; . "%s"; ' % SCRIPT.replace("\\", "/")
 

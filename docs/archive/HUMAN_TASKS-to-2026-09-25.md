@@ -1,3 +1,122 @@
+# HUMAN_TASKS.md -- the owner's queue as it stood to 2026-09-25 (archived)
+
+> **ARCHIVED 2026-09-25 (Sprint 13 Task R4) -- superseded by the live `docs/HUMAN_TASKS.md`**, which is one table,
+> rows O1-O15, each with the default the loop is on. This is the file it replaced, **verbatim** from the line marked
+> VERBATIM below: the 2026-09-22 and 2026-09-25 banners, the "Sprint 12 close" and "Sprint 11 close" sections, seven
+> "Start here" generations, the `## Open` checkboxes (2026-09-17 to 2026-09-21), `## Done` and the wishlist.
+> **Nothing below is an instruction and nothing is waited on:** the table that follows gives every item its
+> disposition -- superseded (by what), folded into a row of the live table (O<n>), taken by the loop (a Sprint 13 task
+> or a backlog row), or kept as a new row. A citation of HUMAN_TASKS' sections, items or line numbers written before
+> 2026-09-25 means this file. **Line numbers:** line N of `docs/HUMAN_TASKS.md` at `a2699ba0` is line N+119 here. The
+> 2026-09-25 audit's reports cite the file as they read it that morning (`eb190a42` with the Sprint 12 close's
+> edits uncommitted, before the 08:40Z banner), so their numbers drift by a few lines: the text each quotes finds it. Bare D-numbers below mean three
+> different things (documents audit D61): the Sprint 11 decision table's D2-D6, Sprint 12's naming defaults D1-D7
+> and the r0004 spec's D1-D4; the live file names each by its sprint.
+
+## Every item, and where it went (2026-09-25)
+
+Kinds: **S** superseded, **O** folded into the live row named, **T** taken by the loop, **K** kept as a new live row.
+"Old line" is the line in `docs/HUMAN_TASKS.md` at `a2699ba0`. "PLAYTEST step n" is `docs/PLAYTEST.md`'s sitting, row O8.
+
+| # | old line | item | kind | disposition |
+|---|---|---|---|---|
+| 1 | 7 | the 2026-09-22 evening banner ("parked"; "immediately below") | S | obsolete since 2026-09-23: newer sections stood between it and the block it named (documents audit D50) |
+| 2 | 14 | the 2026-09-25 08:40Z pointer to the audit's §3 | S | by this archive and the live table (Task R4) |
+| 3 | 25 | Sprint 12 close 1: the seven naming defaults D1-D7 | O | O11 |
+| 4 | 31 | Sprint 12 close 2: five big engine routines by hand | O | O11 (the read); a dossier per routine to prepare it is the loop's -- a backlog row (no Sprint 13 task takes it; documents audit D53) |
+| 5 | 32 | Sprint 12 close 3: the r0004 build with its sidecar and its gate | S | done 2026-09-25 07:40Z (`s12_names_r0004_gate` 3/3, PINS MATCH) -- the window was the loop's, taken unasked |
+| 6 | 34 | Sprint 12 close 4: the `v0.12.0` archives | O | O2 |
+| 7 | 36 | Sprint 12 close 5: the story's missing days, carried twice | O | O9 (keep or drop); the writing is taken by Sprint 13 Task S4 |
+| 8 | 40 | Sprint 12 close 6: the next sprint | S | Sprint 13 opened 2026-09-25 (`docs/CURRENT_SPRINT.md`) |
+| 9 | 47 | Sprint 11 close 1: r0004 D1, the distribution (reopened by R251) | O | O5 |
+| 10 | 48 | Sprint 11 close 2: Goal F, PSRewired's answer; mixed revisions; the capsule's second stub table | O | O5 |
+| 11 | 49 | Sprint 11 close 3: the two bug-pipeline words (I1, I2) | O | O4 |
+| 12 | 50 | Sprint 11 close 4: the `v0.10.0` and `v0.11.0` archives | O | O2 |
+| 13 | 51 | Sprint 11 close 5: the merged-branch sweep | K | O14 |
+| 14 | 52 | Sprint 11 close 6: the VM ring (issue #25) | O | O6 |
+| 15 | 53 | Sprint 11 close 7: five big engine routines by hand | O | O11 (as item 4) |
+| 16 | 54 | Sprint 11 close 8: Horizon's unmodelled `MediusVersionServer` | O | O5 |
+| 17 | 66 | Start here (2026-09-23 morning): "Ten quiet minutes for the music dropouts" | T | done 2026-09-25 07:41Z by Sprint 13 Task V5 Step 1 (`audio_out_20260925_074147`, sessions verdict `clean`; DEVICE 6 over 16 min, 0 late callbacks) -- a window, not the owner's hands (documents audit D53) |
+| 18 | 87 | Sprint 12's one build window | S | done 2026-09-25 04:51-05:38Z (`83e9696c`, `s12_names_gate` 3/3) |
+| 19 | 102 | the eight decisions table (Sprint 11 D2-D6, H7-A/H7-C, r0004 D1-D4, G7) | O | D2 -> O1; D3, D4, D5, D6 and H7-A/H7-C -> O3; r0004 D1 -> O5 (r0004 D2's ordering and D4's "HDD maps out of v1" stand as the defaults); G7 -> O4 |
+| 20 | 118 | "Send this to the PSRewired moderator" (the drafted message) | O | O4 (the draft stays here, verbatim) |
+| 21 | 127 | the merged-branch sweep, one `gh` command | K | O14 |
+| 22 | 134 | five launcher windows closed at 04:25Z | S | a notice; nothing was asked |
+| 23 | 141 | what the twelve hours produced; R241-R247 | S | a record; its one ask, the chat path's mechanics in public history (L162), is O13 |
+| 24 | 164 | the quiet-endpoint capture, added to "what only you can do" | T | as item 17 |
+| 25 | 169 | two words the bug pipeline needs (Task 13's review) | O | O4 |
+| 26 | 173 | the r0004 build, where it stands: the gate 3/3 | O | a record; its open questions (the r0004 disc's own assets, the second stub table, two rooms or two servers, `MediusVersionServer`) are O5 |
+| 27 | 177 | the r0004 patch, received: `mc0:UPDATE.DAT`; the PCSX2 card and cheat ini left changed | O | the `UPDATE.DAT` question is O5; the harness changes were an offer, not a question -- r0004 was proven 3/3 on 2026-09-24 and restoring the card from `game/r0004/Mcd001.before.ps2` is the loop's housekeeping |
+| 28 | 183 | the `v0.10.0` draft is waiting for its archives | O | O2 (building them short of the upload is the loop's: a backlog row) |
+| 29 | 198 | the lobby channel | S | R244: the ladder's own runs prove the refresh-then-join path; no run is owed (documents audit D51) |
+| 30 | 201 | a route to the church, in stick directions | S | issue #29 closed by the owner 2026-09-23 ("could not repro"); KNOWN §2's row is DROPPED (carry row 127) |
+| 31 | 219 | Start here (2026-09-22 midday) 1: the endpoint A/B | S | ran 2026-09-23: wired 14 dips against Bluetooth 11 -- the dips are ours (issue #42, Sprint 13 V5) |
+| 32 | 236 | 2: the remember-password proof (W10) | S | ran 2026-09-23 and failed as anticipated; the prefill stays (R237 rewritten); the clean-exit launch is Sprint 13 V6 (issue #27) |
+| 33 | 253 | 3: the walking mission capture (W7, W6) | S | both ran 2026-09-23; W6 dropped with issue #29 |
+| 34 | 271 | the one line: which lobby channel (W8) | S | R244, as item 29 |
+| 35 | 318 | Start here (after the playthrough): the prefilled login | O | settled 2026-09-23 (it stays); the try with your real persona is O7 |
+| 36 | 329 | the CONTROLLER page (W9) | O | O7 |
+| 37 | 332 | the music, both halves; your PCSX2 notes | O | O7 (the one listen); the machine halves are issues #42 and #28, Sprint 13 V5 |
+| 38 | 336 | the online stray sound | S | withdrawn 2026-09-22: the A/B cleared the bank (R239) |
+| 39 | 342 | the lobby join | S | R240 landed (`00d8348`); R244, as item 29 |
+| 40 | 350 | Start here (2026-09-21 evening): tonight's build | O | that build is superseded; the sitting is O8 |
+| 41 | 360 | Start here (2026-09-20): the owner gate on the listen bypassed | S | a record; it is O7's default |
+| 42 | 365 | GitHub settings done under R181/R182 | S | a record |
+| 43 | 372 | public repository 1: the pre-rewrite commits fetchable by hash | S | answered "fine as is", 2026-09-21 |
+| 44 | 376 | 2: `server/config/simulated.db` in public history | O | O13 |
+| 45 | 380 | 3: the commit author e-mail | O | O13 |
+| 46 | 383 | 4: disc-derived bytes (H7-A, H7-C) | O | O3 |
+| 47 | 391 | four launcher things to try (Sprint 10 Q4) | O | O7 |
+| 48 | 403 | the prefilled login with your real persona (Goal 9) | O | O7 |
+| 49 | 409 | the controller remapping UI on a real pad (Goal 8) | O | O7 (and PLAYTEST step 0) |
+| 50 | 416 | the hosted box: the credit, the backups | O | O13 (a reminder before the credit ends; an off-box pull now and then) |
+| 51 | 422 | for the site session: `secret-scan.mjs`'s literal | O | O4 |
+| 52 | 427 | name the windows for the scheduled ladder (Sprint 10 Goal 1) | O | O6 |
+| 53 | 429 | the music, round four: one listen on PCSX2 | S | answered ~21:00 UTC 2026-09-20 ("psx2 sounds expected") |
+| 54 | 431 | the music, round three | S | a listen on a build five fixes old (the stereo interleave, `c6502ea`, came after); the listen now owed is O7's |
+| 55 | 433 | the music, round two | S | as item 54 |
+| 56 | 435 | a Windows audio-routing setting changed | S | restored 05:50, 2026-09-20 |
+| 57 | 437 | the music (Q0): four things only you can tell me | S | 0 answered 2026-09-20 ~04:05; 1-3 overtaken by round four, which found the defect at the root (the stereo interleave) and proved the pauses the game's |
+| 58 | 444 | the launcher's first six help tooltips: the wording | O | O8 (PLAYTEST step 3: "what is a profile?"); the launcher's wording defects are Sprint 13 S2 |
+| 59 | 446 | FYI: the bug inbox's prompt-injection canary | O | O4 (a mark on the deliberate canary is the site session's) |
+| 60 | 448 | a playtest is planned (`docs/PLAYTEST.md`) | O | O8 |
+| 61 | 453 | decisions only you can make, soonest first | O | who gets the archive -> O1; the keyboard ruling -> S, decided and built 2026-09-21 (R210); a profile viewer -> O7; dropping the debugger and probes -> O8 (it waits on the size number, a backlog row, audit D15); the Sprint 11 spec's D1-D6 -> D1 made by the public flip, D2 -> O1, D3-D6 -> O3 |
+| 62 | 462 | yours on GitHub when the repository goes public | S | done 2026-09-20 (R181, R182; public since that evening); the settings still open are O13 |
+| 63 | 467 | relayed to the site session: drop the keyboard/mouse claim | O | O4 |
+| 64 | 470 | a second request for the site session: the GitHub sentence on the form | O | O4 (with G7) |
+| 65 | 480 | Open: listen to the music, fifth round | O | O7 (PLAYTEST step 6) |
+| 66 | 499 | Open: listen to the title screen and the intro | S | answered 2026-09-22: "excellent from the outset" (PLAYTEST step 5, struck) |
+| 67 | 510 | Open: listen in free play | O | O8 (PLAYTEST step 10) |
+| 68 | 515 | Open: the mission music, by ear (Sprint 9 Goal 10) | O | O7 (PLAYTEST step 6); the defect halves are issues #42 and #28 |
+| 69 | 516 | Open: REPORT A BUG in the launcher -- the wording; the log box OFF | O | O4 (I2, the reply phrase) and O8 (PLAYTEST step 14); the log box stays OFF |
+| 70 | 517 | Open: the release download -- signing, symbols, the hash | O | signing -> O3; keeping each release's `dist-release/symbols/` -> O2; the hash from another machine -> O8 (PLAYTEST step 1) |
+| 71 | 518 | Open: crouch on a pad (R139) | O | O8 (PLAYTEST step 8); which default the launcher and the knob share is O12 |
+| 72 | 519 | Open: failures that explain themselves (a), (b), (c) | O | (a) the Explorer double-click -> O8 (PLAYTEST step 2); (b) the disc-not-found sentence and the zip -> O8 (step 4); (c) the no-audio-device sentence on Linux -> T, a VM run, a backlog row (documents audit D53) |
+| 73 | 520 | Open: the launcher, second look (`_new.exe`) | S | that build was replaced many times since (documents audit D52); the look is PLAYTEST step 3 |
+| 74 | 521 | Open: the launcher with the Xbox pad (Task 8b) | O | O8 (PLAYTEST step 3); the 1280x896 default it names was overturned by R236 |
+| 75 | 530 | Open: the two server addresses for the launcher's picker | O | ours is real since 2026-09-19 (`socom.scotho.com` since R175); the community address is O5 |
+| 76 | 547 | Open: a second machine for the first two-machine match | O | O6 (PLAYTEST step 12) |
+| 77 | 583 | Open: pick the pad in the launcher, then play with it | O | O8 (PLAYTEST step 3) |
+| 78 | 596 | Open: pick the microphone and watch the meter | O | O8 (PLAYTEST step 13) |
+| 79 | 604 | Open: speak in an online lobby, and expect to be unheard | S | its premise ("the headset module answers no headset") is gone since Sprint 8 (documents audit D52); hearing the other player is backlog (audit G3); the two-machine half is O6 |
+| 80 | 616 | Open: mission music after the fade fix, and the save prompt | S | the music half answered 2026-09-20; the save fixed at the root (`152579a`) -- PLAYTEST step 9 checks the fix in O8's sitting |
+| 81 | 633 | Open: re-listen after the sound fixes (Sprint 7 Task 12) | O | O8 (PLAYTEST step 10) |
+| 82 | 647 | Open: run the Linux tarball on a real Linux machine or a Steam Deck | K | O15; the VM half (the Linux bug-report send, the no-audio sentence) is T, backlog rows |
+| 83 | 661 | Open: the redesigned launcher -- your verdict on the look | O | O8 (PLAYTEST step 3) |
+| 84 | 670 | Open: play a match on the hosted server; a domain name; the AWS credit | O | the match -> O8 (PLAYTEST step 11); the domain -> S, `socom.scotho.com` since 2026-09-20 (R175); the credit -> O13 |
+| 85 | 685 | Done: the server's DNS record; "Next is mine" | S | done 2026-09-20; the loop's follow-up landed with R175 (documents audit D51) |
+| 86 | 691 | wishlist: the r0004 package from your own memory card | S | obtained 2026-09-23 the sanctioned way (R250, R251) |
+| 87 | 698 | wishlist: ask PSRewired about a non-console client | O | O5 (Goal F) |
+
+Counts, by kind: **S** 30, **O** 52, **T** 2, **K** 3 (87 items). Taken by the loop beyond the two T rows: the
+halves named inside rows 4, 7, 27, 28, 72 and 82 (the routine dossiers, the story's days, the card's restore, the
+archives short of the upload, the Linux VM runs). The new file's rows: O1-O13 are the audit's §3
+(`docs/audits/2026-09-25-project-audit.md`); O14 and O15 are items 13/21 and 82, which the audit's §3 missed.
+
+---
+
+VERBATIM FROM HERE -- the file as it stood at `a2699ba0`, unedited:
+
 # Human tasks
 
 Things only the owner can do: hands-on checks on the real machine with real ears and hands. The autonomous loop
