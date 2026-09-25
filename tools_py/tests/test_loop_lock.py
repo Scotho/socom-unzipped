@@ -218,7 +218,10 @@ class TestTakeReapBreak(LockTestBase):
         self.assertIn("RENEWED by alice", out)
         rec = self.record()
         self.assertEqual(rec[:2], ["alice", take_id])
-        self.assertLessEqual(abs(int(rec[2]) - time.time()), 5)
+        # The record was 600 s stale; a renew refreshes it to "now". One `renew` costs 0.7-9 s on this host under a
+        # build (Sprint 13 H2's measurements; the third proof's suite run failed this at 5 s while C8 built), so the
+        # window is 30 s: still proof of a refresh, no longer a measure of the host's speed.
+        self.assertLessEqual(abs(int(rec[2]) - time.time()), 30)
 
     def test_held_lock_is_busy_even_for_its_owner(self):
         self.assertEqual(self.sh("take", "alice")[0], 0)

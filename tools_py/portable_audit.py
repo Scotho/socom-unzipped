@@ -38,6 +38,10 @@ WINDOWS_SYSTEM = frozenset((
     # the first release packaging AFTER Goal 8 landed, which is the run that builds the playtest
     # candidate: the closure called it missing, and build.sh had already emptied dist-release of DLLs.
     "winhttp.dll",
+    # Sprint 13 C6: FFmpeg 7.1.5 (vcpkg's build) links its codecs in, and avutil-59.dll now imports two more
+    # Windows-provided libraries -- cfgmgr32.dll (device configuration, present since Windows 2000) and crypt32.dll
+    # (the certificate store, present since Windows XP). The first release packaging after C6 called them missing.
+    "cfgmgr32.dll", "crypt32.dll",
 ))
 WINDOWS_SYSTEM_PREFIXES = ("api-ms-win-",)
 SHIPPED = {"Windows": ("socom2.exe", "socom_unzipped_launcher.exe"), "Linux": ("socom2", "socom_unzipped_launcher")}

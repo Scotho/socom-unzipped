@@ -7,6 +7,7 @@
 #include "ps2recomp/types.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_set>
@@ -72,10 +73,22 @@ namespace ps2recomp
         const std::unordered_set<uint32_t> &internalTargets = analysisResult.entryPoints;
         ConstantRegisterState constantRegisters;
         GifDmaKickPlan gifDmaKickPlan{};
-        ss << "// Function: " << (function.displayName.empty() || function.displayName == function.name
-                                     ? function.name
-                                     : function.displayName + " (identity " + function.name + ")")
-           << "\n";
+        // A sidecar name says where it came from (research/59 §3, Sprint 13 N2): `(identity Y)` read to a stranger
+        // as an alias. The row is the sidecar's own padded spelling of the address, so it greps; the map name is
+        // the one the recompiler still reads for extent and stubbing (S12-R13).
+        if (function.displayName.empty() || function.displayName == function.name)
+        {
+            ss << "// Function: " << function.name << "\n";
+        }
+        else
+        {
+            char row[16];
+            std::snprintf(row, sizeof(row), "0x%08x", static_cast<unsigned>(function.start));
+            ss << "// Function: " << function.displayName << "\n";
+            ss << "// Name source: "
+               << (function.displayNameSource.empty() ? std::string("the names sidecar") : function.displayNameSource)
+               << " row " << row << " (map name " << function.name << ")\n";
+        }
         ss << "// Address: 0x" << std::hex << function.start << " - 0x" << function.end << std::dec << "\n";
 
         std::string sanitizedName = cg.getFunctionName(function.start);

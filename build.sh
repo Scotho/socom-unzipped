@@ -63,6 +63,9 @@ recomp() {
   # fallthrough) that no recompiled row owns: each one is a [guest-branch:missing-target] waiting
   # for a thread to reach it. Read, not gated -- like unhandled=.
   echo "recomp: $(ls "$GEN" | wc -l) files, unhandled=$(grep -c unhandled-instruction "$ROOT/recomp/recomp_run.log" || true), unmapped=$(grep -c unmapped-continuation "$ROOT/recomp/recomp_run.log" || true)"
+  # The names sidecar's events (#48): "Loaded N display names", or the WARNING that the toml's names path does
+  # not resolve (every function then keeps its FUN_/sub_ placeholder). Printed, not gated.
+  grep -E '^ *\[(info|warning)\] names - ' "$ROOT/recomp/recomp_run.log" | sed -e 's/^ *\[warning\] names - /WARNING: names: /' -e 's/^ *\[info\] names - /recomp: names: /' || true
 }
 
 runtime() {

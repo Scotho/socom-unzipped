@@ -1,4 +1,9 @@
-// SOCOM II: U.S. Navy SEALs (SCUS_972.75, r0001) — game-specific EE overrides.
+// SOCOM II: U.S. Navy SEALs (SCUS_972.75) — game-specific EE overrides, for both pressings the port supports
+// (r0001 and r0004). The guest addresses they reach into come from the per-revision table in
+// runtime/socom2_addresses.h: applySocom2 picks the column from the loaded image's own build banner before
+// any install, and refuses an executable whose generated code belongs to the other pressing
+// (runtime/socom2_revision_guard.h). Loader addresses (below the overlays) are the same in every pressing and
+// stay literal here. (Audit F19: this line used to say r0001 only.)
 //
 // The retail boot ELF is a loader that (1) looks for the r0004 update on the memory card,
 // (2) otherwise loads OVERLAY/REL/DNAS.BIN and uses libdnas2 to decrypt RUN/RAW/APACHE00.ZDB
@@ -19,13 +24,17 @@
 #include "runtime/socom2_music_trace.h"
 #include "runtime/socom2_addresses.h"
 #include "runtime/socom2_osk_prefill.h"
+#include "runtime/socom2_peek.h"
 #include "runtime/socom2_revision_guard.h"
+#include "runtime/socom2_rtnet_config.h"
+#include "runtime/socom2_trace_checkpoint.h"
 #include "runtime/socom2_server_records.h"
 #include "runtime/ps2_audio.h"
-#include "socom2_rsa_key.h"
 #include "socom2_host_input.h"
 #include "socom2_libnetb.h"
 #include "socom2_crypto.h"
+#include "socom2_msifrpc.h"
+#include "runtime/host_prof_start.h"
 #include "Kernel/HleStats.h"
 #include "Kernel/SchedTrace.h"
 #include <cstring>
@@ -60,11 +69,10 @@
 
 #include <cstdint>
 #include <atomic>
-// Set by PS2X_TRIGGER (see startPcSampler); read by the "trig" trace modes.
-std::atomic<bool> g_ps2xTraceArmed{false};
+// PS2X_TRIGGER's latch (see startPcSampler), read by the "trig" trace modes: the runtime's own since Sprint 13 C8.
+#include "runtime/ps2_trace_armed.h"
 #include <filesystem>
 #include <iomanip>
-#include "runtime/socom2_lum_readback.h"
 #include "runtime/socom2_cull_trace.h"
 #include "ps2x/knobs.h"
 #include <iostream>
@@ -73,74 +81,12 @@ std::atomic<bool> g_ps2xTraceArmed{false};
 #include <array>
 #include <utility>
 
-// Bound at recompile time via recomp/socom2.toml: "socom2_RsaGenerateKeyPair@0x0062B168".
-// rt_crypt FUN_0062b168(LargeInt *n, LargeInt *d) generates a 512-bit RSA key pair with two random
-// 256-bit primes (e = 17); the prime search takes minutes under recompiled code and a fixed key
-// pair is equivalent for a private server, so the precomputed limbs are written instead.
+// Sprint 13 Task C8 (audit F8, F9, F22): the HLE handlers that need no game-file state live in runner-only files
+// of their own, compiled into ps2x_tests as well so they are tested rather than stubbed: the libpad2 HLE in
+// socom2_pad2_hle.cpp, the msifrpc HLE in socom2_msifrpc.cpp, socom2_RsaGenerateKeyPair in socom2_crypto.cpp
+// and socom2_LumReadPixel in socom2_lum_pixel.cpp.
 namespace ps2_stubs
 {
-    void socom2_RsaGenerateKeyPair(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
-    {
-        const uint32_t nAddr = GPR_U32(ctx, 4);
-        const uint32_t dAddr = GPR_U32(ctx, 5);
-        // PS2X_SOCOM2_RSA_KEY=b selects the second precomputed pair: two instances of the exe on
-        // one host otherwise publish the *same* public key in their DME 0x18 client record, while
-        // two PCSX2 clients publish distinct random keys (server/logs/console-DME.log).
-        const char *keyEnv = ps2x::knob("PS2X_SOCOM2_RSA_KEY");
-        const bool keyB = keyEnv && (*keyEnv == 'b' || *keyEnv == 'B' || *keyEnv == '1');
-        std::memcpy(rdram + (nAddr & PS2_RAM_MASK), keyB ? kSocom2RsaNb : kSocom2RsaN, sizeof(kSocom2RsaN));
-        std::memcpy(rdram + (dAddr & PS2_RAM_MASK), keyB ? kSocom2RsaDb : kSocom2RsaD, sizeof(kSocom2RsaD));
-        std::cout << "[socom2] rt_crypt RSA key pair -> fixed precomputed key " << (keyB ? "B" : "A") << std::endl;
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
-    // Bound at recompile time via recomp/socom2.toml: "socom2_LumReadPixel@0x003B24C0".
-    // FUN_003b24c0(packet, out) is the auto-exposure thread's framebuffer readback: it sends a 7-qword VIF1
-    // packet (BITBLTBUF/TRXPOS/TRXREG/TRXDIR local->host, a 1x4 column of the frame), waits for FINISH,
-    // sets BUSDIR and reads one quadword back through the VIF1 FIFO in reverse mode into `out`; the caller
-    // (FUN_003b1dd0) takes the first pixel's R, G, B. The runtime has no reverse-FIFO DMA path, and until
-    // 2026-09-16 this answered a constant mid-grey pixel -- which made the exposure compute a zero brighten
-    // (ALPHA FIX 0 where the console writes 93) and every gameplay frame drew 1.73x too dark (research/31
-    // section 13). Now the pixels are read straight out of GS memory (the GL backend downloads GPU-drawn
-    // pages on read) and written where the DMA would have put them.
-    void socom2_LumReadPixel(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
-    {
-        const uint32_t packetAddr = GPR_U32(ctx, 4);
-        const uint32_t outAddr = GPR_U32(ctx, 5);
-        const uint8_t *packet = rdram + (packetAddr & PS2_RAM_MASK);
-        uint8_t *out = rdram + (outAddr & PS2_RAM_MASK);
-        size_t n = 0;
-        if (runtime)
-        {
-            GS &gs = runtime->gs();
-            // Never wait on the GPU here (it would hold the single EE host thread for the GL backlog): ask for an
-            // asynchronous download once per socom2_lum::kLumSyncIntervalMs and read whatever the last one left.
-            static uint64_t s_lastRequestMs = 0;
-            const uint64_t nowMs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
-                                                             std::chrono::steady_clock::now().time_since_epoch()).count());
-            if (socom2_lum::syncDue(nowMs, s_lastRequestMs))
-            {
-                s_lastRequestMs = nowMs;
-                gs.requestVramReadback();
-            }
-            n = socom2_lum::readbackPixels(packet, 7, [&](uint32_t psm, uint32_t bp, uint32_t bw, uint32_t x, uint32_t y)
-                                           { return gs.PeekVram(psm, bp, bw, x, y); }, out, 16);
-        }
-        if (n == 0)
-        {
-            out[0] = 0x80;
-            out[1] = 0x80;
-            out[2] = 0x80;
-            out[3] = 0x80;
-        }
-        static int logged = 0;
-        if (logged++ < 3)
-            std::cout << "[socom2] exposure readback FUN_003b24c0 -> " << n << " bytes from GS memory"
-                      << (n ? "" : " (no transfer in the packet: grey pixel)") << std::endl;
-        SET_GPR_U32(ctx, 2, 0u);
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
     // ---- SIF sreg handshake (ONLINE path) ------------------------------------------------------
     // After loading the network IRX set (NETCNF, INET, INETCTL, PPP, PPPOE, SMAP, MSIFRPC,
     // LIBNETB) the game's FUN_001bcd80 registers a SIF command handler (0x80000018), sends the
@@ -166,275 +112,22 @@ namespace ps2_stubs
         ps2_stubs::sceSifSendCmd(rdram, ctx, runtime);
     }
 
-    // ---- msifrpc (multi-SIF RPC) HLE ----------------------------------------------------------
-    // SCE-RT's libnetb EE library (0x245ad8..0x2472xx) talks to LIBNETB.IRX through msifrpc:
-    // FUN_001bd050 bind(client, sid, 0, bufSize, p5, p6) -> SIF cmd 0x80000019 + WaitSema,
-    // FUN_001bd320 call(client, fno, 0, send, sendSize, recv, recvSize, cb, cbArg) -> 0x8000001a,
-    // FUN_001bd200 unbind(client, 0) -> 0x8000001d. The replies come back as SIF commands handled
-    // by FUN_001bcf20, which fills the client struct and signals the semaphores. With no IOP the
-    // calls are answered synchronously here: the libnetb service (sid 0x80001201) is dispatched
-    // by function number to a host implementation; the result word the EE wrappers read is the
-    // first u32 of the receive buffer.
-    // Client struct (u32 index): [0] packet, [1] ?, [2] reply sema, [4] sid, [5] IOP buffer,
-    // [9] IOP handle (non-zero = bound), [10] mutex sema, [11] unbind result,
-    // [12] buffer size (wrappers check it as +0x30), [13],[14] bind extras.
-    constexpr uint32_t kLibnetbSid = 0x80001201u;
-
-    uint32_t rd32(const uint8_t *rdram, uint32_t addr)
-    {
-        uint32_t v;
-        std::memcpy(&v, rdram + (addr & PS2_RAM_MASK), 4);
-        return v;
-    }
-
-    void wr32(uint8_t *rdram, uint32_t addr, uint32_t v)
-    {
-        std::memcpy(rdram + (addr & PS2_RAM_MASK), &v, 4);
-    }
-
-    // libnetb service 0x80001201: dispatched in socom2_libnetb.cpp (docs/research/10-libnetb-rpc.md). rpcFromGuest
-    // returns to ra with v0 = 0, or parks this guest thread for a VBlank when a recv would wait (#34).
-    void socom2LibnetbCall(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
-    {
-        static const bool s_netTrace = ps2x::knob("PS2X_SOCOM2_NET_TRACE") != nullptr;   // was a getenv on every libnetb RPC
-        if (s_netTrace)
-            std::cout << "[socom2/msifrpc] libnetb fno=0x" << std::hex << GPR_U32(ctx, 5) << std::dec << " send=" << GPR_U32(ctx, 8)
-                      << " recv=" << GPR_U32(ctx, 10) << std::endl;
-        socom2_libnetb::rpcFromGuest(rdram, ctx, runtime);
-    }
-
-    void socom2_MsifBind(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
-    {
-        const uint32_t client = GPR_U32(ctx, 4);
-        const uint32_t sid = GPR_U32(ctx, 5);
-        const uint32_t bufSize = GPR_U32(ctx, 7);
-        wr32(rdram, client + 4u * 4u, sid);
-        wr32(rdram, client + 5u * 4u, 0u);
-        wr32(rdram, client + 9u * 4u, 1u);          // "bound"
-        wr32(rdram, client + 11u * 4u, 0u);
-        wr32(rdram, client + 12u * 4u, bufSize);
-        std::cout << "[socom2/msifrpc] bind sid=0x" << std::hex << sid << " bufSize=0x" << bufSize << std::dec
-                  << " -> host HLE" << std::endl;
-        SET_GPR_U32(ctx, 2, 0u);
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
-    void socom2_MsifUnbind(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
-    {
-        const uint32_t client = GPR_U32(ctx, 4);
-        wr32(rdram, client + 9u * 4u, 0u);
-        SET_GPR_U32(ctx, 2, 1u);                    // the wrapper loops until unbind returns 1
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
-    void socom2_MsifCall(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
-    {
-        const uint32_t client = GPR_U32(ctx, 4);
-        const uint32_t fno = GPR_U32(ctx, 5);
-        const uint32_t mode = GPR_U32(ctx, 6);
-        // send, sendSize, recv, recvSize (a3, t0..t2) are read by socom2_libnetb::rpcFromGuest.
-        int32_t result = -1;
-        if (mode == 0u)
-        {
-            const uint32_t sid = rd32(rdram, client + 4u * 4u);
-            if (sid == kLibnetbSid)
-            {
-                socom2LibnetbCall(rdram, ctx, runtime);   // sets v0 and pc itself (and may park: #34)
-                return;
-            }
-            else
-            {
-                std::cout << "[socom2/msifrpc] call to unknown sid=0x" << std::hex << sid << " fno=0x" << fno << std::dec << std::endl;
-            }
-        }
-        SET_GPR_U32(ctx, 2, static_cast<uint32_t>(result));
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
-    // FUN_001bcd80: msifrpc init (SIF handler + sreg handshake). Nothing to set up on the host.
-    void socom2_MsifInit(uint8_t *, R5900Context *ctx, PS2Runtime *)
-    {
-        ctx->pc = GPR_U32(ctx, 31);
-    }
+    // The msifrpc HLE (socom2_MsifInit/Bind/Call/Unbind, the libnetb service 0x80001201): socom2_msifrpc.cpp.
 
     // FUN_002cc670: the DNAS authentication state tick (creates the libdnas2 object on the first
     // call, returns 1 when authentication has finished). A private server needs no DNAS, so the
-    // tick reports "done" immediately; this is what the published r0001 pnach (`jr ra` at the
-    // entry, with v0 still holding the previous call's 1) achieves on PCSX2.
+    // tick reports "done" immediately. The published r0001 pnach gets the same effect on PCSX2 with a
+    // bare `jr ra` at the entry, but not because v0 still holds a previous 1: the caller reaches the
+    // tick through the dispatcher's `jalr $v0`, so v0 arrives holding the tick's own address
+    // (r0001 0x002CC670), and the caller's `andi` of it yields 0x70 -- non-zero, which reads as "done".
+    // Returning 1 here says the same thing on purpose (research/43 section 5 item 2; audit C30).
     void socom2_DnasTickDone(uint8_t *, R5900Context *ctx, PS2Runtime *)
     {
         SET_GPR_U32(ctx, 2, 1u);
         ctx->pc = GPR_U32(ctx, 31);
     }
 
-    // ---- libpad2 (scePad2*) HLE ----------------------------------------------------------------
-    // The game statically links Sony's socket-based libpad2 (scePad2Init/CreateSocket/Read/
-    // GetState/GetButtonInfo) which RPCs to SIO2MAN/DS2U on the IOP. Those IOP drivers are not
-    // emulated, so the wrappers were stubbed to return 0 and the game's per-frame reader
-    // (FUN_002da930) saw no controller. We HLE the five top-level entry points to report one
-    // connected DualShock2 on port 0 with neutral input, bypassing the IOP path entirely.
-    // Button ids 0x10-0x13 are the analog axes (center 0x80); 0x00-0x0F are the digital buttons
-    // (0 = released). Host input injection (real button presses) hooks the same shared state later.
-    Socom2PadState g_socom2Pad;   // refreshed from the host by socom2HostInputPoll (socom2_host_input.cpp)
-
-    // The pad HLE is on by default (Sprint 9 Goal 3, R160); PS2X_SOCOM2_PAD=0 boots with no controller, as
-    // every boot did before input worked. When disabled these behave like the previous ret0 stubs (no
-    // controller).
-    bool socom2PadEnabled()
-    {
-        static const bool on = ps2x::knobOn("PS2X_SOCOM2_PAD", true);   // R160: on unless 0
-        return on;
-    }
-
-    void scePad2Init(uint8_t *, R5900Context *ctx, PS2Runtime *)
-    {
-        SET_GPR_U32(ctx, 2, socom2PadEnabled() ? 1u : 0u);   // > 0 = ok
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
-    // One DualShock2 only: socket 0 (the first CreateSocket) is connected; every other socket the
-    // game opens (port 2, multitap slots) reports "no controller". Reporting all of them connected
-    // made the shell count several local players and route the UI to a pad that never gets data.
-    uint32_t g_socom2NextSocket = 0u;
-
-    void scePad2CreateSocket(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
-    {
-        const uint32_t descriptor = GPR_U32(ctx, 4);
-        const uint32_t socket = g_socom2NextSocket++;
-        if (ps2x::knob("PS2X_SOCOM2_PAD_TRACE"))
-        {
-            uint32_t words[2] = {0u, 0u};
-            if (descriptor != 0u)
-                std::memcpy(words, rdram + (descriptor & PS2_RAM_MASK), sizeof(words));
-            std::cout << "[pad-trace] CreateSocket desc=0x" << std::hex << descriptor << " [" << words[0] << " " << words[1]
-                      << "] -> socket " << std::dec << socket << std::endl;
-        }
-        SET_GPR_U32(ctx, 2, socket);
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
-    void scePad2GetState(uint8_t *, R5900Context *ctx, PS2Runtime *)
-    {
-        // The game opens a socket for its controller check at boot, deletes it, then opens the
-        // one it actually reads; the HLE never sees the delete, so treat the newest socket as the
-        // live one.
-        const uint32_t socket = GPR_U32(ctx, 4);
-        const bool connected = socom2PadEnabled() && g_socom2NextSocket != 0u && socket == g_socom2NextSocket - 1u;
-        SET_GPR_U32(ctx, 2, connected ? 1u : 0u);   // 1 = connected/ready, 0 = nothing on this socket
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
-    void scePad2Read(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
-    {
-        // Write a standard DualShock2 poll report into the caller's buffer (a1) for any code that
-        // reads it raw, and return a positive data length so FUN_002da930 proceeds.
-        const uint32_t buf = GPR_U32(ctx, 5) & PS2_RAM_MASK;
-        if (socom2PadEnabled())
-            socom2HostInputPoll(g_socom2Pad);
-        uint8_t report[32] = {0};
-        report[0] = 0x00;
-        report[1] = 0x79;                   // DS2 analog + pressure mode
-        report[2] = 0x5Au;
-        report[3] = 0xFFu;                  // digital buttons, active-low
-        report[4] = 0xFFu;
-        for (int id = 0; id < 16; ++id)
-        {
-            if (g_socom2Pad.button[id])
-                report[3 + id / 8] = static_cast<uint8_t>(report[3 + id / 8] & ~(1u << (id % 8)));
-        }
-        report[5] = g_socom2Pad.axis[0];    // RX
-        report[6] = g_socom2Pad.axis[1];    // RY
-        report[7] = g_socom2Pad.axis[2];    // LX
-        report[8] = g_socom2Pad.axis[3];    // LY
-        for (int field = 0; field < 12; ++field)
-            report[9 + field] = socom2PressureOf(g_socom2Pad, field);   // R139: Triangle's may be light
-        std::memcpy(rdram + buf, report, sizeof(report));
-        // PS2X_SOCOM2_PAD_TRACE=1: log the first non-neutral reports the game reads.
-        static const bool s_padTrace = ps2x::knob("PS2X_SOCOM2_PAD_TRACE") != nullptr;
-        if (s_padTrace && (report[3] != 0xFFu || report[4] != 0xFFu))
-        {
-            static uint32_t s_lines = 0;
-            if (s_lines++ < 40u)
-                std::cout << "[pad-trace] read: buttons=" << std::hex << (unsigned)report[3] << " " << (unsigned)report[4]
-                          << " axes=" << (unsigned)report[5] << "," << (unsigned)report[6] << "," << (unsigned)report[7] << "," << (unsigned)report[8]
-                          << std::dec << std::endl;
-        }
-        SET_GPR_U32(ctx, 2, static_cast<uint32_t>(sizeof(report)));
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
-    void scePad2GetButtonInfo(uint8_t *, R5900Context *ctx, PS2Runtime *)
-    {
-        // a2 = button id. 0x10-0x13 = analog axes (center 0x80); else digital button pressure.
-        const uint32_t id = GPR_U32(ctx, 6);
-        uint32_t value;
-        if (id >= 0x10u && id <= 0x13u)
-            value = g_socom2Pad.axis[id - 0x10u];
-        else if (id < 0x10u)
-            value = g_socom2Pad.button[id];
-        else if (id >= 0x14u && id <= 0x1fu)
-            value = socom2PressureOf(g_socom2Pad, static_cast<int>(id - 0x14u));   // R139: Triangle's may be light
-        else
-            value = 0u;
-        // PS2X_SOCOM2_PAD_TRACE=1: which ids does the game poll, and what did it get for pressed ones?
-        static const bool s_padTrace = ps2x::knob("PS2X_SOCOM2_PAD_TRACE") != nullptr;
-        if (s_padTrace)
-        {
-            static uint32_t s_seenMask = 0u;
-            static uint32_t s_pressedLines = 0u;
-            const uint32_t bit = id < 32u ? (1u << id) : 0u;
-            if (bit && !(s_seenMask & bit))
-            {
-                s_seenMask |= bit;
-                std::cout << "[pad-trace] GetButtonInfo polls id 0x" << std::hex << id << std::dec << std::endl;
-            }
-            static uint32_t s_lastValue[32] = {0};
-            if (id < 32u && value != s_lastValue[id] && s_pressedLines++ < 200u)
-            {
-                std::cout << "[pad-trace] GetButtonInfo id 0x" << std::hex << id << " " << s_lastValue[id] << " -> " << value << std::dec << std::endl;
-                s_lastValue[id] = value;
-            }
-        }
-        SET_GPR_U32(ctx, 2, value);
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
-    // The three remaining libpad2 entry points the game calls each frame (FUN_002da930) are
-    // *not* covered by the socket HLE above: natively they read the DMA double buffer registered
-    // by scePad2CreateSocket (never set up by the HLE) and talk to DBCMAN through libdbc
-    // (sceDbcReceiveData / SendData2). Answering them here keeps the pad state machine consistent
-    // (state 0 -> 1 needs GetButtonProfile >= 0 and sceVibGetProfile >= 0) and keeps libdbc idle.
-    void scePad2GetButtonProfile(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
-    {
-        // a1 = destination for the 40-bit button profile (bit n = button n supported). A DualShock2
-        // reports the 16 digital buttons and the 16 analog/pressure fields (ids 0x00-0x1f).
-        const uint32_t buf = GPR_U32(ctx, 5) & PS2_RAM_MASK;
-        static const uint8_t kDs2Profile[5] = {0xFFu, 0xFFu, 0xFFu, 0xFFu, 0x00u};
-        uint32_t length = 0u;
-        if (socom2PadEnabled())
-        {
-            std::memcpy(rdram + buf, kDs2Profile, sizeof(kDs2Profile));
-            length = static_cast<uint32_t>(sizeof(kDs2Profile));
-        }
-        SET_GPR_U32(ctx, 2, socom2PadEnabled() ? length : 0xFFFFFFFFu);
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
-    void sceVibGetProfile(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
-    {
-        // a1 = actuator profile buffer; the game only sends SetActParam when byte 0 is nonzero.
-        // Report no actuators (0 bytes, buffer zeroed) so no vibration traffic is generated.
-        const uint32_t buf = GPR_U32(ctx, 5) & PS2_RAM_MASK;
-        std::memset(rdram + buf, 0, 2);
-        SET_GPR_U32(ctx, 2, 0u);            // count 0, >= 0 = success
-        ctx->pc = GPR_U32(ctx, 31);
-    }
-
-    void sceVibSetActParam(uint8_t *, R5900Context *ctx, PS2Runtime *)
-    {
-        SET_GPR_U32(ctx, 2, 1u);            // accepted
-        ctx->pc = GPR_U32(ctx, 31);
-    }
+    // The libpad2 HLE (scePad2*, sceVib*, the shared pad state): socom2_pad2_hle.cpp.
 }
 
 namespace
@@ -746,91 +439,52 @@ namespace
                       << " prio=" << t.currentPriority   // Task 2a: SOCOM's thread priorities, logged with every sample
                       << " wait=" << static_cast<int>(t.waitReason) << "/" << t.waitId << "]";
                 std::cout << o.str() << std::endl;
-                // PS2X_PEEK="0xADDR[:words][,...]": dump guest words (hex + float) with each sample.
+                // PS2X_PEEK="<chain>[:words][,...]": dump guest words (hex + float) with each sample. The parsing,
+                // the chain walk, the 64-word cap and what a row says when a chain does not resolve are
+                // runtime/socom2_peek.h's (#39): an over-cap item earns one [peek-cap] line, an unresolved chain
+                // a cell that says so -- never a truncated block that looks whole or a missing cell.
                 if (const char *peek = ps2x::knob("PS2X_PEEK"))
                 {
-                    std::string spec(peek);
-                    size_t pos = 0;
+                    static socom2_peek::CapWarnings s_capWarned;
+                    const uint8_t *peekRam = runtime.memory().getRDRAM();
+                    const socom2_peek::ReadWord readWord = [peekRam](uint32_t a, uint32_t &out) {
+                        const uint8_t *pp = getConstMemPtr(peekRam, a & PS2_RAM_MASK);
+                        if (!pp)
+                            return false;
+                        std::memcpy(&out, pp, sizeof(out));
+                        return true;
+                    };
                     std::ostringstream po;
                     po << "[peek]";
-                    uint32_t itemCounter = 0;
-                    while (pos < spec.size())
+                    const std::vector<socom2_peek::Item> items = socom2_peek::parseSpec(peek);
+                    for (uint32_t itemIndex = 0; itemIndex < items.size(); ++itemIndex)
                     {
-                        size_t end = spec.find(',', pos);
-                        if (end == std::string::npos)
-                            end = spec.size();
-                        std::string item = spec.substr(pos, end - pos);
-                        pos = end + 1;
-                        const uint32_t itemIndex = itemCounter++;
-                        uint32_t words = 1;
-                        const size_t colon = item.find(':');
-                        if (colon != std::string::npos)
-                        {
-                            words = static_cast<uint32_t>(std::strtoul(item.c_str() + colon + 1, nullptr, 0));
-                            item = item.substr(0, colon);
-                        }
+                        const socom2_peek::Item &item = items[itemIndex];
                         // Pointer chains: "*0xADDR+0xOFF*+0xOFF2": '*' follows the pointer at the current
                         // address, "+0x.." adds an offset, in the order written. E.g. the mission camera is
-                        // "*0x488de8" (static scene 0x4887c0 + 0x628) and the actor it follows
-                        // "*0x488de8+0xbc*" (its transform at +0x1070, translation at +0x10a0).
-                        uint32_t addr = 0;
-                        bool bad = false;
+                        // "*0x488de8" (static scene 0x4887c0 + 0x628; its position at +0x320) and the player
+                        // actor is "*0x408c58" (its transform at +0x1070, translation at +0x10a0). NOT
+                        // "*0x488de8+0xbc*": +0xbc is the camera's follow pointer, null in the spawn images;
+                        // docs/KNOWN.md section 3 retracted that chain on 2026-09-13 (audit F15).
+                        const socom2_peek::Resolved at = socom2_peek::resolve(item.chain, readWord);
+                        if (!at.ok)
                         {
-                            size_t i = 0;
-                            bool haveBase = false;
-                            while (i < item.size() && !bad)
-                            {
-                                const char ch = item[i];
-                                if (ch == '*')
-                                {
-                                    if (!haveBase)
-                                    {
-                                        // leading '*': parse the base number that follows first
-                                        size_t j = i + 1;
-                                        while (j < item.size() && item[j] != '*' && item[j] != '+')
-                                            ++j;
-                                        addr = static_cast<uint32_t>(std::strtoul(item.substr(i + 1, j - i - 1).c_str(), nullptr, 0));
-                                        haveBase = true;
-                                        i = j;
-                                    }
-                                    else
-                                        ++i;
-                                    const uint8_t *pp = getConstMemPtr(runtime.memory().getRDRAM(), addr & PS2_RAM_MASK);
-                                    if (!pp)
-                                    {
-                                        bad = true;
-                                        break;
-                                    }
-                                    std::memcpy(&addr, pp, sizeof(addr));
-                                    if (addr == 0u)
-                                        bad = true;
-                                }
-                                else if (ch == '+')
-                                {
-                                    size_t j = i + 1;
-                                    while (j < item.size() && item[j] != '*' && item[j] != '+')
-                                        ++j;
-                                    addr += static_cast<uint32_t>(std::strtoul(item.substr(i + 1, j - i - 1).c_str(), nullptr, 0));
-                                    i = j;
-                                }
-                                else
-                                {
-                                    size_t j = i;
-                                    while (j < item.size() && item[j] != '*' && item[j] != '+')
-                                        ++j;
-                                    addr = static_cast<uint32_t>(std::strtoul(item.substr(i, j - i).c_str(), nullptr, 0));
-                                    haveBase = true;
-                                    i = j;
-                                }
-                            }
+                            po << socom2_peek::unresolvedCell(item, at.why);
+                            continue;
                         }
-                        if (bad)
-                            continue;
-                        const uint8_t *p = getConstMemPtr(runtime.memory().getRDRAM(), addr & PS2_RAM_MASK);
+                        const uint8_t *p = getConstMemPtr(peekRam, at.addr & PS2_RAM_MASK);
                         if (!p)
+                        {
+                            po << socom2_peek::unresolvedCell(item, "address 0x" + socom2_peek::hex(at.addr) + " is not mapped");
                             continue;
+                        }
+                        if (socom2_peek::overCap(item) && s_capWarned.firstSighting(itemIndex))
+                            std::cout << socom2_peek::capWarning(item, itemIndex) << std::endl;
+                        const uint32_t addr = at.addr;
+                        const uint32_t room = (PS2_RAM_SIZE - (addr & PS2_RAM_MASK)) / 4u;   // never read past RAM's end
+                        const uint32_t words = std::min(socom2_peek::servedWords(item.words), room);
                         po << " @" << std::hex << addr << ":";
-                        for (uint32_t w = 0; w < words && w < 64u; ++w)
+                        for (uint32_t w = 0; w < words; ++w)
                         {
                             uint32_t v = 0;
                             std::memcpy(&v, p + w * 4u, sizeof(v));
@@ -1240,8 +894,10 @@ namespace
             std::cout << "[ret-unwound] " << g_callTrace[N].name << " #" << n << " pc=0x" << std::hex << ctx->pc
                       << " ra=0x" << entryRa << std::dec << std::endl;
         }
-        // The generated function returned normally: report v0 (and f0 for float returns).
-        if (callTraceShouldLog(n))
+        // The generated function returned normally: report v0 (and f0 for float returns). Only then -- an unwound
+        // call has said [ret-unwound] above, and its v0 and the dump's memory are not its results yet
+        // (runtime/socom2_trace_checkpoint.h, audit F11).
+        if (socom2_trace::reachedReturn(ctx->pc, entryRa, runtime->dispatchUnwinding()) && callTraceShouldLog(n))
         {
             float f0 = 0.0f;
             std::memcpy(&f0, &ctx->f[0], sizeof(f0));
@@ -1401,7 +1057,18 @@ namespace
         const uint8_t stateBefore = musicRead8(rdram, mgr + 9u);
         const uint32_t entryBefore = musicRead32(rdram, mgr + 0x34u);
         const uint8_t interrupt = musicRead8(rdram, mgr + 10u);
+        const uint32_t entryRa = GPR_U32(ctx, 31);
         g_musicMgrOriginal(rdram, ctx, runtime);
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa, runtime->dispatchUnwinding()))
+        {
+            // The after-state is only final at the original's own return (runtime/socom2_trace_checkpoint.h).
+            static socom2_trace::UnwoundCount s_unwound;
+            if (s_unwound.note())
+                std::fprintf(stderr, "[music] mgr 0x%08x call#%u %s at pc=0x%08x: its after-state is not logged for unwound calls\n",
+                             mgr, s_calls, socom2_trace::kUnwoundMark, ctx->pc);
+            ++s_calls;
+            return;
+        }
         const uint8_t stateAfter = musicRead8(rdram, mgr + 9u);
         const uint32_t entryAfter = musicRead32(rdram, mgr + 0x34u);
         const uint32_t n = s_calls++;
@@ -1421,7 +1088,16 @@ namespace
         const uint32_t queueBefore = musicRead32(rdram, mgr + 0x1cu);
         const uint8_t flagB = musicRead8(rdram, mgr + 0xbu);
         const uint8_t f1c = musicRead8(rdram, def + 0x1cu), f1d = musicRead8(rdram, def + 0x1du);
+        const uint32_t entryRa = GPR_U32(ctx, 31);
         g_musicPushOriginal(rdram, ctx, runtime);
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa, runtime->dispatchUnwinding()))
+        {
+            // v0 and the queue are the push's result only at its own return (runtime/socom2_trace_checkpoint.h):
+            // an unwound push gets a row that says so, never a verdict drawn from the middle of the call.
+            std::fprintf(stderr, "[music] push name=0x%08x def=0x%08x vol=%u -> %s pc=0x%08x queue %u->? free %u->? ra=0x%08x\n",
+                         name, def, vol, socom2_trace::kUnwoundMark, ctx->pc, queueBefore, freeBefore, entryRa);
+            return;
+        }
         const uint32_t ret = GPR_U32(ctx, 2);
         const uint32_t queueAfter = musicRead32(rdram, mgr + 0x1cu);
         const socom2_music::PushVerdict v = socom2_music::pushVerdict(freeBefore, flagB, f1c, f1d, ret, queueBefore, queueAfter);
@@ -1448,7 +1124,9 @@ namespace
         g_musicPushOriginal = runtime.lookupFunction(kPush);
         runtime.replaceFunction(kManager, socom2_MusicManagerTrace);
         runtime.replaceFunction(kPush, socom2_MusicPushTrace);
-        std::cout << "[music] tracing FUN_0034afd0 (manager state) and FUN_0034b6c0 (cue push)" << std::endl;
+        // The addresses actually hooked, from the loaded image's column -- not r0001's names (audit F17).
+        std::cout << "[music] tracing 0x" << std::hex << kManager << " (manager state) and 0x" << kPush << std::dec
+                  << " (cue push), " << socom2_addresses::current().revision << " column" << std::endl;
     }
 
     // ------------------------------------------------------------------------------------------
@@ -1461,7 +1139,10 @@ namespace
     // advertised 127.0.0.1/the LAN address:3658 (A's port) internally while its external slot said
     // :3660. PCSX2's client B carries :3660 in BOTH slots, because its pnach
     // (patch=1,EE,20620678,extended,24040E4C) rewrites the same constant in the guest.
-    // This wrapper does what the pnach does: after the original ran, rewrite the base port field.
+    // The override does what the pnach does, inside the call: it performs the routine itself on the host with
+    // the shifted port (runtime/socom2_rtnet_config.h), so the object is final before control returns to the
+    // caller. It used to call the original and rewrite the field afterwards, which a scheduler checkpoint in
+    // either of the original's two calls turned into a silent no-op (audit F10; the header has the mechanism).
     // ------------------------------------------------------------------------------------------
     int32_t socom2UdpShift()
     {
@@ -1473,29 +1154,46 @@ namespace
     }
 
     PS2Runtime::RecompiledFunction g_rtNetCfgOriginal = nullptr;
+    uint32_t g_rtNetGetterGlobal = 0u;   // the word the routine's getter returns (decoded from the image at install)
 
     void socom2_RtNetConfigInit(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         const uint32_t obj = GPR_U32(ctx, 4);
-        if (g_rtNetCfgOriginal)
-            g_rtNetCfgOriginal(rdram, ctx, runtime);
-        if (obj == 0)
-            return;
-        const uint32_t field = (obj + 0xCu) & PS2_RAM_MASK;
-        if (field + 4u > PS2_RAM_SIZE)
-            return;
-        uint32_t port = 0;
-        std::memcpy(&port, rdram + field, 4);
-        if (port != 3658u)
-            return;                                  // not the base-port field we know
-        port = static_cast<uint32_t>(3658 + socom2UdpShift());
-        std::memcpy(rdram + field, &port, 4);
-        static bool s_said = false;
-        if (!s_said)
+        if (obj == 0u)
         {
-            s_said = true;
-            std::cout << "[socom2] rt_net base peer UDP port -> " << port << " (PS2X_SOCOM2_UDP_SHIFT)" << std::endl;
+            SET_GPR_U32(ctx, 2, socom2_rtnet::kNullObjectResult);   // the routine's own null exit
+            ctx->pc = GPR_U32(ctx, 31);
+            return;
         }
+        // The object through the runtime's own guest-address resolution (kseg, scratchpad), never a bare RAM mask
+        // that would fold a scratchpad object onto low RAM; both ends must map, contiguously.
+        uint8_t *object = getMemPtr(rdram, obj);
+        uint8_t *objectLast = getMemPtr(rdram, obj + socom2_rtnet::kConfigBytes - 1u);
+        if (object == nullptr || objectLast != object + (socom2_rtnet::kConfigBytes - 1u))
+        {
+            // Not an object the host can write whole: the original runs untouched and the port is not shifted --
+            // said once, never passed over silently.
+            static std::atomic<bool> s_said{false};
+            if (!s_said.exchange(true))
+                std::cout << "[socom2] rt_net config object 0x" << std::hex << obj << std::dec
+                          << " does not map whole; the original runs and the peer UDP port stays " << socom2_rtnet::kBasePort << std::endl;
+            if (g_rtNetCfgOriginal)
+                g_rtNetCfgOriginal(rdram, ctx, runtime);
+            return;   // nothing after the original (runtime/socom2_trace_checkpoint.h)
+        }
+        uint32_t getterValue = 0u;
+        if (const uint8_t *pg = getConstMemPtr(rdram, g_rtNetGetterGlobal))
+            std::memcpy(&getterValue, pg, sizeof(getterValue));
+        const uint32_t port = socom2_rtnet::shiftedPort(socom2UdpShift());
+        // The object's whole image, written before this call returns: there is no "after" to lose.
+        socom2_rtnet::configure(object, getterValue, port);
+        SET_GPR_U32(ctx, 3, 1u);      // what the routine leaves in v1 and a0 on the way out
+        SET_GPR_U32(ctx, 4, port);
+        SET_GPR_U32(ctx, 2, 0u);      // success
+        ctx->pc = GPR_U32(ctx, 31);
+        static std::atomic<bool> s_said{false};
+        if (!s_said.exchange(true))
+            std::cout << "[socom2] rt_net base peer UDP port -> " << port << " (PS2X_SOCOM2_UDP_SHIFT)" << std::endl;
     }
 
     void installRtNetPortShift(PS2Runtime &runtime)
@@ -1509,8 +1207,37 @@ namespace
                       << "; peer UDP port shift stays host-side only" << std::endl;
             return;
         }
+        // The host does the routine only if the image's routine is the one it knows (runtime/socom2_rtnet_config.h).
+        const uint8_t *rdram = runtime.memory().getRDRAM();
+        uint32_t body[socom2_rtnet::kBodyWords] = {};
+        uint32_t getter[3] = {};
+        bool shaped = false;
+        if (const uint8_t *pb = getConstMemPtr(rdram, kRtNetCfgInit & PS2_RAM_MASK);
+            pb && (kRtNetCfgInit & PS2_RAM_MASK) + sizeof(body) <= PS2_RAM_SIZE)
+        {
+            std::memcpy(body, pb, sizeof(body));
+            if (socom2_rtnet::bodyMatches(body))
+            {
+                const uint32_t getterAddr = socom2_rtnet::jalTarget(body[socom2_rtnet::kGetterCallWord],
+                                                                    kRtNetCfgInit + static_cast<uint32_t>(socom2_rtnet::kGetterCallWord * 4u));
+                if (const uint8_t *pgt = getConstMemPtr(rdram, getterAddr & PS2_RAM_MASK);
+                    pgt && (getterAddr & PS2_RAM_MASK) + sizeof(getter) <= PS2_RAM_SIZE)
+                {
+                    std::memcpy(getter, pgt, sizeof(getter));
+                    shaped = socom2_rtnet::getterGlobal(getter, g_rtNetGetterGlobal);
+                }
+            }
+        }
+        if (!shaped)
+        {
+            std::cout << "[socom2] the routine at 0x" << std::hex << kRtNetCfgInit << std::dec
+                      << " is not the rt_net config init this runtime knows; left alone, peer UDP port shift stays host-side only" << std::endl;
+            return;
+        }
         g_rtNetCfgOriginal = runtime.lookupFunction(kRtNetCfgInit);
         runtime.replaceFunction(kRtNetCfgInit, socom2_RtNetConfigInit);
+        std::cout << "[socom2] rt_net config init at 0x" << std::hex << kRtNetCfgInit << " done on the host (getter global 0x"
+                  << g_rtNetGetterGlobal << std::dec << "), peer UDP port " << socom2_rtnet::shiftedPort(socom2UdpShift()) << std::endl;
     }
 
     // ------------------------------------------------------------------------------------------
@@ -1790,7 +1517,19 @@ namespace
         if (pc) std::memcpy(corners, pc, sizeof(corners));
         if (pm) std::memcpy(m, pm, sizeof(m));
         if (pk) std::memcpy(&planeMask, pk, sizeof(planeMask));
+        const uint32_t entryRa = GPR_U32(ctx, 31);
         g_cullOriginal(rdram, ctx, runtime);
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa, runtime->dispatchUnwinding()))
+        {
+            // v0 and the flags word are the cull's verdict only at its return (runtime/socom2_trace_checkpoint.h):
+            // an unwound call is neither rewritten (PS2X_CULL_PARTIAL_CLIP) nor logged as a verdict. Once, then
+            // silence -- the trace file's own rows are counted per verdict.
+            static socom2_trace::UnwoundCount s_unwound;
+            if (s_unwound.note())
+                std::cout << "[cull-trace] a cull call left through a scheduler checkpoint (pc=0x" << std::hex << ctx->pc << std::dec
+                          << "); unwound calls are neither logged nor rewritten" << std::endl;
+            return;
+        }
         // PS2X_CULL_PARTIAL_CLIP=1 (experiment, research/31 section 16): a box the frustum test marks partial
         // (OR mask nonzero) that the guest then judged 'inside the guard band' (result 1) is answered 0, the
         // 'needs clipping' verdict the hardware's flag latency gives FUN_00294a30 -- the clipped VU1 family.
@@ -1900,10 +1639,19 @@ namespace
         float fadeIn = 0.0f;
         if (const uint8_t *pf = fadeAddr ? getConstMemPtr(rdram, fadeAddr) : nullptr)
             std::memcpy(&fadeIn, pf, sizeof(fadeIn));
+        const uint32_t entryRa = GPR_U32(ctx, 31);
         g_lodOriginal(rdram, ctx, runtime);
         const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
         if (!g_cullTraceFile || g_cullTraceLeft <= 0 || sec < g_cullTraceAfter)
             return;
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa, runtime->dispatchUnwinding()))
+        {
+            // The fade and the result are final only at the original's return (runtime/socom2_trace_checkpoint.h).
+            // A tag of its own, so lod_trace_scan.py's "lod t=" rows stay results.
+            std::fprintf(g_cullTraceFile, "lod-%s t=%.3f comp=%08x dist=%g entry=%08x pc=%08x\n",
+                         socom2_trace::kUnwoundMark, sec, comp, dist, entry, ctx->pc);
+            return;
+        }
         float fadeOut = 0.0f;
         if (const uint8_t *pf = fadeAddr ? getConstMemPtr(rdram, fadeAddr) : nullptr)
             std::memcpy(&fadeOut, pf, sizeof(fadeOut));
@@ -1925,10 +1673,17 @@ namespace
         static const bool s_forceFar = ps2x::knob("PS2X_DETAIL_FAR") && std::atoi(ps2x::knob("PS2X_DETAIL_FAR")) != 0;
         if (s_forceFar)
             rdram[0x4b4a88u & PS2_RAM_MASK] = 0;
+        const uint32_t entryRa = GPR_U32(ctx, 31);
         g_detailOriginal(rdram, ctx, runtime);
         const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
         if (!g_cullTraceFile || g_cullTraceLeft <= 0 || sec < g_cullTraceAfter)
             return;
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa, runtime->dispatchUnwinding()))
+        {
+            // The statics below are the call's choice only at its return (runtime/socom2_trace_checkpoint.h).
+            std::fprintf(g_cullTraceFile, "detail-%s t=%.3f comp=%08x pc=%08x\n", socom2_trace::kUnwoundMark, sec, comp, ctx->pc);
+            return;
+        }
         float dist = 0.0f; uint8_t nearFlag = 0; uint32_t count = 0, flags = 0, table = 0, tableCount = 0;
         if (const uint8_t *q = getConstMemPtr(rdram, 0x4b4a98u)) std::memcpy(&dist, q, 4);
         if (const uint8_t *q = getConstMemPtr(rdram, 0x4b4a88u)) nearFlag = *q;
@@ -1988,9 +1743,17 @@ namespace
         {
             std::memcpy(&o22, pr + 0x22, 2); std::memcpy(&o24, pr + 0x24, 2); std::memcpy(&o26, pr + 0x26, 2); b4 = pr[4];
         }
+        const uint32_t entryRa = GPR_U32(ctx, 31);
         g_camCfgOriginal(rdram, ctx, runtime);
         if (!g_cullTraceFile)
             return;
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa, runtime->dispatchUnwinding()))
+        {
+            // The camera's LOD scale is the record's only at the apply's return (runtime/socom2_trace_checkpoint.h).
+            const double secU = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
+            std::fprintf(g_cullTraceFile, "camcfg-%s t=%.3f arg=%g rec=%08x pc=%08x\n", socom2_trace::kUnwoundMark, secU, t, rec, ctx->pc);
+            return;
+        }
         uint32_t holder = 0, cam = 0; float lod[2] = {0.0f, 0.0f};
         if (const uint8_t *ph = getConstMemPtr(rdram, socom2_addresses::current().cameraHolder)) std::memcpy(&holder, ph, 4);
         if (holder) if (const uint8_t *pc = getConstMemPtr(rdram, holder + 0xb4u)) std::memcpy(&cam, pc, 4);
@@ -2015,11 +1778,17 @@ namespace
             for (int i = 0; i < 95 && pn[i]; ++i)
                 name[i] = static_cast<char>(pn[i] >= 0x20 && pn[i] < 0x7f ? pn[i] : '?');
         }
+        const uint32_t entryRa = GPR_U32(ctx, 31);
         g_packOriginal(rdram, ctx, runtime);
         if (g_packTraceFile)
         {
             static uint32_t s_n = 0;
-            std::fprintf(g_packTraceFile, "#%u archive=%08x size=%u name=%s -> %u\n", s_n++, archive, size, name, GPR_U32(ctx, 2) & 0xFFu);
+            // The answer (v0) is the probe's only at its return (runtime/socom2_trace_checkpoint.h).
+            if (socom2_trace::reachedReturn(ctx->pc, entryRa, runtime->dispatchUnwinding()))
+                std::fprintf(g_packTraceFile, "#%u archive=%08x size=%u name=%s -> %u\n", s_n++, archive, size, name, GPR_U32(ctx, 2) & 0xFFu);
+            else
+                std::fprintf(g_packTraceFile, "#%u archive=%08x size=%u name=%s -> %s pc=%08x\n", s_n++, archive, size, name,
+                             socom2_trace::kUnwoundMark, ctx->pc);
             if ((s_n & 63u) == 0u)
                 std::fflush(g_packTraceFile);
         }
@@ -2053,10 +1822,19 @@ namespace
         uint32_t base = 0, bump = 0, cflags = 0;
         if (const uint8_t *pl = getConstMemPtr(rdram, list)) { std::memcpy(&base, pl + 4, 4); std::memcpy(&bump, pl + 8, 4); }
         if (const uint8_t *pc = getConstMemPtr(rdram, comp)) std::memcpy(&cflags, pc, 4);
+        const uint32_t entryRa = GPR_U32(ctx, 31);
         g_deferOriginal(rdram, ctx, runtime);
         const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
         if (!g_cullTraceFile || g_cullTraceLeft <= 0 || sec < g_cullTraceAfter)
             return;
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa, runtime->dispatchUnwinding()))
+        {
+            // The bump is the enqueue's only at its return (runtime/socom2_trace_checkpoint.h); a tag of its own
+            // so deferred_trace_scan.py's "defer t=" rows stay whole enqueues.
+            std::fprintf(g_cullTraceFile, "defer-%s t=%.3f obj=%08x list=%08x base=%08x bump=%08x comp=%08x pc=%08x\n",
+                         socom2_trace::kUnwoundMark, sec, obj, list, base, bump, comp, ctx->pc);
+            return;
+        }
         uint32_t bumpAfter = 0;
         if (const uint8_t *pl = getConstMemPtr(rdram, list)) std::memcpy(&bumpAfter, pl + 8, 4);
         std::fprintf(g_cullTraceFile, "defer t=%.3f obj=%08x list=%08x base=%08x bump=%08x->%08x used=%u comp=%08x cflags=%08x cull=%u\n",
@@ -2078,10 +1856,19 @@ namespace
         }
         uint32_t c0c = 0, bump = 0, base = 0;
         if (const uint8_t *pl = getConstMemPtr(rdram, list)) { std::memcpy(&c0c, pl + 0xc, 4); std::memcpy(&base, pl + 4, 4); std::memcpy(&bump, pl + 8, 4); }
+        const uint32_t entryRa = GPR_U32(ctx, 31);
         g_flushOriginal(rdram, ctx, runtime);
         const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
         if (!g_cullTraceFile || g_cullTraceLeft <= 0 || sec < g_cullTraceAfter)
             return;
+        // Everything this row prints was read BEFORE the call, so it is true either way; the tag says whether the
+        // flush then ran to its return (runtime/socom2_trace_checkpoint.h).
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa, runtime->dispatchUnwinding()))
+        {
+            std::fprintf(g_cullTraceFile, "flush-%s t=%.3f list=%08x entries=%u field0c=%08x used=%u pc=%08x\n", socom2_trace::kUnwoundMark, sec, list, n,
+                         c0c, bump >= base ? (bump - base) / 0x70u : 0u, ctx->pc);
+            return;
+        }
         std::fprintf(g_cullTraceFile, "flush t=%.3f list=%08x entries=%u field0c=%08x used=%u\n", sec, list, n, c0c, bump >= base ? (bump - base) / 0x70u : 0u);
     }
 
@@ -2244,7 +2031,7 @@ namespace
         runtime.replaceFunction(0x001c5b30u, socom2_LoadGameCodeFromMemcard);
         runtime.replaceFunction(0x00181c90u, socom2_LoadOverlayFile);
         runtime.replaceFunction(0x001a6110u, ps2_stubs::socom2_SifSendCmd); // sceSifSendCmd: sreg handshake echo
-        // msifrpc (libnetb transport) answered on the host; see the "msifrpc HLE" section.
+        // msifrpc (libnetb transport) answered on the host: socom2_msifrpc.cpp.
         runtime.replaceFunction(0x001bcd80u, ps2_stubs::socom2_MsifInit);
         runtime.replaceFunction(0x001bd050u, ps2_stubs::socom2_MsifBind);
         runtime.replaceFunction(0x001bd320u, ps2_stubs::socom2_MsifCall);

@@ -1805,15 +1805,56 @@ void register_ps2_runtime_kernel_tests()
             t.Equals(readGuestU32(env.rdram.data(), entry + 4u), argWords[1],
                      "and so does the second");
 
-            // A syscall the guest replaced still answers with the guest's own handler.
+            // A syscall the guest replaced still answers with the guest's own handler -- one the runtime
+            // can run (R256 finding 9: an unrunnable one is refused, the case after this one).
             constexpr uint32_t kOverriddenIndex = 0x5Au;
             constexpr uint32_t kHandler = 0x001ACCB8u;
+            const PS2Runtime::RecompiledFunction handlerBody = [](uint8_t *, R5900Context *c, PS2Runtime *) { c->pc = GPR_U32(c, 31); };
+            env.runtime.registerFunction(kHandler, handlerBody);
             env.runtime.setEeSyscallOverride(env.rdram.data(), kOverriddenIndex, kHandler);
             setRegU32(env.ctx, 4, kOverriddenIndex);
             t.IsTrue(callSyscall(0x5Bu, env.rdram.data(), &env.ctx, &env.runtime),
                      "GetEntryAddress should dispatch for an overridden entry");
             t.Equals(static_cast<uint32_t>(getRegS32(env.ctx, 2)), kHandler,
                      "an overridden syscall answers with the handler the guest installed");
+            env.runtime.registerFunction(kHandler, nullptr);   // the table is the process's: leave it as found
+        });
+
+        // R256 finding 9 (Sprint 13 Task C3). The dispatcher treats an override whose handler is in no
+        // function table as no override (the fall-through case further down); GetEntryAddress still
+        // handed that handler out, contradicting it. It refuses it now, answers the runtime's own
+        // entry, and says so. The once-per-pair set is process-wide (System.cpp), so this pair
+        // (0x57, 0x80075000) must be asked for by no other case in the binary.
+        tc.Run("GetEntryAddress refuses an unrunnable handler with a log line and answers the runtime's entry", [](TestCase &t)
+        {
+            TestEnv env;
+            initializeGuestKernelState(env.rdram.data(), &env.runtime);
+            constexpr uint32_t kSyscall = 0x57u;                 // PollEventFlag, one of the five
+            constexpr uint32_t kGuestCopiedHandler = 0x80075000u;
+            t.IsTrue(!env.runtime.hasFunction(kGuestCopiedHandler), "the guest-copied handler is in no function table");
+            env.runtime.setEeSyscallOverride(env.rdram.data(), kSyscall, kGuestCopiedHandler);
+
+            std::ostringstream err;
+            std::streambuf *const old = std::cerr.rdbuf(err.rdbuf());
+            setRegU32(env.ctx, 4, kSyscall);
+            const bool dispatched = callSyscall(0x5Bu, env.rdram.data(), &env.ctx, &env.runtime);
+            const uint32_t first = static_cast<uint32_t>(getRegS32(env.ctx, 2));
+            setRegU32(env.ctx, 4, kSyscall);
+            (void)callSyscall(0x5Bu, env.rdram.data(), &env.ctx, &env.runtime);
+            const uint32_t second = static_cast<uint32_t>(getRegS32(env.ctx, 2));
+            std::cerr.rdbuf(old);
+            const std::string log = err.str();
+
+            t.IsTrue(dispatched, "GetEntryAddress should dispatch");
+            t.IsTrue(first != kGuestCopiedHandler, "the unrunnable handler is not handed out");
+            t.IsTrue(first >= 0x00090000u && first < 0x00100000u, "the answer is the runtime's reserved entry for the syscall");
+            t.Equals(second, first, "and it is stable across calls");
+            const size_t at = log.find("[GetEntryAddress]");
+            t.IsTrue(at != std::string::npos, "the refusal prints a [GetEntryAddress] line");
+            t.IsTrue(log.find("0x80075000") != std::string::npos && log.find("no function table") != std::string::npos,
+                     "naming the handler and why it was refused");
+            t.IsTrue(at == std::string::npos || log.find("[GetEntryAddress]", at + 1) == std::string::npos,
+                     "once per (syscall, handler), not per call");
         });
 
         tc.Run("guest kernel syscall overrides and mirrors are isolated per runtime", [](TestCase &t)
@@ -2081,6 +2122,9 @@ void register_ps2_runtime_kernel_tests()
             constexpr uint32_t kSyscallIndex = 0x5Au;
             constexpr uint32_t kExpectedHandler = 0x00383548u;
             constexpr uint32_t kEntryPhysAddr = (kGuestSyscallTableGuestBase + (kSyscallIndex * 4u)) & 0x1FFFFFFFu;
+            // A handler the runtime can run (R256 finding 9: GetEntryAddress refuses one it cannot).
+            const PS2Runtime::RecompiledFunction handlerBody = [](uint8_t *, R5900Context *c, PS2Runtime *) { c->pc = GPR_U32(c, 31); };
+            env.runtime.registerFunction(kExpectedHandler, handlerBody);
 
             setRegU32(env.ctx, 4, kSyscallIndex);
             setRegU32(env.ctx, 5, kExpectedHandler);
@@ -2098,6 +2142,7 @@ void register_ps2_runtime_kernel_tests()
             t.Equals(static_cast<uint32_t>(getRegS32(env.ctx, 2)),
                      kExpectedHandler,
                      "GetEntryAddress should return the handler address the guest registered");
+            env.runtime.registerFunction(kExpectedHandler, nullptr);   // leave the process's table as found
         });
 
         // Sprint 11 Task 19. SOCOM II's crt0 is byte-identical in the two discs: it calls
