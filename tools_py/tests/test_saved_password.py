@@ -26,7 +26,12 @@ BLOP_FORM = os.path.join(ROOT, "logs", "parity", "blop_c", "02_persona.png")
 BLOP_CONNECT = os.path.join(ROOT, "logs", "parity", "blop_c", "06_connect_focus.png")
 
 ROW_SAVE = (20, 166, 160, 188)
+ROW_CONNECT = (20, 366, 160, 388)      # inside L.LOBBY_ROW_BOX["connect"] (y 366-390), the lit fixture's 22 rows
 PASSWORD_VALUE = (172, 136, 400, 158)
+# Sprint 13 V6 (#27): W10's relaunch, launch b of the pair (git-ignored, on the build machine's data root only).
+DATA_ROOT = os.environ.get("SOCOM_DATA_ROOT") or ROOT
+W10_B_FORM = os.path.join(DATA_ROOT, "logs", "parity", "w10_virgin_b", "02_persona.png")
+W10_B_FAIL = os.path.join(DATA_ROOT, "logs", "parity", "w10_virgin_b", "05_password.png")
 
 
 def tick(im, box, luma=100):
@@ -57,6 +62,9 @@ FORM_YES = tick(F.FORM_SAVED, L.LOGIN_SAVE_YES_BOX)
 FORM_NEITHER = F.FORM_SAVED
 FORM_SAVE_ROW_NO = tick(lit_row(F.FORM_SAVED, ROW_SAVE), L.LOGIN_SAVE_NO_BOX)
 FORM_SAVE_ROW_YES = tick(lit_row(F.FORM_SAVED, ROW_SAVE), L.LOGIN_SAVE_YES_BOX)
+# the relaunch's form as w10_virgin_b/02_persona.png shows it: persona and password from the card, YES ticked,
+# and the game's cursor already on CONNECT
+FORM_SAVED_ON_CONNECT = tick(with_password(lit_row(F.FORM_SAVED, ROW_CONNECT)), L.LOGIN_SAVE_YES_BOX)
 KEY = lambda b: ("key", b)
 
 
@@ -130,8 +138,12 @@ class TheTwoLaunches(unittest.TestCase):
     def setUp(self):
         self.calls = []
 
-    def run_login(self, form, **flags):
-        sh, g = T.FakeShell(), F.Grabs(form)
+    def run_login(self, form, after_cross=None, **flags):
+        """`after_cross`: the frame the game shows once any CROSS has gone in (the stubs press nothing real, so
+        without it every read returns `form` whatever was pressed)."""
+        sh = T.FakeShell()
+        g = F.Grabs(form) if after_cross is None else \
+            (lambda hwnd, max_age=None: after_cross if ("key", "cross") in sh.presses else form)
         stub = mock.patch.multiple(
             L, create_persona=mock.Mock(side_effect=lambda s, n, li, pf=False: (self.calls.append(("create", n)))),
             press_persona=mock.Mock(side_effect=lambda s, e, li: self.calls.append(("persona", e))),
@@ -157,10 +169,31 @@ class TheTwoLaunches(unittest.TestCase):
 
     def test_launch_two_types_nothing_when_the_card_brought_the_password(self):
         sh = self.run_login(with_password(FORM_YES), saved_password=True)
-        self.assertEqual(self.calls, [("connect", 4), ("prompts",), ("lobby",)])
+        self.assertEqual(self.calls, [("connect", 4), ("prompts",), ("lobby",)])   # PASSWORD lit -> 4 DOWNs
         self.assertNotIn(("type", "socom"), sh.presses)
-        self.assertIn("[login] saved password: PASSWORD reads 6 glyphs, SAVE PASSWORD reads yes; typing nothing", sh.logs)
-        self.assertEqual(sh.presses, [("key", "cross")])            # the persona-list CROSS only
+        self.assertIn("[login] saved password: PASSWORD reads 6 glyphs, SAVE PASSWORD reads yes, focus password; "
+                      "typing nothing", sh.logs)
+        self.assertEqual(sh.presses, [])       # V6: no persona-list CROSS -- the form is read as it arrived
+
+    def test_launch_two_reads_the_form_before_any_cross_when_the_cursor_is_on_connect(self):
+        """Sprint 13 V6 (#27): W10's relaunch arrived on the form with the persona, "*****", YES ticked and the
+        cursor on CONNECT (w10_virgin_b/02_persona.png). The old path sent the persona-list CROSS there first --
+        which CONNECTED -- and read PASSWORD off the CONNECTING screen that followed: 0 glyphs, "reads no",
+        login:saved-password:empty. The password had survived; the read had not."""
+        sh = self.run_login(FORM_SAVED_ON_CONNECT, after_cross=F.BLACK, saved_password=True)
+        self.assertEqual(self.calls, [("connect", 0), ("prompts",), ("lobby",)])   # CONNECT is already lit
+        self.assertEqual(sh.presses, [])
+        self.assertIn("[login] saved password: PASSWORD reads 6 glyphs, SAVE PASSWORD reads yes, focus connect; "
+                      "typing nothing", sh.logs)
+
+    @unittest.skipUnless(os.path.exists(W10_B_FORM), "w10_virgin_b is not on disk (SOCOM_DATA_ROOT names the data root)")
+    def test_the_real_w10_relaunch_form_carried_the_password(self):
+        g = L.lobby_gray_of(Image.open(W10_B_FORM))            # the frame the old path read the mode from
+        self.assertEqual((L.login_persona_mode(g), L.login_password_glyphs(g), L.login_save_password(g),
+                          L.login_focus_row(g)), ("saved", 5, "yes", "connect"))
+        g = L.lobby_gray_of(Image.open(W10_B_FAIL))            # the frame it read PASSWORD from: CONNECTING
+        self.assertFalse(L.login_form_up(g))
+        self.assertEqual(L.login_password_glyphs(g), 0)
 
     def test_launch_two_fails_on_an_empty_password_field(self):
         with self.assertRaises(L.LobbyFail) as cm:
@@ -191,6 +224,21 @@ class TheCardFolder(unittest.TestCase):
             self.assertEqual(seen["env"]["PS2X_MC_DIR"], os.path.abspath(target))
             self.assertTrue(os.path.isdir(target))
 
+    def test_run_sh_output_goes_to_the_named_file(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "run_sh.txt")
+            seen = {}
+
+            def fake_popen(args, env=None, stdout=None, **kw):
+                seen["stdout"] = stdout
+                return mock.Mock()
+            with mock.patch.object(L.subprocess, "Popen", fake_popen):
+                L.launch(10, None, None, None, stdout_path=path)
+                self.assertEqual(os.path.normcase(seen["stdout"].name), os.path.normcase(path))
+                L.launch(10)
+                self.assertIs(seen["stdout"], L.subprocess.DEVNULL)   # no path: as before
+
     def test_the_two_flags_are_refused_together(self):
         import subprocess
         import sys
@@ -198,6 +246,68 @@ class TheCardFolder(unittest.TestCase):
                            cwd=ROOT, capture_output=True, text=True)
         self.assertEqual(p.returncode, 2)
         self.assertIn("two launches of one proof", p.stderr)
+
+
+class CleanExit(unittest.TestCase):
+    """Sprint 13 V6 (#27): --clean-exit ends the run through the window's close, and says so."""
+
+    def write(self, d, text):
+        path = os.path.join(d, "run_sh.txt")
+        with open(path, "w") as f:
+            f.write(text)
+        return path
+
+    def test_run_sh_exit_reads_the_code_and_the_log(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            p = self.write(d, "exit=0 log=/c/x/logs/run_1.log exe=/c/x/dist/socom2.exe lines=9\n[boot] ...\n")
+            self.assertEqual(L.run_sh_exit(p), (0, "/c/x/logs/run_1.log"))
+            self.assertEqual(L.run_sh_exit(self.write(d, "exit=124 log=a.log exe=b lines=1\n")), (124, "a.log"))
+            self.assertEqual(L.run_sh_exit(self.write(d, "")), (None, None))
+            self.assertEqual(L.run_sh_exit(os.path.join(d, "absent.txt")), (None, None))
+
+    def test_the_close_is_sent_and_the_exit_code_read_back(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            p = self.write(d, "exit=0 log=r.log exe=e lines=1\n")
+            sh, proc, closed = T.FakeShell(), mock.Mock(), []
+            with mock.patch.object(L.winshot, "close_window", lambda h: closed.append(h) or True, create=True):
+                rc = L.clean_exit(sh, proc, p, wait_s=5, clock=iter([100.0, 103.5]).__next__)
+            self.assertEqual(rc, 0)
+            self.assertEqual(closed, [sh.hwnd])
+            proc.wait.assert_called_once_with(timeout=5)
+            self.assertIn("[exit] clean: the window's close -> run.sh returned after 3.5s, the game's rc=0 (log r.log)",
+                          sh.logs)
+
+    def test_a_game_that_does_not_leave_falls_to_the_kill(self):
+        sh, proc = T.FakeShell(), mock.Mock()
+        proc.wait.side_effect = L.subprocess.TimeoutExpired("bash", 5)
+        with mock.patch.object(L.winshot, "close_window", lambda h: True, create=True):
+            self.assertIs(L.clean_exit(sh, proc, None, wait_s=5), False)
+        self.assertIn("[exit] clean: the game is still running 5s after the window's close -> the kill", sh.logs)
+
+    def test_the_flag_sends_run_sh_to_the_out_folder_and_logs_the_verdict(self):
+        import sys
+        import tempfile
+        out, sh, seen = tempfile.mkdtemp(), T.FakeShell(), {}
+
+        def launch(seconds, instance=None, prefill=None, mc_dir=None, stdout_path=None):
+            seen["stdout_path"] = stdout_path
+            return mock.Mock(), "SOCOM"
+        with mock.patch.object(sys, "argv", ["online_login_ours", "--out", out, "--hold", "0", "--clean-exit"]), \
+                mock.patch.multiple(L, launch=launch, attach=lambda *a, **k: sh, boot_to_online=mock.Mock(),
+                                    login=mock.Mock(), clean_exit=mock.Mock(return_value=0)), \
+                mock.patch.object(L.hostplatform, "process_running", lambda name: False), \
+                mock.patch.object(L.hostplatform, "kill_process_by_name", mock.Mock()):
+            L.main()
+        self.assertEqual(seen["stdout_path"], os.path.join(out, "run_sh.txt"))
+        self.assertEqual(sh.logs[-2:], ["LOBBY class=ok", "CLEAN-EXIT rc=0"])
+
+    def test_a_close_that_cannot_be_sent_falls_to_the_kill(self):
+        sh, proc = T.FakeShell(), mock.Mock()
+        with mock.patch.object(L.winshot, "close_window", lambda h: False, create=True):
+            self.assertIs(L.clean_exit(sh, proc, None), False)
+        proc.wait.assert_not_called()
 
 
 if __name__ == "__main__":
