@@ -105,6 +105,107 @@ static uint32_t rpcAllocServerAddr(uint8_t *rdram)
     return addr;
 }
 
+// Sprint 13 U2 (upstream ran-j/PS2Recomp #239's class): a guest path may name
+// only what lies under its root. Two checks, both needed:
+//  - lexically, component by component: a ".." that climbs above the root, a
+//    component carrying ':' (a drive, or an NTFS stream -- on Windows
+//    `root /= "C:/x"` replaces the root outright), or one made only of dots and
+//    spaces other than "." and ".." (Win32 strips trailing dots and spaces, so
+//    ".. " and "..." climb) is refused;
+//  - on the host filesystem: the joined path and the root are both resolved with
+//    weakly_canonical, so a symlink or junction planted inside the root that
+//    points outside it is followed here and refused.
+// A refusal is an empty string; every caller already turns that into the -1 the
+// PS2 fio library reports for a path it cannot open.
+inline bool isPs2PathWithinRoot(const std::filesystem::path &root, const std::filesystem::path &path)
+{
+    auto sameComponent = [](const std::filesystem::path &a, const std::filesystem::path &b)
+    {
+#ifdef _WIN32
+        return toLowerAscii(a.string()) == toLowerAscii(b.string());
+#else
+        return a == b;
+#endif
+    };
+
+    auto it = path.begin();
+    for (const std::filesystem::path &part : root)
+    {
+        if (part.empty())
+        {
+            continue; // a trailing separator on the root
+        }
+        while (it != path.end() && it->empty())
+        {
+            ++it;
+        }
+        if (it == path.end() || !sameComponent(part, *it))
+        {
+            return false;
+        }
+        ++it;
+    }
+    return true;
+}
+
+inline std::string resolvePs2PathUnderRoot(const std::filesystem::path &base, const std::string &suffix)
+{
+    const std::string normalizedSuffix = normalizePs2PathSuffix(suffix);
+
+    std::vector<std::string> parts;
+    std::size_t start = 0;
+    while (start <= normalizedSuffix.size())
+    {
+        std::size_t slash = normalizedSuffix.find('/', start);
+        if (slash == std::string::npos)
+        {
+            slash = normalizedSuffix.size();
+        }
+        const std::string part = normalizedSuffix.substr(start, slash - start);
+        start = slash + 1;
+
+        if (part.empty() || part == ".")
+        {
+            continue;
+        }
+        if (part == "..")
+        {
+            if (parts.empty())
+            {
+                return {};
+            }
+            parts.pop_back();
+            continue;
+        }
+        if (part.find(':') != std::string::npos || part.find_first_not_of(". ") == std::string::npos)
+        {
+            return {};
+        }
+        parts.push_back(part);
+    }
+
+    const std::filesystem::path root = base.lexically_normal();
+    std::filesystem::path resolved = root;
+    for (const std::string &part : parts)
+    {
+        resolved /= std::filesystem::path(part, std::filesystem::path::generic_format);
+    }
+    resolved = resolved.lexically_normal();
+
+    std::error_code ec;
+    const std::filesystem::path canonicalRoot = std::filesystem::weakly_canonical(root, ec);
+    if (ec)
+    {
+        return {};
+    }
+    const std::filesystem::path canonicalPath = std::filesystem::weakly_canonical(resolved, ec);
+    if (ec || !isPs2PathWithinRoot(canonicalRoot, canonicalPath))
+    {
+        return {};
+    }
+    return resolved.string();
+}
+
 inline std::string translatePs2Path(const char *ps2Path)
 {
     if (!ps2Path || !*ps2Path)
@@ -115,15 +216,9 @@ inline std::string translatePs2Path(const char *ps2Path)
     std::string pathStr(ps2Path);
     std::string lower = toLowerAscii(pathStr);
 
-    auto resolveWithBase = [&](const std::filesystem::path &base, const std::string &suffix) -> std::string
+    auto resolveWithBase = [](const std::filesystem::path &base, const std::string &suffix) -> std::string
     {
-        const std::string normalizedSuffix = normalizePs2PathSuffix(suffix);
-        std::filesystem::path resolved = base;
-        if (!normalizedSuffix.empty())
-        {
-            resolved /= std::filesystem::path(normalizedSuffix);
-        }
-        return resolved.lexically_normal().string();
+        return resolvePs2PathUnderRoot(base, suffix);
     };
 
     if (lower.rfind("host0:", 0) == 0 || lower.rfind("host:", 0) == 0)
@@ -149,11 +244,8 @@ inline std::string translatePs2Path(const char *ps2Path)
         return resolveWithBase(getConfiguredCdRoot(), pathStr);
     }
 
-    if (pathStr.size() > 1 && pathStr[1] == ':')
-    {
-        return pathStr;
-    }
-
+    // No device prefix: the path is the CD's. A host drive path ("C:\\...") used to
+    // pass through verbatim here; it now meets the ':' refusal like any other.
     return resolveWithBase(getConfiguredCdRoot(), pathStr);
 }
 

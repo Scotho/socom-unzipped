@@ -20,6 +20,8 @@ before it is pointed at.
 - The launcher and the game runner: anything that lets a file a player might be *sent* -- a `config.json`, a
   memory-card folder, a diagnostics zip, a saved bug report -- read or write outside the portable folder, run code, or
   leak credentials. (One such path was found and fixed: a profile name that was really a path, `c81b17a`.)
+- The runner's translation of the game's own file paths into host files: it is contained to the game, disc and
+  memory-card folders and tested for that, so any file access it lets out of those folders is in scope.
 - The network client: anything a hostile game server or peer can do to a player's machine.
 - The bug-report path: anything that makes the launcher send what the player was not shown.
 - The hosted project server (`socom.scotho.com`) and the site (`s2u.scotho.com`): report, do not test destructively.
