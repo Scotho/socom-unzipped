@@ -34,7 +34,8 @@ if(WIN32)
 else()
     set(PS2X_LAUNCHER_EXE_TYPE "")
 endif()
-# Sprint 11 Task 17 (R247): the four embedded faces. src/ui/fonts_embedded/*.h used to be tracked -- 6.8 MB of
+# Sprint 13 Task C7 (audit F21): three faces; Rajdhani Bold was embedded and never drawn (Face::Bold is SemiBold).
+# Sprint 11 Task 17 (R247): the embedded faces. src/ui/fonts_embedded/*.h used to be tracked -- 6.8 MB of
 # hex for 4.6 MB of .ttf, the same bytes in the tree twice. The .ttf files under assets/fonts/ are the single
 # tracked copy now and the headers are generated into the build tree by scripts/embed_font.py, which the repo
 # already had. src/ui/fonts.cpp includes them as "fonts_embedded/<name>.h"; that resolves because the generated
@@ -50,7 +51,6 @@ set(PS2X_LAUNCHER_FONTS_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 set(PS2X_LAUNCHER_FONT_HEADERS "")
 # <ttf under assets/fonts>|<header basename>|<symbol, as src/ui/fonts.cpp names it>
 foreach(PS2X_FONT IN ITEMS
-        "Rajdhani-Bold.ttf|rajdhani_bold.h|RajdhaniBold"
         "Rajdhani-Medium.ttf|rajdhani_medium.h|RajdhaniMedium"
         "Rajdhani-SemiBold.ttf|rajdhani_semibold.h|RajdhaniSemiBold"
         "SairaStencilOne-Regular.ttf|saira_stencil_one.h|SairaStencilOne")

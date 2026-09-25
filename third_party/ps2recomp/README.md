@@ -65,7 +65,7 @@ cmake --build out/build --config Debug
 Preferred workflow for retail or stripped games:
 
 1. Open the ELF in Ghidra.
-2. Run `ps2xRecomp/tools/ghidra/ExportPS2Functions.java`.
+2. Run `ghidra_scripts/ExportPS2Functions.java` at the repository root (this tree's copy was a byte-identical duplicate, removed by Sprint 13 Task C7).
 3. Use the exported TOML and CSV map.
 4. Recompile with the exported TOML:
 
