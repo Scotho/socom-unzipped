@@ -5,8 +5,8 @@ instruction to the local controller (session socom-pc-6c): "audit the entire str
 compile a master list of needed revisions, unfinished work, open agentic-possible tasks, improvements that have been
 neglected — and spin up and start your own sprint 13, cleaning up docs as you go." Every row below points at the
 evidence in one of six reports under `docs/audits/2026-09-25-project-audit/` (the reports are the record; this file
-is the disposition). Sprint 13's spec and plan (`docs/superpowers/specs/2026-09-25-sprint-13-nothing-carried-twice-design.md`,
-`docs/superpowers/plans/2026-09-25-sprint-13.md`) are what this list became.*
+is the disposition). Sprint 13's spec and plan (`docs/superpowers/specs/2026-09-25-sprint-13-nothing-carried-twice-design.md`, <!-- docmaint: future -->
+`docs/superpowers/plans/2026-09-25-sprint-13.md`) are what this list became.* <!-- docmaint: future -->
 
 ## 0. How it was made, and what it found in one paragraph
 
@@ -235,11 +235,11 @@ sitting is what turns most of the carry into closures. The loop proceeds on the 
 
 ## 5. What became Sprint 13
 
-The spec (`docs/superpowers/specs/2026-09-25-sprint-13-nothing-carried-twice-design.md`) turns the dispositions
+The spec (`docs/superpowers/specs/2026-09-25-sprint-13-nothing-carried-twice-design.md`) turns the dispositions <!-- docmaint: future -->
 marked `S13 …` into eight milestones with a bar each — **V** the player's first ten minutes, **R** the record made
 true and small, **H** the harness pays its debts, **C** the code's hygiene and supply chain, **U** upstream and
 outside, **S** the stranger, **N** the naming programme's follow-ups, **O** online and the box — ordered by what the
 owner meets first (the project's standing rule: visible defects above infrastructure), then by what pays every night
-(the lock), then by what a stranger sees. The plan (`docs/superpowers/plans/2026-09-25-sprint-13.md`) is the task
+(the lock), then by what a stranger sees. The plan (`docs/superpowers/plans/2026-09-25-sprint-13.md`) is the task <!-- docmaint: future -->
 table. Everything marked `backlog` above is written into `docs/BACKLOG.md` by R267 with its bar, and everything <!-- docmaint: future -->
 marked `O<n>` is the owner's sitting in `docs/HUMAN_TASKS.md`, which Task R4 reduces to exactly §3 of this file.
