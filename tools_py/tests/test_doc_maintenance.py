@@ -461,6 +461,17 @@ class PlantedDefectsTest(unittest.TestCase):
                           "- **R89–R90** (the close): a range restated.\n")
         self.assertEqual(docmaint.report()["duplicate_rulings"], [])
 
+    def test_a_spaced_range_is_not_a_definition(self):
+        self.plan("a.md", "- **R90** (Task 1): the decision.\n"
+                          "- **R90 – R92** (the close): a range restated.\n"
+                          "- **R90 - R92** (the close): again.\n"
+                          "**R90 -- R92**: and again.\n")
+        self.assertEqual(docmaint.report()["duplicate_rulings"], [])
+
+    def test_a_line_naming_a_number_twice_is_one_location(self):
+        self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n\nR89 (it corrects R89) and R99.\n")
+        self.assertEqual(docmaint.report()["undefined_rulings"], [("R89", [("docs/HANDOFF.md", 5)])])
+
     def test_a_quote_or_a_code_fence_is_not_a_definition(self):
         self.plan("a.md", "- **R90** (Task 1): the decision.\n\n"
                           "> **R90: the text as it read before it was rewritten.**\n\n"

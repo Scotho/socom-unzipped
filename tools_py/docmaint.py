@@ -118,8 +118,9 @@ STRUCK = re.compile(r"~~.*?~~")
 # A second issue is RECORDED, not renumbered: its definition line carries "cited as R<n>b" and is counted
 # as R<n>b, and the citations that mean it say R<n>b. A number named but never issued carries a vacancy
 # note, "R<n> -- vacant: <reason>", in the plan or ledger that owns its range.
+# A range is never a definition, spaced or not ("**R241-R245**", "- **R107 - R110** (the close)").
 RULING_DEF_LEAD = re.compile(
-    r"^\s*(?:[-*+]\s+|\d+\.\s+)?\*\*R(\d{2,3})(?=\*\*|\s*[(:,.]|\s+(?:—|–|--?)\s)")
+    r"^\s*(?:[-*+]\s+|\d+\.\s+)?\*\*R(\d{2,3})(?!\s*(?:—|–|--?)\s*R\d)(?=\*\*|\s*[(:,.]|\s+(?:—|–|--?)\s)")
 RULING_DEF_MORE = re.compile(r"\*\*,\s*(?:and\s+)?\*\*R(\d{2,3})(?=\*\*)")
 RULING_DEF_LABEL = re.compile(r"\*\*(?:Ruling\s+)?R(\d{2,3})(?::|\*\*\s+\([^)\n]*\):)")
 RULING_LEDGER_ROW = re.compile(r"^\s*\|\s*\*{0,2}R(\d{2,3})\*{0,2}\s*\|")
@@ -282,7 +283,9 @@ def ruling_citations():
             if RULING_LINE.search(line):
                 continue   # the counter names the number NOT yet in use
             for m in RULING_CITE.finditer(line):
-                cites.setdefault("R%s%s" % (m.group(1), m.group(2)), []).append((path, i))
+                locs = cites.setdefault("R%s%s" % (m.group(1), m.group(2)), [])
+                if (path, i) not in locs:   # a line naming a number twice is one location
+                    locs.append((path, i))
     return cites
 
 
