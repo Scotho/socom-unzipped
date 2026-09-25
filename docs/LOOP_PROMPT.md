@@ -92,15 +92,25 @@ reference). **Never hold it across tool calls except through `run` or `run_detac
 between two tool calls is not renewed, and the calling shell dies when its tool call returns.
 **Mixed versions:** a job started under an older `loop_lock.sh` (plain `logs/.loop_lock` file, or a
 claim dir without the `logs/.loop_lock.mx` mutex) must finish before anything uses the current lock.
+A new lock script lands only by the rollout procedure (`docs/KNOWN.md` section 4: `check` exactly
+`FREE`, `busy` empty, land, restart every waiter, `loop_lock.sh version` equals the landed blob).
 - Foreground: `bash scripts/loop_lock.sh run <owner> --purpose "<what>" [--wait 40] -- <cmd...>`
   takes the lock, renews its heartbeat every 60 s while `<cmd>` runs, releases on exit (also on
   failure) and returns `<cmd>`'s exit code; exit 75 = the lock was busy and `<cmd>` did not run.
+  `--wait <minutes>` is wall-clock minutes (since Sprint 13; before, a count of attempts) and QUEUES:
+  the first refusal writes a ticket, and the lock is granted in arrival order whatever anyone's poll
+  interval -- so there is no reason left to shorten `LOOP_LOCK_WAIT_SEC`. A take without `--wait` is
+  refused while anyone is queued, even when the lock is free (`check` lists the queue).
+- **A chain is ONE holding:** wrap the whole chain in one `run` (or one `run_detached.sh`); its steps'
+  own `run`/`take`/`release` are NESTED. One take per step leaves a gap, and the queue gives the gap
+  to whoever waits.
   Wrap a build -> test -> gate sequence as ONE run, e.g.
   `bash scripts/loop_lock.sh run main --purpose "test+gate" -- bash -c './build.sh test && python -m tools_py.parity.gate'`
   (gate.py's own take/release are NESTED no-ops inside a run).
-- Detached (game runs): `bash scripts/run_detached.sh --owner <owner> <script> <marker>` takes the
-  lock, launches the script under nohup, renews every 5 min while the script's PID lives, releases
-  and then writes `exit=<code>` to `<marker>`. The script must keep its work in the foreground (the
+- Detached (game runs): `bash scripts/run_detached.sh --owner <owner> [--wait <minutes>] <script> <marker>`
+  takes the lock (with `--wait`, queues for it in the foreground first -- background the call if the
+  wait may be long), launches the script under nohup, renews every 5 min while the script's PID lives,
+  releases and then writes `exit=<code>` to `<marker>`. The script must keep its work in the foreground (the
   lock lives as long as the script's PID). Poll the marker; run
   `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kill_stale_drivers.ps1` before every
   launch while you hold the lock (a finished drive.py taskkills the next run's game; it kills only
