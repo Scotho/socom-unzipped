@@ -30,6 +30,11 @@ import statistics
 import sys
 from dataclasses import dataclass, field
 
+# THIS MODULE READS THE r0001 COLUMN ONLY (Sprint 11 Task 19, review F7). `CAMERA_RECORD_ADDR` is the
+# r0001 scalar, and the actor is located by an exact match on it, so an r0004 log re-read here comes
+# back empty rather than wrong. It is a hand tool -- no script under scripts/ invokes it -- so the fix
+# when somebody wants it on r0004 is `verdict_core.CAMERA_RECORD_ADDRS`, the same membership the round
+# readers use.
 from tools_py.parity.verdict_core import (
     CAMERA_RECORD_ADDR,
     FORWARD_HOLD_MIN_S,

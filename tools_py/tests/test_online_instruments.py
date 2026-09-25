@@ -47,6 +47,16 @@ R0001_PEEK = (
 )
 R0001_CALL_TRACE = "0x553dc0:MoveScale,0x30cd80:NetIdle"
 
+# The same pin for the three mixed-match legs' narrower block, copied from the literal each of them
+# exported over env.sh's before the render reached them (review F2). Byte for byte, the three were
+# identical to each other.
+R0001_PEEK_MIXED = (
+    "0x416054:3,*0x408c58:64,*0x408c58+0xc0*:32,*0x408c58+0x400:12,*0x408c58+0x174:1,"
+    "*0x408c58+0xF78:24,*0x408c58+0x1044:8,*0x437ce8:64,*0x437ce8+0x100:21,0x4365c0:1,"
+    "0x408f10:2,0x408c58:4"
+)
+MIXED_LEGS = ("mixed_match.sh", "mixed_match2.sh", "mixed_match2_leg2.sh")
+
 BANNERS = {"r0001": b"SOCOM 2 r0001 17:22:21 Oct 11 2003\x00",
            "r0004": b"SOCOM 2 r0004 10:14:38 Nov  3 2004\x00"}
 
@@ -125,6 +135,76 @@ class Specs(unittest.TestCase):
             self.assertIn("r0007", str(e.exception))
 
 
+class MixedProfile(unittest.TestCase):
+    """Review F2: the three mixed-match legs sourced env.sh and then exported an r0001 PS2X_PEEK literal
+    OVER the render -- a hard assignment, so env.sh's column never reached them. An r0004 leg through any
+    of the three would have been `s11_r0004_round1` again: the round plays, the rows are cut at somebody
+    else's memory, the score is silence. The narrower block is rendered from the same names now.
+    """
+
+    def test_the_r0001_mixed_block_is_what_the_legs_carried(self):
+        self.assertEqual(ga.peek_spec("r0001", "mixed"), R0001_PEEK_MIXED)
+
+    def test_the_mixed_block_is_a_subset_of_the_online_one_on_both_columns(self):
+        """It drops the valve pairs, the name-bytes items and the mission-abort valve; it adds nothing.
+        A leg watches positions, health and the clocks, not the round valves."""
+        for revision in ("r0001", "r0004"):
+            full = set(ga.peek_spec(revision).split(","))
+            self.assertTrue(set(ga.peek_spec(revision, "mixed").split(",")) <= full, revision)
+
+    def test_the_mixed_render_carries_no_address_of_the_other_column(self):
+        for mine, theirs in (("r0001", "r0004"), ("r0004", "r0001")):
+            rendered = ga.peek_spec(mine, "mixed")
+            for name in ga.all_names():
+                if name == "actor_vtable":
+                    continue
+                self.assertNotIn("0x%x" % ga.address(name, theirs), rendered, "%s/%s" % (name, theirs))
+
+    def test_the_mixed_profile_assigns_outright_and_emits_no_call_trace(self):
+        """That is what the legs' `export PS2X_PEEK=...` did, and they still need to win over env.sh."""
+        lines = ga.instrument_env_lines("r0001", "an image", "mixed")
+        self.assertTrue(any(l.startswith('PS2X_PEEK="0x') for l in lines), lines)
+        self.assertFalse(any("${PS2X_PEEK:-" in l for l in lines), lines)
+        self.assertFalse(any("PS2X_CALL_TRACE" in l for l in lines), lines)
+
+    def test_an_unknown_profile_refuses(self):
+        with self.assertRaises(ValueError) as e:
+            ga.peek_spec("r0001", "nosuch")
+        self.assertIn("nosuch", str(e.exception))
+        self.assertIn("mixed", str(e.exception))
+
+    def test_no_leg_sets_ps2x_peek_from_a_literal_any_more(self):
+        """The same guard env.sh has, extended to the three scripts that override it -- the seam the
+        commit message claimed and did not cover. Scoped to what OUR exe is cut at: `cam_poll --spec
+        0x416054:3` on the same legs is the CONSOLE's address through PINE, and PCSX2 in a mixed match
+        boots the r0001 disc by definition, so that one is a literal on purpose and says so."""
+        for leg in MIXED_LEGS:
+            with open(os.path.join(ROOT, "scripts", "parity", leg), encoding="utf-8") as f:
+                body = "".join(l for l in f if not l.lstrip().startswith("#"))
+            self.assertIn("guest_addresses --env --profile mixed", body, leg)
+            for line in body.splitlines():
+                if not re.match(r"\s*(export\s+)?PS2X_PEEK=", line):
+                    continue
+                for name in ga.all_names():
+                    for revision in ("r0001", "r0004"):
+                        self.assertNotIn("0x%x" % ga.address(name, revision), line,
+                                         "%s assigns PS2X_PEEK from a literal again: %s" % (leg, line))
+
+    def test_every_sourcer_either_takes_env_shs_block_or_renders_its_own(self):
+        """The boundary, enforced rather than described: a script under scripts/parity/ that sources
+        env.sh may not then assign PS2X_PEEK from anything but the renderer."""
+        offenders = []
+        for path in sorted(glob.glob(os.path.join(ROOT, "scripts", "parity", "*.sh"))):
+            with open(path, encoding="utf-8") as f:
+                body = "".join(l for l in f if not l.lstrip().startswith("#"))
+            if "env.sh" not in body or os.path.basename(path) == "env.sh":
+                continue
+            for line in body.splitlines():
+                if re.match(r"\s*(export\s+)?PS2X_PEEK=", line) and "guest_addresses" not in body:
+                    offenders.append("%s: %s" % (os.path.basename(path), line.strip()[:60]))
+        self.assertEqual(offenders, [], "these set PS2X_PEEK without going through guest_addresses")
+
+
 class Unconfirmed(unittest.TestCase):
     def test_the_single_twin_value_is_declared(self):
         """0x45a1c8 -> 0x45d58c has 3 materialising sites and ONE evidence-twinned referrer. It is
@@ -148,6 +228,9 @@ class Unconfirmed(unittest.TestCase):
             for revision in ("r0001", "r0004"):
                 a = ga.address(name, revision)
                 wanted |= {"0x%x" % a, "0x%X" % a, "0x%08x" % a}
+        # ... and the NAMES too (review F12): a scorer that reached the value as
+        # `ga.address("r7_flag", rev)` would pass a literals-only grep. Nothing does; this keeps it so.
+        wanted |= {'"%s"' % n for n in ga.UNCONFIRMED} | {"'%s'" % n for n in ga.UNCONFIRMED}
         offenders = []
         for path in sorted(glob.glob(os.path.join(PARITY, "*.py"))):
             if os.path.basename(path) == "guest_addresses.py":
@@ -194,6 +277,21 @@ class EnvSh(unittest.TestCase):
         self.assertNotEqual(p.returncode, 0)
         self.assertNotIn("REACHED", p.stdout)
         self.assertIn("SOCOM_GAME_ELF", p.stderr)
+
+    def test_an_image_naming_a_revision_the_table_has_no_column_for_refuses(self):
+        """Review F1. r0002 and r0003 are real SOCOM II revisions. The render used to sit OUTSIDE the
+        try, so `address()`'s ValueError reached the operator as a traceback -- from the very command
+        env.sh's refusal message tells them to run. One sentence, exit 2, no traceback."""
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "r0002.elf")
+            with open(path, "wb") as f:
+                f.write(b"\x7fELF" + b"\0" * 64 + b"SOCOM 2 r0002 01:02:03 Jan  1 2004\0" + b"\0" * 16)
+            p = source_env_sh('echo "REACHED:$PS2X_PEEK"', env={"SOCOM_GAME_ELF": path})
+            self.assertNotEqual(p.returncode, 0)
+            self.assertNotIn("REACHED", p.stdout)
+            self.assertNotIn("Traceback", p.stderr)
+            self.assertIn("r0002", p.stderr)
+            self.assertIn("r0001, r0004", p.stderr)          # the message names the columns there ARE
 
     def test_an_image_with_no_banner_refuses(self):
         with tempfile.TemporaryDirectory() as d:
@@ -285,12 +383,72 @@ class RevisionAgnosticReaders(unittest.TestCase):
             self.assertIsNone(next((a for a, w in items if w and w[0] == ga.address("actor_vtable", theirs)),
                                    None), mine)
 
+    def test_the_valve_chains_spell_their_bases_the_way_chain_for_expects(self):
+        """Review F10. `verdict_core.chain_for` re-renders a chain by `str.replace` of three base
+        literals, so it is coupled to how `VALVES` spells them: lowercase, exactly `"%#x"`. A spelling
+        change on either side would make the replace a silent no-op and the r0004 pre-launch checks
+        would then refuse a correct spec. This holds the coupling directly, where the docstring names
+        it -- the way out is to make the valve chains templates over the names."""
+        from tools_py.parity import verdict_core as vc
+        bases = {"player_actor", "net_game", "mission_abort_valve"}
+        for name, v in vc.VALVES.items():
+            for chain in (v.value_item, v.name_item):
+                hit = [b for b in bases if "%#x" % ga.address(b, "r0001") in chain]
+                self.assertEqual(len(hit), 1, "%s: %r names no base in %s" % (name, chain, sorted(bases)))
+                moved = vc.chain_for(chain, "r0004")
+                self.assertNotEqual(moved, chain, "%s: chain_for was a no-op on %r" % (name, chain))
+                self.assertIn("%#x" % ga.address(hit[0], "r0004"), moved)
+
     def test_the_match_drivers_position_item_takes_every_column(self):
         from tools_py.parity import verdict_core as vc
         from tools_py.parity import online_match_ours as M
         self.assertEqual(M.POSITION_ADDRS, vc.CAMERA_RECORD_ADDRS)
         for revision in ("r0001", "r0004"):
             self.assertIn(ga.address("camera_record", revision), M.POSITION_ADDRS)
+
+
+class ArchivedRows(unittest.TestCase):
+    """Review F5. The four ADDRESS sets are safe by disjointness, which `Specs` holds in both
+    directions. `ACTOR_VTABLES` is not an address set -- it is a VALUE read out of word 0, and
+    `0x00668B20` is -0x680 from `0x006691A0`, i.e. inside r0001's own vtable region, so nothing in the
+    table rules out some other r0001 object carrying it. What protects it is item order and the fact
+    that it does not happen. This holds the fact, on the checked-in corpus, instead of asserting it.
+    """
+
+    ITEM = re.compile(r"@([0-9a-fA-F]+):((?:\s+[0-9a-fA-F]{8}\([^)]*\))+)")
+    WORD = re.compile(r"([0-9a-fA-F]{8})\(")
+
+    @classmethod
+    def rows(cls):
+        """[(item address, [words])] over every `[peek]` row in the checked-in r0001 fixtures."""
+        out = []
+        for path in sorted(glob.glob(os.path.join(ROOT, "tools_py", "tests", "fixtures", "online", "*.txt"))):
+            with open(path, encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    if "[peek]" not in line:
+                        continue
+                    for m in cls.ITEM.finditer(line):
+                        out.append((int(m.group(1), 16), [int(w, 16) for w in cls.WORD.findall(m.group(2))]))
+        return out
+
+    def test_the_corpus_is_big_enough_to_mean_something(self):
+        items = self.rows()
+        self.assertGreater(len(items), 3000, "the online fixtures stopped carrying [peek] rows")
+        r0001 = ga.address("actor_vtable", "r0001")
+        self.assertGreater(sum(1 for _a, w in items if w and w[0] == r0001), 500,
+                           "no actor block in the corpus -- this test would prove nothing")
+
+    def test_no_archived_r0001_row_carries_the_r0004_vtable(self):
+        r0004 = ga.address("actor_vtable", "r0004")
+        for a, words in self.rows():
+            self.assertNotEqual(words[0] if words else None, r0004,
+                                "an r0001 row's item @%08x has the r0004 vtable as word 0 -- "
+                                "ACTOR_VTABLES membership is no longer safe, pass the revision in" % a)
+
+    def test_no_archived_r0001_row_carries_an_r0004_item_address(self):
+        r0004 = {ga.address(n, "r0004") for n in ga.all_names() if n != "actor_vtable"}
+        for a, _words in self.rows():
+            self.assertNotIn(a, r0004, "an r0001 row carries an r0004 item address")
 
 
 class PreLaunchChecks(unittest.TestCase):
@@ -314,6 +472,10 @@ class PreLaunchChecks(unittest.TestCase):
             self.assertEqual(M.move_path_preconditions(e), [], revision)
             self.assertEqual(M.health_peek_problems(e["PS2X_PEEK"], 0x1044), [], revision)
             self.assertEqual(M.peek_spec_problems(e["PS2X_PEEK"]), [], revision)
+            # The fourth check, found by the ladder's own dry run during fix round 1: it compared an
+            # r0004 spec against r0001's CZNetGame and clock chains, so an r0004 ladder would have been
+            # refused for carrying exactly the right instruments.
+            self.assertEqual(M.endgame_preconditions(e), [], revision)
 
     def test_all_ten_valves_are_requested_on_both_columns(self):
         from tools_py.parity import online_match_ours as M

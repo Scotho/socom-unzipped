@@ -73,6 +73,15 @@ class Control(unittest.TestCase):
             self.assertEqual(got, r0004, name)
             self.assertEqual(ga.address(name, "r0004"), r0004, name)
 
+    def test_clock_string_is_one_referrer_function_wearing_two_votes(self):
+        """The finding itself, held so it cannot quietly come back: both of clock_string's sites are in
+        FUN_001f6b60, so a site count would call it corroborated and a function count does not."""
+        _addr, votes, _n = dvt.resolve(0x00408F10, **self.kw)
+        self.assertEqual(len(votes), 2)
+        self.assertEqual(len({v.func for v in votes}), 1)
+        self.assertIn("clock_string", ga.CORROBORATED)
+        self.assertNotIn("clock_string", ga.UNCONFIRMED)
+
     def test_the_unconfirmed_values_are_exactly_the_uncorroborated_single_vote_ones(self):
         """`guest_addresses.UNCONFIRMED` is a claim about the evidence, so it is checked against the
         evidence -- in BOTH directions. A value with one evidence-twinned referrer is unconfirmed unless
@@ -82,11 +91,14 @@ class Control(unittest.TestCase):
             if how != "twin":
                 continue
             _addr, votes, _n = dvt.resolve(r0001, **self.kw)
-            thin = len(votes) < 2
+            # DISTINCT REFERRER FUNCTIONS, not vote sites (review F3): one function that materialises
+            # the address twice is one piece of evidence, and `clock_string` read as "2 twinned,
+            # unanimous" on the site count while both sites are inside FUN_001f6b60.
+            thin = len({v.func for v in votes}) < 2
             self.assertEqual(thin, name in ga.UNCONFIRMED or name in ga.CORROBORATED,
-                             "%s has %d evidence-twinned referrer(s): it must be in exactly one of "
-                             "UNCONFIRMED or CORROBORATED if that is fewer than 2, and in neither if not"
-                             % (name, len(votes)))
+                             "%s has %d evidence-twinned referrer function(s) (%d site(s)): it must be "
+                             "in exactly one of UNCONFIRMED or CORROBORATED if that is fewer than 2, and "
+                             "in neither if not" % (name, len({v.func for v in votes}), len(votes)))
             self.assertFalse(name in ga.UNCONFIRMED and name in ga.CORROBORATED, name)
 
     def test_the_masked_body_is_masking_the_displacement_that_moved(self):

@@ -125,6 +125,26 @@ sys.exit(0 if f.startswith(h + os.sep) else 'imported ' + m.__file__ + ', not un
     echo "PIN-FAIL the pinned import did not resolve under the snapshot '$HARNESS' -- not falling back to the live tree" >&2
     exit 7
   fi
+  # ... and the INSTRUMENTS, since Sprint 11 Task 19 (review F13). PS2X_PEEK and PS2X_CALL_TRACE are
+  # rendered by the LIVE tools_py/parity/guest_addresses.py when env.sh is sourced, at the top of this
+  # script, while the launch is scored by the SNAPSHOT's code. Identical in practice -- the pin is HEAD --
+  # but a mid-session edit to the address table would change what the rows are cut at without changing
+  # harness=<sha>, which is exactly the hole the self-contained literal did not have. Prove they agree.
+  # The ASSIGNMENTS only: the leading `# instruments: ...` line is a comment for a human reader, and
+  # comparing it would make this fire on every wording change while the rows are cut identically.
+  local _live _snap
+  _live="$("$PYTHON" -m tools_py.parity.guest_addresses --env 2>&1 | grep -v '^#')"
+  _snap="$(PYTHONPATH="$HARNESS" PYTHONSAFEPATH=1 "$PYTHON" -m tools_py.parity.guest_addresses --env 2>&1 | grep -v '^#')"
+  if [ "$_live" != "$_snap" ]; then
+    echo "PIN-FAIL the snapshot's instrument addresses are not the ones env.sh exported -- the rows would" >&2
+    echo "  be cut by the live table and scored by the pinned code. Commit the table, or re-pin." >&2
+    printf 'live:
+%s
+snapshot:
+%s
+' "$_live" "$_snap" >&2
+    exit 7
+  fi
 }
 
 if [ "$PINNED" = 1 ]; then

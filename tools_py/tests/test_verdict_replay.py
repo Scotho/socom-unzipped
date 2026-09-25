@@ -993,15 +993,28 @@ class TestImportSet(unittest.TestCase):
         self.assertLessEqual({n.split(".")[0] for n in names},
                              {"argparse", "bisect", "math", "os", "re", "struct", "sys", "dataclasses"})
 
-    def test_its_vtable_literals_are_the_tables(self):
-        """`verdict_replay` may not import `guest_addresses` (above), so it carries the actor vtable of
-        each revision as a literal. This is the seam that keeps the copy honest -- the table is the home,
-        and a new revision's column must reach both (Sprint 11 Task 19)."""
+    # Every guest number this module carries as a literal, and the guest_addresses name that owns it.
+    # `verdict_replay` may not import that module (TestImportSet, above) -- it is the independently
+    # written second scorer -- so this is the seam that keeps the copies honest, and a new revision's
+    # column must reach both (Sprint 11 Task 19, review F6).
+    LITERAL_PAIRS = (("ACTOR_VTABLE", "ACTOR_VTABLES", "actor_vtable"),
+                     ("GUEST_CLOCK_ADDR", "GUEST_CLOCK_ADDRS", "guest_clock"),
+                     ("CLOCK_STRING_ADDR", "CLOCK_STRING_ADDRS", "clock_string"))
+
+    def test_its_guest_literals_are_the_tables(self):
         from tools_py.parity import guest_addresses as ga
         from tools_py.parity import verdict_replay as R
-        self.assertEqual(R.ACTOR_VTABLE, ga.address("actor_vtable", "r0001"))
-        self.assertEqual(R.ACTOR_VTABLES,
-                         frozenset(ga.address("actor_vtable", r) for r in ga.REVISIONS))
+        for scalar, plural, name in self.LITERAL_PAIRS:
+            self.assertEqual(getattr(R, scalar), ga.address(name, "r0001"), scalar)
+            self.assertEqual(getattr(R, plural),
+                             frozenset(ga.address(name, r) for r in ga.REVISIONS), plural)
+
+    def test_it_carries_no_half_converted_guest_number(self):
+        """F6's actual defect: the actor was revision-agnostic and the clock was not, so an r0004 replay
+        produced a PARTIAL read instead of a clean NO-DATA. Every literal pair is converted, or none is."""
+        from tools_py.parity import verdict_replay as R
+        for _scalar, plural, _name in self.LITERAL_PAIRS:
+            self.assertEqual(len(getattr(R, plural)), 2, plural)
 
     def test_importing_loads_neither(self):
         code = ("import sys; import tools_py.parity.verdict_replay; "

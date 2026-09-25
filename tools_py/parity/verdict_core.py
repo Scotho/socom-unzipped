@@ -75,11 +75,22 @@ CLOCK_STRING_ADDR = ga.address("clock_string", "r0001")   # 0x408f10, round cloc
 
 # ... and the same four as the set of EVERY revision's value, for the readers that identify a row's
 # contents rather than build a launch (Sprint 11 Task 19, the r0004 online lane). A `[peek]` row carries
-# exactly one revision's numbers, and the columns are disjoint -- `test_online_instruments` holds that in
-# both directions -- so "is this word the actor vtable" and "is this item the round clock" can be asked
-# without plumbing a revision through a LEAF module that has none to plumb. Reading a row as the wrong
-# revision is not possible: no r0004 number occurs in an r0001 row and no r0001 number in an r0004 row.
-# The scalars above stay r0001 and stay what every existing caller gets; these are for the row readers.
+# exactly one revision's numbers, so "is this item the round clock" can be asked without plumbing a
+# revision through a LEAF module that has none to plumb. The scalars above stay r0001 and stay what every
+# existing caller gets; these are for the row readers.
+#
+# WHAT IS PROVEN, EXACTLY (review F5). For the four ADDRESS sets the argument is disjointness: no name's
+# r0004 address is any name's r0001 address, held in both directions by
+# `test_online_instruments.test_neither_render_carries_one_address_of_the_other_column`, so an item
+# address can only be matched by its own column. ACTOR_VTABLES is different in kind: it is a VALUE read
+# out of word 0, not an item address, and 0x00668B20 is -0x680 from 0x006691A0 -- inside r0001's own
+# vtable region, so nothing in the table rules out some OTHER r0001 object carrying it. Two things
+# protect it and neither is disjointness: `next()` takes the FIRST matching item and the canonical spec
+# puts the actor block at item 1, and the archive says it does not happen -- over 4781 r0001 [peek] rows
+# the only vtable-region word 0 seen is 0x6691a0 (308 times) and 0x668b20 never occurs
+# (`test_online_instruments.test_no_archived_r0001_row_carries_the_r0004_vtable` holds that on a
+# checked-in fixture). If a future revision's vtable ever collides, this is the comment that says why
+# the fix is to pass the revision in, not to widen the set.
 ACTOR_VTABLES = frozenset(ga.address("actor_vtable", r) for r in ga.REVISIONS)
 CAMERA_RECORD_ADDRS = frozenset(ga.address("camera_record", r) for r in ga.REVISIONS)
 ROUND_TIME_ADDRS = frozenset(ga.address("guest_clock", r) for r in ga.REVISIONS)
@@ -940,6 +951,9 @@ def actor_field_rows(peek_rows, offset, kind="u8"):
 
 
 def row_static(items, addr):
+    """One static's first word from a row, by EXACT address. The row readers use `row_static_any` below
+    (a static has an address per revision); this stays for a caller that has one specific number, and for
+    the fixtures and tests that build rows (review F9)."""
     for a, words in items:
         if a == addr and words:
             return words[0]
@@ -953,7 +967,15 @@ def chain_for(chain, revision):
     r0001 text. They are not READ from a row -- they are COMPARED against the spec a launch is about to
     use -- so on an r0004 launch they have to be the r0004 chains or the check refuses a correct spec.
     That is what `s11_r0004_round2` refused on: a correct r0004 PS2X_PEEK, against r0001's expectations.
-    Only the three bases a chain can start from are substituted, and only as whole rendered addresses."""
+    Only the three bases a chain can start from are substituted, and only as whole rendered addresses.
+
+    STRUCTURAL DEBT, named (review F10): this is a SECOND place that knows a chain is built on
+    player_actor / net_game / mission_abort_valve, and it is textual -- it works only because `VALVES`
+    spells those bases lowercase in exactly `"%#x"` form. A spelling change on either side would make
+    `str.replace` a silent no-op and the r0004 checks would then refuse a correct spec.
+    `test_online_instruments.test_the_valve_chains_spell_their_bases_the_way_chain_for_expects` holds
+    that coupling directly; the way out is to express `Valve.value_item`/`name_item` as templates over
+    the names and render them through `guest_addresses`, which would retire this function."""
     if revision == "r0001":
         return chain
     for name in ("player_actor", "net_game", "mission_abort_valve"):

@@ -13,8 +13,22 @@
 #     SOCOM_SERVER_IP=10.0.0.5 bash scripts/parity/online_control_round.sh "foxhunt"
 #
 # Every value uses ${VAR:-default}, so whatever is already in the operator's environment wins and sourcing
-# this file twice is harmless. No `set -e`/`set -u` here and nothing but assignments and one sourced helper
-# -- it is safe to source from a script that has already set its own shell options.
+# this file twice is harmless. No `set -e`/`set -u` here, and it is safe to source from a script that has
+# already set its own shell options -- but since Sprint 11 Task 19 this is no longer "nothing but
+# assignments": the instrument block below runs a command substitution, an `if`, an `eval` and, when the
+# revision cannot be established, an `exit 1`. That `exit` is deliberate for a script (a `return` would
+# let the caller run on with no PS2X_PEEK, which is the silent measurement this exists to stop) -- but an
+# operator who sources this file BY HAND to inspect the instruments loses that shell on a bad
+# $SOCOM_GAME_ELF. Inspect it without sourcing instead:
+#
+#     python -m tools_py.parity.guest_addresses --env [--revision r0004] [--profile mixed]
+#
+# WHICH SCRIPTS GET WHICH BLOCK. Six scripts source this file. Three of them -- ladder_frostfire.sh,
+# online_control_round.sh and online_match_frostfire.sh -- use the block exported here. The other three,
+# the mixed-match legs (mixed_match.sh, mixed_match2.sh, mixed_match2_leg2.sh), deliberately REPLACE it
+# with a narrower one (no CZNetGame valves, no deref levels: the console client is scored from its own
+# captures). That block is rendered from the same table, by the same command with `--profile mixed`, so
+# there is still exactly one home for a guest address -- see the comment at each leg's override.
 
 # $PYTHON, resolved once for everybody (an explicit PYTHON, else `python`, else `python3`): a Linux machine
 # has no `python`, and the harness scripts all invoke the interpreter. BASH_SOURCE, not $0 -- $0 is still the

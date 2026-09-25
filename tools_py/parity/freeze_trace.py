@@ -66,6 +66,10 @@ import sys
 
 from tools_py.parity import verdict_core as vc
 
+# BOTH r0001 SCALARS, on purpose (Task 19, review F7): this watcher is the ladder's, the ladder runs on
+# the r0001 build, and the clock is matched by an address RANGE here rather than by membership -- an
+# r0004 log read through it comes back empty, never wrong. `verdict_core.ROUND_TIME_ADDRS` /
+# `CLOCK_STRING_ADDRS` are what it would take.
 ROUND_TIME_ADDR = vc.ROUND_TIME_ADDR         # 0x4365c0 float
 CLOCK_STRING_ADDR = vc.CLOCK_STRING_ADDR     # 0x408f10 ascii
 MAIN_THREAD_ID = 1

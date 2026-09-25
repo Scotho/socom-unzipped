@@ -44,9 +44,10 @@ winshot = hostplatform.shot_module()
 # facing (STATUS 2026-09-10 20:10), so the player is at camera + R * facing. The rows are the only
 # trustworthy movement signal this harness has: screenshots go stale and are written whether or not
 # the match ever launched (research/18 §3.5, §3.10).
-POSITION_ADDR = vc.CAMERA_RECORD_ADDR   # 0x416054, guest_addresses r0001 column (Task 19 re-review N4)
-# The camera record has a value per revision too, and the tail matches a row's item against the SET for
-# the same reason ACTOR_VTABLES exists: the columns are disjoint, a row carries one of them (Task 19).
+# The camera record has a value per revision, and the tail matches a row's item against the SET for the
+# same reason ACTOR_VTABLES exists: the columns are disjoint, a row carries one of them (Task 19). The
+# old r0001 scalar `POSITION_ADDR` is gone with its last caller (review F9); `vc.CAMERA_RECORD_ADDR` is
+# still there for anything that needs the number itself.
 POSITION_ADDRS = vc.CAMERA_RECORD_ADDRS
 # `PS2X_CALL_TRACE="0x553dc0:MoveScale"` logs FUN_00553dc0's f12 -- the multiplayer movement scale
 # actor+0x1368. It is 1.0 while the network has been active within 5500 ms and decays to 0.0 at
@@ -1977,11 +1978,10 @@ MOVE_PATH_MAX_EVERY = 20         # at ~17-27 MoveScale calls/s, EVERY <= 20 logs
 MOVE_PATH_POLL_S = 1.0
 DEFAULT_HEALTH_OFFSET = 0x1044   # research/19 F1; Sprint 5 Task 2 read damage steps live in SP, no death (research/22)
 DEFAULT_ALIVE_OFFSET = vc.ACTOR_ALIVE_OFFSET   # 0xF7A, same sources
-ALIVE_PEEK_BASE = vc.ga.address("player_actor", "r0001")   # 0x408c58 = the player actor, r0001's column.
-# Kept as the name this module has always exported; nothing here compares against it any more. The
-# pre-launch checks build their base from `spec_revision(PS2X_PEEK)` instead (Sprint 11 Task 19), because
-# on an r0004 launch the actor static is 0x435618 and a check written in r0001's number refuses a correct
-# spec -- which is exactly how `s11_r0004_round2` died before it launched.
+# (`ALIVE_PEEK_BASE`, the r0001 actor static, is gone -- review F9. The pre-launch checks build their
+# base from `spec_revision(PS2X_PEEK)` instead (Task 19), because on an r0004 launch the actor static is
+# 0x435618 and a check written in r0001's number refuses a correct spec, which is how `s11_r0004_round2`
+# died before it launched.)
 ROUND_LIVE_MAX_AGE_S = 5.0       # valves read within this long count as live (20 rows at 4 Hz,
                                  # ~8 at kill2 B's 0.6 s/row under load)
 FRAME_MAX_AGE_S = 2.0            # evidence screens (kill, final) must be fresher than this (spec Goal 6)
@@ -3081,19 +3081,27 @@ def control_round(clients, log, clock=time.time, wait=time.sleep, cap_s=CONTROL_
 # (starvation, contact) are decided by verdict_core, so the live harness and the offline replay agree.
 
 def endgame_preconditions(env):
-    """Why the StarvationWatch / freeze tolerance would attest to nothing under this environment ([] = launch)."""
+    """Why the StarvationWatch / freeze tolerance would attest to nothing under this environment ([] = launch).
+
+    Per revision, like its two siblings above (Task 19 fix round 1): this is the fourth pre-launch check
+    and it compared an r0004 spec against r0001's chains too, so an r0004 ladder would have been refused
+    for carrying exactly the right instruments."""
     problems = []
+    spec = env.get("PS2X_PEEK", "")
+    revision = spec_revision(spec)
+    ng = vc.ga.address("net_game", revision)
+    clock = vc.ga.address("guest_clock", revision)
     names = {e.split(":", 1)[1].strip() for e in env.get("PS2X_CALL_TRACE", "").split(",") if ":" in e}
     if not names & set(vc.NET_IDLE_NAMES):
-        problems.append("PS2X_CALL_TRACE has no NetIdle slot (0x30cd80:NetIdle) -- the starvation watch would be "
-                        "NO-DATA from its first poll")
-    items = parse_peek_spec(env.get("PS2X_PEEK", ""))
-    if not (_has_item(items, "*0x437ce8:64", 64) and _has_item(items, "*0x437ce8+0x100:21", 7)):
-        problems.append("PS2X_PEEK lacks the CZNetGame block *0x437ce8:64 + *0x437ce8+0x100:21 (ng+0xde, the "
-                        "primary starvation signal)")
-    if not _has_item(items, "0x4365c0:1", 1):
-        problems.append("PS2X_PEEK lacks the round clock 0x4365c0:1 -- a frozen instance could not be told from "
-                        "a starving one")
+        problems.append("PS2X_CALL_TRACE has no NetIdle slot (%#x:NetIdle) -- the starvation watch would be "
+                        "NO-DATA from its first poll" % vc.ga.address("net_idle", revision))
+    items = parse_peek_spec(spec)
+    if not (_has_item(items, "*%#x:64" % ng, 64) and _has_item(items, "*%#x+0x100:21" % ng, 7)):
+        problems.append("PS2X_PEEK lacks the CZNetGame block *%#x:64 + *%#x+0x100:21 (ng+0xde, the "
+                        "primary starvation signal)" % (ng, ng))
+    if not _has_item(items, "%#x:1" % clock, 1):
+        problems.append("PS2X_PEEK lacks the round clock %#x:1 -- a frozen instance could not be told from "
+                        "a starving one" % clock)
     return problems
 
 

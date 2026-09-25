@@ -172,19 +172,27 @@ class DryRunTest(unittest.TestCase):
         with open(os.path.join(os.path.dirname(TEMPLATE), "env.sh")) as f:
             text += f.read()                          # the shared instruments the template sources
         for need in ("pin_harness.sh", "PYTHONSAFEPATH=1", "run_detached.sh", "--purpose launch-ladder",
-                     "PS2X_GS_STATS=1", "guest_addresses", "--route", "env.sh"):
+                     "PS2X_GS_STATS=1", "guest_addresses", "--route", "env.sh",
+                     # review F13: the snapshot's table must agree with the one env.sh rendered from
+                     "PIN-FAIL the snapshot's instrument addresses"):
             self.assertIn(need, text)
         # The round clock used to be a literal in env.sh and is a rendered address now (Sprint 11 Task 19:
         # the instruments are per revision). Grepping the TEXT for it would only ever have proved that a
         # string was written down, so the check moved to what sourcing env.sh actually EXPORTS -- and the
         # ladder runs on the r0001 build, so this is the r0001 column, unchanged.
+        # SOCOM_GAME_ELF too (review F11): on a machine mid-r0004 session it is exported, and the
+        # ladder's r0001 assertion would fail for a reason that has nothing to do with the ladder.
+        drop = ("PS2X_PEEK", "PS2X_CALL_TRACE", "SOCOM_GAME_ELF")
         e = subprocess.run([BASH, "-c", ". scripts/parity/env.sh; printf %s \"$PS2X_PEEK\""],
                            capture_output=True, text=True, cwd=ROOT, timeout=120,
-                           env={k: v for k, v in os.environ.items() if k != "PS2X_PEEK"})
+                           env={k: v for k, v in os.environ.items() if k not in drop})
         self.assertEqual(e.returncode, 0, e.stderr)
         self.assertIn("0x4365c0:1", e.stdout)
         self.assertIn("0x408f10:2", e.stdout)
-        p = subprocess.run([BASH, TEMPLATE, "--dry-run"], capture_output=True, text=True, cwd=ROOT, timeout=180)
+        # ... and the template's own dry run must not inherit an r0004 image either (review F11): the
+        # ladder is the r0001 instrument, and env.sh renders whichever column SOCOM_GAME_ELF names.
+        p = subprocess.run([BASH, TEMPLATE, "--dry-run"], capture_output=True, text=True, cwd=ROOT,
+                           timeout=180, env={k: v for k, v in os.environ.items() if k not in drop})
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         self.assertIn("DRY-RUN OK", p.stdout + p.stderr)
 

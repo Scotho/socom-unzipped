@@ -257,6 +257,14 @@ COLUMN = (("camera_record", 0x00416054, 0x00442A14, "twin"),
 # the registers, which is what "the same function, relinked and re-displaced" means. A THUNK is placed by
 # its TARGET -- the target is an ordinary function `match.json` can place by evidence -- and by being the
 # only thunk to that target on either side, so there is no second one the trace could have meant.
+#
+# THE TWO ARE NOT EQUALLY STRONG, and the difference is worth stating (review F4). The vtable path
+# asserts ONE place in the whole image; the thunk path asserts ONE thunk to the target on either side.
+# The masked body asserts neither: it answers "does the r0004 address I was HANDED match the r0001 body
+# under the mask", so it CONFIRMS a value somebody else derived -- for move_scale_setter that is
+# `task-19-move-report.md`'s six-use displacement scan -- rather than placing one. Note also that
+# MASKED_OPS blanks `addiu` and `ori` immediates, so literal constants are not compared at all; only
+# `lui` survives unmasked, and this particular sixteen-instruction body contains none.
 MASKED_OPS = frozenset(LOADSTORE) | {0x09, 0x0D}       # loads, stores, addiu, ori
 
 
@@ -326,9 +334,14 @@ def resolve_thunk(target, a, b, match):
 
 
 def _report(name, target, addr, votes, n, expect=None):
+    # The unit of evidence is the referrer FUNCTION, not the materialising site (review F3): one function
+    # that forms the address twice votes once, because if its twinning were wrong both of its "votes"
+    # would be wrong together. Both counts are printed, and the function count is the one the
+    # UNCONFIRMED rule reads.
     tally = Counter(v.b_addr for v in votes)
-    print("%-14s r0001 0x%08x -> %s   (%d sites, %d evidence-twinned%s)"
+    print("%-20s r0001 0x%08x -> %s   (%d sites, %d evidence-twinned in %d function(s)%s)"
           % (name, target, ("0x%08x" % addr) if addr else "UNRESOLVED", n, len(votes),
+             len({v.func for v in votes}),
              "; SPLIT: " + " ".join("0x%08x:%d" % kv for kv in tally.most_common()) if len(tally) > 1 else ""))
     for v in votes[:3]:
         print("                 e.g. %s (%s) hi@0x%08x -> 0x%08x" % (v.func, v.how, v.hi_pc, v.b_addr))

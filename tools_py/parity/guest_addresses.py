@@ -88,18 +88,23 @@ REVISIONS = tuple(sorted({r for col in PROBE_ADDRESSES.values() for r in col}))
 #   net_game            0x437ce8 -> 0x004446f8   CZNetGame and its valves. 151 materialising sites, 29 of
 #                                                them evidence-twinned, UNANIMOUS. (+0xca10 -- the same
 #                                                delta guest_clock moves by, which is how the header's
-#                                                comment already knew this one's shape.)
+#                                                comment already knew this one's shape.) 22 distinct
+#                                                referrer FUNCTIONS -- the unit the rule below counts.
 #   mission_abort_valve 0x43668c -> 0x0044309c   the pause-menu abort valve (research/21 R5). 5 sites, 5
-#                                                twinned, unanimous.
+#                                                twinned in 4 functions, unanimous.
 #   mp_flag_word        0x45a0c0 -> 0x0045d480   the word whose byte 1 is DAT_0045a0c1, R6's snap-back
-#                                                context. 344 sites, 175 twinned, unanimous -- the widest
-#                                                evidence in this table.
+#                                                context. 344 sites, 175 twinned in 98 functions,
+#                                                unanimous -- the widest evidence in this table.
 #   input_enable        0x3df1b0 -> 0x0040a378   DAT_003df1b0, "player input enabled" (research/21 R4).
-#                                                6 sites, 5 twinned, unanimous.
+#                                                6 sites, 5 twinned in 4 functions, unanimous.
 #   r7_flag             0x45a1c8 -> 0x0045d58c   research/21 R7 (its byte at 0x45a1ca). 3 sites and only
-#                                                **ONE** evidence-twinned referrer: see UNCONFIRMED below.
+#                                                **ONE** evidence-twinned referrer function: see
+#                                                UNCONFIRMED below.
 #   clock_string        0x408f10 -> 0x004358d0   the HUD round-clock string "MM:SS" (research/19 F2).
-#                                                2 sites, 2 twinned, unanimous.
+#                                                2 sites, 2 twinned, unanimous -- but both inside ONE
+#                                                function (FUN_001f6b60 forms it twice), so by the rule
+#                                                below it is a single referrer and it is CORROBORATED,
+#                                                not confirmed by count. Review F3.
 ONLINE_ADDRESSES = {
     "net_game": {"r0001": 0x00437CE8, "r0004": 0x004446F8},
     "mission_abort_valve": {"r0001": 0x0043668C, "r0004": 0x0044309C},
@@ -136,15 +141,20 @@ TRACE_ADDRESSES = {
     "net_idle": {"r0001": 0x0030CD80, "r0004": 0x0032A2B0},
 }
 
-# Values that rest on ONE evidence-twinned referrer. They are carried so the instrument keeps peeking what
-# it has always peeked, and they are named here so that nothing SCORES on them: a single vote is a claim,
-# not the unanimity the rest of this table is built on. `tools_py/tests/test_online_instruments.py` holds
-# the rule -- no scorer may key a verdict on one of these -- and the way out is more evidence, not a
-# promotion by silence.
+# Values that rest on ONE evidence-twinned referrer FUNCTION. They are carried so the instrument keeps
+# peeking what it has always peeked, and they are named here so that nothing SCORES on them: a single
+# referrer is a claim, not the unanimity the rest of this table is built on.
+# `tools_py/tests/test_online_instruments.py` holds the rule -- no scorer may key a verdict on one of
+# these, by literal or by name -- and the way out is more evidence, not a promotion by silence.
+#
+# THE UNIT IS THE REFERRER FUNCTION, NOT THE SITE (review F3). One function that happens to materialise
+# an address twice votes once: if its twinning were wrong, both of its "votes" would be wrong together,
+# which is precisely the failure the unanimity argument is supposed to exclude. `clock_string` read as
+# "2 sites, 2 twinned, unanimous" under the old site count and is one function.
 UNCONFIRMED = frozenset({"r7_flag"})
 
-# ... and the other side of that rule. A value with ONE twinned referrer is unconfirmed UNLESS something
-# else stands behind it, and "something else" has to be written down or it is just a habit. There is one:
+# ... and the other side of that rule. A value with ONE twinned referrer function is unconfirmed UNLESS
+# something else stands behind it, and "something else" has to be written down or it is just a habit.
 CORROBORATED = {
     "camera_record": "one twinned referrer of its own, but its delta +0x2c9c0 is the one its neighbour "
                      "cameraHolder (0x415ff0, 0x64 below it) moves by over 60 unanimous twins; the "
@@ -152,6 +162,13 @@ CORROBORATED = {
                      "from 4 twins; and the gate re-checks it at RUN TIME -- guest_probe's camera_orbit "
                      "measures its distance from the actor, which is why this is the one entry whose "
                      "being wrong would otherwise have no symptom",
+    "clock_string": "two materialising sites, both in FUN_001f6b60, so one referrer function -- but the "
+                    "value it names is ASCII and self-checking, and it was checked at RUN TIME across a "
+                    "whole r0004 round: `s11_r0004_round2c` read '05:29', '04:16', '03:20', '02:24', "
+                    "'01:27', '00:31' and the end-of-round '00:01'->'00:00' out of this address over "
+                    "~2600 rows on each side, printable and counting down in step on both clients. A "
+                    "wrong address here does not produce a plausible clock; it produces NoData or "
+                    "unprintable bytes. Same kind of corroboration as camera_record's: a run, not a count",
 }
 
 REVISIONS = tuple(sorted({r for table in (PROBE_ADDRESSES, ONLINE_ADDRESSES, TRACE_ADDRESSES)
@@ -287,6 +304,24 @@ PEEK_TEMPLATE = (
     "{clock_string}:2,{player_actor}:4"
 )
 CALL_TRACE_TEMPLATE = "{move_scale_setter}:MoveScale,{net_idle}:NetIdle"
+
+# The three mixed-match legs (scripts/parity/mixed_match.sh, mixed_match2.sh, mixed_match2_leg2.sh) each
+# carried this narrower block as an r0001 literal and exported it OVER env.sh's -- a hard assignment, so
+# env.sh's render did not reach them (review F2). It is the block above without the nine CZNetGame valve
+# pairs and their name-bytes items and without the mission-abort valve: a leg watches positions, health
+# and the clocks, not the round valves. Rendered from the same names, so there is still one home.
+PEEK_MIXED_TEMPLATE = (
+    "{camera_record}:3,"
+    "*{player_actor}:64,*{player_actor}+0xc0*:32,*{player_actor}+0x400:12,*{player_actor}+0x174:1,"
+    "*{player_actor}+0xF78:24,*{player_actor}+0x1044:8,"
+    "*{net_game}:64,*{net_game}+0x100:21,"
+    "{guest_clock}:1,{clock_string}:2,{player_actor}:4"
+)
+# name -> (template, whether the emitted assignment OVERRIDES what is already in the environment).
+# "online" keeps `VAR="${VAR:-...}"`: the operator's own spec wins, and sourcing env.sh twice is
+# harmless. "mixed" is a hard assignment, because that is what the three legs have always done -- they
+# deliberately replace env.sh's wider block with their own narrower one.
+PEEK_PROFILES = {"online": (PEEK_TEMPLATE, False), "mixed": (PEEK_MIXED_TEMPLATE, True)}
 # Every name a template reaches for, so a typo in one is a KeyError here and not a silent empty field.
 _TEMPLATE_NAMES = ("camera_record", "player_actor", "net_game", "mission_abort_valve", "guest_clock",
                    "mp_flag_word", "input_enable", "r7_flag", "clock_string",
@@ -297,9 +332,15 @@ def _render(template, revision):
     return template.format(**{n: "0x%x" % address(n, revision) for n in _TEMPLATE_NAMES})
 
 
-def peek_spec(revision):
-    """`PS2X_PEEK` for the online harness, in this revision's addresses."""
-    return _render(PEEK_TEMPLATE, revision)
+def peek_spec(revision, profile="online"):
+    """`PS2X_PEEK` in this revision's addresses. `profile` picks the block: "online" (the full one every
+    online script gets) or "mixed" (the three mixed-match legs' narrower one)."""
+    try:
+        template, _override = PEEK_PROFILES[profile]
+    except KeyError:
+        raise ValueError("guest addresses: no PS2X_PEEK profile called %r (have: %s)"
+                         % (profile, ", ".join(sorted(PEEK_PROFILES)))) from None
+    return _render(template, revision)
 
 
 def call_trace_spec(revision):
@@ -307,13 +348,20 @@ def call_trace_spec(revision):
     return _render(CALL_TRACE_TEMPLATE, revision)
 
 
-def instrument_env_lines(revision, elf):
-    """The lines `scripts/parity/env.sh` evals. Each is `VAR="${VAR:-<spec>}"`, so whatever the operator
-    already exported still wins and sourcing env.sh twice is still harmless -- the two properties the
-    literal exports had, kept."""
-    return ["# instruments: %s, from %s" % (revision, elf),
-            'PS2X_PEEK="${PS2X_PEEK:-%s}"' % peek_spec(revision),
-            'PS2X_CALL_TRACE="${PS2X_CALL_TRACE:-%s}"' % call_trace_spec(revision)]
+def instrument_env_lines(revision, elf, profile="online"):
+    """The lines a harness script evals. On the "online" profile each is `VAR="${VAR:-<spec>}"`, so
+    whatever the operator already exported still wins and sourcing env.sh twice is still harmless -- the
+    two properties the literal exports had, kept. The "mixed" profile assigns PS2X_PEEK outright and
+    emits no call trace, which is exactly what the three legs' hard `export PS2X_PEEK=...` did."""
+    _template, override = PEEK_PROFILES[profile]
+    spec = peek_spec(revision, profile)
+    lines = ["# instruments: %s, %s profile, from %s" % (revision, profile, elf)]
+    if override:
+        lines.append('PS2X_PEEK="%s"' % spec)
+        return lines
+    lines.append('PS2X_PEEK="${PS2X_PEEK:-%s}"' % spec)
+    lines.append('PS2X_CALL_TRACE="${PS2X_CALL_TRACE:-%s}"' % call_trace_spec(revision))
+    return lines
 
 
 _HEX_RE = re.compile(r"0[xX][0-9a-fA-F]+")
@@ -411,18 +459,26 @@ def main(argv=None):
     ap.add_argument("--env", action="store_true", help="the shell lines scripts/parity/env.sh evals")
     ap.add_argument("--revision", choices=sorted(REVISIONS),
                     help="the column, instead of reading it off the image a launch would use")
+    ap.add_argument("--profile", choices=sorted(PEEK_PROFILES), default="online",
+                    help="which PS2X_PEEK block: online (every online script) or mixed (the legs')")
     a = ap.parse_args(argv)
     if not a.env:
         ap.error("nothing to print: --env is the only output this has")
     elf = os.environ.get(GAME_ELF_ENV) or DEFAULT_GAME_ELF
+    # The RENDER is inside the try as well as the detection (review F1). `address()` raises for a
+    # revision this table has no column for, and r0002 and r0003 are real SOCOM II revisions: an image
+    # banner naming one used to reach the operator as a traceback from the very command env.sh's refusal
+    # message tells them to run. It is fail-safe either way -- nothing launches -- but the one refusal a
+    # reader ever meets has to be the sentence.
     try:
         revision = a.revision or launch_revision(default_ok=True)
+        lines = instrument_env_lines(revision, "--revision" if a.revision else elf, a.profile)
     except (ValueError, OSError) as e:
         # A sentence on stderr, not a traceback: env.sh's caller reads this, and the shell prints
         # nothing else useful about a failed command substitution.
         sys.stderr.write("%s\n" % e)
         return 2
-    print("\n".join(instrument_env_lines(revision, "--revision" if a.revision else elf)))
+    print("\n".join(lines))
     return 0
 
 

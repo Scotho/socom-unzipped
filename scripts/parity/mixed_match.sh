@@ -19,9 +19,21 @@ PCSX2_OUT="$OUT/pcsx2"
 mkdir -p "$OUT" "$PCSX2_OUT"
 export PATH="/usr/bin:/bin:$PATH"
 rm -f "logs/${NAME}.done"
-# Instruments come from scripts/parity/env.sh (sourced above). This leg keeps its own, shorter peek set:
-# no CZNetGame valve name bytes and no deref levels -- the console client is scored from its captures.
-export PS2X_PEEK="0x416054:3,*0x408c58:64,*0x408c58+0xc0*:32,*0x408c58+0x400:12,*0x408c58+0x174:1,*0x408c58+0xF78:24,*0x408c58+0x1044:8,*0x437ce8:64,*0x437ce8+0x100:21,0x4365c0:1,0x408f10:2,0x408c58:4"
+# THIS LEG'S NARROWER PS2X_PEEK, rendered per revision (Sprint 11 Task 19, review F2): no CZNetGame
+# valve name bytes and no deref levels -- the console client is scored from its captures, not from
+# valves. It OVERRIDES env.sh's wider block on purpose (a hard assignment, as the literal here
+# always was), which is why it has to be rendered too: a literal here is env.sh's render undone,
+# and an r0004 leg would cut its rows at r0001's addresses and score silence (s11_r0004_round1).
+# The column comes from the image $SOCOM_GAME_ELF names, the same way env.sh picks its own.
+if ! _socom_mixed_peek="$("$PYTHON" -m tools_py.parity.guest_addresses --env --profile mixed)"; then
+  echo "${0##*/}: the per-revision instrument addresses could not be resolved (see above) -- refusing" >&2
+  echo "  to hand this leg another revision's PS2X_PEEK" >&2
+  unset _socom_mixed_peek
+  exit 1
+fi
+eval "$_socom_mixed_peek"
+unset _socom_mixed_peek
+export PS2X_PEEK
 
 if ! netstat -an | grep -q "$SOCOM_SERVER_IP:53 "; then
   echo "mixed_match: the DNS stub is not listening on $SOCOM_SERVER_IP:53 -- start tools_py.parity.dns_stub first" >&2
