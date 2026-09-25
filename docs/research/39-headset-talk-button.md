@@ -1,5 +1,10 @@
 # 39. The headset's own button: the two listing passes, and the stop (Sprint 10, Q5)
 
+> **Superseded in place, 2026-09-25:** `:180`'s "Nellymoser" is wrong. SOCOM II's voice codec is **SASE**
+> (`SaseEncVad`/`SaseDec`), verified against all four images (`docs/research/44`'s addendum, `docs/research/56`);
+> the earlier name was an inference from the assert macro `NellyNull`, the only Nelly-shaped string in any image,
+> and is withdrawn. The finding this note exists for is unaffected.
+
 Date: 2026-09-21. Written by the Q5 agent (worktree `C:\projects\wt-q5`, branch `agent/q5` off `sprint-10` at
 `a44eb2d`). The question is the Sprint 9 spec's Goal 4 ("voice: the headset's own button"): Sprint 8 proved that no
 pad button talks (`docs/KNOWN.md` row "Voice: the headset path"), and left one hypothesis -- that the Logitech

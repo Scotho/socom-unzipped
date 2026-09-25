@@ -180,7 +180,7 @@ and who owns each item. This section holds no queue and no task list, by this do
 > W10 was executed rather than re-decided, and it failed, which is what rewrote R237.
 
 **Sprint 11 is drafted, in two independent specs**, and its plan
-(`docs/superpowers/plans/2026-09-23-sprint-11.md`) is where its eighteen tasks actually live:
+(`docs/superpowers/plans/2026-09-23-sprint-11.md`) is where its tasks actually live:
 - `specs/2026-09-20-sprint-11-release-hardening-design.md` — a public repository a stranger can trust: git and
   releases, the history and disc-derived-bytes audit, the progress story, the bug pipeline, the PII gate, owner
   decisions D1–D6.

@@ -1,5 +1,14 @@
 # Sprint 8 Goal 3 — Voice: Serve the Headset from the Host Microphone: Implementation Plan
 
+> **Superseded in place, 2026-09-25, on two points.** (1) The codec named at `:810` and `:934` is not Nellymoser:
+> SOCOM II's voice codec is **SASE** (`SaseEncVad`/`SaseDec`), verified against all four images
+> (`docs/research/44`'s addendum, `docs/research/56`); SOCOM 1's demo speaks LPC-10 and GSM appears nowhere. No
+> image carries the string `Nellymoser` — only the assert macro `NellyNull` — so the name was an inference from
+> that macro and is withdrawn. (2) `:168`'s "0x500 = 1280 bytes — 640 samples at **11025 Hz** mono s16,
+> **58.05 ms**" belongs to two *other* `lgaud` callers, not to the voice object: **the voice object opens at 8000 Hz
+> and reads every 80 ms** (research/56 §3, §6). `docs/KNOWN.md` §2's voice row carries the corrected record and wins
+> on any disagreement.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make SOCOM II's own USB-headset module real, served from the PC's microphone, so that a player who picks a capture device in the launcher is heard by the other machine. Today `lgaud.cpp` answers `0x80000001` = "no device" to everything but its version query, and the game polls `0x01 Enumerate` 3,749 times and `0x0f EnumHint` 5,316 times in a single run against that answer (`docs/KNOWN.md:101`). The bar for the autonomous half is a WAV of **what the game actually read through `0x08`** correlating at **>= 0.95** with the WAV fed in through a fake microphone, plus voice packets leaving instance A on the wire; the two-machine "can you hear me" is the owner's.

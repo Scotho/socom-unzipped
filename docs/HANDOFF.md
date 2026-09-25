@@ -23,7 +23,7 @@ reach a commit message. The product name is
 
 ## 2. Where it stands
 
-> **Picking up after the second Sprint 11 night (2026-09-24, 13:00Z)?** `docs/CURRENT_SPRINT.md`'s "Sprint 11 — OPEN" block, its **13:00Z, 2026-09-24** paragraph and the worktree table (one row left, `wt-cherry`); then the r0004 row in KNOWN §2 — the reboot is solved to its root and the gate is 2/3 with the last lane a harness fix in flight; the ledger `.superpowers/sdd/2026-09-23-sprint-11/progress.md` names what was running at the hand-back (a probe agent and the repair's fix round, both lock-bound). The lock's priority order is the r0004 critical path first (R255).
+> **Picking up after Sprint 11's close (2026-09-25)?** `docs/CURRENT_SPRINT.md`'s "Sprint 11" block, its **2026-09-25** paragraph and the worktree table; then the r0004 row in KNOWN §2 — the reboot is solved to its root, the gate is **3/3** (`s11_r0004_probe2`) and the build plays a scored online round on our own server (`s11_r0004_round2c`); the ledger `.superpowers/sdd/2026-09-23-sprint-11/progress.md` names what was running at the hand-back (a probe agent and the repair's fix round, both lock-bound). The lock's priority order is the r0004 critical path first (R255).
 >
 > **Picking up after the Sprint 11 night (2026-09-23, 14:00Z)?** Start at `docs/CURRENT_SPRINT.md`'s "Sprint 11 —
 > OPEN" block: what landed (Tasks 11, 2b, 8a, 8c and 19 followed on 2026-09-23 afternoon), and the table of agent worktrees holding unfinished, part-reviewed work — each row
@@ -37,8 +37,8 @@ reach a commit message. The product name is
 - **Plays:** boot, movies, title, menus, single-player missions, online login, lobby, a full round with kills between
   two instances on the hosted server (`s8_hosted_control2`, `s8_hosted_kill`). Twenty of twenty maps play a control
   round. Saves persist on simulated memory cards. 58-60 fps on the menus under load. Linux client builds and boots.
-- **Sprint 9, "A stranger's first run", is MERGED to `main` (`4415254`, `v0.9.0`, 2026-09-20); Sprint 10 is open on
-  branch `sprint-10` (`docs/CURRENT_SPRINT.md` has its header and the carried Q items).** Sprint 9 done: Goal 1 (failures explain themselves),
+- **Sprint 10 is MERGED to `main` (`f15acfa`, `v0.10.0`, 2026-09-23); Sprint 11 is open on branch `sprint-11` and
+  closing 2026-09-25.** Sprint 9, "A stranger's first run", is MERGED to `main` (`4415254`, `v0.9.0`, 2026-09-20). Sprint 9 done: Goal 1 (failures explain themselves),
   Goal 2 (release build, import-closure archives, `SHA256SUMS`; Windows zip 55.7 MB), **P1 and P2** (Goal 10's music:
   the queue, the ramp ownership and the stream loop flags, R169-R171, `eca5450`), **P3** (Goal 9's pad gate, R173,
   `3b12fa4`), and **the first half of P4** (`1966fa6`: the page-change flash and the top bar's two alignments).
@@ -51,7 +51,8 @@ reach a commit message. The product name is
 - **Next free ruling number: R264.** (It read **R179** from 2026-09-20 to 2026-09-22 while R240 was in use -- and a
   collision had already happened once, an agent numbering from R200 into taken ground. `tools_py/tests/test_doc_maintenance.py`
   now fails when this line is not `max(R<n>) + 1`, so take your number from here and update this line in the same commit.)
-- **Where the loop is now (2026-09-24 16:30Z, LATEST) -- `sprint-11` at `07dc937`+, pushed through `2381c8a`; `main` at `a548dd1`.** The second night: Tasks 17, 13, 8b, 6 Step 2, audio-out and the cross-row recompiler fix merged and gate-proven; the r0004 build's reboot traced to two capsule words in our dumped image and repaired (KNOWN §2's r0004 row is the whole chain), and, by 16:30Z, **the r0004 gate 3/3** (`s11_r0004_probe2`) once the gate's harness learned the revision (`tools_py/parity/guest_addresses.py`, one pin standard per revision); one KNOWN row retired from the public docs on both branches at the owner's word. Next: Task 6 Step 3 (the picks gated in research/42 §4's order), then the plan's remaining tasks. Traps this night taught, all in KNOWN §4: `--accept-pins` rewrites the shared standard at gate start-up (even a cancelled gate); a dumped image carries the resident patcher's writes; an agent's bare `git config` killed the main tree's push once more (per-worktree config, `scripts/agent_worktree.sh`).
+- **Where the loop is now (2026-09-25, LATEST) -- `sprint-11` at `fccf3b5d`, closing; `main` at `e63f9ba9` (PR #44, the three symbol research notes).** Landed since the 2026-09-24 16:30Z bullet below: `2e84984a` (the merge of `origin/main`), `5b6e8e8` (the leakcheck allow line), `d447bb1b` (**r0004 plays online** on our own server — login, lobby, host, join; and r0001 and r0004 clients **cannot join each other's games**, the client's own token filter bounces it silently), `4ab6e9f` + `8b70dad` + `0a01ba3` (the online instruments made per revision), `f9555c75` (`s11_r0004_round2c` scored), `6be03dac`/`3bb866f4` (**Task 6 Step 3 is DONE** — research/42's verdict column is filled and all ten upstream cherry-picks are KEEP; `agent/cherry` merged, so anything below still calling Step 3 "parked behind the r0004 gate" is stale), `fccf3b5d` (`--accept-pins` no longer drops a pin while it accepts another). **A second sprint is live: Sprint 12, "the readable image", has been running in the cloud on branch `sprint-12` since 2026-09-24** — its plan is `docs/superpowers/plans/2026-09-24-sprint-12.md` on that branch, its handoff `docs/superpowers/plans/2026-09-24-sprint-12-cloud-handoff.md`, the local half is session `socom-pc-6c`'s, and its Outcome carries a **PROOF REQUESTED** row only this machine can run (recomp, runtime, the C++ suite, the r0001 gate 3/3 with PINS MATCH) plus a `LOCAL:` request to merge `origin/main` into `sprint-12` once Sprint 11 lands. **CI was red at the close and was fixed the same day** (`378d97d1`, merging `agent/ci-fix`): `0061a2b0` allows the names sidecar's Metrowerks-mangled column, which is what reddened `secrets` — the hits were the *cloud branch's* rows reaching this branch's history scan; `a8329c58` gives the twelve `launch_revision` cases their revision, which is what reddened `windows` and `linux`; `6658d863` drops the two dangling gitlinks, so a fresh clone no longer prints `No url found for submodule path`. Re-check the three workflows before opening the merge PR. <!-- docmaint: future -->
+- **Where the loop was (2026-09-24 16:30Z) -- `sprint-11` at `07dc937`+, pushed through `2381c8a`; `main` at `a548dd1`.** The second night: Tasks 17, 13, 8b, 6 Step 2, audio-out and the cross-row recompiler fix merged and gate-proven; the r0004 build's reboot traced to two capsule words in our dumped image and repaired (KNOWN §2's r0004 row is the whole chain), and, by 16:30Z, **the r0004 gate 3/3** (`s11_r0004_probe2`) once the gate's harness learned the revision (`tools_py/parity/guest_addresses.py`, one pin standard per revision); one KNOWN row retired from the public docs on both branches at the owner's word. Next: Task 6 Step 3 (the picks gated in research/42 §4's order), then the plan's remaining tasks. Traps this night taught, all in KNOWN §4: `--accept-pins` rewrites the shared standard at gate start-up (even a cancelled gate); a dumped image carries the resident patcher's writes; an agent's bare `git config` killed the main tree's push once more (per-worktree config, `scripts/agent_worktree.sh`).
 - **Where the loop is now (2026-09-23 05:10Z) -- Sprint 10 is on `main` (`f15acfa`, PR #24, tag `v0.10.0`);
   `sprint-11` is open off it with seven agent branches merged forward (`4732892`) and its opening chain running
   (the runner rebuilt with the chat wrap and the address table, the suite, gate `s11_open_gate`, the two-instance
@@ -107,7 +108,7 @@ reach a commit message. The product name is
 
 ## 3. Your first hour (all of it lock-free; start nothing heavy)
 
-1. `git status --short`, `git log --oneline -15`, `gh run list --branch sprint-10 --limit 3`,
+1. `git status --short`, `git log --oneline -15`, `gh run list --branch sprint-11 --limit 3`,
    `bash scripts/loop_lock.sh check`. Know who else is in the tree before you edit anything. Then
    `bash scripts/install_hooks.sh` -- the leak check before every commit and push (rule 2 below is enforced, not
    just written); `git config core.hooksPath` says `scripts/hooks` when it is on. Then
@@ -141,9 +142,15 @@ Dates: the documents and commit subjects are stamped 2026-09-20 for a session th
   viewer); Q5 voice, the headset's button; Q6 Goal 11, the latched-stall memory bound; Q7 residual filler; Q8 close.
 - **Sprint 10** -- it stays up (the scheduled ladder, moved back from Sprint 9 Goal 5), the hosted box as a service,
   the mixed match with PCSX2 both ways, per-map kill routes, the first two-machine match (owner), a real DB (owner).
-- **Sprint 11** -- release hardening: git and releases made real, the history and disc-derived-bytes audit, README and
-  the loop explained, the landing page and a fresh-install build, install docs and FAQs, licences, the progress story,
-  the bug pipeline to GitHub issues, an installer if wanted. Six owner decisions (D1-D6) are listed in its spec.
+- **Sprint 11 -- as run**, four milestones rather than the goal list its spec was drafted as: **S** the chat hole
+  closed on both sides; **U** upstream and external (the divergence table, the recompiler fixes, the demo disc's
+  names); **R** the r0004 groundwork, which became an r0004 build that gates 3/3 and plays online; **P** the public
+  repository's remaining owes (the download, the bug pipeline, the licences, the story, the VM ring). Nineteen tasks
+  and **eight** owner decisions, each with the default the loop proceeds on (`docs/HUMAN_TASKS.md`).
+  *(This bullet said "six owner decisions (D1-D6)" and listed the spec's draft goals until 2026-09-25.)*
+- **Sprint 12, "the readable image"** -- the demo-name rename pass into the function map, vtable slots through RTTI,
+  BinDiff as the cross-check, the ccc types with the layout-age caveat. **Open since 2026-09-24 on `sprint-12`, run
+  in the cloud** (`docs/superpowers/plans/2026-09-24-sprint-12.md` on that branch). <!-- docmaint: future -->
 
 **Why this order:** by what the owner meets first (the music, every session), then by dependency (the keyboard
 narrowing needs Goal 3's developer mode; a public archive needs the
@@ -362,9 +369,19 @@ rather than rule. At most two C++-building agents at once.
   finished: Goal 10's music work closed in round four on 2026-09-21, and the knob-retirement plan ran as Sprint 10's
   Q2 on 2026-09-21 with its own rulings R203-R209. Either session may be gone by the time you read this; the working
   tree and the log say which.
+- **The Sprint 12 cloud session** (local half: session `socom-pc-6c`). It has been running Sprint 12, "the readable
+  image", on branch `sprint-12` since 2026-09-24: a spec, a plan
+  (`docs/superpowers/plans/2026-09-24-sprint-12.md` on that branch), a cloud handoff <!-- docmaint: future -->
+  (`docs/superpowers/plans/2026-09-24-sprint-12-cloud-handoff.md`), thirteen research notes, its own ruling series
+  S12-R1…R25, and every task's code half done. What it needs from this machine is its Outcome's **PROOF REQUESTED**
+  row (recomp, runtime, the C++ suite, the r0001 gate 3/3 with PINS MATCH) and, once Sprint 11 is on `main`, a merge
+  of `origin/main` into `sprint-12`. Work owed back to it is marked `LOCAL:` in its plan.
 - **Agents in worktrees** (`C:\projects\wt-*`, one branch each) whenever the controller has dispatched any. They
   never touch this tree; the controller merges. `.superpowers/sdd/<plan>/progress.md` is the ledger that says who
-  holds what.
+  holds what. As of 2026-09-25 `git worktree list` gives three -- `wt-cherry` (`agent/cherry`), `wt-ci-fix`
+  (`agent/ci-fix`, the CI test fix) and `wt-s12` (`sprint-12`) -- plus an orphan directory `C:\projects\wt-issues`
+  that is not a registered worktree; leave it until someone identifies it, and **rmdir the junctions before
+  `git worktree remove`**.
 - **Relays owed to the site session, not yet confirmed done:** (1) drop the "keyboard/mouse support" claim from
   s2u.scotho.com (the owner's instruction, 2026-09-20); (2) after a report is sent, the site's form should say that
   contributors can also open a GitHub issue and quote the `BR-` id (Sprint 11 Goal 7; not urgent).

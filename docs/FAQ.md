@@ -78,6 +78,22 @@ a read-only network share, an archived OneDrive folder, or a still-mounted zip w
 folder somewhere ordinary — your user folder or a second drive — and it goes away. This is checked before the
 window opens, so no save is ever lost to it.
 
+### 73 — wrong revision
+
+> These game files are a different disc revision than this copy of the game was built for. Unpack the download again.
+
+The generated code and the game files it reads are built for one disc revision, and the two have to match. This
+almost always means a folder that mixes files from two downloads. Unpack the download again into an empty folder and
+point the launcher at your ISO once more.
+
+### 74 — the game asked to restart
+
+> The game asked to restart itself after an error. This build cannot restart, so it stopped; the log says why.
+
+SOCOM II reboots itself when it hits certain internal errors. On a console that is invisible; here there is nothing
+to reboot into, so the run ends instead. The real failure is the one written just above the reboot line in the run
+log — send that log with the report.
+
 *(Two more you may see: **0** is a normal exit, and **1** or **3** mean the game stopped on an error it could not
 name. Both ask you to press SAVE DIAGNOSTICS; the end of the log says more.)*
 
@@ -162,8 +178,11 @@ Two separate reasons, and each is enough on its own:
 
 1. **It would not work.** The community servers run SOCOM II **r0004** — a different code package from the r0001
    disc this client is built from. That is why the launcher draws the community preset but refuses to select it,
-   with the line *"needs the r0004 game update -- planned"*. An r0004 build is on the project's list; it is not
-   here, and when it is, whether to point it anywhere is the owner's call, not this page's.
+   with the line *"needs the r0004 game update -- planned"*. An r0004 build now exists, passes the gate and plays
+   online on the project's own server (2026-09-24) — but the launcher's community row is still a placeholder, and
+   whether this client is ever pointed at somebody else's server is the owner's call, not this page's. Note also
+   that r0001 and r0004 clients **cannot join each other's games**: the client's own token filter bounces the join
+   silently.
 2. **This client's network code has not been audited.** It is the game's own twenty-year-old code, recompiled
    as-is, running as a native program with your user's access — see `../SECURITY.md`. Aiming an unaudited client at
    other people's server is not a thing to do to them or to yourself.
@@ -208,18 +227,15 @@ in plain text in `config.json` next to the exe, so do not hand that file to anyo
 
 ### The music cuts out, wobbles, or comes and goes
 
-Music and mission ambience are mid-fix; the README's status table is honest about it. But before you report it,
-**one question decides which fault you have found: are you listening over Bluetooth?**
+Music and mission ambience are mid-fix, and the fault is **ours**, not your speaker: the same capture on a wired
+device dropped as much as on Bluetooth (14 against 11 over sixteen minutes, 2026-09-23), so something between the
+mixer and the device loses about 50 ms of audio on **any** endpoint. `docs/KNOWN.md` §2 carries it with the numbers.
+Report it anyway — include the log and **say which output you used**; the game writes the audio device, period and
+rate into every run's log.
 
-The project's own longest-running "the music is wrong" thread turned out to live in the listening path, not in the
-game's mixer: a capture that recorded what the mixer produced *and* what the speaker actually played found short
-dropouts present in the speaker's recording and absent from the mixer's at the same instant — on a Bluetooth
-speaker. `KNOWN.md` §2 carries that entry with its numbers and the experiment that settles it; this page will not
-restate them.
-
-So: if you can, try the same scene on a wired output. Then report it either way, and **say which output you used** —
-a report about audio that does not name the device it came out of cannot be acted on. Include the log; the game
-writes the audio device it opened, its period and its rate into every run's log.
+*(Until 2026-09-25 this section asked you whether you were listening over Bluetooth and sent you to try a wired
+output. That attribution was retracted by measurement on 2026-09-23 and is now `docs/KNOWN.md` §1's first row; it was
+our defect the whole time, and this page was sending players after their own hardware.)*
 
 ---
 
