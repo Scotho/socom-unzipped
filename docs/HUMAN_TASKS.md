@@ -24,10 +24,8 @@ blocks anything; each is a decision the loop took a default on, or a hand only y
    prologue alone; the toml's names live in the csv + sidecar; tool installs were attempted. Say a word to overturn
    any and the affected lever is reworked.
 2. **Five big engine routines, by hand** — item 7 of the Sprint 11 section below, now with the five addresses.
-3. **The r0004 build with its own sidecar** (`recomp/socom2_names_r0004.csv`, 1,705 rows) **and its gate** — the
-   proof row's optional fifth item, not run at the close (the lock was Sprint 11's for its close chain); about an
-   hour of the machine at a quiet window (`bash scripts/build_revision.sh r0004 …` then the r0004 gate), nothing to
-   watch. Name the window and the loop runs it.
+3. ~~**The r0004 build with its own sidecar and its gate**~~ — **done 2026-09-25 07:40Z** (`s12_names_r0004_gate` 3/3
+   with PINS MATCH; the Sprint 12 plan's Task 3 Step 4, item 5); nothing to do.
 4. **The `v0.12.0` release archives** — the tag's workflow makes a draft; the archives and the publish are yours, as
    for `v0.10.0` and `v0.11.0`.
 5. **The story's missing days, carried twice** — `docs/STORY.md` has no entry for three Sprint 11 days (its own note

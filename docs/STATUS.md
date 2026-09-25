@@ -43,7 +43,7 @@ the four commands of the PROOF REQUESTED row — recomp with the 1,840-name side
 13 min (exe `804dd172…`), `build.sh test` exit 0, and the r0001 gate from the main tree on the worktree's exe:
 `GATE PASS (3/3)`, `PINS MATCH (13 compared)` — the result appended to the row (`83e9696c`). Then Sprint 11's
 close-out merged (`deb288c2`, `eb190a42`), the two close reviews (a read-only agent's table, the controller's edits:
-the "Sprint 12 — CLOSED" block), the suite counts on the renamed tree (C++ 892/892; Python `Ran 2795`, `OK` once the story timeline this close had edited was regenerated), the r0004 leg (the plan's Task 3 Step 4 row carries its result) and the PR to `main`. **The known-issue stack at this close:**
+the "Sprint 12 — CLOSED" block), the suite counts on the renamed tree (C++ 892/892; Python `Ran 2795`, `OK` once the story timeline this close had edited was regenerated), the r0004 leg (`s12_names_r0004_gate` 3/3 with PINS MATCH on the r0004 runtime built with its own sidecar, after the r0004 pin standard was restored from a stray knob `--accept-pins` had written into it — issue #45's class) and the PR to `main`. **The known-issue stack at this close:**
 opened 0, closed 0, carried 0 (the `Sprint 12` milestone held no issue and is closed); one issue opened by the
 review (#48: `build_revision.sh --out` drops the names sidecar); comments on #25, #28, #40 and #42; highest
 issue #48; the six issues Sprint 11 carried were never in Sprint 12's milestone and are ruled not carried
