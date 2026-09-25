@@ -1776,13 +1776,13 @@ namespace
         static const float s_forceLod = ps2x::knob("PS2X_LOD_SCALE") ? static_cast<float>(std::atof(ps2x::knob("PS2X_LOD_SCALE"))) : 0.0f;
         if (s_forceLod > 0.0f)
         {
-            if (uint8_t *pw = rdram + (camera & PS2_RAM_MASK) + 0x2c8u; camera != 0)
+            if (uint8_t *pw = rdram + (camera & PS2_RAM_MASK) + 0x2c8u; camera != 0)   // +0x2c8 CCamera::m_RangeScale (single-twin candidate, docs/research/50-ccc-dwarf1-types.md:290)
             {
                 std::memcpy(pw, &s_forceLod, 4);
                 std::memcpy(pw + 4, &s_forceLod, 4);
             }
         }
-        if (const uint8_t *pl = getConstMemPtr(rdram, camera + 0x2c8u))
+        if (const uint8_t *pl = getConstMemPtr(rdram, camera + 0x2c8u))   // +0x2c8 CCamera::m_RangeScale (research/50:290)
             std::memcpy(lodScale, pl, sizeof(lodScale));
         const uint8_t *pc = getConstMemPtr(rdram, cornersAddr);
         const uint8_t *pm = getConstMemPtr(rdram, camera + 0x330u);
@@ -1853,9 +1853,9 @@ namespace
             uint32_t f5c = 0, c88 = 0, c8c = 0; float f9c = 0.0f; uint8_t a1 = 0;
             if (pn)
             {
-                std::memcpy(&f5c, pn + 0x5c, 4);
-                std::memcpy(&f9c, pn + 0x9c, 4);
-                std::memcpy(&c88, pn + 0x88, 4);
+                std::memcpy(&f5c, pn + 0x5c, 4);   // +0x5c tag_NODE_PARAMS flags word, +0x5d its byte 1 (confirmed, docs/research/50-ccc-dwarf1-types.md:294)
+                std::memcpy(&f9c, pn + 0x9c, 4);   // +0x9c CNode::m_Opacity (consistent, unconfirmed, research/50:297)
+                std::memcpy(&c88, pn + 0x88, 4);   // +0x88 CNode::m_visual's count (confirmed, research/50:295)
                 std::memcpy(&c8c, pn + 0x8c, 4);
                 a1 = pn[0xa1];
             }
@@ -1994,7 +1994,7 @@ namespace
         uint32_t holder = 0, cam = 0; float lod[2] = {0.0f, 0.0f};
         if (const uint8_t *ph = getConstMemPtr(rdram, socom2_addresses::current().cameraHolder)) std::memcpy(&holder, ph, 4);
         if (holder) if (const uint8_t *pc = getConstMemPtr(rdram, holder + 0xb4u)) std::memcpy(&cam, pc, 4);
-        if (cam) if (const uint8_t *pl = getConstMemPtr(rdram, cam + 0x2c8u)) std::memcpy(lod, pl, sizeof(lod));
+        if (cam) if (const uint8_t *pl = getConstMemPtr(rdram, cam + 0x2c8u)) std::memcpy(lod, pl, sizeof(lod));   // +0x2c8 CCamera::m_RangeScale (single-twin candidate, docs/research/50-ccc-dwarf1-types.md:290)
         const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
         std::fprintf(g_cullTraceFile, "camcfg t=%.3f arg=%g rec=%08x b4=%02x o22=%u o24=%u o26=%u cam=%08x lod=%g/%g ret=%u\n",
                      sec, t, rec, b4, o22, o24, o26, cam, lod[0], lod[1], GPR_U32(ctx, 2));
