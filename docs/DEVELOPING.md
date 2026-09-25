@@ -125,10 +125,15 @@ Every tracked module under `tools_py/` except the tests, one line each, grouped 
 2026-09-25 (`git ls-files 'tools_py/*.py'`, less `tools_py/tests/` and the four package `__init__.py` files). The one
 line is the module's own docstring, shortened; the docstring is the reference. Run a module as
 `python -m tools_py.<name>` (or `tools_py.parity.<name>`, …) from the repository root unless its docstring says
-otherwise. **†** marks the 28 modules that no code, script, workflow or test invokes — a CLI run by hand from a note,
-a one-off, or dead (the 2026-09-25 harness audit's Appendix A, `docs/audits/2026-09-25-project-audit/harness-tools.md`,
-re-checked on this tree by `git grep -l -w <name>` over code, scripts and workflows: zero hits outside the module
-itself). Issue #46 carries one of them (`movie_blocks`, which has a test but no caller); the rest have no issue yet.
+otherwise. **†** is the flag "invoked by nothing" of the 2026-09-25 harness audit's Appendix A
+(`docs/audits/2026-09-25-project-audit/harness-tools.md`): 28 modules whose name no other Python module, script,
+workflow or test contains -- its code and test counts are both zero, and a mention in a document does not count.
+Other modules have no caller either but are named from some other code file; the research scripts, marked or not, are
+run by hand from their notes. Separately, `movie_blocks` has tests but no caller (issue #46); the † modules have no
+issue yet.
+> Superseded 2026-09-25 (Sprint 13 R2, fix round 1): this paragraph gave the method as "`git grep -l -w <name>`,
+> zero hits outside the module itself", which does not yield 28 (seventeen more modules pass it, most of them
+> research scripts), and said issue #46 carried one of the 28; `movie_blocks` is not among them.
 Beside the modules, `tools_py/screenshot.ps1` captures a window by hand, and `tools_py/decrypt.log` / `decrypt2.log`
 are tracked because a KNOWN §1 evidence manifest hashes them.
 
@@ -379,7 +384,9 @@ by design:
 ./build.sh recomp      # regenerate the ELF, normalise the function map, run ps2_recomp
                        # (273 s and 352 s, two runs on 2026-09-21 -- minutes, not seconds)
 ./build.sh runtime     # cmake+ninja, clang, LTO off -> dist/socom2.exe and the launcher
-                       # (624 s and 983 s from an empty build tree, 2026-09-21)
+                       # (624 s and 983 s from an empty build tree, 2026-09-21; this line said
+                       # "~15 min from scratch, ~3 min runtime-only" until 2026-09-25 -- the 3 min
+                       # had no measurement behind it)
 ./build.sh test        # the Python suite first (unittest, verbose), then ps2x_tests and vu1_replay
                        # (builds both, copies vu1_replay to dist/) and replays the VU1 fixtures against
                        # their goldens, native path on and off, plus a --vram-diff equivalence check
@@ -491,11 +498,10 @@ recomp/extra_functions_<rev>.txt` writes a revision its own.
 into the map, cuts the non-contiguous ranges to size and applies `recomp/merge_ranges.txt`, and writes the result to
 **`recomp/build/socom2_ghidra_<rev>.fixed.csv`** — a build product, under a git-ignored directory. Steps 2-5 all
 read that file: the merged ELF is repaired against exactly the rows the recompiler will compile, the config's
-`ghidra_output` names it, and `<elf>.repair.json` records its sha256. (Before 2026-09-24 the fix ran over the tracked
-`recomp/socom2_ghidra_<rev>.csv` in place, so every r0004 build left the map modified and the next build re-merged
-the image.) `build.sh`'s r0001 lane still rewrites `recomp/socom2_ghidra.csv` in place; that file is a fixed point of
+`ghidra_output` names it, and `<elf>.repair.json` records its sha256. The tracked
+`recomp/socom2_ghidra_<rev>.csv` is read, never written. `build.sh`'s r0001 lane still rewrites `recomp/socom2_ghidra.csv` in place; that file is a fixed point of
 the fix (rewriting it changes no byte), so the habit is there but leaves nothing behind.
-**The executable knows which pressing it was recompiled from, and refuses another one (Sprint 11 Task 19).** Step 5 passes `-DPS2X_GAME_REVISION=<rev>` to the cmake configure (`build.sh` passes `r0001`, the default chain's), so `PS2X_GAME_REVISION` is a PUBLIC compile definition on `ps2_runtime` and the recompiled game carries the revision its generated code came from. At boot, right after `socom2_addresses::selectFromImage` has read the loaded image's own build banner, `runtime/socom2_revision_guard.h` compares the two. They agree, or the image names no revision at all (an image this table has no column for): the run carries on, the second case with the r0001 fallback and its existing warning, unchanged. They name **different** revisions and the run stops on one line -- `[socom2] REFUSED: this executable was recompiled from r0004 but the image at <path> is r0001 (banner "..."); pass the matching image (SOCOM_GAME_ELF) or the matching executable` -- and the process leaves with **73** (`revision-mismatch`, `ps2x/exit_codes.h`, distinct from the preflight's 66/67/68). A refusal rather than a warning because nothing past a mismatch is meaningful: every override address, every static-constructor table and every function body belongs to the other build. The case is not hypothetical: two parity gates on 2026-09-23 ran the r0004 executable on r0001's image, booted, walked r0001's constructor table into r0004 bodies and hung at the loading screen with nothing in the log to say so. A `<rev>` with a suffix compares as its base, so an `r0001check` build belongs on an r0001 image.
+**The executable knows which pressing it was recompiled from, and refuses another one (Sprint 11 Task 19).** Step 5 passes `-DPS2X_GAME_REVISION=<rev>` to the cmake configure (`build.sh` passes `r0001`, the default chain's), so `PS2X_GAME_REVISION` is a PUBLIC compile definition on `ps2_runtime` and the recompiled game carries the revision its generated code came from. At boot, right after `socom2_addresses::selectFromImage` has read the loaded image's own build banner, `runtime/socom2_revision_guard.h` compares the two. They agree, or the image names no revision at all (an image this table has no column for): the run carries on, the second case with the r0001 fallback and its existing warning, unchanged. They name **different** revisions and the run stops on one line -- `[socom2] REFUSED: this executable was recompiled from r0004 but the image at <path> is r0001 (banner "..."); pass the matching image (SOCOM_GAME_ELF) or the matching executable` -- and the process leaves with **73** (`revision-mismatch`, `ps2x/exit_codes.h`, distinct from the preflight's 66/67/68). A refusal rather than a warning because nothing past a mismatch is meaningful: every override address, every static-constructor table and every function body belongs to the other build -- run anyway, such a pairing boots, walks one build's constructor table into the other's bodies and hangs at the loading screen with nothing in the log to say so (the guard since 2026-09-24). A `<rev>` with a suffix compares as its base, so an `r0001check` build belongs on an r0001 image.
 **A revision's function map comes out of Ghidra with `bash scripts/ghidra_export_functions.sh <elf> <out.csv>`** —
 the recipe that made `recomp/socom2_ghidra.csv` (stock ELF loader → `r5900:LE:32:default:default` from the EE
 extension, `MakeFunctions.java` on the three entry points no flow reaches before analysis, then two
@@ -526,7 +532,10 @@ addresses, none of which is a function start in r0001's map.
 --check-against dist/socom2_game.elf` -- the ELF identical (sha256 `06b83684...8872`), `diff -rq --exclude=.complete` of the 14,882
 generated files against `recomp/output` empty, the exe built (236,856,320 B; not byte-identical to `dist/socom2.exe`,
 which embeds its own build's paths and source revision). Measured in that run (2026-09-23): DNAS 2 s, the decryption
-6.5 min, the ELF instant, the recomp seconds, the runtime build about twenty minutes from a cold build tree.
+6.5 min, the ELF instant, the runtime build about twenty minutes from a cold build tree; the recomp's time was not
+recorded (the r0001 recomp's measured time is the build block's, 273 s and 352 s on 2026-09-21).
+> Superseded 2026-09-25 (Sprint 13 R2, fix round 1): this listed "the recomp seconds" -- the same claim the build
+> block's "~10 s" made, which two measured runs put at minutes (documents audit row 7).
 
 ### Build, run, verify — a newcomer's first hour
 
@@ -561,12 +570,17 @@ only ever grow, so more than the number here is fine and fewer is a regression t
 
 | # | command | the line that says it worked |
 |---|---|---|
-| 1 | `./build.sh recomp` | `recomp: 14882 files, unhandled=114399, unmapped=<n>` — and `Recompilation completed successfully` at the end of `recomp/recomp_run.log`, which also carries `Loaded 1840 display names from socom2_names.csv` (2026-09-25; the number grows with the sidecar — its absence means the names were not applied and every function is still `FUN_`/`sub_`). **`unhandled=` is not a failure** (it said `unhandled=0` here until 2026-09-21, which had not been true for a long time): it counts `unhandled-instruction` lines in the log, which the recompiler emits and carries on from, and the exe built from exactly this generated code is the one the gate passes 3/3 on (measured twice on 2026-09-21, identically, in two working trees). What would be a failure is a non-zero exit (the last 20 log lines are printed then) or a file count that fell. `unmapped=` (since 2026-09-24) counts `unmapped-continuation` warnings: continuation pcs — a call's return, a syscall's return, a not-taken branch's fallthrough — that no recompiled row owns, each one a `[guest-branch:missing-target]` waiting for a thread to reach it. It is read, not gated, like `unhandled=`; r0001 printed `unmapped=0` on 2026-09-24 (chain 18), and a value that climbs after a map change is the map's holes, not the recompiler's. |
+| 1 | `./build.sh recomp` | `recomp: 14882 files, unhandled=114399, unmapped=<n>` — and `Recompilation completed successfully` at the end of `recomp/recomp_run.log`, which also carries `Loaded 1840 display names from socom2_names.csv` (2026-09-25; the number grows with the sidecar — its absence means the names were not applied and every function is still `FUN_`/`sub_`). **`unhandled=` is not a failure**: it counts `unhandled-instruction` lines in the log, which the recompiler emits and carries on from, and the exe built from exactly this generated code is the one the gate passes 3/3 on (measured twice on 2026-09-21, identically, in two working trees). What would be a failure is a non-zero exit (the last 20 log lines are printed then) or a file count that fell. `unmapped=` (since 2026-09-24) counts `unmapped-continuation` warnings: continuation pcs — a call's return, a syscall's return, a not-taken branch's fallthrough — that no recompiled row owns, each one a `[guest-branch:missing-target]` waiting for a thread to reach it. It is read, not gated, like `unhandled=`; r0001 printed `unmapped=0` on 2026-09-24 (chain 18), and a value that climbs after a map change is the map's holes, not the recompiler's. |
 | 2 | `./build.sh runtime` | `built dist/socom2.exe` (the launcher lands beside it) |
-| 3 | `./build.sh test` | First the Python suite's `OK` (row 4), then `Total Tests: 892` / `Passed: 892` / `Failed: 0` (892 on this machine 2026-09-25 on the renamed tree at `eb190a42`, Sprint 12's sidecar case included; 881 earlier that day at `0a01ba3`; 880 on the Linux runner, one platform-guarded case fewer — a runner printing 880 is not a regression; 876 on 2026-09-24, 764 from 2026-09-21), then `PASS: vram diff against 1.00% tolerance, checked=15 skipped=0` (this row said 500 until 2026-09-21, three sprints of cases after it stopped being true) |
-| 4 | `python -m unittest discover -s tools_py/tests -t .` | The same suite `./build.sh test` runs first — run it alone when you changed only Python. **`OK`, with no failures, is the bar** — match that, not a number. The count only ever grows: `Ran 2795 tests` on 2026-09-25 on the renamed tree at `eb190a42` (2795 on the Windows runner and 2797 on the Linux one at the same head; `Ran 2553 tests` earlier that day at Sprint 11's `0a01ba3`, 2556 on the Windows runner and 2558 on the Linux one; `Ran 1832 tests` on 2026-09-22, 1723 on 2026-09-21, 1104 before that). The **skip** count is not a constant and is not worth matching — 100 on that clone, 85 once a disc had been extracted into `game/`, 109 in a worktree with neither — because cases skip on what you have. (This row said 1104 / `skipped=63` until 2026-09-21.) |
+| 3 | `./build.sh test` | First the Python suite's `OK` (row 4), then `Total Tests: 892` / `Passed: 892` / `Failed: 0` (2026-09-25, this machine, the tree at `eb190a42`; the Linux runner runs one platform-guarded case fewer, so its count one below is not a regression), then `PASS: vram diff against 1.00% tolerance, checked=15 skipped=0` |
+| 4 | `python -m unittest discover -s tools_py/tests -t .` | The same suite `./build.sh test` runs first — run it alone when you changed only Python. **`OK`, with no failures, is the bar** — match that, not a number. The count only ever grows: `Ran 2795 tests` (2026-09-25, this machine and the Windows runner, the tree at `eb190a42`; the Linux runner ran 2797 at the same head). The **skip** count is not a constant and is not worth matching, because cases skip on what you have (a disc extracted into `game/`, a worktree without one). |
 | 5 | `python -m tools_py.parity.gate --stamp first_run` | `GATE PASS (3/3) -> logs\parity\gate\first_run` (15 to 17 minutes: three gates on 2026-09-25 took about 15, 17 and 16 — `s12_names_gate`, `s11_close_gate`, `s12_names_r0004_gate`, from the first file each wrote under `logs/parity/gate/<stamp>/` to its `summary.txt`; the game window opens and closes three times; do not touch the keyboard) |
 
+> Superseded 2026-09-25 (Sprint 13 R2, fix round 1): rows 1, 3 and 4 carried every earlier count (881, 880, 876 and
+> 764 C++; 2553, 1832, 1723 and 1104 Python; three skip counts) and three "this row said ... until 2026-09-21" notes
+> (`unhandled=0`, the C++ 500, the Python 1104 / `skipped=63`). One dated count per row stays; the earlier ones are
+> in this file's git history and in `docs/STATUS.md`'s dated entries.
+>
 > Superseded 2026-09-25 (Sprint 13 R2): row 5 said "about 15 min", README said "about 15 minutes" and HANDOFF's
 > per-stage figures add to 17 (documents audit row 39); the three measured gates above are the reading.
 
@@ -591,8 +605,8 @@ Everything else is a **Dev** knob (or Test) and is ignored unless the run is in 
 `socom2`'s command line or `PS2X_DEV=1`; `run.sh`, the gate and every script under `scripts/parity/` are
 developer-mode launches already. The game's first log line, `[knobs] dev=<0|1> set: ... | ignored without --dev:
 ...`, says what was honoured and what was not; the launcher passes the game none of its own inherited `PS2X_*`
-environment unless developer mode is on. A switch that used to turn ON when set to `0` is a flag now (`X=1` on,
-anything else off). A Path knob's value must lie under the game folder unless developer mode is on (R207).
+environment unless developer mode is on. An on/off knob is a flag: `X=1` is on, anything else off (since
+2026-09-21). A Path knob's value must lie under the game folder unless developer mode is on (R207).
 
 A few `PS2X_*` names are **not knobs**: `PS2X_ENABLE_DEBUG_UI` and `PS2X_IOP_ENABLE_PLUGINS` are CMake options,
 `PS2X_DEFAULT_BOOT_ELF` a CMake cache string and `PS2X_GAME_REVISION` a compile definition (above) — set at build
@@ -709,7 +723,8 @@ binary (`socom2_libnetb.cpp`, the `0x200` case; `docs/KNOBS.md`'s one-line meani
 [net-stats] line", does not describe what the code does). `PS2X_SOCOM2_NET_TRACE` (any value) enables the netcode
 trace, `PS2X_SOCOM2_NET_TRACE_PEERS=<n>` sets how many datagrams are hex-dumped per direction (default 16), and
 `PS2X_SOCOM2_NET_TRACE_ALL` (default off) hex-dumps **every** datagram rather than only the peer ports (the only way
-to content-inspect the DME aux-UDP traffic). `PS2X_SOCOM2_UDP_SHIFT=<n>` shifts an instance's peer UDP ports
+to content-inspect the DME aux-UDP traffic). *(Reworded 2026-09-25, Sprint 13 R2: "only the peer ports" was "only
+ports below 10000".)* `PS2X_SOCOM2_UDP_SHIFT=<n>` shifts an instance's peer UDP ports
 (instance B uses 2), and `PS2X_SOCOM2_RSA_KEY=b` gives an instance the second precomputed RSA key pair so two exes on
 one host do not publish the same public key; the launcher's "Second instance" box sends both. The drivers give
 instance B its key through `PS2X_SOCOM2_RSA_KEY_B=b` (the launch scripts under `scripts/parity/` export it).
@@ -739,7 +754,7 @@ match; `docs/research/18-online-round-start.md` §3.6 and §4.9 have the full re
   1`, before a dead-range read), so a first read of `0.0` or of uninitialised heap is not a kill
   (`tools_py/tests/test_kill_watch.py`), and `PS2X_PEEK` must cover the offset or the run refuses to launch rather
   than failing later with `reads=0`.
-- The engagement ladder (Sprint 5 Amendment A): `--rounds N` (default 4) plays N rounds on one lobby success,
+- The engagement ladder: `--rounds N` (default 4) plays N rounds on one lobby success,
   re-finding the actor by vtable and re-arming the move-path disarm window after each round or kill, with one
   `LADDER round=<n> …` line per round and a `LADDER-SUMMARY`; `--route <file>` picks the waypoint route for
   `--endgame route`/`cooperative` (default `tools_py/parity/routes/frostfire_v2.json` for `--map frostfire`, derived
@@ -747,7 +762,7 @@ match; `docs/research/18-online-round-start.md` §3.6 and §4.9 have the full re
   stays loadable); `--endgame route` (the default) has the stander wait at spawn while the mover follows the route,
   closes into the contact band, aims with partial-`rx` pulses read from the actor matrix and fires, teleport-checked
   throughout; `--endgame cooperative` adds victim strafe-oscillation and shooter micro-strafing between bursts so each
-  side keeps feeding the other's starvation counter; `--endgame converge` is Sprint 4's both-approach and sweep-fire;
+  side keeps feeding the other's starvation counter; `--endgame converge` has both sides approach and sweep-fire;
   `--mover {A,B}` (default A, the host) picks which side walks and shoots; `--auto-swap` swaps `--mover` once on a
   `SWAP-MOVER` stop instead of ending the run; `--control-round` (implies `--converge`) runs the clock round-end
   negative control -- nobody fires, both sides alternate strafe legs until the round ends on its own clock, and
@@ -758,9 +773,9 @@ match; `docs/research/18-online-round-start.md` §3.6 and §4.9 have the full re
 > whole launcher paragraph spliced into the middle of it (documents audit row 5); and the map sentence said
 > references were committed "for Frostfire and Medley" only.
 
-**Scoring a match twice.** The acceptance test passed at Sprint 5's close: a Frostfire ladder match ends in a kill
-scored by two independent readers (KillWatch on the actor fields above, `verdict_replay.py` on the round-state valves)
--- `docs/KNOWN.md` §1 and `docs/STATUS.md`. `tools_py/parity/verdict_replay.py <run_A.log> <run_B.log> [--per-round]`
+**Two independent kill scorers.** A ladder match's kill is scored twice: by KillWatch on the actor fields above,
+and by `verdict_replay.py` on the round-state valves (the acceptance test these two met, 2026-09-13, is
+`docs/KNOWN.md` §1's). `tools_py/parity/verdict_replay.py <run_A.log> <run_B.log> [--per-round]`
 is the second, independent kill scorer (primary signal: the round-state valves -- `total_mp_kills`, `aiteam_*`, the
 clock -- corroborated by the actor fields), test-driven against synthetic and real fixtures, and importing nothing from
 `online_match_ours.py` or `verdict_core.py` by design, so a parser bug in one cannot hide behind agreement with the

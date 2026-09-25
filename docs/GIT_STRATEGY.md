@@ -107,7 +107,7 @@ Annotated tags only (`git tag -a`), pushed explicitly (`git push origin <tag>`).
 | Tag | Meaning | Made when |
 |---|---|---|
 | `playtest-N` | A build the owner (or invited testers) plays. Not a release: no promise, no GitHub Release page. The archive's sha256 is recorded in `docs/PLAYTEST.md`. | Sprint 9 P7, and any later playtest. |
-| `v0.<sprint>.0` | A sprint closed and merged to `main` (`v0.5.0` onwards). `v0.<sprint>.<n>` for a hotfix on it. | At each close-out, on the merge commit. |
+| `v0.<sprint>.0` | A sprint closed and merged to `main` (`v0.5.0` onwards). `v0.<sprint>.<n>` for a hotfix on it. *(Superseded 2026-09-25, Sprint 13 R2: the examples read "`v0.9.0`, `v0.10.0`, `v0.11.0`", as if the series began at 9; `git ls-remote --tags origin` shows `v0.5.0` to `v0.12.0`.)* | At each close-out, on the merge commit. |
 | `v1.0.0` | The first public release: Sprint 11's bar met, the repository public, archives attached to a GitHub Release with `SHA256SUMS`. SemVer from here: a save- or config-breaking change is a major. | **When the bar is met and D2 is answered -- not on a sprint number.** *(This cell said "Sprint 11 close" until 2026-09-25; §4's own `v0.<sprint>.0` rule makes that close's tag `v0.11.0`, and `v1.0.0`'s real preconditions -- archives built, attached and a Release published -- are blocked on D2.)* |
 
 **Every release keeps its symbols.** The release exe is stripped; `dist-release/symbols/` of that exact build is the

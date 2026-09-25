@@ -179,15 +179,18 @@ eleven in the order they matter. Nothing was dropped.
    commit or document. Subjects are `type(scope): what and why`, long, and say the finding (`docs/GIT_STRATEGY.md`).
 4. **Push to the OPEN sprint's branch on `origin` and check CI** (`gh run list --branch <that branch> --limit 1`;
    the branch is the `branch:` line of `docs/CURRENT_SPRINT.md`'s header block, and only there). Never hard-code a
-   sprint number here: this rule said `sprint-9` for two sprints. CI must stay green. A `docs/**`-only push runs
-   only the ten-second `changes` job and skips the build, which reports as success (read the run, not the word);
-   anything else costs an hour on a hosted runner. **Know what green means:** the `linux` and `windows` workflows
+   sprint number here: this rule said `sprint-9` for two sprints. CI must stay green. Every push runs `linux`,
+   `windows` and `secrets`: on a `docs/**`-only push the first two run only their ten-second `changes` job and skip
+   the build, which reports as success (read the run, not the word), while `secrets` runs its full leak check over
+   the tree and the history either way; anything that is not docs-only costs an hour on a hosted runner. The fourth
+   workflow, `release-draft`, runs only on a pushed `v*` tag (or by hand). **Know what green means:** the `linux` and `windows` workflows
    build with NO generated game code and never run the gate. They prove the library, the two suites and the
    launcher. They prove nothing about the game.
    > Superseded 2026-09-25 (Sprint 13 R2): this rule named the branch as "`sprint-10` through its close, `sprint-11`
    > after it" in the sentence that forbids hard-coding one (documents audit row 10), said a docs-only push "does not
-   > trigger" CI (it triggers every workflow; `linux.yml`'s `changes` job skips the build) and called CI "the one
-   > workflow ... Linux-only" (there are four, `linux`, `windows`, `secrets` and `release-draft`, since 2026-09-21).
+   > trigger" CI and called CI "the one workflow ... Linux-only" (there are four, `linux`, `windows`, `secrets` and
+   > `release-draft`, since 2026-09-21). *(Fix round 1, 2026-09-25: the first correction said a docs-only push runs
+   > "only the ten-second `changes` job"; `secrets` runs in full on every push, and `release-draft` only on tags.)*
 5. **A failing test first** for every runtime change; `./build.sh test` and the three-stage gate green BEFORE the
    commit, for anything touching `third_party/ps2recomp/`, `recomp/`, `tools_py/parity/`, `scripts/parity/` or
    `build.sh`. `./build.sh runtime` must precede the gate when the runtime changed (`build.sh test` does not rebuild
@@ -315,10 +318,11 @@ rather than rule. At most two C++-building agents at once.
     > kept only as the general lesson (documents audit row 18).
 14. **The owner's open launcher can hold `dist/socom_unzipped_launcher.exe` locked.** A launcher build then lands as
     `..._new.exe` beside it; say so in HUMAN_TASKS rather than failing.
-15. **Two directories are named `research`.** `docs/research/` (tracked; on 2026-09-25 notes 01-61 and 64, with no
-    35 and two notes numbered 43 -- `43-r0004-capsule.md` and `43-what-changed-in-r0004.md` -- so name the file, not
-    only the number, when citing 43) is the one every document cites. *(Superseded 2026-09-25, Sprint 13 R2: this
-    said "notes 01-34", and trap 10 said STATUS was "2400 lines" -- documents audit rows 18 and 57.)* `research/` at the repository root is git-ignored: 1.6 GB of reference checkouts (Horizon, upstream
+15. **Two directories are named `research`.** `docs/research/` (tracked; `ls docs/research` is the list and the newest
+    note is its highest number; there is no 35, and two notes are numbered 43 -- `43-r0004-capsule.md` and
+    `43-what-changed-in-r0004.md` -- so name the file, not only the number, when citing 43) is the one every document
+    cites. *(Superseded 2026-09-25, Sprint 13 R2: this said "notes 01-34", and trap 10 said STATUS was "2400 lines"
+    -- documents audit rows 18 and 57. This trap is the one place in this file that describes the numbering.)* `research/` at the repository root is git-ignored: 1.6 GB of reference checkouts (Horizon, upstream
     ps2recomp, PSRewired game info, an r0005 patch). A path like `research/06-989snd-rpc.md` in a spec means
     `docs/research/`.
 16. **The ignored tree is about 105 GB** (`vm/` 60, `logs/` 27, `game/` 8, build trees 4.5, `tools/` 2). The gate
@@ -431,7 +435,7 @@ rather than rule. At most two C++-building agents at once.
 | The server's name is `socom.scotho.com`; "you add it" | `80b1971`; P6 | The DNS-only A record exists and resolves. ~~Next: the persona measurement, then the launcher's default~~ **DONE** (superseded 2026-09-25, Sprint 13 R2): the persona measurement was withdrawn (R175, section 10 item 3) and the launcher's default preset has been `socom.scotho.com` since P6 (`launcher_config.h`, `kServerPresets`) |
 | The site must stop claiming keyboard/mouse support | Section 8 relay | Owed to the site session |
 | A playtest is planned | Milestone P; `docs/PLAYTEST.md` | ~~Scheduled~~ **Played 2026-09-22** (superseded 2026-09-25, Sprint 13 R2): the owner played the portable build that night; its findings and R236-R240 are in `docs/CURRENT_SPRINT.md` ("The playthrough, 2026-09-22"), and `docs/PLAYTEST.md` is the script for the next sitting |
-| Make the project public and forkable, with intentional git planning | `docs/GIT_STRATEGY.md`, `CONTRIBUTING.md`, `SECURITY.md`, `.github/`, Sprint 11 spec Goals 0, 1, 7 | ~~Designed and scheduled; early files landed~~ **DONE** (superseded 2026-09-25, Sprint 13 R2): public since 2026-09-20, the rulesets on `main` and `sprint-*` (R182), the tags `v0.9.0` to `v0.12.0` with their draft releases; `docs/GIT_STRATEGY.md` is the contract |
+| Make the project public and forkable, with intentional git planning | `docs/GIT_STRATEGY.md`, `CONTRIBUTING.md`, `SECURITY.md`, `.github/`, Sprint 11 spec Goals 0, 1, 7 | ~~Designed and scheduled; early files landed~~ **DONE** (superseded 2026-09-25, Sprint 13 R2): public since 2026-09-20, the rulesets on `main` and `sprint-*` (R182), a `v0.<sprint>.0` tag per merged sprint, and since `v0.10.0` a draft release for each (`gh release list`); `docs/GIT_STRATEGY.md` is the contract |
 
 ## 10. What the owner should decide before the playtest
 
@@ -467,8 +471,8 @@ changed only by decision and read against what happens at each close -- `docs/LO
 and plan under `docs/superpowers/` are dated snapshots (S) reconciled in the plan's own Log. **Generated, never
 hand-edited:** `docs/KNOBS.md` (from `ps2x/knobs.h`) and `docs/LADDER.md` (from `logs/ladder/ledger.jsonl`).
 **Narrative and snapshots, for reference:** `docs/ROADMAP.md`, `docs/AUDIT-2026-09-17.md`, `docs/process-audit.md`
-(the source of rules 5 and 11), and the research notes under `docs/research/` (01-61 and 64 on 2026-09-25; trap 15
-says how they are numbered).
+(the source of rules 5 and 11), and the research notes under `docs/research/` (trap 15 says how they are
+numbered).
 > Superseded 2026-09-25 (Sprint 13 R2): this paragraph listed PLAYTEST, LOOP_PROMPT, GIT_STRATEGY and DOC_MAINTENANCE
 > as "Live", while the registry classes them C, and named the research notes "01-34" (documents audit rows 18, 19
 > and 57).
