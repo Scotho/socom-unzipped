@@ -8,7 +8,10 @@ hosted server.**
 [![secrets](https://github.com/Scotho/socom-unzipped/actions/workflows/secrets.yml/badge.svg)](https://github.com/Scotho/socom-unzipped/actions/workflows/secrets.yml)
 
 A green badge means the runtime library, the test suites and the launcher build without the game and the leak check is
-clean; the parity gate needs a disc and runs on the maintainer's machine, its stamps are in the release notes.
+clean; the parity gate needs a disc and runs on the maintainer's machine. No release has been published yet; each
+draft release's checklist names the gate stamp its archive must pass before it can be.
+*(Superseded 2026-09-25: this said the gate's "stamps are in the release notes"; the only releases are unpublished
+drafts whose stamp field is still blank.)*
 
 > ## ⚠️ Multiplayer: one reported hole closed, the rest unaudited. Proceed at your own risk.
 >
@@ -25,9 +28,13 @@ clean; the parity gate needs a disc and runs on the maintainer's machine, its st
 > `SECURITY.md`.
 
 > **Early stage.** This is a working prototype, not a finished port. It boots, renders the menus and missions, and two
-> players have finished online rounds against each other on the hosted server -- but audio, some maps, and the rough
-> edges of a first release are still being worked through, and things break between builds. Read [Status](#status)
-> before you expect anything.
+> copies of the game, driven by the project's test harness on one machine, have finished online rounds against each
+> other on the hosted server -- no two people have played each other yet. Audio, some maps, and the rough edges of a
+> first release are still being worked through, and things break between builds. Read [Status](#status) before you
+> expect anything.
+>
+> *(Superseded 2026-09-25: this said "two players have finished online rounds against each other"; every online
+> result is two automated instances on one host.)*
 
 ## What it is, and what it is not
 
@@ -48,17 +55,17 @@ clean; the parity gate needs a disc and runs on the maintainer's machine, its st
 
 ## Status
 
-As of 2026-09-25 (**Sprints 11 and 12 are closed and merge to `main` as `v0.11.0` and `v0.12.0`**; each tag's release
+As of 2026-09-25 (**Sprints 11 and 12 are merged to `main` as `v0.11.0` and `v0.12.0`**; each tag's release
 draft waits for its archives, which are the owner's by `docs/GIT_STRATEGY.md`. **Sprint 12, "the readable image",
 gave the generated code 1,771 readable names, each with its provenance**, without changing what a player sees —
-`docs/superpowers/plans/2026-09-24-sprint-12.md` on that branch): <!-- docmaint: future -->
+`docs/superpowers/plans/2026-09-24-sprint-12.md`. The sprint now open is `docs/CURRENT_SPRINT.md`'s):
 
 | Works | Not yet |
 |---|---|
-| Boots from the ISO to the title, through the menus, into a mission; Xbox/DirectInput pads for play, the keyboard for the menus and typing | A public release download. Builds are handed to testers by hand; the download waits on an owner decision (`docs/HUMAN_TASKS.md`, the r0004 distribution) |
-| Rendering through an OpenGL backend with an integer up-scale (`PS2X_GS_SCALE` 1-4; 3-4 are untested); a CPU rasteriser for tests | Frame rate: 43-45 fps in a mission and 52-60 in the menus, against the console's 60 |
+| Boots from the ISO to the title, through the menus, into a mission; Xbox/DirectInput pads for play, the keyboard for the menus and typing | A public release download. Builds are handed to testers by hand; the download waits on the owner's legal position on shipping the recompiled executable and the game's decrypted ELF (decision D2, `docs/HUMAN_TASKS.md`). *(Until 2026-09-25 this cell blamed the r0004 distribution decision.)* |
+| Rendering through an OpenGL backend with an integer up-scale (`PS2X_GS_SCALE` 1-4; 3-4 are untested); a CPU rasteriser for tests | Frame rate below the console's 60. The last measurements, both old: 43-45 fps in an online Frostfire round on 2026-09-16 (before the guest-clock change; `docs/STATUS.md`, that night's entry), and 58-60 on the login screen under a four-core host load on 2026-09-19 (`docs/KNOWN.md`, the login-screen row). Neither is a measurement of the current build. *(Until 2026-09-25 this cell gave "43-45 fps in a mission and 52-60 in the menus" with no date.)* |
 | Online: login, lobby, and full rounds on the hosted Horizon server -- two of our instances, and one of ours against a console client through PCSX2, and a build of the community revision **r0004**, rebuilt from PSRewired's package, plays a full round on the same server | r0001 and r0004 clients cannot join each other's games -- the filter is the game's own, on the client. Mission music: the stems play correctly and the pauses are the game's own design, but about a dozen 50 ms dropouts a mission still reach the speaker that are not in the mix as rendered -- proven on 2026-09-23 to be **ours** rather than the listener's audio device, and not yet located. Voice chat is untested end to end (the protocol is read and the headset path is proven as far as `docs/KNOWN.md`'s voice row takes it -- notably, the game's protocol has no headset button) |
-| A launcher that owns the settings, checks the disc, picks the server, and files bug reports | Linux: CI builds and proves the runtime library, both test suites and the launcher on every push, and the playable build was rebuilt from wiped trees in the VM on 2026-09-23; what is not green there yet is the VM's own suite run (`docs/KNOWN.md` §2) |
+| A launcher that owns the settings, checks the disc, picks the server, and files bug reports | Linux: CI builds and proves the runtime library, both test suites and the launcher on every push, and the game client was rebuilt from wiped trees in the VM on 2026-09-23. In that VM it boots, draws the same frame as Windows and passes the gate's title stage, at about 3 fps on software GL; no `docs/KNOWN.md` row shows Linux past the title stage, and the VM's own suite run is not green yet (`docs/KNOWN.md` §1 and §2). *(Until 2026-09-25 this cell called the VM build "the playable build".)* |
 | An automated parity gate (title / transition / mission) and an online "ladder" that plays rounds unattended | Anything but the NTSC r0001 disc |
 
 The live, audited version of this table is `docs/KNOWN.md` (proven, believed, and retracted, each with its evidence),
@@ -95,10 +102,13 @@ pip install unicorn                        # the two decryption stages emulate R
 bash scripts/disc_to_elf.sh "<your ISO>"   # the disc tree and the decrypted overlays (eight minutes, 4.2 GB)
 ./build.sh recomp      # build the merged ELF from the disc and run the recompiler
 ./build.sh runtime     # cmake + ninja + clang -> dist/socom2.exe and the launcher
-./build.sh test        # the C++ suite and the VU1 replay goldens
-python -m unittest discover -s tools_py/tests -t .   # the Python suite
-python -m tools_py.parity.gate --stamp first_run     # the in-game gate, about 15 minutes
+./build.sh test        # the Python suite, then the C++ suite and the VU1 replay goldens
+python -m tools_py.parity.gate --stamp first_run     # the in-game gate, 15 to 17 minutes
 ```
+
+*(Until 2026-09-25 this block ran `python -m unittest discover ...` as a separate step after `./build.sh test`, which
+already runs it -- the Python suite twice -- and called the gate "about 15 minutes"; `docs/DEVELOPING.md`'s first-hour
+table has the measured times.)*
 
 `docs/DEVELOPING.md` is the full developer reference: repository layout, the first hour on a clean checkout with the
 lines that say each step worked, every runtime knob (`PS2X_*`) and its exact effect, the online harness, and the
@@ -121,7 +131,7 @@ is Horizon configured for SOCOM II's app id, with a seed script for a local inst
 | `build.sh`, `run.sh` | Build and run on Windows (Git Bash); `scripts/build_linux.sh` on Linux |
 | `recomp/` | Recompiler configuration, the function map, and the readable names with their provenance (`socom2_names.csv`; `docs/DEVELOPING.md` "Names in the generated code") |
 | `third_party/ps2recomp/` | The vendored PS2Recomp fork with this project's runtime changes (`git log -- third_party`) |
-| `tools_py/` | Python tooling: the overlay decryptor, ELF builder, the parity gate and the online harness, tests |
+| `tools_py/` | Python tooling: the disc-to-ELF chain, the recompiler's inputs, the naming levers, the parity gate and the online harness, tests (`docs/DEVELOPING.md` has a map of every module) |
 | `ghidra_scripts/` | Headless Ghidra scripts used for the reverse engineering |
 | `server/` | Horizon Private Server sources and the SOCOM II configuration |
 | `docs/` | `HANDOFF.md` (start here), `KNOWN.md`, `STATUS.md`, `CURRENT_SPRINT.md`, `HUMAN_TASKS.md`, the research notes under `docs/research/`, and each sprint's spec and plan under `docs/superpowers/` |

@@ -35,11 +35,21 @@ problem. There is no setting in the launcher that turns this off — it is a fac
 The path in `config.json` no longer points at a file: the ISO was moved, renamed, or lives on a drive that is not
 mounted right now. Open the DISC page and pick it again.
 
+Where you meet it: the launcher checks the disc when it starts and when you press RE-VERIFY, and greys LAUNCH out
+when the check fails — so from the launcher you see this code only if the ISO went away *after* that check (moved
+while the launcher was open, or a drive unplugged). Starting `socom2.exe` on its own skips the launcher's check, and
+then this is the first thing that stops it.
+
 ### 67 — disc not r0001
 
 > That disc image is not SOCOM II NTSC r0001 (SCUS-97275). This build plays only that disc.
 
-See *"Which disc revision do I need"* below.
+See *"Which disc revision do I need"* below. The launcher's own disc check stops a wrong disc earlier — LAUNCH greys
+out with *"that file is not SOCOM II (NTSC, r0001)"* — so this code reaches you only when the file changed after that
+check, or when `socom2.exe` was started on its own.
+
+*(Until 2026-09-25 this entry did not say where the code can be met; the launcher's check makes it rare from the
+launcher.)*
 
 ### 68 — ELF missing
 
@@ -145,7 +155,12 @@ to break a newer host's GL driver.
 
 So in practice: a working OpenGL driver (your distribution's Mesa or the vendor's), PulseAudio or ALSA, and a normal
 desktop. **Optional:** `zenity`, which the launcher uses for its file picker — without it, type the ISO path into
-the field instead.
+the field instead; and `curl`, which REPORT A BUG uses to send — without it the page says *"curl is not installed, so
+nothing can be sent from here"* and saves the report next to your logs instead. **On Wayland** the pad's window
+switch (the guide button toggling between the game and the launcher) does nothing when there is no X display to
+open: it talks to X11, and says so.
+
+*(Until 2026-09-25 this answer named only `zenity`, and did not say the window switch needs X11.)*
 
 Linux is not a released platform yet; `KNOWN.md` has how far it has got. Builders start at `scripts/build_linux.sh`
 (`DEVELOPING.md`).
@@ -234,7 +249,8 @@ Report it anyway — include the log and **say which output you used**; the game
 rate into every run's log.
 
 *(Until 2026-09-25 this section asked you whether you were listening over Bluetooth and sent you to try a wired
-output. That attribution was retracted by measurement on 2026-09-23 and is now `docs/KNOWN.md` §1's first row; it was
+output. That attribution was retracted by measurement on 2026-09-23 and is now the `docs/KNOWN.md` §1 row "The mission
+music's DEVICE dips are OURS" (this sentence said "§1's first row" until 2026-09-25; rows were added above it); it was
 our defect the whole time, and this page was sending players after their own hardware.)*
 
 ---
