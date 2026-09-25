@@ -30,10 +30,32 @@ export PS2X_HOST_GAMEPAD="${PS2X_HOST_GAMEPAD:-0}"          # a launch boots wit
 export PS2X_SOCOM2_INPUT_TRACE="${PS2X_SOCOM2_INPUT_TRACE:-1}"
 export PS2X_PC_SAMPLER="${PS2X_PC_SAMPLER:-0.25}"
 export PS2X_CALL_TRACE_EVERY="${PS2X_CALL_TRACE_EVERY:-10}"
-export PS2X_CALL_TRACE="${PS2X_CALL_TRACE:-0x553dc0:MoveScale,0x30cd80:NetIdle}"
 
-# The instrument peek block (Sprint 5 Task 2's launch-2 spec, minus the heavy ground probes): the actor block
-# and the snap-back pair (+0x420 inside *0x408c58+0x400:12), +0x174, the alive byte (+0xF7A inside
-# *0x408c58+0xF78:24) and health (*0x408c58+0x1044:8), CZNetGame and its valves with their name bytes, the
-# mission-abort valve, the round clock (0x4365c0 and the string at 0x408f10), and 0x408c58:4.
-export PS2X_PEEK="${PS2X_PEEK:-0x416054:3,*0x408c58:64,*0x408c58+0xc0*:32,*0x408c58+0x400:12,*0x408c58+0x174:1,*0x408c58+0xF78:24,*0x408c58+0x1044:8,*0x437ce8:64,*0x437ce8+0x100:21,*0x437ce8+0x0c*:2,*0x437ce8+0x10*:2,*0x437ce8+0x14*:2,*0x437ce8+0x20*:2,*0x437ce8+0x24*:2,*0x437ce8+0x2c*:2,*0x437ce8+0x58*:2,*0x437ce8+0x5c*:2,*0x437ce8+0x70*:2,*0x43668c:2,0x4365c0:1,0x45a0c0:1,0x3df1b0:1,0x45a1c8:1,*0x437ce8+0x0c**:3,*0x437ce8+0x10**:3,*0x437ce8+0x14**:3,*0x437ce8+0x20**:3,*0x437ce8+0x24**:3,*0x437ce8+0x2c**:3,*0x437ce8+0x58**:3,*0x437ce8+0x5c**:3,*0x437ce8+0x70**:3,*0x43668c*:3,0x408f10:2,0x408c58:4}"
+# THE INSTRUMENT ADDRESSES ARE PER REVISION (Sprint 11 Task 19). PS2X_PEEK -- the actor block, the
+# snap-back pair, the alive byte and health, CZNetGame and its valves with their name bytes, the
+# mission-abort valve, the round clock and its string -- and PS2X_CALL_TRACE's two functions were r0001
+# literals here, and every online script sources this file. `s11_r0004_round1` is what that cost: two
+# r0004 clients played a Frostfire round to its clock and it scored RESULT NO-DATA, because every chain
+# pointed at somebody else's memory. A wrong address here is not an error, it is silence.
+#
+# `tools_py/parity/guest_addresses.py` is the one home for both strings now, and it picks the column the
+# way gate.py picks its own: the build banner in the image $SOCOM_GAME_ELF names (launch_revision). An
+# image that will not say which revision it is REFUSES here rather than handing an r0004 launch r0001's
+# addresses. The one relaxation is gate.collect_pins': with no $SOCOM_GAME_ELF and no image at the default
+# path -- a bare clone, where no launch can happen either -- the column is r0001 from the path's own name.
+#
+# The emitted lines are `VAR="${VAR:-<spec>}"`, so the operator's own PS2X_PEEK still wins and sourcing
+# this file twice is still harmless -- the two properties the literals had, kept.
+socom_require_python "parity/env.sh"
+if ! _socom_instruments="$("$PYTHON" -m tools_py.parity.guest_addresses --env)"; then
+  echo "scripts/parity/env.sh: the per-revision instrument addresses could not be resolved (see above)." >&2
+  echo "  Refusing to hand this launch another revision's PS2X_PEEK -- that measures nothing and says so" >&2
+  echo "  nowhere. Check \$SOCOM_GAME_ELF, or run: \$PYTHON -m tools_py.parity.guest_addresses --env" >&2
+  unset _socom_instruments
+  # `exit`, not `return`: a `return` would end THIS file and let the sourcing script carry on with no
+  # PS2X_PEEK at all -- which is the silent measurement this whole change exists to stop.
+  exit 1
+fi
+eval "$_socom_instruments"
+unset _socom_instruments
+export PS2X_PEEK PS2X_CALL_TRACE

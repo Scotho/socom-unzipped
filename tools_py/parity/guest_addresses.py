@@ -28,6 +28,7 @@ reproduces from 60 unanimous twinned referrers. To regenerate this column, value
 """
 import os
 import re
+import sys
 
 # name -> revision -> address.
 #
@@ -63,15 +64,119 @@ PROBE_ADDRESSES = {
 # (review F10 -- the old hand-written tuple would have printed a list omitting the revision it had just
 # accepted, and the suite iterated the same tuple, so nothing would have noticed).
 REVISIONS = tuple(sorted({r for col in PROBE_ADDRESSES.values() for r in col}))
+# ... and the same derivation once the online and trace tables below exist: a column added to any of the
+# three must not leave the others' callers offering a shorter list (review F10, the same trap).
+
+
+# ---------------------------------------------------------------------------
+# THE ONLINE HARNESS'S INSTRUMENTS (Sprint 11 Task 19, the r0004 online lane).
+#
+# `scripts/parity/env.sh` carried these as r0001 literals -- one PS2X_PEEK string of 573 characters and
+# one PS2X_CALL_TRACE of two addresses -- and EVERY online script sources it: the ladder, the mixed-match
+# legs, the control round. `s11_r0004_round1` is what that costs. Two r0004 clients logged in against the
+# hosted Horizon, one hosted Frostfire, the other found it and joined, both went READY and played the round
+# to its clock (1511 and 1491 in-game `[peek]` rows, both HUD clocks reading 05:29 in the hold captures) --
+# and the round scored `RESULT NO-DATA`, because every chain in the spec pointed at somebody else's memory
+# and the call trace never fired. A wrong address here does not present as an error. It presents as silence,
+# or as a number.
+#
+# Every r0004 value below was DERIVED, not assumed: `python -m tools_py.data_via_twin <addr>`, the lui/lo
+# twin scan, with votes counted only from functions `game/r0004/match.json` places by evidence
+# (`identity`/`exact`/`hash+callees`/`relinked-body`; `seed+delta` says where to look, not what was found).
+# `tools_py/tests/test_data_via_twin.py` re-derives every one of them from the two images.
+#
+#   net_game            0x437ce8 -> 0x004446f8   CZNetGame and its valves. 151 materialising sites, 29 of
+#                                                them evidence-twinned, UNANIMOUS. (+0xca10 -- the same
+#                                                delta guest_clock moves by, which is how the header's
+#                                                comment already knew this one's shape.)
+#   mission_abort_valve 0x43668c -> 0x0044309c   the pause-menu abort valve (research/21 R5). 5 sites, 5
+#                                                twinned, unanimous.
+#   mp_flag_word        0x45a0c0 -> 0x0045d480   the word whose byte 1 is DAT_0045a0c1, R6's snap-back
+#                                                context. 344 sites, 175 twinned, unanimous -- the widest
+#                                                evidence in this table.
+#   input_enable        0x3df1b0 -> 0x0040a378   DAT_003df1b0, "player input enabled" (research/21 R4).
+#                                                6 sites, 5 twinned, unanimous.
+#   r7_flag             0x45a1c8 -> 0x0045d58c   research/21 R7 (its byte at 0x45a1ca). 3 sites and only
+#                                                **ONE** evidence-twinned referrer: see UNCONFIRMED below.
+#   clock_string        0x408f10 -> 0x004358d0   the HUD round-clock string "MM:SS" (research/19 F2).
+#                                                2 sites, 2 twinned, unanimous.
+ONLINE_ADDRESSES = {
+    "net_game": {"r0001": 0x00437CE8, "r0004": 0x004446F8},
+    "mission_abort_valve": {"r0001": 0x0043668C, "r0004": 0x0044309C},
+    "mp_flag_word": {"r0001": 0x0045A0C0, "r0004": 0x0045D480},
+    "input_enable": {"r0001": 0x003DF1B0, "r0004": 0x0040A378},
+    "r7_flag": {"r0001": 0x0045A1C8, "r0004": 0x0045D58C},
+    "clock_string": {"r0001": 0x00408F10, "r0004": 0x004358D0},
+}
+
+# THE CALL TRACE's two functions. Both were established by reading the two bodies, because neither could
+# come from `match.json` alone:
+#
+#   move_scale_setter 0x553dc0 -> 0x005590e0   `SetMoveScale(actor*, float)`, sixteen instructions.
+#                                              `match.json` marks r0001's `FUN_00553dc0` **`unresolved`** --
+#                                              a body whose displacements moved is exactly a body the
+#                                              matcher will not place. The masked-body evidence is
+#                                              `task-19-move-report.md` ("r0001 0x00553dc0  r0004
+#                                              0x005590e0"), and it reproduces word for word: the two
+#                                              bodies are the SAME sixteen instructions and differ in
+#                                              exactly two half-words, the `swc1` displacements
+#                                              0x1368 -> 0x136c (PROBE_OFFSETS["move_scale"], above).
+#   net_idle          0x30cd80 -> 0x0032a2b0   a two-word THUNK, `j <target>; nop`, which is why
+#                                              `match.json` only ever had it as `seed+delta` (it calls it
+#                                              `thunk_FUN_0030be80`). Confirmed here by its TARGET instead:
+#                                              r0001's thunk jumps to 0x0030be80, r0004's to 0x00329230,
+#                                              and `match.json` places 0x0030be80 -> 0x00329230
+#                                              `relinked-body`, `tie: unique` -- accepted evidence. And the
+#                                              thunk is unique on both sides: exactly one `j 0x30be80; nop`
+#                                              in the whole r0001 image and exactly one `j 0x329230; nop`
+#                                              in r0004, so there is no second thunk the trace could have
+#                                              been meant to sit on.
+TRACE_ADDRESSES = {
+    "move_scale_setter": {"r0001": 0x00553DC0, "r0004": 0x005590E0},
+    "net_idle": {"r0001": 0x0030CD80, "r0004": 0x0032A2B0},
+}
+
+# Values that rest on ONE evidence-twinned referrer. They are carried so the instrument keeps peeking what
+# it has always peeked, and they are named here so that nothing SCORES on them: a single vote is a claim,
+# not the unanimity the rest of this table is built on. `tools_py/tests/test_online_instruments.py` holds
+# the rule -- no scorer may key a verdict on one of these -- and the way out is more evidence, not a
+# promotion by silence.
+UNCONFIRMED = frozenset({"r7_flag"})
+
+# ... and the other side of that rule. A value with ONE twinned referrer is unconfirmed UNLESS something
+# else stands behind it, and "something else" has to be written down or it is just a habit. There is one:
+CORROBORATED = {
+    "camera_record": "one twinned referrer of its own, but its delta +0x2c9c0 is the one its neighbour "
+                     "cameraHolder (0x415ff0, 0x64 below it) moves by over 60 unanimous twins; the "
+                     "record's other three words (0x416050/58/5c) give the matching r0004 words, 0x416050 "
+                     "from 4 twins; and the gate re-checks it at RUN TIME -- guest_probe's camera_orbit "
+                     "measures its distance from the actor, which is why this is the one entry whose "
+                     "being wrong would otherwise have no symptom",
+}
+
+REVISIONS = tuple(sorted({r for table in (PROBE_ADDRESSES, ONLINE_ADDRESSES, TRACE_ADDRESSES)
+                          for col in table.values() for r in col}))
+
+
+def _column_of(name):
+    for table in (PROBE_ADDRESSES, ONLINE_ADDRESSES, TRACE_ADDRESSES):
+        if name in table:
+            return table[name]
+    return None
+
+
+def all_names():
+    """Every address name this module answers for, across its three tables."""
+    return sorted(set(PROBE_ADDRESSES) | set(ONLINE_ADDRESSES) | set(TRACE_ADDRESSES))
 
 
 def address(name, revision):
     """This revision's address for one probe input. A name or a revision the table does not carry raises,
     naming what it does have -- never the other column's number."""
-    col = PROBE_ADDRESSES.get(name)
+    col = _column_of(name)
     if col is None:
         raise ValueError("guest addresses: no probe address called %r (have: %s)"
-                         % (name, ", ".join(sorted(PROBE_ADDRESSES))))
+                         % (name, ", ".join(all_names())))
     if revision not in col:
         raise ValueError("guest addresses: no %s address for revision %r -- this table has columns for "
                          "%s. Reading another revision's address is the defect this table exists to stop."
@@ -152,6 +257,65 @@ def offset(name, revision):
 # They join when somebody measures them, the way move_scale was measured.
 
 
+# ---------------------------------------------------------------------------
+# The two instrument strings `scripts/parity/env.sh` exports, as TEMPLATES over the names above. The
+# r0001 render must be byte-identical to the literal env.sh carried before this existed -- an online run's
+# rows are read by these very chains, and a changed r0001 spec would silently re-cut every archived
+# comparison. `tools_py/tests/test_online_instruments.py` pins both r0001 strings character for character.
+#
+# What the block reads, in its own order: the camera-orbit record; the actor block, the snap-back pair
+# (+0x420 inside +0x400:12), +0x174, the alive byte (+0xF7A inside +0xF78:24) and health (+0x1044:8);
+# CZNetGame and its nine valves twice over (the pointer pair, then the name bytes behind it, which is how
+# a valve is identified -- name pointers are platform-specific); the mission-abort valve; the round clock
+# and the four single-word globals; the clock string; and the actor pointer itself.
+#
+# Offsets are LITERAL: they are displacements inside an object, not addresses, and the ones this block
+# uses all sit below the word r0004 inserted at +0x1334 (PROBE_OFFSETS' note), so they do not move. The
+# exception is move_scale, which no PS2X_PEEK item reads -- the probe reads it, through `offset()`.
+PEEK_TEMPLATE = (
+    "{camera_record}:3,"
+    "*{player_actor}:64,*{player_actor}+0xc0*:32,*{player_actor}+0x400:12,*{player_actor}+0x174:1,"
+    "*{player_actor}+0xF78:24,*{player_actor}+0x1044:8,"
+    "*{net_game}:64,*{net_game}+0x100:21,"
+    "*{net_game}+0x0c*:2,*{net_game}+0x10*:2,*{net_game}+0x14*:2,*{net_game}+0x20*:2,*{net_game}+0x24*:2,"
+    "*{net_game}+0x2c*:2,*{net_game}+0x58*:2,*{net_game}+0x5c*:2,*{net_game}+0x70*:2,"
+    "*{mission_abort_valve}:2,"
+    "{guest_clock}:1,{mp_flag_word}:1,{input_enable}:1,{r7_flag}:1,"
+    "*{net_game}+0x0c**:3,*{net_game}+0x10**:3,*{net_game}+0x14**:3,*{net_game}+0x20**:3,"
+    "*{net_game}+0x24**:3,*{net_game}+0x2c**:3,*{net_game}+0x58**:3,*{net_game}+0x5c**:3,"
+    "*{net_game}+0x70**:3,*{mission_abort_valve}*:3,"
+    "{clock_string}:2,{player_actor}:4"
+)
+CALL_TRACE_TEMPLATE = "{move_scale_setter}:MoveScale,{net_idle}:NetIdle"
+# Every name a template reaches for, so a typo in one is a KeyError here and not a silent empty field.
+_TEMPLATE_NAMES = ("camera_record", "player_actor", "net_game", "mission_abort_valve", "guest_clock",
+                   "mp_flag_word", "input_enable", "r7_flag", "clock_string",
+                   "move_scale_setter", "net_idle")
+
+
+def _render(template, revision):
+    return template.format(**{n: "0x%x" % address(n, revision) for n in _TEMPLATE_NAMES})
+
+
+def peek_spec(revision):
+    """`PS2X_PEEK` for the online harness, in this revision's addresses."""
+    return _render(PEEK_TEMPLATE, revision)
+
+
+def call_trace_spec(revision):
+    """`PS2X_CALL_TRACE` for the online harness, in this revision's addresses."""
+    return _render(CALL_TRACE_TEMPLATE, revision)
+
+
+def instrument_env_lines(revision, elf):
+    """The lines `scripts/parity/env.sh` evals. Each is `VAR="${VAR:-<spec>}"`, so whatever the operator
+    already exported still wins and sourcing env.sh twice is still harmless -- the two properties the
+    literal exports had, kept."""
+    return ["# instruments: %s, from %s" % (revision, elf),
+            'PS2X_PEEK="${PS2X_PEEK:-%s}"' % peek_spec(revision),
+            'PS2X_CALL_TRACE="${PS2X_CALL_TRACE:-%s}"' % call_trace_spec(revision)]
+
+
 _HEX_RE = re.compile(r"0[xX][0-9a-fA-F]+")
 # actor_vtable is a VALUE read out of a row, never a chain, so it is not evidence about a PS2X_PEEK.
 _CHAIN_NAMES = tuple(n for n in PROBE_ADDRESSES if n != "actor_vtable")
@@ -230,3 +394,37 @@ def log_revision(lines):
     raise ValueError("guest addresses: the run log never says which revision the runtime installed "
                      "(no '[socom2] address table: ...' line), so the probe cannot know which column to "
                      "read -- pass one explicitly")
+
+
+def main(argv=None):
+    """`python -m tools_py.parity.guest_addresses --env` -- the shell lines scripts/parity/env.sh evals.
+
+    The column is chosen exactly the way `gate.launch_env` chooses its own: the build banner in the image
+    `$SOCOM_GAME_ELF` names. `default_ok=True` is `gate.collect_pins`' relaxation and it is here for the
+    same reason -- with no `$SOCOM_GAME_ELF` and no image at the default path (a bare clone: `game/` is
+    git-ignored) there is no launch to mislabel, and sourcing env.sh must still work. A `$SOCOM_GAME_ELF`
+    that names a missing file, or an image that will not name its revision, still refuses.
+    """
+    import argparse
+    ap = argparse.ArgumentParser(prog="tools_py.parity.guest_addresses",
+                                 description="the online harness's per-revision instrument addresses")
+    ap.add_argument("--env", action="store_true", help="the shell lines scripts/parity/env.sh evals")
+    ap.add_argument("--revision", choices=sorted(REVISIONS),
+                    help="the column, instead of reading it off the image a launch would use")
+    a = ap.parse_args(argv)
+    if not a.env:
+        ap.error("nothing to print: --env is the only output this has")
+    elf = os.environ.get(GAME_ELF_ENV) or DEFAULT_GAME_ELF
+    try:
+        revision = a.revision or launch_revision(default_ok=True)
+    except (ValueError, OSError) as e:
+        # A sentence on stderr, not a traceback: env.sh's caller reads this, and the shell prints
+        # nothing else useful about a failed command substitution.
+        sys.stderr.write("%s\n" % e)
+        return 2
+    print("\n".join(instrument_env_lines(revision, "--revision" if a.revision else elf)))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -993,6 +993,16 @@ class TestImportSet(unittest.TestCase):
         self.assertLessEqual({n.split(".")[0] for n in names},
                              {"argparse", "bisect", "math", "os", "re", "struct", "sys", "dataclasses"})
 
+    def test_its_vtable_literals_are_the_tables(self):
+        """`verdict_replay` may not import `guest_addresses` (above), so it carries the actor vtable of
+        each revision as a literal. This is the seam that keeps the copy honest -- the table is the home,
+        and a new revision's column must reach both (Sprint 11 Task 19)."""
+        from tools_py.parity import guest_addresses as ga
+        from tools_py.parity import verdict_replay as R
+        self.assertEqual(R.ACTOR_VTABLE, ga.address("actor_vtable", "r0001"))
+        self.assertEqual(R.ACTOR_VTABLES,
+                         frozenset(ga.address("actor_vtable", r) for r in ga.REVISIONS))
+
     def test_importing_loads_neither(self):
         code = ("import sys; import tools_py.parity.verdict_replay; "
                 "print(sorted(m for m in sys.modules if 'verdict_core' in m or 'online_' in m))")

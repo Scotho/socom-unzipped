@@ -136,7 +136,16 @@ SELF_GRENADE_MASK = 0xF700
 # ---------------------------------------------------------------------------------------------
 SAMPLER_PERIOD_S = 0.25
 CLOCK_ANCHOR_MIN_SPACING_S = 5.0
-ACTOR_VTABLE = 0x006691A0
+ACTOR_VTABLE = 0x006691A0               # r0001; the number printed in messages
+# ... and the set a row is IDENTIFIED against: the vtable has a value per revision and a row carries one
+# of them, so a replay of an r0004 run finds its actor too (Sprint 11 Task 19).
+# ... and the set a row is IDENTIFIED against. The vtable has a value per revision (r0004
+# relinked it) and a `[peek]` row carries exactly one of them, so membership replays an r0004 run's rows
+# too. LITERALS on purpose: this module imports nothing but the standard library (test_verdict_replay's
+# import set) so a pinned harness can replay a log with no tools_py around it. Their home is
+# tools_py/parity/guest_addresses.PROBE_ADDRESSES["actor_vtable"], and test_verdict_replay checks the
+# two against it rather than trusting this copy.
+ACTOR_VTABLES = frozenset({0x006691A0, 0x00668B20})
 ACTOR_POS_WORDS = (7, 8, 9)
 HEALTH_OFFSET = 0x1044             # float, <= 0 dead (research/19 F1)
 ALIVE_OFFSET = 0xF7A               # byte, 1 = alive
@@ -233,7 +242,7 @@ def _covering(items, addr):
 
 
 def _actor(items, last_addr):
-    addr = next((a for a, w in items if w and w[0] == ACTOR_VTABLE), None)
+    addr = next((a for a, w in items if w and w[0] in ACTOR_VTABLES), None)
     intact = addr is not None
     if addr is None:
         # word 0 no longer the vtable: the block at the last known address, if it is still printed

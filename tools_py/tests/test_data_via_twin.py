@@ -45,10 +45,11 @@ class Control(unittest.TestCase):
         for v in votes:
             self.assertIn(v.how, dvt.ACCEPT, v.func)
 
-    def test_the_four_probe_addresses_are_what_this_tool_derives(self):
-        """guest_addresses.PROBE_ADDRESSES' r0004 column, regenerated. The three referenced addresses come
-        from the twin scan; actor_vtable is a VALUE in an object's word 0, which no lui/lo pair forms, so
-        it is placed by its CONTENTS instead."""
+    def test_every_address_the_tables_carry_is_what_this_tool_derives(self):
+        """`guest_addresses`' whole r0004 column, regenerated -- the gate's four, the online instruments'
+        six and the call trace's two. Referenced addresses come from the twin scan; actor_vtable is a
+        VALUE in an object's word 0, which no lui/lo pair forms, so it is placed by its CONTENTS; and the
+        two traced FUNCTIONS by the reading their own shape allows (a masked body, a thunk's target)."""
         for name, r0001, r0004, how in dvt.COLUMN:
             self.assertEqual(ga.address(name, "r0001"), r0001, name)
             if how == "vtable":
@@ -56,11 +57,50 @@ class Control(unittest.TestCase):
                                                                match=self.kw["match"])
                 self.assertGreaterEqual(translated, 3, "%s: too few slots to identify it" % name)
                 self.assertEqual(hits, [r0004], "%s: one place in the image, or it is not placed" % name)
+            elif how == "thunk":
+                got, note = dvt.resolve_thunk(r0001, self.kw["a"], self.kw["b"], self.kw["match"])
+                self.assertIsNotNone(got, "%s: %s" % (name, note))
+            elif how == "masked-body":
+                span = dvt.body_span(self.kw["funcs"], r0001)
+                self.assertIsNotNone(span, "%s: the r0001 CSV has no function at 0x%08x" % (name, r0001))
+                ok, differ = dvt.masked_body_matches(self.kw["a"], r0001, self.kw["b"], r0004, span[1])
+                self.assertTrue(ok, "%s: the two bodies differ under the mask" % name)
+                self.assertTrue(differ, "%s: nothing differs at all -- that is a relink, not this twin" % name)
+                got = r0004
             else:
                 got, votes, _n = dvt.resolve(r0001, **self.kw)
                 self.assertEqual({v.b_addr for v in votes}, {r0004}, name)
             self.assertEqual(got, r0004, name)
             self.assertEqual(ga.address(name, "r0004"), r0004, name)
+
+    def test_the_unconfirmed_values_are_exactly_the_uncorroborated_single_vote_ones(self):
+        """`guest_addresses.UNCONFIRMED` is a claim about the evidence, so it is checked against the
+        evidence -- in BOTH directions. A value with one evidence-twinned referrer is unconfirmed unless
+        `CORROBORATED` says in words what else stands behind it (camera_record has a neighbour's 60
+        unanimous twins and a run-time probe); a value with two or more may not be listed as either."""
+        for name, r0001, _r0004, how in dvt.COLUMN:
+            if how != "twin":
+                continue
+            _addr, votes, _n = dvt.resolve(r0001, **self.kw)
+            thin = len(votes) < 2
+            self.assertEqual(thin, name in ga.UNCONFIRMED or name in ga.CORROBORATED,
+                             "%s has %d evidence-twinned referrer(s): it must be in exactly one of "
+                             "UNCONFIRMED or CORROBORATED if that is fewer than 2, and in neither if not"
+                             % (name, len(votes)))
+            self.assertFalse(name in ga.UNCONFIRMED and name in ga.CORROBORATED, name)
+
+    def test_the_masked_body_is_masking_the_displacement_that_moved(self):
+        """SetMoveScale is the whole reason a masked body is needed here: the two raw words that differ
+        are its two `swc1` stores, and they differ by exactly the actor displacement PROBE_OFFSETS
+        carries (0x1368 -> 0x136c)."""
+        a, b = self.kw["a"], self.kw["b"]
+        r1, r4 = 0x00553DC0, 0x005590E0
+        span = dvt.body_span(self.kw["funcs"], r1)
+        _ok, differ = dvt.masked_body_matches(a, r1, b, r4, span[1])
+        self.assertEqual(len(differ), 2)
+        for i in differ:
+            self.assertEqual(a.word(r1 + 4 * i) & 0xFFFF, ga.offset("move_scale", "r0001"))
+            self.assertEqual(b.word(r4 + 4 * i) & 0xFFFF, ga.offset("move_scale", "r0004"))
 
     def test_the_main_entry_point_agrees_with_the_table(self):
         """`python -m tools_py.data_via_twin --control --column` exits 0 only when every value it derives

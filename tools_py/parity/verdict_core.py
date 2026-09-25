@@ -71,7 +71,20 @@ CAMERA_RECORD_ADDR = ga.address("camera_record", "r0001")   # 0x416054, the came
 MOVE_SCALE_NAME = "MoveScale"      # PS2X_CALL_TRACE="0x553dc0:MoveScale"
 NET_IDLE_NAME = "NetIdleMs"        # PS2X_CALL_TRACE="0x30cd80:NetIdleMs" (the thunk, research/18 §3.12a)
 NET_IDLE_NAMES = ("NetIdle", NET_IDLE_NAME)   # launch 1 (research/21 §6.1) and Task 5 name the slot NetIdle
-CLOCK_STRING_ADDR = 0x408F10       # round clock string (research/19 F2)
+CLOCK_STRING_ADDR = ga.address("clock_string", "r0001")   # 0x408f10, round clock string (research/19 F2)
+
+# ... and the same four as the set of EVERY revision's value, for the readers that identify a row's
+# contents rather than build a launch (Sprint 11 Task 19, the r0004 online lane). A `[peek]` row carries
+# exactly one revision's numbers, and the columns are disjoint -- `test_online_instruments` holds that in
+# both directions -- so "is this word the actor vtable" and "is this item the round clock" can be asked
+# without plumbing a revision through a LEAF module that has none to plumb. Reading a row as the wrong
+# revision is not possible: no r0004 number occurs in an r0001 row and no r0001 number in an r0004 row.
+# The scalars above stay r0001 and stay what every existing caller gets; these are for the row readers.
+ACTOR_VTABLES = frozenset(ga.address("actor_vtable", r) for r in ga.REVISIONS)
+CAMERA_RECORD_ADDRS = frozenset(ga.address("camera_record", r) for r in ga.REVISIONS)
+ROUND_TIME_ADDRS = frozenset(ga.address("guest_clock", r) for r in ga.REVISIONS)
+CLOCK_STRING_ADDRS = frozenset(ga.address("clock_string", r) for r in ga.REVISIONS)
+MP_FLAG_WORD_ADDRS = frozenset(ga.address("mp_flag_word", r) for r in ga.REVISIONS)
 NG_FINGERPRINT_WORD = 0x118 // 4   # CZNetGame +0x118 = 50.0f (reCOM m_pos_smooth), in all ten images
 NG_FINGERPRINT_VALUE = 0x42480000  # (research/19 F2) -- identifies the *0x437ce8:84 block by content
 NG_LAG_FLAG_OFFSET = 0xDE          # set to 1 by FUN_00594cf0 at idle >= 4501 ms (research/19 F2)
@@ -339,7 +352,7 @@ def parse_log(lines, sampler_period=SAMPLER_PERIOD_S):
     for i, items in peek_idx:
         t = clock(i)
         p.peek_rows.append((t, items))
-        actor = next(((a, w) for a, w in items if w and w[0] == ACTOR_VTABLE), None)
+        actor = next(((a, w) for a, w in items if w and w[0] in ACTOR_VTABLES), None)
         if actor is not None and len(actor[1]) > max(ACTOR_POS_WORDS):
             x, y, z = (f32(actor[1][k]) for k in ACTOR_POS_WORDS)
             if x or y or z:
@@ -865,14 +878,17 @@ def valve_rows_by_name(peek_rows, name):
     return out
 
 
-def row_clock_string(items, addr=CLOCK_STRING_ADDR):
+def row_clock_string(items, addr=None):
+    """The round-clock string out of one row. `addr` names the item; None (the default) means "under
+    whichever revision's number it was peeked at" -- CLOCK_STRING_ADDRS, the disjoint pair (Task 19)."""
+    addrs = CLOCK_STRING_ADDRS if addr is None else {addr}
     for a, words in items:
-        if a == addr and words:
+        if a in addrs and words:
             raw = b"".join(struct.pack("<I", w) for w in words).split(b"\0", 1)[0]
             if raw and all(0x20 <= c < 0x7F for c in raw):
                 return raw.decode("ascii")
-            return NoData(f"clock string at {addr:#x} is not printable")
-    return NoData(f"no {addr:#x} item")
+            return NoData(f"clock string at {a:#x} is not printable")
+    return NoData("no clock-string item (%s)" % " or ".join("%#x" % a for a in sorted(addrs)))
 
 
 def row_round_state(items):
@@ -888,15 +904,17 @@ def row_round_state(items):
 ACTOR_ALIVE_OFFSET = 0xF7A         # byte, 1 = alive (research/19 F1); byte 2 of the word at +0xF78
 ACTOR_STAMP_OFFSET = 0x420         # float, the position-apply timestamp R6 compares (research/21 §6.4)
 ROUND_TIME_ADDR = ga.address("guest_clock", "r0001")   # 0x4365c0, float DAT_004365c0: round time, counts up from 0 at round start
-MP_FLAG_WORD_ADDR = 0x45A0C0       # the word holding DAT_0045a0c1 as its byte 1
+MP_FLAG_WORD_ADDR = ga.address("mp_flag_word", "r0001")  # 0x45a0c0, the word holding DAT_0045a0c1 as its byte 1
 R6_GAP_S = 0.6                     # FUN_00594cf0's snap-back: 0x45a0c1 && clock - actor+0x420 > 0.6
 
 
 def row_actor_field(items, offset, kind="u8"):
     """actor+offset from one peek row: 'u8' a byte, 'f32' a float (offset % 4 == 0). The actor is
-    the item whose word 0 is ACTOR_VTABLE; the field is read from whichever item covers that
-    actor's address + offset -- never another actor's block, never by index."""
-    actor = next((a for a, w in items if w and w[0] == ACTOR_VTABLE), None)
+    the item whose word 0 is the class vtable -- ACTOR_VTABLES, any revision's (Task 19: r0004 relinked
+    it, and `s11_r0004_round2b` read `health=NO-DATA (no actor block (vtable) in the row)` on a round
+    whose every other instrument was live). The field is read from whichever item covers that actor's
+    address + offset -- never another actor's block, never by index."""
+    actor = next((a for a, w in items if w and w[0] in ACTOR_VTABLES), None)
     if actor is None:
         return NoData("no actor block (vtable) in the row")
     want = actor + offset
@@ -928,13 +946,37 @@ def row_static(items, addr):
     return None
 
 
+def chain_for(chain, revision):
+    """A PS2X_PEEK chain string written in r0001's addresses, re-rendered in `revision`'s (Task 19).
+
+    The valve chains in VALVES and the actor base the pre-launch checks build their messages from are
+    r0001 text. They are not READ from a row -- they are COMPARED against the spec a launch is about to
+    use -- so on an r0004 launch they have to be the r0004 chains or the check refuses a correct spec.
+    That is what `s11_r0004_round2` refused on: a correct r0004 PS2X_PEEK, against r0001's expectations.
+    Only the three bases a chain can start from are substituted, and only as whole rendered addresses."""
+    if revision == "r0001":
+        return chain
+    for name in ("player_actor", "net_game", "mission_abort_valve"):
+        chain = chain.replace("%#x" % ga.address(name, "r0001"), "%#x" % ga.address(name, revision))
+    return chain
+
+
+def row_static_any(items, addrs):
+    """`row_static` over a SET of addresses -- the same static under whichever revision's number this
+    row was peeked at (Task 19). The columns are disjoint, so at most one of them can be present."""
+    for a, words in items:
+        if a in addrs and words:
+            return words[0]
+    return None
+
+
 def stall_context(items):
     """The R6 snap-back inputs from one (the latest) peek row, for a move-path stall line:
     actor+0x420, the round clock DAT_004365c0, their gap and DAT_0045a0c1. Items absent -> said."""
     parts = []
     stamp = row_actor_field(items, ACTOR_STAMP_OFFSET, "f32")
-    clock_w = row_static(items, ROUND_TIME_ADDR)
-    flag_w = row_static(items, MP_FLAG_WORD_ADDR)
+    clock_w = row_static_any(items, ROUND_TIME_ADDRS)
+    flag_w = row_static_any(items, MP_FLAG_WORD_ADDRS)
     if not isinstance(stamp, NoData):
         parts.append(f"actor+0x420={stamp:.3f}")
     if clock_w is not None:
@@ -990,8 +1032,9 @@ def ng_lagflag_rows(peek_rows):
     return out
 
 
-def clock_rows(peek_rows, addr=CLOCK_STRING_ADDR):
-    """[(t, string)] from a `0x408f10:<n>` item: words little-endian, up to the first NUL, printable."""
+def clock_rows(peek_rows, addr=None):
+    """[(t, string)] from the clock-string item (r0001 `0x408f10:<n>`, r0004 `0x4358d0:<n>`): words
+    little-endian, up to the first NUL, printable."""
     out = []
     for t, items in peek_rows:
         s = row_clock_string(items, addr)
@@ -1265,7 +1308,8 @@ def _cmd_contact(args):
     clock = clock_rows(pa.peek_rows) or sh(clock_rows(pb.peek_rows))
 
     def guest(p, off):
-        rt = [(t + off, f32(w)) for t, items in p.peek_rows for w in [row_static(items, ROUND_TIME_ADDR)] if w is not None]
+        rt = [(t + off, f32(w)) for t, items in p.peek_rows
+              for w in [row_static_any(items, ROUND_TIME_ADDRS)] if w is not None]
         steps = round_steps([(t + off, v) for t, v in valve_rows_by_name(p.peek_rows, "mp_round_count")])
         return rt, steps
     (rta, sta), (rtb, stb) = guest(pa, 0.0), guest(pb, off)

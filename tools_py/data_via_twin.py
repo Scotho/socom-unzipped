@@ -228,7 +228,101 @@ CONTROL = ("cameraHolder", 0x00415FF0, 0x004429B0)
 COLUMN = (("camera_record", 0x00416054, 0x00442A14, "twin"),
           ("player_actor", 0x00408C58, 0x00435618, "twin"),
           ("guest_clock", 0x004365C0, 0x00442FD0, "twin"),
-          ("actor_vtable", 0x006691A0, 0x00668B20, "vtable"))
+          ("actor_vtable", 0x006691A0, 0x00668B20, "vtable"),
+          # Sprint 11 Task 19, the online lane: scripts/parity/env.sh's PS2X_PEEK bases.
+          ("net_game", 0x00437CE8, 0x004446F8, "twin"),
+          ("mission_abort_valve", 0x0043668C, 0x0044309C, "twin"),
+          ("mp_flag_word", 0x0045A0C0, 0x0045D480, "twin"),
+          ("input_enable", 0x003DF1B0, 0x0040A378, "twin"),
+          ("r7_flag", 0x0045A1C8, 0x0045D58C, "twin"),
+          ("clock_string", 0x00408F10, 0x004358D0, "twin"),
+          # ... and PS2X_CALL_TRACE's two FUNCTIONS, neither of which the twin scan can place.
+          ("move_scale_setter", 0x00553DC0, 0x005590E0, "masked-body"),
+          ("net_idle", 0x0030CD80, 0x0032A2B0, "thunk"))
+
+
+# ---------------------------------------------------------------------------
+# TWO FUNCTIONS THE TWIN SCAN CANNOT PLACE (Sprint 11 Task 19, PS2X_CALL_TRACE).
+#
+# A traced FUNCTION is not a data address: no lui/lo pair materialises it, so `resolve` is silent. And
+# `match.json` will not place either of these two on its own --
+#
+#   * `FUN_00553dc0` (SetMoveScale) is `unresolved` there, because its object displacements moved
+#     (0x1368 -> 0x136c) and a body whose displacements moved is exactly a body the matcher leaves alone;
+#   * `thunk_FUN_0030be80` (NetIdle) is `seed+delta`, which `ACCEPT` does not count as evidence -- a
+#     two-word thunk has nothing in it for a body hash to be about.
+#
+# So each gets the reading its shape allows. A MASKED BODY compares the two bodies instruction for
+# instruction with every load/store displacement and immediate blanked: what survives is the opcodes and
+# the registers, which is what "the same function, relinked and re-displaced" means. A THUNK is placed by
+# its TARGET -- the target is an ordinary function `match.json` can place by evidence -- and by being the
+# only thunk to that target on either side, so there is no second one the trace could have meant.
+MASKED_OPS = frozenset(LOADSTORE) | {0x09, 0x0D}       # loads, stores, addiu, ori
+
+
+def body_span(funcs, start):
+    """(start, instruction count) of the function at `start` in the r0001 CSV, or None."""
+    for s, e, _name in funcs:
+        if s == start:
+            return start, (e - s) // 4
+    return None
+
+
+def masked_body(img, start, n):
+    """`n` instructions from `start` with every load/store displacement and immediate blanked, or None
+    when the range is not all in the image."""
+    out = []
+    for i in range(n):
+        w = img.word(start + 4 * i)
+        if w is None:
+            return None
+        out.append(w & 0xFFFF0000 if op(w) in MASKED_OPS else w)
+    return out
+
+
+def masked_body_matches(a_img, a_start, b_img, b_start, n):
+    """(equal, differing raw word offsets) for the two bodies under the mask."""
+    ma, mb = masked_body(a_img, a_start, n), masked_body(b_img, b_start, n)
+    if ma is None or mb is None or ma != mb:
+        return False, []
+    differ = [i for i in range(n) if a_img.word(a_start + 4 * i) != b_img.word(b_start + 4 * i)]
+    return True, differ
+
+
+def thunk_target(img, addr):
+    """The target of a two-word `j <target>; nop` at `addr`, or None when that is not what is there."""
+    w, delay = img.word(addr), img.word(addr + 4)
+    if w is None or (w >> 26) != 2 or delay != 0:
+        return None
+    return ((addr + 4) & 0xF0000000) | ((w & 0x03FFFFFF) << 2)
+
+
+def thunks_to(img, target):
+    """Every address in the executable segments holding `j target; nop`."""
+    out = []
+    for base, size in img.exec_ranges():
+        for pc in range(base, base + size - 4, 4):
+            if thunk_target(img, pc) == target:
+                out.append(pc)
+    return out
+
+
+def resolve_thunk(target, a, b, match):
+    """(r0004 address or None, a sentence of evidence) for a two-word thunk, placed by its target."""
+    t_a = thunk_target(a, target)
+    if t_a is None:
+        return None, "0x%08x is not a `j <target>; nop` thunk in r0001" % target
+    row = match.get("0x%08x" % t_a) or {}
+    if row.get("how") not in ACCEPT or not row.get("b"):
+        return None, ("its target 0x%08x is %s in match.json, which is not evidence"
+                      % (t_a, row.get("how")))
+    t_b = int(row["b"], 16)
+    here, there = thunks_to(a, t_a), thunks_to(b, t_b)
+    if len(here) != 1 or len(there) != 1:
+        return None, ("not unique: %d thunk(s) to 0x%08x in r0001, %d to 0x%08x in r0004"
+                      % (len(here), t_a, len(there), t_b))
+    return there[0], ("j 0x%08x -> j 0x%08x; the target is %s/%s in match.json, and the thunk is the only "
+                      "one to it on either side" % (t_a, t_b, row["how"], row.get("tie")))
 
 
 def _report(name, target, addr, votes, n, expect=None):
@@ -269,6 +363,20 @@ def main(argv=None):
                 got, ntr, hits = vtable_by_contents(r1, a=a, b=b, match=kw["match"])
                 print("%-14s r0001 0x%08x -> %s   (%d slots translated, %d candidate(s))   %s expected 0x%08x"
                       % (name, r1, ("0x%08x" % got) if got else "UNRESOLVED", ntr, len(hits),
+                         "MATCHES" if got == r4 else "DIFFERS FROM", r4))
+            elif how == "thunk":
+                got, note = resolve_thunk(r1, a, b, kw["match"])
+                print("%-14s r0001 0x%08x -> %s   (thunk: %s)   %s expected 0x%08x"
+                      % (name, r1, ("0x%08x" % got) if got else "UNRESOLVED", note,
+                         "MATCHES" if got == r4 else "DIFFERS FROM", r4))
+            elif how == "masked-body":
+                span = body_span(kw["funcs"], r1)
+                ok, differ = masked_body_matches(a, r1, b, r4, span[1]) if span else (False, [])
+                got = r4 if ok else None
+                print("%-14s r0001 0x%08x -> %s   (masked body: %s of %s instructions equal, %d raw "
+                      "word(s) differ)   %s expected 0x%08x"
+                      % (name, r1, ("0x%08x" % got) if got else "UNRESOLVED",
+                         span[1] if ok and span else 0, span[1] if span else "?", len(differ),
                          "MATCHES" if got == r4 else "DIFFERS FROM", r4))
             else:
                 got = _report(name, r1, *resolve(r1, **kw), expect=r4)
