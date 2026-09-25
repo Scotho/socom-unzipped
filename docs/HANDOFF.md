@@ -151,7 +151,7 @@ twice).
 **On models and delegation.** The owner's rule of 2026-09-17 was "bounded mechanical work goes to Opus agents; Fable
 keeps the judgment". You now hold the judgment. What that rule was protecting is still worth protecting: give
 sub-agents an exact brief and a verification command; have a fresh agent re-derive any number a decision rests on
-rather than re-read it; honour every stop rule as written; and when a choice is really the owner's (section 9), ask
+rather than re-read it; honour every stop rule as written; and when a choice is really the owner's (`docs/HUMAN_TASKS.md`), ask
 rather than rule. At most two C++-building agents at once.
 
 ## 6. Traps -- each of these has already cost someone a day
@@ -298,28 +298,11 @@ rather than rule. At most two C++-building agents at once.
   s2u.scotho.com (the owner's instruction, 2026-09-20); (2) after a report is sent, the site's form should say that
   contributors can also open a GitHub issue and quote the `BR-` id (Sprint 11 Goal 7; not urgent).
 
-## 9. What the owner said on 2026-09-20, and where each thing now lives
+## 9. What the owner said on 2026-09-20, and where each thing now lives (archived 2026-09-25)
 
-*States re-checked at the Sprint 10 close, 2026-09-23: nine rows that still read "Open" had landed in P4 (2026-09-20) and Q4 (2026-09-21, gate `s10_q4_gate` 3/3). Only the profile viewer is still a live question, and it is the owner's.*
-
-| The owner said | Where it lives | State |
-|---|---|---|
-| The music gets louder and quieter and jumps between tracks; research it, fix it universally | Spec Goal 10; sprint P1, P2, Q1; music round four | **DONE on the machine's side 2026-09-21** -- the defect was a stereo VPK interleaved per 0xb000 streaming buffer that we split per 0x800 chunk, so every stem played its two channels from different places in the song (`c6502ea`); the mission's pauses are proven to be the game's own playlist design. What remains is the DEVICE dips, and the 2026-09-23 A/B proved those are ours rather than the owner's speaker (`docs/KNOWN.md` §1) |
-| While the game runs the pad drives both windows; the guide button should toggle | Spec Goal 9; P3 (input gate), Q4 (guide toggle) | **DONE 2026-09-21 (Q4, R211-R213):** while the game runs the pad never drives the launcher; the switch is one button, bound in BUTTONS with OFF beside it, the guide by default, read from XInput's ordinal 100 on Windows |
-| Live server stats in the launcher | Goal 8's ONLINE line, one reader | Landed; confirm at P5 |
-| Style the game window like the launcher; a header button that focuses options | Q4 | **DONE 2026-09-21 as decided, not as asked (R214, R215):** no header bar on the game window in this pass, because the client area is what the gate captures; the window's title became "&lt;game&gt; -- SOCOM Unzipped" and the harness's key moved with it |
-| UNZIPPED sits lower than SOCOM II; RUNNING sits above its lamp | P4 (`main.cpp:443-446`, `:463-467`), asserted in tests | **DONE 2026-09-20 (P4, R176's pass)** -- both alignments landed and are asserted in tests |
-| Tooltips ("what is a profile?"); should there be a profile viewer? | P4 (tooltips); Q4 (viewer -- the owner's call) | **Tooltips DONE 2026-09-20** (six, focus-driven). **The profile viewer is the one row here that is genuinely still open, and it is the owner's call, not the loop's** |
-| Move "Second instance" into an ADVANCED section | P4 | **DONE 2026-09-20 (R176)** -- ADVANCED is a per-page section, it holds one thing today, and it may not hide a setting that is doing something |
-| A one-frame flash at the top left on page change | P4 (`1966fa6`) | **DONE 2026-09-20** -- the frame's node list was built before input, so the frame drew the new page with the old list |
-| Launcher menu sounds from the game's own bank | Q4 -- decoded from the player's ISO at first run, cached, never shipped | **DONE 2026-09-21 (R216, R217):** the cues play at 0.45 of their rendered level with the setting on AUDIO, and the cache is keyed by content (SHA-256 over the PVD and the bank's first sector), not by path |
-| Remove every mouse option; keyboard permanent but for menus and typing only | Q3; trap 1; R210 | **DONE 2026-09-21** (`agent/q3`, merged `0c172a6`): the mouse and its two knobs are gone; the gameplay keys survive in developer mode only, which every harness launch is |
-| The debugger must not be open at launch | `2d0463f` (it was `m_visible = true`; F1 toggles) | DONE. Open: whether the release build carries imgui at all -- a size measurement inside Q2 |
-| We expose many PS2X options; maybe a private git-ignored dev build -- "unless you agree otherwise" | Spec Goal 3, "the exposure question"; Q2; `SECURITY.md` | Answered no, with reasons; one real vector found and fixed (`f5809c8`, the profile was a path). The owner can still overrule -- as a committed option |
-| The server's name is `socom.scotho.com`; "you add it" | `80b1971`; P6 | The DNS-only A record exists and resolves. Next: the persona measurement, then the launcher's default |
-| The site must stop claiming keyboard/mouse support | Section 8 relay | Owed to the site session |
-| A playtest is planned | Milestone P; `docs/PLAYTEST.md` | Scheduled |
-| Make the project public and forkable, with intentional git planning | `docs/GIT_STRATEGY.md`, `CONTRIBUTING.md`, `SECURITY.md`, `.github/`, Sprint 11 spec Goals 0, 1, 7 | Designed and scheduled; early files landed |
+The owner's asks of 2026-09-20 and where each landed are in `docs/archive/HANDOFF-loop-history-to-2026-09-25.md` §9, verbatim (Sprint 13 Task R1;
+a third of its rows had gone stale, the 2026-09-25 audit's D15). Every row but one is done; the one still open,
+whether a profile viewer is wanted, is the owner's and is in `docs/HUMAN_TASKS.md`.
 
 ## 10. What the owner should decide before the playtest (archived 2026-09-25)
 
@@ -336,7 +319,7 @@ Read it before adding a document or moving a fact.
 
 **Live, kept in step by the controller:** `docs/CURRENT_SPRINT.md` (order), `docs/KNOWN.md` (truth), `docs/STATUS.md`
 (log; its top block is current state), `docs/HUMAN_TASKS.md` and `docs/PLAYTEST.md` (the owner's), this file (refresh
-sections 2 and 8 whenever the pick-up point changes; 4 and 10 were archived 2026-09-25), `docs/LOOP_PROMPT.md`, `docs/GIT_STRATEGY.md`,
+sections 2 and 8 whenever the pick-up point changes; 4, 9 and 10 were archived 2026-09-25), `docs/LOOP_PROMPT.md`, `docs/GIT_STRATEGY.md`,
 `docs/DOC_MAINTENANCE.md`, the open sprint's spec and plans under `docs/superpowers/`. **Generated, never
 hand-edited:** `docs/KNOBS.md` (from `ps2x/knobs.h`) and `docs/LADDER.md` (from `logs/ladder/ledger.jsonl`). **Reference:** `docs/ROADMAP.md`, `docs/audits/2026-09-17-audit-and-code-review.md`,
 `docs/audits/2026-09-12-process-audit.md` (the source of rules 5 and 11), `docs/research/01-34`.

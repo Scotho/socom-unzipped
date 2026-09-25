@@ -97,7 +97,7 @@ CEILINGS = (
 # R268 too: "merged to `main` as `vX.Y.Z`" is a claim about origin. On 2026-09-25 four live documents
 # said it of v0.11.0 before the tag or the merge existed, so nobody was prompted to do either. A
 # struck-through claim (~~...~~) is a retraction and is skipped, as check 6 skips a struck path.
-MERGED_AS = re.compile(r"merged to `?main`? as `?(v\d+\.\d+\.\d+)`?")
+MERGED_AS = re.compile(r"merged to `?main`? as `?(v\d+\.\d+\.\d+)`?", re.I)   # "Merged to MAIN as" too
 STRUCK = re.compile(r"~~.*?~~")
 
 
@@ -421,8 +421,9 @@ def unknown_tags(tags):
             continue
         for i, line in enumerate(_read(path).split("\n"), 1):
             for m in MERGED_AS.finditer(STRUCK.sub("", line)):
-                if m.group(1) not in tags:
-                    bad.append((path, i, m.group(1)))
+                tag = "v" + m.group(1)[1:]
+                if tag not in tags:
+                    bad.append((path, i, tag))
     return bad
 
 

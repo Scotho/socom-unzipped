@@ -212,7 +212,9 @@ the count half is check 3; the rest is a reading, and §5 is where it happens.
 4. **Every N document, read for live state that has crept in.** A number, a task list, a "next", an instruction to go
    and edit another file: move it to its L document and leave a pointer.
 5. **Anything superseded this sprint moves to S or A** with a banner naming what replaced it. A document that is
-   *wrong* is archived, never quietly deleted — things cite it.
+   *wrong* is archived, never quietly deleted — things cite it. **The appending documents in particular** (R268,
+   check 7): keep two CLOSED blocks in the sprint file; the third moves to the archive at the close. HANDOFF §2 keeps
+   one "now" bullet and STATUS's Current state one dated bullet; the one they replace moves to the archive or the log.
 6. **Stamp this file's "Last full review" line** with the date and the sprint, and name in the close-out commit what
    the review changed. A review that changed nothing says so explicitly; that is a result too.
 7. **The known-issue stack, in full** -- §7 below. Its result goes into the same close-out commit, in the same

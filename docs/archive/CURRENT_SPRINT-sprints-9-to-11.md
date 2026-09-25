@@ -143,7 +143,7 @@ recorded as a standing hazard in `docs/KNOWN.md` §4 and in `docs/HANDOFF.md`'s 
 - **The capture's environment dump** -- every capture used as evidence writes its `PS2X_*` beside its output, the way
   the gate's pins do (R185-R187).
 
-*(The "Standing rules" block stood here until 2026-09-25; deleted at the split, see the banner.)*
+*(The standing backlog and Sprint 10's rulings ledger R181-R244 stood here; they stay live in `docs/CURRENT_SPRINT.md`, under "The standing backlog and the Sprint 10 ledger".)*
 
 ## The order, reworked 2026-09-20 (controller handoff)
 
@@ -610,6 +610,8 @@ carries Q2 (a full generated rebuild, three gates, an online round -- the most e
 polished remapping UI is a sprint's work beside it. Holding the merge and the tag behind it would make `v0.9.0` mean
 less, and the branch lives longer in a working tree several sessions share. **The owner can overturn this** -- it is a
 scheduling call, not a technical one, and reversing it costs nothing that has not already been written.
+
+*(The "Standing rules" block stood here until 2026-09-25; deleted at the split, see the banner.)*
 
 ---
 

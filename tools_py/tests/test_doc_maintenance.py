@@ -385,6 +385,20 @@ class PlantedDefectsTest(unittest.TestCase):
         self.write("README.md", "# r\n\nSprint 11 CLOSED and merged to `main` as `v0.11.0`; also merged to main as v0.10.0.\n")
         self.assertEqual(docmaint.report()["unknown_tags"], [])
 
+    def test_the_merged_as_check_ignores_case(self):
+        self.write("README.md", "# r\n\nSprint 12 is Merged to MAIN as V0.12.0.\n")
+        self.assertIn(("README.md", 3, "v0.12.0"), docmaint.report()["unknown_tags"])
+
+    def test_a_crlf_checkout_measures_the_same_as_lf(self):
+        """A Windows checkout carries CRLF; CI carries LF. The ceiling must not depend on which."""
+        path, _, limit = self.ceiling("docs/HUMAN_TASKS.md")
+        body = "# ht\n" + ("x" * 99 + "\n") * 10
+        with open(os.path.join(self._tmp, "docs", "HUMAN_TASKS.md"), "wb") as fh:
+            fh.write(body.replace("\n", "\r\n").encode("utf-8"))
+        self.assertEqual(docmaint.block_bytes(path, None), len(body.encode("utf-8")))
+        self.write("docs/HUMAN_TASKS.md", body)
+        self.assertEqual(docmaint.block_bytes(path, None), len(body.encode("utf-8")))
+
     def test_a_struck_through_merged_as_is_a_retraction(self):
         self.write("README.md", "# r\n\n~~Sprint 12 is merged to `main` as `v0.12.0`~~ -- not yet.\n")
         self.assertEqual(docmaint.report()["unknown_tags"], [])

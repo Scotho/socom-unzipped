@@ -18,7 +18,8 @@ spec:         docs/superpowers/specs/2026-09-24-sprint-12-the-readable-image-des
 plans:        docs/superpowers/plans/2026-09-24-sprint-12.md (CLOSED; its task table, its Log and its rulings
               S12-R1..R25 are the record; the cloud handoff that ran it is
               docs/superpowers/plans/2026-09-24-sprint-12-cloud-handoff.md); the Sprint 11 and Sprint 10 plans are
-              closed and listed in their blocks below.
+              closed and listed in their blocks (Sprint 11's below; Sprint 10's in
+              docs/archive/CURRENT_SPRINT-sprints-9-to-11.md).
 next sprint:  not yet planned -- Sprint 12 closed 2026-09-25 and its carry is in the "Sprint 12 -- CLOSED" block;
               the owner names the next sprint from the two close blocks' carry lists and docs/HUMAN_TASKS.md.
               Sprint 12 was "the readable image" (R263, 2026-09-24): it opened with the demo-name rename pass into the function map (R257 + the provenance sidecar R261, a recomp + runtime + r0001 gate), then Task 7c vtable slots through RTTI (the peer's scripts in tools_py/research/symbols/), BinDiff as the cross-check, the ccc types with the layout-age caveat, the toml names into the generated output.
@@ -188,7 +189,7 @@ internal to that sprint. Read `origin/sprint-12` for the full set.
 that sprint's levers and touch no Sprint 11 row. `S12-R6` is the cloud's own statement that the two sprints share one
 research-note sequence, which is why every number above is folded at the merge rather than renumbered now.*
 
-## Kept live from the Sprint 10 block (the split of 2026-09-25)
+## The standing backlog and the Sprint 10 ledger (kept live at the 2026-09-25 split)
 
 *The Sprint 9, 10 and 11 records that stood between here and the Sprint 11 close were moved verbatim on 2026-09-25
 (Sprint 13 Task R1, R268) to `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`: "Sprint 11 — the record of the sprint" (the task-by-task record, the worktree table, the timestamped blocks such as 14:30Z, 16:00Z, 02:5xZ and 13:00Z), "The close, 2026-09-22 evening → 2026-09-23 morning", "Sprint 10 — CLOSED 2026-09-23", "The order, reworked 2026-09-20", "Sprint 9, milestone P", "Sprint 9, milestone Q", "Sprint 10, REORGANIZED 2026-09-20" (with its chunk table, its road table and "Rulings (R181-R183)"), "The playthrough, 2026-09-22" (the R236-R240 blocks), the Sprint 10 and Sprint 11 drafts, "Rulings made on the owner's behalf (no plan of their own)" (R174-R178) and "The Sprint 9 record". A citation of any of those block names means that
@@ -302,7 +303,6 @@ working notes behind this table are `.superpowers/sdd/2026-09-22-sprint-10-close
 | R243 | "milestone U item 1's **step (b) is redefined as a differential test**, not a music-parity number" | `docs/archive/sprints-7-12/2026-09-22-sprint-10-close.md` | stands; committed `564ef99`. Its citation `docs/research/40-upstream-divergence.md` is on `agent/upstream` |
 | R244 | "**W8's fallback run is not run separately**: the ladder streak proves the join driver's R240 path" | `docs/archive/sprints-7-12/2026-09-22-sprint-10-close.md` | stands; committed `22d1900` |
 
-*Paths written `plans/...` are relative to `docs/superpowers/`; all others are from the repository root.*
 
 **Below R181, kept verbatim from the index line this table replaced** (they are Sprint 9's and earlier, and no part
 of this reconciliation): R179-R180 are Sprint 10 Goal 9's, recorded in its plan -- the password plain in

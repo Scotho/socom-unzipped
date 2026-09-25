@@ -4,14 +4,15 @@
 > live file verbatim: from §2 "Where it stands", the two "Picking up after ..." blockquotes, three stale state bullets and the nine
 > "Where the loop is now / was" bullets older than the one it keeps; all of §4 "The work, in order" (Sprint 9's
 > milestones P and Q and the Sprint 10-12 shape); all of §10 "What the owner should decide before the playtest"
-> (the playtest was 2026-09-22). **Nothing below is an instruction:** three bullets here say "is now", and none of
+> (the playtest was 2026-09-22); all of §9 "What the owner said on 2026-09-20" (added the same day,
+> after review). **Nothing below is an instruction:** three bullets here say "is now", and none of
 > them is. Kept whole and in the order the live file had them, edited only where a citation pointed at a block or a
 > path that has since moved. The current pick-up point is `docs/HANDOFF.md` §2; the dated account of each day is
 > `docs/STATUS.md`'s log.
 
 ## §2, "Where it stands": the pick-up points (the blockquotes first, then the bullets, as they stood)
 
-> **Picking up after Sprint 11's close (2026-09-25)?** `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`'s "Sprint 11" record, its **2026-09-25** paragraph and the worktree table; then the r0004 row in KNOWN §2 — the reboot is solved to its root, the gate is **3/3** (`s11_r0004_probe2`) and the build plays a scored online round on our own server (`s11_r0004_round2c`); the ledger `.superpowers/sdd/2026-09-23-sprint-11/progress.md` names what was running at the hand-back (a probe agent and the repair's fix round, both lock-bound). The lock's priority order is the r0004 critical path first (R255).
+> **Picking up after Sprint 11's close (2026-09-25)?** `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`'s "Sprint 11" block, its **2026-09-25** paragraph and the worktree table; then the r0004 row in KNOWN §2 — the reboot is solved to its root, the gate is **3/3** (`s11_r0004_probe2`) and the build plays a scored online round on our own server (`s11_r0004_round2c`); the ledger `.superpowers/sdd/2026-09-23-sprint-11/progress.md` names what was running at the hand-back (a probe agent and the repair's fix round, both lock-bound). The lock's priority order is the r0004 critical path first (R255).
 >
 > **Picking up after the Sprint 11 night (2026-09-23, 14:00Z)?** Start at `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`'s "Sprint 11 —
 > OPEN" block: what landed (Tasks 11, 2b, 8a, 8c and 19 followed on 2026-09-23 afternoon), and the table of agent worktrees holding unfinished, part-reviewed work — each row
@@ -138,3 +139,28 @@ eleven in the order they matter. Nothing was dropped.
    "what a stranger still lacks" list that no amount of machine time can close.
 5. **Whether the release build should drop imgui and the dump/trace families** -- decided on Q2's size number, but the
    owner should know the trade: a smaller download against a shipped build that is harder to diagnose.
+
+## §9 as it stood
+
+## 9. What the owner said on 2026-09-20, and where each thing now lives
+
+*States re-checked at the Sprint 10 close, 2026-09-23: nine rows that still read "Open" had landed in P4 (2026-09-20) and Q4 (2026-09-21, gate `s10_q4_gate` 3/3). Only the profile viewer is still a live question, and it is the owner's.*
+
+| The owner said | Where it lives | State |
+|---|---|---|
+| The music gets louder and quieter and jumps between tracks; research it, fix it universally | Spec Goal 10; sprint P1, P2, Q1; music round four | **DONE on the machine's side 2026-09-21** -- the defect was a stereo VPK interleaved per 0xb000 streaming buffer that we split per 0x800 chunk, so every stem played its two channels from different places in the song (`c6502ea`); the mission's pauses are proven to be the game's own playlist design. What remains is the DEVICE dips, and the 2026-09-23 A/B proved those are ours rather than the owner's speaker (`docs/KNOWN.md` §1) |
+| While the game runs the pad drives both windows; the guide button should toggle | Spec Goal 9; P3 (input gate), Q4 (guide toggle) | **DONE 2026-09-21 (Q4, R211-R213):** while the game runs the pad never drives the launcher; the switch is one button, bound in BUTTONS with OFF beside it, the guide by default, read from XInput's ordinal 100 on Windows |
+| Live server stats in the launcher | Goal 8's ONLINE line, one reader | Landed; confirm at P5 |
+| Style the game window like the launcher; a header button that focuses options | Q4 | **DONE 2026-09-21 as decided, not as asked (R214, R215):** no header bar on the game window in this pass, because the client area is what the gate captures; the window's title became "&lt;game&gt; -- SOCOM Unzipped" and the harness's key moved with it |
+| UNZIPPED sits lower than SOCOM II; RUNNING sits above its lamp | P4 (`main.cpp:443-446`, `:463-467`), asserted in tests | **DONE 2026-09-20 (P4, R176's pass)** -- both alignments landed and are asserted in tests |
+| Tooltips ("what is a profile?"); should there be a profile viewer? | P4 (tooltips); Q4 (viewer -- the owner's call) | **Tooltips DONE 2026-09-20** (six, focus-driven). **The profile viewer is the one row here that is genuinely still open, and it is the owner's call, not the loop's** |
+| Move "Second instance" into an ADVANCED section | P4 | **DONE 2026-09-20 (R176)** -- ADVANCED is a per-page section, it holds one thing today, and it may not hide a setting that is doing something |
+| A one-frame flash at the top left on page change | P4 (`1966fa6`) | **DONE 2026-09-20** -- the frame's node list was built before input, so the frame drew the new page with the old list |
+| Launcher menu sounds from the game's own bank | Q4 -- decoded from the player's ISO at first run, cached, never shipped | **DONE 2026-09-21 (R216, R217):** the cues play at 0.45 of their rendered level with the setting on AUDIO, and the cache is keyed by content (SHA-256 over the PVD and the bank's first sector), not by path |
+| Remove every mouse option; keyboard permanent but for menus and typing only | Q3; trap 1; R210 | **DONE 2026-09-21** (`agent/q3`, merged `0c172a6`): the mouse and its two knobs are gone; the gameplay keys survive in developer mode only, which every harness launch is |
+| The debugger must not be open at launch | `2d0463f` (it was `m_visible = true`; F1 toggles) | DONE. Open: whether the release build carries imgui at all -- a size measurement inside Q2 |
+| We expose many PS2X options; maybe a private git-ignored dev build -- "unless you agree otherwise" | Spec Goal 3, "the exposure question"; Q2; `SECURITY.md` | Answered no, with reasons; one real vector found and fixed (`f5809c8`, the profile was a path). The owner can still overrule -- as a committed option |
+| The server's name is `socom.scotho.com`; "you add it" | `80b1971`; P6 | The DNS-only A record exists and resolves. Next: the persona measurement, then the launcher's default |
+| The site must stop claiming keyboard/mouse support | Section 8 relay | Owed to the site session |
+| A playtest is planned | Milestone P; `docs/PLAYTEST.md` | Scheduled |
+| Make the project public and forkable, with intentional git planning | `docs/GIT_STRATEGY.md`, `CONTRIBUTING.md`, `SECURITY.md`, `.github/`, Sprint 11 spec Goals 0, 1, 7 | Designed and scheduled; early files landed |
