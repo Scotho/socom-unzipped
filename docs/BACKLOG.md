@@ -4,7 +4,7 @@
 
 ## 1. Open issues
 
-23 open issues. *Carried* counts the sprint closes an issue has survived (its `Carried ...` comments, or one for the `carried` label alone); at 2 the next close asks the owner.
+22 open issues. *Carried* counts the sprint closes an issue has survived (its `Carried ...` comments, or one for the `carried` label alone); at 2 the next close asks the owner.
 
 | Issue | Title | Area | Milestone | Carried | Closing bar (first sentence) |
 |---|---|---|---|---|---|
@@ -18,7 +18,6 @@
 | #35 | loop_lock.sh --wait N is a retry count while its usage line says minutes | harness | backlog | 0 | `--wait` takes a duration independent of the poll interval (minutes, or an explicit `--wait-seconds`), the usage line says what it takes, a case in `tools_py/tests/test_loop_lock.py` fails on the old arithmetic, and `LOOP_LOCK_SLOW_TESTS=1` is green before the commit (docs/HANDOFF.md trap 8). |
 | #36 | The loop lock has no queue: a 60 s poller loses every hand-off to a 5 s poller | harness | backlog | 0 | A ticket (append to a queue file on the first refusal, grant to the head) under `tools_py/tests/test_loop_lock.py` cases that show two waiters served in arrival order regardless of their poll intervals; `LOOP_LOCK_SLOW_TESTS=1` green before the commit. |
 | #37 | ladder_job.sh checks the lock and then acquires it separately, and loses the gap | harness | Sprint 13 | 2 | The pre-check is dropped and `run_detached` takes the lock itself with `--wait`; a test that plants a competing taker between the two steps fails on the old script and passes on the new; one scheduled ladder run then launches on its first attempt. |
-| #39 | PS2X_PEEK caps every item at 64 words silently and skips an unresolved chain without a row | harness | backlog | 0 | An item over the cap is either served in full or produces one warning line naming the item and the cap, and an unresolved chain produces a row that says so; a runtime test in `ps2x_tests` drives both cases. |
 | #40 | PS2X_HLE_STATS and PS2X_CALL_TRACE miss tail calls to stubs, so their counts undercount | recomp | backlog | 0 | Tail-call sites route through the same counting entry as dispatched calls (or the emitter counts them), shown by a stats run on a known workload where memcpy's count equals its static site count plus the dynamic dispatches; the nine unregistered stubs are either registered or removed from the toml with the reason recorded. |
 | #41 | The console-replay pixel test covers a gameplay frame only; a menu-frame fixture is missing | harness | backlog | 0 | A fresh PCSX2 GS dump of a menu frame and a gameplay frame by research note 31's recipe, kept where the suite (or a documented opt-in job) finds it, and the case seen RED on a planted pixel change and GREEN on the tree; or the case deleted with the reason recorded in the row. |
 | #42 | About 50 ms of the mission music is lost between the mixer's render() and the device, on any endpoint | audio | Sprint 13 | 2 | A capture that stamps the mixer's output-frame clock on both the dump and the endpoint recording, so that each dip is attributed to a render call rather than to a wall-clock alignment; the cause it lands on fixed and the same capture re-run with the per-minute DEVICE count at zero; and that per-minute count pinned into the audio gate so it cannot drift back silently. |

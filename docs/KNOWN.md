@@ -507,7 +507,7 @@ Maintained by whoever is running the loop. Last audited: **2026-09-25 (Sprint 13
   **Residual, accepted:** two holders remain reachable only when a reaper stalls ≥ 30 s at a one-command
   window (a sleeping machine), which any lease lock without kernel locking has; the loser's renew reports
   `LOCK LOST` within one interval. Blind: a hung job whose wrapper keeps renewing is never reaped.
-- **`PS2X_PEEK` caps every item at 64 words, silently** *(issue #39)* (`game_overrides_socom2.cpp` peek loop, Task 0
+- ~~**`PS2X_PEEK` caps every item at 64 words, silently**~~ **Fixed `9cafb718`/`bd79530b` (Sprint 13 C3), closed 2026-09-25:** an item over 64 words warns once (`[peek-cap]`, the item and the cap) and an unresolved chain writes a row saying so; the readers ignore that cell; ps2x_tests' Socom2Peek suite (5 cases) green on CI and in the third proof. *(issue #39 (closed))* (`game_overrides_socom2.cpp` peek loop, Task 0
   preflight). Split longer items; an item whose chain does not resolve is skipped, so count rows.
 - **`git add X && git commit` commits the whole index, not X.** With several agents sharing one
   working tree, that sweeps another agent's staged files under your message — it happened to
