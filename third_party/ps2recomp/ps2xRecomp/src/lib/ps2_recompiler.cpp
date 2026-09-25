@@ -2027,16 +2027,24 @@ namespace ps2recomp
     }
 
     // [general] names (research/57 §4(b)): the sidecar's first two columns, Address,Name. Later columns
-    // (Evidence) hold quoted commas, so only the first two fields are read. Absent key or file: today's names.
+    // (Evidence) hold quoted commas, so only the first two fields are read. Absent key: today's names, an info
+    // line. A key whose file does not open is a WARNING (#48): a build whose toml names a sidecar that is not
+    // there (build_revision --out used to write one) silently emitted FUN_/sub_ for every function, and an info
+    // line said so where nobody reads. build.sh and build_revision.sh print every `names` event of the log.
     void PS2Recompiler::loadDisplayNames()
     {
         m_displayNames.clear();
-        std::ifstream file(m_config.namesPath);
-        if (m_config.namesPath.empty() || !file.is_open())
+        if (m_config.namesPath.empty())
         {
-            m_reporter.info("names", "no names file" +
-                                         (m_config.namesPath.empty() ? std::string() : ": " + m_config.namesPath) +
-                                         "; output names come from the function map");
+            m_reporter.info("names", "no names file; output names come from the function map");
+            return;
+        }
+        std::ifstream file(m_config.namesPath);
+        if (!file.is_open())
+        {
+            m_reporter.warning("names", "names file does not resolve: " + m_config.namesPath +
+                                            " (relative to the directory ps2_recomp runs in); every function keeps "
+                                            "its function-map name (FUN_/sub_ placeholders)");
             return;
         }
         std::string line;

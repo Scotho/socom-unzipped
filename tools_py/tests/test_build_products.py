@@ -212,7 +212,8 @@ class Step3ArgumentsAreTheOnesRegeneratedHere(unittest.TestCase):
         text = read(BUILD_REVISION)
         for needle in ('TOML_INPUT="../game/overlays_$REV/socom2_game_$REV.elf"; TOML_OUTPUT="./output_$REV/"',
                        'TOML_GHIDRA="build/socom2_ghidra_$REV.fixed.csv"',
-                       '--set-ghidra-output "$TOML_GHIDRA" --set-names "socom2_names_$REV.csv" --out "$TOML"',
+                       '--set-ghidra-output "$TOML_GHIDRA" --set-names "$TOML_NAMES" --out "$TOML"',
+                       'NAMES_SRC="$ROOT/recomp/socom2_names_$REV.csv"',   # r0004's: TOML_NAMES is its basename
                        '--set-input "$TOML_INPUT" --set-output "$TOML_OUTPUT"',
                        '"$py" -m tools_py.revision_toml "$ROOT/recomp/socom2.toml" "$MATCH"',
                        '--elf-b "$ELF"'):
