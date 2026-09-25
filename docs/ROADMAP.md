@@ -32,8 +32,8 @@ since 2026-09-20 and was load-bearing for anybody reading the document as instru
 | `sceInetInterfaceControl` code `0x200` answers a live RX-byte counter | `socom2_libnetb.cpp:466-469`, behind `netStatsEnabled()`; `PS2X_SOCOM2_NET_STATS` covered in `knobs_tests.cpp:140` |
 | Our IOP module hardcodes link-up, which is why the "cable disconnected" monitor can never fire | `ps2xIOP/src/modules/eznetcnf.cpp:132-133` (`reply[2]=1`, `reply[3]=3`) |
 | §3.8's **"still open and unowned: the EE soft-double chain"** (`exp` LUT at `0x451090` garbage from entry 2) | `docs/audits/2026-09-17-audit-and-code-review.md` §3: *"6 exact-oracle math, HLE leg 3 — not started"*; still listed in `STATUS.md:474` and `:550`. **Two sprints on, still nobody's** |
-| "The transition residual strip is a refresh/clear ordering artefact" — *believed* | `KNOWN.md:119`, unchanged: *"No isolation test has been run"* |
-| "The intro-cinematic freeze is a real defect" — *believed* | `KNOWN.md:120`, unchanged: *"Not reproduced since"* |
+| "The transition residual strip is a refresh/clear ordering artefact" — *believed* | `KNOWN.md` §2, "The transition residual strip", unchanged: *"No isolation test has been run"* |
+| "The intro-cinematic freeze is a real defect" — *believed* | `KNOWN.md` §2, "The intro-cinematic freeze", unchanged: *"Not reproduced since"* |
 | §7's rule that **`KNOWN.md` is the live checklist and wins** | Still the project's practice, and still the right instruction |
 | Every commit hash cited (`abf35bb`, `5ed29ca`, `db7a992`, `4114ad4`, `b625291`, `ebf13be`, `8281254`) and every path (`tools_py/parity/gate.py`, `.../online_match_ours.py`, `dist/vu1_replay.exe`, `D:/socom_archive`, research notes 12–22 by number) | All resolve |
 
@@ -126,7 +126,7 @@ done: legs one and two ran (research/20), leg three — reading the guest's cons
 
 **B. A check that can pass quietly is the recurring defect class on our side of the fence.** Sprint 4 found six.
 Sprints 5–10 kept finding them: the mission gate scoring the intro cinematic, the console-spawn score riding inside a
-PASS line so `grep FAIL` reddens a clean gate (`KNOWN.md:206`), a ruling in prose that no test could fail so
+PASS line so `grep FAIL` reddens a clean gate (`KNOWN.md` §4, the `grep FAIL` hazard), a ruling in prose that no test could fail so
 `build.sh` quietly kept shipping `-O2` against R151, and a screenshot walk that changed pages at a moment no player
 could produce. It is the first thing reviewers are told to attack and it should stay that way.
 
@@ -147,7 +147,7 @@ EE game logic is allowed for diagnosis, rewriting it natively is not**.
 ## 4. The acceptance test, honestly
 
 **Passed 2026-09-13** — an automated two-instance online match driven to a kill, scored by two independent scorers on
-different signals (`KNOWN.md` §1 top row; `logs/parity/s5_t5_ladder2`; evidence archived with hashes).
+different signals (`KNOWN.md` §1, "THE ACCEPTANCE TEST PASSED"; `logs/parity/s5_t5_ladder2`; evidence archived with hashes).
 
 **Repeatability is the bar, and this document does not hold the number.** The bar is seven consecutive clean
 scheduled-ladder runs; **the streak is in `docs/LADDER.md`**, which is generated from the run ledger and has never
