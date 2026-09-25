@@ -2,6 +2,10 @@
 # Configure and build ps2_runtime, ps2x_tests and the launcher WITHOUT the generated game code (14,882
 # files produced from the owner's disc, not in the repository), then run the suite.
 #
+# Sprint 13 C1: the same job then links the runner against a synthetic generated set (tests/fixtures/synthetic_recomp,
+# three hand-written functions), so the files only the runner compiles -- game_overrides_socom2.cpp, socom2_crypto.cpp --
+# compile on every code push (scripts/build_synthetic_runner.sh).
+#
 # What green means: the library, the two suites and the launcher build and pass without the game. It proves
 # nothing about the game -- only the three-stage gate on a rebuilt exe does that (docs/HANDOFF.md §5 rule 4).
 #
@@ -98,6 +102,7 @@ jobs:
         run: python3 -m pip install --break-system-packages numpy pillow zstandard
 
       - name: Build (no generated code)
+        id: build
         run: bash scripts/build_linux.sh --no-runner
 
       - name: Test
@@ -108,6 +113,14 @@ jobs:
           # PS2X_RUNNER_GENERATED_DIR pointing at recomp/output, which CI does not have, and
           # the build step above is undone and redone on every job.
           bash scripts/build_linux.sh test --no-runner 2>&1 | tee logs/ci/build_linux_test.log
+
+      # Sprint 13 C1: the files only the runner compiles, and the runner's link, against a hand-written synthetic
+      # generated set (tests/fixtures/synthetic_recomp) -- without it CMake skips the runner and nothing here ever
+      # compiled them. In the tree the build step made, so only the runner's own sources compile. After the suite, so
+      # both verdicts print; not after a failed build, which would only fail again.
+      - name: Compile game_overrides_socom2.cpp and socom2_crypto.cpp and link the runner (synthetic generated set)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: bash scripts/build_synthetic_runner.sh --build-dir third_party/ps2recomp/build-linux
 
       - name: Upload the launcher
         if: always()

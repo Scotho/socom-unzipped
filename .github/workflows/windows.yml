@@ -4,6 +4,10 @@
 # the C++ suite WITHOUT the generated game code (14,882 files produced from the owner's disc, not in the repository),
 # and runs both suites.
 #
+# Sprint 13 C1: the same job then links the runner against a synthetic generated set (tests/fixtures/synthetic_recomp,
+# three hand-written functions), so the files only the runner compiles -- game_overrides_socom2.cpp, socom2_crypto.cpp --
+# compile on every code push (scripts/build_synthetic_runner.sh).
+#
 # What green means: a fresh Windows clone, following only CONTRIBUTING.md, reaches a green C++ and Python suite. It
 # proves nothing about the game -- only the three-stage gate on a rebuilt exe does that (docs/HANDOFF.md §5 rule 4).
 # Like linux.yml, a cheap first job skips the build when only docs/ moved, and a skipped `build-windows` satisfies the
@@ -96,6 +100,7 @@ jobs:
         run: bash scripts/bootstrap_windows.sh
 
       - name: Build the runtime library and the launcher (no generated code)
+        id: build
         run: bash build.sh runtime --no-runner
 
       - name: Test (the Python suite, then ps2x_tests and the VU1 fixture verify)
@@ -103,6 +108,14 @@ jobs:
           mkdir -p logs/ci
           set -o pipefail
           bash build.sh test --no-runner 2>&1 | tee logs/ci/build_windows_test.log
+
+      # Sprint 13 C1: the files only the runner compiles, and the runner's link, against a hand-written synthetic
+      # generated set (tests/fixtures/synthetic_recomp) -- without it CMake skips the runner and nothing here ever
+      # compiled them. In build.sh's tree (build-clang), so only the runner's own sources compile. After the suite,
+      # so both verdicts print; not after a failed build, which would only fail again.
+      - name: Compile game_overrides_socom2.cpp and socom2_crypto.cpp and link the runner (synthetic generated set)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: bash scripts/build_synthetic_runner.sh --build-dir third_party/ps2recomp/build-clang
 
       - name: Upload the launcher
         if: always()
