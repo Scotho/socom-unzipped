@@ -1009,6 +1009,27 @@ class TestImportSet(unittest.TestCase):
             self.assertEqual(getattr(R, plural),
                              frozenset(ga.address(name, r) for r in ga.REVISIONS), plural)
 
+    def test_the_victim_death_clause_prints_the_rows_own_vtable(self):
+        """Fix round 2, N2: it printed the r0001 CONSTANT, so an r0004 replay's scored death clause
+        said word0=006691a0 about a row whose word 0 was 00668b20."""
+        from tools_py.parity import verdict_replay as R
+        import inspect
+        src = inspect.getsource(R)
+        i = src.index('"%s +0x1044=%.3f word0=%08x at shared %.2f guest %.2f"')
+        tail = src[i:i + 400]
+        self.assertIn("drow.actor.word0", tail)
+        self.assertNotIn("ACTOR_VTABLE,", tail)
+
+    def test_an_actor_read_carries_the_word0_it_saw(self):
+        from tools_py.parity import guest_addresses as ga
+        from tools_py.parity import verdict_replay as R
+        for revision in ("r0001", "r0004"):
+            vt = ga.address("actor_vtable", revision)
+            items = [(0x01A2B000, [vt] + [0] * 47)]
+            r = R._actor(items, None)
+            self.assertTrue(r.intact, revision)
+            self.assertEqual(r.word0, vt, revision)
+
     def test_it_carries_no_half_converted_guest_number(self):
         """F6's actual defect: the actor was revision-agnostic and the clock was not, so an r0004 replay
         produced a PARTIAL read instead of a clean NO-DATA. Every literal pair is converted, or none is."""

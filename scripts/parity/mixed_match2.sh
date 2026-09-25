@@ -14,6 +14,22 @@
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
+# The done marker is promised from here on (fix round 2, N4). Every refusal before the run proper --
+# env.sh's own `exit 1` when the revision cannot be established, this leg's render refusal below, the
+# DNS-stub and PCSX2-launch checks -- must leave a marker, or a poller watching logs/<name>.done waits
+# out the whole run on a leg that never started. The specific refusals write their own (with the
+# reason); this trap catches anything that does not, including the `exit` inside a sourced env.sh.
+OUT_EARLY="${1:-}"
+NAME_EARLY="$(basename "${OUT_EARLY:-logs/parity/mixed2_ours_hosts}")"
+mkdir -p logs
+rm -f "logs/${NAME_EARLY}.done"
+_socom_refusal() {
+  _rc=$?
+  if [ "$_rc" -ne 0 ] && [ ! -f "logs/${NAME_EARLY}.done" ]; then
+    echo "done $_rc refused-before-launch" > "logs/${NAME_EARLY}.done"
+  fi
+}
+trap _socom_refusal EXIT
 . "$(dirname "$0")/env.sh"
 socom_require_python mixed_match2
 OUT="${1:-logs/parity/mixed2_ours_hosts}"
@@ -34,7 +50,10 @@ if ! _socom_mixed_peek="$("$PYTHON" -m tools_py.parity.guest_addresses --env --p
   echo "${0##*/}: the per-revision instrument addresses could not be resolved (see above) -- refusing" >&2
   echo "  to hand this leg another revision's PS2X_PEEK" >&2
   unset _socom_mixed_peek
-  exit 1
+  # The done marker, like every other refusal here (fix round 2, N4): a poller watching
+  # logs/<name>.done would otherwise wait out the whole run on a leg that never started.
+  echo "done 8 instrument-addresses" > "logs/${NAME}.done"
+  exit 8
 fi
 eval "$_socom_mixed_peek"
 unset _socom_mixed_peek

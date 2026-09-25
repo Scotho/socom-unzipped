@@ -24,10 +24,13 @@ tests; they may not be loosened after a kill is seen.
 
 Row formats (the exe's own; research/21 §8-§9, research/18 §3.10-§3.12):
   * `[peek] @<addr>: <hex8>(<float>) ...` one row per PS2X_PC_SAMPLER period, not timestamped. Items
-    are identified by content: the actor block by word 0 == vtable 0x006691a0 (health +0x1044, alive
-    byte +0xF7A, team word +0xC8 read from whichever item covers that address), a valve by the item
-    that spells its name bytes and the 2-word item whose word 0 points at it, the guest clock by the
-    static 0x4365c0, the clock string by 0x408f10.
+    are identified by content, and every guest number below has a value PER REVISION (Task 19 fix
+    round 1): the actor block by word 0 being one of the class vtables -- r0001 0x006691a0, r0004
+    0x00668b20 -- (health +0x1044, alive byte +0xF7A, team word +0xC8 read from whichever item covers
+    that address), a valve by the item that spells its name bytes and the 2-word item whose word 0
+    points at it, the guest clock by the static (r0001 0x4365c0, r0004 0x442fd0), the clock string by
+    (r0001 0x408f10, r0004 0x4358d0). A row carries exactly one column's numbers, so membership reads
+    either revision's log; the scalars are only what a message prints.
   * `[call] <t>s <Name> #<n> ...` seconds since that process's call-trace start: the host clock.
   * `[socom2-input] state buttons=XXXX rx=XX ry=XX lx=XX ly=XX` on every change of the pad state
     (torn lines: the tail is recovered from the next line, as the harness writes them).
@@ -175,7 +178,8 @@ PAIR_MAX_S = 0.5
 @dataclass
 class ActorRead:
     addr: int
-    intact: bool                   # word 0 == ACTOR_VTABLE
+    intact: bool                   # word 0 in ACTOR_VTABLES (either revision's)
+    word0: int = None              # the vtable this row actually carried -- printed, never assumed
     x: float = None
     y: float = None
     z: float = None
@@ -252,7 +256,7 @@ def _actor(items, last_addr):
             return None
         addr = last_addr
     words = next(w for a, w in items if a == addr)
-    r = ActorRead(addr=addr, intact=intact)
+    r = ActorRead(addr=addr, intact=intact, word0=words[0] if words else None)
     if len(words) > max(ACTOR_POS_WORDS):
         r.x, r.y, r.z = (_f32(words[k]) for k in ACTOR_POS_WORDS)
         r.pos_nonzero = bool(r.x or r.y or r.z)
@@ -664,8 +668,10 @@ def _score_event(V, K, di, kind, ctx, clauses, out):
         clauses.append(("victim-death", None, "%s actor destroyed at shared %.2f guest %.2f: last intact +0x1044=%.3f "
                         "(< 1.0), no intact row <= 0 (§5.1.1)" % (vt, d_sh, gV, lh)))
     else:
+        # The vtable the ROW carried, not the r0001 constant (fix round 2, N2): printing
+        # ACTOR_VTABLE here said 006691a0 on an r0004 replay, about a row whose word 0 was 00668b20.
         clauses.append(("victim-death", True, "%s +0x1044=%.3f word0=%08x at shared %.2f guest %.2f"
-                        % (vt, drow.actor.hp, ACTOR_VTABLE, d_sh, gV)))
+                        % (vt, drow.actor.hp, drow.actor.word0 or 0, d_sh, gV)))
 
     # --- round: start, the death round's own step on each instance ----------------------------
     rK = K.valve_at("mp_round_count", d_sh)

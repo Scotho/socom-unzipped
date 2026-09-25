@@ -190,19 +190,79 @@ class MixedProfile(unittest.TestCase):
                         self.assertNotIn("0x%x" % ga.address(name, revision), line,
                                          "%s assigns PS2X_PEEK from a literal again: %s" % (leg, line))
 
-    def test_every_sourcer_either_takes_env_shs_block_or_renders_its_own(self):
-        """The boundary, enforced rather than described: a script under scripts/parity/ that sources
-        env.sh may not then assign PS2X_PEEK from anything but the renderer."""
+    # Every guest address either column carries, as a script would spell it.
+    LITERALS = None
+
+    @classmethod
+    def literals(cls):
+        if cls.LITERALS is None:
+            cls.LITERALS = {"0x%x" % ga.address(n, r) for n in ga.all_names() for r in ("r0001", "r0004")}
+        return cls.LITERALS
+
+    def test_no_sourcer_assigns_an_instrument_from_a_literal_after_sourcing(self):
+        """The boundary, enforced rather than described. Fix round 2, N1: the first form of this guard
+        skipped any script that mentioned `guest_addresses` ANYWHERE, so a script could render one
+        instrument and then hardcode the other -- only the three legs were strictly held, which a
+        mutation confirmed. The rule now reads every assignment to PS2X_PEEK or PS2X_CALL_TRACE that
+        follows the `. env.sh` line, whatever else the file says, and refuses a guest-address literal on
+        its right-hand side. A bare `export PS2X_PEEK` (no `=`) is the render path and is not an
+        assignment."""
         offenders = []
         for path in sorted(glob.glob(os.path.join(ROOT, "scripts", "parity", "*.sh"))):
-            with open(path, encoding="utf-8") as f:
-                body = "".join(l for l in f if not l.lstrip().startswith("#"))
-            if "env.sh" not in body or os.path.basename(path) == "env.sh":
+            if os.path.basename(path) == "env.sh":
                 continue
-            for line in body.splitlines():
-                if re.match(r"\s*(export\s+)?PS2X_PEEK=", line) and "guest_addresses" not in body:
-                    offenders.append("%s: %s" % (os.path.basename(path), line.strip()[:60]))
-        self.assertEqual(offenders, [], "these set PS2X_PEEK without going through guest_addresses")
+            with open(path, encoding="utf-8") as f:
+                lines = [l.rstrip() for l in f if not l.lstrip().startswith("#")]
+            src = next((i for i, l in enumerate(lines) if re.search(r"^\s*\.\s+.*env\.sh", l)), None)
+            if src is None:
+                continue
+            for line in lines[src + 1:]:
+                m = re.match(r"\s*(?:export\s+)?(PS2X_PEEK|PS2X_CALL_TRACE)=(.*)", line)
+                if not m:
+                    continue
+                hit = sorted(x for x in self.literals() if x in m.group(2))
+                if hit:
+                    offenders.append("%s sets %s from %s" % (os.path.basename(path), m.group(1),
+                                                             ", ".join(hit)))
+        self.assertEqual(offenders, [], "these assign an instrument from a guest-address literal")
+
+    def test_that_guard_actually_catches_an_assignment_after_the_source(self):
+        """The guard mutated, in memory: the same scan over a synthetic script must find the literal.
+        A guard nobody has seen fail is a guard nobody knows the shape of."""
+        script = ['. "$(dirname "$0")/env.sh"', 'echo guest_addresses is mentioned here',
+                  'export PS2X_CALL_TRACE="0x553dc0:MoveScale,0x30cd80:NetIdle"']
+        src = next(i for i, l in enumerate(script) if re.search(r"^\s*\.\s+.*env\.sh", l))
+        found = []
+        for line in script[src + 1:]:
+            m = re.match(r"\s*(?:export\s+)?(PS2X_PEEK|PS2X_CALL_TRACE)=(.*)", line)
+            if m:
+                found += sorted(x for x in self.literals() if x in m.group(2))
+        self.assertIn("0x553dc0", found)
+
+    def test_the_legs_refusal_writes_a_done_marker(self):
+        """Fix round 2, N4: the new refusal exited without one, so a poller watching logs/<name>.done
+        would have waited out the whole run on a leg that never started. No game and no network: the
+        script stops on the unresolvable image before it reaches either."""
+        for leg in MIXED_LEGS:
+            out = "logs/parity/_n4_%s" % leg.replace(".sh", "")
+            marker = os.path.join(ROOT, "logs", "_n4_%s.done" % leg.replace(".sh", ""))
+            if os.path.exists(marker):
+                os.remove(marker)
+            e = dict(os.environ, SOCOM_GAME_ELF=os.path.join(ROOT, "no", "such", "image.elf"))
+            p = subprocess.run([BASH, os.path.join("scripts", "parity", leg), out], cwd=ROOT, env=e,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True,
+                               timeout=120)
+            self.assertNotEqual(p.returncode, 0, leg)
+            self.assertTrue(os.path.exists(marker), "%s wrote no done marker: %s" % (leg, p.stderr))
+            with open(marker, encoding="utf-8") as f:
+                line = f.read()
+            self.assertTrue(line.startswith("done "), "%s: %r" % (leg, line))
+            # "instrument-addresses" when the leg's own render refused; "refused-before-launch" when
+            # the shared env.sh refused first on the same image, which is what actually happens here --
+            # the trap is what makes the marker a promise from before the source.
+            self.assertTrue("instrument-addresses" in line or "refused-before-launch" in line,
+                            "%s: %r" % (leg, line))
+            os.remove(marker)
 
 
 class Unconfirmed(unittest.TestCase):
