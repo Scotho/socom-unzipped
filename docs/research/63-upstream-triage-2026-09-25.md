@@ -21,14 +21,17 @@ they lacked. research/42 covered #226-#252. This note covers #205-#225, #228, #2
 
 | Verdict | Count | PRs |
 |---|---|---|
-| **TAKE** | 6 | #206, #221 (the LWU hunk only), #223, #224, #239 (Task U2), #253 |
+| **TAKE** | 6 | #206, #221 (the LWU hunk only), #223, #224 (the MADR/TADR half only, latent for SOCOM II; its tag half is ALREADY OURS `51529462`), #239 (Task U2), #253 |
 | **ALREADY OURS** | 7 | #208, #210, #212, #214, #215, #218, #225 |
+
+The TAKE rows give test **shapes** only: Step 1 is read-only. Task U7 writes the tests.
 | **NOT OURS** | 9 | #205, #207, #211, #213, #216, #220, #228, #233, #235 |
 | **LATER** | 5 | #209, #217, #219, #222, #242 |
 
-**Not all 27 are open.** #210 and #214 were merged on 2026-08-18 (`d9ea4fb`, `14b1e5c`). Both are ancestors of our
-base, and #214 *is* our base commit. #211 was closed unmerged on 2026-08-18. So 24 of the 27 are open. Upstream has
-**71** open PRs in all (`gh api 'search/issues?q=repo:ran-j/PS2Recomp+is:pr+is:open'` → `total_count` 71).
+**Not all 27 are open.** #210 and #214 were merged on 2026-08-18 (`merged_at` 22:49:38Z and 22:50:14Z; `d9ea4fb`,
+`14b1e5c`). Both are ancestors of our base, and #214 *is* our base commit. #211 was closed unmerged on 2026-08-18. So
+24 of the 27 are open. As of 2026-09-25 upstream has **71** open PRs in all
+(`gh api 'search/issues?q=repo:ran-j/PS2Recomp+is:pr+is:open'` → `total_count` 71).
 
 ## 1. Row by row
 
@@ -52,14 +55,16 @@ they matter.
   The tie-break is at `:1073-1094` (`if (a.end != b.end) return a.end > b.end;`).
 - It is reached. `ScanJalTargetsFallback` runs because the image has no DWARF (`elf_parser.cpp:1421-1424`), and the
   csv is almost all `FUN_` (14,708 of 14,879 rows are `FUN_`; `cut -d, -f1 recomp/socom2_ghidra.csv | grep -c ^FUN_`).
-- Measured on our output. The script compares each generated file's `// Address: start - end` header with its csv
-  row:
+- Measured on our output with the bounds script in §5.1, which compares each generated file's
+  `// Address: start - end` header with its csv row:
   - **6,640 of 14,657 generated functions run past their csv row**, for 1,263,492 bytes of guest range in total.
   - **1,112 swallow at least one other csv function whole.**
   - **6,750 output files are named `sub_`**, i.e. the carving won. research/57:87 counts the same 6,750.
-  - The worst case is `sub_003D57D0_0x3d57d0.cpp`: 15,552,637 bytes, covering `0x3d57d0-0x408480`, where the csv
-    row ends at `0x3d57f4`. It decodes data as code: it holds a `.word 0x42020739 # di` at `0x3db810` (§1 #222).
-  - The files of the inflated functions are 216,874,243 of the 565,035,462 bytes of `recomp/output/`.
+  - The worst case is `sub_003D57D0_0x3d57d0.cpp`: 15,552,637 bytes (`stat -c %s`), covering `0x3d57d0-0x408480`,
+    where the csv row ends at `0x3d57f4`. It decodes data as code: the word at `0x3db810` is emitted as a `di`
+    (§1 #222; `grep -h -B2 'cop0_status &= ~0x10000' recomp/output/*.cpp | grep '// 0x'`).
+  - The files of the inflated functions are 216,874,243 of the 565,035,462 bytes of `recomp/output/` (§5.1).
+  - The 6,750 is `ls recomp/output | grep -c '^sub_'`.
 - research/57:87 documents the mechanism as a fact about naming. It was never logged as a defect.
 - **TAKE.** Test shape (ps2x_tests, `ElfParser` on a synthetic ELF with no symbols):
   - One PF_X segment with `jal A` and `jal B` (B > A + 0x40) and a function body at A.
@@ -95,12 +100,14 @@ they matter.
 - Ours has the same guard, `control_flow_analyzer.cpp:576`: `if (!foundTable) { needsIndirectFallback = true; }`.
   Our test `code_generator_tests.cpp:830` still asserts the old behaviour.
 - Measured on our run log (`recomp/recomp_run.log`, which reports "Indirect fallback promotions: 6012 (2336656
-  fallback entries)"). I classified the 2,400 per-site warnings by the mnemonic in the generated file's comment:
+  fallback entries)"). I classified the 2,400 per-site warnings by the mnemonic in the generated file's comment
+  (script in §5.2):
   - 1,978 are `jalr` (195,158 entries) and 116 are `jr` (30,234 entries). 306 could not be classified.
   - 989 functions have only `jalr` sites.
 - **LATER.** This is output size, not correctness: promoted entries are extra labels, not wrong code. The review on
   the PR (Copilot) also points out that `jalr $zero, $rs` is a jump and must keep the fallback.
-- What would change the answer: a build-time or `register_functions.cpp` size goal (ours is 42,788,959 bytes). Take
+- What would change the answer: a build-time or `register_functions.cpp` size goal (ours is 42,788,959 bytes,
+  `stat -c %s recomp/output/register_functions.cpp`). Take
   it in the same re-recomp as #206 and #253, with the `rd == 0` exception.
 
 ### #210 Let a thread resume at the instruction after a syscall. Sinan-Karakaya, 2026-08-17, **merged 2026-08-18 as `d9ea4fb`**
@@ -126,13 +133,16 @@ they matter.
   `std::getenv`, which our knob registry refuses (research/42 §3, row #246).
 
 ### #214 Start the main thread with COP0 Status.IE set. Sinan-Karakaya, 2026-08-18, **merged as `14b1e5c`**
-- **ALREADY OURS**: it is our base commit. The line is `ps2_runtime.h:171`, `cop0_status = 0x00010001; // EIE | IE`.
+- **ALREADY OURS**: it is our base commit (merged 2026-08-18T22:50:14Z; the commit's author date is 2026-08-19 +0200).
+  The line is `ps2_runtime.h:171`, `cop0_status = 0x00010001; // EIE | IE`.
 
 ### #215 FPU_CVT_W_S: truncate toward zero and saturate. TheTharin, 2026-08-21, open
 - Files: `ps2xRuntime/include/ps2_runtime_macros.h` (ours: 6 commits, +272/-27); the PR also adds a new test file.
 - **ALREADY OURS**: `f3c6104b`, `ps2_runtime_macros.h:863-871` (`ps2_fpu_cvt_w`). It truncates with
-  `static_cast<int32_t>` below 2^31, saturates by sign otherwise, and handles NaN/Inf bit patterns, which the PR's
-  `std::isnan` path does not need on the EE. This confirms audit finding 2.
+  `static_cast<int32_t>` below 2^31 (an exponent test, `(bits & 0x7F800000u) <= 0x4E800000u`) and saturates by sign
+  otherwise, which is correct at exactly ±2^31. The PR compares the float against ±2147483648.0f and then casts. It
+  has no NaN test, so a NaN bit pattern reaches `(int32_t)a`; ours saturates it by sign. This confirms audit
+  finding 2.
 
 ### #216 Resolve rest-of-RAM heaps to the main thread's stack base. TheTharin, 2026-08-24, open
 - Files: `ps2_runtime.h` (ours: 8 commits), `Kernel/Syscalls/System.cpp` (4 commits), `ps2_runtime.cpp`
@@ -261,7 +271,7 @@ they matter.
 - Claim: a chain whose END tag has QWC 0 and carries no payload queues no transfer, so CHCR.STR never clears.
 - **Ours has the defect as written**, `ps2_memory.cpp:1603`: `if (!chainBuf.empty())`. It is the only place a
   chain's completion is queued. The STR clear and the D_STAT raise happen only in the pending-transfer drain
-  (`:1876-1894`: `m_ioRegisters[GIF_CHANNEL + 0x00] &= ~0x100u;` after `if (hadGif ...)`), and `:1600` writes CHCR
+  (`:1876-1894`: `m_ioRegisters[GIF_CHANNEL + 0x00] &= ~0x100u;` after `if (hadGif ...)`), and `:1601` writes CHCR
   back with STR still set.
 - **TAKE.** The fix is local: a `chainEnded` flag, and complete the channel with an empty payload.
 - Test shape (`ps2_memory_tests`): put one DMAtag `id=7 (END), qwc=0` at TADR, then write GIF CHCR = chain mode | STR.
@@ -272,20 +282,26 @@ they matter.
 - Files: `ps2_memory.cpp`, `ps2_memory_tests.cpp`.
 - Claim: bit 31 of MADR or of a DMAtag ADDR selects scratchpad on non-SPR channels. Masking it off, or treating it as
   a KSEG alias, reads RDRAM instead of SPR.
-- **Ours has both halves:**
-  - `ps2_memory.cpp:1484`: `uint32_t addr = static_cast<uint32_t>((tag >> 32) & 0x7FFFFFFF);` throws the selector
-    away.
-  - `ps2_memory.h:96-101` (`ps2IsScratchpadAddress`) treats a bit-31 address as SPR only when its low 31 bits fall
-    in `0x70000000-0x70003FFF`. So `MADR = 0x80000100` is read as RDRAM `0x100`, where the DMAC reads SPR `+0x100`.
-  - The SPR tests are at `:1337`, `:1375`, `:1429` and `:1454`.
+- The row splits in two.
+- **The DMAtag half is ALREADY OURS**: `51529462` (2026-09-05, "SPR flag in tag ADDR"), `ps2_memory.cpp:1485-1489`.
+  `:1484` masks with `& 0x7FFFFFFF`, and then `if (((tag >> 63) & 1ull) != 0ull) addr = 0x70000000u | (addr & 0x3FF0u);`
+  re-applies bit 31 as the SPR selector. The code comment gives the reason: "SOCOM II keeps its shell constant
+  packets in SPR and references them with REF tags". The PR's `& 0x7FFFFFFF` hunk would conflict with those lines, so
+  that half is not picked. `PS2X_TRACE_VIF` also prints the selector per VIF1 tag (`spr=%u`, `:1492-1503`).
+- **The MADR/TADR half is ours to fix.** `ps2_memory.h:96-101` (`ps2IsScratchpadAddress`) treats a bit-31 address as
+  SPR only when its low 31 bits fall in `0x70000000-0x70003FFF`. So a channel started with `MADR = 0x80000100` (or
+  TADR the same) reads RDRAM `0x100`, where the DMAC reads SPR `+0x100`. The SPR tests on that path are in
+  `ps2xRuntime/src/lib/ps2_memory.cpp` at `:1337` (direct transfer), `:1375` (chain payload), `:1429` (compact VIF1
+  tag data) and `:1454` (the tag address, i.e. TADR and NEXT).
 - Reach: `logs/fifo.log` (a SOCOM II run of 2026-09-05 with `PS2X_TRACE_FIFO`) has 15,610 `CHCR w` channel starts
-  and **no MADR or TADR with bit 31 set**. Tag ADDR fields are not traced, so chained tags pointing at SPR are
-  neither proved nor excluded.
-- **TAKE**, gated with `--vram-diff` 15/15 like the other GS/VIF picks.
-- Test shape:
-  1. GIF direct: put distinct 16-byte patterns at SPR `+0` and RDRAM `0`, set MADR `0x80000000`, QWC 1, start. The
-     delivered qword must be the SPR pattern.
-  2. A chain whose REF tag has ADDR `0x80000040`: the payload must come from SPR `+0x40`.
+  (`grep -c '\[fifo\] CHCR w' logs/fifo.log`) and **no MADR or TADR with bit 31 set**
+  (`grep '\[fifo\] CHCR w' logs/fifo.log | grep -o 'madr=[0-9a-f]*' | cut -c6 | sort | uniq -c` → only `0`; the
+  same with `tadr=`). So this half is latent for SOCOM II.
+- **TAKE, as a unit-test fix** (the MADR/TADR half only). It moves nothing SOCOM II does today, so a green suite plus
+  the gate is enough; `--vram-diff` is not the evidence here.
+- Test shape: put distinct 16-byte patterns at SPR `+0` and RDRAM `0`. Start GIF direct with MADR `0x80000000`,
+  QWC 1: the delivered qword must be the SPR pattern. Then start a GIF chain with TADR `0x80000000` over an END tag
+  in SPR: the tag must be read from SPR. (A REF tag with ADDR bit 31 already passes today, because of `51529462`.)
 
 ### #225 Support configurable callable entry points. GTTeancum, 2026-08-27, open
 - Files: `config_manager.cpp` (ours: 1 commit), `ps2_recompiler.cpp` (2 commits), `types.h` (1 commit).
@@ -314,7 +330,7 @@ they matter.
   straight through.
 - **Ours has it.** `translatePs2Path` (`Helpers/Runtime.h:108-158`) joins `base / normalizePs2PathSuffix(suffix)`,
   then `lexically_normal()` (`:118-127`), with no containment check. `normalizePs2PathSuffix`
-  (`Helpers/Path.h:38-47`) only strips leading slashes and the `;1` suffix. A path with a drive letter comes back
+  (`Helpers/Path.h:38-47`) turns `\` into `/`, strips leading slashes and strips the `;1` suffix; it checks nothing. A path with a drive letter comes back
   verbatim (`Runtime.h:150-153`: `if (pathStr.size() > 1 && pathStr[1] == ':') return pathStr;`).
 - **TAKE → Task U2.** The functions that need the check, each taking `translatePs2Path`'s result:
   - `Kernel/Syscalls/FileIO.cpp:90` `fioOpen` (`:77`);
@@ -359,7 +375,7 @@ they matter.
   runtime); return;`. In our output every by-name reference to another function is that pattern: 925 lines, and
   none that is not a tail call (`grep -h -E '^\s*\w+_0x[0-9a-f]+\(rdram, ctx, runtime\);' recomp/output/*.cpp | grep -v return;`
   → empty). Stub names appear only in `register_functions.cpp`.
-- **TAKE.** Every rename batch of the naming programme touches `ps2_recompiled_functions.h` (14,889 lines), and so
+- **TAKE.** Every rename batch of the naming programme touches `ps2_recompiled_functions.h` (14,889 lines, `grep -c '' recomp/output/ps2_recompiled_functions.h`), and so
   rebuilds all 14,657 function TUs.
 - Test shape:
   1. The PR's emitter test: the per-function output has no `ps2_recompiled_functions.h` and declares each direct-J
@@ -375,7 +391,7 @@ project records it.
 
 | Source | What we use | We hold | Newest upstream state (date) | What would make us move |
 |---|---|---|---|---|
-| ran-j/PS2Recomp | the fork base of `third_party/ps2recomp/` | `14b1e5c` (#214, 2026-08-19), vendored `8736759` (THIRD_PARTY_NOTICES.md:17) | `main` = `75d729c` "Feature/iop emulator (#244)" 2026-09-20T00:31:44Z (`gh api repos/ran-j/PS2Recomp/commits/main`); 71 open PRs; newest PR #253 2026-09-06; issues/PRs since 2026-09-15: only #244 (`issues?since=2026-09-15`) | a merge into `main` that touches a file we diverge in, or a new PR on the EE/DMA/SIF/recompiler paths; re-run §1's method on each new number |
+| ran-j/PS2Recomp | the fork base of `third_party/ps2recomp/` | `14b1e5c` (#214, merged 2026-08-18T22:50:14Z; THIRD_PARTY_NOTICES.md:17 gives the author date 2026-08-19), vendored `8736759` | `main` = `75d729c` "Feature/iop emulator (#244)" 2026-09-20T00:31:44Z (`gh api repos/ran-j/PS2Recomp/commits/main`); 71 open PRs as of 2026-09-25 (`search/issues?q=repo:ran-j/PS2Recomp+is:pr+is:open`); newest PR #253 2026-09-06; issues/PRs since 2026-09-15: only #244 (`issues?since=2026-09-15`) | a merge into `main` that touches a file we diverge in, or a new PR on the EE/DMA/SIF/recompiler paths; re-run §1's method on each new number |
 | GTTeancum `codex/xmen-legends-bringup` (upstream-adjacent) | nothing; design reading only (audit finding 8) | — | `ahead=108 behind=3`, last commit `d885f1b` 2026-09-09T17:31:46Z (`gh api repos/ran-j/PS2Recomp/compare/main...GTTeancum:codex/xmen-legends-bringup`) | a PR opened from it; it is the source of #217-#225, and the DMAC-completion and VU-block work lives there |
 | MrCoolTheCucumber/PS2Recomp | save-state byte format; the 64-bit branch fix (`f9f83d4c` mirrors `60d14c43`) | `7978365` (THIRD_PARTY_NOTICES.md:17; `research/ps2recomp-cucumber` HEAD `7978365`) | `7978365` "feat(runtime): add portable save states" 2026-08-16T15:47:59Z (`gh api repos/MrCoolTheCucumber/PS2Recomp/commits/main`); unchanged | any new commit (it has had none in 40 days) |
 | PSRewired site and tooling | the r0004 capsule (`r0004v002.elf`), the DNAS pnach; the community-server preset | capsule 67,267 B, pnach 790 B (KNOWN.md:20; git-ignored copies under `game/`) | `curl -sI https://psrewired.com/downloads/r0004v002.elf` → 200, 67267 B, `Last-Modified: Mon, 24 Mar 2025`; `0F6FC6CF.pnach` → 790 B, same date; `r0004nodns.elf` → 67587 B, `Last-Modified: Mon, 13 Feb 2023`; the guide (https://psrewired.com/guides/socom2) calls it "a secondary patch ... that bypasses the DNS requirement". GitHub org: `Game-Information` pushed 2026-08-22, `netslum-web` 2026-06-17, `Memdusa` 2026-05-30 (`gh api orgs/PSRewired/repos?sort=pushed`) | a changed `Content-Length`/`Last-Modified` on the capsule or pnach; the launcher's D1 download plan meeting `r0004nodns.elf` (audit finding 12); anything new in Memdusa (audit finding 13) |
@@ -383,7 +399,7 @@ project records it.
 | PCSX2 | the parity reference emulator (software renderer) | 2.8.1 (DEVELOPING.md:28) | stable `v2.8.2` 2026-09-04T23:04:48Z (`releases/latest`); nightly `v2.9.84` 2026-09-25T07:43:19Z (`releases?per_page=1`) | a stable release that changes the software renderer, SPU2, PINE or DEV9 (the DEV9 DMA fix `b67a81f6` is nightly-only, audit finding 17); moving would move the golden captures |
 | Ghidra | the naming programme's analysis | 12.1.3 (`tools/ghidra/Ghidra/application.properties:17` `application.version=12.1.3`); DEVELOPING.md:28 says only "12.1" | `Ghidra_12.1.4_build` 2026-09-21T17:38:59Z (`gh api repos/NationalSecurityAgency/ghidra/releases/latest`) | an EE-extension release for 12.1.4 (none yet); until then stay on 12.1.3 |
 | ghidra-emotionengine-reloaded | the R5900 processor module | the build for 12.1.3 (per the audit, external.md:16; not re-read here) | `v2.1.37` 2026-08-25T22:37:13Z (`releases/latest`), "Added support for Ghidra 12.1.3" (audit) | a release for 12.1.4 |
-| BinExport | the BinDiff naming lever (research/49) | `v12-20240417-ghidra_11.0.3` on a second Ghidra 11.0.3 + EE v2.1.16 (49-bindiff-crosscheck.md:76-79) | latest release unchanged, `v12-20240417-ghidra_11.0.3` (2024-04-17); `main` HEAD `087a035` "Binary Ninja: Use upstream stub support" 2026-09-15T11:13:05Z (`gh api repos/google/binexport/commits/main`); the Ghidra-12.x compatibility commit `8cec8e2` is 2026-09-01 (audit finding 19) | building `main` for Ghidra 12.1.3 retires the 11.0.3 install (audit finding 19); a tagged release would make it cheap |
+| BinExport | the BinDiff naming lever (research/49) | `v12-20240417-ghidra_11.0.3` on a second Ghidra 11.0.3 + EE v2.1.16 (49-bindiff-crosscheck.md:76-79) | latest release unchanged, `v12-20240417-ghidra_11.0.3` 2024-04-17T08:41:39Z (`gh api repos/google/binexport/releases/latest`); `main` HEAD `087a035` "Binary Ninja: Use upstream stub support" 2026-09-15T11:13:05Z (`gh api repos/google/binexport/commits/main`); the Ghidra-12.x compatibility commit `8cec8e2` is 2026-09-01 (audit finding 19) | building `main` for Ghidra 12.1.3 retires the 11.0.3 install (audit finding 19); a tagged release would make it cheap |
 | BinDiff | the diff engine of research/49 | 8 | `v8` 2023-09-25 (`gh api repos/google/bindiff/releases/latest`); unchanged | a new release |
 | ccc (chaoticgd) | DWARF-1/type recovery (research/50) | `c025ca9` (50-ccc-dwarf1-types.md:27) | `c025ca9` 2026-06-07T17:38:04Z (`gh api repos/chaoticgd/ccc/commits/main`); unchanged | any new commit |
 | llvm-mingw | the Windows toolchain | `20260826` (LLVM 23.1.0) (`scripts/bootstrap_windows.sh:24`) | `20260922` "llvm-mingw 20260922 with LLVM 23.1.2" 2026-09-22T16:15:04Z (`releases/latest`) | a sprint open, with a gate (the exe hash changes); audit finding 30 |
@@ -413,12 +429,17 @@ project records it.
    inflated, 1,112 swallowing others, and a 15.5 MB file decoding data as code.
 6. **#221 carries a live emitter defect the audit did not list**: LWU sign-extends (`instruction_translator.cpp:206`),
    with 138 sites in SOCOM II. Its MOVZ/MOVN half is already ours (`5e3bf6be`).
-7. **#208** is our own commit `f9f83d4c`, which mirrors the Cucumber fork's `60d14c43` with our own test. It did not
+7. **#224 is half ours already.** Finding 6 says the "DMAC bit-31 scratchpad selector [is] discarded". For DMAtag
+   ADDR that is not true of our tree: `51529462` (2026-09-05) re-applies the selector at `ps2_memory.cpp:1485-1489`,
+   because SOCOM II's shell REF-tags constant packets in SPR. Only the MADR/TADR half is missing
+   (`ps2_memory.h:96-101`), and no SOCOM II channel start in `logs/fifo.log` uses it. (The first version of this note
+   repeated the audit's claim; corrected in the fix round.)
+8. **#208** is our own commit `f9f83d4c`, which mirrors the Cucumber fork's `60d14c43` with our own test. It did not
    land as that commit.
-8. **Freshness, not contradictions:**
+9. **Freshness, not contradictions:**
    - BinExport `main` has moved past the audit's `8cec8e2` to `087a035` (2026-09-15).
    - The PCSX2 nightly is `v2.9.84` today, where the audit read `v2.9.81`.
-9. **Side note on research/40 §2, not on the audit.** Its per-file "lines of `diff` output against the base" (e.g.
+10. **Side note on research/40 §2, not on the audit.** Its per-file "lines of `diff` output against the base" (e.g.
    `System (2,033)`) seem to be inflated by line endings.
    - `diff <(git show 8736759:.../System.cpp) .../System.cpp | wc -l` gives 2,076.
    - `diff --strip-trailing-cr` gives 197.
@@ -433,12 +454,83 @@ project records it.
 - **TAKE list, suggested order:**
   1. #223 (local, 3 lines).
   2. #221-LWU (one line plus a test).
-  3. #224 (`--vram-diff`).
+  3. #224, the MADR/TADR half only (a unit-test fix in `ps2IsScratchpadAddress` or at the channel start; latent for
+     SOCOM II, so the suite plus the gate).
   4. #206 + #253 + (optionally) #209 in one re-recomp, with a ruling on the 6,750 renames and the pins.
 
   #239 belongs to U2.
-- **Each TAKE needs its RED test first** (HANDOFF §5 rule 5), then the gate 3/3 in an agent worktree. The test
-  shapes are above.
+- **Each TAKE needs its RED test first** (HANDOFF §5 rule 5), then the gate 3/3 in an agent worktree. This note gives
+  the test shapes only (Step 1 is read-only); Task U7 writes the tests.
+
+## 5. The measurement scripts
+
+Both scripts are run from the main tree's `recomp/` directory (`C:\projects\socom_pc\recomp`). They read only the
+git-ignored `socom2_ghidra.csv`, `output/` and `recomp_run.log`, and they print counts only.
+
+### 5.1 The bounds script (#206: 6,640 / 1,112 / 1,263,492 / 216,874,243 / 565,035,462)
+
+```sh
+cd /c/projects/socom_pc/recomp && python - <<'EOF'
+import os, re, csv, bisect
+m = {int(r['Start'], 16): int(r['End'], 16) for r in csv.DictReader(open('socom2_ghidra.csv'))}
+starts = sorted(m)
+rx = re.compile(r'// Address: 0x([0-9a-f]+) - 0x([0-9a-f]+)')
+gen = {}
+for fn in os.listdir('output'):
+    if not fn.endswith('.cpp'):
+        continue
+    with open(os.path.join('output', fn), errors='replace') as f:
+        for i, line in enumerate(f):
+            mm = rx.search(line)
+            if mm:
+                gen[int(mm.group(1), 16)] = (int(mm.group(2), 16), fn)
+                break
+            if i > 40:
+                break
+longer = [(s, e, fn) for s, (e, fn) in gen.items() if s in m and e > m[s]]
+swallow = sum(1 for s, e, _ in longer if bisect.bisect_left(starts, e) > bisect.bisect_right(starts, s))
+print('generated', len(gen), 'longer than csv row', len(longer), 'swallowing another row', swallow)
+print('excess bytes', sum(e - m[s] for s, e, _ in longer))
+print('file bytes of longer', sum(os.path.getsize(os.path.join('output', fn)) for _, _, fn in longer),
+      'all', sum(os.path.getsize(os.path.join('output', f)) for f in os.listdir('output')))
+EOF
+```
+
+Output on 2026-09-25 (output written 2026-09-24 00:23): `generated 14657 longer than csv row 6640 swallowing another
+row 1112`, `excess bytes 1263492`, `file bytes of longer 216874243 all 565035462`.
+
+### 5.2 The fallback-site classification (#209: 2,400 / 1,978 / 116 / 306 / 989)
+
+```sh
+cd /c/projects/socom_pc/recomp && python - <<'EOF'
+import re, os, collections
+rx = re.compile(r'function=(\S+) addr=0x([0-9a-f]+) - unresolved JR/JALR at 0x[0-9a-f]+; promoted (\d+) fallback entries')
+sites = [(m.group(1), int(m.group(2), 16), int(m.group(3)))
+         for m in (rx.search(l) for l in open('recomp_run.log', errors='replace')) if m]
+files = {}
+for fn in os.listdir('output'):
+    mm = re.match(r'(.+)_0x([0-9a-f]+)\.cpp$', fn)
+    if mm:
+        files.setdefault(mm.group(1), []).append(fn)
+kind, ent = collections.Counter(), collections.Counter()
+kinds_by_fn = collections.defaultdict(set)
+for name, addr, n in sites:
+    k = '?'
+    for fn in files.get(name, []):
+        mm = re.search(r'// 0x%x: 0x[0-9a-f]+\s+(\w+)' % addr, open(os.path.join('output', fn), errors='replace').read())
+        if mm:
+            k = mm.group(1)
+            break
+    kind[k] += 1
+    ent[k] += n
+    kinds_by_fn[name].add(k)
+print('sites', len(sites), dict(kind), dict(ent))
+print('functions with only jalr sites', sum(1 for ks in kinds_by_fn.values() if ks == {'jalr'}))
+EOF
+```
+
+Output on 2026-09-25: `sites 2400 {'jalr': 1978, 'jr': 116, '?': 306}`, entries `{'jalr': 195158, 'jr': 30234,
+'?': 83648}`, `functions with only jalr sites 989`.
 - **The LATER triggers to watch:**
   - any heap-cap or pool move (makes #217 TAKE, and makes #216's guard test mandatory);
   - a `FUN_001ac860` DI-section trace (#222);
