@@ -545,8 +545,17 @@ recorded (the r0001 recomp's measured time is the build block's, 273 s and 352 s
 **Without a disc (any fresh clone):** `bash scripts/bootstrap_windows.sh` puts the pinned llvm-mingw, CMake and Ninja
 under `tools/` (sha256-verified, ~245 MB once; `--check` says what is there), then `./build.sh runtime --no-runner`
 builds the runtime library and the launcher and `./build.sh test --no-runner` runs both suites and the VU1 fixture
-verify. That is what the `windows` and `linux` workflows do. The Python harness, the documentation checks and the
-leak check also need no disc. **Everything else needs your own r0001 disc:** the disc chain above, `./build.sh
+verify. That is what the `windows` and `linux` workflows do. Since Sprint 13 C1 their `build` / `build-windows` jobs
+also run `bash scripts/build_synthetic_runner.sh --build-dir <the job's tree>`: the runner (`ps2EntryRunner`) is
+configured against `tests/fixtures/synthetic_recomp/` -- three hand-written functions in the recompiler's shape (an
+entry, a leaf, a stub wrapper) with the function table and the two generated headers, nothing from the disc -- so the
+files only the runner compiles (`game_overrides_socom2.cpp`, `socom2_crypto.cpp`, the host input, libnetb and host
+socket files, `main.cpp`) compile and link on every code push, and the linked runner must refuse a missing ELF with
+68 (`elf-missing`). Before C1 nothing on CI compiled them (the 2026-09-25 audit, `code-runtime.md` F7): a syntax
+error in the overrides file reached `main` unbuilt. Run with no `--build-dir` locally it uses its own tree
+(`build-synthetic` / `build-linux-synthetic`), never `build-clang`, whose real generated set would be recompiled on the
+way back; `tools_py/tests/test_workflows.py` pins the step and the fixture's shape. The Python harness, the
+documentation checks and the leak check also need no disc. **Everything else needs your own r0001 disc:** the disc chain above, `./build.sh
 recomp`, a `./build.sh runtime` that builds the game, and the gate.
 
 > Superseded 2026-09-25 (Sprint 13 R2): a line here said "Everything below this line works on a fresh clone with no
