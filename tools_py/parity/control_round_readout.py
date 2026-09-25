@@ -11,7 +11,8 @@
                               when the round directory holds one (server-dme.log, fetched from the box), else from
                               B's own `tcp send` hex (PS2X_SOCOM2_NET_TRACE=1); NO-DATA when neither shows a record
                  a-addresses-b A's `udp peer send` rows go to :3660 and never to :3658 (pre-fix, A sent to its
-                              own port: research/18 section 3.3)
+                              own port: research/18 section 3.3); the client-side reading of B's record (A
+                              learns B's port from it), so it carries the RESULT while dme-record is NO-DATA
                  lobby        B reached the game lobby (`B_[lobby] teams: ... -> ok`, or `LOBBY class=ok`) and the
                               drive printed no `RESULT LOBBY-FAIL`
                  r0004        the r0004 boot's install line names getter global 0x654e78 (SKIP with no r0004 log)
@@ -31,11 +32,15 @@
                  all three move            -> #34 closes as fixed
                  they stand, executor ran  -> the executor theory is retracted for the visible symptom
                  a [clock] hole, net_wait=1 -> the executor was blocked (the shape before V7; the --before run)
+                 anything else             -> MIXED: no clean outcome, the rows are read by hand
+               (a reading with no data -- no [gs-gl stats] line, too few readable captures -- is None, not "stands")
                plus freeze_trace's windows over the pause slice (its `net-park` shape once V7's freeze_trace is in).
 
 PURE parsers over lines and bytes; `main` does the IO. Every verdict line reads
 `VERDICT <round> <criterion> <PASS|FAIL|NO-DATA|SKIP> -- <detail>` and the last line
-`RESULT <ROUND> <PASS|FAIL|INCOMPLETE> ...`; exit 0 PASS, 1 FAIL, 2 INCOMPLETE.
+`RESULT <ROUND> <PASS|FAIL|INCOMPLETE> ...` -- for paused-peer `RESULT PAUSED-PEER <CLOSES|RETRACT|BLOCKED|MIXED|NONE>
+<PASS|FAIL|INCOMPLETE> ...`, the DECISIVE outcome first (NONE: no pause happened); exit 0 PASS, 1 FAIL, 2 INCOMPLETE
+(the executor criteria, or for --before whether the hole was seen).
 
 Run: python -m tools_py.parity.control_round_readout udp-shift <round dir>
      python -m tools_py.parity.control_round_readout paused-peer <round dir>
@@ -231,13 +236,19 @@ def udp_shift(a_text, b_text, drive_text, r0004_text=None, dme_text=None):
     results = RESULT_RE.findall(drive_text or "")
     if results:
         info.append("INFO udp-shift drive %s" % results[-1].strip())
-    gating = [x for x in verdicts if x.name in ("install", "port", "lobby", "dme-record")]
-    if any(x.status == FAIL for x in verdicts if x.status != SKIP and x.name != "a-addresses-b"):
+    # B's record is read two ways: in the record itself (dme-record) and client-side, through where A sends
+    # (a-addresses-b: A learns B's port from the record the server relays). Either reading carries the round while
+    # the other has NO-DATA; a FAIL in either fails it.
+    status = {x.name: x.status for x in verdicts}
+    record_read = PASS in (status["dme-record"], status["a-addresses-b"])
+    if any(x.status == FAIL for x in verdicts):
         overall = FAIL
-    elif any(x.status == NO_DATA for x in gating):
+    elif any(status[k] == NO_DATA for k in ("install", "port", "lobby")) or not record_read:
         overall = "INCOMPLETE"
     else:
         overall = PASS
+    if status["dme-record"] == NO_DATA and status["a-addresses-b"] == PASS:
+        info.append("INFO udp-shift B's record read client-side: A addresses B at :%d only" % SHIFTED_PORT)
     return verdicts, info, overall
 
 
@@ -338,7 +349,7 @@ def hud_clock_reading(clocks):
 
 def guest_frames_reading(frames):
     if not frames:
-        return "stands", "no [gs-gl stats] backpressure line in the window (fewer than 60 presents, or GS_STATS unset)"
+        return None, "no [gs-gl stats] backpressure line in the window (fewer than 60 presents, or GS_STATS unset)"
     total = sum(frames)
     return ("moves" if total > 0 else "stands"), "%d [gs-gl stats] lines, guest_frames %d" % (len(frames), total)
 
@@ -356,7 +367,8 @@ def changed_pixels(img_a, img_b, level=FRAME_DIFF_LEVEL):
 def captures_reading(frames, load=None):
     """'moves' / 'stands' / 'partial' / None from the pause-phase captures (pause.json's frames): a pair of
     consecutive captures changed when more than FRAME_DIFF_PIXELS pixels did; moves when at least half the pairs
-    changed, stands when none did."""
+    changed, stands when none did. A capture that does not load (a torn copy of a file the runtime rewrites every
+    ~150 ms) is skipped and counted, never voiding the rest."""
     shots = [f for f in frames if f.get("phase") == "pause"]
     if len(shots) < 2:
         return None, "%d capture(s) in the pause" % len(shots)
@@ -366,18 +378,24 @@ def captures_reading(frames, load=None):
         def load(path):
             with Image.open(path) as im:
                 return im.convert("L")
-    imgs = []
+    imgs, kept, skipped = [], [], 0
     for f in shots:
         try:
+            if not f.get("path"):
+                raise OSError("no capture")
             imgs.append(load(f["path"]))
-        except (OSError, ValueError) as e:
-            return None, "capture %s unreadable: %s" % (f.get("path"), e)
+            kept.append(f)
+        except (OSError, ValueError, SyntaxError):
+            skipped += 1
+    shots = kept
+    if len(imgs) < 2:
+        return None, "%d readable capture(s) in the pause, %d skipped" % (len(imgs), skipped)
     counts = [changed_pixels(a, b) for a, b in zip(imgs, imgs[1:])]
     changed = sum(1 for c in counts if c > FRAME_DIFF_PIXELS)
     mt = [f.get("mtime") for f in shots if f.get("mtime") is not None]
     fresh = len(set(mt))
-    detail = "%d of %d consecutive pairs changed (pixels %s), %d distinct frame-file mtimes" % (
-        changed, len(counts), ",".join(str(c) for c in counts), fresh)
+    detail = "%d of %d consecutive pairs changed (pixels %s), %d distinct frame-file mtimes, %d skipped" % (
+        changed, len(counts), ",".join(str(c) for c in counts), fresh, skipped)
     if changed == 0:
         return "stands", detail
     return ("moves" if 2 * changed >= len(counts) else "partial"), detail
@@ -385,13 +403,15 @@ def captures_reading(frames, load=None):
 
 def decisive(hud, gf, caps, executor_ran, parked, hole, net_wait_seen):
     """The #34 question in one line (commit 70d5dae4's two outcomes, and the BEFORE shape)."""
-    if hud == "moves" and gf == "moves" and caps in ("moves", None):
+    frames_move = gf in ("moves", None) and caps in ("moves", None) and "moves" in (gf, caps)
+    frames_stand = gf in ("stands", None) and caps in ("stands", None) and "stands" in (gf, caps)
+    if hud == "moves" and frames_move:
         return ("CLOSES", "the HUD round clock and the guest frames moved through the peer's pause: #34 closes as "
                           "fixed")
     if hole and net_wait_seen:
         return ("BLOCKED", "a [clock] hole with net_wait=1: the executor stood inside waitReadable (the shape before "
                            "V7)")
-    if hud == "stands" and gf == "stands" and executor_ran and parked:
+    if hud == "stands" and frames_stand and executor_ran and parked:
         return ("RETRACT", "the frames and the HUD clock stood while the executor ran (vsync/seq climbing, no [clock] "
                            "hole, net_park>=1): the executor theory is retracted for the visible symptom; the item "
                            "becomes why the peer goes quiet and whether the 10 s cap is faithful")
@@ -432,7 +452,7 @@ def paused_peer(window_lines, before_lines=(), after_lines=(), frames=(), before
         overall = "INCOMPLETE"
     else:
         overall = PASS if all(x.status == PASS for x in verdicts) else FAIL
-    return verdicts, info, overall
+    return verdicts, info, overall, outcome
 
 
 # ------------------------------------------------------------------------------------------------------------------
@@ -473,13 +493,14 @@ def read_slice(path, start, end, context=CONTEXT_BYTES):
     return lines(before), lines(window), lines(after)
 
 
-def _emit(round_name, verdicts, info, overall, extra=""):
+def _emit(round_name, verdicts, info, overall, extra="", outcome=None):
     for x in verdicts:
         print(fmt(round_name, x))
     for line in info:
         print(line)
     tally = " ".join("%s=%s" % (x.name, x.status) for x in verdicts)
-    print("RESULT %s %s %s%s" % (round_name.upper(), overall, tally, extra), flush=True)
+    head = overall if outcome is None else "%s %s" % (outcome, overall)     # paused-peer: the DECISIVE outcome first
+    print("RESULT %s %s %s%s" % (round_name.upper(), head, tally, extra), flush=True)
     return {PASS: 0, FAIL: 1}.get(overall, 2)
 
 
@@ -509,12 +530,12 @@ def main(argv=None):
         with open(pause_path, encoding="utf-8") as f:
             pause = json.load(f)
     except (OSError, ValueError) as e:
-        print("RESULT PAUSED-PEER INCOMPLETE no pause record (%s)" % e, flush=True)
+        print("RESULT PAUSED-PEER NONE INCOMPLETE no pause record (%s)" % e, flush=True)
         return 2
     a_log = a.a or pause.get("a_log") or meta.get("A_LOG")
     start, end = pause.get("a_log_bytes_at_suspend"), pause.get("a_log_bytes_at_resume")
     if not a_log or not os.path.isfile(a_log) or start is None or end is None:
-        print("RESULT PAUSED-PEER INCOMPLETE the pause never happened: %s" % (pause.get("error") or "no byte range"),
+        print("RESULT PAUSED-PEER NONE INCOMPLETE the pause never happened: %s" % (pause.get("error") or "no byte range"),
               flush=True)
         return 2
     before, window, after = read_slice(a_log, int(start), int(end))
@@ -525,11 +546,11 @@ def main(argv=None):
     except Exception as e:  # noqa: BLE001 - the verdict does not depend on it
         windows = ["unavailable: %s" % e]
     before_mode = a.before or pause.get("mode") == "before" or meta.get("MODE") == "before"
-    verdicts, info, overall = paused_peer(window, before, after, pause.get("frames") or [], before_mode,
+    verdicts, info, overall, outcome = paused_peer(window, before, after, pause.get("frames") or [], before_mode,
                                           freeze_windows=windows)
     extra = " pause=%.1fs peer=%s mode=%s" % (float(pause.get("t_resume", 0)) - float(pause.get("t_suspend", 0)),
                                               pause.get("peer"), "before" if before_mode else "after")
-    return _emit("paused-peer", verdicts, info, overall, extra)
+    return _emit("paused-peer", verdicts, info, overall, extra, outcome=outcome)
 
 
 if __name__ == "__main__":

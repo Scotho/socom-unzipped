@@ -64,6 +64,8 @@ class ScriptText(unittest.TestCase):
     def test_writes_under_logs_parity_and_a_done_marker(self):
         self.assertIn("logs/parity/s13_v7_paused_peer_", self.code)
         self.assertIn('> "logs/${NAME}.done"', self.code)
+        # the marker carries the DECISIVE outcome and the executor verdict, not the latter alone
+        self.assertIn("RESULT PAUSED-PEER [A-Z]* [A-Z]*", self.code)
 
     def test_the_console_peer_runs_the_mixed_leg_with_a_long_hold(self):
         self.assertIn('MIXED_HOLD="$HOLD" bash scripts/parity/mixed_match2.sh', self.code)
@@ -127,10 +129,21 @@ class FakeClock:
 
 
 class PauserOrchestration(unittest.TestCase):
-    def make(self, out, clocks, stop_file=None, copy=None, **kw):
+    def make(self, out, clocks, stop_file=None, copy=None, sizes=None, image="socom2.exe", **kw):
         clk = FakeClock()
         calls = []
-        sizes = iter([5000, 9000])
+        sizes = iter(sizes or [5000, 9000])
+
+        def size_of(path):
+            got = next(sizes)
+            if isinstance(got, Exception):
+                raise got
+            return got
+
+        def suspend(pid):
+            with open(os.path.join(out, "pause.json"), encoding="utf-8") as f:
+                calls.append(("on-disk-before-suspend", json.load(f).get("pid"), clk()))
+            calls.append(("suspend", pid, clk()))
         it = iter(clocks)
         last = [None]
 
@@ -144,20 +157,25 @@ class PauserOrchestration(unittest.TestCase):
         p = P.Pauser(out, "ours", pause_s=6, at_clock=30, pre_s=4, post_s=4, every_s=2, timeout_s=60,
                      stop_file=stop_file, clock=clk, sleep=clk.sleep, find_log=lambda: "logs/run_A_x.log",
                      round_clock=round_clock, pid_of=lambda: 4242,
-                     do_suspend=lambda pid: calls.append(("suspend", pid, clk())),
+                     do_suspend=suspend,
                      do_resume=lambda pid: calls.append(("resume", pid, clk())),
-                     size_of=lambda path: next(sizes), copy=copy or (lambda s, d: None),
-                     mtime_of=lambda path: clk(), **kw)
+                     size_of=size_of, copy=copy or (lambda s, d: None),
+                     mtime_of=lambda path: clk(), image_of=lambda pid: image, **kw)
         return p, calls
+
+    @staticmethod
+    def kinds(calls):
+        return [c[0] for c in calls if c[0] != "on-disk-before-suspend"]
 
     def test_waits_for_the_round_then_suspends_captures_and_resumes(self):
         with tempfile.TemporaryDirectory() as d:
             p, calls = self.make(d, [None, 0.0, 12.0, 31.0])
             rec = p.run()
             self.assertIsNone(rec["error"])
-            self.assertEqual([c[0] for c in calls], ["suspend", "resume"])
-            self.assertEqual(calls[0][1], 4242)
-            self.assertGreaterEqual(calls[1][2] - calls[0][2], 6)
+            self.assertEqual(self.kinds(calls), ["suspend", "resume"])
+            self.assertEqual(calls[0], ("on-disk-before-suspend", 4242, calls[1][2]), "the pid is written first")
+            self.assertEqual(calls[1][1], 4242)
+            self.assertGreaterEqual(calls[2][2] - calls[1][2], 6)
             self.assertEqual((rec["a_log_bytes_at_suspend"], rec["a_log_bytes_at_resume"]), (5000, 9000))
             phases = [f["phase"] for f in rec["frames"]]
             self.assertEqual(phases.count("pause"), 4)          # 0, 2, 4, 6 s
@@ -178,9 +196,26 @@ class PauserOrchestration(unittest.TestCase):
                     raise RuntimeError("disk full")
             p, calls = self.make(d, [40.0], copy=copy)
             rec = p.run()
-            self.assertEqual([c[0] for c in calls], ["suspend", "resume"])
+            self.assertEqual(self.kinds(calls), ["suspend", "resume"])
             self.assertIn("disk full", rec["error"])
             self.assertEqual(rec["a_log_bytes_at_resume"], 9000)
+
+    def test_a_failing_size_read_never_skips_the_resume(self):
+        with tempfile.TemporaryDirectory() as d:
+            p, calls = self.make(d, [40.0], sizes=[5000, OSError("log gone")])
+            rec = p.run()
+            self.assertEqual(self.kinds(calls), ["suspend", "resume"])
+            self.assertIn("log gone", rec["error"])
+            self.assertFalse(rec["suspended"])
+
+    def test_a_pid_that_is_not_the_peers_image_is_never_suspended(self):
+        with tempfile.TemporaryDirectory() as d:
+            p, calls = self.make(d, [40.0], image="explorer.exe")
+            rec = p.run()
+            self.assertEqual(calls, [])
+            self.assertIn("not the ours peer's image", rec["error"])
+            self.assertTrue(P.image_matches("console", "pcsx2-qt.exe"))
+            self.assertFalse(P.image_matches("ours", None))
 
     def test_a_driver_that_ends_first_is_recorded_and_nothing_is_suspended(self):
         with tempfile.TemporaryDirectory() as d:

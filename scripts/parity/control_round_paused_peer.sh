@@ -9,9 +9,10 @@
 #   * A is traced with PS2X_PC_SAMPLER=0.25 PS2X_CLOCK_TRACE=1 PS2X_SOCOM2_NET_TRACE=1 (research/34's FreezeFields
 #     line) and PS2X_GS_STATS=1 (the `[gs-gl stats] ... guest_frames=` lines); the same environment reaches the peer,
 #     which is paused anyway.
-#   * the peer is paused with tools_py/parity/peer_pause.py once A's round clock reads --at-clock s (30), for
-#     --pause-s s (30: three times the 10 s cap), then resumed; A's frame is captured every 2 s from 10 s before the
-#     pause to 20 s after it (the runtime's logs/parity/latest_frame_A.png, the file every harness capture reads).
+#   * the peer is paused with tools_py/parity/peer_pause.py once A's round clock reads --at-clock s (30) and 10 s of
+#     captures have been taken -- so the suspend lands at about round clock --at-clock + 10 s (40) -- for --pause-s s
+#     (30: three times the 10 s cap), then resumed; A's frame is captured every 2 s from 10 s before the pause to 20 s
+#     after it (the runtime's logs/parity/latest_frame_A.png, the file every harness capture reads).
 #   * --peer ours (default): two instances of OUR exe through the two-instance driver, no watches (a --hold round:
 #     the converge endgame's move-path watch would end the round on the stalled peer before the pause ended); the
 #     peer is instance B (window SOCOM-B), suspended with NtSuspendProcess.
@@ -157,4 +158,4 @@ BEFORE_FLAG=()
 "$PYTHON" -m tools_py.parity.control_round_readout paused-peer "$OUT" "${BEFORE_FLAG[@]}" > "$OUT/VERDICT.txt" 2>&1
 vrc=$?
 cat "$OUT/VERDICT.txt"
-finish "$vrc" "$(grep -a -o 'RESULT PAUSED-PEER [A-Z]*' "$OUT/VERDICT.txt" | tail -1) driver=$drc pause=$prc"
+finish "$vrc" "$(grep -a -o 'RESULT PAUSED-PEER [A-Z]* [A-Z]*' "$OUT/VERDICT.txt" | tail -1) driver=$drc pause=$prc"

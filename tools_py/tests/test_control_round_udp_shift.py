@@ -32,12 +32,15 @@ class UdpShiftScript(unittest.TestCase):
     def test_sets_the_rounds_knobs(self):
         self.assertRegex(self.code, r"(?m)^export PS2X_SOCOM2_RSA_KEY_B=b\b")
         self.assertRegex(self.code, r"(?m)^export PS2X_SOCOM2_NET_TRACE=1\b")
+        # research/18's pre-fix self-send was A's peer send #16; the default dump limit (16) stops at it
+        self.assertRegex(self.code, r"(?m)^export PS2X_SOCOM2_NET_TRACE_PEERS=200\b")
 
     def test_instance_b_carries_the_shift_through_the_driver(self):
         """The premise: the two-instance driver gives B the shift and reads the key variable for it."""
         self.assertEqual(L.INSTANCES["B"]["PS2X_SOCOM2_UDP_SHIFT"], "2")
         self.assertNotIn("PS2X_SOCOM2_UDP_SHIFT", L.INSTANCES["A"])
-        self.assertIn("PS2X_SOCOM2_RSA_KEY_B", open(L.__file__, encoding="utf-8").read())
+        with open(L.__file__, encoding="utf-8") as f:
+            self.assertIn("PS2X_SOCOM2_RSA_KEY_B", f.read())
 
     def test_the_driver_runs_prefilled_with_the_existing_persona(self):
         args = re.findall(r"ARGS=\(([^)]*)\)", self.code)

@@ -12,7 +12,8 @@
 #      PS2X_SOCOM2_RSA_KEY_B=b (docs/KNOBS.md); PS2X_SOCOM2_NET_TRACE=1 on both, so B's tcp sends and A's peer
 #      sends are in the logs. Default: a one-round Frostfire control round (nobody fires, the round runs to its
 #      clock), which is also C8's online leg (the msifrpc HLE and the RSA pair) and carries the NetIdle [ret] count
-#      C3's F11 note asks for; --lobby-only stops after the lobby and a 60 s hold.
+#      C3's F11 note asks for; --lobby-only drops the control round's watches and endgame and holds 60 s after READY
+#      (the match still launches -- both instances READY -- so a round starts; only the driving stops).
 #   3. the verdict: tools_py/parity/control_round_readout.py udp-shift -> <out>/VERDICT.txt.
 #
 # THE DME RECORD. B publishes its NetAddress pair in its DME client record; the server logs the payload, the client
@@ -54,6 +55,7 @@ finish() { echo "done $1 $2" > "logs/${NAME}.done"; exit "$1"; }
 # The round's knobs (the instruments come from env.sh above).
 export PS2X_SOCOM2_RSA_KEY_B=b          # instance B's second RSA pair (online_login_ours.INSTANCES reads it)
 export PS2X_SOCOM2_NET_TRACE=1          # B's tcp send hex (the DME record), A's `udp peer send` rows
+export PS2X_SOCOM2_NET_TRACE_PEERS=200  # the default 16 stops before research/18's send #16 (the pre-fix self-send)
 
 ROUND_TXT="$OUT/round.txt"
 : > "$ROUND_TXT"

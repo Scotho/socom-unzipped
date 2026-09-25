@@ -14,8 +14,9 @@ console: PCSX2 instance B, whose pid pcsx2_ctl records in logs/s4_instances.json
 
 `run` waits until A's round clock (the peeked guest_clock float, tools_py/parity/control_round_readout.peek_clock)
 reaches --at-clock seconds, captures A's frame (the runtime's own logs/parity/latest_frame_A.png, which every harness
-capture reads) every --every s for --pre-s, suspends the peer, keeps capturing for --pause-s, resumes it (always: a
-finally), captures --post-s more, and writes <out>/pause.json: A's run log, the peer's pid, the host times of the
+capture reads) every --every s for --pre-s, suspends the peer (so the suspend lands at about --at-clock + --pre-s of
+round clock, 40 s by default) after checking its image is socom2 / pcsx2 and writing the pid to pause.json, keeps
+capturing for --pause-s, resumes it (always, first thing in a finally), captures --post-s more, and writes <out>/pause.json: A's run log, the peer's pid, the host times of the
 suspend and the resume, A's log SIZE at each (the byte range control_round_readout reads as the pause window -- the
 game flushes every sampler line, so the size is where the log stood), the round clock at the suspend, and the frames.
 
@@ -75,6 +76,40 @@ def resume(pid, platform=None):
         os.kill(int(pid), SIGCONT)
 
 
+PEER_IMAGES = {"ours": ("socom2",), "console": ("pcsx2",)}   # the executable's base name must start with one
+
+
+def image_name(pid, platform=None):
+    """The base name of the process's executable (lower case), or None when it cannot be read."""
+    if (platform or sys.platform) == "win32":
+        import ctypes
+        import ctypes.wintypes as wt
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.OpenProcess.restype = ctypes.c_void_p
+        h = k32.OpenProcess(0x1000, False, int(pid))                 # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return None
+        try:
+            buf = ctypes.create_unicode_buffer(1024)
+            n = wt.DWORD(len(buf))
+            if not k32.QueryFullProcessImageNameW(ctypes.c_void_p(h), 0, buf, ctypes.byref(n)):
+                return None
+            path = buf.value
+        finally:
+            k32.CloseHandle(ctypes.c_void_p(h))
+    else:
+        try:
+            with open("/proc/%d/comm" % int(pid), encoding="utf-8") as f:
+                path = f.read().strip()
+        except OSError:
+            return None
+    return os.path.basename(path.replace("\\", "/")).lower() or None
+
+
+def image_matches(peer, image):
+    return bool(image) and image.startswith(PEER_IMAGES[peer])
+
+
 def peer_pid(peer, state_path=PCSX2_STATE, shot=None):
     """The pid to suspend: our instance B by its window title, or PCSX2's B from pcsx2_ctl's state file."""
     if peer == "console":
@@ -123,7 +158,7 @@ class Pauser:
                  timeout_s=900.0, stop_file=None, frame_src=FRAME_A, mode="after",
                  clock=time.time, sleep=time.sleep, find_log=None, round_clock=last_round_clock,
                  pid_of=None, do_suspend=suspend, do_resume=resume, size_of=os.path.getsize,
-                 copy=shutil.copyfile, mtime_of=os.path.getmtime):
+                 copy=shutil.copyfile, mtime_of=os.path.getmtime, image_of=image_name):
         self.out, self.peer, self.mode = out, peer, mode
         self.pause_s, self.at_clock, self.pre_s, self.post_s, self.every_s = pause_s, at_clock, pre_s, post_s, every_s
         self.timeout_s, self.stop_file, self.frame_src = timeout_s, stop_file, frame_src
@@ -132,6 +167,7 @@ class Pauser:
         self.pid_of = pid_of or (lambda: peer_pid(peer))
         self.do_suspend, self.do_resume, self.size_of, self.copy, self.mtime_of = \
             do_suspend, do_resume, size_of, copy, mtime_of
+        self.image_of = image_of
         self.rec = {"peer": peer, "mode": mode, "pause_s": pause_s, "at_clock": at_clock, "every_s": every_s,
                     "a_log": None, "pid": None, "frames": [], "error": None}
 
@@ -189,17 +225,26 @@ class Pauser:
             if not self.wait_round():
                 return self.rec
             self.rec["pid"] = self.pid_of()
+            image = self.image_of(self.rec["pid"])
+            self.rec["image"] = image
+            if not image_matches(self.peer, image):
+                raise LookupError("pid %s is %r, not the %s peer's image (%s) -- not suspending it" % (
+                    self.rec["pid"], image, self.peer, " or ".join(PEER_IMAGES[self.peer])))
             self.capture("pre", self.pre_s)
             self.rec["a_log_bytes_at_suspend"] = self.size_of(self.rec["a_log"])
             self.rec["round_clock_at_suspend"] = self.round_clock(self.rec["a_log"])
             self.rec["t_suspend"] = self.clock()
+            self.rec["suspended"] = True
+            self.write()      # the pid is on disk before the suspend: a killed run leaves `peer_pause resume --pid`
             self.do_suspend(self.rec["pid"])
             try:
                 self.capture("pause", self.pause_s)
             finally:
-                self.rec["a_log_bytes_at_resume"] = self.size_of(self.rec["a_log"])
+                # The resume FIRST: nothing that can fail (the log's size, the clock) may stand before it.
                 self.do_resume(self.rec["pid"])
+                self.rec["suspended"] = False
                 self.rec["t_resume"] = self.clock()
+                self.rec["a_log_bytes_at_resume"] = self.size_of(self.rec["a_log"])
             self.capture("post", self.post_s)
             self.rec["round_clock_after"] = self.round_clock(self.rec["a_log"])
         except Exception as e:  # noqa: BLE001 - recorded; the readout reports a round without a pause

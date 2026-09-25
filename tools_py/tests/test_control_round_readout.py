@@ -134,9 +134,23 @@ class UdpShiftCriteria(unittest.TestCase):
         self.assertIn("INFO udp-shift netidle_ret A=2 B=1", info)
         self.assertTrue(any("RESULT CONTROL-ROUND" in ln for ln in info))
 
-    def test_no_record_anywhere_is_incomplete_not_pass(self):
-        _, _, overall = self._round()
+    def test_a_addresses_b_carries_the_round_while_the_record_is_no_data(self):
+        verdicts, info, overall = self._round()
+        self.assertEqual({x.name: x.status for x in verdicts}["dme-record"], R.NO_DATA)
+        self.assertEqual(overall, R.PASS)
+        self.assertTrue(any("read client-side" in ln for ln in info), info)
+
+    def test_no_record_and_no_peer_sends_is_incomplete_not_pass(self):
+        a = ""
+        b = install_line(GETTER_R0001) + "\n[socom2] rt_net base peer UDP port -> 3660 (x)"
+        _, _, overall = R.udp_shift(a, b, " 1.0s B_[lobby] teams: seals=1 terrorists=1 -> ok (attempt 1)")
         self.assertEqual(overall, "INCOMPLETE")
+
+    def test_a_sending_to_its_own_port_fails_the_round(self):
+        a = "[socom2/libnetb] udp peer send #16 to 192.0.2.10:3658 ra=0x0 aa"
+        b = install_line(GETTER_R0001) + "\n[socom2] rt_net base peer UDP port -> 3660 (x)"
+        _, _, overall = R.udp_shift(a, b, " 1.0s B_[lobby] teams: seals=1 terrorists=1 -> ok (attempt 1)")
+        self.assertEqual(overall, R.FAIL)
 
     def test_a_wrong_r0004_getter_fails_the_round(self):
         _, _, overall = self._round(tcp_send(PAD + record("192.0.2.10", 3660, "192.0.2.10", 3660)),
@@ -227,6 +241,27 @@ class PausedPeerCriteria(unittest.TestCase):
         self.assertIn("hole", v.detail)
         self.assertEqual(R.clock_trace_verdict([], None, None).status, R.NO_DATA)
 
+    def test_no_gs_stats_line_is_no_data_not_stands(self):
+        self.assertIsNone(R.guest_frames_reading([])[0])
+        self.assertEqual(R.guest_frames_reading([0, 0])[0], "stands")
+
+    def test_a_torn_capture_is_skipped_not_voiding_the_rest(self):
+        fr, load = frames(True)
+
+        def torn(path):
+            if path == "f2":
+                raise OSError("truncated PNG")
+            return load(path)
+        reading, detail = R.captures_reading(fr, load=torn)
+        self.assertEqual(reading, "moves")
+        self.assertIn("1 skipped", detail)
+
+    def test_mixed_when_the_readings_disagree(self):
+        fr, load = frames(False)
+        _, info, _, outcome = R.paused_peer(window(moving=True), [clock_line(499.5)], [clock_line(503.5)], fr,
+                                            load=load)
+        self.assertEqual(outcome, "MIXED", info)
+
     def test_captures_reading(self):
         fr, load = frames(True)
         self.assertEqual(R.captures_reading(fr, load=load)[0], "moves")
@@ -236,21 +271,23 @@ class PausedPeerCriteria(unittest.TestCase):
 
     def test_the_frames_move_through_the_pause_closes_34(self):
         fr, load = frames(True)
-        verdicts, info, overall = R.paused_peer(window(), [clock_line(499.5)], [clock_line(503.5)], fr, load=load)
+        verdicts, info, overall, outcome = R.paused_peer(window(), [clock_line(499.5)], [clock_line(503.5)], fr, load=load)
         self.assertEqual(overall, R.PASS, [R.fmt("paused-peer", x) for x in verdicts])
         self.assertTrue(any(ln.startswith("DECISIVE paused-peer CLOSES") for ln in info), info)
+        self.assertEqual(outcome, "CLOSES")
 
     def test_frames_stand_while_the_executor_runs_retracts_the_theory(self):
         fr, load = frames(False)
-        verdicts, info, overall = R.paused_peer(window(moving=False), [clock_line(499.5)], [clock_line(503.5)], fr,
+        verdicts, info, overall, outcome = R.paused_peer(window(moving=False), [clock_line(499.5)], [clock_line(503.5)], fr,
                                                 load=load)
         self.assertEqual(overall, R.PASS)            # the executor criteria hold; the decisive line says the rest
         self.assertTrue(any(ln.startswith("DECISIVE paused-peer RETRACT") for ln in info), info)
+        self.assertEqual(outcome, "RETRACT")
         self.assertTrue(any("hud-clock stands" in ln for ln in info))
 
     def test_the_before_run_shows_the_hole(self):
         fr, load = frames(False)
-        verdicts, info, overall = R.paused_peer(window(moving=False, hole=True, net_wait=True, v7=False),
+        verdicts, info, overall, outcome = R.paused_peer(window(moving=False, hole=True, net_wait=True, v7=False),
                                                 [clock_line(490.0)], [clock_line(501.0)], fr, before_mode=True,
                                                 load=load)
         status = {x.name: x.status for x in verdicts}
@@ -259,11 +296,12 @@ class PausedPeerCriteria(unittest.TestCase):
         self.assertEqual(status["seq"], R.FAIL)
         self.assertTrue(any(ln.startswith("DECISIVE paused-peer BLOCKED") for ln in info), info)
         self.assertIn("EXPECT paused-peer before: a [clock] hole with net_wait=1 -- seen", info)
+        self.assertEqual(outcome, "BLOCKED")
         self.assertEqual(overall, R.PASS)
 
     def test_an_after_run_without_net_park_fails(self):
         fr, load = frames(True)
-        _, _, overall = R.paused_peer(window(v7=False), [clock_line(499.5)], [clock_line(503.5)], fr, load=load)
+        _, _, overall, _ = R.paused_peer(window(v7=False), [clock_line(499.5)], [clock_line(503.5)], fr, load=load)
         self.assertEqual(overall, R.FAIL)
 
 
@@ -296,7 +334,7 @@ class MainReadsTheRoundDirectory(unittest.TestCase):
             out = buf.getvalue()
             self.assertEqual(rc, 0, out)
             self.assertIn("VERDICT paused-peer net_park PASS", out)
-            self.assertIn("RESULT PAUSED-PEER PASS", out)
+            self.assertRegex(out, r"RESULT PAUSED-PEER (CLOSES|MIXED) PASS")
             self.assertIn("pause=30.0s peer=ours mode=after", out)
 
     def test_paused_peer_without_a_pause_is_incomplete(self):
