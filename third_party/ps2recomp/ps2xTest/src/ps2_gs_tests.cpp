@@ -5215,6 +5215,122 @@ void register_ps2_gs_tests()
             }
         });
 
+        // Issue #31 (research/25 §10, KNOWN §2): the streamed full-screen image path FUN_001c6570 (decomp 45100/45108)
+        // calls sceGsSetDefLoadImage ONCE -- its packet on the stack at sp+0xA0070, the top of the frame -- then per
+        // 640x64 CT32 strip reads 0x28000 bytes, calls sceGsExecLoadImage and advances DBP itself:
+        //   lhu v1,0x14(pkt); v1 = (v1 & 0xC000) | ((v1 & 0x3FFF) + 0x280) & 0x3FFF; sh v1,0x14(pkt)
+        // Only the DBP halfword changes; DBW (0x16), DPSM (0x17), TRXPOS and TRXREG stay as set. LOADING.RAW is
+        // 640x448 at x=y=0: seven strips, DBP 0, 0x280 ... 0xF00. Each strip must land at the DBP the packet holds
+        // at exec time. `foreignQword` puts an A+D-looking quadword (register byte 0x50) right after the six-quadword
+        // load packet, where the guest's packet ends and its caller's frame begins: the exec-time parse must stop at
+        // the packet's TRXDIR, not read a seventh quadword that is not the packet's.
+        auto runStreamedImage = [](TestCase &t, bool foreignQword)
+        {
+            PS2Runtime runtime;
+            t.IsTrue(runtime.memory().initialize(), "runtime memory initialize should succeed");
+            uint8_t *const rdram = runtime.memory().getRDRAM();
+            constexpr uint32_t kPacketAddr = 0x4000u;
+            constexpr uint32_t kStoreImageAddr = 0x5000u;
+            constexpr uint32_t kSrcAddr = 0x1800000u;   // above the guest heap, where the stub mallocs its packet
+            constexpr uint32_t kDstAddr = 0x1900000u;
+            constexpr uint32_t kWidth = 640u;
+            constexpr uint32_t kStripLines = 64u;
+            constexpr uint32_t kStripBytes = kWidth * kStripLines * 4u; // 0x28000, the guest's read size
+            constexpr uint32_t kStrips = 448u / kStripLines;           // LOADING.RAW: param_3 = 0x1c0
+            constexpr uint32_t kDbpStep = kStripBytes / 256u;           // 0x280, the guest's +0x280
+            constexpr uint32_t kDbw = kWidth / 64u;                     // 10
+
+            if (foreignQword)
+            {
+                const uint64_t strayLo = (0x3F00ull << 32) | (static_cast<uint64_t>(kDbw) << 48);
+                writeGsQword(rdram + kPacketAddr + 0x60u, strayLo, 0x50ull);
+            }
+
+            R5900Context defCtx{};
+            setRegU32(defCtx, 4, kPacketAddr);
+            setRegU32(defCtx, 5, 0u);        // DBP: (x*4 + y*0xa00) >> 8 = 0 for LOADING.RAW
+            setRegU32(defCtx, 6, kDbw);      // DBW: 640 >> 6
+            setRegU32(defCtx, 7, 0u);        // PSMCT32
+            setRegU32(defCtx, 8, 0u);        // x
+            setRegU32(defCtx, 9, 0u);        // y
+            setRegU32(defCtx, 10, kWidth);   // w
+            setRegU32(defCtx, 11, kStripLines); // h = 0x40
+            ps2_stubs::sceGsSetDefLoadImage(rdram, &defCtx, &runtime);
+
+            uint16_t setTimeDbpHalf = 0u;
+            std::memcpy(&setTimeDbpHalf, rdram + kPacketAddr + 0x14u, sizeof(setTimeDbpHalf));
+            t.Equals(static_cast<uint32_t>(setTimeDbpHalf), 0u,
+                     "the halfword at packet offset 0x14 is BITBLTBUF's DBP (the one the guest advances)");
+
+            for (uint32_t i = 0; i < kStrips; ++i)
+            {
+                for (uint32_t off = 0; off < kStripBytes; off += 4u)
+                {
+                    const uint32_t word = (i << 24) | (off & 0x00FFFFFFu);
+                    std::memcpy(rdram + kSrcAddr + off, &word, sizeof(word));
+                }
+
+                R5900Context loadCtx{};
+                setRegU32(loadCtx, 4, kPacketAddr);
+                setRegU32(loadCtx, 5, kSrcAddr);
+                ps2_stubs::sceGsExecLoadImage(rdram, &loadCtx, &runtime);
+                t.Equals(static_cast<int32_t>(getRegU32Test(loadCtx, 2)), 0,
+                         "sceGsExecLoadImage strip " + std::to_string(i) + " should succeed");
+
+                // The freed packet still holds the BITBLTBUF the stub sent.
+                uint64_t bitbltbuf = 0u;
+                std::memcpy(&bitbltbuf, rdram + runtime.guestHeapBase() + 16u, sizeof(bitbltbuf));
+                t.Equals(static_cast<uint32_t>((bitbltbuf >> 32) & 0x3FFFu), i * kDbpStep,
+                         "strip " + std::to_string(i) + " should be sent to the DBP the guest wrote at packet "
+                         "offset 0x14, not the set-time DBP or a stray quadword's");
+                t.Equals(static_cast<uint32_t>((bitbltbuf >> 48) & 0x3Fu), kDbw,
+                         "strip " + std::to_string(i) + " keeps DBW 10");
+                t.Equals(static_cast<uint32_t>((bitbltbuf >> 56) & 0x3Fu), 0u,
+                         "strip " + std::to_string(i) + " keeps DPSM PSMCT32");
+
+                // FUN_001c6570 0x1c66f0..0x1c6714: advance DBP in the packet, keeping the halfword's top two bits.
+                uint16_t half = 0u;
+                std::memcpy(&half, rdram + kPacketAddr + 0x14u, sizeof(half));
+                half = static_cast<uint16_t>((half & 0xC000u) | (((half & 0x3FFFu) + kDbpStep) & 0x3FFFu));
+                std::memcpy(rdram + kPacketAddr + 0x14u, &half, sizeof(half));
+            }
+
+            // Read every strip back from its own blocks: each must hold its own bytes, not the last strip's.
+            for (uint32_t i = 0; i < kStrips; ++i)
+            {
+                const GsImageMem image{0u, 0u, static_cast<uint16_t>(kWidth), static_cast<uint16_t>(kStripLines),
+                                       static_cast<uint16_t>(i * kDbpStep), static_cast<uint8_t>(kDbw), 0u};
+                writeGsImageTest(rdram, kStoreImageAddr, image);
+                std::memset(rdram + kDstAddr, 0xEE, kStripBytes);
+
+                R5900Context storeCtx{};
+                setRegU32(storeCtx, 4, kStoreImageAddr);
+                setRegU32(storeCtx, 5, kDstAddr);
+                ps2_stubs::sceGsExecStoreImage(rdram, &storeCtx, &runtime);
+                t.Equals(static_cast<int32_t>(getRegU32Test(storeCtx, 2)), 0,
+                         "sceGsExecStoreImage strip " + std::to_string(i) + " should succeed");
+
+                bool wholeStripOk = true;
+                uint32_t firstBad = 0u;
+                for (uint32_t off = 0; off < kStripBytes && wholeStripOk; off += 4u)
+                {
+                    uint32_t word = 0u;
+                    std::memcpy(&word, rdram + kDstAddr + off, sizeof(word));
+                    wholeStripOk = word == ((i << 24) | (off & 0x00FFFFFFu));
+                    firstBad = word;
+                }
+                t.IsTrue(wholeStripOk, "strip " + std::to_string(i) + " should read back its own bytes from DBP " +
+                                           std::to_string(i * kDbpStep) + " (first wrong word's strip id " +
+                                           std::to_string(firstBad >> 24) + ")");
+            }
+        };
+
+        tc.Run("streamed full-screen image (FUN_001c6570): each 640x64 strip lands at the DBP the guest wrote at packet offset 0x14",
+               [runStreamedImage](TestCase &t) { runStreamedImage(t, false); });
+
+        tc.Run("streamed full-screen image: a quadword after the six-quadword load packet is not read as the packet's BITBLTBUF",
+               [runStreamedImage](TestCase &t) { runStreamedImage(t, true); });
+
         tc.Run("sceGifPkRefLoadImage seeds A+D GIFtag nloop once (no double-count)", [](TestCase &t)
         {
             std::vector<uint8_t> rdram(PS2_RAM_SIZE, 0u);
