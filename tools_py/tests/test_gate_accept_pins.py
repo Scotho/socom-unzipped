@@ -31,6 +31,13 @@ from tools_py.parity import gate, pins
 
 MAPPING_A = "ab" * 32
 MAPPING_B = "cd" * 32
+# A stand-in game image carrying only a build banner, which is all guest_addresses.launch_revision reads,
+# and the real r0001 image's own banner character for character. Every case here is a LAUNCH, and since
+# Task 19 a launch that cannot say which revision it is refuses (exit 8) rather than read r0001's probe
+# addresses on an r0004 build -- so each case names its image instead of leaving it to whatever
+# `game/disc` happens to hold. Same fixture and same reason as test_gate_pins._LaunchCase.
+BANNER_STAND_IN = b"\x7fELF" + b"\0" * 64 + b"SOCOM 2 %s\0" + b"\0" * 64
+R0001_BANNER = b"r0001 17:22:21 Oct 11 2003"
 
 
 def stage_printing(mapping):
@@ -49,16 +56,30 @@ class AcceptPinsKeepsEveryPin(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
         self.card = os.path.join(self.tmp, "card")
         os.makedirs(self.card)
         with open(os.path.join(self.card, "SCRATCHPAD.DAT"), "wb") as f:
             f.write(b"pristine")
+        # The image this "launch" would run. game/ is git-ignored, so on a bare clone -- every CI runner --
+        # there is none at the default path, and gate.main's launch path refuses (exit 8) rather than
+        # guess. The rule is right; what these cases owe it is a stated revision, not a softer rule.
+        self.game_elf = os.path.join(self.tmp, "r0001_stand_in.elf")
+        with open(self.game_elf, "wb") as f:
+            f.write(BANNER_STAND_IN % R0001_BANNER)
         self.expected = os.path.join(self.tmp, "pins.json")
         self.stamp = "s11_accept_pins_test_%d" % os.getpid()
         self.out_root = os.path.join("logs", "parity", "gate", self.stamp)
         shutil.rmtree(self.out_root, ignore_errors=True)
-        self.env = mock.patch.dict(os.environ, {"PS2X_MC_DIR": self.card}, clear=False)
+        self.addCleanup(shutil.rmtree, self.out_root, True)
+        self.env = mock.patch.dict(os.environ, {"PS2X_MC_DIR": self.card,
+                                                "SOCOM_GAME_ELF": self.game_elf}, clear=False)
         self.env.start()
+        # addCleanup, not tearDown: tearDown does not run when setUp raises, and the rest of setUp is
+        # assertions. When the revision refusal broke the line below, the `exe_line` patch stayed live
+        # for the whole process and failed two cases in test_gate_exe_line -- a module that has nothing
+        # to do with this one and passes on its own. One failure must not become six.
+        self.addCleanup(self.env.stop)
         for k in [k for k in os.environ if k.startswith("PS2X_") and k != "PS2X_MC_DIR"]:
             del os.environ[k]
         self.patches = [
@@ -69,18 +90,12 @@ class AcceptPinsKeepsEveryPin(unittest.TestCase):
         ]
         for p in self.patches:
             p.start()
+            self.addCleanup(p.stop)
         pins.write_expected(gate.collect_pins(), self.expected, note="test standard")
         # A standard that already holds a mapping pin, set the only way one is ever set: an accepted run.
         rc, out, _ = self._main(["--accept-pins"], stage=stage_printing(MAPPING_A))
         self.assertEqual(rc, 0, out)
         self.assertEqual(pins.load_expected(self.expected)["mapping"], MAPPING_A)
-
-    def tearDown(self):
-        for p in self.patches:
-            p.stop()
-        self.env.stop()
-        shutil.rmtree(self.out_root, ignore_errors=True)
-        shutil.rmtree(self.tmp, ignore_errors=True)
 
     def _main(self, argv, stage=None):
         stage = stage or (lambda name, out_root: (True, "ok " + name))
