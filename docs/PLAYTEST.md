@@ -6,7 +6,7 @@ the next and the things you have complained about come while your ears are fresh
 
 **This is the script for the next sitting.** The last one was on 2026-09-22, on the 2026-09-21 build; the steps that
 sitting answered are struck below with what it found and where each finding went, and what is left open is what the
-next sitting is for. *(Rewritten 2026-09-25, Sprint 13 R2, stranger audit S24 and documents audit row 44: this page
+next sitting is for. *(Rewritten 2026-09-25, Sprint 13 S1, stranger audit S24 and documents audit row 44: this page
 still presented the 2026-09-21 build as "Ready" three days after it was played, and its decisions section asked
 questions already answered.)*
 
@@ -19,7 +19,7 @@ build:    NOT BUILT. No archive exists for the current tree: the v0.12.0 draft r
           3/3 on the exe INSIDE the archive with that exe's size and sha256, and the release leak check.
 ```
 
-> Superseded 2026-09-25 (Sprint 13 R2) -- the block that stood here, kept as the record of the last sitting's build:
+> Superseded 2026-09-25 (Sprint 13 S1) -- the block that stood here, kept as the record of the last sitting's build:
 >
 > ```
 > build:    2026-09-21 (evening), release at -O1 (R151)   commit: acbc693 (v0.9.0-239-gacbc693, sprint-10; untagged)
@@ -48,7 +48,8 @@ build:    NOT BUILT. No archive exists for the current tree: the v0.12.0 draft r
 
 0. **Folded in where they fit** -- do them as you reach them, not as a block: at **step 3**, CONTROLLER > BUTTONS:
    rebind one face button (the page's hints walk you through it), take SWAP when it says the button is taken,
-   then RESTORE DEFAULTS and confirm; AUDIO > LAUNCHER: the menu sounds and their toggle. At **step 7**, press the
+   then RESTORE DEFAULTS and confirm (~~press the row, then the button; a countdown runs, hold B or Escape
+   cancels~~ -- the rebinding flow became hold-a-button-to-remap in fix wave A, `668c7f5`, W9, so follow the page); AUDIO > LAUNCHER: the menu sounds and their toggle. At **step 7**, press the
    pad's XBOX/guide button while the game runs -- the launcher should come forward, and again send you back (if
    nothing happens, bind SWITCH to another button on the BUTTONS page and say so; on a Sony pad on Sony's own driver
    the PS button is the one measurement the machine could not make). At **step 11**, type your persona name and
@@ -62,6 +63,9 @@ build:    NOT BUILT. No archive exists for the current tree: the v0.12.0 draft r
 3. **The launcher, by pad only** *(the launcher's look; the launcher with the pad; pick the pad)*. Does it look right?
    Walk every page with the pad. On CONTROLLER: is your pad in the list, does the drawn pad follow it, where did you
    leave the dead zone? Click into a text field on ONLINE, leave it, and check the pad still drives the launcher.
+   **Still to confirm from the sitting before (landed 2026-09-20, P4, never reported on):** the flash at the top left
+   when you change page should be gone; UNZIPPED should sit level with SOCOM II; "Second instance" should be under
+   ADVANCED on ONLINE; "what is a profile?" should be answered where you look for it. Say which of those is NOT fixed.
    ~~*Answered 2026-09-22:* the pad stopped driving the launcher after a text field was clicked; the CONTROLLER
    graphic should be better, with hold-a-button-to-remap.~~ Both fixed in fix wave A (`46a6594`, W1; `668c7f5`, W9)
    -- this step now checks the fixes.
@@ -70,7 +74,7 @@ build:    NOT BUILT. No archive exists for the current tree: the v0.12.0 draft r
    and let it verify. Then, with the launcher still open, rename your ISO and press LAUNCH: LAST RUN should say the
    disc was not found (exit 66). Rename it back. Press SAVE DIAGNOSTICS, open the zip: your Windows user name should
    be nowhere in it.
-   *(Superseded 2026-09-25, Sprint 13 R2: this step said "Point DISC at a path that does not exist, press LAUNCH: LAST
+   *(Superseded 2026-09-25, Sprint 13 S1: this step said "Point DISC at a path that does not exist, press LAUNCH: LAST
    RUN should say the disc was not found" -- which cannot happen, because the launcher greys LAUNCH out on a disc
    that fails its check (`launchBlockedReason`, stranger audit S11). Exit 66 is reached only when the disc goes away
    after the check.)*
@@ -98,10 +102,12 @@ build:    NOT BUILT. No archive exists for the current tree: the v0.12.0 draft r
 10. **Free play, five minutes** *(listen in free play; re-listen after the sound fixes)*. Gunfire, voice-overs, music.
     Does mission sound last the whole five minutes?
 11. **Online, on the project server** *(play a match on the hosted server)*. ONLINE page: the status line should say
-    the server is up and how many are on. Launch, go online. **If the game cannot connect at all, pick Custom, type
+    the server is up and how many are on. Launch, go online. The preset reaches the server by NAME; that cannot cost
+    you your persona, because the name is resolved before the game ever sees it (R175). **If the game cannot connect at all, pick Custom, type
     `3.143.65.100` and try again** -- that is the same box by its raw address, for the case where your network cannot
     resolve the name. Tell me if you had to, because nothing on screen says that is what went wrong. Host a game,
-    start the round, walk around. Lag? (The box is in Ohio.) Also: does the game remember your password after you
+    start the round, walk around. Lag? (The box is in Ohio.) Listen on the screen just after signing in, in CREATE
+    GAME and in the lobby: that is where the stray sound was. Also: does the game remember your password after you
     quit and start again? It is not expected to yet (issue #27) -- say what you see.
     ~~*Answered 2026-09-22:* a stray sound on the online screens ("a short and ramping deviation from the note");
     the prefilled login is "the wrong design".~~ The sound was charged to a sound bank and the charge withdrawn by
@@ -113,7 +119,8 @@ build:    NOT BUILT. No archive exists for the current tree: the v0.12.0 draft r
     their soldier move? Afterwards, from each machine's `logs/` take the newest `run_*.log` and run
     `bash scripts/parity/two_machine_readout.sh <log1> <log2>`; paste the block. With a headset on both sides: could
     you hear each other? (Expected today: **no** -- the launcher's MICROPHONE page says the game does not send your
-    voice yet.)
+    voice yet. ~~"the headset's talk button is not wired yet"~~ -- superseded 2026-09-25, Sprint 13 S1: the game's
+    protocol has no headset button at all, `docs/KNOWN.md`'s voice row.)
 13. **Microphone** *(pick the microphone and watch the meter)*. MICROPHONE page: pick the headset, speak. Does the bar
     move with your voice and rest when you are quiet?
 14. **Report a bug from the launcher** *(Goal 8)*. REPORT A BUG: write one real note from tonight, leave the log box

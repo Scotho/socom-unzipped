@@ -296,7 +296,8 @@ rather than rule. At most two C++-building agents at once.
 8. **Never read a ladder CRASH as NO-KILL** (exit 4 = LOBBY-FAIL, 5 = CRASH, 7 = pin failed). Any `loop_lock.sh`
    change needs `LOOP_LOCK_SLOW_TESTS=1` (about 16 minutes) before its commit.
 9. **The VM lies in two ways:** three C++ cases are wall-clock flaky there and 18 Python cases fail for environment
-   reasons -- read a VM suite by suite name, not by exit code; and llvmpipe renders at about 2 fps, so no audio or
+   reasons -- read a VM suite by suite name, not by exit code; and llvmpipe renders at a few frames a second (the measured figure is `docs/KNOWN.md` §1's Linux title-stage
+   row; this trap said "about 2 fps" until 2026-09-25, Sprint 13 S1), so no audio or
    frame-rate bar can be read there (R107).
 10. **`docs/STATUS.md` is a log, newest on top, 2504 lines (2026-09-25, `wc -l`).** Only its "Current state" block
     is current.
