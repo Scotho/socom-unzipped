@@ -1,6 +1,6 @@
 {
  "_about": "The gate's standard (Sprint 10 Q1b): sha256 of every input a score is computed against. `python -m tools_py.parity.gate --pins` compares the tree to this file without launching; a launch or a --baseline re-score whose pins do not match is REFUSED (exit 7) unless --accept-pins rewrites this file. A directory pins as the sha256 of its sorted manifest (relative path NUL sha256 newline per file); env as the sorted PS2X_* NAME=value lines the mission stage is launched with, minus PS2X_MC_DIR. harness (tools_py/parity + scripts/parity) is recorded on every summary but never compared: this file cannot name the revision of the tree that holds it. mapping joins once the runtime prints its line and a run is accepted.",
- "accepted": "2026-09-25 01:32 -- gate --accept-pins, stamp s11_r0004_rebuild1",
+ "accepted": "2026-09-25 01:32 -- gate --accept-pins, stamp s11_r0004_probe2 (the env restored 2026-09-25 after s11_r0004_rebuild1 accepted a stray PS2X_AUDIO_VOLUME=0)",
  "pins": {
   "scripts/parity/title_menu.txt": "b67768ae3a223e50dbb3399516f2c85b900207d6f384e5084e282ae9138b7b94",
   "scripts/parity/ref_main_menu_ours.png": "cc36f23fbc5863cf0b608cf2fe268acd8a33fb46dcb53c99f19233caca3d2a7c",
@@ -14,7 +14,7 @@
   "scripts/parity/refs/mission_failure_banner.png": "e0f03049024c66e9056e599170a63086b838c0c413ab522252a07a95945012a8",
   "scripts/parity/guest_probe_console.json": "912bf9d7c538574cfc345164a51ace194769c8fbbe87b57e609b4b92fd7a4e27",
   "card": "682ad80be95e9a13158b331848df376c5620eec92df79baea5626793e92e0052",
-  "env": "120b9261126233e2a830980ef0b0a869b4c8cb30fd0e68674c3b2b55422457c0",
+  "env": "95ac41c79650aa76e1f0a18baa9aec457ebf3d5bbaa6a33aa3175f27df2e5769",
   "mapping": "c393b87b99732a1f"
  },
  "detail": {
