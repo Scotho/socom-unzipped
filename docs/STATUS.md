@@ -30,7 +30,7 @@ close-out merged (`deb288c2`, `eb190a42`), the two close reviews (a read-only ag
 the "Sprint 12 — CLOSED" block), the suite counts on the renamed tree (C++ 892/892; Python `Ran 2795`, `OK` once the story timeline this close had edited was regenerated), the r0004 leg (`s12_names_r0004_gate` 3/3 with PINS MATCH on the r0004 runtime built with its own sidecar, after the r0004 pin standard was restored from a stray knob `--accept-pins` had written into it — issue #45 (closed)'s class) and the PR to `main`. **The known-issue stack at this close:**
 opened 0, closed 0, carried 0 (the `Sprint 12` milestone held no issue and is closed); one issue opened by the
 review (#48: `build_revision.sh --out` drops the names sidecar); comments on #25, #28, #40 and #42; highest
-issue #48; the six issues Sprint 11 carried were never in Sprint 12's milestone and are ruled not carried
+issue #48 (closed); the six issues Sprint 11 carried were never in Sprint 12's milestone and are ruled not carried
 twice (a single-theme sprint took nothing from the backlog). **The two controllers:** the cloud handoff's §5 held as
 written — the Sprint 11 controller pinged at each lock hand-over and the lock serialised the rest — with one lesson:
 the lock has no queue (issue #36), so the second controller's poller took a gap between the first one's chain
