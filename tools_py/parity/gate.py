@@ -1042,8 +1042,9 @@ def main(argv=None):
                          "(0 match, 7 drifted); no launch, no lock" % pins.EXPECTED)
     ap.add_argument("--accept-pins", action="store_true",
                     help="a launch (or --pins) whose pins drifted rewrites the standard from the measured values "
-                         "instead of refusing -- a launch after the run, never before the lock; the summary says so. It rewrites THIS REVISION's file only -- an "
-                         "r0004 gate cannot reach %s" % pins.EXPECTED)
+                         "instead of refusing -- a launch writes it once, after a run whose every stage reached a "
+                         "verdict, never before the lock; the summary says so. It rewrites THIS REVISION's file "
+                         "only -- an r0004 gate cannot reach %s" % pins.EXPECTED)
     args = ap.parse_args(argv)
 
     if args.baseline:
@@ -1112,12 +1113,15 @@ def main(argv=None):
     # queued and then cancelled used to rewrite it anyway (issue #45: s11_r0004_node1, s11_r0004_rebuild1).
     current = collect_pins()
     drifts, expected, _ = check_pins(current, False, revision=revision)
-    accepted = bool(drifts) and args.accept_pins
+    # `pending`: a drift --accept-pins will accept IF the run completes; `accepted`: it has been written.
+    pending = bool(drifts) and args.accept_pins
+    accepted = False
+    accepted_when = " after the run"
     compared = len(pins.comparable(current))
 
     def write_summary(stage_lines, all_drifts):
         """summary.txt (stage lines, EXE, PIN lines, PINS verdict) and pins.json; returns the lines."""
-        word, verdict = pins_verdict(all_drifts, accepted, compared, revision, when=" after the run")
+        word, verdict = pins_verdict(all_drifts, accepted, compared, revision, when=accepted_when)
         pin_lines = pins.lines(current, all_drifts, accepted, expected)
         with open(os.path.join(out_root, "summary.txt"), "w", encoding="utf-8") as f:
             f.write("".join(l + "\n" for l in stage_lines + [exe, elf] + pin_lines + [verdict]))
@@ -1125,15 +1129,17 @@ def main(argv=None):
                           exe, expected_pins_rel(revision))
         return pin_lines, verdict
 
-    if drifts and not accepted:
+    if drifts and not pending:
         pin_lines, verdict = write_summary([], drifts)
         for line in pin_lines + [verdict]:
             print(line)
         print("GATE REFUSED (pins drifted: %s) -> %s" % (", ".join(d.name for d in drifts), out_root))
         return 7
-    for line in pins.lines(current, drifts, accepted, expected):
+    # Printed as they stand (DRIFTED), not as accepted: nothing is accepted until the run has completed,
+    # and a lock refusal below must not follow lines that say otherwise.
+    for line in pins.lines(current, drifts, False, expected):
         print(line, flush=True)
-    if accepted:
+    if pending:
         print("PINS ACCEPT PENDING: %s -- %s is written after the run, not now"
               % (", ".join(d.name for d in drifts), expected_pins_rel(revision)), flush=True)
     take = _lock("take", args.owner)
@@ -1145,12 +1151,14 @@ def main(argv=None):
     wanted = [g.strip() for g in args.only.split(",") if g.strip()]
     results = []
     rc = 1
+    completed = False
     try:
         for name in wanted:
             ok, detail = run_gate(name, out_root)
             line = "%s %s (%s)" % ("PASS" if ok else "FAIL", name, detail)
             print(line, flush=True)
             results.append((ok, line))
+        completed = True
     finally:
         # Release the lock and leave a summary even when a gate raises part-way through.
         _lock("release", args.owner)
@@ -1164,13 +1172,22 @@ def main(argv=None):
         current["mapping"] = pins.mapping_pin([os.path.join(out_root, name + ".game.log") for name in wanted])
         late = [d for d in pins.compare(current, expected) if d.name == "mapping"]
         all_drifts = drifts + late
-        if all_drifts and args.accept_pins:
+        if all_drifts and args.accept_pins and completed:
             # The one write of an accepted standard (issue #45): after the run, with every pin measured
-            # that can be; accepted_standard still carries any the run could not (fccf3b5d).
+            # that can be; accepted_standard still carries any the run could not (fccf3b5d). Only a run
+            # whose every wanted stage reached a verdict may write it: a stage that raised, or a Ctrl-C
+            # after the lock, is the cancelled gate #45 names and leaves the standard as it found it.
+            # A run whose stages FAILed still accepts (the behaviour before #45); the verdict says so.
             path = expected_pins_path(revision)
             pins.write_expected(accepted_standard(current, path), path,
                                 note="gate --accept-pins, stamp %s" % args.stamp)
             accepted = True
+            if failed:
+                accepted_when = " after the run (%d of %d stages FAILed; accepted anyway)" % (len(failed), len(results))
+        elif all_drifts and args.accept_pins:
+            print("PINS NOT ACCEPTED: the run did not complete (%d of %d stages reached a verdict) -- %s unchanged"
+                  % (len([1 for _, l in results if "(gate did not run)" not in l]), len(wanted),
+                     expected_pins_rel(revision)))
         refused = bool(all_drifts) and not accepted
         pin_lines, verdict = write_summary([line for _, line in results], all_drifts)
         print(pin_lines[-1])        # the mapping line, now that the game logs exist
