@@ -4,13 +4,12 @@
 
 ## 1. Open issues
 
-22 open issues. *Carried* counts the sprint closes an issue has survived (its `Carried ...` comments, or one for the `carried` label alone); at 2 the next close asks the owner.
+21 open issues. *Carried* counts the sprint closes an issue has survived (its `Carried ...` comments, or one for the `carried` label alone); at 2 the next close asks the owner.
 
 | Issue | Title | Area | Milestone | Carried | Closing bar (first sentence) |
 |---|---|---|---|---|---|
 | #25 | The Linux VM's suites are not green on the merged tree: four C++ and four Python cases | linux | Sprint 13 | 2 | Each case fixed or isolated with its reason written down, `scripts/build_linux.sh test` run in the VM under the loop lock with both suites reporting no failures, and DEVELOPING's Linux row then written as green. |
 | #26 | No run has shown a received chat line crossing the client bound: the harness cannot open the chat box | harness | Sprint 13 | 2 | A harness step that opens the briefing-room chat box and types a line, sequenced A hosts, B joins, A types; a two-instance run whose B log shows `[socom2] chat receive bound: seen=1`; then the gate `s11_s_chat_gate` passing all three stages and a control round. |
-| #27 | On a virgin memory card the persona survives a relaunch but the saved password does not (W10) | recomp | backlog | 0 | One launch that creates the persona and then quits through the driver's own clean-exit path instead of being killed, followed by the same relaunch. |
 | #28 | The mission music degrades with time in a mission; the long in-mission capture against PCSX2 has not run | audio | backlog | 0 | A drive script that skips the cinematics and reaches gameplay fast, then one in-mission capture of ten minutes or more scored against PCSX2 on the same mission with `scripts/parity/audio_parity.sh`. |
 | #31 | Streamed full-screen images: the guest advances DBP at packet offset 0x14; our load-image stubs never read it | recomp | backlog | 0 | The stub reads the packet's DBP halfword at exec time; a unit test in `ps2_gs_tests.cpp` drives a multi-strip stream and checks each strip's destination; and a loading screen compared against the console shows the strips in place, with the three-stage gate still passing. |
 | #32 | The menus re-upload one atlas a frame as 1 KB tiles at 80-133 ms/s; tile batching is the untested fix | render | backlog | 0 | A per-upload cost breakdown over the login screen's own pages (`PS2X_GS_TRACE_PAGES`) that says whether the per-call overhead dominates; then tile batching, or skipping tiles whose bytes did not change, measured on the same screen with the stats line's upload column halved or better and the gate passing all three stages. |
