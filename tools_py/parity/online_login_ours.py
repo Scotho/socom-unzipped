@@ -9,6 +9,7 @@ Usage: python -m tools_py.parity.online_login_ours [--existing] [--name socomc] 
        [--instance B]   (second exe instance: own window title, memory card dir and UDP ports)
        [--prefilled]    (Sprint 10 Goal 9: the name and password go to the game as PS2X_SOCOM2_LOGIN_NAME /
                          _PASS, its keyboards open already holding them, and the harness presses ENTER)
+       [--clean-exit]   (Sprint 13 V6: after the hold, close the window -- the runtime's own exit -- not the kill)
 """
 import argparse
 import contextlib
@@ -107,11 +108,12 @@ INSTANCES = {
 }
 
 
-def launch(seconds, instance=None, prefill=None, mc_dir=None):
+def launch(seconds, instance=None, prefill=None, mc_dir=None, stdout_path=None):
     """Start the exe; returns (proc, title substring to find its window). `prefill` (prefill_env's dict, --prefilled)
     goes into the game's environment; None adds nothing, the environment is what it was. `mc_dir` (--mc-dir, W10):
     the memory-card folder the game boots from (PS2X_MC_DIR, created empty when absent -- a virgin card); it
-    overrides the instance's own."""
+    overrides the instance's own. `stdout_path` (Sprint 13 V6): run.sh's own output goes there instead of nowhere --
+    its `exit=<rc> log=<path>` line is the game's exit code and the run log it wrote (run_sh_exit)."""
     env = dict(os.environ, PS2X_SOCOM2_PAD="1")
     title = keys.WINDOW_TITLES[T]
     latest = os.path.abspath(os.path.join("logs", "parity", f"latest_frame_{instance or 'A'}.png"))
@@ -126,10 +128,64 @@ def launch(seconds, instance=None, prefill=None, mc_dir=None):
     if mc_dir:
         env["PS2X_MC_DIR"] = os.path.abspath(mc_dir)
         os.makedirs(env["PS2X_MC_DIR"], exist_ok=True)
-    proc = subprocess.Popen(["bash", "./run.sh", str(seconds)], env=env,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    out = open(stdout_path, "w") if stdout_path else subprocess.DEVNULL
+    try:
+        proc = subprocess.Popen(["bash", "./run.sh", str(seconds)], env=env,
+                                stdout=out, stderr=subprocess.DEVNULL)
+    finally:
+        if stdout_path:
+            out.close()                                          # the child holds its own handle
     proc.latest_frame = latest
     return proc, title
+
+
+# Sprint 13 V6 (#27): the clean exit. SOCOM II on a PS2 has no quit of its own (the console is switched off), so the
+# port's clean exit is the window's close: the runtime reads WM_CLOSE as WindowShouldClose, stops the guest, joins its
+# thread and leaves through main's _Exit(ps2ProcessExitCode()) -- where the drive's `taskkill /F` ends it mid-frame.
+CLEAN_EXIT_WAIT_S = 60.0
+RUN_SH_EXIT = re.compile(r"^exit=(-?\d+) log=(\S+)", re.M)
+
+
+def run_sh_exit(path):
+    """(the game's exit code, its run log) off run.sh's `exit=<rc> log=<path> ...` line, or (None, None)."""
+    try:
+        with open(path, errors="replace") as f:
+            m = RUN_SH_EXIT.search(f.read())
+    except OSError:
+        return None, None
+    return (int(m.group(1)), m.group(2)) if m else (None, None)
+
+
+RUN_SH_TIMEOUT_RC = 124          # coreutils `timeout` in run.sh: the --seconds budget ended the game, not the close
+
+
+def clean_exit_verdict(rc):
+    """The drive log's CLEAN-EXIT line for clean_exit's answer: only a code the game itself returned is clean."""
+    if rc is False:
+        return "CLEAN-EXIT none (the game did not leave on the close; killed)"
+    if rc == RUN_SH_TIMEOUT_RC:
+        return f"CLEAN-EXIT none (rc={rc}: run.sh's timeout ended the game, not the close)"
+    return f"CLEAN-EXIT rc={rc}"
+
+
+def clean_exit(sh, proc, stdout_path=None, wait_s=CLEAN_EXIT_WAIT_S, clock=time.time):
+    """Close the game's window and wait for run.sh to return (--clean-exit). Returns the game's exit code as run.sh
+    printed it (None when it printed none), or False when the close could not be sent or the game was still running
+    `wait_s` later -- the caller's kill then ends it, and the log says which. (0 is a clean rc: test `is False`.)"""
+    close = getattr(winshot, "close_window", None)
+    t = clock()
+    if close is None or not close(sh.hwnd):
+        sh.log("[exit] clean: the close request could not be sent -> the kill")
+        return False
+    try:
+        proc.wait(timeout=wait_s)
+    except subprocess.TimeoutExpired:
+        sh.log(f"[exit] clean: the game is still running {wait_s:.0f}s after the window's close -> the kill")
+        return False
+    rc, log = run_sh_exit(stdout_path) if stdout_path else (None, None)
+    sh.log(f"[exit] clean: the window's close -> run.sh returned after {clock() - t:.1f}s, the game's rc={rc} "
+           f"(log {log})")
+    return rc
 
 
 # Pad-state injection (PS2X_SOCOM2_INPUT_FILE, socom2_host_input.cpp): the exe reads this file on
@@ -483,6 +539,7 @@ LOGIN_PASSWORD_VALUE = (136, 158, 172, 400)
 LOGIN_PASSWORD_INK_MIN = 100.0
 CLASS_SAVE_TICK = "login:save-password"        # + ":row" / ":tick": SAVE PASSWORD could not be set to YES
 CLASS_RELAUNCH_LOGIN = "login:saved-password"  # the relaunch: the card did not bring the persona or its password back
+SAVED_FORM_READS, SAVED_FORM_REREAD_S = 3, 1.0     # V6 review: the relaunch form, read up to 3 times 1 s apart
 # (the two names above are not *_PASSWORD: the release leak check reads `X_PASSWORD = "..."` as a secret assignment)
 
 # The main menu of the block-pointer exe: NEW GAME / ONLINE / LAN. The lit row's text pulses in size (ONLINE lit spans
@@ -1565,20 +1622,42 @@ def login(sh, name, password, existing, prefilled=False, save_password=False, sa
     sh.shot("02_persona")
     mode, listed = persona_form_mode(sh, existing)
     if saved_password:
-        if mode == "create":
+        # Sprint 13 V6 (#27): the form is read AS IT ARRIVED, before any press. W10's relaunch (w10_virgin_b) arrived with the persona, "*****",
+        # YES ticked and the game's cursor ON CONNECT: the persona-list CROSS this path used to send first
+        # connected, and PASSWORD was then read off the CONNECTING screen -- 0 glyphs, login:saved-password:empty,
+        # a failure of the read and never of the card.
+        # persona_form_mode also answers "saved" off an open keyboard and off --existing with no form read, so
+        # the form is required here (a short bounded re-read) before its PASSWORD is believed: a frame that is not
+        # the form fails as its own class, never as :empty -- the misread #27 was.
+        for read in range(1, SAVED_FORM_READS + 1):
+            gray = lobby_gray(sh)
+            if login_form_up(gray):
+                break
+            sh.log(f"[login] saved password: the form is not on screen (read {read} of {SAVED_FORM_READS}, keyboard "
+                   f"{'up' if osk_open_of(gray) else 'down'})")
+            if read < SAVED_FORM_READS:
+                sh.stage_sleep(SAVED_FORM_REREAD_S)
+        else:
+            sh.shot("05_password")
+            raise lobby_fail(sh, f"{CLASS_RELAUNCH_LOGIN}:no-form",
+                             f"the CONNECT TO SOCOM II form was not on screen in {SAVED_FORM_READS} reads (keyboard "
+                             f"{'up' if osk_open_of(gray) else 'down'}): PASSWORD was not read, so nothing is known "
+                             f"about the saved password")
+        if login_persona_mode(gray) == "create":                 # off the form itself, never --existing's guess
             raise lobby_fail(sh, f"{CLASS_RELAUNCH_LOGIN}:no-persona",
                              "the relaunch's form has an empty PLAYER NAME: the card brought no persona back")
-        if not listed:
-            press_persona_list(sh)                               # the form with the saved persona, cursor on PASSWORD
-        gray = lobby_gray(sh)
-        n, state = login_password_glyphs(gray), login_save_password(gray)
-        sh.log(f"[login] saved password: PASSWORD reads {n} glyphs, SAVE PASSWORD reads {state}; typing nothing")
+        n, state, focus = login_password_glyphs(gray), login_save_password(gray), login_focus_row(gray)
+        sh.log(f"[login] saved password: PASSWORD reads {n} glyphs, SAVE PASSWORD reads {state}, "
+               f"focus {focus or 'unread'}; typing nothing")
         sh.shot("05_password")
         if n == 0:
             raise lobby_fail(sh, f"{CLASS_RELAUNCH_LOGIN}:empty",
                              f"the relaunch's PASSWORD field is empty (SAVE PASSWORD reads {state}): the saved "
                              f"password did not survive the restart")
-        press_connect(sh)
+        # The DOWNs from the lit row to CONNECT (0 when the game already put the cursor there); an unread focus
+        # keeps this path's old assumption, the cursor on PASSWORD, and press_connect's focus search reads the rest.
+        press_connect(sh, downs=(LOGIN_ROW_ORDER.index("connect") - LOGIN_ROW_ORDER.index(focus)) if focus
+                      else LOGIN_CONNECT_DOWNS)
         login_prompts(sh)
         login_to_lobby(sh)
         return
@@ -2466,6 +2545,10 @@ def main():
                     help="type nothing: the form must arrive with the persona and its password from the card "
                          "(the relaunch of the W10 proof; an empty field fails as login:saved-password)")
     ap.add_argument("--mc-dir", default="", help="memory-card folder (PS2X_MC_DIR), created empty when absent")
+    # Sprint 13 V6 (#27): end the run through the window's close (the runtime's own exit) instead of the kill.
+    ap.add_argument("--clean-exit", action="store_true",
+                    help="after the hold, close the game's window and wait for it to leave (CLEAN-EXIT rc=<n>); "
+                         "the kill runs only if it has not")
     a = ap.parse_args()
     if a.save_password and a.saved_password:
         ap.error("--save-password and --saved-password are the two launches of one proof, not one launch")
@@ -2479,7 +2562,9 @@ def main():
     if not a.instance and hostplatform.process_running("socom2"):
         raise SystemExit(f"{hostplatform.exe_name('socom2')} is already running; "
                          "refusing to start a second game instance")
-    proc, title = launch(a.seconds, a.instance or None, prefill, **({"mc_dir": a.mc_dir} if a.mc_dir else {}))
+    run_sh_out = os.path.join(a.out, "run_sh.txt")
+    proc, title = launch(a.seconds, a.instance or None, prefill, **({"mc_dir": a.mc_dir} if a.mc_dir else {}),
+                         **({"stdout_path": run_sh_out} if a.clean_exit else {}))
     sh = None
     try:
         sh = attach(proc, title, a.out)
@@ -2514,7 +2599,14 @@ def main():
             time.sleep(5)
             sh.shot(f"30_hold_{i:02d}")
         sh.shot("final")
+        if a.clean_exit:
+            rc = clean_exit(sh, proc, run_sh_out)
+            sh.log(clean_exit_verdict(rc))
     finally:
+        # V6 review: the kill says so, so a killed launch's log is self-describing beside a CLEAN-EXIT line
+        note = ("[exit] kill: run.sh had already returned, the kill below is a no-op" if proc.poll() is not None
+                else "[exit] kill: the game is ended by the harness (run.sh terminated, then the game's process)")
+        (sh.log if sh is not None else print)(note)
         proc.terminate()
         if a.instance:
             # 2026-09-22 (the hosted join, 14:53): with --instance another socom2.exe on this PC may be the

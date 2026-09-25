@@ -54,6 +54,16 @@ def find_window(title_substring, pid=None):
     return found[0] if found else None
 
 
+WM_CLOSE = 0x0010
+
+
+def close_window(hwnd):
+    """Ask the window to close, as its own close button does (WM_CLOSE, posted: nothing waits here). The game's
+    runtime reads it as WindowShouldClose, stops the guest and leaves with its own exit code
+    (ps2_runtime.cpp's run loop, main.cpp) -- the clean exit, where taskkill /F is not one (Sprint 13 V6)."""
+    return bool(user32.PostMessageW(hwnd, WM_CLOSE, 0, 0))
+
+
 def window_title(hwnd):
     n = user32.GetWindowTextLengthW(hwnd)
     buf = ctypes.create_unicode_buffer(n + 1)
