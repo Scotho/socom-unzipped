@@ -1,3 +1,9 @@
+# ARCHIVED 2026-09-25 (Sprint 13 Task H4, harness audit H27/H28) -- was tools_py/patch_mfifo.py.
+#   A one-off source patcher: the fromSPR/toSPR DMA channels and MFIFO ring drain in ps2_memory.cpp/h. Applied and committed in 79eb6a4e, 2026-09-05, the last time it mattered.
+#   It rewrote files under third_party/ps2recomp/ps2xRuntime/ in place, at the owner's absolute path. The change
+#   has lived in the runtime's own source since that commit; run now, it would patch the tree a second time or
+#   fail an assert. The raise below keeps it from running. Nothing here is an instruction.
+raise SystemExit("archived 2026-09-25 (Sprint 13 Task H4): a one-off source patcher, long applied; it writes into the vendored runtime -- do not run it")
 """One-off patch: add fromSPR/toSPR DMA channels and MFIFO ring draining to ps2_memory.cpp/h.
 Idempotent (checks for markers)."""
 import sys

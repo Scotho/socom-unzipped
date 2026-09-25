@@ -1,3 +1,9 @@
+# ARCHIVED 2026-09-25 (Sprint 13 Task H4, harness audit H27/H28) -- was tools_py/patch_istat.py.
+#   A one-off source patcher: EE INTC I_STAT emulation (VBLANK bits, write-1-to-clear). Applied and committed in 8c56d3f5, 2026-09-05, the last time it mattered.
+#   It rewrote files under third_party/ps2recomp/ps2xRuntime/ in place, at the owner's absolute path. The change
+#   has lived in the runtime's own source since that commit; run now, it would patch the tree a second time or
+#   fail an assert. The raise below keeps it from running. Nothing here is an instruction.
+raise SystemExit("archived 2026-09-25 (Sprint 13 Task H4): a one-off source patcher, long applied; it writes into the vendored runtime -- do not run it")
 """Implement EE INTC I_STAT (0x1000F000): raise VBLANK bits on the scheduler's vblank events,
 and make I_STAT write-1-to-clear.  The engine's vsync wait (FUN_001a3fb0) clears I_STAT bit 2
 and polls it until the next vblank sets it; without this the frame-pacing loop spins forever.

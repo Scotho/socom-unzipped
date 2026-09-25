@@ -2,7 +2,7 @@
 on the cull's eye position (data qword 30)? Replay the dump with the eye nudged and count kicks per variant."""
 import glob, os, struct, subprocess, sys, collections, shutil
 D = sys.argv[1]
-EXE = r"C:\projects\socom_pc\dist\vu1_replay.exe"
+EXE = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "dist", "vu1_replay.exe"))
 T = struct.pack("<Q", 0x20162d45dd30b6b1)
 
 def kicks_by_tex0(pk):

@@ -3,7 +3,7 @@ so every primitive the EE sent is kicked at its true screen position; then each 
 vertices within TOL) against those kicked polygons: KICKED (matched in the as-is replay), SENT-BUT-DROPPED (only in
 the no-clip/no-cull replay), ABSENT (never sent)."""
 import glob, os, struct, sys, shutil, subprocess, collections
-EXE = r"C:\projects\socom_pc\dist\vu1_replay.exe"
+EXE = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "dist", "vu1_replay.exe"))
 D, CONS, LIMIT = sys.argv[1], sys.argv[2], int(sys.argv[3])
 T = struct.pack("<Q", 0x20162d45dd30b6b1); TOL = 30
 

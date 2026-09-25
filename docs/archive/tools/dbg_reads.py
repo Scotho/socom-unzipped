@@ -1,3 +1,10 @@
+# ARCHIVED 2026-09-25 (Sprint 13 Task H4, harness audit H27) -- was tools_py/dbg_reads.py (no docstring of its own).
+#   What it did: count the reads of patched (self-decrypted) words under the harness. Last mattered 2026-09-04.
+#   A bring-up probe of the APACHE00.ZDB decryption under the Unicorn harness, from the week the decryptor was
+#   written. Its question closed at 329bbdac (2026-09-04, "APACHE00.ZDB decryption works end-to-end"); the
+#   decryption is tools_py/decrypt_apache.py, run by tools_py/disc_to_elf.py and tested. It was moved here
+#   from tools_py/ and no longer imports as a module (it sys.path-imports decrypt_apache from its own folder).
+#   Nothing here is an instruction.
 import sys, os, collections
 os.environ['NO_TEXT_HOOKS'] = '1'
 sys.path.insert(0, os.path.dirname(__file__))
