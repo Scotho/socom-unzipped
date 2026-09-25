@@ -1,3 +1,8 @@
+# ARCHIVED 2026-09-25 (Sprint 13 Task H4, harness audit H27) -- was tools_py/parity/blue_marker.py.
+#   Sprint 9 Q0b's reader of tools_py/parity/frame_burst.py bursts: is the first mission's blue enemy-marker
+#   arrow ever on screen. It last mattered on 2026-09-20, when the owner closed Q0b ("it was there": the arrow
+#   shows on ours once a player approaches the first enemies; docs/KNOWN.md section 3). Nothing called it and no
+#   document named it. frame_burst.py stays, as an entry point. Nothing here is an instruction.
 """Sprint 9 Q0b: find the frames of a burst in which a saturated BLUE marker appears -- the arrow that flies over the
 first mission's opening on the console to point at the first enemies, which the owner does not recall on ours.
 

@@ -31,7 +31,7 @@ online server is Horizon Private Server configured for SOCOM II under `server/`.
 | `build.sh`, `run.sh` | Build (`tools`, `recomp`, `runtime`, `release`, `test`, `all`; `--no-runner` builds without generated code) and run (`./run.sh <seconds>`) — Git Bash. Linux: `scripts/build_linux.sh` |
 | `recomp/` | Recompiler config (`socom2.toml`), Ghidra function map (`socom2_ghidra.csv`), forced entry points (`extra_functions.txt`), the readable names with their provenance (`socom2_names.csv`, `socom2_names_r0004.csv`; the holds `socom2_name_holds.csv`; the r0004 seeds `r0004_seeds.txt` — "Names in the generated code" below), generated C++ in `output/` (ignored) |
 | `third_party/ps2recomp/` | Vendored PS2Recomp fork (our changes are committed in place; see `git log -- third_party`) |
-| `tools_py/` | Python tooling: 172 modules (2026-09-25, `git ls-files 'tools_py/*.py'` less the tests and `__init__.py`), mapped by purpose in "The `tools_py/` map" below; the tests in `tools_py/tests/` |
+| `tools_py/` | Python tooling: 165 modules (2026-09-25 after Sprint 13 Task H4, `git ls-files 'tools_py/*.py'` less the tests and `__init__.py`), mapped by purpose in "The `tools_py/` map" below; the tests in `tools_py/tests/` |
 | `scripts/` | Shell and PowerShell entry points: the disc chain, the revision build, packaging, the loop lock, the VM sync, the hooks; `scripts/parity/` holds the harness's launch scripts, step scripts and reference images |
 | `ghidra_scripts/` | Headless Ghidra scripts (export, pointer/vtable scan, function forcing) |
 | `server/` | Horizon Private Server sources+config for app id 10472, `start-servers.ps1`, README |
@@ -121,21 +121,33 @@ a rename is accepted only when it prints `S12-R11 … OK` (no extent moved, no f
 
 ## The `tools_py/` map
 
-Every tracked module under `tools_py/` except the tests, one line each, grouped by what it is for — 172 on
-2026-09-25 (`git ls-files 'tools_py/*.py'`, less `tools_py/tests/` and the four package `__init__.py` files). The one
-line is the module's own docstring, shortened; the docstring is the reference. Run a module as
-`python -m tools_py.<name>` (or `tools_py.parity.<name>`, …) from the repository root unless its docstring says
-otherwise. **†** is the flag "invoked by nothing" of the 2026-09-25 harness audit's Appendix A
-(`docs/audits/2026-09-25-project-audit/harness-tools.md`): 28 modules whose name no other Python module, script,
-workflow or test contains -- its code and test counts are both zero, and a mention in a document does not count.
-Other modules have no caller either but are named from some other code file; the research scripts, marked or not, are
-run by hand from their notes. Separately, `movie_blocks` has tests but no caller (issue #46); the † modules have no
-issue yet.
+Every tracked module under `tools_py/` except the tests, one line each, grouped by what it is for — 165 on
+2026-09-25 after Sprint 13 Task H4 (`git ls-files 'tools_py/*.py'`, less `tools_py/tests/` and the four package
+`__init__.py` files). The one line is the module's own docstring, shortened; the docstring is the reference. Run a
+module as `python -m tools_py.<name>` (or `tools_py.parity.<name>`, …) from the repository root unless its docstring
+says otherwise.
+
+**Entry points.** A module whose name no other code file contains (no module, script, workflow, `build.sh` or test
+-- the harness audit's Appendix A rule, `docs/audits/2026-09-25-project-audit/harness-tools.md`) is run by a person or
+not at all. Its row below says **Run it as:** `python -m …`, and its docstring carries the same `Run: python -m …` line.
+`tools_py/tests/test_tools_py_inventory.py` fails on any module outside `tests/` and `research/` that has neither a
+caller nor that row, and on any file in `docs/archive/tools/` without its banner and its row in
+`docs/archive/README.md`. The research scripts are run by hand from their notes; the ones the audit flagged carry the
+same line.
+> Superseded 2026-09-25 (Sprint 13 Task H4): this paragraph marked 28 modules **†**, the audit's "invoked by nothing"
+> flag, and said "`movie_blocks` has tests but no caller (issue #46); the † modules have no issue yet". H4 archived
+> nine of the 28 to `docs/archive/tools/` (the four `patch_*` source patchers, the four `dbg_*` decryptor probes and
+> `parity/blue_marker.py`) and made the other nineteen entry points; `movie_blocks` has run in `build.sh test` through
+> `tools_py/tests/test_movie_blocks_fixture.py` since `bd27443e` (2026-09-17).
 > Superseded 2026-09-25 (Sprint 13 R2, fix round 1): this paragraph gave the method as "`git grep -l -w <name>`,
 > zero hits outside the module itself", which does not yield 28 (seventeen more modules pass it, most of them
 > research scripts), and said issue #46 carried one of the 28; `movie_blocks` is not among them.
-Beside the modules, `tools_py/screenshot.ps1` captures a window by hand, and `tools_py/decrypt.log` / `decrypt2.log`
-are tracked because a KNOWN §1 evidence manifest hashes them.
+
+Beside the modules, `tools_py/screenshot.ps1` captures a window by hand.
+> Superseded 2026-09-25 (Sprint 13 Task H4): this also said "`tools_py/decrypt.log` / `decrypt2.log` are tracked
+> because a KNOWN §1 evidence manifest hashes them". The manifest (`docs/research/assets/22-first-kill-evidence.txt`)
+> hashes copies under a harness snapshot in `logs/`, not the tracked files; the two logs, with the owner's absolute
+> paths in them, were deleted (harness audit H29).
 
 **From the disc to the ELF** (the chain `scripts/disc_to_elf.sh` runs; section "From your own disc" below):
 
@@ -162,7 +174,7 @@ are tracked because a KNOWN §1 evidence manifest hashes them.
 | `find_interior_functions.py` | Report function starts hidden inside another function's range |
 | `find_data_entries.py` | Find entry points no branch names (data-referenced entries, and their kin) |
 | `find_ctor_thunks.py` | Enumerate an overlay's static-constructor thunks from its `MWo3` header and force each as an entry |
-| `resolve_mmio.py` † | Re-derive the true effective address of every `[mmio]` override in `recomp/socom2.toml` |
+| `resolve_mmio.py` | Re-derive the true effective address of every `[mmio]` override in `recomp/socom2.toml` (r0001; no diff means the table is right). Run it as: `python -m tools_py.resolve_mmio [--write]` |
 | `hle_constants.py` | Census of every HLE stub bound in the toml: its callers and what they do with the return value |
 | `recomp_census.py` | Census of a recompiler output directory and its log, and the diff of two (the S12-R11 bar) |
 
@@ -201,32 +213,22 @@ are tracked because a KNOWN §1 evidence manifest hashes them.
 
 | Module | What it is for |
 |---|---|
-| `gif_packets.py` † | List the vertices a `vu1_replay` packet file kicks |
-| `gif_submit_timeline.py` † | Reduce a run log's `[gif-submit]` lines (`PS2X_GIF_TRACE`) to the title-label events |
+| `gif_packets.py` | List the vertices a `vu1_replay` packet file kicks. Run it as: `python -m tools_py.gif_packets <packets.bin> [--verts] [--limit N]` |
+| `gif_submit_timeline.py` | Reduce a run log's `[gif-submit]` lines (`PS2X_GIF_TRACE`) to the title-label events. Run it as: `python -m tools_py.gif_submit_timeline <run.log> [--from N] [--count M]` |
 | `gsdump_extract.py` | Turn a PCSX2 GS dump into the console-replay fixture `ps2x_tests` reads |
-| `gsdump_timeline.py` † | Per frame of a PCSX2 GS dump, every transfer, texture bind and kick |
+| `gsdump_timeline.py` | Per frame of a PCSX2 GS dump, every transfer, texture bind and kick. Run it as: `python -m tools_py.gsdump_timeline <dump.gs> [--pages P:N] [--all]` |
 | `hostprof_symbolize.py` | Symbolise a `PS2X_HOST_PROF` histogram against `dist/socom2.exe` |
-| `hostprof_diff.py` † | Symbolise the difference of two `PS2X_HOST_PROF` histograms |
-| `hostprof_stacks.py` † | Fold and symbolise the stacks of a `PS2X_HOST_PROF_STACKS=1` histogram |
-| `marker_timeline.py` † | Merge a run log's game-thread events into one stream for the texture-set marker protocol |
+| `hostprof_diff.py` | Symbolise the difference of two `PS2X_HOST_PROF` histograms. Run it as: `python -m tools_py.hostprof_diff <pre.txt> <end.txt> [--top N] [--exe dist/socom2.exe] [--by-file]` |
+| `hostprof_stacks.py` | Fold and symbolise the stacks of a `PS2X_HOST_PROF_STACKS=1` histogram. Run it as: `python -m tools_py.hostprof_stacks [logs/hostprof.txt] [--exe dist/socom2.exe] [--top N]` |
+| `marker_timeline.py` | Merge a run log's game-thread events into one stream for the texture-set marker protocol. Run it as: `python -m tools_py.marker_timeline <run.log> [--from-frame N] [--frames M]` |
 | `rdr_tree.py` | Print a parsed `.rdr` tree from a guest RAM dump (`PS2X_RDRAM_DUMP`) |
-| `ra2fun.py` † | Map guest addresses (a call trace's `ra=`) to the decompiled function holding them |
-| `vu1dis.py` † | A minimal VU0/VU1 micro-program disassembler |
+| `ra2fun.py` | Map guest addresses (a call trace's `ra=`) to the decompiled function holding them (reads `game/analysis/`). Run it as: `python -m tools_py.ra2fun 0x357028 …` |
+| `vu1dis.py` | A minimal VU0/VU1 micro-program disassembler. Run it as: `python -m tools_py.vu1dis <dump.bin> [--start 0xPC] [--count N] [--raw]` |
 | `vu1_headers.py` | Print the VU1 dispatcher header counts of a set of program dumps |
-| `vu1stats_summary.py` † | Summarise a run log's `[vu1-stats]` lines by phase |
+| `vu1stats_summary.py` | Summarise a run log's `[vu1-stats]` lines by phase. Run it as: `python -m tools_py.vu1stats_summary [run.log]` (default: the newest `logs/run_*.log`) |
 
-**Early-bring-up one-offs** (the first week's Unicorn probes and source patchers; kept, not maintained):
-
-| Module | What it is for |
-|---|---|
-| `dbg_reads.py` † | Count the memory reads of the boot ELF under the Unicorn harness (no docstring) |
-| `dbg_step2.py` † | Step the boot ELF under the harness with two syscalls stubbed (no docstring) |
-| `dbg_trace.py` † | Trace the DNAS overlay's code under the harness (no docstring) |
-| `dbg_writer.py` † | Find the writer of a memory range under the harness (no docstring) |
-| `patch_fifo_trace.py` † | Add `PS2X_TRACE_FIFO` tracing to the DMA/INTC path of the runtime source (idempotent) |
-| `patch_istat.py` † | Add EE INTC `I_STAT` vblank bits to the runtime source (idempotent) |
-| `patch_mfifo.py` † | Add the SPR DMA channels and MFIFO draining to the runtime source (idempotent) |
-| `patch_vif1_intc.py` † | Raise INTC cause 5 on a VIF1 interrupt bit in the runtime source (idempotent) |
+**Early-bring-up one-offs** -- archived 2026-09-25 (Sprint 13 Task H4) to `docs/archive/tools/`: the four `dbg_*` decryptor probes and the four `patch_*` source patchers of the first week, which still wrote into the
+vendored runtime when run. `docs/archive/README.md` lists them with what each was.
 
 **The project's own records and gates:**
 
@@ -271,10 +273,9 @@ are tracked because a KNOWN §1 evidence manifest hashes them.
 | `motion_diff.py` | Is our player seen moving on the console client |
 | `scale_compare.py` | Is a 1280x896 frame the 640x448 frame, or a different render |
 | `scale_shot.py` | One screen captured at 640x448 and at 1280x896 from the runtime |
-| `resize_window.py` † | Give the running game window a client area of a given size |
-| `frame_burst.py` † | Capture the game window at a fixed rate for a while |
-| `blue_marker.py` † | Find the frames of a burst that show the first mission's blue marker |
-| `movie_blocks.py` | Find 16x16 movie blocks the GL target lacks but shadow VRAM has (issue #46: no caller) |
+| `resize_window.py` | Give the running game window a client area of a given size (captures to look at, not gate results). Run it as: `python -m tools_py.parity.resize_window <w> <h>` |
+| `frame_burst.py` | Capture the game window at a fixed rate for a while (KNOWN §4: check a burst on ours by its first frame). Run it as: `python -m tools_py.parity.frame_burst <pcsx2\|ours> <out_dir> <start_after_s> <count> <interval_s>` |
+| `movie_blocks.py` | Find 16x16 movie blocks the GL target lacks but shadow VRAM has; runs in `build.sh test` over the saved fixture `tests/fixtures/movie/` (`test_movie_blocks_fixture.py`), and by hand over a `PS2X_GS_DUMP_DISPLAY` capture |
 | `motion_pack_check.py` | Is the motion pack intact in an RDRAM image |
 | `object_diff.py` | Object-keyed uninitialised-field diff between our heap and the console's |
 | `facing_check.py` | Validate the at-rest facing estimate offline |
@@ -300,7 +301,8 @@ are tracked because a KNOWN §1 evidence manifest hashes them.
 | `probe_poll.py` | Poll the collision query object on PCSX2 at a savestate |
 | `gsdump_capture.py` | Capture a multi-frame PCSX2 GS dump at a savestate |
 | `find_dialog_ptr.py` | Find a static pointer chain to the current dialog's name in a RAM dump |
-| `p2s_extract.py` † | Extract a member from a PCSX2 `.p2s` savestate (zstd entries) |
+| `capture_env.py` | The `PS2X_*` environment a capture ran with, written beside its output in the gate's pin format (issue #38 (closed); `scripts/parity/write_env.sh` for the shell scripts) |
+| `p2s_extract.py` | Extract a member from a PCSX2 `.p2s` savestate (zstd entries). Run it as: `python -m tools_py.parity.p2s_extract <state.p2s> <out.bin> [member]` |
 | `dns_stub.py` | A tiny DNS responder that points the PCSX2 guest at the Horizon host |
 
 **The parity harness, `tools_py/parity/` — online:**
@@ -362,18 +364,19 @@ by design:
 | `research/terrain/classify2.py` | Both terrain program families replayed with clipping and culling off, matched to the console's fans |
 | `research/terrain/clip_planes.py` | A terrain dump's clip planes and each primitive's distances to them |
 | `research/terrain/cull_trace_scan.py` | Scan a `PS2X_CULL_TRACE` log: the guest's cull results against a recomputation |
-| `research/terrain/deferred_trace_scan.py` † | Per frame, the deferred-list enqueues and flushes of a cull trace |
-| `research/terrain/detail_sections_scan.py` † | Per frame, every component the object renderer sized |
-| `research/terrain/detail_trace_scan.py` † | Components whose triangle count the distance table cut |
-| `research/terrain/ee_compare.py` † | Our guest RAM at the spawn view against the PCSX2 savestate's |
+| `research/terrain/deferred_trace_scan.py` | Per frame, the deferred-list enqueues and flushes of a cull trace (research/31 §16-17). Run it as: `python -m tools_py.research.terrain.deferred_trace_scan <trace> [comp,…]` |
+| `research/terrain/detail_sections_scan.py` | Per frame, every component the object renderer sized. Run it as: `python -m tools_py.research.terrain.detail_sections_scan <trace>` |
+| `research/terrain/detail_trace_scan.py` | Components whose triangle count the distance table cut. Run it as: `python -m tools_py.research.terrain.detail_trace_scan <trace>` |
+| `research/terrain/ee_compare.py` | Our guest RAM at the spawn view against the PCSX2 savestate's. Run it as: `python -m tools_py.research.terrain.ee_compare <ours.bin> <console.bin> [c8,ca;…]` |
 | `research/terrain/eye_experiment.py` | Does the under-water fan's kick count depend on the cull's eye position |
 | `research/terrain/fan_detail.py` | Parse a GIF packet stream for fan primitives (no docstring) |
 | `research/terrain/fan_sizes.py` | Per stream, the terrain texture's fan packets and their first vertex |
-| `research/terrain/lod_trace_scan.py` † | Components the LOD band test rejected, with their distances |
-| `research/terrain/node_trace_scan.py` † | Pair each cull call with its scene node and find the node holding a point |
+| `research/terrain/lod_trace_scan.py` | Components the LOD band test rejected, with their distances. Run it as: `python -m tools_py.research.terrain.lod_trace_scan <trace>` |
+| `research/terrain/node_trace_scan.py` | Pair each cull call with its scene node and find the node holding a point. Run it as: `python -m tools_py.research.terrain.node_trace_scan <trace> [x,y,z]` |
 | `research/terrain/patch_dump.py` | Print one VU1 terrain dump's header and vertices (no docstring) |
 | `research/terrain/terrain_dumps.py` | Terrain VU1 dumps: header counts, command list, the fans emitted |
 | `research/terrain/unproject.py` | Fit the world→screen map and unproject the console's absent fans |
+| `research/ladder/r242_speed_freeze.py` | R242: the two-instance speed freeze re-measured from the ladder streak's logs (KNOWN §1) |
 
 > Superseded 2026-09-25 (Sprint 13 R2): the Layout table's `tools_py/` row said "Python tooling: Unicorn EE harness,
 > APACHE00 decryptor, DNAS self-decryptor, ELF builder, Ghidra CSV fixers, screenshot helper" — six things, for a
@@ -786,8 +789,10 @@ other. `tools_py/parity/verdict_core.py` holds the pure, IO-free scorers (`score
 `starvation`) the harness's own preconditions and the offline scoring share, with a CLI for offline replay of any
 stored log pair. Harness pieces: `drive.py` scripts have an `ifburst` step (fire a capture burst only if the preceding
 `ifref` matched), and `python -m tools_py.parity.movie_blocks <dumpdir>` checks a `PS2X_GS_DUMP_DISPLAY` capture for
-16x16 blocks black on the GL target but present in shadow VRAM (limits: `docs/research/16` §9.1.1; wired into no
-automation, issue #46).
+16x16 blocks black on the GL target but present in shadow VRAM (limits: `docs/research/16` §9.1.1; `build.sh test`
+runs it over the saved fixture `tests/fixtures/movie/` with its furniture baseline, issue #46).
+> Superseded 2026-09-25 (Sprint 13 Task H4): this said the check was "wired into no automation"; it has run in
+> `build.sh test` through `tools_py/tests/test_movie_blocks_fixture.py` since `bd27443e` (2026-09-17).
 
 **The ladder launch.** `scripts/parity/ladder_frostfire.sh --pinned <outdir>` is the ladder launch template: it pins
 the harness, proves the snapshot imports, dry-runs first, then runs the pinned `online_match_ours.py --rounds …

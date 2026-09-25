@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Minimal VU0/VU1 micro-program disassembler.
 
-Usage: python tools_py/vu1dis.py <dump.bin|code.bin> [--start 0xPC] [--count N] [--raw]
+Run: python -m tools_py.vu1dis <dump.bin|code.bin> [--start 0xPC] [--count N] [--raw]
   dump.bin  = logs/vu1dump/vu1_prog_N.bin written by PS2X_VU1_DUMP (16-byte header + 16 KB code + ...)
   --raw     = the file is bare micro code
 Prints "addr: upper-insn | lower-insn" per 64-bit pair, with the E/M/D/T/I bits as suffixes.

@@ -1,6 +1,6 @@
 """Give the running game window a CLIENT area of <w>x<h>, then exit.
 
-    python -m tools_py.parity.resize_window 1818 1132
+Run: python -m tools_py.parity.resize_window 1818 1132
 
 Why this exists: the host window is created at 640x448 -- exactly the presented PS2 frame -- so
 the present path's aspect-fit scale is 1.0 and `PS2X_PRESENT_FILTER` (linear|integer|point) cannot

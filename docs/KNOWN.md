@@ -508,7 +508,17 @@ Maintained by whoever is running the loop. Last audited: **2026-09-25 (Sprint 13
   2026-09-13 (Task 9a):* the HLE hazard and the Tasks 6-8 harness rules → `STATUS.md` 2026-09-13;
   Task 4c → `research/17` §5.1; Task 4b → `research/17` §6.1; Task 1's `movie_blocks.py` limits →
   `research/16` §9.1.1. Everything else in those reports is accepted as lost.
-- **Open: `movie_blocks.py` is wired into nothing** *(issue #46)* — not `build.sh`, not the gate, not any committed
+- ~~**Open: `movie_blocks.py` is wired into nothing**~~ **SETTLED 2026-09-25 (Sprint 13 Task H4): it had been wired
+  since 2026-09-17** *(issue #46)*. `build.sh test` runs `tools_py/tests/test_movie_blocks_fixture.py` (`bd27443e`,
+  Sprint 6 Task 8), which runs the module over seven saved presents of an intro-and-title display dump
+  (`tests/fixtures/movie/`, its README says how to regenerate them) WITH the saved furniture baseline
+  (`tests/fixtures/movie/furniture.txt`), and fails on a missing block or on furniture growth. What stays true: no
+  harness step takes a fresh `PS2X_GS_DUMP_DISPLAY` capture for it -- over a new capture it runs by hand (DEVELOPING's
+  `tools_py/` map), and `research/16` §9.1.1 has what it cannot see. **The lesson:** the row was written, re-headed and
+  "re-checked and still true" on 2026-09-25 by a grep for a caller in `scripts/`, `build.sh` and the gate -- which
+  cannot see a caller that is a test. "Invoked" counts the tests; `tools_py/tests/test_tools_py_inventory.py` now
+  holds every module to a caller in code or tests, or to a "Run it as:" row. *The row as it was written:* not
+  `build.sh`, not the gate, not any committed
   script — so four review rounds of hard-won properties (monotonicity, arrangement-invariance,
   per-screen furniture) are held in place by no automation at all, and its `--furniture-baseline`
   guard, the only thing that catches corruption being learned as furniture, is opt-in with no

@@ -2,7 +2,7 @@
 """Summarize the [vu1-stats] lines of a run log (PS2X_VU_STATS=1): per-30 s phases and the last
 60 s (the mission), plus the [vu1-bail] pcs (PS2X_VU1_BAILHIST=1) and images without generated code.
 
-Usage: python tools_py/vu1stats_summary.py [logs/run_....log]   (default: newest logs/run_*.log)
+Run: python -m tools_py.vu1stats_summary [logs/run_....log]   (default: newest logs/run_*.log)
 """
 import glob
 import os

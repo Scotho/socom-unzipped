@@ -1,5 +1,7 @@
 """Per frame: the deferred-list enqueues ("defer" lines) and flushes ("flush" lines) of a PS2X_CULL_TRACE log, and
-whether the named components (default: the three flat terrain patches of research/31 section 16) were enqueued."""
+whether the named components (default: the three flat terrain patches of research/31 section 16) were enqueued.
+
+Run: python -m tools_py.research.terrain.deferred_trace_scan <PS2X_CULL_TRACE log> [comp,comp,...]"""
 import re, sys, collections
 watch = set(sys.argv[2].split(",")) if len(sys.argv) > 2 else {"014babc0", "014bacf0", "012e1550"}
 rxd = re.compile(r"defer t=([\d.]+) obj=(\w+) list=(\w+) base=(\w+) bump=(\w+)->(\w+) used=(\d+) comp=(\w+) cflags=(\w+) cull=(\d+)")

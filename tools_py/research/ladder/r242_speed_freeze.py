@@ -20,7 +20,7 @@ intervals (the teardown):
 None of these is the game's own frame rate: that is `[vu1-stats]` syncv/s, and no line of it is in any of the
 fourteen logs (the ladder sets PS2X_GS_STATS=1 only); the script counts them to say so.
 
-    python tools_py/research/ladder/r242_speed_freeze.py [--root C:/projects/socom_pc] [--t0 330]
+    python tools_py/research/ladder/r242_speed_freeze.py [--root <data root; default $SOCOM_DATA_ROOT or .>] [--t0 330]
 """
 import argparse
 import os

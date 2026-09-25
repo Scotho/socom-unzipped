@@ -29,6 +29,31 @@ Moved the same day, to `docs/audits/` rather than here (they are dated snapshots
 documents): *docs/process-audit.md* is `docs/audits/2026-09-12-process-audit.md` and *docs/AUDIT-2026-09-17.md* is
 `docs/audits/2026-09-17-audit-and-code-review.md`. Every citation was re-pointed in the same commit.
 
+## `tools/` — retired `tools_py` modules
+
+Moved 2026-09-25 (Sprint 13 Task H4; the harness audit's findings H27 and H28,
+`docs/audits/2026-09-25-project-audit/harness-tools.md`). Code that nothing invoked and nobody should run again, kept
+with `git mv` so its history follows it. Each file opens with a `# ARCHIVED` banner that says what it was and when it
+last mattered; `tools_py/tests/test_tools_py_inventory.py` holds every file here to that banner and to a row below, and
+every module still in `tools_py/` to a caller or a documented "Run it as:" line in `docs/DEVELOPING.md`'s map. The four
+source patchers also raise `SystemExit` on their first line, because they write into the vendored runtime when run.
+
+| Here | Was (the old path; gone) | Why it moved |
+|---|---|---|
+| `tools/patch_mfifo.py` | *tools_py/patch_mfifo.py* | A one-off source patcher (the SPR DMA channels and the MFIFO drain), applied in `79eb6a4e` on 2026-09-05; it still wrote into the runtime at the owner's absolute path when run (H28) |
+| `tools/patch_istat.py` | *tools_py/patch_istat.py* | The same, for EE INTC `I_STAT` (`8c56d3f5`, 2026-09-05) |
+| `tools/patch_vif1_intc.py` | *tools_py/patch_vif1_intc.py* | The same, for INTC cause 5 on a VIF1 interrupt (`4716869a`, 2026-09-05) |
+| `tools/patch_fifo_trace.py` | *tools_py/patch_fifo_trace.py* | The same, for the `PS2X_TRACE_FIFO` tracing (`72bb1607`, 2026-09-05); its marker is gone from the runtime since, so it would patch again |
+| `tools/dbg_reads.py` | *tools_py/dbg_reads.py* | A bring-up probe of the decryptor under Unicorn (2026-09-04), no docstring; its question closed at `329bbdac` and `tools_py/decrypt_apache.py` is the decryptor |
+| `tools/dbg_step2.py` | *tools_py/dbg_step2.py* | The same (a call/return tracer over the DNAS decrypt steps) |
+| `tools/dbg_trace.py` | *tools_py/dbg_trace.py* | The same (the DNAS init traced, with a ring of the last pcs) |
+| `tools/dbg_writer.py` | *tools_py/dbg_writer.py* | The same (which pcs write a range while the overlay decrypts) |
+| `tools/blue_marker.py` | *tools_py/parity/blue_marker.py* | Sprint 9 Q0b's reader of the blue-arrow bursts; Q0b was closed by the owner on 2026-09-20 ("it was there", `docs/KNOWN.md` section 3), and no code or document named the module |
+
+Deleted in the same commit, not archived: `tools_py/decrypt.log` and `decrypt2.log`, two run logs of 2026-09-04 with the
+owner's absolute paths in their tracebacks (H29). The evidence manifest `docs/research/assets/22-first-kill-evidence.txt`
+hashes copies of them under a harness snapshot in `logs/`, not the tracked files, so it is untouched.
+
 ## `sprints-7-12/` — the closed sprints' specs and plans, continued
 
 Moved 2026-09-25 (Sprint 13 Task R1): Sprints 7 to 10's four specs and twenty-six plans (every sprint plan dated

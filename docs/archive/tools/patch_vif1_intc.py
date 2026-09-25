@@ -1,9 +1,15 @@
+# ARCHIVED 2026-09-25 (Sprint 13 Task H4, harness audit H27/H28) -- was tools_py/patch_vif1_intc.py.
+#   A one-off source patcher: INTC cause 5 (VIF1) raised on interrupt VIFcodes. Applied and committed in 4716869a, 2026-09-05, the last time it mattered.
+#   It rewrote files under third_party/ps2recomp/ps2xRuntime/ in place, at an absolute checkout path (now <repo root>). The change
+#   has lived in the runtime's own source since that commit; run now, it would patch the tree a second time or
+#   fail an assert. The raise below keeps it from running. Nothing here is an instruction.
+raise SystemExit("archived 2026-09-25 (Sprint 13 Task H4): a one-off source patcher, long applied; it writes into the vendored runtime -- do not run it")
 """Raise EE INTC cause 5 (VIF1) when the VIF1 interpreter processes a VIFcode with the interrupt
 bit set, so the game's registered INTC-5 handler (which wakes the render thread) runs.  Adds a
 pending-INTC-cause queue to PS2Memory, drained by the runtime into EeScheduler::dispatchIrq.
 Idempotent."""
 
-rt = 'C:/projects/socom_pc/third_party/ps2recomp/ps2xRuntime/'
+rt = '<repo root>/third_party/ps2recomp/ps2xRuntime/'
 
 
 def patch(path, pairs, marker):
