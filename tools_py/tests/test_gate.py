@@ -1053,10 +1053,19 @@ class TestGateDiskRefusal(unittest.TestCase):
         os.environ.pop("RUN_FREE_GB_CMD", None)
         # The pins check (Q1b) sits between the disk check and the lock; on a checkout without the
         # git-ignored pristine card it would refuse (7) first, which is not what this case is about.
-        with mock.patch.object(gate, "free_gb", return_value=4.1), \
-             mock.patch.object(gate, "check_pins", return_value=([], {}, False)), \
-             mock.patch.object(gate, "_lock", side_effect=self._busy_lock):
-            rc = gate.main(["--stamp", "diskrefusal_test"])
+        # The revision check (Task 19) sits just before it and refuses (8) when nothing says which
+        # revision a launch would run -- which on a checkout with no game/ is the case, i.e. on every CI
+        # runner. That rule is a launch's and stands; this case is not about it either, so it STATES the
+        # revision with a stand-in carrying an r0001 build banner (all launch_revision reads).
+        with tempfile.TemporaryDirectory() as tmp:
+            elf = os.path.join(tmp, "r0001_stand_in.elf")
+            with open(elf, "wb") as f:
+                f.write(BANNER_STAND_IN % b"r0001 17:22:21 Oct 11 2003")   # the real r0001 image's own banner
+            os.environ["SOCOM_GAME_ELF"] = elf
+            with mock.patch.object(gate, "free_gb", return_value=4.1), \
+                 mock.patch.object(gate, "check_pins", return_value=([], {}, False)), \
+                 mock.patch.object(gate, "_lock", side_effect=self._busy_lock):
+                rc = gate.main(["--stamp", "diskrefusal_test"])
         # Got past the disk check into the real-run path, which then found the (mocked) lock busy.
         self.assertEqual(rc, 2)
 
