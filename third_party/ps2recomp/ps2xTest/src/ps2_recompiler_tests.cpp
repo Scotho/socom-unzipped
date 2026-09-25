@@ -1061,8 +1061,10 @@ void register_ps2_recompiler_tests()
                      "the sidecar name keeps the JAL span: extent unchanged");
             t.IsTrue(renamed.find("void sceVu0MulMatrix_0x100010(") != std::string::npos,
                      "the generated identifier is the sidecar name");
-            t.IsTrue(renamed.find("// Function: sceVu0MulMatrix (identity sub_00100010)\n") != std::string::npos,
-                     "the header shows the display name and the name the recompiler keeps");
+            const std::string header = "// Function: sceVu0MulMatrix\n// Name source: " + namesPath.generic_string() +
+                                       " row 0x00100010 (map name sub_00100010)\n";
+            t.IsTrue(renamed.find(header) != std::string::npos,
+                     "the header shows the display name, the sidecar row it came from and the map name the recompiler keeps");
             t.IsFalse(std::filesystem::exists(after / "sub_00100010_0x100010.cpp"),
                       "the old output name is gone");
             t.Equals(with.stubbed, without.stubbed, "a stub-list display name must not stub the function");
@@ -1077,8 +1079,7 @@ void register_ps2_recompiler_tests()
             const size_t headerAt = expected.find(oldHeader);
             t.IsTrue(headerAt != std::string::npos, "baseline header names sub_00100010");
             if (headerAt != std::string::npos)
-                expected.replace(headerAt, oldHeader.size(),
-                                 "// Function: sceVu0MulMatrix (identity sub_00100010)\n");
+                expected.replace(headerAt, oldHeader.size(), header);
             for (size_t at = expected.find("sub_00100010_0x100010"); at != std::string::npos;
                  at = expected.find("sub_00100010_0x100010", at))
                 expected.replace(at, std::string("sub_00100010_0x100010").size(), "sceVu0MulMatrix_0x100010");

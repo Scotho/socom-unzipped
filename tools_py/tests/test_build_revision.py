@@ -544,6 +544,126 @@ class BuildRevisionFixedMapTest(unittest.TestCase):
             self.assertIn("Step 0 writes it", p.stderr)
 
 
+@unittest.skipUnless(BASH, "needs a bash that is not WSL's launcher")
+class BuildRevisionNamesSidecarTest(unittest.TestCase):
+    """#48: with `--out <dir>` step 3 wrote a toml under `<dir>/recomp_<rev>/` whose `[general] names` is relative
+    to that directory, and nothing put the sidecar there -- so the recompiler found no names file and every function
+    came out FUN_/sub_ behind an info line. The sidecar is now placed beside the toml at step 0 (lock-free, before
+    the eight minutes of step 1), and the toml names exactly the file placed.
+
+    Step 3 itself cannot be reached without a disc (step 2 merges a real loader), so the value it writes is held
+    textually: both of its paths write `$TOML_NAMES`, the name step 0 settled and placed. `r0009names` is a
+    throwaway revision whose sidecar is created under recomp/ here and removed again.
+    """
+    REV = "r0009names"
+
+    def setUp(self):
+        self.sidecar = os.path.join(ROOT, "recomp", f"socom2_names_{self.REV}.csv")
+        with open(self.sidecar, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("Address,Name,Evidence,Pass,Score\n0x00100000,test_Name,here,hand,\n")
+        self.addCleanup(os.remove, self.sidecar)
+
+    def _run(self, tmp, rev=None):
+        rev = rev or self.REV
+        tree = os.path.join(tmp, "tree")
+        zdb = touch(tree, "RUN", "RAW", "APACHE00.ZDB")
+        touch(tree, "SCUS_972.75")
+        touch(tree, "OVERLAY", "REL", "DNAS.dec.bin")
+        out = os.path.join(tmp, "out")
+        touch(out, f"overlays_{rev}", "ftscore.bin")
+        touch(out, f"overlays_{rev}", "zsealetc.bin")
+        named = os.path.join(tmp, "map.csv")
+        with open(named, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("Name,Start,End,Size\nFUN_00100000,0x00100000,0x00100028,40\n")
+        extra = os.path.join(tmp, "extra.txt")
+        with open(extra, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("")
+        p = run_bash(SCRIPT, rev, sh(zdb), "--game", sh(tree), "--out", sh(out),
+                     "--ghidra", sh(named), "--extra", sh(extra), "--stop-after", "elf")
+        return p, os.path.join(out, f"recomp_{rev}")
+
+    def test_out_places_the_sidecar_beside_the_toml(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p, recomp_dir = self._run(tmp)
+            placed = os.path.join(recomp_dir, f"socom2_names_{self.REV}.csv")
+            self.assertTrue(os.path.isfile(placed),
+                            "the toml under --out names a sidecar nothing put beside it (#48): "
+                            + p.stdout + p.stderr)
+            self.assertEqual(read_bytes(placed), read_bytes(self.sidecar))
+            self.assertIn(f"names: recomp/socom2_names_{self.REV}.csv", p.stdout, p.stdout + p.stderr)
+
+    def test_a_revision_without_a_sidecar_is_warned_not_silent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p, _ = self._run(tmp, rev="r0009nonames")
+            self.assertIn("WARNING: r0009nonames has no names sidecar", p.stderr, p.stdout + p.stderr)
+
+    def test_step_3_names_the_file_step_0_placed_on_both_paths(self):
+        with open(os.path.join(ROOT, SCRIPT), encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn('--set-names "$TOML_NAMES"', text)
+        self.assertIn('names = \\"$TOML_NAMES\\"', text)
+        self.assertIn('cp "$NAMES_SRC" "$RECOMP_DIR/$TOML_NAMES"', text)
+
+    def test_the_dry_run_says_where_the_names_come_from(self):
+        p = run_bash(SCRIPT, "r0004", EMPTY_ZDB, "--dry-run")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("names recomp/socom2_names_r0004.csv", p.stdout)
+
+    def test_an_r0001_check_build_reads_r0001s_own_sidecar(self):
+        # r0001check is the r0001 disc under another name; its toml used to name socom2_names_r0001check.csv,
+        # which exists nowhere, so even an in-tree check build lost its names.
+        p = run_bash(SCRIPT, "r0001check", EMPTY_ZDB, "--dry-run")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("names recomp/socom2_names.csv", p.stdout)
+
+
+class RecompNamesLineIsSurfacedTest(unittest.TestCase):
+    """#48's other half: a names path that does not resolve is a WARNING in the recompiler, and build.sh's recomp
+    step (and build_revision's step 4) print the log's `names` events, so it is seen and not buried in the log."""
+    CPP = os.path.join(ROOT, "third_party", "ps2recomp", "ps2xRecomp", "src", "lib", "ps2_recompiler.cpp")
+    LOG = ("  [info] other - something\n"
+           "  [warning] names - names file does not resolve: socom2_names_r0004.csv (relative to the directory "
+           "ps2_recomp runs in); every function keeps its function-map name (FUN_/sub_ placeholders)\n"
+           "  [info] names - Loaded 1736 display names from socom2_names_r0004.csv\n")
+
+    def test_the_recompiler_warns_on_a_names_path_that_does_not_resolve(self):
+        with open(self.CPP, encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn('m_reporter.warning("names", "names file does not resolve: "', text)
+
+    def test_the_generated_header_names_its_source_not_an_identity(self):
+        # research/59 section 3: `X (identity Y)` read as an alias; the header now points at the sidecar row.
+        # ps2xTest's "display names come from the sidecar" case holds the bytes; this holds the wording in CI.
+        emitter = os.path.join(ROOT, "third_party", "ps2recomp", "ps2xRecomp", "src", "lib", "function_emitter.cpp")
+        with open(emitter, encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn('"// Name source: "', text)
+        self.assertIn('" (map name "', text)
+        self.assertNotIn('" (identity "', text)
+
+    def _surfacing_line(self, script, log_var):
+        with open(os.path.join(ROOT, script), encoding="utf-8") as fh:
+            lines = [ln for ln in fh if "names - " in ln and log_var in ln and ln.lstrip().startswith("grep")]
+        self.assertEqual(len(lines), 1, "%s surfaces no `names` events of the recompiler log" % script)
+        return lines[0]
+
+    @unittest.skipUnless(BASH, "needs a bash that is not WSL's launcher")
+    def test_build_sh_recomp_prints_the_names_events(self):
+        line = self._surfacing_line("build.sh", '"$ROOT/recomp/recomp_run.log"')
+        with tempfile.TemporaryDirectory() as tmp:
+            log = os.path.join(tmp, "recomp_run.log")
+            with open(log, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(self.LOG)
+            p = subprocess.run([BASH, "-c", line.replace('"$ROOT/recomp/recomp_run.log"', '"%s"' % sh(log))],
+                               capture_output=True, text=True, cwd=ROOT)
+        self.assertIn("WARNING: names: names file does not resolve: socom2_names_r0004.csv", p.stdout, p.stderr)
+        self.assertIn("recomp: names: Loaded 1736 display names", p.stdout, p.stderr)
+        self.assertNotIn("other", p.stdout)
+
+    def test_build_revision_step_4_prints_the_names_events(self):
+        self._surfacing_line(SCRIPT, '"$RECOMP_DIR/recomp_run_$REV.log"')
+
+
 @unittest.skipUnless(os.path.isfile(os.path.join(ROOT, "recomp", "socom2_r0004.toml")),
                      "this tree has no recomp/socom2_r0004.toml")
 class RevisionTomlReadsTheBuildProductTest(unittest.TestCase):
@@ -564,10 +684,11 @@ class RevisionTomlReadsTheBuildProductTest(unittest.TestCase):
         self.assertEqual(lines, ['names = "socom2_names_r0004.csv"'], lines)
 
     def test_step_3_sets_the_revisions_own_sidecar_on_both_paths(self):
+        # Both paths write $TOML_NAMES, which for r0004 is its own sidecar's basename (the dry run prints it).
         with open(os.path.join(ROOT, SCRIPT), encoding="utf-8") as fh:
             text = fh.read()
-        self.assertIn('--set-names "socom2_names_$REV.csv"', text)
-        self.assertIn('names = \\"socom2_names_$REV.csv\\"', text)
+        self.assertIn('NAMES_SRC="$ROOT/recomp/socom2_names_$REV.csv"', text)
+        self.assertIn('TOML_NAMES="$(basename "$NAMES_SRC")"', text)
 
     def test_the_tracked_r0004_config_carries_no_machines_absolute_path(self):
         import re

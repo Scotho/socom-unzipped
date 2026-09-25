@@ -6,7 +6,9 @@ recompiler wrote and says what changed between two runs.
 
 What is read, and where the recompiler emits it (third_party/ps2recomp/ps2xRecomp/src/lib/):
   * a recompiled function's file (function_emitter.cpp, generateFunction):
-        // Function: <raw csv Name>              <- unsanitised, as the csv or the JAL scan named it
+        // Function: <raw csv Name>              <- unsanitised, as the csv or the JAL scan named it; a sidecar
+                                                    name instead, followed by `// Name source: <names> row 0x%08x
+                                                    (map name <csv Name>)` (Sprint 13 N2; not read here)
         // Address: 0x<start> - 0x<end>          <- lower-case hex, no padding; <end> is exclusive
         void <identifier>(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtime) {
     The Address line is the only place the END is emitted; ps2_recompiled_functions.h and
