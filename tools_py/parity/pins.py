@@ -21,7 +21,10 @@ RECORD_ONLY names are written on every summary and never compared: the file cann
 tree that holds it. A pin whose sha256 is None is absent, not drifted (the mapping line before Q3b lands).
 
 Summary lines are `PIN <name> sha256=<hex> ok|DRIFTED (expected <hex>)|accepted (was <hex>)|recorded (...)`
-and `PIN <name> absent (...)`, beside the EXE line, in the same shape.
+and `PIN <name> absent (...)`, beside the EXE line, in the same shape. INFORMATIONAL names (Sprint 13 V4: the
+mission's frame time, `PIN frame mean_ms=... recorded (informational, S13-R3 ...)`) are measured, printed and
+written to the record's "informational" block, and never compared -- S13-R3 sets their refusal rule once three
+gates agree on the spread.
 """
 import hashlib
 import json
@@ -34,6 +37,10 @@ from collections import namedtuple
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 EXPECTED = "scripts/parity/pins.json"                            # relative to ROOT; the committed standard
 RECORD_ONLY = ("harness",)
+# Informational names (Sprint 13 V4, S13-R3): measured on every run and written to its record under
+# "informational", never a Pin, never compared -- a standard that somehow names one is not refused on it. The
+# frame-time pin is informational until three gates agree on its spread; the refusal rule is set then.
+INFORMATIONAL = ("frame",)
 RECORD_NAME = "pins.json"                                        # what a run writes beside its summary.txt
 # The runtime (Q3b, socom2_host_input.cpp) prints `[socom2] input mapping hash=<16 hex> (default|custom)`; the
 # design said `sha256=<64 hex>`. Both spellings are read, so neither side has to move for the pin to see it.
@@ -168,7 +175,7 @@ def compare(current, expected):
     values and missing inputs in the expected file's order, then inputs the file does not name."""
     drifts = []
     for name, sha in expected.items():
-        if name in RECORD_ONLY:
+        if name in RECORD_ONLY or name in INFORMATIONAL:
             continue
         p = current.get(name)
         if p is None or p.sha256 is None:
@@ -246,9 +253,29 @@ def write_expected(current, path, note=""):
         f.write("\n")
 
 
-def write_record(current, path, drifts=(), accepted=False, verdict="", exe="", expected_file=""):
+def frame_info(ft, why=None):
+    """The informational frame-time record from a frame_time.FrameTime (or its absence and why)."""
+    if ft is None:
+        return {"frame_absent": why or "absent"}
+    return {"frame_mean_ms": round(ft.mean_ms, 2), "frame_worst_ms": round(ft.worst_ms, 2), "frame_n": ft.n}
+
+
+def informational_lines(info):
+    """`PIN frame ... recorded (informational, S13-R3: ...)`, or none when the run measured no frame time (a
+    stage list without the mission)."""
+    if not info:
+        return []
+    why = "informational, S13-R3: never compared until three gates agree on its spread"
+    if "frame_mean_ms" in info:
+        return ["PIN frame mean_ms=%.2f worst_ms=%.2f n=%d recorded (%s)"
+                % (info["frame_mean_ms"], info["frame_worst_ms"], info["frame_n"], why)]
+    return ["PIN frame absent (%s; %s)" % (why, info.get("frame_absent", "absent"))]
+
+
+def write_record(current, path, drifts=(), accepted=False, verdict="", exe="", expected_file="", informational=None):
     """The run's own pins.json beside its summary.txt: every pin (record-only and absent ones included), the
-    EXE line, what drifted and the verdict, so a --baseline re-score can compare the record."""
+    EXE line, what drifted and the verdict, so a --baseline re-score can compare the record; and the
+    informational measurements (frame_mean_ms, frame_worst_ms, frame_n), which nothing compares."""
     doc = {
         "written": time.strftime("%Y-%m-%d %H:%M:%S"),
         "expected_file": expected_file,
@@ -258,6 +285,7 @@ def write_record(current, path, drifts=(), accepted=False, verdict="", exe="", e
         "exe": exe,
         "pins": {n: p.sha256 for n, p in current.items()},
         "detail": {n: p.detail for n, p in current.items()},
+        "informational": dict(informational or {}),
     }
     with open(path, "w", encoding="utf-8") as f:
         json.dump(doc, f, indent=1)

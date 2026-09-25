@@ -260,6 +260,7 @@ vendored runtime when run. `docs/archive/README.md` lists them with what each wa
 |---|---|
 | `gate.py` | The three-stage gate (title, transition, mission): PASS/FAIL, stamps under `logs/parity/gate/` |
 | `pins.py` | What a measurement was computed against, and the refusal when it drifted |
+| `frame_time.py` | The mission stage's `FRAME` line: host ms per guest VBlank after the HUD, from the `[pc-sampler]` rows (informational, S13-R3). Run it on saved stamps as: `python -m tools_py.parity.frame_time <stamp dir> ...` |
 | `compare.py` | Score screens against the golden set and write `docs/parity/REPORT.md` |
 | `guest_probe.py` | The gate's guest-value probe against console numbers on disk |
 | `guest_addresses.py` | One home for the guest addresses the instruments read, and the per-revision rule |
