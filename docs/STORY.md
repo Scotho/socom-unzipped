@@ -760,6 +760,10 @@ record which settings it ran with — which is its own lesson, now written down.
 Sprint 10 is closed. Sprint 11 is open, and the specs became a plan; `docs/CURRENT_SPRINT.md` is where its tasks
 live, and this page does not count them.
 
+> Superseded 2026-09-25 (Sprint 13 R2): that paragraph was true on 2026-09-23. Sprints 11 and 12 both closed and
+> merged to `main` on 2026-09-25 (`v0.11.0`, `v0.12.0`); which sprint is open now is `docs/CURRENT_SPRINT.md`'s to say,
+> and the note below says what this page still owes.
+
 No stranger has played yet. No two humans have played each other. Those are still the two sentences this page most
 wants to lose.
 

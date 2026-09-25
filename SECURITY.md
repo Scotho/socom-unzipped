@@ -19,7 +19,9 @@ before it is pointed at.
 
 - The launcher and the game runner: anything that lets a file a player might be *sent* -- a `config.json`, a
   memory-card folder, a diagnostics zip, a saved bug report -- read or write outside the portable folder, run code, or
-  leak credentials. (One such path was found and fixed: a profile name that was really a path, `c81b17a`.)
+  leak credentials. (One such path was found and fixed: a profile name that was really a path, `f5809c84`.)
+  *(Superseded 2026-09-25, Sprint 13 R2: this cited `c81b17a`, a copy of the same commit (same subject and date) that no
+  branch or tag contains; `f5809c84` is the one on `main` -- documents audit row 58, stranger audit S44.)*
 - The network client: anything a hostile game server or peer can do to a player's machine.
 - The bug-report path: anything that makes the launcher send what the player was not shown.
 - The hosted project server (`socom.scotho.com`) and the site (`s2u.scotho.com`): report, do not test destructively.

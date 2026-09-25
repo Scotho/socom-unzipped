@@ -107,7 +107,17 @@ keyboard's 2 key."* **TOUCHPAD** and **L2** are the alternatives, and **OFF** tu
 ## 7. Play — the PLAY page
 
 The PLAY page is four rows — DISC, VIDEO, CONTROLLER, ONLINE — each showing what the game is about to do, each with
-a **CHANGE** button that jumps to the page that owns it. Then **LAUNCH**.
+a **CHANGE** button that jumps to the page that owns it. Under them is **GAME VERSION**, which says which build
+LAUNCH starts. Then **LAUNCH**.
+
+**GAME VERSION** has two cells: **r0001 (your disc)**, the one you play, and **r0004 (community update)**, the
+revision the community servers run. The download does not include an r0004 build, so that cell is drawn greyed with
+*"needs the r0004 game update -- planned"* beside it and cannot be picked: it is there so you know the version
+exists and why it is not on offer. The same row appears on the ONLINE page. If the version and the server you picked
+disagree, a warning line says so — *"the community server runs r0004; this is the r0001 build"* or *"the r0001
+servers run r0001; this is the r0004 build"*.
+
+*(Until 2026-09-25 this page did not mention the GAME VERSION row, so its greyed cell went unexplained.)*
 
 If LAUNCH is greyed out, the line above it says why, in one of these three:
 
@@ -128,6 +138,8 @@ address or hostname.
 The community preset, **SOCOM Community (public Horizon)**, is drawn at the top of the list but is not on offer, and the launcher says why:
 *"needs the r0004 game update -- planned"*. It cannot be selected, and pointing this client at a community server is
 not supported — see `FAQ.md`.
+
+**GAME VERSION** is the same row as on the PLAY page (§7).
 
 **PROFILE** is a name, not a path, and it picks your memory card: *"picks cards/&lt;profile&gt; for the memory card"*.
 

@@ -1,15 +1,21 @@
 # Git, branches and releases
 
 Written 2026-09-20 at the controller handoff, under the owner's instruction to plan the repository for a public life.
-The parts marked **NOW** are in force on `sprint-11`. The **AT S9 CLOSE** and **AT PUBLIC** parts have all landed
-(§5, §6) and are kept as the record of when.
+The parts marked **NOW** are in force on whichever sprint branch `docs/CURRENT_SPRINT.md`'s `branch:` line names. The
+**AT S9 CLOSE** and **AT PUBLIC** parts have all landed (§5, §6) and are kept as the record of when.
+*(Superseded 2026-09-25, Sprint 13 R2: this said "in force on `sprint-11`" after Sprint 11 had closed -- documents
+audit row 40.)*
 
 ## 1. Where the repository is today
 
 - `github.com/Scotho/socom-unzipped`, **PUBLIC since 2026-09-20** (the owner flipped it after the pre-publication
-  sweep and the history rewrite). `LICENSE` (GPL-3.0) at the root; `THIRD_PARTY_NOTICES.md` and `LICENSES/`; the tags
-  `v0.9.0` and `v0.10.0`; **one draft Release, `v0.10.0` (2026-09-23), made by the `release-draft` workflow with no
-  archives attached -- building and attaching them, and publishing, are the owner's by §5's last bullet (D2).**
+  sweep and the history rewrite). `LICENSE` (GPL-3.0) at the root; `THIRD_PARTY_NOTICES.md` and `LICENSES/`; a
+  `v0.<sprint>.0` tag for every sprint merged since Sprint 5 (§4), and since `v0.10.0` a **draft** Release for each, made by the
+  `release-draft` workflow and no archives attached -- building and attaching them, and publishing, are the owner's by
+  §5's last bullet (D2). `git ls-remote --tags origin` and `gh release list` are the inventory; on 2026-09-25 they
+  read `v0.5.0` to `v0.12.0` plus `playtest-1`, and three drafts (`v0.10.0`, `v0.11.0`, `v0.12.0`), none published.
+  *(Superseded 2026-09-25, Sprint 13 R2: this bullet named "the tags `v0.9.0` and `v0.10.0`; one draft Release,
+  `v0.10.0`" -- two tags behind by the day it was read, and blind to `v0.5.0`-`v0.8.0`; documents audit row 40.)*
   Rulesets on `main` and `sprint-*` (§6); four workflows: `linux` and `windows` (the
   library + tests + launcher with no generated code, about an hour each, skipped and reporting success on a
   docs-only push), `secrets` (the leak check over the tree and full history plus gitleaks, minutes, every push) and
@@ -27,13 +33,17 @@ The parts marked **NOW** are in force on `sprint-11`. The **AT S9 CLOSE** and **
 
 | Branch | What lands on it | Who pushes | Lifetime |
 |---|---|---|---|
-| `main` | Only merges: a closed sprint, a reviewed topic PR, a hotfix. Always green (CI + the last recorded gate). Every release and playtest tag points into `main`'s history or a sprint branch that is about to merge into it. | Nobody directly once protection is on (**AT PUBLIC**); today the controller, at sprint close-out only. | Forever |
+| `main` | Only merges: a closed sprint, a reviewed topic PR, a hotfix. Always green (CI + the last recorded gate). Every release and playtest tag points into `main`'s history or a sprint branch that is about to merge into it. | Nobody directly: the `main` ruleset requires a pull request with the `build`, `build-windows` and `leakcheck` checks and has no bypass actors (since 2026-09-20, R182; `build-windows` since 2026-09-21). The controller opens and merges the PR at close-out. *(Superseded 2026-09-25, Sprint 13 R2: this cell said "today the controller, at sprint close-out only" -- written before the ruleset existed; documents audit row 42.)* | Forever |
 | `sprint-N` | The agent loop's integration branch for one sprint. Small commits, each green. Docs and code together. | The controller and the sessions it coordinates. | Opens off `main` when the sprint opens; merged by PR at close-out; deleted from the remote one sprint later (the merge commit and the tag keep the history). |
 | `fix/<slug>`, `feat/<slug>`, `docs/<slug>` | One topic. The shape an outside contributor uses, and the shape the loop uses for a risky change it wants to be able to abandon. | Anyone, from a fork or the repo. | Until the PR merges or closes. |
 | `hotfix/<version>` | A fix to something already released, branched from the release tag, merged to `main` AND to the open sprint branch. | Controller / owner. | Until merged and tagged. |
 | `develop` | **Retired and DELETED 2026-09-20 at the Sprint 9 merge** (`4415254`, `v0.9.0`). It duplicated `main` (never held anything `main` did not), and a public contributor who sees both has to ask which one to target. `git grep` found nothing outside the records naming it. | -- | Gone. Do not recreate it. |
 
-**NOW (2026-09-25):** no sprint branch is open — Sprint 11 and Sprint 12 both closed on 2026-09-25 and merge to `main` as `v0.11.0` and `v0.12.0`; the next sprint's branch opens off `main` when the owner names it, and until then a change goes on a `fix/`, `feat/` or `docs/` topic branch with a PR.
+**NOW:** the open sprint branch, if any, is the `branch:` line of `docs/CURRENT_SPRINT.md`; a sprint's branch opens off
+`main` when the owner names the sprint, and while none is open a change goes on a `fix/`, `feat/` or `docs/` topic
+branch with a PR.
+*(Superseded 2026-09-25, Sprint 13 R2: this line said "no sprint branch is open" on the morning Sprint 13 opened on
+`sprint-13` -- a live state in a contract document, which is the defect the pointer above replaces.)*
 Never force-push a shared branch. Never rewrite `main`.
 *The open branch is always `docs/CURRENT_SPRINT.md`'s `branch:` line -- read it there rather than trusting this
 literal, which has pointed at a merged branch twice (`sprint-9` until 2026-09-25, then `sprint-10`).* Sprint 12 was the
@@ -97,7 +107,7 @@ Annotated tags only (`git tag -a`), pushed explicitly (`git push origin <tag>`).
 | Tag | Meaning | Made when |
 |---|---|---|
 | `playtest-N` | A build the owner (or invited testers) plays. Not a release: no promise, no GitHub Release page. The archive's sha256 is recorded in `docs/PLAYTEST.md`. | Sprint 9 P7, and any later playtest. |
-| `v0.<sprint>.0` | A sprint closed and merged to `main` (`v0.9.0`, `v0.10.0`, `v0.11.0`). `v0.<sprint>.<n>` for a hotfix on it. | At each close-out, on the merge commit. |
+| `v0.<sprint>.0` | A sprint closed and merged to `main` (`v0.5.0` onwards). `v0.<sprint>.<n>` for a hotfix on it. *(Superseded 2026-09-25, Sprint 13 R2: the examples read "`v0.9.0`, `v0.10.0`, `v0.11.0`", as if the series began at 9; `git ls-remote --tags origin` shows `v0.5.0` to `v0.12.0`.)* | At each close-out, on the merge commit. |
 | `v1.0.0` | The first public release: Sprint 11's bar met, the repository public, archives attached to a GitHub Release with `SHA256SUMS`. SemVer from here: a save- or config-breaking change is a major. | **When the bar is met and D2 is answered -- not on a sprint number.** *(This cell said "Sprint 11 close" until 2026-09-25; §4's own `v0.<sprint>.0` rule makes that close's tag `v0.11.0`, and `v1.0.0`'s real preconditions -- archives built, attached and a Release published -- are blocked on D2.)* |
 
 **Every release keeps its symbols.** The release exe is stripped; `dist-release/symbols/` of that exact build is the
@@ -129,8 +139,15 @@ from the owner's disc and is not, and must never be, in the repository. So:
 
 ## 6. Permissions and protection (AT PUBLIC -- owner's admin rights)
 
-- `main`: require a PR, require the `linux` check (and the Windows check once it exists), require a CODEOWNERS
-  review, no force-push, no deletion, linear history NOT required (sprint merges are merge commits).
+- `main`: require a PR and the `build`, `build-windows` and `leakcheck` checks, no force-push, no deletion, no bypass
+  actors, linear history NOT required (sprint merges are merge commits). No CODEOWNERS review and 0 approvals (the
+  deviation below).
+  > Superseded 2026-09-25 (Sprint 13 R2): this bullet, the design of 2026-09-20, said "require the `linux` check (and
+  > the Windows check once it exists), require a CODEOWNERS review"; the ruleset as built (R182) requires no review,
+  > and `build-windows` joined the required set on 2026-09-21 (documents audit row 41). `gh api
+  > repos/Scotho/socom-unzipped/rulesets` on 2026-09-25: `main` -- `pull_request` (0 approvals),
+  > `required_status_checks` `build`, `build-windows`, `leakcheck`, `non_fast_forward`, `deletion`, no bypass;
+  > `sprint-*` -- `non_fast_forward`, `deletion`.
 - `sprint-*`: no force-push; the loop pushes directly.
 - Collaborators: the owner is the only admin. Agents act through the owner's credentials on the owner's machine --
   no bot account, no deploy key with write access, no token in the repository or in Actions secrets beyond
