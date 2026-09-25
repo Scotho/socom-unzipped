@@ -29,6 +29,7 @@ _socom_refusal() {
 }
 trap _socom_refusal EXIT
 . "$(dirname "$0")/env.sh"
+. "$(dirname "$0")/write_env.sh"    # write_env_ps2x: the PS2X_* record beside a capture (issue #38)
 socom_require_python mixed_match2_leg2
 OUT="${1:-logs/parity/mixed2_pcsx2_hosts}"
 PERSONA="${2:-socomp}"
@@ -76,6 +77,9 @@ if [ "$HOST_RC" -ne 0 ]; then
   "$PYTHON" -m tools_py.parity.pcsx2_ctl kill > /dev/null 2>&1
   echo "done $HOST_RC" > "logs/${NAME}.done"; exit $HOST_RC
 fi
+# Issue #38: the PS2X_* the launch is handed (env.sh's instruments and this script's own), beside its output,
+# the moment before it starts; the driver adds only per-instance plumbing (screenshot path, card dir) on top.
+write_env_ps2x "$OUT" "mixed_match2_leg2.sh (ours; the PCSX2 side has no PS2X_* knobs)"
 "$PYTHON" -m tools_py.parity.online_login_ours --existing --name socomc --join --hold 30 --play 4 --out "$OUT" --seconds 600 >> "logs/parity/drive_${NAME}.txt" 2>&1 &
 OURS_PID=$!
 # The host readies only once ours has joined and dismissed the notice (leg 2e: a host already READY launched the

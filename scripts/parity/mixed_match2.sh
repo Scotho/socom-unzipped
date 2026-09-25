@@ -31,6 +31,7 @@ _socom_refusal() {
 }
 trap _socom_refusal EXIT
 . "$(dirname "$0")/env.sh"
+. "$(dirname "$0")/write_env.sh"    # write_env_ps2x: the PS2X_* record beside a capture (issue #38)
 socom_require_python mixed_match2
 OUT="${1:-logs/parity/mixed2_ours_hosts}"
 PERSONA="${2:-socomq}"
@@ -70,6 +71,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kill_stale_drivers.p
 "$PYTHON" -c "from tools_py.parity import hostplatform; hostplatform.kill_process_by_name('socom2')" > /dev/null 2>&1
 "$PYTHON" -m tools_py.parity.pcsx2_ctl launch B > "$OUT/pcsx2_launch.txt" 2>&1 || { echo "done 6" > "logs/${NAME}.done"; exit 6; }
 # Ours logs in and hosts (verified), holds the lobby and then walks; the console client joins beside it.
+# Issue #38: the PS2X_* the launch is handed (env.sh's instruments and this script's own), beside its output,
+# the moment before it starts; the driver adds only per-instance plumbing (screenshot path, card dir) on top.
+write_env_ps2x "$OUT" "mixed_match2.sh (ours; the PCSX2 side has no PS2X_* knobs)"
 "$PYTHON" -m tools_py.parity.online_match_ours --existing-b --foreign-b --hold 30 --play 4 --map "Frostfire" \
        --out "$OUT" --seconds 900 > "logs/parity/drive_${NAME}.txt" 2>&1 &
 OURS_PID=$!

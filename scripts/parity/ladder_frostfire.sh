@@ -47,6 +47,7 @@ set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 . "$(dirname "$0")/env.sh"
+. "$(dirname "$0")/write_env.sh"    # write_env_ps2x: the PS2X_* record beside a capture (issue #38)
 socom_require_python ladder_frostfire
 export PATH="/usr/bin:/bin:$PATH"
 
@@ -187,6 +188,9 @@ case "$MODE" in
     ;;
   child)
     mkdir -p "$OUT"
+    # Issue #38: the PS2X_* this launch is handed (env.sh's instruments and this script's own), beside its output,
+    # the moment before it starts; the driver adds only per-instance plumbing (screenshot path, card dir) on top.
+    write_env_ps2x "$OUT" "ladder_frostfire.sh --child rounds=$ROUNDS mover=$MOVER harness=${HARNESS:-live}"
     "${PY[@]}" "${ARGS[@]}" > "logs/parity/drive_${NAME}.txt" 2>&1
     rc=$?
     if [ "$PINNED" = 1 ]; then
