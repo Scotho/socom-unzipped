@@ -863,7 +863,7 @@ void register_gs_frame_backpressure_tests()
             t.Equals(FreezeFields::line(s),
                      std::string(" t=612.50 vsync=41233 ee=612.10 seq=8891 dpc=0x350d90 idle=140"
                                  " bp_pending=0 bp_waiters=0 bp_wait_ms=12 net_wait=1/3300 net_park=1/9800"),
-                     "freeze_trace.parse reads exactly this (tools_py/tests/test_freeze_trace.py SAMPLE)");
+                     "freeze_trace.parse reads exactly this (test_freeze_trace.py: SAMPLE without net_park=, the net_park cases with it)");
             FreezeFields::Sample quiet;
             quiet.hostSeconds = 3.0;
             quiet.eeSeconds = 2.5;

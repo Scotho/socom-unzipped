@@ -13,7 +13,8 @@
 //
 // The sampler prints from its own thread, so the LINE is what gets tested: this builds it as a pure function of
 // the thirteen values, and tools_py/parity/freeze_trace.py parses exactly this text
-// (tools_py/tests/test_freeze_trace.py SAMPLE carries the same string). Every field is always printed -- an
+// (tools_py/tests/test_freeze_trace.py's SAMPLE is this line without net_park=, the pre-#34 log it must still read;
+// its net_park cases add the field with replace()). Every field is always printed -- an
 // omitted one would read downstream as a parse failure, not as "nothing to report".
 
 #include <cstdint>
