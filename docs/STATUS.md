@@ -33,7 +33,7 @@ review (#48: `build_revision.sh --out` drops the names sidecar); comments on #25
 issue #48 (closed); the six issues Sprint 11 carried were never in Sprint 12's milestone and are ruled not carried
 twice (a single-theme sprint took nothing from the backlog). **The two controllers:** the cloud handoff's §5 held as
 written — the Sprint 11 controller pinged at each lock hand-over and the lock serialised the rest — with one lesson:
-the lock has no queue (issue #36), so the second controller's poller took a gap between the first one's chain
+the lock has no queue (issue #36 (closed)), so the second controller's poller took a gap between the first one's chain
 steps once and cost it ten minutes.
 
 ## 2026-09-25 (early) — Sprint 11 CLOSED and merged to `main` as `v0.11.0`; Sprint 12 ("the readable image") runs in the cloud on `sprint-12`
