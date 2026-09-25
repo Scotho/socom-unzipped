@@ -6,7 +6,9 @@
 
 #include <cstdint>
 #include <map>
+#include <regex>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -95,13 +97,26 @@ void register_socom2_peek_tests()
 
         tc.Run("the unresolved cell is inert to the row parsers", [](TestCase &t)
         {
-            // tools_py/parity/verdict_core._ITEM wants `@<hex>:` followed by eight-digit words with a float in
-            // parentheses. The cell carries the chain as written (with its '*' and '0x') and no word, so no
-            // parser reads a value out of it -- and the resolved cells beside it still parse.
-            const auto items = socom2_peek::parseSpec("0x488de8*+0xbc");
-            const std::string cell = socom2_peek::unresolvedCell(items[0], "null pointer at 0x488de8");
-            t.IsTrue(cell.find("@0x") != std::string::npos, "the chain keeps its 0x, which breaks the parsers' @<hex>: match");
-            t.IsTrue(cell.find('(') != std::string::npos && cell.find("0000") == std::string::npos, "and it carries no eight-digit word");
+            // The readers' own item pattern, verbatim: tools_py/parity/verdict_core.py:282 and
+            // verdict_replay.py:218 (`@<hex>:` then one or more eight-hex-digit words each followed by '('),
+            // and music_state_poll.py's _PEEK_ITEM_RE (the same with a single space). Run over a whole row: the
+            // resolved cell is read, the unresolved cells beside it -- including one whose chain is bare hex
+            // and whose reason carries hex -- are not.
+            const std::regex item(R"(@([0-9a-fA-F]+):((?:\s+[0-9a-fA-F]{8}\([^)]*\))+))");
+            const std::regex musicItem(R"(@([0-9a-fA-F]+):((?: [0-9a-fA-F]{8}\([^)]*\))+))");
+            const auto items = socom2_peek::parseSpec("*0x488de8+0xbc*:4,488de8*,0x408c58");
+            std::string row = "[peek]";
+            row += socom2_peek::unresolvedCell(items[0], "null pointer at 0x13000bc");
+            row += socom2_peek::unresolvedCell(items[1], "null pointer at 0x488de8");
+            row += " @408c58: 01200000(1.05879e-38)";
+            for (const std::regex *re : {&item, &musicItem})
+            {
+                std::vector<std::string> addrs;
+                for (auto it = std::sregex_iterator(row.begin(), row.end(), *re); it != std::sregex_iterator(); ++it)
+                    addrs.push_back((*it)[1].str());
+                t.Equals(addrs.size(), static_cast<size_t>(1), "exactly one item read out of the row");
+                t.IsTrue(!addrs.empty() && addrs[0] == "408c58", "and it is the resolved one");
+            }
         });
     });
 }

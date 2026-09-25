@@ -11,7 +11,8 @@
 //
 // The checkpoint that tells the two apart is the pc the original leaves in the context: a whole call leaves
 // it on the return address the wrap was entered with (the generated `jr ra` sets pc = ra and returns); an
-// unwound one leaves it inside the callee. So every wrap takes `entryRa` before the call, reads its after
+// unwound one leaves it inside the callee, and the runtime's unwind flag set. So every wrap takes `entryRa`
+// before the call, reads its after
 // values only when reachedReturn() says so, and otherwise writes a row that says the call unwound instead of
 // numbers that are not the call's. The same test guards any after-WRITE (PS2X_CULL_PARTIAL_CLIP's v0 rewrite):
 // on the unwound path v0 is not the result yet, so it is left alone.
@@ -22,10 +23,14 @@
 
 namespace socom2_trace
 {
-    // True when the original ran to its own return: the only point at which its effects are final.
-    inline bool reachedReturn(uint32_t pcAfterCall, uint32_t entryRa)
+    // True when the original ran to its own return: the only point at which its effects are final. Two tests,
+    // both needed: the pc must be back on the entry ra, AND the runtime must not be unwinding
+    // (PS2Runtime::dispatchUnwinding(), passed in so this header needs no runtime). The pc alone cannot tell a
+    // recursive callee that unwound at a pc equal to the ra from a real return -- the runtime's own
+    // dispatchGuestBranch checks the flag first for exactly that case (ps2_runtime.h, markDispatchUnwind).
+    inline bool reachedReturn(uint32_t pcAfterCall, uint32_t entryRa, bool dispatchUnwinding)
     {
-        return pcAfterCall == entryRa;
+        return !dispatchUnwinding && pcAfterCall == entryRa;
     }
 
     // What a trace prints in place of its after-values when the call unwound, so a reader counts the call

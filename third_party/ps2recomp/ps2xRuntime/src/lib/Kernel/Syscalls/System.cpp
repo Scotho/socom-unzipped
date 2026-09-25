@@ -1,5 +1,7 @@
 #include "Common.h"
 #include <cstring>
+#include <mutex>
+#include <unordered_set>
 #include "System.h"
 
 namespace ps2_syscalls
@@ -1023,9 +1025,27 @@ namespace ps2_syscalls
     // R256 finding 9 (Sprint 13 Task C3): only a handler the runtime can RUN is handed back. The
     // dispatcher already treats an override whose handler is in no function table as no override at
     // all and runs the built-in (dispatchSyscallOverride, above); answering GetEntryAddress with that
-    // same handler contradicted it, and SOCOM II's loader installs those answers as the handlers for
-    // the event-flag five (0x55-0x59). An unrunnable handler is refused -- the syscall answers the
+    // same handler contradicted it. An unrunnable handler is refused -- the syscall answers the
     // runtime's own entry, as for one nobody overrode -- and says so once per (syscall, handler).
+    // SOCOM II is not known to reach this path: at boot it asks GetEntryAddress for 3 and 0x55-0x59,
+    // and none of those is overridden when it asks; the refusal is for a guest that does.
+    //
+    // The once-per-pair set is process-wide (a diagnostic; it does not re-arm when a guest kernel
+    // starts over), kept here rather than on PS2Runtime so the change stays out of ps2_runtime.h.
+    static bool noteRefusedEntryAddress(uint32_t syscallNumber, uint32_t handler)
+    {
+        static std::mutex s_mutex;
+        static std::unordered_set<uint64_t> s_seen;
+        constexpr size_t kMaxReported = 64u;
+        const uint64_t key = (static_cast<uint64_t>(syscallNumber) << 32) | static_cast<uint64_t>(handler);
+        std::lock_guard<std::mutex> lock(s_mutex);
+        if (s_seen.size() >= kMaxReported && s_seen.find(key) == s_seen.end())
+        {
+            return false;
+        }
+        return s_seen.insert(key).second;
+    }
+
     void GetEntryAddress(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         const uint32_t syscallNum = getRegU32(ctx, 4);
@@ -1038,7 +1058,7 @@ namespace ps2_syscalls
                 setReturnU32(ctx, handler);
                 return;
             }
-            if (runtime->noteRefusedEntryAddress(syscallNum, handler))
+            if (noteRefusedEntryAddress(syscallNum, handler))
             {
                 std::cerr << "[GetEntryAddress] syscall 0x" << std::hex << syscallNum
                           << "'s handler 0x" << handler

@@ -8,7 +8,8 @@
 // THE TRAP THIS CLOSES. The first wrap called the original and rewrote the port field afterwards. The original
 // calls two routines (memset, then a one-load getter) before it stores anything, and each call is a dispatch
 // where the EE scheduler may take a checkpoint: the recompiled call chain unwinds, the wrap's "afterwards" runs
-// at once -- while the field is still the memset's zero, so the wrap saw "not 3658" and did nothing -- and the
+// at once -- before the store at 0x620680, with the field still the heap's old bytes (a checkpoint at the memset's
+// dispatch comes before the memset runs) or the memset's zero, so the wrap saw "not 3658" and did nothing -- and the
 // guest resumes inside the original later, never passing through the wrap again, and stores 3658. The shift was
 // then lost with no line saying so. The on-screen keyboard's wrap met the same trap and settled the rule:
 // nothing a wrap needs may be done after the original (socom2_osk_prefill.h, research/38).

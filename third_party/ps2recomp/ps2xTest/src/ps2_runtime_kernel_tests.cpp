@@ -1822,8 +1822,9 @@ void register_ps2_runtime_kernel_tests()
 
         // R256 finding 9 (Sprint 13 Task C3). The dispatcher treats an override whose handler is in no
         // function table as no override (the fall-through case further down); GetEntryAddress still
-        // handed that handler out, and SOCOM II's loader installs GetEntryAddress' answers as the
-        // event-flag five's handlers. It refuses it now, answers the runtime's own entry, and says so.
+        // handed that handler out, contradicting it. It refuses it now, answers the runtime's own
+        // entry, and says so. The once-per-pair set is process-wide (System.cpp), so this pair
+        // (0x57, 0x80075000) must be asked for by no other case in the binary.
         tc.Run("GetEntryAddress refuses an unrunnable handler with a log line and answers the runtime's entry", [](TestCase &t)
         {
             TestEnv env;

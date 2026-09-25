@@ -1215,7 +1215,7 @@ namespace
         // The generated function returned normally: report v0 (and f0 for float returns). Only then -- an unwound
         // call has said [ret-unwound] above, and its v0 and the dump's memory are not its results yet
         // (runtime/socom2_trace_checkpoint.h, audit F11).
-        if (socom2_trace::reachedReturn(ctx->pc, entryRa) && callTraceShouldLog(n))
+        if (socom2_trace::reachedReturn(ctx->pc, entryRa, runtime->dispatchUnwinding()) && callTraceShouldLog(n))
         {
             float f0 = 0.0f;
             std::memcpy(&f0, &ctx->f[0], sizeof(f0));
@@ -1377,7 +1377,7 @@ namespace
         const uint8_t interrupt = musicRead8(rdram, mgr + 10u);
         const uint32_t entryRa = GPR_U32(ctx, 31);
         g_musicMgrOriginal(rdram, ctx, runtime);
-        if (!socom2_trace::reachedReturn(ctx->pc, entryRa))
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa, runtime->dispatchUnwinding()))
         {
             // The after-state is only final at the original's own return (runtime/socom2_trace_checkpoint.h).
             static socom2_trace::UnwoundCount s_unwound;
@@ -1408,7 +1408,7 @@ namespace
         const uint8_t f1c = musicRead8(rdram, def + 0x1cu), f1d = musicRead8(rdram, def + 0x1du);
         const uint32_t entryRa = GPR_U32(ctx, 31);
         g_musicPushOriginal(rdram, ctx, runtime);
-        if (!socom2_trace::reachedReturn(ctx->pc, entryRa))
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa, runtime->dispatchUnwinding()))
         {
             // v0 and the queue are the push's result only at its own return (runtime/socom2_trace_checkpoint.h):
             // an unwound push gets a row that says so, never a verdict drawn from the middle of the call.
@@ -1483,15 +1483,18 @@ namespace
             ctx->pc = GPR_U32(ctx, 31);
             return;
         }
-        const uint32_t base = obj & PS2_RAM_MASK;
-        if (base + socom2_rtnet::kConfigBytes > PS2_RAM_SIZE)
+        // The object through the runtime's own guest-address resolution (kseg, scratchpad), never a bare RAM mask
+        // that would fold a scratchpad object onto low RAM; both ends must map, contiguously.
+        uint8_t *object = getMemPtr(rdram, obj);
+        uint8_t *objectLast = getMemPtr(rdram, obj + socom2_rtnet::kConfigBytes - 1u);
+        if (object == nullptr || objectLast != object + (socom2_rtnet::kConfigBytes - 1u))
         {
-            // Not an object in main RAM: the original runs untouched and the port is not shifted -- said once,
-            // never passed over silently.
+            // Not an object the host can write whole: the original runs untouched and the port is not shifted --
+            // said once, never passed over silently.
             static std::atomic<bool> s_said{false};
             if (!s_said.exchange(true))
                 std::cout << "[socom2] rt_net config object 0x" << std::hex << obj << std::dec
-                          << " is not in main RAM; the original runs and the peer UDP port stays " << socom2_rtnet::kBasePort << std::endl;
+                          << " does not map whole; the original runs and the peer UDP port stays " << socom2_rtnet::kBasePort << std::endl;
             if (g_rtNetCfgOriginal)
                 g_rtNetCfgOriginal(rdram, ctx, runtime);
             return;   // nothing after the original (runtime/socom2_trace_checkpoint.h)
@@ -1501,7 +1504,7 @@ namespace
             std::memcpy(&getterValue, pg, sizeof(getterValue));
         const uint32_t port = socom2_rtnet::shiftedPort(socom2UdpShift());
         // The object's whole image, written before this call returns: there is no "after" to lose.
-        socom2_rtnet::configure(rdram + base, getterValue, port);
+        socom2_rtnet::configure(object, getterValue, port);
         SET_GPR_U32(ctx, 3, 1u);      // what the routine leaves in v1 and a0 on the way out
         SET_GPR_U32(ctx, 4, port);
         SET_GPR_U32(ctx, 2, 0u);      // success
@@ -1834,7 +1837,7 @@ namespace
         if (pk) std::memcpy(&planeMask, pk, sizeof(planeMask));
         const uint32_t entryRa = GPR_U32(ctx, 31);
         g_cullOriginal(rdram, ctx, runtime);
-        if (!socom2_trace::reachedReturn(ctx->pc, entryRa))
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa, runtime->dispatchUnwinding()))
         {
             // v0 and the flags word are the cull's verdict only at its return (runtime/socom2_trace_checkpoint.h):
             // an unwound call is neither rewritten (PS2X_CULL_PARTIAL_CLIP) nor logged as a verdict. Once, then
@@ -1959,7 +1962,7 @@ namespace
         const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
         if (!g_cullTraceFile || g_cullTraceLeft <= 0 || sec < g_cullTraceAfter)
             return;
-        if (!socom2_trace::reachedReturn(ctx->pc, entryRa))
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa, runtime->dispatchUnwinding()))
         {
             // The fade and the result are final only at the original's return (runtime/socom2_trace_checkpoint.h).
             // A tag of its own, so lod_trace_scan.py's "lod t=" rows stay results.
@@ -1993,7 +1996,7 @@ namespace
         const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
         if (!g_cullTraceFile || g_cullTraceLeft <= 0 || sec < g_cullTraceAfter)
             return;
-        if (!socom2_trace::reachedReturn(ctx->pc, entryRa))
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa, runtime->dispatchUnwinding()))
         {
             // The statics below are the call's choice only at its return (runtime/socom2_trace_checkpoint.h).
             std::fprintf(g_cullTraceFile, "detail-%s t=%.3f comp=%08x pc=%08x\n", socom2_trace::kUnwoundMark, sec, comp, ctx->pc);
@@ -2062,7 +2065,7 @@ namespace
         g_camCfgOriginal(rdram, ctx, runtime);
         if (!g_cullTraceFile)
             return;
-        if (!socom2_trace::reachedReturn(ctx->pc, entryRa))
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa, runtime->dispatchUnwinding()))
         {
             // The camera's LOD scale is the record's only at the apply's return (runtime/socom2_trace_checkpoint.h).
             const double secU = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
@@ -2099,7 +2102,7 @@ namespace
         {
             static uint32_t s_n = 0;
             // The answer (v0) is the probe's only at its return (runtime/socom2_trace_checkpoint.h).
-            if (socom2_trace::reachedReturn(ctx->pc, entryRa))
+            if (socom2_trace::reachedReturn(ctx->pc, entryRa, runtime->dispatchUnwinding()))
                 std::fprintf(g_packTraceFile, "#%u archive=%08x size=%u name=%s -> %u\n", s_n++, archive, size, name, GPR_U32(ctx, 2) & 0xFFu);
             else
                 std::fprintf(g_packTraceFile, "#%u archive=%08x size=%u name=%s -> %s pc=%08x\n", s_n++, archive, size, name,
@@ -2142,7 +2145,7 @@ namespace
         const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
         if (!g_cullTraceFile || g_cullTraceLeft <= 0 || sec < g_cullTraceAfter)
             return;
-        if (!socom2_trace::reachedReturn(ctx->pc, entryRa))
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa, runtime->dispatchUnwinding()))
         {
             // The bump is the enqueue's only at its return (runtime/socom2_trace_checkpoint.h); a tag of its own
             // so deferred_trace_scan.py's "defer t=" rows stay whole enqueues.
@@ -2178,7 +2181,7 @@ namespace
             return;
         // Everything this row prints was read BEFORE the call, so it is true either way; the tag says whether the
         // flush then ran to its return (runtime/socom2_trace_checkpoint.h).
-        if (!socom2_trace::reachedReturn(ctx->pc, entryRa))
+        if (!socom2_trace::reachedReturn(ctx->pc, entryRa, runtime->dispatchUnwinding()))
         {
             std::fprintf(g_cullTraceFile, "flush-%s t=%.3f list=%08x entries=%u field0c=%08x used=%u pc=%08x\n", socom2_trace::kUnwoundMark, sec, list, n,
                          c0c, bump >= base ? (bump - base) / 0x70u : 0u, ctx->pc);

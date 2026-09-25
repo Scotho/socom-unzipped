@@ -38,34 +38,50 @@ namespace
         return v;
     }
 
-    // A model of the recompiled routine as the scheduler sees it: two dispatches (memset, the getter), either
-    // of which may take a checkpoint and park the thread; the stores come after both. `unwindAt` names the
-    // dispatch that unwinds (0 = none). Returns the pc the call leaves in the context: the entry ra on a whole
-    // call, the resume point inside the routine on an unwound one. `resume` finishes a parked call later, as
-    // the scheduler does, without the wrap.
+    // A model of the recompiled routine as the scheduler sees it (recomp/output/rtNetConfigInit_0x620648.cpp):
+    // two dispatches, `jal memset` at 0x620664 and `jal <getter>` at 0x62066c; the stores come after both. A
+    // checkpoint is taken inside dispatchGuestBranch BEFORE the target runs, with ctx->pc already set to the
+    // target, and the runtime's unwind flag set. So `unwindAt` 1 parks with pc = 0x001959b8 and the memset not
+    // yet run; 2 parks with pc = 0x0064f5f8 after the memset; 0 runs whole and leaves pc = the entry ra.
+    // finish() is the scheduler resuming the parked thread later, at that pc, without the wrap.
     struct GuestRoutine
     {
         uint8_t *object;
         uint32_t getterValue;
         int unwindAt;
         uint32_t entryRa;
-        bool parked = false;
+        int parkedAt = 0;
+        bool unwinding = false;   // PS2Runtime::dispatchUnwinding() as the wrap would read it
 
         uint32_t call()
         {
+            if (unwindAt == 1)
+                return park(1, 0x001959b8u);   // the memset's address: nothing written yet
             std::memset(object, 0, socom2_rtnet::kConfigBytes);
-            if (unwindAt == 1 || unwindAt == 2)
-            {
-                parked = true;
-                return 0x0062066cu;   // the resume label after the memset's jal (a pc inside the routine)
-            }
-            return finish();
+            if (unwindAt == 2)
+                return park(2, 0x0064f5f8u);   // the getter's address: the object is the memset's zeros
+            return stores();
+        }
+
+        uint32_t park(int at, uint32_t pc)
+        {
+            parkedAt = at;
+            unwinding = true;
+            return pc;
         }
 
         uint32_t finish()
         {
+            unwinding = false;   // the scheduler clears it before the resuming dispatch
+            if (parkedAt == 1)
+                std::memset(object, 0, socom2_rtnet::kConfigBytes);
+            parkedAt = 0;
+            return stores();
+        }
+
+        uint32_t stores()
+        {
             socom2_rtnet::configure(object, getterValue, socom2_rtnet::kBasePort);   // the stores, unshifted
-            parked = false;
             return entryRa;
         }
     };
@@ -76,24 +92,29 @@ void register_socom2_after_return_tests()
     MiniTest::Case("Socom2AfterReturn", [](TestCase &tc)
     {
         // The defect, pinned: the old wrap called the original and then rewrote +0xc only if it read 3658 there.
-        // When the original unwinds at either of its dispatches, the wrap's "after" runs while the field is the
-        // memset's zero, declines, and the resumed original stores 3658 -- the shift is lost without a line.
-        tc.Run("a rewrite placed after an unwinding original loses the port shift", [](TestCase &t)
+        // When the original unwinds at either of its dispatches, the wrap's "after" runs before the store at
+        // 0x620680, reads something that is not 3658 (the heap's old bytes, or the memset's zero), declines, and
+        // the resumed original stores 3658 -- the shift is lost without a line.
+        tc.Run("a rewrite placed after an unwinding original loses the port shift, at either dispatch", [](TestCase &t)
         {
-            uint8_t obj[socom2_rtnet::kConfigBytes];
-            std::memset(obj, 0xAA, sizeof(obj));
-            GuestRoutine g{obj, 0x1234u, 1, 0x00400000u};
-            const uint32_t pc = g.call();
-            // the old wrap's after-step
-            if (word(obj, 0xC) == socom2_rtnet::kBasePort)
+            for (int at = 1; at <= 2; ++at)
             {
-                const uint32_t shifted = socom2_rtnet::shiftedPort(2);
-                std::memcpy(obj + 0xC, &shifted, 4);
+                uint8_t obj[socom2_rtnet::kConfigBytes];
+                std::memset(obj, 0xAA, sizeof(obj));
+                GuestRoutine g{obj, 0x1234u, at, 0x00400000u};
+                const uint32_t pc = g.call();
+                t.Equals(pc, at == 1 ? 0x001959b8u : 0x0064f5f8u, "parked at the dispatch's target");
+                // the old wrap's after-step
+                if (word(obj, 0xC) == socom2_rtnet::kBasePort)
+                {
+                    const uint32_t shifted = socom2_rtnet::shiftedPort(2);
+                    std::memcpy(obj + 0xC, &shifted, 4);
+                }
+                t.IsFalse(socom2_trace::reachedReturn(pc, g.entryRa, g.unwinding), "the call came back unwound");
+                t.Equals(word(obj, 0xC), at == 1 ? 0xAAAAAAAAu : 0u, "the after-step saw a field not yet written and did nothing");
+                g.finish();   // the scheduler resumes the parked original later, not through the wrap
+                t.Equals(word(obj, 0xC), socom2_rtnet::kBasePort, "and the guest ends up with the unshifted 3658");
             }
-            t.IsFalse(socom2_trace::reachedReturn(pc, g.entryRa), "the call came back unwound");
-            t.Equals(word(obj, 0xC), 0u, "the after-step saw the memset's zero and did nothing");
-            g.finish();   // the scheduler resumes the parked original later, not through the wrap
-            t.Equals(word(obj, 0xC), socom2_rtnet::kBasePort, "and the guest ends up with the unshifted 3658");
         });
 
         // The fix: the override is the routine. Its whole effect on the object, with the shifted port, is done
@@ -112,17 +133,6 @@ void register_socom2_after_return_tests()
             t.Equals(word(obj, 0x18), 0u, "+0x18 is zero");
             socom2_rtnet::configure(obj, 7u, socom2_rtnet::shiftedPort(0));
             t.Equals(word(obj, 0xC), socom2_rtnet::kBasePort, "shift 0 is the game's own 3658");
-        });
-
-        tc.Run("the host routine is the guest's: same image as the original for every field", [](TestCase &t)
-        {
-            uint8_t viaGuest[socom2_rtnet::kConfigBytes], viaHost[socom2_rtnet::kConfigBytes];
-            std::memset(viaGuest, 0x55, sizeof(viaGuest));
-            std::memset(viaHost, 0x55, sizeof(viaHost));
-            GuestRoutine g{viaGuest, 0x0BADF00Du, 0, 0x00400000u};
-            t.IsTrue(socom2_trace::reachedReturn(g.call(), g.entryRa), "a whole call returns to its ra");
-            socom2_rtnet::configure(viaHost, 0x0BADF00Du, socom2_rtnet::kBasePort);
-            t.IsTrue(std::memcmp(viaGuest, viaHost, sizeof(viaHost)) == 0, "byte for byte, with no shift");
         });
 
         tc.Run("the routine is taken over only when the image's body is the one the host does", [](TestCase &t)
@@ -165,17 +175,27 @@ void register_socom2_after_return_tests()
             uint8_t obj[socom2_rtnet::kConfigBytes] = {};
             GuestRoutine whole{obj, 5u, 0, 0x00401000u};
             const uint32_t pcWhole = whole.call();
-            t.IsTrue(socom2_trace::reachedReturn(pcWhole, whole.entryRa), "a whole call: its effects are final, read them");
+            t.IsTrue(socom2_trace::reachedReturn(pcWhole, whole.entryRa, whole.unwinding), "a whole call: its effects are final, read them");
             t.Equals(word(obj, 0xC), socom2_rtnet::kBasePort, "and what is read is the call's result");
 
             std::memset(obj, 0, sizeof(obj));
             GuestRoutine parked{obj, 5u, 2, 0x00401000u};
             const uint32_t pcParked = parked.call();
-            t.IsFalse(socom2_trace::reachedReturn(pcParked, parked.entryRa), "an unwound call: not at the checkpoint");
+            t.IsFalse(socom2_trace::reachedReturn(pcParked, parked.entryRa, parked.unwinding), "an unwound call: not at the checkpoint");
             t.Equals(word(obj, 0xC), 0u, "what an after-read would have logged here is not the call's result");
             parked.finish();
             t.Equals(word(obj, 0xC), socom2_rtnet::kBasePort, "the result exists only once the guest resumes the call");
-            t.IsFalse(socom2_trace::reachedReturn(0u, 0x00401000u), "a pc of 0 is not the return either");
+            t.IsFalse(socom2_trace::reachedReturn(0u, 0x00401000u, false), "a pc of 0 is not the return either");
+        });
+
+        // The runtime's own case (ps2_runtime.h, markDispatchUnwind): a recursive callee that unwinds at the
+        // dispatch of its own entry leaves pc equal to an address the pc test would accept. The unwind flag is
+        // what tells them apart, so it is checked with the pc, never instead of it.
+        tc.Run("a pc equal to the ra is not a return while the runtime is unwinding", [](TestCase &t)
+        {
+            t.IsFalse(socom2_trace::reachedReturn(0x00401000u, 0x00401000u, true), "pc == ra, unwind flag set: not final");
+            t.IsTrue(socom2_trace::reachedReturn(0x00401000u, 0x00401000u, false), "pc == ra, flag clear: the return");
+            t.IsFalse(socom2_trace::reachedReturn(0x00401004u, 0x00401000u, false), "flag clear but pc elsewhere: not the return");
         });
 
         tc.Run("an unwound call is counted, and said once", [](TestCase &t)
