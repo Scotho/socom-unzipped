@@ -11,6 +11,20 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
 > A fresh "Start here" block for the morning is written at the close -- **it is immediately below, `## Start here
 > (2026-09-23 morning)`**, and it carries the results of those runs.
 
+## Sprint 11 close — what needs you (2026-09-25)
+
+Sprint 11 is merged to `main` as `v0.11.0`. Sprint 12 runs in the cloud on `sprint-12` (its local half is session socom-pc-6c's; its proof requests reach this machine through the Sprint 12 plan's task table). Nothing below blocks either; each is a decision or a hand only you have.
+
+1. **D1, the r0004 distribution** — reopened by R251: the capsule alone gives a player nothing; the package comes only from PSRewired's server after a login, lands on a memory card, and decrypts with a key bound to the console id. Today r0004 is a per-player pipeline (PCSX2 + their login + our build on their machine, ~40 min). Acceptable for v1, or does r0004 wait for another route? Task 11b stays withdrawn until you say.
+2. **Goal F, PSRewired** — your Discord answer. Two facts now sit under it: an r0004 client and an r0001 client cannot join each other's games (the client's token filter backs out silently after the server accepts), so a mixed server needs two rooms or two servers; and the capsule's second stub table for the r0004 layout was never applied to our image.
+3. **The two bug-pipeline words** (Task 13's review I1/I2, the section below).
+4. **The release archives** — the `v0.10.0` draft's, and now `v0.11.0`'s (the tag's workflow makes a draft; the archives and the publish are yours).
+5. **The branch sweep** — the `sprint-*` ruleset forbids deletion; `sprint-9`, `sprint-10`, `sprint-11` and the merged slice branches stay until you sweep them (one `gh` command, the section below).
+6. **The VM ring** (Task 18 Step 1, issue #25) — its suites are not green in the VM; CI proves Linux; a VM evening is yours to name.
+7. **Five big engine routines, by hand** — Task 7's prefix matches for `CMission::Init`, `CZSealBody::*` and their like are proposed by no rule; Sprint 12's plan asks for a human read of each before a name is applied (its Log's D5 line). Half an hour with the disassembly and research/44 §6.
+8. **The Horizon box** — both revisions send `MediusVersionServer` (lobby 0x86) and three other messages Horizon does not model; pre-existing, harmless so far, server-side: yours to schedule.
+
+
 ## Start here (2026-09-23 morning)
 
 Sprint 10 is **closed** -- merged to `main` (PR #24, `f15acfa`) and tagged `v0.10.0` -- the draft release exists, with no archives yet (below). Sprint 11
