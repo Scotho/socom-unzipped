@@ -91,6 +91,7 @@ with Python 3:
 ```
 bash scripts/install_hooks.sh          # the leak check before every commit and push (the repository is public)
 bash scripts/bootstrap_windows.sh      # llvm-mingw, CMake and Ninja into tools/, pinned by sha256 (~245 MB, once)
+python -m pip install -r requirements.txt   # the Python packages the tools and the suite import, pinned
 ./build.sh runtime --no-runner         # the runtime library and the launcher, no game
 ./build.sh test --no-runner            # both suites and the VU1 replay goldens
 ```
@@ -98,7 +99,6 @@ bash scripts/bootstrap_windows.sh      # llvm-mingw, CMake and Ninja into tools/
 With your own ISO, the game itself:
 
 ```
-pip install unicorn                        # the two decryption stages emulate R5900 code
 bash scripts/disc_to_elf.sh "<your ISO>"   # the disc tree and the decrypted overlays (eight minutes, 4.2 GB)
 ./build.sh recomp      # build the merged ELF from the disc and run the recompiler
 ./build.sh runtime     # cmake + ninja + clang -> dist/socom2.exe and the launcher

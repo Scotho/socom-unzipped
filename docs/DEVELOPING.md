@@ -427,8 +427,8 @@ it picks up where it left off. `python -m tools_py.disc_to_elf` is the same comm
 <dir>` writes the tree and the overlays somewhere other than `game/`, `--check` says which stages are already done,
 `--force` redoes them, and `--stages extract,dnas,overlays,elf` runs a subset.
 
-**What you need:** Python 3; `pip install unicorn` (stages 2 and 3 run the game's own decryption code on an emulated
-R5900 -- 2.1.4 is the version this was measured with); 4.2 GB free; and your own NTSC r0001 image (SCUS-97275). No 7z
+**What you need:** Python 3 with `python -m pip install -r requirements.txt` (its `unicorn` row, 2.1.4, is what
+stages 2 and 3 need: they run the game's own decryption code on an emulated R5900); 4.2 GB free; and your own NTSC r0001 image (SCUS-97275). No 7z
 and no other extractor -- the ISO9660 reader is part of the command.
 
 | # | stage | what it does | measured 2026-09-21 |
@@ -598,6 +598,22 @@ only ever grow, so more than the number here is fine and fewer is a regression t
 > 764 C++; 2553, 1832, 1723 and 1104 Python; three skip counts) and three "this row said ... until 2026-09-21" notes
 > (`unhandled=0`, the C++ 500, the Python 1104 / `skipped=63`). One dated count per row stays; the earlier ones are
 > in this file's git history (`git log -p -- docs/DEVELOPING.md`).
+
+**The Python packages** are `requirements.txt` at the root, pinned: `python -m pip install -r requirements.txt` (numpy,
+pillow, zstandard, unicorn, capstone, PyYAML; on Windows also pycaw, comtypes, psutil and PyAudioWPatch for the audio
+tools). CI installs exactly that file on both runners; `tools_py/tests/test_requirements.py` fails on an import the
+file lacks, a row nothing imports, an unpinned row or a workflow that installs by hand. There is no pytest: the runner
+is unittest.
+
+**The fast subset** (Sprint 13 H7): `python -m tools_py.tests.fast` runs every test that needs no build product and no
+disc and is not in a module measured slow -- 2360 tests, `OK`, **84 s** wall on this machine (2026-09-25, the tree at
+H7's commits), against about eleven minutes for the whole suite. It is the check to run while somebody else holds the
+lock: its command line is not on `scripts/loop_lock.sh`'s busy list (a python whose command line says `unittest` or
+`tools_py.parity` is), and `tools_py/tests/test_fast_subset.py` pins that. What it leaves out is `EXCLUDED` in
+`tools_py/tests/fast.py`, each entry with its reason: the modules that took 10 s or more alone (the bash-, git- and
+process-driving ones) and the cases that need `dist/`, `dist-release/`, the launcher, the .NET server or `game/`. A new
+test file is in the subset until it is measured slow. `--list` prints the modules, `-v` the verbose runner. Row 4 (the
+whole suite) is still the bar before a commit that touches anything the subset leaves out.
 >
 > Superseded 2026-09-25 (Sprint 13 R2): row 5 said "about 15 min", README said "about 15 minutes" and HANDOFF's
 > per-stage figures add to 17 (documents audit row 39); the three measured gates above are the reading.
