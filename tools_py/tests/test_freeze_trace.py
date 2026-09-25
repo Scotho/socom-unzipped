@@ -163,6 +163,18 @@ class SamplerFieldsTest(unittest.TestCase):
         self.assertEqual(row["bp_waiters"], 0)
         self.assertEqual(row["net_wait"], 1)
 
+    def test_the_net_park_field_is_parsed_and_optional(self):
+        row = ft.parse([self.SAMPLE.replace(" running=", " net_park=1/9800 running=")])[0]
+        self.assertEqual((row["net_park"], row["net_park_ms"]), (1, 9800))
+        old = ft.parse([self.SAMPLE])[0]
+        self.assertIsNone(old["net_park"])   # a log from before #34
+
+    def test_a_parked_recv_with_the_executor_running_classifies_as_net_park(self):
+        a = self.SAMPLE.replace("net_wait=1/3300", "net_wait=0/0 net_park=1/200")
+        b = (a.replace("t=612.50", "t=615.80").replace("vsync=41233", "vsync=41431").replace("seq=8891", "seq=9100")
+             .replace("net_park=1/200", "net_park=1/3500"))
+        self.assertEqual(ft.classify(ft.parse([a, b])), "net-park")
+
     def test_shape_two_classifies_as_net_wait(self):
         rows = ft.parse([self.SAMPLE, self.SAMPLE.replace("t=612.50", "t=615.80")])
         self.assertEqual(ft.classify(rows), "net-wait")

@@ -8,11 +8,13 @@
 //           climbing = the EE executor overslept in waitForEvent, which is a runtime bug.
 //   shape 2 (thread 1 "RUNNING" at 0x350d90): seq frozen + dpc frozen + net_wait=1 = no guest instruction ran at
 //           all; the main thread is inside the host-blocking libnetb waitReadable poll and the sampled thread
-//           table is stale by construction.
+//           table is stale by construction. Since #34 (Sprint 13 V7) that wait is one guest tick at most and the rest
+//           of it parks the guest thread instead: net_park=1 with vsync and seq moving.
 //
 // The sampler prints from its own thread, so the LINE is what gets tested: this builds it as a pure function of
-// the eleven values, and tools_py/parity/freeze_trace.py parses exactly this text
-// (tools_py/tests/test_freeze_trace.py SAMPLE carries the same string). Every field is always printed -- an
+// the thirteen values, and tools_py/parity/freeze_trace.py parses exactly this text
+// (tools_py/tests/test_freeze_trace.py's SAMPLE is this line without net_park=, the pre-#34 log it must still read;
+// its net_park cases add the field with replace()). Every field is always printed -- an
 // omitted one would read downstream as a parse failure, not as "nothing to report".
 
 #include <cstdint>
@@ -34,6 +36,8 @@ namespace FreezeFields
         uint64_t bpWaitMs = 0ull;   // 7. GsFrameBackpressure::waitNsTotal() in ms, cumulative and non-clearing
         int netWait = 0;            // 8. 1 while inside libnetb's waitReadable/doOpen
         uint64_t netWaitMs = 0ull;  // 8. cumulative ms spent in those waits
+        int netPark = 0;            // 9. guest threads parked in a libnetb recv right now (#34)
+        uint64_t netParkMs = 0ull;  // 9. cumulative ms parked, live parks included
     };
 
     // The fields as they appear on the [pc-sampler] line, leading space included, in research/29 section 4's order.
@@ -42,12 +46,13 @@ namespace FreezeFields
         char buffer[256];
         std::snprintf(buffer, sizeof(buffer),
                       " t=%.2f vsync=%llu ee=%.2f seq=%llu dpc=0x%x idle=%llu"
-                      " bp_pending=%llu bp_waiters=%u bp_wait_ms=%llu net_wait=%d/%llu",
+                      " bp_pending=%llu bp_waiters=%u bp_wait_ms=%llu net_wait=%d/%llu net_park=%d/%llu",
                       s.hostSeconds, static_cast<unsigned long long>(s.vsyncTick), s.eeSeconds,
                       static_cast<unsigned long long>(s.sequence), static_cast<unsigned>(s.debugPc),
                       static_cast<unsigned long long>(s.idleWaits), static_cast<unsigned long long>(s.bpPending),
                       static_cast<unsigned>(s.bpWaiters), static_cast<unsigned long long>(s.bpWaitMs),
-                      s.netWait ? 1 : 0, static_cast<unsigned long long>(s.netWaitMs));
+                      s.netWait ? 1 : 0, static_cast<unsigned long long>(s.netWaitMs), s.netPark,
+                      static_cast<unsigned long long>(s.netParkMs));
         return std::string(buffer);
     }
 }

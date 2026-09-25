@@ -5,9 +5,12 @@
 #include "launcher/launcher_config.h"
 #include "ps2_runtime.h"
 #include "ps2x/exit_codes.h"
+#include "runtime/ee_scheduler.h"
 #include "socom2_hostnet.h"
 #include "socom2_libnetb.h"
 
+#include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -111,6 +114,161 @@ namespace
         if (tx >= 0)
             closeSocket(tx);
         return got;
+    }
+}
+
+namespace
+{
+    // ---- #34 (Sprint 13 V7), research/29 shape 2 ------------------------------------------------------------------
+    // A peer that stops sending held the EE executor inside waitReadable for up to 10 s: no guest instruction ran, no
+    // VBlank was delivered, no frame was drawn -- the 3-17 s online freeze. Here a guest "main" thread issues
+    // sceInetRecvFrom through socom2_libnetb::rpcFromGuest (the path socom2_MsifCall takes) on a loopback UDP socket,
+    // and a lower-priority "ticker" thread stamps the host time on every VBlank. While the recv is outstanding the
+    // executor must keep delivering VBlanks and running the ticker; the recv must still end the way the game asked.
+    constexpr uint32_t kParkMainPc = 0x00170000u;
+    constexpr uint32_t kParkAfterPc = 0x00170010u;
+    constexpr uint32_t kParkTickerPc = 0x00170020u;
+    constexpr uint32_t kParkBufAddr = 0x3000u;   // send == recv, as the game's CallRpc (0x245ad8) passes them
+    constexpr uint32_t kParkBufSize = 0x80u;
+    constexpr uint32_t kParkClientAddr = 0x3400u;
+    constexpr int32_t kErrTimeout = -500;
+
+    struct ParkRun
+    {
+        int32_t cid = 0;
+        int32_t timeoutMs = 0;
+        std::chrono::steady_clock::time_point start{};
+        std::chrono::steady_clock::time_point end{};
+        std::vector<std::chrono::steady_clock::time_point> ticks;
+        int32_t result = 0;
+        std::string payload;
+        bool done = false;
+    };
+    ParkRun g_park;
+
+    void setGpr(R5900Context *ctx, int reg, uint32_t value)
+    {
+        ctx->r[reg] = _mm_set_epi64x(0, static_cast<int64_t>(value));
+    }
+
+    void parkTicker(uint8_t *, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        g_park.ticks.push_back(std::chrono::steady_clock::now());
+        EeScheduler &ee = runtime->eeScheduler();
+        ctx->pc = kParkTickerPc;
+        ee.waitVSync(ee.currentVSyncTick());
+    }
+
+    void parkMain(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        EeScheduler &ee = runtime->eeScheduler();
+        EeThreadCreateParams ticker{};
+        ticker.entry = kParkTickerPc;
+        ticker.stack = 0x1E000u;
+        ticker.stackSize = 0x1000u;
+        ticker.priority = 100;   // lower than main's 0: it runs only while main is not runnable
+        ee.startThread(ee.createThread(ticker), 0u, *ctx, false);
+
+        // sceInetRecvFrom(cid, flags 0, len 64, timeout): SEND p[0..3] (docs/research/10-libnetb-rpc.md, fno 0xd)
+        const uint32_t send[4] = {static_cast<uint32_t>(g_park.cid), 0u, 64u, static_cast<uint32_t>(g_park.timeoutMs)};
+        std::memcpy(rdram + kParkBufAddr, send, sizeof(send));
+        setGpr(ctx, 4, kParkClientAddr);
+        setGpr(ctx, 5, 0xdu);
+        setGpr(ctx, 6, 0u);
+        setGpr(ctx, 7, kParkBufAddr);
+        setGpr(ctx, 8, 0x10u);
+        setGpr(ctx, 9, kParkBufAddr);
+        setGpr(ctx, 10, kParkBufSize);
+        setGpr(ctx, 31, kParkAfterPc);
+        g_park.start = std::chrono::steady_clock::now();
+        socom2_libnetb::rpcFromGuest(rdram, ctx, runtime);
+    }
+
+    void parkAfter(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        g_park.end = std::chrono::steady_clock::now();
+        std::memcpy(&g_park.result, rdram + kParkBufAddr, sizeof(g_park.result));
+        if (g_park.result > 0 && g_park.result <= 64)
+            g_park.payload.assign(reinterpret_cast<const char *>(rdram + kParkBufAddr + 0x1cu), static_cast<size_t>(g_park.result));
+        g_park.done = true;
+        ctx->pc = 0u;
+        runtime->requestStop();
+    }
+
+    // sceInetCreate(type 0 = datagram, no local port), then bound to loopback through the host table (cid = host
+    // descriptor + 1). Returns the cid (<= 0 on failure) and the socket's endpoint.
+    int32_t openLoopbackCid(std::vector<uint8_t> &rdram, socom2_hostnet::Endpoint *local)
+    {
+        const uint32_t create[8] = {};
+        std::memcpy(rdram.data() + kSendAddr, create, sizeof(create));
+        socom2_libnetb::call(rdram.data(), 1u, kSendAddr, sizeof(create), kRecvAddr, kRecvSize);
+        int32_t cid = 0;
+        std::memcpy(&cid, rdram.data() + kRecvAddr, sizeof(cid));
+        if (cid <= 0)
+            return cid;
+        if (socom2_hostnet::bindSocket(cid - 1, socom2_hostnet::Endpoint{0x7f000001u, 0u}) != 0 ||
+            socom2_hostnet::localName(cid - 1, local) != 0)
+            return -1;
+        return cid;
+    }
+
+    void closeCid(std::vector<uint8_t> &rdram, int32_t cid)
+    {
+        const uint32_t close[2] = {static_cast<uint32_t>(cid), 0u};
+        std::memcpy(rdram.data() + kSendAddr, close, sizeof(close));
+        socom2_libnetb::call(rdram.data(), 3u, kSendAddr, sizeof(close), kRecvAddr, kRecvSize);
+    }
+
+    // Runs main + ticker on a real EE executor until main's recv returns (a watchdog stops a run that never does).
+    void runParkedRecv(std::vector<uint8_t> &rdram, PS2Runtime &runtime)
+    {
+        runtime.registerFunction(kParkMainPc, parkMain);
+        runtime.registerFunction(kParkAfterPc, parkAfter);
+        runtime.registerFunction(kParkTickerPc, parkTicker);
+        std::atomic<bool> finished{false};
+        std::thread watchdog([&finished, &runtime]
+        {
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+            while (!finished.load() && std::chrono::steady_clock::now() < deadline)
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            if (!finished.load())
+                runtime.requestStop();
+        });
+        R5900Context mainContext{};
+        mainContext.pc = kParkMainPc;
+        runtime.eeScheduler().reset(rdram.data(), mainContext);
+        runtime.eeScheduler().run();
+        finished.store(true);
+        watchdog.join();
+    }
+
+    // The ticker stamps inside the recv's window, and the longest stretch of that window with no VBlank run at all.
+    size_t ticksDuringWait(const ParkRun &run)
+    {
+        size_t n = 0;
+        for (const auto &tick : run.ticks)
+            if (tick >= run.start && tick <= run.end)
+                ++n;
+        return n;
+    }
+
+    long long longestGapMs(const ParkRun &run)
+    {
+        std::vector<std::chrono::steady_clock::time_point> points{run.start};
+        for (const auto &tick : run.ticks)
+            if (tick >= run.start && tick <= run.end)
+                points.push_back(tick);
+        points.push_back(run.end);
+        long long longest = 0;
+        for (size_t i = 1; i < points.size(); ++i)
+            longest = std::max<long long>(longest,
+                std::chrono::duration_cast<std::chrono::milliseconds>(points[i] - points[i - 1]).count());
+        return longest;
+    }
+
+    long long elapsedMs(const ParkRun &run)
+    {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(run.end - run.start).count();
     }
 }
 
@@ -328,6 +486,102 @@ void register_socom2_libnetb_tests()
             socom2_hostnet::testApplyServer(nullptr);
             t.Equals(socom2_hostnet::resolve("socom2-prod.muis.pdonline.scea.com"), 0x7f000001u, "restored to loopback");
             setPs2ProcessExitCode(exitBefore);
+        });
+
+        // #34 (Sprint 13 V7): the peer never sends. The recv times out when the game said (1200 ms), and for the whole
+        // of it the EE executor keeps running: VBlanks keep coming and the ticker thread keeps running, no stretch of
+        // the wait longer than a few guest ticks (250 ms is slack for a loaded host; before the fix it was all 1200).
+        tc.Run("a recv whose peer never sends does not hold the EE executor past one guest tick", [](TestCase &t)
+        {
+            std::vector<uint8_t> rdram(PS2_RAM_SIZE, 0u);
+            PS2Runtime runtime;
+            t.IsTrue(runtime.memory().initialize(), "runtime memory initialize should succeed");
+            socom2_hostnet::Endpoint local;
+            g_park = ParkRun{};
+            g_park.cid = openLoopbackCid(rdram, &local);
+            g_park.timeoutMs = 1200;
+            t.IsTrue(g_park.cid > 0, "a loopback UDP cid should open");
+            const std::pair<int, uint64_t> parkBefore = socom2_libnetb::netParkState();
+
+            runParkedRecv(rdram, runtime);
+            closeCid(rdram, g_park.cid);
+            const std::pair<int, uint64_t> parkAfter = socom2_libnetb::netParkState();
+
+            t.IsTrue(g_park.done, "the recv must return to the guest (the watchdog stopped the run otherwise)");
+            t.Equals(g_park.result, kErrTimeout, "no data: the game's own timeout (-500), as before");
+            t.IsTrue(elapsedMs(g_park) >= 1150, "not earlier than the timeout the game asked for: " + std::to_string(elapsedMs(g_park)) + " ms");
+            t.IsTrue(ticksDuringWait(g_park) >= 10,
+                     "VBlanks must reach the other guest threads during the wait; ticker ran " +
+                         std::to_string(ticksDuringWait(g_park)) + " times in " + std::to_string(elapsedMs(g_park)) + " ms");
+            t.IsTrue(longestGapMs(g_park) < 250,
+                     "the executor must not be held: longest stretch with no VBlank run was " + std::to_string(longestGapMs(g_park)) + " ms");
+            t.Equals(parkAfter.first, 0, "no thread is left parked (net_park=0/...)");
+            t.IsTrue(parkAfter.second - parkBefore.second >= 1100,
+                     "the wait is on the sampler's net_park= ms (it grew " + std::to_string(parkAfter.second - parkBefore.second) + ")");
+        });
+
+        // A recv whose timeout is one tick or less is served whole inside waitReadable: parking it would cost a
+        // VBlank (a lost frame on the render thread) to save at most 16 ms.
+        tc.Run("a recv with a timeout of one tick or less is not parked", [](TestCase &t)
+        {
+            std::vector<uint8_t> rdram(PS2_RAM_SIZE, 0u);
+            PS2Runtime runtime;
+            t.IsTrue(runtime.memory().initialize(), "runtime memory initialize should succeed");
+            socom2_hostnet::Endpoint local;
+            g_park = ParkRun{};
+            g_park.cid = openLoopbackCid(rdram, &local);
+            g_park.timeoutMs = 10;
+            t.IsTrue(g_park.cid > 0, "a loopback UDP cid should open");
+            const uint64_t parkedMsBefore = socom2_libnetb::netParkState().second;
+
+            runParkedRecv(rdram, runtime);
+            closeCid(rdram, g_park.cid);
+
+            t.IsTrue(g_park.done, "the recv must return to the guest");
+            t.Equals(g_park.result, kErrTimeout, "no data: the game's timeout");
+            t.Equals(ticksDuringWait(g_park), static_cast<size_t>(0), "no park: nothing else ran inside the call");
+            t.Equals(socom2_libnetb::netParkState().second, parkedMsBefore, "nothing on net_park=");
+            t.IsTrue(elapsedMs(g_park) < 200, "served in about its own 10 ms: " + std::to_string(elapsedMs(g_park)) + " ms");
+        });
+
+        // The same wait ended by data mid-way: the re-issued call must still read the guest's own arguments (send ==
+        // recv, nothing written before the wait is over) and deliver the datagram when it arrives, not at the deadline.
+        tc.Run("a parked recv returns the datagram that arrives during its wait", [](TestCase &t)
+        {
+            std::vector<uint8_t> rdram(PS2_RAM_SIZE, 0u);
+            PS2Runtime runtime;
+            t.IsTrue(runtime.memory().initialize(), "runtime memory initialize should succeed");
+            socom2_hostnet::Endpoint local;
+            g_park = ParkRun{};
+            g_park.cid = openLoopbackCid(rdram, &local);
+            g_park.timeoutMs = 5000;
+            t.IsTrue(g_park.cid > 0, "a loopback UDP cid should open");
+
+            std::chrono::steady_clock::time_point sent{};
+            std::thread peer([local, &sent]
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                const int tx = socom2_hostnet::createSocket(socom2_hostnet::Proto::Udp);
+                if (tx >= 0)
+                {
+                    sent = std::chrono::steady_clock::now();
+                    socom2_hostnet::sendTo(tx, "stopped", 7u, local);
+                    socom2_hostnet::closeSocket(tx);
+                }
+            });
+            runParkedRecv(rdram, runtime);
+            peer.join();
+            closeCid(rdram, g_park.cid);
+
+            t.IsTrue(g_park.done, "the recv must return to the guest");
+            t.Equals(g_park.result, 7, "the datagram's length");
+            t.Equals(g_park.payload, std::string("stopped"), "the datagram itself, at recv byte 0x1c");
+            t.IsTrue(sent != std::chrono::steady_clock::time_point{} && g_park.end >= sent,
+                     "returned after the datagram was sent, not before");
+            t.IsTrue(elapsedMs(g_park) < 2000,
+                     "returned when the data came, not at the 5 s deadline: " + std::to_string(elapsedMs(g_park)) + " ms");
+            t.IsTrue(ticksDuringWait(g_park) >= 5,
+                     "the other guest threads ran while it waited; ticker ran " + std::to_string(ticksDuringWait(g_park)) + " times");
         });
     });
 }

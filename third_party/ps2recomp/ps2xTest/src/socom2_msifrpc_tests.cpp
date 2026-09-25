@@ -2,7 +2,8 @@
 //
 // libnetb's EE library reaches LIBNETB.IRX through msifrpc: bind (FUN_001bd050), call (FUN_001bd320), unbind
 // (FUN_001bd200). The HLE answers them synchronously on the host, dispatching the libnetb service 0x80001201 to
-// socom2_libnetb::call. These cases drive a whole bind -> call -> unbind round-trip through the real handlers with
+// socom2_libnetb::rpcFromGuest (socom2_libnetb::call, or a parked long recv: #34). These cases drive a whole
+// bind -> call -> unbind round-trip through the real handlers with
 // the EE ABI's registers (a0..a3, then t0..t2 for the fifth to seventh arguments), against the host implementation
 // the transport fronts: the interface list and three interface-control codes, whose answers need no network.
 // Documentation of the transport's behaviour, not a defect's RED; the one limit it pins is that only the blocking
