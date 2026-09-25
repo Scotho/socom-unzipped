@@ -59,3 +59,6 @@ chmod 600 "$dest"/*
 # keep the newest OPS_BACKUP_KEEP sets (stamps sort by time)
 ls -1d "$OPS_BACKUP_DIR"/*/ 2>/dev/null | sort | head -n -"$OPS_BACKUP_KEEP" | xargs -r rm -rf
 echo "socom-backup: $dest ($(wc -c < "$(ls "$dest"/simulated.db* | head -1)") bytes, settled=$settled, $(ls -1d "$OPS_BACKUP_DIR"/*/ | wc -l) sets kept)"
+# A set whose database never settled is kept (a restore may still want it) but is not a success: cron's log and
+# whoever ran it by hand see a failure, and health.sh warns while it is the newest set.
+[ "$settled" = 1 ] || { echo "socom-backup: the database never settled over 5 attempts; kept as simulated.db.unsettled" >&2; exit 3; }

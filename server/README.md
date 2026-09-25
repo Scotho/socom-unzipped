@@ -177,7 +177,7 @@ from the client's side, so it is where a new host's bring-up bites first.
 
 `scripts/make_server_zip.sh` writes `BUILD_ID` at the package root: the repository commit (`git rev-parse
 --short=12 HEAD`, `-dirty` when `server/horizon-server` has uncommitted changes; `SERVER_BUILD_ID=<id>` overrides it
-for a package built from a copy). `linux/install.sh` carries it to the installed folder with the rest, Medius reads it
+for a package built from a copy; without it, a `SERVER` other than this checkout's `server/` gets `-copy`). `linux/install.sh` carries it to the installed folder with the rest, Medius reads it
 from its working directory (the package root, under the units and `start-servers.ps1`) or up from its binaries at
 start, and `StatsServer.cs` serves it as `"build"` in every snapshot -- `"unknown"` for a build without the file.
 The site's nginx proxies `/stats` verbatim, so `/api/stats` carries it with no change on the site; showing it on the
@@ -196,9 +196,9 @@ address, not the box's public one, no key path), and the example has every key t
 
 | File | Where it runs | What it reads from `ops.env` | What it does |
 |---|---|---|---|
-| `ops/backup.sh` | the box, as `/usr/local/sbin/socom-backup.sh`, daily by `ops/backup.cron` (`/etc/cron.d/socom-backup`) | `OPS_SERVER_DIR`, `OPS_BACKUP_DIR`, `OPS_BACKUP_KEEP`, `OPS_BACKUP_SETTLE_SEC` | copies `config/simulated.db` (twice, compared, so a torn copy is retried) and `config/*.json` into `<OPS_BACKUP_DIR>/<UTC stamp>/` with a `SHA256SUMS`; keeps the newest `OPS_BACKUP_KEEP` sets |
-| `ops/health.sh` | the box, as `/usr/local/sbin/socom-health.sh` | `OPS_SERVER_DIR`, `OPS_BACKUP_DIR`, `OPS_STATS_URL`, `OPS_DEPLOYED_COMMIT` | one `HEALTH ok|WARN ...` line: uptime, disk, memory, the four units, the five public ports listening (TCP 10071/10073/10075/10078, UDP 10070), the database, the newest backup's age, the stats endpoint and its `build` against `OPS_DEPLOYED_COMMIT`; exit 1 on WARN |
-| `ops/backup-pull.ps1` | the owner's Windows machine | `OPS_BOX_HOST`, `OPS_BOX_USER`, `OPS_SSH_KEY`, `OPS_KNOWN_HOSTS`, `OPS_BACKUP_DIR`, `OPS_PULL_DIR` | pulls the newest set over SSH into `<OPS_PULL_DIR>/<stamp>/` and verifies it against its `SHA256SUMS`; `-VerifyOnly <folder>` re-checks a pulled set; refuses the example's placeholder address |
+| `ops/backup.sh` | the box, as `/usr/local/sbin/socom-backup.sh`, daily by `ops/backup.cron` (`/etc/cron.d/socom-backup`) | `OPS_SERVER_DIR`, `OPS_BACKUP_DIR`, `OPS_BACKUP_KEEP`, `OPS_BACKUP_SETTLE_SEC` | copies `config/simulated.db` (twice, compared, so a torn copy is retried; one that never settles is kept as `.unsettled` and the run exits 3) and `config/*.json` into `<OPS_BACKUP_DIR>/<UTC stamp>/` with a `SHA256SUMS`; keeps the newest `OPS_BACKUP_KEEP` sets |
+| `ops/health.sh` | the box, as `/usr/local/sbin/socom-health.sh` | `OPS_SERVER_DIR`, `OPS_BACKUP_DIR`, `OPS_STATS_URL`, `OPS_DEPLOYED_COMMIT` | one `HEALTH ok|WARN ...` line: uptime, disk, memory, the four units, the five public ports listening (TCP 10071/10073/10075/10078, UDP 10070), the database, the newest backup's age and whether it settled, the stats endpoint and its `build` against `OPS_DEPLOYED_COMMIT`; exit 1 on WARN |
+| `ops/backup-pull.ps1` | the owner's Windows machine | `OPS_BOX_HOST`, `OPS_BOX_USER`, `OPS_SSH_KEY`, `OPS_KNOWN_HOSTS`, `OPS_BACKUP_DIR`, `OPS_PULL_DIR` | pulls the newest set over SSH into `<OPS_PULL_DIR>/<stamp>/` and verifies it against its `SHA256SUMS`, which must list the database; the box's host key is pinned (`StrictHostKeyChecking=yes`, and a missing or empty `OPS_KNOWN_HOSTS` is refused); `-VerifyOnly <folder>` re-checks a pulled set; refuses the example's placeholder address |
 
 Installing them on the box is part of a deploy (the owner's): `make_server_zip.sh` ships `ops/` without `ops.env`;
 then `install -m 0755 ops/backup.sh /usr/local/sbin/socom-backup.sh`, the same for `health.sh`, `install -m 0644
@@ -276,12 +276,21 @@ row 4). A `diff -r` of this folder against `1a7b9cd` (bin/obj aside) shows exact
 plus line endings in `docker/entrypoint.sh`, `docker/restart_dme.py`, `run_docker.sh` and
 `RT.Models/RT/RT_MSG_SERVER_CONNECT_ACCEPT_TCP.cs`, and the absent `.github/` (its workflow deleted by `610d28e4`).
 
-**Upstream PR #35** (open since 2026-06-20, "graceful disconnect + simulated mode defaults") is **not carried**:
-it sends `RT_MSG_CLIENT_DISCONNECT_WITH_REASON` before closing a client's socket, which removes the
-`DEV9: Shutdown SD_RECEIVE error: 107` line a PCSX2 client logs, and changes simulated-mode defaults. It touches
-`Server.Medius/Medius/BaseMediusComponent.cs`, which this copy has not changed. It matters only if the mixed-match
-harness sees that DEV9 error (the audit's external.md row 15); taking it is a vendor bump, with the table below as
-the list of what to carry across.
+**Upstream PR #35** (open since 2026-06-20, "fix: graceful disconnect + simulated mode defaults") is **not
+carried**, and it is not a clean pick: it changes 16 files, and four of them carry local changes here --
+`Server.Database/DbController.cs`, `Server.Medius/Medius/MLS.cs`, `Server.UniverseInformation/MUIS.cs` and
+`Server.Dme/Program.cs` (the table below says what ours are). What it does: `BaseMediusComponent.cs` sends
+`RT_MSG_CLIENT_DISCONNECT_WITH_REASON` before closing a client's socket (500 ms flush instead of 5 s), which removes
+the `DEV9: Shutdown SD_RECEIVE error: 107` line a PCSX2 client logs, with matching disconnect changes across DME,
+NAT and the pipeline; and in `DbController.cs` simulated mode's `GetServerSettings` answers an app with no seeded
+settings with `CreateAccountOnNotFound=True` and **`EnableEncryption=False`** (the RT link's encryption, not the
+file's: `simulated.db` stays encrypted under `SimulatedEncryptionKey` either way), while `SetServerSettings`, commented
+out upstream today, stores the settings and calls `SaveSimulated()` -- so the per-app settings, today fixed by the seed,
+would be written into the encrypted `config/simulated.db` at run time as the accounts already are. Our seed already sets both values for app 10472
+(`seed-simulated-db.ps1`), so the new defaults change nothing for SOCOM II's own id. That write path is the part to weigh:
+whatever calls `SetServerSettings` would then change what the seed set, and the change would survive a restart. It matters
+only if the mixed-match harness sees the DEV9 error (the audit's external.md row 15); taking it is a vendor bump
+that merges those four files by hand, with the table below as the list of what to carry across.
 
 ## Local source changes
 

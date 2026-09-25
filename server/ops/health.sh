@@ -9,7 +9,7 @@
 #         | services <n>/4 active | ports <n>/5 listening | db <bytes> @ <mtime> | backup <newest stamp>
 #         | stats <online|OFFLINE> players=<n> since=<startedUtc> build=<id>
 # WARN when disk >= 80 %, memory available < 200 MB, a unit down, a public port not listening (TCP 10071 10073
-# 10075 10078, UDP 10070 -- the tracked configs' ports), no backup or one older than 48 h, the stats endpoint
+# 10075 10078, UDP 10070 -- the tracked configs' ports), no backup, one older than 48 h or one whose database never settled, the stats endpoint
 # silent, or the running build is not OPS_DEPLOYED_COMMIT. Exit 0 on ok, 1 on WARN, 2 when ops.env is missing.
 set -u
 
@@ -30,14 +30,15 @@ deployed="${OPS_DEPLOYED_COMMIT:-}"
 
 warn=()
 up_days=$(awk '{printf "%.1f", $1/86400}' /proc/uptime)
-read -r _ size used _ pct _ < <(df -B1 --output=source,size,used,avail,pcent / | tail -1)
+# no source column: a source with a space in it would shift every field after it
+read -r size used pct < <(df -B1 --output=size,used,pcent / | tail -1)
 pct_n=${pct%\%}
-[ "$pct_n" -ge 80 ] && warn+=("disk ${pct}")
-mem_avail=$(awk '/MemAvailable/ {printf "%d", $2/1024}' /proc/meminfo)
-[ "$mem_avail" -lt 200 ] && warn+=("mem ${mem_avail}MB")
+[ "${pct_n:-0}" -ge 80 ] 2>/dev/null && warn+=("disk ${pct}")
+mem_avail=$(awk '/MemAvailable/ {printf "%d", $2/1024}' /proc/meminfo 2>/dev/null)
+[ -n "$mem_avail" ] && [ "$mem_avail" -lt 200 ] && warn+=("mem ${mem_avail}MB")
 
 active=0
-for u in horizon-nat horizon-muis horizon-medius horizon-dme; do systemctl is-active --quiet "$u" && active=$((active+1)); done
+for u in horizon-nat horizon-muis horizon-medius horizon-dme; do systemctl is-active --quiet "$u" 2>/dev/null && active=$((active+1)); done
 [ "$active" -lt 4 ] && warn+=("services ${active}/4")
 
 listening=0; missing=()
@@ -59,6 +60,7 @@ if [ -n "$newest" ]; then
   taken=$(date -u -d "${newest:0:8} ${newest:9:2}:${newest:11:2}:${newest:13:2}" +%s 2>/dev/null || echo 0)
   age_h=$(( ( $(date +%s) - taken ) / 3600 ))
   [ "$age_h" -gt 48 ] && warn+=("backup ${age_h}h old")
+  [ -e "$OPS_BACKUP_DIR/$newest/simulated.db.unsettled" ] && warn+=("backup ${newest} unsettled")
 fi
 
 stats=$(curl -s -m 5 "$OPS_STATS_URL" || true)
@@ -75,6 +77,6 @@ fi
 state=ok
 [ "${#warn[@]}" -gt 0 ] && state="WARN ${warn[*]}"
 printf 'HEALTH %s | up %sd | disk %s/%s (%s) | mem avail %sMB | services %s/4 active | ports %s/5 listening | db %s @ %s | backup %s | %s\n' \
-  "$state" "$up_days" "$(numfmt --to=iec "$used")" "$(numfmt --to=iec "$size")" "$pct" "$mem_avail" "$active" \
+  "$state" "$up_days" "$(numfmt --to=iec "$used")" "$(numfmt --to=iec "$size")" "$pct" "${mem_avail:-?}" "$active" \
   "$listening" "$db_bytes" "$db_mtime" "${newest:-none}" "$stats_line"
 [ "$state" = ok ]

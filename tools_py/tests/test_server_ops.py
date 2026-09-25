@@ -102,8 +102,9 @@ class OpsScriptsCarryNoSecrets(unittest.TestCase):
         self.assertEqual(sorted(wanted - _example_keys()), [], "keys the scripts read that ops.env.example lacks")
 
     def test_the_env_file_is_ignored(self):
-        r = subprocess.run(["git", "check-ignore", "-q", "server/ops/ops.env"], cwd=ROOT)
-        self.assertEqual(r.returncode, 0, "server/ops/ops.env must be git-ignored")
+        for name in ("server/ops/ops.env", "server/ops/box2.env"):
+            r = subprocess.run(["git", "check-ignore", "-q", name], cwd=ROOT)
+            self.assertEqual(r.returncode, 0, name + " must be git-ignored")
         r = subprocess.run(["git", "check-ignore", "-q", "server/ops/ops.env.example"], cwd=ROOT)
         self.assertEqual(r.returncode, 1, "the example must stay trackable")
 
@@ -223,6 +224,115 @@ class Puller(unittest.TestCase):
         r = self._pull("-EnvFile", env)
         self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
         self.assertIn("OPS_SSH_KEY", r.stderr)
+
+    def _env_with_known_hosts(self, known_hosts_body):
+        key = os.path.join(self.tmp, "box_key")
+        with open(key, "w") as fh:
+            fh.write("not a key\n")
+        env = os.path.join(self.tmp, "ops.env")
+        lines = ["OPS_BOX_HOST=box.example.org", "OPS_BOX_USER=ubuntu", "OPS_SSH_KEY=" + key,
+                 "OPS_KNOWN_HOSTS=" + os.path.join(self.tmp, "known_hosts"), "OPS_BACKUP_DIR=/var/backups/x",
+                 "OPS_PULL_DIR=" + os.path.join(self.tmp, "pulled")]
+        with open(env, "w") as fh:
+            fh.write("\n".join(lines) + "\n")
+        if known_hosts_body is not None:
+            with open(os.path.join(self.tmp, "known_hosts"), "w") as fh:
+                fh.write(known_hosts_body)
+        return env
+
+    def test_a_missing_or_empty_known_hosts_is_refused(self):
+        """The host key is pinned (StrictHostKeyChecking=yes), so there must be one to pin against."""
+        for body in (None, ""):
+            r = self._pull("-EnvFile", self._env_with_known_hosts(body))
+            self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+            self.assertIn("OPS_KNOWN_HOSTS", r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "pulled")), "nothing is pulled")
+        text = _read(os.path.join(OPS, "backup-pull.ps1"))
+        self.assertIn("StrictHostKeyChecking=yes", text)
+        self.assertNotIn("accept-new", text)
+
+    def test_a_set_without_the_database_does_not_verify(self):
+        s = self._a_set()
+        sums = os.path.join(s, "SHA256SUMS")
+        kept = [l for l in _read(sums).splitlines() if "simulated.db" not in l]
+        with open(sums, "w", newline="\n") as fh:
+            fh.write("\n".join(kept) + "\n")
+        r = self._pull("-VerifyOnly", s)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("does not list simulated.db", r.stderr)
+
+
+@unittest.skipUnless(BASH, "no bash on this host")
+class BoxScriptsMore(unittest.TestCase):
+    """health.sh's line against a stand-in layout, and a backup whose database never settles."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="server_ops_more_")
+        self.server = os.path.join(self.tmp, "server")
+        self.backups = os.path.join(self.tmp, "backups")
+        os.makedirs(os.path.join(self.server, "config"))
+        with open(os.path.join(self.server, "config", "simulated.db"), "wb") as fh:
+            fh.write(b"12345")
+        with open(os.path.join(self.server, "config", "medius.json"), "w") as fh:
+            fh.write("{}\n")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _env(self, extra=""):
+        env = os.path.join(self.tmp, "ops.env")
+        with open(env, "w", newline="\n") as fh:
+            # port 9 (discard) on loopback: nothing answers, so the stats read is quick and empty
+            fh.write("OPS_SERVER_DIR=%s\nOPS_BACKUP_DIR=%s\nOPS_STATS_URL=http://127.0.0.1:9/stats\n"
+                     "OPS_DEPLOYED_COMMIT=\n%s" % (_posix(self.server), _posix(self.backups), extra))
+        return env
+
+    def _run(self, script, env):
+        return subprocess.run([BASH, os.path.join(OPS, script)], capture_output=True, text=True, cwd=ROOT,
+                              env={**os.environ, "OPS_ENV": _posix(env)}, timeout=120)
+
+    def test_the_health_line_has_its_shape_and_names_an_unsettled_backup(self):
+        stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+        os.makedirs(os.path.join(self.backups, stamp))
+        open(os.path.join(self.backups, stamp, "simulated.db.unsettled"), "w").close()
+        r = self._run("health.sh", self._env())
+        lines = r.stdout.splitlines()
+        self.assertEqual(len(lines), 1, r.stdout + r.stderr)
+        self.assertRegex(lines[0], r"^HEALTH (ok|WARN [^|]+) \| up [\d.]+d \| disk \S+/\S+ \(\d+%\) \| mem avail \S+MB"
+                                   r" \| services [0-4]/4 active \| ports [0-5]/5 listening \| db 5 @ \S+"
+                                   r" \| backup " + stamp + r" \| stats OFFLINE$")
+        self.assertIn("backup %s unsettled" % stamp, lines[0])
+        self.assertIn("stats offline", lines[0])
+        self.assertEqual(r.returncode, 1, "a WARN line exits 1")
+
+    def test_a_database_that_never_settles_is_kept_but_fails(self):
+        import threading
+        db = os.path.join(self.server, "config", "simulated.db")
+        stop = threading.Event()
+
+        def churn():
+            n = 0
+            while not stop.is_set():
+                n += 1
+                try:
+                    with open(db, "wb") as fh:
+                        fh.write(str(n).encode() * 64)
+                except OSError:
+                    pass
+                time.sleep(0.02)
+
+        t = threading.Thread(target=churn)
+        t.start()
+        try:
+            r = self._run("backup.sh", self._env("OPS_BACKUP_KEEP=3\nOPS_BACKUP_SETTLE_SEC=0.3\n"))
+        finally:
+            stop.set()
+            t.join()
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
+        self.assertIn("never settled", r.stderr)
+        sets = os.listdir(self.backups)
+        self.assertEqual(len(sets), 1, sets)
+        self.assertIn("simulated.db.unsettled", os.listdir(os.path.join(self.backups, sets[0])))
 
 
 if __name__ == "__main__":

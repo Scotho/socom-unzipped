@@ -28,10 +28,11 @@ function Fail([int]$code, [string]$msg) { [Console]::Error.WriteLine("backup-pul
 function Test-Set([string]$dest) {
     $sums = Join-Path $dest 'SHA256SUMS'
     if (-not (Test-Path -LiteralPath $sums)) { Fail 1 "$dest has no SHA256SUMS" }
-    $bad = @(); $n = 0
+    $bad = @(); $n = 0; $db = $null
     foreach ($line in Get-Content -LiteralPath $sums) {
         if ($line -notmatch '^([0-9a-fA-F]{64})\s+\*?(.+)$') { continue }
         $want = $Matches[1].ToLower(); $name = Split-Path -Leaf $Matches[2]
+        if ($name -eq 'simulated.db' -or $name -eq 'simulated.db.unsettled') { $db = $name }
         $file = Join-Path $dest $name
         $n++
         if (-not (Test-Path -LiteralPath $file)) { $bad += "$name missing"; continue }
@@ -39,7 +40,12 @@ function Test-Set([string]$dest) {
         if ($got -ne $want) { $bad += "$name differs" }
     }
     if ($n -eq 0) { Fail 1 "$sums lists no files" }
+    if (-not $db) { Fail 1 "$sums does not list simulated.db: the set holds no account store" }
     if ($bad.Count -gt 0) { Fail 1 ("$dest did not verify: " + ($bad -join ', ')) }
+    if ($db -eq 'simulated.db.unsettled') {
+        Write-Output "backup-pull: $dest verified ($n files) -- but its database never settled (simulated.db.unsettled)"
+        return
+    }
     Write-Output "backup-pull: $dest verified ($n files)"
 }
 
@@ -73,13 +79,17 @@ if ($ops.OPS_BOX_HOST -match '^(192\.0\.2|198\.51\.100|203\.0\.113)\.\d{1,3}$') 
     Fail 2 "OPS_BOX_HOST in $EnvFile is still the example's placeholder; set the box's address or name"
 }
 if (-not (Test-Path -LiteralPath $ops.OPS_SSH_KEY)) { Fail 2 "OPS_SSH_KEY names a file that does not exist" }
+# The box's host key is pinned, never learnt: an empty or missing known_hosts would trust whatever answers first.
+if (-not (Test-Path -LiteralPath $ops.OPS_KNOWN_HOSTS -PathType Leaf) -or (Get-Item -LiteralPath $ops.OPS_KNOWN_HOSTS).Length -eq 0) {
+    Fail 2 "OPS_KNOWN_HOSTS must name a known_hosts file holding the box's host key (missing or empty)"
+}
 
 function Quote([string]$s) { '"' + $s + '"' }
 # The call operator quotes each argument itself; Start-Process joins its list with spaces, so that one is quoted here.
 function Ssh-Args([bool]$quoted) {
     $key = $ops.OPS_SSH_KEY; $kh = 'UserKnownHostsFile=' + $ops.OPS_KNOWN_HOSTS
     if ($quoted) { $key = Quote $key; $kh = Quote $kh }
-    @('-o', 'IdentitiesOnly=yes', '-i', $key, '-o', $kh, '-o', 'StrictHostKeyChecking=accept-new',
+    @('-o', 'IdentitiesOnly=yes', '-i', $key, '-o', $kh, '-o', 'StrictHostKeyChecking=yes',
       '-o', 'ConnectTimeout=15', ($ops.OPS_BOX_USER + '@' + $ops.OPS_BOX_HOST))
 }
 $sshArgs = Ssh-Args $false

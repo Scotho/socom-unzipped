@@ -113,7 +113,8 @@ class MakeServerZipBuildIdTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
         head = subprocess.run(["git", "rev-parse", "--short=12", "HEAD"], capture_output=True, text=True,
                               cwd=ROOT, check=True).stdout.strip()
-        self.assertRegex(self._build_id(), r"^%s(-dirty)?\n$" % head)
+        # the stand-in tree is not this checkout's server/, so the id says it came from a copy
+        self.assertRegex(self._build_id(), r"^%s(-dirty)?-copy\n$" % head)
 
     def test_the_box_scripts_ship_and_their_env_file_does_not(self):
         r = _run(os.path.join(self.tmp, "out"), {"SERVER": self.server, "SERVER_BUILD_ID": "x"})
