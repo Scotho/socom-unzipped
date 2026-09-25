@@ -145,7 +145,9 @@ class OwnerWrapperTest(unittest.TestCase):
         with open(HUMAN_TASKS, encoding="utf-8") as fh:
             text = fh.read()
         self.assertEqual(text.count("logs\\capture_audio_out.sh"), 0, "the ignored path is gone from the step")
-        self.assertIn("scripts\\parity\\capture_audio_out.sh", text)
+        # either separator: the step is a bash command line (forward slashes) on a Windows path (backslashes)
+        self.assertTrue("scripts\\parity\\capture_audio_out.sh" in text or "scripts/parity/capture_audio_out.sh" in text,
+                        "HUMAN_TASKS must name the tracked wrapper")
 
 
 if __name__ == "__main__":
