@@ -55,13 +55,16 @@ have = {int(r[1], 16) for r in body}
 starts = sorted(have)
 added = 0
 if os.path.exists(extra_path):
+    forced = set()
     for line in open(extra_path):
         line = line.split('#')[0].strip()
-        if not line:
-            continue
-        a = int(line, 16)
-        if a in have:
-            continue
+        if line:
+            forced.add(int(line, 16))
+    # Ascending and once each (Sprint 13 H7): the file is not sorted, and an entry placed before a LOWER one in
+    # the same gap ran to the next map start while the lower one then ran over it -- two overlapping rows; an
+    # address listed twice was two rows. In ascending order a later entry in the same gap is covered by the
+    # row the earlier one made and splits it below.
+    for a in sorted(forced - have):
         i = bisect.bisect_right(starts, a)
         nxt = starts[i] if i < len(starts) else a + 0x100
         # If a covering range exists, this forced entry is its second function: truncate the
@@ -70,7 +73,6 @@ if os.path.exists(extra_path):
         for r in body:
             rs, re_ = int(r[1], 16), int(r[2], 16)
             if rs < a < re_:
-                end = max(end, re_) if re_ <= nxt else re_
                 end = re_
                 r[2] = f"0x{a:08X}"
                 r[3] = str(a - rs)
