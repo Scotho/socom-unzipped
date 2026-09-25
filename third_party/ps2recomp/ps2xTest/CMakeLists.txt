@@ -85,6 +85,10 @@ add_library(ps2_test_lib STATIC
     src/runtime_state_tests.cpp         # Sprint 11 Task 8b
     src/socom2_after_return_tests.cpp   # Sprint 13 Task C3 (audit F10, F11)
     src/socom2_peek_tests.cpp           # Sprint 13 Task C3 (#39)
+    src/socom2_pad2_hle_tests.cpp       # Sprint 13 Task C8 (audit F8)
+    src/socom2_msifrpc_tests.cpp        # Sprint 13 Task C8 (audit F8)
+    src/socom2_crypto_tests.cpp         # Sprint 13 Task C8 (audit F9)
+    src/runtime_seams_tests.cpp         # Sprint 13 Task C8 (audit F22)
 )
 
 target_include_directories(ps2_test_lib PRIVATE
@@ -133,10 +137,16 @@ add_executable(ps2x_tests
     $<TARGET_OBJECTS:ps2_test_function_table>
 )
 
-# libps2_runtime.a references a few symbols that the SOCOM II runner defines in
-# game_overrides_socom2.cpp, which is attached to ps2EntryRunner rather than to the
-# static library (see ps2xRuntime/CMakeLists.txt). Inert definitions satisfy the link.
-target_sources(ps2x_tests PRIVATE src/socom2_link_stubs.cpp)
+# libps2_runtime.a references SOCOM II handlers by name through its stub table (ps2_call_list.h). Sprint 13 Task C8
+# (audit F8, F9, F22): no stand-ins -- the runner's own files that define them are compiled here too and tested
+# (socom2_pad2_hle_tests.cpp, socom2_msifrpc_tests.cpp, socom2_crypto_tests.cpp); ps2HostProfStart and
+# g_ps2xTraceArmed are the runtime's own (a weak no-op default, runtime/host_prof_start.h; ps2_trace_armed.cpp).
+target_sources(ps2x_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/ps2xRuntime/src/lib/socom2_pad2_hle.cpp
+    ${CMAKE_SOURCE_DIR}/ps2xRuntime/src/lib/socom2_msifrpc.cpp
+    ${CMAKE_SOURCE_DIR}/ps2xRuntime/src/lib/socom2_crypto.cpp
+    ${CMAKE_SOURCE_DIR}/ps2xRuntime/src/lib/socom2_lum_pixel.cpp
+)
 # The libnetb HLE and its host socket table are runner-only sources too; the 0x200 stats test
 # (socom2_libnetb_tests.cpp) drives them directly.
 target_sources(ps2x_tests PRIVATE

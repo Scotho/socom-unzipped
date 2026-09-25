@@ -113,9 +113,8 @@ namespace
 #include "runtime/ps2_memory.h"
 #include "ps2x/knobs.h"
 
-// Defined in the game runner (game_overrides_socom2.cpp); the interpreter references it for the
-// triggered program dump. Never armed here.
-std::atomic<bool> g_ps2xTraceArmed{false};
+// g_ps2xTraceArmed (the interpreter's triggered program dump) is the runtime's own since Sprint 13 C8
+// (runtime/ps2_trace_armed.h); never armed here.
 extern uint32_t *g_vu1PcHist; // ps2_vu1_core.cpp: per-pair execution counts of the fast path
 extern uint32_t *g_vu1JrHist; // computed-jump targets
 extern uint32_t *g_vu1BailHist; // per-pc hand-backs of the generated code

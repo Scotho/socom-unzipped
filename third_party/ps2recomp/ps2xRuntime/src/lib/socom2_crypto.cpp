@@ -17,6 +17,10 @@
 #include <cstring>
 #include <iostream>
 
+#include "ps2_stubs.h"
+#include "ps2x/knobs.h"
+#include "socom2_rsa_key.h"
+
 namespace socom2_crypto
 {
     namespace
@@ -328,6 +332,30 @@ namespace socom2_crypto
         uint8_t digest[20];
         sha1(rdram + (data & PS2_RAM_MASK), len, digest);
         std::memcpy(rdram + (out & PS2_RAM_MASK), digest, outLen > 20u ? 20u : outLen);
+        ctx->pc = GPR_U32(ctx, 31);
+    }
+}
+
+// Moved here from game_overrides_socom2.cpp by Sprint 13 Task C8 (it is rt_crypt's, and the test binary now links
+// it rather than a stand-in; socom2_crypto_tests.cpp checks both precomputed pairs are real RSA pairs).
+// Bound at recompile time via recomp/socom2.toml: "socom2_RsaGenerateKeyPair@0x0062B168".
+// rt_crypt FUN_0062b168(LargeInt *n, LargeInt *d) generates a 512-bit RSA key pair with two random
+// 256-bit primes (e = 17); the prime search takes minutes under recompiled code and a fixed key
+// pair is equivalent for a private server, so the precomputed limbs are written instead.
+namespace ps2_stubs
+{
+    void socom2_RsaGenerateKeyPair(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
+    {
+        const uint32_t nAddr = GPR_U32(ctx, 4);
+        const uint32_t dAddr = GPR_U32(ctx, 5);
+        // PS2X_SOCOM2_RSA_KEY=b selects the second precomputed pair: two instances of the exe on
+        // one host otherwise publish the *same* public key in their DME 0x18 client record, while
+        // two PCSX2 clients publish distinct random keys (server/logs/console-DME.log).
+        const char *keyEnv = ps2x::knob("PS2X_SOCOM2_RSA_KEY");
+        const bool keyB = keyEnv && (*keyEnv == 'b' || *keyEnv == 'B' || *keyEnv == '1');
+        std::memcpy(rdram + (nAddr & PS2_RAM_MASK), keyB ? kSocom2RsaNb : kSocom2RsaN, sizeof(kSocom2RsaN));
+        std::memcpy(rdram + (dAddr & PS2_RAM_MASK), keyB ? kSocom2RsaDb : kSocom2RsaD, sizeof(kSocom2RsaD));
+        std::cout << "[socom2] rt_crypt RSA key pair -> fixed precomputed key " << (keyB ? "B" : "A") << std::endl;
         ctx->pc = GPR_U32(ctx, 31);
     }
 }

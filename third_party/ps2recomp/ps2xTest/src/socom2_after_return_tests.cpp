@@ -6,7 +6,7 @@
 // the rest of the callee (and is overwritten, or skipped), a read sees a half-done call. The on-screen keyboard's
 // wrap settled the rule (socom2_osk_prefill_tests.cpp): nothing a wrap needs is done after the original.
 //
-// The overrides file is linked into the runner, not into this binary (socom2_link_stubs.cpp says why), so these
+// The overrides file is linked into the runner, not into this binary (its static registrations must live in the executable: ps2xRuntime/CMakeLists.txt), so these
 // cases drive the pure halves the wraps are built from, the OSK suite's pattern: runtime/socom2_rtnet_config.h
 // (the rt_net config init done on the host, the port written before the return) and
 // runtime/socom2_trace_checkpoint.h (the point at which a trace's "after" values are final).

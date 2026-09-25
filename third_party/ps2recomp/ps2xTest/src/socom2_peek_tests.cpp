@@ -1,5 +1,5 @@
 // Sprint 13 Task C3, issue #39: PS2X_PEEK capped every item at 64 words silently and skipped an unresolved
-// chain without a cell. The sampler loop lives in the overrides file (not linked here, socom2_link_stubs.cpp);
+// chain without a cell. The sampler loop lives in the overrides file (not linked here: ps2xRuntime/CMakeLists.txt says why);
 // everything it decides is runtime/socom2_peek.h's, which these cases drive against a fake guest memory.
 #include "MiniTest.h"
 #include "runtime/socom2_peek.h"
