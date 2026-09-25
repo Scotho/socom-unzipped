@@ -24,9 +24,9 @@ scripts/parity/mixed_match2.sh 0x416054 console: cam_poll --spec over PINE on th
 scripts/parity/mixed_match2.sh 0x488de8 console: cam_poll's camera spec over PINE on the PCSX2 client (r0001 disc); cam_poll's own default is rendered from the table
 scripts/parity/mixed_match2_leg2.sh 0x416054 console: cam_poll --spec over PINE on the PCSX2 client, which boots the r0001 disc
 scripts/parity/mixed_match2_leg2.sh 0x488de8 console: cam_poll's camera spec over PINE on the PCSX2 client (r0001 disc); cam_poll's own default is rendered from the table
-scripts/parity/pcsx2/0F6FC6CF.pnach 0x2cc670 console: a PCSX2 patch for disc CRC 0F6FC6CF (the r0001 disc); a patch file is keyed to one disc image
-scripts/parity/pcsx2/0F6FC6CF.noreverb.pnach 0x2cc670 console: a PCSX2 patch for disc CRC 0F6FC6CF (the r0001 disc); a patch file is keyed to one disc image
-scripts/parity/pcsx2/0F6FC6CF.clientB.pnach 0x2cc670 console: a PCSX2 patch for disc CRC 0F6FC6CF (the r0001 disc); a patch file is keyed to one disc image
+scripts/parity/pcsx2/0F6FC6CF.pnach 0x2cc670 console: the `comment=` header's prose naming the DNAS-bypass site; the patch lines themselves (202CC670, no 0x) are keyed to disc CRC 0F6FC6CF, the r0001 disc
+scripts/parity/pcsx2/0F6FC6CF.noreverb.pnach 0x2cc670 console: the `comment=` header's prose naming the DNAS-bypass site; the patch lines themselves (202CC670, no 0x) are keyed to disc CRC 0F6FC6CF, the r0001 disc
+scripts/parity/pcsx2/0F6FC6CF.clientB.pnach 0x2cc670 console: the `comment=` header's prose naming the DNAS-bypass site; the patch lines themselves (202CC670, no 0x) are keyed to disc CRC 0F6FC6CF, the r0001 disc
 tools_py/parity/probe_poll.py 0x45c380 console: a PINE read of the collision world on PCSX2 at a savestate of the r0001 disc
 tools_py/parity/probe_poll.py 0x416054 console: a PINE read of the camera record on PCSX2 at a savestate of the r0001 disc
 tools_py/parity/addresses.py 0x00415700 console: the PINE driver's r0001 dialog-state pointer; imported by nothing today (audit finding 27's class) -- a caller on r0004 must first put it in the table

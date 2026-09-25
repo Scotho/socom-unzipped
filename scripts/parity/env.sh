@@ -42,6 +42,21 @@ SOCOM_SERVER_IP="${SOCOM_SERVER_IP:-socom.scotho.com}"
 export SOCOM_SERVER_IP
 export PS2X_SOCOM2_SERVER="${PS2X_SOCOM2_SERVER:-$SOCOM_SERVER_IP}"
 
+# THE CONSOLE LANES NEED AN IP, NOT A NAME. The mixed-match legs run tools_py.parity.dns_stub, which binds a
+# LAN address and answers the console's DNS with an A record -- neither can be a hostname, and the hosted
+# default above is one. There is deliberately no LAN default anywhere: a leg that needs one calls this and
+# refuses with the sentence, rather than failing later inside netstat or a Python traceback.
+#   socom_require_ipv4 <variable name> <caller>
+socom_require_ipv4() {
+  local _value="${!1:-}"
+  if [[ "$_value" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+    return 0
+  fi
+  echo "$2: $1 is '${_value:-<unset>}' -- set $1 to the LAN IP the DNS stub serves (an IPv4 address:" >&2
+  echo "  the stub binds it and answers the console with it, so the hosted name socom.scotho.com cannot stand in)" >&2
+  return 1
+}
+
 export PS2X_DEV="${PS2X_DEV:-1}"                            # everything below is a Dev knob (docs/KNOBS.md)
 export PS2X_HOST_GAMEPAD="${PS2X_HOST_GAMEPAD:-0}"          # a launch boots with no controller (see gate.py)
 export PS2X_SOCOM2_INPUT_TRACE="${PS2X_SOCOM2_INPUT_TRACE:-1}"

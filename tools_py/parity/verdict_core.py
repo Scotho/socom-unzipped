@@ -809,7 +809,7 @@ class Valve:
 # H22). The chains are rendered in r0001's addresses, spelled `"%#x"` exactly as `chain_for` expects, and
 # `chain_for` re-renders them per revision. The NAME POINTERS are r0001-only: they are heap addresses
 # (above every PT_LOAD segment of the image), `data_via_twin` cannot place them, and the table leaves their
-# r0004 cells absent with that reason (guest_addresses.UNCONFIRMED_COLUMNS). So the pointer mode --
+# r0004 cells absent with that reason (guest_addresses.UNPLACED). So the pointer mode --
 # `valve_rows` and move-path's --round-name-ptr -- is r0001-only, and the CLI refuses it on a log that
 # is not r0001's (`pointer_mode_refusal`); everything that scores identifies a valve by its name bytes.
 _NET_GAME = "%#x" % ga.address("net_game", "r0001")
@@ -1033,16 +1033,20 @@ def stall_context(items):
 
 def pointer_mode_refusal(lines, peek_rows):
     """None when a log may be read in the pointer mode (`valve_rows` with an r0001 name pointer), else the
-    sentence that refuses it. The mode is r0001-only (see VALVES). The log's own address-table line decides;
-    a log from before that line existed decides by its rows -- an item at any other column's address makes
-    it that column's. A log that says neither, and carries no other column's address, is an r0001 log:
-    the r0004 lane began after the runtime started printing the line."""
+    sentence that refuses it. The mode is r0001-only (see VALVES). The log's own address-table line decides,
+    else its rows: the log is a column's when its items sit at that column's addresses and at no other's.
+    A log that shows neither is REFUSED, not assumed r0001 -- the same rule music_state_poll keeps."""
     try:
         revision = ga.log_revision(lines)[0]
     except ValueError:
-        other = {ga.address(n, r): r for n in ga.all_names() if n != "actor_vtable"
-                 for r in ga.REVISIONS if r != "r0001"}
-        revision = next((other[a] for _t, items in peek_rows for a, _w in items if a in other), "r0001")
+        by_addr = {ga.address(n, r): r for n in ga.all_names() if n != "actor_vtable" for r in ga.REVISIONS}
+        seen = {by_addr[a] for _t, items in peek_rows for a, _w in items if a in by_addr}
+        if len(seen) != 1:
+            return ("--round-name-ptr needs to know the log is r0001's, and this one does not say: no "
+                    "'[socom2] address table: ...' line, and its rows carry %s. Drop the flag -- without it "
+                    "the valve is found by its NAME BYTES, which read every revision."
+                    % ("no table address" if not seen else "addresses of " + " and ".join(sorted(seen))))
+        revision = seen.pop()
     if revision == "r0001":
         return None
     return (f"--round-name-ptr is r0001-only and this log is {revision}'s: a valve's name pointer is a heap "

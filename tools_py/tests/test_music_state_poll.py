@@ -718,8 +718,20 @@ class PerRevision(unittest.TestCase):
         with self.assertRaises(ValueError) as e:
             msp.bind_revision("r0004")
         self.assertIn("vagstore_base", str(e.exception))
-        self.assertIn("UNCONFIRMED", str(e.exception))
+        self.assertIn("UNPLACED", str(e.exception))
+        self.assertIn("offsets", str(e.exception))
         self.assertEqual((msp.OURS_PEEK_SPEC, msp.MUSIC_PEEK_SPEC, msp.ROUTE_ADDR, msp.REVISION), before)
+
+    def test_placing_every_static_would_not_be_enough_the_offsets_refuse_too(self):
+        """A future placement of vagstore_base must not silently read r0004 through r0001's offsets."""
+        from unittest import mock
+        from tools_py.parity import guest_addresses as ga
+        fake = {n: 0x00500000 + 4 * i for i, n in enumerate(msp.STATIC_NAMES.values())}
+        with mock.patch.object(ga, "addresses", lambda names, rev: {n: fake[n] for n in names}):
+            with self.assertRaises(ValueError) as e:
+                msp.bind_revision("r0004")
+        self.assertIn("unverified on r0004", str(e.exception))
+        self.assertEqual(msp.REVISION, "r0001")
 
     def test_the_cli_refuses_r0004_with_a_sentence(self):
         err = io.StringIO()

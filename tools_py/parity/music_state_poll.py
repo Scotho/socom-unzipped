@@ -146,8 +146,9 @@ from tools_py.parity.cam_poll import pine_port, resolve  # noqa: E402
 # here; they are read from tools_py/parity/guest_addresses.py's table BY NAME now. The module-level
 # constants are the r0001 column, by name and stated -- every caller and test that imports them has always
 # meant r0001 -- and `bind_revision()` re-binds all eight to another column, or refuses the whole set when
-# the table lacks any of them for it. On r0004 it refuses today: `vagstore_base` has no r0004 cell
-# (guest_addresses.UNCONFIRMED_COLUMNS says why). Reading r0001's place on an r0004 run is the one thing
+# the table lacks any of them for it. On r0004 it refuses today, twice over: `vagstore_base` has no r0004
+# cell (guest_addresses.UNPLACED says why), and the chains' struct offsets are r0001's and unverified there
+# (OFFSETS_VERIFIED, below). Reading r0001's place on an r0004 run is the one thing
 # this must not do -- the words come back, from somebody else's memory.
 STATIC_NAMES = {"ROUTE_ADDR": "cue_route", "MGR_PTR_ADDR": "cue_manager_ptr", "MUSIC_ADDR": "music_globals",
                 "MUSIC_OFF_ADDR": "music_off", "TABLES_ADDR": "music_tables", "STORE_BASE_ADDR": "vagstore_base",
@@ -227,12 +228,32 @@ COMMON_PEEK, OURS_PEEK_SPEC, MUSIC_PEEK_SPEC = _specs()
 MUSIC_SAMPLER_S = "0.1"
 
 
+# The revisions whose STRUCT OFFSETS this module's chains use have been verified on: the manager's +0x34
+# entry / +0x20 queue / +0x30 slots, the entry's +0x4 def, the def's +0x20 name, the playlist's +0x8
+# entries, the store's +0x18 (the layouts in the docstring). They were all read on r0001's decomp. KNOWN.md
+# §4: a struct offset is per-revision data too (the actor gained a word at +0x1334 on r0004), and a wrong
+# one answers with a number -- so placing the statics is not enough; the offsets must be measured before
+# another revision is added here.
+OFFSETS_VERIFIED = ("r0001",)
+
+
 def bind_revision(revision):
     """Re-bind every static (and the two PS2X_PEEK specs built from them) to `revision`'s column. All
     eight or none: a name the table has no `revision` cell for raises ValueError naming each absent one
-    and why (guest_addresses.UNCONFIRMED_COLUMNS), and the module is left as it was."""
+    and why (guest_addresses.UNPLACED); a revision whose chain OFFSETS are unverified (OFFSETS_VERIFIED)
+    raises too, even once every static is placed. The module is left as it was."""
     global REVISION, COMMON_PEEK, OURS_PEEK_SPEC, MUSIC_PEEK_SPEC
-    got = ga.addresses(list(STATIC_NAMES.values()), revision)
+    problems = []
+    try:
+        got = ga.addresses(list(STATIC_NAMES.values()), revision)
+    except ValueError as e:
+        got, problems = None, [str(e)]
+    if revision not in OFFSETS_VERIFIED:
+        problems.append("music_state_poll: the chains' struct offsets (manager +0x34/+0x20/+0x30, entry +0x4, "
+                        "def +0x20, playlist +0x8, store +0x18) are r0001's and unverified on %s -- measure "
+                        "them and add %s to OFFSETS_VERIFIED before reading this revision" % (revision, revision))
+    if problems:
+        raise ValueError("\n".join(problems))
     g = globals()
     for const, name in STATIC_NAMES.items():
         g[const] = got[name]

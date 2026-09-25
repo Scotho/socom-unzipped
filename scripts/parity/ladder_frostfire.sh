@@ -32,7 +32,8 @@
 #
 # Before a launch (plan Task 5 Step 3): the local Horizon stack running (server/), persona B on game/disc/mc0_b
 # (--existing-b), no socom2.exe running, `powershell -File scripts/kill_stale_drivers.ps1`, no other heavy host work.
-# SOCOM_SERVER_IP (scripts/parity/env.sh) must be this machine's LAN address (192.168.2.10 is the owner's).
+# SOCOM_SERVER_IP (scripts/parity/env.sh) is the server: the hosted box by name unless set; for a Horizon
+# stack on this machine, set it to this machine's LAN address.
 #
 # Instruments: scripts/parity/online_match_frostfire.sh's (MoveScale + NetIdle at EVERY=10; the actor block, +0x420,
 # +0x174, the +0xF7A alive byte (inside the +0xF78 peek), +0x1044 health; CZNetGame + valves with name bytes; mission abort; the round clocks

@@ -8,8 +8,9 @@ as our exe's [peek] lines, so the two sides diff field by field.
 Default spec: the mission camera object (static scene 0x4887c0 + 0x628 -> pointer), 96 words from
 +0x120. The pointer's address is read from tools_py/parity/guest_addresses.py by name (`camera_ptr`),
 in the column --revision names -- r0001 by default, because the console boots the r0001 disc. r0004's
-pointer is placed (data_via_twin, 14 twinned referrers in 11 functions, unanimous); the +0x120 window
-start is r0001's, and the camera object's r0004 layout is not established.
+POINTER is placed (data_via_twin, 14 twinned referrers in 11 functions, unanimous), but the +0x120 window
+start is a struct offset measured on r0001 only (KNOWN.md §4: a wrong offset answers with a number), so
+the r0004 DEFAULT refuses; an explicit --spec is taken as written.
 
 Usage: python -m tools_py.parity.cam_poll --out logs/parity/cam_pcsx2.txt [--seconds 330]
            [--every 5] [--revision r0001] [--spec "*0x488de8+0x120:96"] [--spec "*0x488de8+0xbc*+0x1070:64"]
@@ -28,9 +29,20 @@ from tools_py.parity.pine import Pine
 DEFAULT_REVISION = "r0001"
 
 
+# The window's start inside the camera object, per revision. Only r0001's is measured: the object's layout
+# on any other build is unverified, and an absent cell refuses like an absent address does.
+CAMERA_WINDOW_OFFSET = {"r0001": 0x120}
+
+
 def default_spec(revision=DEFAULT_REVISION):
-    """The mission camera block, 96 words from +0x120 of the object `camera_ptr` points at."""
-    return "*%#x+0x120:96" % ga.address("camera_ptr", revision)
+    """The mission camera block, 96 words from +0x120 of the object `camera_ptr` points at. Raises
+    ValueError on a revision whose window offset is unverified, even where the pointer is placed."""
+    ptr = ga.address("camera_ptr", revision)
+    if revision not in CAMERA_WINDOW_OFFSET:
+        raise ValueError("cam_poll: no default spec on %s -- camera_ptr is placed there (%#x) but the +0x120 "
+                         "window offset is r0001's and the camera object's %s layout is unverified; pass "
+                         "--spec explicitly" % (revision, ptr, revision))
+    return "*%#x+%#x:96" % (ptr, CAMERA_WINDOW_OFFSET[revision])
 
 
 DEFAULT_SPEC = default_spec()
@@ -96,7 +108,10 @@ def main():
                     help="the disc the console booted: which column the DEFAULT spec's pointer is read from "
                          "(default r0001; an explicit --spec is taken as written)")
     a = ap.parse_args()
-    specs = a.spec or [default_spec(a.revision)]
+    try:
+        specs = a.spec or [default_spec(a.revision)]
+    except ValueError as e:
+        ap.error(str(e))
     port = a.port or pine_port()
     t0 = time.time()
     p = None

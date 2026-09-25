@@ -184,8 +184,13 @@ REVISIONS = tuple(sorted({r for table in (PROBE_ADDRESSES, ONLINE_ADDRESSES, TRA
 # `tools_py/tests/test_no_bare_guest_addresses.py` now refuses a new one anywhere under tools_py/parity.
 #
 # UNLIKE THE THREE TABLES ABOVE, A COLUMN HERE MAY BE MISSING. A value `data_via_twin` cannot place is not
-# written down at all -- the r0004 cell is ABSENT, `address()` raises for it, and UNCONFIRMED_COLUMNS says
-# why and what would settle it. A guessed number (the neighbour's delta, the object base plus r0001's
+# written down at all -- the r0004 cell is ABSENT, `address()` raises for it, and UNPLACED says
+# why and what would settle it.
+#
+# UNPLACED IS NOT UNCONFIRMED. `UNCONFIRMED` (above) is a set of names whose value IS carried -- it rests
+# on one twinned referrer, the instrument keeps peeking it, and no scorer may key a verdict on it.
+# `UNPLACED` is a set of (name, revision) cells with NO value at all: nothing reads them, `address()`
+# refuses them, and the reason is what it prints. A guessed number (the neighbour's delta, the object base plus r0001's
 # displacement) is exactly what this table exists to keep out. So these names are NOT in `all_names()`,
 # which promises every revision's column for every name (the online harness's tests iterate it on both
 # columns); `instrument_names()` lists them.
@@ -208,7 +213,7 @@ REVISIONS = tuple(sorted({r for table in (PROBE_ADDRESSES, ONLINE_ADDRESSES, TRA
 #                                             object it points at: that is a WINDOW, not one field, and
 #                                             the camera object's layout on r0004 is not established.
 #
-# ... and the ones it CANNOT place, whose r0004 cell is absent (UNCONFIRMED_COLUMNS):
+# ... and the ones it CANNOT place, whose r0004 cell is absent (UNPLACED):
 #
 #   vagstore_base     0x48dc48                0 materialising sites: the game reaches it as +0x18 inside
 #                                             the VAGSTORE object 0x48dc30, which the tool DOES place
@@ -250,7 +255,8 @@ _VALVE_NAME_WHY = ("a heap pointer (above every PT_LOAD segment of the image), s
                    "materialising site to twin; verdict_core's pointer mode is r0001-only -- identify the "
                    "valve by its name bytes (verdict_core.row_valve) instead")
 # (name, revision) -> why that cell is absent, and what would fill it. `address()` puts this in its refusal.
-UNCONFIRMED_COLUMNS = {
+# Not UNCONFIRMED (a carried value on thin evidence): an UNPLACED cell has no value to carry.
+UNPLACED = {
     ("vagstore_base", "r0004"): "data_via_twin: 0 materialising sites (the game reaches it as +0x18 of "
                                 "the VAGSTORE object 0x48dc30 -> 0x490ff0, which IS placed); the r0004 "
                                 "displacement of that field is not established -- read the twin of "
@@ -262,7 +268,7 @@ UNCONFIRMED_COLUMNS = {
                                    "(UNRESOLVED); +0xcc of the pack object 0x415d40 -> 0x442700, whose "
                                    "r0004 layout is not established",
 }
-UNCONFIRMED_COLUMNS.update({(n, "r0004"): _VALVE_NAME_WHY for n in INSTRUMENT_ADDRESSES
+UNPLACED.update({(n, "r0004"): _VALVE_NAME_WHY for n in INSTRUMENT_ADDRESSES
                             if n.startswith("valve_name.")})
 
 
@@ -281,24 +287,24 @@ def all_names():
 
 def instrument_names():
     """The names of INSTRUMENT_ADDRESSES: the audio poll, the motion-pack check, cam_poll, the valve
-    name pointers. A column here may be absent -- see UNCONFIRMED_COLUMNS."""
+    name pointers. A column here may be absent -- see UNPLACED."""
     return sorted(INSTRUMENT_ADDRESSES)
 
 
 def address(name, revision):
     """This revision's address for one probe input. A name or a revision the table does not carry raises,
     naming what it does have -- never the other column's number. For a cell the table leaves absent on
-    purpose, the refusal says why (UNCONFIRMED_COLUMNS)."""
+    purpose, the refusal says why (UNPLACED)."""
     col = _column_of(name)
     if col is None:
         raise ValueError("guest addresses: no probe address called %r (have: %s)"
                          % (name, ", ".join(all_names() + instrument_names())))
     if revision not in col:
-        why = UNCONFIRMED_COLUMNS.get((name, revision))
+        why = UNPLACED.get((name, revision))
         raise ValueError("guest addresses: no %s address for revision %r -- this table has columns for "
                          "%s.%s Reading another revision's address is the defect this table exists to stop."
                          % (name, revision, ", ".join(sorted(col)),
-                            (" UNCONFIRMED on %s: %s." % (revision, why)) if why else ""))
+                            (" UNPLACED on %s: %s." % (revision, why)) if why else ""))
     return col[revision]
 
 

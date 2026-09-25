@@ -29,6 +29,8 @@ _socom_refusal() {
 trap _socom_refusal EXIT
 . "$(dirname "$0")/env.sh"
 socom_require_python mixed_match
+# The DNS stub binds and answers SOCOM_SERVER_IP here, so it must be the LAN IP, not env.sh's hosted name.
+socom_require_ipv4 SOCOM_SERVER_IP mixed_match || exit 9
 OUT="${1:-logs/parity/mixed_ours_hosts}"
 NAME="$(basename "$OUT")"
 PCSX2_OUT="$OUT/pcsx2"

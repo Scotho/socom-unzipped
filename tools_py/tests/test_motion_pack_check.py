@@ -76,7 +76,7 @@ class PerRevision(unittest.TestCase):
         with self.assertRaises(ValueError) as e:
             mpc.pack_addresses("r0004")
         self.assertIn("motion_pack_ptr", str(e.exception))
-        self.assertIn("UNCONFIRMED", str(e.exception))
+        self.assertIn("UNPLACED", str(e.exception))
 
     def test_the_image_names_its_revision_or_is_refused(self):
         self.assertEqual(mpc.image_revision(b"\0" * 64 + b"SOCOM 2 r0004 17:22:21 Oct 11 2003\0"), "r0004")

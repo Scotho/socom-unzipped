@@ -18,9 +18,9 @@
 #
 # Preconditions: the local Horizon stack running (server/), persona B already on game/disc/mc0_b
 # (--existing-b), no socom2.exe running, stale drivers killed (scripts/kill_stale_drivers.ps1) and the
-# loop lock held by the caller (scripts/run_detached.sh). SOCOM_SERVER_IP (scripts/parity/env.sh) must be
-# this machine's LAN address, or the exe advertises 127.0.0.1 as its own address (docs/HANDOFF.md);
-# 192.168.2.10 is the owner's machine -- override SOCOM_SERVER_IP elsewhere.
+# loop lock held by the caller (scripts/run_detached.sh). SOCOM_SERVER_IP (scripts/parity/env.sh) is the
+# server: the hosted box by name unless set. For a Horizon stack on this machine set it to this machine's
+# LAN address, or the exe advertises 127.0.0.1 as its own address (docs/HANDOFF.md).
 #
 # Usage: scripts/parity/online_match_frostfire.sh [out_dir]   (default logs/parity/ours_frostfire)
 #
