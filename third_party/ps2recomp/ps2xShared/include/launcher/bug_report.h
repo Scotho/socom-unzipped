@@ -105,11 +105,15 @@ namespace launcher::bugreport
             Failed
         };
         Kind kind = Kind::Failed;
-        std::string id;                 // Sent: "BR-20260919-ABC123", or "" when the id did not look like ours
+        std::string id;                 // Sent: the site's id upper-cased, as kSampleShownId; "" when it did not look like ours
         std::string field;              // FieldError: "title" | "description" | ... | ""
         int retryAfterSeconds = 0;      // RateLimited: the Retry-After header, 0 when absent
         std::string text;               // one line for the screen, report.ts replyText's words
     };
+    // The id the launcher's screenshots show on a sent report (main.cpp's --screenshot walk). The site issues ids
+    // lower-case (report.ts: /^BR-\d{8}-[0-9a-f]{6}$/) and the launcher shows them upper-cased, as the site does;
+    // this sample is one such shown id, and bug_report_tests.cpp holds it to that (Sprint 13 V8, stranger row 15).
+    inline constexpr const char *kSampleShownId = "BR-20260919-A1B2C3";
     // `status` 0 = no connection. `retryAfterSeconds` is the Retry-After header as a number, 0 when absent.
     Reply parseReply(int status, const std::string &body, int retryAfterSeconds = 0);
     // The line that follows a report that could not be sent and was written to `path` instead.

@@ -105,5 +105,58 @@ class Notices(unittest.TestCase):
         self.assertIn("version 3", root.lower())
 
 
+ABOUT = os.path.join(ROOT, "third_party", "ps2recomp", "ps2xLauncher", "src", "ui", "page_about.cpp")
+
+
+def component_names(cell):
+    """A notices Component cell -> the names it credits: 'libc++, libunwind (llvm-mingw)' is two; a parenthetical
+    is a description, not a name; 'the PS2Recomp fork' on the ABOUT page is 'PS2Recomp'."""
+    cell = re.sub(r"\s*\([^)]*\)", "", cell)
+    out = set()
+    for part in cell.split(","):
+        name = re.sub(r"^the |\s+fork$", "", part.strip())
+        if name:
+            out.add(name.lower())
+    return out
+
+
+def about_credits():
+    """page_about.cpp's BUILT FROM rows: [(names, licence cell), ...]."""
+    with open(ABOUT, encoding="utf-8") as fh:
+        text = fh.read()
+    block = re.search(r"credits\[\]\[2\]\s*=\s*\{(.*?)\n\s*\};", text, re.S).group(1)
+    return [(component_names(what), licence) for what, licence in re.findall(r'\{"([^"]+)",\s*"([^"]+)"\}', block)]
+
+
+class AboutAgreesWithTheNotices(unittest.TestCase):
+    """Sprint 13 V8 (stranger audit row 14): ABOUT's BUILT FROM credited SDL2, which the notices say does not ship,
+    and left out Dear ImGui, libjxl, libwebp and Brotli, which do. Every credit is a shipping row (Ships 'yes'; a
+    'when the closure needs it' row is not shipping -- winpthreads, which nothing imports today), with the same
+    licence ids, and every shipping row is credited."""
+
+    def shipped(self):
+        out = {}
+        for r in rows():
+            if r[5].lower().startswith("yes"):
+                for name in component_names(r[0]):
+                    out[name] = licence_ids(r[3])
+        self.assertGreater(len(out), 8)
+        return out
+
+    def test_every_credit_ships_under_the_licence_the_notices_give(self):
+        shipped = self.shipped()
+        for names, licence in about_credits():
+            for name in names:
+                with self.subTest(credit=name):
+                    self.assertIn(name, shipped, f"ABOUT credits {name}, which the notices do not list as shipping")
+                    self.assertEqual(licence_ids(licence), shipped[name], f"{name}: ABOUT says {licence!r}")
+
+    def test_every_shipped_component_is_credited(self):
+        credited = set().union(*(names for names, _ in about_credits()))
+        for name in sorted(self.shipped()):
+            with self.subTest(component=name):
+                self.assertIn(name, credited, f"{name} ships and ABOUT's BUILT FROM does not credit it")
+
+
 if __name__ == "__main__":
     unittest.main()

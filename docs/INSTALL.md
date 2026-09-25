@@ -25,7 +25,8 @@ This page is for players. Building it yourself is `DEVELOPING.md`; what is prove
   works, and the launcher will not start the game on one.
 - **A controller** — an Xbox pad, or any DirectInput pad Windows recognises. The keyboard walks the menus and types,
   but the launcher's own CONTROLLER page says it plainly: *"Playing needs a controller."*
-- **Optional: a microphone**, if you want voice. Voice is untested end to end (`KNOWN.md`).
+- **Optional: a microphone.** The game does not send your voice yet; the MICROPHONE page lets you pick the device and
+  watch its meter, so it is ready when voice lands (`KNOWN.md`'s voice row).
 
 Nothing else is installed and nothing is written outside the game's own folder.
 
@@ -77,8 +78,8 @@ sentence. These are the sentences, exactly as it prints them:
 | The verdict | What it means |
 |---|---|
 | `SOCOM II U.S. Navy SEALs NTSC r0001` | Green. This is the disc; you can play. |
-| `choose the SOCOM II ISO` | No image is set yet. |
-| `cannot open the file` | The path is wrong, or the file cannot be read. |
+| `choose your SOCOM II disc image first` | No image is set yet. |
+| `cannot open the file` | The path is wrong (the file was moved or renamed, or its drive is not there), or the file cannot be read. |
 | `not a SOCOM II disc image (no SCUS_972.75)` | The image opened, but it is not SOCOM II. |
 | `cannot read SCUS_972.75` | The file is on the disc but the image is damaged there. |
 | `not SOCOM II NTSC r0001 (SCUS_972.75 differs)` | A SOCOM II disc, but not the revision this build plays. |
@@ -93,8 +94,10 @@ The page has two sections.
 
 **SETUP** picks which pad the game reads and sets the stick **DEAD ZONE**. A drawing of a pad sits above:
 *"Press a button: what lights up above is what the game reads. The ring is the dead zone."* If no pad is found it
-says so instead. Under the dead zone, the launcher states what the keyboard is for: *"Menus and typing only: arrows,
-Enter, Backspace, Z/X/C/V."* and *"Playing needs a controller."*
+says so instead. Under the dead zone, the launcher states what the keyboard is for: *"Menus and typing: arrows, Enter, Esc, Backspace, Space, Z/X/C/V."*
+and *"Q/E/1/2/3/4: L1/R1/L2/L3/R2/R3. Playing needs a controller."* -- the second line is why the crouch shortcut
+below can move fire mode to the 2 key. *(Until 2026-09-25 the first line said "only" and the second named no keys,
+which the crouch hint contradicted; Sprint 13 V8.)*
 
 **BUTTONS** rebinds what each pad button and each key sends to the game. A mapping is saved **per profile**, so two
 people sharing one machine keep their own.
@@ -119,11 +122,10 @@ servers run r0001; this is the r0004 build"*.
 
 *(Until 2026-09-25 this page did not mention the GAME VERSION row, so its greyed cell went unexplained.)*
 
-If LAUNCH is greyed out, the line above it says why, in one of these three:
-
-- `choose your SOCOM II disc image first`
-- `that file is not SOCOM II (NTSC, r0001)`
-- `the game is running`
+If LAUNCH is greyed out, the line above it says why: `the game is running`, or the DISC page's own sentence for the
+disc's state (the table in section 5) -- `choose your SOCOM II disc image first`, `cannot open the file`, and so on.
+*(Until 2026-09-25 every failed disc read `that file is not SOCOM II (NTSC, r0001)` here, a moved ISO included;
+Sprint 13 V8.)*
 
 After a run ends, a **LAST RUN** line appears between the rows and the button, carrying the sentence for however the
 game exited. Every one of those sentences has an entry in `FAQ.md`.

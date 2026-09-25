@@ -71,7 +71,7 @@ build:    NOT BUILT. No archive exists for the current tree: the v0.12.0 draft r
    graphic should be better, with hold-a-button-to-remap.~~ Both fixed in fix wave A (`46a6594`, W1; `668c7f5`, W9)
    -- this step now checks the fixes.
 4. **A failure that explains itself** *(b)*. Point DISC at a path that does not exist: the DISC page should say
-   `cannot open the file`, and LAUNCH should grey out with `that file is not SOCOM II (NTSC, r0001)`. Point DISC back
+   `cannot open the file`, and LAUNCH should grey out with the same sentence. Point DISC back
    and let it verify. Then, with the launcher still open, rename your ISO and press LAUNCH: LAST RUN should say the
    disc was not found (exit 66). Rename it back. Press SAVE DIAGNOSTICS, open the zip: your Windows user name should
    be nowhere in it.

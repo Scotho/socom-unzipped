@@ -26,7 +26,7 @@ namespace ui
         const Rgba lamp = app.discOk ? theme::lampGreen : (app.config.isoPath.empty() ? theme::warn : theme::bad);
         fillCircle(ctx, Vec2{verdict.x + 30.0f, verdict.cy()}, 9.0f, lamp);
         strokeCircle(ctx, Vec2{verdict.x + 30.0f, verdict.cy()}, 15.0f, theme::alpha(lamp, 110), 2.0f);
-        const std::string message = app.discMessage.empty() ? std::string("not checked yet") : app.discMessage;
+        const std::string message = app.discMessage.empty() ? std::string(kDiscNotChecked) : app.discMessage;
         text(ctx, ellipsizeEnd(ctx, message, verdict.w - 90.0f, 22.0f, Face::Bold).c_str(),
              Vec2{verdict.x + 60.0f, verdict.y + 16.0f}, 22.0f, app.discOk ? theme::text : lamp, Face::Bold);
         caption(ctx, Vec2{verdict.x + 60.0f, verdict.y + 44.0f},

@@ -1,4 +1,5 @@
 #include "socom2_hostnet.h"
+#include "ps2x/exit_codes.h"
 #include "ps2x/knobs.h"
 
 #ifdef _WIN32
@@ -40,6 +41,17 @@ namespace socom2_hostnet
     // public header: it exists so socom2_libnetb_tests.cpp can drive the PS2X_SOCOM2_SERVER
     // parse without touching the process environment or re-running init().
     uint32_t parseServerAddress(const std::string &value);
+
+    // Sprint 13 V8: what PS2X_SOCOM2_SERVER becomes. Unset or empty: loopback, the local Horizon stack. An
+    // IPv4 literal or a name that resolves: that address. Anything else is REFUSED: the answer is 0 and
+    // `refusal` is the [notice] line (ExitCodes::kServerUnresolved) the launcher appends to LAST RUN -- a
+    // notice, not an exit code (ruling S13-R9): the run goes on offline and its exit code is left alone. It
+    // was loopback, silently, until then -- a stranger whose DNS failed met "the server is down" (KNOWN
+    // section 4's hazard row). Not in the public header, for the same reason as parseServerAddress.
+    uint32_t serverForKnob(const char *value, std::string &refusal);
+    // The server half of loadHosts() with `value` in place of the knob, under the table's lock; for
+    // socom2_libnetb_tests.cpp, since init() runs loadHosts() once per process.
+    void testApplyServer(const char *value);
 
     // The platform's error reporting, at namespace scope for the same reason parseServerAddress
     // is: socom2_libnetb_tests.cpp drives them directly, and "what does this platform call
@@ -206,20 +218,32 @@ namespace socom2_hostnet
             return 0;
         }
 
-        void loadHosts()
+        // The seven retail names all go to one server. On a refusal they go to 0, which resolve() answers as
+        // a failed lookup (sceInetName2Address -> kErrDns): the game's own "cannot connect" path, never
+        // loopback and never the OS's DNS for Sony's names. The refusal is printed once: the value on stderr
+        // for the log, and the [notice] line on stdout, as ps2_runtime.cpp prints no-audio-device, which the
+        // launcher's LAST RUN appends to whatever the exit was. Callers hold g_mutex.
+        void applyServerLocked(const char *value)
         {
-            uint32_t server = 0x7f000001u;
-            if (const char *env = ps2x::knob("PS2X_SOCOM2_SERVER"))
+            std::string refusal;
+            const uint32_t server = serverForKnob(value, refusal);
+            if (!refusal.empty())
             {
-                const uint32_t ip = parseServerAddress(env);
-                if (ip)
-                    server = ip;
+                std::cerr << "[socom2/hostnet] PS2X_SOCOM2_SERVER=" << value
+                          << " is neither an IPv4 address nor a name that resolves; the retail names are refused"
+                          << std::endl;
+                std::cout << refusal << std::endl;
             }
             for (const char *name : {"socom2-prod.pdonline.scea.com", "socom2-prod.svo.pdonline.scea.com",
                                      "socom2-prod.muis.pdonline.scea.com", "gate1.us.dnas.playstation.org",
                                      "gate1.jp.dnas.playstation.org", "gate1.eu.dnas.playstation.org",
                                      "updates.pdonline.scea.com"})
                 g_hosts[name] = server;
+        }
+
+        void loadHosts()
+        {
+            applyServerLocked(ps2x::knob("PS2X_SOCOM2_SERVER"));
             if (const char *env = ps2x::knob("PS2X_SOCOM2_HOSTS"))
             {
                 std::stringstream ss(env);
@@ -300,9 +324,10 @@ namespace socom2_hostnet
 #endif
 
     // PS2X_SOCOM2_SERVER is a numeric IPv4 literal or a DNS name -- a hosted server is reached by
-    // name. Returns host byte order IPv4, or 0 when the value is neither, so the caller keeps
-    // whatever it had. Winsock is already up where it has to be: init() runs WSAStartup before
-    // loadHosts(), which is the only caller inside the runtime, and getaddrinfo needs nothing
+    // name. Returns host byte order IPv4, or 0 when the value is neither; serverForKnob() turns that
+    // 0 into a refusal (Sprint 13 V8; it was "keep loopback" until then). Winsock is already up where
+    // it has to be: init() runs WSAStartup before loadHosts(), which is the only caller inside the
+    // runtime, and getaddrinfo needs nothing
     // earlier than that. On BSD sockets there is nothing to start.
     uint32_t parseServerAddress(const std::string &value)
     {
@@ -327,11 +352,24 @@ namespace socom2_hostnet
         }
         if (res)
             freeaddrinfo(res);
-        if (!ip)
-            std::cerr << "[socom2/hostnet] PS2X_SOCOM2_SERVER=\"" << value
-                      << "\" is neither an IPv4 address nor a name that resolves; ignoring it"
-                      << std::endl;
         return ip;
+    }
+
+    uint32_t serverForKnob(const char *value, std::string &refusal)
+    {
+        refusal.clear();
+        if (value == nullptr || *value == '\0')
+            return 0x7f000001u;   // unset: the local Horizon stack (knobs.h's default)
+        if (const uint32_t ip = parseServerAddress(value))
+            return ip;
+        refusal = ExitCodes::noticeLine(ExitCodes::kServerUnresolved);
+        return 0;
+    }
+
+    void testApplyServer(const char *value)
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        applyServerLocked(value);
     }
 
     bool init()
@@ -353,7 +391,9 @@ namespace socom2_hostnet
 #endif
         loadHosts();
         g_initialized = true;
-        std::cout << "[socom2/hostnet] " << stackName << " ready; retail hostnames -> " << ipToString(g_hosts["socom2-prod.muis.pdonline.scea.com"]) << std::endl;
+        const uint32_t retail = g_hosts["socom2-prod.muis.pdonline.scea.com"];
+        std::cout << "[socom2/hostnet] " << stackName << " ready; retail hostnames -> "
+                  << (retail ? ipToString(retail) : std::string("refused (server-unresolved notice)")) << std::endl;
         return true;
     }
 
@@ -715,7 +755,7 @@ namespace socom2_hostnet
         {
             std::lock_guard<std::mutex> lock(g_mutex);
             auto it = g_hosts.find("socom2-prod.muis.pdonline.scea.com");
-            if (it != g_hosts.end())
+            if (it != g_hosts.end() && it->second != 0)   // 0: the server was refused; ask about loopback
                 target = it->second;
         }
         SocketHandle s = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
