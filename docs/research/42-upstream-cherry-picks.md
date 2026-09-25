@@ -5,9 +5,11 @@ PRs listed in `docs/research/40-upstream-divergence.md` §5 and cherry-picked th
 their own; Step 2 (this note) rebased each surviving branch onto the moving `sprint-11` and ran
 `./build.sh runtime --no-runner && ./build.sh test --no-runner` under the loop lock, once per branch.
 
-The **verdict column is deliberately empty.** KEEP/DROP is the controller's Step 3 decision, taken on the
-`s11_pr<N>_gate` 3/3 runs and, for the GS/VIF picks, `--vram-diff` 15/15. Nothing here is merged to `sprint-11`,
-nothing is pushed, and no game was launched by this step.
+The verdict column was left empty by Steps 1-2 and is **filled by Step 3** (§6, 2026-09-25): KEEP/DROP taken on
+the `s11_pr<N>_gate` 3/3 runs and, for the GS/VIF picks, `--vram-diff` 15/15. Sections 1-5 below are Step 2's
+record and are unchanged — the suite figures there are the ones Step 2 measured, on Step 2's bases; §6 carries
+Step 3's own. Nothing here is merged to `sprint-11` and nothing is pushed; Steps 1-2 launched no game, Step 3
+launched eleven gates and one online lane.
 
 Worktree: `C:\projects\wt-cherry` (a worktree of this repository; `C:\projects\socom_pc`'s working tree was not
 touched). Branches: `agent/pr<N>`, one to three commits each on top of `sprint-11`.
@@ -60,16 +62,16 @@ base. Every pick brings its own tests, so "all pass" includes the PR's own cases
 
 | PR | What it does | Files (besides its tests) | Rebased | Suite | ps2xIOP / SIF contact | Verdict (Step 3) |
 |---|---|---|---|---|---|---|
-| **#231** TEXCLUT by CLUT storage mode | CSM1 ignores COU/COV/CBW and reads from block 0; CSM2 shifts COU left by 4. Before: COU/COV/CBW were applied in both modes. | `gs/gs_cpu_backend.cpp` (+8/−3) | yes, onto `38161fd` (`0340bc4`) | **all pass** — Python 2268 OK (106 skipped); `ps2x_tests` 868/868, 0 failed; vram diff 15/15 checked at 1.00% tolerance; 8 field compares 0 mismatching | none | |
-| **#229** GIF IMAGE2 (FLG=3) | `GIF_FMT_DISABLED` becomes `GIF_FMT_IMAGE2` and is decoded as an image transfer in the GIF frontend, the native image-upload fast paths and the VU1 XGKICK tag walk. | `gs/gs_types.h`, `gs/gs_frontend.cpp`, `ps2_memory.cpp`, `vu/ps2_vu1_core.cpp`, `ps2_debug_panel.cpp` | yes, onto `0bf1a5d` (`704931d`) | **all pass** — Python 2268 OK; `ps2x_tests` 864/864; vram diff 15/15; field compares clean | none | |
-| **#243** GS privileged 128-bit SQ writes | `PS2Memory::write128` to a GS privileged register writes only the low 64 bits instead of spilling the upper lane into the next bus slot. | `ps2_memory.cpp` (+9) | yes, onto `1b47be2` (`a439d7d`) | **all pass** — Python 2268 OK; `ps2x_tests` 870/870; vram diff 15/15; field compares clean | none | |
-| **#230** COLCLAMP during alpha blending | The blend result is clamped only when `COLCLAMP.CLAMP` is set; otherwise it wraps to 8 bits, which is what the hardware does. | `gs/gs_cpu_backend.cpp` (+9/−3) | yes, onto `38161fd` (`553f539`) | **all pass** — Python 2268 OK; `ps2x_tests` 868/868; vram diff 15/15; field compares clean | none | |
-| **#237** VIF UNPACK V2 and V3 lanes | Three commits: V2 expands to XYXY; V3's W lane follows a hardware phase derived from `vl`, the packet's start alignment and the unpack iteration; V3 quadword boundary behaviour. | `ps2_vif1_interpreter.cpp` (+69) | yes, onto `1b47be2` (`c5bea70`, 3 commits) | **all pass** — Python 2268 OK; `ps2x_tests` 873/873; vram diff 15/15; field compares clean | none | |
-| **#232** VIF UNPACK V4-5 channels | The 5/5/5/1 packed value is expanded into the high bits of each lane (`<<3`, `>>2`, `>>7`, `>>8`) instead of being delivered as raw 5-bit values. | `ps2_vif1_interpreter.cpp` (+5/−5) | yes, onto `1b47be2` (`9e88966`) | **all pass** — Python 2268 OK; `ps2x_tests` 870/870; vram diff 15/15; field compares clean | none | |
-| **#240** SifSetReg / SifGetReg syscalls | Routes EE syscalls `0x79` and `0x7A` to the existing SIF register stubs. | `Kernel/Syscalls/Dispatcher.cpp` (+6) | yes, onto `1b47be2` (`60c8262`) | **all pass** — Python 2268 OK; `ps2x_tests` 870/870; vram diff 15/15; field compares clean | **SIF-adjacent**, shallow: two dispatch cases, no state change | |
-| **#227** interlaced presentation | Removes `applyFieldPresentation` and the SMODE2 decode from `PresentFromLocalMemory`: field mode no longer duplicates rows from the odd/even source line. A removal, not an addition. | `gs/gs_cpu_backend.cpp` (−34) | yes, onto `c1a06d1` (`4184d5f`) | **all pass** — Python 2268 OK; `ps2x_tests` 862/862; vram diff 15/15; field compares clean | none | |
-| **#241** raw SIF DMA init handshake | See §2. `sceSifSetDma` synthesises the IOP's sifcmd/sifrpc boot reply; `EeScheduler::dispatchIrqNow` invokes DMAC ch5 handlers inline. | `Kernel/Stubs/SIF.cpp` (+82/−4), `Kernel/EeScheduler.cpp` (+51), `runtime/ee_scheduler.h` (+1) | yes, onto `1b47be2` (`387131a`) | **all pass** — Python 2268 OK; `ps2x_tests` 870/870 including our SJX/DTX raw-DMA and 989snd reset cases; vram diff 15/15; field compares clean | **yes — the one real SIF contact.** No `ps2xIOP/` file touched, but it changes the path our IOP transport reads | |
-| **#246** reject depth-failing triangles before shading | `DrawTriangle` reads the Z buffer and skips a pixel whose depth test fails before it shades, instead of letting `WritePixel` decide. CPU rasteriser only. Adds a standalone `CompareGsEarlyDepth.cmake` comparison script (not wired into any CMake target). | `gs/gs_cpu_backend.cpp` (+18/−1), `ps2xTest/cmake/CompareGsEarlyDepth.cmake` (new) | yes, onto `1b47be2` (`0ef03be`) | **FAILED, then not rebuilt (yielded).** First run: `tools_py.tests.test_knobs_registry.SourceAgainstRegistryTest.test_no_problem_in_the_tree` — the pick reads `PS2X_GS_DISABLE_EARLY_DEPTH` with `std::getenv`, which our registry forbids; that one failure aborted the step before `ps2x_tests` ran at all, so **the PR's own 149 lines of GS tests have never been executed here.** Fixed on the branch by two fork-policy commits (`07cc25d` registers the knob and reads it with `ps2x::knob`; `7065f1b` regenerates `docs/KNOBS.md`); `python -m unittest tools_py.tests.test_knobs_registry` is 11/11 green with them. The full suite rerun was cut short by the controller's yield of the loop lock to the r0004 critical path | none | |
+| **#231** TEXCLUT by CLUT storage mode | CSM1 ignores COU/COV/CBW and reads from block 0; CSM2 shifts COU left by 4. Before: COU/COV/CBW were applied in both modes. | `gs/gs_cpu_backend.cpp` (+8/−3) | yes, onto `38161fd` (`0340bc4`) | **all pass** — Python 2268 OK (106 skipped); `ps2x_tests` 868/868, 0 failed; vram diff 15/15 checked at 1.00% tolerance; 8 field compares 0 mismatching | none |  **KEEP** — `s11_pr231_gate` 3/3, vram 15/15 |
+| **#229** GIF IMAGE2 (FLG=3) | `GIF_FMT_DISABLED` becomes `GIF_FMT_IMAGE2` and is decoded as an image transfer in the GIF frontend, the native image-upload fast paths and the VU1 XGKICK tag walk. | `gs/gs_types.h`, `gs/gs_frontend.cpp`, `ps2_memory.cpp`, `vu/ps2_vu1_core.cpp`, `ps2_debug_panel.cpp` | yes, onto `0bf1a5d` (`704931d`) | **all pass** — Python 2268 OK; `ps2x_tests` 864/864; vram diff 15/15; field compares clean | none |  **KEEP** — `s11_pr229_gate` 3/3, vram 15/15 |
+| **#243** GS privileged 128-bit SQ writes | `PS2Memory::write128` to a GS privileged register writes only the low 64 bits instead of spilling the upper lane into the next bus slot. | `ps2_memory.cpp` (+9) | yes, onto `1b47be2` (`a439d7d`) | **all pass** — Python 2268 OK; `ps2x_tests` 870/870; vram diff 15/15; field compares clean | none |  **KEEP** — `s11_pr243_gate` 3/3, vram 15/15 |
+| **#230** COLCLAMP during alpha blending | The blend result is clamped only when `COLCLAMP.CLAMP` is set; otherwise it wraps to 8 bits, which is what the hardware does. | `gs/gs_cpu_backend.cpp` (+9/−3) | yes, onto `38161fd` (`553f539`) | **all pass** — Python 2268 OK; `ps2x_tests` 868/868; vram diff 15/15; field compares clean | none |  **KEEP** — `s11_pr230_gate` 3/3, vram 15/15 |
+| **#237** VIF UNPACK V2 and V3 lanes | Three commits: V2 expands to XYXY; V3's W lane follows a hardware phase derived from `vl`, the packet's start alignment and the unpack iteration; V3 quadword boundary behaviour. | `ps2_vif1_interpreter.cpp` (+69) | yes, onto `1b47be2` (`c5bea70`, 3 commits) | **all pass** — Python 2268 OK; `ps2x_tests` 873/873; vram diff 15/15; field compares clean | none |  **KEEP** — `s11_pr237_gate` 3/3, vram 15/15 |
+| **#232** VIF UNPACK V4-5 channels | The 5/5/5/1 packed value is expanded into the high bits of each lane (`<<3`, `>>2`, `>>7`, `>>8`) instead of being delivered as raw 5-bit values. | `ps2_vif1_interpreter.cpp` (+5/−5) | yes, onto `1b47be2` (`9e88966`) | **all pass** — Python 2268 OK; `ps2x_tests` 870/870; vram diff 15/15; field compares clean | none |  **KEEP** — `s11_pr232_gate` 3/3, vram 15/15 |
+| **#240** SifSetReg / SifGetReg syscalls | Routes EE syscalls `0x79` and `0x7A` to the existing SIF register stubs. | `Kernel/Syscalls/Dispatcher.cpp` (+6) | yes, onto `1b47be2` (`60c8262`) | **all pass** — Python 2268 OK; `ps2x_tests` 870/870; vram diff 15/15; field compares clean | **SIF-adjacent**, shallow: two dispatch cases, no state change |  **KEEP** — `s11_pr240_gate` 3/3 |
+| **#227** interlaced presentation | Removes `applyFieldPresentation` and the SMODE2 decode from `PresentFromLocalMemory`: field mode no longer duplicates rows from the odd/even source line. A removal, not an addition. | `gs/gs_cpu_backend.cpp` (−34) | yes, onto `c1a06d1` (`4184d5f`) | **all pass** — Python 2268 OK; `ps2x_tests` 862/862; vram diff 15/15; field compares clean | none |  **KEEP** — `s11_pr227_gate` 3/3, vram 15/15 |
+| **#241** raw SIF DMA init handshake | See §2. `sceSifSetDma` synthesises the IOP's sifcmd/sifrpc boot reply; `EeScheduler::dispatchIrqNow` invokes DMAC ch5 handlers inline. | `Kernel/Stubs/SIF.cpp` (+82/−4), `Kernel/EeScheduler.cpp` (+51), `runtime/ee_scheduler.h` (+1) | yes, onto `1b47be2` (`387131a`) | **all pass** — Python 2268 OK; `ps2x_tests` 870/870 including our SJX/DTX raw-DMA and 989snd reset cases; vram diff 15/15; field compares clean | **yes — the one real SIF contact.** No `ps2xIOP/` file touched, but it changes the path our IOP transport reads |  **KEEP** — `s11_pr241_gate` 3/3 + `s11_pr241_online` lobby |
+| **#246** reject depth-failing triangles before shading | `DrawTriangle` reads the Z buffer and skips a pixel whose depth test fails before it shades, instead of letting `WritePixel` decide. CPU rasteriser only. Adds a standalone `CompareGsEarlyDepth.cmake` comparison script (not wired into any CMake target). | `gs/gs_cpu_backend.cpp` (+18/−1), `ps2xTest/cmake/CompareGsEarlyDepth.cmake` (new) | yes, onto `1b47be2` (`0ef03be`) | **FAILED, then not rebuilt (yielded).** First run: `tools_py.tests.test_knobs_registry.SourceAgainstRegistryTest.test_no_problem_in_the_tree` — the pick reads `PS2X_GS_DISABLE_EARLY_DEPTH` with `std::getenv`, which our registry forbids; that one failure aborted the step before `ps2x_tests` ran at all, so **the PR's own 149 lines of GS tests have never been executed here.** Fixed on the branch by two fork-policy commits (`07cc25d` registers the knob and reads it with `ps2x::knob`; `7065f1b` regenerates `docs/KNOBS.md`); `python -m unittest tools_py.tests.test_knobs_registry` is 11/11 green with them. The full suite rerun was cut short by the controller's yield of the loop lock to the r0004 critical path | none |  **KEEP** — `s11_pr246_gate` 3/3, vram 15/15, its own tests run at last |
 
 **Sizes.** With `--no-runner` the build produces `third_party/ps2recomp/build-clang/ps2xRuntime/libps2_runtime.a`
 and `dist/socom_unzipped_launcher.exe`. The launcher is **3,682,304 bytes on every branch** (no pick touches
@@ -143,3 +145,79 @@ The suite each row reports is exactly:
     export LOOP_LOCK_WAIT_SEC=5
     bash scripts/loop_lock.sh run agent-cherry --purpose "T6 pr<N> suite" --wait 2400 \
       -- bash -c './build.sh runtime --no-runner && ./build.sh test --no-runner'
+
+## 6. Step 3: the gates, the verdicts and the combined branch
+
+Run 2026-09-24 18:00 — 2026-09-25 01:20 by the Step 3 agent (`agent-picks`), sharing the machine's loop lock
+with the r0004 online agent, whose runs had priority throughout. Per pick, in `C:\projects\wt-cherry`:
+rebase onto the then-current `sprint-11`, `./build.sh runtime` (the worktree's own `dist/socom2.exe`),
+`./build.sh test` (which is where the `--vram-diff` equivalence check lives), then
+`SOCOM_EXE=<wt-cherry>/dist/socom2.exe python -m tools_py.parity.gate --stamp s11_pr<N>_gate` from the main
+tree, r0001, no `--accept-pins`. **All ten picks are KEEP: every one gated 3/3 and every suite is green.**
+
+`sprint-11` moved by about twenty commits while this step ran (the controller was merging), so each row's
+base is the head that was current at its turn — the same condition Step 2 recorded, and the reason the
+combined branch below, not any single row, is the mergeable artifact.
+
+| PR | base | branch head | exe sha256 (from the gate summary) | Python | `ps2x_tests` | vram diff | gate |
+|---|---|---|---|---|---|---|---|
+| #231 | `2e39aae` | `187e8bc` | `4949afda…` | 2501 OK (105 skipped) | 878/878 | 15/15 | **3/3** |
+| #229 | `5b6e8e8` | `87a2263` | `e542ef3a…` | 2501 OK (105 skipped) | 879/879 | 15/15 | **3/3** |
+| #243 | `d447bb1` | `d3e0048` | `b386b914…` | 2501 OK (105 skipped) | 878/878 | 15/15 | **3/3** |
+| #230 | `d447bb1` | `5bb1eb9` | `07abdf5d…` | 2501 OK (105 skipped) | 878/878 | 15/15 | **3/3** |
+| #237 | `f9555c7` | `5bb7165` | `0a2a3a33…` | 2537 OK (107 skipped) | 881/881 | 15/15 | **3/3** |
+| #232 | `8b70dad` | `aeb70a5` | `7a16b2cb…` | 2551 OK (108 skipped) | 878/878 | 15/15 | **3/3** |
+| #227 | `0a01ba3` | `7d9a1c8` | `41a20ce8…` | 2556 OK (108 skipped) | 877/877 | 15/15 | **3/3** |
+| #240 | `0a01ba3` | `1c6d733` | `3a17d5b0…` | not re-run (Step 2 proven; two dispatch cases, no vram-diff requirement) | — | — | **3/3** |
+| #241 | `0a01ba3` | `7f62e95` | `d78abf93…` | 2556 OK (108 skipped) | 878/878 | 15/15 | **3/3** + online |
+| #246 | `0a01ba3` | `e5839b4` | `edd649b6…` | 2556 OK (108 skipped) | 879/879 | 15/15 | **3/3** |
+
+### #241's extra lane (§4 item 9: gate it on the boot handshake, not on pixels)
+
+`s11_pr241_online`: `tools_py.parity.online_login_ours --existing --prefilled` against **our** Lightsail
+Horizon box (`SOCOM_SERVER_IP=3.143.65.100`; the community server was never contacted). Boot → main menu
+(2 presses) → LOGIN → universe → saved persona → password keyboard → CONNECT → EULA → lobby news →
+`LOBBY class=ok` at 195.7 s, exit 0. The run log carries **two** `[IOP/RPC trace:unhandled]` lines — the
+same two, `sid=0x80000211` and `sid=0x80000006`, that every r0004 online run of the same night carries
+without the pick — so #241's synthesised sifcmd reply is not shadowing or doubling an answer our transport
+already gives at that level. No `[guest-fault]`, no error line. The `[sceSifSetReg]` / `[sceSifGetReg]`
+counters are behind `PS2_IF_AGRESSIVE_LOGS`, so the handshake could not be counted directly from a normal
+run; the unit-level evidence is `ps2x_tests` 878/878 including the SJX/DTX raw-DMA and 989snd reset cases.
+
+### #232's caveat (§4 item 6: confirm nothing downstream already scales the 5-bit channels)
+
+Checked: the only other 5→8-bit expansions in the tree are the GS backends' PSMCT16 texel and CLUT decode
+(`gs/gs_cpu_backend.cpp:43-45`, `gs/gs_gl_backend.cpp:142-144`), which read pixels out of GS local memory.
+The pick scales the VIF unpack's destination lanes in VU1 data memory. Different path, no double scale.
+
+### #240's cheap pre-check (§4 item 8)
+
+Not answerable from a normal run: the `g_sifSetRegLogCount` / `g_sifGetRegLogCount` traces only print under
+`PS2_IF_AGRESSIVE_LOGS`, and the gate does not set it. The gate logs carry no unknown-syscall diagnostics
+either way. So the row stands on what the gate measured — three lanes unchanged — and remains, as §4 said,
+keep-or-drop on taste rather than on evidence of use.
+
+### The combined branch
+
+`agent/picks-keep` = `sprint-11` at `0a01ba3` + all ten picks cherry-picked in §4's order, **14 commits**
+(#237 and #246 bring three each). Head `f7a7e20`.
+
+One conflict, resolved rather than dropped: #232 and #237 both append a VIF UNPACK case at the same point in
+`ps2xTest/src/ps2_memory_tests.cpp`. The interpreter change auto-merged; only the test file collided, and the
+resolution keeps **both** sets of cases (#237's V2/V3 phase tests and #232's `VIF UNPACK V4-5 expands packed
+channels`, re-added as its own `tc.Run` block).
+
+- `./build.sh runtime`: `dist/socom2.exe` 236,929,024 bytes, sha256 `5f78be6b…`
+- `./build.sh test`: Python **2556 OK** (108 skipped); `ps2x_tests` **891/891**, 0 failed — every pick's own
+  cases together; `PASS: vram diff against 1.00% tolerance, checked=15 skipped=0`
+- `s11_picks_keep_gate`: **GATE PASS (3/3)**. No bisect was needed.
+
+### One caveat the KEEP rule does not carry
+
+**#227 is the only pick that removes behaviour**, and what it removes (`applyFieldPresentation` and the
+SMODE2 decode in `PresentFromLocalMemory`) is in the CPU present path, which is what the VRAM-diff oracle
+reads while the shipped backend is GL. Its verdict is KEEP because it met the rule — 3/3, suite green,
+vram 15/15 — but §4's own reasoning (low upside, and it moves the oracle) is unchanged by the gate, and the
+same is true of **#246**, which improves the CPU rasteriser the other GS picks are judged against. If the
+owner wants the smallest defensible merge rather than all ten, those two are the rows to reconsider; nothing
+measured here argues for keeping them beyond "they did no harm".
