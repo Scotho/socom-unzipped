@@ -1,5 +1,13 @@
 # 23 — Frostfire ground probe: pipeline, data, stubs, candidates, launch-2 reading guide
 
+> **Superseded in place, 2026-09-25 — the codec named at `:47`, `:318`, `:355` and `:433-435` is not Nellymoser.**
+> SOCOM II's voice codec is **SASE** (`SaseEncVad`/`SaseDec`), verified against all four images
+> (`docs/research/44`'s addendum, `docs/research/56`); SOCOM 1's demo speaks LPC-10, and GSM appears nowhere. No
+> image carries the string `Nellymoser` — only the assert macro `NellyNull` — so this note's reading was always an
+> inference from that macro and is withdrawn. Read "Nellymoser" below as "SASE"; nothing else in those paragraphs
+> changes, including the VU0-mode finding they exist for. `docs/KNOWN.md` §2's voice row and §4's aliasing hazard
+> carry the corrected record and win on any disagreement.
+
 **Status: zero-run research wave (Sprint 5, 2026-09-13), corrected after an independent review
 (§10; the review's scripts are `scratchpad/rv23/grid.py`, `walk.py` and `overlap.py`).** No build and no launch. Every claim is marked
 **[verified]** or **[inference]**:

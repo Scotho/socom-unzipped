@@ -115,7 +115,10 @@ are written down in `docs/KNOWN.md` §4 rather than hidden:
 - **The known/believed ledger.** Four sections: proven, with the artefact; believed, with the experiment that would
   settle it; retracted; and standing hazards. It was created on 2026-09-12 (`2d9f73a`) and already carried six dead
   sentences on its first day. The rule is that a committed sentence found false is corrected the same hour, in place,
-  where it was written — a blockquote saying what superseded it, never a quiet delete.
+  where it was written — a blockquote saying what superseded it, never a quiet delete. Since 2026-09-23 the ledger
+  has a public counterpart: each open defect is also a GitHub issue labelled `known-issue`, cited from its row, with
+  its evidence and the bar that closes it — the conventions are `docs/GIT_STRATEGY.md` §7 and the sprint-close
+  review in `docs/DOC_MAINTENANCE.md` §7.
 - **Numbered rulings.** Every default moved and every measurement skipped on the owner's behalf gets a number, a
   reason, and a cost-if-wrong. The counter that hands out the next number is itself checked by a test, because it once
   drifted far enough that an agent obeying it would have collided with sixty-two existing rulings — it offered R179
@@ -242,3 +245,4 @@ same shape: **turn a judgement into something that can fail.**
 | `docs/DOC_MAINTENANCE.md` | The document classes and the checks that hold them |
 | `docs/process-audit.md`, `docs/AUDIT-2026-09-17.md` | Two dated audits of this process, warts included |
 | `docs/HUMAN_TASKS.md` | What is waiting on the owner |
+| [issues labelled `known-issue`](https://github.com/Scotho/socom-unzipped/issues?q=is%3Aissue+is%3Aopen+label%3Aknown-issue) | Every open defect with its evidence and the bar that closes it; the conventions are `docs/GIT_STRATEGY.md` §7 |

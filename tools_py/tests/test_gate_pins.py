@@ -99,12 +99,17 @@ class EnvPin(unittest.TestCase):
 
     def test_the_gates_own_launch_environment_is_what_is_pinned(self):
         """collect_pins hashes the environment the mission stage (the widest) would be launched with: the
-        gate's own knobs plus whatever PS2X_* the operator exported. An empty shell gives the standard."""
+        gate's own knobs plus whatever PS2X_* the operator exported. An empty shell gives the standard.
+
+        `base={}` is an empty shell, so nothing in it names an image: the comparison side asks for
+        `default_ok=True` by name, exactly as `collect_pins` does at its own call (review F3). Without it
+        this case is a launch-shaped question asked on a checkout with no game -- i.e. every CI runner --
+        and it raised there rather than measuring anything."""
         current = gate.collect_pins(base={})
         self.assertEqual(current["env"].detail, [
             "PS2X_HOST_GAMEPAD=0",
             "PS2X_PC_SAMPLER=1",
-            "PS2X_PEEK=" + gate.launch_env("mission", "card", base={})["PS2X_PEEK"]])
+            "PS2X_PEEK=" + gate.launch_env("mission", "card", base={}, default_ok=True)["PS2X_PEEK"]])
         drifted = gate.collect_pins(base={"PS2X_GS_STATS": "1"})
         self.assertNotEqual(drifted["env"].sha256, current["env"].sha256)
         self.assertIn("PS2X_GS_STATS=1", drifted["env"].detail)
@@ -290,7 +295,19 @@ class ExpectedFile(unittest.TestCase):
 class _LaunchCase(unittest.TestCase):
     """main() with the launch mocked out: no lock, no drive, no game. The expected-pins file and the stamp are
     per test; the card is a temp directory named through PS2X_MC_DIR (game/ is git-ignored, so the pristine
-    card may not exist on this checkout)."""
+    card may not exist on this checkout).
+
+    ... and so is the IMAGE, which is why each case names one. `gate.main`'s launch path asks
+    `gate_revision(default_ok=False)` -- a launch has an image, and a launch that cannot say which revision
+    it is refuses (exit 8) rather than silently reading r0001's addresses on an r0004 build (Task 19,
+    KNOWN Sec 4). That rule is right and these cases must not soften it, so instead of leaving the revision
+    to be guessed they STATE it: `SOCOM_GAME_ELF` names a stand-in carrying an r0001 build banner, which is
+    all launch_revision reads. The r0004 cases below point the same variable at an r0004 stand-in. Before
+    this, these cases only passed on a host that happened to have `game/disc/socom2_game.elf`; on CI, which
+    has no game at all, ten of them failed on the refusal (the linux workflow, red since 2026-09-23)."""
+
+    # The real r0001 image's own banner, character for character (game/disc/socom2_game.elf).
+    R0001_BANNER = b"r0001 17:22:21 Oct 11 2003"
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
@@ -298,11 +315,15 @@ class _LaunchCase(unittest.TestCase):
         os.makedirs(self.card)
         with open(os.path.join(self.card, "SCRATCHPAD.DAT"), "wb") as f:
             f.write(b"pristine")
+        self.game_elf = os.path.join(self.tmp, "r0001_stand_in.elf")
+        with open(self.game_elf, "wb") as f:
+            f.write(BANNER_STAND_IN % self.R0001_BANNER)
         self.expected = os.path.join(self.tmp, "pins.json")
         self.stamp = "q1b_pins_test_%d" % os.getpid()
         self.out_root = os.path.join("logs", "parity", "gate", self.stamp)
         shutil.rmtree(self.out_root, ignore_errors=True)
-        self.env = mock.patch.dict(os.environ, {"PS2X_MC_DIR": self.card}, clear=False)
+        self.env = mock.patch.dict(os.environ, {"PS2X_MC_DIR": self.card,
+                                                "SOCOM_GAME_ELF": self.game_elf}, clear=False)
         self.env.start()
         for k in [k for k in os.environ if k.startswith("PS2X_") and k != "PS2X_MC_DIR"]:
             del os.environ[k]
@@ -592,7 +613,7 @@ class PerRevisionStandards(_LaunchCase):
         try:
             rc, out, _ = self._main(["--accept-pins"])
         finally:
-            os.environ.pop("SOCOM_GAME_ELF", None)
+            os.environ["SOCOM_GAME_ELF"] = self.game_elf   # back to the case default, the r0001 stand-in
         self.assertEqual(rc, 0, out)
         self.assertIn("REVISION r0004", out)
         self.assertEqual(open(self.expected, "rb").read(), before,
@@ -611,7 +632,7 @@ class PerRevisionStandards(_LaunchCase):
             self.assertEqual(self._main(["--accept-pins"])[0], 0)       # the first run sets it
             rc, out, _ = self._main([])                                  # the second just matches
         finally:
-            os.environ.pop("SOCOM_GAME_ELF", None)
+            os.environ["SOCOM_GAME_ELF"] = self.game_elf   # back to the case default, the r0001 stand-in
         self.assertEqual(rc, 0, out)
         self.assertIn("PINS MATCH %s" % gate.expected_pins_rel("r0004"), out)
 
@@ -629,7 +650,7 @@ class PerRevisionStandards(_LaunchCase):
         try:
             rc, out, run = self._main([])
         finally:
-            os.environ.pop("SOCOM_GAME_ELF", None)
+            os.environ["SOCOM_GAME_ELF"] = self.game_elf   # back to the case default, the r0001 stand-in
         self.assertEqual(rc, gate.REFUSE_REVISION, out)
         self.assertEqual(run.call_count, 0, "nothing was launched")
         self.assertIn("SOCOM_GAME_ELF", out)

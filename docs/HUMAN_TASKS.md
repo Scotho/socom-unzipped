@@ -11,6 +11,20 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
 > A fresh "Start here" block for the morning is written at the close -- **it is immediately below, `## Start here
 > (2026-09-23 morning)`**, and it carries the results of those runs.
 
+## Sprint 11 close — what needs you (2026-09-25)
+
+Sprint 11 is merged to `main` as `v0.11.0`. Sprint 12 runs in the cloud on `sprint-12` (its local half is session socom-pc-6c's; its proof requests reach this machine through the Sprint 12 plan's task table). Nothing below blocks either; each is a decision or a hand only you have.
+
+1. **D1, the r0004 distribution** — reopened by R251: the capsule alone gives a player nothing; the package comes only from PSRewired's server after a login, lands on a memory card, and decrypts with a key bound to the console id. Today r0004 is a per-player pipeline (PCSX2 + their login + our build on their machine, ~40 min). Acceptable for v1, or does r0004 wait for another route? Task 11b stays withdrawn until you say.
+2. **Goal F, PSRewired** — your Discord answer. Two facts now sit under it: an r0004 client and an r0001 client cannot join each other's games (the client's token filter backs out silently after the server accepts), so a mixed server needs two rooms or two servers; and the capsule's second stub table for the r0004 layout was never applied to our image.
+3. **The two bug-pipeline words** (Task 13's review I1/I2, the section below).
+4. **The release archives** — the `v0.10.0` draft's, and now `v0.11.0`'s (the tag's workflow makes a draft; the archives and the publish are yours).
+5. **The branch sweep** — the `sprint-*` ruleset forbids deletion; `sprint-9`, `sprint-10`, `sprint-11` and the merged slice branches stay until you sweep them (one `gh` command, the section below).
+6. **The VM ring** (Task 18 Step 1, issue #25) — its suites are not green in the VM; CI proves Linux; a VM evening is yours to name.
+7. **Five big engine routines, by hand** — Task 7's prefix matches for `CMission::Init`, `CZSealBody::*` and their like are proposed by no rule; Sprint 12's plan asks for a human read of each before a name is applied (its Log's D5 line). Half an hour with the disassembly and research/44 §6.
+8. **The Horizon box** — both revisions send `MediusVersionServer` (lobby 0x86) and three other messages Horizon does not model; pre-existing, harmless so far, server-side: yours to schedule.
+
+
 ## Start here (2026-09-23 morning)
 
 Sprint 10 is **closed** -- merged to `main` (PR #24, `f15acfa`) and tagged `v0.10.0` -- the draft release exists, with no archives yet (below). Sprint 11
@@ -25,21 +39,32 @@ did not reproduce on a walk that never reaches the church.
 The overnight capture that was to say WHERE the 50 ms music holes go was spoiled by a Chrome tab playing music
 into the HyperX endpoint for its whole sixteen minutes, and later by Discord as well (KNOWN §4); the instrument
 itself worked -- no late audio callback in 38,422 -- but a capture with anything else rendering is not a device
-measurement. **What to do:** close or mute whatever plays audio (`python -m tools_py.parity.app_volume list` shows
-the endpoint's sessions; the browser's music tab and Discord are the two seen tonight), then run
-`bash scripts\parity\capture_audio_out.sh` (it takes the loop lock, launches the
-instrumented runner from the worktree over the main tree's game, records the endpoint for the ten-minute briefing
-capture, and scores it -- about sixteen minutes; leave the machine alone until it prints `capture done` to
-`C:\projects\wt-audio-out\logs\capture_audio_out.log`), and read `logs/parity/<the new audio_out_*>/sessions_verdict.txt`
-first: it must say `clean` -- `CONTAMINATED` names what else rendered, and `INCONCLUSIVE` means the timeline itself
-has holes -- or the run is another spoiled one. Then
-`python -m tools_py.parity.cb_trace logs/parity/<same>/cb_trace.csv --dips logs/parity/<same>/dips.txt` from the
-worktree. After the branch merges, the same thing from the main tree is
+measurement. **What to do** (the branch merged 2026-09-24 as `ae862a8` and its worktree is gone, so this runs in
+the main tree, `C:\projects\socom_pc`): close or mute whatever plays audio
+(`python -m tools_py.parity.app_volume list` shows the endpoint's sessions; the browser's music tab and Discord are
+the two seen that night), then run `bash scripts/parity/capture_audio_out.sh` (it takes the loop lock, launches the
+instrumented runner over the game, records the endpoint for the ten-minute briefing capture, and scores it -- about
+sixteen minutes; leave the machine alone until it prints `capture done` to `logs/capture_audio_out.log`), and read
+`logs/parity/<the new audio_out_*>/sessions_verdict.txt` **first**: it must say `clean` -- `CONTAMINATED` names what
+else rendered, and `INCONCLUSIVE` means the timeline itself has holes -- or the run is another spoiled one. Then
+`python -m tools_py.parity.cb_trace logs/parity/<same>/cb_trace.csv --dips logs/parity/<same>/dips.txt`. The
+equivalent single command is
 `PS2X_DEV=1 PS2X_AUDIO_TRACE=1 bash scripts/parity/mission_music_long.sh --stage briefing --minutes 10` on
 `dist/socom2.exe`. **What it decides:** a DEVICE count back near 14 with the trace still at 0 late callbacks means
 the dropouts are not the device thread's and the search moves to the audio engine, the recorder's silent overflow
 drops and the scorer's alignment; late or dry callbacks in the trace mean each dip is attributed to the callback
 that rendered it and the fix is on our side of the callback.
+
+### Sprint 12 is already running, in the cloud — and it needs one build window here (2026-09-25)
+
+**Sprint 12, "the readable image", has been open on branch `sprint-12` since 2026-09-24**, run by the cloud session
+(local half: session `socom-pc-6c`). It has a spec, a plan
+(`docs/superpowers/plans/2026-09-24-sprint-12.md` on that branch), a cloud handoff <!-- docmaint: future -->
+(`docs/superpowers/plans/2026-09-24-sprint-12-cloud-handoff.md`), thirteen research notes, rulings S12-R1…R25 and
+every task's code half done. **What it needs from you is a quiet window on this machine**, because the cloud has no
+disc: one pass of `./build.sh recomp`, `./build.sh runtime`, the C++ suite and the **r0001 gate 3/3 with PINS
+MATCH** — its Outcome's PROOF REQUESTED row — about an hour of the machine, nothing to watch. Name the window and
+the loop runs it; nothing else in Sprint 12 waits on you.
 
 ### The eight decisions, and the default each one proceeds on
 
@@ -104,8 +129,9 @@ Rulings (numbered ones are in the plan's rulings section; all reversible):
 One disclosure note: the Sprint 11 spec and plan carried the chat path's mechanics (function names, offsets, sizes) in prose from 2026-09-21 to 2026-09-23; both are narrowed now, but the repository is public and its history keeps the earlier wording (`f8cdbb4`, `0e3eeaf`). Only a history rewrite removes it — your call, and SECURITY.md's rule stands either way.
 
 What only you can do is unchanged and listed below; one addition from the audio work: **a quiet-endpoint capture**
-(close the music tab and Discord, then `scripts/parity/capture_audio_out.sh`, ten minutes) —
-the exact step is written on `agent/audio-out` (`05de0e7`) and arrives here with that branch's merge.
+(close the music tab and Discord, then `bash scripts/parity/capture_audio_out.sh` from `C:\projects\socom_pc`, ten
+minutes) — the exact step is the "Ten quiet minutes for the music dropouts" section above, rewritten against the
+main tree on 2026-09-25 now that `agent/audio-out` has merged (`ae862a8`).
 
 ### Two words the bug pipeline needs from you (Task 13's review, 2026-09-24)
 

@@ -48,14 +48,17 @@ clean; the parity gate needs a disc and runs on the maintainer's machine, its st
 
 ## Status
 
-As of 2026-09-23 (**Sprint 10 is closed**; its merge and the annotated tag `v0.10.0` are the last step of the close, so `v0.9.0` is the newest tag until then):
+As of 2026-09-25 (**Sprint 10 is on `main`, tagged `v0.10.0`**; the release draft is waiting for its archives, which
+are the owner's by `docs/GIT_STRATEGY.md`. Sprint 11 is closing, and **Sprint 12, "the readable image", has been
+running in the cloud on branch `sprint-12` since 2026-09-24** —
+`docs/superpowers/plans/2026-09-24-sprint-12.md` on that branch): <!-- docmaint: future -->
 
 | Works | Not yet |
 |---|---|
 | Boots from the ISO to the title, through the menus, into a mission; Xbox/DirectInput pads for play, the keyboard for the menus and typing | A public release download. Builds are handed to testers by hand; the download and its page are Sprint 11 |
 | Rendering through an OpenGL backend with an integer up-scale (`PS2X_GS_SCALE` 1-4; 3-4 are untested); a CPU rasteriser for tests | Frame rate: 43-45 fps in a mission and 52-60 in the menus, against the console's 60 |
-| Online: login, lobby, and full rounds on the hosted Horizon server -- two of our instances, and one of ours against a console client through PCSX2 | Mission music: the stems play correctly and the pauses are the game's own design, but about a dozen 50 ms dropouts a mission still reach the speaker that are not in the mix as rendered -- proven on 2026-09-23 to be **ours** rather than the listener's audio device, and not yet located. Voice chat is untested end to end (the protocol is read and the headset path is proven as far as `docs/KNOWN.md`'s voice row takes it -- notably, the game's protocol has no headset button) |
-| A launcher that owns the settings, checks the disc, picks the server, and files bug reports | Linux: CI builds and proves the runtime library, both test suites and the launcher on every push; the *playable* build has not been rebuilt in the VM since the knob flip -- that ring is carried into Sprint 11 |
+| Online: login, lobby, and full rounds on the hosted Horizon server -- two of our instances, and one of ours against a console client through PCSX2, and a build of the community revision **r0004**, rebuilt from PSRewired's package, plays a full round on the same server | r0001 and r0004 clients cannot join each other's games -- the filter is the game's own, on the client. Mission music: the stems play correctly and the pauses are the game's own design, but about a dozen 50 ms dropouts a mission still reach the speaker that are not in the mix as rendered -- proven on 2026-09-23 to be **ours** rather than the listener's audio device, and not yet located. Voice chat is untested end to end (the protocol is read and the headset path is proven as far as `docs/KNOWN.md`'s voice row takes it -- notably, the game's protocol has no headset button) |
+| A launcher that owns the settings, checks the disc, picks the server, and files bug reports | Linux: CI builds and proves the runtime library, both test suites and the launcher on every push, and the playable build was rebuilt from wiped trees in the VM on 2026-09-23; what is not green there yet is the VM's own suite run (`docs/KNOWN.md` §2) |
 | An automated parity gate (title / transition / mission) and an online "ladder" that plays rounds unattended | Anything but the NTSC r0001 disc |
 
 The live, audited version of this table is `docs/KNOWN.md` (proven, believed, and retracted, each with its evidence),

@@ -1,22 +1,26 @@
 # Git, branches and releases
 
 Written 2026-09-20 at the controller handoff, under the owner's instruction to plan the repository for a public life.
-The parts marked **NOW** are in force on `sprint-9`. The parts marked **AT S9 CLOSE** and **AT PUBLIC** are scheduled
-(Sprint 9 Q8 and Sprint 11 Goal 0) and need the owner's GitHub admin rights, so they are also in `docs/HUMAN_TASKS.md`.
+The parts marked **NOW** are in force on `sprint-11`. The **AT S9 CLOSE** and **AT PUBLIC** parts have all landed
+(§5, §6) and are kept as the record of when.
 
 ## 1. Where the repository is today
 
 - `github.com/Scotho/socom-unzipped`, **PUBLIC since 2026-09-20** (the owner flipped it after the pre-publication
-  sweep and the history rewrite). `LICENSE` (GPL-3.0) at the root; `THIRD_PARTY_NOTICES.md` and `LICENSES/`; the tag
-  `v0.9.0`; no releases yet. Rulesets on `main` and `sprint-*` (§6); four workflows: `linux` and `windows` (the
+  sweep and the history rewrite). `LICENSE` (GPL-3.0) at the root; `THIRD_PARTY_NOTICES.md` and `LICENSES/`; the tags
+  `v0.9.0` and `v0.10.0`; **one draft Release, `v0.10.0` (2026-09-23), made by the `release-draft` workflow with no
+  archives attached -- building and attaching them, and publishing, are the owner's by §5's last bullet (D2).**
+  Rulesets on `main` and `sprint-*` (§6); four workflows: `linux` and `windows` (the
   library + tests + launcher with no generated code, about an hour each, skipped and reporting success on a
   docs-only push), `secrets` (the leak check over the tree and full history plus gitleaks, minutes, every push) and
   `release-draft` (§5). *Until 2026-09-20 this bullet said "private, no licence file, no tags, no branch protection,
   one workflow".*
 - `develop` is gone (2026-09-20): it had pointed at the same commit as `main` after every sprint merge since Sprint 5
   and never held anything `main` did not.
-- Fifteen branches on the remote: `main`, `sprint-1`..`sprint-10`, `fix/gl-depth-precision`, `fix/gs-block-pointer`.
-  All but `sprint-10` are fully merged (`sprint-9` at `4415254`, tagged `v0.9.0`).
+- `git branch -r` is the list. What matters is that every `sprint-N` below the open one is fully merged, and that the
+  open one is `docs/CURRENT_SPRINT.md`'s. *(This bullet carried a branch count and an inventory from 2026-09-20 to
+  2026-09-25; both were a sprint and a half out of date by the time anyone read them, which is what a count in a class
+  C document does.)*
 - Several agent sessions share ONE working tree. That is why every commit uses an explicit pathspec.
 
 ## 2. Branches
@@ -29,8 +33,12 @@ The parts marked **NOW** are in force on `sprint-9`. The parts marked **AT S9 CL
 | `hotfix/<version>` | A fix to something already released, branched from the release tag, merged to `main` AND to the open sprint branch. | Controller / owner. | Until merged and tagged. |
 | `develop` | **Retired and DELETED 2026-09-20 at the Sprint 9 merge** (`4415254`, `v0.9.0`). It duplicated `main` (never held anything `main` did not), and a public contributor who sees both has to ask which one to target. `git grep` found nothing outside the records naming it. | -- | Gone. Do not recreate it. |
 
-**NOW:** work goes to `sprint-10` (off `main` at `4415254`); push `origin sprint-10`; check CI (`gh run list --branch sprint-10 --limit 1`).
+**NOW:** work goes to `sprint-11` (off `main` at `f15acfa`); push `origin sprint-11`; check CI (`gh run list --branch sprint-11 --limit 1`).
 Never force-push a shared branch. Never rewrite `main`.
+*The open branch is always `docs/CURRENT_SPRINT.md`'s `branch:` line -- read it there rather than trusting this
+literal, which has pointed at a merged branch twice (`sprint-9` until 2026-09-25, then `sprint-10`).* A second sprint
+is live alongside this one: **Sprint 12 runs in the cloud on `sprint-12`, cut 2026-09-24**
+(`docs/superpowers/plans/2026-09-24-sprint-12.md` on that branch), and merges after Sprint 11 lands on `main`. <!-- docmaint: future -->
 
 **Slices: a proven item reaches `main` the day it is proven, not at the sprint's end (2026-09-21, the owner's
 instruction "ensure main gets all of our hardening/security fixes and developer setup info as soon as possible ... the
@@ -89,7 +97,7 @@ Annotated tags only (`git tag -a`), pushed explicitly (`git push origin <tag>`).
 |---|---|---|
 | `playtest-N` | A build the owner (or invited testers) plays. Not a release: no promise, no GitHub Release page. The archive's sha256 is recorded in `docs/PLAYTEST.md`. | Sprint 9 P7, and any later playtest. |
 | `v0.<sprint>.0` | A sprint closed and merged to `main` (`v0.9.0`, `v0.10.0`, `v0.11.0`). `v0.<sprint>.<n>` for a hotfix on it. | At each close-out, on the merge commit. |
-| `v1.0.0` | The first public release: Sprint 11's bar met, the repository public, archives attached to a GitHub Release with `SHA256SUMS`. SemVer from here: a save- or config-breaking change is a major. | Sprint 11 close. |
+| `v1.0.0` | The first public release: Sprint 11's bar met, the repository public, archives attached to a GitHub Release with `SHA256SUMS`. SemVer from here: a save- or config-breaking change is a major. | **When the bar is met and D2 is answered -- not on a sprint number.** *(This cell said "Sprint 11 close" until 2026-09-25; §4's own `v0.<sprint>.0` rule makes that close's tag `v0.11.0`, and `v1.0.0`'s real preconditions -- archives built, attached and a Release published -- are blocked on D2.)* |
 
 **Every release keeps its symbols.** The release exe is stripped; `dist-release/symbols/` of that exact build is the
 only thing that makes a stranger's crash record readable. Until the release workflow (below) uploads it as a private

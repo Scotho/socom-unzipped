@@ -389,7 +389,16 @@ class BuildRevisionRepairMapTest(unittest.TestCase):
 
     def test_a_revision_bootstrapped_with_ghidra_is_repaired_against_the_map_it_named(self):
         """It has no map of its own yet -- that is what --ghidra is for -- and step 2 must not
-        refuse it by naming the copy step 3 has not made."""
+        refuse it by naming the copy step 3 has not made.
+
+        The `repair inputs` line this reads is printed only once step 2 has its twin, and the twin is the
+        REAL r0001 image (`game/disc/socom2_game.elf`, git-ignored). On a tree without it step 2 refuses
+        first -- correctly, and its own case
+        (test_without_the_r0001_image_step_2_says_what_to_build_not_which_file_is_missing) asserts that
+        refusal -- so this one has no inputs to run on and SKIPS rather than passing on a checkout that
+        never reached the line it is about."""
+        if not os.path.isfile(os.path.join(ROOT, "game", "disc", "socom2_game.elf")):
+            self.skipTest("needs the r0001 image game/disc/socom2_game.elf (game/ is not in a bare clone)")
         with tempfile.TemporaryDirectory() as tmp:
             zdb, out = self._disc(tmp)
             named = self._map(os.path.join(tmp, "named_map.csv"),

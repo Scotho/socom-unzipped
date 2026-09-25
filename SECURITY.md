@@ -44,9 +44,9 @@ section above -- not in an issue, a PR, or a document here.
 ## What is not a vulnerability here
 
 - `PS2X_*` environment variables changing the game's behaviour. An environment variable is not a privilege boundary:
-  whoever can set one already runs code as the player. They are developer probes; Sprint 9 Goal 3 puts them behind
-  developer mode, so a stray environment cannot change a player's game by accident, and constrains the ones that name
-  paths.
+  whoever can set one already runs code as the player. They are developer probes; Sprint 9 Goal 3 **put** them
+  behind developer mode on 2026-09-21: a Dev knob reads as unset without `--dev` / `PS2X_DEV=1`, and the start-up
+  `[knobs]` line names what it ignored. The ones that name paths are constrained too.
 - The executable being unsigned (known; signing is the owner's cost and identity), or antivirus heuristics on it.
 - Cheating in a game from 2003 that has no anti-cheat. Reports of cheats against the project server are welcome as
   ordinary bug reports.

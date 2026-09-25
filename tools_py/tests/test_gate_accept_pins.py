@@ -1,0 +1,160 @@
+"""--accept-pins must not DROP a pin while it accepts another one.
+
+Found by tonight's r0004 rebuild (logs/parity/gate/s11_r0004_rebuild1). The launch path writes the standard
+twice: once BEFORE the lock and the launch, from the pins it can measure then, and once after the run, but
+only when the late-joining `mapping` pin drifted. `mapping` is only knowable after a stage has run and the
+runtime has printed its line, so at the early write it is absent -- and a rewrite built from the measured
+set alone drops it. A run that drifts on `env` ALONE therefore rewrote the standard with `mapping` gone
+(the second write never fired: `mapping` had not drifted against the standard held in memory), while the
+same summary printed `PIN mapping sha256=c393b87b99732a1f ok`. The NEXT gate on that revision then saw an
+unpinned input and was REFUSED (exit 7) -- a standard that silently lost a pin, which is the failure this
+whole mechanism exists to make impossible.
+
+The fix is the shape that cannot drop: the write carries every pin the previous standard held for names the
+run could not measure, and replaces only the ones it did measure. `gate --pins --accept-pins` shows why it
+has to be the carry rather than merely "one write at the end": that path never launches, so its `mapping` is
+absent at EVERY moment it could write.
+
+Sibling module of test_gate_pins.py (kept separate on purpose: another agent holds that file).
+"""
+import contextlib
+import io
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+import unittest
+from unittest import mock
+
+from tools_py.parity import gate, pins
+
+MAPPING_A = "ab" * 32
+MAPPING_B = "cd" * 32
+
+
+def stage_printing(mapping):
+    """A run_gate stand-in that writes the runtime's mapping line into <stage>.game.log, as a real stage
+    does, so the late pin joins."""
+    def stage(name, out_root):
+        with open(os.path.join(out_root, name + ".game.log"), "w") as f:
+            f.write("[socom2] input mapping sha256=%s\n" % mapping)
+        return True, "ok " + name
+    return stage
+
+
+class AcceptPinsKeepsEveryPin(unittest.TestCase):
+    """main() with the launch mocked out: no lock, no drive, no game. The standard and the stamp are per
+    test; the card is a temp directory named through PS2X_MC_DIR."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.card = os.path.join(self.tmp, "card")
+        os.makedirs(self.card)
+        with open(os.path.join(self.card, "SCRATCHPAD.DAT"), "wb") as f:
+            f.write(b"pristine")
+        self.expected = os.path.join(self.tmp, "pins.json")
+        self.stamp = "s11_accept_pins_test_%d" % os.getpid()
+        self.out_root = os.path.join("logs", "parity", "gate", self.stamp)
+        shutil.rmtree(self.out_root, ignore_errors=True)
+        self.env = mock.patch.dict(os.environ, {"PS2X_MC_DIR": self.card}, clear=False)
+        self.env.start()
+        for k in [k for k in os.environ if k.startswith("PS2X_") and k != "PS2X_MC_DIR"]:
+            del os.environ[k]
+        self.patches = [
+            mock.patch.object(pins, "EXPECTED", self.expected),
+            mock.patch.object(gate, "free_gb", return_value=99.0),
+            mock.patch.object(gate, "exe_line", return_value="EXE dist/socom2.exe bytes=1 sha256=" + "00" * 32),
+            mock.patch.object(gate, "_lock", return_value=subprocess.CompletedProcess(["x"], 0, "", "")),
+        ]
+        for p in self.patches:
+            p.start()
+        pins.write_expected(gate.collect_pins(), self.expected, note="test standard")
+        # A standard that already holds a mapping pin, set the only way one is ever set: an accepted run.
+        rc, out, _ = self._main(["--accept-pins"], stage=stage_printing(MAPPING_A))
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(pins.load_expected(self.expected)["mapping"], MAPPING_A)
+
+    def tearDown(self):
+        for p in self.patches:
+            p.stop()
+        self.env.stop()
+        shutil.rmtree(self.out_root, ignore_errors=True)
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _main(self, argv, stage=None):
+        stage = stage or (lambda name, out_root: (True, "ok " + name))
+        out = io.StringIO()
+        with mock.patch.object(gate, "run_gate", side_effect=stage) as run, contextlib.redirect_stdout(out):
+            rc = gate.main(["--stamp", self.stamp, "--only", "title"] + argv)
+        return rc, out.getvalue(), run
+
+    def _summary(self):
+        with open(os.path.join(self.out_root, "summary.txt"), encoding="utf-8") as f:
+            return f.read()
+
+    def _drift_env(self):
+        """An operator variable the standard's env pin does not hold -- `env` drifts, nothing else does."""
+        os.environ["PS2X_GS_STATS"] = "1"
+
+    def test_a_drift_on_env_alone_keeps_the_mapping_pin_the_standard_held(self):
+        """The s11_r0004_rebuild1 defect, reproduced: env drifts, mapping does not. The early write happens
+        before any stage has printed the mapping line, so a rewrite from the measured set alone loses it,
+        and the late write does not fire to put it back."""
+        self._drift_env()
+        rc, out, _ = self._main(["--accept-pins"], stage=stage_printing(MAPPING_A))
+        self.assertEqual(rc, 0, out)
+        summary = self._summary()
+        self.assertIn("PIN mapping sha256=%s ok; from title.game.log\n" % MAPPING_A, summary)
+        self.assertIn("PINS ACCEPTED: env -> ", summary)
+        standard = pins.load_expected(self.expected)
+        self.assertEqual(standard["mapping"], MAPPING_A,
+                         "the standard must still carry the mapping pin the summary called ok")
+        self.assertEqual(standard["env"], gate.collect_pins()["env"].sha256, "and the drifted pin is the new one")
+        with open(self.expected, encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["detail"].get("mapping"), "from title.game.log",
+                             "a carried pin keeps the detail that describes it")
+        # The whole point: the next gate on this revision is not refused for an unpinned mapping.
+        rc, out, _ = self._main([], stage=stage_printing(MAPPING_A))
+        self.assertEqual(rc, 0, out)
+        self.assertIn("PINS MATCH", self._summary())
+
+    def test_both_drifting_leaves_both_measured_values_in_the_standard(self):
+        self._drift_env()
+        rc, out, _ = self._main(["--accept-pins"], stage=stage_printing(MAPPING_B))
+        self.assertEqual(rc, 0, out)
+        standard = pins.load_expected(self.expected)
+        self.assertEqual(standard["mapping"], MAPPING_B, "the late pin's measured value wins over the carried one")
+        self.assertEqual(standard["env"], gate.collect_pins()["env"].sha256)
+        self.assertIn("PIN mapping sha256=%s accepted (was %s); from title.game.log\n" % (MAPPING_B, MAPPING_A),
+                      self._summary())
+        rc, out, _ = self._main([], stage=stage_printing(MAPPING_B))
+        self.assertEqual(rc, 0, out)
+        self.assertIn("PINS MATCH", self._summary())
+
+    def _standard_bytes(self):
+        with open(self.expected, "rb") as f:
+            return f.read()
+
+    def test_nothing_drifting_writes_nothing(self):
+        before = self._standard_bytes()
+        rc, out, _ = self._main(["--accept-pins"], stage=stage_printing(MAPPING_A))
+        self.assertEqual(rc, 0, out)
+        self.assertIn("PINS MATCH", self._summary())
+        self.assertEqual(self._standard_bytes(), before,
+                         "a matching run leaves the standard byte for byte as it found it")
+
+    def test_a_dry_accept_pins_cannot_drop_the_mapping_it_never_measures(self):
+        """--pins --accept-pins launches nothing, so `mapping` is absent at every moment that path could
+        write: this is why the fix is the carry and not simply a later write."""
+        self._drift_env()
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = gate.main(["--pins", "--accept-pins"])
+        self.assertEqual(rc, 0, out.getvalue())
+        self.assertEqual(pins.load_expected(self.expected)["mapping"], MAPPING_A,
+                         "a check that cannot measure the mapping pin must not delete it")
+
+
+if __name__ == "__main__":
+    unittest.main()
