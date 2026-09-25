@@ -971,6 +971,71 @@ class TestQueue(LockTestBase):
             self.reap_procs(outer, *([waiter] if waiter else []))
 
 
+    def test_a_waiter_whose_caller_is_killed_leaves_the_queue(self):
+        # Review round 1 (Important 3): TaskStop kills the caller and leaves its children running; an orphaned
+        # waiter must not reach the front and claim the lock for a job nobody runs.
+        self.write_record("holder", 60, hb_age_s=0)
+        pidf = os.path.join(self.tmp, "parent.pid")
+        parent = subprocess.Popen([BASH, "-c", "echo $$ > '%s'; bash '%s' wait orphan 3 & sleep 120" % (fwd(pidf), LOCK_SH)],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=self.env(LOOP_LOCK_WAIT_SEC=60))
+        try:
+            self.assertEqual(len(self.wait_tickets(1, seconds=30)), 1, "the waiter never queued")
+            # Kill the real MSYS parent the way TaskStop does (Popen.kill would hit only Git's bash.exe launcher).
+            subprocess.run([BASH, "-c", "kill -9 %s" % _read(pidf).strip()], timeout=30)
+            deadline = time.time() + 30
+            while self.tickets() and time.time() < deadline:
+                time.sleep(0.2)
+            self.assertEqual(self.tickets(), [], "the orphaned waiter is still queued")
+            self.assertEqual(self.sh("release", "holder")[0], 0)
+            time.sleep(8)                                     # more than a slice: nobody claims the free lock
+            self.assertIsNone(self.holder())
+            self.assertTrue(self.is_free())
+        finally:
+            self.reap_procs(parent)
+
+    def test_a_waiters_blob_is_the_code_it_started_with(self):
+        # Review round 1 (Important 2): after a landing the file on disk has a new blob; a waiter from before it
+        # must print the blob of the code it runs, in its ticket and in its result line.
+        git = shutil.which("git")
+        if not git:
+            self.skipTest("git not found")
+        copy = os.path.join(self.tmp, "loop_lock_copy.sh")
+        shutil.copy(LOCK_SH, copy)
+        old = subprocess.run([git, "hash-object", copy], capture_output=True, text=True).stdout.strip()
+        self.write_record("holder", 60, hb_age_s=0)
+        p = subprocess.Popen([BASH, fwd(copy), "wait", "w", "2"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             text=True, env=self.env(LOOP_LOCK_WAIT_SEC=1))
+        try:
+            name = self.wait_tickets(1, seconds=30)[0]
+            self.assertIn("blob=" + old[:12], _read(os.path.join(self.qdir, name)))
+            with open(copy, "a", newline="\n") as f:
+                f.write("# landed\n")                           # the "landing": the file on disk changes
+            new = subprocess.run([git, "hash-object", copy], capture_output=True, text=True).stdout.strip()
+            self.assertNotEqual(old, new)
+            self.assertIn("blob " + new, subprocess.run([BASH, fwd(copy), "version"], capture_output=True,
+                                                        text=True, env=self.env()).stdout)
+            self.assertEqual(self.sh("release", "holder")[0], 0)
+            out = p.communicate(timeout=60)[0]
+            self.assertEqual(p.returncode, 0, out)
+            self.assertIn("[loop_lock.sh %s]" % old[:12], out)
+        finally:
+            self.reap_procs(p)
+
+    def test_check_marks_and_drops_a_stale_ticket(self):
+        # Review round 1 (Minor 4): the rollout waits for `check` to say exactly FREE; a hard-killed waiter's ticket
+        # must not hold that up past its staleness.
+        self.plant_ticket("dead", 400, hb_age_s=300)
+        rc, out = self.sh("check")
+        self.assertEqual(out.strip(), "FREE", out)
+        self.assertIn("TICKET-DROPPED", self.history())
+        self.assertEqual(self.strays(), [])
+        self.plant_ticket("dead2", 400, hb_age_s=300)
+        os.makedirs(self.lock + ".mx")                        # a fresh mutex token: busy, not stale
+        open(os.path.join(self.lock + ".mx", "t.%d.999.1" % int(time.time())), "w").close()
+        rc, out = self.sh("check", env=self.env(LOOP_LOCK_MUTEX_WAIT_SEC=1))
+        self.assertIn("QUEUED: STALE", out, "with the mutex busy the stale ticket is at least marked")
+
+
 class TestVersion(unittest.TestCase):
     """Sprint 13 H2: `loop_lock.sh version` prints the script's own git blob, so a waiter can tell which script
     served it (the rollout: a waiter still running the old script from before a landing must be restarted)."""
@@ -1310,6 +1375,36 @@ class TestRunDetached(LockTestBase):
         self.assertFalse(os.path.exists(ran))
         self.assertEqual(self.tickets(), [])
         self.assertEqual(self.record()[0], "worker")
+
+    def test_detached_waiter_leaves_the_queue_when_run_detached_is_killed(self):
+        # Review round 1 (Important 3): the waiter watches run_detached itself (LOOP_LOCK_WAIT_PARENT=$$), not the
+        # $(...) subshell a killed run_detached leaves behind.
+        self.write_record("worker", 60, hb_age_s=0)
+        ran = os.path.join(self.tmp, "ran")
+        job = self._job("touch '%s'\n" % fwd(ran))
+        marker = os.path.join(self.tmp, "job.done")
+        p = subprocess.Popen([BASH, DETACHED_SH, "--wait", "3", fwd(job), fwd(marker)], stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL,
+                             env=self.env(RUN_FREE_GB_CMD="echo 500", RUN_CPU_SAMPLER=0, LOOP_LOCK_WAIT_SEC=60))
+        try:
+            name = self.wait_tickets(1, seconds=30)[0]
+            # The waiter's pid is in its ticket name, and the pid it watches (run_detached's own) in its environment.
+            # Kill run_detached (-9, as TaskStop does) and leave its $(...) subshell and the waiter behind.
+            waiter = re.search(r"-(\d+)x\d+$", name).group(1)
+            find = "tr '\\0' '\\n' < /proc/%s/environ | sed -n 's/^LOOP_LOCK_WAIT_PARENT=//p'" % waiter
+            rd = subprocess.run([BASH, "-c", find], capture_output=True, text=True, timeout=30).stdout.strip()
+            self.assertTrue(rd.isdigit(), rd)
+            subprocess.run([BASH, "-c", "kill -9 %s" % rd], timeout=30)
+            deadline = time.time() + 30
+            while self.tickets() and time.time() < deadline:
+                time.sleep(0.2)
+            self.assertEqual(self.tickets(), [], "the orphaned detached waiter is still queued")
+            self.assertEqual(self.sh("release", "worker")[0], 0)
+            time.sleep(8)
+            self.assertIsNone(self.holder())
+            self.assertFalse(os.path.exists(ran))
+        finally:
+            self.reap_procs(p)
 
     def _git_repo_with_worktree(self):
         """A throwaway repository (main + one linked worktree) carrying the scripts under test."""

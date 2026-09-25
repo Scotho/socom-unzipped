@@ -198,6 +198,9 @@ if [ "$1" = "--_child" ]; then
   exit 0
 fi
 
+# The launch side is ONE brace group, parsed whole before it runs: a --wait can sit here for hours, and a
+# landing that rewrites this file meanwhile must not be read by offset into the rest (Sprint 13 H2 review).
+{
 owner="detached" purpose="" log="" quiet_flag=0 wait_sec=""
 _count() { case "$1" in ''|*[!0-9]*) echo "run_detached: $2 takes a whole number, not '$1'"; exit 2;; esac; }
 while [ $# -gt 0 ]; do
@@ -241,8 +244,11 @@ want_quiet=$quiet_flag
 case "$purpose" in launch*) want_quiet=1;; esac
 
 if [ -n "$wait_sec" ]; then
-  echo "run_detached: queueing for the loop lock as $owner (up to $wait_sec s)"
-  out=$(bash "$LOCKSH" wait "$owner" --wait-seconds "$wait_sec" --purpose "$purpose" --print-id)
+  # The waiter watches THIS process (not the $(...) subshell it is forked from, which a killed parent leaves
+  # behind): if run_detached is killed while queued, the waiter leaves the queue instead of claiming the
+  # lock for a job that will never launch. Its blob is recorded now -- this file is read by offset too.
+  echo "run_detached: queueing for the loop lock as $owner (up to $wait_sec s) [run_detached.sh $(git hash-object "$0" 2>/dev/null | cut -c1-12)]"
+  out=$(LOOP_LOCK_WAIT_PARENT=$$ bash "$LOCKSH" wait "$owner" --wait-seconds "$wait_sec" --purpose "$purpose" --print-id)
 else
   out=$(bash "$LOCKSH" take "$owner" --purpose "$purpose" --print-id)
 fi
@@ -264,3 +270,5 @@ export LOOP_LOCK_HELD="$held_id"
 export _RUN_DETACHED_QUIET="$want_quiet"
 nohup bash "$0" --_child "$owner" "$log" "$marker" "$script" "$@" </dev/null >/dev/null 2>&1 &
 echo "DETACHED pid=$! owner=$owner marker=$marker log=$log ($out)"
+exit 0
+}
