@@ -4,7 +4,7 @@
 
 ## 1. Open issues
 
-22 open issues. *Carried* counts the sprint closes an issue has survived (its `Carried ...` comments, or one for the `carried` label alone); at 2 the next close asks the owner.
+24 open issues. *Carried* counts the sprint closes an issue has survived (its `Carried ...` comments, or one for the `carried` label alone); at 2 the next close asks the owner.
 
 | Issue | Title | Area | Milestone | Carried | Closing bar (first sentence) |
 |---|---|---|---|---|---|
@@ -30,6 +30,8 @@
 | #54 | The tracked r0001 function map carries 1090 nested forced-entry rows from before fix_ghidra_csv's fix | recomp | backlog | 0 | The map rebuilt from Ghidra's raw export (or each nested row truncated at the next start) with the fixed script, the row count and the changed rows stated; then a recomp, a runtime build and the r0001 gate 3/3 with PINS MATCH under the lock, because the generated code changes; the r0004 leg unchanged (its map is already clean). |
 | #55 | The map's bounds lose to the JAL-target scan's carvings: 6,640 functions run past their row, 6,750 output files are sub_ (upstream #206) | recomp | backlog | 0 | Upstream #206 (or our own version of its rule: a map row's bounds win over a carving that shares its start) applied; the census diff stated (functions whose extents change, the `sub_` files that become `FUN_`); both revisions recompiled and their gates 3/3 with the pins re-accepted under a ruling that names the run, because a changed image shape moves every pin (S13-R5 forbids accepting pins from a failed run — the accept happens only after a green run on the new shape). |
 | #56 | build_revision --out re-decrypts from the disc tree and looks for the map in the out folder: on this machine the r0004 out build merges r0001's overlays and mismatches | recomp | backlog | 0 | `build_revision.sh --out` reads the tracked map from the tree by default (`--ghidra` stays an override) and, when the tree's `game/overlays_<rev>/` holds current products (their `repair.json` matching), copies or reuses them instead of decrypting again; a test over a temp tree for both; one `--out` run on this machine whose `--check-against` matches without seeding. |
+| #57 | The emitter includes the all-functions header in every generated file, so a one-name change recompiles everything (upstream #253) | recomp | backlog | 0 | The emitter stops including the header per file (forward declarations instead); a recomp census identical to the previous output but for the includes (`tools_py.recomp_census --diff`: renamed 0, extents 0, counts unchanged); a runtime build after a one-name change rebuilds one object (measured with ninja's log); the gate 3/3 with PINS MATCH on both revisions. |
+| #58 | BinExport main on Ghidra 12.1.3: the BinDiff cross-check still needs the second Ghidra 11.0.3 toolchain | harness | backlog | 0 | BinExport `main` built on Ghidra 12.1.3 with the EE extension the tree pins; research/49's export and BinDiff numbers reproduced within its stated tolerance on that toolchain; DEVELOPING pins 12.1.3 for the cross-check and the 11.0.3 install is retired from the recipe. |
 
 ## 2. Ruled not an issue
 
