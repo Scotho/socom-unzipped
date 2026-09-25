@@ -16,8 +16,8 @@ run could not measure, and replaces only the ones it did measure. `gate --pins -
 has to be the carry rather than merely "one write at the end": that path never launches, so its `mapping` is
 absent at EVERY moment it could write.
 
-Since #45 (Sprint 13 H3) there is one write, after a run whose every wanted stage reached a verdict: a gate the
-lock refuses, or whose stage raises after the lock, leaves the standard byte-identical. The carry above still
+Since #45 (Sprint 13 H3) there is one write, after a run whose every wanted stage PASSed (S13-R5): a gate the
+lock refuses, whose stage raises after the lock, or whose stage FAILs, leaves the standard byte-identical. The carry above still
 matters for `gate --pins --accept-pins`, which never measures `mapping`.
 
 Sibling module of test_gate_pins.py (kept separate on purpose: another agent holds that file).
@@ -198,9 +198,11 @@ class AcceptPinsKeepsEveryPin(unittest.TestCase):
         self.assertIn("PINS NOT ACCEPTED: the run did not complete", out.getvalue())
         self.assertIn("PINS DRIFTED: env", self._summary())
 
-    def test_a_run_whose_stage_fails_still_accepts_and_the_summary_says_so(self):
-        """Pre-existing behaviour, kept for the controller to rule on: a stage FAIL is a verdict, so the run
-        completed and the drift is accepted -- but the verdict line names the failures."""
+    def test_a_run_whose_stage_fails_leaves_the_standard_byte_identical(self):
+        """S13-R5 (2026-09-25): a standard is the measured input set of a run that PASSED. A FAILed run says
+        nothing about whether its inputs are right -- the mirror of #45's second instance, a good run with a
+        stray knob -- so it may not set one, and the drift it carried stays refused."""
+        before = self._standard_bytes()
         self._drift_env()
 
         def stage(name, out_root):
@@ -208,9 +210,11 @@ class AcceptPinsKeepsEveryPin(unittest.TestCase):
             return False, "scored badly"
 
         rc, out, _ = self._main(["--accept-pins"], stage=stage)
-        self.assertEqual(rc, 1, out)
-        self.assertEqual(pins.load_expected(self.expected)["env"], gate.collect_pins()["env"].sha256)
-        self.assertIn("rewritten after the run (1 of 1 stages FAILed; accepted anyway)\n", self._summary())
+        self.assertEqual(self._standard_bytes(), before,
+                         "a run whose stage FAILed must leave the standard byte for byte as it found it")
+        self.assertIn("PINS NOT ACCEPTED: 1 of 1 stages FAILed -- ", out)
+        self.assertEqual(rc, 7, out)
+        self.assertIn("PINS DRIFTED: env", self._summary())
 
     def test_the_accepted_standard_is_written_after_the_run_and_the_summary_says_so(self):
         """The write happens once the stages have run: a run_gate stand-in that reads the standard sees the
