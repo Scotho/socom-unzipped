@@ -11,7 +11,7 @@ namespace
     constexpr uint32_t kSyntheticFunction = 0x42u;
     constexpr uint32_t kCoreCollisionFunction = 0x99u;
     constexpr uint32_t kSyntheticEntryPoint = 0x00123456u;
-    constexpr uint32_t kSpecificRecvXEntryPoint = kSyntheticEntryPoint + 0x100u;
+    constexpr uint32_t kSpecificSocom2EntryPoint = kSyntheticEntryPoint + 0x100u;
     constexpr uint32_t kSyntheticCrc32 = 0xA1B2C3D4u;
     constexpr uint32_t kResponseXor = 0xA5A55A5Au;
     constexpr uint32_t kCoreCollisionResponse = 0xC0DEF00Du;
@@ -45,7 +45,7 @@ namespace
             host->struct_size < sizeof(*host) || !identity ||
             identity->struct_size < sizeof(*identity) ||
             (identity->entry_point != kSyntheticEntryPoint &&
-             identity->entry_point != kSpecificRecvXEntryPoint) ||
+             identity->entry_point != kSpecificSocom2EntryPoint) ||
             identity->crc32 != kSyntheticCrc32)
         {
             return nullptr;
@@ -256,10 +256,10 @@ namespace
         {
             PS2X_IOP_ABI_VERSION_V1,
             sizeof(ps2x_iop_profile_api_v1),
-            stringView("synthetic-ambiguous-recvx-profile"),
+            stringView("synthetic-ambiguous-socom2-profile"),
             {
                 sizeof(ps2x_iop_game_matcher_v1),
-                stringView("slus_201.84"),
+                stringView("socom2_game.elf"),
                 0u,
                 0u,
             },
@@ -277,11 +277,11 @@ namespace
         {
             PS2X_IOP_ABI_VERSION_V1,
             sizeof(ps2x_iop_profile_api_v1),
-            stringView("synthetic-specific-recvx-profile"),
+            stringView("synthetic-specific-socom2-profile"),
             {
                 sizeof(ps2x_iop_game_matcher_v1),
-                stringView("slus_201.84"),
-                kSpecificRecvXEntryPoint,
+                stringView("socom2_game.elf"),
+                kSpecificSocom2EntryPoint,
                 kSyntheticCrc32,
             },
             1u,

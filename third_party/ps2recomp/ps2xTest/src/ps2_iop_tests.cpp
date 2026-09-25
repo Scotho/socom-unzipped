@@ -1,5 +1,6 @@
 #include "MiniTest.h"
 #include "ps2x/iop/iop_subsystem.h"
+#include "iop_service.h"   // Sprint 13 Task C7: the built-in profile table, read directly
 
 #include <algorithm>
 #include <array>
@@ -30,7 +31,7 @@ namespace
     constexpr uint32_t kSyntheticFunction = 0x42u;
     constexpr uint32_t kCoreCollisionFunction = 0x99u;
     constexpr uint32_t kSyntheticEntryPoint = 0x00123456u;
-    constexpr uint32_t kSpecificRecvXEntryPoint = kSyntheticEntryPoint + 0x100u;
+    constexpr uint32_t kSpecificSocom2EntryPoint = kSyntheticEntryPoint + 0x100u;
     constexpr uint32_t kSyntheticCrc32 = 0xA1B2C3D4u;
     constexpr uint32_t kResponseXor = 0xA5A55A5Au;
     constexpr uint32_t kCoreCollisionResponse = 0xC0DEF00Du;
@@ -377,15 +378,19 @@ void register_ps2_iop_tests()
             ps2x::iop::IopSubsystem subsystem(host);
             std::string error;
 
-            t.IsTrue(subsystem.configure({"SLUS_201.84", 0u, 0u}, &error),
-                     "RECVX profile should match case-insensitively by basename");
+            // Sprint 13 Task C7 (audit F24): the other games' profiles are gone; the SOCOM II profile carries the
+            // selection, core-service and reload checks they used to.
+            t.IsTrue(subsystem.configure({"SOCOM2_GAME.ELF", 0u, 0u}, &error),
+                     "the SOCOM II profile should match case-insensitively by basename");
             ps2x::iop::DebugSnapshot snapshot = subsystem.debugSnapshot();
-            t.Equals(snapshot.activeProfile, std::string("recvx-us"),
-                     "RECVX ELF should select its built-in profile");
-            t.IsNotNull(findService(snapshot, "TSNDDRV"),
-                        "RECVX profile should register TSNDDRV");
-            t.IsNotNull(findService(snapshot, "CRI DTX"),
-                        "RECVX profile should register CRI DTX");
+            t.Equals(snapshot.activeProfile, std::string("socom2-us"),
+                     "the SOCOM II ELF should select its built-in profile");
+            t.IsNotNull(findService(snapshot, "989snd"),
+                        "the SOCOM II profile should register 989snd");
+            t.IsNotNull(findService(snapshot, "lgaud"),
+                        "the SOCOM II profile should register lgaud");
+            t.IsNotNull(findService(snapshot, "eznetcnf"),
+                        "the SOCOM II profile should register eznetcnf");
             t.IsNotNull(findService(snapshot, "dbcman"),
                         "core DBCMAN should remain active with a game profile");
             t.IsNotNull(findService(snapshot, "libsd"),
@@ -394,273 +399,30 @@ void register_ps2_iop_tests()
                         "core MCSERV should remain active with a game profile");
 
             error.clear();
-            t.IsTrue(subsystem.configure({"slus_203.88", 0u, 0u}, &error),
-                     "Fatal Frame profile should configure after a different game");
+            t.IsTrue(subsystem.configure({"unmatched.elf", 0u, 0u}, &error),
+                     "an unmatched ELF should configure after the SOCOM II profile");
             snapshot = subsystem.debugSnapshot();
-            t.Equals(snapshot.activeProfile, std::string("fatal-frame-us"),
-                     "reload should replace the active profile");
-            t.IsNull(findService(snapshot, "CRI DTX"),
+            t.IsTrue(snapshot.activeProfile.empty(),
+                     "reload should clear the active profile");
+            t.IsNull(findService(snapshot, "989snd"),
                      "reload should destroy services from the previous profile");
-            t.IsNotNull(findService(snapshot, "SDRDRV"),
-                        "Fatal Frame profile should expose SDRDRV");
+            t.IsNotNull(findService(snapshot, "libsd"),
+                        "core services should survive the reload");
         });
 
-        tc.Run("two subsystem instances isolate profile state and reset deterministically", [](TestCase &t)
+        tc.Run("the built-in profile table holds SOCOM II only", [](TestCase &t)
         {
-            FakeIopHost hostA;
-            FakeIopHost hostB;
-            ps2x::iop::IopSubsystem subsystemA(hostA);
-            ps2x::iop::IopSubsystem subsystemB(hostB);
-            std::string error;
-            t.IsTrue(subsystemA.configure({"SLUS_205.78", 0u, 0u}, &error),
-                     "first LotR instance should configure");
-            t.IsTrue(subsystemB.configure({"SLUS_205.78", 0u, 0u}, &error),
-                     "second LotR instance should configure");
-
-            ps2x::iop::RpcRequest request{};
-            request.sid = 0x00012345u;
-            request.receive = {0x1000u, 8u};
-
-            t.IsTrue(subsystemA.handleRpc(request).handled,
-                     "first instance should handle LotR sound RPC");
-            t.Equals(hostA.readWord(0x1004u), 1u,
-                     "first instance should start its counter at one");
-            (void)subsystemA.handleRpc(request);
-            t.Equals(hostA.readWord(0x1004u), 2u,
-                     "first instance should advance independently");
-
-            t.IsTrue(subsystemB.handleRpc(request).handled,
-                     "second instance should handle LotR sound RPC");
-            t.Equals(hostB.readWord(0x1004u), 1u,
-                     "second instance must not inherit the first counter");
-
-            subsystemA.reset();
-            (void)subsystemA.handleRpc(request);
-            t.Equals(hostA.readWord(0x1004u), 1u,
-                     "reset should restore per-instance service state");
-        });
-
-        tc.Run("LotR sound update completes queued PlayStream slots", [](TestCase &t)
-        {
-            FakeIopHost host;
-            ps2x::iop::IopSubsystem subsystem(host);
-            std::string error;
-            t.IsTrue(subsystem.configure({"SLUS_205.78", 0u, 0u}, &error),
-                     "LotR profile should configure");
-
-            constexpr uint32_t kSendAddress = 0x0800u;
-            constexpr uint32_t kReceiveAddress = 0x1000u;
-            constexpr uint16_t kStreamSlot = 7u;
-            const std::array<uint16_t, 10> playStreamPacket = {
-                1u, // command count
-                1u, // PlayStream
-                7u, // argument count
-                0u,
-                static_cast<uint16_t>(kStreamSlot << 8u),
-                0u,
-                0u,
-                0u,
-                0u,
-                0u,
-            };
-            t.IsTrue(host.writeGuest(kSendAddress,
-                                     playStreamPacket.data(),
-                                     sizeof(playStreamPacket)),
-                     "PlayStream command packet should fit in guest memory");
-
-            ps2x::iop::RpcRequest request{};
-            request.sid = 0x00012345u;
-            request.send = {kSendAddress, sizeof(playStreamPacket)};
-            request.receive = {kReceiveAddress, 0x100u};
-
-            t.IsTrue(subsystem.handleRpc(request).handled,
-                     "LotR sound service should handle PlayStream");
-            t.Equals(host.readWord(kReceiveAddress), 1u,
-                     "PlayStream response should expose one active record");
-            const uint32_t packedStream = host.readWord(kReceiveAddress + 4u);
-            t.Equals((packedStream >> 4u) & 0x3Fu,
-                     static_cast<uint32_t>(kStreamSlot),
-                     "active record should identify the queued EE stream slot");
-            t.Equals(host.readWord(kReceiveAddress + 0x24u), 1u,
-                     "response counter should follow the active record");
-
-            const std::array<uint16_t, 5> statusPacket = {
-                1u, // command count
-                9u, // GetStatus
-                2u, // argument count
-                kStreamSlot,
-                0u,
-            };
-            t.IsTrue(host.writeGuest(kSendAddress, statusPacket.data(), sizeof(statusPacket)),
-                     "GetStatus command packet should fit in guest memory");
-            request.send.size = sizeof(statusPacket);
-
-            t.IsTrue(subsystem.handleRpc(request).handled,
-                     "LotR sound service should handle the following status update");
-            t.Equals(host.readWord(kReceiveAddress), 0u,
-                     "the update after PlayStream should report no active records");
-            t.Equals(host.readWord(kReceiveAddress + 4u), 2u,
-                     "empty response counter should return to the base offset");
-        });
-
-        tc.Run("TSNDDRV uses profile checksum bindings without writing invalid ports", [](TestCase &t)
-        {
-            FakeIopHost host(0x02000000u);
-            ps2x::iop::IopSubsystem subsystem(host);
-            std::string error;
-            t.IsTrue(subsystem.configure({"slus_201.84", 0u, 0u}, &error),
-                     "RECVX profile should configure for TSNDDRV command testing");
-
-            constexpr uint32_t kResponseAddress = 0x1000u;
-            ps2x::iop::RpcRequest stateRequest{};
-            stateRequest.sid = 1u;
-            stateRequest.function = 0x12u;
-            stateRequest.receive = {kResponseAddress, sizeof(uint32_t)};
-            t.IsTrue(subsystem.handleRpc(stateRequest).handled,
-                     "TSNDDRV should return its configured status buffer");
-            const uint32_t statusAddress = host.readWord(kResponseAddress);
-            t.IsTrue(statusAddress != 0u, "TSNDDRV status buffer should be allocated");
-
-            constexpr int16_t kChecksum = 0x1234;
-            t.IsTrue(host.writeGuest(0x01E0EF10u, &kChecksum, sizeof(kChecksum)),
-                     "RECVX primary checksum binding should be writable in the fake guest");
-
-            constexpr uint32_t kCommandAddress = 0x2000u;
-            std::array<uint8_t, 8> command{};
-            command[0] = 0x29u;
-            command[1] = 0u;
-            t.IsTrue(host.writeGuest(kCommandAddress, command.data(), command.size()),
-                     "valid TSNDDRV command should be writable");
-
-            ps2x::iop::RpcRequest commandRequest{};
-            commandRequest.sid = 0u;
-            commandRequest.function = 0u;
-            commandRequest.send = {kCommandAddress, static_cast<uint32_t>(command.size())};
-            t.IsTrue(subsystem.handleRpc(commandRequest).handled,
-                     "TSNDDRV should handle the characterized command queue");
-
-            int16_t writtenChecksum = 0;
-            t.IsTrue(host.readGuest(statusAddress + 0x26u,
-                                    &writtenChecksum,
-                                    sizeof(writtenChecksum)),
-                     "TSNDDRV SE checksum slot should be readable");
-            t.Equals(writtenChecksum, kChecksum,
-                     "valid port should mirror the profile-bound checksum table");
-
-            constexpr uint32_t kPastStatusAddress = 0x44u;
-            constexpr uint16_t kSentinel = 0xBEEFu;
-            t.IsTrue(host.writeGuest(statusAddress + kPastStatusAddress,
-                                     &kSentinel,
-                                     sizeof(kSentinel)),
-                     "sentinel after the status structure should be writable");
-            command[1] = 0x0Fu;
-            (void)host.writeGuest(kCommandAddress, command.data(), command.size());
-            (void)subsystem.handleRpc(commandRequest);
-
-            uint16_t sentinelAfter = 0u;
-            (void)host.readGuest(statusAddress + kPastStatusAddress,
-                                 &sentinelAfter,
-                                 sizeof(sentinelAfter));
-            t.Equals(sentinelAfter, kSentinel,
-                     "invalid port must not overwrite memory past the 0x42-byte status structure");
-        });
-
-        tc.Run("RECVX reset clears CRI object maps without global state", [](TestCase &t)
-        {
-            FakeIopHost host(0x02000000u);
-            ps2x::iop::IopSubsystem subsystem(host);
-            std::string error;
-            t.IsTrue(subsystem.configure({"slus_201.84", 0u, 0u}, &error),
-                     "RECVX profile should configure");
-
-            constexpr uint32_t kSendAddress = 0x2000u;
-            constexpr uint32_t kReceiveAddress = 0x2100u;
-            host.writeWord(kSendAddress + 0u, 0u);
-            host.writeWord(kSendAddress + 4u, 0x4000u);
-            host.writeWord(kSendAddress + 8u, 0x100u);
-
-            ps2x::iop::RpcRequest request{};
-            request.sid = 0x7D000000u;
-            request.function = 0x422u;
-            request.send = {kSendAddress, 12u};
-            request.receive = {kReceiveAddress, 4u};
-            t.IsTrue(subsystem.handleRpc(request).handled,
-                     "SJRMT create should be emulated by the RECVX profile");
-
-            ps2x::iop::DebugSnapshot snapshot = subsystem.debugSnapshot();
-            const ps2x::iop::DebugService *service =
-                findService(snapshot, "CRI DTX");
-            if (!service)
+            // Sprint 13 Task C7 (audit F24): a row here is compiled into the runner; a row for another game is dead
+            // weight (Resident Evil CV, LotR and Fatal Frame once were). A new row needs a reason in the audit's sense.
+            const std::vector<ps2x::iop::detail::ProfileDefinition> profiles =
+                ps2x::iop::detail::createBuiltinProfiles();
+            t.Equals(profiles.size(), size_t{1}, "exactly one built-in profile");
+            if (profiles.size() != 1u)
             {
-                t.Fail("CRI DTX service should be visible in the debug snapshot");
                 return;
             }
-            t.Equals(metricValue(*service, "sjrmt_objects"), uint64_t{1},
-                     "created CRI object should be tracked by this instance");
-
-            subsystem.reset();
-            snapshot = subsystem.debugSnapshot();
-            service = findService(snapshot, "CRI DTX");
-            if (!service)
-            {
-                t.Fail("CRI DTX service should survive reset");
-                return;
-            }
-            t.Equals(metricValue(*service, "sjrmt_objects"), uint64_t{0},
-                     "reset should clear CRI object maps");
-        });
-
-        tc.Run("reset closes profile-owned host file handles", [](TestCase &t)
-        {
-            FakeIopHost host;
-            host.hostFileContents["translated/test.bin"] = {0x10u, 0x20u, 0x30u};
-
-            ps2x::iop::IopSubsystem subsystem(host);
-            std::string error;
-            t.IsTrue(subsystem.configure({"SLUS_205.78", 0u, 0u}, &error),
-                     "LotR profile should configure for file lifecycle testing");
-
-            constexpr uint32_t kPathAddress = 0x1000u;
-            constexpr uint32_t kReceiveAddress = 0x1100u;
-            constexpr char kPath[] = "test.bin";
-            t.IsTrue(host.writeGuest(kPathAddress, kPath, sizeof(kPath)),
-                     "fake guest path should be writable");
-
-            ps2x::iop::RpcRequest request{};
-            request.sid = 0x0000FF01u;
-            request.function = 0x08u;
-            request.send = {kPathAddress, sizeof(kPath)};
-            request.receive = {kReceiveAddress, 8u};
-            t.IsTrue(subsystem.handleRpc(request).handled,
-                     "LotR CLFILE open should be handled");
-            t.Equals(host.openHostFiles.size(), size_t{1},
-                     "open RPC should retain one opaque host file handle");
-
-            ps2x::iop::DebugSnapshot snapshot = subsystem.debugSnapshot();
-            const ps2x::iop::DebugService *service =
-                findService(snapshot, "CLFILE");
-            if (!service)
-            {
-                t.Fail("LotR CLFILE service should be visible before reset");
-                return;
-            }
-            t.Equals(metricValue(*service, "open_files"), uint64_t{1},
-                     "debug state should report the open file");
-
-            subsystem.reset();
-            t.IsTrue(host.openHostFiles.empty(),
-                     "reset should release every retained host file handle");
-            t.Equals(host.closedHostFileHandles.size(), size_t{1},
-                     "host close callback should run exactly once");
-            snapshot = subsystem.debugSnapshot();
-            service = findService(snapshot, "CLFILE");
-            if (!service)
-            {
-                t.Fail("LotR CLFILE service should survive reset");
-                return;
-            }
-            t.Equals(metricValue(*service, "open_files"), uint64_t{0},
-                     "reset should clear the CLFILE handle registry");
+            t.Equals(profiles[0].id, std::string("socom2-us"), "the one profile is SOCOM II's");
+            t.Equals(profiles[0].matcher.elfName, std::string("socom2_game.elf"), "it matches the SOCOM II ELF");
         });
 
 #if defined(PS2X_TEST_IOP_PLUGIN_DIR)
@@ -851,19 +613,19 @@ void register_ps2_iop_tests()
                      "duplicate-SID failure should clearly identify the registry conflict");
 
             error.clear();
-            t.IsFalse(subsystem.configure({"slus_201.84", kSyntheticEntryPoint, kSyntheticCrc32}, &error),
+            t.IsFalse(subsystem.configure({"socom2_game.elf", kSyntheticEntryPoint, kSyntheticCrc32}, &error),
                       "equally specific built-in and plugin matchers should be ambiguous");
             t.IsTrue(error.find("ambiguous IOP profiles") != std::string::npos,
                      "ambiguous profile selection should fail clearly");
 
             error.clear();
-            t.IsTrue(subsystem.configure({"slus_201.84",
-                                          kSpecificRecvXEntryPoint,
+            t.IsTrue(subsystem.configure({"socom2_game.elf",
+                                          kSpecificSocom2EntryPoint,
                                           kSyntheticCrc32},
                                          &error),
                      "a more-specific matcher should win over a lower-specificity tie");
             t.Equals(subsystem.debugSnapshot().activeProfile,
-                     std::string("synthetic-specific-recvx-profile"),
+                     std::string("synthetic-specific-socom2-profile"),
                      "the most specific plugin profile should be selected");
 
             error.clear();

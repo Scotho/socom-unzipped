@@ -38,20 +38,19 @@ IopHost bridge -> validated guest memory, files, audio, memory card,
 
 These terms describe different layers:
 
-- A **module implementation** is a reusable protocol engine, such as TSNDDRV,
-  CRI DTX, CLFILE, or SDRDRV.
+- A **module implementation** is a reusable protocol engine, such as 989snd,
+  lgaud or eznetcnf.
 - A **binding** contains build-specific values: SIDs, absolute EE addresses,
   callback addresses, guest arenas, archive names, and protocol variants.
 - A **profile** matches one game build and creates the required module
   implementations with that build's bindings.
 
-For example, `cri_dtx.cpp` contains the reusable CRI DTX engine, while the
-`recvx-us` profile supplies Code: Veronica X addresses. A second game should
-reuse that engine only after its wire protocol has been compared with the
-characterized variant; normally only its profile bindings should change.
-Parameterized does not mean universally protocol-compatible. In particular,
-`sound_update_stub.cpp` is a narrow LotR compatibility shim, not a complete
-generic SOUND driver.
+Sprint 13 Task C7 (audit F24): upstream's other-game profiles (`recvx-us`,
+`lotr-two-towers-us`, `fatal-frame-us`) and their five modules (TSNDDRV, CRI
+DTX, CLFILE, the LotR SOUND stub, SDRDRV) were removed from this tree; they
+were compiled into the SOCOM II runner and never selected. A module reused by
+another game should be reused only after its wire protocol has been compared
+with the characterized variant.
 
 ## Built-in services and profiles
 
@@ -63,16 +62,15 @@ Core services are created for every `IopSubsystem`:
 | LIBSD | `0x80000701` | Always active |
 | DBCMAN | `0x80001300` | Always active |
 
-The current built-in game profiles are:
+The one built-in game profile is:
 
 | Profile | Matcher | Services |
 | --- | --- | --- |
-| `recvx-us` | `slus_201.84` | TSNDDRV and CRI DTX |
-| `lotr-two-towers-us` | `SLUS_205.78` | CLFILE and SOUND update compatibility |
-| `fatal-frame-us` | `SLUS_203.88` | SDRDRV |
+| `socom2-us` | `socom2_game.elf` | 989snd, lgaud and eznetcnf |
 
-All current built-ins declare only the ELF basename; they do not yet constrain
-the entry point or CRC32. Basename matching is case-insensitive.
+It declares only the ELF basename; it does not constrain the entry point or
+CRC32. Basename matching is case-insensitive. `ps2xTest` holds the table to
+this one row.
 
 If no profile matches, the subsystem still has MCSERV, LIBSD, and DBCMAN. It
 does not create any game-specific service. An unknown SID remains unhandled so
@@ -112,9 +110,8 @@ result can also request completion semaphore signals and can suppress the
 runtime's default EE callback or registered-server dispatch. The transport
 executes those actions; the service never reaches into runtime internals.
 
-The transfer hook is deliberately generic. TSNDDRV uses it for compatibility
-backfill and CRI DTX uses it to observe DMA, but the SIF transport contains no
-game names, game addresses, or branches for those modules.
+The transfer hook is deliberately generic: the SIF transport contains no game
+names, game addresses, or branches for particular modules.
 
 RPC ABI selection is offered to every active profile service before the core
 services, and every active service receives each SIF transfer notification.
