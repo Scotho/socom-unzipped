@@ -17,8 +17,8 @@ audit row 40.)*
   *(Superseded 2026-09-25, Sprint 13 R2: this bullet named "the tags `v0.9.0` and `v0.10.0`; one draft Release,
   `v0.10.0`" -- two tags behind by the day it was read, and blind to `v0.5.0`-`v0.8.0`; documents audit row 40.)*
   Rulesets on `main` and `sprint-*` (§6); four workflows: `linux` and `windows` (the
-  library + tests + launcher with no generated code, about an hour each, skipped and reporting success on a
-  docs-only push), `secrets` (the leak check over the tree and full history plus gitleaks, minutes, every push) and
+  library + tests + launcher with no generated code, about an hour each; a docs-only push starts neither, a docs-only
+  pull request runs them with the build skipped -- DEVELOPING's "Reading a CI run"), `secrets` (the leak check over the tree and full history plus gitleaks, minutes, every push) and
   `release-draft` (§5). *Until 2026-09-20 this bullet said "private, no licence file, no tags, no branch protection,
   one workflow".*
 - `develop` is gone (2026-09-20): it had pointed at the same commit as `main` after every sprint merge since Sprint 5

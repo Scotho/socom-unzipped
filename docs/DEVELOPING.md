@@ -553,6 +553,19 @@ recomp`, a `./build.sh runtime` that builds the game, and the gate.
 > disc at all", above a table whose rows 1, 2 and 5 (`./build.sh recomp`, the game build, the gate) need the disc
 > (stranger audit S36).
 
+**Reading a CI run** (Sprint 13 H1, pinned by `tools_py/tests/test_workflows.py`). GitHub calls a run `success` when
+any job in it passed and `skipped` only when every job was skipped, so the word alone never said whether anything
+was built. What each case now looks like: a push touching only `docs/` starts **no** `linux` or `windows` run --
+`gh run list --commit <sha>` shows `secrets` alone, and that absence is the "not built" signal; any other push runs
+`changes` then `build` / `build-windows`, so its `success` means built and tested. A pull request always runs both
+workflows (`build`, `build-windows` and `leakcheck` are `main`'s required checks and must report), and its `changes`
+job compares the pull request's `base.sha..head.sha`, not its last push -- the step's first log line says
+`pull_request: comparing <base>..<head>`. A docs-only pull request is the one green run with nothing built: read the
+job list (`gh run view <id>`), where the build shows as skipped. A pull request's check list mixes its
+`pull_request` runs with the branch's `push` runs on the same commit; before H1 a docs-only last push put a `build
+skipping` row beside the pull request's real build (PR #50, runs 36110474156 and 36110478507) -- the `pull_request`
+row is the one that answers "was this branch built".
+
 **How long the whole thing takes, measured.** On 2026-09-21 the entire newcomer path was run from a genuine `git clone`
 of this repository into an empty directory on a 28-core Windows machine, nothing pre-existing, and every step passed:
 clone 5 s (115 MB) · `install_hooks.sh` 1 s · `bootstrap_windows.sh` **16 s** from no cache at all (the real download;
