@@ -579,7 +579,7 @@ only ever grow, so more than the number here is fine and fewer is a regression t
 > Superseded 2026-09-25 (Sprint 13 R2, fix round 1): rows 1, 3 and 4 carried every earlier count (881, 880, 876 and
 > 764 C++; 2553, 1832, 1723 and 1104 Python; three skip counts) and three "this row said ... until 2026-09-21" notes
 > (`unhandled=0`, the C++ 500, the Python 1104 / `skipped=63`). One dated count per row stays; the earlier ones are
-> in this file's git history and in `docs/STATUS.md`'s dated entries.
+> in this file's git history (`git log -p -- docs/DEVELOPING.md`).
 >
 > Superseded 2026-09-25 (Sprint 13 R2): row 5 said "about 15 min", README said "about 15 minutes" and HANDOFF's
 > per-stage figures add to 17 (documents audit row 39); the three measured gates above are the reading.
