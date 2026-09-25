@@ -51,9 +51,58 @@ git log --format='%h %ad %s' --date=short -- scripts/parity/ref_main_menu_ours.p
 git log --format='%h %ad' --date=short -S "fade into the attract movie" -- tools_py/parity/gate.py
 #  -> 3bc03bad 2026-09-10 (the calibration comment naming s19 the fade and s20..s22 the movie)
 
-# D -- the side by side: the reference and s19..s22 of a stamp resized to 320x240 in one strip (scratch files,
-#      viewed, not committed)
-python -c "from PIL import Image; ..."   # PIL paste of ref_main_menu_ours.png + <stamp>/title/s19..s22_none.png
+# D -- the side by side: the reference and s19..s22 of a stamp in one 1600x240 strip (a scratch file, viewed
+#      as an image, not committed). Run from the repo root; STAMP is an archived title directory.
+STAMP=D:/socom_archive/parity/gate/s9_p7_playtest_gate/title OUT=strip.png python - <<'EOF'
+import os
+from PIL import Image
+d, W, H = os.environ["STAMP"], 320, 240
+row = Image.new("RGB", (W * 5, H))
+row.paste(Image.open("scripts/parity/ref_main_menu_ours.png").convert("RGB").resize((W, H)), (0, 0))
+for i, n in enumerate(["s19", "s20", "s21", "s22"]):
+    p = next(f for f in os.listdir(d) if f.startswith(n + "_"))
+    row.paste(Image.open(os.path.join(d, p)).convert("RGB").resize((W, H)), (W * (i + 1), 0))
+row.save(os.environ["OUT"])
+EOF
+#  run for s8_audio_mc_gate2, s8_close_gate, s9_p7_playtest_gate (under D:/socom_archive/parity/gate) and
+#  s11_close_gate (under C:/projects/socom_pc/logs/parity/gate); §2 describes the four strips
+
+# G -- the per-root split, the menu-window margin, the literal Step 2 rule, the tail freezes, the groupings
+python - <<'EOF'
+import glob, re
+roots = ["D:/socom_archive/parity/gate", "C:/projects/socom_pc/logs/parity/gate"]
+rows = []
+for r in roots:
+    for f in glob.glob(r + "/*/summary.txt"):
+        line = next((l for l in open(f, encoding="utf-8", errors="replace") if l.split(" ")[1:2] == ["title"]), "")
+        sc = dict(re.findall(r"(s\d\d)=([\d.]+)", line))
+        if len(sc) == 23:
+            rows.append((r, f.replace("\\", "/").split("/")[-2], line.split()[0], {k: float(v) for k, v in sc.items()}))
+print("per root:", {r: sum(1 for x in rows if x[0] == r) for r in roots})
+win = lambda s: [s["s%02d" % i] for i in range(19)]
+good = [(n, s) for _, n, v, s in rows if min(win(s)) >= 90]
+print("window-clean stamps:", len(good), "lowest window capture:", sorted((min(win(s)), n) for n, s in good)[:5])
+lit = [n for n, s in good if any(s["s%02d" % (i - 1)] >= 90 and s["s%02d" % i] < 90 for i in range(1, 23))]
+print("literal rule (predecessor >= 90, capture < 90, any of s01..s22) refuses", len(lit), "of", len(good), "window-clean stamps")
+tail = lambda s: [s["s%02d" % i] for i in range(19, 23)]
+frz = [n for _, n, v, s in rows if max(tail(s)) < 90 and max(tail(s)) - min(tail(s)) <= 0.2]
+print("tail frozen (s19..s22 within 0.2, all < 90):", frz)
+by = {}
+for _, n, v, s in rows:
+    k = sum(x >= 90 for x in s.values()); by.setdefault(k, []).append(n)
+for k in sorted(by): print(k, len(by[k]), sorted(by[k]) if len(by[k]) < 20 else "")
+EOF
+#  -> per root: D:/socom_archive/parity/gate 118, C:/projects/socom_pc/logs/parity/gate 47
+#  -> window-clean stamps: 144; lowest window capture 92.0 (s6_audio_title15, 17, 18), 92.4 (s6_audio_title9),
+#     92.8 (s5_gsbp2c)
+#  -> literal rule refuses 130 of 144 window-clean stamps
+#  -> tail frozen: s5_gsbp2, s6_audio_title14, s7_cpu_fallback2 and the eighteen s11_r0004_* runs -- every one
+#     of them already fails inside the window
+#  -> the by-count groups with their stamp names, as in the §1 table (19/23 has 123 names and is not listed)
+
+# H -- the image the issue names under scripts/parity/refs/ is the gate's reference, byte for byte
+sha256sum scripts/parity/refs/main_menu.png scripts/parity/ref_main_menu_ours.png
+#  -> cc36f23fbc5863cf0b608cf2fe268acd8a33fb46dcb53c99f19233caca3d2a7c for both
 
 # E -- the new verdict on the archived captures themselves (re-scores PNGs, no game)
 python -m tools_py.parity.gate --score-title D:/socom_archive/parity/gate/<stamp>/title
@@ -69,8 +118,11 @@ python -m unittest tools_py.tests.test_gate.TitleScoring      # the committed 16
 
 ## 1. The record (A)
 
-165 archived stamps carry a title line with 23 scores: 118 under `D:/socom_archive/parity/gate` (2026-09-10 ..
-2026-09-21) and 47 under the main tree's `logs/parity/gate` (2026-09-22 .. 2026-09-25). By the old count:
+165 archived stamps carry a title line with 23 scores (A): 118 under `D:/socom_archive/parity/gate` (2026-09-10 ..
+2026-09-21) and 47 under the main tree's `logs/parity/gate` (2026-09-22 .. 2026-09-25) (G's `per root`; the date
+ranges are the appendix's first and last mtimes per root). By the old count (A's counter; the stamp names in the
+second column are G's by-count listing; the third column's descriptions come from D on the named stamps and from the
+scores, not from viewing all 165):
 
 | menu captures >= 90 | stamps | what the captures show |
 |---|---|---|
@@ -97,6 +149,11 @@ the boot's length (s00 at 21 s, 35 s, 52 s or 84 s) moves the attract with it, s
 
 ## 2. The side by side (D)
 
+The comparison uses `scripts/parity/ref_main_menu_ours.png`, the file the gate scores against. The image the issue
+names under `scripts/parity/refs/` (`main_menu.png`) was not used separately because it is the same file byte for byte
+(H: one sha256 for both, both added in `d0caab98`) -- it is our own capture, not a console-side image, so comparing
+against it would repeat these numbers exactly.
+
 The reference is the main menu: the SOCOM II logo and the trident badge over an amber photograph (a harbour skyline, a
 soldier bottom left), LOAD GAME / NEW GAME / ONLINE, the credit lines, and -- only in the reference -- the runtime's
 "Runtime Debugg..." overlay tab at the bottom right.
@@ -114,9 +171,11 @@ soldier bottom left), LOAD GAME / NEW GAME / ONLINE, the credit lines, and -- on
 
 **Verdict: a timing -- the phase of the idle attract sequence -- not a screen, a render or a card state.** Every run
 shows the same sequence at a slightly different point; nothing in the four captures is a broken menu. The menu part of
-the pictures is the same in all of them, and it scores 93-99 in s00..s18 on every clean stamp.
+the pictures is the same in all of them: s00..s18 score 92.0-99.4 on every stamp whose window is whole (G; the
+lowest, 92.0 on s6_audio_title15/17/18, is the real margin, 2.0 over the 90 bar).
 
-Why fourteen runs never reached the attract is not settled here. Twelve of them are the Sprint 6 audio-experiment
+Why fourteen runs never reached the attract is not settled here. Twelve of them (G's 23/23 group, grouped by hand
+by name) are the Sprint 6 audio-experiment
 series of 2026-09-17 11:41-13:38 (s6_audio_title7..18, s6_audio_gate7) and one is the audio working tree above, which
 suggests the attract's start waits on the title music stream's state; that is a hypothesis from the grouping only, and
 the console's own behaviour (does the attract always start at ~114 s?) has not been measured.
@@ -131,10 +190,19 @@ the issue names.
 
 The fix (`tools_py/parity/gate.py`, `score_title`): the verdict is positional.
 
+**Why a fixed window and not the task's literal rule.** Task V1 Step 2 asked that "the title stage refuses a capture
+under 90 when the reference matches its own previous capture within tolerance". Applied at run time to every capture,
+that rule refuses every clean run at the fade: s18 matches and s19 (the menu fading to black) scores 83-89. G counts
+it: it refuses 130 of the 144 stamps whose menu window is whole (the 123 standing 19/23 runs plus the 7 with the
+attract one capture late). So the predecessor evidence is used where it holds -- on the record, not at run time:
+s00..s18 are the positions that matched, each after a matching predecessor, on every clean stamp, and that fixed
+window is what the verdict checks.
+
 - `TITLE_MENU_WINDOW = 19`: s00..s18 are the menu. Every capture the run wrote in that window must score >=
   `TITLE_MIN_SCORE` (90.0); a lost one fails the stage and is named in the detail (`menu capture(s) under 90.0: s16
-  s17 s18`). On the record each of those positions matched the reference, and so did the capture before it; the
-  lowest clean s18 is 93.0 (`s5_gsbp2c`), the fade that follows it scores 83-92, so 90 still separates them.
+  s17 s18`). On the record each of those positions matched the reference, and so did the capture before it. The
+  lowest window capture on a clean stamp is 92.0 (G), so the margin over the bar is 2.0 points; the lowest s18 alone
+  is 93.0 (`s5_gsbp2c`, A), and the fade that follows it scores 83-92, so 90 still separates them.
 - The tail s19..s22 is scored and printed but not counted. When the whole tail matches the menu the detail says
   `attract not reached by s22`, so the no-attract outlier is visible without failing a run whose menu is whole.
 - `TITLE_MIN_MATCHES = 16` remains as the floor on how many window captures a run must have written (the committed
@@ -151,9 +219,20 @@ change 3 of its 7 cases failed (the two refusals and the no-attract note); after
 ## 4. What this means for the task
 
 - **Closing bar, first half (side by side, difference named): met** -- §2; the difference is the attract's phase.
-- **Closing bar, second half ("a fix that brings the four back to 90, or a deliberate re-reference"): neither
-  applies**, because the four are not menu captures and should not match the menu. The reference is right for the
-  menu and stays as it is; no re-reference. The issue's title premise should be corrected when it is closed.
+- **Closing bar, second half ("a fix that brings the four back to 90 or above on a gate, or a deliberate
+  re-reference"): AMENDED, not met.** Neither applies, because the four are the attract sequence, not menu captures,
+  and should not match the menu. The reference is right for the menu and stays as it is; no re-reference. The bar is
+  replaced by "the menu window s00..s18 is scored capture by capture and a lost one fails the stage", which `79aad10c`
+  does. **The close comment on #30 must say the bar was amended and why** (§2's verdict, §3's `s7_cpu_fallback2`),
+  not that it was met, and the issue's title premise should be corrected when it is closed.
+- **Open gap: a freeze that starts inside the tail passes.** If the game froze at s19 or later, the window is whole
+  and s19..s22 are only printed, so the stage passes. On the record no such run exists: G's tail-frozen list (s19..s22
+  within 0.2 of each other and all under 90) is 21 stamps, and every one already fails inside the window. A cheap
+  guard, not built here: name or fail a run whose s19..s22 scores are all under 90 and within 0.2 of each other; or,
+  sharper, reuse the mission stage's liveness idea (`MISSION_LIVE_PAIR_DIFF`) and require at least one tail pair to
+  differ by a mean absolute RGB difference over a floor -- a real attract moves between every capture (§2), a frozen
+  frame does not. The 14 no-attract runs are untouched by the score form of the guard: their tails are the static
+  menu at >= 90.
 - **The scorer change is the fix for the "kept passing" half**, and it is a `tools_py/parity/` change, so HANDOFF §5
   rule 5 owes a green three-stage gate on it before it reaches the sprint branch. That run is lock-bound and was not
   done here; the re-score of the archived captures (E) is the evidence available without the lock.

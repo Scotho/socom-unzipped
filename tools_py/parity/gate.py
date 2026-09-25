@@ -67,6 +67,10 @@ TITLE_REF = os.path.join("scripts", "parity", "ref_main_menu_ours.png")
 # Every clean run scores exactly 19/23 >= 90.0, so 90.0 sits ~3 points under the menu band and
 # ~5 points over the fade, and 16 leaves three captures of headroom. A mission run scored as a
 # title run gives 1/36 (negative control, logs/parity/runs/gameplay_probe5).
+# [SUPERSEDED 2026-09-25 by the issue #30 block below: the verdict is no longer a count. The three
+# captures of headroom sat inside the menu, not at the tail (s7_cpu_fallback2 lost s16..s18 and passed),
+# and the "~3 points" band is 2.0 on the full record (lowest window capture 92.0, research/64 command G).
+# The scores and the fade/movie reading above still stand.]
 #
 # Issue #30 (research/64, 2026-09-25): s19..s22 are not menu screens that were lost -- they are the game's idle
 # attract sequence (the menu fading to black, then the mission flyovers), already named in the calibration
@@ -76,7 +80,8 @@ TITLE_REF = os.path.join("scripts", "parity", "ref_main_menu_ours.png")
 # record: s7_cpu_fallback2 froze on the menu-over-black from s16 on (s16..s22 = 82.7-82.9) and PASSED at 16/23.
 # So the verdict is positional: every capture the run wrote inside the menu window s00..s18 must score
 # >= TITLE_MIN_SCORE (on the record each of those positions matched the reference, and so did the capture
-# before it; the lowest s18 on a clean stamp is 93.0, s5_gsbp2c), and the attract tail s19..s22 is printed,
+# before it; the lowest window capture on a clean stamp is 92.0, 2.0 over the bar, and the lowest s18 alone
+# 93.0, s5_gsbp2c), and the attract tail s19..s22 is printed,
 # not counted. Replayed over the 165 stamps this changes one verdict, s7_cpu_fallback2 PASS -> FAIL.
 # TITLE_MIN_MATCHES stays as the floor on how many window captures a run must have written (the committed
 # fixture tests/fixtures/gate/title holds s00..s15).

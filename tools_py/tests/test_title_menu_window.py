@@ -2,7 +2,8 @@
 
 The title run holds the main menu for 23 captures six seconds apart (scripts/parity/title_menu.txt).
 On every clean run since the first archived stamp (native_on, 2026-09-10) s00..s18 are the menu and
-score 93-99 against scripts/parity/ref_main_menu_ours.png, and s19..s22 are the game's idle attract
+score 92.0-99.4 against scripts/parity/ref_main_menu_ours.png (the lowest, 92.0, is 2.0 over the 90 bar;
+the lowest s18 alone is 93.0), and s19..s22 are the game's idle attract
 sequence (the menu fading to black, then the mission flyovers), which is correct behaviour and scores
 50-89. The old bar (>= 16 of 23 at 90) therefore had three captures of slack INSIDE the menu window:
 s7_cpu_fallback2 (2026-09-17) froze on the menu-over-black at s16 and PASSED at 16/23.
@@ -10,6 +11,13 @@ s7_cpu_fallback2 (2026-09-17) froze on the menu-over-black at s16 and PASSED at 
 The rule under test (research/64): every capture in the menu window s00..s18 that a run wrote must
 score >= TITLE_MIN_SCORE, because on the reference record each of those positions matched the
 reference, and so did the capture before it. The attract tail s19..s22 is printed, not counted.
+
+Why a fixed window and not Task V1 Step 2's literal rule ("refuse a capture under 90 whose predecessor
+matched the reference"): applied at run time to every capture, the literal rule refuses every clean run
+at the fade, because s18 matches and s19 (the menu fading to black) scores 83-89 -- 130 of the 144
+archived stamps whose menu window is whole (the 123 standing 19/23 runs and the 7 with the attract one
+capture late; research/64, command G). The predecessor evidence is used where it holds: the window
+s00..s18 is the set of positions that matched, capture after capture, on the whole record.
 
 The fixtures are synthetic: a small generated gradient stands in for the menu reference, a copy of it
 for a menu capture, and a dark or inverted frame for anything else. No game bytes.
