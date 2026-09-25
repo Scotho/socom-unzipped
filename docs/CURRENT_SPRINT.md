@@ -126,7 +126,7 @@ of **R259** and **R262**. R258's Task 7b was completed here; only its proposals 
 
 #### Sprint 12's `S12-Rn` rulings and `LOCAL:` lines that touch these rows (for the global sequence at the merge)
 
-The Sprint 12 cloud session numbers its rulings `S12-R<n>` in `docs/superpowers/plans/2026-09-24-sprint-12.md` and
+The Sprint 12 cloud session numbers its rulings `S12-R<n>` in `docs/superpowers/plans/2026-09-24-sprint-12.md` and <!-- docmaint: future -->
 leaves the global numbering to the local controller at the merge (its §Rulings: *"the global counter is the local
 controller's to fold in"*). These are the ones that amend a Sprint 11 fact or ask Sprint 11 for something; the rest are
 internal to that sprint. Read `origin/sprint-12` for the full set.
