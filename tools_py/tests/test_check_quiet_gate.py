@@ -75,10 +75,18 @@ class TestCheckQuietGate(unittest.TestCase):
         self.assertIn("FORCE_QUIET", p.stdout + p.stderr)
 
     def test_default_marker_path_is_repo_logs_dot_quiet(self):
-        # No path argument -> repo-root-relative logs/.quiet, which normally does not exist.
+        # No path argument -> the MAIN tree's logs/.quiet (beside git's common dir, Sprint 13 H2 / audit H13; in a
+        # worktree that is not this checkout's logs/), which normally does not exist. The worktree-to-main-tree case
+        # itself is test_loop_lock.TestRunDetached.test_quiet_marker_lives_under_the_git_common_dir.
         env = dict(os.environ)
         env["QUIET_GATE_TASKLIST_CMD"] = "echo ALIVE"
-        real = os.path.join(ROOT, "logs", ".quiet")
+        try:
+            common = subprocess.run(["git", "-C", ROOT, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                                    capture_output=True, text=True).stdout.strip()
+        except OSError:
+            common = ""
+        main = os.path.dirname(common) if common and os.path.isdir(common) else ROOT
+        real = os.path.join(main, "logs", ".quiet")
         if os.path.exists(real):
             self.skipTest("a real logs/.quiet exists right now (a launch may be running); skipping "
                           "rather than risk racing it")

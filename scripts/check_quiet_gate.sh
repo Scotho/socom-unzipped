@@ -3,7 +3,8 @@
 #
 # The read side of Sprint 5 R46/A5's launch hygiene (scripts/run_detached.sh writes the marker; this
 # is what build.sh's test_step calls before its Python stage). Exits 0 (proceed) unless
-# <quiet_marker> (default <repo root>/logs/.quiet) exists, is younger than QUIET_GATE_MAX_AGE_S
+# <quiet_marker> (default: logs/.quiet of the MAIN tree, beside git's common dir -- the same file
+# run_detached.sh writes from any worktree, audit H13, Sprint 13) exists, is younger than QUIET_GATE_MAX_AGE_S
 # (default 7200 = 2h), AND names a still-live pid -- in which case it exits 3 and prints who holds
 # it. FORCE_QUIET=1 overrides unconditionally (prints that it did).
 #
@@ -13,7 +14,9 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-marker="${1:-$ROOT/logs/.quiet}"
+common="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+if [ -n "$common" ] && [ -d "$common" ]; then logs="$(cd "$common/.." && pwd)/logs"; else logs="$ROOT/logs"; fi
+marker="${1:-$logs/.quiet}"
 max_age="${QUIET_GATE_MAX_AGE_S:-7200}"
 
 if [ "${FORCE_QUIET:-0}" = "1" ]; then

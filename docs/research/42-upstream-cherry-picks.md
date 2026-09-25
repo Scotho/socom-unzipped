@@ -142,8 +142,7 @@ Each branch carries its upstream commit hash in the commit subject, e.g.
 
 The suite each row reports is exactly:
 
-    export LOOP_LOCK_WAIT_SEC=5
-    bash scripts/loop_lock.sh run agent-cherry --purpose "T6 pr<N> suite" --wait 2400 \
+    bash scripts/loop_lock.sh run agent-cherry --purpose "T6 pr<N> suite" --wait 200 \
       -- bash -c './build.sh runtime --no-runner && ./build.sh test --no-runner'
 
 ## 6. Step 3: the gates, the verdicts and the combined branch
