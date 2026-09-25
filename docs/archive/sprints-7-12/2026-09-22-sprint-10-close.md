@@ -1,12 +1,17 @@
 # Sprint 10 close — the road to `v0.10.0`, run autonomously (2026-09-22 evening → 2026-09-23 morning)
 
+> **ARCHIVED 2026-09-25 -- a Sprint 10 plan; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/plans/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 **Mandate (the owner, 2026-09-22 ~22:10):** *"save the human tasks for later, agreed on the rest, and proceed with all
 remaining sprint 10 work and finish sprint 10 with my authority and your best judgement. Once that's done, formalize
 and begin sprint 11 autonomously … You have the computer for the next 12 hours and are free to use as many agents or
 workflows as needed."* The owner is away; lock-bound work runs without the host-load rule. Owner-only items stay in
 `docs/HUMAN_TASKS.md` and are **not** waited on.
 
-**Spec:** `docs/superpowers/specs/2026-09-20-sprint-10-console-players-and-it-stays-up-design.md`; the road-to-`v0.10.0`
+**Spec:** `docs/archive/sprints-7-12/2026-09-20-sprint-10-console-players-and-it-stays-up-design.md`; the road-to-`v0.10.0`
 table in `docs/CURRENT_SPRINT.md` is the binding list. **Ledger:** `.superpowers/sdd/2026-09-22-sprint-10-close/progress.md`.
 
 ## Global constraints

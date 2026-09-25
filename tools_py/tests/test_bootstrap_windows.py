@@ -18,7 +18,7 @@ first command.
 NOT covered here, and covered instead by running the thing for real: the download, the extraction and
 the sha256 refusal. Those were exercised end to end from a genuine `git clone` of the public
 repository on 2026-09-21 -- bootstrap from an empty `tools/` in 16 s, `--check` exit 0 after it --
-in the run recorded in `docs/superpowers/plans/2026-09-21-sprint-10-disc-to-elf.md`.
+in the run recorded in `docs/archive/sprints-7-12/2026-09-21-sprint-10-disc-to-elf.md`.
 """
 import os
 import re

@@ -1,5 +1,10 @@
 # Sprint 8 — "Linux, then it looks and sounds finished" — design
 
+> **ARCHIVED 2026-09-25 -- a Sprint 8 spec; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/specs/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 **Date:** 2026-09-18. **Branch:** `sprint-8` off `develop` at `b65fe46`. **Owner's words that opened it:** "add linux
 support to the installer/launcher" and "if you can interact with my virtualbox feel free to add a linux machine (or use
 docker i suppose)". The goal sentence is unchanged: SOCOM II running natively on PC with online play, that a stranger

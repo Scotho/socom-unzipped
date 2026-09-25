@@ -76,7 +76,7 @@ one iteration after another, for as long as the owner leaves it running. Seven s
 7. **Then the next item.** Do not wait on the owner; do not do what is the owner's.
 
 Sub-agents take bounded work with an exact brief and a verification command; they never commit a file they were not
-given. A standing rule from the owner on 2026-09-17 (`docs/AUDIT-2026-09-17.md` §5) splits the work by model:
+given. A standing rule from the owner on 2026-09-17 (`docs/audits/2026-09-17-audit-and-code-review.md` §5) splits the work by model:
 mechanical work to one, judgement work to another.
 
 Work is grouped into numbered sprints, each meant to end in something a stranger could notice. A sprint gets a spec,
@@ -88,7 +88,7 @@ descriptions of the tree today.
 
 **A test first, watched failing.** The convention is not "write a test": it is write the test, run it, watch it fail
 *for the right reason*, and quote the failing assertion in the report. The reason is written down in
-`docs/process-audit.md` — tests written after the change have passed for the wrong reason in this project more than
+`docs/audits/2026-09-12-process-audit.md` — tests written after the change have passed for the wrong reason in this project more than
 once.
 
 **The suite.** C++ unit tests, a replay of recorded drawing programs against a committed golden state, and a Python
@@ -243,6 +243,6 @@ same shape: **turn a judgement into something that can fail.**
 | `docs/DEVELOPING.md` | The build, the tests, the knobs, the harness |
 | `docs/GIT_STRATEGY.md` | Branches, slices, tags, releases |
 | `docs/DOC_MAINTENANCE.md` | The document classes and the checks that hold them |
-| `docs/process-audit.md`, `docs/AUDIT-2026-09-17.md` | Two dated audits of this process, warts included |
+| `docs/audits/2026-09-12-process-audit.md`, `docs/audits/2026-09-17-audit-and-code-review.md` | Two dated audits of this process, warts included |
 | `docs/HUMAN_TASKS.md` | What is waiting on the owner |
 | [issues labelled `known-issue`](https://github.com/Scotho/socom-unzipped/issues?q=is%3Aissue+is%3Aopen+label%3Aknown-issue) | Every open defect with its evidence and the bar that closes it; the conventions are `docs/GIT_STRATEGY.md` §7 |

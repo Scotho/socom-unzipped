@@ -1,5 +1,10 @@
 # Sprint 9 — "A stranger's first run" (design)
 
+> **ARCHIVED 2026-09-25 -- a Sprint 9 spec; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/specs/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 Opened 2026-09-19 by the controller under the owner's standing instruction ("proceed autonomously through the
 sprint(s) at your discretion"). The owner reviews this file when convenient; nothing in it spends owner money or
 identity, and nothing in it connects to a server that is not ours.

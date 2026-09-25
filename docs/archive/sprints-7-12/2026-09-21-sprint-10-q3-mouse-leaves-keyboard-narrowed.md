@@ -1,7 +1,12 @@
 # Sprint 10 Q3 — The mouse leaves; the keyboard stays, narrowed: plan and record
 
+> **ARCHIVED 2026-09-25 -- a Sprint 10 plan; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/plans/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 **Goal (from `docs/CURRENT_SPRINT.md` row Q3; the spec's Goal 9 part 3 in
-`docs/superpowers/specs/2026-09-19-sprint-9-a-strangers-first-run-design.md`; owner 2026-09-20).** "Remove mouse
+`docs/archive/sprints-7-12/2026-09-19-sprint-9-a-strangers-first-run-design.md`; owner 2026-09-20).** "Remove mouse
 options from the launcher entirely, but permanently persist keyboard support but ONLY for menu navigation and typing
 on the keyboard in the game." Two halves: every mouse option out of the launcher (and, decided here, out of the
 runtime too), and the keyboard's gameplay half honoured only in developer mode — because the harness plays the game

@@ -1,5 +1,10 @@
 # Sprint 9, P4 — the launcher's small defects (Goal 9, part 2)
 
+> **ARCHIVED 2026-09-25 -- a Sprint 9 plan; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/plans/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 Written 2026-09-19 by the controller, at the head of P4. The item is `docs/CURRENT_SPRINT.md` P4; the design is the
 Sprint 9 spec, "Goal 9 — the launcher finished, and the game window that follows it". This plan exists because P4 is
 five separate defects in one row and the loop's rule is that anything over an hour is planned before it is coded.

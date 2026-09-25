@@ -1,5 +1,10 @@
 # Fix wave A -- the 2026-09-22 playthrough
 
+> **ARCHIVED 2026-09-25 -- a Sprint 10 fix-wave plan (the 2026-09-22 playthrough); the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/plans/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 **Why this exists.** The owner played tonight's portable build end to end and reported as they went
 (`docs/CURRENT_SPRINT.md`, "The playthrough, 2026-09-22", rulings R236-R240). Their words at the close: "Complete a
 mini sprint based on findings and your suggested fixes/debugging ideas ... proceed autonomously, validating what is

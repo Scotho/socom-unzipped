@@ -112,13 +112,12 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/PLAYTEST.md` | **C** | controller | The owner's one-sitting script |
 | `docs/DOC_MAINTENANCE.md` | **C** | controller | This file |
 | `docs/story/release-entry.template.md` | **C** | story | A template |
-| `docs/AUDIT-2026-09-17.md` | **S** | — | Sprint 6's ledger. Dated in the filename |
-| `docs/process-audit.md` | **S** | — | Written 2026-09-12, end of Sprint 4. Says so in its first line; it should move to `docs/audits/` at the next tidy |
 | `docs/parity/REPORT.md` | **S** | — | One parity run from 2026-09-07. Banded 2026-09-22 — it had read as the project's parity status for fifteen days |
 | `docs/parity/NOTES.md` | **S** | — | Dated spike notes, append-only |
 | `docs/archive/README.md` | **A** | — | |
 | `docs/archive/ROADMAP-sprint-4-to-sprint-7.md` | **A** | — | Fifteen files cite it; every `ROADMAP.md §N` written before 2026-09-22 means this file |
 | `docs/archive/CURRENT_SPRINT-to-sprint-8.md` | **A** | — | |
+| `docs/archive/HANDOFF-loop-history-to-2026-09-25.md` | **A** | — | Cut 2026-09-25 (Sprint 13 Task R1, R268): HANDOFF §2's older pick-up points, §4 and §10, verbatim |
 | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` | **A** | — | Cut 2026-09-25 (Sprint 13 Task R1, R268): the Sprint 9-11 records, verbatim. The ruling counter reads it (`max_ruling()` scans all of `docs/archive/`) |
 | `docs/archive/HANDOFF-reference-to-2026-09-13.md` | **A** | — | |
 | `docs/archive/HANDOFF-2026-09-08.md` | **A** | — | Banded 2026-09-22 |

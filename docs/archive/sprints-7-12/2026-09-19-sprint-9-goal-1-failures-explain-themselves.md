@@ -1,5 +1,10 @@
 # Sprint 9 Goal 1 — A Failure Explains Itself: Implementation Plan
 
+> **ARCHIVED 2026-09-25 -- a Sprint 9 plan; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/plans/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** When the game stops on a stranger's machine, the launcher's LAST RUN line says why in one sentence; `socom2` started with no argument reads the launcher's `config.json` beside it and plays; and one button writes one zip a stranger can attach to a report — log, config, GL line, crash record, versions, and nothing that identifies an account. Today: the only exit code with a meaning is 65 (`GsGlCaps::kExitCode`, `gs_gl_caps.h:24`), and its sentence hangs off a literal `65` in a file that "does not include the runtime's headers" (`launcher_config.cpp:314-317`); every other ending reads "the game exited" (`ps2xLauncher/src/main.cpp:682`); a bare `socom2` throws "Unable to determine executable path" and leaves with 1 (`ps2xRuntime/src/main.cpp:162`, `:254`); a missing disc is a WARNING followed by a black window (`game_overrides_socom2.cpp:577`); and COPY DIAGNOSTICS copies two files into a folder (`ps2xLauncher/src/main.cpp:125-138`).
@@ -8,7 +13,7 @@
 
 **Tech Stack:** C++20 (llvm-mingw clang via `build.sh` on the host; system clang + Ninja in the VM and on `ubuntu-24.04`), CMake >= 3.20, raylib (launcher window only), MiniTest (`ps2x_tests`; `PS2X_TEST_SUITE=<substring>` selects suites, `ps2xTest/include/MiniTest.h:134`), Python 3 `unittest` (**not** pytest), `scripts/run_detached.sh` + `scripts/loop_lock.sh` for the runtime build and the gate.
 
-**Spec:** `docs/superpowers/specs/2026-09-19-sprint-9-a-strangers-first-run-design.md` §2 "Goal 1 — a failure explains itself" and §4 (one gate per runtime commit; every moved default is a numbered ruling, next **R126**). **Required reading for every dispatch:** this plan's Handoff notes and Global Constraints; `third_party/ps2recomp/ps2xRuntime/src/main.cpp` (255 lines, all of it); `third_party/ps2recomp/ps2xLauncher/include/launcher/launcher_config.h` and `src/launcher_config.cpp` (the schema, `environmentFor`, `mergeEnvironment`, `exitMessage`); `third_party/ps2recomp/ps2xLauncher/src/main.cpp:60-138` (`readText`, `checkDisc`, `copyDiagnostics`), `:486-527` (the CLI modes), `:672-688` (where the child's exit is read), `:940-975` (the request handlers); `src/win32_glue.cpp:223-234` and `src/posix_glue.cpp:184-197` (`GameProcess::exitCode`); `third_party/ps2recomp/ps2xRuntime/src/lib/game_overrides_socom2.cpp:884-930` (the Windows vectored handler), `:932-1097` (the Linux `sigaction` handler), `:552-581` (`configureCdImage`); `third_party/ps2recomp/ps2xRuntime/src/lib/ps2_runtime.cpp:731-798` (`initialize`), `:1098-1116` (`configureIoPathsFromElf`, `PS2X_MC_DIR`); `third_party/ps2recomp/ps2xTest/src/launcher_tests.cpp:1-95` and `:288-295` (the MiniTest pattern and the one existing exit-code case).
+**Spec:** `docs/archive/sprints-7-12/2026-09-19-sprint-9-a-strangers-first-run-design.md` §2 "Goal 1 — a failure explains itself" and §4 (one gate per runtime commit; every moved default is a numbered ruling, next **R126**). **Required reading for every dispatch:** this plan's Handoff notes and Global Constraints; `third_party/ps2recomp/ps2xRuntime/src/main.cpp` (255 lines, all of it); `third_party/ps2recomp/ps2xLauncher/include/launcher/launcher_config.h` and `src/launcher_config.cpp` (the schema, `environmentFor`, `mergeEnvironment`, `exitMessage`); `third_party/ps2recomp/ps2xLauncher/src/main.cpp:60-138` (`readText`, `checkDisc`, `copyDiagnostics`), `:486-527` (the CLI modes), `:672-688` (where the child's exit is read), `:940-975` (the request handlers); `src/win32_glue.cpp:223-234` and `src/posix_glue.cpp:184-197` (`GameProcess::exitCode`); `third_party/ps2recomp/ps2xRuntime/src/lib/game_overrides_socom2.cpp:884-930` (the Windows vectored handler), `:932-1097` (the Linux `sigaction` handler), `:552-581` (`configureCdImage`); `third_party/ps2recomp/ps2xRuntime/src/lib/ps2_runtime.cpp:731-798` (`initialize`), `:1098-1116` (`configureIoPathsFromElf`, `PS2X_MC_DIR`); `third_party/ps2recomp/ps2xTest/src/launcher_tests.cpp:1-95` and `:288-295` (the MiniTest pattern and the one existing exit-code case).
 
 ## Handoff notes for the executing model (read once)
 
@@ -3144,7 +3149,7 @@ git commit -m "docs: Sprint 9 Goal 1 closed -- a failure explains itself (the ta
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>" -- \
   docs/KNOWN.md docs/STATUS.md docs/CURRENT_SPRINT.md docs/HUMAN_TASKS.md \
-  docs/superpowers/plans/2026-09-19-sprint-9-goal-1-failures-explain-themselves.md
+  docs/archive/sprints-7-12/2026-09-19-sprint-9-goal-1-failures-explain-themselves.md
 git push
 ```
 

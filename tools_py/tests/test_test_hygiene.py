@@ -4,7 +4,7 @@
 Fails on a test_*.py outside tools_py/tests/, a pytest import, or a module-level `def test_` (unittest
 never collects those). Walks tools_py/ only: the build trees under research/ps2recomp/build/_deps/
 carry their own test_*.py. Before Sprint 5 Task 0, three pytest-style files in tools_py/parity/ had
-never executed (docs/process-audit.md item 2).
+never executed (docs/audits/2026-09-12-process-audit.md item 2).
 """
 import ast
 import os

@@ -305,7 +305,7 @@ latent, not live.
    delete `ended`. This is what lets the EE's manager leave state 1 and start the next stem; with `ended`
    the music stops after one stem until an enemy-contact cue interrupts. Rewrite the two tests that pin the
    opposite (`socom2_audio_tests.cpp:1970-2030`, `:2074-2120`). Also fix the sprint-10 plan's
-   "What the IRX says" paragraph (`docs/superpowers/plans/2026-09-20-sprint-10-music-round-four.md:32-44`).
+   "What the IRX says" paragraph (`docs/archive/sprints-7-12/2026-09-20-sprint-10-music-round-four.md:32-44`).
 2. **`snd989.cpp` `kSetSoundParams` (0x21):** answer the handle for a live STREAM slot too (a `findStream`
    beside `findSound`, both gated on the host's `audioIsPlaying`), 0 otherwise -- the IRX's `FUN_0000bcbc`.
    Positioned streams are polled through 0x21 and currently read as dead on the first poll.

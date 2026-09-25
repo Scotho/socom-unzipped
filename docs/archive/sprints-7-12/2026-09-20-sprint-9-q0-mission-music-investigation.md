@@ -1,5 +1,10 @@
 # Sprint 9, Q0 — the mission music, investigated before it is fixed
 
+> **ARCHIVED 2026-09-25 -- a Sprint 9 plan; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/plans/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 Opened 2026-09-20 by the controller after the owner failed `playtest-1` at step 6: "the music cues still failing
 awfully during the first mission. All the same issues mentioned earlier which should have been resolved on this
 sprint." The owner's instruction: "a deep investigation, and ensure we really are confident we know the issue." Their

@@ -1,11 +1,16 @@
 # Sprint 10, Goal 9 — the ONLINE tab's player name and password reach the game
 
+> **ARCHIVED 2026-09-25 -- a Sprint 10 plan; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/plans/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 Written 2026-09-20 by the launcher session (socom-pc-f3) on the owner's "scope out adding online name and
 password and slot it into an appropriate section of the ongoing sprint". The investigation it builds on is
 `docs/research/37-launcher-online-credentials.md`; the spec is
-`docs/superpowers/specs/2026-09-20-sprint-10-console-players-and-it-stays-up-design.md`, Goal 9.
+`docs/archive/sprints-7-12/2026-09-20-sprint-10-console-players-and-it-stays-up-design.md`, Goal 9.
 
 **Goal:** a player types their persona name and password once, on the launcher's ONLINE page, and the game's
 two on-screen keyboards open already holding them, so going online is LOGIN, ENTER, ENTER, CONNECT.

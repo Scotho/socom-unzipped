@@ -7,7 +7,7 @@ modules, so the suite needs no Unicorn (the Linux workflow does not install it) 
 
 What is NOT covered here, because only a disc can cover it: that the recorded digests in
 tools_py/disc_to_elf_expected.json are the ones the real r0001 disc produces. That was measured by
-running the command from nothing -- docs/superpowers/plans/2026-09-21-sprint-10-disc-to-elf.md has
+running the command from nothing -- docs/archive/sprints-7-12/2026-09-21-sprint-10-disc-to-elf.md has
 the numbers and the timings.
 """
 import io

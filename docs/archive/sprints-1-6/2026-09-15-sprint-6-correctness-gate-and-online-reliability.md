@@ -495,4 +495,4 @@ gains the launcher and README says "run the launcher" *(done 2026-09-17: `script
 - **Placeholders:** none; every test step has code or an exact assertion; Task 6's first bullet corrects itself in place rather than leaving a question.
 - **Type consistency:** `popup_present(im)`, `mission_fail.detect(path)`, `console_compare.score(a, b, mask=None)`, `guest_probe.evaluate(run_log, console_json)` are used with the same signatures throughout.
 - **Owner gate:** the spec is unreviewed; Tasks 0–1 are owner-agreed items, and the controller stops for a re-ruling before Task 2's launches if the owner has not reviewed by then.
-- **Ledger reconciled 2026-09-17** against docs/AUDIT-2026-09-17.md §3; the checkboxes above are now the truth. ROADMAP §6's items 10-12 (replay cost, display-env A/B, VU aliasing) were never carried into this plan and are dropped, not deferred.
+- **Ledger reconciled 2026-09-17** against docs/audits/2026-09-17-audit-and-code-review.md §3; the checkboxes above are now the truth. ROADMAP §6's items 10-12 (replay cost, display-env A/B, VU aliasing) were never carried into this plan and are dropped, not deferred.

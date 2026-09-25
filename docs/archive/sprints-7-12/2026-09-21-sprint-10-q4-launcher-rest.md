@@ -1,5 +1,10 @@
 # Sprint 10, Q4 — Goal 9, part 4: the rest of the launcher
 
+> **ARCHIVED 2026-09-25 -- a Sprint 10 plan; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/plans/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 Written 2026-09-21 by the Q4 agent (worktree `C:\projects\wt-q4`, branch `agent/q4` off `sprint-10` at `8d6e5c3`).
 The item is `docs/CURRENT_SPRINT.md` row Q4; the design is the Sprint 9 spec's "Goal 9 — the launcher finished, and
 the game window that follows it". Four parts, in the order the brief gave them: (a) the guide button toggles between

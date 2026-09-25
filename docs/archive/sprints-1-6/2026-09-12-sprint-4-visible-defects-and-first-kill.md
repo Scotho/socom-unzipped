@@ -437,7 +437,7 @@ block.** A plan that quotes a prior belief should quote it as a belief.
   having written a full set of convincing screenshots first.
 - **Retractions.** The plan folded them into Task 9, so four sentences known to be false stayed in
   the files every fresh session is told to read first — for a day, and in one case for two weeks.
-  `docs/process-audit.md` now carries the rule: a review finding a committed sentence false
+  `docs/audits/2026-09-12-process-audit.md` now carries the rule: a review finding a committed sentence false
   produces a same-hour edit, and close-out *verifies* retractions rather than performing them.
 - **KNOWN.md did not exist when this plan was written.** It was created mid-sprint (`2d9f73a`) at
   the user's request and is now the live proven / believed / retracted list, audited after every

@@ -241,66 +241,66 @@ working notes behind this table are `.superpowers/sdd/2026-09-22-sprint-10-close
 | R182 | "rulesets on `main` and `sprint-*` … with one deviation: **no CODEOWNERS review** required and no bypass" | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, "Rulings (R181-R183)" | stands |
 | R183 | "the leak check is the monitor's rules **adapted for a SOURCE tree**, not copied" | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, "Rulings (R181-R183)" | stands |
 | R184 | "**the mid-sprint merge to `main`**" -- the hardening and the developer setup reach `main` before the sprint closes | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, Sprint 10 reorganized | stands (merged `92b92c6`, PR #6) |
-| R185 | "any drift **refuses**, whatever `--only` asked for" | `plans/2026-09-21-sprint-10-q1b-gate-pins.md` §4 | stands |
-| R186 | "the harness is **recorded, never compared**" | `plans/2026-09-21-sprint-10-q1b-gate-pins.md` §4 | stands |
-| R187 | "an operator's extra `PS2X_*` variable **is a drift**" | `plans/2026-09-21-sprint-10-q1b-gate-pins.md` §4 | stands |
-| R188 | "the first run that prints a mapping hash is **refused until accepted**" | `plans/2026-09-21-sprint-10-q1b-gate-pins.md` §4 | stands |
-| R189 | "the state stream is **absorbed, not waited on**" on a latched stall; re-anchor when the window comes back | `plans/2026-09-21-sprint-10-q6-latched-stall-bound.md` §5 | stands |
-| R190 | "`Present` is **droppable at the cap** on a latched stall" | `plans/2026-09-21-sprint-10-q6-latched-stall-bound.md` §5 | stands |
-| R191 | "the bounds: **512 rectangle pieces, 8 per key, 256 palettes, 4 MB**" | `plans/2026-09-21-sprint-10-q6-latched-stall-bound.md` §5 | stands |
-| R192 | "**no launch from this branch**" -- the gate and the stall run are the controller's | `plans/2026-09-21-sprint-10-q6-latched-stall-bound.md` §5 | stands |
-| R193 | "the mapping is **per profile**, and a default mapping is **not written and not sent**" | `plans/2026-09-21-sprint-10-goal-8-controller-mapping.md` | stands |
-| R194 | "the environment string is **the whole table or nothing**" | `plans/2026-09-21-sprint-10-goal-8-controller-mapping.md` | stands |
-| R195 | "the keyboard table is **data but not rebindable** from the page" | `plans/2026-09-21-sprint-10-goal-8-controller-mapping.md` | stands |
-| R196 | "the sticks and Triangle's pressure are **not in the table**" | `plans/2026-09-21-sprint-10-goal-8-controller-mapping.md` | stands |
-| R197 | "'per-profile presets' is read as **the mapping saved per profile, nothing more**" | `plans/2026-09-21-sprint-10-goal-8-controller-mapping.md` | stands |
-| R198 | "**bind on RELEASE, B held cancels, a tap of B binds B**" | `plans/2026-09-21-sprint-10-goal-8-controller-mapping.md` | stands |
-| R199 | "the section switch is **launcher state, not a setting**" | `plans/2026-09-21-sprint-10-goal-8-controller-mapping.md` | stands |
-| R200 | "the override is a runtime **`replaceFunction` wrap**, not a `recomp/socom2.toml` stub; **no recompile**" | `plans/2026-09-20-sprint-10-goal-9-online-credentials.md` | stands |
-| R201 | "the persona name keeps **every character the game's keyboard has**" | `plans/2026-09-20-sprint-10-goal-9-online-credentials.md` | stands |
-| R202 | "the password is **capped at 12** in the launcher" | `plans/2026-09-20-sprint-10-goal-9-online-credentials.md` | stands |
-| R203 | "`PS2X_DEV` enters the harness **below the gate's env pin**, and the pin is **not widened** for it" | `plans/2026-09-20-sprint-9-goal-3-knob-retirement.md` | stands |
-| R204 | "`PS2X_INPUT_MAPPING` is **the eighteenth Shipping name**" | `plans/2026-09-20-sprint-9-goal-3-knob-retirement.md` | stands -- and `docs/KNOBS.md` (generated) is the one home of the counts; two L documents that said 151/20 were corrected at this close |
-| R205 | "`PS2X_LAUNCHER_API_BASE` is a **Dev** knob read through `ps2x::knob`" | `plans/2026-09-20-sprint-9-goal-3-knob-retirement.md` | stands |
-| R206 | `SchedTrace.cpp`'s two later helpers "are **migrated under rule 2**"; a no-raw-`getenv` check joins `test_knobs_registry` | `plans/2026-09-20-sprint-9-goal-3-knob-retirement.md` | stands |
-| R207 | "Every **Path-kind** knob is constrained to the portable folder, or refused -- **but not in this pass**" | `plans/2026-09-20-sprint-9-goal-3-knob-retirement.md` | stands; its work is still queued |
-| R208 | "the `[knobs]` line **never writes a credential's value**: `PS2X_SOCOM2_LOGIN_PASS` is printed as `[redacted]`" | `plans/2026-09-20-sprint-9-goal-3-knob-retirement.md` | stands |
+| R185 | "any drift **refuses**, whatever `--only` asked for" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q1b-gate-pins.md` §4 | stands |
+| R186 | "the harness is **recorded, never compared**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q1b-gate-pins.md` §4 | stands |
+| R187 | "an operator's extra `PS2X_*` variable **is a drift**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q1b-gate-pins.md` §4 | stands |
+| R188 | "the first run that prints a mapping hash is **refused until accepted**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q1b-gate-pins.md` §4 | stands |
+| R189 | "the state stream is **absorbed, not waited on**" on a latched stall; re-anchor when the window comes back | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q6-latched-stall-bound.md` §5 | stands |
+| R190 | "`Present` is **droppable at the cap** on a latched stall" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q6-latched-stall-bound.md` §5 | stands |
+| R191 | "the bounds: **512 rectangle pieces, 8 per key, 256 palettes, 4 MB**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q6-latched-stall-bound.md` §5 | stands |
+| R192 | "**no launch from this branch**" -- the gate and the stall run are the controller's | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q6-latched-stall-bound.md` §5 | stands |
+| R193 | "the mapping is **per profile**, and a default mapping is **not written and not sent**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-goal-8-controller-mapping.md` | stands |
+| R194 | "the environment string is **the whole table or nothing**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-goal-8-controller-mapping.md` | stands |
+| R195 | "the keyboard table is **data but not rebindable** from the page" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-goal-8-controller-mapping.md` | stands |
+| R196 | "the sticks and Triangle's pressure are **not in the table**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-goal-8-controller-mapping.md` | stands |
+| R197 | "'per-profile presets' is read as **the mapping saved per profile, nothing more**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-goal-8-controller-mapping.md` | stands |
+| R198 | "**bind on RELEASE, B held cancels, a tap of B binds B**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-goal-8-controller-mapping.md` | stands |
+| R199 | "the section switch is **launcher state, not a setting**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-goal-8-controller-mapping.md` | stands |
+| R200 | "the override is a runtime **`replaceFunction` wrap**, not a `recomp/socom2.toml` stub; **no recompile**" | `docs/archive/sprints-7-12/2026-09-20-sprint-10-goal-9-online-credentials.md` | stands |
+| R201 | "the persona name keeps **every character the game's keyboard has**" | `docs/archive/sprints-7-12/2026-09-20-sprint-10-goal-9-online-credentials.md` | stands |
+| R202 | "the password is **capped at 12** in the launcher" | `docs/archive/sprints-7-12/2026-09-20-sprint-10-goal-9-online-credentials.md` | stands |
+| R203 | "`PS2X_DEV` enters the harness **below the gate's env pin**, and the pin is **not widened** for it" | `docs/archive/sprints-7-12/2026-09-20-sprint-9-goal-3-knob-retirement.md` | stands |
+| R204 | "`PS2X_INPUT_MAPPING` is **the eighteenth Shipping name**" | `docs/archive/sprints-7-12/2026-09-20-sprint-9-goal-3-knob-retirement.md` | stands -- and `docs/KNOBS.md` (generated) is the one home of the counts; two L documents that said 151/20 were corrected at this close |
+| R205 | "`PS2X_LAUNCHER_API_BASE` is a **Dev** knob read through `ps2x::knob`" | `docs/archive/sprints-7-12/2026-09-20-sprint-9-goal-3-knob-retirement.md` | stands |
+| R206 | `SchedTrace.cpp`'s two later helpers "are **migrated under rule 2**"; a no-raw-`getenv` check joins `test_knobs_registry` | `docs/archive/sprints-7-12/2026-09-20-sprint-9-goal-3-knob-retirement.md` | stands |
+| R207 | "Every **Path-kind** knob is constrained to the portable folder, or refused -- **but not in this pass**" | `docs/archive/sprints-7-12/2026-09-20-sprint-9-goal-3-knob-retirement.md` | stands; its work is still queued |
+| R208 | "the `[knobs]` line **never writes a credential's value**: `PS2X_SOCOM2_LOGIN_PASS` is printed as `[redacted]`" | `docs/archive/sprints-7-12/2026-09-20-sprint-9-goal-3-knob-retirement.md` | stands |
 | R209 | "Q2's **Task 8 VM ring deferred** to the sprint close, **CI is the Linux ring**, the VM stays off" | road-table row 6 in `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, which carries its parenthetical ("R209 deferred it here") | stands -- it has no written block of its own; the VM ring did not run at the close and carries to Sprint 11 Task 18 |
-| R210 | "the keyboard's **gameplay mapping** is honoured **only in developer mode**" | `plans/2026-09-21-sprint-10-q3-mouse-leaves-keyboard-narrowed.md` | stands; made, and Q3 merged `0c172a6` |
-| R211 | "while the game runs the pad drives the launcher **NEVER**; the switch is the one button" | `plans/2026-09-21-sprint-10-q4-launcher-rest.md` | stands |
-| R212 | "the switch is **a binding, in BUTTONS**, with OFF beside it; **the guide by default**" | `plans/2026-09-21-sprint-10-q4-launcher-rest.md` | stands |
-| R213 | "an Xbox pad's guide button is read from **XInput's ordinal 100** on Windows" | `plans/2026-09-21-sprint-10-q4-launcher-rest.md` | stands |
-| R214 | "**no header bar on the game window in this pass**" | `plans/2026-09-21-sprint-10-q4-launcher-rest.md` | stands; deliberately not done |
-| R215 | the game window's title is "&lt;game&gt; -- SOCOM Unzipped" and "the harness's key moved with it" | `plans/2026-09-21-sprint-10-q4-launcher-rest.md` | stands |
-| R216 | "the launcher's cues play at **0.45 of their rendered level**, and the setting lives on AUDIO" | `plans/2026-09-21-sprint-10-q4-launcher-rest.md` | stands |
-| R217 | "the cache is **keyed by content, not by path**" | `plans/2026-09-21-sprint-10-q4-launcher-rest.md` | stands |
-| R218 | "**Goal 4 is closed on its own stop rule, without a launch**" | `plans/2026-09-21-sprint-10-q5-headset-button.md` | stands |
-| R219 | "Sprint 8's **R113 stands with its meaning corrected**, and the HLE is not changed for it" | `plans/2026-09-21-sprint-10-q5-headset-button.md` | stands (it corrects R113, outside this range) |
-| R220 | "the HLE's state word **stays at '1 once, then 2'**" | `plans/2026-09-21-sprint-10-q5-headset-button.md` | stands |
-| R221 | "the one launch worth making is **a peek, not a proof**" | `plans/2026-09-21-sprint-10-q5-headset-button.md` | stands; still queued |
-| R222 | "the console-replay case runs wherever `game/console_replay` exists and **says 'skipped' where it does not**" | `plans/2026-09-21-sprint-10-q7-residuals.md` | stands |
-| R223 | "the card's cluster count is walked **once per game-side change, not per poll**" | `plans/2026-09-21-sprint-10-q7-residuals.md` | stands |
-| R224 | "a card root that cannot take a file **answers 'no card' and leaves exit 72**" | `plans/2026-09-21-sprint-10-q7-residuals.md` | stands |
-| R225 | "a write past the card's capacity is **refused whole with `sceMcResFullDevice` (-3)**" | `plans/2026-09-21-sprint-10-q7-residuals.md` | stands |
-| R226 | "the microphone resampler walks the product **`phase + step * k`, not a running sum**" | `plans/2026-09-21-sprint-10-q7-residuals.md` | stands |
-| R227 | "the stub helpers live in **namespace `stub_support`** with a global using-directive in the header" | `plans/2026-09-21-sprint-10-q7-residuals.md` | stands |
-| R228 | "the synthetic Linux packaging test asserts the **executable bit on Linux only**" | `plans/2026-09-21-sprint-10-q7-residuals.md` | stands |
+| R210 | "the keyboard's **gameplay mapping** is honoured **only in developer mode**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q3-mouse-leaves-keyboard-narrowed.md` | stands; made, and Q3 merged `0c172a6` |
+| R211 | "while the game runs the pad drives the launcher **NEVER**; the switch is the one button" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q4-launcher-rest.md` | stands |
+| R212 | "the switch is **a binding, in BUTTONS**, with OFF beside it; **the guide by default**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q4-launcher-rest.md` | stands |
+| R213 | "an Xbox pad's guide button is read from **XInput's ordinal 100** on Windows" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q4-launcher-rest.md` | stands |
+| R214 | "**no header bar on the game window in this pass**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q4-launcher-rest.md` | stands; deliberately not done |
+| R215 | the game window's title is "&lt;game&gt; -- SOCOM Unzipped" and "the harness's key moved with it" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q4-launcher-rest.md` | stands |
+| R216 | "the launcher's cues play at **0.45 of their rendered level**, and the setting lives on AUDIO" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q4-launcher-rest.md` | stands |
+| R217 | "the cache is **keyed by content, not by path**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q4-launcher-rest.md` | stands |
+| R218 | "**Goal 4 is closed on its own stop rule, without a launch**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q5-headset-button.md` | stands |
+| R219 | "Sprint 8's **R113 stands with its meaning corrected**, and the HLE is not changed for it" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q5-headset-button.md` | stands (it corrects R113, outside this range) |
+| R220 | "the HLE's state word **stays at '1 once, then 2'**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q5-headset-button.md` | stands |
+| R221 | "the one launch worth making is **a peek, not a proof**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q5-headset-button.md` | stands; still queued |
+| R222 | "the console-replay case runs wherever `game/console_replay` exists and **says 'skipped' where it does not**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q7-residuals.md` | stands |
+| R223 | "the card's cluster count is walked **once per game-side change, not per poll**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q7-residuals.md` | stands |
+| R224 | "a card root that cannot take a file **answers 'no card' and leaves exit 72**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q7-residuals.md` | stands |
+| R225 | "a write past the card's capacity is **refused whole with `sceMcResFullDevice` (-3)**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q7-residuals.md` | stands |
+| R226 | "the microphone resampler walks the product **`phase + step * k`, not a running sum**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q7-residuals.md` | stands |
+| R227 | "the stub helpers live in **namespace `stub_support`** with a global using-directive in the header" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q7-residuals.md` | stands |
+| R228 | "the synthetic Linux packaging test asserts the **executable bit on Linux only**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q7-residuals.md` | stands |
 | R229 | -- | this table, and nowhere else since 2026-09-23 (it was declared free in words in the index line this table replaced) | **deliberately vacant**: no ruling was ever issued under this number. It is not missing and it is not reused |
-| R230 | "the expectations file holds **sha256 digests of whole game files, in the tree**" | `plans/2026-09-21-sprint-10-disc-to-elf.md` | stands |
-| R231 | "a difference in the image's *shape* is **a note, not a refusal**" | `plans/2026-09-21-sprint-10-disc-to-elf.md` | stands |
-| R232 | "the four **DNAS cipher addresses are recorded rather than derived**" | `plans/2026-09-21-sprint-10-disc-to-elf.md` | stands |
-| R233 | "the extracted tree is **verified by size** against the image's own directory records" | `plans/2026-09-21-sprint-10-disc-to-elf.md` | stands |
-| R234 | "`CONTRIBUTING.md` now says **the game build is supported**, on the evidence of one disc image on one machine" | `plans/2026-09-21-sprint-10-disc-to-elf.md` | stands |
-| R235 | "the from-nothing run **reused the toolchain archives** already in the main tree's bootstrap cache" | `plans/2026-09-21-sprint-10-disc-to-elf.md` | **closed** by the genuine clone-to-game run recorded in `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` |
+| R230 | "the expectations file holds **sha256 digests of whole game files, in the tree**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-disc-to-elf.md` | stands |
+| R231 | "a difference in the image's *shape* is **a note, not a refusal**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-disc-to-elf.md` | stands |
+| R232 | "the four **DNAS cipher addresses are recorded rather than derived**" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-disc-to-elf.md` | stands |
+| R233 | "the extracted tree is **verified by size** against the image's own directory records" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-disc-to-elf.md` | stands |
+| R234 | "`CONTRIBUTING.md` now says **the game build is supported**, on the evidence of one disc image on one machine" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-disc-to-elf.md` | stands |
+| R235 | "the from-nothing run **reused the toolchain archives** already in the main tree's bootstrap cache" | `docs/archive/sprints-7-12/2026-09-21-sprint-10-disc-to-elf.md` | **closed** by the genuine clone-to-game run recorded in `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` |
 | R236 | "the launcher's **default window is the game's own 640x448**" | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, the R236 block | stands -- it **overturns R92**, Sprint 7's 2x default |
 | R237 | "the prefilled login leaves the player path" | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, the R237 block | **REWRITTEN 2026-09-23 by W10**: the persona survives a virgin-card restart, the saved password does not, so **the prefill stays** until the clean-exit launch settles which side loses the write |
 | R238 | "a failure the player can see **must never be silent**"; `setMcCommandResultLocked` prints `[mc] command <n> FAILED …` in every build | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, the R238 block | stands **as corrected in place** -- the first telling (reclassing two Dev knobs to Shipping) was wrong and the correction is kept beside it |
 | R239 | "the online blop was charged to bank `0x00a00000`'s one-shots" | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, the R239 block | **withdrawn by its own A/B** -- the bank is cleared |
 | R240 | "the join driver **presses REFRESH LIST before JOIN GAME, and takes a channel**" | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, the playthrough block | stands; landed in `00d8348`, and R244 proves its path through the ladder |
-| R241 | "the four external-repo items … **become Sprint 11 milestone U, early**" | `plans/2026-09-22-sprint-10-close.md` | stands |
-| R242 | "**Goal 4's per-map kill routes carry to Sprint 11 as [A] filler**; the speed-freeze half is re-measured from existing logs" | `plans/2026-09-22-sprint-10-close.md` | stands -- it supersedes road-table row 3 in `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` |
-| R243 | "milestone U item 1's **step (b) is redefined as a differential test**, not a music-parity number" | `plans/2026-09-22-sprint-10-close.md` | stands; committed `564ef99`. Its citation `docs/research/40-upstream-divergence.md` is on `agent/upstream` |
-| R244 | "**W8's fallback run is not run separately**: the ladder streak proves the join driver's R240 path" | `plans/2026-09-22-sprint-10-close.md` | stands; committed `22d1900` |
+| R241 | "the four external-repo items … **become Sprint 11 milestone U, early**" | `docs/archive/sprints-7-12/2026-09-22-sprint-10-close.md` | stands |
+| R242 | "**Goal 4's per-map kill routes carry to Sprint 11 as [A] filler**; the speed-freeze half is re-measured from existing logs" | `docs/archive/sprints-7-12/2026-09-22-sprint-10-close.md` | stands -- it supersedes road-table row 3 in `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` |
+| R243 | "milestone U item 1's **step (b) is redefined as a differential test**, not a music-parity number" | `docs/archive/sprints-7-12/2026-09-22-sprint-10-close.md` | stands; committed `564ef99`. Its citation `docs/research/40-upstream-divergence.md` is on `agent/upstream` |
+| R244 | "**W8's fallback run is not run separately**: the ladder streak proves the join driver's R240 path" | `docs/archive/sprints-7-12/2026-09-22-sprint-10-close.md` | stands; committed `22d1900` |
 
 *Paths written `plans/...` are relative to `docs/superpowers/`; all others are from the repository root.*
 

@@ -1,5 +1,10 @@
 # Sprint 8 Goal 2b — The Menus' Render Cost, at Its Measured Root: Implementation Plan
 
+> **ARCHIVED 2026-09-25 -- a Sprint 8 plan; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/plans/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Goal 2 measured the menus and stopped itself (R108): tile batching would have batched nothing, because the GL side already uploads whole bands — 31-38 calls a second for 8000 guest uploads, `rects=0/s`. The cost the measurement actually found is in two columns: the CPU-side shadow swizzle (`upload=`, 8.1-10.1 us x ~8000 uploads/s = 42-80 ms/s) and `transfer=` beside it at **157-277 ms/s**, three to four times the uploads, on a screen that draws a handful of 2D quads. Goal 2b finds out what those milliseconds are and removes them at the root. The root this plan is aimed at, and which Task 1 must confirm or kill before a line changes: **the game re-uploads the same menu atlas every frame into one destination texture, and every upload — identical bytes or not — bumps `m_generation` in `markShadowPages` (`gs_gl_backend.cpp:1843-1848`), which invalidates every cached texture overlapping those pages (`:3209-3222`) and forces a full `glDeleteTextures`/`glGenTextures`/`glTexImage2D` decode at the next draw (`:3105-3122`).** The bar is the login screen's `upload=` + `transfer=` under 60 ms/s, and under a four-core spinning host load the login screen at 55+ fps with `bp_pending` under 2 in every sampler row, gate 3/3, the title stage's score unchanged, and the GS suite's console-replay case still pixel-identical.
@@ -8,7 +13,7 @@
 
 **Tech Stack:** C++20 (llvm-mingw clang via `build.sh` on the host; system clang + Ninja in the VM and on `ubuntu-24.04`), CMake ≥ 3.20, OpenGL 3.3 through raylib's context, MiniTest (`ps2x_tests`, no filter, runs every case), Python 3 `unittest` (**not** pytest, see Global Constraints), the online harness (`tools_py/parity/online_match_ours.py`, `tools_py/parity/gate.py`, `tools_py/parity/freeze_trace.py`), `scripts/run_detached.sh` + `scripts/loop_lock.sh` for every host launch.
 
-**Spec:** `docs/superpowers/specs/2026-09-18-sprint-8-linux-and-finish-design.md` §2 "Goal 2 — the menus' render cost at the root" and §3's stop rule, carried forward by **R108** in `docs/superpowers/plans/2026-09-18-sprint-8-menu-render-cost.md`, whose closing sentence names this plan: *"The next experiment is a per-term trace of executeTransfer and a swizzle that skips unchanged tiles (the game re-uploads the same menu atlas every frame: one destination texture), which is Goal 2b's plan."* **Required reading for every dispatch:** this plan's Handoff notes and Global Constraints; the Goal 2 plan in full (its Task 1 is the measurement this one continues, and its R107-R110 still bind); `docs/KNOWN.md` §1's row "The login screen runs at 12-30 fps under GL back-pressure in 4 of 10 launches" (:98) with the 2026-09-19 measurement sentence; for the code `third_party/ps2recomp/ps2xRuntime/src/lib/gs/gs_gl_backend.cpp` §§`executeCommands` (:1395-1650), `executeTransfer` (:1850-1870), `executeUpload` (:1873-1935), `markShadowPages` (:1843-1848), `refreshRenderTargetsFromShadow` (:1940-2011), `resolveTexture` (:3125-3240), `decodeTexture`'s tail (:3105-3122), `setupDrawState` (:3389-3400) and `flushBatch` (:3572-3578); `third_party/ps2recomp/ps2xRuntime/src/lib/gs/gs_cpu_backend.cpp:1441-1456` (`GSCpuBackend::BeginTransfer`), `:1458-1560` (`UploadImage`), `:1616` and `:1656` (the two pixel-moving transfer paths); `third_party/ps2recomp/ps2xRuntime/src/lib/gs/gs_frontend.cpp:938-943` and `:1842-1845` (how an IMAGE GIF tag becomes one `UploadImage`); `third_party/ps2recomp/ps2xRuntime/include/runtime/gs/gs_gl_backend.h:77-88` (`CmdType`), `:148-165` (`gpuDirty`, `shadowStale`, `DirtyRect`), `:201-210` (`TextureEntry::generation`), `:309-320` (`m_gpuDirtyPages`, `m_shadowPageGeneration`, `m_generation`), `:381-385` (`m_currentTransfer`, the chunk counters).
+**Spec:** `docs/archive/sprints-7-12/2026-09-18-sprint-8-linux-and-finish-design.md` §2 "Goal 2 — the menus' render cost at the root" and §3's stop rule, carried forward by **R108** in `docs/archive/sprints-7-12/2026-09-18-sprint-8-menu-render-cost.md`, whose closing sentence names this plan: *"The next experiment is a per-term trace of executeTransfer and a swizzle that skips unchanged tiles (the game re-uploads the same menu atlas every frame: one destination texture), which is Goal 2b's plan."* **Required reading for every dispatch:** this plan's Handoff notes and Global Constraints; the Goal 2 plan in full (its Task 1 is the measurement this one continues, and its R107-R110 still bind); `docs/KNOWN.md` §1's row "The login screen runs at 12-30 fps under GL back-pressure in 4 of 10 launches" (:98) with the 2026-09-19 measurement sentence; for the code `third_party/ps2recomp/ps2xRuntime/src/lib/gs/gs_gl_backend.cpp` §§`executeCommands` (:1395-1650), `executeTransfer` (:1850-1870), `executeUpload` (:1873-1935), `markShadowPages` (:1843-1848), `refreshRenderTargetsFromShadow` (:1940-2011), `resolveTexture` (:3125-3240), `decodeTexture`'s tail (:3105-3122), `setupDrawState` (:3389-3400) and `flushBatch` (:3572-3578); `third_party/ps2recomp/ps2xRuntime/src/lib/gs/gs_cpu_backend.cpp:1441-1456` (`GSCpuBackend::BeginTransfer`), `:1458-1560` (`UploadImage`), `:1616` and `:1656` (the two pixel-moving transfer paths); `third_party/ps2recomp/ps2xRuntime/src/lib/gs/gs_frontend.cpp:938-943` and `:1842-1845` (how an IMAGE GIF tag becomes one `UploadImage`); `third_party/ps2recomp/ps2xRuntime/include/runtime/gs/gs_gl_backend.h:77-88` (`CmdType`), `:148-165` (`gpuDirty`, `shadowStale`, `DirtyRect`), `:201-210` (`TextureEntry::generation`), `:309-320` (`m_gpuDirtyPages`, `m_shadowPageGeneration`, `m_generation`), `:381-385` (`m_currentTransfer`, the chunk counters).
 
 ## Handoff notes for the executing model (read once)
 
@@ -102,7 +107,7 @@ exit $rc
 | `third_party/ps2recomp/ps2xRuntime/include/runtime/gs/gs_gl_upload_identity.h` (new), `third_party/ps2recomp/ps2xRuntime/src/lib/gs/gs_gl_backend.h` (:381-385, the identity cache member), `third_party/ps2recomp/ps2xRuntime/src/lib/gs/gs_gl_backend.cpp` (:1873-1935 `executeUpload`), `third_party/ps2recomp/ps2xTest/src/ps2_gs_tests.cpp` | **Task 2**: an upload whose bytes the shadow already holds is a no-op — no swizzle, no page marking, no generation bump, no dirty rectangle — under R118's guard and R119's whole-transfer rule, counted as `skipped_identical` |
 | `third_party/ps2recomp/ps2xRuntime/src/lib/gs/gs_gl_backend.cpp` (branch A: :1850-1870; branch B: :1535-1538 and `flushBatch`), `third_party/ps2recomp/ps2xTest/src/ps2_gs_tests.cpp` | **Task 3**: the same idea for `executeTransfer` if Task 1 shows repeated identical local transfers (branch A), else the specific fix Task 1's breakdown points at (branch B) — both written out, one executed |
 | `logs/s8_menu_bar2.sh` (new), `logs/parity/s8_menu_bar2/` | **Task 4**: the bar — `upload=`+`transfer=` under 60 ms/s, 55+ fps under a four-core load with `bp_pending` < 2 in every row, gate 3/3, title score unchanged, console-replay pixel-identical |
-| `docs/KNOWN.md`, `docs/STATUS.md`, `docs/CURRENT_SPRINT.md`, `docs/superpowers/plans/2026-09-18-sprint-8-menu-render-cost.md`, this plan | **Task 5**: Goal 2b close-out |
+| `docs/KNOWN.md`, `docs/STATUS.md`, `docs/CURRENT_SPRINT.md`, `docs/archive/sprints-7-12/2026-09-18-sprint-8-menu-render-cost.md`, this plan | **Task 5**: Goal 2b close-out |
 
 ---
 
@@ -870,7 +875,7 @@ git push
 ## Task 5 — Close-out for Goal 2b
 
 **Files:**
-- Modify: `docs/KNOWN.md` (§1 Proven; §3 Retracted if a hypothesis died), `docs/STATUS.md` (the current-state bullet and a dated entry), `docs/CURRENT_SPRINT.md` (the Sprint 8 block and the pointer to the next goal), `docs/superpowers/plans/2026-09-18-sprint-8-menu-render-cost.md` (its Task 4 close-out gains the pointer to this plan's result), `docs/superpowers/plans/2026-09-19-sprint-8-menu-cost-2b.md` (this file: tick the boxes; any box left open carries a one-line reason or a `STOP:`)
+- Modify: `docs/KNOWN.md` (§1 Proven; §3 Retracted if a hypothesis died), `docs/STATUS.md` (the current-state bullet and a dated entry), `docs/CURRENT_SPRINT.md` (the Sprint 8 block and the pointer to the next goal), `docs/archive/sprints-7-12/2026-09-18-sprint-8-menu-render-cost.md` (its Task 4 close-out gains the pointer to this plan's result), `docs/archive/sprints-7-12/2026-09-19-sprint-8-menu-cost-2b.md` (this file: tick the boxes; any box left open carries a one-line reason or a `STOP:`)
 
 **Steps:**
 
@@ -900,8 +905,8 @@ CURRENT_SPRINT carry the verdict and move the pointer on.
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>" -- \
   docs/KNOWN.md docs/STATUS.md docs/CURRENT_SPRINT.md \
-  docs/superpowers/plans/2026-09-18-sprint-8-menu-render-cost.md \
-  docs/superpowers/plans/2026-09-19-sprint-8-menu-cost-2b.md
+  docs/archive/sprints-7-12/2026-09-18-sprint-8-menu-render-cost.md \
+  docs/archive/sprints-7-12/2026-09-19-sprint-8-menu-cost-2b.md
 git push
 ```
 

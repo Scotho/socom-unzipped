@@ -1,7 +1,7 @@
 # The loop — one iteration, for whoever is the controller (SOCOM Unzipped)
 
 Rewritten 2026-09-20. The previous text was last touched on 2026-09-14 and still aimed the loop at Sprint 6, a runtime
-freeze that was lifted long ago and a ban on speed work that Sprint 8 broke on purpose; `docs/process-audit.md` §8 had
+freeze that was lifted long ago and a ban on speed work that Sprint 8 broke on purpose; `docs/audits/2026-09-12-process-audit.md` §8 had
 predicted exactly that. This file therefore carries **no state at all**: no sprint, no goal, no number. State lives in
 `docs/CURRENT_SPRINT.md` (what to do), `docs/KNOWN.md` (what is true) and `docs/HANDOFF.md` (where things are, the
 rules with their reasons, the traps). If you find yourself writing a fact about the project into this file, it belongs
@@ -49,8 +49,8 @@ suggestions, stop rules and the owner-only list are not.
    settled row closes it with the artefact, a rewritten row gets a comment; `python -m tools_py.issues audit` exits 0
    before the commit); tick the
    plan's boxes; update the item's row in `docs/CURRENT_SPRINT.md`; a numbered ruling for every moved default or
-   skipped measurement; `docs/HUMAN_TASKS.md` for anything only the owner can verify; `docs/HANDOFF.md` §2, §4, §8, §10
-   when the pick-up point changes. **A committed sentence found false is corrected the same hour, where it is
+   skipped measurement; `docs/HUMAN_TASKS.md` for anything only the owner can verify; `docs/HANDOFF.md` §2 and §8
+   when the pick-up point changes (§2's one "now" bullet is replaced, the old one moved to its archive). **A committed sentence found false is corrected the same hour, where it is
    written**, with a `> Superseded by ...` blockquote -- never queued for a close-out that may not come.
    **A new document under `docs/` needs a row in `docs/DOC_MAINTENANCE.md` §3 giving it a class** (the suite fails
    without one), and its class decides what may be written in it -- a narrative file that holds live state is how

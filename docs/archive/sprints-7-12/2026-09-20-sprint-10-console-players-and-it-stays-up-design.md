@@ -1,6 +1,11 @@
 # Sprint 10 — "Console players in the same lobby, and it stays up" (design, drafted)
 
-Drafted 2026-09-17 in the audit (`docs/AUDIT-2026-09-17.md` §6, then numbered Sprint 9), carried as a five-line list in
+> **ARCHIVED 2026-09-25 -- a Sprint 10 spec; the sprint is closed and this is its record.**
+> Moved here from `docs/superpowers/specs/` in Sprint 13 (Task R1, with the rest of Sprints 7-10's specs and
+> plans); nothing below it was edited except citations that pointed at a path that has since moved. It is a
+> record, not an instruction.
+
+Drafted 2026-09-17 in the audit (`docs/audits/2026-09-17-audit-and-code-review.md` §6, then numbered Sprint 9), carried as a five-line list in
 `docs/CURRENT_SPRINT.md` ever since, and written out here on 2026-09-20 at the controller handoff so that it exists as
 a spec before someone has to open it. **Drafted, not opened**: the plan is written when the sprint opens, against the
 tree as it is then. It opens when Sprint 9's Q8 close-out has merged and `v0.9.0` is tagged.
@@ -67,7 +72,7 @@ player on a real PS2 or PCSX2 can sit in the same lobby as a player on this clie
 ### Goal 9 — the ONLINE tab's player name and password reach the game [A; the owner's login is the last check]
 - Added 2026-09-20 on the owner's instruction ("scope out adding online name and password and slot it into an
   appropriate section of the ongoing sprint"). Investigation: `docs/research/37-launcher-online-credentials.md`.
-  Plan: `docs/superpowers/plans/2026-09-20-sprint-10-goal-9-online-credentials.md`.
+  Plan: `docs/archive/sprints-7-12/2026-09-20-sprint-10-goal-9-online-credentials.md`.
 - Two fields on ONLINE under PROFILE -- PLAYER NAME and a masked PASSWORD -- stored in `config.json` and handed to
   the game as `PS2X_SOCOM2_LOGIN_NAME` / `_PASS`. In the runtime, an override at the game's on-screen-keyboard
   open routine fills the keyboard's buffer with the matching string before it draws, so the two keyboards open
