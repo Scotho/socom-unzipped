@@ -27,17 +27,17 @@
 //       --override ctorTableZsealEnd=0x00668aa0:hand,ctor-run \
 //       --override serverMemRead=0x0063ef08:hand,bracketed-neighbours+dispatch-call
 //
-// (serverMemWrite and serverMemRead, Sprint 13 U6, are the forty-second and forty-third fields: the matcher
-// places the first itself, the second is the twelfth override.)
-// Thirty of the forty-one fields need no --override at all: the matcher places them itself, and since
-// its fourth pass landed (relinked-body, e92691a) that includes the ten this column originally had to
-// establish by hand -- node, node2, detail, camCfg, flush, musicManager, oskOpen, chatFanoutRecv,
+// Thirty-one of the forty-three fields need no --override at all: the matcher places them itself, and
+// since its fourth pass landed (relinked-body, e92691a) that includes the ten this column originally had
+// to establish by hand -- node, node2, detail, camCfg, flush, musicManager, oskOpen, chatFanoutRecv,
 // chatListRender and dnasCheck, every one reproduced on the same address with tie-breaker `unique`, by
-// an independently written masking rule. The eleven overrides above are the eight DATA fields (the
-// matcher places functions), oskOpenThunk (seed+delta, which this table does not accept as evidence on
-// its own), and the two the matcher deliberately leaves unresolved: packTrace, whose body moved a
-// vtable slot index, and defer, which lost two instructions. Each is written up, field by field, in
-// .superpowers/sdd/2026-09-23-sprint-11/task-19-addresses-report.md.
+// an independently written masking rule -- and serverMemWrite (Sprint 13 U6). The twelve overrides above
+// are the eight DATA fields (the matcher places functions), oskOpenThunk (seed+delta, which this table
+// does not accept as evidence on its own), and the three the matcher leaves unresolved because their
+// bodies changed: packTrace, whose body moved a vtable slot index, defer, which lost two instructions,
+// and serverMemRead (Sprint 13 U6), which grew. The first eleven are written up, field by field, in
+// .superpowers/sdd/2026-09-23-sprint-11/task-19-addresses-report.md; serverMemRead's evidence is on its
+// line in the r0004 column below.
 //
 // A field a revision's column could not establish is kUnavailable (0), never the other revision's
 // address: the install guards skip that one override and say which field they skipped.
