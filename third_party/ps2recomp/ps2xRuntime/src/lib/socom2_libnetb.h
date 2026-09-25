@@ -25,13 +25,22 @@ class PS2Runtime;
 namespace socom2_libnetb
 {
     // sceSifMCallRpc payload for service 0x80001201: dispatch by function number, fill recv.
+    // A sceInetRecv/RecvFrom (fno 4/0xd) with a timeout waits here at most one guest tick (16 ms); see rpcFromGuest.
     void call(uint8_t *rdram, uint32_t fno, uint32_t send, uint32_t sendSize, uint32_t recv, uint32_t recvSize);
+
+    // The msifrpc call for this service from guest code (socom2_MsifCall, FUN_001bd320: a1 fno, a3 send, t0 sendSize,
+    // t1 recv, t2 recvSize). Runs call() and returns to ra with v0 = 0 (transport ok) -- except that a sceInetRecv or
+    // sceInetRecvFrom with a timeout, on a socket with nothing to read, parks the calling guest thread until the next
+    // VBlank and then issues itself again, until data arrives or the game's own timeout passes (#34, research/29
+    // shape 2). The EE executor is never held past one guest tick: VBlanks, frames and the other guest threads run
+    // through the wait, and the game still sees exactly the result and the timeout it asked for.
+    void rpcFromGuest(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
 
     // Test only: forget the cached PS2X_SOCOM2_NET_STATS so the next call() re-reads the environment.
     void testResetKnobs();
 
     // The pc-sampler's net_wait= field (research/29 section 4 item 8): {1 while a guest thread is inside one of
-    // the host-BLOCKING waits here (waitReadable's poll loop, 10 s cap for timeout < 0; doOpen's connect poll),
+    // the host-BLOCKING waits here (waitReadable's poll loop, one guest tick at most since #34; doOpen's connect poll),
     // else 0; cumulative milliseconds spent in them}. While the flag is 1 no guest instruction runs, so the
     // sampled thread table and live pc are stale -- freeze shape 2 in docs/research/29-online-freeze.md.
     std::pair<int, uint64_t> netWaitState();

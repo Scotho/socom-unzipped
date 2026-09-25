@@ -192,14 +192,15 @@ namespace ps2_stubs
         std::memcpy(rdram + (addr & PS2_RAM_MASK), &v, 4);
     }
 
-    // libnetb service 0x80001201: dispatched in socom2_libnetb.cpp (docs/research/10-libnetb-rpc.md).
-    void socom2LibnetbCall(uint8_t *rdram, uint32_t fno, uint32_t send, uint32_t sendSize,
-                           uint32_t recv, uint32_t recvSize)
+    // libnetb service 0x80001201: dispatched in socom2_libnetb.cpp (docs/research/10-libnetb-rpc.md). rpcFromGuest
+    // returns to ra with v0 = 0, or parks this guest thread for a VBlank when a recv would wait (#34).
+    void socom2LibnetbCall(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         static const bool s_netTrace = ps2x::knob("PS2X_SOCOM2_NET_TRACE") != nullptr;   // was a getenv on every libnetb RPC
         if (s_netTrace)
-            std::cout << "[socom2/msifrpc] libnetb fno=0x" << std::hex << fno << std::dec << " send=" << sendSize << " recv=" << recvSize << std::endl;
-        socom2_libnetb::call(rdram, fno, send, sendSize, recv, recvSize);
+            std::cout << "[socom2/msifrpc] libnetb fno=0x" << std::hex << GPR_U32(ctx, 5) << std::dec << " send=" << GPR_U32(ctx, 8)
+                      << " recv=" << GPR_U32(ctx, 10) << std::endl;
+        socom2_libnetb::rpcFromGuest(rdram, ctx, runtime);
     }
 
     void socom2_MsifBind(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
@@ -226,24 +227,20 @@ namespace ps2_stubs
         ctx->pc = GPR_U32(ctx, 31);
     }
 
-    void socom2_MsifCall(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
+    void socom2_MsifCall(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         const uint32_t client = GPR_U32(ctx, 4);
         const uint32_t fno = GPR_U32(ctx, 5);
         const uint32_t mode = GPR_U32(ctx, 6);
-        const uint32_t send = GPR_U32(ctx, 7);
-        // EE ABI: arguments 5..8 travel in t0..t3, the 9th on the stack.
-        const uint32_t sendSize = GPR_U32(ctx, 8);
-        const uint32_t recv = GPR_U32(ctx, 9);
-        const uint32_t recvSize = GPR_U32(ctx, 10);
+        // send, sendSize, recv, recvSize (a3, t0..t2) are read by socom2_libnetb::rpcFromGuest.
         int32_t result = -1;
         if (mode == 0u)
         {
             const uint32_t sid = rd32(rdram, client + 4u * 4u);
             if (sid == kLibnetbSid)
             {
-                socom2LibnetbCall(rdram, fno, send, sendSize, recv, recvSize);
-                result = 0;                          // transport ok; the result word is in recv[0]
+                socom2LibnetbCall(rdram, ctx, runtime);   // sets v0 and pc itself (and may park: #34)
+                return;
             }
             else
             {
