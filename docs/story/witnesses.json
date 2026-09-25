@@ -155,6 +155,60 @@
    "archived": true,
    "kind": "directory"
   },
+  "logs/parity/gate/s11_close_gate": {
+   "source": "logs/parity/gate/s11_close_gate",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\npins.json\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\n... (15 entries)",
+   "bytes": 15,
+   "sha256": "e3c7826c304d4ee9cc31cbee93f309037c7a138b4cc1b104831110cc0dc0ae58",
+   "captured": "2026-09-25",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate/s11_picks_keep_gate": {
+   "source": "logs/parity/gate/s11_picks_keep_gate",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\npins.json\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\n... (15 entries)",
+   "bytes": 15,
+   "sha256": "e3c7826c304d4ee9cc31cbee93f309037c7a138b4cc1b104831110cc0dc0ae58",
+   "captured": "2026-09-25",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate/s11_r0004_loopd1": {
+   "source": "logs/parity/gate/s11_r0004_loopd1",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\npins.json\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\n... (15 entries)",
+   "bytes": 15,
+   "sha256": "e3c7826c304d4ee9cc31cbee93f309037c7a138b4cc1b104831110cc0dc0ae58",
+   "captured": "2026-09-25",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate/s11_r0004_probe2": {
+   "source": "logs/parity/gate/s11_r0004_probe2",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\npins.json\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\n... (15 entries)",
+   "bytes": 15,
+   "sha256": "e3c7826c304d4ee9cc31cbee93f309037c7a138b4cc1b104831110cc0dc0ae58",
+   "captured": "2026-09-25",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate/s12_names_gate": {
+   "source": "logs/parity/gate/s12_names_gate",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\npins.json\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\n... (15 entries)",
+   "bytes": 15,
+   "sha256": "e3c7826c304d4ee9cc31cbee93f309037c7a138b4cc1b104831110cc0dc0ae58",
+   "captured": "2026-09-25",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate/s12_names_r0004_gate": {
+   "source": "logs/parity/gate/s12_names_r0004_gate",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\npins.json\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\n... (15 entries)",
+   "bytes": 15,
+   "sha256": "e3c7826c304d4ee9cc31cbee93f309037c7a138b4cc1b104831110cc0dc0ae58",
+   "captured": "2026-09-25",
+   "archived": false,
+   "kind": "directory"
+  },
   "logs/parity/gate/s3d_2x_host": {
    "source": "logs/parity/gate/s3d_2x_host",
    "text": "mission\nmission.drive.log\nmission.game.log\nmission_sheet.png\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\ntransition.drive.log\ntransition.game.log\n... (13 entries)",
@@ -576,6 +630,15 @@
    "sha256": "2a24f1aa34d1d7745b004f3def62d85def20461a4c40cabed4d11e46dbbbb962",
    "captured": "2026-09-22",
    "archived": true,
+   "kind": "directory"
+  },
+  "logs/parity/s11_r0004_round2c": {
+   "source": "logs/parity/s11_r0004_round2c",
+   "text": "A_00_login.png\nA_01_universe.png\nA_02_persona.png\nA_03_name.png\nA_04_pw_kbd.png\nA_05_password.png\nA_06_connect_focus.png\nA_07_after_connect.png\nA_07_write_down.png\nA_08_eula.png\nA_09_lobby.png\nA_09_lobby_no_news.png\n... (50 entries)",
+   "bytes": 50,
+   "sha256": "147a705966466899e9bccf42e26e6b537cfd921cc8b828a97240331785ab4706",
+   "captured": "2026-09-25",
+   "archived": false,
    "kind": "directory"
   },
   "logs/parity/s5_t5_ladder2": {

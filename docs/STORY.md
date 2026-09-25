@@ -714,6 +714,78 @@ The owner asked for a second way to remap: hold any pad button on the CONTROLLER
 
 `Cited:` `668c7f5` fix wave A (W9, W5): hold a button to remap it, a better pad, and the bank cleared of the online blop · `00d8348` fix wave A (W7, W8, R240): an empty games list is not a join failure · `0b1250b` fix wave A (W7): the instrument is proven, the drive that feeds it is not -- and the endpoint is dropping audio again · gate fixwave_b · run blop_c · run mission_music_ours_20260922_024457 · docs/KNOWN.md
 
+## 2026-09-23 .. 2026-09-25 - A second edition, and names for the code
+
+*Three days, two sprints. The later edition of the game the community server runs is rebuilt from its own package, passes the same checks as the disc's edition and plays a round on our server. A sprint run in the cloud gives 1,771 of the program's nameless functions their real names, and the machine with the disc proves nothing else changed. Still: the later edition has never met a community player, and nobody outside this house has played.*
+
+### 2026-09-23 - The update the community server asks for, taken apart
+
+**The community's server wants a later edition of the game than the disc holds. Just before midnight that edition was running under our program, as far as its opening credits.**
+
+The day opened with Sprint 10's close: merged to the main branch as version 0.10.0, once the scheduled nightly match had run seven times in a row without a failed login or a crash, the bar called "it stays up". The chat path was hardened at both ends, bounded in the game on the player's machine and clamped on the server. Every known, unfixed defect became a public issue, cited from the page that describes it. Then the owner brought the update. The community server runs r0004, a rebuild of SOCOM II from thirteen months after the disc's r0001, and its patch turned out to be a small program that boots the disc and rewrites it in memory. Decoding it said, at first, that all it did was skip Sony's long-dead online check, which this project already skips, so "no second build" was ruled at noon. By evening that was wrong: behind the check, the community server hands out the real r0004 package. The project fetched it the way a player's console would, decoded it, and built a second program from it. The new build showed the loading screen, typed out its developer's name, and then rebooted itself into an error dialog.
+
+![The r0004 build under our program, the first time it got past loading: the developer credit typed out letter by letter, seconds before the game decided to reboot itself. The gate run that caught it failed all three of its stages.](docs/story/img/2026-09-23-r0004-types-its-credits.png)
+
+*How:* the patch is PSRewired's capsule, a packed MIPS program whose encrypted stack decodes to 491 writes; the package behind it was saved to a memory card through the reference emulator, and scripts/build_revision.sh turned its overlays into a second executable with a function map of its own, 81 % of r0001's functions placed in it by the matcher.
+
+*But:* the noon ruling that there was nothing to rebuild was retracted the same night, in writing (R249, by R251). And a build that reboots at the credits is not a build that plays.
+
+`Cited:` `f15acfab` merge: Sprint 10 to main -- it stays up (7 of 7), v0.10.0 · `d23c4b1d` the ladder streak is 7 of 7 · `f2064d3c` hardening of the chat receive path · `5b7d20e7` (2026-09-22) forwarded chat fields are clamped · `d5b8757f` the known-issue stack -- every defined, unresolved defect is a GitHub issue · `61faf530` (2026-09-24) after a report is received, the one line that invites a public issue · `52e10a36` the r0004 patch is in hand and it is PSRewired's resident capsule · `0c580739` the capsule's encrypted code stack decoded · `cf5d4745` R249 -- PSRewired's r0004 patch is a DNAS bypass this build already carries; no second recompilation · `ed07a16f` R251 -- r0004 is a real rebuild, the package is decoded and its ELF built · `e92691a2` relinked-body, the r0001/r0004 rate from 63% to 81% · `8a576346` the r0004 build boots to the intro credits · gate s11_r0004_loopd1 · docs/research/43-r0004-capsule.md · docs/archive/CURRENT_SPRINT-sprints-9-to-11.md
+
+### 2026-09-24 - The update plays, and cannot meet the original
+
+**The r0004 build passed the same three-stage check as the disc's own edition, then played a round on our server. And the two editions turned out to be unable to join each other's games.**
+
+The reboot took a night to run to ground, one measured link at a time. The game rebooted because a memory request failed. The request failed because it asked for 111 MB. It asked for 111 MB because a function returned from the middle of its own ending, and that was because two of its words had been overwritten by the community patch: written into the game's memory while the reference emulator ran it, then copied out with everything else when the project dumped the updated game. Undo exactly what the patch wrote, and nothing else, and the rebuild boots to its menu, reaches the first mission, and passes all three gate stages. In the evening two copies of it logged into our server, one hosted, the other joined, and they played a round to the end of its clock, both answering the controls. Then the question the community cares about: an r0004 player and an r0001 player see each other's games, the join goes through at the server, and within ten seconds the joining game quietly walks itself back to the online menu. The check is in the game itself, on both sides, and no server can change it. The same day the SOCOM 1 demo disc, which shipped with its function names left in, put names on 987 of this game's nameless functions, and 11.6 MB of unused files that came with the recompiler's source were deleted.
+
+![The r0004 build in a round on the project's own server, the evening of the 24th: one of the two copies, both driven by the harness, five and a half minutes left on the clock. The round ran out that clock without a shot.](docs/story/img/2026-09-24-r0004-round-on-our-server.png)
+
+*How:* tools_py/overlay_repair.py undoes the capsule's decoded write stack on the dumped image, so a word changes only where the capsule wrote one, and zero words change in r0001; the online harness's memory probes became per revision (tools_py/parity/guest_addresses.py) because r0004 keeps its data at different offsets.
+
+*But:* the round ended on the clock with no shot fired. The r0004 build has only ever run on the r0001 disc's own art and sound. And whether a player gets r0004 at all is the owner's decision, not made yet.
+
+`Cited:` `07dc937f` the two words in the overlay that are not code · `3bac4a2b` the repair is an undo of the capsule's write stack, not a shape · `2613a26a` the r0004 gate is 3/3 · `d447bb1b` the r0004 build plays online on our server; the two revisions cannot join each other's games · `f9555c75` the r0004 round is scored on our server · `007d6511` the SOCOM 1 demo names 987 of our anonymous functions · `71750904` R247 -- the vendored tree's baggage goes · gate s11_r0004_probe2 · run s11_r0004_round2c · docs/research/43-what-changed-in-r0004.md · docs/superpowers/plans/2026-09-23-sprint-11.md · docs/KNOWN.md
+
+### 2026-09-24 - A sprint in the cloud, and names for the code
+
+**The program is built from about 14,900 functions the original makers left nameless. In one evening, 1,771 of them got their real names back, each with its reason written down.**
+
+The SOCOM 1 demo's names were the start. The owner moved the whole naming programme into a sprint of its own and handed it to a session running in the cloud, with no disc and no game, only the tracked function map and the tools. It worked in waves: fifteen research notes first, then one lever per note, each a rule written in code with its own measured error rate. The demo's names matched by the shape of a function's body. The class tables the compiler left behind. The text a function refers to. Who calls it and whom it calls. The menus' own tables that bind a button to the function behind it. One program writes every name, and it cannot write one without a row saying which lever found it, how strongly, and on what evidence. About 120 functions had names that morning; by night the file held 1,771. Nothing the game does changes: the recompiler reads the names only to label the code it writes, and the cloud rebuilt the whole tree to show that the labels were the only difference. No picture for this day: nothing on it drew a frame, because the cloud has no disc. The run that proves the renamed program still plays is the next morning's gate, cited here.
+
+*How:* tools_py/apply_names.py is the only writer of recomp/socom2_names.csv; the recompiler's `[general] names` key reads it into display names only, and a census of two cloud recomp runs showed 1,771 files renamed, 0 extents moved, 0 functions dropped.
+
+*But:* six names were held back because other evidence contradicted them, and 518 more wait for a second, independent lever to agree. The cloud's numbers were claims until a machine with the disc built and ran them.
+
+`Cited:` `41a6a169` R263 -- the naming programme is Sprint 12, "the readable image" · `6c35ed13` the spec and the plan for "the readable image" · `6c96ef8f` the provenance sidecar · `5cde14d5` the readable-name renderer · `9381e3c6` the recompiler runs in the cloud · `cd2fbfc7` the applier, and the first 1,491 names applied to the sidecar · `fee229d7` the sidecar at 1,840 rows / 1,771 readable names · recomp/socom2_names.csv · docs/superpowers/plans/2026-09-24-sprint-12.md · gate s12_names_gate
+
+### 2026-09-25 - Sprint 11 closes, and the borrowed fixes stay
+
+**Ten fixes from the upstream recompiler project, each tried alone against the gate and then all together, and all ten kept. Then the sprint closed and went to the main branch as version 0.11.0.**
+
+The recompiler this project forked keeps improving without us. Ten of its changes, among them how textures find their colours, how packed model data unpacks, how interlaced frames keep their rows, and a handshake at boot, were taken one at a time: each built, each gated on its own, then the ten combined and gated again. All ten stayed. The close found its own defects. The build service had been red on every code push since the evening of the 23rd: twelve tests reached a check that now refuses to guess which edition of the game it is looking at, and the build service has no game. The tests were made to say which edition they mean; the check was left strict. The gate's switch for accepting new reference values could drop one pin while it accepted another; fixed. And this story was found three days short, and carried rather than half-written. The close proof: the suites three times over, the gate three of three on the close commit, the build service green.
+
+![The last frame of the close gate's mission stage, on the executable that went to main as 0.11.0: the first mission's team-command help card over autumn trees. Every close ends on a frame like this one; the gate scores it, and nobody usually looks.](docs/story/img/2026-09-25-the-sprint-11-close-frame.png)
+
+*How:* each pick ran in its own worktree with its own gate (s11_pr227_gate and its siblings); research/42 holds the verdict column; the combined branch passed 891 of 891 C++ tests and s11_picks_keep_gate 3/3.
+
+*But:* six known issues went to the backlog unfixed, labelled as carried, among them the Linux machine's red test suites. And the missing story days were carried a second time the same morning, by Sprint 12's close. They are the entries you are reading.
+
+`Cited:` `6be03dac` research/42's verdict column -- all ten upstream picks are KEEP · `3bb866f4` Merge branch 'agent/cherry' into sprint-11 · `a8329c58` the twelve cases that reached launch_revision without an image now state their revision · `fccf3b5d` --accept-pins must not drop a pin while it accepts another · `425bae9d` Sprint 11 CLOSED · `f142b513` the close proof recorded -- gate s11_close_gate 3/3, CI green · `173608af` Merge pull request #49 from Scotho/sprint-11 · gate s11_picks_keep_gate · gate s11_close_gate · docs/research/42-upstream-cherry-picks.md · docs/CURRENT_SPRINT.md
+
+### 2026-09-25 - The names come home, and both editions still pass
+
+**What the cloud claimed, the machine with the disc proved: the renamed program rebuilt, played and passed the gate, on the disc's edition and on r0004.**
+
+The cloud has no disc, so its sprint ended with a request: build it here. The same morning this machine recompiled the whole game with 1,840 names loaded, compared the result against the output from before the rename, 1,771 files renamed and not one function moved or lost, built the program from scratch, ran the test suite, and ran the gate: three of three, every pinned input matching. Then the same for r0004, with its own list of 1,705 names carried across by the address matcher. The r0004 run was refused once first. An earlier proof's shell had carried a stray setting that muted the sound, and the switch that accepts new reference values had written it into r0004's standard; the gate measured the true value and said no. The standard was put back to its last clean value, and the next run passed. Sprint 12 closed and went to main as version 0.12.0, a few hours after Sprint 11.
+
+![The renamed r0004 build's main menu during its gate run, the morning of the 25th. The bottom line is the game's own build stamp: SOCOM 2 r0004, built 3 November 2004, thirteen months after the disc's edition.](docs/story/img/2026-09-25-the-renamed-r0004-menu.png)
+
+*How:* build_revision.sh builds r0004 with recomp/socom2_names_r0004.csv; the gate compares every pinned input (PINS MATCH), the r0001 leg on exe 804dd172 and the r0004 leg on the runtime built with its own sidecar.
+
+*But:* a name is not an understanding. The five biggest engine routines still have none; no lever reaches them, and they wait for the owner's own reading. And the refused run was the second time that accept switch had written a stray setting into a standard.
+
+`Cited:` `83e9696c` the local proof is green -- 1,840 display names loaded, 1,771 renamed with 0 extents moved; the r0001 gate s12_names_gate 3/3 with PINS MATCH · `3e5b5b78` the r0004 leg of the proof is green -- s12_names_r0004_gate 3/3 with PINS MATCH on the r0004 runtime built with its own 1,705-name sidecar · `7588fead` the r0004 pin standard's env restored -- a stray PS2X_AUDIO_VOLUME=0 · `32c06a0c` Sprint 12 CLOSED · `74fe2a9b` merge: Sprint 12 to main -- the readable image: 1,771 names with provenance from one sidecar, proven on both revisions; v0.12.0 · gate s12_names_gate · gate s12_names_r0004_gate · recomp/socom2_names_r0004.csv
+
 ---
 
 ## Where it stands tonight, 2026-09-22 — and what the night answered
@@ -778,6 +850,10 @@ second time at Sprint 12's close (2026-09-25): that sprint took nothing but the 
 are now these three plus Sprint 12's two, a line in `docs/CURRENT_SPRINT.md`'s "Sprint 12 — CLOSED" carry and an
 owner question in `docs/HUMAN_TASKS.md` (row O9 since 2026-09-25)*. Until it
 lands, `docs/STATUS.md` and `docs/CURRENT_SPRINT.md` are where those three days are written down.
+
+> Superseded 2026-09-25 (Sprint 13 Task S4, the owner's row O9 on its default, keep): the five days are written
+> above, from the record — 2026-09-23, 2026-09-24 twice and 2026-09-25 twice, under "A second edition, and names for
+> the code". The paragraph is kept as the record of the carry.
 
 ---
 
