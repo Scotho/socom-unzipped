@@ -9,7 +9,7 @@
 # Like linux.yml, a cheap first job skips the build when only docs/ moved, and a skipped `build-windows` satisfies the
 # required check. Sprint 13 H1, how to read a run (linux.yml's header has the why): a docs-only push starts no
 # `windows` run at all (`on.push.paths-ignore`); any other push builds, so its `success` means built and tested; a
-# pull_request always runs and compares the pull request's base.sha..head.sha, and only a docs-only PR reads
+# pull_request always runs and compares the pull request's base.sha...head.sha (merge base), and only a docs-only PR reads
 # `success` with `build-windows` skipped. tools_py/tests/test_workflows.py pins this.
 name: windows
 
@@ -42,18 +42,24 @@ jobs:
       - name: Did anything outside docs/ change?
         id: diff
         env:
-          # pull_request: the pull request's base..head (the whole branch, not its last push); push: before..after.
+          # pull_request: base...head (three dots: from the merge base, so main moving since the fork is not "code changed";
+          # the whole branch, not its last push); push: before...after (the same as two dots unless the push was forced).
           BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          echo "$EVENT: comparing $BASE..$HEAD"
+          echo "$EVENT: comparing $BASE...$HEAD (from their merge base)"
           zero=0000000000000000000000000000000000000000
           if [ -z "$BASE" ] || [ "$BASE" = "$zero" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             echo "no usable base ($BASE): building"; echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
-          changed=$(git diff --name-only "$BASE" "$HEAD" | grep -v '^docs/' || true)
+          if ! git merge-base "$BASE" "$HEAD" >/dev/null 2>&1; then
+            echo "no merge base for $BASE and $HEAD: building"; echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # A failing diff fails the step (set -e on the assignment); it can never read as "docs/ only".
+          files=$(git diff --name-only "$BASE...$HEAD")
+          changed=$(echo "$files" | grep -v -e '^docs/' -e '^$' || true)
           if [ -n "$changed" ]; then
             echo "code changed:"; echo "$changed" | head -50; echo "code=true" >> "$GITHUB_OUTPUT"
           else

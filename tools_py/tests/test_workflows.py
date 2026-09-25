@@ -10,7 +10,7 @@ starts no `linux` or `windows` run at all; a push that touches anything else bui
 
 The pull_request trigger keeps no path filter: `build`, `build-windows` and `leakcheck` are the `main` ruleset's
 required checks (docs/GIT_STRATEGY.md section 6), and a required check whose workflow never starts leaves the pull
-request waiting forever. On a pull request the `changes` job compares the pull request's base..head, and this test
+request waiting forever. On a pull request the `changes` job compares the pull request's base...head (from the merge base), and this test
 pins that the expression is chosen by the event's name, so a pull_request run can never fall back to a push's
 `before`.
 
@@ -94,7 +94,31 @@ class PullRequestComparesBaseToHead(unittest.TestCase):
             self.assertIsNotNone(changes, f"{name}: no changes job")
             self.assertIn("BASE: ${{ " + PR_BASE + " }}", changes, name)
             self.assertIn("HEAD: ${{ " + PR_HEAD + " }}", changes, name)
-            self.assertIn('git diff --name-only "$BASE" "$HEAD"', changes, name)
+            # Three dots: from the merge base, so main's own movement since the fork is not "code changed".
+            self.assertIn('git diff --name-only "$BASE...$HEAD"', changes, name)
+            self.assertNotIn('git diff --name-only "$BASE" "$HEAD"', changes, name)
+            # No merge base (a forced push onto unrelated history) builds rather than reading as docs-only.
+            self.assertIn('git merge-base "$BASE" "$HEAD"', changes, name)
+
+
+class DocsWorkflowChecksDocsOnlyPushes(unittest.TestCase):
+    """Fix round 1: the doc tests read the real docs/ tree and ran only inside the builds a docs push skips."""
+
+    def test_docs_workflow_runs_the_doc_checks_on_docs_pushes(self):
+        self.assertTrue(os.path.exists(os.path.join(WF, "docs.yml")), "no .github/workflows/docs.yml")
+        text = _text("docs.yml")
+        _, on = _block(text, "on", 0)
+        _, push = _block(on, "push", 2)
+        self.assertRegex(push or "", r"paths:\s*\n(\s*- .*\n)*?\s*- '?docs/\*\*'?", "docs.yml: push must name docs/**")
+        self.assertIsNotNone(_block(on, "pull_request", 2)[0], "docs.yml: no pull_request trigger")
+        self.assertIn("python -m tools_py.docmaint", text)
+        for mod in ("test_doc_maintenance", "test_tools_py_inventory", "test_workflows"):
+            self.assertIn("tools_py.tests." + mod, text, mod)
+
+    def test_docs_job_is_not_a_required_check(self):
+        jobs = _jobs(_text("docs.yml"))
+        self.assertEqual(list(jobs), ["docs"])
+        self.assertNotIn("docs", REQUIRED_CHECKS)
 
 
 class RequiredChecksKeepTheirNames(unittest.TestCase):

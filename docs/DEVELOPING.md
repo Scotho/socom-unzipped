@@ -556,11 +556,13 @@ recomp`, a `./build.sh runtime` that builds the game, and the gate.
 **Reading a CI run** (Sprint 13 H1, pinned by `tools_py/tests/test_workflows.py`). GitHub calls a run `success` when
 any job in it passed and `skipped` only when every job was skipped, so the word alone never said whether anything
 was built. What each case now looks like: a push touching only `docs/` starts **no** `linux` or `windows` run --
-`gh run list --commit <sha>` shows `secrets` alone, and that absence is the "not built" signal; any other push runs
-`changes` then `build` / `build-windows`, so its `success` means built and tested. A pull request always runs both
-workflows (`build`, `build-windows` and `leakcheck` are `main`'s required checks and must report), and its `changes`
-job compares the pull request's `base.sha..head.sha`, not its last push -- the step's first log line says
-`pull_request: comparing <base>..<head>`. A docs-only pull request is the one green run with nothing built: read the
+`gh run list --commit <sha>` shows `secrets` and `docs` (`python -m tools_py.docmaint` and the doc tests, which read
+the real `docs/` tree; not a required check), and the absence of `linux`/`windows` is the "not built" signal; any
+other push runs `changes` then `build` / `build-windows`, so its `success` means built and tested. A pull request
+always runs both build workflows (`build`, `build-windows` and `leakcheck` are `main`'s required checks and must
+report), and its `changes` job compares the pull request's `base.sha...head.sha` -- three dots, from the merge base,
+so the whole branch counts and `main`'s own movement since the fork does not -- and the step's first log line says
+`pull_request: comparing <base>...<head>`. A docs-only pull request is the one green run with nothing built: read the
 job list (`gh run view <id>`), where the build shows as skipped. A pull request's check list mixes its
 `pull_request` runs with the branch's `push` runs on the same commit; before H1 a docs-only last push put a `build
 skipping` row beside the pull request's real build (PR #50, runs 36110474156 and 36110478507) -- the `pull_request`

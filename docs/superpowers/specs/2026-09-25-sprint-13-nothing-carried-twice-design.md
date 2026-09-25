@@ -111,10 +111,10 @@ scheduled ladder has not run since 2026-09-23 and is DISABLED; the twenty-map qu
 
 ### Milestone H — the harness pays its debts **[A]** — third, because it costs every night
 
-- **H1** A docs-only push's skipped build reads `skipped`, not `success`, in the summary a controller reads
-  (`gh run list` shows the workflow's conclusion; the `changes` job's outcome is what the workflow reports — make the
-  workflow's own status say `skipped` when the build did not run). Bar: a docs push shows `skipped`; a code push
-  shows `success`/`failure`.
+- **H1** A docs-only push must not read as a green build in the summary a controller reads. As landed: a
+  docs-only push starts no build run (only `secrets` and `docs` run; read a commit with `gh run list --commit`),
+  because GitHub reads a run `skipped` only when every job skipped and the `changes` job always runs. Bar: a docs
+  push shows no `linux`/`windows` run; a code push shows `success`/`failure` with the build run.
 - **H2** The lock: a ticket queue (issue #36's design in the harness report H9), `--wait` in minutes (#35),
   `run_detached --wait`, `ladder_job.sh` taking through `run_detached` (#37), the quiet marker at the common dir, a
   written rollout procedure for a lock script waiters run by offset. Bar: #35, #36, #37 closed by their bars; two
@@ -229,7 +229,7 @@ The audit's §3 is the list (O1–O13). This sprint takes none of them as blocki
 1. **Nothing leaves this sprint carried twice without a ruling:** every open issue at the close is closed by its
    artefact, or carried once with a comment, or is the owner's question by name; `docs/BACKLOG.md` exists and is <!-- docmaint: future -->
    generated; the four oldest rows have R265.
-2. **CI green with the overrides compiled**, and a docs-only push reads `skipped`.
+2. **CI green with the overrides compiled**, and a docs-only push starts no build run (only `secrets` and `docs`).
 3. **The record under its ceilings:** `docmaint` green with R268's checks; the sprint file, HANDOFF §2, STATUS's
    state block and HUMAN_TASKS under the ceilings set at R1; every REVISION row of the audit applied or ruled.
 4. **The player's first ten minutes measured:** #30, #32, #31, #27 closed by their bars; a frame-time line and a
