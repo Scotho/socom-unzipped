@@ -714,8 +714,10 @@ class RuledOutListTest(unittest.TestCase):
 
     def test_every_backlog_row_of_the_audit_is_seeded(self):
         wheres = " ".join(r["where"] for r in issues.ruled_out_rows())
-        for audit_row in ("A13", "C17", "D12", "D13", "D14", "D15", "G2", "G3", "H4", "I5"):
+        for audit_row in ("A13", "C17", "D13", "D14", "D15", "G2", "G3", "H4", "I5"):
             self.assertRegex(wheres, r"\baudit %s\b" % audit_row, audit_row)
+        # D12 is an issue to open (review round 1), not a ruled-out row.
+        self.assertNotRegex(wheres, r"\baudit D12\b")
         self.assertIn("Sprint 12 Outcome", wheres)
 
 

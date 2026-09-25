@@ -299,10 +299,10 @@ acts on it.
    (because the next plan names it) or to no milestone (the backlog) — with the `carried` label and one comment
    saying why it did not close. Then the milestone is closed and the next sprint's is created. **An issue carried
    twice is a question for the owner** (`docs/HUMAN_TASKS.md`): keep it, or close it as not planned under a ruling.
-   The three hand steps are one command each: `python -m tools_py.issues carry N --comment "..." [--milestone
-   "Sprint N+1"]` (it refuses an issue already carried twice), then `python -m tools_py.issues milestone close
-   "Sprint N" --next "Sprint N+1"` (it refuses while an open issue is left in it). Last, `python -m tools_py.issues
-   backlog` regenerates `docs/BACKLOG.md` (R267), the carry's one home, and the close-out commit carries it; an
+   Two commands do it: `python -m tools_py.issues carry N --comment "..." [--milestone "Sprint N+1"]` for each
+   issue (label, comment and milestone at once; it refuses an issue already carried twice), then
+   `python -m tools_py.issues milestone close "Sprint N" --next "Sprint N+1"` (it refuses while an open issue is
+   left in it). A third records it: `python -m tools_py.issues backlog` regenerates `docs/BACKLOG.md` (R267), the carry's one home, and the close-out commit carries it; an
    item ruled not to be an issue goes into `docs/backlog_ruled_out.txt` with its ruling and bar.
 6. **Duplicates and contributor handles.** Merge duplicates (close as not planned, "duplicate of #M"; the survivor
    gets the evidence). Put `help wanted` on what a stranger without a disc could take, `good first issue` only where

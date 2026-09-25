@@ -4,7 +4,7 @@
 
 ## 1. Open issues
 
-18 open issues. *Carried* counts the sprint closes an issue has survived (its `Carried ...` comments, or one for the `carried` label alone); at 2 the next close asks the owner.
+17 open issues. *Carried* counts the sprint closes an issue has survived (its `Carried ...` comments, or one for the `carried` label alone); at 2 the next close asks the owner.
 
 | Issue | Title | Area | Milestone | Carried | Closing bar (first sentence) |
 |---|---|---|---|---|---|
@@ -23,13 +23,12 @@
 | #40 | PS2X_HLE_STATS and PS2X_CALL_TRACE miss tail calls to stubs, so their counts undercount | recomp | backlog | 0 | Tail-call sites route through the same counting entry as dispatched calls (or the emitter counts them), shown by a stats run on a known workload where memcpy's count equals its static site count plus the dynamic dispatches; the nine unregistered stubs are either registered or removed from the toml with the reason recorded. |
 | #41 | The console-replay pixel test covers a gameplay frame only; a menu-frame fixture is missing | harness | backlog | 0 | A fresh PCSX2 GS dump of a menu frame and a gameplay frame by research note 31's recipe, kept where the suite (or a documented opt-in job) finds it, and the case seen RED on a planted pixel change and GREEN on the tree; or the case deleted with the reason recorded in the row. |
 | #42 | About 50 ms of the mission music is lost between the mixer's render() and the device, on any endpoint | audio | Sprint 13 | 2 | A capture that stamps the mixer's output-frame clock on both the dump and the endpoint recording, so that each dip is attributed to a render call rather than to a wall-clock alignment; the cause it lands on fixed and the same capture re-run with the per-minute DEVICE count at zero; and that per-minute count pinned into the audio gate so it cannot drift back silently. |
-| #46 | movie_blocks.py is wired into nothing | harness | backlog | 0 | Either a caller in the harness (a gate stage or a scripts/parity entry point with a test that runs it) or the module retired and its KNOWN row rewritten as a lesson. |
 | #47 | VU0 macro-mode flag latency: MAC/STATUS flags land immediately in the recompilation | recomp | backlog | 0 | A MiniTest reproducing the hardware latency for one macro-mode sequence from research/31 section 17 against a PCSX2 trace, with the recompiled flags matching it. |
 | #48 | A revision build with --out drops the names sidecar: the toml's names path does not resolve and every function comes out FUN_/sub_ with only an info line | recomp | backlog | 0 | `build_revision.sh <rev> ... --out <dir>` produces a toml whose names path resolves (the sidecar copied beside it, or the path made absolute), a test in tools_py/tests/test_build_revision.py proving it, and the recompiler's log line for a names file that does not resolve promoted from info to a warning that build.sh's recomp step surfaces. |
 
 ## 2. Ruled not an issue
 
-37 rows. Each was ruled not to be an issue -- by a ruling, or `no issue` with its reason -- and keeps its bar here so the next review does not re-ask. Edit `docs/backlog_ruled_out.txt`, never this table.
+38 rows. Each was ruled not to be an issue -- by a ruling, or `no issue` with its reason -- and keeps its bar here so the next review does not re-ask. Edit `docs/backlog_ruled_out.txt`, never this table.
 
 | Item | Ruling | Bar or reason | Where it is written |
 |---|---|---|---|
@@ -37,16 +36,16 @@
 | goal3-parked-opponent | no issue | One leg-1 round with PCSX2 standing still through ours' walk answers it, and the row is settled either way. | audit C17; carry C85; the Sprint 10 Goal 3 plan, task 5; KNOWN section 2 (the parked row) |
 | goal3-seen-by-the-other | no issue | One reading of the peer entity's position field settles it for both. | audit C17; carry C85; the Sprint 10 Goal 3 plan, task 7 |
 | goal4-kill-routes | no issue | No closing bar written: per-map kill routes for the sweep maps, with the two-instance speed freeze lifted (the speed-freeze re-measure from logs is S13 H3). | audit C17; carry C86 |
-| cd-group-iop-heap-state | no issue | One group of state at a time, each with a gate; the audit's disposition is a new issue, not yet opened. | audit D12; carry C99; KNOWN section 4 |
 | ghidra-bounds-fix | no issue | No closing bar written; S13 N3's census of the unhandled-instruction lines comes first and the Ghidra-bounds fix stays here. | audit D13 |
-| soft-double-chain | R265 | Declined until a gate, a control round or a player names a numeric defect that points at the EE soft-double chain or `__ieee754_rem_pio2f`. | audit D14; carry C112 |
-| gameplay-state-probe | R265 | Declined as a gate leg (the ladder, the twenty-map queue and the online verdict are the correctness legs); its one live number, the `rx`-hold teleport count, is owed a backlog issue with a bar. | audit D14; carry C114; KNOWN section 2 |
-| render-believed-rows | R265 | Three gates and three ladder runs on the renamed tree without a sighting of the transition strip or the intro-cinematic freeze retire both rows to KNOWN section 3. | audit D14; carry C115; KNOWN section 2 |
+| soft-double-chain | R265 | Held to R265's bar: declined until a gate, a control round or a player names a numeric defect that points at the EE soft-double chain or `__ieee754_rem_pio2f`. | audit D14; carry C112 |
+| gameplay-state-probe | R265 | Held to R265's bar: declined as a gate leg (the ladder, the twenty-map queue and the online verdict are the correctness legs), and its one live number, the `rx`-hold teleport count, is paid -- `PROBE teleport_steps PASS ours=0 console=0` on every gate since R80's threshold (KNOWN section 1, marked by Sprint 13 R5). | audit D14; carry C114; KNOWN sections 1 and 4 |
+| render-believed-rows | R265 | Held to R265's bar: three gates and three ladder runs on the renamed tree without a sighting of the transition strip or the intro-cinematic freeze retire both rows to KNOWN section 3. | audit D14; carry C115; KNOWN section 2 |
 | invocation-stack-pool | no issue | A counter of distinct keys; if the number is small and flat, the warning line is the whole fix. | audit D14; carry C103; the Sprint 10 Q7 plan section 3 |
 | display-env-darker | no issue | A Sprint 6 A/B of the display environment, PMODE and zbp against a console image (ROADMAP calls it dropped; KNOWN section 2 keeps it as the settling experiment). | audit D14; carry C109; research/26 |
 | gs-local-host-readback | no issue | No closing bar written; the `socom2_LumReadPixel` stub (a constant grey exposure) goes when the GS local-to-host readback exists. | audit D14; carry C108; research/20 |
 | research25-outstanding | no issue | No closing bar written: gate and fixture coverage of the fixed paths, section 8.2's three clip-header byte differences, and the console's `+0x2c` on a live turn. | audit D14; carry C110; research/25 |
 | q7-render-performance | no issue | Decode microseconds per texture before and after the re-hash is folded into the decode, then the gate's title stage and a movie (and a readback PBO ring). | audit D14 (its source range); carry C102; the Sprint 10 Q7 plan section 3 |
+| r207-path-knobs | R207 | Settled 2026-09-25 (Sprint 13 R2): outside developer mode a Path knob's value must lie under the game folder (`knobs.cpp`) and `PS2X_MC_DIR_SLOT1` is a Dev knob, so R207's "not in this pass" and Q2's row no longer disagree with the tree. | audit D14 (its source range); carry C105; KNOWN section 2 (c) |
 | research20-hygiene | no issue | No closing bar written: `strcmp`/`strncmp` return the byte difference, and the `sceSifSendCmd` argument ABI. | audit D14 (its source range); carry C111; research/20 |
 | lto-os-release | no issue | Two candidates, cheapest first, each with a cap of T_compile + 1800 seconds (the release-build plan's Step 8). | audit D15; carry C107; KNOWN section 2 |
 | release-size-number | no issue | No closing bar written; the owner was promised the megabytes that compiling out the dump and trace families and imgui would save. | audit D15; carry C106; PLAYTEST's decisions |
@@ -59,6 +58,7 @@
 | q7-audio-residuals | no issue | Drop in pairs or drop the newest, tested by a parity check across a forced drop, and free the scratch block in the reset path (the stream-start underfill has no bar). | audit G2; carry C68; the Sprint 10 Q7 plan |
 | voice-hear-the-other-player | no issue | Re-run Task 4's round and the number must not fall, plus the three-stage gate 3/3 with `pcm_underruns` still 0 (the Sprint 8 voice plan's Task 5). | audit G3; carry C54 |
 | voice-record-gain-and-dme | no issue | No closing bar written: answer lgaud `0x0e` SetRecordGain (the game's AGC) and measure the DME framing around the 32-byte voice payload. | audit G3; carry C55; research/56 |
+| voice-command-lead | no issue | No closing bar written; the voice-command (user-word trainer) lead in ZSealEtc gap 49 was named and not investigated. | audit G3 (its source range); carry C56; research/52, /54 |
 | voice-research-35 | no issue | No closing bar written; research/35 (the voice path), promised by the Sprint 8 voice plan, was never written, and research/39 and /56 hold most of its content. | audit G3; carry C57 |
 | loose-rows-second-lever | no issue | No closing bar written; 518 loose rows wait for a second independent lever (BinDiff under research/49's rule, or strings against the call graph). | audit H4; carry C31; Sprint 12 Outcome |
 | r0004-7c-derived | no issue | No closing bar written; a Task 7c vtable file for r0004 derived by the same code rather than carried. | audit H4; carry C28; research/51 |
@@ -67,6 +67,6 @@
 | 7c-anchor-count-rerun | no issue | No closing bar written; re-run 7c's fixed point and anchor count after the call-graph and string passes. | audit H4; carry C47; research/53 |
 | hand-name-candidates | no issue | No closing bar written; `std::unexpected` 0x182760, `std::terminate` 0x182790 and the body-read leads enter through a `Pass=hand` proposals file. | audit H4; carry C38; Sprint 12 Outcome |
 | toml-hygiene | no issue | No closing bar written: 41 toml addresses that are not csv rows and 26 rows the toml names wrongly (research/57 section 3). | audit H4; carry C39; Sprint 12 Outcome |
-| csv-row-extents | no issue | Changing an extent is a codegen change, so the gate applies: the Ghidra split at 0x00183024 (and its r0004 twin) and the 64 rows that start inside vtable data. | audit H4; carry C36; Sprint 12 Outcome; research/60 section 7 |
+| csv-row-extents | no issue | Changing an extent is a codegen change, so the gate applies: the Ghidra split at 0x00183024 (and its r0004 twin) the 64 rows that start inside vtable data, and the 8,035 `$zero`-based loads in 112 rows (one 39,532-byte row at 0x003d6750). | audit H4; carry C36; Sprint 12 Outcome; research/54, /55, /60 section 7 |
 | constructors-variant-c | no issue | No closing bar written; constructors under research/51's variant C, with a stated recall. | Sprint 12 Outcome follow-ups |
 | multiplayer-security | no issue | A private read audit of the network path beyond the chat hole, under SECURITY.md's process until it is bounded (S13 U5's second half if its first half bounds it). | audit I5; carry C116 |
