@@ -599,6 +599,48 @@ def cmd_carry(args):
     return code
 
 
+def fetch_milestones(repo=REPO):
+    out = _gh(["api", "repos/%s/milestones?state=all&per_page=100" % repo])
+    if out.returncode != 0:
+        raise SystemExit("gh api milestones failed (exit %d): %s" % (out.returncode, out.stderr.strip()))
+    return json.loads(out.stdout)
+
+
+def cmd_milestone_close(args):
+    if args.milestones_json:
+        with open(args.milestones_json, encoding="utf-8") as f:
+            milestones = json.load(f)
+    else:
+        milestones = fetch_milestones(args.repo)
+    by_title = {m["title"]: m for m in milestones}
+    closing = by_title.get(args.name)
+    if closing is None:
+        print("milestone: no milestone is titled %r on %s (there are: %s)"
+              % (args.name, args.repo, ", ".join(sorted(by_title)) or "none"))
+        return 1
+    left = sorted(i["number"] for i in (normalise(x) for x in _listing(args))
+                  if i["state"] == "OPEN" and i["milestone"] == args.name)
+    if left:
+        print("milestone: %r still holds %d open issue(s): %s -- carry each first (python -m tools_py.issues carry N "
+              "--comment ... [--milestone %r]) or close it; a milestone is closed empty"
+              % (args.name, len(left), ", ".join("#%d" % n for n in left), args.next))
+        return 1
+    cmds = []
+    if str(closing.get("state", "")).lower() == "closed":
+        print("milestone: %r is already closed" % args.name)
+    else:
+        cmds.append(["api", "-X", "PATCH", "repos/%s/milestones/%d" % (args.repo, closing["number"]),
+                     "-f", "state=closed"])
+    if args.next in by_title:
+        print("milestone: %r already exists (%s)" % (args.next, by_title[args.next].get("state")))
+    else:
+        cmds.append(["api", "-X", "POST", "repos/%s/milestones" % args.repo, "-f", "title=%s" % args.next])
+    code = _run_all(cmds, args.dry_run)
+    if code == 0 and cmds and not args.dry_run:
+        print("milestone: %r closed, %r open" % (args.name, args.next))
+    return code
+
+
 def cmd_audit(args):
     if args.json:
         with open(args.json, encoding="utf-8") as f:
@@ -715,6 +757,15 @@ def main(argv=None):
     p.add_argument("--json")
     p.add_argument("--dry-run", action="store_true")
     p.set_defaults(fn=cmd_carry)
+    p = sub.add_parser("milestone")
+    msub = p.add_subparsers(dest="action", required=True)
+    p = msub.add_parser("close")
+    p.add_argument("name")
+    p.add_argument("--next", required=True)
+    p.add_argument("--json")
+    p.add_argument("--milestones-json")
+    p.add_argument("--dry-run", action="store_true")
+    p.set_defaults(fn=cmd_milestone_close)
     args = ap.parse_args(argv)
     return args.fn(args)
 

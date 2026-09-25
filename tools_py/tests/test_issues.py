@@ -435,10 +435,8 @@ class BacklogTest(PlantedTree):
         self.assertIn("window-policy", text)
 
 
-class CarryTest(PlantedTree):
-    """`carry N --comment ... [--milestone NAME]`: the label, the comment and the milestone in one step, and a
-    refusal once the issue has been carried twice -- that is the owner's question (DOC_MAINTENANCE section 7 step
-    5). gh is never run: --json replays `gh issue view`, and _gh is replaced by a recorder."""
+class GhRecorded(PlantedTree):
+    """A planted tree where issues._gh records each command and succeeds -- gh itself is never run."""
 
     def setUp(self):
         super().setUp()
@@ -456,6 +454,12 @@ class CarryTest(PlantedTree):
     def tearDown(self):
         issues._gh = self.saved_gh
         super().tearDown()
+
+
+class CarryTest(GhRecorded):
+    """`carry N --comment ... [--milestone NAME]`: the label, the comment and the milestone in one step, and a
+    refusal once the issue has been carried twice -- that is the owner's question (DOC_MAINTENANCE section 7 step
+    5). --json replays `gh issue view`."""
 
     def view(self, **kw):
         return self.listing(planted(33, **kw), "view.json")
@@ -526,6 +530,70 @@ class CarryTest(PlantedTree):
         self.assertEqual(self.calls, [])
         self.assertIn("gh issue edit 33", text)
         self.assertIn("gh issue comment 33", text)
+
+
+class MilestoneTest(GhRecorded):
+    """`milestone close NAME --next NEXT`: one milestone closed and the next created, refused while an open issue
+    remains in it. --json replays the issue listing, --milestones-json the `gh api .../milestones` reply."""
+
+    MILESTONES = [{"number": 2, "title": "Sprint 12", "state": "closed"},
+                  {"number": 3, "title": "Sprint 13", "state": "open"}]
+
+    def close(self, stack, milestones=None, *extra):
+        return self.run_main(["milestone", "close", "Sprint 13", "--next", "Sprint 14",
+                              "--json", self.listing(stack),
+                              "--milestones-json", self.listing(milestones or self.MILESTONES, "ms.json")]
+                             + list(extra))
+
+    def test_an_emptied_milestone_is_closed_and_the_next_created(self):
+        stack = [planted(25, milestone="Sprint 14"), planted(38, state="CLOSED", milestone="Sprint 13")]
+        code, text = self.close(stack)
+        self.assertEqual(code, 0, text)
+        self.assertEqual(len(self.calls), 2, self.calls)
+        shut, create = self.calls
+        self.assertIn("repos/%s/milestones/3" % issues.REPO, shut)
+        self.assertIn("PATCH", shut)
+        self.assertIn("state=closed", shut)
+        self.assertIn("repos/%s/milestones" % issues.REPO, create)
+        self.assertIn("POST", create)
+        self.assertIn("title=Sprint 14", create)
+
+    def test_open_issues_left_in_it_refuse_the_close(self):
+        stack = [planted(25, milestone="Sprint 13"), planted(26, milestone="Sprint 13"), planted(27, milestone=None)]
+        code, text = self.close(stack)
+        self.assertEqual(code, 1, text)
+        self.assertEqual(self.calls, [])
+        self.assertIn("#25", text)
+        self.assertIn("#26", text)
+        self.assertNotIn("#27", text)
+        self.assertIn("carry", text)
+
+    def test_a_next_milestone_that_exists_is_not_created_twice(self):
+        ms = self.MILESTONES + [{"number": 4, "title": "Sprint 14", "state": "open"}]
+        code, text = self.close([], ms)
+        self.assertEqual(code, 0, text)
+        self.assertEqual(len(self.calls), 1, self.calls)
+        self.assertIn("already exists", text)
+
+    def test_an_unknown_or_closed_milestone_is_said_not_guessed(self):
+        code, text = self.run_main(["milestone", "close", "Sprint 99", "--next", "Sprint 100",
+                                    "--json", self.listing([]), "--milestones-json", self.listing(self.MILESTONES,
+                                                                                                  "ms.json")])
+        self.assertEqual(code, 1, text)
+        self.assertIn("no milestone", text)
+        self.assertEqual(self.calls, [])
+        code, text = self.run_main(["milestone", "close", "Sprint 12", "--next", "Sprint 13",
+                                    "--json", self.listing([]), "--milestones-json", self.listing(self.MILESTONES,
+                                                                                                  "ms.json")])
+        self.assertEqual(code, 0, text)
+        self.assertEqual(self.calls, [], "closed already and the next exists: nothing to do")
+        self.assertIn("already closed", text)
+
+    def test_dry_run_prints_and_runs_nothing(self):
+        code, text = self.close([], None, "--dry-run")
+        self.assertEqual(code, 0, text)
+        self.assertEqual(self.calls, [])
+        self.assertIn("gh api", text)
 
 
 class RuledOutListTest(unittest.TestCase):
