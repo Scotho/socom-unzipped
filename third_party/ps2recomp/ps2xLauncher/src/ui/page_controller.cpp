@@ -253,7 +253,7 @@ namespace ui
             // to the map.
             text(ctx, "KEYBOARD", Vec2{deadZone.x, deadZone.y + 44.0f}, metrics::labelSize, theme::dim, Face::Bold, 0.06f);
             caption(ctx, Vec2{deadZone.x, deadZone.y + 44.0f + metrics::labelSize + 8.0f},
-                    "Menus and typing: arrows, Enter, Backspace, Z/X/C/V.");
+                    "Menus and typing: arrows, Enter, Esc, Backspace, Space, Z/X/C/V.");
             caption(ctx, Vec2{deadZone.x, deadZone.y + 44.0f + metrics::labelSize + 8.0f + metrics::captionSize * 1.4f},
                     "Q/E/1/2/3/4: L1/R1/L2/L3/R2/R3. Playing needs a controller.");
 

@@ -44,6 +44,24 @@ def default_keys():
     return {k: b.upper() for k, b in re.findall(r"\{'(.)',\s*kPs2(\w+)\}", block)}
 
 
+# raylib's key codes for the named keys the default map binds, and the word the CONTROLLER page uses for each.
+NAMED_KEYS = {32: "Space", 256: "Esc", 257: "Enter", 259: "Backspace", 262: "arrows", 263: "arrows", 264: "arrows",
+              265: "arrows"}
+
+
+def default_named_keys():
+    """mapping.cpp's kDefaultKeys, the numbered ones: {256: 'START', 32: 'CROSS', ...}."""
+    text = read(PS2R, "ps2xShared", "src", "mapping.cpp")
+    block = re.search(r"kDefaultKeys\[\]\s*=\s*\{(.*?)\};", text, re.S).group(1)
+    return {int(k): b.upper() for k, b in re.findall(r"\{(\d+),\s*kPs2(\w+)\}", block)}
+
+
+def notices():
+    """exit_codes.h's notices: {slug: sentence}."""
+    text = read(PS2R, "ps2xShared", "include", "ps2x", "exit_codes.h")
+    return dict(re.findall(r'Notice k\w+\{"([a-z-]+)",\s*"([^"]+)"\}', text))
+
+
 class GameVersionRowIsExplained(unittest.TestCase):
     """Row 9: PLAY and ONLINE both draw GAME VERSION (pages.h, gameVersionRow) with a greyed cell for a build that
     is not installed; the install guide and the FAQ must name the row and every cell's label as the code spells it."""
@@ -79,6 +97,21 @@ class ExitCodesSayWhereTheyAreMet(unittest.TestCase):
                 body = sections[row["code"]]
                 self.assertIn(row["sentence"], body, "the entry quotes the launcher's sentence word for word")
                 self.assertIn("Where you meet it", body, "the entry says where the code can be met")
+
+    def test_every_notice_has_an_faq_entry_that_says_where_it_is_met(self):
+        """Ruling S13-R9: an unresolved server name is a LAST RUN notice, not an exit code; the FAQ carries the
+        notices beside the codes, each with its sentence and where it can be met."""
+        found = notices()
+        self.assertIn("server-unresolved", found)
+        self.assertNotIn(75, [r["code"] for r in exit_codes.table()], "no exit code 75 (S13-R9)")
+        faq = doc("docs/FAQ.md")
+        self.assertNotRegex(faq, r"(?m)^### 75 ", "the FAQ's exit table has no 75")
+        part = faq[faq.index("### Notices on the LAST RUN line"):]
+        part = part[:part.index("\n---")]
+        for slug, sentence in found.items():
+            with self.subTest(notice=slug):
+                entry = part[part.index(sentence):]
+                self.assertIn("Where you meet it", entry.split("\n####")[0], f"{slug}: no 'Where you meet it'")
 
     def test_the_playtest_asks_only_for_what_can_happen(self):
         step = re.search(r"^4\. \*\*A failure that explains itself\*\*.*?(?=^5\. )", doc("docs/PLAYTEST.md"), re.M | re.S).group(0)
@@ -130,6 +163,14 @@ class KeyboardSentencesAgreeWithTheMap(unittest.TestCase):
             with self.subTest(key=key):
                 self.assertEqual(keys.get(key), button, f"the caption says {key} is {button}; the map says {keys.get(key)}")
 
+    def test_the_keyboard_caption_names_every_named_key_the_map_binds(self):
+        shown = self.captions()
+        for code, button in default_named_keys().items():
+            word = NAMED_KEYS.get(code)
+            with self.subTest(key=code, button=button):
+                self.assertIsNotNone(word, f"the map binds key {code} ({button}); give it a word in NAMED_KEYS")
+                self.assertIn(word, shown, f"the caption never names {word} ({button})")
+
     def test_the_crouch_hints_name_the_key_the_map_gives_the_displaced_button(self):
         text = read(PS2R, "ps2xShared", "src", "launcher_config.cpp")
         keys = default_keys()
@@ -145,6 +186,17 @@ class KeyboardSentencesAgreeWithTheMap(unittest.TestCase):
         for line in self.caption_lines():
             with self.subTest(line=line):
                 self.assertIn(line, install, "INSTALL quotes the CONTROLLER page's keyboard lines word for word")
+
+
+class IssueTemplateShowsTheIdAsThePlayerSeesIt(unittest.TestCase):
+    """Row 15's follow-up (V8 review): the launcher shows a reference id upper-cased (bug_report.cpp parseReply),
+    so the issue form's example and placeholder read that way too."""
+
+    def test_the_example_id_is_upper_case(self):
+        text = doc(".github/ISSUE_TEMPLATE/bug_report.yml")
+        self.assertRegex(text, r"like BR-\d{8}-[0-9A-F]{6}\.")
+        self.assertNotRegex(text, r"BR-\d{8}-[0-9a-f]*[a-f][0-9a-f]*\b", "no lower-case example id")
+        self.assertIn("placeholder: BR-YYYYMMDD-XXXXXX", text)
 
 
 class RenderScaleComment(unittest.TestCase):

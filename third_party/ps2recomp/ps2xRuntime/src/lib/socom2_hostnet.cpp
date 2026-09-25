@@ -1,7 +1,6 @@
 #include "socom2_hostnet.h"
 #include "ps2x/exit_codes.h"
 #include "ps2x/knobs.h"
-#include "ps2x/preflight.h"
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -36,12 +35,6 @@
 #include <string>
 #include <vector>
 
-// ps2_runtime.h's, declared here rather than included: that header brings the whole runtime (and raylib's
-// windows.h rules) into the one file that has to see winsock2.h first. ps2_runtime.cpp defines them; every
-// target that compiles this file (ps2EntryRunner, ps2x_tests) links ps2_runtime.
-int ps2ProcessExitCode();
-void setPs2ProcessExitCode(int code);
-
 namespace socom2_hostnet
 {
     // Defined below, forward-declared here because loadHosts() (file-local) calls it. Not in the
@@ -51,9 +44,10 @@ namespace socom2_hostnet
 
     // Sprint 13 V8: what PS2X_SOCOM2_SERVER becomes. Unset or empty: loopback, the local Horizon stack. An
     // IPv4 literal or a name that resolves: that address. Anything else is REFUSED: the answer is 0 and
-    // `refusal` is the preflight-shaped line (exit 75, server-unresolved) for the log. It was loopback,
-    // silently, until then -- a stranger whose DNS failed met "the server is down" (KNOWN section 4's hazard
-    // row). Not in the public header, for the same reason as parseServerAddress.
+    // `refusal` is the [notice] line (ExitCodes::kServerUnresolved) the launcher appends to LAST RUN -- a
+    // notice, not an exit code (ruling S13-R9): the run goes on offline and its exit code is left alone. It
+    // was loopback, silently, until then -- a stranger whose DNS failed met "the server is down" (KNOWN
+    // section 4's hazard row). Not in the public header, for the same reason as parseServerAddress.
     uint32_t serverForKnob(const char *value, std::string &refusal);
     // The server half of loadHosts() with `value` in place of the knob, under the table's lock; for
     // socom2_libnetb_tests.cpp, since init() runs loadHosts() once per process.
@@ -226,16 +220,19 @@ namespace socom2_hostnet
 
         // The seven retail names all go to one server. On a refusal they go to 0, which resolve() answers as
         // a failed lookup (sceInetName2Address -> kErrDns): the game's own "cannot connect" path, never
-        // loopback and never the OS's DNS for Sony's names. The refusal is printed once and becomes the
-        // process's exit code, so the launcher's LAST RUN says why when the game closes. Callers hold g_mutex.
+        // loopback and never the OS's DNS for Sony's names. The refusal is printed once: the value on stderr
+        // for the log, and the [notice] line on stdout, as ps2_runtime.cpp prints no-audio-device, which the
+        // launcher's LAST RUN appends to whatever the exit was. Callers hold g_mutex.
         void applyServerLocked(const char *value)
         {
             std::string refusal;
             const uint32_t server = serverForKnob(value, refusal);
             if (!refusal.empty())
             {
-                std::cerr << refusal << std::endl;
-                setPs2ProcessExitCode(ExitCodes::kServerUnresolved);
+                std::cerr << "[socom2/hostnet] PS2X_SOCOM2_SERVER=" << value
+                          << " is neither an IPv4 address nor a name that resolves; the retail names are refused"
+                          << std::endl;
+                std::cout << refusal << std::endl;
             }
             for (const char *name : {"socom2-prod.pdonline.scea.com", "socom2-prod.svo.pdonline.scea.com",
                                      "socom2-prod.muis.pdonline.scea.com", "gate1.us.dnas.playstation.org",
@@ -328,8 +325,9 @@ namespace socom2_hostnet
 
     // PS2X_SOCOM2_SERVER is a numeric IPv4 literal or a DNS name -- a hosted server is reached by
     // name. Returns host byte order IPv4, or 0 when the value is neither; serverForKnob() turns that
-    // 0 into a refusal (Sprint 13 V8; it was "keep loopback" until then). Winsock is already up where it has to be: init() runs WSAStartup before
-    // loadHosts(), which is the only caller inside the runtime, and getaddrinfo needs nothing
+    // 0 into a refusal (Sprint 13 V8; it was "keep loopback" until then). Winsock is already up where
+    // it has to be: init() runs WSAStartup before loadHosts(), which is the only caller inside the
+    // runtime, and getaddrinfo needs nothing
     // earlier than that. On BSD sockets there is nothing to start.
     uint32_t parseServerAddress(const std::string &value)
     {
@@ -364,10 +362,7 @@ namespace socom2_hostnet
             return 0x7f000001u;   // unset: the local Horizon stack (knobs.h's default)
         if (const uint32_t ip = parseServerAddress(value))
             return ip;
-        Preflight::Result r;
-        r.code = ExitCodes::kServerUnresolved;
-        r.detail = std::string("PS2X_SOCOM2_SERVER=") + value + " is neither an IPv4 address nor a name that resolves";
-        refusal = Preflight::logLine(r);
+        refusal = ExitCodes::noticeLine(ExitCodes::kServerUnresolved);
         return 0;
     }
 
@@ -398,7 +393,7 @@ namespace socom2_hostnet
         g_initialized = true;
         const uint32_t retail = g_hosts["socom2-prod.muis.pdonline.scea.com"];
         std::cout << "[socom2/hostnet] " << stackName << " ready; retail hostnames -> "
-                  << (retail ? ipToString(retail) : std::string("refused (exit 75)")) << std::endl;
+                  << (retail ? ipToString(retail) : std::string("refused (server-unresolved notice)")) << std::endl;
         return true;
     }
 

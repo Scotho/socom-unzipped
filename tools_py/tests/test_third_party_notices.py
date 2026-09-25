@@ -130,13 +130,14 @@ def about_credits():
 
 class AboutAgreesWithTheNotices(unittest.TestCase):
     """Sprint 13 V8 (stranger audit row 14): ABOUT's BUILT FROM credited SDL2, which the notices say does not ship,
-    and left out Dear ImGui, libjxl, libwebp and Brotli, which do. Every credit is a shipping row (Ships 'yes', or
-    'when the closure needs it'), with the same licence ids, and every shipping row is credited."""
+    and left out Dear ImGui, libjxl, libwebp and Brotli, which do. Every credit is a shipping row (Ships 'yes'; a
+    'when the closure needs it' row is not shipping -- winpthreads, which nothing imports today), with the same
+    licence ids, and every shipping row is credited."""
 
     def shipped(self):
         out = {}
         for r in rows():
-            if r[5].lower().startswith(("yes", "when")):
+            if r[5].lower().startswith("yes"):
                 for name in component_names(r[0]):
                     out[name] = licence_ids(r[3])
         self.assertGreater(len(out), 8)

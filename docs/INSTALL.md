@@ -94,7 +94,7 @@ The page has two sections.
 
 **SETUP** picks which pad the game reads and sets the stick **DEAD ZONE**. A drawing of a pad sits above:
 *"Press a button: what lights up above is what the game reads. The ring is the dead zone."* If no pad is found it
-says so instead. Under the dead zone, the launcher states what the keyboard is for: *"Menus and typing: arrows, Enter, Backspace, Z/X/C/V."*
+says so instead. Under the dead zone, the launcher states what the keyboard is for: *"Menus and typing: arrows, Enter, Esc, Backspace, Space, Z/X/C/V."*
 and *"Q/E/1/2/3/4: L1/R1/L2/L3/R2/R3. Playing needs a controller."* -- the second line is why the crouch shortcut
 below can move fire mode to the 2 key. *(Until 2026-09-25 the first line said "only" and the second named no keys,
 which the crouch hint contradicted; Sprint 13 V8.)*

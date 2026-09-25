@@ -11,8 +11,8 @@ body:
     id: br_id
     attributes:
       label: Launcher report id (optional)
-      description: The id REPORT A BUG gave you, like BR-20260920-abc123.
-      placeholder: BR-YYYYMMDD-xxxxxx
+      description: The id REPORT A BUG gave you, like BR-20260920-ABC123.
+      placeholder: BR-YYYYMMDD-XXXXXX
   - type: input
     id: version
     attributes:
