@@ -73,3 +73,7 @@ id_dsa*
 .npmrc
 .pypirc
 .htpasswd
+
+# the owner's local Horizon checkouts beside the server tree: never submodules (no .gitmodules), never tracked
+/server/horizon-docker/
+/server/horizon-server-database-middleware/
