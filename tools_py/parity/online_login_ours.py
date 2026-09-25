@@ -156,6 +156,18 @@ def run_sh_exit(path):
     return (int(m.group(1)), m.group(2)) if m else (None, None)
 
 
+RUN_SH_TIMEOUT_RC = 124          # coreutils `timeout` in run.sh: the --seconds budget ended the game, not the close
+
+
+def clean_exit_verdict(rc):
+    """The drive log's CLEAN-EXIT line for clean_exit's answer: only a code the game itself returned is clean."""
+    if rc is False:
+        return "CLEAN-EXIT none (the game did not leave on the close; killed)"
+    if rc == RUN_SH_TIMEOUT_RC:
+        return f"CLEAN-EXIT none (rc={rc}: run.sh's timeout ended the game, not the close)"
+    return f"CLEAN-EXIT rc={rc}"
+
+
 def clean_exit(sh, proc, stdout_path=None, wait_s=CLEAN_EXIT_WAIT_S, clock=time.time):
     """Close the game's window and wait for run.sh to return (--clean-exit). Returns the game's exit code as run.sh
     printed it (None when it printed none), or False when the close could not be sent or the game was still running
@@ -527,6 +539,7 @@ LOGIN_PASSWORD_VALUE = (136, 158, 172, 400)
 LOGIN_PASSWORD_INK_MIN = 100.0
 CLASS_SAVE_TICK = "login:save-password"        # + ":row" / ":tick": SAVE PASSWORD could not be set to YES
 CLASS_RELAUNCH_LOGIN = "login:saved-password"  # the relaunch: the card did not bring the persona or its password back
+SAVED_FORM_READS, SAVED_FORM_REREAD_S = 3, 1.0     # V6 review: the relaunch form, read up to 3 times 1 s apart
 # (the two names above are not *_PASSWORD: the release leak check reads `X_PASSWORD = "..."` as a secret assignment)
 
 # The main menu of the block-pointer exe: NEW GAME / ONLINE / LAN. The lit row's text pulses in size (ONLINE lit spans
@@ -1609,15 +1622,30 @@ def login(sh, name, password, existing, prefilled=False, save_password=False, sa
     sh.shot("02_persona")
     mode, listed = persona_form_mode(sh, existing)
     if saved_password:
-        if mode == "create":
-            raise lobby_fail(sh, f"{CLASS_RELAUNCH_LOGIN}:no-persona",
-                             "the relaunch's form has an empty PLAYER NAME: the card brought no persona back")
-        # Sprint 13 V6 (#27): the form is read AS IT ARRIVED, before any press. persona_form_mode has just read it
-        # (mode is not None, so the form is up). W10's relaunch (w10_virgin_b) arrived with the persona, "*****",
+        # Sprint 13 V6 (#27): the form is read AS IT ARRIVED, before any press. W10's relaunch (w10_virgin_b) arrived with the persona, "*****",
         # YES ticked and the game's cursor ON CONNECT: the persona-list CROSS this path used to send first
         # connected, and PASSWORD was then read off the CONNECTING screen -- 0 glyphs, login:saved-password:empty,
         # a failure of the read and never of the card.
-        gray = lobby_gray(sh)
+        # persona_form_mode also answers "saved" off an open keyboard and off --existing with no form read, so
+        # the form is required here (a short bounded re-read) before its PASSWORD is believed: a frame that is not
+        # the form fails as its own class, never as :empty -- the misread #27 was.
+        for read in range(1, SAVED_FORM_READS + 1):
+            gray = lobby_gray(sh)
+            if login_form_up(gray):
+                break
+            sh.log(f"[login] saved password: the form is not on screen (read {read} of {SAVED_FORM_READS}, keyboard "
+                   f"{'up' if osk_open_of(gray) else 'down'})")
+            if read < SAVED_FORM_READS:
+                sh.stage_sleep(SAVED_FORM_REREAD_S)
+        else:
+            sh.shot("05_password")
+            raise lobby_fail(sh, f"{CLASS_RELAUNCH_LOGIN}:no-form",
+                             f"the CONNECT TO SOCOM II form was not on screen in {SAVED_FORM_READS} reads (keyboard "
+                             f"{'up' if osk_open_of(gray) else 'down'}): PASSWORD was not read, so nothing is known "
+                             f"about the saved password")
+        if login_persona_mode(gray) == "create":                 # off the form itself, never --existing's guess
+            raise lobby_fail(sh, f"{CLASS_RELAUNCH_LOGIN}:no-persona",
+                             "the relaunch's form has an empty PLAYER NAME: the card brought no persona back")
         n, state, focus = login_password_glyphs(gray), login_save_password(gray), login_focus_row(gray)
         sh.log(f"[login] saved password: PASSWORD reads {n} glyphs, SAVE PASSWORD reads {state}, "
                f"focus {focus or 'unread'}; typing nothing")
@@ -2573,8 +2601,12 @@ def main():
         sh.shot("final")
         if a.clean_exit:
             rc = clean_exit(sh, proc, run_sh_out)
-            sh.log("CLEAN-EXIT " + ("none (killed)" if rc is False else f"rc={rc}"))
+            sh.log(clean_exit_verdict(rc))
     finally:
+        # V6 review: the kill says so, so a killed launch's log is self-describing beside a CLEAN-EXIT line
+        note = ("[exit] kill: run.sh had already returned, the kill below is a no-op" if proc.poll() is not None
+                else "[exit] kill: the game is ended by the harness (run.sh terminated, then the game's process)")
+        (sh.log if sh is not None else print)(note)
         proc.terminate()
         if a.instance:
             # 2026-09-22 (the hosted join, 14:53): with --instance another socom2.exe on this PC may be the

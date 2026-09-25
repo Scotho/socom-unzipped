@@ -11,6 +11,7 @@ tick-setting step and the two login branches, on test_first_login's synthesised 
 test on a real capture (logs/parity/blop_c) is skipped when it is not on disk.
 """
 import os
+import shutil
 import unittest
 from unittest import mock
 
@@ -22,14 +23,14 @@ from tools_py.tests import test_first_login as F
 from tools_py.tests import test_online_login_lobby as T
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-BLOP_FORM = os.path.join(ROOT, "logs", "parity", "blop_c", "02_persona.png")
-BLOP_CONNECT = os.path.join(ROOT, "logs", "parity", "blop_c", "06_connect_focus.png")
 
 ROW_SAVE = (20, 166, 160, 188)
 ROW_CONNECT = (20, 366, 160, 388)      # inside L.LOBBY_ROW_BOX["connect"] (y 366-390), the lit fixture's 22 rows
 PASSWORD_VALUE = (172, 136, 400, 158)
 # Sprint 13 V6 (#27): W10's relaunch, launch b of the pair (git-ignored, on the build machine's data root only).
 DATA_ROOT = os.environ.get("SOCOM_DATA_ROOT") or ROOT
+BLOP_FORM = os.path.join(DATA_ROOT, "logs", "parity", "blop_c", "02_persona.png")
+BLOP_CONNECT = os.path.join(DATA_ROOT, "logs", "parity", "blop_c", "06_connect_focus.png")
 W10_B_FORM = os.path.join(DATA_ROOT, "logs", "parity", "w10_virgin_b", "02_persona.png")
 W10_B_FAIL = os.path.join(DATA_ROOT, "logs", "parity", "w10_virgin_b", "05_password.png")
 
@@ -138,11 +139,11 @@ class TheTwoLaunches(unittest.TestCase):
     def setUp(self):
         self.calls = []
 
-    def run_login(self, form, after_cross=None, **flags):
+    def run_login(self, form, *more, after_cross=None, **flags):
         """`after_cross`: the frame the game shows once any CROSS has gone in (the stubs press nothing real, so
         without it every read returns `form` whatever was pressed)."""
         sh = T.FakeShell()
-        g = F.Grabs(form) if after_cross is None else \
+        g = F.Grabs(form, *more) if after_cross is None else \
             (lambda hwnd, max_age=None: after_cross if ("key", "cross") in sh.presses else form)
         stub = mock.patch.multiple(
             L, create_persona=mock.Mock(side_effect=lambda s, n, li, pf=False: (self.calls.append(("create", n)))),
@@ -185,6 +186,22 @@ class TheTwoLaunches(unittest.TestCase):
         self.assertEqual(sh.presses, [])
         self.assertIn("[login] saved password: PASSWORD reads 6 glyphs, SAVE PASSWORD reads yes, focus connect; "
                       "typing nothing", sh.logs)
+
+    def test_launch_two_never_reads_password_off_an_open_keyboard(self):
+        """V6 review: persona_form_mode answers "saved" off an open keyboard (its title edge) with no form read; that
+        frame's PASSWORD strip must not become :empty -- the #27 class. Bounded re-reads, then a class of its own."""
+        with self.assertRaises(L.LobbyFail) as cm:
+            self.run_login(F.KBD_PASSWORD, saved_password=True)
+        self.assertEqual(cm.exception.cls, "login:saved-password:no-form")
+        self.assertIn("keyboard up", cm.exception.detail)
+        self.assertEqual(self.calls, [])
+
+    def test_launch_two_rereads_until_the_form_is_up(self):
+        # persona_form_mode spends two reads (the frame, then after its list CROSS) and falls back to --existing;
+        # the relaunch then re-reads: one more non-form frame, a 1 s wait, the form
+        sh = self.run_login(F.BLACK, F.BLACK, F.BLACK, with_password(FORM_YES), saved_password=True)
+        self.assertEqual(self.calls, [("connect", 4), ("prompts",), ("lobby",)])
+        self.assertEqual(sh.sleeps, [L.SAVED_FORM_REREAD_S])
 
     @unittest.skipUnless(os.path.exists(W10_B_FORM), "w10_virgin_b is not on disk (SOCOM_DATA_ROOT names the data root)")
     def test_the_real_w10_relaunch_form_carried_the_password(self):
@@ -290,6 +307,7 @@ class CleanExit(unittest.TestCase):
         import sys
         import tempfile
         out, sh, seen = tempfile.mkdtemp(), T.FakeShell(), {}
+        self.addCleanup(shutil.rmtree, out, True)
 
         def launch(seconds, instance=None, prefill=None, mc_dir=None, stdout_path=None):
             seen["stdout_path"] = stdout_path
@@ -301,7 +319,15 @@ class CleanExit(unittest.TestCase):
                 mock.patch.object(L.hostplatform, "kill_process_by_name", mock.Mock()):
             L.main()
         self.assertEqual(seen["stdout_path"], os.path.join(out, "run_sh.txt"))
-        self.assertEqual(sh.logs[-2:], ["LOBBY class=ok", "CLEAN-EXIT rc=0"])
+        i = sh.logs.index("LOBBY class=ok")
+        self.assertEqual(sh.logs[i + 1], "CLEAN-EXIT rc=0")
+        self.assertTrue(sh.logs[i + 2].startswith("[exit] kill: "))
+
+    def test_the_verdict_names_what_ended_the_game(self):
+        self.assertEqual(L.clean_exit_verdict(0), "CLEAN-EXIT rc=0")
+        self.assertIn("run.sh's timeout", L.clean_exit_verdict(124))
+        self.assertTrue(L.clean_exit_verdict(124).startswith("CLEAN-EXIT none"))
+        self.assertTrue(L.clean_exit_verdict(False).startswith("CLEAN-EXIT none"))
 
     def test_a_close_that_cannot_be_sent_falls_to_the_kill(self):
         sh, proc = T.FakeShell(), mock.Mock()
