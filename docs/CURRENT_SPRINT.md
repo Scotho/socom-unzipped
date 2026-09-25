@@ -9,18 +9,19 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 repository another person can fork, build and contribute to.
 
 ```
-branch:       sprint-12 -- CLOSED 2026-09-25 (its PR to main and the tag v0.12.0 are the close's last step; after
-              the merge no sprint branch is open until the owner names the next sprint). Sprint 11 is CLOSED and
-              merged to main as v0.11.0 (its block below); Sprint 10 before it (v0.10.0). This machine's checkout
-              stays on sprint-11 until the owner or the next controller moves it; nothing lands there any more.
-spec:         docs/superpowers/specs/2026-09-24-sprint-12-the-readable-image-design.md (closed with v0.12.0; the
-              two Sprint 11 specs and Sprint 10's closed before it)
-plans:        docs/superpowers/plans/2026-09-24-sprint-12.md (CLOSED; its task table, its Log and its rulings
-              S12-R1..R25 are the record; the cloud handoff that ran it is
-              docs/superpowers/plans/2026-09-24-sprint-12-cloud-handoff.md); the Sprint 11 and Sprint 10 plans are
-              closed and listed in their blocks below.
-next sprint:  not yet planned -- Sprint 12 closed 2026-09-25 and its carry is in the "Sprint 12 -- CLOSED" block;
-              the owner names the next sprint from the two close blocks' carry lists and docs/HUMAN_TASKS.md.
+branch:       sprint-13 -- OPEN 2026-09-25 08:40Z off main at 74fe2a9b (the Sprint 12 merge, PR #50, tagged v0.12.0;
+              Sprint 11 merged as v0.11.0 at 173608af, PR #49, the same night). This machine's checkout is on
+              sprint-13 (the local controller, session socom-pc-6c); agents work in worktrees on agent/s13-* branches
+              and the controller merges them. See "Sprint 13 -- OPEN" below, then the two CLOSED blocks.
+spec:         docs/superpowers/specs/2026-09-25-sprint-13-nothing-carried-twice-design.md (eight milestones V, R, H,
+              C, U, S, N, O with a bar each; the acceptance bar is its section 4). The Sprint 12 and Sprint 11 specs
+              closed with v0.12.0 and v0.11.0.
+plans:        docs/superpowers/plans/2026-09-25-sprint-13.md (the task table, the Log newest first, the rulings
+              S13-R<n>); it came from docs/audits/2026-09-25-project-audit.md (the master list: 133 carry rows, six
+              reports, R265-R268, the owner's sitting O1-O13). The Sprint 12 plan (its rulings S12-R1..R25) and the
+              Sprint 11 plan are closed and listed in their blocks below.
+next sprint:  not planned; Sprint 13's close names it from what it leaves (spec section 5 says what Sprint 13 does
+              not do: voice, the LEAVE items, a public download, the community preset).
               Sprint 12 was "the readable image" (R263, 2026-09-24): it opened with the demo-name rename pass into the function map (R257 + the provenance sidecar R261, a recomp + runtime + r0001 gate), then Task 7c vtable slots through RTTI (the peer's scripts in tools_py/research/symbols/), BinDiff as the cross-check, the ccc types with the layout-age caveat, the toml names into the generated output.
               Sprint 12 ran 2026-09-24/25 in a Claude cloud session on origin/sprint-12 (fifteen research notes,
               47-61; rulings S12-R1..R25; every task's code half) and its local half (the proof, the merge, the
@@ -54,7 +55,27 @@ long builds); "lock-free" can run at any time.
 
 ---
 
-## Sprint 12 — CLOSED 2026-09-25 (the PR `sprint-12` → `main` and the tag `v0.12.0` are the close's last step; the record of the sprint is the block below)
+## Sprint 13 — OPEN 2026-09-25 08:40Z (plan `docs/superpowers/plans/2026-09-25-sprint-13.md`, "nothing carried twice")
+
+Opened by the local controller on the owner's instruction of the same night ("audit the entire structure of the
+project, compile a master list, clean up docs as you go, and start your own sprint 13"). The audit is
+`docs/audits/2026-09-25-project-audit.md` with six reports beside it; the spec is
+`docs/superpowers/specs/2026-09-25-sprint-13-nothing-carried-twice-design.md`. Eight milestones in the order the owner
+meets them — **V** the player's first ten minutes (#30, #32, #31, a frame-time line, the music #42/#28, #27, #34, the
+launcher's wording), **R** the record made true and small (the archive split and R268's ceilings, DEVELOPING as
+current truth, the ruling record, HUMAN_TASKS reduced to the owner's sitting, KNOWN in full, one home for the carry),
+**H** the harness pays its debts (the lock's queue #36/#35/#37, #45, #38, #46, #41, the per-revision literals, the fast
+subset), **C** the code's hygiene and supply chain (CI compiles the overrides, the throwing stubs, the after-return
+trap, FFmpeg with a hash, the dead configuration), **U** upstream and outside (research/63's picks, path containment,
+#253's emitter change, a server-to-client record refused), **S** the stranger, **N** the naming follow-ups, **O**
+online and the box. The bar: nothing leaves the sprint carried twice without a ruling; CI green with the overrides
+compiled; the record under its ceilings; the first ten minutes measured; the gate 3/3 plus one ladder run and one
+mixed leg on the sprint's final exe. The plan's Log is the live state; this block gains its table at the close.
+
+**Owner decisions:** the audit's §3 (O1–O13) and the plan's D1–D2, each with the default the loop is on; `docs/HUMAN_TASKS.md`
+carries them once Task R4 reduces it.
+
+## Sprint 12 — CLOSED 2026-09-25 (merged to `main` as `v0.12.0` at `74fe2a9b`, PR #50; the record of the sprint is the block below)
 
 **Goal, as R263 and the spec stated it:** a readable generated image — every proven name from the SOCOM 1 demo's symbols into the function map, in `Class_Method` form with its provenance recorded, for the hooks, HLE, the address table across revisions and voice chat; its own tooling and review loops; the whole sprint gated on the renamed tree. **Outcome:** the generated image carries **1,771 readable names with a recorded reason each** (`recomp/socom2_names.csv`, 1,840 rows with the 69 Ghidra syscall stubs; r0004 1,705 rows through `carry_names`), against about 120 on 2026-09-24. Every name came through one applier (`tools_py/apply_names.py`) from a proposals file under a rule stated in code; every rule has a holdout or a link-order measurement in its note; every number in every note names its command. The recompiler reads the names from the sidecar (`[general] names`), so the csv's `Name` column is untouched and the renamed tree differs from the old one in identifiers only. **The local proof (Task 3 Step 4, 2026-09-25 04:51–05:38Z; the r0004 leg 07:24–07:40Z — `s12_names_r0004_gate` 3/3 PINS MATCH on the r0004 runtime built with its own 1,705-name sidecar):** recomp `14882 files, unhandled=114399, unmapped=0` with `Loaded 1840 display names`; against the pre-rename output **1,771 files renamed, 0 extents moved, 0 functions dropped** (`S12-R11 … OK`); the runtime built from scratch (exe `804dd172…`); `build.sh test` exit 0; **the r0001 gate `s12_names_gate` 3/3 with PINS MATCH** — on `cb56fc8`, this branch merged with Sprint 11's final `3bb866f`. The sprint was executed by a Claude cloud session (no game, no lock) on `sprint-12` under `docs/superpowers/plans/2026-09-24-sprint-12-cloud-handoff.md`; the local half (the proof, the merge, this block) is session socom-pc-6c's.
 

@@ -11,6 +11,11 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
 > A fresh "Start here" block for the morning is written at the close -- **it is immediately below, `## Start here
 > (2026-09-23 morning)`**, and it carries the results of those runs.
 
+> **2026-09-25 08:40Z — Sprint 13 is open** (`docs/CURRENT_SPRINT.md`). Its audit consolidated every decision that is
+> yours into one sitting: `docs/audits/2026-09-25-project-audit.md` §3 (O1–O13, each with the default the loop is on).
+> Task R4 of the sprint rewrites this file to exactly that list; until then the sections below stand as written, and
+> the audit's §3 is the shorter read.
+
 ## Sprint 12 close — what needs you (2026-09-25)
 
 Sprint 12 is closed and merges to `main` as `v0.12.0` behind Sprint 11's `v0.11.0`: the generated image is readable
