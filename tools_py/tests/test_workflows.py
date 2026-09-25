@@ -14,8 +14,9 @@ request waiting forever. On a pull request the `changes` job compares the pull r
 pins that the expression is chosen by the event's name, so a pull_request run can never fall back to a push's
 `before`.
 
-These are text-level checks with an optional PyYAML layer: the Windows and Linux runners install numpy, pillow and
-zstandard only, and this test must run (not skip) there.
+These are text-level checks with an optional PyYAML layer: the `docs` workflow runs this file with no packages
+installed, and it must run (not skip) there. The build runners install requirements.txt since Sprint 13 H7, which
+carries PyYAML, so the parsed layer runs there too.
 """
 import os
 import re
