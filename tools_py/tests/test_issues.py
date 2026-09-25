@@ -635,6 +635,28 @@ class TallyTest(PlantedTree):
         self.assertEqual(code, 2, text)
 
 
+class LabelsCommandTest(unittest.TestCase):
+    """`labels` prints the set scripts/github_labels.sh creates -- the one list a triager (the s2u-bug-reports
+    skill) is pointed at, instead of a copy that drifts (H48: the skill named eight areas of twelve)."""
+
+    def run_labels(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = issues.main(["labels"])
+        return code, out.getvalue()
+
+    def test_every_label_the_script_creates_is_printed_and_the_areas_are_marked(self):
+        code, text = self.run_labels()
+        self.assertEqual(code, 0, text)
+        names = [n for n, _ in issues.script_labels()]
+        self.assertGreaterEqual(len(names), 19)
+        for name in names:
+            self.assertIn(name, text)
+        area_line = [l for l in text.splitlines() if l.startswith("areas")][0]
+        self.assertEqual(area_line.split(":", 1)[1].split(), list(issues.AREAS))
+        self.assertIn("scripts/github_labels.sh", text)
+
+
 class RuledOutListTest(unittest.TestCase):
     """The tracked list on this tree parses, and every row the audit marked `backlog` has a place in it."""
 

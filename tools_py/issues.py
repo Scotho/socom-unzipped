@@ -667,6 +667,33 @@ def cmd_tally(args):
     return 0
 
 
+LABELS_SCRIPT = "scripts/github_labels.sh"
+LABELS_BLOCK = re.compile(r"^LABELS=\(\n(.*?)^\)$", re.S | re.M)
+
+
+def script_labels():
+    """[(name, description)] in the order scripts/github_labels.sh creates them -- the repository's label set."""
+    block = LABELS_BLOCK.search(_read(LABELS_SCRIPT)).group(1)
+    out = []
+    for line in block.splitlines():
+        line = line.strip()
+        if line.startswith('"'):
+            name, _colour, description = line.strip('"').split("|", 2)
+            out.append((name, description))
+    return out
+
+
+def cmd_labels(_args):
+    labels = script_labels()
+    print("The repository's labels, as %s creates them (add one there and run it, never in the web page):"
+          % LABELS_SCRIPT)
+    print("areas, exactly one per issue: %s" % " ".join(n for n, _ in labels if n in AREAS))
+    for name, description in labels:
+        if name not in AREAS:
+            print("  %-16s %s" % (name, description))
+    return 0
+
+
 def cmd_audit(args):
     if args.json:
         with open(args.json, encoding="utf-8") as f:
@@ -796,6 +823,7 @@ def main(argv=None):
     p.add_argument("--since", required=True)
     p.add_argument("--json")
     p.set_defaults(fn=cmd_tally)
+    sub.add_parser("labels").set_defaults(fn=cmd_labels)
     args = ap.parse_args(argv)
     return args.fn(args)
 
