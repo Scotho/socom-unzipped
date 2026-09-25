@@ -5,7 +5,7 @@ audit's F53 found sentences that disagreed with each other or with the tree: a p
 mentions, an exit code the play-test asked for from a place it cannot come from, voice described three ways, a
 keyboard sentence the key map contradicts, and a config comment one render scale short. Each check below reads the
 source of truth (a C++ table, the key map, the exit-code header) and the words that describe it, so the next edit
-to one without the other fails here. The C++ halves (LAUNCH's blocked reason, the sample reference id, exit 75)
+to one without the other fails here. The C++ halves (LAUNCH's blocked reason, the sample reference id, the server-unresolved notice)
 are in ps2xTest: launcher_tests.cpp, bug_report_tests.cpp, socom2_libnetb_tests.cpp.
 """
 import os
