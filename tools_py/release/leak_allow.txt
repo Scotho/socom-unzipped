@@ -78,3 +78,4 @@ home-directory-path  third_party/ps2recomp/ps2xTest/src/diagnostics_tests.cpp   
 ip-address           third_party/ps2recomp/ps2xTest/src/diagnostics_tests.cpp  86.21.44.190   # planted: a peer's address
 secret-assignment    third_party/ps2recomp/ps2xTest/src/diagnostics_tests.cpp  abc123DEF456   # planted: a credential value the scrub must remove
 secret-assignment  .gitleaks.toml  abc123DEF456   # gitleaks's allowance for the same planted value, spelled out
+opaque-secret  recomp/socom2_names*.csv   # the names sidecar's Mangled column: Metrowerks-mangled C++ names (template argument lists, the @unnamed@ anonymous-namespace marker) read as opaque tokens; names from the demo's .symtab, not secrets (S12-R7, research/48)
