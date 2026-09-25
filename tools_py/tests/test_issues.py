@@ -392,6 +392,14 @@ class BacklogTest(PlantedTree):
         self.assertIn("3 open issues", out)
         self.assertIn("2 rows", out)
 
+    def test_the_first_sentence_does_not_end_inside_code_or_an_ellipsis(self):
+        body = GOOD_BODY.replace("The four captures score >= 90 again on a gate, or the references are "
+                                 "re-recorded with the change written down.",
+                                 "`build_revision.sh <rev> ... --out d` copies the sidecar... then e. g. more. "
+                                 "Second sentence.")
+        self.assertEqual(issues.closing_bar_sentence(body),
+                         "`build_revision.sh <rev> ... --out d` copies the sidecar... then e. g. more.")
+
     def test_check_passes_on_a_fresh_file_and_fails_on_a_stale_one(self):
         path = self.listing(self.stack())
         self.run_main(["backlog", "--json", path])

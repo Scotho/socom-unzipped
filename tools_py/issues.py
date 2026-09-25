@@ -9,9 +9,22 @@ docs/DOC_MAINTENANCE.md section 7. This module is the part of both that can be m
     python -m tools_py.issues close 12 --artefact "gate s11_x_gate 3/3, 1a2b3c4"
     python -m tools_py.issues close 12 --not-planned --reason "R260: retracted, KNOWN section 3"
     python -m tools_py.issues audit [--stale-since 2026-09-23] [--json FILE]
+    python -m tools_py.issues backlog [--json FILE] [--out docs/BACKLOG.md] [--check [--offline]]
+    python -m tools_py.issues carry 25 --comment "not in Sprint 14's plan" [--milestone "Sprint 14"] [--dry-run]
+    python -m tools_py.issues milestone close "Sprint 13" --next "Sprint 14" [--dry-run]
+    python -m tools_py.issues tally --since 2026-09-25 [--json FILE]
+    python -m tools_py.issues labels                        # the label set, read from scripts/github_labels.sh
 
 `open` and `close` call `gh`; `audit` calls it once (`gh issue list --json`) unless `--json FILE` hands it a saved
-listing -- the offline path, and the one tools_py/tests/test_issues.py drives end to end. Nothing here deletes
+listing -- the offline path, and the one tools_py/tests/test_issues.py drives end to end. `backlog`, `tally` and
+`milestone close` read the same listing (`milestone close` also `--milestones-json`), and `carry` a saved
+`gh issue view --json` the same way.
+
+The carry (docs/DOC_MAINTENANCE.md section 7 steps 5 and 7, R267) is `carry` (the `carried` label, a comment that
+begins "Carried ", the milestone moved or removed -- refused once the issue has two carry comments, because an issue
+carried twice is the owner's question), `milestone close` (refused while an open issue is left in it), `tally` (the
+opened/closed/carried sentence) and `backlog`, which writes docs/BACKLOG.md from the open issues and the tracked
+list docs/backlog_ruled_out.txt; `backlog --check` exits 1 on a stale file. Nothing here deletes
 anything: an issue is closed with a comment that names its artefact, never deleted, because the row that cited it
 and the commit that closed it still point at it.
 
@@ -62,7 +75,6 @@ BACKLOG = "docs/BACKLOG.md"
 RULED_OUT_LIST = "docs/backlog_ruled_out.txt"
 RULED_OUT_HEADING = "## 2. Ruled not an issue"
 RULING_FIELD = re.compile(r"^(R\d+|no issue)$")
-FIRST_SENTENCE = re.compile(r"(.+?[.!?])(?:\s|$)")
 # What a carry comment begins with -- `carry` writes "Carried from X to Y: ...", and the hand carries of the
 # Sprint 11 close and R266 were written "Carried at the Sprint 11 close ..." and "Carried once into Sprint 13 ...".
 CARRY_COMMENT = "Carried "
@@ -306,8 +318,19 @@ def closing_bar_sentence(body):
     text = " ".join(sections_of(body).get("## Closing bar", "").split())
     if text.startswith("- "):
         text = text[2:]
-    m = FIRST_SENTENCE.match(text)
-    return m.group(1) if m else text
+    # A sentence ends at . ! or ? outside an inline code span, followed by the end or a space and then anything
+    # but a lower-case letter -- so `a ... b` in code, "sidecar... then" and "e. g." do not end it.
+    in_code = False
+    for k, ch in enumerate(text):
+        if ch == "`":
+            in_code = not in_code
+        elif ch in ".!?" and not in_code:
+            rest = text[k + 1:]
+            if not rest:
+                return text
+            if rest[0] == " " and not rest.lstrip()[:1].islower():
+                return text[:k + 1]
+    return text
 
 
 def _cell(text):
