@@ -437,7 +437,7 @@ class LaunchPins(_LaunchCase):
         summary = self._summary()
         self.assertIn("PIN scripts/parity/ref_hud_ours.png sha256=%s accepted (was %s)\n"
                       % (current["scripts/parity/ref_hud_ours.png"].sha256, "ff" * 32), summary)
-        self.assertIn("PINS ACCEPTED: scripts/parity/ref_hud_ours.png, card -> %s rewritten\n" % self.expected, summary)
+        self.assertIn("PINS ACCEPTED: scripts/parity/ref_hud_ours.png, card -> %s rewritten after the run\n" % self.expected, summary)
         with open(os.path.join(self.out_root, "pins.json")) as f:
             record = json.load(f)
         self.assertTrue(record["accepted"])

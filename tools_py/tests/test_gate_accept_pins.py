@@ -159,6 +159,39 @@ class AcceptPinsKeepsEveryPin(unittest.TestCase):
         self.assertEqual(self._standard_bytes(), before,
                          "a matching run leaves the standard byte for byte as it found it")
 
+    def test_a_gate_queued_then_refused_by_the_lock_leaves_the_standard_byte_identical(self):
+        """Issue #45: `--accept-pins` rewrote the standard at START-UP, before the lock wait, so a gate
+        queued and then cancelled had already rewritten it (s11_r0004_node1, 2026-09-24; s11_r0004_rebuild1
+        with a stray PS2X_AUDIO_VOLUME=0, 2026-09-25). The lock refusing is the cancellation: nothing ran,
+        so nothing may be accepted -- the standard is written once, after the run, or not at all."""
+        before = self._standard_bytes()
+        self._drift_env()
+        busy = subprocess.CompletedProcess(["x"], 1, "BUSY: another owner\n", "")
+        with mock.patch.object(gate, "_lock", return_value=busy):
+            rc, out, run = self._main(["--accept-pins"], stage=stage_printing(MAPPING_B))
+        self.assertEqual(rc, 2, out)
+        self.assertEqual(run.call_count, 0, "a refused lock launches nothing")
+        self.assertEqual(self._standard_bytes(), before,
+                         "a gate that never got the lock must leave the standard byte for byte as it found it")
+        self.assertIn("standard unchanged", out)
+
+    def test_the_accepted_standard_is_written_after_the_run_and_the_summary_says_so(self):
+        """The write happens once the stages have run: a run_gate stand-in that reads the standard sees the
+        one the gate started with, and the summary's verdict names when it was written."""
+        before = self._standard_bytes()
+        self._drift_env()
+        seen = []
+
+        def stage(name, out_root):
+            seen.append(self._standard_bytes())
+            return stage_printing(MAPPING_A)(name, out_root)
+
+        rc, out, _ = self._main(["--accept-pins"], stage=stage)
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(seen, [before], "the standard must not be rewritten before (or during) the run")
+        self.assertNotEqual(self._standard_bytes(), before)
+        self.assertIn("PINS ACCEPTED: env -> %s rewritten after the run\n" % self.expected, self._summary())
+
     def test_a_dry_accept_pins_cannot_drop_the_mapping_it_never_measures(self):
         """--pins --accept-pins launches nothing, so `mapping` is absent at every moment that path could
         write: this is why the fix is the carry and not simply a later write."""
