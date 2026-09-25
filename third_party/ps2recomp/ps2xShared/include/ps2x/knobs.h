@@ -6,6 +6,11 @@
 //
 //     X("PS2X_NAME", Class, Kind, "default", "One line, at most 110 characters, no double quote.")
 //
+// A Shipping or Switch row ends with where its name is read, /* read: <file>:<function> [...] */ -- the file
+// relative to third_party/ps2recomp, the function the read sits in -- and the line names what that code does.
+// tools_py/tests/test_knob_read_sites.py fails when a cited function no longer reads the name or a read is not
+// cited (Sprint 13 C9: PS2X_SOCOM2_NET_STATS was described as a log line it never printed).
+//
 // Rows are sorted by name in strcmp order (find() is a binary search; the Knobs suite and
 // tools_py/tests/test_knobs_registry.py both check it). Adding a getenv of a PS2X_* name anywhere in
 // ps2xRuntime, ps2xIOP, ps2xShared or ps2xLauncher without a row here fails the Python suite, and so does a
@@ -43,11 +48,11 @@
     X("PS2X_AUDIO_INSTRUMENT", Dev, Presence, "", "Stamp every 989snd command that can change a route level with the output-frame clock (research/36).") \
     X("PS2X_AUDIO_PCM_DUMP", Dev, Path, "", "Write what the EE DMAs into the 989snd PCM ring to this file (first 16 MiB).") \
     X("PS2X_AUDIO_TRACE", Dev, Presence, "", "Every 5 s: how the host audio callback is serviced against wall time.") \
-    X("PS2X_AUDIO_VOLUME", Shipping, Int, "100", "Master volume 0-100; 100 is unity and touches no sample.") \
+    X("PS2X_AUDIO_VOLUME", Shipping, Int, "100", "Master volume 0-100; 100 is unity and touches no sample.") /* read: ps2xRuntime/src/lib/ps2_audio.cpp:mixerRender */ \
     X("PS2X_CALL_TRACE", Dev, Spec, "", "0xADDR:Name[,...]: wrap these guest functions and log their calls.") \
     X("PS2X_CALL_TRACE_DUMP", Dev, Spec, "", "Name:a<k>[+off][*]:<words>: dump guest words reached from an argument after a traced call.") \
     X("PS2X_CALL_TRACE_EVERY", Dev, Int, "500", "After the first 300 traced calls log every k-th.") \
-    X("PS2X_CD_IMAGE", Shipping, Path, "", "The disc image to mount; unset hunts for an .iso beside the ELF.") \
+    X("PS2X_CD_IMAGE", Shipping, Path, "", "The disc image to mount (preflight checks it is r0001); unset takes an .iso beside the ELF or one folder up.") /* read: ps2xRuntime/src/main.cpp:main ps2xRuntime/src/lib/game_overrides_socom2.cpp:configureCdImage */ \
     X("PS2X_CD_STREAM_TRACE", Dev, Presence, "", "Log the CD stream reads the movie feeder waits on and the MPEG gate holds and resumes.") \
     X("PS2X_CD_TRACE", Dev, Presence, "", "Print CD file lookups and sector reads.") \
     X("PS2X_CLOCK_CAP_MS", Dev, Float, "100", "Longest single gap of host time the guest clock may absorb; 0 = uncapped.") \
@@ -62,9 +67,9 @@
     X("PS2X_CULL_TRACE", Dev, Spec, "", "Trace the terrain cull/LOD/detail decisions to a file (research/31 tools read it).") \
     X("PS2X_CYCLE_CLOCK", Dev, Text, "", "guest = estimate-driven cycle accounting instead of wall time (not an A/B of pre-R54).") \
     X("PS2X_DETAIL_FAR", Dev, Int, "0", "Experiment: force the far detail level by writing guest byte 0x4b4a88.") \
-    X("PS2X_DEV", Switch, Flag, "0", "Developer mode: Dev-class knobs are honoured. The same as --dev on the runner command line.") \
+    X("PS2X_DEV", Switch, Flag, "0", "Developer mode, as --dev: Dev knobs honoured, the Path rule off, inherited PS2X_* kept, the full keyboard.") /* read: ps2xShared/src/knobs.cpp:devMode */ \
     X("PS2X_EE_ROUND", Dev, Text, "", "nearest = host FPU rounds to nearest on the game thread instead of toward zero.") \
-    X("PS2X_FPS_OVERLAY", Shipping, Int, "0", "1 draws the frame-rate box in the window (never in exported frames).") \
+    X("PS2X_FPS_OVERLAY", Shipping, Int, "0", "Any value but 0 draws host fps, guest vsync Hz and frame ms in the window (never in exported frames).") /* read: ps2xRuntime/src/lib/ps2_runtime.cpp:run */ \
     X("PS2X_FPU_TRAP", Dev, Float, "-1", "Seconds after which EE divisions by zero and saturated square roots are reported with their pc.") \
     X("PS2X_FRAME_DUMP", Dev, Path, "", "Directory: a PPM every 60 presents plus the VU1 trace dumps; forces a pixel readback per present.") \
     X("PS2X_GIF_DUMP", Dev, Spec, "", "<file>[:<seconds>]: record the GIF stream and a VRAM snapshot in PCSX2-dump shape.") \
@@ -89,7 +94,7 @@
     X("PS2X_GS_PENDING_CAP_MB", Dev, Int, "64", "Soft ceiling on pending render bytes.") \
     X("PS2X_GS_PENDING_HARD_CAP_MB", Dev, Int, "1024", "Hard ceiling on pending render bytes (R124).") \
     X("PS2X_GS_RT_TEXTURE", Dev, Int, "1", "0 restores the readback + decode for render targets used as textures.") \
-    X("PS2X_GS_SCALE", Shipping, Int, "1", "Internal render scale 1-4.") \
+    X("PS2X_GS_SCALE", Shipping, Int, "1", "The GL backend's internal render scale, clamped to 1-4 (the CPU rasteriser ignores it).") /* read: ps2xRuntime/src/lib/gs/gs_gl_backend.cpp:renderScale */ \
     X("PS2X_GS_SCALE_FILTER", Dev, Text, "", "box = box-filter the resolve of a scaled target.") \
     X("PS2X_GS_SCALE_SELFTEST", Dev, Int, "0", "1 checks the native mirror of a scaled target against a fresh resolve each frame.") \
     X("PS2X_GS_SKIP_TBP0", Dev, Spec, "", "Drop every textured draw binding one of these texture blocks (a bisect).") \
@@ -109,7 +114,7 @@
     X("PS2X_HLE_STATS_PERIOD", Dev, Int, "30", "With HLE_STATS: seconds between tables.") \
     X("PS2X_HLE_STATS_TOML", Dev, Path, "recomp/socom2.toml", "With HLE_STATS: the recompiler config naming the stubs.") \
     X("PS2X_HOST_GAMEPAD", Dev, Int, "1", "0 disables every host gamepad read (a harness run must not depend on what is plugged in).") \
-    X("PS2X_HOST_GAMEPAD_INDEX", Shipping, Int, "", "Which host pad slot to read; unset = the first available.") \
+    X("PS2X_HOST_GAMEPAD_INDEX", Shipping, Int, "", "The host pad slot (0-3) all three pad paths read; unset, invalid or absent = the first available.") /* read: ps2xRuntime/include/runtime/host_gamepad_select.h:hostGamepadIndexKnob */ \
     X("PS2X_HOST_PROF", Dev, Float, "", "Sampling host profiler period in ms (min 0.2).") \
     X("PS2X_HOST_PROF_ALL", Dev, Presence, "", "With HOST_PROF: sample every thread.") \
     X("PS2X_HOST_PROF_MAIN", Dev, Presence, "", "With HOST_PROF: sample the main (GL) thread instead of the game thread.") \
@@ -117,27 +122,27 @@
     X("PS2X_HOST_PROF_STACKS", Dev, Presence, "", "With HOST_PROF: record call stacks.") \
     X("PS2X_HOST_SCREENSHOT", Dev, Spec, "", "<dir>[:<seconds>]: save what the window shows every n seconds (default 5).") \
     X("PS2X_HOST_SCREENSHOT_LATEST", Dev, Path, "", "Rewrite this PNG with the current frame twice a second; every harness capture reads it.") \
-    X("PS2X_INPUT_MAPPING", Shipping, Spec, "", "The profile pad and key tables (launcher/mapping.h toEnv); unset = the default mapping (R174).") \
+    X("PS2X_INPUT_MAPPING", Shipping, Spec, "", "The profile pad and key tables (launcher/mapping.h toEnv); unset or unreadable = the default mapping (R174).") /* read: ps2xRuntime/src/lib/socom2_host_input.cpp:resolveMapping */ \
     X("PS2X_JALR_TRACE", Dev, Spec, "", "0xSRC[,...]: log the resolved target of indirect calls issued from these pcs.") \
     X("PS2X_LAUNCHER_API_BASE", Dev, Text, "https://s2u.scotho.com", "Launcher tests only: a loopback base URL for the bug-report and stats calls.") \
     X("PS2X_LAUNCHER_SHOT", Dev, Path, "", "Launcher: after 120 frames save the real window to this PNG and quit.") \
     X("PS2X_LOD_SCALE", Dev, Float, "0", "Experiment: force both LOD scale floats of the camera (writes guest memory).") \
-    X("PS2X_MC_DIR", Shipping, Path, "", "Memory-card folder for slot 0; unset = mc0 beside the ELF.") \
+    X("PS2X_MC_DIR", Shipping, Path, "", "Memory-card folder for slot 0; unset = mc0 beside the ELF.") /* read: ps2xRuntime/src/main.cpp:main ps2xRuntime/src/lib/ps2_runtime.cpp:setIoPaths ps2xRuntime/src/lib/ps2_runtime.cpp:configureIoPathsFromElf */ \
     X("PS2X_MC_DIR_SLOT1", Dev, Path, "", "A folder to serve as the second card slot; unset = no card in slot 1.") \
     X("PS2X_MC_TRACE", Dev, Presence, "", "Log every memory-card command, not only the ones that failed.") \
-    X("PS2X_MIC_DEVICE", Shipping, Text, "", "Capture device name for the headset; unset = no microphone.") \
+    X("PS2X_MIC_DEVICE", Shipping, Text, "", "Capture device name for the headset; unset = no microphone.") /* read: ps2xRuntime/src/lib/host_mic.cpp:startHostMicFromEnvironment */ \
     X("PS2X_MIC_DUMP", Dev, Path, "", "Tee the captured microphone PCM to this WAV.") \
     X("PS2X_MIC_DUMP_PLAYBACK", Dev, Path, "", "WAV of what lgaud 0x09 asked the headset to play ({title} expands to the window tag).") \
     X("PS2X_MIC_FAKE", Dev, Path, "", "Feed this WAV as the microphone; beats MIC_DEVICE (R115).") \
     X("PS2X_MIC_GAMEREAD_DUMP", Dev, Path, "", "WAV of what lgaud 0x08 served the game.") \
     X("PS2X_MPEG_TRACE", Dev, Presence, "", "Log the sceMpeg HLE lifecycle and the IOP stream opens.") \
     X("PS2X_PACK_TRACE", Dev, Path, "", "Trace the terrain pack function 0x25a5d0 to this file (research/31 s17).") \
-    X("PS2X_PAD_CROUCH_SHORTCUT", Shipping, Text, "off", "l3 | touchpad | l2: the host control that sends a light Triangle (R139).") \
-    X("PS2X_PAD_DEADZONE", Shipping, Float, "0.15", "Stick dead zone 0-0.5 on all three pad paths.") \
+    X("PS2X_PAD_CROUCH_SHORTCUT", Shipping, Text, "off", "l3 | touchpad | l2: the host control that sends a light Triangle (R139).") /* read: ps2xRuntime/src/lib/socom2_host_input.cpp:socom2HostInputPoll */ \
+    X("PS2X_PAD_DEADZONE", Shipping, Float, "0.15", "Stick dead zone 0-0.5 on all three pad paths.") /* read: ps2xRuntime/include/runtime/host_gamepad_select.h:hostPadDeadZone */ \
     X("PS2X_PC_SAMPLER", Dev, Float, "", "Seconds between [pc-sampler] rows (guest pc/ra per thread); PEEK rides on it.") \
     X("PS2X_PEEK", Dev, Spec, "", "0xADDR[:words][,...] with * dereferences: guest words printed with each sampler row.") \
     X("PS2X_PK_REPLAY", Test, Path, "", "ps2x_tests: a vu1_replay packet file to push through the GS frontend.") \
-    X("PS2X_PRESENT_FILTER", Shipping, Text, "linear", "linear | integer | point: how the frame is scaled into the window.") \
+    X("PS2X_PRESENT_FILTER", Shipping, Text, "linear", "linear | integer | point: how the frame is scaled into the window.") /* read: ps2xRuntime/src/lib/ps2_runtime.cpp:run */ \
     X("PS2X_RDRAM_DUMP", Dev, Spec, "", "<file>[:<seconds>]: dump guest RAM after n seconds (default 10).") \
     X("PS2X_RDRAM_DUMP_AT", Dev, Spec, "", "<file>:<0xPC>#<count>: dump guest RAM when a pc has been reached n times.") \
     X("PS2X_SCHED_TRACE", Dev, Flag, "0", "The per-guest-thread scheduler trace: switches, waits, samples and slow stubs (research/36 item 16).") \
@@ -152,18 +157,18 @@
     X("PS2X_SOCOM2_INPUT_FILE", Dev, Path, "", "Pad-state injection file polled by a sampler thread; how the harness presses buttons.") \
     X("PS2X_SOCOM2_INPUT_SCRIPT", Dev, Spec, "", "t:BTN[+BTN][:hold],...: press buttons at those seconds.") \
     X("PS2X_SOCOM2_INPUT_TRACE", Dev, Presence, "", "Log every change of the pad state the game will read.") \
-    X("PS2X_SOCOM2_LOGIN_NAME", Shipping, Text, "", "The persona name the login keyboard opens with (Goal 9, R180: prefilled, never submitted); unset = empty.") \
-    X("PS2X_SOCOM2_LOGIN_PASS", Shipping, Text, "", "The password the login keyboard opens with (R179: plain in the player's config.json, blanked from reports).") \
+    X("PS2X_SOCOM2_LOGIN_NAME", Shipping, Text, "", "The persona name the login keyboard opens with (Goal 9, R180: prefilled, never submitted); unset = empty.") /* read: ps2xRuntime/src/lib/game_overrides_socom2.cpp:socom2_OskOpenPrefill ps2xRuntime/src/lib/game_overrides_socom2.cpp:installOskPrefill */ \
+    X("PS2X_SOCOM2_LOGIN_PASS", Shipping, Text, "", "The password the login keyboard opens with (R179: plain in the player's config.json, blanked from reports).") /* read: ps2xRuntime/src/lib/game_overrides_socom2.cpp:socom2_OskOpenPrefill ps2xRuntime/src/lib/game_overrides_socom2.cpp:installOskPrefill */ \
     X("PS2X_SOCOM2_MUSIC_TRACE", Dev, Presence, "", "Log the music manager and every cue push with the mixer frame clock (music round four).") \
-    X("PS2X_SOCOM2_NET_STATS", Dev, Flag, "1", "The periodic [net-stats] line; 0 silences it.") \
+    X("PS2X_SOCOM2_NET_STATS", Dev, Flag, "1", "sceInetInterfaceControl 0x200 answers the RX byte count; 0 restores the constant that froze online movement.") \
     X("PS2X_SOCOM2_NET_TRACE", Dev, Presence, "", "Verbose libnetb: every RPC, socket and datagram header.") \
     X("PS2X_SOCOM2_NET_TRACE_ALL", Dev, Flag, "0", "With NET_TRACE: hex-dump datagrams on every port, not only the peer ports.") \
     X("PS2X_SOCOM2_NET_TRACE_PEERS", Dev, Int, "16", "With NET_TRACE: peer packets to hex-dump in each direction.") \
-    X("PS2X_SOCOM2_PAD", Shipping, Flag, "1", "The libpad2 HLE and host input path; 0 boots with no controller.") \
+    X("PS2X_SOCOM2_PAD", Shipping, Flag, "1", "The libpad2 HLE and host input path; 0 boots with no controller.") /* read: ps2xRuntime/src/lib/game_overrides_socom2.cpp:socom2PadEnabled */ \
     X("PS2X_SOCOM2_PAD_TRACE", Dev, Presence, "", "Log the scePad2 socket lifecycle and reads.") \
-    X("PS2X_SOCOM2_RSA_KEY", Shipping, Text, "a", "b selects the second precomputed RSA pair (a second instance on one host).") \
-    X("PS2X_SOCOM2_SERVER", Shipping, Text, "127.0.0.1", "Address or name every Medius/DNAS host name resolves to.") \
-    X("PS2X_SOCOM2_UDP_SHIFT", Shipping, Int, "0", "Shift the fixed UDP ports 3658.. by n (a second instance on one host).") \
+    X("PS2X_SOCOM2_RSA_KEY", Shipping, Text, "a", "b (or B, 1) selects the second precomputed RSA pair (a second instance on one host).") /* read: ps2xRuntime/src/lib/game_overrides_socom2.cpp:socom2_RsaGenerateKeyPair */ \
+    X("PS2X_SOCOM2_SERVER", Shipping, Text, "127.0.0.1", "Address or name every Medius/DNAS host name resolves to.") /* read: ps2xRuntime/src/lib/socom2_hostnet.cpp:loadHosts */ \
+    X("PS2X_SOCOM2_UDP_SHIFT", Shipping, Int, "0", "Shift the fixed UDP ports 3658.. by n, in the host bind and the port rt_net advertises (a second instance).") /* read: ps2xRuntime/src/lib/game_overrides_socom2.cpp:socom2UdpShift ps2xRuntime/src/lib/socom2_libnetb.cpp:doCreate */ \
     X("PS2X_TEST_SKIP", Test, Text, "", "ps2x_tests: skip tests whose name contains one of these substrings.") \
     X("PS2X_TEST_SUITE", Test, Text, "", "ps2x_tests: run only suites whose name contains this.") \
     X("PS2X_TRACE_FIFO", Dev, Presence, "", "Log VIF1/GIF FIFO stalls, resumes and the IRQ dispatch.") \
@@ -188,7 +193,7 @@
     X("PS2X_VU_STATS", Dev, Presence, "", "Once a second: VU1 programs, cycles and host time.") \
     X("PS2X_WATCH", Dev, Spec, "", "0xADDR[,...]: poll guest words every ~0.5 ms and print each change with pc/ra.") \
     X("PS2X_WATCH_HUGE", Dev, Spec, "", "0xADDR:words: report floats in the range that turn huge or NaN.") \
-    X("PS2X_WINDOW_SIZE", Shipping, Text, "640x448", "<w>x<h> | fullscreen (the launcher sends 640x448 by default).") \
+    X("PS2X_WINDOW_SIZE", Shipping, Text, "640x448", "<w>x<h> (64-16384) | fullscreen (borderless): the window at creation; unset or invalid = 640x448.") /* read: ps2xRuntime/src/lib/ps2_runtime.cpp:initialize */ \
     X("PS2X_WINDOW_TITLE", Dev, Text, "", "Window-title tag for a second instance; the harness finds windows by it.")
 
 namespace ps2x
