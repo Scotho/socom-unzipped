@@ -50,6 +50,7 @@ street-address  docs/*  "37 Route A"   # research note 37, option A
 # -- names of key FILES under git-ignored paths, in prose that says where the owner keeps them. The files are not
 #    in the tree (the `ignored` mode proves vm/ never was); the names alone open nothing.
 key-file-name  docs/archive/HUMAN_TASKS-to-2026-09-25.md  cert.pem                 # cloudflared's login certificate, under ~/.cloudflared (the sentence archived verbatim, Sprint 13 R4)
+key-file-name  docs/HUMAN_TASKS.md  cert.pem                                   # the same sentence at its pre-2026-09-25 path: the history leg scans the old commits (moved by Sprint 13 R4; CI's secrets workflow was red from d94c55f1 to d162a228 for want of this row -- the second time a move lost its old-path row, after 05f35232)
 key-file-name  docs/archive/sprints-7-12/2026-09-19-sprint-8-hosted-server.md  socom_unzipped.pem   # the Lightsail key pair, under vm/lightsail/keys/
 key-file-name  docs/superpowers/plans/2026-09-19-sprint-8-hosted-server.md  socom_unzipped.pem   # the same file at its pre-2026-09-25 path: the history leg scans the old commits (moved by Sprint 13 R1)
 commit-author    "<git metadata>"  "Claude <noreply@anthropic.com>"    # three agent commits; Anthropic's no-reply
