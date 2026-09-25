@@ -36,7 +36,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/ReleaseMode.cmake")
 
 # Sprint 13 Task C7 (audit F20): the Vita and Android backends (PS2X_IS_VITA, PS2X_IS_ANDROID, the VitaSDK
 # library list, the VPK packager, the SHARED Android runner and their two source files) are removed.
-set(PS2X_DEFAULT_BOOT_ELF "" CACHE STRING "Guest ELF path passed directly to main() when argv is unavailable")
+set(PS2X_DEFAULT_BOOT_ELF "" CACHE STRING "Guest ELF path compiled in as the default when none is given on the command line")
 
 include(FetchContent)
 set(FETCHCONTENT_QUIET FALSE)

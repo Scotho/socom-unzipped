@@ -425,6 +425,103 @@ void register_ps2_iop_tests()
             t.Equals(profiles[0].matcher.elfName, std::string("socom2_game.elf"), "it matches the SOCOM II ELF");
         });
 
+        // Sprint 13 Task C7 review round 1: the two lifecycle checks the LotR services carried, on SOCOM II's own
+        // services -- DBCMAN (core) for per-instance state, 989snd for a host file owned across reset.
+        tc.Run("two subsystem instances isolate profile state and reset deterministically", [](TestCase &t)
+        {
+            FakeIopHost hostA;
+            FakeIopHost hostB;
+            ps2x::iop::IopSubsystem subsystemA(hostA);
+            ps2x::iop::IopSubsystem subsystemB(hostB);
+            std::string error;
+            t.IsTrue(subsystemA.configure({"socom2_game.elf", 0u, 0u}, &error),
+                     "first SOCOM II instance should configure");
+            t.IsTrue(subsystemB.configure({"socom2_game.elf", 0u, 0u}, &error),
+                     "second SOCOM II instance should configure");
+
+            constexpr uint32_t kReceiveAddress = 0x1000u;
+            constexpr uint32_t kSocketWord = kReceiveAddress + 0x24u;   // DBCMAN CreateSocket's reply field
+            ps2x::iop::RpcRequest request{};
+            request.sid = 0x80001300u;       // DBCMAN
+            request.function = 0x80001301u;  // CreateSocket: hands out the instance's next socket number
+            request.receive = {kReceiveAddress, 0x40u};
+
+            t.IsTrue(subsystemA.handleRpc(request).handled,
+                     "first instance should handle DBCMAN CreateSocket");
+            t.Equals(hostA.readWord(kSocketWord), 0u,
+                     "first instance should start its socket counter at zero");
+            (void)subsystemA.handleRpc(request);
+            t.Equals(hostA.readWord(kSocketWord), 1u,
+                     "first instance should advance independently");
+
+            t.IsTrue(subsystemB.handleRpc(request).handled,
+                     "second instance should handle DBCMAN CreateSocket");
+            t.Equals(hostB.readWord(kSocketWord), 0u,
+                     "second instance must not inherit the first counter");
+
+            const ps2x::iop::DebugSnapshot snapshotA = subsystemA.debugSnapshot();
+            const ps2x::iop::DebugService *service = findService(snapshotA, "dbcman");
+            if (!service)
+            {
+                t.Fail("DBCMAN should be visible in the first instance's debug snapshot");
+                return;
+            }
+            t.Equals(metricValue(*service, "sockets"), uint64_t{2},
+                     "the first instance's snapshot should count its two sockets");
+
+            subsystemA.reset();
+            (void)subsystemA.handleRpc(request);
+            t.Equals(hostA.readWord(kSocketWord), 0u,
+                     "reset should restore per-instance service state");
+        });
+
+        tc.Run("reset closes profile-owned host file handles", [](TestCase &t)
+        {
+            FakeIopHost host;
+            host.hostFileContents["fake/disc.iso"] = std::vector<uint8_t>(2048u, 0x5Au);   // one CD sector
+
+            ps2x::iop::IopSubsystem subsystem(host);
+            std::string error;
+            t.IsTrue(subsystem.configure({"socom2_game.elf", 0u, 0u}, &error),
+                     "the SOCOM II profile should configure for file lifecycle testing");
+
+            constexpr uint32_t kSendAddress = 0x1000u;
+            constexpr uint32_t kReceiveAddress = 0x1100u;
+            constexpr uint32_t kDestination = 0x2000u;
+            t.IsTrue(host.writeWord(kSendAddress + 0u, 0u) &&            // sector
+                         host.writeWord(kSendAddress + 4u, 1u) &&        // sector count
+                         host.writeWord(kSendAddress + 8u, kDestination), // EE destination
+                     "the stream-safe CD read arguments should be writable");
+
+            ps2x::iop::RpcRequest request{};
+            request.sid = 0x00123456u;   // 989snd
+            request.function = 0x38u;    // snd_StreamSafeCdRead: opens the CD image as a host file on first use
+            request.send = {kSendAddress, 12u};
+            request.receive = {kReceiveAddress, 12u};
+            t.IsTrue(subsystem.handleRpc(request).handled,
+                     "989snd should handle the stream-safe CD read");
+            t.Equals(host.openHostFiles.size(), size_t{1},
+                     "the read should retain one opaque host file handle");
+            t.Equals(host.readWord(kDestination), 0x5A5A5A5Au,
+                     "the sector's bytes should land at the EE destination");
+
+            ps2x::iop::DebugSnapshot snapshot = subsystem.debugSnapshot();
+            const ps2x::iop::DebugService *service = findService(snapshot, "989snd");
+            if (!service)
+            {
+                t.Fail("989snd should be visible before reset");
+                return;
+            }
+            t.Equals(metricValue(*service, "cd_reads"), uint64_t{1}, "debug state should count the read");
+            t.Equals(metricValue(*service, "cd_read_failures"), uint64_t{0}, "the read should not fail");
+
+            subsystem.reset();
+            t.IsTrue(host.openHostFiles.empty(),
+                     "reset should release every retained host file handle");
+            t.Equals(host.closedHostFileHandles.size(), size_t{1},
+                     "host close callback should run exactly once");
+        });
+
 #if defined(PS2X_TEST_IOP_PLUGIN_DIR)
         tc.Run("plugin module remains loaded through instances and unloads after subsystem destruction", [](TestCase &t)
         {

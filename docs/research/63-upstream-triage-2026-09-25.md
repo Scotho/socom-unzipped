@@ -311,7 +311,7 @@ they matter.
 ### #228 Support profile-defined SJRMT UNI storage. GTTeancum, 2026-08-28, open
 - Files: `ps2xIOP/src/modules/cri_dtx.cpp` (ours: 0 commits), `module_factories.h`.
 - **NOT OURS.** CRI DTX is bound only in the `recvx-us` profile (`ps2xIOP/src/builtin_profiles.cpp:127-137`).
-  `socom2-us` (`:110-125`) uses 989snd, lgaud and eznetcnf. research/40:42 lists `cri_dtx.cpp` as never used.
+  `socom2-us` (`:110-125`) uses 989snd, lgaud and eznetcnf. research/40:42 lists `cri_dtx.cpp` as never used. *(The `recvx-us` profile, `cri_dtx.cpp` and the other four other-game modules were removed by C7 (2026-09-25, `e9e6c481`); the line numbers above are the pre-C7 file.)*
 
 ### #233 Make the VU0 S1/S2 enum coverage test independent of the working directory. hedgeg0d, 2026-08-29, open
 - **NOT OURS.** It is test hygiene. Ours keeps the relative fallbacks (`code_generator_tests.cpp:1544-1546`), and our
