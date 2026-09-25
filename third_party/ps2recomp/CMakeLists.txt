@@ -70,8 +70,7 @@ if(PS2X_IS_ARM_TARGET)
     FetchContent_Declare(
         sse2neon
         GIT_REPOSITORY https://github.com/DLTcollab/sse2neon.git
-        GIT_TAG v1.9.1
-        GIT_SHALLOW TRUE
+        GIT_TAG 92f6de174717aef09033ad21568d5bb9e5470404 # v1.9.1
     )
     FetchContent_MakeAvailable(sse2neon)
 

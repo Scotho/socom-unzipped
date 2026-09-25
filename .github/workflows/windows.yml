@@ -81,9 +81,10 @@ jobs:
         with:
           python-version: '3.12'
 
-      # What tools_py/parity and tools_py/tests import beyond the standard library.
+      # What tools_py/parity and tools_py/tests import beyond the standard library, at the versions run 36136392754
+      # (2026-09-25) installed (Sprint 13 C6); H7's dependency manifest will take these over.
       - name: Install the Python packages the suite imports
-        run: python -m pip install numpy pillow zstandard
+        run: python -m pip install numpy==2.5.3 pillow==12.3.0 zstandard==0.25.0
 
       # The three archives are 245 MB; the cache key is the bootstrap script itself, so a version bump refetches.
       - name: Cache the toolchain archives

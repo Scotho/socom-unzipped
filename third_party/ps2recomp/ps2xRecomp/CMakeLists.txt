@@ -12,30 +12,28 @@ include(FetchContent)
 FetchContent_Declare(
     elfio
     GIT_REPOSITORY https://github.com/serge1/ELFIO.git
-    GIT_TAG Release_3.12
-    GIT_SHALLOW TRUE
+    GIT_TAG 8ae6cec5d60495822ecd57d736f66149da9b1830 # Release_3.12
 )
 FetchContent_MakeAvailable(elfio)
 
 FetchContent_Declare(
     toml11
     GIT_REPOSITORY https://github.com/ToruNiina/toml11.git
-    GIT_TAG v4.4.0
+    GIT_TAG be08ba2be2a964edcdb3d3e3ea8d100abc26f286 # v4.4.0
 )
 FetchContent_MakeAvailable(toml11)
 
 FetchContent_Declare(
     fmt
     GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-    GIT_TAG 12.1.0
+    GIT_TAG 407c905e45ad75fc29bf0f9bb7c5c2fd3475976f # 12.1.0
 )
 FetchContent_MakeAvailable(fmt)
  
 FetchContent_Declare(
     libdwarf
     GIT_REPOSITORY https://github.com/davea42/libdwarf-code.git
-    GIT_TAG v2.2.0
-    GIT_SHALLOW TRUE
+    GIT_TAG 2e088b983562860f497b4fd789a3e61524eb857c # v2.2.0 (the annotated tag's commit)
 )
 
 set(BUILD_DWARFDUMP    OFF CACHE BOOL "" FORCE)
@@ -52,7 +50,7 @@ set(LIBDWARF_INCLUDE_DIR "${libdwarf_SOURCE_DIR}/src/lib/libdwarf")
 FetchContent_Declare(
     rabbitizer
     GIT_REPOSITORY https://github.com/Decompollaborate/rabbitizer.git
-    GIT_TAG 1.14.3
+    GIT_TAG d5804fa488474830a47fbf9f3693048ec1e45589 # 1.14.3
 )
 FetchContent_MakeAvailable(rabbitizer)
 
