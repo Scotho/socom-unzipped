@@ -1079,6 +1079,15 @@ void PS2Memory::write128(uint32_t address, __m128i value)
     const bool scratch = isScratchpad(address);
     uint32_t physAddr = translateAddress(address);
 
+    if (isGsPrivReg(physAddr))
+    {
+        // GS privileged registers occupy the low 64 bits of 16-byte EE bus
+        // slots. SQ stores are used by some games for display register updates;
+        // the upper lane addresses padding and must not spill into the next slot.
+        write64(address, static_cast<uint64_t>(_mm_extract_epi64(value, 0)));
+        return;
+    }
+
     if (scratch)
     {
         inRange(physAddr, sizeof(__m128i), PS2_SCRATCHPAD_SIZE, "write128 scratchpad", address);
@@ -2238,7 +2247,8 @@ bool PS2Memory::tryProcessNativeGifImageUploadChain(GS &gs, uint32_t tadr, uint3
         return false;
 
     const uint64_t imageTagLo = loadScalar<uint64_t>(imageGifTag, 0u, 16u, "native gif image tag", imageTagDmaAddr + 16u);
-    if (gifTagFlg(imageTagLo) != GIF_FMT_IMAGE)
+    const uint8_t imageFormat = gifTagFlg(imageTagLo);
+    if (imageFormat != GIF_FMT_IMAGE && imageFormat != GIF_FMT_IMAGE2)
         return false;
 
     const uint32_t imageQwc = gifTagNloop(imageTagLo);

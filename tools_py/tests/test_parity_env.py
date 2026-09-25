@@ -25,8 +25,10 @@ PEEK_LEN = 573          # the full instrument block, as ladder_frostfire.sh carr
 
 def run_bash(script, env=None):
     e = dict(os.environ)
-    # a stale value in the runner's own environment would win over the default under test
-    for k in ("SOCOM_SERVER_IP", "PS2X_SOCOM2_SERVER", "PS2X_PEEK"):
+    # A stale value in the runner's own environment would win over the default under test -- and since
+    # the instruments are rendered per revision (Task 19, review F11), SOCOM_GAME_ELF decides which
+    # column env.sh exports, so a machine mid-r0004 session must not steer this r0001 test.
+    for k in ("SOCOM_SERVER_IP", "PS2X_SOCOM2_SERVER", "PS2X_PEEK", "PS2X_CALL_TRACE", "SOCOM_GAME_ELF"):
         e.pop(k, None)
     e.update(env or {})
     p = subprocess.run([BASH, "-c", script], cwd=ROOT, env=e,

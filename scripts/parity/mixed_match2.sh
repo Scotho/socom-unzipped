@@ -14,6 +14,22 @@
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
+# The done marker is promised from here on (fix round 2, N4). Every refusal before the run proper --
+# env.sh's own `exit 1` when the revision cannot be established, this leg's render refusal below, the
+# DNS-stub and PCSX2-launch checks -- must leave a marker, or a poller watching logs/<name>.done waits
+# out the whole run on a leg that never started. The specific refusals write their own (with the
+# reason); this trap catches anything that does not, including the `exit` inside a sourced env.sh.
+OUT_EARLY="${1:-}"
+NAME_EARLY="$(basename "${OUT_EARLY:-logs/parity/mixed2_ours_hosts}")"
+mkdir -p logs
+rm -f "logs/${NAME_EARLY}.done"
+_socom_refusal() {
+  _rc=$?
+  if [ "$_rc" -ne 0 ] && [ ! -f "logs/${NAME_EARLY}.done" ]; then
+    echo "done $_rc refused-before-launch" > "logs/${NAME_EARLY}.done"
+  fi
+}
+trap _socom_refusal EXIT
 . "$(dirname "$0")/env.sh"
 socom_require_python mixed_match2
 OUT="${1:-logs/parity/mixed2_ours_hosts}"
@@ -24,7 +40,24 @@ PCSX2_OUT="$OUT/pcsx2"
 mkdir -p "$OUT" "$PCSX2_OUT"
 export PATH="/usr/bin:/bin:$PATH"
 rm -f "logs/${NAME}.done"
-export PS2X_PEEK="0x416054:3,*0x408c58:64,*0x408c58+0xc0*:32,*0x408c58+0x400:12,*0x408c58+0x174:1,*0x408c58+0xF78:24,*0x408c58+0x1044:8,*0x437ce8:64,*0x437ce8+0x100:21,0x4365c0:1,0x408f10:2,0x408c58:4"
+# THIS LEG'S NARROWER PS2X_PEEK, rendered per revision (Sprint 11 Task 19, review F2): no CZNetGame
+# valve name bytes and no deref levels -- the console client is scored from its captures, not from
+# valves. It OVERRIDES env.sh's wider block on purpose (a hard assignment, as the literal here
+# always was), which is why it has to be rendered too: a literal here is env.sh's render undone,
+# and an r0004 leg would cut its rows at r0001's addresses and score silence (s11_r0004_round1).
+# The column comes from the image $SOCOM_GAME_ELF names, the same way env.sh picks its own.
+if ! _socom_mixed_peek="$("$PYTHON" -m tools_py.parity.guest_addresses --env --profile mixed)"; then
+  echo "${0##*/}: the per-revision instrument addresses could not be resolved (see above) -- refusing" >&2
+  echo "  to hand this leg another revision's PS2X_PEEK" >&2
+  unset _socom_mixed_peek
+  # The done marker, like every other refusal here (fix round 2, N4): a poller watching
+  # logs/<name>.done would otherwise wait out the whole run on a leg that never started.
+  echo "done 8 instrument-addresses" > "logs/${NAME}.done"
+  exit 8
+fi
+eval "$_socom_mixed_peek"
+unset _socom_mixed_peek
+export PS2X_PEEK
 LAN="${LAN_IP:-192.168.2.10}"
 if ! netstat -an | grep -q "$LAN:53 "; then
   echo "mixed_match2: the DNS stub is not listening on $LAN:53 -- start tools_py.parity.dns_stub --bind $LAN --answer $SOCOM_SERVER_IP first" >&2
@@ -52,6 +85,9 @@ fi
 # block cam_poll reads) once a second through the round, while it walks four 3 s bursts -- ours' peek and walk
 # are the host's side (online_match_ours --play). Both instances then have a position trail through the same round.
 sleep 45                                                  # the host's READY (joiner + 35 s) and the launch countdown
+# `--spec 0x416054:3` here is the CONSOLE's address, read out of PCSX2 through PINE -- not ours and
+# not env.sh's PS2X_PEEK. It stays an r0001 literal because PCSX2 in these legs boots the r0001
+# disc, by definition of a mixed match (review F2): there is no other revision for it to be.
 PYTHONPATH="$ROOT" "$PYTHON" -m tools_py.parity.cam_poll --port 28012 --spec 0x416054:3 --spec "*0x488de8+0x120:96" --out "$OUT/pcsx2_pos.txt" --seconds 100 --every 1.0 > "$OUT/pcsx2_pos.log" 2>&1 &
 POLL=$!
 "$PYTHON" -m tools_py.parity.pcsx2_ctl watch B play 60 1.0 --out "$PCSX2_OUT" > "$OUT/pcsx2_watch.txt" 2>&1 &

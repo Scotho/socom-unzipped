@@ -6,6 +6,7 @@
 #include "runtime/gs/ps2_gs_psmt8.h"
 #include "runtime/gs/ps2_gs_memory.h"
 #include "ps2_log.h"
+#include "ps2x/knobs.h"
 #include <atomic>
 extern std::atomic<uint64_t> g_gsPixelCount;
 extern std::atomic<uint64_t> g_gsFirstFbp;
@@ -15,6 +16,7 @@ extern std::atomic<uint64_t> g_gsNonBlackWrites;
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -411,33 +413,6 @@ namespace
             ((pmode64 >> 6) & 0x1ull) != 0ull,
             ((pmode64 >> 7) & 0x1ull) != 0ull,
             static_cast<uint8_t>((pmode64 >> 8) & 0xFFu)};
-    }
-
-    struct GSSmode2State
-    {
-        bool interlaced = false;
-        bool frameMode = true;
-    };
-
-    GSSmode2State decodeSMode2(uint64_t smode2)
-    {
-        return {(smode2 & 0x1ull) != 0ull, ((smode2 >> 1) & 0x1ull) != 0ull};
-    }
-
-    void applyFieldPresentation(std::vector<uint8_t> &pixels, uint32_t width, uint32_t height, bool oddField)
-    {
-        if (pixels.empty() || width == 0u || height < 2u)
-            return;
-        const std::vector<uint8_t> source = pixels;
-        for (uint32_t y = 0; y < height; ++y)
-        {
-            uint32_t sourceY = ((y >> 1u) << 1u) + (oddField ? 1u : 0u);
-            if (sourceY >= height)
-                sourceY = height - 1u;
-            std::memcpy(pixels.data() + y * kHostFrameWidth * 4u,
-                        source.data() + sourceY * kHostFrameWidth * 4u,
-                        width * 4u);
-        }
     }
 
     void normalizePresentationAlpha(std::vector<uint8_t> &pixels, uint32_t width, uint32_t height)
@@ -923,10 +898,16 @@ void GSCpuBackend::WritePixel(const GSDrawState &state, int x, int y, int z, uin
                 };
                 int cAlpha = (csel == 0) ? a : (csel == 1) ? da
                                                            : fix;
+                auto finalizeBlendChannel = [&](int value) -> uint8_t
+                {
+                    return (state.colclamp & 0x1u) != 0u
+                        ? clampU8(value)
+                        : static_cast<uint8_t>(value);
+                };
 
-                r = clampU8(((pickRGB(asel, r, dr) - pickRGB(bsel, r, dr)) * cAlpha >> 7) + pickRGB(dsel, r, dr));
-                g = clampU8(((pickRGB(asel, g, dg) - pickRGB(bsel, g, dg)) * cAlpha >> 7) + pickRGB(dsel, g, dg));
-                b = clampU8(((pickRGB(asel, b, db) - pickRGB(bsel, b, db)) * cAlpha >> 7) + pickRGB(dsel, b, db));
+                r = finalizeBlendChannel(((pickRGB(asel, r, dr) - pickRGB(bsel, r, dr)) * cAlpha >> 7) + pickRGB(dsel, r, dr));
+                g = finalizeBlendChannel(((pickRGB(asel, g, dg) - pickRGB(bsel, g, dg)) * cAlpha >> 7) + pickRGB(dsel, g, dg));
+                b = finalizeBlendChannel(((pickRGB(asel, b, db) - pickRGB(bsel, b, db)) * cAlpha >> 7) + pickRGB(dsel, b, db));
             }
             else
             {
@@ -981,9 +962,14 @@ uint32_t GSCpuBackend::LookupCLUT(const GSDrawState &state,
                                   uint8_t sourcePsm)
 {
     const uint32_t clutIndex = resolveClutIndex(index, cpsm, csm, csa, sourcePsm);
-    const uint32_t clutWidth = (state.texclut.cbw != 0u) ? static_cast<uint32_t>(state.texclut.cbw) : 1u;
-    const uint32_t clutX = static_cast<uint32_t>(state.texclut.cou) + (clutIndex & 0x0Fu);
-    const uint32_t clutY = static_cast<uint32_t>(state.texclut.cov) + (clutIndex >> 4);
+    const bool csm2 = csm != 0u;
+    const uint32_t clutWidth = csm2 && state.texclut.cbw != 0u
+        ? static_cast<uint32_t>(state.texclut.cbw)
+        : 1u;
+    const uint32_t clutX = (csm2 ? static_cast<uint32_t>(state.texclut.cou) << 4u : 0u) +
+                           (clutIndex & 0x0Fu);
+    const uint32_t clutY = (csm2 ? static_cast<uint32_t>(state.texclut.cov) : 0u) +
+                           (clutIndex >> 4);
 
     // The on-chip CLUT (GSClutLoad): the snapshot taken at the TEX0 write, addressed from its block 0.
     if (csm == 0u && state.texclut.cou == 0u && state.texclut.cov == 0u)
@@ -1288,6 +1274,12 @@ void GSCpuBackend::DrawTriangle(const GSPrimitiveBatch &batch)
     const float winding = (denom < 0.0f) ? -1.0f : 1.0f;
     const float invAbsDenom = 1.0f / std::fabs(denom);
     constexpr float kEdgeEpsilon = 1.0e-4f;
+    static const bool disableEarlyDepth = ps2x::knob("PS2X_GS_DISABLE_EARLY_DEPTH") != nullptr;
+    const uint32_t depthMethod = static_cast<uint32_t>((ctx.test >> 17u) & 3u);
+    const bool earlyDepth = !disableEarlyDepth && ((ctx.test >> 16u) & 1u) != 0u && depthMethod >= 2u;
+    const uint32_t depthBase = GSInternal::framePageBaseToBlock(ctx.zbuf.zbp);
+    const uint32_t depthWidth = std::max<uint32_t>(ctx.frame.fbw, 1u);
+    const auto &depthReader = m_readVramFuncs[ctx.zbuf.psm & 0x3Fu];
 
     for (int y = minY; y <= maxY; ++y)
     {
@@ -1304,6 +1296,16 @@ void GSCpuBackend::DrawTriangle(const GSPrimitiveBatch &batch)
                 continue;
 
             double z = v0.z * w0 + v1.z * w1 + v2.z * w2;
+            const uint32_t pixelZ = static_cast<uint32_t>(z + 0.5);
+
+            // A failing depth test cannot store color or depth, regardless of
+            // alpha-test mode. Passing pixels retain the existing write path.
+            if (earlyDepth)
+            {
+                const uint32_t storedZ = depthReader(m_vram, depthBase, depthWidth, x, y);
+                if (pixelZ < storedZ || (depthMethod == 3u && pixelZ == storedZ))
+                    continue;
+            }
 
             uint8_t r, g, b, a;
             if (state.prim.iip)
@@ -1366,7 +1368,7 @@ void GSCpuBackend::DrawTriangle(const GSPrimitiveBatch &batch)
             }
 
             const uint8_t fog = clampU8(static_cast<int>(v0.fog * w0 + v1.fog * w1 + v2.fog * w2));
-            WritePixel(state, x, y, static_cast<u32>(z + 0.5), r, g, b, a, fog);
+            WritePixel(state, x, y, pixelZ, r, g, b, a, fog);
         }
     }
 }
@@ -1890,9 +1892,6 @@ PresentationFrame GSCpuBackend::PresentFromLocalMemory(const GSPresentationReque
 {
     PresentationFrame result{};
     const GSPmodeState pmode = decodePmode(request.pmode);
-    const GSSmode2State smode2 = decodeSMode2(request.smode2);
-    const bool fieldMode = smode2.interlaced && !smode2.frameMode;
-    const bool oddField = (request.vsyncTick & 1ull) != 0ull;
     const GSFrameReg displayFrame1 = decodeDisplayFrame(request.dispfb1);
     const GSFrameReg displayFrame2 = decodeDisplayFrame(request.dispfb2);
     const GSDisplayReadOrigin origin1 = decodeDisplayReadOrigin(request.dispfb1);
@@ -1985,8 +1984,6 @@ PresentationFrame GSCpuBackend::PresentFromLocalMemory(const GSPresentationReque
                     dst[3] = pmode.amod ? dst[3] : src[3];
                 }
             normalizePresentationAlpha(result.pixels, result.width, result.height);
-            if (fieldMode)
-                applyFieldPresentation(result.pixels, result.width, result.height, oddField);
             result.displayFbp = displayFrame1.fbp;
             result.sourceFbp = selected1.fbp;
             return result;
@@ -2000,8 +1997,6 @@ PresentationFrame GSCpuBackend::PresentFromLocalMemory(const GSPresentationReque
     GSFrameReg selected = displayFrame;
     if (!copySource(displayFrame, origin, result.width, result.height, true, false, selected, result.pixels, result.usedPreferred))
         return {};
-    if (fieldMode)
-        applyFieldPresentation(result.pixels, result.width, result.height, oddField);
     normalizePresentationAlpha(result.pixels, result.width, result.height);
     result.displayFbp = displayFrame.fbp;
     result.sourceFbp = selected.fbp;
