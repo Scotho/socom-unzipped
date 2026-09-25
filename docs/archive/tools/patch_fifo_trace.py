@@ -1,12 +1,12 @@
 # ARCHIVED 2026-09-25 (Sprint 13 Task H4, harness audit H27/H28) -- was tools_py/patch_fifo_trace.py.
 #   A one-off source patcher: PS2X_TRACE_FIFO tracing of the DMA/VIF1/INTC path (its g_traceFifo marker is gone from the runtime since). Applied and committed in 72bb1607, 2026-09-05, the last time it mattered.
-#   It rewrote files under third_party/ps2recomp/ps2xRuntime/ in place, at the owner's absolute path. The change
+#   It rewrote files under third_party/ps2recomp/ps2xRuntime/ in place, at an absolute checkout path (now <repo root>). The change
 #   has lived in the runtime's own source since that commit; run now, it would patch the tree a second time or
 #   fail an assert. The raise below keeps it from running. Nothing here is an instruction.
 raise SystemExit("archived 2026-09-25 (Sprint 13 Task H4): a one-off source patcher, long applied; it writes into the vendored runtime -- do not run it")
 """Add PS2X_TRACE_FIFO=1 tracing of the VIF1/GIF/fromSPR DMA and INTC path, to diagnose the
 frame-0 render-thread bootstrap deadlock.  Idempotent."""
-rt = 'C:/projects/socom_pc/third_party/ps2recomp/ps2xRuntime/'
+rt = '<repo root>/third_party/ps2recomp/ps2xRuntime/'
 
 
 def patch(path, pairs, marker):

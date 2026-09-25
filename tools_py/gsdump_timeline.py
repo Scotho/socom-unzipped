@@ -3,7 +3,7 @@
 its uploads (BITBLTBUF/TRXREG/TRXDIR + IMAGE bytes), texture binds (TEX0) and vertex kicks, so
 the console's ordering of texture uploads vs draws can be compared with our [gs-pages] trace.
 
-Run: python -m tools_py.gsdump_timeline <dump.gs> [--pages 0x15e:64] [--frames 0-7] [--all]
+Run: python -m tools_py.gsdump_timeline <dump.gs> [--pages 0x15e:64] [--all]
   --pages P:N   only print events touching VRAM pages P..P+N-1 (uploads by dbp, binds by tbp0)
   --all         print every packet (default: only uploads, binds and kicks)
 """

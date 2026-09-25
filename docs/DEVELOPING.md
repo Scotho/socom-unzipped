@@ -216,7 +216,7 @@ Beside the modules, `tools_py/screenshot.ps1` captures a window by hand.
 | `gif_packets.py` | List the vertices a `vu1_replay` packet file kicks. Run it as: `python -m tools_py.gif_packets <packets.bin> [--verts] [--limit N]` |
 | `gif_submit_timeline.py` | Reduce a run log's `[gif-submit]` lines (`PS2X_GIF_TRACE`) to the title-label events. Run it as: `python -m tools_py.gif_submit_timeline <run.log> [--from N] [--count M]` |
 | `gsdump_extract.py` | Turn a PCSX2 GS dump into the console-replay fixture `ps2x_tests` reads |
-| `gsdump_timeline.py` | Per frame of a PCSX2 GS dump, every transfer, texture bind and kick. Run it as: `python -m tools_py.gsdump_timeline <dump.gs> [--pages P:N] [--frames A-B] [--all]` |
+| `gsdump_timeline.py` | Per frame of a PCSX2 GS dump, every transfer, texture bind and kick. Run it as: `python -m tools_py.gsdump_timeline <dump.gs> [--pages P:N] [--all]` |
 | `hostprof_symbolize.py` | Symbolise a `PS2X_HOST_PROF` histogram against `dist/socom2.exe` |
 | `hostprof_diff.py` | Symbolise the difference of two `PS2X_HOST_PROF` histograms. Run it as: `python -m tools_py.hostprof_diff <pre.txt> <end.txt> [--top N] [--exe dist/socom2.exe] [--by-file]` |
 | `hostprof_stacks.py` | Fold and symbolise the stacks of a `PS2X_HOST_PROF_STACKS=1` histogram. Run it as: `python -m tools_py.hostprof_stacks [logs/hostprof.txt] [--exe dist/socom2.exe] [--top N]` |

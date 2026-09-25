@@ -369,3 +369,6 @@ specs and plans (hundreds of inbound citations -- they move in Sprint 11 Goal 1 
 PCSX2-era parity CLIs (`find_dialog_ptr.py`, `state_poll.py`, `p2s_extract.py`, `gsdump_capture.py`, `probe_poll.py`,
 `resize_window.py` -- dormant, harmless, and the mixed match may want them); `logs/`; anything under `server/`.
 `docs/archive/README.md` maps old paths to new.
+> Superseded 2026-09-25 (Sprint 13 Task H4): the two logs were not what the manifest hashes --
+> `docs/research/assets/22-first-kill-evidence.txt` hashes copies under a harness snapshot in `logs/` -- and both
+> tracked logs, with the owner's absolute paths in them, were deleted (harness audit H29).

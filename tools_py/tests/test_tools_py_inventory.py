@@ -12,6 +12,14 @@ must be one of:
   * or ARCHIVED -- moved out of tools_py/ to docs/archive/tools/, which the second test holds to a banner and a row in
     docs/archive/README.md.
 
+What it does not hold, on purpose or by cost:
+  * any whole-word hit counts as a caller, as in the audit's rule -- a module named after a common word (`report`,
+    `keys`) passes on an unrelated word with no real caller; a zero is reliable, a hit is not proof;
+  * the module list and the code files come from `git ls-files`, so a new module is invisible until it is added
+    (CI, which runs on the committed tree, sees it);
+  * tools_py/research/ is excluded, so the "Run: python -m tools_py.research..." lines of the six research/terrain
+    scanners (and their "Run it as:" rows) are documentation no test checks.
+
 On 2026-09-25 this failed with the audit's 28 less its six research/terrain scanners (research/ is out of scope: those
 scripts are run by hand from their notes, DEVELOPING's map says so): 22 modules invoked by nothing.
 """
