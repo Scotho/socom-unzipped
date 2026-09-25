@@ -4,7 +4,7 @@
 
 ## 1. Open issues
 
-18 open issues. *Carried* counts the sprint closes an issue has survived (its `Carried ...` comments, or one for the `carried` label alone); at 2 the next close asks the owner.
+19 open issues. *Carried* counts the sprint closes an issue has survived (its `Carried ...` comments, or one for the `carried` label alone); at 2 the next close asks the owner.
 
 | Issue | Title | Area | Milestone | Carried | Closing bar (first sentence) |
 |---|---|---|---|---|---|
@@ -26,6 +26,7 @@
 | #47 | VU0 macro-mode flag latency: MAC/STATUS flags land immediately in the recompilation | recomp | backlog | 0 | A MiniTest reproducing the hardware latency for one macro-mode sequence from research/31 section 17 against a PCSX2 trace, with the recompiled flags matching it. |
 | #48 | A revision build with --out drops the names sidecar: the toml's names path does not resolve and every function comes out FUN_/sub_ with only an info line | recomp | backlog | 0 | `build_revision.sh <rev> ... --out <dir>` produces a toml whose names path resolves (the sidecar copied beside it, or the path made absolute), a test in tools_py/tests/test_build_revision.py proving it, and the recompiler's log line for a names file that does not resolve promoted from info to a warning that build.sh's recomp step surfaces. |
 | #51 | The CD group and g_iopHeapNext are still per-TU copies in the stub helpers | recomp | backlog | 0 | The CD group and `g_iopHeapNext` are each moved out of the anonymous namespace into a `PS2Runtime`-owned struct in a commit of its own, each under a two-runtime unit test and followed by a full three-stage gate: either both gates pass 3/3 (the per-TU copies are gone and the row settles), or the group whose gate loses the mission stage is named in the row with its gate log. |
+| #52 | An exact match is a fingerprint match, not a proof of the same code: the matcher blanks every addiu/ori constant and pairs repeated windows by order, with no counterexample test | recomp | backlog | 0 | Synthetic cases in `tools_py/tests/test_fingerprint.py`, `test_address_matcher.py` and `test_revision_toml.py` for: two routines that differ only in a non-address `addiu`/`ori` immediate; two duplicates whose order the rebuild swapped; changed control flow of the same length; an interior patch site; two adjacent tables; a function absent from the other image -- each either refused, left `unresolved`, or placed under a label weaker than `exact` that says why, and each seen RED on the tree at `ab6d7ff3` before the change; then `game/r0004/match.json` regenerated and the number of placements whose label or target changed stated in the closing comment (zero is an answer), with the r0004 gate passing 3/3 if any target moved. |
 
 ## 2. Ruled not an issue
 
