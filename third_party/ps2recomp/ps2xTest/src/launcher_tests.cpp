@@ -348,7 +348,7 @@ void register_launcher_tests()
                 return;
             if (std::string(unzipped->address) == "UNZIPPED_SERVER_ADDRESS_TBC")
             {
-                std::cout << "[skipped: the owner has not supplied the hosted address yet (docs/HUMAN_TASKS.md)] ";
+                std::cout << "[skipped: the owner has not supplied the hosted address yet (docs/archive/HUMAN_TASKS-to-2026-09-25.md)] ";
             }
             else
             {

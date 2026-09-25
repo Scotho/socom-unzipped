@@ -9,7 +9,7 @@
 > or a backlog row), or kept as a new row. A citation of HUMAN_TASKS' sections, items or line numbers written before
 > 2026-09-25 means this file. **Line numbers:** line N of `docs/HUMAN_TASKS.md` at `a2699ba0` is line N+119 here. The
 > 2026-09-25 audit's reports cite the file as they read it that morning (`eb190a42` with the Sprint 12 close's
-> edits uncommitted, before the 08:40Z banner), so their numbers drift by a few lines: the text each quotes finds it. Bare D-numbers below mean three
+> edits uncommitted, before the 08:40Z banner): for theirs the offset is +121 to +122, and the text each quotes finds it. Bare D-numbers below mean three
 > different things (documents audit D61): the Sprint 11 decision table's D2-D6, Sprint 12's naming defaults D1-D7
 > and the r0004 spec's D1-D4; the live file names each by its sprint.
 
@@ -33,12 +33,12 @@ Kinds: **S** superseded, **O** folded into the live row named, **T** taken by th
 | 11 | 49 | Sprint 11 close 3: the two bug-pipeline words (I1, I2) | O | O4 |
 | 12 | 50 | Sprint 11 close 4: the `v0.10.0` and `v0.11.0` archives | O | O2 |
 | 13 | 51 | Sprint 11 close 5: the merged-branch sweep | K | O14 |
-| 14 | 52 | Sprint 11 close 6: the VM ring (issue #25) | O | O6 |
+| 14 | 52 | Sprint 11 close 6: the VM ring (issue #25) | T | a night run in the VM under S13-R2, a backlog row (not the owner's: review round 1 of R4) |
 | 15 | 53 | Sprint 11 close 7: five big engine routines by hand | O | O11 (as item 4) |
 | 16 | 54 | Sprint 11 close 8: Horizon's unmodelled `MediusVersionServer` | O | O5 |
 | 17 | 66 | Start here (2026-09-23 morning): "Ten quiet minutes for the music dropouts" | T | done 2026-09-25 07:41Z by Sprint 13 Task V5 Step 1 (`audio_out_20260925_074147`, sessions verdict `clean`; DEVICE 6 over 16 min, 0 late callbacks) -- a window, not the owner's hands (documents audit D53) |
 | 18 | 87 | Sprint 12's one build window | S | done 2026-09-25 04:51-05:38Z (`83e9696c`, `s12_names_gate` 3/3) |
-| 19 | 102 | the eight decisions table (Sprint 11 D2-D6, H7-A/H7-C, r0004 D1-D4, G7) | O | D2 -> O1; D3, D4, D5, D6 and H7-A/H7-C -> O3; r0004 D1 -> O5 (r0004 D2's ordering and D4's "HDD maps out of v1" stand as the defaults); G7 -> O4 |
+| 19 | 102 | the eight decisions table (Sprint 11 D2-D6, H7-A/H7-C, r0004 D1-D4, G7) | O | D2 -> O1; D3, D4, D5, D6 and H7-A/H7-C -> O3; r0004 D1 -> O5 (r0004 D2's ordering and D4's "HDD maps out of v1" stand as the defaults); r0004 D3 (the chat fix's disclosure wording) -> S, the fix landed as hardening with no mechanics (Milestone S closed 2026-09-23; `SECURITY.md`'s rule stands), what is left of it being the moderator's confirmation (O4) and the mechanics already in history (O13); G7 -> O4 |
 | 20 | 118 | "Send this to the PSRewired moderator" (the drafted message) | O | O4 (the draft stays here, verbatim) |
 | 21 | 127 | the merged-branch sweep, one `gh` command | K | O14 |
 | 22 | 134 | five launcher windows closed at 04:25Z | S | a notice; nothing was asked |
@@ -108,7 +108,7 @@ Kinds: **S** superseded, **O** folded into the live row named, **T** taken by th
 | 86 | 691 | wishlist: the r0004 package from your own memory card | S | obtained 2026-09-23 the sanctioned way (R250, R251) |
 | 87 | 698 | wishlist: ask PSRewired about a non-console client | O | O5 (Goal F) |
 
-Counts, by kind: **S** 30, **O** 52, **T** 2, **K** 3 (87 items). Taken by the loop beyond the two T rows: the
+Counts, by kind: **S** 30, **O** 51, **T** 3, **K** 3 (87 items). Taken by the loop beyond the three T rows: the
 halves named inside rows 4, 7, 27, 28, 72 and 82 (the routine dossiers, the story's days, the card's restore, the
 archives short of the upload, the Linux VM runs). The new file's rows: O1-O13 are the audit's §3
 (`docs/audits/2026-09-25-project-audit.md`); O14 and O15 are items 13/21 and 82, which the audit's §3 missed.
