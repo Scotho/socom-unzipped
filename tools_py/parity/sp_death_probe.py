@@ -54,6 +54,7 @@ import threading
 import time
 from collections import namedtuple
 
+from tools_py.parity import capture_env
 from tools_py.parity import verdict_core as vc
 from tools_py.parity.screen_bands import band_fraction
 
@@ -914,6 +915,9 @@ class Probe:
         drive_out = os.path.join(self.out, "drive")
         self.drive_log = os.path.join(self.out, "drive.log")
         self.log(f"launch drive.py -> {drive_out}; run log {self.run_log}")
+        # Issue #38: the PS2X_* this run is launched with, beside its output (drive.py adds its plumbing on top).
+        capture_env.write(self.out, env=env, exe=os.environ.get("SOCOM_EXE") or os.path.join("dist", "socom2.exe"),
+                          note="sp_death_probe --script %s" % self.a.script)
         self.proc = subprocess.Popen(
             [sys.executable, "-m", "tools_py.parity.drive", "--target", "ours", "--script", self.a.script,
              "--out", drive_out, "--seconds", str(self.a.seconds), "--tail", "1"],

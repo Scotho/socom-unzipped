@@ -4,17 +4,29 @@ KNOWN section 4, "A capture that does not record its own environment cannot prov
 2026-09-23 the W6 A/B took two walking captures, one with `PS2X_GS_NO_TEX_REVALIDATE=1`, and nothing in either run
 directory could show which was which. The parity gate pins every `PS2X_*` it scores against (pins.env_pin); the
 capture scripts under scripts/parity/ recorded nothing, or (audio_parity.sh, from 2026-09-23) a free-form dump. This
-is the one writer they all share now, through scripts/parity/write_env.sh:
+is the one writer they all share now -- the shell scripts through scripts/parity/write_env.sh, the Python launchers
+by calling write() the moment before their launch:
 
   <out>/env_ps2x.txt   every PS2X_* in force, sorted `NAME=value` (PS2X_MC_DIR included -- it is a path worth
                        reading, though the pin leaves it out, as the gate's does); the `PIN env sha256=...` line in
                        the gate's summary shape; SOCOM_EXE and its sha256 (the binary's identity is half an A/B too).
   <out>/env_pins.json  the same `env` pin as a run record (pins.write_record), so pins.load_record reads it and
-                       pins.compare can set two captures' halves against each other, or against a gate standard.
+                       pins.compare can set two captures' halves against each other.
 
-The hash is pins.env_pin's, byte for byte: two captures with the same knobs pin the same, a knob more or less moves it.
-What the Python drivers add per launch on top (the screenshot path, a card directory, the input file) is plumbing,
-not a knob, and is not in the record -- the gate's env pin draws the same line.
+It is the gate's FORMAT (pins.env_pin's hashing, pins.write_record's file), not the gate's HASH: the record holds
+the environment the launcher had at the moment it wrote it, BEFORE the driver's own additions -- drive.py and
+online_login_ours.launch add the screenshot path, the input file, the CD image and a card directory on top, and
+the gate's env pin is taken over gate.launch_env, which adds PS2X_HOST_GAMEPAD and the mission stage's PS2X_PEEK.
+So two captures compare with each other; a capture's hash is not expected to equal a gate standard's.
+
+Who writes it. Every script under scripts/parity/ that launches the game (tools_py/tests/test_capture_env holds the
+rule), and the two Python modules that launch it on their own: sp_death_probe (the drive it starts) and scale_shot
+(the exe it starts, one record per shot). Exempt, each covered by its caller's record:
+  * drive.py, online_login_ours.py, online_match_ours.py (which launches through online_login_ours.launch) -- the
+    DRIVERS. Every launch that produces evidence runs
+    them from a launcher that has already written the record (the shell scripts above, sp_death_probe, the gate);
+    run by hand they are a developer's session, not a capture.
+  * gate.py -- it pins its own environment into the stamp's pins.json (and refuses on a drift), which is stronger.
 
     python -m tools_py.parity.capture_env <out_dir> [--exe PATH] [--note TEXT]
 """
@@ -43,8 +55,10 @@ def _exe_lines(exe):
         return ["SOCOM_EXE=%s" % exe, "# no executable at %s to hash" % exe]
 
 
-def write(out_dir, env=None, exe=None, note=""):
-    """Write env_ps2x.txt and env_pins.json into `out_dir` (made if absent); return the env Pin."""
+def write(out_dir, env=None, exe=None, note="", prefix=""):
+    """Write env_ps2x.txt and env_pins.json into `out_dir` (made if absent); return the env Pin. `prefix` names
+    them `<prefix>env_ps2x.txt` / `<prefix>env_pins.json`, for a launcher that starts several games into one
+    directory (scale_shot --both)."""
     env = os.environ if env is None else env
     os.makedirs(out_dir, exist_ok=True)
     pin = pins.env_pin(env)
@@ -55,10 +69,10 @@ def write(out_dir, env=None, exe=None, note=""):
     lines += every or ["# no PS2X_* in the environment"]
     lines.append("PIN env sha256=%s recorded%s" % (pin.sha256, "; " + " ".join(pin.detail) if pin.detail else ""))
     lines += _exe_lines(exe)
-    with open(os.path.join(out_dir, TEXT_NAME), "w", encoding="utf-8", newline="\n") as f:
+    with open(os.path.join(out_dir, prefix + TEXT_NAME), "w", encoding="utf-8", newline="\n") as f:
         f.write("".join(l + "\n" for l in lines))
     exe_line = "EXE %s" % exe if exe else ""
-    pins.write_record(OrderedDict([("env", pin)]), os.path.join(out_dir, RECORD_NAME),
+    pins.write_record(OrderedDict([("env", pin)]), os.path.join(out_dir, prefix + RECORD_NAME),
                       verdict="RECORDED", exe=exe_line)
     return pin
 

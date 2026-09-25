@@ -26,6 +26,12 @@ LONG_SH = os.path.join(PARITY, "mission_music_long.sh")
 KNOB = "PS2X_GS_NO_TEX_REVALIDATE"
 # A script that launches the game itself: a drive, or one of the online drivers, run as a module.
 LAUNCH_RE = re.compile(r"-m\s+tools_py\.parity\.(drive|online_match_ours|online_login_ours)\b")
+PY_PARITY = os.path.join(ROOT, "tools_py", "parity")
+# A Python module that starts the game: drive.py as a subprocess, run.sh, or the exe and the image directly.
+PY_LAUNCH_RE = re.compile(r"\"tools_py\.parity\.drive\"|\"\./run\.sh\"|Popen\(\[exe, elf\]")
+# The drivers (covered by the record their launcher wrote) and the gate (which pins its own environment).
+# online_match_ours.py launches through online_login_ours.launch, so it is not matched here in its own right.
+PY_EXEMPT = ("drive.py", "online_login_ours.py", "gate.py")
 
 
 def clean_env(**extra):
@@ -118,6 +124,31 @@ class EveryLaunchingScriptWritesIt(unittest.TestCase):
                 missing.append(name)
         self.assertIn("audio_parity.sh", launchers, "the derivation found the launchers")
         self.assertEqual(missing, [], "these launch a game and record no environment")
+
+    def test_each_python_launcher_calls_the_writer_or_is_named_exempt(self):
+        """The same rule for tools_py/parity: a module that starts the game (drive.py as a subprocess, run.sh,
+        or the exe itself) calls capture_env.write, or is one of the exemptions capture_env's docstring names
+        and argues -- the drivers, covered by their callers' records, and the gate, which pins its own."""
+        launchers, missing = [], []
+        for name in sorted(os.listdir(PY_PARITY)):
+            if not name.endswith(".py"):
+                continue
+            with open(os.path.join(PY_PARITY, name), encoding="utf-8") as f:
+                text = f.read()
+            if not PY_LAUNCH_RE.search(text):
+                continue
+            launchers.append(name)
+            if name not in PY_EXEMPT and "capture_env.write(" not in text:
+                missing.append(name)
+        self.assertEqual(missing, [], "these launch a game and record no environment")
+        self.assertEqual(sorted(n for n in PY_EXEMPT if n not in launchers), [],
+                         "an exemption for a module that no longer launches anything is stale")
+        for name in ("sp_death_probe.py", "scale_shot.py"):
+            self.assertIn(name, launchers, "the derivation found the launchers")
+        with open(os.path.join(PY_PARITY, "capture_env.py"), encoding="utf-8") as f:
+            doc = f.read()
+        for name in PY_EXEMPT:
+            self.assertIn(name, doc, "capture_env's docstring argues each exemption")
 
 
 if __name__ == "__main__":
