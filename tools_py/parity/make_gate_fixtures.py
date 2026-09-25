@@ -30,10 +30,18 @@ if any drops below 90 this script falls back to saving all title fixtures unquan
 native 640x448 (and says so) rather than silently shipping a fixture that can't pass its own
 gate's threshold.
 
-Usage (from the repo root):
-  python -m tools_py.parity.make_gate_fixtures
+Real-run fixtures (Sprint 13 H7), for the test_gate cases that used to skip without logs/:
+  mission/frozen(.drive.txt), mission/failed(.drive.txt), mission/probe5 (beside good.drive.txt) and
+  transition_runs/tfix3, transition_runs/wcap2 -- see REAL_MISSION_RUNS / REAL_TRANSITION_RUNS below. Each is
+  scored after it is written and must reach its source's verdict.
 
-Re-run any time the source runs change; it always overwrites tests/fixtures/gate/*.
+Usage (from the repo root):
+  python -m tools_py.parity.make_gate_fixtures [--only BUILDER ...] [--search DIR ...]
+  e.g. the H7 set from the archives, 2026-09-25:
+  python -m tools_py.parity.make_gate_fixtures --only real_mission real_transition
+      --search D:/socom_archive/parity --search D:/socom_archive          (one line)
+
+Re-run any time the source runs change; it overwrites what the builders it runs write.
 """
 import os
 import re
@@ -182,11 +190,160 @@ def build_mission_frame_fixtures():
                     screen_bands.gameplay_band(small)[1], screen_bands.gameplay_band(full)[1]))
 
 
-def main():
-    build_title_fixtures()
-    build_transition_fixtures()
-    build_mission_fixtures()
-    build_mission_frame_fixtures()
+# Sprint 13 H7: the test_gate cases that skipped unless a real run sat under logs/ (harness audit #35). Their
+# runs live on only in archives, so the source is looked up under SEARCH -- logs/parity first, then every
+# --search directory, each standing in for logs/parity (D:/socom_archive/parity and D:/socom_archive held them
+# on 2026-09-25). Each fixture is scored after it is written and must reach the verdict its full-size source
+# reaches, or this script stops rather than ship a fixture that says something the run did not.
+SEARCH = [os.path.join(ROOT, "logs", "parity")]
+
+# fixture name: (drive log, capture dir) relative to a search root; the captures are every hold plus final.png.
+# Captures at 320x224 in a 64-colour palette, as small as the verdict allows -- except a capture that shows the MISSION
+# FAILURE banner, which mission_fail.detect does not find at 320x224 (measured 2026-09-25): it keeps the source's own
+# size (640x451 for s5_head_1x_b), and identical captures are stored once (shared.txt, materialize()).
+REAL_MISSION_RUNS = {
+    "frozen": ("gate/s5_gatefix/mission.drive.log", "gate/s5_gatefix/mission"),     # R34: 0 live hold pairs
+    "failed": ("gate/s5_head_1x_b/mission.drive.log", "gate/s5_head_1x_b/mission"),  # the MISSION FAILURE screen
+    # the known-good run whose trimmed log is already mission/good.drive.txt: only its captures are new
+    "probe5": ("drive_gameplay_probe5.txt", "runs/gameplay_probe5"),
+}
+# fixture name: transition capture dir relative to a search root. Kept: every black-screen frame of the run (the
+# boot's included -- they are what the burst-step filter must drop) and the first capture of the observed burst.
+REAL_TRANSITION_RUNS = {
+    "tfix3": "gate/tfix3/transition",   # clean: 18 black-screen frames at/after s11
+    "wcap2": "gate/wcap2/transition",   # stalled on the memory-card dialog: every black frame is the boot's
+}
+
+
+def find_source(rel):
+    for base in SEARCH:
+        path = os.path.join(base, rel)
+        if os.path.exists(path):
+            return path
+    raise SystemExit("make_gate_fixtures: %s is under none of %s (pass --search <dir standing in for logs/parity>)"
+                     % (rel, SEARCH))
+
+
+SHARED = "shared.txt"
+
+
+def _share_duplicates(out_dir):
+    """Keep one file per identical capture and list the others in shared.txt as `<name> <kept name>` (a symlink is not
+    portable to a Windows checkout). s5_head_1x_b's s38, s40 and final.png are the same full-size MISSION FAILURE
+    frame, 101 KB each."""
+    seen, lines = {}, []
+    for n in sorted(os.listdir(out_dir)):
+        with open(os.path.join(out_dir, n), "rb") as f:
+            data = f.read()
+        if data in seen:
+            os.remove(os.path.join(out_dir, n))
+            lines.append("%s %s" % (n, seen[data]))
+        else:
+            seen[data] = n
+    if lines:
+        with open(os.path.join(out_dir, SHARED), "w", newline="\n", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+
+
+def materialize(fixture_dir, dest):
+    """The fixture as a run directory the scorer can read: every file copied into dest, and each shared.txt line
+    `<name> <kept name>` written as its own copy. Returns dest."""
+    os.makedirs(dest, exist_ok=True)
+    for n in os.listdir(fixture_dir):
+        if n != SHARED:
+            shutil.copyfile(os.path.join(fixture_dir, n), os.path.join(dest, n))
+    shared = os.path.join(fixture_dir, SHARED)
+    if os.path.isfile(shared):
+        with open(shared, encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    name, kept = line.split()
+                    shutil.copyfile(os.path.join(fixture_dir, kept), os.path.join(dest, name))
+    return dest
+
+
+def build_real_mission_fixtures():
+    import tempfile
+    out_root = os.path.join(FIXTURES, "mission")
+    from tools_py.parity import mission_fail
+    for name, (log_rel, caps_rel) in REAL_MISSION_RUNS.items():
+        src_log, src_caps = find_source(log_rel), find_source(caps_rel)
+        want_ok, want_detail = gate.score_mission_log(src_log, src_caps)
+        caps = sorted(n for n in os.listdir(src_caps) if re.match(r"^s\d\d_hold\w*\.png$", n))
+        if os.path.isfile(os.path.join(src_caps, "final.png")):
+            caps.append("final.png")
+        log = os.path.join(out_root, name + ".drive.txt") if name != "probe5" else os.path.join(out_root, "good.drive.txt")
+        if name != "probe5":
+            with open(log, "w", newline="\n", encoding="utf-8") as f:
+                f.write("\n".join(_trim_mission_log(src_log)) + "\n")
+        out_dir = os.path.join(out_root, name)
+        if os.path.isdir(out_dir):
+            shutil.rmtree(out_dir)
+        os.makedirs(out_dir)
+        for cap in caps:
+            banner = mission_fail.detect(os.path.join(src_caps, cap))[0]
+            with Image.open(os.path.join(src_caps, cap)) as im:
+                rgb = im.convert("RGB")
+                rgb = rgb if banner else rgb.resize((320, 224), Image.BOX)
+                rgb.quantize(colors=64, method=Image.MEDIANCUT).save(os.path.join(out_dir, cap), optimize=True)
+        _share_duplicates(out_dir)
+        with tempfile.TemporaryDirectory() as tmp:
+            ok, detail = gate.score_mission_log(log, materialize(out_dir, os.path.join(tmp, name)))
+        failed_screen = "MISSION FAILED on screen" in want_detail
+        if ok != want_ok or failed_screen != ("MISSION FAILED on screen" in detail):
+            raise SystemExit("mission fixture %s: the source says (%s, %s) and the fixture (%s, %s)"
+                             % (name, want_ok, want_detail, ok, detail))
+        print("mission/%s: %d captures (%d files) from %s; verdict %s as the source's: %s"
+              % (name, len(caps), len(os.listdir(out_dir)), src_caps, "PASS" if ok else "FAIL", detail.split("; CONSOLE")[0]))
+
+
+def build_real_transition_fixtures():
+    for name, rel in REAL_TRANSITION_RUNS.items():
+        src = find_source(rel)
+        want_ok, want_detail = gate.score_transition(src)
+        burst = gate.observed_burst_step(src)
+        keep = []
+        for n in sorted(os.listdir(src)):
+            if not gate.CAPTURE_RE.match(n):
+                continue
+            if black_rows.examine(os.path.join(src, n))[0] or n == "s%02d_burst_000.png" % burst:
+                keep.append(n)
+        out_dir = os.path.join(FIXTURES, "transition_runs", name)
+        if os.path.isdir(out_dir):
+            shutil.rmtree(out_dir)
+        os.makedirs(out_dir)
+        for n in keep:
+            with Image.open(os.path.join(src, n)) as im:
+                im.convert("RGB").resize((320, 224), Image.BOX).save(os.path.join(out_dir, n), optimize=True)
+        ok, detail = gate.score_transition(out_dir)
+        count = lambda d: re.search(r"(\d+) black-screen frames examined", d).group(1)
+        if ok != want_ok or count(detail) != count(want_detail):
+            raise SystemExit("transition fixture %s: the source says (%s, %s) and the fixture (%s, %s)"
+                             % (name, want_ok, want_detail, ok, detail))
+        print("transition_runs/%s: %d of the run's captures (burst s%02d); %s as the source's: %s"
+              % (name, len(keep), burst, "PASS" if ok else "FAIL", detail))
+
+
+BUILDERS = {
+    "title": build_title_fixtures,
+    "transition": build_transition_fixtures,
+    "mission": build_mission_fixtures,
+    "mission_frames": build_mission_frame_fixtures,
+    "real_mission": build_real_mission_fixtures,
+    "real_transition": build_real_transition_fixtures,
+}
+
+
+def main(argv=None):
+    import argparse
+    ap = argparse.ArgumentParser(description="rebuild tests/fixtures/gate from real runs")
+    ap.add_argument("--only", nargs="+", choices=sorted(BUILDERS), help="these builders only (default: all)")
+    ap.add_argument("--search", action="append", default=[],
+                    help="a directory standing in for logs/parity for the real_* builders (repeatable)")
+    args = ap.parse_args(argv)
+    SEARCH.extend(args.search)
+    for name in args.only or list(BUILDERS):
+        BUILDERS[name]()
     total = sum(os.path.getsize(os.path.join(dp, fn))
                 for dp, _, fns in os.walk(FIXTURES) for fn in fns)
     print("total fixture size: %.1f KB" % (total / 1024.0))

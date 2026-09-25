@@ -1,0 +1,4 @@
+s32_holdR1.png s30_holdW.png
+s34_holdR1.png s30_holdW.png
+s36_holdL.png s30_holdW.png
+s40_holdR1.png s38_holdS.png

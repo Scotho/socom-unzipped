@@ -33,6 +33,26 @@ S3A_MISSION_RUN = os.path.join(FIXTURES, "mission", "s3a")
 DBUFF_MISSION_LOG = os.path.join(FIXTURES, "mission", "dbuff.drive.txt")
 DBUFF_MISSION_RUN = os.path.join(FIXTURES, "mission", "dbuff")
 HUD_REF = os.path.join(ROOT, "scripts", "parity", "ref_hud_ours.png")
+# Sprint 13 H7 (harness audit #35): the real runs below used to be the only witness for five cases, which then ran
+# on the owner's machine alone. make_gate_fixtures' real_mission / real_transition builders reduced them from the
+# archives (each fixture checked to reach its source's verdict): frozen = s5_gatefix (R34, 0 live hold pairs),
+# failed = s5_head_1x_b (the MISSION FAILURE screen; its banner frame at the source's 640x451), probe5 = gameplay_probe5's
+# captures beside good.drive.txt, and the transition runs tfix3 (clean, 18 frames) and wcap2 (stalled at the dialog).
+# Identical captures are stored once and listed in the fixture's shared.txt; _mission_run() materializes the run.
+FROZEN_MISSION_LOG = os.path.join(FIXTURES, "mission", "frozen.drive.txt")
+FROZEN_MISSION_RUN = os.path.join(FIXTURES, "mission", "frozen")
+FAILED_MISSION_LOG = os.path.join(FIXTURES, "mission", "failed.drive.txt")
+FAILED_MISSION_RUN = os.path.join(FIXTURES, "mission", "failed")
+PROBE5_MISSION_RUN = os.path.join(FIXTURES, "mission", "probe5")
+
+
+def _score_fixture_run(log, fixture_dir):
+    """score_mission_log over a fixture with its shared.txt expanded (make_gate_fixtures.materialize)."""
+    from tools_py.parity.make_gate_fixtures import materialize
+    with tempfile.TemporaryDirectory() as tmp:
+        return gate.score_mission_log(log, materialize(fixture_dir, os.path.join(tmp, "mission")))
+CLEAN_TRANSITION_FIXTURE = os.path.join(FIXTURES, "transition_runs", "tfix3")
+STALLED_TRANSITION_FIXTURE = os.path.join(FIXTURES, "transition_runs", "wcap2")
 
 # git-ignored real-run logs, kept locally: extra coverage when present, but never required.
 GOOD_TITLE_RUN = os.path.join(ROOT, "logs", "parity", "runs", "vr_title")               # known clean (STATUS 2026-09-10 17:40)
@@ -224,11 +244,13 @@ class MissionScoring(unittest.TestCase):
         self.assertFalse(ok, detail)
         self.assertIn("NO-DATA", detail)
 
-    @unittest.skipUnless(os.path.isfile(GOOD_MISSION_LOG) and os.path.isdir(GOOD_MISSION_FRAMES),
-                         "needs logs/parity/drive_gameplay_probe5.txt and runs/gameplay_probe5")
     def test_known_good_log_passes(self):
-        ok, detail = gate.score_mission_log(GOOD_MISSION_LOG, GOOD_MISSION_FRAMES)
+        ok, detail = _score_fixture_run(GOOD_MISSION_FIXTURE, PROBE5_MISSION_RUN)
         self.assertTrue(ok, detail)
+        self.assertIn("6/6 hold captures are gameplay", detail)
+        if os.path.isfile(GOOD_MISSION_LOG) and os.path.isdir(GOOD_MISSION_FRAMES):   # the full-size run, where kept
+            ok, detail = gate.score_mission_log(GOOD_MISSION_LOG, GOOD_MISSION_FRAMES)
+            self.assertTrue(ok, detail)
 
     @unittest.skipUnless(os.path.isdir(FULL_DBUFF_RUN), "needs logs/parity/gate/s5_task4_dbuff")
     def test_full_size_dbuff_run_fails(self):
@@ -237,31 +259,33 @@ class MissionScoring(unittest.TestCase):
         self.assertIn("0/6 hold captures are gameplay", detail)
 
     def test_real_frozen_runs_fail(self):
-        runs = [r for r in FROZEN_RUNS if os.path.isdir(os.path.join(r, "mission"))]
-        if not runs:
-            self.skipTest("needs logs/parity/gate/s5_gatefix or mission4")
-        for r in runs:
+        ok, detail = _score_fixture_run(FROZEN_MISSION_LOG, FROZEN_MISSION_RUN)
+        self.assertFalse(ok, detail)
+        self.assertIn("6/6 hold captures are gameplay", detail)
+        self.assertIn("0 live hold pairs", detail)
+        for r in [r for r in FROZEN_RUNS if os.path.isdir(os.path.join(r, "mission"))]:   # full-size, where kept
             ok, detail = gate.score_mission_log(os.path.join(r, "mission.drive.log"))
             self.assertFalse(ok, (r, detail))
 
     def test_real_live_runs_pass(self):
-        runs = [r for r in LIVE_RUNS if os.path.isdir(os.path.join(r, "mission"))]
-        if not runs:
-            self.skipTest("needs logs/parity/gate/s3a, famb, native_on or s3d_2x_host")
-        for r in runs:
+        ok, detail = gate.score_mission_log(S3A_MISSION_LOG, S3A_MISSION_RUN)   # s3a, reduced (make_gate_fixtures)
+        self.assertTrue(ok, detail)
+        for r in [r for r in LIVE_RUNS if os.path.isdir(os.path.join(r, "mission"))]:   # full-size, where kept
             ok, detail = gate.score_mission_log(os.path.join(r, "mission.drive.log"))
             self.assertTrue(ok, (r, detail))
 
-    @unittest.skipUnless(os.path.isfile(BAD_MISSION_LOG), "needs logs/parity/vr_gameplay.drive.log")
     def test_missing_hud_fails(self):
-        ok, detail = gate.score_mission_log(BAD_MISSION_LOG)
-        self.assertFalse(ok)
+        for log in [BAD_MISSION_FIXTURE] + ([BAD_MISSION_LOG] if os.path.isfile(BAD_MISSION_LOG) else []):
+            ok, detail = gate.score_mission_log(log)
+            self.assertFalse(ok, (log, detail))
+            self.assertIn("HUD never matched", detail)
 
     def test_real_runs_that_failed_the_mission_on_screen_fail(self):
-        runs = [r for r in FAILED_ON_SCREEN_RUNS if os.path.isdir(os.path.join(r, "mission"))]
-        if not runs:
-            self.skipTest("needs logs/parity/gate/s3d_2x_host or s5_head_1x_b")
-        for r in runs:
+        ok, detail = _score_fixture_run(FAILED_MISSION_LOG, FAILED_MISSION_RUN)
+        self.assertFalse(ok, detail)
+        self.assertIn("MISSION FAILED on screen", detail)
+        self.assertIn("4 live hold pairs", detail)      # live: only the banner check can fail it
+        for r in [r for r in FAILED_ON_SCREEN_RUNS if os.path.isdir(os.path.join(r, "mission"))]:   # where kept
             ok, detail = gate.score_mission_log(os.path.join(r, "mission.drive.log"))
             self.assertFalse(ok, (r, detail))
             self.assertIn("MISSION FAILED on screen", detail)
@@ -695,11 +719,12 @@ class TransitionScoring(unittest.TestCase):
             self.assertIn("4 black-screen frames examined", detail)
             self.assertEqual(gate.TRANSITION_MIN_FRAMES, 3)
 
-    @unittest.skipUnless(os.path.isdir(CLEAN_TRANSITION_RUN), "needs logs/parity/gate/tfix3/transition")
     def test_known_clean_run_passes(self):
-        ok, detail = gate.score_transition(CLEAN_TRANSITION_RUN)
-        self.assertTrue(ok, detail)
-        self.assertIn("18 black-screen frames examined", detail)
+        """tfix3's 18 transition frames, with the run's 12 boot black frames beside them that the burst step drops."""
+        for run in [CLEAN_TRANSITION_FIXTURE] + ([CLEAN_TRANSITION_RUN] if os.path.isdir(CLEAN_TRANSITION_RUN) else []):
+            ok, detail = gate.score_transition(run)
+            self.assertTrue(ok, (run, detail))
+            self.assertIn("18 black-screen frames examined", detail)
 
     def test_wait_frames_count_toward_transition(self):
         """Task 8: drive.py captures a frame every 1.0 s of every settle wait as
@@ -751,15 +776,15 @@ class TransitionScoring(unittest.TestCase):
         self.assertFalse(ok, detail)
         self.assertIn("0 black-screen frames examined", detail)
 
-    @unittest.skipUnless(os.path.isdir(STALLED_TRANSITION_RUN), "needs logs/parity/gate/wcap2/transition")
     def test_stalled_pre_fix_run_now_fails(self):
         """The real article: logs/parity/gate/wcap2 passed this gate on 2026-09-11 with 13
         black-screen frames, every one of them from the boot -- the probe stalled on the
         "save to memory card?" dialog and never reached the briefing. Under the enforced scorer
         it FAILs with 0. Same for famb, famc, hostdraw_on and hostdraw_fix (see gate.py)."""
-        ok, detail = gate.score_transition(STALLED_TRANSITION_RUN)
-        self.assertFalse(ok, detail)
-        self.assertIn("0 black-screen frames examined", detail)
+        for run in [STALLED_TRANSITION_FIXTURE] + ([STALLED_TRANSITION_RUN] if os.path.isdir(STALLED_TRANSITION_RUN) else []):
+            ok, detail = gate.score_transition(run)
+            self.assertFalse(ok, (run, detail))
+            self.assertIn("0 black-screen frames examined", detail)
 
 
 class BurstStepFiltering(unittest.TestCase):
@@ -1282,12 +1307,14 @@ class ConsoleSpawnNeedsAHudFrame(unittest.TestCase):
         self.assertIn("not a HUD frame", line)
         self.assertNotIn("flat=", line)
 
-    @unittest.skipUnless(os.path.isfile(HUD_FRAME_S6_GAMEPAD4),
-                         "needs logs/parity/gate/s6_gamepad4/mission/s28_none.png")
     def test_a_hud_frame_is_still_scored(self):
-        with Image.open(HUD_FRAME_S6_GAMEPAD4) as im:
-            line = self._run(im.convert("RGB"))
-        self.assertIn("water flat=", line)
+        """The committed lit-look HUD frame (mission/lum/s28_none.png, s6_lum3), and s6_gamepad4's where it is kept."""
+        frames = [os.path.join(FIXTURES, "mission", "lum", "s28_none.png")]
+        frames += [HUD_FRAME_S6_GAMEPAD4] if os.path.isfile(HUD_FRAME_S6_GAMEPAD4) else []
+        for frame in frames:
+            with Image.open(frame) as im:
+                line = self._run(im.convert("RGB"))
+            self.assertIn("water flat=", line, frame)
 
 
 class BaselineScoring(unittest.TestCase):
