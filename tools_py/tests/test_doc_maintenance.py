@@ -452,6 +452,18 @@ class PlantedDefectsTest(unittest.TestCase):
         hits = docmaint.report()["duplicate_rulings"]
         self.assertEqual(hits, [("R90", [("docs/superpowers/plans/a.md", 5), ("docs/superpowers/plans/b.md", 7)])])
 
+    def test_an_archived_owner_list_restating_a_ruling_is_not_a_second_definition(self):
+        """Only a plan, the sprint file and their archives make a ruling (rule 9); the archived HUMAN_TASKS
+        restated R246/R247 in the house shape on 2026-09-25 and read as a duplicate until this held."""
+        self.plan("a.md", "- **R90** (Task 1): the decision.\n")
+        self.write("docs/archive/HUMAN_TASKS-to-2026-09-25.md",
+                   "# Archived (2026-09-25): the owner's list, verbatim\n\n- **R90** the decision restated for the owner.\n")
+        self.write("docs/archive/CURRENT_SPRINT-sprints-9-to-11.md",
+                   "# Archived (2026-09-25): the sprint file's records\n\n- **R91** (2026-09-20): made in the sprint file.\n")
+        self.plan("b.md", "- **R91** (2026-09-21): made again.\n")
+        hits = docmaint.report()["duplicate_rulings"]
+        self.assertEqual([name for name, _ in hits], ["R91"], hits)
+
     def test_every_house_shape_of_a_definition_is_a_definition(self):
         self.plan("a.md", "- **R90** (Task 1): one.\n"
                           "**R90 -- two.**\n"

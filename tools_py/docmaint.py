@@ -221,8 +221,18 @@ def _ruling_key(name):
 
 def ruling_definition_sources():
     """The documents a ruling may be MADE in (HANDOFF section 5 rule 9), as repo-relative posix paths."""
-    out = [p for p in ruling_sources()
-           if p.startswith("docs/superpowers/plans/") or p.startswith("docs/archive/")]
+    # Under docs/archive/ only what WAS a plan or the sprint file is a home: the archived sprint-file records
+    # (CURRENT_SPRINT-*.md) and the archived plans and specs (sprints-*/). An archived HANDOFF, HUMAN_TASKS or
+    # STATUS restates rulings in the house shape and is not where they were made (2026-09-25: the archived
+    # HUMAN_TASKS restated R246 and R247 and read as a second definition of each).
+    def is_home(p):
+        if p.startswith("docs/superpowers/plans/"):
+            return True
+        if p.startswith("docs/archive/"):
+            rest = p[len("docs/archive/"):]
+            return rest.startswith("sprints-") or rest.startswith("CURRENT_SPRINT")
+        return False
+    out = [p for p in ruling_sources() if is_home(p)]
     return ["docs/CURRENT_SPRINT.md"] + out   # the rule names it, whatever its registry row says
 
 
