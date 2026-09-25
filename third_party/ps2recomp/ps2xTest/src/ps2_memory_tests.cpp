@@ -1896,6 +1896,68 @@ void register_ps2_memory_tests()
             t.Equals(packetTie.size(), static_cast<size_t>(16u), "IRQ tag should stop chain when TIE is set");
         });
 
+        // Upstream ran-j/PS2Recomp #223 (GTTeancum): an END tag with QWC 0 carries no payload. The chain walker
+        // queued nothing, so the drain that clears CHCR.STR and raises D_STAT never ran for the channel.
+        tc.Run("GIF DMA zero-QWC END still completes the channel", [](TestCase &t)
+        {
+            PS2Memory mem;
+            t.IsTrue(mem.initialize(), "PS2Memory initialize should succeed");
+
+            constexpr uint32_t kGifCh = 0x1000A000u;
+            constexpr uint32_t kDStat = 0x1000E010u;
+            constexpr uint32_t kTag = 0x00027600u;
+
+            uint8_t *rdram = mem.getRDRAM();
+            writeDmaTag(rdram, kTag, makeDmaTag(0u, 7u, 0u, false)); // END, QWC 0
+
+            uint32_t callbackCount = 0u;
+            mem.setGifPacketCallback([&](const uint8_t *, uint32_t)
+            {
+                ++callbackCount;
+            });
+
+            t.IsTrue(mem.writeIORegister(kGifCh + 0x30u, kTag), "write GIF TADR should succeed");
+            t.IsTrue(mem.writeIORegister(kGifCh + 0x00u, 0x104u), "write GIF CHCR STR|CHAIN should succeed");
+
+            mem.processPendingTransfers();
+
+            const uint32_t chcr = mem.readIORegister(kGifCh + 0x00u);
+            t.Equals(callbackCount, 0u, "zero-QWC chain must not submit an empty GIF packet");
+            t.Equals(chcr & 0x100u, 0u, "zero-QWC END should clear GIF STR");
+            t.Equals(chcr & 0x70000000u, 0x70000000u, "GIF CHCR should expose the terminal END tag id");
+            t.IsTrue((mem.readIORegister(kDStat) & (1u << 2u)) != 0u,
+                     "zero-QWC END should raise the GIF D_STAT channel bit");
+            const std::vector<uint32_t> causes = mem.consumeCompletedDmacCauses();
+            t.IsTrue(std::find(causes.begin(), causes.end(), 2u) != causes.end(),
+                     "zero-QWC END should queue DMAC cause 2 (GIF)");
+        });
+
+        tc.Run("VIF1 DMA zero-QWC END still completes the channel", [](TestCase &t)
+        {
+            PS2Memory mem;
+            t.IsTrue(mem.initialize(), "PS2Memory initialize should succeed");
+
+            constexpr uint32_t kVif1Ch = 0x10009000u;
+            constexpr uint32_t kDStat = 0x1000E010u;
+            constexpr uint32_t kTag = 0x00027700u;
+
+            uint8_t *rdram = mem.getRDRAM();
+            writeDmaTag(rdram, kTag, makeDmaTag(0u, 7u, 0u, false)); // END, QWC 0
+
+            t.IsTrue(mem.writeIORegister(kVif1Ch + 0x30u, kTag), "write VIF1 TADR should succeed");
+            t.IsTrue(mem.writeIORegister(kVif1Ch + 0x00u, 0x105u), "write VIF1 CHCR STR|CHAIN|DIR (TTE off) should succeed");
+
+            mem.processPendingTransfers();
+
+            const uint32_t chcr = mem.readIORegister(kVif1Ch + 0x00u);
+            t.Equals(chcr & 0x100u, 0u, "zero-QWC END should clear VIF1 STR");
+            t.IsTrue((mem.readIORegister(kDStat) & (1u << 1u)) != 0u,
+                     "zero-QWC END should raise the VIF1 D_STAT channel bit");
+            const std::vector<uint32_t> causes = mem.consumeCompletedDmacCauses();
+            t.IsTrue(std::find(causes.begin(), causes.end(), 1u) != causes.end(),
+                     "zero-QWC END should queue DMAC cause 1 (VIF1)");
+        });
+
         tc.Run("DMAC D_STAT toggles masks and clears channel status on write-one", [](TestCase &t)
         {
             PS2Memory mem;

@@ -1367,6 +1367,10 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
                     const bool tieEnabled = (chcr & (1u << 7)) != 0u;
                     const int kMaxChainTags = 4096;
                     std::vector<uint8_t> chainBuf;
+                    // A terminal tag (END, REFE, RET at depth 0, IRQ with TIE) completes the channel even when it
+                    // carried no data: a QWC 0 END queued nothing, so STR and D_STAT were never settled
+                    // (upstream ran-j/PS2Recomp #223).
+                    bool chainEnded = false;
 
                     auto appendData = [&](uint32_t srcAddr, uint32_t qwCount)
                     {
@@ -1581,7 +1585,10 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
                         if (irq && tieEnabled)
                             endChain = true;
                         if (endChain)
+                        {
+                            chainEnded = true;
                             break;
+                        }
                     }
 
                     m_ioRegisters[channelBase + 0x30] = ringWrap(tagAddr);
@@ -1600,7 +1607,7 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
                     }
                     m_ioRegisters[channelBase + 0x00] = chcr;
 
-                    if (!chainBuf.empty())
+                    if (!chainBuf.empty() || chainEnded)
                     {
                         PendingTransfer pt;
                         pt.fromScratchpad = false;
