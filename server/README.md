@@ -80,12 +80,17 @@ DME reaching Medius on the same machine, not an address any client sees; `-Publi
 prints it greyed out so nobody "fixes" it.
 
 **The advertised address is a required value.** The tracked configs carry `192.0.2.1`, a documentation address
-(RFC 5737) that no client can reach and nobody's own network, in all six fields. `start-servers.ps1` refuses to
-start while any field still holds an RFC 5737 address -- exit 2 and one sentence naming the fields and
-`-PublicIp` -- so the first run anywhere is `-PublicIp <this machine's LAN or public address>`; no hand-editing of
-JSON is needed. The addresses in the examples above (`203.0.113.7`, `192.0.2.50`) are documentation addresses too:
-use your own. The rewrite changes tracked files, so do not commit them afterwards -- the leak check's `tree` and
-`staged` modes report any private address in a tracked file (`tracked-private-ip`, Sprint 13 S6). The vendored
+(RFC 5737) that no client can reach and nobody's own network, in all six fields. Both launch scripts refuse to
+start while any field still holds an RFC 5737 address -- `start-servers.ps1` and `linux/horizon-ctl.sh start` /
+`restart` exit 2 with one sentence naming the fields and the step that sets them (`-PublicIp`, `public-ip`) -- so the
+first run anywhere is `-PublicIp <this machine's LAN or public address>`; no hand-editing of JSON is needed.
+`-CheckOnly` (Linux: `check`) runs that check alone, after any rewrite, and starts nothing. The addresses in the
+examples above (`203.0.113.7`, `192.0.2.50`) are documentation addresses too: use your own.
+
+**A developer in a clone** should not rewrite the tracked configs: copy `config/` to a git-ignored folder (`logs/`
+is ignored) and pass it every time, e.g. `.\start-servers.ps1 -ConfigDir logs\my-config -PublicIp <address>` (the default Separate mode; Unified always reads `config\`). A
+rewritten tracked config must not be committed -- the leak check's `tree` and `staged` modes report any private
+address in a tracked file (`tracked-private-ip`, Sprint 13 S6). The vendored
 servers' own initial `SERVER_IP` (`Server.Dme/Program.cs`, `Server.Medius/Program.cs`) is the same placeholder,
 replaced as soon as the config loads.
 
@@ -119,7 +124,7 @@ only the glue is per-platform. `linux/` is that glue for Ubuntu 24.04:
 |---|---|
 | `linux/install.sh` | As root, from the unpacked server folder: the runtime, a `horizon` user, the folder under `/opt/socom-unzipped-server`, the units, a logrotate rule. Idempotent; never overwrites an installed `config/`. |
 | `linux/horizon-{nat,muis,medius,dme}.service`, `horizon.target` | The Separate mode as four units (the unified launcher's race applies on Linux too). DME waits for MPS on 10077 (`wait-for-port.sh`). Consoles go to the journal: `journalctl -u horizon-medius`. |
-| `linux/horizon-ctl.sh` | `start`, `stop`, `restart`, `status`, `show-ip`, `public-ip <ip or hostname>` -- `start-servers.ps1`'s verbs, with the same six-field rewrite, the same untouched `MPS.Ip`, the same refusal to write JSON that does not parse (`tools_py/tests/test_horizon_ctl.py`). |
+| `linux/horizon-ctl.sh` | `start`, `stop`, `restart`, `status`, `show-ip`, `public-ip <ip or hostname>`, `check` -- `start-servers.ps1`'s verbs, with the same six-field rewrite, the same refusal to start on an RFC 5737 placeholder, the same untouched `MPS.Ip`, the same refusal to write JSON that does not parse (`tools_py/tests/test_horizon_ctl.py`). |
 
 `seed-simulated-db.ps1` stays PowerShell: seed on a Windows machine (inside the package folder, so the repo's own
 database is not involved) and copy `config/simulated.db` up. On a cloud box the advertised address is the public

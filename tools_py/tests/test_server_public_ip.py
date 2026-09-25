@@ -139,11 +139,25 @@ class ServerPublicIpTest(unittest.TestCase):
         self.assertNotIn("Started ", r.stdout)
         self.assertEqual({n: self._raw(n) for n in FILES}, self.raw_before)
 
-    def test_a_real_address_is_not_refused_by_the_placeholder_check(self):
-        self._rewrite()
-        r = _run(["-ConfigDir", self.cfg, "-NoStart"])
+    def test_check_only_refuses_the_placeholder_and_starts_nothing(self):
+        r = _run(["-ConfigDir", self.cfg, "-CheckOnly"])
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn("-PublicIp", r.stderr)
+        self.assertIn("RFC 5737", r.stderr)
+        self.assertIn("muis.json Universes", r.stderr)
+        self.assertNotIn("Started ", r.stdout)
+        self.assertEqual({n: self._raw(n) for n in FILES}, self.raw_before)
+
+    def test_check_only_passes_a_real_address_and_refuses_a_documentation_one(self):
+        # a benchmarking address (RFC 2544) -- neither private nor RFC 5737, so the check must pass
+        # it; built at run time so the leak check does not read it as somebody's public address
+        real = NEW_IP.replace("203.0.113", ".".join(("198", "18", "0")))
+        r = _run(["-ConfigDir", self.cfg, "-PublicIp", real, "-CheckOnly"])
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("CheckOnly: the advertised address is set", r.stdout)
         self.assertNotIn("RFC 5737", r.stderr)
+        r = _run(["-ConfigDir", self.cfg, "-PublicIp", NEW_IP, "-CheckOnly"])
+        self.assertEqual(r.returncode, 2, "an RFC 5737 address given to -PublicIp is still a placeholder")
 
     # --- reading it back --------------------------------------------------
 

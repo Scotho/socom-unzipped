@@ -5,6 +5,7 @@
 #   horizon-ctl.sh status                        the units, the listeners against the port table, the advertised address
 #   horizon-ctl.sh show-ip                       the address clients are told to dial back on
 #   horizon-ctl.sh public-ip <ip or hostname>    rewrite that address; restart afterwards for it to take
+#   horizon-ctl.sh check                         exit 2 while that address is still an RFC 5737 placeholder
 #   ... [--config-dir <dir>]                     default: <the folder above this script>/config
 #
 # ADVERTISED ADDRESS. Everything binds 0.0.0.0, but Medius and MUIS also hand the client an address in their
@@ -13,6 +14,8 @@
 # byte preserved), and refuses to write a file that would not parse back as JSON. dme.json's MPS.Ip is DME
 # reaching Medius on the same machine: it stays 127.0.0.1 and is never touched. On a cloud box the advertised
 # address is the public (static) one, not the private one the interface carries.
+# start and restart run `check` first (Sprint 13 S6): the tracked configs hold the RFC 5737 placeholder
+# 192.0.2.1, and a stack that would advertise a documentation address is refused before systemctl is reached.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 CONFIG_DIR="$(dirname "$HERE")/config"
@@ -73,7 +76,31 @@ if mode == "show":
               % ("dme.json", "MPS.Ip", json.loads(read(dme)).get("MPS", {}).get("Ip")))
     sys.exit(0)
 
-addr = sys.argv[3] if len(sys.argv) > 3 else ""
+if mode == "check":
+    # Sprint 13 S6: the advertised address is a REQUIRED value. The tracked configs carry an RFC 5737
+    # documentation placeholder, never anybody's own network; a stack that would hand one to clients is refused.
+    doc = re.compile(r"^(192\.0\.2|198\.51\.100|203\.0\.113)\.\d{1,3}$")
+    bad, values = [], set()
+    for name, keys in PLAN:
+        path = os.path.join(config_dir, name)
+        if not os.path.isfile(path):
+            continue
+        text = read(path)
+        for key in keys:
+            for m in field_pattern(key).finditer(text):
+                if doc.match(m.group(2)):
+                    if "%s %s" % (name, key) not in bad:
+                        bad.append("%s %s" % (name, key))
+                    values.add(m.group(2))
+    if bad:
+        sys.stderr.write("horizon-ctl: the advertised address is not set -- %s still hold %s, a documentation "
+                         "placeholder (RFC 5737) that no client can reach. Run horizon-ctl.sh public-ip <this box's "
+                         "public address> (it rewrites medius.json, dme.json and muis.json), then start again. "
+                         "Nothing was started.\n" % (", ".join(bad), ", ".join(sorted(values))))
+        sys.exit(2)
+    sys.exit(0)
+
+addr =sys.argv[3] if len(sys.argv) > 3 else ""
 if not (IPV4.match(addr) or (HOST.match(addr) and not re.match(r"^[\d.]+$", addr))):
     sys.exit("horizon-ctl: '%s' is not a valid IP address or hostname; nothing was written." % addr)
 
@@ -131,14 +158,15 @@ listeners() {
 as_root() { if [ "$(id -u)" = 0 ]; then "$@"; else sudo "$@"; fi; }
 
 case "$verb" in
-  start)    as_root systemctl start horizon.target ;;
+  start)    advertised check || exit $?; as_root systemctl start horizon.target ;;
   stop)     as_root systemctl stop "${UNITS[@]}" horizon.target ;;
-  restart)  as_root systemctl stop "${UNITS[@]}"; as_root systemctl start horizon.target ;;
+  restart)  advertised check || exit $?; as_root systemctl stop "${UNITS[@]}"; as_root systemctl start horizon.target ;;
+  check)    advertised check ;;
   status)
     for u in "${UNITS[@]}"; do printf '  %-16s %s\n' "$u" "$(systemctl is-active "$u" 2>/dev/null || true)"; done
     listeners
     advertised show ;;
   show-ip)   advertised show ;;
   public-ip) advertised set "${args[0]:-}" ;;
-  *) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+  *) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac

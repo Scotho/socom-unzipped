@@ -88,11 +88,17 @@ commit-author    "<git metadata>"  "hedgeg0d <werstak192@gmail.com>"   # upstrea
 # -- private addresses in the tracked tree (Sprint 13 S6: `tree` and `staged` report every one as tracked-private-ip).
 #    A DEFAULT never goes here -- a default is required or an RFC 5737 example. What does: the dated record, which
 #    says what the network was when a run happened and is not rewritten, and a planted control that must stay
-#    private for its test to mean anything.
-tracked-private-ip  docs/archive              # the archive is kept verbatim (docs/archive/README.md)
-tracked-private-ip  docs/audits               # dated audit reports; the 2026-09-17 one IS the finding about the old default
-tracked-private-ip  docs/research             # dated research notes: the run recipes of the LAN sessions, as they were run
-tracked-private-ip  docs/story/timeline.json  # commit subjects quoted verbatim from the history
-tracked-private-ip  docs/STATUS.md            # its dated sections record the LAN bring-up of 2026-09-08..09-15 as it happened
-tracked-private-ip  third_party/ps2recomp/ps2xRuntime/src/lib/game_overrides_socom2.cpp  "advertised 127.0.0.1/"   # a comment describing one captured packet (the peer's self-address), not a default
-tracked-private-ip  third_party/ps2recomp/ps2xTest/src/diagnostics_tests.cpp  "server 3.143.65.100; lan"   # planted: the scrubber must remove a LAN address, so the control is one
+#    private for its test to mean anything. One row per FILE (a directory glob would pass any new file below it).
+tracked-private-ip  docs/archive/HANDOFF-2026-09-08.md                                                   # the archived handoff, verbatim: the LAN bring-up's DEV9 and DNS settings
+tracked-private-ip  docs/archive/HANDOFF-reference-to-2026-09-13.md                                      # the archived handoff, verbatim: the LAN run recipe of its day
+tracked-private-ip  docs/archive/sprints-1-6/2026-09-12-sprint-4-visible-defects-and-first-kill.md       # archived plan, verbatim: the LAN run recipe (PS2X_SOCOM2_SERVER) of its day
+tracked-private-ip  docs/archive/sprints-7-12/2026-09-17-sprint-7-two-strangers-two-machines.md          # archived plan, verbatim: the put-it-back command of its day
+tracked-private-ip  docs/archive/sprints-7-12/2026-09-19-sprint-9-goal-1-failures-explain-themselves.md  # archived plan, verbatim: its quoted test code (the tests themselves now use RFC 5737, Sprint 13 S6)
+tracked-private-ip  docs/audits/2026-09-17-audit-and-code-review.md                                      # dated audit; its G3 row IS the finding about the old default
+tracked-private-ip  docs/audits/2026-09-20-test-harness-and-process-audit.md                             # dated audit quoting the harness default it found (fixed by H6)
+tracked-private-ip  docs/research/18-online-round-start.md                                               # dated research note: the LAN sessions' run recipes and packet dumps, as run
+tracked-private-ip  docs/research/21-frostfire-control-handover.md                                       # dated research note: the LAN sessions' run recipes, as run
+tracked-private-ip  docs/research/22-kill-readout.md                                                     # dated research note: the LAN session's setup line, as run
+tracked-private-ip  docs/story/timeline.json                                                             # commit subjects quoted verbatim from the history
+tracked-private-ip  docs/STATUS.md                                                                       # its dated sections record the LAN bring-up of 2026-09-08..09-15 as it happened
+tracked-private-ip  third_party/ps2recomp/ps2xTest/src/diagnostics_tests.cpp  "server 3.143.65.100; lan"   # planted: the scrubber redacts every IPv4 but the hosted box's, and this LAN-range control stands for the category H6 found leaking -- it tests nothing more
