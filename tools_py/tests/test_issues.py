@@ -596,6 +596,45 @@ class MilestoneTest(GhRecorded):
         self.assertIn("gh api", text)
 
 
+class TallyTest(PlantedTree):
+    """`tally --since DATE`: the sentence DOC_MAINTENANCE section 7 step 7 wants -- opened, closed and carried
+    since the day the sprint opened, and the highest issue number."""
+
+    def test_the_sentence_counts_each_kind_from_the_date(self):
+        old = planted(20, created="2026-09-20T09:00:00Z")
+        opened = planted(49, created="2026-09-25T09:00:00Z")
+        opened_and_closed = planted(50, state="CLOSED", created="2026-09-25T10:00:00Z",
+                                    closed="2026-09-25T12:00:00Z")
+        closed_old = planted(38, state="CLOSED", created="2026-09-23T10:00:00Z", closed="2026-09-25T08:00:00Z")
+        closed_before = planted(30, state="CLOSED", created="2026-09-22T10:00:00Z", closed="2026-09-24T08:00:00Z")
+        carried = planted(25, labels=("known-issue", "linux", "carried"))
+        carried["comments"] = [carry_comment(when="2026-09-24T10:00:00Z"),
+                               carry_comment("Carried once into Sprint 13 (R266)", when="2026-09-25T10:00:00Z"),
+                               carry_comment("Carried from Sprint 13 to Sprint 14: again", when="2026-09-25T11:00:00Z")]
+        carried_before = planted(26, labels=("known-issue", "harness", "carried"))
+        carried_before["comments"] = [carry_comment(when="2026-09-24T10:00:00Z")]
+        path = self.listing([old, opened, opened_and_closed, closed_old, closed_before, carried, carried_before])
+        code, text = self.run_main(["tally", "--since", "2026-09-25", "--json", path])
+        self.assertEqual(code, 0, text)
+        first = text.splitlines()[0]
+        self.assertIn("opened 2", first)
+        self.assertIn("closed 2", first)
+        self.assertIn("carried 1", first, "an issue carried twice on the day is one issue carried")
+        self.assertIn("#50", first)
+        self.assertIn("2026-09-25", first)
+        self.assertIn("#49, #50", text)
+        self.assertIn("#38, #50", text)
+
+    def test_an_empty_listing_says_zero(self):
+        code, text = self.run_main(["tally", "--since", "2026-09-25", "--json", self.listing([])])
+        self.assertEqual(code, 0, text)
+        self.assertIn("opened 0, closed 0, carried 0", text)
+
+    def test_a_malformed_date_is_refused(self):
+        code, text = self.run_main(["tally", "--since", "25/09/2026", "--json", self.listing([])])
+        self.assertEqual(code, 2, text)
+
+
 class RuledOutListTest(unittest.TestCase):
     """The tracked list on this tree parses, and every row the audit marked `backlog` has a place in it."""
 

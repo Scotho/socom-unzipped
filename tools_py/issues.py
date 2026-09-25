@@ -68,6 +68,7 @@ FIRST_SENTENCE = re.compile(r"(.+?[.!?])(?:\s|$)")
 CARRY_COMMENT = "Carried "
 # DOC_MAINTENANCE section 7 step 5: an issue carried twice is the owner's question, not a third carry.
 CARRY_LIMIT = 2
+DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 # `issue #12` is the citation form; `issue #12 (closed)` is what it becomes when the issue closes and the row is
 # kept as a record. A bare `#244` is not a citation -- it is how the tree names an upstream pull request.
@@ -641,6 +642,31 @@ def cmd_milestone_close(args):
     return code
 
 
+def tally(issues, since):
+    """{'opened': [n], 'closed': [n], 'carried': [n], 'highest': n} from `since` (YYYY-MM-DD) on. An issue carried
+    more than once in the window counts once."""
+    stack = [normalise(i) for i in issues]
+    return {
+        "opened": sorted(i["number"] for i in stack if i["createdAt"][:10] >= since),
+        "closed": sorted(i["number"] for i in stack if i["closedAt"] and i["closedAt"][:10] >= since),
+        "carried": sorted(i["number"] for i in stack
+                          if any(when[:10] >= since for when, _ in carry_comments(i))),
+        "highest": max([i["number"] for i in stack] or [0]),
+    }
+
+
+def cmd_tally(args):
+    if not DATE.match(args.since):
+        print("tally: --since wants a date, YYYY-MM-DD (the day the sprint opened)")
+        return 2
+    t = tally(_listing(args), args.since)
+    print("Since %s: opened %d, closed %d, carried %d; the highest issue number is #%d."
+          % (args.since, len(t["opened"]), len(t["closed"]), len(t["carried"]), t["highest"]))
+    for kind in ("opened", "closed", "carried"):
+        print("  %s: %s" % (kind, ", ".join("#%d" % n for n in t[kind]) or "none"))
+    return 0
+
+
 def cmd_audit(args):
     if args.json:
         with open(args.json, encoding="utf-8") as f:
@@ -766,6 +792,10 @@ def main(argv=None):
     p.add_argument("--milestones-json")
     p.add_argument("--dry-run", action="store_true")
     p.set_defaults(fn=cmd_milestone_close)
+    p = sub.add_parser("tally")
+    p.add_argument("--since", required=True)
+    p.add_argument("--json")
+    p.set_defaults(fn=cmd_tally)
     args = ap.parse_args(argv)
     return args.fn(args)
 
