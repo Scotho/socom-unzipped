@@ -4,7 +4,7 @@
 
 ## 1. Open issues
 
-22 open issues. *Carried* counts the sprint closes an issue has survived (its `Carried ...` comments, or one for the `carried` label alone); at 2 the next close asks the owner.
+23 open issues. *Carried* counts the sprint closes an issue has survived (its `Carried ...` comments, or one for the `carried` label alone); at 2 the next close asks the owner.
 
 | Issue | Title | Area | Milestone | Carried | Closing bar (first sentence) |
 |---|---|---|---|---|---|
@@ -30,6 +30,7 @@
 | #56 | build_revision --out re-decrypts from the disc tree and looks for the map in the out folder: on this machine the r0004 out build merges r0001's overlays and mismatches | recomp | backlog | 0 | `build_revision.sh --out` reads the tracked map from the tree by default (`--ghidra` stays an override) and, when the tree's `game/overlays_<rev>/` holds current products (their `repair.json` matching), copies or reuses them instead of decrypting again; a test over a temp tree for both; one `--out` run on this machine whose `--check-against` matches without seeding. |
 | #57 | The emitter includes the all-functions header in every generated file, so a one-name change recompiles everything (upstream #253) | recomp | backlog | 0 | The emitter stops including the header per file (forward declarations instead); a recomp census identical to the previous output but for the includes (`tools_py.recomp_census --diff`: renamed 0, extents 0, counts unchanged); a runtime build after a one-name change rebuilds one object (measured with ninja's log); the gate 3/3 with PINS MATCH on both revisions. |
 | #58 | BinExport main on Ghidra 12.1.3: the BinDiff cross-check still needs the second Ghidra 11.0.3 toolchain | harness | backlog | 0 | BinExport `main` built on Ghidra 12.1.3 with the EE extension the tree pins; research/49's export and BinDiff numbers reproduced within its stated tolerance on that toolchain; DEVELOPING pins 12.1.3 for the cross-check and the 11.0.3 install is retired from the recipe. |
+| #59 | The mission frame rate has no bar: three gates on three exes read 21.9-32.4 ms per guest VBlank over the scripted walk | render | backlog | 0 | A refusal rule in `scripts/parity/pins.json` once three runs agree (S13-R3). |
 
 ## 2. Ruled not an issue
 
