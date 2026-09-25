@@ -1,3 +1,4 @@
+// LOCAL (socom_pc): the project's own tests for ChatClamp.cs, not upstream Horizon's.
 using Server.Medius;
 using Xunit;
 

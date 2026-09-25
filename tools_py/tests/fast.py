@@ -36,6 +36,7 @@ EXCLUDED = {
     "test_loop_lock": "111 s with the slow half skipped; real lock takes, waits and process lists",
     "test_aim_loop": "110 s; two cases run the aim loop's wall-clock schedule",
     "test_mission_music_fast": "69 s; the mission-music pipeline over generated audio",
+    "test_server_ops": "68 s; server/ops backup.sh through bash, backup-pull.ps1 through PowerShell (S13 O3)",
     "test_make_portable": "57 s; builds a portable folder through bash and PowerShell",
     "test_closeout_launch": "44 s; launches and kills stand-in games through bash",
     "test_leakcheck": "40 s; scans the repository and its history",

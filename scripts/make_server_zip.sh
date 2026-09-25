@@ -23,9 +23,30 @@ cp -r "$SERVER/horizon-server" "$PKG/horizon-server"
 find "$PKG/horizon-server" -type d \( -name obj -o -name .git \) -prune -exec rm -rf {} +
 find "$PKG/horizon-server" -type d -path '*/bin/Debug' -prune -exec rm -rf {} +
 cp "$SERVER/start-servers.ps1" "$SERVER/seed-simulated-db.ps1" "$SERVER/README.md" "$PKG/"
+# Sprint 13 Task O3: the commit this package is built from, which Medius's stats JSON serves as "build" (the site's
+# /api/stats). SERVER_BUILD_ID overrides it (a package built from a copy of another checkout); "-dirty" marks a
+# server/horizon-server with uncommitted changes, "-copy" a SERVER other than this checkout's server/ with no override.
+build_id="${SERVER_BUILD_ID:-}"
+if [ -z "$build_id" ]; then
+  build_id="$(git -C "$ROOT" rev-parse --short=12 HEAD 2>/dev/null || true)"
+  if [ -n "$build_id" ] && [ -n "$(git -C "$ROOT" status --porcelain -- server/horizon-server 2>/dev/null)" ]; then
+    build_id="$build_id-dirty"
+  fi
+  # SERVER pointing at a copy (the box's build-from-a-tar-copy recipe): this checkout's commit only says where the
+  # copy probably came from, so the id says so rather than claim it.
+  if [ -n "$build_id" ] && [ "$(cd "$SERVER" && pwd -P)" != "$(cd "$ROOT/server" 2>/dev/null && pwd -P)" ]; then
+    build_id="$build_id-copy"
+  fi
+fi
+printf '%s\n' "${build_id:-unknown}" > "$PKG/BUILD_ID"
 # Sprint 8 Goal 12: the Linux glue (systemd units, horizon-ctl.sh, install.sh) rides along.
 [ -f "$SERVER/linux/install.sh" ] || { echo "make_server_zip: $SERVER/linux/install.sh missing" >&2; exit 2; }
 cp -r "$SERVER/linux" "$PKG/linux"
+# Sprint 13 Task O3: the box's backup and health scripts and the env file's shape -- never ops.env itself.
+if [ -d "$SERVER/ops" ]; then
+  mkdir -p "$PKG/ops"
+  cp "$SERVER"/ops/*.sh "$SERVER/ops/backup.cron" "$SERVER/ops/ops.env.example" "$PKG/ops/"
+fi
 # config: every *.json, and deliberately NOT simulated.db (accounts + per-app settings are the host's own).
 cp "$SERVER"/config/*.json "$PKG/config/"
 cat > "$PKG/config/README.txt" <<'CFG'
