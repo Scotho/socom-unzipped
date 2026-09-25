@@ -30,10 +30,11 @@ namespace socom2_libnetb
 
     // The msifrpc call for this service from guest code (socom2_MsifCall, FUN_001bd320: a1 fno, a3 send, t0 sendSize,
     // t1 recv, t2 recvSize). Runs call() and returns to ra with v0 = 0 (transport ok) -- except that a sceInetRecv or
-    // sceInetRecvFrom with a timeout, on a socket with nothing to read, parks the calling guest thread until the next
-    // VBlank and then issues itself again, until data arrives or the game's own timeout passes (#34, research/29
-    // shape 2). The EE executor is never held past one guest tick: VBlanks, frames and the other guest threads run
-    // through the wait, and the game still sees exactly the result and the timeout it asked for.
+    // sceInetRecvFrom with a timeout over one tick, on a socket with nothing to read, parks the calling guest thread
+    // until the next VBlank and then issues itself again, until data arrives or the game's own timeout passes (#34,
+    // research/29 shape 2). The EE executor is never held past one guest tick: VBlanks and the other guest threads run
+    // through the wait, and the game still sees exactly the result and the timeout it asked for. What the CALLING
+    // thread would have done meanwhile still waits -- research/29 puts this recv on thread 1, which submits frames.
     void rpcFromGuest(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
 
     // Test only: forget the cached PS2X_SOCOM2_NET_STATS so the next call() re-reads the environment.
@@ -44,6 +45,11 @@ namespace socom2_libnetb
     // else 0; cumulative milliseconds spent in them}. While the flag is 1 no guest instruction runs, so the
     // sampled thread table and live pc are stale -- freeze shape 2 in docs/research/29-online-freeze.md.
     std::pair<int, uint64_t> netWaitState();
+
+    // The pc-sampler's net_park= field (#34): {guest threads parked in a recv RPC right now; cumulative milliseconds
+    // parked, live parks included}. net_park=1 with vsync and seq moving is the executor free while a thread waits
+    // on a quiet peer -- what freeze shape 2 looks like since the bound.
+    std::pair<int, uint64_t> netParkState();
 
     // EE function replacements (libnetb_ex path used by the SCE-RT platform layer).
     void exOpen(uint8_t *rdram, R5900Context *ctx, PS2Runtime *);        // FUN_002472c8

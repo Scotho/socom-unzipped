@@ -858,16 +858,18 @@ void register_gs_frame_backpressure_tests()
             s.bpWaitMs = 12ull;
             s.netWait = 1;
             s.netWaitMs = 3300ull;
+            s.netPark = 1;
+            s.netParkMs = 9800ull;
             t.Equals(FreezeFields::line(s),
                      std::string(" t=612.50 vsync=41233 ee=612.10 seq=8891 dpc=0x350d90 idle=140"
-                                 " bp_pending=0 bp_waiters=0 bp_wait_ms=12 net_wait=1/3300"),
+                                 " bp_pending=0 bp_waiters=0 bp_wait_ms=12 net_wait=1/3300 net_park=1/9800"),
                      "freeze_trace.parse reads exactly this (tools_py/tests/test_freeze_trace.py SAMPLE)");
             FreezeFields::Sample quiet;
             quiet.hostSeconds = 3.0;
             quiet.eeSeconds = 2.5;
             t.Equals(FreezeFields::line(quiet),
                      std::string(" t=3.00 vsync=0 ee=2.50 seq=0 dpc=0x0 idle=0 bp_pending=0 bp_waiters=0"
-                                 " bp_wait_ms=0 net_wait=0/0"),
+                                 " bp_wait_ms=0 net_wait=0/0 net_park=0/0"),
                      "a quiet sample still prints every field: a missing one would read as a parse failure");
         });
 

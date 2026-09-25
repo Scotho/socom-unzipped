@@ -736,6 +736,9 @@ namespace
                 const std::pair<int, uint64_t> net = socom2_libnetb::netWaitState();
                 fs.netWait = net.first;
                 fs.netWaitMs = net.second;
+                const std::pair<int, uint64_t> park = socom2_libnetb::netParkState();
+                fs.netPark = park.first;
+                fs.netParkMs = park.second;
                 o << FreezeFields::line(fs);
                 o << " running=" << snap.runningThreadId << " threads:";
                 for (const auto &t : snap.threads)

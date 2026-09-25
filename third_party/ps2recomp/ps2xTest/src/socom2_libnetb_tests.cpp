@@ -501,9 +501,11 @@ void register_socom2_libnetb_tests()
             g_park.cid = openLoopbackCid(rdram, &local);
             g_park.timeoutMs = 1200;
             t.IsTrue(g_park.cid > 0, "a loopback UDP cid should open");
+            const std::pair<int, uint64_t> parkBefore = socom2_libnetb::netParkState();
 
             runParkedRecv(rdram, runtime);
             closeCid(rdram, g_park.cid);
+            const std::pair<int, uint64_t> parkAfter = socom2_libnetb::netParkState();
 
             t.IsTrue(g_park.done, "the recv must return to the guest (the watchdog stopped the run otherwise)");
             t.Equals(g_park.result, kErrTimeout, "no data: the game's own timeout (-500), as before");
@@ -513,6 +515,33 @@ void register_socom2_libnetb_tests()
                          std::to_string(ticksDuringWait(g_park)) + " times in " + std::to_string(elapsedMs(g_park)) + " ms");
             t.IsTrue(longestGapMs(g_park) < 250,
                      "the executor must not be held: longest stretch with no VBlank run was " + std::to_string(longestGapMs(g_park)) + " ms");
+            t.Equals(parkAfter.first, 0, "no thread is left parked (net_park=0/...)");
+            t.IsTrue(parkAfter.second - parkBefore.second >= 1100,
+                     "the wait is on the sampler's net_park= ms (it grew " + std::to_string(parkAfter.second - parkBefore.second) + ")");
+        });
+
+        // A recv whose timeout is one tick or less is served whole inside waitReadable: parking it would cost a
+        // VBlank (a lost frame on the render thread) to save at most 16 ms.
+        tc.Run("a recv with a timeout of one tick or less is not parked", [](TestCase &t)
+        {
+            std::vector<uint8_t> rdram(PS2_RAM_SIZE, 0u);
+            PS2Runtime runtime;
+            t.IsTrue(runtime.memory().initialize(), "runtime memory initialize should succeed");
+            socom2_hostnet::Endpoint local;
+            g_park = ParkRun{};
+            g_park.cid = openLoopbackCid(rdram, &local);
+            g_park.timeoutMs = 10;
+            t.IsTrue(g_park.cid > 0, "a loopback UDP cid should open");
+            const uint64_t parkedMsBefore = socom2_libnetb::netParkState().second;
+
+            runParkedRecv(rdram, runtime);
+            closeCid(rdram, g_park.cid);
+
+            t.IsTrue(g_park.done, "the recv must return to the guest");
+            t.Equals(g_park.result, kErrTimeout, "no data: the game's timeout");
+            t.Equals(ticksDuringWait(g_park), static_cast<size_t>(0), "no park: nothing else ran inside the call");
+            t.Equals(socom2_libnetb::netParkState().second, parkedMsBefore, "nothing on net_park=");
+            t.IsTrue(elapsedMs(g_park) < 200, "served in about its own 10 ms: " + std::to_string(elapsedMs(g_park)) + " ms");
         });
 
         // The same wait ended by data mid-way: the re-issued call must still read the guest's own arguments (send ==
@@ -528,12 +557,14 @@ void register_socom2_libnetb_tests()
             g_park.timeoutMs = 5000;
             t.IsTrue(g_park.cid > 0, "a loopback UDP cid should open");
 
-            std::thread peer([local]
+            std::chrono::steady_clock::time_point sent{};
+            std::thread peer([local, &sent]
             {
                 std::this_thread::sleep_for(std::chrono::milliseconds(300));
                 const int tx = socom2_hostnet::createSocket(socom2_hostnet::Proto::Udp);
                 if (tx >= 0)
                 {
+                    sent = std::chrono::steady_clock::now();
                     socom2_hostnet::sendTo(tx, "stopped", 7u, local);
                     socom2_hostnet::closeSocket(tx);
                 }
@@ -545,7 +576,9 @@ void register_socom2_libnetb_tests()
             t.IsTrue(g_park.done, "the recv must return to the guest");
             t.Equals(g_park.result, 7, "the datagram's length");
             t.Equals(g_park.payload, std::string("stopped"), "the datagram itself, at recv byte 0x1c");
-            t.IsTrue(elapsedMs(g_park) >= 250 && elapsedMs(g_park) < 2000,
+            t.IsTrue(sent != std::chrono::steady_clock::time_point{} && g_park.end >= sent,
+                     "returned after the datagram was sent, not before");
+            t.IsTrue(elapsedMs(g_park) < 2000,
                      "returned when the data came, not at the 5 s deadline: " + std::to_string(elapsedMs(g_park)) + " ms");
             t.IsTrue(ticksDuringWait(g_park) >= 5,
                      "the other guest threads ran while it waited; ticker ran " + std::to_string(ticksDuringWait(g_park)) + " times");
