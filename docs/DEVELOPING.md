@@ -135,13 +135,13 @@ caller nor that row, and on any file in `docs/archive/tools/` without its banner
 `docs/archive/README.md`. The research scripts are run by hand from their notes; the ones the audit flagged carry the
 same line.
 > Superseded 2026-09-25 (Sprint 13 Task H4): this paragraph marked 28 modules **†**, the audit's "invoked by nothing"
-> flag, and said "`movie_blocks` has tests but no caller (issue #46); the † modules have no issue yet". H4 archived
+> flag, and said "`movie_blocks` has tests but no caller (issue #46 (closed)); the † modules have no issue yet". H4 archived
 > nine of the 28 to `docs/archive/tools/` (the four `patch_*` source patchers, the four `dbg_*` decryptor probes and
 > `parity/blue_marker.py`) and made the other nineteen entry points; `movie_blocks` has run in `build.sh test` through
 > `tools_py/tests/test_movie_blocks_fixture.py` since `bd27443e` (2026-09-17).
 > Superseded 2026-09-25 (Sprint 13 R2, fix round 1): this paragraph gave the method as "`git grep -l -w <name>`,
 > zero hits outside the module itself", which does not yield 28 (seventeen more modules pass it, most of them
-> research scripts), and said issue #46 carried one of the 28; `movie_blocks` is not among them.
+> research scripts), and said issue #46 (closed) carried one of the 28; `movie_blocks` is not among them.
 
 Beside the modules, `tools_py/screenshot.ps1` captures a window by hand.
 > Superseded 2026-09-25 (Sprint 13 Task H4): this also said "`tools_py/decrypt.log` / `decrypt2.log` are tracked
@@ -790,7 +790,7 @@ other. `tools_py/parity/verdict_core.py` holds the pure, IO-free scorers (`score
 stored log pair. Harness pieces: `drive.py` scripts have an `ifburst` step (fire a capture burst only if the preceding
 `ifref` matched), and `python -m tools_py.parity.movie_blocks <dumpdir>` checks a `PS2X_GS_DUMP_DISPLAY` capture for
 16x16 blocks black on the GL target but present in shadow VRAM (limits: `docs/research/16` §9.1.1; `build.sh test`
-runs it over the saved fixture `tests/fixtures/movie/` with its furniture baseline, issue #46).
+runs it over the saved fixture `tests/fixtures/movie/` with its furniture baseline, issue #46 (closed)).
 > Superseded 2026-09-25 (Sprint 13 Task H4): this said the check was "wired into no automation"; it has run in
 > `build.sh test` through `tools_py/tests/test_movie_blocks_fixture.py` since `bd27443e` (2026-09-17).
 

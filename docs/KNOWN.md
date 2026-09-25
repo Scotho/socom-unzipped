@@ -509,7 +509,7 @@ Maintained by whoever is running the loop. Last audited: **2026-09-25 (Sprint 13
   Task 4c → `research/17` §5.1; Task 4b → `research/17` §6.1; Task 1's `movie_blocks.py` limits →
   `research/16` §9.1.1. Everything else in those reports is accepted as lost.
 - ~~**Open: `movie_blocks.py` is wired into nothing**~~ **SETTLED 2026-09-25 (Sprint 13 Task H4): it had been wired
-  since 2026-09-17** *(issue #46)*. `build.sh test` runs `tools_py/tests/test_movie_blocks_fixture.py` (`bd27443e`,
+  since 2026-09-17** *(issue #46 (closed))*. `build.sh test` runs `tools_py/tests/test_movie_blocks_fixture.py` (`bd27443e`,
   Sprint 6 Task 8), which runs the module over seven saved presents of an intro-and-title display dump
   (`tests/fixtures/movie/`, its README says how to regenerate them) WITH the saved furniture baseline
   (`tests/fixtures/movie/furniture.txt`), and fails on a missing block or on furniture growth. What stays true: no
@@ -523,7 +523,7 @@ Maintained by whoever is running the loop. Last audited: **2026-09-25 (Sprint 13
   per-screen furniture) are held in place by no automation at all, and its `--furniture-baseline`
   guard, the only thing that catches corruption being learned as furniture, is opt-in with no
   saved baseline in the repo. `research/16` §9.1.1. *(Re-headed 2026-09-25 so the stack audit can
-  see it; re-checked and still true.)* *Issue #46 (opened at the Sprint 11 close, still open; this tail read "not yet on the stack" until the Sprint 12 close).*
+  see it; re-checked and still true.)* *Issue #46 (closed) (opened at the Sprint 11 close, still open; this tail read "not yet on the stack" until the Sprint 12 close).*
 - **This harness costs about two runs per result.** Four of Task 6's runs failed to reach gameplay,
   three of them consecutively; each had written a full set of convincing screenshots first. Budget
   for it when planning, and never skip the liveness check.
