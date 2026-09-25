@@ -631,6 +631,16 @@ class RecompNamesLineIsSurfacedTest(unittest.TestCase):
             text = fh.read()
         self.assertIn('m_reporter.warning("names", "names file does not resolve: "', text)
 
+    def test_the_generated_header_names_its_source_not_an_identity(self):
+        # research/59 section 3: `X (identity Y)` read as an alias; the header now points at the sidecar row.
+        # ps2xTest's "display names come from the sidecar" case holds the bytes; this holds the wording in CI.
+        emitter = os.path.join(ROOT, "third_party", "ps2recomp", "ps2xRecomp", "src", "lib", "function_emitter.cpp")
+        with open(emitter, encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn('"// Name source: "', text)
+        self.assertIn('" (map name "', text)
+        self.assertNotIn('" (identity "', text)
+
     def _surfacing_line(self, script, log_var):
         with open(os.path.join(ROOT, script), encoding="utf-8") as fh:
             lines = [ln for ln in fh if "names - " in ln and log_var in ln and ln.lstrip().startswith("grep")]

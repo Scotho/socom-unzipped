@@ -1118,6 +1118,7 @@ namespace ps2recomp
 
                 const auto displayIt = m_displayNames.find(function.start);
                 function.displayName = displayIt != m_displayNames.end() ? displayIt->second : std::string();
+                function.displayNameSource = displayIt != m_displayNames.end() ? m_config.namesPath : std::string();
                 m_functionRenames[function.start] = makeName(function);
             }
 
