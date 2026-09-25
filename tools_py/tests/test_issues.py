@@ -435,6 +435,99 @@ class BacklogTest(PlantedTree):
         self.assertIn("window-policy", text)
 
 
+class CarryTest(PlantedTree):
+    """`carry N --comment ... [--milestone NAME]`: the label, the comment and the milestone in one step, and a
+    refusal once the issue has been carried twice -- that is the owner's question (DOC_MAINTENANCE section 7 step
+    5). gh is never run: --json replays `gh issue view`, and _gh is replaced by a recorder."""
+
+    def setUp(self):
+        super().setUp()
+        self.calls = []
+        self.saved_gh = issues._gh
+
+        class Done:
+            returncode, stdout, stderr = 0, "", ""
+
+        def record(cmd):
+            self.calls.append(cmd)
+            return Done()
+        issues._gh = record
+
+    def tearDown(self):
+        issues._gh = self.saved_gh
+        super().tearDown()
+
+    def view(self, **kw):
+        return self.listing(planted(33, **kw), "view.json")
+
+    def test_a_first_carry_labels_comments_and_moves_the_milestone(self):
+        code, text = self.run_main(["carry", "33", "--comment", "not in Sprint 14's plan", "--milestone",
+                                    "Sprint 14", "--json", self.view(milestone="Sprint 13")])
+        self.assertEqual(code, 0, text)
+        self.assertEqual(len(self.calls), 2, self.calls)
+        edit, comment = self.calls
+        self.assertEqual(edit[:3], ["issue", "edit", "33"])
+        self.assertIn("--add-label", edit)
+        self.assertEqual(edit[edit.index("--add-label") + 1], "carried")
+        self.assertEqual(edit[edit.index("--milestone") + 1], "Sprint 14")
+        self.assertEqual(comment[:3], ["issue", "comment", "33"])
+        body = comment[comment.index("--body") + 1]
+        self.assertTrue(body.startswith(issues.CARRY_COMMENT), body)
+        self.assertIn("Sprint 13", body)
+        self.assertIn("Sprint 14", body)
+        self.assertIn("not in Sprint 14's plan", body)
+
+    def test_no_milestone_means_the_backlog(self):
+        code, text = self.run_main(["carry", "33", "--comment", "no plan names it", "--json", self.view()])
+        self.assertEqual(code, 0, text)
+        self.assertIn("--remove-milestone", self.calls[0])
+        self.assertIn("the backlog", self.calls[1][self.calls[1].index("--body") + 1])
+
+    def test_the_tools_comment_counts_as_a_carry(self):
+        # What `carry` writes must be what carried_count counts, or the refusal below could never fire.
+        self.run_main(["carry", "33", "--comment", "why", "--json", self.view()])
+        body = self.calls[1][self.calls[1].index("--body") + 1]
+        issue = issues.normalise(planted(33, comments=(body,)))
+        self.assertEqual(issues.carried_count(issue), 1)
+
+    def test_a_second_carry_is_allowed_and_a_third_refused(self):
+        once = self.view(labels=("known-issue", "render", "carried"),
+                         comments=("Carried at the Sprint 11 close (2026-09-25): not in the plan",))
+        code, text = self.run_main(["carry", "33", "--comment", "why", "--json", once])
+        self.assertEqual(code, 0, text)
+        self.calls[:] = []
+        twice = self.view(labels=("known-issue", "render", "carried"),
+                          comments=("Carried at the Sprint 11 close (2026-09-25): not in the plan",
+                                    "a review note",
+                                    "Carried once into Sprint 13 (R266): the sprint has a task"))
+        code, text = self.run_main(["carry", "33", "--comment", "why", "--json", twice])
+        self.assertEqual(code, 1, text)
+        self.assertEqual(self.calls, [], "a refused carry touches nothing")
+        self.assertIn("carried twice", text)
+        self.assertIn("owner", text)
+
+    def test_a_closed_issue_is_not_carried(self):
+        code, text = self.run_main(["carry", "33", "--comment", "why", "--json", self.view(state="CLOSED")])
+        self.assertEqual(code, 1, text)
+        self.assertEqual(self.calls, [])
+
+    def test_the_comment_is_required_and_is_held_to_the_body_rules(self):
+        code, text = self.run_main(["carry", "33", "--comment", "  ", "--json", self.view()])
+        self.assertEqual(code, 2, text)
+        code, text = self.run_main(["carry", "33", "--comment", r"see C:\Users\bob\log.txt", "--json", self.view()])
+        self.assertEqual(code, 1, text)
+        self.assertIn("home directory", text)
+        self.assertEqual(self.calls, [])
+
+    def test_dry_run_prints_and_runs_nothing(self):
+        code, text = self.run_main(["carry", "33", "--comment", "why", "--milestone", "Sprint 14", "--dry-run",
+                                    "--json", self.view()])
+        self.assertEqual(code, 0, text)
+        self.assertEqual(self.calls, [])
+        self.assertIn("gh issue edit 33", text)
+        self.assertIn("gh issue comment 33", text)
+
+
 class RuledOutListTest(unittest.TestCase):
     """The tracked list on this tree parses, and every row the audit marked `backlog` has a place in it."""
 

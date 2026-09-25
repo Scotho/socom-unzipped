@@ -518,6 +518,87 @@ def cmd_close(args):
     return out.returncode
 
 
+def check_comment(text):
+    """Problems with a comment bound for a public issue: the body's line rules without its sections."""
+    problems = []
+    for i, line in enumerate(text.splitlines(), 1):
+        if HOME_PATH.search(line):
+            problems.append("line %d carries a home directory path -- scrub it to ~" % i)
+        if EMAIL.search(line):
+            problems.append("line %d carries an e-mail address -- nothing personal goes in a public issue" % i)
+    for rule, line in leak_hits(text):
+        problems.append("line %d trips the leak check's %r rule -- an issue comment is public and permanent"
+                        % (line, rule))
+    return problems
+
+
+def fetch_issue(number, repo=REPO):
+    out = _gh(["issue", "view", str(number), "--repo", repo, "--json",
+               "number,state,title,labels,milestone,comments"])
+    if out.returncode != 0:
+        raise SystemExit("gh issue view %d failed (exit %d): %s" % (number, out.returncode, out.stderr.strip()))
+    return json.loads(out.stdout)
+
+
+def _one_issue(args):
+    """The issue `carry` acts on: a saved `gh issue view --json` (or a listing holding it), else one gh call."""
+    if not args.json:
+        return normalise(fetch_issue(args.number, args.repo))
+    with open(args.json, encoding="utf-8") as f:
+        data = json.load(f)
+    for record in (data if isinstance(data, list) else [data]):
+        if int(record["number"]) == args.number:
+            return normalise(record)
+    raise SystemExit("carry: issue #%d is not in %s" % (args.number, args.json))
+
+
+def _run_all(cmds, dry_run):
+    """Run gh commands in order, stopping at the first failure; with dry_run, print them."""
+    for cmd in cmds:
+        if dry_run:
+            _print_cmd(["gh"] + cmd)
+            continue
+        out = _gh(cmd)
+        sys.stdout.write(out.stdout)
+        sys.stderr.write(out.stderr)
+        if out.returncode != 0:
+            return out.returncode
+    return 0
+
+
+def cmd_carry(args):
+    comment = (args.comment or "").strip()
+    if not comment:
+        print("carry: --comment is required -- one sentence saying why it did not close")
+        return 2
+    problems = check_comment(comment)
+    if problems:
+        for p in problems:
+            print("carry: " + p)
+        return 1
+    issue = _one_issue(args)
+    if issue["state"] != "OPEN":
+        print("carry: issue #%d is %s -- only an open issue is carried" % (args.number, issue["state"]))
+        return 1
+    count = carried_count(issue)
+    if count >= CARRY_LIMIT:
+        print("carry: issue #%d has been carried twice already (%d carry comments) -- a third carry is not the "
+              "loop's to make: it is the owner's question (docs/DOC_MAINTENANCE.md section 7 step 5), keep it or "
+              "close it as not planned under a ruling. Put it in docs/HUMAN_TASKS.md." % (args.number, count))
+        return 1
+    source = issue["milestone"] or "the backlog"
+    target = args.milestone or "the backlog"
+    edit = ["issue", "edit", str(args.number), "--repo", args.repo, "--add-label", CARRIED_LABEL]
+    edit += ["--milestone", args.milestone] if args.milestone else ["--remove-milestone"]
+    body = "%sfrom %s to %s: %s" % (CARRY_COMMENT, source, target, comment)
+    note = ["issue", "comment", str(args.number), "--repo", args.repo, "--body", body]
+    code = _run_all([edit, note], args.dry_run)
+    if code == 0 and not args.dry_run:
+        print("carry: issue #%d carried from %s to %s (carry %d of %d)"
+              % (args.number, source, target, count + 1, CARRY_LIMIT))
+    return code
+
+
 def cmd_audit(args):
     if args.json:
         with open(args.json, encoding="utf-8") as f:
@@ -627,6 +708,13 @@ def main(argv=None):
     p.add_argument("--check", action="store_true")
     p.add_argument("--offline", action="store_true")
     p.set_defaults(fn=cmd_backlog)
+    p = sub.add_parser("carry")
+    p.add_argument("number", type=int)
+    p.add_argument("--comment", required=True)
+    p.add_argument("--milestone")
+    p.add_argument("--json")
+    p.add_argument("--dry-run", action="store_true")
+    p.set_defaults(fn=cmd_carry)
     args = ap.parse_args(argv)
     return args.fn(args)
 
