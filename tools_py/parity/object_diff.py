@@ -36,6 +36,8 @@ row is reported as NOT COVERED for that field rather than guessed at.
 import re
 import struct
 import sys
+
+from tools_py.parity import guest_addresses as ga
 from dataclasses import dataclass, field as dc_field
 from typing import Dict, List, Optional, Tuple
 
@@ -350,7 +352,7 @@ def parse_argv(argv: List[str]) -> dict:
         "our_images": [],
         "console_images": [],
         "peek_logs": [],
-        "vtable": 0x6691a0,  # KNOWN.md: the local-player actor's vtable word
+        "vtable": ga.address("actor_vtable", "r0001"),  # 0x6691a0, the local-player actor's vtable word
         "fields": [],
     }
     seen_sep = False

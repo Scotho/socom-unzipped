@@ -2,7 +2,9 @@
 #include "ps2recomp/code_generator.h"
 #include "ps2recomp/instructions.h"
 #include "ps2recomp/ps2_recompiler.h"
+#include "ps2recomp/recompiler_reporter.h"
 #include "ps2recomp/types.h"
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <regex>
@@ -141,6 +143,23 @@ static Instruction makeJr(uint32_t address, uint8_t rs)
     inst.rs = rs;
     inst.hasDelaySlot = true;
     inst.raw = (OPCODE_SPECIAL << 26) | (rs << 21) | SPECIAL_JR;
+    return inst;
+}
+
+// makeBranch() is `beq $1,$1` -- always taken, so nothing reaches its +8. This is the ordinary
+// conditional shape, whose not-taken path continues at address + 8.
+static Instruction makeConditionalBranch(uint32_t address, int16_t targetOffsetWords)
+{
+    Instruction inst{};
+    inst.address = address;
+    inst.opcode = OPCODE_BEQ;
+    inst.rs = 4;
+    inst.rt = 5;
+    inst.immediate = static_cast<uint16_t>(targetOffsetWords);
+    inst.simmediate = signExtend16(static_cast<uint16_t>(targetOffsetWords));
+    inst.isBranch = true;
+    inst.hasDelaySlot = true;
+    inst.raw = (OPCODE_BEQ << 26) | (4u << 21) | (5u << 16) | static_cast<uint16_t>(targetOffsetWords);
     return inst;
 }
 
@@ -480,6 +499,274 @@ void register_code_generator_tests()
 
         t.IsTrue(analysis.externalEntryPoints.contains(0x5004u),
                  "cross-function jump into the middle of a function should become an external entry candidate");
+    });
+
+    // Sprint 11 / task 19. Ghidra's map starts some rows ON a delay slot (FUN_00544550 is the
+    // delay slot of the jal at 0x54454c, FUN_00541d80 the delay slot of the beq at 0x541d7c), so
+    // the continuation is that row's start + 4 and belongs to nobody. The scheduler died on both:
+    // [guest-branch:missing-target] kind=DirectJump op=EE at 0x544554 and 0x541d84.
+    tc.Run("a call return that lands in the next row is registered as that row's entry", [](TestCase &t) {
+        Function rowA;                 // ends ON the jal: its delay slot starts row B
+        rowA.name = "row_a";
+        rowA.start = 0x1000;
+        rowA.end = 0x100C;
+        rowA.isRecompiled = true;
+        rowA.isStub = false;
+
+        Function rowB;
+        rowB.name = "row_b";
+        rowB.start = 0x100C;           // the delay slot of the call at 0x1008
+        rowB.end = 0x1030;
+        rowB.isRecompiled = true;
+        rowB.isStub = false;
+
+        std::vector<Instruction> rowAInstructions{makeNop(0x1000), makeNop(0x1004), makeJal(0x1008, 0x2000)};
+        std::vector<Function> functions{rowA, rowB};
+        std::vector<Section> sections = {
+            {".text", 0x1000u, 0x2000u, 0u, true, false, false, true, nullptr}
+        };
+
+        CodeGenerator gen({}, sections);
+        CodeGenerator::AnalysisResult analysis =
+            gen.collectInternalBranchTargets(rowA, rowAInstructions, &functions);
+
+        t.IsTrue(analysis.externalEntryPoints.contains(0x1010u),
+                 "a call return one instruction inside the next row should become that row's entry");
+        t.IsFalse(analysis.resumeEntryPoints.contains(0x1010u),
+                  "the producing row cannot own a pc it does not contain");
+    });
+
+    tc.Run("a branch fallthrough that lands in the next row is registered as that row's entry", [](TestCase &t) {
+        Function rowA;                 // ends ON the branch: its delay slot starts row B
+        rowA.name = "row_a";
+        rowA.start = 0x3000;
+        rowA.end = 0x300C;
+        rowA.isRecompiled = true;
+        rowA.isStub = false;
+
+        Function rowB;
+        rowB.name = "row_b";
+        rowB.start = 0x300C;
+        rowB.end = 0x3030;
+        rowB.isRecompiled = true;
+        rowB.isStub = false;
+
+        std::vector<Instruction> rowAInstructions{
+            makeNop(0x3000), makeNop(0x3004), makeConditionalBranch(0x3008, 0x40)};
+        std::vector<Function> functions{rowA, rowB};
+        std::vector<Section> sections = {
+            {".text", 0x3000u, 0x2000u, 0u, true, false, false, true, nullptr}
+        };
+
+        CodeGenerator gen({}, sections);
+        CodeGenerator::AnalysisResult analysis =
+            gen.collectInternalBranchTargets(rowA, rowAInstructions, &functions);
+
+        t.IsTrue(analysis.externalEntryPoints.contains(0x3010u),
+                 "the not-taken path leaving the row should become the next row's entry");
+    });
+
+    // Fix round 1 / I1. A row the map laid over data decodes data words as branches. A garbage
+    // target mostly resolves to nothing; a garbage fallthrough is the next two words and would
+    // land in a real row, where registering it gives the runtime a function-table slot for a pc
+    // that should have faulted -- silencing the [guest-branch:missing-target] this change exists
+    // to expose.
+    tc.Run("a data word whose branch leaves the image mints no fallthrough entry", [](TestCase &t) {
+        Function rowA;
+        rowA.name = "row_over_data";
+        rowA.start = 0xB000;
+        rowA.end = 0xB00C;
+        rowA.isRecompiled = true;
+        rowA.isStub = false;
+
+        Function rowB;
+        rowB.name = "row_b";
+        rowB.start = 0xB00C;
+        rowB.end = 0xB030;
+        rowB.isRecompiled = true;
+        rowB.isStub = false;
+
+        // beq $4,$5,+0x4000 words: the target is far outside the section, the shape of a string
+        // table or a float decoded as a branch.
+        std::vector<Instruction> rowAInstructions{
+            makeNop(0xB000), makeNop(0xB004), makeConditionalBranch(0xB008, 0x4000)};
+        std::vector<Function> functions{rowA, rowB};
+        std::vector<Section> sections = {
+            {".text", 0xB000u, 0x1000u, 0u, true, false, false, true, nullptr}
+        };
+
+        CodeGenerator gen({}, sections);
+        CodeGenerator::AnalysisResult analysis =
+            gen.collectInternalBranchTargets(rowA, rowAInstructions, &functions);
+
+        t.IsFalse(analysis.externalEntryPoints.contains(0xB010u),
+                  "a branch out of the image is table data: its fallthrough is not an entry");
+    });
+
+    tc.Run("a branch to its own delay slot mints no fallthrough entry", [](TestCase &t) {
+        Function rowA;
+        rowA.name = "row_over_data";
+        rowA.start = 0xC000;
+        rowA.end = 0xC00C;
+        rowA.isRecompiled = true;
+        rowA.isStub = false;
+
+        Function rowB;
+        rowB.name = "row_b";
+        rowB.start = 0xC00C;
+        rowB.end = 0xC030;
+        rowB.isRecompiled = true;
+        rowB.isStub = false;
+
+        // offset 0: "bgez at,+0" (0x04210000) and friends -- the branch targets its own delay
+        // slot, which no compiler emits and float tables produce all the time.
+        std::vector<Instruction> rowAInstructions{
+            makeNop(0xC000), makeNop(0xC004), makeConditionalBranch(0xC008, 0)};
+        std::vector<Function> functions{rowA, rowB};
+        std::vector<Section> sections = {
+            {".text", 0xC000u, 0x1000u, 0u, true, false, false, true, nullptr}
+        };
+
+        CodeGenerator gen({}, sections);
+        CodeGenerator::AnalysisResult analysis =
+            gen.collectInternalBranchTargets(rowA, rowAInstructions, &functions);
+
+        t.IsFalse(analysis.externalEntryPoints.contains(0xC010u),
+                  "a branch to its own delay slot is table data: its fallthrough is not an entry");
+    });
+
+    tc.Run("a delay slot that is itself a branch mints no fallthrough entry", [](TestCase &t) {
+        // Section data present, so the analyzer can read the words it is about to vouch for.
+        static std::vector<uint8_t> image(0x100, 0u);
+        auto put = [](uint32_t offset, uint32_t word)
+        { std::memcpy(image.data() + offset, &word, sizeof(word)); };
+        put(0x08, 0x10850010u);   // 0xD008: beq $4,$5,+0x10
+        put(0x0C, 0x1000FFFFu);   // 0xD00C: a branch in the delay slot -- impossible in real code
+        put(0x10, 0x27BDFFF0u);   // 0xD010: addiu sp,sp,-16
+
+        Function rowA;
+        rowA.name = "row_over_data";
+        rowA.start = 0xD000;
+        rowA.end = 0xD00C;
+        rowA.isRecompiled = true;
+        rowA.isStub = false;
+
+        Function rowB;
+        rowB.name = "row_b";
+        rowB.start = 0xD00C;
+        rowB.end = 0xD030;
+        rowB.isRecompiled = true;
+        rowB.isStub = false;
+
+        std::vector<Instruction> rowAInstructions{
+            makeNop(0xD000), makeNop(0xD004), makeConditionalBranch(0xD008, 0x10)};
+        std::vector<Function> functions{rowA, rowB};
+        std::vector<Section> sections = {
+            {".text", 0xD000u, 0x100u, 0u, true, false, false, true, image.data()}
+        };
+
+        CodeGenerator gen({}, sections);
+        CodeGenerator::AnalysisResult analysis =
+            gen.collectInternalBranchTargets(rowA, rowAInstructions, &functions);
+
+        t.IsFalse(analysis.externalEntryPoints.contains(0xD010u),
+                  "no delay slot holds a branch: this row is data, not code");
+    });
+
+    tc.Run("a continuation that is already a row start needs no entry", [](TestCase &t) {
+        Function rowA;
+        rowA.name = "row_a";
+        rowA.start = 0x5000;
+        rowA.end = 0x5010;             // the delay slot is the row's own last instruction
+        rowA.isRecompiled = true;
+        rowA.isStub = false;
+
+        Function rowB;
+        rowB.name = "row_b";
+        rowB.start = 0x5010;
+        rowB.end = 0x5030;
+        rowB.isRecompiled = true;
+        rowB.isStub = false;
+
+        std::vector<Instruction> rowAInstructions{
+            makeNop(0x5000), makeNop(0x5004), makeJal(0x5008, 0x6000), makeNop(0x500C)};
+        std::vector<Function> functions{rowA, rowB};
+        std::vector<Section> sections = {
+            {".text", 0x5000u, 0x2000u, 0u, true, false, false, true, nullptr}
+        };
+
+        CodeGenerator gen({}, sections);
+        CodeGenerator::AnalysisResult analysis =
+            gen.collectInternalBranchTargets(rowA, rowAInstructions, &functions);
+
+        t.IsFalse(analysis.externalEntryPoints.contains(0x5010u),
+                  "a continuation that is a function start is already dispatchable");
+    });
+
+    tc.Run("an in-row call return stays a resume entry of its own row", [](TestCase &t) {
+        Function row;
+        row.name = "row";
+        row.start = 0x7000;
+        row.end = 0x7020;
+        row.isRecompiled = true;
+        row.isStub = false;
+
+        std::vector<Instruction> instructions{makeNop(0x7000), makeJal(0x7004, 0x8000),
+                                              makeNop(0x7008), makeNop(0x700C), makeNop(0x7010)};
+        std::vector<Function> functions{row};
+        std::vector<Section> sections = {
+            {".text", 0x7000u, 0x2000u, 0u, true, false, false, true, nullptr}
+        };
+
+        CodeGenerator gen({}, sections);
+        CodeGenerator::AnalysisResult analysis =
+            gen.collectInternalBranchTargets(row, instructions, &functions);
+
+        t.IsTrue(analysis.resumeEntryPoints.contains(0x700Cu),
+                 "a return inside the row is still the row's own resume entry");
+        t.IsFalse(analysis.externalEntryPoints.contains(0x700Cu),
+                  "a return inside the row is not another row's entry");
+    });
+
+    tc.Run("a continuation that lies in no row at all is a named build-time warning", [](TestCase &t) {
+        Function row;
+        row.name = "row_with_a_hole_after_it";
+        row.start = 0x9000;
+        row.end = 0x900C;              // nothing is mapped past the call's delay slot
+        row.isRecompiled = true;
+        row.isStub = false;
+
+        std::vector<Instruction> instructions{makeNop(0x9000), makeNop(0x9004), makeJal(0x9008, 0xA000)};
+        std::vector<Function> functions{row};
+        std::vector<Section> sections = {
+            {".text", 0x9000u, 0x2000u, 0u, true, false, false, true, nullptr}
+        };
+
+        RecompilerReporter reporter;
+        CodeGenerator gen({}, sections);
+        gen.setReporter(&reporter);
+        CodeGenerator::AnalysisResult analysis =
+            gen.collectInternalBranchTargets(row, instructions, &functions);
+
+        t.IsFalse(analysis.externalEntryPoints.contains(0x9010u),
+                  "there is no row to register an unmapped continuation against");
+        t.IsTrue(reporter.counters().unmappedContinuations == 1u,
+                 "an unmapped continuation should be counted once");
+
+        std::ostringstream summary;
+        reporter.printSummary(summary);
+        const std::string text = summary.str();
+        t.IsTrue(text.find("unmapped-continuation") != std::string::npos,
+                 "the build report should name the unmapped-continuation category");
+        t.IsTrue(text.find("0x9010") != std::string::npos,
+                 "the build report should name the continuation pc");
+        t.IsTrue(text.find("row_with_a_hole_after_it") != std::string::npos,
+                 "the build report should name the function that produces it");
+
+        // The analyzer runs once per entry-discovery pass; the same hole is reported once.
+        gen.collectInternalBranchTargets(row, instructions, &functions);
+        t.IsTrue(reporter.counters().unmappedContinuations == 1u,
+                 "repeated analysis passes should not repeat the warning");
     });
 
     tc.Run("control-flow analysis promotes JALR fallthrough as a resumable entry", [](TestCase &t) {
@@ -1047,6 +1334,120 @@ void register_code_generator_tests()
                      "NOR should use low64 scalar emission");
             t.IsTrue(norCode.find("SET_GPR_VEC") == std::string::npos,
                      "SPECIAL logical ops should not use vector emission");
+        });
+
+        tc.Run("MOVZ and MOVN move the low doubleword and leave the upper 64 bits alone", [](TestCase &t) {
+            CodeGenerator gen({}, {});
+
+            Instruction movz{};
+            movz.opcode = OPCODE_SPECIAL;
+            movz.function = SPECIAL_MOVZ;
+            movz.rs = 4;
+            movz.rt = 5;
+            movz.rd = 3;
+
+            std::string movzCode = gen.translateInstruction(movz);
+            t.IsTrue(movzCode.find("if (GPR_U64(ctx, 5) == 0) SET_GPR_U64(ctx, 3, GPR_U64(ctx, 4));") != std::string::npos,
+                     "MOVZ should copy only the low 64-bit lane of rs into rd");
+            t.IsTrue(movzCode.find("SET_GPR_VEC") == std::string::npos,
+                     "MOVZ must not write the whole 128-bit register: the upper doubleword of rd survives the move");
+
+            Instruction movn{};
+            movn.opcode = OPCODE_SPECIAL;
+            movn.function = SPECIAL_MOVN;
+            movn.rs = 6;
+            movn.rt = 7;
+            movn.rd = 8;
+
+            std::string movnCode = gen.translateInstruction(movn);
+            t.IsTrue(movnCode.find("if (GPR_U64(ctx, 7) != 0) SET_GPR_U64(ctx, 8, GPR_U64(ctx, 6));") != std::string::npos,
+                     "MOVN should copy only the low 64-bit lane of rs into rd");
+            t.IsTrue(movnCode.find("GPR_VEC") == std::string::npos,
+                     "MOVN must neither read nor write the upper 64 bits of the 128-bit register");
+        });
+
+        tc.Run("zero-compare branches weigh all 64 bits of the register", [](TestCase &t) {
+            struct ZeroCompareCase
+            {
+                const char *mnemonic;
+                uint32_t opcode;
+                uint32_t regimmField;
+                const char *condition;
+            };
+
+            const ZeroCompareCase cases[] = {
+                {"BLEZ", OPCODE_BLEZ, 0u, "GPR_S64(ctx, 9) <= 0"},
+                {"BGTZ", OPCODE_BGTZ, 0u, "GPR_S64(ctx, 9) > 0"},
+                {"BLEZL", OPCODE_BLEZL, 0u, "GPR_S64(ctx, 9) <= 0"},
+                {"BGTZL", OPCODE_BGTZL, 0u, "GPR_S64(ctx, 9) > 0"},
+                {"BLTZ", OPCODE_REGIMM, REGIMM_BLTZ, "GPR_S64(ctx, 9) < 0"},
+                {"BGEZ", OPCODE_REGIMM, REGIMM_BGEZ, "GPR_S64(ctx, 9) >= 0"},
+                {"BLTZL", OPCODE_REGIMM, REGIMM_BLTZL, "GPR_S64(ctx, 9) < 0"},
+                {"BGEZL", OPCODE_REGIMM, REGIMM_BGEZL, "GPR_S64(ctx, 9) >= 0"},
+                // The link forms share the REGIMM returns today; drive them anyway so a future
+                // split of that switch cannot leave them behind on the 32-bit compare.
+                {"BLTZAL", OPCODE_REGIMM, REGIMM_BLTZAL, "GPR_S64(ctx, 9) < 0"},
+                {"BGEZAL", OPCODE_REGIMM, REGIMM_BGEZAL, "GPR_S64(ctx, 9) >= 0"},
+                {"BLTZALL", OPCODE_REGIMM, REGIMM_BLTZALL, "GPR_S64(ctx, 9) < 0"},
+                {"BGEZALL", OPCODE_REGIMM, REGIMM_BGEZALL, "GPR_S64(ctx, 9) >= 0"},
+            };
+
+            for (const ZeroCompareCase &branchCase : cases)
+            {
+                Function func;
+                func.name = "zero_compare_branch";
+                func.start = 0x4000;
+                func.end = 0x4010;
+                func.isRecompiled = true;
+                func.isStub = false;
+
+                Instruction branch{};
+                branch.address = 0x4000;
+                branch.opcode = branchCase.opcode;
+                branch.rs = 9;
+                branch.rt = branchCase.regimmField;
+                branch.simmediate = 1; // target 0x4008
+                branch.isBranch = true;
+                branch.isCall = branchCase.opcode == OPCODE_REGIMM &&
+                                (branchCase.regimmField == REGIMM_BLTZAL ||
+                                 branchCase.regimmField == REGIMM_BGEZAL ||
+                                 branchCase.regimmField == REGIMM_BLTZALL ||
+                                 branchCase.regimmField == REGIMM_BGEZALL);
+                branch.hasDelaySlot = true;
+
+                CodeGenerator gen({}, {});
+                const std::string generated =
+                    gen.generateFunction(func, {branch, makeNop(0x4004), makeNop(0x4008)}, false);
+
+                t.IsTrue(generated.find(branchCase.condition) != std::string::npos,
+                         std::string(branchCase.mnemonic) +
+                             " should weigh the register as a 64-bit signed value against zero");
+                t.IsTrue(generated.find("GPR_S32(ctx, 9)") == std::string::npos,
+                         std::string(branchCase.mnemonic) +
+                             " must not throw away bits 63:32 before taking the sign");
+            }
+        });
+
+        tc.Run("VU FTOI converts through the saturating runtime helper", [](TestCase &t) {
+            Instruction ftoi4{};
+            ftoi4.opcode = OPCODE_COP2;
+            ftoi4.rs = COP2_CO | 0x6; // format + destination mask bits
+            ftoi4.rt = 7;
+            ftoi4.rd = 11;
+            ftoi4.function = 0x3C; // force Special2 path
+            ftoi4.vectorInfo.vectorField = 0xF;
+
+            const uint32_t upper = (VU0_S2_VFTOI4 >> 2) & 0x1F;
+            const uint32_t lower = VU0_S2_VFTOI4 & 0x3;
+            ftoi4.raw = (upper << 6) | lower;
+
+            CodeGenerator gen({}, {});
+            const std::string out = gen.translateInstruction(ftoi4);
+
+            t.IsTrue(out.find("Ps2VuFtoi(ctx->vu0_vf[11], 16.0f)") != std::string::npos,
+                     "VFTOI4 should scale by 16 and convert through the saturating helper");
+            t.IsTrue(out.find("_mm_cvttps_epi32") == std::string::npos,
+                     "VFTOI must not truncate with the bare intrinsic: it answers INT_MIN for positive overflow");
         });
 
         tc.Run("SC requires matching LL reservation address", [](TestCase &t) {

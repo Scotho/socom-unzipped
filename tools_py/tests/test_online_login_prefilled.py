@@ -242,5 +242,62 @@ class CommandLine(unittest.TestCase):
         self.assertIn("[--prefilled]", L.__doc__)
 
 
+class TwoInstanceDriver(unittest.TestCase):
+    """Sprint 11 Task 19: the same flag on `online_match_ours`, the TWO-instance driver.
+
+    It never got Goal 9's path, so every control round, ladder rung and mixed-match leg still walked the
+    blind keyboard -- at the ~32 fps two games on one host produce, which is exactly where research/28 §5
+    measured 'ocom', '' and 'xmfu'. `s11_r0004_online1` lost its login to the same class on the one-instance
+    driver an hour before this was written (the field read 'socom;': one key of overshoot).
+    """
+
+    def run_main(self, *argv):
+        from tools_py.parity import online_match_ours as M
+        calls = self.calls = {}
+        sh = T.FakeShell()
+        out = tempfile.mkdtemp()
+
+        def launch(seconds, instance=None, prefill=None):
+            calls.setdefault("launch", []).append((seconds, instance, prefill))
+            return mock.Mock(), "SOCOM"
+
+        def login(s, name, password, existing, prefilled=False):
+            calls.setdefault("login", []).append((name, password, existing, prefilled))
+
+        with mock.patch.object(sys, "argv", ["online_match_ours", "--out", out, *argv]),                 mock.patch.multiple(M.L, launch=launch, attach=lambda *a, **k: sh,
+                                    boot_to_online=mock.Mock(), login=login,
+                                    to_briefing_room=mock.Mock()),                 mock.patch.object(M, "RunLogTail", mock.Mock()),                 mock.patch.object(M.hostplatform, "process_running", lambda name: False):
+            M.main()
+        return calls
+
+    def test_a_prefilled_gives_each_instance_its_own_persona(self):
+        calls = self.run_main("--only", "A", "--prefilled")
+        self.assertEqual(calls["launch"], [(700, "A", {ENV_NAME: "socomc", ENV_PASS: "socom"})])
+        self.assertEqual(calls["login"], [("socomc", "socom", True, True)])
+        calls = self.run_main("--only", "B", "--prefilled", "--existing-b")
+        self.assertEqual(calls["launch"], [(700, "B", {ENV_NAME: "socome", ENV_PASS: "socom"})])
+        self.assertEqual(calls["login"], [("socome", "socom", True, True)])
+
+    def test_b_without_the_flag_nothing_changes(self):
+        """The historical behaviour, byte for byte: no variables, and the login types."""
+        calls = self.run_main("--only", "A")
+        self.assertEqual(calls["launch"], [(700, "A", None)])
+        self.assertEqual(calls["login"], [("socomc", "socom", True, False)])
+
+    def test_c_a_persona_the_keyboard_could_not_hold_stops_before_the_launch(self):
+        """BOTH names are checked, even when only one instance will run -- a --name-b the keyboard
+        refuses must not be found 90 s into the second login."""
+        for argv in (("--name-a", "a" * 15), ("--name-b", "so come"), ("--name-b", 'so"come')):
+            with self.assertRaises(SystemExit, msg=argv) as cm:
+                self.run_main("--only", "A", "--prefilled", *argv)
+            self.assertNotEqual(cm.exception.code, 0)
+            self.assertNotIn("launch", self.calls)
+
+    def test_d_the_password_has_one_home(self):
+        """The literal Client.login used to carry, now shared with the prefill that must match it."""
+        from tools_py.parity import online_match_ours as M
+        self.assertEqual(M.LOGIN_PASSWORD, "socom")
+
+
 if __name__ == "__main__":
     unittest.main()

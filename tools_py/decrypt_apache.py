@@ -2,7 +2,7 @@
 decrypt the APACHE00.ZDB code package, then inflate the result and write the
 plain overlays to disk.
 
-Mirrors FUN_001c59c0 / FUN_001c5da0 in SCUS_972.75:
+Mirrors FUN_001c59c0 / FUN_001c5da0 in SCUS_972.75 -- the **disc** path:
     load DNAS.BIN @0x4c5380 ; call 0x534830()
     for (name, dest) in [("ftscore", 0x1e7000), ("zsealetc", 0x4c5380)]:
         size  = read ZDB entry into buf
@@ -11,6 +11,11 @@ Mirrors FUN_001c59c0 / FUN_001c5da0 in SCUS_972.75:
         rc    = 0x534848(size2, buf, &out4)     ; rc == 0
         rc    = 0x535018(size2, out4, buf)      ; rc == 0
         inflate(buf[:out4]) -> dest
+
+The loader has a *second* path for a package that came off the memory card
+(FUN_001c5b30 -> FUN_001c60b0), and it runs **only the last two steps**: no
+0x539d00, no 0x539d50. `decrypt_blob(..., card=True)` is that path, and
+tools_py/decrypt_card_package.py drives it; everything else here is shared.
 """
 import struct
 import sys
@@ -161,9 +166,61 @@ def install_sif_hle(ee):
     ee.hook_function(0x1a6c78 + 0, call)
 
 
-CONSOLE_ID = bytes.fromhex('0102030405060708')      # sceCdReadConsoleID (8 bytes) - any value
-ILINK_ID = bytes.fromhex('00a0b0c0d0e0f001')
-MECHACON_VER = bytes([0x03, 0x06, 0x00, 0x00])       # sceCdMV
+# The console's identity, as the cdvd S-command server answers it. For the *disc* package these are
+# free -- they feed a hash the content does not verify, which is why the r0001 pipeline has always run
+# on made-up values. For a package that came off a memory card they are not free: that package was
+# encrypted for the console that downloaded it, so the machine whose identity decrypts it is the
+# machine that saved it (here: PCSX2, whose NVM and .mec file hold these). `identity()` reads them
+# from a PCSX2 BIOS directory; DNAS_CONSOLE_ID / DNAS_ILINK_ID / DNAS_MECHACON_VER override by hand.
+CONSOLE_ID = bytes.fromhex('0102030405060708')      # sceCdReadConsoleID (8 bytes)
+ILINK_ID = bytes.fromhex('00a0b0c0d0e0f001')        # sceCdReadILinkID
+MECHACON_VER = bytes([0x03, 0x06, 0x00, 0x00])      # sceCdMV
+
+NVM_CONSOLE_ID_OFF = 0x1c8      # PCSX2 nvmlayouts[].consoleId
+NVM_ILINK_ID_OFF = 0x1c0        # PCSX2 nvmlayouts[].ilinkId
+
+
+def set_identity(console_id=None, ilink_id=None, mechacon=None):
+    """Replace what the cdvd S-command stubs answer. Returns the three values in force."""
+    global CONSOLE_ID, ILINK_ID, MECHACON_VER
+    if console_id is not None:
+        CONSOLE_ID = bytes(console_id)
+    if ilink_id is not None:
+        ILINK_ID = bytes(ilink_id)
+    if mechacon is not None:
+        MECHACON_VER = bytes(mechacon)
+    return CONSOLE_ID, ILINK_ID, MECHACON_VER
+
+
+def identity_from_pcsx2(bios_dir):
+    """(console_id, ilink_id, mechacon) out of a PCSX2 BIOS directory's <bios>.nvm and <bios>.mec.
+
+    Returns None when the directory holds no such pair. The NVM offsets are PCSX2's own
+    (`nvmlayouts` in pcsx2/CDVD/CDVD.cpp); the .mec file is the four bytes sceCdMV answers."""
+    import glob
+    for nvm in sorted(glob.glob(os.path.join(bios_dir, '*.nvm'))):
+        mec = nvm[:-4] + '.mec'
+        if not os.path.isfile(mec):
+            continue
+        d = open(nvm, 'rb').read()
+        if len(d) < NVM_CONSOLE_ID_OFF + 8:
+            continue
+        return (d[NVM_CONSOLE_ID_OFF:NVM_CONSOLE_ID_OFF + 8],
+                d[NVM_ILINK_ID_OFF:NVM_ILINK_ID_OFF + 8],
+                open(mec, 'rb').read()[:4])
+    return None
+
+
+def _env_identity():
+    """DNAS_CONSOLE_ID / DNAS_ILINK_ID / DNAS_MECHACON_VER, each a hex string, applied at import."""
+    for var, key in (('DNAS_CONSOLE_ID', 'console_id'), ('DNAS_ILINK_ID', 'ilink_id'),
+                     ('DNAS_MECHACON_VER', 'mechacon')):
+        v = os.environ.get(var)
+        if v:
+            set_identity(**{key: bytes.fromhex(v)})
+
+
+_env_identity()
 
 
 def cdvd_scmd(ee, fno, send, ssize, recv, rsize):
@@ -191,29 +248,28 @@ def zdb_entries(path):
     return out
 
 
-def main(game=None, out=None):
-    """Decrypt both blobs and write <out>/{ftscore,zsealetc}.bin; returns the two paths.
+BUF = 0x01000000
+OUT8 = 0x00f00000
+OUT4 = 0x00f00010
 
-    `game` is the extracted disc tree (it must already hold OVERLAY/REL/DNAS.dec.bin, which
-    dnas_selfdecrypt.py writes) and `out` is where the plaintext overlays go. Both default to
-    game/disc and game/overlays beside this repository, which is how this was run by hand;
-    tools_py/disc_to_elf.py passes the pair a stranger chose with its --out."""
-    game = game or GAME
-    out = out or OUT
-    os.makedirs(out, exist_ok=True)
-    written = []
+# The two overlay slots, in the order the loader decrypts them (FUN_001c59c0 / FUN_001c5b30
+# both do ftscore first, then zsealetc into the slot DNAS.BIN is sitting in).
+SLOTS = (("ftscore", 0x1e7000), ("zsealetc", 0x4c5380))
+
+
+def build_harness(game):
+    """Boot the loader far enough that DNAS.BIN's decryption entry points can be called.
+
+    Returns the EE. This is the part the disc path and the memory-card path share: the loader
+    ELF, its crt0, the pre-decrypted DNAS overlay in its slot, sceSifInitRpc/sceCdInit and
+    DNAS's own 0x534830 init -- everything both FUN_001c59c0 and FUN_001c5b30 do before they
+    reach a blob."""
     ee = EE(verbose=True)
     entry, gp = load_elf(ee, os.path.join(game, 'SCUS_972.75'))
-    BUF = 0x01000000
-    OUT8 = 0x00f00000
-    OUT4 = 0x00f00010
 
     # trace helper for debugging: count instructions
     ee.install_kernel_hle()
     install_sif_hle(ee)
-
-    blobs = zdb_entries(os.path.join(game, 'RUN', 'RAW', 'APACHE00.ZDB'))
-    print("ZDB entries:", {k: len(v) for k, v in blobs.items()})
 
     # Run the ELF's crt0 (register/FPU clear, bss clear, SetupThread/SetupHeap, MSL init) and
     # stop at the entry of main(), so libc state (heap!) is valid for the DNAS code.
@@ -249,37 +305,64 @@ def main(game=None, out=None):
     print("call 0x534830 (init)")
     r = ee.call(0x534830, (), sp=SP)
     print(f"  -> {r:#x}  ({time.time()-t0:.1f}s, syscalls {ee.syscall_counts})")
+    return ee
 
-    for name, dest in (("ftscore", 0x1e7000), ("zsealetc", 0x4c5380)):
-        blob = blobs[name]
-        ee.write(BUF, blob)
-        size = len(blob)
-        ee.w64(OUT8, 0)
-        ee.w32(OUT4, 0)
+
+def decrypt_blob(ee, blob, name="blob", card=False):
+    """One ZDB entry -> the inflated overlay image.
+
+    `card=False` is FUN_001c5da0, the disc path: the blob is wrapped in the signed DNAS
+    container, so 0x539d00 parses and verifies that header (answering the payload length)
+    and 0x539d50 decrypts the body before the content layer runs.
+
+    `card=True` is FUN_001c60b0, the path FUN_001c5b30 takes when the package came off
+    mc0:/BASCUS-97275SOCOMII/APACHE00.ZDB. It calls **only** 0x534848 and 0x535018, on the
+    blob exactly as the memory card holds it and with the card read's own byte count as the
+    length: the two signed-container steps are not in that function at all (disassembly of
+    0x001c60b0: jal 0x1c61a0, jal 0x534848, jal 0x535018, jal 0x4c73f0, jal 0x1ca2a0)."""
+    SP = None
+    ee.write(BUF, blob)
+    size = len(blob)
+    ee.w64(OUT8, 0)
+    ee.w32(OUT4, 0)
+    if not card:
         t0 = time.time()
         rc = sext32(ee.call(0x539d00, (size, BUF, OUT8), sp=SP))
         print(f"{name}: 0x539d00 -> {rc}  out8={ee.r64(OUT8):#x} ({time.time()-t0:.1f}s)")
         if rc < 0:
             raise SystemExit("step1 failed")
         t0 = time.time()
-        size2 = sext32(ee.call(0x539d50, (size, ee.r32(OUT8), BUF), sp=SP))
-        print(f"{name}: 0x539d50 -> {size2}  ({time.time()-t0:.1f}s)")
-        if size2 <= 0:
+        size = sext32(ee.call(0x539d50, (size, ee.r32(OUT8), BUF), sp=SP))
+        print(f"{name}: 0x539d50 -> {size}  ({time.time()-t0:.1f}s)")
+        if size <= 0:
             raise SystemExit("step2 failed")
-        t0 = time.time()
-        rc = sext32(ee.call(0x534848, (size2, BUF, OUT4), sp=SP))
-        print(f"{name}: 0x534848 -> {rc} out4={ee.r32(OUT4):#x} ({time.time()-t0:.1f}s)")
-        if rc != 0:
-            raise SystemExit("step3 failed")
-        t0 = time.time()
-        rc = sext32(ee.call(0x535018, (size2, ee.r32(OUT4), BUF), sp=SP))
-        print(f"{name}: 0x535018 -> {rc} ({time.time()-t0:.1f}s)")
-        if rc != 0:
-            raise SystemExit("step4 failed")
-        comp = ee.read(BUF, ee.r32(OUT4))
-        print(f"{name}: compressed head {comp[:8].hex()}")
-        plain = zlib.decompress(comp)
-        print(f"{name}: inflated {len(plain)} bytes, head {plain[:16].hex()}")
+    t0 = time.time()
+    rc = sext32(ee.call(0x534848, (size, BUF, OUT4), sp=SP))
+    print(f"{name}: 0x534848 -> {rc} out4={ee.r32(OUT4):#x} ({time.time()-t0:.1f}s)")
+    if rc != 0:
+        raise SystemExit("step3 failed")
+    t0 = time.time()
+    rc = sext32(ee.call(0x535018, (size, ee.r32(OUT4), BUF), sp=SP))
+    print(f"{name}: 0x535018 -> {rc} ({time.time()-t0:.1f}s)")
+    if rc != 0:
+        raise SystemExit("step4 failed")
+    comp = ee.read(BUF, ee.r32(OUT4))
+    print(f"{name}: compressed head {comp[:8].hex()}")
+    plain = zlib.decompress(comp)
+    print(f"{name}: inflated {len(plain)} bytes, head {plain[:16].hex()}")
+    return plain
+
+
+def decrypt_package(game, zdb, out, card=False):
+    """Decrypt both entries of `zdb` with the loader in the disc tree `game` and write
+    <out>/{ftscore,zsealetc}.bin; returns the two paths."""
+    os.makedirs(out, exist_ok=True)
+    blobs = zdb_entries(zdb)
+    print("ZDB entries:", {k: len(v) for k, v in blobs.items()})
+    ee = build_harness(game)
+    written = []
+    for name, _dest in SLOTS:
+        plain = decrypt_blob(ee, blobs[name], name=name, card=card)
         path = os.path.join(out, name + '.bin')
         with open(path, 'wb') as f:
             f.write(plain)
@@ -289,6 +372,18 @@ def main(game=None, out=None):
     print("data reads hitting patched words:", len(ee.data_reads), sorted(hex(a) for a in list(ee.data_reads)[:20]))
     print("done")
     return written
+
+
+def main(game=None, out=None):
+    """Decrypt both blobs of the disc tree's own package and write <out>/{ftscore,zsealetc}.bin.
+
+    `game` is the extracted disc tree (it must already hold OVERLAY/REL/DNAS.dec.bin, which
+    dnas_selfdecrypt.py writes) and `out` is where the plaintext overlays go. Both default to
+    game/disc and game/overlays beside this repository, which is how this was run by hand;
+    tools_py/disc_to_elf.py passes the pair a stranger chose with its --out."""
+    game = game or GAME
+    out = out or OUT
+    return decrypt_package(game, os.path.join(game, 'RUN', 'RAW', 'APACHE00.ZDB'), out, card=False)
 
 
 if __name__ == '__main__':

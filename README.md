@@ -4,17 +4,25 @@
 hosted server.**
 
 [![linux](https://github.com/Scotho/socom-unzipped/actions/workflows/linux.yml/badge.svg)](https://github.com/Scotho/socom-unzipped/actions/workflows/linux.yml)
+[![windows](https://github.com/Scotho/socom-unzipped/actions/workflows/windows.yml/badge.svg)](https://github.com/Scotho/socom-unzipped/actions/workflows/windows.yml)
+[![secrets](https://github.com/Scotho/socom-unzipped/actions/workflows/secrets.yml/badge.svg)](https://github.com/Scotho/socom-unzipped/actions/workflows/secrets.yml)
 
-> ## ⚠️ Multiplayer is UNTESTED for security. Proceed at your own risk.
+A green badge means the runtime library, the test suites and the launcher build without the game and the leak check is
+clean; the parity gate needs a disc and runs on the maintainer's machine, its stamps are in the release notes.
+
+> ## ⚠️ Multiplayer: one reported hole closed, the rest unaudited. Proceed at your own risk.
 >
-> SOCOM II's original network code has **known, exploitable vulnerabilities**: a hostile player in the same room can
-> attack the other clients in it. The community servers patched these on the console years ago. **This project has
-> not.** Its network code is the game's own, recompiled as-is, and here it runs as a native program on your PC, so a
-> successful exploit is not a crashed console -- it is code running on your machine with your user's access.
+> SOCOM II's original network code has **known vulnerabilities**: a hostile player in the same room can attack the
+> other clients in it. The community servers patched these on the console years ago. On 2026-09-23 this project
+> closed the one hole that was reported to it, on both sides: the chat receive path is bounded on the client
+> (installed on every launch -- the game log says so) and clamped on the project's server. No mechanics are
+> published, and the reporter's confirmation is still pending.
 >
-> Until this is audited and fixed: **only play online with people you trust**, on a server you trust, and never
-> with a build you did not compile or verify yourself. Do not point this at any community server. Nothing in the
-> multiplayer path has been reviewed for security. See `SECURITY.md`.
+> Everything else in the network path is the game's own code, recompiled as-is and **not audited**, running as a
+> native program on your PC -- so a successful exploit is not a crashed console, it is code running on your machine
+> with your user's access. **Only play online with people you trust**, on the project's server or one you run
+> yourself, and never with a build you did not compile or verify. Do not point this at any community server. See
+> `SECURITY.md`.
 
 > **Early stage.** This is a working prototype, not a finished port. It boots, renders the menus and missions, and two
 > players have finished online rounds against each other on the hosted server -- but audio, some maps, and the rough
@@ -40,20 +48,27 @@ hosted server.**
 
 ## Status
 
-As of 2026-09-23 (**Sprint 10 is closed**; its merge and the annotated tag `v0.10.0` are the last step of the close, so `v0.9.0` is the newest tag until then):
+As of 2026-09-25 (**Sprint 10 is on `main`, tagged `v0.10.0`**; the release draft is waiting for its archives, which
+are the owner's by `docs/GIT_STRATEGY.md`. Sprint 11 is closing, and **Sprint 12, "the readable image", has been
+running in the cloud on branch `sprint-12` since 2026-09-24** —
+`docs/superpowers/plans/2026-09-24-sprint-12.md` on that branch): <!-- docmaint: future -->
 
 | Works | Not yet |
 |---|---|
 | Boots from the ISO to the title, through the menus, into a mission; Xbox/DirectInput pads for play, the keyboard for the menus and typing | A public release download. Builds are handed to testers by hand; the download and its page are Sprint 11 |
 | Rendering through an OpenGL backend with an integer up-scale (`PS2X_GS_SCALE` 1-4; 3-4 are untested); a CPU rasteriser for tests | Frame rate: 43-45 fps in a mission and 52-60 in the menus, against the console's 60 |
-| Online: login, lobby, and full rounds on the hosted Horizon server -- two of our instances, and one of ours against a console client through PCSX2 | Mission music: the stems play correctly and the pauses are the game's own design, but about a dozen 50 ms dropouts a mission still reach the speaker that are not in the mix as rendered -- proven on 2026-09-23 to be **ours** rather than the listener's audio device, and not yet located. Voice chat is untested end to end (the protocol is read and the headset path is proven as far as `docs/KNOWN.md`'s voice row takes it -- notably, the game's protocol has no headset button) |
-| A launcher that owns the settings, checks the disc, picks the server, and files bug reports | Linux: CI builds and proves the runtime library, both test suites and the launcher on every push; the *playable* build has not been rebuilt in the VM since the knob flip -- that ring is carried into Sprint 11 |
+| Online: login, lobby, and full rounds on the hosted Horizon server -- two of our instances, and one of ours against a console client through PCSX2, and a build of the community revision **r0004**, rebuilt from PSRewired's package, plays a full round on the same server | r0001 and r0004 clients cannot join each other's games -- the filter is the game's own, on the client. Mission music: the stems play correctly and the pauses are the game's own design, but about a dozen 50 ms dropouts a mission still reach the speaker that are not in the mix as rendered -- proven on 2026-09-23 to be **ours** rather than the listener's audio device, and not yet located. Voice chat is untested end to end (the protocol is read and the headset path is proven as far as `docs/KNOWN.md`'s voice row takes it -- notably, the game's protocol has no headset button) |
+| A launcher that owns the settings, checks the disc, picks the server, and files bug reports | Linux: CI builds and proves the runtime library, both test suites and the launcher on every push, and the playable build was rebuilt from wiped trees in the VM on 2026-09-23; what is not green there yet is the VM's own suite run (`docs/KNOWN.md` §2) |
 | An automated parity gate (title / transition / mission) and an online "ladder" that plays rounds unattended | Anything but the NTSC r0001 disc |
 
 The live, audited version of this table is `docs/KNOWN.md` (proven, believed, and retracted, each with its evidence),
 and `docs/STATUS.md` is the day-by-day.
 
-## For players
+## For players: get it
+
+**[`docs/INSTALL.md`](docs/INSTALL.md)** is the whole setup, in the order a first run happens, and
+**[`docs/FAQ.md`](docs/FAQ.md)** answers what goes wrong — every exit code, the disc revision, SmartScreen, ports,
+saves and audio.
 
 There is no public download yet. When there is, it will be announced at <https://s2u.scotho.com>, which also carries the
 setup guide and the server's live status. The shape of it: unzip a folder, run `socom_unzipped_launcher.exe`, point it
@@ -114,10 +129,8 @@ is Horizon configured for SOCOM II's app id, with a seed script for a local inst
 
 ### How it was built
 
-Most of this repository was produced by AI agents (Claude, through Claude Code) working in sprints under a human
-owner: specs and plans in `docs/superpowers/`, numbered rulings, a "known / believed / retracted" ledger, and a gate
-that has to go green before a sprint closes. `docs/STORY.md` tells that story with its evidence; the sprint plans are
-kept as written, which is why they read like working notes rather than documentation.
+`docs/HOW_IT_WAS_BUILT.md` is the honest account: AI agents (Claude, through Claude Code) working in sprints under a
+human owner, what each side did, and what went wrong.
 
 ## Contributing and security
 

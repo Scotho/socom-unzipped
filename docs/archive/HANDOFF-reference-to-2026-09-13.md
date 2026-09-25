@@ -15,9 +15,9 @@
    **Sprint 5 is CLOSED, pending merge** (`docs/CURRENT_SPRINT.md`): **the acceptance test PASSED**
    — a two-instance Frostfire match ends in a kill, read from guest memory and confirmed by two
    independent scorers (KillWatch on the actor fields, `verdict_replay.py` on the round-state
-   valves). Its plan (`docs/superpowers/plans/2026-09-13-sprint-5-control-readout-and-first-kill.md`)
+   valves). Its plan (`docs/archive/sprints-1-6/2026-09-13-sprint-5-control-readout-and-first-kill.md`)
    ends with `## Outcome` and `## Rulings made on the owner's behalf` sections; its spec is
-   `docs/superpowers/specs/2026-09-13-sprint-5-control-readout-and-first-kill-design.md`.
+   `docs/archive/sprints-1-6/2026-09-13-sprint-5-control-readout-and-first-kill-design.md`.
    **The next work is Sprint 6**, per `docs/ROADMAP.md` §6: lobby hardening, the online freeze root
    cause, single-player teleports, the skeleton root decay, a gameplay-state gate probe, exact-oracle
    math, a mixed ours/PCSX2 match, and the rest of the revised order — with **repeatability of the
@@ -30,20 +30,20 @@
    (and the "Sprint 4 landed" / "carried findings" entries below it for the sprint before that).
 
 Sprint 5 is the last closed sprint:
-`docs/superpowers/specs/2026-09-13-sprint-5-control-readout-and-first-kill-design.md` and
-`docs/superpowers/plans/2026-09-13-sprint-5-control-readout-and-first-kill.md` (the plan's
+`docs/archive/sprints-1-6/2026-09-13-sprint-5-control-readout-and-first-kill-design.md` and
+`docs/archive/sprints-1-6/2026-09-13-sprint-5-control-readout-and-first-kill.md` (the plan's
 `## Outcome` and `## Rulings made on the owner's behalf` sections at the foot say what actually
 happened, including Amendment A's mid-sprint rewrite of Tasks 5-6). Sprints 1-4 are history -- read
 them for how the VU1 native path, the host-draw hook, the render-target scale, the gates and the
 online movement fix got here, not for what to do next:
-`docs/superpowers/specs/2026-09-10-sprint-1-hygiene-and-native-render-design.md`,
-`docs/superpowers/plans/2026-09-10-sprint-1-hygiene-and-native-render.md`,
-`docs/superpowers/specs/2026-09-11-sprint-2-host-render-and-family-b-design.md`,
-`docs/superpowers/plans/2026-09-11-sprint-2-host-render-and-family-b.md`,
-`docs/superpowers/specs/2026-09-11-sprint-3-render-scale-and-fourth-family-design.md`,
-`docs/superpowers/plans/2026-09-11-sprint-3-render-scale-and-fourth-family.md`,
-`docs/superpowers/specs/2026-09-12-sprint-4-visible-defects-and-first-kill-design.md`,
-`docs/superpowers/plans/2026-09-12-sprint-4-visible-defects-and-first-kill.md` (the spec's §1 opens
+`docs/archive/sprints-1-6/2026-09-10-sprint-1-hygiene-and-native-render-design.md`,
+`docs/archive/sprints-1-6/2026-09-10-sprint-1-hygiene-and-native-render.md`,
+`docs/archive/sprints-1-6/2026-09-11-sprint-2-host-render-and-family-b-design.md`,
+`docs/archive/sprints-1-6/2026-09-11-sprint-2-host-render-and-family-b.md`,
+`docs/archive/sprints-1-6/2026-09-11-sprint-3-render-scale-and-fourth-family-design.md`,
+`docs/archive/sprints-1-6/2026-09-11-sprint-3-render-scale-and-fourth-family.md`,
+`docs/archive/sprints-1-6/2026-09-12-sprint-4-visible-defects-and-first-kill-design.md`,
+`docs/archive/sprints-1-6/2026-09-12-sprint-4-visible-defects-and-first-kill.md` (the spec's §1 opens
 with a retracted premise, marked in place).
 
 **Everything below this section is reference and history.** The dated "Open items" lists are

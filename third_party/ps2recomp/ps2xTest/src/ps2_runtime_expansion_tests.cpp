@@ -178,6 +178,78 @@ namespace
         gGuestJumpTargetCount.fetch_add(1u, std::memory_order_relaxed);
     }
 
+    // A map row that ends before the function's own `jr $ra` leaves through the dispatcher: the
+    // truncated body sets ctx->pc to the continuation, dispatchGuestBranch sees a pc that is
+    // neither entry nor fallthrough, every host frame unwinds, and the EE scheduler resumes at
+    // that pc. Task 19 suspected that path of losing the caller's callee-saved registers (the
+    // Add2dNode shape at ps2_runtime.cpp:1480-1490). It does not, and this runs the real
+    // EeScheduler to say so: the caller's $s1 is carried only by the context the scheduler owns
+    // (EeScheduler::run resumes on running->activeContext()), the callee's own save and restore go
+    // through real guest memory, and every hand-off between the four rows is a dispatcher unwind
+    // followed by a scheduler resume. A runtime that resumed a caller on a different register file
+    // -- a snapshot, an invocation's context, a re-run prologue -- publishes something other than
+    // kSplitCallerS1 and this fails.
+    constexpr uint32_t kSplitCallerPc = 0x00126000u;
+    constexpr uint32_t kSplitCallerResumePc = 0x00126010u;
+    constexpr uint32_t kSplitCalleeRowPc = 0x00126100u;
+    constexpr uint32_t kSplitContinuationPc = 0x00126200u;
+    constexpr uint32_t kSplitCallerS1 = 0xC0FFEE01u;
+    constexpr uint32_t kSplitCalleeS1 = 0x0BADBAD0u;
+    constexpr uint32_t kSplitStackTop = 0x00128000u;     // the callee's guest frame
+    constexpr uint32_t kSplitSaveSlot = kSplitStackTop - 0x10u;
+    constexpr uint32_t kSplitResultAddr = 0x00129000u;   // where the caller publishes what it saw
+    constexpr uint32_t kSplitCalleeSeenAddr = 0x00129004u;
+
+    std::atomic<uint32_t> gSplitDispatchStage{0u};
+    std::atomic<bool> gSplitCallerReturnedNormally{false};
+
+    void testSplitRowCallerHandler(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        if (ctx->pc == kSplitCallerResumePc)
+        {
+            // The resume entry: what a generated row's `switch (ctx->pc)` jumps to. Publish what
+            // $s1 holds into guest memory, so the assertion reads the runtime, not a host global.
+            Ps2FastWrite32(rdram, kSplitResultAddr, ::getRegU32(ctx, 17));
+            gSplitDispatchStage.fetch_add(1u, std::memory_order_relaxed);
+            ctx->pc = 0u;
+            runtime->requestStop();
+            return;
+        }
+
+        setRegU32(*ctx, 29, kSplitStackTop);            // $sp
+        setRegU32(*ctx, 17, kSplitCallerS1);            // the value that must survive the call
+        setRegU32(*ctx, 31, kSplitCallerResumePc);      // $ra, as the generated jal sets it
+        if (!runtime->dispatchGuestBranch(rdram, ctx, kSplitCalleeRowPc, kSplitCallerPc + 8u,
+                                          kSplitCallerResumePc,
+                                          PS2Runtime::GuestBranchKind::DirectCall, "split-jal"))
+        {
+            return;                                     // unwound; the scheduler resumes at ctx->pc
+        }
+        gSplitCallerReturnedNormally.store(true, std::memory_order_relaxed);
+        ctx->pc = 0u;
+        runtime->requestStop();
+    }
+
+    void testSplitRowCalleeHandler(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
+    {
+        // The truncated row: `sq $s1, 0x10($sp)` into a real guest frame, then it uses $s1 and
+        // runs out of body before the epilogue that would restore it.
+        Ps2FastWrite32(rdram, kSplitCalleeSeenAddr, ::getRegU32(ctx, 17));
+        Ps2FastWrite32(rdram, kSplitSaveSlot, ::getRegU32(ctx, 17));
+        setRegU32(*ctx, 17, kSplitCalleeS1);
+        gSplitDispatchStage.fetch_add(1u, std::memory_order_relaxed);
+        ctx->pc = kSplitContinuationPc;
+    }
+
+    void testSplitRowContinuationHandler(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
+    {
+        // The next row, which holds the rest of the same function: `lq $s1, 0x10($sp)` back out of
+        // the guest frame the previous row wrote, then `jr $ra`.
+        setRegU32(*ctx, 17, Ps2FastRead32(rdram, kSplitSaveSlot));
+        gSplitDispatchStage.fetch_add(1u, std::memory_order_relaxed);
+        ctx->pc = ::getRegU32(ctx, 31);
+    }
+
     std::atomic<uint32_t> gMpegStreamCallbackCount{0u};
     std::atomic<uint32_t> gMpegStreamCallbackMpeg{0u};
     std::atomic<uint32_t> gMpegStreamCallbackType{0u};
@@ -714,6 +786,39 @@ void register_ps2_runtime_expansion_tests()
                       "call-like dispatch should stop caller flow when callee transfers elsewhere");
             t.Equals(ctx.pc, 0x33330000u,
                      "callee transfer PC should be preserved");
+        });
+
+        tc.Run("a split row's scheduler resume keeps the caller's callee-saved registers", [](TestCase &t)
+        {
+            PS2Runtime runtime;
+            std::vector<uint8_t> rdram(PS2_RAM_SIZE, 0u);
+            runtime.registerFunction(kSplitCallerPc, &testSplitRowCallerHandler);
+            runtime.registerFunction(kSplitCallerResumePc, &testSplitRowCallerHandler);  // resume entry, same owner
+            runtime.registerFunction(kSplitCalleeRowPc, &testSplitRowCalleeHandler);
+            runtime.registerFunction(kSplitContinuationPc, &testSplitRowContinuationHandler);
+            gSplitDispatchStage.store(0u, std::memory_order_relaxed);
+            gSplitCallerReturnedNormally.store(false, std::memory_order_relaxed);
+            Ps2FastWrite32(rdram.data(), kSplitResultAddr, 0u);
+            Ps2FastWrite32(rdram.data(), kSplitCalleeSeenAddr, 0u);
+            Ps2FastWrite32(rdram.data(), kSplitSaveSlot, 0u);
+
+            // The real scheduler drives every resume: three unwinds, three lookups of ctx->pc.
+            R5900Context mainContext{};
+            mainContext.pc = kSplitCallerPc;
+            EeScheduler &ee = runtime.eeScheduler();
+            ee.reset(rdram.data(), mainContext);
+            ee.run();
+
+            t.IsFalse(gSplitCallerReturnedNormally.load(std::memory_order_relaxed),
+                      "a callee that leaves through its continuation must not look like a return");
+            t.Equals(gSplitDispatchStage.load(std::memory_order_relaxed), 3u,
+                     "split row, continuation and caller resume should each run once");
+            t.Equals(Ps2FastRead32(rdram.data(), kSplitCalleeSeenAddr), kSplitCallerS1,
+                     "the callee should see the caller's $s1 on entry");
+            t.Equals(Ps2FastRead32(rdram.data(), kSplitSaveSlot), kSplitCallerS1,
+                     "the split row's guest-stack save should hold the caller's $s1");
+            t.Equals(Ps2FastRead32(rdram.data(), kSplitResultAddr), kSplitCallerS1,
+                     "the caller resumed by EeScheduler must still hold its own $s1");
         });
 
         tc.Run("dispatchGuestBranch rejects missing exact targets", [](TestCase &t)
@@ -1797,6 +1902,66 @@ void register_ps2_runtime_expansion_tests()
                      "VPU-STAT should report a VU0 T-bit stop");
             t.Equals(ctx.vu0_tpc, 8u,
                      "TPC should point at the first instruction not executed");
+        });
+
+        tc.Run("Ps2VuFtoi clamps what will not fit instead of answering the indefinite value", [](TestCase &t)
+        {
+            uint32_t lanes[4]{};
+
+            // _mm_setr_ps takes the lanes in memory order, so lanes[n] is the n-th argument.
+            auto convert = [&lanes](__m128 value, float scale)
+            {
+                const __m128i converted = Ps2VuFtoi(value, scale);
+                std::memcpy(lanes, &converted, sizeof(lanes));
+            };
+
+            // Rounding: the VU truncates toward zero, in both signs, and a signed zero stays zero.
+            convert(_mm_setr_ps(4096.9375f, -1234.5625f, -0.0f, 0.5f), 1.0f);
+            t.Equals(lanes[0], 4096u, "a positive fraction truncates toward zero rather than to nearest");
+            t.Equals(lanes[1], 0xFFFFFB2Eu, "a negative fraction truncates toward zero rather than down");
+            t.Equals(lanes[2], 0u, "a negative zero converts to zero and is not read as an overflow");
+            t.Equals(lanes[3], 0u, "a magnitude below one truncates away entirely");
+
+            // The int32 boundaries and the first float past each of them. INT32_MAX itself is not
+            // representable as a float: the nearest below it is 2147483520, and the first value
+            // past it is 2^31, so INT_MAX only ever appears here as an output of the clamp.
+            convert(_mm_setr_ps(-2147483648.0f, 2147483520.0f, -2147483904.0f, 2147483648.0f), 1.0f);
+            t.Equals(lanes[0], 0x80000000u, "INT32_MIN is exactly representable and converts without clamping");
+            t.Equals(lanes[1], 0x7FFFFF80u, "the largest float below 2^31 converts exactly, it is not an overflow");
+            t.Equals(lanes[2], 0x80000000u, "the first float below INT32_MIN clamps to INT_MIN");
+            t.Equals(lanes[3], 0x7FFFFFFFu, "2^31 exactly is the first value past INT32_MAX and clamps to INT_MAX");
+
+            // Non-finite lanes and magnitudes far outside the range.
+            convert(_mm_setr_ps(INFINITY, -INFINITY, NAN, -NAN), 1.0f);
+            t.Equals(lanes[0], 0x7FFFFFFFu, "+inf clamps to INT_MAX");
+            t.Equals(lanes[1], 0x80000000u, "-inf clamps to INT_MIN");
+            t.Equals(lanes[2], 0x80000000u, "a NaN keeps the indefinite value");
+            t.Equals(lanes[3], 0x80000000u, "a NaN keeps the indefinite value whatever its sign bit");
+
+            convert(_mm_setr_ps(1.0e10f, -1.0e10f, 0.0f, 0.0f), 1.0f);
+            t.Equals(lanes[0], 0x7FFFFFFFu, "a magnitude far past INT32_MAX clamps to INT_MAX");
+            t.Equals(lanes[1], 0x80000000u, "a magnitude far past INT32_MIN clamps to INT_MIN");
+
+            // FTOI4: the scale multiplies before the truncation, so it can carry an in-range input
+            // out of range -- and can also land exactly on INT32_MIN, which is not a clamp.
+            convert(_mm_setr_ps(-134217728.0f, 0.5f, 200000000.0f, -200000000.0f), 16.0f);
+            t.Equals(lanes[0], 0x80000000u, "x16 landing exactly on INT32_MIN converts exactly");
+            t.Equals(lanes[1], 8u, "the x16 scale is applied before the truncation");
+            t.Equals(lanes[2], 0x7FFFFFFFu, "a value the x16 scale carries past INT32_MAX clamps to INT_MAX");
+            t.Equals(lanes[3], 0x80000000u, "a value the x16 scale carries past INT32_MIN clamps to INT_MIN");
+
+            // FTOI12 and FTOI15 use the same helper with the other two scales.
+            convert(_mm_setr_ps(0.25f, -0.125f, 1.0e6f, -1.0e6f), 4096.0f);
+            t.Equals(lanes[0], 1024u, "the x4096 scale is applied before the truncation");
+            t.Equals(lanes[1], 0xFFFFFE00u, "the x4096 scale keeps the sign of a negative fraction");
+            t.Equals(lanes[2], 0x7FFFFFFFu, "a value the x4096 scale carries past INT32_MAX clamps to INT_MAX");
+            t.Equals(lanes[3], 0x80000000u, "a value the x4096 scale carries past INT32_MIN clamps to INT_MIN");
+
+            convert(_mm_setr_ps(1.5f, -1.0f, 100000.0f, -100000.0f), 32768.0f);
+            t.Equals(lanes[0], 49152u, "the x32768 scale is applied before the truncation");
+            t.Equals(lanes[1], 0xFFFF8000u, "the x32768 scale keeps the sign of a negative value");
+            t.Equals(lanes[2], 0x7FFFFFFFu, "a value the x32768 scale carries past INT32_MAX clamps to INT_MAX");
+            t.Equals(lanes[3], 0x80000000u, "a value the x32768 scale carries past INT32_MIN clamps to INT_MIN");
         });
 
         tc.Run("GS sprite draw applies XYOFFSET and fully-outside scissor should not render", [](TestCase &t)

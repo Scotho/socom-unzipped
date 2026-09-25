@@ -4,7 +4,7 @@ Status: outline written 2026-09-15 on the owner's request ("partition out tasks 
 the game client, installer outline"), lock-free, no code. It sharpens the original design's M6 ("portable
 zip: exe + runtime + an install.bat-free first run that asks for the ISO path; README, GPL sources",
 `docs/superpowers/specs/2026-09-04-socom2-pc-recompilation-design.md` §M6) against what the runtime
-actually needs today. Nothing here is scheduled before Sprint 8 (`docs/superpowers/specs/2026-09-15-sprint-6-…-design.md`
+actually needs today. Nothing here is scheduled before Sprint 8 (`docs/archive/sprints-1-6/2026-09-15-sprint-6-correctness-gate-and-online-reliability-design.md`
 §7) except where marked **[Sprint 6/7]**; it exists so the product shape is known while the correctness
 work proceeds. Every "today" statement was read from the tree on 2026-09-15.
 

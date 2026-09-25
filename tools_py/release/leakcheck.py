@@ -8,7 +8,8 @@
     python -m tools_py.release.leakcheck metadata           every commit's author and committer identity
     python -m tools_py.release.leakcheck history [REV..]    every added line of every commit on every ref
     python -m tools_py.release.leakcheck artifact <dir>     an unpacked release archive, or any directory
-    python -m tools_py.release.leakcheck all                tree + ignored + metadata + history
+    python -m tools_py.release.leakcheck external [--require]   the SIBLING repositories' own scanners
+    python -m tools_py.release.leakcheck all                tree + ignored + metadata + history + external
 
 Exit codes -- three states, not two: **0** clean, **1** findings, **2** the scanner did not run (a missing
 target, a shallow clone in history mode, or the planted control it runs on itself first was missed). A gate
@@ -20,6 +21,14 @@ Output is `path:line: rule: <masked excerpt>` on stderr, and `--json` writes one
 machine-readable report is MORE likely to be pasted, logged or attached, not less. `--reveal` prints the
 matched text unmasked on the terminal only, for whoever is fixing the hit.
 
+The `external` mode is the sixth leg: three repositories publish from this machine, and the other two carry
+their own scanners (`../scotho`'s `scripts/check-secrets.mjs`, `../socom_monitor`'s `leakcheck.py`). It calls
+them where they are beside this one and folds their findings into this report, masked. It distinguishes two
+ways of not scanning, because only one of them is anybody's fault: a sibling that is simply *absent* (or whose
+build output or runtime is) prints SKIPPED and leaves the exit code alone -- CI has neither repository -- while
+a sibling that IS there and whose scanner could not scan is exit 2, flags or no flags. `--require` turns the
+first into exit 2 as well, for a machine that is supposed to have them. Neither ever prints as clean.
+
 Decisions live in `leak_allow.txt` beside this file (a rule, a path glob, an optional literal, and the reason),
 so an allowed hit is a reviewed line in a tracked file and not a comment in the code. Owner-specific literals
 live in the git-ignored `leak_extra.txt` (`leakrules.EXTRA_FILE`). Sprint 11 Goal 9 is the design; Sprint 10
@@ -30,6 +39,8 @@ import fnmatch
 import io
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 
@@ -372,6 +383,204 @@ def _filter(hits, allow):
 
 
 # --------------------------------------------------------------------------------------------
+# the sixth leg: the siblings' own scanners
+#
+# Each sibling result is a report in THIS tool's `--json` shape -- `tool`, `target`, `scanned`, `findings`,
+# `exit` -- with `tool` naming the external scanner, plus two fields the aggregation needs: `state`
+# (`clean` / `findings` / `not_run`) and `skipped` (the sibling was not there to be scanned, as against its
+# scanner having failed). `self_test` is present ONLY when the sibling reported a control of its own: absent
+# means no control was seen, which is exactly what a caller must be able to tell.
+#
+# A sibling is named by its directory (`scotho`), never by where it lives on this disk. A report is the thing
+# most likely to be pasted into a chat or attached to a job, and an absolute path is a home directory.
+
+SIBLINGS_ENV = "SOCOM_LEAK_SIBLINGS"
+EXTERNAL_TIMEOUT = 900
+
+EXTERNALS = (
+    {"dir": "scotho", "tool": "check-secrets",
+     "target": "the published site (scotho.com, s2u.scotho.com, the bug inbox)",
+     "script": "scripts/check-secrets.mjs", "runtime": "node", "prefix": "",
+     "argv": ["scripts/check-secrets.mjs", "--json"], "json": True, "needs": ()},
+    {"dir": "socom_monitor", "tool": "monitor-leakcheck",
+     "target": "the built monitor snapshot (out/site, as build.py leaves it)",
+     "script": "leakcheck.py", "runtime": None, "prefix": "out/site",
+     "argv": ["leakcheck.py", "out/site"], "json": False, "needs": ("out/site",)},
+)
+
+# The monitor's scanner has no `--json`, so its terminal lines are read: `path:line: rule: text` (or
+# `path: (file name): rule: text`), and a stats line on stdout. Its excerpts are NOT masked -- masking them
+# before they enter this report is this end's job.
+EXT_HIT_RE = re.compile(r"^(?P<file>\S.*?):(?:(?P<line>\d+)|\s*\(file name\)):\s(?P<rule>[a-z0-9_-]+):\s(?P<text>.*)$")
+EXT_STATS_RE = re.compile(r"(\d+) files \((\d+) text, (\d+) binary\), (\d+) lines, (\d+) bytes")
+
+
+_SAFE_RULES = None
+
+
+def _safe(text, limit=200):
+    """A line of a sibling's own error output, fit to repeat: truncated, and with anything our own rules
+    recognise masked. A message about why a scan did not happen is usually harmless and occasionally a path."""
+    global _SAFE_RULES
+    if _SAFE_RULES is None:
+        _SAFE_RULES = R.text_rules(surface="artifact")
+    out = " ".join(text.split())[:limit]
+    for _rule, fn in _SAFE_RULES:
+        for _ in range(4):
+            got = fn(out)
+            if not got or R.mask(got) == got:
+                break
+            out = out.replace(got, R.mask(got))
+    return out
+
+
+def _ext_result(spec, state, code, skipped=False, reason="", findings=None, scanned=None, self_test=None):
+    out = {"tool": spec["tool"], "repo": spec["dir"], "target": spec["target"], "state": state,
+           "skipped": skipped, "scanned": scanned or new_stats(), "findings": findings or [], "exit": code}
+    if reason:
+        out["reason"] = reason
+    if self_test is not None:
+        out["self_test"] = self_test
+    return out
+
+
+def _ext_finding(spec, rule, path, line, excerpt, severity=None):
+    rel = "/".join(p for p in (spec["dir"], spec["prefix"], (path or "").replace("\\", "/")) if p)
+    return {"rule": rule, "file": rel, "line": line, "excerpt_masked": excerpt,
+            "severity": severity or R.SEVERITY.get(rule, "medium"), "tool": spec["tool"]}
+
+
+def _ext_stats(files=0, text_files=0, binary_files=0, lines=0, nbytes=0):
+    s = new_stats()
+    s.update(files=files, text_files=text_files, binary_files=binary_files, lines=lines, bytes=nbytes)
+    return s
+
+
+def _last_line(text):
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    return lines[-1] if lines else ""
+
+
+def _read_json_report(spec, code, out, err):
+    """A sibling that speaks `--json` (the site's `check-secrets`): one object on stdout, excerpts already
+    masked by it, `self_test` and `exit` inside the report on purpose."""
+    try:
+        rep = json.loads(out.strip() or "{}")
+    except ValueError:
+        rep = None
+    if not isinstance(rep, dict) or "findings" not in rep:
+        return _ext_result(spec, "not_run", 2, reason=f"exit {code}: no readable --json report on stdout"
+                           + (f"; {_safe(_last_line(err))}" if err.strip() else ""))
+    scanned = _ext_stats(files=int(rep.get("scanned", {}).get("files", 0) or 0),
+                         nbytes=int(rep.get("scanned", {}).get("bytes", 0) or 0))
+    st = rep.get("self_test") if isinstance(rep.get("self_test"), dict) else None
+    findings = [_ext_finding(spec, f.get("rule", ""), f.get("file", ""), f.get("line", 0) or 0,
+                             f.get("excerpt_masked", ""), f.get("severity"))
+                for f in rep.get("findings", []) if isinstance(f, dict)]
+    if code not in (0, 1):
+        return _ext_result(spec, "not_run", 2, reason=f"exit {code}: its own report says it did not finish"
+                           + (f" ({_safe(', '.join(st.get('failures', [])))})" if st and st.get("failures") else ""),
+                           scanned=scanned, self_test=st)
+    if findings or code == 1:
+        return _ext_result(spec, "findings", 1, findings=findings, scanned=scanned, self_test=st)
+    return _ext_result(spec, "clean", 0, scanned=scanned, self_test=st)
+
+
+def _read_text_report(spec, code, out, err):
+    """A sibling that only prints (the monitor's `leakcheck.py`): its stats line on stdout, one line per hit
+    on stderr, and every excerpt masked here before it goes any further."""
+    m = EXT_STATS_RE.search(out)
+    scanned = _ext_stats(*(int(g) for g in m.groups())) if m else new_stats()
+    findings = []
+    for raw in err.splitlines():
+        line = raw.rstrip()
+        if not line or line.startswith("leakcheck:") or line.startswith("... and "):
+            continue
+        hit = EXT_HIT_RE.match(line)
+        if hit:
+            findings.append(_ext_finding(spec, hit.group("rule"), hit.group("file"), int(hit.group("line") or 0),
+                                         R.mask(hit.group("text").strip())))
+    if code not in (0, 1):
+        return _ext_result(spec, "not_run", 2, reason=f"exit {code}: {_safe(_last_line(err)) or 'no reason given'}",
+                           scanned=scanned)
+    if code == 1 and not findings:
+        return _ext_result(spec, "not_run", 2, scanned=scanned,
+                           reason="exit 1, but it printed no line this end could read as a finding")
+    if findings:
+        return _ext_result(spec, "findings", 1, findings=findings, scanned=scanned)
+    # Exit 0 and nothing read is NOT a clean result: a text-parsed sibling whose wording has moved on looks
+    # exactly like one that scanned a clean tree. The stats line is the proof that this end still understands
+    # it -- without it, nothing is known about what it scanned, and that is the third state, not the first.
+    if scanned["files"] < 1:
+        return _ext_result(spec, "not_run", 2, scanned=scanned,
+                           reason="exit 0, but its output was not parseable: no stats line, so nothing is "
+                                  "known about what it scanned")
+    return _ext_result(spec, "clean", 0, scanned=scanned)
+
+
+def run_external(spec, siblings_root):
+    """One sibling. Never raises: every way of not scanning comes back as a `not_run` result, `skipped` telling
+    the two apart -- absent (nothing to scan, and nobody's fault) against present and broken (exit 2, always)."""
+    repo = os.path.join(siblings_root, spec["dir"])
+    if not os.path.isdir(repo):
+        return _ext_result(spec, "not_run", 2, True, f"{spec['dir']}/ is not beside this repository")
+    if not os.path.exists(os.path.join(repo, *spec["script"].split("/"))):
+        return _ext_result(spec, "not_run", 2, True, f"{spec['dir']}/{spec['script']} is not there")
+    for need in spec["needs"]:
+        if not os.path.exists(os.path.join(repo, *need.split("/"))):
+            return _ext_result(spec, "not_run", 2, True,
+                               f"{spec['dir']}/{need} is not there: its build has not run")
+    if spec["runtime"]:
+        exe = shutil.which(spec["runtime"])
+        if not exe:
+            return _ext_result(spec, "not_run", 2, True,
+                               f"no {spec['runtime']} on this machine to run {spec['dir']}/{spec['script']}")
+    else:
+        exe = sys.executable
+    try:
+        p = subprocess.run([exe] + list(spec["argv"]), cwd=repo, capture_output=True, timeout=EXTERNAL_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return _ext_result(spec, "not_run", 2, reason=f"it did not finish within {EXTERNAL_TIMEOUT}s")
+    except OSError as e:
+        return _ext_result(spec, "not_run", 2, reason=f"could not be started: {_safe(str(e))}")
+    out = p.stdout.decode("utf-8", "replace")
+    err = p.stderr.decode("utf-8", "replace")
+    reader = _read_json_report if spec["json"] else _read_text_report
+    return reader(spec, p.returncode, out, err)
+
+
+def run_externals(siblings_root, specs=EXTERNALS):
+    return [run_external(spec, siblings_root) for spec in specs]
+
+
+def external_line(e, require=False):
+    """One line per sibling, on stdout, saying which of the three things happened. "Did not run" is never
+    spelled in a way that could be skim-read as a pass."""
+    head = f"leakcheck[external]: {e['tool']} ({e['repo']}, {e['target']}): "
+    if e["state"] == "not_run":
+        if not e["skipped"]:
+            tail = " -- its scanner ran and could not scan: exit 2"
+        elif require:
+            tail = " -- did not run, and `--require` says it had to: exit 2"
+        else:
+            tail = " -- did not run; `--require` makes this exit 2"
+        return head + f"{'SKIPPED' if e['skipped'] else 'DID NOT RUN'} -- {e.get('reason', 'no reason given')}{tail}. NOT a clean result."
+    st = e.get("self_test")
+    control = (f"control {st.get('caught')}/{st.get('planted')}" if isinstance(st, dict)
+               else "its scanner reports no control of its own")
+    s = e["scanned"]
+    body = f"{s['files']} files, {s['bytes']} bytes"
+    if e["state"] == "clean":
+        return head + f"CLEAN -- {body} ({control})"
+    return head + f"{len(e['findings'])} finding(s) in {body} ({control})"
+
+
+def siblings_root(arg=None):
+    """Where the other repositories are: `--siblings-root`, else `$SOCOM_LEAK_SIBLINGS`, else beside this one."""
+    return arg or os.environ.get(SIBLINGS_ENV) or os.path.dirname(ROOT)
+
+
+# --------------------------------------------------------------------------------------------
 # the control: a scanner that finds nothing is indistinguishable from a broken one
 
 PLANTED = [
@@ -438,14 +647,25 @@ def self_test():
     false_alarm = [r for r, fn in trules if fn(clean)]
     if false_alarm:
         missed.append("false alarm on the project's own identifiers: " + ", ".join(sorted(set(false_alarm))))
-    total = len(cases) + len(PLANTED_NAMES) + 1
+    # The product-word exception, both directions. The rules above are built with an explicit `users=`,
+    # so nothing else here reaches drop_product_words -- and it is the one piece of this gate that can
+    # switch a whole rule off. A regression in either direction has to fail the control the pre-commit
+    # hook runs, not only a unit test somebody may not be running.
+    if R.drop_product_words(["socom"], log=False):
+        missed.append("owner-user-name: the product's own name is still hunted as this machine's user")
+    if R.drop_product_words([PLANTED_USER], log=False) != {PLANTED_USER}:
+        missed.append("owner-user-name: a real user name was dropped as a product word")
+    total = len(cases) + len(PLANTED_NAMES) + 3
     return {"planted": total, "caught": total - len(missed), "missed": missed}
 
 
 # --------------------------------------------------------------------------------------------
 # main
 
-MODES = ("tree", "staged", "ignored", "metadata", "history", "artifact", "all")
+MODES = ("tree", "staged", "ignored", "metadata", "history", "artifact", "external", "all")
+# what `all` runs: the four that read this repository, then the siblings. External last -- it starts other
+# processes, and a local hit should be on the terminal before that happens.
+ALL_MODES = ("tree", "ignored", "metadata", "history", "external")
 
 
 def run_mode(mode, args, cwd, rules, allow):
@@ -475,6 +695,11 @@ def main(argv=None):
     ap.add_argument("--max-report", type=int, default=80, help="how many hits to print (all are counted)")
     ap.add_argument("--allow", default=ALLOW_FILE, help="the allow list (default: leak_allow.txt beside the tool)")
     ap.add_argument("--repo", default=ROOT, help="the repository to scan (default: this one)")
+    ap.add_argument("--siblings-root", default=None,
+                    help=f"external: where ../scotho and ../socom_monitor are (default: ${SIBLINGS_ENV}, "
+                         "else the directory holding this repository)")
+    ap.add_argument("--require", action="store_true",
+                    help="external: a sibling that is not there is exit 2, not a SKIPPED line")
     ap.add_argument("--no-self-test", action="store_true", help="skip the planted control (tests only)")
     a = ap.parse_args(argv)
     err = sys.stderr
@@ -507,10 +732,19 @@ def main(argv=None):
         print(f"leakcheck: {e}", file=err)
         return finish(2)
     rules = build_rules()
-    modes = ["tree", "ignored", "metadata", "history"] if a.mode == "all" else [a.mode]
+    modes = list(ALL_MODES) if a.mode == "all" else [a.mode]
     hits, totals = [], new_stats()
+    ext_findings, ext_skipped, ext_broken = [], [], []
     try:
         for mode in modes:
+            if mode == "external":
+                report["external"] = run_externals(siblings_root(a.siblings_root))
+                for e in report["external"]:
+                    print(external_line(e, a.require))
+                    ext_findings += e["findings"]
+                    if e["state"] == "not_run":
+                        (ext_skipped if e["skipped"] else ext_broken).append(f"{e['tool']} ({e['repo']})")
+                continue
             mh, ms = run_mode(mode, a.args, a.repo, rules, allow)
             hits += mh
             for k, v in ms.items():
@@ -524,11 +758,9 @@ def main(argv=None):
         print(f"leakcheck: did not run -- {e}", file=err)
         return finish(2)
     report["scanned"] = totals
-    report["findings"] = [h.as_json() for h in hits]
-    if not hits:
-        print(f"leakcheck: 0 hits -- clean ({', '.join(modes)}; self-test {report['self_test'].get('caught', '-')}/"
-              f"{report['self_test'].get('planted', '-')})")
-        return finish(0)
+    report["findings"] = [h.as_json() for h in hits] + ext_findings
+    # the hits, ours and the siblings', before any verdict: whoever is fixing them needs them printed even when
+    # the run is going to exit 2 for a scanner that never got started
     by_rule = {}
     for h in hits:
         by_rule[h.rule] = by_rule.get(h.rule, 0) + 1
@@ -536,8 +768,33 @@ def main(argv=None):
         print(h.render(a.reveal), file=err)
     if len(hits) > a.max_report:
         print(f"... and {len(hits) - a.max_report} more", file=err)
-    print("leakcheck: " + ", ".join(f"{k}={v}" for k, v in sorted(by_rule.items())), file=err)
-    print(f"leakcheck: FAILED -- {len(hits)} hit(s) in {len({h.path for h in hits})} file(s). Do not publish.", file=err)
+    for f in ext_findings[:a.max_report]:
+        by_rule[f["rule"]] = by_rule.get(f["rule"], 0) + 1
+        print(f"{f['file']}:{f['line']}: {f['rule']}: {f['excerpt_masked']}  [{f['tool']}]", file=err)
+    if by_rule:
+        print("leakcheck: " + ", ".join(f"{k}={v}" for k, v in sorted(by_rule.items())), file=err)
+
+    # "did not run" outranks both verdicts: a scan that did not happen cannot be reported as either result.
+    blocked = list(ext_broken) + (list(ext_skipped) if a.require else [])
+    if blocked:
+        print(f"leakcheck: did not run -- {len(blocked)} external scanner(s) did not scan: "
+              f"{', '.join(blocked)}. This is NOT a clean result" +
+              (f", and {len(report['findings'])} finding(s) above still stand." if report["findings"] else "."),
+              file=err)
+        return finish(2)
+    n = len(report["findings"])
+    if not n:
+        if ext_skipped:
+            print(f"leakcheck: 0 hits here, but {len(ext_skipped)} external scanner(s) DID NOT RUN "
+                  f"({', '.join(ext_skipped)}) -- nothing is claimed about what they cover; `--require` makes "
+                  f"that exit 2 (self-test {report['self_test'].get('caught', '-')}/"
+                  f"{report['self_test'].get('planted', '-')})")
+        else:
+            print(f"leakcheck: 0 hits -- clean ({', '.join(modes)}; self-test "
+                  f"{report['self_test'].get('caught', '-')}/{report['self_test'].get('planted', '-')})")
+        return finish(0)
+    where = len({h.path for h in hits} | {f["file"] for f in ext_findings})
+    print(f"leakcheck: FAILED -- {n} hit(s) in {where} file(s). Do not publish.", file=err)
     return finish(1)
 
 

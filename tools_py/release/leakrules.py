@@ -15,6 +15,7 @@ git-ignored `leak_extra.txt` beside it, because committing a secret in order to 
 """
 import os
 import re
+import sys
 
 # The one address that is public by nature: the project's Lightsail box, and its name.
 HOSTED_IPS = {"3.143.65.100"}
@@ -185,6 +186,53 @@ def assign_matches(text):
 # --------------------------------------------------------------------------------------------
 # who this machine belongs to
 
+# What the project calls itself. A machine user named after the product is not a secret: the socom-linux
+# VM's account is `socom`, and on 2026-09-22 the owner-user-name rule -- built from whoami -- turned
+# README.md:1, "# SOCOM Unzipped", into a finding and refused the tree. Nothing else changes: a real
+# account name is still hunted everywhere, and the home-directory rule (which has always allowed "socom")
+# is untouched.
+#
+# The match is over WHOLE NAMES, not substrings, and the list is fixed (review I3). Both halves were
+# wrong before: `name in word` exempted any user called `zip`, `ps2`, `comp` or `oco` -- owner_names()
+# admits anything three characters or longer -- and the list ended with the checkout's own directory
+# name, so which users the gate exempted differed between C:\projects\socom_pc and a worktree. Switching
+# a leak rule off for somebody is not something a clone path gets to decide.
+# The list is spelled out in full rather than derived by splitting the names on separators: splitting
+# "ps2 recomp" hands back "ps2", which is a three-character fragment that owner_names() would accept, and
+# that is the very trap this finding is about. Every spelling that should be exempt is written here.
+PRODUCT_TOKENS = frozenset((
+    "socom", "unzipped", "socom unzipped", "socomunzipped",
+    "socom_pc", "socom-pc", "socompc", "socom pc",
+    "ps2x", "ps2recomp",
+))
+_DROPPED = set()          # so the note below is one line per name per process, not one per rule build
+
+
+def is_product_word(name):
+    """True when `name` IS one of the product's own names, case-insensitively -- not a fragment of one."""
+    low = (name or "").strip().lower()
+    return bool(low) and low in PRODUCT_TOKENS
+
+
+def drop_product_words(names, log=True):
+    """Candidate user names, minus the ones that are only the product's own name -- with a line saying so.
+
+    `log=False` for a caller that is probing the rule rather than using it (leakcheck.self_test runs on
+    every commit through the pre-commit hook; its two control names are not this machine's user, and a
+    line about them on every commit would be noise that teaches people to ignore the real one)."""
+    kept = set()
+    for name in names:
+        if is_product_word(name):
+            if log and name.lower() not in _DROPPED:
+                _DROPPED.add(name.lower())
+                print("leakcheck: this machine's user is %r, which is part of the project's own name -- "
+                      "not hunted as a secret (it would fire on every line that says SOCOM Unzipped)."
+                      % name, file=sys.stderr)
+            continue
+        kept.add(name)
+    return kept
+
+
 def owner_names():
     """Every spelling of this machine's user that must not reach the tree."""
     out = set()
@@ -193,7 +241,7 @@ def owner_names():
         if cand and len(cand) >= 3 and cand.lower() not in ("user", "users", "root", "home", "runner",
                                                               "ubuntu", "utilisateur", "usuario", "benutzer"):
             out.add(cand)
-    return out
+    return drop_product_words(out)
 
 
 def extra_literals(path=EXTRA_FILE):

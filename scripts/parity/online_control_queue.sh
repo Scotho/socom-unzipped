@@ -6,6 +6,8 @@
 # Usage: scripts/parity/online_control_queue.sh [map ...]   (default: the 20 maps never driven online)
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+. "$ROOT/scripts/python_env.sh"    # $PYTHON, resolved once for every script
+socom_require_python online_control_queue
 cd "$ROOT"
 if [ "$#" -gt 0 ]; then MAPS=("$@"); else
 MAPS=("the mixer" "foxhunt" "sujo" "enowapi" "shadow falls" "fish hook" "crossroads" "sandstorm" "chain reaction"
@@ -15,7 +17,7 @@ fi
 SUMMARY="logs/parity/online_control_summary.txt"
 for pass in 1 2; do
   for m in "${MAPS[@]}"; do
-    slug="$(python -c "import sys; from tools_py.parity import online_login_ours as L; print(L.map_slug(sys.argv[1]))" "$m")"
+    slug="$("$PYTHON" -c "import sys; from tools_py.parity import online_login_ours as L; print(L.map_slug(sys.argv[1]))" "$m")"
     out="logs/parity/ours_control_${slug}"
     if [ "$pass" = 2 ]; then
       grep -q "^${slug} .*rc=0" "$SUMMARY" 2>/dev/null && continue

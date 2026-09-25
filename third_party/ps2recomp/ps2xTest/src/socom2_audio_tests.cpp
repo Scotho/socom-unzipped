@@ -3196,5 +3196,68 @@ void register_socom2_audio_tests()
             t.Equals(env.call(kPlaySound, {bank, 8u, 0x400u, 0xFFFFFFFFu, 0u, 0u}), 0u,
                      "sceSifResetIop is a reboot as well: the bank table is empty afterwards");
         });
+
+        // Sprint 11 milestone U, R245 (research/40 §9.3): two answers aligned with the disc's own 989SND.IRX, run on
+        // PR #244's IOP emulator against our logged calls. The real IRX has no extension registered under the id
+        // the game passes to snd_CallExtension (0x12c4e67a occurs in none of the disc's IRX files; 989DSTRM
+        // registers as "dstr", HEADSETO registers nothing without a headset), so snd_DoExternCall reports
+        // "cause 3" and answers 0 on every call; our model invented 1. And every handle the real IRX issues has
+        // bit 31 set (0x84000002, 0x84000003, ...: snd_ActivateHandler's `OwnerID |= 0x80000000`, research/36
+        // §"bit 31"), where ours were 0x0400003c-class. What the EE does with a handle's sign is a named unknown
+        // for the gate: the console's handles are negative as int32 and the game plays, so at least nothing on
+        // the EE may treat a negative handle as failure.
+        tc.Run("989snd: snd_CallExtension answers 0 for every module id, as the real IRX does with nothing registered (R245)", [](TestCase &t)
+        {
+            Snd989Harness h;
+            t.IsTrue(h.configured, "the SOCOM II profile registers the 989snd service");
+            constexpr uint32_t kCallExtension = 0x4Cu;
+            t.Equals(h.call(kCallExtension, {0x12C4E67Au, 6u, 0u, 0u, 0u, 0u, 0u}), 0u,
+                     "the game's id, fn 6: the real IRX answers 0 (cause 3), not 1");
+            t.Equals(h.call(kCallExtension, {0x12C4E67Au, 0u, 0u, 0u, 0u, 0u, 0u}), 0u, "fn 0 too");
+            t.Equals(h.call(kCallExtension, {0x12C4E67Au, 1u, 0u, 0u, 0u, 0u, 0u}), 0u, "and fn 1");
+            t.Equals(h.call(kCallExtension, {0x64737472u, 6u, 0u, 0u, 0u, 0u, 0u}), 0u,
+                     "989DSTRM's own id (\"dstr\") is not modelled either: 0, not a crash");
+        });
+
+        tc.Run("989snd: every handle the model issues carries bit 31, as the real IRX's do (R245)", [](TestCase &t)
+        {
+            // A host that answers only for the handles the module told it to play (the shape of the played-out
+            // case above): the model asks the host before it looks a handle up, so a host that says "playing" for
+            // any word would answer for the bit-31-stripped word too, and the assertion below would test the host.
+            struct KnownHandlesHost : Snd989TestHost
+            {
+                std::vector<uint32_t> known;
+                void audioNotify(uint32_t function, const int32_t *args, size_t count) override
+                {
+                    if (function == 0x2Cu && count >= 1)
+                        known.push_back(static_cast<uint32_t>(args[0]));
+                }
+                bool audioIsPlaying(uint32_t handle, bool &playing) const override
+                {
+                    if (std::find(known.begin(), known.end(), handle) == known.end())
+                        return false;
+                    playing = true;
+                    return true;
+                }
+            };
+            Snd989HarnessT<KnownHandlesHost> h;
+            t.IsTrue(h.configured, "the SOCOM II profile registers the 989snd service");
+            constexpr uint32_t kInitVagStreaming = 0x2Au;
+            constexpr uint32_t kPlayVagStreamByLoc = 0x2Cu;
+            constexpr uint32_t kIsStillPlaying = 0x19u;
+            t.Equals(h.call(kInitVagStreaming, {2u, 0x8000u}), 1u, "two stream slots");
+            const std::vector<uint32_t> play = {2000u, 0u, 0x04000000u, 0u, 1u, 0u, 0u, 0u};
+            const uint32_t a = h.call(kPlayVagStreamByLoc, play);
+            t.IsTrue(a != 0u, "stem A gets a handle");
+            t.IsTrue((a & 0x80000000u) != 0u, "with bit 31 set, like the real IRX's 0x84000002");
+            t.IsTrue(std::find(h.host.known.begin(), h.host.known.end(), a) != h.host.known.end(),
+                     "and the host mixer was told that same word");
+            t.Equals((a >> 24) & 0x1Fu, 4u, "type 4 in bits 24-28");
+            t.Equals(h.call(kIsStillPlaying, {a}), a, "snd_SoundIsStillPlaying answers the same word, bit 31 included");
+            const uint32_t b = h.call(kPlayVagStreamByLoc, play);
+            t.IsTrue(b != 0u && b != a && (b & 0x80000000u) != 0u, "stem B: its own handle, bit 31 set as well");
+            t.Equals(h.call(kIsStillPlaying, {a & 0x7FFFFFFFu}), 0u,
+                     "the word without bit 31 is not a handle the model knows (the IRX compares the whole word)");
+        });
     });
 }

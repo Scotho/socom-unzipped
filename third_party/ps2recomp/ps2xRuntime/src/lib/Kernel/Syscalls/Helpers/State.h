@@ -231,6 +231,32 @@ static constexpr uint32_t kGuestSyscallTablePhysBase = kGuestSyscallTableGuestBa
 static constexpr uint32_t kGuestSyscallMirrorLimit = 0x00080000u;
 static constexpr uint32_t kGuestSyscallTableProbeBase = 0x000002F0u;
 
+// EE syscall 0x5B GetEntryAddress. On hardware the kernel answers with the kernel-space address of
+// that syscall's entry -- always a real, mapped, writable place. ps2sdk's LoadExecPS2 marshaller
+// (SOCOM II: FUN_001ac128 caches GetEntryAddress(3) in *0x001CD0F0, FUN_001accf8 then memcpy's the
+// argument block through it) uses it exactly that way: as the kernel-side scratch area where the
+// argv block survives the reload. Returning the raw word out of the syscall mirror hands the guest
+// whatever uninitialised low RAM holds for an entry nobody overrode -- 0xFFFFFFFF on the r0004
+// title run, which is where the `[guest-fault] store8 vaddr=0xffffffff` line came from (Sprint 11
+// Task 19). So the runtime reserves one block per entry, below the 1 MiB image base and above the
+// syscall mirror, and hands those out instead.
+static constexpr uint32_t kSyscallEntryScratchBase = 0x00090000u;
+static constexpr uint32_t kSyscallEntryScratchStride = 0x00000400u;
+static constexpr uint32_t kSyscallEntryScratchCount = 0x80u;
+static constexpr uint32_t kSyscallEntryScratchBytes = kSyscallEntryScratchStride * kSyscallEntryScratchCount;
+static_assert((kSyscallEntryScratchBase + kSyscallEntryScratchBytes) <= 0x00100000u,
+              "the syscall entry scratch must stay below the guest image base");
+static_assert(kSyscallEntryScratchBase >= kGuestSyscallMirrorLimit,
+              "the syscall entry scratch must stay clear of the syscall mirror");
+
+// Stable for a given syscall number, for the life of the process: the guest caches it (SOCOM II
+// caches entry 3) and writes through it later.
+inline uint32_t guestSyscallEntryScratchAddr(uint32_t syscallNumber)
+{
+    const uint32_t index = syscallNumber & (kSyscallEntryScratchCount - 1u);
+    return kSyscallEntryScratchBase + (index * kSyscallEntryScratchStride);
+}
+
 inline std::mutex g_tls_mutex;
 inline uint32_t g_tls_index = 0;
 

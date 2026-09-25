@@ -44,7 +44,11 @@ winshot = hostplatform.shot_module()
 # facing (STATUS 2026-09-10 20:10), so the player is at camera + R * facing. The rows are the only
 # trustworthy movement signal this harness has: screenshots go stale and are written whether or not
 # the match ever launched (research/18 §3.5, §3.10).
-POSITION_ADDR = 0x416054
+# The camera record has a value per revision, and the tail matches a row's item against the SET for the
+# same reason ACTOR_VTABLES exists: the columns are disjoint, a row carries one of them (Task 19). The
+# old r0001 scalar `POSITION_ADDR` is gone with its last caller (review F9); `vc.CAMERA_RECORD_ADDR` is
+# still there for anything that needs the number itself.
+POSITION_ADDRS = vc.CAMERA_RECORD_ADDRS
 # `PS2X_CALL_TRACE="0x553dc0:MoveScale"` logs FUN_00553dc0's f12 -- the multiplayer movement scale
 # actor+0x1368. It is 1.0 while the network has been active within 5500 ms and decays to 0.0 at
 # 6500 ms of idle (research/18 §3.12). A hold measured while it is not 1.0 measures the lag freeze,
@@ -285,7 +289,13 @@ SERVER_ROUND_MARK = "MediusPlayerReport"
 # so the items after it shift DOWN by one and an index alone names the wrong block: in kill1's log
 # item 1 was the raw `0x408c58:4` static for 1698 rows and the actor block for 804. Word 0 of the
 # actor block is the vtable, so the health watch checks it before reading anything.
-ACTOR_VTABLE = 0x006691A0
+ACTOR_VTABLE = vc.ACTOR_VTABLE          # 0x6691a0, guest_addresses' r0001 column -- the number in messages
+# ... and the set this driver actually TESTS against (Sprint 11 Task 19): the vtable has a value per
+# revision (r0004 relinked it to 0x668b20) and a `[peek]` row carries exactly one revision's numbers, so
+# identifying the actor block by membership reads an r0004 round without plumbing a revision through a
+# reader that has none. `s11_r0004_round1` is what the scalar cost: a Frostfire round played to its
+# clock, 1511 in-game rows on A alone, and every hold scored "no actor rows".
+ACTOR_VTABLES = vc.ACTOR_VTABLES
 # The actor carries its own x/y/z at +0x1c/+0x20/+0x24 (words 7/8/9 of the block). MEASURED over
 # ours_task8_kill2's 1172 paired rows: the 0x416054 camera record orbits it at a ground radius of
 # 20.65 (sd 5.17) and sits 19.73 above it, i.e. the camera looks down on the player from about 44
@@ -313,9 +323,12 @@ class RunLogTail(threading.Thread):
     POLL_S = 0.05
     _BP = re.compile(r"^\[gs-gl stats\] backpressure .*?\bwaits=(\d+) wait_ms=([\d.]+) timeouts=(\d+)")
 
-    def __init__(self, path, addr=POSITION_ADDR, clock=time.time):
+    def __init__(self, path, addr=None, clock=time.time):
         super().__init__(daemon=True)
-        self.path, self.addr, self.clock = path, addr, clock
+        # `addr` may be one address or several; None takes every revision's camera record (Task 19).
+        self.addrs = POSITION_ADDRS if addr is None else (
+            frozenset(addr) if isinstance(addr, (set, frozenset, tuple, list)) else frozenset({addr}))
+        self.path, self.clock = path, clock
         self.rows = []          # (t, x, y, z) -- every peek row, all-zero pre-gameplay rows included
         self.scales = []        # (t, f12)
         self.lines = 0
@@ -412,7 +425,7 @@ class RunLogTail(threading.Thread):
                 raw = [int(w, 16) for w in self._WORD.findall(words)]
                 a = int(addr, 16)
                 all_items.append((a, raw))
-                if a == self.addr:
+                if a in self.addrs:
                     vals = [struct.unpack("<f", struct.pack("<I", w))[0] for w in raw[:3]]
                     if len(vals) >= 3:
                         with self._lock:
@@ -425,7 +438,7 @@ class RunLogTail(threading.Thread):
             # Which block is the actor? The one whose word 0 is the class vtable. Everything else
             # -- its position, and where a health offset lives -- is addressed off that block's
             # own address, so an unresolved chain can shift the indices without breaking anything.
-            actor = next((b for b in blocks if b[2] and b[2][0] == ACTOR_VTABLE), None)
+            actor = next((b for b in blocks if b[2] and b[2][0] in ACTOR_VTABLES), None)
             with self._lock:
                 for idx, a, raw in blocks:
                     self.items[idx] = (t, a, raw)
@@ -489,12 +502,12 @@ class RunLogTail(threading.Thread):
         """Alive byte, round valves + clock string and per-valve identification counts, from one
         `[peek]` row's items (all of them, the camera record included)."""
         alive = vc.row_actor_field(items, self.alive_offset, "u8")
-        actor = next((a for a, w in items if w and w[0] == ACTOR_VTABLE), None)
+        actor = next((a for a, w in items if w and w[0] in ACTOR_VTABLES), None)
         valves = {name: vc.row_valve(items, name) for name in vc.VALVES}
         state = {name: valves[name] for name in vc.ROUND_VALVES}
         state["clock"] = vc.row_clock_string(items)
         lag = vc.ng_lagflag_rows([(t, items)])
-        rt_word = vc.row_static(items, vc.ROUND_TIME_ADDR)
+        rt_word = vc.row_static_any(items, vc.ROUND_TIME_ADDRS)
         with self._lock:
             self.latest_items = items
             if lag:
@@ -1965,7 +1978,10 @@ MOVE_PATH_MAX_EVERY = 20         # at ~17-27 MoveScale calls/s, EVERY <= 20 logs
 MOVE_PATH_POLL_S = 1.0
 DEFAULT_HEALTH_OFFSET = 0x1044   # research/19 F1; Sprint 5 Task 2 read damage steps live in SP, no death (research/22)
 DEFAULT_ALIVE_OFFSET = vc.ACTOR_ALIVE_OFFSET   # 0xF7A, same sources
-ALIVE_PEEK_BASE = 0x408C58       # *0x408c58 = the player actor
+# (`ALIVE_PEEK_BASE`, the r0001 actor static, is gone -- review F9. The pre-launch checks build their
+# base from `spec_revision(PS2X_PEEK)` instead (Task 19), because on an r0004 launch the actor static is
+# 0x435618 and a check written in r0001's number refuses a correct spec, which is how `s11_r0004_round2`
+# died before it launched.)
 ROUND_LIVE_MAX_AGE_S = 5.0       # valves read within this long count as live (20 rows at 4 Hz,
                                  # ~8 at kill2 B's 0.6 s/row under load)
 FRAME_MAX_AGE_S = 2.0            # evidence screens (kill, final) must be fresher than this (spec Goal 6)
@@ -2118,6 +2134,20 @@ def parse_peek_spec(spec):
     return out
 
 
+def spec_revision(spec):
+    """Which address column a PS2X_PEEK is written in, for the pre-launch checks below (Task 19).
+
+    These checks COMPARE a spec against the chains a watch needs; on an r0004 launch those chains are
+    r0004's. `guest_addresses.revision_of_peek_spec` reads the column off the spec itself -- the
+    strongest evidence there is, because the chains ARE the addresses the rows will be printed under. A
+    spec that names no column (empty, or an operator's own narrow one) falls back to r0001: every check
+    below will refuse it anyway, and the example chains in the message should be the familiar ones."""
+    try:
+        return vc.ga.revision_of_peek_spec(spec or "")
+    except ValueError:
+        return "r0001"
+
+
 def _has_item(items, item, min_words):
     chain, _, w = item.partition(":")
     c = _canon_chain(chain)
@@ -2132,7 +2162,10 @@ def move_path_preconditions(env, alive_offset=vc.ACTOR_ALIVE_OFFSET):
     problems = []
     names = {e.split(":", 1)[1].strip() for e in env.get("PS2X_CALL_TRACE", "").split(",") if ":" in e}
     if MOVE_SCALE_TRACE_NAME not in names:
-        problems.append(f"PS2X_CALL_TRACE has no {MOVE_SCALE_TRACE_NAME} slot (0x553dc0:{MOVE_SCALE_TRACE_NAME})")
+        problems.append("PS2X_CALL_TRACE has no %s slot (%#x:%s)"
+                        % (MOVE_SCALE_TRACE_NAME,
+                           vc.ga.address("move_scale_setter", spec_revision(env.get("PS2X_PEEK", ""))),
+                           MOVE_SCALE_TRACE_NAME))
     every = env.get("PS2X_CALL_TRACE_EVERY")
     try:
         every_n = int(every, 0) if every is not None else None
@@ -2141,10 +2174,13 @@ def move_path_preconditions(env, alive_offset=vc.ACTOR_ALIVE_OFFSET):
     if every_n is None or not 1 <= every_n <= MOVE_PATH_MAX_EVERY:
         problems.append(f"PS2X_CALL_TRACE_EVERY={every if every is not None else 'unset (default 500)'} "
                         f"-- the watch needs 1..{MOVE_PATH_MAX_EVERY}")
-    items = parse_peek_spec(env.get("PS2X_PEEK", ""))
-    base = _canon_chain(f"*{ALIVE_PEEK_BASE:#x}")
+    spec = env.get("PS2X_PEEK", "")
+    revision = spec_revision(spec)
+    actor_base = vc.ga.address("player_actor", revision)
+    items = parse_peek_spec(spec)
+    base = _canon_chain(f"*{actor_base:#x}")
     if not any(ch == base and words > max(vc.ACTOR_POS_WORDS) for ch, words, _ in items):
-        problems.append(f"PS2X_PEEK has no actor block (*{ALIVE_PEEK_BASE:#x}:10 or wider)")
+        problems.append(f"PS2X_PEEK has no actor block (*{actor_base:#x}:10 or wider)")
     covered = False
     for ch, words, _ in items:
         m = re.fullmatch(re.escape(base) + r"(?:\+(0x[0-9a-f]+))?", ch)
@@ -2154,10 +2190,11 @@ def move_path_preconditions(env, alive_offset=vc.ACTOR_ALIVE_OFFSET):
                 covered = True
     if not covered:
         problems.append(f"PS2X_PEEK covers no actor+{alive_offset:#x} (alive byte), e.g. "
-                        f"*{ALIVE_PEEK_BASE:#x}+0xF78:1")
+                        f"*{actor_base:#x}+0xF78:1")
     rc = vc.VALVES["mp_round_count"]
-    if not (_has_item(items, rc.value_item, 2) and _has_item(items, rc.name_item, 3)):
-        problems.append(f"PS2X_PEEK lacks mp_round_count's {rc.value_item} and/or {rc.name_item}")
+    rc_value, rc_name = (vc.chain_for(rc.value_item, revision), vc.chain_for(rc.name_item, revision))
+    if not (_has_item(items, rc_value, 2) and _has_item(items, rc_name, 3)):
+        problems.append(f"PS2X_PEEK lacks mp_round_count's {rc_value} and/or {rc_name}")
     return problems
 
 
@@ -2174,7 +2211,8 @@ def health_peek_problems(spec, health_offset):
     span it; an armed watch with zero reads is a FAIL after the match, so refuse before it."""
     if health_offset is None:
         return []
-    base = _canon_chain(f"*{ALIVE_PEEK_BASE:#x}")
+    actor_base = vc.ga.address("player_actor", spec_revision(spec))
+    base = _canon_chain(f"*{actor_base:#x}")
     for ch, words, _ in parse_peek_spec(spec):
         m = re.fullmatch(re.escape(base) + r"(?:\+(0x[0-9a-f]+))?", ch)
         if m:
@@ -2182,7 +2220,7 @@ def health_peek_problems(spec, health_offset):
             if off <= health_offset < off + 4 * min(words, 64):
                 return []
     return [f"health watch armed at actor+{health_offset:#x} but PS2X_PEEK covers no actor+{health_offset:#x}, "
-            f"e.g. *{ALIVE_PEEK_BASE:#x}+{health_offset:#x}:1 (or pass --health-offset none)"]
+            f"e.g. *{actor_base:#x}+{health_offset:#x}:1 (or pass --health-offset none)"]
 
 
 def launch_refusal_lines(env, alive_offset, health_offset, ident=""):
@@ -2206,23 +2244,31 @@ def launch_refusal_lines(env, alive_offset, health_offset, ident=""):
 def peek_spec_problems(spec):
     """Lint a PS2X_PEEK spec for the ways it has produced nothing before (non-fatal; printed)."""
     items = parse_peek_spec(spec)
+    revision = spec_revision(spec)
+    abort_base = vc.ga.address("mission_abort_valve", revision)
     problems = []
     for ch, words, raw in items:
         if words > 64:
             problems.append(f"`{raw}` asks {words} words; PS2X_PEEK caps every item at 64 silently -- split it")
-        if ch == _canon_chain("*0x43668c**"):
-            problems.append("mission_abort: `*0x43668c**:3` dereferences the name bytes themselves "
-                            "(@7373696d, research/21 §6.2) -- use `*0x43668c*:3`")
-    for name, v in vc.VALVES.items():
-        if _has_item(items, v.value_item, 2) and not _has_item(items, v.name_item, 3):
-            problems.append(f"{name}: {v.value_item} without its name-bytes item {v.name_item} -- "
+        if ch == _canon_chain(f"*{abort_base:#x}**"):
+            problems.append(f"mission_abort: `*{abort_base:#x}**:3` dereferences the name bytes themselves "
+                            f"(@7373696d, research/21 §6.2) -- use `*{abort_base:#x}*:3`")
+    for name, v0 in vc.VALVES.items():
+        value_item = vc.chain_for(v0.value_item, revision)
+        name_item = vc.chain_for(v0.name_item, revision)
+        if _has_item(items, value_item, 2) and not _has_item(items, name_item, 3):
+            problems.append(f"{name}: {value_item} without its name-bytes item {name_item} -- "
                             f"it will read NO-DATA {name}")
     return problems
 
 
 def requested_valves(spec):
+    """Which valves this PS2X_PEEK asks for -- in the column the spec is written in (Task 19): on an
+    r0004 spec the r0001 chains match nothing and the report would name no valve at all."""
     items = parse_peek_spec(spec)
-    return [name for name, v in vc.VALVES.items() if _has_item(items, v.value_item, 2)]
+    revision = spec_revision(spec)
+    return [name for name, v in vc.VALVES.items()
+            if _has_item(items, vc.chain_for(v.value_item, revision), 2)]
 
 
 def valve_report(tag, tail, requested):
@@ -3035,19 +3081,27 @@ def control_round(clients, log, clock=time.time, wait=time.sleep, cap_s=CONTROL_
 # (starvation, contact) are decided by verdict_core, so the live harness and the offline replay agree.
 
 def endgame_preconditions(env):
-    """Why the StarvationWatch / freeze tolerance would attest to nothing under this environment ([] = launch)."""
+    """Why the StarvationWatch / freeze tolerance would attest to nothing under this environment ([] = launch).
+
+    Per revision, like its two siblings above (Task 19 fix round 1): this is the fourth pre-launch check
+    and it compared an r0004 spec against r0001's chains too, so an r0004 ladder would have been refused
+    for carrying exactly the right instruments."""
     problems = []
+    spec = env.get("PS2X_PEEK", "")
+    revision = spec_revision(spec)
+    ng = vc.ga.address("net_game", revision)
+    clock = vc.ga.address("guest_clock", revision)
     names = {e.split(":", 1)[1].strip() for e in env.get("PS2X_CALL_TRACE", "").split(",") if ":" in e}
     if not names & set(vc.NET_IDLE_NAMES):
-        problems.append("PS2X_CALL_TRACE has no NetIdle slot (0x30cd80:NetIdle) -- the starvation watch would be "
-                        "NO-DATA from its first poll")
-    items = parse_peek_spec(env.get("PS2X_PEEK", ""))
-    if not (_has_item(items, "*0x437ce8:64", 64) and _has_item(items, "*0x437ce8+0x100:21", 7)):
-        problems.append("PS2X_PEEK lacks the CZNetGame block *0x437ce8:64 + *0x437ce8+0x100:21 (ng+0xde, the "
-                        "primary starvation signal)")
-    if not _has_item(items, "0x4365c0:1", 1):
-        problems.append("PS2X_PEEK lacks the round clock 0x4365c0:1 -- a frozen instance could not be told from "
-                        "a starving one")
+        problems.append("PS2X_CALL_TRACE has no NetIdle slot (%#x:NetIdle) -- the starvation watch would be "
+                        "NO-DATA from its first poll" % vc.ga.address("net_idle", revision))
+    items = parse_peek_spec(spec)
+    if not (_has_item(items, "*%#x:64" % ng, 64) and _has_item(items, "*%#x+0x100:21" % ng, 7)):
+        problems.append("PS2X_PEEK lacks the CZNetGame block *%#x:64 + *%#x+0x100:21 (ng+0xde, the "
+                        "primary starvation signal)" % (ng, ng))
+    if not _has_item(items, "%#x:1" % clock, 1):
+        problems.append("PS2X_PEEK lacks the round clock %#x:1 -- a frozen instance could not be told from "
+                        "a starving one" % clock)
     return problems
 
 
@@ -4393,9 +4447,21 @@ def endgame_cooperative(sides, duel, watch, log, map_name=None, route=None, figh
     return out
 
 
+# Both personas' password. It was a bare "socom" literal inside Client.login; --prefilled needs the same
+# value to build the game's environment with, and two copies of a password is how they drift.
+LOGIN_PASSWORD = "socom"
+
+
 class Client:
-    def __init__(self, tag, out, name, existing, seconds):
+    def __init__(self, tag, out, name, existing, seconds, prefill=None):
         self.tag, self.out, self.name, self.existing, self.seconds = tag, out, name, existing, seconds
+        # Sprint 11 Task 19: Sprint 10 Goal 9's prefilled login (online_login_ours' --prefilled) never
+        # reached this driver, so every TWO-instance run still walked the blind on-screen keyboard -- the
+        # class research/28 §5 named ('ocom', '', 'xmfû'), measured at the ~32 fps two instances on one
+        # host produce, and the class that cost `s11_r0004_online1` its login (the field read 'socom;',
+        # one key of overshoot, while the host was loaded). `None` is the historical behaviour exactly:
+        # the keyboards open empty and the walk types into them.
+        self.prefill = prefill
         self.proc = self.sh = None
         self.error = None
         self.run_log = os.path.abspath(os.path.join(
@@ -4406,7 +4472,7 @@ class Client:
         # run.sh honours PS2X_RUN_LOG, so the driver knows which file carries this instance's
         # [peek] rows and can follow them live instead of guessing by modification time.
         os.environ["PS2X_RUN_LOG"] = self.run_log
-        self.proc, self.title = L.launch(self.seconds, self.tag)
+        self.proc, self.title = L.launch(self.seconds, self.tag, self.prefill)
         self.tail = RunLogTail(self.run_log)
         self.tail.start()
 
@@ -4414,7 +4480,7 @@ class Client:
         try:
             self.sh = L.attach(self.proc, self.title, self.out, self.tag + "_", L.INSTANCES[self.tag]["PS2X_SOCOM2_INPUT_FILE"])
             L.boot_to_online(self.sh)
-            L.login(self.sh, self.name, "socom", self.existing)
+            L.login(self.sh, self.name, LOGIN_PASSWORD, self.existing, prefilled=bool(self.prefill))
             L.to_briefing_room(self.sh)
         except BaseException as e:      # noqa: BLE001 - surfaced by the caller
             self.error = e
@@ -4434,6 +4500,13 @@ def main():
     ap.add_argument("--name-a", default="socomc")
     ap.add_argument("--name-b", default="socome")
     ap.add_argument("--existing-b", action="store_true")
+    # Sprint 11 Task 19, mirroring online_login_ours' own --prefilled (Sprint 10 Goal 9): the two personas
+    # and the password reach each game as PS2X_SOCOM2_LOGIN_NAME/_PASS, its keyboards open already holding
+    # them, and each login presses ENTER instead of typing. Two instances on one host run at ~32 fps, which
+    # is exactly where the blind typing walk drops and doubles keys (research/28 §5).
+    ap.add_argument("--prefilled", action="store_true",
+                    help="export each persona and the password to its game and ENTER the prefilled "
+                         "keyboards instead of typing them")
     ap.add_argument("--only", default="", help="A or B: run one instance's login only (setup check)")
     ap.add_argument("--foreign-b", action="store_true",
                     help="Sprint 6 Task 7: A hosts and waits for a joiner the harness does not drive (a PCSX2 client "
@@ -4612,8 +4685,18 @@ def main():
             for line in lines:
                 print(line, flush=True)
             raise SystemExit(code)
-    A = Client("A", a.out, a.name_a, True, a.seconds)
-    B = Client("B", a.out, a.name_b, a.existing_b, a.seconds)
+    # --prefilled: both games are launched holding their own persona and the password, and each login
+    # ENTERs the keyboard it is given instead of typing into it. Checked HERE, before any launch -- a
+    # name the keyboard could not hold would otherwise stop the run 90 s in as login:prefill-missing.
+    prefill_a = prefill_b = None
+    if a.prefilled:
+        try:
+            prefill_a = L.prefill_env(a.name_a, LOGIN_PASSWORD)
+            prefill_b = L.prefill_env(a.name_b, LOGIN_PASSWORD)
+        except ValueError as e:
+            raise SystemExit(f"--prefilled: {e}")
+    A = Client("A", a.out, a.name_a, True, a.seconds, prefill_a)
+    B = Client("B", a.out, a.name_b, a.existing_b, a.seconds, prefill_b)
     failed = False
     if a.only:
         if a.until_kill:

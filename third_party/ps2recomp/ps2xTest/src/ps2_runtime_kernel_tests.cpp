@@ -25,6 +25,17 @@ namespace
     constexpr uint32_t K_PARAM_ADDR = 0x1000u;
     constexpr uint32_t K_STATUS_ADDR = 0x1400u;
 
+    // Measured facts about the two SOCOM II discs: max(vaddr + memsz) over their PT_LOAD segments.
+    // r0004's image ends 0xC48 LOWER than r0001's. Both heap cases below pose both layouts, so
+    // they live here rather than being repeated (Sprint 11 Task 19).
+    constexpr uint32_t K_IMAGE_END_R0001 = 0x00686F80u;
+    constexpr uint32_t K_IMAGE_END_R0004 = 0x00686338u;
+    // SOCOM II's crt0 is byte-identical in both discs: SetupHeap(0x00686F80, -1), and the loader's
+    // _brk starts at that same address.
+    constexpr uint32_t K_GUEST_BRK_START = 0x00686F80u;
+    // The top of usable guest RAM: kGuestHeapHardLimit in ps2_runtime.cpp.
+    constexpr uint32_t K_USABLE_RAM_TOP = 0x01F00000u;
+
     constexpr int KE_OK = 0;
     constexpr int KE_ERROR = -1;
     constexpr int KE_ILLEGAL_THID = -406;
@@ -1199,7 +1210,7 @@ void register_ps2_runtime_kernel_tests()
             constexpr uint32_t kRandNextAddr = kReentAddr + kRandNextOffset;
 
             writeGuestU32(env.rdram.data(), kImpurePtrAddr, kReentAddr);
-            ps2_stubs::setLibcRandState(kImpurePtrAddr, kRandNextOffset);
+            ps2_stubs::setLibcRandState(&env.runtime, kImpurePtrAddr, kRandNextOffset);
 
             const auto readState = [&]() {
                 uint64_t state = 0u;
@@ -1260,7 +1271,7 @@ void register_ps2_runtime_kernel_tests()
                      "a _rand_next straddling the end of RDRAM must be rejected");
 
             // With no registered guest state the pair still works off an internal state.
-            ps2_stubs::setLibcRandState(0u, 0u);
+            ps2_stubs::setLibcRandState(&env.runtime, 0u, 0u);
             ps2_stubs::srand(env.rdram.data(), &env.ctx, &env.runtime);
             ps2_stubs::rand(env.rdram.data(), &env.ctx, &env.runtime);
             t.Equals(getRegS32(env.ctx, 2), static_cast<int32_t>(0x0807DC72),
@@ -1611,6 +1622,30 @@ void register_ps2_runtime_kernel_tests()
                      "FindAddress should return address of first matching word");
         });
 
+        tc.Run("numeric syscall 0x79/0x7A route SifSetReg/SifGetReg", [](TestCase &t)
+        {
+            TestEnv env;
+            constexpr uint32_t kSifReg = 0x80000000u;
+            constexpr uint32_t kValue = 0x11223344u;
+
+            setRegU32(env.ctx, 4, kSifReg);
+            setRegU32(env.ctx, 5, kValue);
+            t.IsTrue(callSyscall(0x79u, env.rdram.data(), &env.ctx, &env.runtime),
+                     "SifSetReg syscall should dispatch");
+
+            setRegU32(env.ctx, 4, kSifReg);
+            t.IsTrue(callSyscall(0x7Au, env.rdram.data(), &env.ctx, &env.runtime),
+                     "SifGetReg syscall should dispatch");
+            t.Equals(static_cast<uint32_t>(getRegS32(env.ctx, 2)),
+                     kValue,
+                     "SifGetReg should return the value written by SifSetReg");
+
+            // Restore the shared SIF register state for other tests.
+            setRegU32(env.ctx, 4, kSifReg);
+            setRegU32(env.ctx, 5, 0u);
+            callSyscall(0x79u, env.rdram.data(), &env.ctx, &env.runtime);
+        });
+
         tc.Run("numeric syscall 0x83 supports KSEG aliases", [](TestCase &t)
         {
             TestEnv env;
@@ -1707,6 +1742,78 @@ void register_ps2_runtime_kernel_tests()
             t.Equals(mirrored,
                      kHandler,
                      "SetSyscall should treat the syscall index as a signed offset from the kernel table base");
+        });
+
+        // Sprint 11 Task 19. GetEntryAddress (0x5B) used to return the raw mirror word, which for an
+        // entry nobody overrode is untouched low RAM. On the r0004 title run that was 0xFFFFFFFF,
+        // the loader cached it in *0x001CD0F0 as the kernel-side home for the LoadExecPS2 argument
+        // block, and the first byte of the copy faulted (`store8 vaddr=0xffffffff pc=0x1accd0`).
+        // The kernel always has a real entry there, so the runtime must answer with one.
+        tc.Run("GetEntryAddress hands out a mapped, writable, stable entry, never raw low memory", [](TestCase &t)
+        {
+            TestEnv env;
+            initializeGuestKernelState(env.rdram.data(), &env.runtime);
+
+            // Kernel/Syscalls/Helpers/State.h: the block the runtime reserves for syscall entries.
+            constexpr uint32_t kScratchBase = 0x00090000u;
+            constexpr uint32_t kScratchStride = 0x00000400u;
+            constexpr uint32_t kScratchBytes = kScratchStride * 0x80u;
+            constexpr uint32_t kGuestSyscallTableGuestBase = 0x80011F80u;
+            constexpr uint32_t kEntry = 3u;   // what the LoadExecPS2 marshaller asks for
+            constexpr uint32_t kMirrorPhys = (kGuestSyscallTableGuestBase + (kEntry * 4u)) & 0x1FFFFFFFu;
+
+            // Reproduce the fault's precondition exactly: the mirror word holds -1.
+            writeGuestU32(env.rdram.data(), kMirrorPhys, 0xFFFFFFFFu);
+
+            setRegU32(env.ctx, 4, kEntry);
+            t.IsTrue(callSyscall(0x5Bu, env.rdram.data(), &env.ctx, &env.runtime),
+                     "GetEntryAddress should dispatch");
+            const uint32_t entry = static_cast<uint32_t>(getRegS32(env.ctx, 2));
+
+            t.IsTrue(entry != 0xFFFFFFFFu && entry != 0u,
+                     "an entry nobody overrode must not answer with the contents of low RAM");
+            t.IsTrue(entry >= kScratchBase && (entry + kScratchStride) <= (kScratchBase + kScratchBytes),
+                     "the answer lies inside the block the runtime reserves");
+            t.IsTrue(entry >= 0x00080000u && (entry + kScratchStride) <= 0x00100000u,
+                     "clear of the syscall mirror below it and of the guest image above it");
+            t.IsNotNull(getMemPtr(env.rdram.data(), entry), "getMemPtr accepts the address");
+
+            setRegU32(env.ctx, 4, kEntry);
+            t.IsTrue(callSyscall(0x5Bu, env.rdram.data(), &env.ctx, &env.runtime),
+                     "GetEntryAddress should dispatch a second time");
+            t.Equals(static_cast<uint32_t>(getRegS32(env.ctx, 2)), entry,
+                     "the address is stable across calls: the guest caches it and writes through it later");
+
+            setRegU32(env.ctx, 4, kEntry + 1u);
+            t.IsTrue(callSyscall(0x5Bu, env.rdram.data(), &env.ctx, &env.runtime),
+                     "GetEntryAddress should dispatch for a second entry");
+            t.IsTrue(static_cast<uint32_t>(getRegS32(env.ctx, 2)) != entry,
+                     "two entries do not share one block");
+
+            // The LoadExecPS2 path: FUN_001accf8 copies the argument block to this address through
+            // syscall 0x5A. The copy must land in RAM, not fault.
+            constexpr uint32_t kArgSrc = 0x00300000u;
+            const uint32_t argWords[2] = {0x12345678u, 0x9ABCDEF0u};
+            writeGuestWords(env.rdram.data(), kArgSrc, argWords, 2);
+            setRegU32(env.ctx, 4, entry);
+            setRegU32(env.ctx, 5, kArgSrc);
+            setRegU32(env.ctx, 6, 8u);
+            t.IsTrue(callSyscall(0x5Au, env.rdram.data(), &env.ctx, &env.runtime),
+                     "Copy should dispatch");
+            t.Equals(readGuestU32(env.rdram.data(), entry), argWords[0],
+                     "the argument block's first word lands in the entry the kernel handed out");
+            t.Equals(readGuestU32(env.rdram.data(), entry + 4u), argWords[1],
+                     "and so does the second");
+
+            // A syscall the guest replaced still answers with the guest's own handler.
+            constexpr uint32_t kOverriddenIndex = 0x5Au;
+            constexpr uint32_t kHandler = 0x001ACCB8u;
+            env.runtime.setEeSyscallOverride(env.rdram.data(), kOverriddenIndex, kHandler);
+            setRegU32(env.ctx, 4, kOverriddenIndex);
+            t.IsTrue(callSyscall(0x5Bu, env.rdram.data(), &env.ctx, &env.runtime),
+                     "GetEntryAddress should dispatch for an overridden entry");
+            t.Equals(static_cast<uint32_t>(getRegS32(env.ctx, 2)), kHandler,
+                     "an overridden syscall answers with the handler the guest installed");
         });
 
         tc.Run("guest kernel syscall overrides and mirrors are isolated per runtime", [](TestCase &t)
@@ -1961,7 +2068,11 @@ void register_ps2_runtime_kernel_tests()
             }
         });
 
-        tc.Run("GetEntryAddress syscall (0x5B) returns handler from guest table", [](TestCase &t)
+        // Sprint 11 Task 19 narrowed this case. It used to poke a word straight into the mirror and
+        // expect GetEntryAddress to read it back, which is what made the syscall hand the guest an
+        // uninitialised word for every entry nobody had overridden. The registry the guest writes
+        // through SetSyscall is the source of truth now; the mirror is a view of it.
+        tc.Run("GetEntryAddress syscall (0x5B) returns the handler the guest installed", [](TestCase &t)
         {
             TestEnv env;
             initializeGuestKernelState(env.rdram.data(), &env.runtime);
@@ -1971,16 +2082,220 @@ void register_ps2_runtime_kernel_tests()
             constexpr uint32_t kExpectedHandler = 0x00383548u;
             constexpr uint32_t kEntryPhysAddr = (kGuestSyscallTableGuestBase + (kSyscallIndex * 4u)) & 0x1FFFFFFFu;
 
-            writeGuestU32(env.rdram.data(), kEntryPhysAddr, kExpectedHandler);
+            setRegU32(env.ctx, 4, kSyscallIndex);
+            setRegU32(env.ctx, 5, kExpectedHandler);
+            t.IsTrue(callSyscall(0x74u, env.rdram.data(), &env.ctx, &env.runtime),
+                     "SetSyscall syscall should dispatch");
+            t.Equals(readGuestU32(env.rdram.data(), kEntryPhysAddr),
+                     kExpectedHandler,
+                     "SetSyscall should mirror the handler into the guest kernel table");
 
             setRegU32(env.ctx, 4, kSyscallIndex);
 
             t.IsTrue(callSyscall(0x5Bu, env.rdram.data(), &env.ctx, &env.runtime),
                      "GetEntryAddress syscall should dispatch");
-            
+
             t.Equals(static_cast<uint32_t>(getRegS32(env.ctx, 2)),
                      kExpectedHandler,
-                     "GetEntryAddress should read and return the handler address from the table");
+                     "GetEntryAddress should return the handler address the guest registered");
+        });
+
+        // Sprint 11 Task 19. SOCOM II's crt0 is byte-identical in the two discs: it calls
+        // SetupHeap(0x00686F80, -1) and the loader's _brk starts at that same 0x00686F80. sbrk
+        // refuses when _brk + increment > EndOfHeap(), so an EndOfHeap that answered the loaded
+        // image's top left the game one safety pad of heap -- 0x1000 bytes for r0001's segments
+        // (which end at 0x00686F80) and 0x3C0 for r0004's (0x00686338, lower by 0xC48) -- and the
+        // loader's operator new rebooted the game the first time malloc came back NULL.
+        tc.Run("EndOfHeap answers the top of usable RAM for either revision's image layout", [](TestCase &t)
+        {
+            constexpr uint32_t kUsableTop = K_USABLE_RAM_TOP;
+            constexpr uint32_t kGuestBrkStart = K_GUEST_BRK_START;
+            const uint32_t imageEnds[] = {K_IMAGE_END_R0001, K_IMAGE_END_R0004};
+
+            for (const uint32_t imageEnd : imageEnds)
+            {
+                TestEnv env;
+                env.runtime.noteLoadedImageEnd(imageEnd);
+
+                t.IsTrue(callSyscall(0x3Eu, env.rdram.data(), &env.ctx, &env.runtime),
+                         "EndOfHeap syscall should dispatch before SetupHeap");
+                t.Equals(static_cast<uint32_t>(getRegS32(env.ctx, 2)),
+                         kUsableTop,
+                         "EndOfHeap before SetupHeap is the top of usable RAM, not the image's top");
+
+                setRegU32(env.ctx, 4, kGuestBrkStart);
+                setRegU32(env.ctx, 5, 0xFFFFFFFFu);
+                t.IsTrue(callSyscall(0x3Du, env.rdram.data(), &env.ctx, &env.runtime),
+                         "SetupHeap syscall should dispatch");
+                t.Equals(static_cast<uint32_t>(getRegS32(env.ctx, 2)),
+                         kGuestBrkStart,
+                         "SetupHeap should return the base crt0 asked for");
+
+                t.IsTrue(callSyscall(0x3Eu, env.rdram.data(), &env.ctx, &env.runtime),
+                         "EndOfHeap syscall should dispatch after SetupHeap");
+                const uint32_t heapEnd = static_cast<uint32_t>(getRegS32(env.ctx, 2));
+                t.Equals(heapEnd, kUsableTop, "SetupHeap(base, -1) means the rest of usable RAM");
+                t.IsTrue(heapEnd - kGuestBrkStart >= 0x01000000u,
+                         "the guest's sbrk must keep at least 16 MiB of headroom in either revision");
+            }
+        });
+
+        // The other half of the same syscall: a finite size means exactly that size, not "the rest
+        // of RAM". Without this, a change to clampGuestHeapLimit or to SetupHeap's
+        // heapLimit <= heapBase fallback could silently turn every SetupHeap into the hard limit
+        // with the case above still green.
+        tc.Run("SetupHeap(start, size) ends the heap at start + size, and clamps an oversize one", [](TestCase &t)
+        {
+            TestEnv env;
+            env.runtime.noteLoadedImageEnd(K_IMAGE_END_R0004);
+
+            setRegU32(env.ctx, 4, K_GUEST_BRK_START);
+            setRegU32(env.ctx, 5, 0x00400000u);
+            t.IsTrue(callSyscall(0x3Du, env.rdram.data(), &env.ctx, &env.runtime),
+                     "SetupHeap syscall should dispatch for a finite size");
+            t.Equals(static_cast<uint32_t>(getRegS32(env.ctx, 2)),
+                     K_GUEST_BRK_START,
+                     "SetupHeap should return the base it was given");
+
+            t.IsTrue(callSyscall(0x3Eu, env.rdram.data(), &env.ctx, &env.runtime),
+                     "EndOfHeap syscall should dispatch after a sized SetupHeap");
+            t.Equals(static_cast<uint32_t>(getRegS32(env.ctx, 2)),
+                     K_GUEST_BRK_START + 0x00400000u,
+                     "a finite SetupHeap size must end the heap at start + size, not at the hard limit");
+
+            // Past the top of usable RAM: the limit is clamped, never handed out raw.
+            setRegU32(env.ctx, 4, K_GUEST_BRK_START);
+            setRegU32(env.ctx, 5, 0x02000000u);
+            t.IsTrue(callSyscall(0x3Du, env.rdram.data(), &env.ctx, &env.runtime),
+                     "SetupHeap syscall should dispatch for an oversize size");
+            t.IsTrue(callSyscall(0x3Eu, env.rdram.data(), &env.ctx, &env.runtime),
+                     "EndOfHeap syscall should dispatch after an oversize SetupHeap");
+            t.Equals(static_cast<uint32_t>(getRegS32(env.ctx, 2)),
+                     K_USABLE_RAM_TOP,
+                     "a size past the top of usable RAM must clamp to the top of usable RAM");
+        });
+
+        tc.Run("the runtime heap base clears the loaded image in either revision", [](TestCase &t)
+        {
+            const uint32_t imageEnds[] = {K_IMAGE_END_R0001, K_IMAGE_END_R0004};
+            for (const uint32_t imageEnd : imageEnds)
+            {
+                TestEnv env;
+                env.runtime.noteLoadedImageEnd(imageEnd);
+                const uint32_t base = env.runtime.guestHeapBase();
+                t.IsTrue(base >= imageEnd,
+                         "the runtime's own guest allocations must start above the loaded image");
+                t.IsTrue(base < env.runtime.guestHeapLimit(),
+                         "the heap base must stay below the heap limit");
+            }
+        });
+
+        // Sprint 11 Task 19. FUN_001ac128 copies 0x330 bytes of its own code to 0x80075000 and
+        // registers that copy as the handler for syscall 0x5B, then installs whatever
+        // GetEntryAddress answered as the handler for the event-flag five (0x55-0x59). None of
+        // those addresses is in a function table. Claiming the override and answering KE_ERROR
+        // made every later call of those syscalls return -1 for the rest of the run, in r0001 as
+        // much as in r0004: an override we cannot execute is not an override.
+        tc.Run("an override whose handler has no function falls through to the builtin", [](TestCase &t)
+        {
+            TestEnv env;
+            constexpr uint32_t kGuestCopiedHandler = 0x80075000u;
+            constexpr uint32_t kDestAddr = 0x00005000u;
+            constexpr uint32_t kSrcAddr = 0x00006000u;
+            constexpr uint32_t kValues[] = {0x11223344u, 0x55667788u};
+
+            t.IsTrue(!env.runtime.hasFunction(kGuestCopiedHandler),
+                     "the guest-copied handler must not be in the function table");
+
+            writeGuestWords(env.rdram.data(), kSrcAddr, kValues, std::size(kValues));
+            env.runtime.setEeSyscallOverride(env.rdram.data(), 0x5Au, kGuestCopiedHandler);
+
+            setRegU32(env.ctx, 4, kDestAddr);
+            setRegU32(env.ctx, 5, kSrcAddr);
+            setRegU32(env.ctx, 6, static_cast<uint32_t>(sizeof(kValues)));
+            t.IsTrue(callSyscall(0x5Au, env.rdram.data(), &env.ctx, &env.runtime),
+                     "Copy syscall should still dispatch");
+            t.IsTrue(getRegS32(env.ctx, 2) != KE_ERROR,
+                     "an unrunnable override must not turn the syscall into KE_ERROR");
+            for (size_t i = 0; i < std::size(kValues); ++i)
+            {
+                t.Equals(readGuestU32(env.rdram.data(), kDestAddr + static_cast<uint32_t>(i * 4u)),
+                         kValues[i],
+                         "the builtin Copy should have run after the unrunnable override");
+            }
+        });
+
+        tc.Run("GetEntryAddress survives an unrunnable override of its own syscall", [](TestCase &t)
+        {
+            TestEnv env;
+            initializeGuestKernelState(env.rdram.data(), &env.runtime);
+            constexpr uint32_t kGuestCopiedHandler = 0x80075000u;
+
+            env.runtime.setEeSyscallOverride(env.rdram.data(), 0x5Bu, kGuestCopiedHandler);
+
+            setRegU32(env.ctx, 4, 3u);
+            t.IsTrue(callSyscall(0x5Bu, env.rdram.data(), &env.ctx, &env.runtime),
+                     "GetEntryAddress syscall should dispatch");
+            const uint32_t entry = static_cast<uint32_t>(getRegS32(env.ctx, 2));
+            t.IsTrue(entry != 0xFFFFFFFFu,
+                     "GetEntryAddress must not answer -1 because its own override cannot run");
+            t.IsTrue(entry >= 0x00090000u && entry < 0x00100000u,
+                     "GetEntryAddress should answer from the reserved, mapped entry scratch block");
+        });
+
+        tc.Run("event-flag syscalls survive an unrunnable override", [](TestCase &t)
+        {
+            TestEnv env;
+            constexpr uint32_t kGuestCopiedHandler = 0xFFFFFFFFu;
+
+            // CreateEventFlag (0x50) with the PS2SDK parameter block {attr, option, bits}, so
+            // there is a live flag to poll: 0x57 (PollEventFlag) is one of the five entries
+            // 0x55-0x59 the loader poisons with GetEntryAddress' answer.
+            const uint32_t createParam[] = {0u, 0u, 0x1u};
+            writeGuestWords(env.rdram.data(), K_PARAM_ADDR, createParam, std::size(createParam));
+            setRegU32(env.ctx, 4, K_PARAM_ADDR);
+            t.IsTrue(callSyscall(0x50u, env.rdram.data(), &env.ctx, &env.runtime),
+                     "CreateEventFlag syscall should dispatch");
+            const int32_t flagId = getRegS32(env.ctx, 2);
+            t.IsTrue(flagId > 0, "CreateEventFlag should return an event flag id");
+
+            env.runtime.setEeSyscallOverride(env.rdram.data(), 0x57u, kGuestCopiedHandler);
+
+            setRegU32(env.ctx, 4, static_cast<uint32_t>(flagId));
+            setRegU32(env.ctx, 5, 0x1u);
+            setRegU32(env.ctx, 6, 0u);
+            setRegU32(env.ctx, 7, 0u);
+            t.IsTrue(callSyscall(0x57u, env.rdram.data(), &env.ctx, &env.runtime),
+                     "PollEventFlag syscall should dispatch");
+            t.Equals(getRegS32(env.ctx, 2), KE_OK,
+                     "the event-flag five must not answer KE_ERROR after the loader's poisoned SetSyscall");
+        });
+
+        // The diagnostic that goes with the fall-through is once per (syscall, handler) per
+        // guest-kernel lifetime, and it belongs to a runtime rather than to the process: ps2xTest
+        // builds several PS2Runtimes, and each one deserves to say it.
+        tc.Run("the unrunnable-override diagnostic is once per pair, per runtime, and resets with the kernel", [](TestCase &t)
+        {
+            TestEnv env;
+            constexpr uint32_t kHandlerA = 0x80075000u;
+            constexpr uint32_t kHandlerB = 0xFFFFFFFFu;
+
+            t.IsTrue(env.runtime.noteUnrunnableSyscallOverride(0x5Bu, kHandlerA),
+                     "the first sighting of a pair should report");
+            t.IsTrue(!env.runtime.noteUnrunnableSyscallOverride(0x5Bu, kHandlerA),
+                     "the same pair should not report twice");
+            t.IsTrue(env.runtime.noteUnrunnableSyscallOverride(0x5Bu, kHandlerB),
+                     "the same syscall with a different handler is a different pair");
+            t.IsTrue(env.runtime.noteUnrunnableSyscallOverride(0x57u, kHandlerA),
+                     "a different syscall with the same handler is a different pair");
+
+            TestEnv other;
+            t.IsTrue(other.runtime.noteUnrunnableSyscallOverride(0x5Bu, kHandlerA),
+                     "a second runtime in the same process should report the pair too");
+
+            initializeGuestKernelState(env.rdram.data(), &env.runtime);
+            t.IsTrue(env.runtime.noteUnrunnableSyscallOverride(0x5Bu, kHandlerA),
+                     "the guest kernel starting over should let the pair report again");
         });
     });
 }

@@ -4,7 +4,12 @@
 
 namespace ps2_syscalls
 {
-    bool dispatchSyscallOverride(uint32_t syscallNumber, uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
+    // Runs the guest's registered handler for this syscall, if there is one the runtime can
+    // execute. It either does not return (the handler runs as a scheduler invocation, which is
+    // [[noreturn]]) or returns having changed nothing, so the caller always goes on to the
+    // built-in: since Sprint 11 Task 19 there is no "claimed with an error" answer for the
+    // caller to distinguish, and a bool return would document a contract this cannot honour.
+    void dispatchSyscallOverride(uint32_t syscallNumber, uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void GsSetCrt(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void SetGsCrt(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void GsGetIMR(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);

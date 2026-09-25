@@ -1,0 +1,195 @@
+diff --git a/ps2xIOP/src/emulator/imports/iop_imports.cpp b/ps2xIOP/src/emulator/imports/iop_imports.cpp
+index f13267f..f6f72b8 100644
+--- a/ps2xIOP/src/emulator/imports/iop_imports.cpp
++++ b/ps2xIOP/src/emulator/imports/iop_imports.cpp
+@@ -117,7 +117,11 @@ namespace ps2x::iop::detail
+         for (uint32_t cursor = physical + 20u; cursor + 3u < IopMemory::RamSize; cursor += 4u)
+         {
+             const uint32_t function = m_memory.read32(cursor);
+-            if (function == 0u)
++            // SOCOM Unzipped research/40 spike (local patch, not upstream): SOCOM II's 989SND.IRX exports a
++            // function that sits at module offset 0 (ordinal 93 of 112+), so a single zero word is not the end
++            // of the table -- PCSX2 and the console link 989DSTRM.IRX's imports of ordinals 93 and 98 fine.
++            // The table ends at two consecutive zero words.
++            if (function == 0u && (cursor + 7u >= IopMemory::RamSize || m_memory.read32(cursor + 4u) == 0u))
+                 break;
+             library.functions.push_back(function);
+             if (library.functions.size() > 1024u)
+diff --git a/ps2xIOP/src/emulator/imports/iop_stdio.cpp b/ps2xIOP/src/emulator/imports/iop_stdio.cpp
+index eed2b61..7ffda33 100644
+--- a/ps2xIOP/src/emulator/imports/iop_stdio.cpp
++++ b/ps2xIOP/src/emulator/imports/iop_stdio.cpp
+@@ -4,6 +4,7 @@
+ #include "../core/iop_memory.h"
+ #include "ps2x/iop/iop_host.h"
+ 
++#include <cstdio>
+ #include <string>
+ 
+ namespace ps2x::iop::detail
+@@ -13,6 +14,74 @@ namespace ps2x::iop::detail
+     {
+     }
+ 
++    namespace
++    {
++        // SOCOM Unzipped research/40 spike (local patch, not upstream): render the format string's
++        // %d/%i/%u/%x/%X/%c/%s/%p conversions from the o32 argument registers and the caller's stack,
++        // so an IRX's "Error: cause %d -> %u" lines carry their numbers. `first` is the index of the
++        // format string among the call's arguments (0 for printf, 1 for fdprintf).
++        std::string formatPrintf(const IopMemory &memory, const IopCpuState &cpu, uint32_t formatAddress, uint32_t first)
++        {
++            const std::string fmt = memory.readString(formatAddress, 2048u);
++            uint32_t next = first + 1u;
++            const auto arg = [&]() -> uint32_t
++            {
++                const uint32_t i = next++;
++                if (i < 4u)
++                    return cpu.gpr[4u + i];
++                return memory.read32(cpu.gpr[29] + 4u * i);
++            };
++            std::string out;
++            for (size_t i = 0; i < fmt.size(); ++i)
++            {
++                if (fmt[i] != '%')
++                {
++                    out += fmt[i];
++                    continue;
++                }
++                std::string spec = "%";
++                ++i;
++                while (i < fmt.size() && (fmt[i] == '-' || fmt[i] == '+' || fmt[i] == ' ' || fmt[i] == '#' || fmt[i] == '0' ||
++                                          fmt[i] == '.' || (fmt[i] >= '1' && fmt[i] <= '9')))
++                    spec += fmt[i++];
++                while (i < fmt.size() && (fmt[i] == 'l' || fmt[i] == 'h'))
++                    ++i;
++                if (i >= fmt.size())
++                    break;
++                const char conv = fmt[i];
++                char buf[64];
++                switch (conv)
++                {
++                case '%': out += '%'; break;
++                case 'd': case 'i':
++                    std::snprintf(buf, sizeof(buf), (spec + "d").c_str(), static_cast<int32_t>(arg()));
++                    out += buf;
++                    break;
++                case 'u': case 'x': case 'X': case 'o':
++                    std::snprintf(buf, sizeof(buf), (spec + conv).c_str(), arg());
++                    out += buf;
++                    break;
++                case 'p':
++                    std::snprintf(buf, sizeof(buf), "0x%08x", arg());
++                    out += buf;
++                    break;
++                case 'c': out += static_cast<char>(arg() & 0xFFu); break;
++                case 's':
++                {
++                    const uint32_t address = arg();
++                    out += address ? memory.readString(address, 1024u) : std::string("(null)");
++                    break;
++                }
++                default:
++                    out += spec;
++                    out += conv;
++                    break;
++                }
++            }
++            return out;
++        }
++    }
++
+     bool IopStdio::dispatchImport(uint16_t ordinal, IopCpuState &cpu)
+     {
+         const uint32_t a0 = cpu.gpr[4];
+@@ -27,11 +96,17 @@ namespace ps2x::iop::detail
+             m_host.log(LogLevel::Info, std::string(prefix) + text);
+             setV0(static_cast<uint32_t>(text.size()) + resultBias);
+         };
++        const auto logFormatted = [&](std::string_view prefix, uint32_t address, uint32_t first)
++        {
++            const std::string text = formatPrintf(m_memory, cpu, address, first);
++            m_host.log(LogLevel::Info, std::string(prefix) + text);
++            setV0(static_cast<uint32_t>(text.size()));
++        };
+ 
+         switch (ordinal)
+         {
+         case 4: // printf
+-            logString("[IOP printf] ", a0);
++            logFormatted("[IOP printf] ", a0, 0u);
+             return true;
+         case 5: // getchar
+         case 10:
+@@ -49,7 +124,7 @@ namespace ps2x::iop::detail
+             setV0(0u);
+             return true;
+         case 9: // fdprintf
+-            logString("[IOP fdprintf] ", a1);
++            logFormatted("[IOP fdprintf] ", a1, 1u);
+             return true;
+         case 11:
+             setV0(a0 & 0xFFu);
+diff --git a/ps2xIOP/src/emulator/iop_emulator.cpp b/ps2xIOP/src/emulator/iop_emulator.cpp
+index e5f63a9..780eb28 100644
+--- a/ps2xIOP/src/emulator/iop_emulator.cpp
++++ b/ps2xIOP/src/emulator/iop_emulator.cpp
+@@ -614,17 +614,52 @@ namespace ps2x::iop::detail
+             module.entry = loaded.entry;
+             module.gp = loaded.gp;
+ 
+-            uint32_t args = 0u;
++            // SOCOM Unzipped research/40 spike (local patch, not upstream): a module's _start(argc, argv) gets
++            // what modload gives it on the console -- argv[0] the module path, then the caller's NUL-separated
++            // argument strings -- not (byte count, raw buffer). 989SND.IRX parses argv[1..] and reported every
++            // word of the raw buffer as an unknown argument (its "Error: cause 7").
++            std::vector<std::string> argv;
++            argv.push_back(module.path);
+             if (arguments && argumentSize)
+             {
+-                args = allocate(argumentSize + 1u, 16u);
+-                if (args)
++                const char *bytes = static_cast<const char *>(arguments);
++                std::string cur;
++                for (uint32_t i = 0u; i < argumentSize; ++i)
+                 {
+-                    writeRam(args, arguments, argumentSize);
+-                    write8(args + argumentSize, 0u);
++                    if (bytes[i] == '\0')
++                    {
++                        if (!cur.empty())
++                            argv.push_back(cur);
++                        cur.clear();
++                    }
++                    else
++                        cur += bytes[i];
++                }
++                if (!cur.empty())
++                    argv.push_back(cur);
++            }
++            uint32_t stringsBytes = 0u;
++            for (const std::string &s : argv)
++                stringsBytes += static_cast<uint32_t>(s.size() + 1u);
++            const uint32_t tableBytes = static_cast<uint32_t>((argv.size() + 1u) * 4u);
++            const uint32_t args = allocate(((stringsBytes + 3u) & ~3u) + tableBytes, 16u);
++            uint32_t argvTable = 0u;
++            if (args)
++            {
++                uint32_t cursor = args;
++                std::vector<uint32_t> pointers;
++                for (const std::string &s : argv)
++                {
++                    writeRam(cursor, s.c_str(), s.size() + 1u);
++                    pointers.push_back(cursor);
++                    cursor += static_cast<uint32_t>(s.size() + 1u);
+                 }
++                argvTable = (cursor + 3u) & ~3u;
++                for (size_t i = 0u; i < pointers.size(); ++i)
++                    memory.write32(argvTable + static_cast<uint32_t>(4u * i), pointers[i]);
++                memory.write32(argvTable + static_cast<uint32_t>(4u * pointers.size()), 0u);
+             }
+-            const uint32_t startResult = callFunction(module.entry, argumentSize, args, 0u, 0u, module.gp);
++            const uint32_t startResult = callFunction(module.entry, static_cast<uint32_t>(argv.size()), argvTable, 0u, 0u, module.gp);
+             if (args)
+                 freeAllocation(args);
+             module.resident = startResult == 0u || startResult == 2u;

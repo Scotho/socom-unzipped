@@ -11,14 +11,60 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
 > A fresh "Start here" block for the morning is written at the close -- **it is immediately below, `## Start here
 > (2026-09-23 morning)`**, and it carries the results of those runs.
 
+## Sprint 11 close — what needs you (2026-09-25)
+
+Sprint 11 is merged to `main` as `v0.11.0`. Sprint 12 runs in the cloud on `sprint-12` (its local half is session socom-pc-6c's; its proof requests reach this machine through the Sprint 12 plan's task table). Nothing below blocks either; each is a decision or a hand only you have.
+
+1. **D1, the r0004 distribution** — reopened by R251: the capsule alone gives a player nothing; the package comes only from PSRewired's server after a login, lands on a memory card, and decrypts with a key bound to the console id. Today r0004 is a per-player pipeline (PCSX2 + their login + our build on their machine, ~40 min). Acceptable for v1, or does r0004 wait for another route? Task 11b stays withdrawn until you say.
+2. **Goal F, PSRewired** — your Discord answer. Two facts now sit under it: an r0004 client and an r0001 client cannot join each other's games (the client's token filter backs out silently after the server accepts), so a mixed server needs two rooms or two servers; and the capsule's second stub table for the r0004 layout was never applied to our image.
+3. **The two bug-pipeline words** (Task 13's review I1/I2, the section below).
+4. **The release archives** — the `v0.10.0` draft's, and now `v0.11.0`'s (the tag's workflow makes a draft; the archives and the publish are yours).
+5. **The branch sweep** — the `sprint-*` ruleset forbids deletion; `sprint-9`, `sprint-10`, `sprint-11` and the merged slice branches stay until you sweep them (one `gh` command, the section below).
+6. **The VM ring** (Task 18 Step 1, issue #25) — its suites are not green in the VM; CI proves Linux; a VM evening is yours to name.
+7. **Five big engine routines, by hand** — Task 7's prefix matches for `CMission::Init`, `CZSealBody::*` and their like are proposed by no rule; Sprint 12's plan asks for a human read of each before a name is applied (its Log's D5 line). Half an hour with the disassembly and research/44 §6.
+8. **The Horizon box** — both revisions send `MediusVersionServer` (lobby 0x86) and three other messages Horizon does not model; pre-existing, harmless so far, server-side: yours to schedule.
+
+
 ## Start here (2026-09-23 morning)
 
-Sprint 10 is **closed** -- what is left of it is the merge to `main` and the tag `v0.10.0`, both the loop's. Sprint 11
+Sprint 10 is **closed** -- merged to `main` (PR #24, `f15acfa`) and tagged `v0.10.0` -- the draft release exists, with no archives yet (below). Sprint 11
 is open on `docs/superpowers/plans/2026-09-23-sprint-11.md`. The night's results are in `docs/STATUS.md`'s newest
 entry and in `docs/CURRENT_SPRINT.md`'s "Sprint 10 -- CLOSED" block; the short version is that your Bluetooth speaker
 is **not** the cause of the music dropouts (they survive a wired endpoint, so they are ours), the prefilled login
 **stays** for now because a virgin card keeps the persona but loses the saved password, and the garbled HELP glyphs
 did not reproduce on a walk that never reaches the church.
+
+### Ten quiet minutes for the music dropouts (audio-out, `agent/audio-out`)
+
+The overnight capture that was to say WHERE the 50 ms music holes go was spoiled by a Chrome tab playing music
+into the HyperX endpoint for its whole sixteen minutes, and later by Discord as well (KNOWN §4); the instrument
+itself worked -- no late audio callback in 38,422 -- but a capture with anything else rendering is not a device
+measurement. **What to do** (the branch merged 2026-09-24 as `ae862a8` and its worktree is gone, so this runs in
+the main tree, `C:\projects\socom_pc`): close or mute whatever plays audio
+(`python -m tools_py.parity.app_volume list` shows the endpoint's sessions; the browser's music tab and Discord are
+the two seen that night), then run `bash scripts/parity/capture_audio_out.sh` (it takes the loop lock, launches the
+instrumented runner over the game, records the endpoint for the ten-minute briefing capture, and scores it -- about
+sixteen minutes; leave the machine alone until it prints `capture done` to `logs/capture_audio_out.log`), and read
+`logs/parity/<the new audio_out_*>/sessions_verdict.txt` **first**: it must say `clean` -- `CONTAMINATED` names what
+else rendered, and `INCONCLUSIVE` means the timeline itself has holes -- or the run is another spoiled one. Then
+`python -m tools_py.parity.cb_trace logs/parity/<same>/cb_trace.csv --dips logs/parity/<same>/dips.txt`. The
+equivalent single command is
+`PS2X_DEV=1 PS2X_AUDIO_TRACE=1 bash scripts/parity/mission_music_long.sh --stage briefing --minutes 10` on
+`dist/socom2.exe`. **What it decides:** a DEVICE count back near 14 with the trace still at 0 late callbacks means
+the dropouts are not the device thread's and the search moves to the audio engine, the recorder's silent overflow
+drops and the scorer's alignment; late or dry callbacks in the trace mean each dip is attributed to the callback
+that rendered it and the fix is on our side of the callback.
+
+### Sprint 12 is already running, in the cloud — and it needs one build window here (2026-09-25)
+
+**Sprint 12, "the readable image", has been open on branch `sprint-12` since 2026-09-24**, run by the cloud session
+(local half: session `socom-pc-6c`). It has a spec, a plan
+(`docs/superpowers/plans/2026-09-24-sprint-12.md` on that branch), a cloud handoff <!-- docmaint: future -->
+(`docs/superpowers/plans/2026-09-24-sprint-12-cloud-handoff.md`), thirteen research notes, rulings S12-R1…R25 and
+every task's code half done. **What it needs from you is a quiet window on this machine**, because the cloud has no
+disc: one pass of `./build.sh recomp`, `./build.sh runtime`, the C++ suite and the **r0001 gate 3/3 with PINS
+MATCH** — its Outcome's PROOF REQUESTED row — about an hour of the machine, nothing to watch. Name the window and
+the loop runs it; nothing else in Sprint 12 waits on you.
 
 ### The eight decisions, and the default each one proceeds on
 
@@ -33,7 +79,7 @@ reworked, nothing is lost.** None of these is waited on.
 | D5 | Signing | unsigned; the FAQ says what SmartScreen will show |
 | D6 | The landing page's deploy; wording about the community server | deploy owner-only; wording drafted here, in `docs/INSTALL.md` |
 | H7-A / H7-C | Disc-derived bytes: the audio/VU1 fixtures; the ~240 pictures | nothing moves |
-| r0004 D1-D4 | distribution of r0004; ordering; disclosure wording; HDD maps in scope? | D2 ordering as recommended; D4 = HDD maps **out** of scope for v1 (Goal G not scheduled) |
+| r0004 D1-D4 | distribution of r0004; ordering; disclosure wording; HDD maps in scope? | **D1 answered by you 2026-09-23** (a git-ignored copy in the tree, the launcher downloads PSRewired's capsule per user, upload as the fallback — Task 11b) **— and reopened by R251 (2026-09-24): the capsule alone gives a player nothing.** r0004 is a full rebuild whose package only comes from PSRewired's server after a login, lands on a memory card, and decrypts with a key bound to the console id; so today r0004 is a per-player pipeline (PCSX2 + their login + our build on their machine, ~40 min). **Decide: is that per-player path acceptable for v1, or does r0004 wait for another route?** Task 11b stays withdrawn until then. D2 ordering as recommended; D4 = HDD maps **out** of scope for v1 (Goal G not scheduled) |
 | G7 reply policy | do fixed reports get an answer to the contact left? | no |
 
 ### Send this to the PSRewired moderator
@@ -58,6 +104,61 @@ At 04:25Z the close's build could not copy `dist/socom_unzipped_launcher.exe` --
 on 2026-09-22 between 14:29 and 14:56 were still open** and held the executable locked. The loop closed them (nothing
 is lost: the launcher saves its settings on every change). If you had one of them parked on purpose, that is why it is
 gone.
+
+### What the twelve hours produced, and the rulings made in your name (2026-09-23, 14:00Z)
+
+Sprint 11 ran autonomously from the Sprint 10 close until the session limit stopped every agent at about 13:55Z.
+Landed: Milestone S is closed on both sides and the README says so (the chat receive path bounded on the client,
+the server clamp **deployed to the project box at 06:58Z** — your local Horizon stack was stopped for the build and
+started again); `scripts/build_revision.sh` (the pipeline for another disc revision, proven byte-identical on
+r0001); the dead history archived with a link check that fails; the release-draft workflow's eligibility step and
+the backfilled tags `v0.5.0`–`v0.8.0`; the Linux VM ring measured and its five Linux-only defects fixed. Eight more
+tasks are part-done in agent worktrees — `docs/CURRENT_SPRINT.md`'s table; **do not delete `C:\projects\wt-*`**.
+
+Rulings (numbered ones are in the plan's rulings section; all reversible):
+- **R241–R245** (the Sprint 10 close and the open): the external-repo items slotted; option B (a native libsd) not
+  scheduled — the differential test showed 1,775 of 1,794 calls agree.
+- **R246** the chat bound's *install* (seen in every launch's log) is the proof Milestone S ships on; a line seen
+  crossing it end to end is a filler row, because the harness cannot type a chat line yet.
+- **R247** the vendored Vita/Android/ps2xStudio trees and the 6.8 MB of embedded font headers go (Task 17, in
+  progress in `wt-baggage`).
+- Unnumbered: the Custom server preset's revision is *unknown* (no mismatch warning) rather than r0001 as the plan
+  said; your browser's audio session was left alone when it contaminated a capture (below); the ladder's check-then-
+  acquire race and the lock's `--wait` unit are recorded, not patched, while nine processes were polling the script.
+
+One disclosure note: the Sprint 11 spec and plan carried the chat path's mechanics (function names, offsets, sizes) in prose from 2026-09-21 to 2026-09-23; both are narrowed now, but the repository is public and its history keeps the earlier wording (`f8cdbb4`, `0e3eeaf`). Only a history rewrite removes it — your call, and SECURITY.md's rule stands either way.
+
+What only you can do is unchanged and listed below; one addition from the audio work: **a quiet-endpoint capture**
+(close the music tab and Discord, then `bash scripts/parity/capture_audio_out.sh` from `C:\projects\socom_pc`, ten
+minutes) — the exact step is the "Ten quiet minutes for the music dropouts" section above, rewritten against the
+main tree on 2026-09-25 now that `agent/audio-out` has merged (`ae862a8`).
+
+### Two words the bug pipeline needs from you (Task 13's review, 2026-09-24)
+
+(1) The launcher's post-SEND line invites a public issue unconditionally; `SECURITY.md` forbids a public issue for a security report — say whether the line should carry the exception ("unless it is a security report") or the triage routine simply never opens one for those (the default while you decide: the routine, not the sentence). (2) The page's contact note still says "only if you want an answer", which promises a reply the triage routine forbids (your G7 reply policy: no) — drop the phrase, or change the policy. Both are one-line edits once you say.
+
+### The r0004 build, where it stands (2026-09-24, 16:30Z): the gate is 3/3
+
+**It passes the gate 3/3** — title, transition and a mission — under our runtime, from PSRewired's package (`s11_r0004_probe2`). The reboot that stopped it at the credits was not the game and not our recompilation: the overlay we read out of PCSX2's memory carried two words that PSRewired's resident capsule had written over a function's epilogue, and the game lost a register there. Undone at the image build from the capsule's own decoded write stack. The last lane then failed in our own gate harness twice over — it read r0001's addresses, and one struct field sits four bytes higher in r0004 — both fixed at the root with a per-revision table. Nothing of it needs you. Two things worth knowing: the runtime had been answering −1 to five kernel calls on every run of *both* revisions (fixed, r0001 re-proven 3/3); and the r0004 build has only ever run against the r0001 disc's assets — what r0004 expects from its own package's data, and the capsule's second stub table our image never received, are Goal F's questions and stay with your Discord answer. **Evening: it plays online on our own box** — login, lobby, host, join, a round with two r0004 instances in step; the server needed no change (r0004 presents r0001's application id). **One fact for Goal F and the launcher's community row, decided by the client, not the server:** an r0004 client and an r0001 client see each other's games and cannot join them — the join succeeds through Medius and DME and the client then quietly backs out to the online root menu, no message, and the host never sees it. The filter is the client's `r0001`/`r0004` token check (research/43 §2), mutual. So a mixed server shows everyone every game and lets nobody cross: separating the revisions (two servers, or two briefing rooms) beats explaining a silent bounce, and PSRewired's own capsule leaves its players advertising `r0001`. Nothing on the box was touched. Also seen, pre-existing and identical for both revisions: Horizon does not model `MediusVersionServer` (lobby 0x86) and three other messages both clients send — a server-side gap, not an r0004 one, yours to schedule.
+
+### The r0004 patch, received 2026-09-23
+
+**Night result (R251): the package was obtained the sanctioned way (PCSX2 + their pnach + their DNS; the server pushed it on connect, no account needed) and the r0004 ELF is built — the Ghidra pass, the matcher, the re-recompilation and the gate are running or queued; two harness changes are left in place deliberately until r0004 is proven (PCSX2's card now boots r0004 — backup at `game/r0004/Mcd001.before.ps2`; the cheat's per-game ini) — say if you want them restored sooner.** **Evening correction (R250):** PSRewired's guide says the r0004 update is *downloaded from their server* once the bypass gets a client online — so the package exists and the sanctioned way to get it is PCSX2 + their pnach + their DNS (67.222.156.250), the update saved to the emulator's card, `APACHE00.ZDB` extracted; Task 9's pipeline then builds r0004. PCSX2 is not installed on this machine and needs a PS2 BIOS. Their CDN also hosts the three DLC maps' HDD image (15 MB). The earlier paragraph stands for what the capsule *is*: **Decoded the same morning (R249): the capsule is a DNAS bypass and nothing else** — one game function stubbed (`DNASAuthenticate` answers "done"), which our runtime has replaced since the online path first worked. In PSRewired's sense this build already *is* r0004; the launcher download you asked for has nothing to apply, so **Task 11b is withdrawn unless you say otherwise**. Two things only you can settle: (1) ask PSRewired whether their players also carry an `mc0:UPDATE.DAT` feature stack (the capsule looks for one; r0005's is 3,065 writes) — if yes, that file is the real "r0004" and the decoder is ready for it; (2) Goal F, connecting, is still your Discord answer. The default while you decide: no download, the GAME VERSION row says what the patch is.
+
+Downloaded from https://psrewired.com/downloads/r0004v002.elf to `game/r0004/r0004v002.elf` (git-ignored; sha256 `ad0ed7511b2c2d540c7918a5e00906e6b292e6cf365d55eaad6e71b30412049e`). It is PSRewired's **resident patch capsule** for the r0001 disc, not the console's memory-card package — the finding and what it changes are R248 in the plan and the corrected §1.1 of the r0004 spec. Two things to know: the capsule carries **anti-cheat scanners that freeze the game on a code checksum mismatch** (the r0005 README describes them; ours will disable them by ruling, since our code is native and the README will say so), and its patch body is an **encrypted code stack** — decoding it is Task 19's first step. Nothing connects to PSRewired's server; that is still Goal F and yours.
+
+### The v0.10.0 draft is waiting for its archives
+
+The tag went up at the Sprint 10 close and `release-draft.yml` made the draft (its checklist is the notes). It has no
+archives: building and attaching them is yours by the rule in `docs/GIT_STRATEGY.md` (whether code recompiled from
+the game's executable may be distributed at all is your call, every release). When you decide to: `./build.sh
+release`, `scripts/make_portable.sh --release`, the Linux pair in the VM, `SHA256SUMS` and `THIRD_PARTY_NOTICES.md`
+attached to the draft with `gh release upload v0.10.0 <files>`; then run the workflow by hand with the tag
+(Actions -> release-draft -> Run workflow -> `v0.10.0`) and it verifies every archive and appends the verdict to the
+draft. That run is the verify half's first real trial. Publishing stays your click.
+
+Tags `v0.5.0`-`v0.8.0` now sit on the Sprint 5-8 close commits (backfilled 2026-09-23, annotated as historical);
+they make no drafts.
 
 ### The two things still only you can do
 
@@ -332,6 +433,14 @@ workflows, and the visibility flip itself. Publishing any Release is always your
 
 **Relayed to the site session, not yet confirmed done:** s2u.scotho.com must drop its "keyboard/mouse support" claim
 (your instruction, 2026-09-20).
+
+**A second request for the site session (Sprint 11 Task 13, 2026-09-23):** after a successful SEND, the launcher now
+shows a second line under the reference -- *"Contributors can also open an issue at github.com/Scotho/socom-unzipped
+and quote this id."* The site's REPORT A BUG form (`../scotho/apps/s2u/src/report.ts`) should show the same sentence,
+word for word, in the same place. It is one string in the site's repository, so it is that session's edit, not this
+one's; the launcher's copy is the single literal `kGithubIssueLine` in `launcher/bug_report.h`. Nothing else about the
+pipeline changes: reports stay private, and no report's text ever crosses to GitHub (`docs/HANDOFF.md` rule 12).
+The related decision, **G7 reply policy**, is in the decision table above and proceeds on **no**.
 
 ## Open
 

@@ -49,3 +49,95 @@ class PlanChangesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SessionMonitorTest(unittest.TestCase):
+    """Fix round 1, I5: a session LIST cannot prove contamination (pycaw returns inactive and expired sessions too);
+    a timeline of state and peak level per session can. The pure half: rows in, the foreign sessions that were
+    actually rendering out."""
+
+    CSV = (
+        "t_s,name,pid,state,peak\n"
+        "0.0,socom2.exe,4100,1,0.2100\n"
+        "0.0,chrome.exe,880,1,0.0000\n"
+        "0.0,LEDKeeper2.exe,300,0,0.0000\n"
+        "0.0,python3.13.exe,7777,1,0.2100\n"     # the recorder: its loopback session reads the endpoint's mix
+        "5.0,socom2.exe,4100,1,0.1900\n"
+        "5.0,chrome.exe,880,1,0.0800\n"
+        "5.0,python3.13.exe,7777,1,0.2600\n"
+        "10.0,socom2.exe,4100,1,0.2200\n"
+        "10.0,chrome.exe,880,1,0.0700\n"
+        "10.0,python3.13.exe,7777,1,0.2800\n"
+        "15.0,socom2.exe,4100,1,0.2000\n"
+        "15.0,chrome.exe,880,2,0.0000\n"
+        "15.0,python3.13.exe,7777,1,0.2000\n"
+    )
+    ALLOWED = ("socom2.exe", "LEDKeeper2.exe", "(system)")
+
+    def test_a_foreign_session_counts_only_while_active_with_a_peak_above_the_floor(self):
+        rows = app_volume.parse_samples(self.CSV)
+        self.assertEqual(len(rows), 13)
+        foreign = app_volume.contamination(rows, allowed=self.ALLOWED, ignore_pids=(7777,))
+        self.assertEqual([(f.name, f.first_s, f.last_s, f.samples) for f in foreign], [("chrome.exe", 5.0, 10.0, 2)],
+                         "chrome rendered from 5 to 10 s; silent at 0, expired at 15; LEDKeeper2 is allowed and idle anyway")
+
+    def test_the_recorder_is_excluded_by_pid_never_by_name(self):
+        rows = app_volume.parse_samples(self.CSV)
+        by_name = app_volume.contamination(rows, allowed=self.ALLOWED)
+        self.assertEqual(sorted(f.name for f in by_name), ["chrome.exe", "python3.13.exe"],
+                         "without the pid the recorder's loopback session reads as a source, at the endpoint's own level")
+        other_python = app_volume.contamination(rows, allowed=self.ALLOWED, ignore_pids=(7778,))
+        self.assertEqual(sorted(f.name for f in other_python), ["chrome.exe", "python3.13.exe"], "a different python is not excused")
+
+    def test_a_clean_timeline_has_no_foreign_session(self):
+        rows = app_volume.parse_samples("t_s,name,pid,state,peak\n0.0,socom2.exe,1,1,0.2\n5.0,(system),0,0,0.0\n")
+        self.assertEqual(app_volume.contamination(rows, allowed=("socom2.exe", "(system)")), [])
+
+    def test_the_old_four_column_form_still_reads_with_pid_zero(self):
+        rows = app_volume.parse_samples("t_s,name,state,peak\n0.0,socom2.exe,1,0.2\n")
+        self.assertEqual((rows[0].name, rows[0].pid, rows[0].state, rows[0].peak), ("socom2.exe", 0, 1, 0.2))
+
+    def test_an_unreadable_meter_is_reported_and_the_verdict_is_never_clean(self):
+        """Fix round 2, R4: a meter that could not be queried used to read as 'not rendering' -- a capture whose
+        COM calls all failed produced `clean`, the one word the owner is told to trust."""
+        csv = ("t_s,name,pid,state,peak\n"
+               "0.0,socom2.exe,4100,1,0.2100\n"
+               "0.0,chrome.exe,880,1,-1.0000\n"      # the meter interface was not there: unknown, not silent
+               "5.0,socom2.exe,4100,1,0.1900\n"
+               "5.0,chrome.exe,880,-1,-1.0000\n"
+               "# 10.0 error -2147023174 the RPC server is unavailable\n")
+        rows = app_volume.parse_samples(csv)
+        errors = app_volume.parse_errors(csv)
+        self.assertEqual(len(errors), 1, "the monitor's COM-hiccup lines are read back, not skipped in silence")
+        self.assertEqual(app_volume.unreadable(rows), [("chrome.exe", 2)])
+        self.assertEqual(app_volume.contamination(rows, allowed=self.ALLOWED), [],
+                         "an unknown meter is not evidence of rendering either")
+        v = app_volume.verdict(rows, errors, allowed=self.ALLOWED)
+        self.assertEqual(v.state, "INCONCLUSIVE")
+        self.assertNotEqual(v.code, 0, "an inconclusive capture must not exit 0")
+        self.assertTrue(any("UNREADABLE" in ln and "chrome.exe" in ln for ln in v.lines), v.lines)
+        self.assertTrue(any("1 sampling pass" in ln for ln in v.lines), v.lines)
+
+    def test_a_readable_timeline_still_reads_clean_or_contaminated(self):
+        rows = app_volume.parse_samples(self.CSV)
+        v = app_volume.verdict(rows, [], allowed=self.ALLOWED, ignore_pids=(7777,))
+        self.assertEqual((v.state, v.code), ("CONTAMINATED", 1))
+        self.assertTrue(any("chrome.exe" in ln for ln in v.lines), v.lines)
+        clean_rows = app_volume.parse_samples("t_s,name,pid,state,peak\n0.0,socom2.exe,1,1,0.2\n5.0,(system),0,0,0.0\n")
+        v2 = app_volume.verdict(clean_rows, [], allowed=("socom2.exe", "(system)"))
+        self.assertEqual((v2.state, v2.code), ("clean", 0))
+        self.assertEqual(app_volume.verdict([], [], allowed=self.ALLOWED).code, 2, "no samples is not clean either")
+
+    def test_an_unreadable_meter_is_said_even_when_something_else_contaminated_the_capture(self):
+        csv = self.CSV + "20.0,chrome.exe,880,1,-1.0000\n"
+        rows = app_volume.parse_samples(csv)
+        v = app_volume.verdict(rows, [], allowed=self.ALLOWED, ignore_pids=(7777,))
+        self.assertEqual(v.state, "CONTAMINATED")
+        self.assertTrue(any("UNREADABLE" in ln for ln in v.lines), v.lines)
+
+    def test_a_sample_line_is_one_row_per_session(self):
+        class S:
+            def __init__(self, name, pid, state, peak):
+                self.name, self.pid, self.state, self.peak = name, pid, state, peak
+        lines = app_volume.format_samples(12.5, [S("socom2.exe", 4100, 1, 0.21), S("chrome.exe", 880, 2, 0.0)])
+        self.assertEqual(lines, ["12.5,socom2.exe,4100,1,0.2100", "12.5,chrome.exe,880,2,0.0000"])

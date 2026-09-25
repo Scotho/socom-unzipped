@@ -101,14 +101,84 @@ namespace ps2recomp
             result.externalEntryPoints.insert(target);
         };
 
-        auto queueResumeEntryTarget = [&](uint32_t resumeAddr)
+        // Is this address inside any row of the map at all -- stubs, skipped rows and entry_
+        // slices included? Used only to decide whether a continuation is worth warning about.
+        auto isCoveredByAnyFunction = [&](uint32_t address) -> bool
         {
-            if (resumeAddr >= function.start && resumeAddr < function.end &&
-                instructionAddresses.contains(resumeAddr))
+            if (!allFunctions)
             {
-                result.entryPoints.insert(resumeAddr);
-                result.resumeEntryPoints.insert(resumeAddr);
+                // No map to judge against (unit fixtures): say nothing.
+                return true;
             }
+
+            for (const auto &candidateFn : *allFunctions)
+            {
+                if (address >= candidateFn.start && address < candidateFn.end)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        // Where a thread resumes: a call's return pc, a syscall's return pc, a not-taken branch's
+        // fallthrough, a loop's back edge. The scheduler dispatches on that pc, so some recompiled
+        // function has to own it.
+        //
+        // Ghidra's map sometimes starts the next row ON a delay slot (FUN_00544550 begins at the
+        // delay slot of the jal at 0x54454c), which puts the continuation one instruction inside
+        // the *next* row. Registering it only when it falls in the producing row -- what this did
+        // before -- left those pcs owned by nobody and the thread died at
+        // [guest-branch:missing-target]. Register it wherever it lands, the way an external branch
+        // target is resolved, and say so at build time when it lands in no row at all.
+        enum class ContinuationScope
+        {
+            AnyRow,      // the producing row may own it (a resume entry of this function)
+            CrossRowOnly // only another row may own it
+        };
+
+        auto queueContinuationTarget = [&](uint32_t continuationPc,
+                                           uint32_t sourcePc,
+                                           const char *kind,
+                                           ContinuationScope scope)
+        {
+            if (continuationPc >= function.start && continuationPc < function.end &&
+                instructionAddresses.contains(continuationPc))
+            {
+                if (scope == ContinuationScope::AnyRow)
+                {
+                    result.entryPoints.insert(continuationPc);
+                    result.resumeEntryPoints.insert(continuationPc);
+                }
+
+                // A continuation inside the producing row needs nothing when the row itself is
+                // what runs it: the generated function simply carries on at that instruction.
+                return;
+            }
+
+            if (findContainingExternalFunction(continuationPc))
+            {
+                // Owned by another row: register it exactly as a cross-function branch target is
+                // registered, guards and all -- one source of truth for "this entry is legitimate".
+                queueExternalEntryTarget(continuationPc);
+                return;
+            }
+
+            if (isCoveredByAnyFunction(continuationPc))
+            {
+                return;
+            }
+
+            if (m_reporter)
+            {
+                m_reporter->recordUnmappedContinuation(function.name, sourcePc, continuationPc, kind);
+            }
+        };
+
+        auto queueResumeEntryTarget = [&](uint32_t resumeAddr, uint32_t sourcePc, const char *kind)
+        {
+            queueContinuationTarget(resumeAddr, sourcePc, kind, ContinuationScope::AnyRow);
         };
 
         auto queueLoopResumeEntryTarget = [&](uint32_t target, uint32_t sourcePc)
@@ -118,7 +188,101 @@ namespace ps2recomp
                 return;
             }
 
-            queueResumeEntryTarget(target);
+            queueResumeEntryTarget(target, sourcePc, "loop back edge");
+        };
+
+        // `b`/`bl` are assembled as beq/beql over two equal registers: nothing reaches their +8.
+        auto branchAlwaysTaken = [](const Instruction &inst) -> bool
+        {
+            return (inst.opcode == OPCODE_BEQ || inst.opcode == OPCODE_BEQL) && inst.rs == inst.rt;
+        };
+
+        auto readImageWord = [&](uint32_t address, uint32_t &out) -> bool
+        {
+            if (address & 3u)
+            {
+                return false;
+            }
+
+            for (const auto &section : m_sections)
+            {
+                if (!section.data || address < section.address ||
+                    (static_cast<uint64_t>(address) + 4ull) >
+                        (static_cast<uint64_t>(section.address) + section.size))
+                {
+                    continue;
+                }
+
+                std::memcpy(&out, section.data + (address - section.address), sizeof(out));
+                return true;
+            }
+
+            return false;
+        };
+
+        // The primary opcodes the R5900 does not define -- the same table
+        // tools_py/find_data_entries.py screens data words with. A word out of a string table or a
+        // float array picks one of these often enough to be worth asking.
+        auto decodesAsInstruction = [](uint32_t raw) -> bool
+        {
+            switch (raw >> 26)
+            {
+            case 0x13u:                                       // COP3
+            case 0x1Du:                                       // unassigned
+            case 0x30u: case 0x32u: case 0x34u: case 0x35u:   // ll and the unassigned COPz loads
+            case 0x38u: case 0x3Au: case 0x3Bu:               // sc and the unassigned COPz stores
+            case 0x3Cu: case 0x3Du:
+                return false;
+            default:
+                return true;
+            }
+        };
+
+        auto isTransferWord = [](uint32_t raw) -> bool
+        {
+            const uint32_t op = raw >> 26;
+            if (op == OPCODE_J || op == OPCODE_JAL || op == OPCODE_REGIMM ||
+                (op >= OPCODE_BEQ && op <= OPCODE_BGTZ) ||
+                (op >= OPCODE_BEQL && op <= OPCODE_BGTZL))
+            {
+                return true;
+            }
+            return op == OPCODE_SPECIAL && ((raw & 0x3Fu) == SPECIAL_JR || (raw & 0x3Fu) == SPECIAL_JALR);
+        };
+
+        // A row the map laid over data decodes data words as branches. A garbage *target* mostly
+        // resolves to nothing and is dropped; a garbage *fallthrough* is the next two words, so it
+        // lands inside a genuine row almost every time and would be registered -- handing the
+        // runtime a function-table slot for a pc that should have faulted, and silencing the very
+        // [guest-branch:missing-target] this whole change exists to expose. Four shapes say "data",
+        // each one find_data_entries.py already earns its keep with. (That the row the
+        // continuation lands in is text is enforced by findContainingExternalFunction, which
+        // resolves only inside a code section.)
+        auto fallthroughLooksLikeCode = [&](const Instruction &inst, uint32_t target) -> bool
+        {
+            if (!isExecutableAddress(target))
+            {
+                return false;                     // a branch out of the image is table data
+            }
+
+            if (target == inst.address + 4u)
+            {
+                return false;                     // 0x04210000, "bgez at,+0": a float, not code
+            }
+
+            uint32_t word = 0;
+            if (readImageWord(inst.address + 4u, word) &&
+                (!decodesAsInstruction(word) || isTransferWord(word)))
+            {
+                return false;                     // no delay slot holds a branch: this is not code
+            }
+
+            if (readImageWord(inst.address + 8u, word) && !decodesAsInstruction(word))
+            {
+                return false;                     // the continuation itself is not an instruction
+            }
+
+            return true;
         };
 
         for (const auto &inst : instructions)
@@ -140,7 +304,7 @@ namespace ps2recomp
             // entry point there. +4, not +8: syscall has no delay slot.
             if (inst.opcode == OPCODE_SPECIAL && inst.function == SPECIAL_SYSCALL)
             {
-                queueResumeEntryTarget(inst.address + 4u);
+                queueResumeEntryTarget(inst.address + 4u, inst.address, "syscall return");
             }
 
             bool isStaticJump = (inst.opcode == OPCODE_J || inst.opcode == OPCODE_JAL);
@@ -160,6 +324,22 @@ namespace ps2recomp
                 {
                     queueExternalEntryTarget(target);
                 }
+
+                // The not-taken path continues at +8. Only another row can need that registered:
+                // inside this row the generated code falls through to it on its own. Both cheap
+                // questions -- is there a map at all, does the continuation even leave this row --
+                // come before the gate, which reads the image and is the only thing here that
+                // touches the sections.
+                const uint32_t fallthroughPc = inst.address + 8u;
+                const bool insideThisRow = fallthroughPc >= function.start &&
+                                           fallthroughPc < function.end &&
+                                           instructionAddresses.contains(fallthroughPc);
+                if (allFunctions && !insideThisRow && !branchAlwaysTaken(inst) &&
+                    fallthroughLooksLikeCode(inst, target))
+                {
+                    queueContinuationTarget(fallthroughPc, inst.address, "branch fallthrough",
+                                            ContinuationScope::CrossRowOnly);
+                }
             }
             else if (isStaticJump)
             {
@@ -172,7 +352,7 @@ namespace ps2recomp
 
                     if (inst.opcode == OPCODE_JAL)
                     {
-                        queueResumeEntryTarget(inst.address + 8u);
+                        queueResumeEntryTarget(inst.address + 8u, inst.address, "call return");
                     }
                 }
                 else
@@ -181,7 +361,7 @@ namespace ps2recomp
 
                     if (inst.opcode == OPCODE_JAL)
                     {
-                        queueResumeEntryTarget(inst.address + 8u);
+                        queueResumeEntryTarget(inst.address + 8u, inst.address, "call return");
                     }
                 }
             }
@@ -194,7 +374,7 @@ namespace ps2recomp
             {
                 if (jrInst->function == SPECIAL_JALR)
                 {
-                    queueResumeEntryTarget(jrInst->address + 8u);
+                    queueResumeEntryTarget(jrInst->address + 8u, jrInst->address, "call return");
                 }
 
                 bool foundTable = false;

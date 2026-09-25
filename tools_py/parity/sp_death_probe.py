@@ -60,13 +60,19 @@ from tools_py.parity.screen_bands import band_fraction
 # ---------------------------------------------------------------------------------------------
 # instruments
 # ---------------------------------------------------------------------------------------------
-ACTOR_STATIC = 0x408C58
+# The r0001 column of guest_addresses.PROBE_ADDRESSES, read from it rather than repeated (Task 19
+# review F6): this module is the ladder's instrument and the ladder runs on the r0001 build.
+ACTOR_STATIC = vc.ga.address("player_actor", "r0001")     # 0x408c58
 ACTOR_VTABLE = vc.ACTOR_VTABLE
 CAMERA_ADDR = vc.CAMERA_RECORD_ADDR
 HEALTH_OFFSET = 0x1044                 # float, 1.0 full, <= 0 dead (research/19 F1)
 ALIVE_OFFSET = 0xF7A                   # byte, 1 = alive (research/19 F1); byte 2 of the word at +0xF78
 DEATH_TIME_OFFSET = 0xFB4              # float, believed time-of-death (research/19 F1 "nearby", inference)
-MOVE_SCALE_OFFSET = 0x1368             # FUN_00553dc0; multiplies +0x23c/+0x240/+0x244
+MOVE_SCALE_OFFSET = vc.ga.offset("move_scale", "r0001")   # 0x1368; FUN_00553dc0, multiplies +0x23c/+0x240/+0x244
+# The other actor field offsets below stay r0001 literals: only the ladder reads them, the ladder runs
+# on r0001, and no r0004 value for any of them has been measured -- a column filled by assumption is
+# the defect guest_addresses exists to stop. They join PROBE_OFFSETS when somebody measures them, the
+# way move_scale was measured (Task 19, the move lane).
 ANGVEL_OFFSET = 0x48                   # actor angular velocity (rad/s): FUN_00550ef0 = 2.0 * turn axis
 TURN_AXIS_OFFSET = 0x23C               # FUN_00551ec0: scaled turn axis
 QUAT_OFFSET = 0x70                     # x, y, z, w
@@ -75,18 +81,22 @@ MATRIX_OFFSET = 0x80                   # 4x4, rows at +0x80/+0x90/+0xa0/+0xb0
 # The plan's Step 2 peek, widened for the heading search. Every item <= 64 words (the exe caps an item
 # at 64 silently -- KNOWN.md). +0x200:64 covers the stick axes at +0x23c..+0x244; +0x100 and +0x300
 # are the brief's wider actor windows.
+# The two guest addresses and the MoveScale offset come from guest_addresses' r0001 column, not from
+# literals in these strings (Task 19 re-review N4): a literal 0x1368 four lines under a derived
+# MOVE_SCALE_OFFSET is the drift F6 removed, written back in as text. The rest of the displacements are
+# this module's own ladder fields (HEALTH_OFFSET and friends below), which stay r0001 -- see the note there.
 PEEK_SPEC = ",".join([
-    "0x416054:3",
-    "*0x408c58:64",
-    "*0x408c58+0xF78:1",
-    "*0x408c58+0x1044:1",
-    "*0x408c58+0xc0*:32",
-    "0x408c58:4",
-    "*0x408c58+0x100:64",
-    "*0x408c58+0x200:64",
-    "*0x408c58+0x300:64",
-    "*0x408c58+0xFB4:1",
-    "*0x408c58+0x1368:1",
+    "%#x:3" % CAMERA_ADDR,
+    "*%#x:64" % ACTOR_STATIC,
+    "*%#x+0xF78:1" % ACTOR_STATIC,
+    "*%#x+%#x:1" % (ACTOR_STATIC, HEALTH_OFFSET),
+    "*%#x+0xc0*:32" % ACTOR_STATIC,
+    "%#x:4" % ACTOR_STATIC,
+    "*%#x+0x100:64" % ACTOR_STATIC,
+    "*%#x+0x200:64" % ACTOR_STATIC,
+    "*%#x+0x300:64" % ACTOR_STATIC,
+    "*%#x+0x%X:1" % (ACTOR_STATIC, DEATH_TIME_OFFSET),   # uppercase: the string the ladder has always launched with
+    "*%#x+%#x:1" % (ACTOR_STATIC, MOVE_SCALE_OFFSET),
 ])
 
 SAMPLER_PERIOD_S = 0.25
@@ -191,13 +201,19 @@ def byte_at(items, addr):
     return None if w is None else (w >> (8 * (addr - base))) & 0xFF
 
 
-def actor_addr(items):
+def actor_addr(items, static=None, vtable=None):
     """The actor base: the static 0x408c58's word 0 (robust when the block's own word 0 changes at death),
-    else the item whose word 0 is the vtable."""
-    s = item_at(items, ACTOR_STATIC)
+    else the item whose word 0 is the vtable.
+
+    `static`/`vtable` default to the r0001 pair this module has always used. guest_probe passes the pair
+    for the revision it is reading, instead of keeping its own copy of this selection (Task 19 review
+    F11): the rule is one rule, and only the two numbers it is applied to vary."""
+    static = ACTOR_STATIC if static is None else static
+    vtable = ACTOR_VTABLE if vtable is None else vtable
+    s = item_at(items, static)
     if s and s[0]:
         return s[0]
-    return next((a for a, w in items if w and w[0] == ACTOR_VTABLE), None)
+    return next((a for a, w in items if w and w[0] == vtable), None)
 
 
 class Row:

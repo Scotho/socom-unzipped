@@ -22,6 +22,8 @@
 # in a window they are away from the machine (the host-load rule), never while they are on a call.
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+. "$ROOT/scripts/python_env.sh"    # $PYTHON, resolved once for every script
+socom_require_python endpoint_ab
 cd "$ROOT"
 
 DEVICE=""
@@ -49,17 +51,17 @@ BACKUP="$OUT/routing_backup"
 echo "endpoint A/B: device='$DEVICE' stage=$STAGE minutes=$MINUTES out=$OUT baseline=$BASELINE"
 if [ "$DRY" = 1 ]; then
   echo "--dry-run: would set the default to '$DEVICE', run mission_music_long.sh --stage $STAGE --minutes $MINUTES --stamp ${STAMP}_wired, check, compare, restore"
-  PYTHONPATH="$ROOT" python -m tools_py.parity.endpoint_route status
+  PYTHONPATH="$ROOT" "$PYTHON" -m tools_py.parity.endpoint_route status
   exit 0
 fi
 
-PYTHONPATH="$ROOT" python -m tools_py.parity.endpoint_route status | tee "$OUT/routing_before.txt"
-PYTHONPATH="$ROOT" python -m tools_py.parity.endpoint_route set "$DEVICE" --backup "$BACKUP" | tee "$OUT/routing_set.txt" || {
+PYTHONPATH="$ROOT" "$PYTHON" -m tools_py.parity.endpoint_route status | tee "$OUT/routing_before.txt"
+PYTHONPATH="$ROOT" "$PYTHON" -m tools_py.parity.endpoint_route set "$DEVICE" --backup "$BACKUP" | tee "$OUT/routing_set.txt" || {
   echo "endpoint_ab: could not move the routing -- nothing launched, nothing to restore" >&2; exit 6; }
 restore() {
   echo "endpoint_ab: restoring the routing and the defaults"
-  PYTHONPATH="$ROOT" python -m tools_py.parity.endpoint_route restore --backup "$BACKUP" | tee "$OUT/routing_restore.txt"
-  PYTHONPATH="$ROOT" python -m tools_py.parity.endpoint_route status | tee "$OUT/routing_after.txt"
+  PYTHONPATH="$ROOT" "$PYTHON" -m tools_py.parity.endpoint_route restore --backup "$BACKUP" | tee "$OUT/routing_restore.txt"
+  PYTHONPATH="$ROOT" "$PYTHON" -m tools_py.parity.endpoint_route status | tee "$OUT/routing_after.txt"
 }
 trap restore EXIT
 
@@ -69,7 +71,7 @@ rc=$?
 echo "capture rc=$rc"
 RUN="logs/parity/${STAMP}_wired"
 log=$(ls -t logs/run_*.log 2>/dev/null | head -1)
-PYTHONPATH="$ROOT" python -m tools_py.parity.endpoint_route check "$log" --expect "$DEVICE" | tee "$OUT/check.txt"
+PYTHONPATH="$ROOT" "$PYTHON" -m tools_py.parity.endpoint_route check "$log" --expect "$DEVICE" | tee "$OUT/check.txt"
 crc=${PIPESTATUS[0]}
 if [ "$crc" != 0 ]; then
   echo "endpoint_ab: NOT SCORED -- the run did not render to '$DEVICE' (see $OUT/check.txt)"

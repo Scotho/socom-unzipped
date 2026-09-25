@@ -337,18 +337,6 @@ namespace ps2_syscalls
 
     void TODO(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime, uint32_t encodedSyscallId)
     {
-        // a bit more detail mayber reomve old logic, lets get it more raw
-        std::cerr << "[Syscall TODO]"
-                  << " encoded=0x" << std::hex << encodedSyscallId
-                  << " v1=0x" << getRegU32(ctx, 3)
-                  << " v0=0x" << getRegU32(ctx, 2)
-                  << " a0=0x" << getRegU32(ctx, 4)
-                  << " a1=0x" << getRegU32(ctx, 5)
-                  << " a2=0x" << getRegU32(ctx, 6)
-                  << " a3=0x" << getRegU32(ctx, 7)
-                  << " pc=0x" << ctx->pc
-                  << std::dec << std::endl;
-
         const uint32_t v0 = getRegU32(ctx, 2);
         const uint32_t v1 = getRegU32(ctx, 3);
         const uint32_t caller_ra = getRegU32(ctx, 31);
@@ -358,18 +346,47 @@ namespace ps2_syscalls
             syscallId = v1;
         }
 
-        std::cerr << "Warning: Unimplemented PS2 syscall called. PC=0x" << std::hex << ctx->pc
-                  << ", RA=0x" << caller_ra
-                  << ", Encoded=0x" << encodedSyscallId
-                  << ", v0=0x" << v0
-                  << ", v1=0x" << v1
-                  << ", Chosen=0x" << syscallId
-                  << std::dec << std::endl;
+        // Every block below is rate-limited on one count, not just the last one. Since Sprint 11
+        // Task 19 an override whose handler the runtime cannot execute is no longer claimed, so a
+        // guest that overrode a syscall this runtime does not implement reaches here on EVERY call
+        // instead of being answered -1 in silence -- and two of these blocks used to print
+        // unconditionally, which would flood the game log from a per-frame path.
+        static std::mutex s_unknownMutex;
+        static std::unordered_map<uint32_t, uint64_t> s_unknownCounts;
+        uint64_t hits = 0;
+        {
+            std::lock_guard<std::mutex> lock(s_unknownMutex);
+            hits = ++s_unknownCounts[syscallId];
+        }
+        const bool report = (hits == 1u) || (hits % 5000u) == 0u;
 
-        std::cerr << "  Args: $a0=0x" << std::hex << getRegU32(ctx, 4)
-                  << ", $a1=0x" << getRegU32(ctx, 5)
-                  << ", $a2=0x" << getRegU32(ctx, 6)
-                  << ", $a3=0x" << getRegU32(ctx, 7) << std::dec << std::endl;
+        if (report)
+        {
+            std::cerr << "[Syscall TODO]"
+                      << " encoded=0x" << std::hex << encodedSyscallId
+                      << " v1=0x" << v1
+                      << " v0=0x" << v0
+                      << " a0=0x" << getRegU32(ctx, 4)
+                      << " a1=0x" << getRegU32(ctx, 5)
+                      << " a2=0x" << getRegU32(ctx, 6)
+                      << " a3=0x" << getRegU32(ctx, 7)
+                      << " pc=0x" << ctx->pc
+                      << std::dec << std::endl;
+
+            std::cerr << "Warning: Unimplemented PS2 syscall called. PC=0x" << std::hex << ctx->pc
+                      << ", RA=0x" << caller_ra
+                      << ", Encoded=0x" << encodedSyscallId
+                      << ", v0=0x" << v0
+                      << ", v1=0x" << v1
+                      << ", Chosen=0x" << syscallId
+                      << ", hits=" << std::dec << hits
+                      << std::endl;
+
+            std::cerr << "  Args: $a0=0x" << std::hex << getRegU32(ctx, 4)
+                      << ", $a1=0x" << getRegU32(ctx, 5)
+                      << ", $a2=0x" << getRegU32(ctx, 6)
+                      << ", $a3=0x" << getRegU32(ctx, 7) << std::dec << std::endl;
+        }
 
         // Common syscalls:
         // 0x04: Exit
@@ -377,48 +394,64 @@ namespace ps2_syscalls
         // 0x07: ExecPS2
         if (syscallId == 0x04u)
         {
-            std::cerr << "  -> Syscall is Exit(), calling ExitThread stub." << std::endl;
+            if (report)
+            {
+                std::cerr << "  -> Syscall is Exit(), calling ExitThread stub." << std::endl;
+            }
             ExitThread(rdram, ctx, runtime);
             return;
         }
 
-        static std::mutex s_unknownMutex;
-        static std::unordered_map<uint32_t, uint64_t> s_unknownCounts;
+        if (report)
         {
-            std::lock_guard<std::mutex> lock(s_unknownMutex);
-            const uint64_t count = ++s_unknownCounts[syscallId];
-            if (count == 1 || (count % 5000u) == 0u)
-            {
-                std::cerr << "  -> Unknown syscallId=0x" << std::hex << syscallId
-                          << " hits=" << std::dec << count << std::endl;
-            }
+            std::cerr << "  -> Unknown syscallId=0x" << std::hex << syscallId
+                      << " hits=" << std::dec << hits << std::endl;
         }
 
         // Bootstrap default: avoid hard-failing loops that probe syscall availability.
         setReturnS32(ctx, 0);
     }
 
-    bool dispatchSyscallOverride(uint32_t syscallNumber, uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    void dispatchSyscallOverride(uint32_t syscallNumber, uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         uint32_t handler = 0u;
         if (!runtime || !ctx ||
             !runtime->findEeSyscallOverride(syscallNumber, handler) ||
             handler == 0u)
         {
-            return false;
+            return;
         }
 
         EeScheduler &scheduler = runtime->eeScheduler();
         scheduler.bindMainContextForSyscall(*ctx, rdram);
         if (scheduler.hasInvocation(GuestInvocationKind::SyscallOverride, syscallNumber))
         {
-            return false;
+            return;
         }
 
         if (!runtime->hasFunction(handler))
         {
-            setReturnS32(ctx, KE_ERROR);
-            return true;
+            // Sprint 11 Task 19. An override we cannot execute is not an override. SOCOM II's
+            // loader (FUN_001ac128) copies 0x330 bytes of its own code to 0x80075000 and registers
+            // that copy as the handler for syscall 0x5B, then installs GetEntryAddress' answers as
+            // the handlers for the event-flag five (0x55-0x59). None of those addresses is in any
+            // function table, so claiming the override and answering KE_ERROR made every later
+            // call of those syscalls return -1 for the rest of the run -- in r0001 as much as in
+            // r0004. Fall through instead: dispatchNumericSyscall then runs the runtime's own
+            // implementation, which is the closest thing to what the guest's copy would have done.
+            //
+            // The once-per-(syscall, handler) bookkeeping lives on the PS2Runtime, not in a
+            // function-local static: two runtimes in one process (ps2xTest makes several) each
+            // deserve the diagnostic, and the runtime clears it in initializeEeKernelState, which
+            // is its own "the guest kernel is starting over" point.
+            if (runtime->noteUnrunnableSyscallOverride(syscallNumber, handler))
+            {
+                std::cerr << "[SetSyscall] syscall 0x" << std::hex << syscallNumber
+                          << " was overridden with handler 0x" << handler
+                          << ", which is in no function table (guest-copied code?); running the"
+                             " built-in implementation instead." << std::dec << std::endl;
+            }
+            return;
         }
 
         GuestInvocation invocation{};
@@ -432,6 +465,8 @@ namespace ps2_syscalls
         {
             parent.r[2] = completed.r[2];
         };
+        // [[noreturn]] (EeScheduler::invokeCurrent): the guest handler runs as an invocation frame
+        // and control does not come back here, so there is nothing after this line.
         scheduler.invokeCurrent(std::move(invocation));
     }
 
@@ -979,17 +1014,23 @@ namespace ps2_syscalls
         setReturnS32(ctx, 0);
     }
 
+    // 0x5B GetEntryAddress(syscall) -> the address of that syscall's kernel entry.
+    // A syscall the guest replaced answers with the guest's own handler, as the kernel would. For
+    // everything else the kernel still has a real entry, and guests write through the address they
+    // get back (see the note on kSyscallEntryScratchBase), so the runtime answers from a block it
+    // reserves -- never with whatever an untouched word of low RAM happens to hold.
     void GetEntryAddress(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         const uint32_t syscallNum = getRegU32(ctx, 4);
 
-        const uint32_t entryAddr = kGuestSyscallTableGuestBase + (syscallNum * 4u);
         uint32_t handler = 0;
-        if (const uint8_t *ptr = getConstMemPtr(rdram, entryAddr))
+        if (runtime && runtime->findEeSyscallOverride(syscallNum, handler) && handler != 0u)
         {
-            std::memcpy(&handler, ptr, sizeof(handler));
+            setReturnU32(ctx, handler);
+            return;
         }
-        setReturnU32(ctx, handler);
+
+        setReturnU32(ctx, guestSyscallEntryScratchAddr(syscallNum));
     }
 
     // 0x74 RegisterExitHandler (stub): return 0

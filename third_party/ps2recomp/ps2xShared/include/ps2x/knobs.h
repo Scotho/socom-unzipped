@@ -38,6 +38,7 @@
 #include <vector>
 
 #define PS2X_KNOB_TABLE(X) \
+    X("PS2X_AUDIO_CB_TRACE", Dev, Path, "", "Every host audio callback's wall clock to this CSV; the live counts in [audio-trace] need PS2X_AUDIO_TRACE.") \
     X("PS2X_AUDIO_DUMP", Dev, Path, "", "Write the mixed host audio (48 kHz stereo s16) to this file.") \
     X("PS2X_AUDIO_INSTRUMENT", Dev, Presence, "", "Stamp every 989snd command that can change a route level with the output-frame clock (research/36).") \
     X("PS2X_AUDIO_PCM_DUMP", Dev, Path, "", "Write what the EE DMAs into the 989snd PCM ring to this file (first 16 MiB).") \
@@ -71,6 +72,7 @@
     X("PS2X_GIF_TRACE", Dev, Int, "0", "Print the first n GIF submissions with their path and BITBLTBUF.") \
     X("PS2X_GS_BACKEND", Dev, Text, "gpu", "cpu selects the CPU rasteriser; the GL probe falls back to it by itself (exit 65).") \
     X("PS2X_GS_DEPTH_LEGACY", Dev, Int, "0", "1 forces the legacy depth mapping instead of clip control.") \
+    X("PS2X_GS_DISABLE_EARLY_DEPTH", Dev, Presence, "", "CPU raster: restore shading before the depth test, the behaviour upstream #246 replaced (A/B).") \
     X("PS2X_GS_DUMP_DISPLAY", Dev, Spec, "", "<dir>:<t0>:<t1>: every ~2 s write the displayed buffer three ways (gpu, shadow, cpu).") \
     X("PS2X_GS_DUMP_TEX", Dev, Path, "", "Directory: write every decoded texture as PPM + PGM, and the CLUT diagnostic.") \
     X("PS2X_GS_DUMP_TEX_EVERY", Dev, Int, "1", "With GS_DUMP_TEX: keep one decode in n.") \

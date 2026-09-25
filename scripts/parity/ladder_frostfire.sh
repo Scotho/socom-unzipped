@@ -47,6 +47,7 @@ set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 . "$(dirname "$0")/env.sh"
+socom_require_python ladder_frostfire
 export PATH="/usr/bin:/bin:$PATH"
 
 MODE=launch
@@ -118,10 +119,35 @@ pin() {       # pin <out_dir>: snapshot HEAD into <out_dir>/harness and set HARN
   fi
   # The import check, path-format proof: pin_harness.sh's own prefix match WARNs whenever <out_dir> is relative or an
   # MSYS /c/... path (python prints C:\...), so its "OK" line cannot be the gate. Python compares real paths itself.
-  if ! PYTHONPATH="$HARNESS" PYTHONSAFEPATH=1 python -c "import os, sys, tools_py.parity.online_match_ours as m
+  if ! PYTHONPATH="$HARNESS" PYTHONSAFEPATH=1 "$PYTHON" -c "import os, sys, tools_py.parity.online_match_ours as m
 h = os.path.normcase(os.path.realpath(sys.argv[1])); f = os.path.normcase(os.path.realpath(m.__file__))
 sys.exit(0 if f.startswith(h + os.sep) else 'imported ' + m.__file__ + ', not under ' + sys.argv[1])" "$HARNESS"; then
     echo "PIN-FAIL the pinned import did not resolve under the snapshot '$HARNESS' -- not falling back to the live tree" >&2
+    exit 7
+  fi
+  # ... and the INSTRUMENTS, since Sprint 11 Task 19 (review F13, tightened in fix round 2, N3).
+  # PS2X_PEEK and PS2X_CALL_TRACE were rendered when env.sh was sourced at the top of this script, by the
+  # LIVE tools_py/parity/guest_addresses.py, while the launch is scored by the SNAPSHOT's code. Identical
+  # in practice -- the pin is HEAD -- but a mid-session edit to the address table would change what the
+  # rows are cut at without changing harness=<sha>, which is the hole the self-contained literal did not
+  # have. So compare what this launch WILL USE against what the snapshot's table renders. That also
+  # catches the other way in: an operator-exported PS2X_PEEK wins over env.sh's render by design, and a
+  # launch cut by a spec the pinned code did not produce is not a pinned launch either.
+  #
+  # This runs on the pinned path only, which is every LAUNCH (PINNED defaults to 1 above). A bare
+  # `--dry-run` is deliberately live -- it takes no snapshot, so there is nothing to compare.
+  local _snap_vals _want_vals
+  _snap_vals="$(
+    unset PS2X_PEEK PS2X_CALL_TRACE
+    eval "$(PYTHONPATH="$HARNESS" PYTHONSAFEPATH=1 "$PYTHON" -m tools_py.parity.guest_addresses --env)"
+    printf '%s\n%s\n' "$PS2X_PEEK" "$PS2X_CALL_TRACE"
+  )"
+  _want_vals="$(printf '%s\n%s\n' "${PS2X_PEEK:-}" "${PS2X_CALL_TRACE:-}")"
+  if [ "$_snap_vals" != "$_want_vals" ]; then
+    echo "PIN-FAIL the instruments this launch would use are not the ones the snapshot's table renders." >&2
+    echo "  The rows would be cut by one and scored by the other. Commit the address table and re-pin," >&2
+    echo "  or unset an exported PS2X_PEEK/PS2X_CALL_TRACE so env.sh's render reaches the launch." >&2
+    printf 'launch will use:\n%s\nsnapshot renders:\n%s\n' "$_want_vals" "$_snap_vals" >&2
     exit 7
   fi
 }
@@ -133,10 +159,10 @@ if [ "$PINNED" = 1 ]; then
     pin "$OUT"
   fi
   ROUTE="${ROUTE:-$HARNESS/tools_py/parity/routes/frostfire_v2.json}"
-  PY=(env PYTHONPATH="$HARNESS" PYTHONSAFEPATH=1 python -m tools_py.parity.online_match_ours)
+  PY=(env PYTHONPATH="$HARNESS" PYTHONSAFEPATH=1 "$PYTHON" -m tools_py.parity.online_match_ours)
 else
   ROUTE="${ROUTE:-tools_py/parity/routes/frostfire_v2.json}"
-  PY=(python -m tools_py.parity.online_match_ours)
+  PY=("$PYTHON" -m tools_py.parity.online_match_ours)
 fi
 
 # Instruments come from scripts/parity/env.sh (sourced above); these two are this script's own.

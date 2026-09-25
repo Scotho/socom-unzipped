@@ -119,12 +119,13 @@ class MakePortableLinuxSyntheticTest(unittest.TestCase):
     """Sprint 10 Q7 item 2: the Linux branch on any host. MakePortableLinuxTest above needs Linux and a built
     launcher, so on the Windows host -- where nearly every suite run happens -- the branch that writes the
     Linux tarball's version.txt was never exercised (KNOWN: 'the Linux packaging branch's version.txt has no
-    test'). The script takes its platform from MAKE_PORTABLE_SYSTEM, its ldd from LDD and its python3 from
-    PYTHON3, so a synthetic dist-linux/ of tiny ELFs and an ldd that answers for them drive the whole branch:
-    the executable bits, lib/ from the closure walk, version.txt, the tarball, SHA256SUMS and the audit."""
+    test'). The script takes its platform from MAKE_PORTABLE_SYSTEM, its ldd from LDD and its interpreter
+    from PYTHON -- scripts/python_env.sh's one rule, which used to be two here -- so a synthetic
+    dist-linux/ of tiny ELFs and an ldd that answers for them drive the whole branch: the executable bits,
+    lib/ from the closure walk, version.txt, the tarball, SHA256SUMS and the audit."""
 
     def _run(self, tmp, ldist, ldd, *args):
-        env = {**os.environ, "MAKE_PORTABLE_SYSTEM": "Linux", "LDD": ldd, "PYTHON3": sys.executable,
+        env = {**os.environ, "MAKE_PORTABLE_SYSTEM": "Linux", "LDD": ldd, "PYTHON": sys.executable,
                "LDIST": ldist, "DIST": os.path.join(tmp, "nodist")}
         return subprocess.run([BASH, SCRIPT] + list(args), capture_output=True, text=True, cwd=ROOT, env=env)
 

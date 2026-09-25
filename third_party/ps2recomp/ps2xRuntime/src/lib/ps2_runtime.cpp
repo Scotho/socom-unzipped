@@ -18,6 +18,10 @@
 #include "Kernel/Stubs/Audio.h"
 #include "Kernel/Stubs/GS.h"
 #include "Kernel/Stubs/MPEG.h"
+#include "Kernel/Stubs/Helpers/StubLogRuntimeState.h"   // Sprint 11 Task 8b
+#include "Kernel/Stubs/Helpers/DmaRuntimeState.h"
+#include "Kernel/Stubs/Helpers/GsRuntimeState.h"
+#include "Kernel/Stubs/Helpers/LibCRuntimeState.h"
 #include "ps2_host_backend.h"
 #include "rlgl.h"
 #include "ps2_iop_host.h"
@@ -515,6 +519,12 @@ static void UploadFrame(Texture2D &tex, PS2Runtime *rt, uint32_t &outWidth, uint
 
 PS2Runtime::PS2Runtime()
 {
+    // Sprint 11 Task 8b: the EE stub subsystems' state is this runtime's, not the process's.
+    m_stubLogRuntimeState = std::make_unique<ps2_stubs::StubLogRuntimeState>();
+    m_dmaRuntimeState = std::make_unique<ps2_stubs::DmaRuntimeState>();
+    m_gsRuntimeState = std::make_unique<ps2_stubs::GsRuntimeState>();
+    m_libcRuntimeState = std::make_unique<ps2_stubs::LibCRuntimeState>();
+
     m_iopHost = std::make_unique<PS2IopHostAdapter>(*this);
     m_iopSubsystem = std::make_unique<ps2x::iop::IopSubsystem>(*m_iopHost);
     m_eeScheduler = std::make_unique<EeScheduler>(*this);
@@ -1006,32 +1016,7 @@ bool PS2Runtime::loadELF(const std::string &elfPath)
         return false;
     }
 
-    if (maxLoadedRdramEnd > PS2_RAM_SIZE)
-    {
-        maxLoadedRdramEnd = PS2_RAM_SIZE;
-    }
-
-    const uint32_t paddedEnd = (maxLoadedRdramEnd > (PS2_RAM_SIZE - kGuestHeapSafetyPad))
-                                   ? PS2_RAM_SIZE
-                                   : (maxLoadedRdramEnd + kGuestHeapSafetyPad);
-    const uint32_t suggestedHeapBase = alignGuestHeapValue(paddedEnd, kGuestHeapDefaultAlignment);
-    {
-        std::lock_guard<std::mutex> lock(m_guestHeapMutex);
-        if (!m_guestHeapConfigured)
-        {
-            const uint32_t hardLimit = std::min(kGuestHeapHardLimit, PS2_RAM_SIZE);
-            m_guestHeapSuggestedBase = std::min(suggestedHeapBase, hardLimit);
-            m_guestHeapBase = m_guestHeapSuggestedBase;
-            m_guestHeapEnd = m_guestHeapSuggestedBase;
-            m_guestHeapLimit = hardLimit;
-        }
-    }
-    {
-        std::lock_guard<std::mutex> lock(m_asyncCallbackStackMutex);
-        const uint32_t hardLimit = std::min(kGuestHeapHardLimit, PS2_RAM_SIZE);
-        m_asyncCallbackStackFloor = std::min(std::max(hardLimit, suggestedHeapBase), PS2_RAM_SIZE);
-        m_asyncCallbackStackTop = PS2_RAM_SIZE;
-    }
+    noteLoadedImageEnd(maxLoadedRdramEnd);
 
     LoadedModule module;
     module.name = elfPath.substr(elfPath.find_last_of("/\\") + 1);
@@ -1939,6 +1924,38 @@ void PS2Runtime::freeGuestBlockLocked(uint32_t guestAddr)
     coalesceGuestHeapLocked();
 }
 
+// Where a loaded image ends decides where the runtime's own guest allocations start -- never where
+// the guest's heap ENDS. loadELF calls this once per image; it is public so a revision's segment
+// layout can be tested without an ELF on disk (Sprint 11 Task 19).
+void PS2Runtime::noteLoadedImageEnd(uint32_t maxLoadedRdramEnd)
+{
+    if (maxLoadedRdramEnd > PS2_RAM_SIZE)
+    {
+        maxLoadedRdramEnd = PS2_RAM_SIZE;
+    }
+
+    const uint32_t paddedEnd = (maxLoadedRdramEnd > (PS2_RAM_SIZE - kGuestHeapSafetyPad))
+                                   ? PS2_RAM_SIZE
+                                   : (maxLoadedRdramEnd + kGuestHeapSafetyPad);
+    const uint32_t suggestedHeapBase = alignGuestHeapValue(paddedEnd, kGuestHeapDefaultAlignment);
+    const uint32_t hardLimit = std::min(kGuestHeapHardLimit, PS2_RAM_SIZE);
+    {
+        std::lock_guard<std::mutex> lock(m_guestHeapMutex);
+        if (!m_guestHeapConfigured)
+        {
+            m_guestHeapSuggestedBase = std::min(suggestedHeapBase, hardLimit);
+            m_guestHeapBase = m_guestHeapSuggestedBase;
+            m_guestHeapEnd = m_guestHeapSuggestedBase;
+            m_guestHeapLimit = hardLimit;
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lock(m_asyncCallbackStackMutex);
+        m_asyncCallbackStackFloor = std::min(std::max(hardLimit, suggestedHeapBase), PS2_RAM_SIZE);
+        m_asyncCallbackStackTop = PS2_RAM_SIZE;
+    }
+}
+
 void PS2Runtime::configureGuestHeap(uint32_t guestBase, uint32_t guestLimit)
 {
     std::lock_guard<std::mutex> lock(m_guestHeapMutex);
@@ -2115,7 +2132,13 @@ uint32_t PS2Runtime::guestHeapEnd() const
 uint32_t PS2Runtime::guestHeapLimit() const
 {
     std::lock_guard<std::mutex> lock(m_guestHeapMutex);
-    return m_guestHeapConfigured ? m_guestHeapLimit : m_guestHeapSuggestedBase;
+    // EndOfHeap answers with this, and EndOfHeap is a LIMIT, not a base. Before the guest calls
+    // SetupHeap the PS2 kernel's heap already ends at the top of usable RAM -- answering
+    // m_guestHeapSuggestedBase (the loaded image's top plus a 0x1000 pad) told the guest's sbrk
+    // that it had a few hundred bytes of headroom above its own _brk, which is the whole heap
+    // minus the pad. m_guestHeapLimit is the hard limit until SetupHeap replaces it, so both
+    // states are the honest answer (Sprint 11 Task 19).
+    return m_guestHeapLimit;
 }
 
 uint32_t PS2Runtime::reserveAsyncCallbackStack(uint32_t size, uint32_t alignment)
@@ -2480,6 +2503,18 @@ void PS2Runtime::setEeSyscallOverride(uint8_t *rdram, uint32_t syscallNumber, ui
     }
 }
 
+bool PS2Runtime::noteUnrunnableSyscallOverride(uint32_t syscallNumber, uint32_t handler)
+{
+    const uint64_t key = (static_cast<uint64_t>(syscallNumber) << 32) | static_cast<uint64_t>(handler);
+    std::lock_guard lock(m_eeKernelStateMutex);
+    if (m_unrunnableSyscallOverrides.size() >= kMaxUnrunnableSyscallOverridesReported &&
+        m_unrunnableSyscallOverrides.find(key) == m_unrunnableSyscallOverrides.end())
+    {
+        return false;
+    }
+    return m_unrunnableSyscallOverrides.insert(key).second;
+}
+
 void PS2Runtime::initializeEeKernelState(uint8_t *rdram)
 {
     if (!rdram)
@@ -2492,6 +2527,9 @@ void PS2Runtime::initializeEeKernelState(uint8_t *rdram)
     constexpr uint32_t kProbeBase = 0x000002F0u;
 
     std::lock_guard lock(m_eeKernelStateMutex);
+    // The guest kernel is starting over, so the "override we cannot execute" diagnostic starts
+    // over with it.
+    m_unrunnableSyscallOverrides.clear();
     for (const uint32_t address : m_eeSyscallMirrorAddresses)
     {
         const uint32_t zero = 0u;
@@ -2531,6 +2569,7 @@ void PS2Runtime::run()
     resetIop();
     ps2_stubs::resetAudioStubState();
     ps2_stubs::resetMpegStubState();
+    resetStubRuntimeState();   // Sprint 11 Task 8b review N1: the stub *RuntimeState group
     initializeEeKernelState(m_memory.getRDRAM());
     m_cpuContext.r[4] = _mm_setzero_si128();
     m_cpuContext.r[5] = _mm_setzero_si128();
@@ -2936,4 +2975,58 @@ bool ps2_fpu_trap_site_ok(uint32_t pc)
         return true;
     }
     return false;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sprint 11 Task 8b: the EE stub subsystems' state.
+//
+// Each object is a member of the runtime, so two PS2Runtime instances in one process share none
+// of it. The ps2_stubs::*RuntimeStateFor(runtime) helpers are what the stubs call, because an EE
+// stub can be reached with no runtime at all (TODO_NAMED, sceGsResetGraph, fopen/fclose and the
+// libc rand pair all tolerate runtime == nullptr, and several tests use that); those calls share
+// one process-wide fallback instance each, which is the only state here that is not per-runtime.
+// ---------------------------------------------------------------------------------------------
+
+ps2_stubs::StubLogRuntimeState &PS2Runtime::stubLogRuntimeState() { return *m_stubLogRuntimeState; }
+const ps2_stubs::StubLogRuntimeState &PS2Runtime::stubLogRuntimeState() const { return *m_stubLogRuntimeState; }
+ps2_stubs::DmaRuntimeState &PS2Runtime::dmaRuntimeState() { return *m_dmaRuntimeState; }
+const ps2_stubs::DmaRuntimeState &PS2Runtime::dmaRuntimeState() const { return *m_dmaRuntimeState; }
+ps2_stubs::GsRuntimeState &PS2Runtime::gsRuntimeState() { return *m_gsRuntimeState; }
+const ps2_stubs::GsRuntimeState &PS2Runtime::gsRuntimeState() const { return *m_gsRuntimeState; }
+ps2_stubs::LibCRuntimeState &PS2Runtime::libcRuntimeState() { return *m_libcRuntimeState; }
+const ps2_stubs::LibCRuntimeState &PS2Runtime::libcRuntimeState() const { return *m_libcRuntimeState; }
+
+void PS2Runtime::resetStubRuntimeState()
+{
+    m_stubLogRuntimeState->reset();
+    m_dmaRuntimeState->reset();
+    m_gsRuntimeState->reset();
+    m_libcRuntimeState->reset();
+}
+
+namespace ps2_stubs
+{
+    StubLogRuntimeState &stubLogRuntimeStateFor(PS2Runtime *runtime)
+    {
+        static StubLogRuntimeState noRuntimeFallback;
+        return runtime ? runtime->stubLogRuntimeState() : noRuntimeFallback;
+    }
+
+    DmaRuntimeState &dmaRuntimeStateFor(PS2Runtime *runtime)
+    {
+        static DmaRuntimeState noRuntimeFallback;
+        return runtime ? runtime->dmaRuntimeState() : noRuntimeFallback;
+    }
+
+    GsRuntimeState &gsRuntimeStateFor(PS2Runtime *runtime)
+    {
+        static GsRuntimeState noRuntimeFallback;
+        return runtime ? runtime->gsRuntimeState() : noRuntimeFallback;
+    }
+
+    LibCRuntimeState &libcRuntimeStateFor(PS2Runtime *runtime)
+    {
+        static LibCRuntimeState noRuntimeFallback;
+        return runtime ? runtime->libcRuntimeState() : noRuntimeFallback;
+    }
 }

@@ -29,6 +29,8 @@ hand. Goals E–G wait on the package, on PSRewired, or on both.
 
 ### 1.1 r0004 is a whole code package, not a delta — **[verified]**
 
+> **Corrected 2026-09-23.** The patch in hand is **PSRewired's capsule** `r0004v002.elf` (https://psrewired.com/downloads/r0004v002.elf, 67,267 bytes, sha256 `ad0ed7511b2c2d54…`; a git-ignored copy at `game/r0004/`). It is not the memory-card package: a MIPS ELF packed with ps2-packer (one LOAD at `0x01cf3400`, zlib payload at +0x18 → 125,838 bytes that load at `0x00100000`, entry `0x001000e0`), the Based_Skid/Harry62 tooling whose r0005 source is in `research/r0005-patch/` — the same `PasteASM`/`systemHook` shape. Its strings say what it does: loads SIO2MAN/CDVDMAN/PADMAN/MCMAN/MCSERV, hooks a kernel syscall through the vector table, looks for `mc0:UPDATE.DAT` ("Checking mc0 for patch… no update found"), shows "SOCOM II: Server — Patch: r0004", then `LoadExecPS2("cdrom0:\\SCUS_972.75;1")` — it boots the r0001 disc and patches it in memory. The patch body is an encrypted code stack (the high-entropy block at `0x0011c800`; r0005's `update.dat` has the same shape: a version string, then XOR-keyed address/value pairs) applied by the hook once the game is loaded; only 77 constant stores are in the ELF's own code, all its own globals and the GIF/DMAC registers of its splash screen. So for *this* project r0004 is a **delta after all** — the community's re-creation of the r0004 behaviour (and the login gate's version) laid over r0001 at runtime. Goal E's "the r0004 build itself" becomes: extract the stack's plaintext writes, apply the static ones to the r0001 image, and re-express the hooks in the runtime — the plan's Task 19. Whether the console's own r0004 card package still exists anywhere is now irrelevant to the build.
+
 The disc's `SCUS_972.75` is only a loader (~350 KB of real code: MSL crt0, the libcdvd/libmc/libpad/libdma/libgraph/
 libipu/libdbc/libusbkb RPC clients, zlib 1.1.4, `main()` at 0x1c4cc0). The game is `RUN/RAW/APACHE00.ZDB`: two
 DNAS-encrypted, zlib-deflated Metrowerks `MWo3` overlays, `ftscore` at 0x1e7000 and `zsealetc` at 0x4c5380
@@ -64,24 +66,7 @@ that "r0004 is all that's required to play there, so it must be the security fix
 **The report.** A PSRewired moderator, 2026-09-20, recorded in `SECURITY.md`: the chat packet overflows a 32-byte
 buffer with 64 bytes; the community console servers patched it years ago; this project has not.
 
-**What was verified in our own r0001 image** (`game/analysis/socom2_game.elf.decomp.c`, 2026-09-21) — **[verified]**:
-
-1. **The wire field is 64 bytes end to end.** Every chat struct copies the message with `memcpy(dst, src, 0x40)`:
-   `FUN_002f4860` (the body behind `SendChatText`/`SendMediusChat`), `FUN_002f4ba0`, `FUN_002f4d60`, `FUN_002f4df0`.
-   The chat-log record is a fixed 0x70: `[?21][msgid 19][u32][u32][message 64]`, pushed by the 0x70-stride deque
-   `FUN_002f5290`.
-2. **The 32-vs-64 asymmetry is a *policy* limit, not a code bound.** The typing cap lives in the disc's UI data as a
-   `GetTextInput UiVar=CHATTEXT SkbName=PlayerChatSkb Purpose=_361_EnterChatMessage_MSG MaxChars=… MaxBytes=…` record
-   (ISO ≈ 0x75c2_xxxx; the same mechanism as the login keyboard's 14-char/31-byte cap, `research/38`). The *code*
-   sends and receives 64 regardless. A modified client fills it — exactly the shape the admin describes.
-3. **The receive handler is `FUN_002f4ef0`, and it is unbounded:**
-   `sprintf(stack[1024], "%s: %s", packet+0x1c /* originator name */, packet+0x40 /* message */)`. Both are
-   fixed-width packet fields with no guaranteed NUL. `packet+0x3c` is the chat type the handler switches on, which
-   fixes the name field at 32 bytes and the message at 64.
-4. **Unterminated names propagate.** The display record (`FUN_002a4050`, stride 0xa1 = `[type 1][text 128][name 32]`)
-   NUL-terminates the text but stores the name with `strncpy(dst, src, 0x20)`, which does not terminate at exactly 32
-   bytes. `FUN_002a3e60` re-copies it the same way into a caller frame, and it is then handed to the ignore-list
-   lookup (`FUN_0029e590`) and the renderer as a C string.
+**What was verified in our own r0001 image** (2026-09-21) — **[verified]**, recorded at the level `SECURITY.md` allows *(narrowed 2026-09-23; the earlier wording named functions, offsets and sizes)*: the wire field for a chat message is 64 bytes end to end (the send-side copies and the chat-log record agree); the 32-vs-64 asymmetry the moderator describes is a *policy* limit in the disc's UI data — the typing cap, the same mechanism as the login keyboard's cap (`research/38`) — not a code bound, so a modified client fills the field; the receive path handles two fixed-width packet fields as C strings without a guaranteed terminator, and one derived record propagates a name the same way. The function names, offsets and sizes live in the private working notes and in the runtime's own source, not here.
 
 **Not established** — **[unknown]**: no 32-byte *destination* for chat text exists in the Medius lobby path. Either the
 admin means the in-match DME/peer path (not yet located), or their "32" is the typing cap. Ask them; do not guess.
@@ -147,11 +132,7 @@ Nearly all of that was the runtime, which r0004 inherits free. **A sprint, not a
 
 Not gated on r0004, on PSRewired, or on the owner. It is the only goal here that should run on the day the sprint opens.
 
-1. **Bound and terminate at the boundary.** Every field of a received chat message is treated as fixed-width and
-   never as a C string until it has been copied into a local of declared size and NUL-terminated: `FUN_002f4ef0`
-   (both `%s` sources), `FUN_002a4050` (the 32-byte name `strncpy`), `FUN_002a3e60` (the same copy, into a caller
-   frame), and the four 0x40 message copies. Replace the `sprintf` with a bounded format. This is a runtime-override
-   job in `game_overrides_socom2.cpp`, not a recompilation, so **it lands in r0001 and any future r0004 for free**.
+1. **Bound and terminate at the boundary.** Every field of a received chat message is treated as fixed-width and never as a C string until it has been bounded — at the receive callback, at the derived record readers, and on the send side. A runtime-override job in `game_overrides_socom2.cpp`, not a recompilation, so **it lands in r0001 and any future r0004 for free**.
 2. **Clamp at our own server too, as defence in depth.** The project's Horizon box truncates and NUL-terminates chat
    fields, so a hostile *client* cannot reach other players in a project-hosted room whatever build they run. Same
    thing the community console servers did.

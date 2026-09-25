@@ -135,6 +135,8 @@ import os
 import re
 import struct
 import sys
+
+from tools_py.parity import guest_addresses as ga
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -166,7 +168,7 @@ DEF_WORDS = 16                   # the def's first 0x40 bytes (name pointers at 
 NAME_WORDS = 8                   # 32 bytes of the name string
 STORE_BASE_ADDR = 0x48dc48       # the VAGSTORE object 0x48dc30 + 0x18 (second store) and + 0x1c (FUN_0034d470)
 CLOCK_ADDR = 0x408f10            # the HUD timer string "MM:SS" (research/19 :217)
-GUEST_CLOCK_ADDR = 0x4365c0      # the guest clock, float seconds (KNOWN.md, freeze detection)
+GUEST_CLOCK_ADDR = ga.address("guest_clock", "r0001")   # 0x4365c0, float seconds (KNOWN.md, freeze detection)
 RAM_LO, RAM_HI = 0x100000, 0x2000000
 
 VAGSTORE_ZAR = os.path.join("game", "disc", "RUN", "SOUNDS", "VAGSTORE.ZAR")

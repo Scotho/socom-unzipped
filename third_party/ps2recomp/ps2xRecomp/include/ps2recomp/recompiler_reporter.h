@@ -6,6 +6,7 @@
 #include <iosfwd>
 #include <mutex>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace ps2recomp
@@ -46,6 +47,7 @@ namespace ps2recomp
             size_t unhandledInstructions = 0;
             size_t indirectFallbackPromotions = 0;
             size_t indirectFallbackEntries = 0;
+            size_t unmappedContinuations = 0;
             size_t correctnessCriticalGuestFallbacks = 0;
             size_t correctnessCriticalFailures = 0;
         };
@@ -70,6 +72,13 @@ namespace ps2recomp
         void recordIndirectFallbackPromotion(const std::string &functionName,
                                              const std::vector<uint32_t> &jumpAddresses,
                                              size_t promotedEntryCount);
+        // A continuation pc -- a call's return, a syscall's return, a branch's fallthrough -- that
+        // no recompiled row covers. Nothing can be registered for it, so the build says so here
+        // instead of the scheduler saying [guest-branch:missing-target] at runtime.
+        void recordUnmappedContinuation(const std::string &functionName,
+                                        uint32_t sourcePc,
+                                        uint32_t continuationPc,
+                                        const std::string &kind);
         void recordUnhandledInstruction(const std::string &functionName,
                                         uint32_t address,
                                         uint32_t raw,
@@ -91,6 +100,9 @@ namespace ps2recomp
         mutable std::mutex m_mutex;
         Counters m_counters;
         std::vector<Event> m_events;
+        // The analyzer runs over a function once per entry-discovery pass, so the same continuation
+        // is offered many times; report each (source, continuation) once.
+        std::unordered_set<uint64_t> m_reportedContinuations;
     };
 }
 

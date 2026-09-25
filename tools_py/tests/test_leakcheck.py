@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 from tools_py.release import leakcheck as L
 from tools_py.release import leakrules as R
@@ -136,6 +137,78 @@ class PlantedSecretsAreCaught(unittest.TestCase):
         self.assertEqual(st["missed"], [])
         self.assertEqual(st["caught"], st["planted"])
         self.assertGreater(st["planted"], 20)
+
+    def test_the_self_test_controls_the_product_word_exception_in_both_directions(self):
+        """Review I4. self_test() builds its rules with an explicit `users=[PLANTED_USER]`, so it never
+        went through owner_names() and never through drop_product_words. A regression that made
+        is_product_word return True for everything -- switching owner-user-name off on every machine in
+        the project -- would still have printed "0 hits -- clean ... self-test 28/28" from the
+        pre-commit hook. The control has to exercise the exception, not just the rules it feeds."""
+        base = L.self_test()
+        self.assertEqual(base["missed"], [])
+
+        with mock.patch.object(R, "is_product_word", lambda name: True):
+            broken = L.self_test()
+        self.assertTrue(broken["missed"], "the exception swallowing every user name is not caught")
+        self.assertLess(broken["caught"], broken["planted"])
+
+        with mock.patch.object(R, "is_product_word", lambda name: False):
+            asleep = L.self_test()
+        self.assertTrue(asleep["missed"], "the exception never firing at all is not caught")
+
+    def test_a_machine_user_named_after_the_product_is_not_a_secret(self):
+        """The socom-linux VM's account is `socom`, so on 2026-09-22 the owner-user-name rule matched the
+        product's own name and README.md:1 -- "# SOCOM Unzipped" -- became a leak. A user name that is part
+        of what the project calls itself is not a secret; anything else still is."""
+        with mock.patch.dict(os.environ, {"USERNAME": "socom", "USER": "socom", "LOGNAME": "socom"}, clear=False), \
+                mock.patch.object(R.os.path, "expanduser", lambda p: "/home/socom"):
+            names = R.owner_names()
+        self.assertEqual(names, set(), "the product's own name is not this machine's secret")
+
+        with mock.patch.dict(os.environ, {"USERNAME": "craigs", "USER": "craigs", "LOGNAME": "craigs"}, clear=False), \
+                mock.patch.object(R.os.path, "expanduser", lambda p: "/home/craigs"):
+            self.assertEqual(R.owner_names(), {"craigs"})
+
+    def test_the_product_s_own_words_are_the_only_ones_dropped(self):
+        for name in ("socom", "SOCOM", "Socom", "unzipped", "socom_pc", "socom-pc", "socompc", "Ps2x",
+                     "ps2recomp"):
+            with self.subTest(name=name):
+                self.assertTrue(R.is_product_word(name), name)
+        for name in ("craigs", "socomx7", "seal", "navy"):
+            with self.subTest(name=name):
+                self.assertFalse(R.is_product_word(name), name)
+
+    def test_a_fragment_of_a_product_word_is_not_a_product_word(self):
+        """Review I3. The test was `name in word`, so any user name that happened to be a SUBSTRING of a
+        product word had the whole owner-user-name rule switched off for them, everywhere, with one
+        stderr line as the only trace. `owner_names()` admits anything three characters or longer, which
+        leaves a lot of them: a machine user called `zip`, `ps2`, `comp` or `oco` was exempt."""
+        for name in ("zip", "ps2", "comp", "oco", "unzip", "reco", "som", "p_p"):
+            with self.subTest(name=name):
+                self.assertFalse(R.is_product_word(name), "%r is a fragment, not the product's name" % name)
+
+    def test_the_exception_does_not_depend_on_where_the_clone_sits(self):
+        """Review I3, second half. The checkout's own directory name was in PRODUCT_WORDS, so which user
+        names the gate exempted differed between C:\\projects\\socom_pc and C:\\projects\\wt-linuxring --
+        the leak gate's behaviour changed with the clone path. In this worktree that made `linux` and
+        `ring` exempt."""
+        for name in ("linux", "ring", "linuxring", "projects"):
+            with self.subTest(name=name):
+                self.assertFalse(R.is_product_word(name), name)
+        # The list is written out, never derived: a worktree's name is not in it, and no token is a path.
+        # (The repository's own name IS a product word -- a clone called socom_pc must not fail this.)
+        for name in ("wt-linuxring", "wt", "socom_pc_web", "projects"):
+            self.assertNotIn(name, {w.lower() for w in R.PRODUCT_TOKENS}, name)
+        self.assertFalse(any(os.sep in w or "/" in w for w in R.PRODUCT_TOKENS), "a token is a path")
+
+    def test_a_user_named_socom_leaves_the_readme_alone(self):
+        """End to end: the rules built for that machine, over the line that fired."""
+        line = "# SOCOM Unzipped"
+        self.assertNotIn("owner-user-name",
+                         {r for r, fn in R.text_rules(users=R.drop_product_words(["socom"])) if fn(line)})
+        self.assertIn("owner-user-name",
+                      {r for r, fn in R.text_rules(users=R.drop_product_words(["craigs"]))
+                       if fn("built by craigs")})
 
     def test_the_mask_never_shows_the_middle(self):
         self.assertEqual(R.mask("AKIAQ2W3E4R5T6Y7U8I9"), "AKIA...I9 (20 chars)")

@@ -305,7 +305,7 @@ the specs; `.superpowers/` is empty): the wrong-server login run; the `grep -c` 
 brief forbade; an agent committing ungated runtime changes at the owner's direct request (`f5809c8`, `8bf72c5` are
 owner-driven; whether they were gated is unverified); the pre-fix audio recording; the plan example with wrong
 arithmetic (nearest tracked: the `+8 px` bar, `process-audit.md:202-206`); two builders in one tree. They live only in
-the controller's context, which is exactly what is lost at a handoff. *Fix:* `docs/HITCHES.md`, an append-only table
+the controller's context, which is exactly what is lost at a handoff. *Fix:* `docs/HITCHES.md`, an append-only table <!-- docmaint: future -->
 (date, class from the table above, what, how caught, latency, guard added or "none"), one line per hitch, written the
 hour it is found -- rule 11 applied to the process itself. The owner-direct ungated commit is legitimate (the owner may
 overrule rule 5) but must leave a mark: a ruling line `Rn: committed ungated at the owner's instruction; gate owed`,
@@ -546,7 +546,7 @@ visible to-do list rather than a paragraph.
 
 ---
 
-## 8. Design C -- the manual for ongoing agents (`docs/AGENT_MANUAL.md`)
+## 8. Design C -- the manual for ongoing agents (`docs/AGENT_MANUAL.md`) <!-- docmaint: future -->
 
 ### 8.0 Proposed table of contents
 1. The five-minute orientation (what to read, in order; who else is in the tree)
@@ -561,7 +561,7 @@ visible to-do list rather than a paragraph.
 10. The VM ring and CI: what each proves
 11. The results store: citing, pinning, retention
 12. Maintaining this machinery (the harness's own tests; when to run the slow lock suite; upgrading the queue)
-13. Hitches: recording one (`docs/HITCHES.md`)
+13. Hitches: recording one (`docs/HITCHES.md`) <!-- docmaint: future -->
 Appendices: exit-code table for every harness; the environment knobs the harness sets; glossary (stamp, ruling, RED).
 
 Full text of the sections that matter most follows. It is written for the state AFTER backlog items B1-B9; where a
@@ -650,7 +650,7 @@ no game code. It says nothing about the game.
    `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kill_stale_drivers.ps1`, then step 3.
 5. Leaked `logs/.quiet` (names a dead pid): `check_quiet_gate.sh` already treats it as stale; remove it only after
    `tasklist //FI "PID eq <pid>"` shows nothing.
-6. Write one line in `docs/HITCHES.md`.
+6. Write one line in `docs/HITCHES.md`. <!-- docmaint: future -->
 Never hold the lock across tool calls except through `loop_lock.sh run` or the queue.
 
 ### 8.5 Claiming files
@@ -742,7 +742,7 @@ Effort S (<= 2 h) / M (<= 1 day) / L (> 1 day). Priority served: 1 self-validati
 | B6 | `build.sh` build-tree lock (SP-1); busy list by pid lineage (SP-2) -- needs `LOOP_LOCK_SLOW_TESTS=1` | S + M | 3, 1 | [Opus] | this week |
 | B7 | runq M1 (the worker: manifest, verdicts, results record, no daemon) + results store v1 + `backfill` + `cite`/`pin` (Designs A M1, B) | L | 4, 2, 1 | [Judgment] for schema review, [Opus] to build | next |
 | B8 | Flaky tests: inject the clock into `EeScheduler`; fix `ps2_runtime_interrupt_tests.cpp:492`; polling in `test_loop_lock.py`; `QUARANTINE.json` + flake ledger (AC-3) | M | 2 | clock injection [Judgment]; the rest [Opus] | next |
-| B9 | `docs/AGENT_MANUAL.md` from section 8, `docs/HITCHES.md` seeded with section 5's table and HO-6's seven; LOOP_PROMPT and HANDOFF point to it; the four-block report made a rejection criterion | S | 4 | [Judgment] | next (can precede B7; mark the *(until Bn)* notes) |
+| B9 | `docs/AGENT_MANUAL.md` from section 8, `docs/HITCHES.md` seeded with section 5's table and HO-6's seven; LOOP_PROMPT and HANDOFF point to it; the four-block report made a rejection criterion | S | 4 | [Judgment] | next (can precede B7; mark the *(until Bn)* notes) | <!-- docmaint: future -->
 | B10 | Reference `MANIFEST.json` + hash test; water indicator: deterministic capture moment, re-derived bar, own `INFO` line (AC-2, AC-4) | M | 2 | [Judgment] (one measured series of runs) | next |
 | B11 | Title per-capture history bands; time/skip regression assertions (Design B 7.7) -- after B7's backfill | M | 2, 1 | [Opus] | after B7 |
 | B12 | CI: `runtime --no-runner`, sccache + caches, `fetch-depth: 2`, wider `paths-ignore`, a 1-minute docs-lint job, skip budget and case floor on CI, timeout 45 (AC-7, section 4) | M | 3, 1 | [Opus] | any quiet moment (each try costs a CI run) |

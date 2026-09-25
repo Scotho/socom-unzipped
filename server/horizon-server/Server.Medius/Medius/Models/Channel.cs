@@ -121,6 +121,9 @@ namespace Server.Medius.Models
 
         public void BroadcastChatMessage(IEnumerable<ClientObject> targets, ClientObject source, string message)
         {
+            // The name we forward is clamped to leave room for the terminator; the caller clamps the message.
+            var originatorAccountName = ChatClamp.Fit(source.AccountName, Constants.ACCOUNTNAME_MAXLEN);
+
             foreach (var target in targets)
             {
                 if (target.MediusVersion >= 112)
@@ -128,7 +131,7 @@ namespace Server.Medius.Models
                     target?.Queue(new MediusGenericChatFwdMessage1()
                     {
                         OriginatorAccountID = source.AccountId,
-                        OriginatorAccountName = source.AccountName,
+                        OriginatorAccountName = originatorAccountName,
                         Message = message,
                         MessageType = MediusChatMessageType.Broadcast,
                         TimeStamp = Utils.GetUnixTime()
@@ -139,7 +142,7 @@ namespace Server.Medius.Models
                     target?.Queue(new MediusGenericChatFwdMessage()
                     {
                         OriginatorAccountID = source.AccountId,
-                        OriginatorAccountName = source.AccountName,
+                        OriginatorAccountName = originatorAccountName,
                         Message = message,
                         MessageType = MediusChatMessageType.Broadcast,
                         TimeStamp = Utils.GetUnixTime()
@@ -150,6 +153,9 @@ namespace Server.Medius.Models
 
         public void SendSystemMessage(ClientObject client, string message)
         {
+            // Clamped to leave room for the terminator, so this path cannot reintroduce the hole.
+            message = ChatClamp.Fit(message, Constants.CHATMESSAGE_MAXLEN);
+
             if (client.MediusVersion >= 112)
             {
                 client.Queue(new MediusGenericChatFwdMessage1()
@@ -176,6 +182,9 @@ namespace Server.Medius.Models
 
         public void BroadcastSystemMessage(IEnumerable<ClientObject> targets, string message)
         {
+            // Clamped to leave room for the terminator, so this path cannot reintroduce the hole.
+            message = ChatClamp.Fit(message, Constants.CHATMESSAGE_MAXLEN);
+
             foreach (var target in targets)
             {
                 if (target.MediusVersion >= 112)

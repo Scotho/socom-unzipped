@@ -661,6 +661,13 @@ namespace launcher::bugreport
         return "SAVED ON THIS MACHINE INSTEAD: " + path;
     }
 
+    std::string githubLine(const std::string &referenceId)
+    {
+        if (referenceId.empty())
+            return {};
+        return kGithubIssueLine;
+    }
+
     std::string statusLine(const std::string &statsJson)
     {
         Value v;

@@ -34,7 +34,45 @@ if(WIN32)
 else()
     set(PS2X_LAUNCHER_EXE_TYPE "")
 endif()
+# Sprint 11 Task 17 (R247): the four embedded faces. src/ui/fonts_embedded/*.h used to be tracked -- 6.8 MB of
+# hex for 4.6 MB of .ttf, the same bytes in the tree twice. The .ttf files under assets/fonts/ are the single
+# tracked copy now and the headers are generated into the build tree by scripts/embed_font.py, which the repo
+# already had. src/ui/fonts.cpp includes them as "fonts_embedded/<name>.h"; that resolves because the generated
+# directory is on the target's include path below.
+get_filename_component(PS2X_EMBED_FONT_SCRIPT
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/embed_font.py" REALPATH)
+if(NOT EXISTS "${PS2X_EMBED_FONT_SCRIPT}")
+    message(FATAL_ERROR "embed_font.py not found at ${PS2X_EMBED_FONT_SCRIPT}; the launcher's fonts are generated from it")
+endif()
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+set(PS2X_LAUNCHER_FONTS_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+set(PS2X_LAUNCHER_FONT_HEADERS "")
+# <ttf under assets/fonts>|<header basename>|<symbol, as src/ui/fonts.cpp names it>
+foreach(PS2X_FONT IN ITEMS
+        "Rajdhani-Bold.ttf|rajdhani_bold.h|RajdhaniBold"
+        "Rajdhani-Medium.ttf|rajdhani_medium.h|RajdhaniMedium"
+        "Rajdhani-SemiBold.ttf|rajdhani_semibold.h|RajdhaniSemiBold"
+        "SairaStencilOne-Regular.ttf|saira_stencil_one.h|SairaStencilOne")
+    string(REPLACE "|" ";" PS2X_FONT_PARTS "${PS2X_FONT}")
+    list(GET PS2X_FONT_PARTS 0 PS2X_FONT_TTF)
+    list(GET PS2X_FONT_PARTS 1 PS2X_FONT_HEADER)
+    list(GET PS2X_FONT_PARTS 2 PS2X_FONT_SYMBOL)
+    set(PS2X_FONT_IN "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/${PS2X_FONT_TTF}")
+    set(PS2X_FONT_OUT "${PS2X_LAUNCHER_FONTS_GENERATED_DIR}/fonts_embedded/${PS2X_FONT_HEADER}")
+    add_custom_command(
+        OUTPUT "${PS2X_FONT_OUT}"
+        COMMAND "${Python3_EXECUTABLE}" "${PS2X_EMBED_FONT_SCRIPT}"
+                "${PS2X_FONT_IN}" "${PS2X_FONT_OUT}" "${PS2X_FONT_SYMBOL}"
+        DEPENDS "${PS2X_FONT_IN}" "${PS2X_EMBED_FONT_SCRIPT}"
+        COMMENT "embed_font: ${PS2X_FONT_TTF} -> fonts_embedded/${PS2X_FONT_HEADER}"
+        VERBATIM
+    )
+    list(APPEND PS2X_LAUNCHER_FONT_HEADERS "${PS2X_FONT_OUT}")
+endforeach()
+
 add_executable(socom_unzipped_launcher ${PS2X_LAUNCHER_EXE_TYPE}
+    ${PS2X_LAUNCHER_FONT_HEADERS}
     src/main.cpp
     src/win32_glue.cpp
     src/mic_devices.cpp
@@ -64,6 +102,8 @@ target_link_libraries(socom_unzipped_launcher PRIVATE ps2x_launcher_core raylib)
 # (raudio.c:178), so mic_devices.cpp needs only its declarations: it includes the header WITHOUT
 # MINIAUDIO_IMPLEMENTATION.
 target_include_directories(socom_unzipped_launcher PRIVATE $<TARGET_PROPERTY:raylib,SOURCE_DIR>/external)
+# Sprint 11 Task 17 (R247): where the generated fonts_embedded/*.h land, so fonts.cpp's includes resolve.
+target_include_directories(socom_unzipped_launcher PRIVATE ${PS2X_LAUNCHER_FONTS_GENERATED_DIR})
 if(WIN32)
     # winhttp: Sprint 9 Goal 8's bug report and status line (win32glue::httpRequest). Windows only -- the POSIX
     # glue starts curl instead, so the Linux build links nothing new.

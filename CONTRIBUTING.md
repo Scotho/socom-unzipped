@@ -25,7 +25,12 @@ Not sure your disc is r0001? The launcher checks it and says so (exit code 67 is
 0. **Install the hooks, once per clone:** `bash scripts/install_hooks.sh`. It points git at `scripts/hooks/`, where a
    leak check (`python -m tools_py.release.leakcheck`) runs over what you are about to commit and, again, over every
    commit you are about to push: key material, tokens, a home directory with your user name in it, an address, a
-   file the `.gitignore` refuses. CI runs the same check plus gitleaks on every push. If it stops you, fix the hit;
+   file the `.gitignore` refuses. One command covers all of it: `python -m tools_py.release.leakcheck all` --
+   the tree, the ignored paths, the commit identities, the full history, and `external`, which calls the site's
+   and the monitor's own scanners when those repositories sit beside this one. You almost certainly do not have
+   them, so `external` prints SKIPPED and changes nothing: **SKIPPED is not clean**, it is the gate saying it did
+   not look, and a maintainer who does have them runs `leakcheck external --require`, where a missing one is
+   exit 2. CI runs the same check plus gitleaks on every push. If it stops you, fix the hit;
    if the hit is a reviewed non-secret (a test fixture, a version string it misread), add one line with its reason
    to `tools_py/release/leak_allow.txt` in the same PR. Do not bypass it with `--no-verify` -- the push hook and CI
    will refuse the same thing, and a secret in a pushed commit means rewriting history.
@@ -40,8 +45,9 @@ Not sure your disc is r0001? The launcher checks it and says so (exit code 67 is
    command that produced it, and what it was before. If you moved a default or skipped a measurement, say that too.
 5. **Commits:** `type(scope): what changed and why`, types `feat fix refactor test docs build ci chore`. Outside PRs
    are squash-merged, so a tidy history is welcome but not required.
-6. **New environment knobs** (`PS2X_*`) need a reason and a row in the knob table (`docs/KNOBS.md`, once Sprint 9
-   Goal 3 lands); a knob that names a path must stay inside the portable folder.
+6. **New environment knobs** (`PS2X_*`) need a reason and a row: `docs/KNOBS.md` is generated from `ps2x/knobs.h`,
+   and a name with no row, a row nothing reads, or a read that goes around `ps2x::knob` fails the suite. A knob that
+   names a path must stay inside the portable folder.
 7. **Third-party code** needs its licence text under `LICENSES/` and a row in the notices file in the same PR. The
    vendored recompiler (`third_party/ps2recomp`) is GPL-3.0 and the executable links it, so contributions are accepted
    under GPL-3.0-compatible terms.
@@ -59,6 +65,20 @@ documentation that a stranger followed successfully. Large refactors and new fea
   id in the issue instead of pasting your log in public. SAVE DIAGNOSTICS in the launcher writes a zip with your home
   directory and credentials removed; attach that if a maintainer asks.
 - **Security problems:** not in a public issue -- see `SECURITY.md`.
+
+## Known issues, and taking one
+
+The open defects the project knows about are the issues labelled
+[`known-issue`](https://github.com/Scotho/socom-unzipped/issues?q=is%3Aissue+is%3Aopen+label%3Aknown-issue): each
+says what happens, what evidence shows it, where it is written in `docs/KNOWN.md`, and the **closing bar** -- the
+test, measurement or gate result that would show it fixed. `help wanted` marks the ones that need no disc;
+`needs-disc-gate` marks the ones that do. The milestone says which sprint intends to close it; no milestone is the
+backlog. The conventions behind the list are `docs/GIT_STRATEGY.md` §7, and the stack is reviewed in full at every
+sprint close.
+
+To take one: comment on the issue first so two people do not do the same work; your pull request says `Closes #N`
+and quotes the bar it met. If you find a defect that is not listed, open it with the bug template -- the maintainers
+move it onto the stack once it is reproduced from the project's own code and harness.
 
 ## Conduct
 

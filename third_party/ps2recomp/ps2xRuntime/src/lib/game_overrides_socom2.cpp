@@ -14,9 +14,12 @@
 #include "ps2_runtime_macros.h"
 #include "runtime/ps2_memory.h"
 #include "runtime/ee_scheduler.h"
+#include "runtime/socom2_chat.h"
 #include "runtime/socom2_freeze_fields.h"
 #include "runtime/socom2_music_trace.h"
+#include "runtime/socom2_addresses.h"
 #include "runtime/socom2_osk_prefill.h"
+#include "runtime/socom2_revision_guard.h"
 #include "runtime/ps2_audio.h"
 #include "socom2_rsa_key.h"
 #include "socom2_host_input.h"
@@ -471,6 +474,10 @@ namespace
             std::memcpy(&vaddr, ph + 8, 4);
             std::memcpy(&filesz, ph + 16, 4);
             std::memcpy(&memsz, ph + 20, 4);
+            // 0x1e7000 is the FIRST OVERLAY'S LOAD ADDRESS -- where FTSCore starts, so everything at or
+            // above it is overlay content to restore. It is not the same boundary as
+            // socom2_addresses::kOverlayBase (0x1d5600), which is the end of the LOADER'S DATA: the gap
+            // between them belongs to neither, and the table's invariant only has to exclude the loader.
             if (type != 1 || vaddr < 0x001e7000u || memsz == 0)
                 continue;
             uint8_t *dst = getMemPtr(rdram, vaddr);
@@ -500,8 +507,14 @@ namespace
         // Loader's __initialize_cpp_rts(ctor_start, ctor_end, 0, 0) walks a table and calls each
         // constructor; one guest call per overlay keeps the scheduler's invocation stack shallow.
         constexpr uint32_t kInitCppRts = 0x00182840u;
-        struct Table { uint32_t begin, end; const char *name; };
-        const Table tables[] = {{0x00404d10u, 0x00404f04u, "FTSCore"}, {0x006690e0u, 0x00669120u, "ZSealEtc"}};
+        // beginField/endField name the socom2_addresses::Table members these two came out of, so the
+        // guard below can say which field a revision failed to place rather than just which overlay.
+        struct Table { uint32_t begin, end; const char *beginField, *endField, *name; };
+        const socom2_addresses::Table &addr = socom2_addresses::current();
+        const Table tables[] = {{addr.ctorTableFtsBegin, addr.ctorTableFtsEnd,
+                                 "ctorTableFtsBegin", "ctorTableFtsEnd", "FTSCore"},
+                                {addr.ctorTableZsealBegin, addr.ctorTableZsealEnd,
+                                 "ctorTableZsealBegin", "ctorTableZsealEnd", "ZSealEtc"}};
         std::vector<GuestInvocation> invocations;
         if (!runtime->hasFunction(kInitCppRts))
         {
@@ -511,6 +524,12 @@ namespace
         {
             for (const Table &t : tables)
             {
+                // A revision whose column could not place this table says so and runs no constructors
+                // for that overlay -- running r0001's table addresses against another build's data
+                // would call whatever happens to sit there.
+                if (!socom2_addresses::require(t.begin, t.beginField) ||
+                    !socom2_addresses::require(t.end, t.endField))
+                    continue;
                 GuestInvocation inv{};
                 inv.kind = GuestInvocationKind::HleCall;
                 inv.context = *ctx;
@@ -536,6 +555,14 @@ namespace
     }
 
     // FUN_001c5b30(port): load the r0004 update from the memory card.  0 = not present.
+    //
+    // Task 11 (Sprint 11 Goal D), so the launcher's GAME VERSION selector is not misread against this:
+    // a revision is COMPILED IN here, never hot-loaded. On the console r0004 arrived as game code on a
+    // memory card and this function pulled it in at runtime; a recompilation cannot, because the code it
+    // would load has to have been through the recompiler. An r0004 build is therefore a SECOND
+    // executable (launcher::kGameRevisions names it socom2_r0004.exe), not this one patching itself --
+    // which is why BOTH builds answer "no update present" here, and why the answer stays 0 even in the
+    // r0004 build, where the update is not an update but the whole game.
     void socom2_LoadGameCodeFromMemcard(uint8_t *, R5900Context *ctx, PS2Runtime *)
     {
         std::cout << "[socom2] LoadGameCodeFromMemcard -> none" << std::endl;
@@ -1408,11 +1435,12 @@ namespace
     {
         if (!ps2x::knob("PS2X_SOCOM2_MUSIC_TRACE"))
             return;
-        constexpr uint32_t kManager = 0x0034afd0u;   // FUN_0034afd0: the per-frame music manager
-        constexpr uint32_t kPush = 0x0034b6c0u;      // FUN_0034b6c0: the cue push
+        const uint32_t kManager = socom2_addresses::current().musicManager;   // r0001: FUN_0034afd0, the per-frame music manager
+        const uint32_t kPush = socom2_addresses::current().cuePush;           // r0001: FUN_0034b6c0, the cue push
         if (!runtime.hasFunction(kManager) || !runtime.hasFunction(kPush))
         {
-            std::cout << "[music] trace: FUN_0034afd0 / FUN_0034b6c0 not in the function table" << std::endl;
+            std::cout << "[music] trace: 0x" << std::hex << kManager << " / 0x" << kPush << std::dec
+                      << " not in the function table" << std::endl;
             return;
         }
         g_musicMgrOriginal = runtime.lookupFunction(kManager);
@@ -1473,13 +1501,15 @@ namespace
     {
         if (socom2UdpShift() == 0)
             return;
-        if (!runtime.hasFunction(0x00620648u))
+        const uint32_t kRtNetCfgInit = socom2_addresses::current().rtNetConfigInit;   // r0001: FUN_00620648
+        if (!runtime.hasFunction(kRtNetCfgInit))
         {
-            std::cout << "[socom2] no function at 0x620648; peer UDP port shift stays host-side only" << std::endl;
+            std::cout << "[socom2] no function at 0x" << std::hex << kRtNetCfgInit << std::dec
+                      << "; peer UDP port shift stays host-side only" << std::endl;
             return;
         }
-        g_rtNetCfgOriginal = runtime.lookupFunction(0x00620648u);
-        runtime.replaceFunction(0x00620648u, socom2_RtNetConfigInit);
+        g_rtNetCfgOriginal = runtime.lookupFunction(kRtNetCfgInit);
+        runtime.replaceFunction(kRtNetCfgInit, socom2_RtNetConfigInit);
     }
 
     // ------------------------------------------------------------------------------------------
@@ -1502,7 +1532,7 @@ namespace
     void socom2_OskOpenPrefill(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         const uint32_t msgAddr = GPR_U32(ctx, 4) & PS2_RAM_MASK;
-        const uint32_t bufAddr = socom2_osk::kOskTextBufferAddr & PS2_RAM_MASK;
+        const uint32_t bufAddr = socom2_addresses::current().oskTextBuffer & PS2_RAM_MASK;
         socom2_osk::Request req;
         std::string text;
         if (msgAddr != 0 && msgAddr + socom2_osk::kArgBlockBytes <= PS2_RAM_SIZE)
@@ -1536,18 +1566,23 @@ namespace
         const bool havePass = pass != nullptr && *pass != '\0';
         if (!haveName && !havePass)
             return;
-        if (!runtime.hasFunction(socom2_osk::kOskOpenAddr))
+        // All three of the keyboard's addresses are revision-bound and all three come from one place
+        // (runtime/socom2_addresses.h): the handler, the thunk the UI action table actually dispatches
+        // through, and the initial-text buffer the wrapper writes.
+        const socom2_addresses::Table &addr = socom2_addresses::current();
+        if (!runtime.hasFunction(addr.oskOpen))
         {
-            std::cout << "[socom2] no function at 0x" << std::hex << socom2_osk::kOskOpenAddr << std::dec
+            std::cout << "[socom2] no function at 0x" << std::hex << addr.oskOpen << std::dec
                       << "; the keyboards open empty (PS2X_SOCOM2_LOGIN_NAME/_PASS ignored)" << std::endl;
             return;
         }
         // The original is the handler itself; the wrap sits on the handler AND on the thunk the action table
         // dispatches through (kOskOpenEntries), because the recompiled thunk calls the handler directly and a
         // replacement at the handler alone is never reached (the first two driven logins: armed, 0 of 5 filled).
-        g_oskOpenOriginal = runtime.lookupFunction(socom2_osk::kOskOpenAddr);
+        g_oskOpenOriginal = runtime.lookupFunction(addr.oskOpen);
+        const uint32_t entries[] = {addr.oskOpenThunk, addr.oskOpen};
         int installed = 0;
-        for (uint32_t entry : socom2_osk::kOskOpenEntries)
+        for (uint32_t entry : entries)
         {
             if (runtime.hasFunction(entry))
             {
@@ -1556,9 +1591,163 @@ namespace
             }
         }
         std::cout << "[socom2] on-screen keyboard prefill wraps " << installed << " of "
-                  << (sizeof(socom2_osk::kOskOpenEntries) / sizeof(socom2_osk::kOskOpenEntries[0])) << " entries" << std::endl;
+                  << (sizeof(entries) / sizeof(entries[0])) << " entries" << std::endl;
         std::cout << "[socom2] on-screen keyboard prefill armed: persona name " << (haveName ? std::to_string(std::strlen(name)) + " chars" : "unset")
                   << ", password " << (havePass ? std::to_string(std::strlen(pass)) + " chars" : "unset") << std::endl;
+    }
+
+    // Sprint 11 milestone S: hardening of the chat receive path. Two fixed-width fields are given the terminator
+    // the game's readers assume, BEFORE the original runs and never after (the OSK wrap's rule above: the original
+    // may unwind through a scheduler checkpoint, so host code placed after the call runs too late). Nothing
+    // further about it is written up here (SECURITY.md).
+    // Both wraps below keep the same books and obey the same rate limit, so they keep them in one place: one
+    // instance per wrap, and a change to how either is logged is a change in one function.
+    //   seen    every call the wrap was entered on
+    //   fixed   the calls that changed something
+    //   skipped what the wrap declined to touch on that call (nothing it declines is ever passed over silently)
+    struct BoundWrapLog
+    {
+        std::atomic<uint32_t> seen{0}, fixed{0}, skipped{0};
+        std::atomic<bool> saidDeclined{false};
+
+        // The first call always says so; after that only the calls that changed something, and of those the
+        // first 8 and then every 64th -- a busy room must not turn the log into this one line.
+        void note(const char *tag, int changed, uint32_t skips)
+        {
+            const uint32_t n = seen.fetch_add(1) + 1;
+            const uint32_t f = changed ? fixed.fetch_add(1) + 1 : fixed.load();
+            // The running total stops at the top rather than coming round to a small number (socom2_chat::satAdd).
+            uint32_t s = skipped.load();
+            while (skips != 0)
+            {
+                const uint32_t next = socom2_chat::satAdd(s, skips);
+                if (skipped.compare_exchange_weak(s, next))
+                {
+                    s = next;
+                    break;
+                }
+            }
+            if (n == 1 || (changed != 0 && (f <= 8 || f % 64 == 0)))
+                std::cout << "[socom2] " << tag << ": seen=" << n << " fixed=" << f << " skipped=" << s << std::endl;
+        }
+
+        // Once, so that "the wrap ran and declined what it was given" is distinguishable from "the wrap was
+        // never entered" when a run's log is read back.
+        void declinedOnce(const char *tag, const char *what)
+        {
+            if (!saidDeclined.exchange(true))
+                std::cerr << "[socom2] " << tag << ": " << what << " (reported once)" << std::endl;
+        }
+    };
+
+    PS2Runtime::RecompiledFunction g_chatFanoutOriginal = nullptr;
+    // Written from whatever guest thread runs the callback; only the log line reads them.
+    BoundWrapLog g_chatFanoutLog;
+
+    void socom2_ChatFanoutBound(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        // The mask is the OSK wrap's precedent (it indexes rdram the same way); getMemPtr is not a one-line swap here.
+        const uint32_t pkt = GPR_U32(ctx, 7) & PS2_RAM_MASK;      // $a3
+        int changed = 0;
+        uint32_t skipped = 0;
+        if (pkt != 0 && pkt + socom2_chat::kPacketBytes <= PS2_RAM_SIZE)
+        {
+            changed = socom2_chat::terminateFields(rdram + pkt);
+        }
+        else
+        {
+            skipped = 1;
+            g_chatFanoutLog.declinedOnce("chat receive bound", "the packet does not fit in memory; skipped");
+        }
+        g_chatFanoutLog.note("chat receive bound", changed, skipped);
+        if (g_chatFanoutOriginal)
+            g_chatFanoutOriginal(rdram, ctx, runtime);
+        // Nothing here: the original may leave through a scheduler checkpoint and resume later.
+    }
+
+    // Sprint 11 Task 2b: the same two fields, at the second reader of the same records. That reader is handed a
+    // run of them rather than one, so each record in the run is given the guarantee before the original walks it,
+    // by the rule above (before, never after). Nothing read out of guest memory is trusted: a run is walked only
+    // when socom2_chat::spanFits says it is whole and inside RAM.
+    PS2Runtime::RecompiledFunction g_chatListOriginal = nullptr;
+    // Written from whatever guest thread runs the reader; only the log line reads them.
+    BoundWrapLog g_chatListLog;
+
+    void socom2_ChatListBound(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const socom2_addresses::Table &addr = socom2_addresses::current();
+        const uint32_t holders = Ps2FastRead32(rdram, addr.chatListHolders + socom2_chat::kHolderCountOff);
+        const uint32_t holderBase = Ps2FastRead32(rdram, addr.chatListHolders + socom2_chat::kHolderDataOff) & PS2_RAM_MASK;
+        // The ceiling cuts the walk, it never calls it off: a list longer than the ceiling still gets the
+        // guarantee as far as the ceiling reaches. Not fitting in memory is the one thing that declines a walk,
+        // and having nothing to walk is not that: an empty list returns quietly, saying nothing.
+        const uint32_t walkHolders = socom2_chat::walkCount(holders, socom2_chat::kMaxHolders);
+        uint32_t budget = socom2_chat::kRecordsPerCall;   // spent across this call, carried to no other
+        int changed = 0;
+        uint32_t skipped = holders - walkHolders;
+        if (socom2_chat::declines(walkHolders, holderBase, socom2_chat::kHolderPtrBytes, PS2_RAM_SIZE))
+        {
+            skipped = socom2_chat::satAdd(skipped, walkHolders);
+            g_chatListLog.declinedOnce("chat list bound", "the holder list does not fit in memory; skipped");
+        }
+        else
+        {
+            // Every holder in the list, not only the one this reader selects: the selection is a name match
+            // the guest makes for itself, and walking the whole list covers it without repeating that match
+            // here -- including a holder another reader reaches.
+            for (uint32_t i = 0; i < walkHolders; ++i)
+            {
+                const uint32_t holder = Ps2FastRead32(rdram, holderBase + i * socom2_chat::kHolderPtrBytes) & PS2_RAM_MASK;
+                if (!socom2_chat::spanFits(holder, 1, socom2_chat::kListHeaderBytes, PS2_RAM_SIZE))
+                {
+                    skipped = socom2_chat::satAdd(skipped, 1);
+                    continue;
+                }
+                const uint32_t count = Ps2FastRead32(rdram, holder + socom2_chat::kListCountOff);
+                const uint32_t base = Ps2FastRead32(rdram, holder + socom2_chat::kListDataOff) & PS2_RAM_MASK;
+                // Once the call's budget is gone every remaining walk is nothing; the rest of the loop only
+                // finishes the count of what was left alone, which is a handful of reads per holder.
+                const uint32_t walk = socom2_chat::walkWithin(count, socom2_chat::kMaxRecords, budget);
+                budget -= walk;
+                skipped = socom2_chat::satAdd(skipped, count - walk);
+                if (socom2_chat::declines(walk, base, socom2_chat::kRecordBytes, PS2_RAM_SIZE))
+                {
+                    skipped = socom2_chat::satAdd(skipped, walk);
+                    continue;
+                }
+                changed += socom2_chat::terminateRecords(rdram + base, walk);
+            }
+        }
+        g_chatListLog.note("chat list bound", changed, skipped);
+        if (g_chatListOriginal)
+            g_chatListOriginal(rdram, ctx, runtime);
+        // Nothing here: the original may leave through a scheduler checkpoint and resume later.
+    }
+
+    void installChatBound(PS2Runtime &runtime)
+    {
+        // Both addresses come from the revision table, which is the only place either is written down.
+        const uint32_t fanoutRecv = socom2_addresses::current().chatFanoutRecv;
+        if (!runtime.hasFunction(fanoutRecv))
+        {
+            std::cout << "[socom2] no function at 0x" << std::hex << fanoutRecv << std::dec << "; chat receive not bound" << std::endl;
+        }
+        else
+        {
+            g_chatFanoutOriginal = runtime.lookupFunction(fanoutRecv);
+            runtime.replaceFunction(fanoutRecv, socom2_ChatFanoutBound);
+            std::cout << "[socom2] chat receive bound (name 32, message 64)" << std::endl;
+        }
+        // The two wraps are independent: one missing from the loaded image must not take the other with it.
+        const uint32_t listRender = socom2_addresses::current().chatListRender;
+        if (!runtime.hasFunction(listRender))
+        {
+            std::cout << "[socom2] no function at 0x" << std::hex << listRender << std::dec << "; chat list not bound" << std::endl;
+            return;
+        }
+        g_chatListOriginal = runtime.lookupFunction(listRender);
+        runtime.replaceFunction(listRender, socom2_ChatListBound);
+        std::cout << "[socom2] chat list bound (name 32, message 64)" << std::endl;
     }
 
     // ------------------------------------------------------------------------------------------
@@ -1802,7 +1991,7 @@ namespace
         if (!g_cullTraceFile)
             return;
         uint32_t holder = 0, cam = 0; float lod[2] = {0.0f, 0.0f};
-        if (const uint8_t *ph = getConstMemPtr(rdram, 0x00415ff0u)) std::memcpy(&holder, ph, 4);
+        if (const uint8_t *ph = getConstMemPtr(rdram, socom2_addresses::current().cameraHolder)) std::memcpy(&holder, ph, 4);
         if (holder) if (const uint8_t *pc = getConstMemPtr(rdram, holder + 0xb4u)) std::memcpy(&cam, pc, 4);
         if (cam) if (const uint8_t *pl = getConstMemPtr(rdram, cam + 0x2c8u)) std::memcpy(lod, pl, sizeof(lod));
         const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
@@ -1838,14 +2027,15 @@ namespace
     void installPackTrace(PS2Runtime &runtime)
     {
         const char *path = ps2x::knob("PS2X_PACK_TRACE");
-        if (!path || !*path || !runtime.hasFunction(0x0025a5d0u))
+        const uint32_t kPack = socom2_addresses::current().packTrace;   // r0001: FUN_0025a5d0
+        if (!path || !*path || !runtime.hasFunction(kPack))
             return;
         g_packTraceFile = std::fopen(path, "w");
         if (!g_packTraceFile)
             return;
-        g_packOriginal = runtime.lookupFunction(0x0025a5d0u);
-        runtime.replaceFunction(0x0025a5d0u, socom2_PackTrace);
-        std::cout << "[pack-trace] FUN_0025a5d0 -> " << path << std::endl;
+        g_packOriginal = runtime.lookupFunction(kPack);
+        runtime.replaceFunction(kPack, socom2_PackTrace);
+        std::cout << "[pack-trace] 0x" << std::hex << kPack << std::dec << " -> " << path << std::endl;
     }
 
     // The deferred (sorted, translucent) draw list -- research/31 section 16: components whose flags carry bit 0 are
@@ -1896,14 +2086,15 @@ namespace
 
     void installCullTrace(PS2Runtime &runtime)
     {
+        const socom2_addresses::Table &addr = socom2_addresses::current();
         const char *spec = ps2x::knob("PS2X_CULL_TRACE");
         if (!spec || !*spec)
         {
-            if (ps2x::knob("PS2X_CULL_PARTIAL_CLIP") && runtime.hasFunction(0x00290c30u))
+            if (ps2x::knob("PS2X_CULL_PARTIAL_CLIP") && runtime.hasFunction(addr.cull))
             {
                 g_cullTraceStart = std::chrono::steady_clock::now();
-                g_cullOriginal = runtime.lookupFunction(0x00290c30u);
-                runtime.replaceFunction(0x00290c30u, socom2_CullTrace);
+                g_cullOriginal = runtime.lookupFunction(addr.cull);
+                runtime.replaceFunction(addr.cull, socom2_CullTrace);
                 std::cout << "[cull-trace] PS2X_CULL_PARTIAL_CLIP: partial boxes take the clipped family" << std::endl;
             }
             return;
@@ -1926,9 +2117,9 @@ namespace
             rest = rest.substr(0, colon);
         }
         g_cullTraceAfter = std::atof(rest.c_str());
-        if (!runtime.hasFunction(0x00290c30u))
+        if (!runtime.hasFunction(addr.cull))
         {
-            std::cout << "[cull-trace] no function at 0x290c30" << std::endl;
+            std::cout << "[cull-trace] no function at 0x" << std::hex << addr.cull << std::dec << std::endl;
             return;
         }
         g_cullTraceFile = std::fopen(path.c_str(), "w");
@@ -1939,44 +2130,45 @@ namespace
         }
         g_cullTraceLeft = count > 0 ? count : 4000;
         g_cullTraceStart = std::chrono::steady_clock::now();
-        g_cullOriginal = runtime.lookupFunction(0x00290c30u);
-        runtime.replaceFunction(0x00290c30u, socom2_CullTrace);
-        if (runtime.hasFunction(0x00338480u))
+        g_cullOriginal = runtime.lookupFunction(addr.cull);
+        runtime.replaceFunction(addr.cull, socom2_CullTrace);
+        if (runtime.hasFunction(addr.node))
         {
-            g_nodeOriginal = runtime.lookupFunction(0x00338480u);
-            runtime.replaceFunction(0x00338480u, socom2_NodeTrace);
+            g_nodeOriginal = runtime.lookupFunction(addr.node);
+            runtime.replaceFunction(addr.node, socom2_NodeTrace);
         }
-        if (runtime.hasFunction(0x003389c0u))
+        if (runtime.hasFunction(addr.node2))
         {
-            g_nodeOriginal2 = runtime.lookupFunction(0x003389c0u);
-            runtime.replaceFunction(0x003389c0u, socom2_NodeTrace2);
+            g_nodeOriginal2 = runtime.lookupFunction(addr.node2);
+            runtime.replaceFunction(addr.node2, socom2_NodeTrace2);
         }
-        if (runtime.hasFunction(0x003b7b90u))
+        if (runtime.hasFunction(addr.lod))
         {
-            g_lodOriginal = runtime.lookupFunction(0x003b7b90u);
-            runtime.replaceFunction(0x003b7b90u, socom2_LodTrace);
+            g_lodOriginal = runtime.lookupFunction(addr.lod);
+            runtime.replaceFunction(addr.lod, socom2_LodTrace);
         }
-        if (runtime.hasFunction(0x003b6e10u))
+        if (runtime.hasFunction(addr.detail))
         {
-            g_detailOriginal = runtime.lookupFunction(0x003b6e10u);
-            runtime.replaceFunction(0x003b6e10u, socom2_DetailTrace);
+            g_detailOriginal = runtime.lookupFunction(addr.detail);
+            runtime.replaceFunction(addr.detail, socom2_DetailTrace);
         }
-        if (runtime.hasFunction(0x002918b0u))
+        if (runtime.hasFunction(addr.camCfg))
         {
-            g_camCfgOriginal = runtime.lookupFunction(0x002918b0u);
-            runtime.replaceFunction(0x002918b0u, socom2_CamCfgTrace);
+            g_camCfgOriginal = runtime.lookupFunction(addr.camCfg);
+            runtime.replaceFunction(addr.camCfg, socom2_CamCfgTrace);
         }
-        if (runtime.hasFunction(0x003371b0u))
+        if (runtime.hasFunction(addr.defer))
         {
-            g_deferOriginal = runtime.lookupFunction(0x003371b0u);
-            runtime.replaceFunction(0x003371b0u, socom2_DeferTrace);
+            g_deferOriginal = runtime.lookupFunction(addr.defer);
+            runtime.replaceFunction(addr.defer, socom2_DeferTrace);
         }
-        if (runtime.hasFunction(0x00336cb0u))
+        if (runtime.hasFunction(addr.flush))
         {
-            g_flushOriginal = runtime.lookupFunction(0x00336cb0u);
-            runtime.replaceFunction(0x00336cb0u, socom2_FlushTrace);
+            g_flushOriginal = runtime.lookupFunction(addr.flush);
+            runtime.replaceFunction(addr.flush, socom2_FlushTrace);
         }
-        std::cout << "[cull-trace] FUN_00290c30 -> " << path << " from t=" << g_cullTraceAfter << "s, " << g_cullTraceLeft << " calls" << std::endl;
+        std::cout << "[cull-trace] 0x" << std::hex << addr.cull << std::dec << " -> " << path
+                  << " from t=" << g_cullTraceAfter << "s, " << g_cullTraceLeft << " calls" << std::endl;
     }
 
     void installCrashHandler(PS2Runtime &runtime)
@@ -1989,30 +2181,64 @@ namespace
 #endif
     }
 
+    // The reader socom2_addresses::selectFromImage probes each column's build stamp through. Forty bytes
+    // is the whole stamp ("SOCOM 2 rNNNN HH:MM:SS Mon DD YYYY" and its terminator); an address holding
+    // anything else -- code, zeros, another build's data -- simply names no revision.
+    std::string readGuestStamp(uint32_t addr, void *user)
+    {
+        const uint8_t *p = getConstMemPtr(static_cast<const uint8_t *>(user), addr);
+        std::string s;
+        for (int i = 0; p && i < 40 && p[i]; ++i)
+            s.push_back(static_cast<char>(p[i]));
+        std::cout << "[socom2] mem@0x" << std::hex << addr << std::dec << " = \"" << s << "\"" << std::endl;
+        return s;
+    }
+
     void applySocom2(PS2Runtime &runtime)
     {
         std::cout << "[socom2] applying SOCOM II overrides" << std::endl;
         installCrashHandler(runtime);
+        {
+            // The FTSCore data segment carries the build stamp ("SOCOM 2 r0001 17:22:21 Oct 11 2003",
+            // "SOCOM 2 r0004 10:14:38 Nov  3 2004"). Reading it here does double duty: it proves the
+            // overlay is resident, and it chooses the address column every install below reads
+            // (runtime/socom2_addresses.h). It has to run first: an install that ran before the choice
+            // would have wrapped an r0001 address in another build.
+            //
+            // The stamp is read at EVERY column's own versionString, not at r0001's: the banner moves with
+            // the relink (r0001 0x003e17e0, r0004 0x0040cc60), and in an r0004 image r0001's address is
+            // code. Reading only r0001's is exactly what made the r0004 exe run on r0001's addresses.
+            socom2_addresses::selectFromImage(readGuestStamp, runtime.memory().getRDRAM());
+
+            // Task 19 round 3: and now the OTHER half of the question. Which column to read is one thing;
+            // whether this executable's generated code belongs on this image at all is another, and until
+            // here nothing asked it. On 2026-09-23 two parity gates ran the r0004 executable against
+            // r0001's image (the launch scripts hard-coded game/disc/socom2_game.elf): it booted, walked
+            // r0001's constructor table into r0004 function bodies, and hung at the loading screen on a
+            // jalr through a slot the constructors never filled -- with nothing in the log to say the code
+            // and the image disagreed. One comparison, and a refusal rather than a warning: past a
+            // mismatch every address, every table and every body is the other build's.
+            socom2_revision::enforce(socom2_addresses::imageRevision().c_str(),
+                                     PS2Runtime::getIoPaths().elfPath.string(),
+                                     socom2_addresses::imageBanner());
+        }
         startPcSampler(runtime);
         startRdramDump(runtime);
         installCallTrace(runtime);
         installMusicTrace(runtime);
         installCullTrace(runtime);
         installPackTrace(runtime);
-        {
-            // sanity check that the FTSCore data segment is resident: should print the boot path string
-            const uint8_t *p = getConstMemPtr(runtime.memory().getRDRAM(), 0x003e5c60u);
-            std::string s;
-            for (int i = 0; p && i < 24 && p[i]; ++i) s.push_back(static_cast<char>(p[i]));
-            std::cout << "[socom2] mem@0x3e5c60 = \"" << s << "\"" << std::endl;
-        }
         // newlib rand()/srand() share `struct _reent._rand_next`: _impure_ptr lives at 0x001cc750
         // and points at 0x001cc460, _rand_next is at +0xa8 (SCUS_972.75 FUN_00197728/FUN_00197740).
         // rand() is stubbed (recomp/socom2.toml) but srand() is not, and the game boots with
         // `srand(<RTC>); srand(rand());` -- both halves have to write the same word.
-        ps2_stubs::setLibcRandState(0x001CC750u, 0xA8u);
+        ps2_stubs::setLibcRandState(&runtime, 0x001CC750u, 0xA8u);
         ps2_stubs::setMpegDemuxIdleYields(true);   // research/32 section 7.1: the movie thread re-polls the demux in a loop
         configureCdImage();
+        // The addresses below socom2_addresses::kOverlayBase (0x1d5600) are the BOOT LOADER's and stay
+        // literal on purpose: the loader is the same binary in every pressing of the game -- it is what
+        // loads the overlays that differ -- so there is nothing for a per-revision table to vary. Only
+        // overlay addresses belong in socom2_addresses.h, and its suite fails on a loader address in it.
         runtime.replaceFunction(0x001c59c0u, socom2_LoadGameCodeFromDisc);
         runtime.replaceFunction(0x001c5b30u, socom2_LoadGameCodeFromMemcard);
         runtime.replaceFunction(0x00181c90u, socom2_LoadOverlayFile);
@@ -2022,30 +2248,63 @@ namespace
         runtime.replaceFunction(0x001bd050u, ps2_stubs::socom2_MsifBind);
         runtime.replaceFunction(0x001bd320u, ps2_stubs::socom2_MsifCall);
         runtime.replaceFunction(0x001bd200u, ps2_stubs::socom2_MsifUnbind);
-        // libnetb_ex ring-buffer path -> host sockets (socom2_libnetb.cpp).
-        runtime.replaceFunction(0x002472c8u, socom2_libnetb::exOpen);
-        runtime.replaceFunction(0x002474f8u, socom2_libnetb::exTcpRecv);
-        runtime.replaceFunction(0x00247738u, socom2_libnetb::exTcpSend);
-        runtime.replaceFunction(0x00247d30u, socom2_libnetb::exUdpRecv);
-        runtime.replaceFunction(0x00247fe8u, socom2_libnetb::exUdpSend);
-        runtime.replaceFunction(0x002479b8u, socom2_libnetb::exAvailable);
-        runtime.replaceFunction(0x00247bd8u, socom2_libnetb::exConnected);
-        runtime.replaceFunction(0x00248350u, socom2_libnetb::exStartAsync);
-        runtime.replaceFunction(0x002483f8u, socom2_libnetb::exStartAsync);
+        // libnetb_ex ring-buffer path -> host sockets (socom2_libnetb.cpp). Task 19: these and the
+        // libdnas2 crypto entry points below are columns of socom2_addresses.h now, not literals. They
+        // were the last overlay addresses an r0004 image still reached at r0001 values -- libnetb_ex
+        // happens not to have moved, but that is a fact the table records, not one the code may assume.
+        {
+            const socom2_addresses::Table &addr = socom2_addresses::current();
+            struct Bind { uint32_t address; const char *field; PS2Runtime::RecompiledFunction fn; };
+            const Bind netb[] = {
+                {addr.netbExOpen, "netbExOpen", socom2_libnetb::exOpen},
+                {addr.netbExTcpRecv, "netbExTcpRecv", socom2_libnetb::exTcpRecv},
+                {addr.netbExTcpSend, "netbExTcpSend", socom2_libnetb::exTcpSend},
+                {addr.netbExUdpRecv, "netbExUdpRecv", socom2_libnetb::exUdpRecv},
+                {addr.netbExUdpSend, "netbExUdpSend", socom2_libnetb::exUdpSend},
+                {addr.netbExAvailable, "netbExAvailable", socom2_libnetb::exAvailable},
+                {addr.netbExConnected, "netbExConnected", socom2_libnetb::exConnected},
+                {addr.netbExStartAsync, "netbExStartAsync", socom2_libnetb::exStartAsync},
+                {addr.netbExStartAsync2, "netbExStartAsync2", socom2_libnetb::exStartAsync},
+            };
+            for (const Bind &b : netb)
+                if (socom2_addresses::require(b.address, b.field))
+                    runtime.replaceFunction(b.address, b.fn);
+        }
         installRtNetPortShift(runtime);
         installOskPrefill(runtime);   // Sprint 10 Goal 9: only when PS2X_SOCOM2_LOGIN_NAME/_PASS is set
+        installChatBound(runtime);    // Sprint 11 milestone S: unconditional, no knob
 
-        ps2_game_overrides::bindAddressHandler(runtime, 0x00247c98u, "ret0");   // descriptor DMA helper
-        // rt_crypt: RSA block transform and SHA-1 on the host (socom2_crypto.cpp).
-        runtime.replaceFunction(0x0062b948u, socom2_crypto::rsaBlock);
-        runtime.replaceFunction(0x0062eec0u, socom2_crypto::sha1Hash);
-        runtime.replaceFunction(0x0062a638u, socom2_crypto::rc4SetKeyHash);
-        runtime.replaceFunction(0x0062a5a8u, socom2_crypto::rc4SetKey);
-        runtime.replaceFunction(0x0062a720u, socom2_crypto::rc4EncryptFn);
-        runtime.replaceFunction(0x0062a7c8u, socom2_crypto::rc4DecryptFn);
-        // DNAS authentication object (FTSCore FUN_002cc670): the published r0001 bypass patches
-        // `jr ra` at its entry; a private Horizon server needs no DNAS.
-        runtime.replaceFunction(0x002cc670u, ps2_stubs::socom2_DnasTickDone);
+        {
+            const socom2_addresses::Table &addr = socom2_addresses::current();
+            if (socom2_addresses::require(addr.netbExDescriptorDma, "netbExDescriptorDma"))
+                ps2_game_overrides::bindAddressHandler(runtime, addr.netbExDescriptorDma, "ret0");   // descriptor DMA helper
+            // rt_crypt: RSA block transform, SHA-1 and RC4 on the host (socom2_crypto.cpp). libdnas2
+            // moved wholesale between the two builds (+0x7ac0), which is exactly what a column is for.
+            struct Bind { uint32_t address; const char *field; PS2Runtime::RecompiledFunction fn; };
+            const Bind crypto[] = {
+                {addr.dnasRsaBlock, "dnasRsaBlock", socom2_crypto::rsaBlock},
+                {addr.dnasSha1Hash, "dnasSha1Hash", socom2_crypto::sha1Hash},
+                {addr.dnasRc4SetKeyHash, "dnasRc4SetKeyHash", socom2_crypto::rc4SetKeyHash},
+                {addr.dnasRc4SetKey, "dnasRc4SetKey", socom2_crypto::rc4SetKey},
+                {addr.dnasRc4Encrypt, "dnasRc4Encrypt", socom2_crypto::rc4EncryptFn},
+                {addr.dnasRc4Decrypt, "dnasRc4Decrypt", socom2_crypto::rc4DecryptFn},
+            };
+            for (const Bind &b : crypto)
+                if (socom2_addresses::require(b.address, b.field))
+                    runtime.replaceFunction(b.address, b.fn);
+        }
+        // DNAS authentication object (FTSCore FUN_002cc670 in r0001, FUN_002cf330 in r0004 -- the same
+        // address the r0004 capsule's second patch table writes): the published r0001 bypass patches
+        // `jr ra` at its entry; a private Horizon server needs no DNAS. This is the login gate, so a
+        // column that could not place it must say so rather than patch the other revision's address.
+        {
+            const uint32_t dnas = socom2_addresses::current().dnasCheck;
+            if (socom2_addresses::require(dnas, "dnasCheck") && runtime.hasFunction(dnas))
+                runtime.replaceFunction(dnas, ps2_stubs::socom2_DnasTickDone);
+            else if (socom2_addresses::available(dnas))
+                std::cout << "[socom2] no function at 0x" << std::hex << dnas << std::dec
+                          << "; the DNAS tick is the game's own" << std::endl;
+        }
         // _InitSys kernel-patch search (FindAddress loop over the BIOS): nothing to find here.
         ps2_game_overrides::bindAddressHandler(runtime, 0x001ac9d8u, "ret0");
         // PS2X_HLE_STATS=1 wraps the bound stubs' table entries: last, so it wraps whatever

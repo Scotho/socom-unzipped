@@ -1120,7 +1120,12 @@ namespace ps2x::iop::detail
                 {
                     uid = m_model.nextUid++ & 0xFFFFu;
                 }
-                return (type << 24) | ((slot & 0xFFu) << 16) | uid;
+                // Bit 31 is set on every handle the real IRX hands the EE (snd_ActivateHandler's
+                // `OwnerID |= 0x80000000`, sndhand.c:148 / FUN_0000d428; research/36 §"bit 31"): the disc's own
+                // 989SND.IRX answered 0x84000002, 0x84000003, ... on PR #244's IOP where this model answered
+                // 0x0400003c-class words (research/40 §9.3, R245). A deactivated slot keeps the word WITHOUT the
+                // bit, which is why findSound/findStream compare the whole word and a played-out handle answers 0.
+                return 0x80000000u | (type << 24) | ((slot & 0xFFu) << 16) | uid;
             }
 
             SoundSlot *findSound(uint32_t handle)
@@ -1762,25 +1767,23 @@ namespace ps2x::iop::detail
 
             uint32_t callExtension(const CommandArgs &args)
             {
+                // R245 (research/40 §9.1, §9.3): the disc's own 989SND.IRX, run on PR #244's IOP emulator with
+                // 989DSTRM, LGAUD and HEADSETO loaded, answers 0 to every snd_CallExtension the game makes with
+                // module id 0x12c4e67a and prints "989snd Error: cause 3" (snd_DoExternCall: no extern proc
+                // handler under that id, 989snd.c:218). The id occurs in none of the disc's IRX files; 989DSTRM
+                // registers itself as "dstr" (0x64737472), HEADSETO registers nothing without a headset. This
+                // model used to answer 1 for 0x12c4e67a and forward fn 1 to the host, which nothing consumed.
+                // The console's answer with no headset attached is presumably the same 0; that presumption and
+                // the EE's reaction to it are the gate's to confirm.
                 const uint32_t moduleId = args.u32(0);
                 const uint32_t function = args.u32(1);
-                if (moduleId != kDstrmModuleId)
+                if (moduleId == kDstrmModuleId && function == 0u)
                 {
-                    logWarning("extension call to unknown module " + hexString(moduleId));
-                    return 0u;
+                    m_model.dstrmInitialised = true;   // kept as a trace of the game's intent; never read
                 }
-                switch (function)
-                {
-                case 0u:
-                    m_model.dstrmInitialised = true;
-                    return 1u;
-                case 1u:
-                    ++m_metrics.streamsPlayed;
-                    m_host.audioCommand(kSndSid, kCallExtension, args.guestBuffer(), GuestBuffer{});
-                    return 1u;
-                default:
-                    return 1u;
-                }
+                logDebug("extension call to module " + hexString(moduleId) + " fn " + std::to_string(function) +
+                         ": no handler registered (the IRX's cause 3), answering 0");
+                return 0u;
             }
 
             IopHost &m_host;

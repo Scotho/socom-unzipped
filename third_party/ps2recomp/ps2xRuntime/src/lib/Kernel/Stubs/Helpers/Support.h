@@ -1,6 +1,14 @@
 #include <algorithm>
 #include <cctype>
 
+// Sprint 11 Task 8b: the per-subsystem runtime state this header reaches. Support.h has no include
+// guard of its own but each of these does, and three ps2xTest translation units include Support.h
+// directly rather than through Stubs/Common.h -- so the includes belong here, not in Common.h.
+#include "StubLogRuntimeState.h"
+#include "DmaRuntimeState.h"
+#include "GsRuntimeState.h"
+#include "LibCRuntimeState.h"
+
 namespace
 {
     constexpr uint32_t kCdSectorSize = 2048;
@@ -555,29 +563,16 @@ namespace
         return static_cast<uint32_t>(((value >> 4) & 0x0F) * 10 + (value & 0x0F));
     }
 
-    std::unordered_map<uint32_t, FILE *> g_file_map;
-    uint32_t g_next_file_handle = 1; // Start file handles > 0 (0 is NULL)
-    std::mutex g_file_mutex;
-
-    uint32_t generate_file_handle()
+    // Sprint 11 Task 8b: the libc FILE* table moved to ps2_stubs::LibCRuntimeState in
+    // Helpers/LibCRuntimeState.h, owned by the PS2Runtime the stub was called with, instead of one
+    // copy per stub translation unit (docs/KNOWN.md #4). generate_file_handle and get_file_ptr
+    // moved with it as the struct's allocateHandleLocked() and get(). get_file_ptr stays as a
+    // forwarder because seven of Stubs/LibC.cpp's call sites name it; generate_file_handle had
+    // exactly one caller and that call site now names allocateHandleLocked() directly, under the
+    // same lock it always held.
+    FILE *get_file_ptr(PS2Runtime *runtime, uint32_t handle)
     {
-        uint32_t handle = 0;
-        do
-        {
-            handle = g_next_file_handle++;
-            if (g_next_file_handle == 0)
-                g_next_file_handle = 1;
-        } while (handle == 0 || g_file_map.count(handle));
-        return handle;
-    }
-
-    FILE *get_file_ptr(uint32_t handle)
-    {
-        if (handle == 0)
-            return nullptr;
-        std::lock_guard<std::mutex> lock(g_file_mutex);
-        auto it = g_file_map.find(handle);
-        return (it != g_file_map.end()) ? it->second : nullptr;
+        return ps2_stubs::libcRuntimeStateFor(runtime).get(handle);
     }
 }
 
@@ -1221,21 +1216,21 @@ namespace
             { return readPs2CStringBounded(rdram, runtime, addr); });
     }
 
-    constexpr uint32_t kMaxStubWarningsPerName = 8;
-    std::unordered_map<std::string, uint32_t> g_stubWarningCount;
-    std::mutex g_stubWarningMutex;
-    constexpr uint32_t kMaxPrintfLogs = 200;
+    // Sprint 11 Task 8b: the stub-warning and PS2-printf throttles used to live here, in this
+    // anonymous namespace, which gave each of the nineteen stub translation units its own copy
+    // (docs/KNOWN.md #4). They are now ps2_stubs::StubLogRuntimeState, owned by the PS2Runtime
+    // the stub was called with, in Helpers/StubLogRuntimeState.h -- along with
+    // kMaxStubWarningsPerName and
+    // kMaxPrintfLogs, which the stubs still name unqualified from inside namespace ps2_stubs.
     constexpr size_t kMaxFormattedOutputBytes = 4096;
-    uint32_t g_printfLogCount = 0;
-    std::mutex g_printfLogMutex;
 
     constexpr std::array<uint32_t, 10> kDmaChannelBases = {
         0x10008000u, 0x10009000u, 0x1000A000u, 0x1000B000u, 0x1000B400u,
         0x1000C000u, 0x1000C400u, 0x1000C800u, 0x1000D000u, 0x1000D400u};
-    std::mutex g_dmaStubMutex;
-    std::unordered_map<uint32_t, uint32_t> g_dmaPendingPolls;
-    uint32_t g_dmaStubLogCount = 0;
-    constexpr uint32_t kMaxDmaStubLogs = 64;
+    // Sprint 11 Task 8b: the DMA stub's in-flight model moved to ps2_stubs::DmaRuntimeState in
+    // Helpers/DmaRuntimeState.h, owned by the PS2Runtime the stub was called with, instead of
+    // one copy per stub translation unit (docs/KNOWN.md #4). kMaxDmaStubLogs moved with it,
+    // and so did sceDmaGetEnv/sceDmaPutEnv's environment block (review F2).
 
     bool isKnownDmaChannelBase(uint32_t value)
     {
@@ -1401,9 +1396,10 @@ namespace
         }
 
         {
-            std::lock_guard<std::mutex> lock(g_dmaStubMutex);
-            g_dmaPendingPolls[channelBase] = 1;
-            if (g_dmaStubLogCount < kMaxDmaStubLogs)
+            ps2_stubs::DmaRuntimeState &dma = ps2_stubs::dmaRuntimeStateFor(runtime);
+            std::lock_guard<std::mutex> lock(dma.mutex);
+            dma.pendingPolls[channelBase] = 1;
+            if (dma.stubLogCount < ps2_stubs::kMaxDmaStubLogs)
             {
                 RUNTIME_LOG("[sceDmaSend] ch=0x" << std::hex << channelBase
                           << " madr=0x" << madr
@@ -1431,7 +1427,7 @@ namespace
                                   << std::dec << std::endl);
                     }
                 }
-                ++g_dmaStubLogCount;
+                ++dma.stubLogCount;
             }
         }
 
@@ -1460,9 +1456,10 @@ namespace
 
         bool modelBusy = false;
         {
-            std::lock_guard<std::mutex> lock(g_dmaStubMutex);
-            auto it = g_dmaPendingPolls.find(channelBase);
-            if (it != g_dmaPendingPolls.end() && it->second > 0)
+            ps2_stubs::DmaRuntimeState &dma = ps2_stubs::dmaRuntimeStateFor(runtime);
+            std::lock_guard<std::mutex> lock(dma.mutex);
+            auto it = dma.pendingPolls.find(channelBase);
+            if (it != dma.pendingPolls.end() && it->second > 0)
             {
                 modelBusy = true;
                 if (mode != 0)
@@ -1470,13 +1467,13 @@ namespace
                     --it->second;
                     if (it->second == 0)
                     {
-                        g_dmaPendingPolls.erase(it);
+                        dma.pendingPolls.erase(it);
                     }
                 }
                 else
                 {
                     // Blocking mode: complete immediately in this runtime.
-                    g_dmaPendingPolls.erase(it);
+                    dma.pendingPolls.erase(it);
                 }
             }
         }
@@ -1490,14 +1487,6 @@ namespace
 
 namespace
 {
-    struct GsGParam
-    {
-        uint8_t interlace;
-        uint8_t omode;
-        uint8_t ffmode;
-        uint8_t version;
-    };
-
     struct GsDispEnvMem
     {
         uint64_t pmode;
@@ -1598,7 +1587,9 @@ namespace
     static_assert(sizeof(GsDBuffDcMem) == 0x330, "GsDBuffDcMem size mismatch");
 
     constexpr uint32_t kGsParamScratchOffset = 0x100;
-    GsGParam g_gparam{1, 2, 1, 3}; // Default: interlaced NTSC, frame mode.
+    // Sprint 11 Task 8b: the GParam block moved to ps2_stubs::GsRuntimeState::gparam in
+    // Helpers/GsRuntimeState.h, owned by the PS2Runtime the stub was called with, instead of
+    // one copy per stub translation unit (docs/KNOWN.md #4). GsGParam moved with it.
 
     static uint64_t makePmode(uint32_t en1, uint32_t en2, uint32_t mmod, uint32_t amod, uint32_t slbg, uint32_t alp)
     {
@@ -2035,7 +2026,8 @@ namespace
         uint8_t *scratch = runtime->memory().getScratchpad();
         if (!scratch)
             return 0;
-        std::memcpy(scratch + kGsParamScratchOffset, &g_gparam, sizeof(g_gparam));
+        const ps2_stubs::GsGParam &gparam = ps2_stubs::gsRuntimeStateFor(runtime).gparam;
+        std::memcpy(scratch + kGsParamScratchOffset, &gparam, sizeof(gparam));
         return PS2_SCRATCHPAD_BASE + kGsParamScratchOffset;
     }
 }

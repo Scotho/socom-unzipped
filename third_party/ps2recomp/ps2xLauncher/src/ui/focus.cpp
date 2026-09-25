@@ -36,6 +36,35 @@ namespace ui
             out.push_back(Node{id, r, page, false});
         }
 
+        // Task 11: the GAME VERSION cells. 176 is what holds "r0004 (community update)" unellipsized at
+        // the design size and still leaves the ONLINE row room for the note beside it.
+        constexpr float kRevisionCellW = 176.0f;
+
+        // ONLINE's row sits between the server list and the fields under it. Sprint 10 Goal 9 had already
+        // filled that page to the design height -- the second-instance toggle's caption ends 4 units above
+        // the body's floor, and a test holds it there -- so the row could not simply be inserted: the
+        // field pitch and the two gaps below it gave up the 34 units it needed. Nothing was moved above
+        // the fold, so the preset rows (and their test) are untouched.
+        float onlineRevisionRowY(Rect window)
+        {
+            return onlinePresetRow(window, static_cast<int>(launcher::kServerPresetCount) - 1).bottom() + 10.0f;
+        }
+
+        // One focusable cell per game version that can actually be started -- by the TABLE, not by a pair
+        // of ifs (Sprint 11 review, Important 1). A version whose executable is missing is drawn greyed by
+        // the page and is deliberately not a node, so the pad cannot reach a game that is not there; and a
+        // cell with no room to be drawn is not a node either, so no window can leave a focusable control
+        // that nothing paints (review, Minor 9).
+        void addRevisionCells(std::vector<Node> &out, Page page, Rect window, const LayoutInputs &in)
+        {
+            for (size_t i = 0; i < launcher::kGameRevisionCount; ++i)
+            {
+                const Rect r = revisionCell(window, page, static_cast<int>(i));
+                if (launcher::gameRevisionAvailable(i, in.gameRevisionsInstalled) && drawable(r))
+                    add(out, page, pageSlug(page) + ".revision." + std::to_string(i), r);
+            }
+        }
+
         // Sprint 10 Goal 8: the BUTTONS grid's order -- bind_flow.cpp's kCells, which the tests hold equal to this.
         uint8_t bindCellButtonId(int cell)
         {
@@ -124,6 +153,8 @@ namespace ui
                 static const char *ids[] = {"play.disc", "play.video", "play.pad", "play.server"};
                 add(out, page, ids[i], Rect{b.x, b.y + 4.0f + static_cast<float>(i) * 66.0f, b.w, 56.0f});
             }
+            // Task 11: what LAUNCH will start, just above the button that starts it.
+            addRevisionCells(out, page, window, in);
             const float y = b.bottom() - 64.0f;
             add(out, page, "play.launch", Rect{b.x, y, 300.0f, 64.0f});
             add(out, page, "play.diagnostics", Rect{b.x + 320.0f, y + 12.0f, 200.0f, 40.0f});
@@ -227,7 +258,10 @@ namespace ui
             // Sprint 10 Goal 9: five rows under the presets now (address, profile, name, password, ADVANCED),
             // on the REPORT page's 12-px pitch rather than the old 16, so the open ADVANCED section and its
             // caption still end inside the body at the design size (the small window scrolls, as before).
-            const float y = onlinePresetRow(window, static_cast<int>(launcher::kServerPresetCount) - 1).bottom() + 20.0f;
+            // Task 11: the GAME VERSION row, between the server list and the fields -- the server and the
+            // build have to agree, so the two choices sit together and the warning between them is short.
+            addRevisionCells(out, page, window, in);
+            const float y = revisionCell(window, page, 0).bottom() + 10.0f;
             if (in.customServer)
                 add(out, page, "online.server", Rect{b.x + metrics::labelW, y, 420.0f, 40.0f});
             add(out, page, "online.profile", Rect{b.x + metrics::labelW, y + kOnlineRowPitch, 300.0f, 40.0f});
@@ -236,9 +270,11 @@ namespace ui
             add(out, page, "online.password", Rect{b.x + metrics::labelW, y + 3.0f * kOnlineRowPitch, 300.0f, 40.0f});
             // Sprint 9 P4: everything a stranger needs is above this line; the disclosure and what it
             // reveals are below it, last in reading order and last in the focus order.
-            add(out, page, "online.advanced", Rect{b.x, y + 212.0f, b.w, 28.0f});
+            // Task 11 moved these two up (212 -> 188, 252 -> 224) to pay for the row above; the gaps they
+            // keep -- 10 under the password, 8 under the header -- are what fits at the design height.
+            add(out, page, "online.advanced", Rect{b.x, y + 188.0f, b.w, 28.0f});
             if (in.advancedOpen)
-                add(out, page, "online.second", Rect{b.x + metrics::labelW, y + 252.0f, 460.0f, 34.0f});
+                add(out, page, "online.second", Rect{b.x + metrics::labelW, y + 224.0f, 460.0f, 34.0f});
             break;
         }
         case Page::Report:
@@ -368,13 +404,30 @@ namespace ui
         return layoutFor(page, window, in);
     }
 
-    // The ONLINE page's field pitch: a 40-px field and the REPORT page's 12-px gap (Sprint 10 Goal 9).
-    const float kOnlineRowPitch = 52.0f;
+    // The ONLINE page's field pitch: a 40-px field and a 6-px gap. It was the REPORT page's 12 (Sprint 10
+    // Goal 9) until Task 11 put the GAME VERSION row above these fields; the page was already full to the
+    // design height, so the row is paid for out of this pitch and the two gaps below the password.
+    const float kOnlineRowPitch = 46.0f;
 
     Rect onlinePresetRow(Rect window, int index)
     {
         const Frame f = frameFor(window);
         return Rect{f.body.x, f.body.y + 26.0f + static_cast<float>(index) * 38.0f, f.body.w, 32.0f};
+    }
+
+    // Task 11. The two pages place the row differently because they are shaped differently: PLAY anchors it
+    // to the LAUNCH button (the page's bottom block is what the row belongs to -- it says what LAUNCH will
+    // start), and ONLINE puts it under the server list, where the choice it interacts with is.
+    Rect revisionCell(Rect window, Page page, int index)
+    {
+        const Frame f = frameFor(window);
+        const float w = kRevisionCellW, gap = 10.0f;
+        const float x = f.body.x + (page == Page::Online ? metrics::labelW : 0.0f) +
+                        static_cast<float>(index) * (w + gap);
+        if (page == Page::Online)
+            return Rect{x, onlineRevisionRowY(window), w, 24.0f};
+        // PLAY: above LAUNCH (body.bottom() - 64, as the page lays it out), clear of the LAST RUN line.
+        return Rect{x, f.body.bottom() - 140.0f, w, 30.0f};
     }
 
     Rect rectOf(const std::vector<Node> &nodes, const std::string &id)

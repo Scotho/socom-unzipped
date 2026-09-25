@@ -297,3 +297,18 @@ class Run10GroundTruth(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PastTheDump(unittest.TestCase):
+    """Fix round 1, I6: an endpoint dip whose aligned dump time lies past the dump's end (the dump is capped at
+    ten minutes; the recording runs longer) is not a device fault and not DEVICE -- there is simply no dump there."""
+
+    def test_a_dip_past_the_dumps_end_is_nodump_and_stays_out_of_the_device_count(self):
+        ev = ad.read_events("")
+        dips = [ad.Dip(30.0, 0.05, -20.0, -40.0), ad.Dip(700.0, 0.05, -20.0, -40.0), ad.Dip(1.0, 0.05, -20.0, -40.0)]
+        rows = ad.classify(dips, [], 5.0, ev, dump_end_s=600.0)
+        self.assertEqual([r.label for r in rows], ["NODUMP", "DEVICE", "NODUMP"],
+                         "rows come sorted by time: 1 s maps before the dump's 0; 30 s maps to 25 s in it: DEVICE; 700 s maps past 600 s")
+        self.assertIn("before the dump", rows[0].reason)
+        self.assertIn("past the dump", rows[2].reason)
+        self.assertEqual(sum(ad.device_per_minute(rows, 720.0)), 1)

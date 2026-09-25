@@ -6,7 +6,7 @@
 #   tools     configure + build ps2_recomp / ps2_analyzer in build-linux-tools
 #   runtime   configure + build the runner (when there is generated code) and the launcher in build-linux
 #   release   the release configuration (Sprint 9 Goal 2) in build-linux-release -> dist-linux-release, stripped, symbols kept
-#   test      the Python suite, then ps2x_tests
+#   test      the Python suite AND ps2x_tests -- both run, both verdicts print, non-zero if either failed
 #   all       tools + runtime (the default)
 #   --no-runner   build with no generated code at all: PS2X_RUNNER_GENERATED_DIR="", which skips the
 #                 ps2EntryRunner target (see ps2xRuntime/CMakeLists.txt). This is the CI shape -- the
@@ -23,7 +23,11 @@
 #     scripts/make_portable.sh grows the Linux lib/ layout in a later task (design item 5).
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# BASH_SOURCE, not $0: when this file is SOURCED (tools_py/tests/test_build_linux.py drives
+# test_step that way) $0 is the shell, and $0/.. would point somewhere else entirely.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "$ROOT/scripts/python_env.sh"   # $PYTHON, resolved once for every script
+socom_require_python build_linux
 CC="${CC:-clang}"
 CXX="${CXX:-clang++}"
 export CC CXX
@@ -124,23 +128,52 @@ release() {   # Sprint 9 Goal 2: see build.sh release(); same switches, the syst
   echo "built $RELDIST: $(ls "$RELDIST" | tr '\n' ' ') (genopt=$genopt lto=$lto/$scope icf=${icf:-off})"
 }
 
+verdict() {   # $1 = what ran, $2 = its exit code
+  if [ "$2" -eq 0 ]; then echo "$1: ok"; else echo "$1: FAILED (exit $2)"; fi
+}
+
 test_step() {
-  # Python tests first, exactly as build.sh runs them: one runner, unittest (no pytest), discovered
-  # from tools_py/tests with the repo root as the top-level directory.
-  ( cd "$ROOT" && "${PYTHON:-python3}" -m unittest discover -s tools_py/tests -t . -v )
-  configure_runtime
-  cmake --build "$RTBUILD" --target ps2x_tests -j "$JOBS"
+  # BOTH suites run, both verdicts are printed, and the step exits non-zero if either failed.
+  #
+  # Until Sprint 11 Task 18 the Python line was bare under `set -e`, so a Python failure ended the step
+  # and the C++ result was simply not measured. That is what the socom-linux VM's run produced on
+  # 2026-09-22: 18 failures and 7 errors in Python, and nothing at all known about ps2x_tests -- a
+  # second trip through a 20-minute cycle to learn something the first trip could have said.
+  # scripts/build.sh on Windows still stops at the first failing suite; when that is fixed, this is the
+  # shape to copy.
+  #
+  # Python first, exactly as build.sh runs it: one runner, unittest (no pytest), discovered from
+  # tools_py/tests with the repo root as the top-level directory.
+  local py_rc=0 cxx_rc=0
+  ( cd "$ROOT" && "$PYTHON" -m unittest discover -s tools_py/tests -t . -v ) || py_rc=$?
   # ps2x_tests reads ps2xRecomp/include/ps2recomp/instructions.h relative to its own directory.
   local repeat="${PS2X_TEST_REPEAT:-1}"
-  ( cd "$RTBUILD/ps2xTest" && for i in $(seq 1 "$repeat"); do
-      echo "ps2x_tests run $i/$repeat"
-      if ! ./ps2x_tests; then
-        echo "ps2x_tests run $i/$repeat FAILED"
-        exit 1
-      fi
-    done )
+  if configure_runtime && cmake --build "$RTBUILD" --target ps2x_tests -j "$JOBS"; then
+    ( cd "$RTBUILD/ps2xTest" && for i in $(seq 1 "$repeat"); do
+        echo "ps2x_tests run $i/$repeat"
+        if ! ./ps2x_tests; then
+          echo "ps2x_tests run $i/$repeat FAILED"
+          exit 1
+        fi
+      done ) || cxx_rc=$?
+  else
+    cxx_rc=2
+    echo "build_linux: ps2x_tests did not build -- the C++ suite did not run (exit 2 is 'did not measure')"
+  fi
+  verdict "tests: Python" "$py_rc"
+  verdict "tests: C++   " "$cxx_rc"
+  if [ "$py_rc" -ne 0 ] || [ "$cxx_rc" -ne 0 ]; then
+    return 1
+  fi
   echo "tests: ok"
 }
+
+# Sourced by tools_py/tests/test_build_linux.py to drive test_step with its four moving parts
+# stubbed -- the same testability knob scripts/make_portable.sh carries for MAKE_PORTABLE_SYSTEM
+# and LDD. A real run sets it nowhere, and it stops before anything is configured or built.
+if [ -n "${BUILD_LINUX_SOURCE_ONLY:-}" ]; then
+  return 0 2>/dev/null || exit 0
+fi
 
 case "$STEP" in
   tools)   build_tools ;;

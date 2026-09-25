@@ -145,6 +145,28 @@ namespace ps2recomp
         }
     }
 
+    void RecompilerReporter::recordUnmappedContinuation(const std::string &functionName,
+                                                        uint32_t sourcePc,
+                                                        uint32_t continuationPc,
+                                                        const std::string &kind)
+    {
+        const uint64_t key = (static_cast<uint64_t>(sourcePc) << 32) | continuationPc;
+
+        std::ostringstream ss;
+        ss << kind << ' ' << hexAddress(continuationPc) << " of " << hexAddress(sourcePc)
+           << " lies in no recompiled function; nothing can resume there";
+
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if (!m_reportedContinuations.insert(key).second)
+            {
+                return;
+            }
+            ++m_counters.unmappedContinuations;
+            m_events.push_back(Event{Severity::Warning, "unmapped-continuation", ss.str(), functionName, continuationPc, true});
+        }
+    }
+
     void RecompilerReporter::recordUnhandledInstruction(const std::string &functionName,
                                                         uint32_t address,
                                                         uint32_t raw,
@@ -194,6 +216,7 @@ namespace ps2recomp
         os << "Generated functions: " << m_counters.generatedFunctions << std::endl;
         os << "Indirect fallback promotions: " << m_counters.indirectFallbackPromotions
            << " (" << m_counters.indirectFallbackEntries << " fallback entries)" << std::endl;
+        os << "Unmapped continuations: " << m_counters.unmappedContinuations << std::endl;
         os << "Unhandled instructions: " << m_counters.unhandledInstructions << std::endl;
         os << "Correctness-critical guest fallbacks: " << m_counters.correctnessCriticalGuestFallbacks
            << ", failures: " << m_counters.correctnessCriticalFailures << std::endl;

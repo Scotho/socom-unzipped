@@ -32,7 +32,8 @@ if(PS2X_IOP_ENABLE_PLUGINS AND (WIN32 OR (UNIX AND NOT APPLE)))
     endforeach()
 endif()
 
-# Static library with test logic (no main), used by ps2xStudio
+# Static library with test logic (no main). Upstream's workbench was its only consumer and that tree is gone
+# (Sprint 11 Task 17, R247); the object library stays because ps2x_tests links its objects (below).
 add_library(ps2_test_function_table OBJECT
     src/test_function_table.cpp
 )
@@ -62,7 +63,9 @@ add_library(ps2_test_lib STATIC
     src/ps2_recompiler_tests.cpp
     src/ps2_runtime_expansion_tests.cpp
     src/socom2_libnetb_tests.cpp
+    src/socom2_chat_tests.cpp   # Sprint 11 milestone S
     src/socom2_audio_tests.cpp
+    src/audio_cb_trace_tests.cpp   # Sprint 11 audio-out
     src/socom2_lgaud_tests.cpp
     src/host_config_tests.cpp
     src/launcher_tests.cpp
@@ -76,6 +79,10 @@ add_library(ps2_test_lib STATIC
     src/socom2_osk_prefill_tests.cpp
     src/knobs_tests.cpp
     src/menu_sounds_tests.cpp   # Sprint 10 Q4
+    src/socom2_addresses_tests.cpp   # Sprint 11 Task 10
+    src/socom2_revision_guard_tests.cpp   # Sprint 11 Task 19
+    src/ps2_save_state_tests.cpp   # Sprint 11 Task 8c
+    src/runtime_state_tests.cpp         # Sprint 11 Task 8b
 )
 
 target_include_directories(ps2_test_lib PRIVATE

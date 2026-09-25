@@ -44,6 +44,59 @@ namespace launcher
         return nullptr;
     }
 
+    // ---- Task 11: the revisions -----------------------------------------------------------------------
+
+    std::string discRevisionForDigest(const std::string &digest)
+    {
+        if (digest.empty())
+            return {};   // nothing was hashed: not a revision, and certainly not the pinned one
+        for (const DiscRevision &r : kDiscRevisions)
+            if (digest == r.sha256)
+                return r.revision;
+        return {};
+    }
+
+    size_t gameRevisionIndex(const std::string &id)
+    {
+        for (size_t i = 0; i < kGameRevisionCount; ++i)
+            if (id == kGameRevisions[i].id)
+                return i;
+        return kGameRevisionCount;
+    }
+
+    const GameRevision *findGameRevision(const std::string &id)
+    {
+        const size_t i = gameRevisionIndex(id);
+        return i < kGameRevisionCount ? &kGameRevisions[i] : nullptr;
+    }
+
+    std::string normalizeGameRevision(const std::string &value)
+    {
+        return findGameRevision(value) != nullptr ? value : std::string(kGameRevisions[0].id);
+    }
+
+    bool gameRevisionAvailable(size_t index, uint32_t installed)
+    {
+        if (index >= kGameRevisionCount)
+            return false;   // not a row of ours: nothing to start
+        // A row that names no executable IS this build: it is there whenever the launcher is. Every other
+        // row is gated by ITS OWN bit -- another row's presence says nothing about this one.
+        return kGameRevisions[index].exeName[0] == '\0' || (installed & (1u << index)) != 0u;
+    }
+
+    std::string revisionWarning(const std::string &presetId, const std::string &gameRevision)
+    {
+        const ServerPreset *preset = findServerPreset(presetId);
+        if (preset == nullptr || findGameRevision(gameRevision) == nullptr)
+            return {};   // not a server of ours, or not a version of ours: say nothing rather than guess
+        if (preset->requiresRevision[0] == '\0')
+            return {};   // a preset whose revision is UNKNOWN (Custom): the same rule, for the same reason
+        for (const RevisionMismatch &m : kRevisionWarnings)
+            if (gameRevision == m.buildRevision && std::string(preset->requiresRevision) == m.serverRevision)
+                return m.warning;
+        return {};
+    }
+
     bool presetAvailable(const ServerPreset &preset)
     {
         if (preset.address[0] == '\0')
@@ -92,6 +145,7 @@ namespace launcher
         out += "  \"focusToggle\": " + quote(normalizeFocusToggle(c.focusToggle)) + ",\n";   // Sprint 10 Q4
         out += std::string("  \"menuSounds\": ") + (c.menuSounds ? "true" : "false") + ",\n";
         out += "  \"micDevice\": " + quote(c.micDevice) + ",\n";
+        out += "  \"gameRevision\": " + quote(normalizeGameRevision(c.gameRevision)) + ",\n";   // Task 11
         out += "  \"serverPreset\": " + quote(c.serverPreset) + ",\n";
         out += "  \"server\": " + quote(c.server) + ",\n";
         out += "  \"profile\": " + quote(c.profile) + ",\n";
@@ -158,7 +212,7 @@ namespace launcher
                 std::string key;
                 if (!p.string(key) || !p.take(':'))
                     return false;
-                if (key == "isoPath" || key == "presentFilter" || key == "windowSize" || key == "server" || key == "serverPreset" || key == "profile" || key == "micDevice" || key == "crouchShortcut" || key == "focusToggle" || key == "loginName" || key == "loginPassword")
+                if (key == "isoPath" || key == "presentFilter" || key == "windowSize" || key == "server" || key == "serverPreset" || key == "profile" || key == "micDevice" || key == "crouchShortcut" || key == "focusToggle" || key == "gameRevision" || key == "loginName" || key == "loginPassword")
                 {
                     std::string v;
                     if (!p.string(v))
@@ -167,6 +221,9 @@ namespace launcher
                     else if (key == "presentFilter") c.presentFilter = v;
                     else if (key == "crouchShortcut") c.crouchShortcut = normalizeCrouchShortcut(v);
                     else if (key == "focusToggle") c.focusToggle = normalizeFocusToggle(v);
+                    // Task 11: normalised on the way in, like the two above -- an id from a newer build, or
+                    // a hand-edited one, must not leave the selector with a version it cannot draw.
+                    else if (key == "gameRevision") c.gameRevision = normalizeGameRevision(v);
                     // Review finding F5: a stored 0x0 (or any zero dimension) keeps the default instead.
                     else if (key == "windowSize") { if (isUsableWindowSize(v)) c.windowSize = v; }
                     else if (key == "server") { c.server = v; sawServer = true; }

@@ -320,7 +320,7 @@ Two copies of the game logged in to the project's own server, met on Frostfire a
 
 *But:* one launch, one map, two scripted copies on one PC against a server on the same PC. The kill count stepped on the killer's side only; what moved on both was the victim team's alive count. Round 4 fired 111 bursts at an aim error that never corrected and killed nobody.
 
-`Cited:` `811b886` THE ACCEPTANCE TEST PASSED -- Sprint 5 ladder launch 2 · `5f1de26` first online kill -- ladder launch 2 round 1, both screens tiled · `171290b` match the exact route-no-time tag · `d9b5f33` (2026-09-14) pin the acceptance PASS -- ladder launch 2 round 1 fixture · run s5_t5_ladder2 · docs/superpowers/plans/2026-09-13-sprint-5-control-readout-and-first-kill.md · docs/research/22-kill-readout.md · docs/research/assets/22-first-kill.png
+`Cited:` `811b886` THE ACCEPTANCE TEST PASSED -- Sprint 5 ladder launch 2 · `5f1de26` first online kill -- ladder launch 2 round 1, both screens tiled · `171290b` match the exact route-no-time tag · `d9b5f33` (2026-09-14) pin the acceptance PASS -- ladder launch 2 round 1 fixture · run s5_t5_ladder2 · docs/archive/sprints-1-6/2026-09-13-sprint-5-control-readout-and-first-kill.md · docs/research/22-kill-readout.md · docs/research/assets/22-first-kill.png
 
 ### 2026-09-14 - Two things the owner spotted
 
@@ -345,6 +345,8 @@ Work stopped to chase what a person noticed in the screenshots: grey shards wher
 **The first time a person played the PC build instead of a script, and the first evening's notes set the order of everything after.**
 
 Until now every run of the game had been driven by a harness. This evening someone sat down and played it, keyboard first, and the Xbox pad went into the game's input path the same night: sticks, face buttons, shoulders, D-pad, with a fifteen percent dead zone. Two things came out of that session and set the priorities for the week: there was no sound at all, and a flat grey patch of hillside came and went in the first mission. The order after that: water and ground, then the untried online maps, then hardening, then audio, then the launcher.
+
+![The flat grey hillside the owner saw in that first sitting: the ground drawn without its brighten pass, the water a set of dull slabs.](docs/story/img/2026-09-14-grey-hill-before.png)
 
 *How:* every automated run sets PS2X_HOST_GAMEPAD=0, because a configured pad makes the game skip the configuration screens the check keys on at boot.
 
@@ -721,6 +723,14 @@ replaced by real entries as things land. **It is kept exactly as written and ans
 answers arrived within hours and a paragraph that is wrong with its correction beside it is worth more than a
 paragraph quietly rewritten.*
 
+> **Superseded as a live statement, 2026-09-25.** The paragraph below is the record of one night and is kept word
+> for word; **read none of its numbers as current.** A commit count, a branch name, a tag list, a streak and a task
+> count are the five things this document's class forbids, and all five of them below are now wrong. Where to read
+> each instead, which is what this document should have said in the first place: the live queue is
+> `docs/CURRENT_SPRINT.md`; the branches and tags are `docs/GIT_STRATEGY.md` §1; the ladder's streak is
+> `docs/LADDER.md`, which is generated; what is proven, believed and retracted is `docs/KNOWN.md`, which wins over
+> this page on any disagreement.
+
 > The tree is at `e6a924d`, 1,028 commits, on `sprint-10`, with two tags: `playtest-1` and `v0.9.0`. The repository
 > is public. Sprint 10's autonomous work is on `main`, slice by slice, the last two slices from the owner's
 > playthrough. The scheduled ladder has four clean runs of the seven it needs. Sprint 11 has a spec: the r0004 update
@@ -747,10 +757,20 @@ perfectly clean HELP popups, and the garbled one I saw was after the church, whi
 insertion point can never reach. The experiment wasn't wrong; the route was too short, and the capture didn't even
 record which settings it ran with — which is its own lesson, now written down.
 
-Sprint 10 is closed. Sprint 11 is open, and the specs became a plan with eighteen tasks in it.
+Sprint 10 is closed. Sprint 11 is open, and the specs became a plan; `docs/CURRENT_SPRINT.md` is where its tasks
+live, and this page does not count them.
 
 No stranger has played yet. No two humans have played each other. Those are still the two sentences this page most
 wants to lose.
+
+**2026-09-25 — the record stops short.** This timeline's own first line promises "first commit to today", and its
+last entry is 2026-09-22. Three days are missing, and they carry the project's biggest technical result: Sprint 10
+merged and tagged; the chat receive path bounded on the client and clamped on the server; the community revision
+r0004 rebuilt from PSRewired's package, gated three times over and played online on the project's own server; the
+bug pipeline's GitHub half; 11.6 MB of vendored baggage deleted; a SOCOM 1 demo disc naming 987 anonymous
+functions. Writing those entries is not a one-line edit — each needs its hashes and a witnessed run — so it is
+**carried explicitly as a Sprint 12 item** rather than left to slip (Sprint 11 close review, row A22). Until it
+lands, `docs/STATUS.md` and `docs/CURRENT_SPRINT.md` are where those three days are written down.
 
 ---
 

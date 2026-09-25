@@ -98,14 +98,25 @@ class IsoPath(unittest.TestCase):
         self.assertEqual([where for where, _p, _c in hp.iso_candidates({}, self.root, LIN)],
                          ["SOCOM_ISO", "the repo's game/", hp.LINUX_HOME_ISO])
 
+    def empty_home(self):
+        """A home directory with no disc in it. Without this the case trusted the machine: in the
+        socom-linux VM `~/socom2.iso` is real (vm_sync.sh iso puts it there), the resolver found it and
+        nothing was raised. A "nothing found" test must point every place it names at an empty tree."""
+        home = os.path.join(self.root, "emptyhome")
+        os.makedirs(home, exist_ok=True)
+        return mock.patch.dict(os.environ, {"HOME": home, "USERPROFILE": home})
+
     def test_no_disc_anywhere_raises_naming_all_three_places(self):
-        with self.assertRaises(FileNotFoundError) as cm:
-            hp.iso_path({}, self.root, LIN)
-        text = str(cm.exception)
+        # all three places are empty here: SOCOM_ISO unset, the repo's game/ empty (setUp makes the
+        # directory and no image), and a home with nothing in it.
+        with self.empty_home():
+            with self.assertRaises(FileNotFoundError) as cm:
+                hp.iso_path({}, self.root, LIN)
+            text = str(cm.exception)
+            self.assertIn(os.path.expanduser(hp.LINUX_HOME_ISO), text)
         self.assertIn("SOCOM_ISO", text)
         self.assertIn("not set", text)                 # unset is said, not silently skipped
         self.assertIn(self.repo_iso, text)
-        self.assertIn(os.path.expanduser(hp.LINUX_HOME_ISO), text)
 
     def test_the_error_still_names_the_home_image_on_windows(self):
         with self.assertRaises(FileNotFoundError) as cm:

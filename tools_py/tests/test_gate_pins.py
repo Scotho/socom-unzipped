@@ -26,6 +26,8 @@ from unittest import mock
 from tools_py.parity import gate, pins
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# A stand-in game image carrying only a build banner, which is all launch_revision reads.
+BANNER_STAND_IN = b"\x7fELF" + b"\0" * 64 + b"SOCOM 2 %s\0" + b"\0" * 64
 REAL_EXPECTED = os.path.join(ROOT, "scripts", "parity", "pins.json")
 
 
@@ -97,12 +99,17 @@ class EnvPin(unittest.TestCase):
 
     def test_the_gates_own_launch_environment_is_what_is_pinned(self):
         """collect_pins hashes the environment the mission stage (the widest) would be launched with: the
-        gate's own knobs plus whatever PS2X_* the operator exported. An empty shell gives the standard."""
+        gate's own knobs plus whatever PS2X_* the operator exported. An empty shell gives the standard.
+
+        `base={}` is an empty shell, so nothing in it names an image: the comparison side asks for
+        `default_ok=True` by name, exactly as `collect_pins` does at its own call (review F3). Without it
+        this case is a launch-shaped question asked on a checkout with no game -- i.e. every CI runner --
+        and it raised there rather than measuring anything."""
         current = gate.collect_pins(base={})
         self.assertEqual(current["env"].detail, [
             "PS2X_HOST_GAMEPAD=0",
             "PS2X_PC_SAMPLER=1",
-            "PS2X_PEEK=" + gate.launch_env("mission", "card", base={})["PS2X_PEEK"]])
+            "PS2X_PEEK=" + gate.launch_env("mission", "card", base={}, default_ok=True)["PS2X_PEEK"]])
         drifted = gate.collect_pins(base={"PS2X_GS_STATS": "1"})
         self.assertNotEqual(drifted["env"].sha256, current["env"].sha256)
         self.assertIn("PS2X_GS_STATS=1", drifted["env"].detail)
@@ -288,7 +295,19 @@ class ExpectedFile(unittest.TestCase):
 class _LaunchCase(unittest.TestCase):
     """main() with the launch mocked out: no lock, no drive, no game. The expected-pins file and the stamp are
     per test; the card is a temp directory named through PS2X_MC_DIR (game/ is git-ignored, so the pristine
-    card may not exist on this checkout)."""
+    card may not exist on this checkout).
+
+    ... and so is the IMAGE, which is why each case names one. `gate.main`'s launch path asks
+    `gate_revision(default_ok=False)` -- a launch has an image, and a launch that cannot say which revision
+    it is refuses (exit 8) rather than silently reading r0001's addresses on an r0004 build (Task 19,
+    KNOWN Sec 4). That rule is right and these cases must not soften it, so instead of leaving the revision
+    to be guessed they STATE it: `SOCOM_GAME_ELF` names a stand-in carrying an r0001 build banner, which is
+    all launch_revision reads. The r0004 cases below point the same variable at an r0004 stand-in. Before
+    this, these cases only passed on a host that happened to have `game/disc/socom2_game.elf`; on CI, which
+    has no game at all, ten of them failed on the refusal (the linux workflow, red since 2026-09-23)."""
+
+    # The real r0001 image's own banner, character for character (game/disc/socom2_game.elf).
+    R0001_BANNER = b"r0001 17:22:21 Oct 11 2003"
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
@@ -296,11 +315,15 @@ class _LaunchCase(unittest.TestCase):
         os.makedirs(self.card)
         with open(os.path.join(self.card, "SCRATCHPAD.DAT"), "wb") as f:
             f.write(b"pristine")
+        self.game_elf = os.path.join(self.tmp, "r0001_stand_in.elf")
+        with open(self.game_elf, "wb") as f:
+            f.write(BANNER_STAND_IN % self.R0001_BANNER)
         self.expected = os.path.join(self.tmp, "pins.json")
         self.stamp = "q1b_pins_test_%d" % os.getpid()
         self.out_root = os.path.join("logs", "parity", "gate", self.stamp)
         shutil.rmtree(self.out_root, ignore_errors=True)
-        self.env = mock.patch.dict(os.environ, {"PS2X_MC_DIR": self.card}, clear=False)
+        self.env = mock.patch.dict(os.environ, {"PS2X_MC_DIR": self.card,
+                                                "SOCOM_GAME_ELF": self.game_elf}, clear=False)
         self.env.start()
         for k in [k for k in os.environ if k.startswith("PS2X_") and k != "PS2X_MC_DIR"]:
             del os.environ[k]
@@ -497,7 +520,11 @@ class BaselinePins(_LaunchCase):
 
     def _record(self, **override):
         current = gate.collect_pins()
-        rec = {"pins": {k: v.sha256 for k, v in current.items()}}
+        rec = {"pins": {k: v.sha256 for k, v in current.items()},
+               # A real record carries the detail too, and the env detail is where the run's own
+               # PS2X_PEEK is -- which is how a re-score knows which address column the stamp's rows are
+               # in without consulting today's tree (review F1, gate.stamp_revision).
+               "detail": {k: v.detail for k, v in current.items()}}
         rec["pins"].update(override)
         return rec
 
@@ -558,6 +585,115 @@ class BaselinePins(_LaunchCase):
         with self.assertRaises(SystemExit):
             with contextlib.redirect_stderr(io.StringIO()):
                 gate.main(["--baseline", self.out_root, "--accept-pins"])
+
+
+class PerRevisionStandards(_LaunchCase):
+    """Review F2. PS2X_PEEK is part of the `env` pin and is now revision-dependent, so with ONE standard an
+    r0004 gate necessarily drifts -- and the `--accept-pins` that lets it run rewrote the r0001 standard.
+    That is not a hazard in the abstract: on 2026-09-24 at 10:25 an unattended
+    `gate --accept-pins --stamp s11_r0004_reg3` replaced scripts/parity/pins.json's r0001 env pin with the
+    r0004 spec and dropped the mapping pin. One standard per revision, and neither gate can reach the
+    other's file. This is KNOWN §4's accept-pins hazard, closed."""
+
+    def _r0004_elf(self):
+        path = os.path.join(self.tmp, "r0004_stand_in.elf")
+        with open(path, "wb") as f:
+            f.write(BANNER_STAND_IN % b"r0004 10:14:38 Nov  3 2004")
+        return path
+
+    def test_r0001_keeps_the_committed_file_and_every_other_revision_gets_its_own(self):
+        self.assertEqual(gate.expected_pins_rel("r0001"), pins.EXPECTED)
+        other = gate.expected_pins_rel("r0004")
+        self.assertNotEqual(other, pins.EXPECTED)
+        self.assertTrue(other.endswith("_r0004.json"), other)
+
+    def test_an_r0004_accept_pins_cannot_reach_the_r0001_standard(self):
+        before = open(self.expected, "rb").read()
+        os.environ["SOCOM_GAME_ELF"] = self._r0004_elf()
+        try:
+            rc, out, _ = self._main(["--accept-pins"])
+        finally:
+            os.environ["SOCOM_GAME_ELF"] = self.game_elf   # back to the case default, the r0001 stand-in
+        self.assertEqual(rc, 0, out)
+        self.assertIn("REVISION r0004", out)
+        self.assertEqual(open(self.expected, "rb").read(), before,
+                         "an r0004 gate must leave the r0001 standard byte for byte as it found it")
+        r4 = gate.expected_pins_path("r0004")
+        self.assertTrue(os.path.isfile(r4), "the r0004 gate writes its own standard")
+        with open(r4) as f:
+            doc = json.load(f)
+        self.assertIn("0x442a14:3", " ".join(doc["detail"]["env"]))
+        self.assertNotIn("0x416054", " ".join(doc["detail"]["env"]))
+        self.assertIn(os.path.basename(r4), self._summary())
+
+    def test_an_r0004_gate_that_matches_its_own_standard_does_not_need_accept_pins(self):
+        os.environ["SOCOM_GAME_ELF"] = self._r0004_elf()
+        try:
+            self.assertEqual(self._main(["--accept-pins"])[0], 0)       # the first run sets it
+            rc, out, _ = self._main([])                                  # the second just matches
+        finally:
+            os.environ["SOCOM_GAME_ELF"] = self.game_elf   # back to the case default, the r0001 stand-in
+        self.assertEqual(rc, 0, out)
+        self.assertIn("PINS MATCH %s" % gate.expected_pins_rel("r0004"), out)
+
+    def test_the_r0001_gate_is_untouched_by_all_of_it(self):
+        rc, out, _ = self._main([])
+        self.assertEqual(rc, 0, out)
+        self.assertIn("REVISION r0001 (probe addresses and pin standard %s)" % pins.EXPECTED, out)
+        self.assertIn("PINS MATCH %s" % pins.EXPECTED, out)
+
+    def test_a_launch_that_cannot_name_its_revision_refuses_rather_than_tracebacks(self):
+        """Review F9: launch_env now does disk I/O and can raise, from collect_pins -- i.e. from EVERY
+        lane including title. A named-but-missing image is the gate's own refusal line and its own exit
+        code, not an unhandled traceback."""
+        os.environ["SOCOM_GAME_ELF"] = os.path.join(self.tmp, "not_an_image.elf")
+        try:
+            rc, out, run = self._main([])
+        finally:
+            os.environ["SOCOM_GAME_ELF"] = self.game_elf   # back to the case default, the r0001 stand-in
+        self.assertEqual(rc, gate.REFUSE_REVISION, out)
+        self.assertEqual(run.call_count, 0, "nothing was launched")
+        self.assertIn("SOCOM_GAME_ELF", out)
+
+
+class ArchivedStampRevision(unittest.TestCase):
+    """Review F1: a --baseline re-score must read an archived run's rows with the column THAT RUN used,
+    resolved from the stamp's own record -- never from whatever image game/disc holds today, and never
+    assumed. Eight stamps on disk predate the runtime's revision line, among them Sprint 10's closing gate."""
+
+    ARCHIVED = os.path.join(ROOT, "logs", "parity", "gate")
+
+    def _stamp(self, name):
+        path = os.path.join(self.ARCHIVED, name)
+        if not os.path.isdir(path):
+            self.skipTest("needs the archived stamp %s (logs/ is not in a bare clone)" % name)
+        return path
+
+    def test_a_stamp_from_before_the_revision_line_is_read_from_its_own_peek_spec(self):
+        for name in ("s10_close_gate", "s11_open_gate"):
+            revision, how = gate.stamp_revision(self._stamp(name))
+            self.assertEqual(revision, "r0001", name)
+            self.assertIn("PS2X_PEEK", how, name)
+
+    def test_an_r0004_stamp_reads_as_r0004(self):
+        revision, _how = gate.stamp_revision(self._stamp("s11_r0004_probe1"))
+        self.assertEqual(revision, "r0004")
+
+    def test_the_probes_of_an_archived_r0001_stamp_still_pass(self):
+        """The whole point: s10_close_gate's committed summary.txt carries three PASS probe lines, and the
+        re-score has to reproduce them rather than discard the standard with a NO-DATA."""
+        stamp = self._stamp("s10_close_gate")
+        lines = gate.probe_lines(os.path.join(stamp, "mission.game.log"), gate.stamp_revision(stamp)[0])
+        self.assertTrue(all(" PASS " in l for l in lines), lines)
+        self.assertIn("root_node_y", " ".join(lines))
+
+    def test_a_stamp_that_says_nothing_is_unknown_not_r0001(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                gate.stamp_revision(tmp)
+            open(os.path.join(tmp, "mission.game.log"), "w").close()
+            self.assertEqual(gate.probe_lines(os.path.join(tmp, "mission.game.log"))[0].split(" ")[1],
+                             "UNKNOWN-REVISION")
 
 
 if __name__ == "__main__":

@@ -41,8 +41,14 @@ The repository is public. `python -m tools_py.release.leakcheck <mode>` is the g
 Sprint 11 Goal 9): `tree` every tracked file, `staged` the index (the pre-commit hook), `ignored` proves the paths that
 hold real secrets (`vm/`, `logs/`, `game/`, `server/config/simulated.db`, ...) are ignored, untracked and never
 committed, `metadata` the commit identities, `history [range]` every added line of every commit (the pre-push hook),
-`artifact <dir>` an unpacked release, `all` the four repository modes. Exit 0 clean, 1 findings, **2 did not run** (a
-shallow clone, a missing target, a missed planted control) -- a caller never reads 2 as a pass. Output is masked;
+`artifact <dir>` an unpacked release, `external` the sibling repositories' own scanners (`../scotho`'s
+`scripts/check-secrets.mjs` and `../socom_monitor`'s `leakcheck.py`, folded into this report with their excerpts
+masked), `all` the four repository modes plus `external`. A sibling that is not beside this repository prints
+SKIPPED and leaves the exit code alone -- CI has neither, and SKIPPED is never "clean"; `external --require` makes
+a missing one exit 2, and a sibling that IS there whose scanner could not scan is exit 2 either way. `--siblings-root`
+(or `$SOCOM_LEAK_SIBLINGS`) says where they are. Exit 0 clean, 1 findings, **2 did not run** (a
+shallow clone, a missing target, a missed planted control, an external scanner that never ran) -- a caller never
+reads 2 as a pass. Output is masked;
 `--reveal` for the terminal, `--json` for a report. Decisions live in `tools_py/release/leak_allow.txt` with reasons;
 owner-specific literals in the git-ignored `leak_extra.txt`. Install the hooks with `bash scripts/install_hooks.sh`.
 
@@ -125,6 +131,71 @@ not the recorded one; **68** a merged ELF whose size, digest, entry point, segme
 no Unicorn (it prints the `pip install` line), no Python, a bad argument; **1** a truncated image -- checked both from
 the volume descriptor's own size and file by file -- or any other output that does not match what was recorded.
 
+**Another revision of the disc -- `scripts/build_revision.sh` (Sprint 11 Task 9).** The chain above is r0001's;
+`bash scripts/build_revision.sh <rev> <tree>/RUN/RAW/APACHE00.ZDB` runs the same pieces for any revision under names
+that never collide with r0001's: `game/overlays_<rev>/{ftscore,zsealetc}.bin` and `socom2_game_<rev>.elf`,
+`recomp/socom2_<rev>.toml` (`input`, `output` and `ghidra_output` rewritten), `recomp/output_<rev>/`,
+`third_party/ps2recomp/build-clang-<rev>/` and `dist/socom2_<rev>.exe` with the ELF beside it. Each step is skipped
+when its product is already there (`--force` redoes it) — the recomp and the runtime build skip only on the
+`.complete` mark they write when they finish, so a tree left half-written by a failed run is redone rather than
+reported as done; both take the loop lock themselves. `--stop-after elf|toml|recomp` stops early (`elf` and `toml`
+take no lock at all; `toml` is the last step that does not, and it is how the tracked `recomp/socom2_<rev>.toml` is
+checked against the tree), `--check-against <elf>`
+compares the produced ELF's sha256 with a known one, `--out <dir>` puts every product under one directory,
+`--dry-run` prints the six steps with their paths. `<rev>` is `r` and four digits with an optional suffix that
+starts with a letter. The package must sit in its extracted disc tree, whose loader must be named `SCUS_972.75`
+(`tools_py/decrypt_apache.py` joins that name onto the tree and runs that loader's own code on the package, after
+making `OVERLAY/REL/DNAS.dec.bin` when the tree lacks it). The revision's function map
+`recomp/socom2_ghidra_<rev>.csv` must already be there or be named with `--ghidra <csv>`: only an `r0001*` revision
+falls back to r0001's map silently, any other revision has to ask for it with `--ghidra-from-r0001` and is warned
+that the generated code will be wrong until Task 10's matcher writes that revision its own map. The **forced entry
+points** are a per-revision input for the same reason (`recomp/extra_functions.txt` is 1,619 addresses, 1,453 of them
+inside the overlays): step 0 takes `recomp/extra_functions_<rev>.txt` when it is there, or `--extra <file>`, else
+r0001's with a warning. `python tools_py/find_imm_targets.py <rev elf> <rev csv> recomp/extra_functions_<rev>.txt`
+writes a revision its own.
+**A build never writes its own inputs (Sprint 11 Task 19).** Step 0 folds those forced entry points into the map,
+cuts the non-contiguous ranges to size and applies `recomp/merge_ranges.txt`, and writes the result to
+**`recomp/build/socom2_ghidra_<rev>.fixed.csv`** — a build product, under a git-ignored directory. Steps 2-5 all
+read that file: the merged ELF is repaired against exactly the rows the recompiler will compile, the config's
+`ghidra_output` names it, and `<elf>.repair.json` records its sha256. Until 2026-09-24 the fix ran at step 4 over
+`recomp/socom2_ghidra_<rev>.csv` **in place**, so every r0004 build split six rows of the tracked map, left
+`M recomp/socom2_ghidra_r0004.csv` in `git status` for the controller to restore by hand, and then — because the
+sidecar had hashed that map — declared the image stale on the next build and re-merged it to the same bytes.
+`build.sh`'s r0001 lane still rewrites `recomp/socom2_ghidra.csv` in place; that file is a fixed point of the fix
+(rewriting it changes no byte), so the habit is there but leaves nothing behind.
+**The executable knows which pressing it was recompiled from, and refuses another one (Sprint 11 Task 19).** Step 5 passes `-DPS2X_GAME_REVISION=<rev>` to the cmake configure (`build.sh` passes `r0001`, the default chain's), so `PS2X_GAME_REVISION` is a PUBLIC compile definition on `ps2_runtime` and the recompiled game carries the revision its generated code came from. At boot, right after `socom2_addresses::selectFromImage` has read the loaded image's own build banner, `runtime/socom2_revision_guard.h` compares the two. They agree, or the image names no revision at all (an image this table has no column for): the run carries on, the second case with the r0001 fallback and its existing warning, unchanged. They name **different** revisions and the run stops on one line -- `[socom2] REFUSED: this executable was recompiled from r0004 but the image at <path> is r0001 (banner "..."); pass the matching image (SOCOM_GAME_ELF) or the matching executable` -- and the process leaves with **73** (`revision-mismatch`, `ps2x/exit_codes.h`, distinct from the preflight's 66/67/68). A refusal rather than a warning because nothing past a mismatch is meaningful: every override address, every static-constructor table and every function body belongs to the other build. That is not hypothetical -- two parity gates on 2026-09-23 ran the r0004 executable on r0001's image (the launch scripts hard-coded `game/disc/socom2_game.elf`), booted, walked r0001's constructor table into r0004 bodies and hung at the loading screen on a `jalr` through a slot the constructors never filled, with nothing in the log to say so. A `<rev>` with a suffix compares as its base, so an `r0001check` build belongs on an r0001 image.
+**A revision's function map comes out of Ghidra with `bash scripts/ghidra_export_functions.sh <elf> <out.csv>`** —
+the recipe that made `recomp/socom2_ghidra.csv` (stock ELF loader → `r5900:LE:32:default:default` from the EE
+extension, `MakeFunctions.java` on the three entry points no flow reaches before analysis, then two
+`FindPointerTargets.java` passes and `ExportPS2Functions.java`), written down from Ghidra's own log. It writes the
+**raw** export; `tools_py/carry_names.py <match.json> <raw.csv> <out.csv>` then carries the named functions of an
+older revision onto their matched addresses (`tools_py/address_matcher.py` says which) and leaves every
+address-derived Ghidra name where it is.
+**The recompiler's own config is a per-revision input too, and `tools_py/revision_toml.py` carries it over
+(Sprint 11 Task 19).** Rewriting `input`/`output`/`ghidra_output` is three lines of `recomp/socom2.toml`; the other
+~1,900 are r0001 guest addresses — the stub selectors `ps2_recomp` binds by start address, the 19 overlay
+instruction patches, the 24 overlay jump-table sites, the `[mmio]` annotations — and in a build relinked from
+changed source they point at whatever the new build happens to have put there. With an address match report
+(`--match <json>`, or `game/<rev>/match.json` when it is there) step 3 runs
+`python -m tools_py.revision_toml recomp/socom2.toml <match.json> --out recomp/socom2_<rev>.toml`, which moves a
+function-start address by its own match, an address *inside* a matched function's body by that function's delta
+(marked `(weak)` when the function was placed by `seed+delta` rather than by fingerprint), and leaves an address in
+a region that is byte-identical in both images alone. Every line it rewrites carries the r0001 address and the
+method in a comment; `--dry-run` prints the table and writes nothing. **Its limit is the matcher's:** what the
+match report cannot place, this tool does not guess — the r0001 number stays, the line says `UNRESOLVED`, and the
+address is listed in `[revision.unresolved]` with the role the config gave it, so the config states what it does not
+know. The `[revision]` table names the two files it was written from **relative to the repository root** — that file
+is tracked and step 3 rewrites it on every build, so one machine's absolute paths in it are a modification in every
+other clone. Without a report the step copies-and-renames as before, and warns. On r0004 (2026-09-23): of the config's
+1,985 addresses, 1,357 are in the loader and do not move, **91 of the remaining 628 were translated and 537 were
+left as r0001's** (371 distinct addresses in `[revision.unresolved]`) — including all 24 overlay jump-table base
+addresses, none of which is a function start in r0001's map.
+**Proven on r0001 (2026-09-23):** `bash scripts/build_revision.sh r0001check game/disc/RUN/RAW/APACHE00.ZDB
+--check-against dist/socom2_game.elf` -- the ELF identical (sha256 `06b83684...8872`), `diff -rq --exclude=.complete` of the 14,882
+generated files against `recomp/output` empty (the mark is the script's own, since the review round), the exe built (236,856,320 B; not byte-identical to `dist/socom2.exe`,
+which embeds its own build's paths and source revision). Measured in that run (2026-09-23): DNAS 2 s, the decryption
+6.5 min, the ELF instant, the recomp seconds, the runtime build about twenty minutes from a cold build tree.
+
 Everything below this line works on a fresh clone with no disc at all.
 
 ### Build, run, verify — a newcomer's first hour
@@ -142,6 +213,8 @@ clone 5 s (115 MB) · `install_hooks.sh` 1 s · `bootstrap_windows.sh` **16 s** 
 `build.sh runtime` **624 s** → `dist/socom2.exe`, 236,852,224 bytes. **42 minutes from `git clone` to the game**, and
 about 15 GB of disk for the clone, the toolchain, the disc tree, the generated code and the build trees.
 
+The Linux side, in the VM (`socom-linux`, 8 cores of the same host, llvmpipe), 2026-09-23: `scripts/build_linux.sh runtime` from **wiped** build trees **1261 s** → `dist-linux/socom2` and the launcher; the test step (both suites) **284 s** — and not green there yet: the Linux-only residue is `docs/KNOWN.md` §2's row of that date. The tree reaches the VM by `scripts/vm_sync.sh tree` (seconds; since 2026-09-23 it also prunes what the host removed).
+
 Five commands, in this order, on a clean checkout with the tools under `tools/` on the PATH
 (`export PATH="$PWD/tools/llvm-mingw/bin:$PWD/tools/cmake/bin:$PWD/tools/ninja:$PATH"`; `build.sh` does this itself) and the disc image at
 your own ISO (the command in the previous section puts the disc tree and the overlays where these expect them). The
@@ -151,10 +224,10 @@ and fewer is a regression to report.
 
 | # | command | the line that says it worked |
 |---|---|---|
-| 1 | `./build.sh recomp` | `recomp: 14882 files, unhandled=114399` — and `Recompilation completed successfully` at the end of `recomp/recomp_run.log`. **That second number is not a failure and `unhandled=0` (what this row claimed until 2026-09-21) has not been true for a long time:** it counts `unhandled-instruction` lines in the log, which the recompiler emits and carries on from, and the exe built from exactly this generated code is the one the gate passes 3/3 on. Measured twice on 2026-09-21, identically, in two working trees. What would be a failure is a non-zero exit (the last 20 log lines are printed then) or a file count that fell |
+| 1 | `./build.sh recomp` | `recomp: 14882 files, unhandled=114399, unmapped=<n>` — and `Recompilation completed successfully` at the end of `recomp/recomp_run.log`. **That second number is not a failure and `unhandled=0` (what this row claimed until 2026-09-21) has not been true for a long time:** it counts `unhandled-instruction` lines in the log, which the recompiler emits and carries on from, and the exe built from exactly this generated code is the one the gate passes 3/3 on. Measured twice on 2026-09-21, identically, in two working trees. What would be a failure is a non-zero exit (the last 20 log lines are printed then) or a file count that fell. `unmapped=` (added 2026-09-24) counts `unmapped-continuation` warnings: continuation pcs — a call's return, a syscall's return, a not-taken branch's fallthrough — that no recompiled row owns, each one a `[guest-branch:missing-target]` waiting for a thread to reach it. It is read, not gated, like `unhandled=`; r0001 printed `unmapped=0` on 2026-09-24 (chain 18), and a value that climbs after a map change is the map's holes, not the recompiler's. |
 | 2 | `./build.sh runtime` | `built dist/socom2.exe` (the launcher lands beside it) |
-| 3 | `./build.sh test` | `Total Tests: 764` / `Passed: 764` / `Failed: 0`, then `PASS: vram diff against 1.00% tolerance, checked=15 skipped=0` (this row said 500 until 2026-09-21, three sprints of cases after it stopped being true) |
-| 4 | `python -m unittest discover -s tools_py/tests -t .` | **`OK`, with no failures, is the bar** — match that, not a number. The count only ever grows: `Ran 1832 tests` on 2026-09-22 (1723 on 2026-09-21, 1104 before that). The **skip** count is not a constant and is not worth matching — 100 on that clone, 85 once a disc had been extracted into `game/`, 109 in a worktree with neither — because cases skip on what you have. `OK`, with no failures, is the bar. (This row said 1104 / `skipped=63` until 2026-09-21.) |
+| 3 | `./build.sh test` | `Total Tests: 881` / `Passed: 881` / `Failed: 0` (881 on this machine 2026-09-25 at `0a01ba3`; 880 on the Linux runner, one platform-guarded case fewer — a runner printing 880 is not a regression; 876 on 2026-09-24, 764 from 2026-09-21), then `PASS: vram diff against 1.00% tolerance, checked=15 skipped=0` (this row said 500 until 2026-09-21, three sprints of cases after it stopped being true) |
+| 4 | `python -m unittest discover -s tools_py/tests -t .` | **`OK`, with no failures, is the bar** — match that, not a number. The count only ever grows: `Ran 2553 tests` on 2026-09-25 (2556 on the Windows runner and 2558 on the Linux one at the same head; `Ran 1832 tests` on 2026-09-22, 1723 on 2026-09-21, 1104 before that). The **skip** count is not a constant and is not worth matching — 100 on that clone, 85 once a disc had been extracted into `game/`, 109 in a worktree with neither — because cases skip on what you have. `OK`, with no failures, is the bar. (This row said 1104 / `skipped=63` until 2026-09-21.) |
 | 5 | `python -m tools_py.parity.gate --stamp first_run` | `GATE PASS (3/3) -> logs\parity\gate\first_run` (about 15 min; the game window opens and closes three times; do not touch the keyboard) |
 
 `python -m tools_py.docmaint` checks the documentation registry (`docs/DOC_MAINTENANCE.md`): every document

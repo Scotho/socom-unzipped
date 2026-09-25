@@ -7,10 +7,9 @@ namespace ps2_syscalls
 {
     bool dispatchNumericSyscall(uint32_t syscallNumber, uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
-        if (dispatchSyscallOverride(syscallNumber, rdram, ctx, runtime))
-        {
-            return true;
-        }
+        // Does not return when the guest's handler runs (invokeCurrent is [[noreturn]]); returns
+        // having touched nothing when there is no handler, or none the runtime can execute.
+        dispatchSyscallOverride(syscallNumber, rdram, ctx, runtime);
 
         switch (syscallNumber)
         {
@@ -292,6 +291,12 @@ namespace ps2_syscalls
         case 0x78:
         case static_cast<uint32_t>(-0x78):
             ps2_stubs::sceSifSetDChain(rdram, ctx, runtime);
+            return true;
+        case 0x79:
+            ps2_stubs::sceSifSetReg(rdram, ctx, runtime);
+            return true;
+        case 0x7A:
+            ps2_stubs::sceSifGetReg(rdram, ctx, runtime);
             return true;
         case 0x7F:
             GetMemorySize(rdram, ctx, runtime);

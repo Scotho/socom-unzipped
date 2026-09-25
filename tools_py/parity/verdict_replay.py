@@ -24,10 +24,13 @@ tests; they may not be loosened after a kill is seen.
 
 Row formats (the exe's own; research/21 §8-§9, research/18 §3.10-§3.12):
   * `[peek] @<addr>: <hex8>(<float>) ...` one row per PS2X_PC_SAMPLER period, not timestamped. Items
-    are identified by content: the actor block by word 0 == vtable 0x006691a0 (health +0x1044, alive
-    byte +0xF7A, team word +0xC8 read from whichever item covers that address), a valve by the item
-    that spells its name bytes and the 2-word item whose word 0 points at it, the guest clock by the
-    static 0x4365c0, the clock string by 0x408f10.
+    are identified by content, and every guest number below has a value PER REVISION (Task 19 fix
+    round 1): the actor block by word 0 being one of the class vtables -- r0001 0x006691a0, r0004
+    0x00668b20 -- (health +0x1044, alive byte +0xF7A, team word +0xC8 read from whichever item covers
+    that address), a valve by the item that spells its name bytes and the 2-word item whose word 0
+    points at it, the guest clock by the static (r0001 0x4365c0, r0004 0x442fd0), the clock string by
+    (r0001 0x408f10, r0004 0x4358d0). A row carries exactly one column's numbers, so membership reads
+    either revision's log; the scalars are only what a message prints.
   * `[call] <t>s <Name> #<n> ...` seconds since that process's call-trace start: the host clock.
   * `[socom2-input] state buttons=XXXX rx=XX ry=XX lx=XX ly=XX` on every change of the pad state
     (torn lines: the tail is recovered from the next line, as the harness writes them).
@@ -136,13 +139,28 @@ SELF_GRENADE_MASK = 0xF700
 # ---------------------------------------------------------------------------------------------
 SAMPLER_PERIOD_S = 0.25
 CLOCK_ANCHOR_MIN_SPACING_S = 5.0
-ACTOR_VTABLE = 0x006691A0
+ACTOR_VTABLE = 0x006691A0               # r0001; the number printed in messages
+# ... and the set a row is IDENTIFIED against. Every one of this module's guest numbers has a value per
+# revision (r0004 relinked them all) and a `[peek]` row carries exactly one column's worth, so membership
+# replays an r0004 run's rows too. LITERALS on purpose: this module imports nothing but the standard
+# library (test_verdict_replay's TestImportSet) so that it is an independently written second scorer,
+# sharing no code -- and so no bug -- with verdict_core/online_match_ours, and so that a pinned harness
+# can replay a log with no tools_py around it. Their home is tools_py/parity/guest_addresses.py, and
+# test_verdict_replay checks EVERY one of these three pairs against it rather than trusting this copy.
+ACTOR_VTABLES = frozenset({0x006691A0, 0x00668B20})
 ACTOR_POS_WORDS = (7, 8, 9)
 HEALTH_OFFSET = 0x1044             # float, <= 0 dead (research/19 F1)
 ALIVE_OFFSET = 0xF7A               # byte, 1 = alive
 TEAM_WORD_OFFSET = 0xC8            # word, meaning OPEN (research/21 §9.6): reported, never gated
-GUEST_CLOCK_ADDR = 0x4365C0
-CLOCK_STRING_ADDR = 0x408F10
+# The clock, both ways of reading it, finished the same way as the vtable above (review F6: the actor was
+# revision-agnostic and these were not, so an r0004 replay parsed the actor, health, alive byte and team
+# word and then had no time base at all -- a PARTIAL read where a clean total NO-DATA was the honest
+# answer). The scalars stay r0001, because that is what every message prints; the SETS are what a row is
+# matched against.
+GUEST_CLOCK_ADDR = 0x4365C0        # r0001 guest_clock -- the float that is the time base of every window
+GUEST_CLOCK_ADDRS = frozenset({0x004365C0, 0x00442FD0})
+CLOCK_STRING_ADDR = 0x408F10       # r0001 clock_string -- the HUD "MM:SS"
+CLOCK_STRING_ADDRS = frozenset({0x00408F10, 0x004358D0})
 MOVE_SCALE_NAME = "MoveScale"
 REQUIRED_VALVES = ("mp_round_count", "player_team", "aiteam_00", "aiteam_08", "total_mp_kills")
 TEAM_VALVE = {0: "aiteam_00", 8: "aiteam_08"}   # player_team 0 SEALS / 8 TERRORISTS (research/21 §9.6)
@@ -160,7 +178,8 @@ PAIR_MAX_S = 0.5
 @dataclass
 class ActorRead:
     addr: int
-    intact: bool                   # word 0 == ACTOR_VTABLE
+    intact: bool                   # word 0 in ACTOR_VTABLES (either revision's)
+    word0: int = None              # the vtable this row actually carried -- printed, never assumed
     x: float = None
     y: float = None
     z: float = None
@@ -229,7 +248,7 @@ def _covering(items, addr):
 
 
 def _actor(items, last_addr):
-    addr = next((a for a, w in items if w and w[0] == ACTOR_VTABLE), None)
+    addr = next((a for a, w in items if w and w[0] in ACTOR_VTABLES), None)
     intact = addr is not None
     if addr is None:
         # word 0 no longer the vtable: the block at the last known address, if it is still printed
@@ -237,7 +256,7 @@ def _actor(items, last_addr):
             return None
         addr = last_addr
     words = next(w for a, w in items if a == addr)
-    r = ActorRead(addr=addr, intact=intact)
+    r = ActorRead(addr=addr, intact=intact, word0=words[0] if words else None)
     if len(words) > max(ACTOR_POS_WORDS):
         r.x, r.y, r.z = (_f32(words[k]) for k in ACTOR_POS_WORDS)
         r.pos_nonzero = bool(r.x or r.y or r.z)
@@ -255,7 +274,7 @@ def _actor(items, last_addr):
 
 def _clock_string(items):
     for a, words in items:
-        if a == CLOCK_STRING_ADDR and words:
+        if a in CLOCK_STRING_ADDRS and words:
             raw = struct.pack("<%dI" % len(words), *words).split(b"\0", 1)[0]
             if raw and all(0x20 <= c < 0x7F for c in raw):
                 return raw.decode("ascii")
@@ -310,7 +329,7 @@ def parse_log(lines):
     last_addr = None
     for i, items in enumerate(peeks):
         row = Row(t=clock(i))
-        g = next((w[0] for a, w in items if a == GUEST_CLOCK_ADDR and w), None)
+        g = next((w[0] for a, w in items if a in GUEST_CLOCK_ADDRS and w), None)
         row.guest = _f32(g) if g is not None else None
         row.clock_string = _clock_string(items)
         for name in REQUIRED_VALVES + ("mp_game_over",):
@@ -649,8 +668,10 @@ def _score_event(V, K, di, kind, ctx, clauses, out):
         clauses.append(("victim-death", None, "%s actor destroyed at shared %.2f guest %.2f: last intact +0x1044=%.3f "
                         "(< 1.0), no intact row <= 0 (§5.1.1)" % (vt, d_sh, gV, lh)))
     else:
+        # The vtable the ROW carried, not the r0001 constant (fix round 2, N2): printing
+        # ACTOR_VTABLE here said 006691a0 on an r0004 replay, about a row whose word 0 was 00668b20.
         clauses.append(("victim-death", True, "%s +0x1044=%.3f word0=%08x at shared %.2f guest %.2f"
-                        % (vt, drow.actor.hp, ACTOR_VTABLE, d_sh, gV)))
+                        % (vt, drow.actor.hp, drow.actor.word0 or 0, d_sh, gV)))
 
     # --- round: start, the death round's own step on each instance ----------------------------
     rK = K.valve_at("mp_round_count", d_sh)

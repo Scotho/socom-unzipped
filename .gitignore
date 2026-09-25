@@ -9,6 +9,10 @@
 /tools/
 __pycache__/
 /recomp/output/
+/recomp/output_*/
+/recomp/build/
+/recomp/*.raw.csv
+/recomp/*.raw.toml
 /recomp/*.log
 /third_party/ps2recomp/build*/
 *.log
@@ -16,6 +20,10 @@ __pycache__/
 /dist-release/
 /dist-linux/
 /dist-linux-release/
+# Per-revision build outputs (dist-r0004/, dist-r0005/, ...): scripts/build_revision.sh drops a
+# ~192 MB exe in each, and this repo is public, so one `git add -A` must not be able to commit one.
+# /dist/ above is deliberately left as its own rule; this covers only the dist-r<rev>/ siblings.
+/dist-r[0-9]*/
 /logs/
 /server/horizon-server-database-middleware/
 /server/horizon-docker/
@@ -65,3 +73,7 @@ id_dsa*
 .npmrc
 .pypirc
 .htpasswd
+
+# the owner's local Horizon checkouts beside the server tree: never submodules (no .gitmodules), never tracked
+/server/horizon-docker/
+/server/horizon-server-database-middleware/

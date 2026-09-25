@@ -5,14 +5,40 @@
 - Append forced entry points listed in recomp/extra_functions.txt (one hex address per line),
   ending at the next known function start.  A forced entry that falls *inside* an existing range
   (two functions Ghidra merged into one) truncates that range, so the two do not overlap.
-Usage: python fix_ghidra_csv.py recomp/socom2_ghidra.csv recomp/extra_functions.txt
+Usage: python fix_ghidra_csv.py <map.csv> <extra_functions.txt> [--out <fixed.csv>]
+
+Without --out the map is rewritten IN PLACE, which is what build.sh's r0001 lane still does.
+With --out the input is never written: the fixed rows are a build PRODUCT and the map stays a
+source file, so a build of a revision whose map is tracked leaves nothing modified in git status
+(scripts/build_revision.sh step 0 -> recomp/build/socom2_ghidra_<rev>.fixed.csv, git-ignored).
 """
 import bisect
 import csv
 import os
 import sys
 
-csv_path, extra_path = sys.argv[1], sys.argv[2]
+USAGE = "usage: fix_ghidra_csv.py <map.csv> <extra_functions.txt> [--out <fixed.csv>]"
+out_path = None
+positional = []
+argv = sys.argv[1:]
+i = 0
+while i < len(argv):
+    arg = argv[i]
+    if arg == "--out":
+        if i + 1 >= len(argv):
+            sys.exit("fix_ghidra_csv: --out needs a path\n" + USAGE)
+        out_path, i = argv[i + 1], i + 2
+        continue
+    if arg.startswith("--out="):
+        out_path, i = arg[len("--out="):], i + 1
+        continue
+    if arg.startswith("-"):
+        sys.exit(f"fix_ghidra_csv: unknown option {arg}\n" + USAGE)
+    positional.append(arg)
+    i += 1
+if len(positional) != 2:
+    sys.exit(USAGE)
+csv_path, extra_path = positional
 rows = list(csv.reader(open(csv_path)))
 hdr, body = rows[0], rows[1:]
 fixed = 0
@@ -76,8 +102,14 @@ if os.path.exists(merge_path):
                 keep.append(r)
         body = keep
 body.sort(key=lambda r: int(r[1], 16))
-with open(csv_path, 'w', newline='') as f:
+if out_path is None:
+    out_path = csv_path
+out_dir = os.path.dirname(out_path)
+if out_dir:
+    os.makedirs(out_dir, exist_ok=True)
+with open(out_path, 'w', newline='') as f:
     w = csv.writer(f)
     w.writerow(hdr)
     w.writerows(body)
-print(f"fix_ghidra_csv: {fixed} ranges fixed, {added} forced entries added, {merged} rows merged, {len(body)} functions")
+print(f"fix_ghidra_csv: {fixed} ranges fixed, {added} forced entries added, {merged} rows merged, "
+      f"{len(body)} functions -> {out_path}")

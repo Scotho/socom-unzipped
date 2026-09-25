@@ -1,6 +1,6 @@
 # Documentation maintenance — the classes, the registry, and the sprint-close review
 
-**Last full review: 2026-09-23 (Sprint 10 close).** Next: at Sprint 11's close, by the controller.
+**Last full review: 2026-09-25 (Sprint 11 close).** Next: at Sprint 12's close, by whichever controller closes it (the cloud's plan names the local half).
 
 > **The first review under this schema, 2026-09-23 (Sprint 10's close), and what it changed.** Step 1: `docmaint`
 > OK. Step 2: every L document read for truth by a read-only agent against the tree and the night's ledgers — 56
@@ -71,6 +71,10 @@ The table in §3 must account for every `.md` file in these locations, one row e
 
 Everything else is classified **by location**, and needs no row:
 
+- `docs/archive/<subdirectory>/**` — **A**. `docs/archive/*.md` at the top level is one document each and gets a row
+  each; a subdirectory is a *block* moved whole (`docs/archive/sprints-1-6/` is twelve files that arrived in one
+  commit), and a row apiece would say nothing the path does not. **The banner is still owed** — that is the whole
+  point of the class, and `tools_py/docmaint.py`'s check 5 holds every file under such a subdirectory to it.
 - `docs/research/**` — **S**. A research note is a dated investigation. Supersede, never rewrite.
 - `docs/superpowers/specs/**` and `plans/**` — **S**. A spec is what was decided that day; the plan's `## Outcome`
   is where it is reconciled. Their filenames carry the date already.
@@ -87,7 +91,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 |---|---|---|---|
 | `README.md` | **L** | controller | The public front page. Its "Works / Not yet" table is a live claim and is the highest-stakes row here — a stranger reads it before anything else |
 | `CONTRIBUTING.md` | **C** | controller | |
-| `SECURITY.md` | **C** | controller | The "known, unfixed" section is live in spirit; review it whenever the network path changes |
+| `SECURITY.md` | **C** | controller | The "Known: the game's own network code" section is live in spirit; review it whenever the network path changes |
 | `THIRD_PARTY_NOTICES.md` | **G** | licence test | A test fails on a dependency, vendored directory or release DLL without a row |
 | `docs/STATUS.md` | **L** | controller | **Only the "Current state" block is live.** Everything under it is a dated log, newest first, and is class S by paragraph — an entry keeps the numbers it was written with, on purpose. This is why STATUS is exempt from the single-source count rule |
 | `docs/KNOWN.md` | **L** | every task | Proven vs believed, with the artefact for each. **It wins on any disagreement.** The model this schema is generalised from |
@@ -95,11 +99,14 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/HANDOFF.md` | **L** | controller | What a new controller reads first. Holds the **ruling counter**, checked mechanically |
 | `docs/HUMAN_TASKS.md` | **L** | controller | The owner's queue |
 | `docs/DEVELOPING.md` | **L** | controller | **Owns the suite counts.** No other registered document may state them |
+| `docs/INSTALL.md` | **L** | controller | The player's setup page. Live because it quotes the launcher's own sentences and describes a download that does not exist yet — the "get the archive" paragraph changes the day the distribution decision is answered |
+| `docs/FAQ.md` | **L** | controller | The player's failure page. Every exit-code sentence is quoted from `ps2x/exit_codes.h`; a change to that table changes this file |
 | `docs/story/PICTURES.md` | **L** | story | The inventory of what `STORY.md` shows; the citation test keeps them honest |
 | `docs/KNOBS.md` | **G** | `tools_py.knobs` | Generated from `ps2x/knobs.h`; a test fails on a stale row, an unregistered read or a row nothing reads |
 | `docs/LADDER.md` | **G** | `ladder_ledger.py` | One row per scheduled ladder run, written from `logs/ladder/ledger.jsonl`, committed by a person |
 | `docs/ROADMAP.md` | **N** | controller | Narrative and pointers only. Rewritten 2026-09-22; its §0 is the audit of what it replaced |
 | `docs/STORY.md` | **N** | story | Every entry cited; `tools_py/story/cite.py` fails on a dead hash or an unwitnessed run |
+| `docs/HOW_IT_WAS_BUILT.md` | **N** | controller | How the project was made, for a stranger: the method, the owner's share and the agents', and the process failures worth keeping. Pointers only — the live documents own every current number. `README.md` links it |
 | `docs/GIT_STRATEGY.md` | **C** | controller | Branches, slices, releases. Carries the sprint-close step that invokes this file |
 | `docs/LOOP_PROMPT.md` | **C** | controller | **Carries no state at all** — the model for C. Rewritten 2026-09-20 after the old one aimed the loop at Sprint 6 for six days |
 | `docs/PLAYTEST.md` | **C** | controller | The owner's one-sitting script |
@@ -118,7 +125,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 
 ## 4. What is enforced mechanically
 
-`tools_py/tests/test_doc_maintenance.py`, in the Python suite, so it runs in CI and needs no build. Five checks, each
+`tools_py/tests/test_doc_maintenance.py`, in the Python suite, so it runs in CI and needs no build. Six checks, each
 aimed at a rot mechanism that actually bit this project:
 
 1. **Registry completeness** — every covered file has exactly one row; every row points at a file that exists. *Catches
@@ -130,14 +137,28 @@ aimed at a rot mechanism that actually bit this project:
    note. *Catches the 686/686 defect, in all four places it had reached.*
 4. **Snapshots are dated** — every S file has a date in its filename or in its first fifteen lines. *Catches a
    `REPORT.md` that reads as the current report.*
-5. **Archives announce themselves** — every A file says "archived" or "superseded" in its first fifteen lines.
-   *Catches an archive that reads as live.*
+5. **Archives announce themselves** — every A file says "archived" or "superseded" in its first fifteen lines, in any
+   case. *Catches an archive that reads as live.*
+6. **No dangling `docs/` path** — every backticked path starting `docs/` in a markdown file at the root or under
+   `docs/` must exist in the tree. *Catches the citation a move left pointing at nothing* — which is why the Sprint 1–6
+   specs and plans sat under `docs/superpowers/` for a sprint after they were dead: nobody could move them without
+   breaking citations nothing would catch. It found 44 on the tree the day it was written, in fifteen documents.
+
+**Check 6's exception, and its scope.** A path that does not exist *yet* is legitimate in a plan or a design: put
+`<!-- docmaint: future -->` on that line and the check skips it, so the exception is visible in the document itself
+rather than in a list somewhere. A struck-through path (`~~`…`~~`) is a retraction and is skipped too. The scan is
+deliberately narrow, because a check with false positives gets switched off: a locator is not part of the path
+(`docs/KNOWN.md:101` cites a place inside a file that does exist), a glob or a `<placeholder>` names a set rather than
+a file, and a token whose last segment has no extension is a directory or the house shorthand for a research note by
+number (`docs/research/19`) — a directory named in a design document is a proposal, not a claim. Check 6 is about a
+file that moved.
 
 Run it by hand with `python -m tools_py.docmaint`, which prints the registry size, the ruling numbers and every problem.
 
 **Each check is fired once against a planted defect** (`PlantedDefectsTest`: an unregistered document, a row whose file
 is gone, a colliding ruling number, two counter lines that disagree, an undated count, an undated snapshot, a silent
-archive — plus the three negative controls that must *not* fire, and a clean-tree control for the controls). A gate
+archive, a silent file in an archive subdirectory, a dangling `docs/` path in a `docs/` file and in a root file — plus
+the negative controls that must *not* fire, and a clean-tree control for the controls). A gate
 that has never failed is not known to work, and this one found two real defects and one bug in its own test on the day
 it was written.
 
@@ -146,6 +167,11 @@ whether the number in that home is still right — the only way to know is to ru
 This was demonstrated the hour the check was written — on 2026-09-22 the suite came back `Ran 1832 tests` while
 `DEVELOPING.md` still carried the previous day's number. That is why the Python row now says **`OK`, with no failures, is the bar** and treats
 the count as a dated fact that only grows. Prefer a bar a reader can check over a number they must match.
+
+**One check lives outside the suite on purpose.** `python -m tools_py.issues audit` holds the known-issue stack on
+GitHub to the live documents (§7; the conventions are `docs/GIT_STRATEGY.md` §7). It needs the network and the
+owner's `gh` login, so it is not a unit test: its logic is tested by `tools_py/tests/test_issues.py` on planted stacks
+and saved listings, and its run is a step -- before any commit that touches the stack or a `docs/KNOWN.md` row, and in full at the sprint close.
 
 **What is deliberately *not* enforced.** Nothing here fails on a calendar. A test that reddens because a week has
 passed gets disabled within a fortnight, and a disabled check is worse than no check because it reads as coverage.
@@ -170,6 +196,8 @@ the count half is check 3; the rest is a reading, and §5 is where it happens.
    *wrong* is archived, never quietly deleted — things cite it.
 6. **Stamp this file's "Last full review" line** with the date and the sprint, and name in the close-out commit what
    the review changed. A review that changed nothing says so explicitly; that is a result too.
+7. **The known-issue stack, in full** -- §7 below. Its result goes into the same close-out commit, in the same
+   sentence as this review's.
 
 **When a document is found wrong, record the wrongness, not just the fix.** The audit table in `ROADMAP.md` §0 is the
 pattern: what was claimed, what is actually true, how long it had been wrong. That is the only way the next review
@@ -188,3 +216,45 @@ knows which documents to distrust.
   archived roadmap is readable *because* its wrong turns are still in it.
 - **If a claim cannot be checked, do not make it.** "The game runs well" ages badly; "43-45 fps in a mission,
   measured on <date>, against the console's 60" does not — it simply becomes a dated fact.
+
+## 7. The known-issue stack review — deep, at every sprint close
+
+`docs/GIT_STRATEGY.md` §7 puts every technically well-defined, unresolved defect on GitHub issues, one each, cited
+from its `docs/KNOWN.md` row as `issue #N`. Between closes the loop keeps the pair true per task (`docs/LOOP_PROMPT.md`
+step 6). At the close the whole stack is read, because an issue tracker rots exactly the way a document does: a
+fixed thing left open, an open thing nobody owns, a bar that no longer says what would close it, a milestone that
+became a wish list. This runs beside §5, under the same rule (a sprint without it is not closed), and its result is
+written into the same close-out commit. Budget: about an hour for a stack under fifty, which holds only because
+step 3's §4 half is limited to the `HAZARD` / `Open:` headlines (the first run of the unlimited scan listed 75 of
+§4's 84 bullets, nearly all lessons). A fresh read-only agent can do steps 2-4 and hand back a table; the controller
+acts on it.
+
+1. **`python -m tools_py.issues audit --stale-since <the day the sprint opened>`** — exit 0 before anything else. A
+   problem is fixed on the side that is wrong: the row, the citation, the label, or the issue. Never the check.
+2. **Every open issue, read against the tree.** Four questions each, answered in a comment only when the answer
+   changes something. *Is it still true?* — a commit may have met the bar without saying `Closes`: close it with the
+   artefact. *Is the bar still the right bar?* — the experiment may have been superseded: rewrite the Closing bar
+   section and say why. *Is the evidence still where the body says?* — an archived log moved to `D:`: say where.
+   *Is the area right?*
+3. **Every KNOWN §2 row and every live §4 hazard, the other way round.** Each either cites an open issue, cites a
+   closed one and reads as settled, or is ruled not to qualify — and the audit's "rows neither cited, settled nor
+   ruled out" list is exactly the set to rule on. A row ruled out says why in a few words at its end (*no issue: the
+   owner's ears*; *no issue: a lesson, nothing left to fix*), so the next review does not re-ask. In §4 the audit
+   lists only a bullet whose headline says `HAZARD` or `Open:` — the two forms KNOWN already uses for a hazard that
+   is still live — because most of §4 is lessons, which `docs/GIT_STRATEGY.md` §7.1 keeps out of the stack; a §4
+   entry that is a live defect is written in one of those two forms, or the audit will not ask about it.
+4. **Every issue closed this sprint** (`gh issue list --state closed --label known-issue --search "closed:>=<open
+   date>"`): its closing comment names an artefact, and the KNOWN row says the same thing. A close with no artefact is
+   reopened -- **unless the owner closed it.** An owner's close stands (`docs/HANDOFF.md` rule 13: the loop does not
+   undo the owner), and the row records their words in place of an artefact, struck and led with the verdict, as
+   `docs/KNOWN.md`'s dropped rows are. The audit notes every completed close whose last comment is not the tool's
+   "Closing bar met" line, so the reviewer sees the case instead of acting on it blind.
+5. **The carry.** What is still open in the closing sprint's milestone either moves to the next sprint's milestone
+   (because the next plan names it) or to no milestone (the backlog) — with the `carried` label and one comment
+   saying why it did not close. Then the milestone is closed and the next sprint's is created. **An issue carried
+   twice is a question for the owner** (`docs/HUMAN_TASKS.md`): keep it, or close it as not planned under a ruling.
+6. **Duplicates and contributor handles.** Merge duplicates (close as not planned, "duplicate of #M"; the survivor
+   gets the evidence). Put `help wanted` on what a stranger without a disc could take, `good first issue` only where
+   the bar is a test they can run themselves.
+7. **The record.** The close-out commit and `docs/STATUS.md`'s entry say, dated: opened, closed and carried this
+   sprint, the highest issue number, and what the review changed. A review that changed nothing says so.

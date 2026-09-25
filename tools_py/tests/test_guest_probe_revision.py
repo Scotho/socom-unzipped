@@ -1,0 +1,382 @@
+"""The guest probe's per-revision address column (Sprint 11 Task 19).
+
+Every address the mission lane's probes reach into the guest with was written as an r0001 literal --
+`0x416054` in `peek_spec`, `*0x408c58+0x2e8` and `0x4365c0` in `scripts/parity/guest_probe_console.json`,
+the actor vtable `0x6691a0` the position read keys on. On the r0004 build those four addresses are
+somebody else's memory: `logs/parity/gate/s11_r0004_reg2` read 0 rows of 479 and the mission lane failed
+`GUEST PROBE FAILED: root_node_y` with all three probes NO-DATA.
+
+The defect to guard against is not "the r0004 run failed" -- it is a run that reads r0001's addresses and
+says nothing. So: both columns resolve, a revision the table has no column for raises, and a revision the
+probe cannot establish (an image with no build banner, a run log that never says which column the runtime
+installed) raises rather than falling back to r0001.
+"""
+import os
+import tempfile
+import unittest
+
+from tools_py.parity import guest_addresses as ga
+from tools_py.parity import guest_probe as gp
+from tools_py.parity import sp_death_probe as sp
+from tools_py.parity import verdict_core as vc
+
+CONSOLE = os.path.join("scripts", "parity", "guest_probe_console.json")
+R0001_BANNER = b"SOCOM 2 r0001 17:22:21 Oct 11 2003\x00"
+R0004_BANNER = b"SOCOM 2 r0004 10:14:38 Nov  3 2004\x00"
+
+
+class Column(unittest.TestCase):
+    def test_both_columns_resolve_every_probe_address(self):
+        for name in gp.PROBE_ADDRESSES:
+            for revision in gp.REVISIONS:
+                a = gp.address(name, revision)
+                self.assertIsInstance(a, int)
+                self.assertGreater(a, 0x00100000, "%s/%s" % (name, revision))
+
+    def test_the_two_columns_never_share_an_address(self):
+        """A column that repeated the other's number would be exactly the silent defect: the same value
+        read under a different name. r0004 relinked every one of these four."""
+        for name, col in gp.PROBE_ADDRESSES.items():
+            self.assertNotEqual(col["r0001"], col["r0004"], name)
+
+    def test_an_unknown_revision_fails_loudly(self):
+        with self.assertRaises(ValueError) as e:
+            gp.address("player_actor", "r0007")
+        self.assertIn("r0007", str(e.exception))
+        self.assertIn("r0001", str(e.exception))       # the message names the columns there ARE
+
+    def test_an_unknown_probe_name_fails_loudly(self):
+        with self.assertRaises(ValueError) as e:
+            gp.address("no_such_probe", "r0001")
+        self.assertIn("no_such_probe", str(e.exception))
+
+
+class PeekSpec(unittest.TestCase):
+    def test_the_r0001_spec_is_what_it_has_always_been(self):
+        spec = gp.peek_spec(CONSOLE, "r0001").split(",")
+        self.assertIn("0x416054:3", spec)
+        self.assertIn("*0x408c58+0x2e8:1", spec)
+        self.assertIn("0x4365c0:1", spec)
+
+    def test_the_r0004_spec_carries_no_r0001_address(self):
+        spec = gp.peek_spec(CONSOLE, "r0004")
+        for name, col in gp.PROBE_ADDRESSES.items():
+            if name == "actor_vtable":
+                continue                                # a value read from a row, never a chain
+            self.assertNotIn("%x" % col["r0001"], spec.lower(), "%s leaked into %s" % (name, spec))
+            self.assertIn("%x" % col["r0004"], spec.lower(), "%s missing from %s" % (name, spec))
+
+    def test_a_field_offset_that_did_not_move_is_left_alone(self):
+        """`*0x408c58+0x2e8` -- 0x2e8 is the skeleton-root field, and it is the SAME displacement on
+        r0004: 31 evidence-twinned instructions use it in the r0001 image and all 31 twins read 0x2e8."""
+        self.assertIn("+0x2e8", gp.peek_spec(CONSOLE, "r0004"))
+
+    def test_a_field_offset_that_DID_move_is_translated(self):
+        """MoveScale is actor+0x1368 on r0001 and actor+**0x136c** on r0004: the object gained a word at
+        +0x1334 (the r0004 constructor has one extra `sw $zero, 0x1334($s0)` and its MoveScale store reads
+        0x136c), and all six register-relative uses of 0x1368 in r0001 -- three `lwc1` in FUN_00551ec0,
+        two `swc1` in the setter FUN_00553dc0, one `sw` in the constructor FUN_00553ea0 -- are 0x136c in
+        their r0004 twins. Reading +0x1368 on r0004 reads the field below it, which is 0."""
+        self.assertIn("+0x1368", gp.peek_spec(CONSOLE, "r0001"))
+        spec = gp.peek_spec(CONSOLE, "r0004")
+        self.assertIn("+0x136c", spec)
+        self.assertNotIn("+0x1368", spec)
+
+    def test_an_unknown_revision_fails_loudly(self):
+        with self.assertRaises(ValueError):
+            gp.peek_spec(CONSOLE, "r0007")
+
+
+class FieldOffsets(unittest.TestCase):
+    """The layout half of the per-revision table. An address column alone was not enough: `s11_r0004_probe1`
+    reached the right actor (vtable 0x668b20, root_node_y 4.707) and still read MoveScale = 0, because the
+    field itself had moved. A field offset is data about the build, exactly like an address."""
+
+    def test_every_offset_resolves_in_both_columns(self):
+        for name in gp.PROBE_OFFSETS:
+            for revision in gp.REVISIONS:
+                self.assertIsInstance(gp.offset(name, revision), int, "%s/%s" % (name, revision))
+
+    def test_move_scale_moved_by_one_word_and_root_node_did_not(self):
+        self.assertEqual(gp.offset("move_scale", "r0001"), 0x1368)
+        self.assertEqual(gp.offset("move_scale", "r0004"), 0x136C)
+        self.assertEqual(gp.offset("root_node", "r0001"), gp.offset("root_node", "r0004"))
+
+    def test_an_unknown_revision_fails_loudly(self):
+        with self.assertRaises(ValueError) as e:
+            gp.offset("move_scale", "r0007")
+        self.assertIn("r0007", str(e.exception))
+        self.assertIn("r0004", str(e.exception))
+
+    def test_an_unknown_field_name_fails_loudly(self):
+        with self.assertRaises(ValueError) as e:
+            gp.offset("no_such_field", "r0001")
+        self.assertIn("no_such_field", str(e.exception))
+
+
+def _row(revision, root_y=5.50391, move_scale=1.0, pos=(900.0, -145.0, 850.0), move_scale_off=None,
+         camera=None):
+    """One [peek] row as the runtime prints it for `revision`: the camera record, the actor block at the
+    revision's actor static, the skeleton root node and the MoveScale word.
+
+    The camera defaults to where a real run's sits -- orbiting the player at ~19 ground units -- because
+    camera_orbit is a scored probe (review F7)."""
+    import struct
+
+    def w(v):
+        return "%08x(%g)" % (struct.unpack("<I", struct.pack("<f", v))[0], v)
+
+    actor, node = 0x01794000, 0x00C10000
+    cam = gp.address("camera_record", revision)
+    static = gp.address("player_actor", revision)
+    vtable = gp.address("actor_vtable", revision)
+    words = ["%08x(0)" % vtable] + ["00000000(0)"] * 63
+    for slot, v in zip((7, 8, 9), pos):
+        words[slot] = w(v)
+    cpos = camera if camera is not None else (pos[0] - 3.0, pos[1] + 25.0, pos[2] - 19.0)
+    line = "[peek] @%x: %s %s %s" % (cam, w(cpos[0]), w(cpos[1]), w(cpos[2]))
+    line += " @%x: %08x(0)" % (static, actor)
+    line += " @%x: " % actor + " ".join(words)
+    line += " @%x: %08x(0)" % (actor + gp.offset("root_node", revision), node)
+    line += " @%x: 00000000(0) %s" % (node, w(root_y))
+    if move_scale_off is None:
+        move_scale_off = gp.offset("move_scale", revision)
+    line += " @%x: %s" % (actor + move_scale_off, w(move_scale))
+    return line
+
+
+class Evaluate(unittest.TestCase):
+    def test_r0004_rows_are_read_with_the_r0004_column(self):
+        rows = [_row("r0004")] * 12
+        res = {r.name: r for r in gp.evaluate(rows, CONSOLE, "r0004")}
+        self.assertTrue(res["root_node_y"].ok, res["root_node_y"].detail)
+        self.assertTrue(res["move_scale"].ok, res["move_scale"].detail)
+        self.assertTrue(res["teleport_steps"].ok, res["teleport_steps"].detail)
+
+    def test_r0004_rows_read_with_the_r0001_column_are_no_data_not_a_pass(self):
+        """The defect, stated as a case: this is what s11_r0004_reg2 did -- 0 reads of 479 rows. It must
+        read as NO-DATA, and NO-DATA is a FAIL on a stage the gate launched itself (gate.probe_lines)."""
+        rows = [_row("r0004")] * 12
+        res = {r.name: r for r in gp.evaluate(rows, CONSOLE, "r0001")}
+        self.assertIsNone(res["root_node_y"].ours)
+        self.assertIn("NO-DATA", res["root_node_y"].detail)
+        self.assertFalse(res["root_node_y"].ok)
+
+    def test_the_r0004_field_below_move_scale_is_not_mistaken_for_it(self):
+        """`s11_r0004_probe1`, as a case. The run reached the right actor -- vtable 0x668b20, root_node_y
+        4.707, teleport_steps 0 -- and read MoveScale 0 against the console's 1, because the word it read,
+        actor+0x1368, is the field BELOW MoveScale on r0004 and that field is 0. With the r0004 layout the
+        same row reads 1.0; with the r0001 layout it reads 0 and fails. A zero is the dangerous answer: it
+        is a number, not silence."""
+        import struct
+
+        def w(v):
+            return "%08x(%g)" % (struct.unpack("<I", struct.pack("<f", v))[0], v)
+
+        actor = 0x01794000                              # the r0004 layout, written out as literals
+        rows = [_row("r0004", move_scale_off=0x136C) + " @%x: %s" % (actor + 0x1368, w(0.0))] * 12
+        good = {r.name: r for r in gp.evaluate(rows, CONSOLE, "r0004")}
+        self.assertTrue(good["move_scale"].ok, good["move_scale"].detail)
+        self.assertAlmostEqual(good["move_scale"].ours, 1.0, places=5)
+        keep = gp.PROBE_OFFSETS["move_scale"]["r0004"]
+        try:                                            # the pre-fix constant, on the same rows
+            gp.PROBE_OFFSETS["move_scale"]["r0004"] = 0x1368
+            stale = {r.name: r for r in gp.evaluate(rows, CONSOLE, "r0004")}
+        finally:
+            gp.PROBE_OFFSETS["move_scale"]["r0004"] = keep
+        self.assertEqual(stale["move_scale"].ours, 0.0)
+        self.assertFalse(stale["move_scale"].ok)
+        self.assertTrue(stale["root_node_y"].ok, "the rest of the chain still reads -- that is the trap")
+
+    def test_r0001_rows_still_read_with_the_r0001_column(self):
+        rows = [_row("r0001")] * 12
+        res = {r.name: r for r in gp.evaluate(rows, CONSOLE, "r0001")}
+        self.assertTrue(res["root_node_y"].ok, res["root_node_y"].detail)
+
+    def test_the_revision_is_taken_from_the_run_log_when_not_given(self):
+        rows = ["[socom2] address table: the image names itself r0004 -- using the r0004 addresses\n"] + [_row("r0004")] * 12
+        res = {r.name: r for r in gp.evaluate(rows, CONSOLE)}
+        self.assertTrue(res["root_node_y"].ok, res["root_node_y"].detail)
+
+    def test_a_log_that_never_names_a_revision_raises(self):
+        with self.assertRaises(ValueError) as e:
+            gp.evaluate([_row("r0001")] * 3, CONSOLE)
+        self.assertIn("revision", str(e.exception))
+
+
+class RevisionOfImage(unittest.TestCase):
+    def _elf(self, tmp, banner, name="socom2_game.elf"):
+        p = os.path.join(tmp, name)
+        with open(p, "wb") as f:
+            f.write(b"\x7fELF" + b"\0" * 64 + banner + b"\0" * 64)
+        return p
+
+    def test_the_build_banner_names_the_revision(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(gp.revision_of_image(self._elf(tmp, R0001_BANNER)), "r0001")
+            self.assertEqual(gp.revision_of_image(self._elf(tmp, R0004_BANNER, "b.elf")), "r0004")
+
+    def test_an_image_with_no_banner_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError) as e:
+                gp.revision_of_image(self._elf(tmp, b"no banner here\x00"))
+            self.assertIn("banner", str(e.exception))
+
+    def test_launch_revision_reads_the_elf_the_launch_will_use(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            elf = self._elf(tmp, R0004_BANNER)
+            self.assertEqual(gp.launch_revision({"SOCOM_GAME_ELF": elf}), "r0004")
+
+    def test_a_named_elf_that_is_not_there_raises(self):
+        with self.assertRaises(ValueError) as e:
+            gp.launch_revision({"SOCOM_GAME_ELF": os.path.join("no", "such", "image.elf")})
+        self.assertIn("SOCOM_GAME_ELF", str(e.exception))
+
+    def test_the_default_path_answers_r0001_only_when_asked(self):
+        """game/ is git-ignored, so a clone with no disc assets has no image to read -- and no launch to
+        make either (collect_pins still hashes the launch environment, which is why that caller must not
+        get an exception). The answer is r0001 from the path's NAME, and only for a caller that asked:
+        the same call without `default_ok` raises. Never a fallback for an image that is present and says
+        something else -- that case is test_launch_revision_reads_the_elf_the_launch_will_use."""
+        if os.path.isfile(ga.DEFAULT_GAME_ELF):
+            self.assertEqual(gp.launch_revision({}), "r0001")        # read from the banner
+        else:
+            self.assertEqual(gp.launch_revision({}, default_ok=True), "r0001")
+            with self.assertRaises(ValueError):
+                gp.launch_revision({})
+
+    def test_the_module_re_exports_the_shared_table_rather_than_copying_it(self):
+        """Re-review N1: guest_probe kept a pre-fix COPY of these below the re-exports, so it shadowed
+        them -- `gp.launch_revision` had no `default_ok` and answered r0001 unconditionally (F3's defect,
+        exported), and `gp.log_revision` rejected the fallback wording, so evaluate() read NO-DATA on a
+        fallback-branch log. Identity, not equality: a second definition cannot pass this."""
+        for name in ("address", "offset", "revision_of_image", "launch_revision", "revision_of_peek_spec",
+                     "PROBE_ADDRESSES", "PROBE_OFFSETS", "REVISIONS", "BANNER_RE", "GAME_ELF_ENV",
+                     "DEFAULT_GAME_ELF"):
+            self.assertIs(getattr(gp, name), getattr(ga, name), name)
+        self.assertFalse(hasattr(gp, "LOG_REVISION_RE"), "the copy's regex is gone with the copy")
+        # log_revision is the one wrapper: ga's returns (revision, how), this keeps the revision.
+        names_itself = ["[socom2] address table: the image names itself r0004 -- using the r0004 addresses"]
+        self.assertEqual(gp.log_revision(names_itself), ga.log_revision(names_itself)[0])
+
+    def test_the_bare_clone_default_has_to_be_asked_for(self):
+        """Review F3: answering r0001 from the PATH'S NAME is the one place the table's rule ("never
+        r0001 unless something said r0001") is relaxed, and it used to be relaxed silently, for every
+        caller. It is now a parameter: `gate.collect_pins` asks for it (a checkout with no disc assets
+        must still be able to hash the launch environment), and a launch does not get it."""
+        missing = {"PATH": "x"}
+        self.assertEqual(ga.launch_revision(missing, default_ok=True), "r0001")
+        if not os.path.isfile(ga.DEFAULT_GAME_ELF):
+            with self.assertRaises(ValueError):
+                ga.launch_revision(missing, default_ok=False)
+
+
+class SharedWithTheLadder(unittest.TestCase):
+    """Review F6: before this, the same four r0001 numbers lived in three modules, and correcting one
+    would have left the others reading the old value with nothing objecting. guest_addresses is the one
+    home; the ladder's instruments read their r0001 constants out of it."""
+
+    def test_verdict_core_and_sp_death_probe_read_the_r0001_column(self):
+        self.assertEqual(vc.ACTOR_VTABLE, ga.address("actor_vtable", "r0001"))
+        self.assertEqual(vc.CAMERA_RECORD_ADDR, ga.address("camera_record", "r0001"))
+        self.assertEqual(vc.ROUND_TIME_ADDR, ga.address("guest_clock", "r0001"))
+        self.assertEqual(sp.ACTOR_STATIC, ga.address("player_actor", "r0001"))
+
+    def test_the_r0001_column_is_still_the_numbers_the_ladder_has_always_used(self):
+        """The values themselves, written out once: reading them from a table must not have changed one.
+        Every online-ladder verdict on record was measured with these."""
+        self.assertEqual((vc.ACTOR_VTABLE, vc.CAMERA_RECORD_ADDR, vc.ROUND_TIME_ADDR, sp.ACTOR_STATIC),
+                         (0x006691A0, 0x00416054, 0x004365C0, 0x00408C58))
+
+    def test_actor_addr_is_one_rule_given_two_numbers(self):
+        """Review F11: guest_probe had its own copy of sp_death_probe's actor selection. It now calls the
+        same function with the revision's pair, so the r0001 defaults must still behave identically."""
+        items = [(sp.ACTOR_STATIC, [0x01794000, 0, 0, 0])]
+        self.assertEqual(sp.actor_addr(items), 0x01794000)
+        self.assertEqual(sp.actor_addr(items, ga.address("player_actor", "r0001"), vc.ACTOR_VTABLE), 0x01794000)
+        r4 = [(ga.address("player_actor", "r0004"), [0x01753D40, 0, 0, 0])]
+        self.assertIsNone(sp.actor_addr(r4))                                     # r0001's pair sees nothing
+        self.assertEqual(sp.actor_addr(r4, ga.address("player_actor", "r0004"),
+                                       ga.address("actor_vtable", "r0004")), 0x01753D40)
+
+
+class RevisionsAreDerived(unittest.TestCase):
+    def test_revisions_comes_from_the_table_not_from_a_hand_kept_list(self):
+        """Review F10: REVISIONS fed only the error messages and the tests, so a fifth column added to
+        PROBE_ADDRESSES without touching it would have made address() print a list omitting the revision
+        it had just accepted -- and the suite, iterating the same list, would not have noticed."""
+        self.assertEqual(set(ga.REVISIONS), {r for col in ga.PROBE_ADDRESSES.values() for r in col})
+        for col in ga.PROBE_ADDRESSES.values():
+            self.assertEqual(set(col), set(ga.REVISIONS))
+
+    def test_the_cli_revision_flag_does_not_traceback_when_it_is_last(self):
+        """`--revision` with nothing after it used to read argv[i + 1] and raise IndexError."""
+        with self.assertRaises(SystemExit):
+            gp.main(["some.log", "--revision"])
+
+
+class PeekSpecRevision(unittest.TestCase):
+    """`revision_of_peek_spec`: which column a recorded PS2X_PEEK is written in. This is what lets an
+    ARCHIVED stamp be re-scored with the addresses its own rows are in (review F1) -- the chains ARE the
+    addresses the runtime printed the rows under."""
+
+    def test_each_columns_own_spec_reads_back_as_that_column(self):
+        for rev in ga.REVISIONS:
+            self.assertEqual(ga.revision_of_peek_spec(gp.peek_spec(CONSOLE, rev)), rev)
+
+    def test_a_wider_operator_spec_still_names_one_column(self):
+        self.assertEqual(ga.revision_of_peek_spec(gp.peek_spec(CONSOLE, "r0004") + ",*0x869360:64"), "r0004")
+
+    def test_a_spec_naming_neither_or_both_raises(self):
+        with self.assertRaises(ValueError):
+            ga.revision_of_peek_spec("*0x869360:64")
+        with self.assertRaises(ValueError):
+            ga.revision_of_peek_spec("0x416054:3,0x442fd0:1")
+
+
+class CameraOrbit(unittest.TestCase):
+    """Review F7: camera_record is launched and was never read, so a wrong r0004 value for it -- the entry
+    resting on the fewest twinned referrers -- had no symptom at all. Now the probe measures the ground
+    distance between the camera record and the actor, which a wrong address cannot fake."""
+
+    def test_a_camera_in_orbit_passes_and_one_somewhere_else_fails(self):
+        rows = [_row("r0004")] * 12
+        res = {r.name: r for r in gp.evaluate(rows, CONSOLE, "r0004")}
+        self.assertTrue(res["camera_orbit"].ok, res["camera_orbit"].detail)
+        self.assertLess(abs(res["camera_orbit"].ours - gp.CAMERA_ORBIT_U), gp.CAMERA_ORBIT_TOL_U)
+        far = [_row("r0004", camera=(1500.0, -120.0, 200.0))] * 12
+        self.assertFalse({r.name: r for r in gp.evaluate(far, CONSOLE, "r0004")}["camera_orbit"].ok)
+
+    def test_the_band_holds_what_every_archived_stamp_measured(self):
+        """Re-review N3 re-measured every stamp on disk: 15 r0001-column stamps span 17.156
+        (s11_rtstate_gate) .. 20.659 (s11_probe_r0001b), 3 r0004-column ones 17.807 .. 22.737
+        (s11_r0004_reg3). The band holds all of them with room, holds the ladder's 24.9-unit steady orbit
+        radius, and rejects the 0.90 the wrong-column stamps read on every row."""
+        lo = gp.CAMERA_ORBIT_U - gp.CAMERA_ORBIT_TOL_U
+        hi = gp.CAMERA_ORBIT_U + gp.CAMERA_ORBIT_TOL_U
+        for measured in (17.156, 18.366, 20.659, 17.807, 22.737, 24.9):
+            self.assertTrue(lo <= measured <= hi, measured)
+        self.assertFalse(lo <= 0.90 <= hi)
+        # ... and it is not so wide that it has stopped being about this address: the observed spread is
+        # 17.156..22.737, and the band is under 3x it.
+        self.assertLess(hi - lo, 3 * (22.737 - 17.156))
+
+
+
+class LadderPeekSpecBytes(unittest.TestCase):
+    """The ladder's PEEK_SPEC is launched as an environment string and pinned by past runs: deriving its
+    addresses from guest_addresses (Task 19 re-review N4) must leave the bytes exactly as the literals were,
+    including the case of the hex digits (re-review 2, N5)."""
+
+    def test_peek_spec_is_the_historical_string(self):
+        from tools_py.parity import sp_death_probe as sp
+        historical = ",".join([
+            "0x416054:3", "*0x408c58:64", "*0x408c58+0xF78:1", "*0x408c58+0x1044:1", "*0x408c58+0xc0*:32",
+            "0x408c58:4", "*0x408c58+0x100:64", "*0x408c58+0x200:64", "*0x408c58+0x300:64",
+            "*0x408c58+0xFB4:1", "*0x408c58+0x1368:1",
+        ])
+        self.assertEqual(sp.PEEK_SPEC, historical)
+
+
+if __name__ == "__main__":
+    unittest.main()

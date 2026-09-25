@@ -165,6 +165,28 @@ class DryRunTest(unittest.TestCase):
         self.assertIn("PS2X_GS_STATS", p.stdout)
 
     @unittest.skipUnless(BASH, "bash not found")
+    def test_a_pinned_launch_refuses_when_the_instruments_are_not_the_snapshots(self):
+        """Fix round 2, N3: the pin guard had no test that EXECUTED its refusal. An exported PS2X_PEEK
+        wins over env.sh's render by design, so the launch would be cut by a spec the pinned code did
+        not produce -- which is not a pinned launch. The snapshot is real (pin_harness.sh runs), so this
+        also proves the comparison resolves the snapshot's `${VAR:-...}` form rather than string-matching
+        it. A bare `--dry-run` is unpinned by design and never reaches this branch."""
+        drop = ("PS2X_PEEK", "PS2X_CALL_TRACE", "SOCOM_GAME_ELF")
+        env = {k: v for k, v in os.environ.items() if k not in drop}
+        env["PS2X_PEEK"] = "0xdeadbe:1"
+        # A REPO-RELATIVE out dir: pin_harness.sh pipes `git archive` into tar, and tar chokes on a
+        # Windows temp path (the same reason test_ladder_template stays under logs/).
+        out = "logs/parity/_n3_pin_%d" % os.getpid()
+        try:
+            p = subprocess.run([BASH, TEMPLATE, "--dry-run", "--pinned", out],
+                               capture_output=True, text=True, cwd=ROOT, timeout=240, env=env)
+        finally:
+            shutil.rmtree(os.path.join(ROOT, out), ignore_errors=True)
+        self.assertEqual(p.returncode, 7, p.stdout + p.stderr)
+        self.assertIn("PIN-FAIL the instruments this launch would use", p.stderr)
+        self.assertIn("0xdeadbe:1", p.stderr)
+
+    @unittest.skipUnless(BASH, "bash not found")
     def test_the_launch_template_passes_its_own_dry_run(self):
         self.assertTrue(os.path.exists(TEMPLATE))
         with open(TEMPLATE) as f:
@@ -172,9 +194,27 @@ class DryRunTest(unittest.TestCase):
         with open(os.path.join(os.path.dirname(TEMPLATE), "env.sh")) as f:
             text += f.read()                          # the shared instruments the template sources
         for need in ("pin_harness.sh", "PYTHONSAFEPATH=1", "run_detached.sh", "--purpose launch-ladder",
-                     "PS2X_GS_STATS=1", "0x4365c0:1", "--route", "env.sh"):
+                     "PS2X_GS_STATS=1", "guest_addresses", "--route", "env.sh",
+                     # F13/N3: what the launch will use must be what the snapshot's table renders
+                     "PIN-FAIL the instruments this launch would use"):
             self.assertIn(need, text)
-        p = subprocess.run([BASH, TEMPLATE, "--dry-run"], capture_output=True, text=True, cwd=ROOT, timeout=180)
+        # The round clock used to be a literal in env.sh and is a rendered address now (Sprint 11 Task 19:
+        # the instruments are per revision). Grepping the TEXT for it would only ever have proved that a
+        # string was written down, so the check moved to what sourcing env.sh actually EXPORTS -- and the
+        # ladder runs on the r0001 build, so this is the r0001 column, unchanged.
+        # SOCOM_GAME_ELF too (review F11): on a machine mid-r0004 session it is exported, and the
+        # ladder's r0001 assertion would fail for a reason that has nothing to do with the ladder.
+        drop = ("PS2X_PEEK", "PS2X_CALL_TRACE", "SOCOM_GAME_ELF")
+        e = subprocess.run([BASH, "-c", ". scripts/parity/env.sh; printf %s \"$PS2X_PEEK\""],
+                           capture_output=True, text=True, cwd=ROOT, timeout=120,
+                           env={k: v for k, v in os.environ.items() if k not in drop})
+        self.assertEqual(e.returncode, 0, e.stderr)
+        self.assertIn("0x4365c0:1", e.stdout)
+        self.assertIn("0x408f10:2", e.stdout)
+        # ... and the template's own dry run must not inherit an r0004 image either (review F11): the
+        # ladder is the r0001 instrument, and env.sh renders whichever column SOCOM_GAME_ELF names.
+        p = subprocess.run([BASH, TEMPLATE, "--dry-run"], capture_output=True, text=True, cwd=ROOT,
+                           timeout=180, env={k: v for k, v in os.environ.items() if k not in drop})
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         self.assertIn("DRY-RUN OK", p.stdout + p.stderr)
 

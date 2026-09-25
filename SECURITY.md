@@ -24,25 +24,29 @@ before it is pointed at.
 - The bug-report path: anything that makes the launcher send what the player was not shown.
 - The hosted project server (`socom.scotho.com`) and the site (`s2u.scotho.com`): report, do not test destructively.
 
-## Known, unfixed: the game's own network code
+## Known: the game's own network code
 
 The multiplayer code is SOCOM II's, recompiled as-is, and it has known vulnerabilities that the community console
-servers patched years ago and this project has not (reported to the project by a community moderator, 2026-09-20):
+servers patched years ago (reported to the project by a community moderator, 2026-09-20):
 
-- A hostile peer in the same room can reach code execution on the other clients in it. Here that means a native
-  process on the player's PC. Details are deliberately not written up in this repository.
-- Others are believed to exist; nothing in the recompiled network path has been audited for them.
+- **Reported; fixed 2026-09-23 on the client and the server; the moderator's confirmation pending.** A hostile
+  peer in the same room could reach code execution on the other clients in it through the chat path -- here, a
+  native process on the player's PC. The client now bounds the chat receive path (a hardening installed on every
+  launch, which the game log reports), and the project's server clamps the chat fields it forwards. Details are
+  deliberately not written up in this repository. What is and is not yet observed about the fix is in
+  `docs/KNOWN.md` (§1 and §2, 2026-09-23).
+- **Others are believed to exist**; nothing else in the recompiled network path has been audited for them.
 
-Until fixed, the README tells players to play online only with people and servers they trust. The specifics of the
-known issue, another such path, or the game-side fix the community applied belong in a private report through the
-Reporting section above -- not in an issue, a PR, or a document here.
+The README tells players to play online only with people and servers they trust. The specifics of the fixed issue,
+another such path, or the game-side fix the community applied belong in a private report through the Reporting
+section above -- not in an issue, a PR, or a document here.
 
 ## What is not a vulnerability here
 
 - `PS2X_*` environment variables changing the game's behaviour. An environment variable is not a privilege boundary:
-  whoever can set one already runs code as the player. They are developer probes; Sprint 9 Goal 3 puts them behind
-  developer mode, so a stray environment cannot change a player's game by accident, and constrains the ones that name
-  paths.
+  whoever can set one already runs code as the player. They are developer probes; Sprint 9 Goal 3 **put** them
+  behind developer mode on 2026-09-21: a Dev knob reads as unset without `--dev` / `PS2X_DEV=1`, and the start-up
+  `[knobs]` line names what it ignored. The ones that name paths are constrained too.
 - The executable being unsigned (known; signing is the owner's cost and identity), or antivirus heuristics on it.
 - Cheating in a game from 2003 that has no anti-cheat. Reports of cheats against the project server are welcome as
   ordinary bug reports.

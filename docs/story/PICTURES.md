@@ -11,7 +11,7 @@ the owner's** (spec §9 Q1); `tools_py/story/cite.py` only keeps this list and t
 |---|---|---:|---|---|
 | `2026-09-08-online-lobby.png` | 2026-09-08 — The project's own program gets online | 70,290 | `logs/parity/ours_login/09_lobby.png` | our program's window, run ours_login |
 | `2026-09-13-first-kill.png` | 2026-09-13 — The first kill | 491,420 | `docs/research/assets/22-first-kill.png` | our program's two windows, run s5_t5_ladder2; already tracked as docs/research/assets/22-first-kill.png |
-| `2026-09-14-grey-hill-before.png` | 2026-09-14 — Two defects the owner spotted | 326,272 | `docs/research/assets/31-console-dump-gl-replay-before.png` | our renderer's output over a console-recorded command stream; already tracked as docs/research/assets/31-console-dump-gl-replay-before.png |
+| `2026-09-14-grey-hill-before.png` | 2026-09-16 — First hands-on session, and the controller work begins | 326,272 | `docs/research/assets/31-console-dump-gl-replay-before.png` | our renderer's output over a console-recorded command stream; already tracked as docs/research/assets/31-console-dump-gl-replay-before.png |
 | `2026-09-16-brighten-fixed.png` | 2026-09-16 — Every frame was 1.73 times too dark | 435,440 | `docs/research/assets/31-console-dump-gl-replay-fixed.png` | our renderer's output over the same command stream; already tracked as docs/research/assets/31-console-dump-gl-replay-fixed.png |
 | `2026-09-17-launcher-first-cut.png` | 2026-09-17 — A launcher, and a folder you can copy | 30,842 | `docs/research/assets/launcher-first-cut.png` | our launcher's window; already tracked as docs/research/assets/launcher-first-cut.png |
 | `2026-09-17-foxhunt-map-select.png` | 2026-09-17 — Twenty maps in one night | 187,316 | `logs/parity/ours_control_foxhunt_guard/A_14b_map_foxhunt.png` | our program's window, run ours_control_foxhunt_guard |
@@ -31,3 +31,10 @@ the owner's** (spec §9 Q1); `tools_py/story/cite.py` only keeps this list and t
 | `2026-09-21-online-kill.mp4` | 2026-09-21 — One round, on film | 10,822,738 | `E:/ForClaude/online_kill.mp4` (a 4:14 screen recording of the desktop, 70.9 MB) | our program's two windows, one round on the hosted server, both clients agent-driven; the whole recording, cropped to the two windows (1022x378 at 49,216) and re-encoded (H.264 CRF 25); its poster `2026-09-21-online-kill.png` (323,661 bytes) is the frame at 3:42.5 of the recording, the killfeed on both screens |
 
 Total: 19 pictures and 1 video with its poster, 15,006,296 bytes.
+
+*(2026-09-25: `2026-09-14-grey-hill-before.png` was an **orphan row** — a row for a picture `docs/STORY.md` no
+longer showed, which `tools_py/story/cite.py` cannot catch because it only checks the other direction. It is the
+"before" half of the brighten pair whose "after" was already shown, so it is restored to the 2026-09-16 hands-on
+entry — the sitting where the owner saw that hillside; the brighten entry already has its one picture, which spec
+§5.3 caps — and its Entry column corrected. The counts and the byte total above already included it and are
+unchanged.)*

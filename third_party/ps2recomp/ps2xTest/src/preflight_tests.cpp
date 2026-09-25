@@ -96,6 +96,27 @@ void register_preflight_tests()
 {
     MiniTest::Case("Preflight", [](TestCase &tc)
     {
+        // Task 11 fix round 1 (Sprint 11 review, Important 2). The launcher's disc check reads the
+        // revision TABLE; this one compared a single digest. The two agree while kDiscRevisions has one
+        // row, and the moment a second is added the launcher would accept a disc that this check then
+        // refuses with exit 67 and nothing on screen -- so the table has to decide here too.
+        tc.Run("the disc rule is the revision table, plus the caller's own override", [](TestCase &t)
+        {
+            // Every row of the table is accepted, and accepted WITHOUT being named by the caller: that is
+            // the property that makes a second row work on its own. Today it runs once; it needs no edit
+            // when a row is added, which is the whole point of asserting it this way.
+            t.IsTrue(launcher::kDiscRevisionCount >= 1u, "there is a revision to check");
+            for (const launcher::DiscRevision &row : launcher::kDiscRevisions)
+                t.IsTrue(Preflight::discAccepted(row.sha256, "some-other-digest-entirely"),
+                         std::string("a disc in the table is playable: ") + row.revision);
+            // The override is what preflight_tests' synthetic disc rides on, so it must still hold.
+            t.IsTrue(Preflight::discAccepted(kSha256OfHello, kSha256OfHello),
+                     "a caller that pins its own image is still obeyed");
+            t.IsFalse(Preflight::discAccepted(kSha256OfHello, launcher::kSocom2R0001ElfSha256),
+                      "and a digest that is neither in the table nor the override is refused");
+            t.IsFalse(Preflight::discAccepted("", launcher::kSocom2R0001ElfSha256), "an empty digest is not a disc");
+        });
+
         tc.Run("68: no socom2_game.elf in the folder", [](TestCase &t)
         {
             const fs::path home = makeHome();

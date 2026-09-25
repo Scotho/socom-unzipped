@@ -17,7 +17,8 @@ option(PS2X_BUILD_RECOMP "Build ps2xRecomp" ON)
 option(PS2X_BUILD_RUNTIME "Build ps2xRuntime" ON)
 option(PS2X_BUILD_ANALYZER "Build ps2xAnalyzer" ON)
 option(PS2X_BUILD_TEST "Build ps2xTest" ON)
-option(PS2X_BUILD_STUDIO "Build ps2xStudio" ON)
+# Sprint 11 Task 17 (R247): ps2xStudio (the upstream ImGui workbench) was deleted -- nobody here built it and it
+# carried two fonts we do not ship. There is no PS2X_BUILD_STUDIO option any more.
 
 # Sprint 9 Goal 2: the release configuration's link hygiene. OFF in the developer build (build.sh runtime,
 # scripts/build_linux.sh runtime), which must not change; ON only from `build.sh release` /
@@ -46,7 +47,6 @@ if(ANDROID)
     set(PS2X_BUILD_RECOMP OFF)
     set(PS2X_BUILD_ANALYZER OFF)
     set(PS2X_BUILD_TEST OFF)
-    set(PS2X_BUILD_STUDIO OFF)
 endif()
 
 set(PS2X_IS_ARM_TARGET OFF)
@@ -123,8 +123,4 @@ endif()
 
 if(PS2X_BUILD_TEST)
     add_subdirectory("ps2xTest")
-endif()
-
-if(PS2X_BUILD_STUDIO)
-    add_subdirectory("ps2xStudio")
 endif()

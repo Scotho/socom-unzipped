@@ -11,9 +11,19 @@ namespace ui
         // community one is first -- rectOf() answered an empty rect and this heading was drawn off the window.
         const Rect preset0 = onlinePresetRow(app.frame.window, 0);
         text(ctx, "SERVER", Vec2{preset0.x, preset0.y - 26.0f}, metrics::labelSize, theme::dim, Face::Bold, 0.06f);
+        // Task 11: the revision mismatch, on the widest line this page has. It takes the strip from the
+        // status line when both want it: "that server runs a different game" is about the choice the
+        // player just made, and "the server is up" is not news while the pair cannot connect at all.
+        const std::string mismatch = revisionMismatchLine(app);
+        if (!mismatch.empty())
+        {
+            const float size = metrics::captionSize;
+            const float w = textWidth(ctx, mismatch.c_str(), size);
+            text(ctx, mismatch.c_str(), Vec2{app.frame.body.right() - w, preset0.y - 26.0f}, size, theme::warn);
+        }
         // Sprint 9 Goal 8: the hosted server's own word on itself (GET /api/stats, fetched off this thread).
         // Blank when the site cannot be reached: a player who is offline is not told anything is wrong.
-        if (!app.serverStatus.empty())
+        else if (!app.serverStatus.empty())
         {
             const bool up = app.serverStatus.find(": online") != std::string::npos;
             const float size = metrics::captionSize;
@@ -41,7 +51,7 @@ namespace ui
                 strokeRect(ctx, Rect{r.x + 6.0f, r.cy() - 5.0f, 10.0f, 10.0f}, off, 2.0f);
                 text(ctx, launcher::kServerPresets[i].label, Vec2{r.x + 34.0f, r.cy() - metrics::bodySize * 0.58f},
                      metrics::bodySize - 1.0f, off);
-                textRightIn(ctx, "needs the r0004 game update -- planned", Rect{r.x, r.y, r.w - 12.0f, r.h},
+                textRightIn(ctx, launcher::kRevisionMissingNote, Rect{r.x, r.y, r.w - 12.0f, r.h},
                             metrics::captionSize - 1.0f, off);
                 continue;
             }
@@ -56,6 +66,10 @@ namespace ui
                         metrics::captionSize - 1.0f,
                         i == presetSel ? theme::caption : theme::mix(theme::caption, theme::ground, 0.3f));
         }
+
+        // Task 11: the build this launcher will start, under the server list -- the two have to be the same
+        // revision, and the warning above says so when they are not.
+        gameVersionRow(ctx, app, nodes, Page::Online);
 
         const launcher::ServerPreset *preset = launcher::findServerPreset(c.serverPreset);
         const bool ownAddress = preset == nullptr || preset->address[0] == '\0';

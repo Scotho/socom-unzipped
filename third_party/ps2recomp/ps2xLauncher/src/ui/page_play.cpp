@@ -62,6 +62,16 @@ namespace ui
             text(ctx, shown.c_str(), Vec2{line.x + 92.0f, line.y - 2.0f}, 17.0f, theme::warn);
         }
 
+        // Task 11: which build LAUNCH will start, and -- under it, where there is room for the whole
+        // sentence -- the warning when that build is not the revision the chosen server runs.
+        gameVersionRow(ctx, app, nodes, Page::Play);
+        const std::string mismatch = revisionMismatchLine(app);
+        if (!mismatch.empty())
+        {
+            const Rect cell = revisionCell(app.frame.window, Page::Play, 0);
+            text(ctx, mismatch.c_str(), Vec2{cell.x, cell.bottom() + 6.0f}, metrics::captionSize, theme::warn);
+        }
+
         const std::string blocked = launchBlockedReason(app.discOk, app.running, app.config.isoPath.empty());
         if (button(ctx, launch, app.running ? "RUNNING" : "LAUNCH", "play.launch", blocked.empty(), true))
             app.requestLaunch = true;

@@ -422,6 +422,7 @@ add_library(ps2_runtime STATIC
     src/lib/ps2_memory.cpp
     src/lib/ps2_pad.cpp
     src/lib/ps2_runtime.cpp
+    src/lib/ps2_save_state.cpp   # Sprint 11 Task 8c: the save-state container (no runtime dependency)
     src/lib/ps2_vif1_interpreter.cpp
     src/lib/vu/ps2_vu1_core.cpp
     src/lib/vu/ps2_vu1_upper.cpp
@@ -462,6 +463,20 @@ endif()
 
 target_compile_definitions(ps2_runtime PRIVATE
     PS2X_HAS_FFMPEG=$<BOOL:${PS2X_ENABLE_FFMPEG}>
+)
+
+# Sprint 11 Task 19: WHICH PRESSING OF THE GAME THIS BUILD'S GENERATED CODE CAME FROM.
+#
+# The recompiled code is one revision's; the overlay image it runs against is a separate file chosen at
+# launch. Nothing tied the two together until this define, and two parity gates on 2026-09-23 ran the
+# r0004 executable on r0001's image and hung at the loading screen with nothing in the log to say why.
+# build.sh passes r0001 (the default chain) and scripts/build_revision.sh passes the revision it builds;
+# runtime/socom2_revision_guard.h compares it with the image's own build banner at boot and REFUSES a
+# mismatch with ExitCodes::kRevisionMismatch (73). PUBLIC, so the runner, the library and ps2x_tests --
+# which pins that the define really arrives -- all see the same value.
+set(PS2X_GAME_REVISION "r0001" CACHE STRING "Disc revision this build's generated code was recompiled from (r0001, r0004, ...)")
+target_compile_definitions(ps2_runtime PUBLIC
+    PS2X_GAME_REVISION="${PS2X_GAME_REVISION}"
 )
 
 file(GLOB_RECURSE KERNEL_SRC_FILES CONFIGURE_DEPENDS
@@ -645,23 +660,10 @@ if(PS2X_IS_VITA)
     set(VITA_MKSFOEX_FLAGS "${VITA_MKSFOEX_FLAGS} -d ATTRIBUTE2=12")
 
     if(PS2X_VITA_CREATE_PACKAGE AND PS2X_BUILD_RUNNER)
+        # Sprint 11 Task 17 (R247): the five prebuilt PowerVR/GL .suprx modules were vendored here (3.4 MB of
+        # binaries nobody in this project builds or ships) and are deleted. A vpk built here bundles no modules;
+        # it relies on ur0:data/external/ for them, as it already did whenever a module was missing.
         set(PS2X_VITA_VPK_FILES "")
-
-        foreach(PS2X_VITA_MODULE IN ITEMS
-            libgpu_es4_ext.suprx
-            libIMGEGL.suprx
-            libGLESv2.suprx
-            libpvrPSP2_WSEGL.suprx
-            libGL.suprx)
-            set(PS2X_VITA_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/vita/module/${PS2X_VITA_MODULE}")
-
-            if(EXISTS "${PS2X_VITA_MODULE_PATH}")
-                list(APPEND PS2X_VITA_VPK_FILES FILE "${PS2X_VITA_MODULE_PATH}" "module/${PS2X_VITA_MODULE}")
-            else()
-                message(WARNING
-                    "Missing ${PS2X_VITA_MODULE_PATH}; the vpk will rely on ur0:data/external/ for it")
-            endif()
-        endforeach()
 
         vita_create_self(eboot.bin ps2EntryRunner UNSAFE)
         vita_create_vpk(ps2EntryRunner.vpk ${PS2X_VITA_TITLEID} eboot.bin

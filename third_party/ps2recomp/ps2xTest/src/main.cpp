@@ -23,7 +23,9 @@ void register_ps2_sif_dma_tests();
 void register_ps2_recompiler_tests();
 void register_ps2_runtime_expansion_tests();
 void register_socom2_libnetb_tests();
+void register_socom2_chat_tests();   // Sprint 11 milestone S
 void register_socom2_audio_tests();
+void register_audio_cb_trace_tests();   // Sprint 11 audio-out: the per-callback trace
 void register_socom2_lgaud_tests();
 void register_host_config_tests();
 void register_launcher_tests();
@@ -37,6 +39,10 @@ void register_mapping_tests();
 void register_socom2_osk_prefill_tests();
 void register_knobs_tests();
 void register_menu_sounds_tests();   // Sprint 10 Q4
+void register_socom2_addresses_tests();   // Sprint 11 Task 10
+void register_socom2_revision_guard_tests();   // Sprint 11 Task 19
+void register_ps2_save_state_tests();   // Sprint 11 Task 8c
+void register_runtime_state_tests();      // Sprint 11 Task 8b
 void reset_ps2_test_function_table();
 
 namespace
@@ -98,7 +104,9 @@ int main()
     register_ps2_recompiler_tests();
     register_ps2_runtime_expansion_tests();
     register_socom2_libnetb_tests();
+    register_socom2_chat_tests();
     register_socom2_audio_tests();
+    register_audio_cb_trace_tests();
     register_socom2_lgaud_tests();
     register_host_config_tests();
     register_launcher_tests();
@@ -112,6 +120,10 @@ int main()
     register_socom2_osk_prefill_tests();
     register_knobs_tests();
     register_menu_sounds_tests();
+    register_socom2_addresses_tests();
+    register_socom2_revision_guard_tests();
+    register_ps2_save_state_tests();
+    register_runtime_state_tests();
     int res = MiniTest::Run();
     std::cout.flush();
     std::cerr.flush();

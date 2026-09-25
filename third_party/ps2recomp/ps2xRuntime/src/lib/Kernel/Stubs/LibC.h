@@ -61,7 +61,7 @@ namespace ps2_stubs
     // the pointer to struct _reent (newlib's _impure_ptr) and `randNextOffset` the offset of
     // _rand_next inside it.  Both are game-specific; a game override calls this (see
     // game_overrides_socom2.cpp).  Unregistered, the stubs keep an internal state instead.
-    void setLibcRandState(uint32_t impurePtrAddr, uint32_t randNextOffset);
+    void setLibcRandState(PS2Runtime *runtime, uint32_t impurePtrAddr, uint32_t randNextOffset);
     void strcasecmp(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void vfprintf(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void vsprintf(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);

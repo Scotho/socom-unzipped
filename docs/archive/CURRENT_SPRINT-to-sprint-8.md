@@ -89,8 +89,8 @@ machine and the two addresses); (5) the first two-machine match (**owner**: a se
 ## 2026-09-17 (audit) — Sprint 6 closing: the order for the rest of it, and Sprints 7–9 drafted (superseded above; kept for the record)
 
 branch: sprint-6
-spec: docs/superpowers/specs/2026-09-15-sprint-6-correctness-gate-and-online-reliability-design.md
-plan: docs/superpowers/plans/2026-09-15-sprint-6-correctness-gate-and-online-reliability.md (its checkboxes are being
+spec: docs/archive/sprints-1-6/2026-09-15-sprint-6-correctness-gate-and-online-reliability-design.md
+plan: docs/archive/sprints-1-6/2026-09-15-sprint-6-correctness-gate-and-online-reliability.md (its checkboxes are being
 reconciled with the audit's §3 ledger in the close-out; until then §3 is the truth)
 audit: docs/AUDIT-2026-09-17.md
 human tasks: docs/HUMAN_TASKS.md (the owner's hands-on checks and the two facts only the owner has: the community
@@ -196,8 +196,8 @@ teleport no longer ends the mission. The runtime freeze at `92d30f0` is over: **
 the first online result on it must be recorded against that sha.
 
 branch: sprint-6 (created 2026-09-15 evening off develop at `20db94b`; Task 0 and the lock-free Task 1-4 work went to develop first)
-spec: docs/superpowers/specs/2026-09-15-sprint-6-correctness-gate-and-online-reliability-design.md (owner review pending)
-plan: docs/superpowers/plans/2026-09-15-sprint-6-correctness-gate-and-online-reliability.md
+spec: docs/archive/sprints-1-6/2026-09-15-sprint-6-correctness-gate-and-online-reliability-design.md (owner review pending)
+plan: docs/archive/sprints-1-6/2026-09-15-sprint-6-correctness-gate-and-online-reliability.md
 ledger: .superpowers/sdd/2026-09-15-sprint-6-correctness-gate-and-online-reliability/progress.md (create on first dispatch)
 
 **Owner's order, 2026-09-16 (after playing the build with a controller):** (1) the water shards and the occasional
@@ -211,8 +211,8 @@ controller's order. Gamepad support landed in the SOCOM input path the same day 
 
 ## 2026-09-15 — Sprint 6 drafted; lock-bound work queued for an owner window (superseded above; kept for the record)
 
-**Sprint 6 is drafted, not opened**: spec `docs/superpowers/specs/2026-09-15-sprint-6-correctness-gate-and-online-reliability-design.md`
-and plan `docs/superpowers/plans/2026-09-15-sprint-6-correctness-gate-and-online-reliability.md` (owner review pending;
+**Sprint 6 is drafted, not opened**: spec `docs/archive/sprints-1-6/2026-09-15-sprint-6-correctness-gate-and-online-reliability-design.md`
+and plan `docs/archive/sprints-1-6/2026-09-15-sprint-6-correctness-gate-and-online-reliability.md` (owner review pending;
 Tasks 0–1 are owner-agreed items). Branch `sprint-6` is created only after Task 0's two fix branches merge.
 A packaging/launcher/installer outline is at `docs/superpowers/specs/2026-09-15-game-client-package-and-installer-outline.md`.
 
