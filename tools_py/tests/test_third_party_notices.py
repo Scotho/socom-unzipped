@@ -19,7 +19,8 @@ LICENSES = os.path.join(ROOT, "LICENSES")
 ALIASES = {"rlimgui": "rlImGui", "elfio": "ELFIO", "nlohmann_json": "nlohmann/json", "ffmpeg_external": "FFmpeg",
            "imgui_colortextedit": "ImGuiColorTextEdit", "imgui_file_dialog": "ImGuiFileDialog"}
 # Directories under third_party/ and server/ that are the project's own, not a vendored component.
-OWN_DIRS = {"server/config", "server/linux", "server/scripts"}
+OWN_DIRS = {"server/config", "server/linux", "server/scripts", "server/ops",  # the box's backup/health/pull scripts, the project's own (Sprint 13 O3)
+}
 
 
 def rows():
