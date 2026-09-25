@@ -67,8 +67,27 @@ TITLE_REF = os.path.join("scripts", "parity", "ref_main_menu_ours.png")
 # Every clean run scores exactly 19/23 >= 90.0, so 90.0 sits ~3 points under the menu band and
 # ~5 points over the fade, and 16 leaves three captures of headroom. A mission run scored as a
 # title run gives 1/36 (negative control, logs/parity/runs/gameplay_probe5).
+# [SUPERSEDED 2026-09-25 by the issue #30 block below: the verdict is no longer a count. The three
+# captures of headroom sat inside the menu, not at the tail (s7_cpu_fallback2 lost s16..s18 and passed),
+# and the "~3 points" band is 2.0 on the full record (lowest window capture 92.0, research/64 command G).
+# The scores and the fade/movie reading above still stand.]
+#
+# Issue #30 (research/64, 2026-09-25): s19..s22 are not menu screens that were lost -- they are the game's idle
+# attract sequence (the menu fading to black, then the mission flyovers), already named in the calibration
+# above. Of the 165 archived stamps with a title line (native_on 2026-09-10 .. s11_close_gate), 123 score
+# exactly 19/23, 7 score 20-21/23 (the attract a capture late) and 14 score 23/23 (no attract inside the
+# window; s8_audio_mc_gate2, the issue's "before", is one of those). The count bar hid the one real loss on
+# record: s7_cpu_fallback2 froze on the menu-over-black from s16 on (s16..s22 = 82.7-82.9) and PASSED at 16/23.
+# So the verdict is positional: every capture the run wrote inside the menu window s00..s18 must score
+# >= TITLE_MIN_SCORE (on the record each of those positions matched the reference, and so did the capture
+# before it; the lowest window capture on a clean stamp is 92.0, 2.0 over the bar, and the lowest s18 alone
+# 93.0, s5_gsbp2c), and the attract tail s19..s22 is printed,
+# not counted. Replayed over the 165 stamps this changes one verdict, s7_cpu_fallback2 PASS -> FAIL.
+# TITLE_MIN_MATCHES stays as the floor on how many window captures a run must have written (the committed
+# fixture tests/fixtures/gate/title holds s00..s15).
 TITLE_MIN_SCORE = 90.0      # compare.score of a capture vs the main-menu reference
-TITLE_MIN_MATCHES = 16      # of the 23 captures s00..s22 (19 are at the menu on a clean run, then the attract movie)
+TITLE_MENU_WINDOW = 19      # s00..s18 are the menu on every clean run; s19.. is the attract sequence
+TITLE_MIN_MATCHES = 16      # at least this many menu-window captures must exist (and all of them must match)
 HUD_REF_NAME = "ref_hud_ours.png"
 MISSION_MIN_HOLDS = 3       # sNN_hold* steps after the HUD: fewer means the probe died on entry
 # ... and of their captures (sNN_hold*.png), at least this many must be gameplay by the letterbox-band test
@@ -168,9 +187,21 @@ def score_title(run_dir):
         return False, "no captures in %s" % run_dir
     scores = [(os.path.basename(p), _score_value(TITLE_REF, p)) for p in caps]
     good = sum(1 for _, s in scores if s >= TITLE_MIN_SCORE)
-    detail = "%d/%d menu captures >= %.1f; scores: %s" % (
-        good, len(scores), TITLE_MIN_SCORE, " ".join("%s=%.1f" % (n[:3], s) for n, s in scores))
-    return good >= TITLE_MIN_MATCHES, detail
+    window = [(n, s) for n, s in scores if int(n[1:3]) < TITLE_MENU_WINDOW]
+    tail = [(n, s) for n, s in scores if int(n[1:3]) >= TITLE_MENU_WINDOW]
+    lost = [n[:3] for n, s in window if s < TITLE_MIN_SCORE]
+    ok = not lost and len(window) >= TITLE_MIN_MATCHES
+    notes = []
+    if lost:
+        notes.append("menu capture(s) under %.1f: %s" % (TITLE_MIN_SCORE, " ".join(lost)))
+    if len(window) < TITLE_MIN_MATCHES:
+        notes.append("only %d menu-window captures, need %d" % (len(window), TITLE_MIN_MATCHES))
+    if tail and all(s >= TITLE_MIN_SCORE for _, s in tail):
+        notes.append("attract not reached by s%02d" % int(tail[-1][0][1:3]))
+    detail = "%d/%d menu captures >= %.1f (window s00..s%02d: %d/%d)%s; scores: %s" % (
+        good, len(scores), TITLE_MIN_SCORE, TITLE_MENU_WINDOW - 1, len(window) - len(lost), len(window),
+        "".join("; " + x for x in notes), " ".join("%s=%.1f" % (n[:3], s) for n, s in scores))
+    return ok, detail
 
 
 BURST_CAPTURE_RE = re.compile(r"^s(\d+)_burst_")
