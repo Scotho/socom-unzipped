@@ -23,8 +23,6 @@ they lacked. research/42 covered #226-#252. This note covers #205-#225, #228, #2
 |---|---|---|
 | **TAKE** | 6 | #206, #221 (the LWU hunk only), #223, #224 (the MADR/TADR half only, latent for SOCOM II; its tag half is ALREADY OURS `51529462`), #239 (Task U2), #253 |
 | **ALREADY OURS** | 7 | #208, #210, #212, #214, #215, #218, #225 |
-
-The TAKE rows give test **shapes** only: Step 1 is read-only. Task U7 writes the tests.
 | **NOT OURS** | 9 | #205, #207, #211, #213, #216, #220, #228, #233, #235 |
 | **LATER** | 5 | #209, #217, #219, #222, #242 |
 
@@ -461,6 +459,11 @@ project records it.
   #239 belongs to U2.
 - **Each TAKE needs its RED test first** (HANDOFF §5 rule 5), then the gate 3/3 in an agent worktree. This note gives
   the test shapes only (Step 1 is read-only); Task U7 writes the tests.
+- **The LATER triggers to watch:**
+  - any heap-cap or pool move (makes #217 TAKE, and makes #216's guard test mandatory);
+  - a `FUN_001ac860` DI-section trace (#222);
+  - a VCLIP zero-`w` counter (#219);
+  - an owner request on keyboard-plus-pad (#242).
 
 ## 5. The measurement scripts
 
@@ -531,8 +534,3 @@ EOF
 
 Output on 2026-09-25: `sites 2400 {'jalr': 1978, 'jr': 116, '?': 306}`, entries `{'jalr': 195158, 'jr': 30234,
 '?': 83648}`, `functions with only jalr sites 989`.
-- **The LATER triggers to watch:**
-  - any heap-cap or pool move (makes #217 TAKE, and makes #216's guard test mandatory);
-  - a `FUN_001ac860` DI-section trace (#222);
-  - a VCLIP zero-`w` counter (#219);
-  - an owner request on keyboard-plus-pad (#242).
