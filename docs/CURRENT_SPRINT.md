@@ -1,6 +1,6 @@
 # Current sprint
 
-The loop's aim. `docs/LOOP_PROMPT.md` reads this file instead of carrying a sprint pointer of its own; the controller
+The loop's aim. The `loop-iteration` skill (`.claude/skills/loop-iteration/SKILL.md`) reads this file instead of carrying a sprint pointer of its own; the controller
 updates it when a sprint opens or closes, and whenever the order changes. **If you are a new controller, read
 `docs/HANDOFF.md` first** -- it says where the project is and what the traps are; this file says what to do next.
 

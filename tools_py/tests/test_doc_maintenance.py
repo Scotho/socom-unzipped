@@ -634,5 +634,52 @@ class ClaudeMdTest(unittest.TestCase):
         self.assertEqual(rows.get("CLAUDE.md"), "C", "CLAUDE.md needs a class C row in docs/DOC_MAINTENANCE.md section 3")
 
 
+class SkillsTest(unittest.TestCase):
+    """Sprint 14 I2: the four procedures are project skills (.claude/skills/<name>/SKILL.md, tracked), each
+    with a frontmatter `name:` equal to its directory and a `description:`; docs/LOOP_PROMPT.md is a pointer
+    under 2,000 bytes that names the loop's skill; CLAUDE.md's procedure lines point at the SKILL.md files."""
+
+    NAMES = ("loop-iteration", "agent-worktree", "run-gate", "sprint-close")
+    LOOP_PROMPT = os.path.join(docmaint.ROOT, "docs", "LOOP_PROMPT.md")
+    POINTER_MAX_BYTES = 2000
+
+    def skill_path(self, name):
+        return os.path.join(docmaint.ROOT, ".claude", "skills", name, "SKILL.md")
+
+    def frontmatter(self, path):
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        m = re.match(r"---\r?\n(.*?)\r?\n---\r?\n", text, re.S)
+        self.assertIsNotNone(m, "%s has no YAML frontmatter between --- lines at the top" % path)
+        fields = {}
+        for line in m.group(1).splitlines():
+            k, sep, v = line.partition(":")
+            if sep and not line.startswith((" ", "\t")):
+                fields[k.strip()] = v.strip()
+        return fields
+
+    def test_each_skill_exists_with_its_name_and_a_description(self):
+        for name in self.NAMES:
+            with self.subTest(skill=name):
+                path = self.skill_path(name)
+                self.assertTrue(os.path.isfile(path), "missing %s" % path)
+                fields = self.frontmatter(path)
+                self.assertEqual(fields.get("name"), name, "%s: name: must equal its directory" % path)
+                self.assertTrue(fields.get("description"), "%s: description: is empty or missing" % path)
+
+    def test_loop_prompt_is_a_pointer_naming_the_loop_skill(self):
+        with open(self.LOOP_PROMPT, "rb") as f:
+            data = f.read()
+        self.assertLess(len(data), self.POINTER_MAX_BYTES,
+                        "docs/LOOP_PROMPT.md is %d bytes; it is a pointer under %d" % (len(data), self.POINTER_MAX_BYTES))
+        self.assertIn(b"loop-iteration", data)
+
+    def test_claude_md_points_at_each_skill_file(self):
+        with open(os.path.join(docmaint.ROOT, "CLAUDE.md"), encoding="utf-8") as f:
+            text = f.read()
+        missing = [n for n in self.NAMES if ".claude/skills/%s/SKILL.md" % n not in text]
+        self.assertEqual(missing, [], "CLAUDE.md does not point at .claude/skills/<name>/SKILL.md for: %s" % missing)
+
+
 if __name__ == "__main__":
     unittest.main()

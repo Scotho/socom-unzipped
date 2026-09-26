@@ -22,7 +22,7 @@ code had been folded into a single function — so it had to be normalised and r
 code could be trusted (`ac7de47`, 2026-09-04).
 
 The target shape is the one the Nintendo 64 recompilation projects settled on, and it is the acceptance bar the owner
-set (quoted in `docs/LOOP_PROMPT.md`): **the game's logic stays recompiled; the renderer, audio, input and network are
+set (quoted in the `loop-iteration` skill, `.claude/skills/loop-iteration/SKILL.md`): **the game's logic stays recompiled; the renderer, audio, input and network are
 native code written for this project.** What is still emulated is the console around the game — the EE kernel and
 scheduler, the DMA controller, the vector units, the IOP services at the RPC boundary.
 
@@ -57,8 +57,8 @@ that would have produced this on its own.
 
 ## The loop
 
-There is no scheduler and no framework. The loop is a controller session working one page — `docs/LOOP_PROMPT.md` —
-one iteration after another, for as long as the owner leaves it running. Seven steps, in order:
+There is no scheduler and no framework. The loop is a controller session working one page — the `loop-iteration` skill,
+`.claude/skills/loop-iteration/SKILL.md` (until 2026-09-26 `docs/LOOP_PROMPT.md`) — one iteration after another, for as long as the owner leaves it running. Seven steps, in order:
 
 1. **Look before you touch.** Other sessions share the working tree; a modified file you did not modify is someone
    else's.
@@ -239,7 +239,7 @@ same shape: **turn a judgement into something that can fail.**
 | `docs/KNOWN.md` | Proven, believed, retracted, and what will bite again. It wins on any disagreement |
 | `docs/CURRENT_SPRINT.md` | The live queue |
 | `docs/HANDOFF.md` | What a new controller reads first |
-| `docs/LOOP_PROMPT.md` | The loop, in full, carrying no state |
+| `docs/LOOP_PROMPT.md` | A pointer to the loop's four skills in `.claude/skills/` (the loop in full until 2026-09-26) |
 | `docs/DEVELOPING.md` | The build, the tests, the knobs, the harness |
 | `docs/GIT_STRATEGY.md` | Branches, slices, tags, releases |
 | `docs/DOC_MAINTENANCE.md` | The document classes and the checks that hold them |

@@ -40,12 +40,10 @@ Bash rules: the PreToolUse hook `scripts/hooks/claude_pretool.sh` -> `tools_py/h
 
 ## Procedures, by name
 
-- `loop-iteration` -- every loop firing, steps in order: `docs/LOOP_PROMPT.md`.
-- `agent-worktree` -- create, brief, review, merge and remove an agent's tree: `scripts/agent_worktree.sh`,
-  `docs/HANDOFF.md` section 5.
-- `run-gate` -- a build or game run and its record: `scripts/check_quiet_gate.sh`, `scripts/run_detached.sh`,
-  `docs/HANDOFF.md` section 5 rules 5-6.
-- `sprint-close` -- the close review and the known-issue stack review: `docs/DOC_MAINTENANCE.md` sections 5 and 7.
+- `loop-iteration` -- every loop firing, steps in order: `.claude/skills/loop-iteration/SKILL.md`.
+- `agent-worktree` -- create, brief, review, merge and remove an agent's tree: `.claude/skills/agent-worktree/SKILL.md`.
+- `run-gate` -- a build, a game run or the gate, and its record: `.claude/skills/run-gate/SKILL.md`.
+- `sprint-close` -- the two close reviews, the PR and the tag: `.claude/skills/sprint-close/SKILL.md`.
 
 ## The lock
 
