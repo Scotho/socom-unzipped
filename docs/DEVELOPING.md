@@ -69,7 +69,15 @@ owner-specific literals in the git-ignored `leak_extra.txt`. Install the hooks w
 `[general] names = "socom2_names.csv"` in `recomp/socom2.toml` (opened relative to the directory the recompiler
 runs in, which `build.sh` makes `recomp/`; the r0004 toml names `socom2_names_r0004.csv`) makes the recompiler use
 the sidecar's `Name` for the generated identifier, the output filename and the `// Function:` comment —
-`<Name>_0x<start>.cpp`, headed `// Function: <Name> (identity <map name>)`.
+`<Name>_0x<start>.cpp`, headed (since Sprint 13 N2, `a517291a`; `function_emitter.cpp`) by two lines:
+
+```
+// Function: <Name>
+// Name source: socom2_names.csv row 0x<8-digit start> (map name <map name>)
+```
+
+The row is the sidecar's own padded spelling of the address, so it greps; the map name is the one the recompiler
+still reads for extent and stubbing.
 **The `Name` column of `recomp/socom2_ghidra.csv` is not where a name goes:** it is Ghidra's export, and to this
 recompiler a name there is the function's identity — it decides the extent and can stub the body by name
 (research/57 §4, ruling S12-R13). Do not rename anything there. A function still called `FUN_…` or `sub_…` has no
@@ -98,8 +106,11 @@ python -m tools_py.apply_names recomp/socom2_ghidra.csv recomp/socom2_names.csv 
 
 prints every decision (applied, held, refused with its reason, deferred, contradiction) and writes nothing; drop
 `--report-only` to write, which it does only when the re-audit of the whole file is clean. A name given by hand is
-a proposals file like any other: columns `Address,Mangled,Pass,Score,Evidence`, `Pass=hand`, `Score=1.00`, the
-reason in `Evidence`, and a `#` header line citing where the reason is written down. The applier will not rename a
+a proposals file like any other (Sprint 13 N1; `recomp/names_proposals_hand_2026-09-25.csv` is the model): columns
+`Address,Current,Proposed,Mangled,Pass,Evidence`, `Pass=hand`, no `Score` (a hand row with a score is refused), the
+reason as a `file:line` in `Evidence`, and a `#` header line saying what the file is. For r0004, apply the same
+r0001 rows with `--through game/r0004/match.json`: each address travels only where the matcher placed it `exact`,
+as `Pass=carried:hand`, and every other is printed `NOT CARRIED`. The applier will not rename a
 name it already wrote (`refused: sidecar disagrees`): a wrong applied name is a finding for the controller, settled
 by a ruling and a holds-file line, not a second proposal.
 
@@ -110,8 +121,10 @@ suite: `test_the_tracked_csv_and_sidecar_agree` (`tools_py/tests/test_name_prove
 tracked pairs, and `tools_py/tests/test_toml_names_agree.py` holds every `[general].stubs` selector of
 `recomp/socom2.toml` that has a sidecar row to that row's `Mangled` name, so the handler selector and the name
 cannot drift. **`./build.sh recomp` reads the sidecar**: `recomp/recomp_run.log` says `Loaded <n> display names from …socom2_names.csv`, and
-if it says `no names file` instead, the path did not resolve and the output carries the map's placeholder names —
-the recompiler treats that as information, not an error, so look for the line.
+`build.sh` prints that line as `recomp: names: Loaded <n> display names …`. If the toml's path does not resolve, the
+recompiler writes a `[warning] names` event (since `9cafac47`, #48) and `build.sh` prints
+`WARNING: names: names file does not resolve: …`; the output then carries the map's placeholder names. The build
+does not fail on it, so look for the line.
 
 How many names are applied, by which pass, and what is proven on the owner's machine: the task table and the Log of
 `docs/superpowers/plans/2026-09-24-sprint-12.md`, and research/47–61 for what each pass measured. Two recomps are
@@ -619,10 +632,10 @@ only ever grow, so more than the number here is fine and fewer is a regression t
 
 | # | command | the line that says it worked |
 |---|---|---|
-| 1 | `./build.sh recomp` | `recomp: 14882 files, unhandled=114399, unmapped=<n>` — and `Recompilation completed successfully` at the end of `recomp/recomp_run.log`, which also carries `Loaded 1840 display names from socom2_names.csv` (2026-09-25; the number grows with the sidecar — its absence means the names were not applied and every function is still `FUN_`/`sub_`). **`unhandled=` is not a failure**: it counts `unhandled-instruction` lines in the log, which the recompiler emits and carries on from, and the exe built from exactly this generated code is the one the gate passes 3/3 on (measured twice on 2026-09-21, identically, in two working trees). What would be a failure is a non-zero exit (the last 20 log lines are printed then) or a file count that fell. `unmapped=` (since 2026-09-24) counts `unmapped-continuation` warnings: continuation pcs — a call's return, a syscall's return, a not-taken branch's fallthrough — that no recompiled row owns, each one a `[guest-branch:missing-target]` waiting for a thread to reach it. It is read, not gated, like `unhandled=`; r0001 printed `unmapped=0` on 2026-09-24 (chain 18), and a value that climbs after a map change is the map's holes, not the recompiler's. |
+| 1 | `./build.sh recomp` | `recomp: 14882 files, unhandled=114399, unmapped=<n>` — and `Recompilation completed successfully` at the end of `recomp/recomp_run.log`, which also carries `Loaded 1871 display names from socom2_names.csv` (2026-09-25, after Sprint 13 N1; r0004's reads `Loaded 1736`; the number grows with the sidecar — its absence means the names were not applied and every function is still `FUN_`/`sub_`). **`unhandled=` is not a failure**: it counts `unhandled-instruction` lines in the log, which the recompiler emits and carries on from, and the exe built from exactly this generated code is the one the gate passes 3/3 on (measured twice on 2026-09-21, identically, in two working trees). What would be a failure is a non-zero exit (the last 20 log lines are printed then) or a file count that fell. `unmapped=` (since 2026-09-24) counts `unmapped-continuation` warnings: continuation pcs — a call's return, a syscall's return, a not-taken branch's fallthrough — that no recompiled row owns, each one a `[guest-branch:missing-target]` waiting for a thread to reach it. It is read, not gated, like `unhandled=`; r0001 printed `unmapped=0` on 2026-09-24 (chain 18), and a value that climbs after a map change is the map's holes, not the recompiler's. |
 | 2 | `./build.sh runtime` | `built dist/socom2.exe` (the launcher lands beside it) |
-| 3 | `./build.sh test` | First the Python suite's `OK` (row 4), then `Total Tests: 892` / `Passed: 892` / `Failed: 0` (2026-09-25, this machine, the tree at `eb190a42`; the Linux runner runs one platform-guarded case fewer, so its count one below is not a regression), then `PASS: vram diff against 1.00% tolerance, checked=15 skipped=0` |
-| 4 | `python -m unittest discover -s tools_py/tests -t .` | The same suite `./build.sh test` runs first — run it alone when you changed only Python. **`OK`, with no failures, is the bar** — match that, not a number. The count only ever grows: `Ran 2795 tests` (2026-09-25, this machine and the Windows runner, the tree at `eb190a42`; the Linux runner ran 2797 at the same head). The **skip** count is not a constant and is not worth matching, because cases skip on what you have (a disc extracted into `game/`, a worktree without one). |
+| 3 | `./build.sh test` | First the Python suite's `OK` (row 4), then `Total Tests: 940` / `Passed: 940` / `Failed: 0` (2026-09-25 23:31Z, this machine, the tree at `2eca9389`, Sprint 13 V3's green run; the Linux runner runs one platform-guarded case fewer, so its count one below is not a regression), then `PASS: vram diff against 1.00% tolerance, checked=15 skipped=0` |
+| 4 | `python -m unittest discover -s tools_py/tests -t .` | The same suite `./build.sh test` runs first — run it alone when you changed only Python. **`OK`, with no failures, is the bar** — match that, not a number. The count only ever grows: 3164 tests, `OK` with 134 skipped (2026-09-25 23:31Z, this machine, the tree at `2eca9389`, Sprint 13 V3's green run). Before it: `Ran 2795 tests` (2026-09-25, the tree at `eb190a42`, this machine and the Windows runner; the Linux runner ran 2797 at the same head). The **skip** count is not a constant and is not worth matching, because cases skip on what you have (a disc extracted into `game/`, a worktree without one). |
 | 5 | `python -m tools_py.parity.gate --stamp first_run` | `GATE PASS (3/3) -> logs\parity\gate\first_run` (15 to 17 minutes: three gates on 2026-09-25 took about 15, 17 and 16 — `s12_names_gate`, `s11_close_gate`, `s12_names_r0004_gate`, from the first file each wrote under `logs/parity/gate/<stamp>/` to its `summary.txt`; the game window opens and closes three times; do not touch the keyboard) |
 
 > Superseded 2026-09-25 (Sprint 13 R2, fix round 1): rows 1, 3 and 4 carried every earlier count (881, 880, 876 and
