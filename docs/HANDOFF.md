@@ -28,13 +28,12 @@ reach a commit message. The product name is
   round. Saves persist on simulated memory cards. 58-60 fps on the menus under load. Linux client builds and boots.
 - **Baselines: `docs/DEVELOPING.md` §"What a green run looks like" owns the suite counts** -- it is the single source and
   this line deliberately does not repeat them (they were `686/686` and `1457` here until 2026-09-22, four sprints after
-  they stopped being true). `./build.sh test` exit 0 on the renamed tree (2026-09-25). Last gates 3/3:
-  `s12_names_gate` (the renamed tree, exe `804dd172…`, PINS MATCH, 2026-09-25); Sprint 11's `s11_close_gate`,
-  `s11_picks_keep_gate`, and `s11_r0004_rebuild1` for r0004.
+  they stopped being true). The last gates are the open sprint's, named on `docs/CURRENT_SPRINT.md`'s
+  `baselines:` line (the one home; Sprint 13's as of 2026-09-25).
 - **Next free ruling number: R269.** (It read **R179** from 2026-09-20 to 2026-09-22 while R240 was in use -- and a
   collision had already happened once, an agent numbering from R200 into taken ground. `tools_py/tests/test_doc_maintenance.py`
   now fails when this line is not `max(R<n>) + 1`, so take your number from here and update this line in the same commit.)
-- **Where the loop is now (2026-09-25 08:40Z, LATEST) -- Sprint 13, "nothing carried twice", is OPEN on `sprint-13` off `main` at `74fe2a9b` (Sprint 12 merged as `v0.12.0`, Sprint 11 as `v0.11.0`, both that night).** Read `docs/CURRENT_SPRINT.md`'s "Sprint 13 — OPEN" block, then the plan `docs/superpowers/plans/2026-09-25-sprint-13.md` (its Log is the live state) and the audit it came from, `docs/audits/2026-09-25-project-audit.md` (the master list of everything unfinished, with a disposition each; §3 is the owner's sitting). This machine's checkout is on `sprint-13`; agents work in `C:\projects\wt-s13-*` worktrees; the lock is the loop's at night (S13-R2). One private note exists under the ignored `vm/security/` that no tracked document names until its task (U6) is merged and gated.
+- **Where the loop is now (2026-09-25 08:40Z, LATEST) -- Sprint 13, "nothing carried twice", is OPEN on `sprint-13` off `main` at `74fe2a9b` (Sprint 12 merged as `v0.12.0`, Sprint 11 as `v0.11.0`, both that night).** Read `docs/CURRENT_SPRINT.md`'s "Sprint 13 — OPEN" block, then the plan `docs/superpowers/plans/2026-09-25-sprint-13.md` (its Log is the live state) and the audit it came from, `docs/audits/2026-09-25-project-audit.md` (the master list of everything unfinished, with a disposition each; §3 is the owner's sitting). This machine's checkout is on `sprint-13`; agents work in `C:\projects\wt-s13-*` worktrees; the lock is the loop's at night (S13-R2). The sprint's one security finding (Task U5) is fixed and public without its mechanics: U6 merged (`461cfa0d`) and gated (`s13_u6_gate` 3/3), and `docs/KNOWN.md` §1 and `SECURITY.md` say what is refused (`4587afae`); the mechanism stays out of every tracked document (S13-R4).
 - **Older pick-up points:** the ten earlier "Where the loop is now / was" bullets (2026-09-20 09:00 UTC to
   2026-09-25 morning), the two "Picking up after ..." blockquotes, and three state bullets that had gone stale
   ("Sprint 11 is open", "nobody else is in the tree as of 2026-09-19" -- §8 is where that lives -- and "a
@@ -45,7 +44,7 @@ reach a commit message. The product name is
 
 ## 3. Your first hour (all of it lock-free; start nothing heavy)
 
-1. `git status --short`, `git log --oneline -15`, `gh run list --branch sprint-11 --limit 3`,
+1. `git status --short`, `git log --oneline -15`, `gh run list --branch <the open sprint's branch> --limit 3` (`docs/CURRENT_SPRINT.md`'s `branch:` line),
    `bash scripts/loop_lock.sh check`. Know who else is in the tree before you edit anything. Then
    `bash scripts/install_hooks.sh` -- the leak check before every commit and push (rule 2 below is enforced, not
    just written); `git config core.hooksPath` says `scripts/hooks` when it is on. Then
@@ -56,9 +55,8 @@ reach a commit message. The product name is
    kind of fact, and what the sprint close checks)**; **`docs/GIT_STRATEGY.md` §7 (the known-issue stack: how a
    defect becomes an issue, how it is cited, closed and reviewed)**; the open sprint's spec and plan; the top block of
    `docs/STATUS.md`.
-3. Then `docs/LOOP_PROMPT.md` -- the shape of one iteration -- and begin at the first open item of the current
-   plan's task list (`docs/superpowers/plans/2026-09-23-sprint-11.md`), with `docs/CURRENT_SPRINT.md`'s road table as
-   the order above it.
+3. Then `docs/LOOP_PROMPT.md` -- the shape of one iteration -- and begin at the first open item of the open sprint's
+   plan, named on `docs/CURRENT_SPRINT.md`'s `plans:` line (its task table and its Log are the order and the state).
 
 Dates: the documents and commit subjects are stamped 2026-09-20 for a session the host clock calls 2026-09-19. Do not
 "correct" either; when you write a date, use the host's.
@@ -111,7 +109,9 @@ holds: order by what the owner meets first, then by dependency, then by cost.
    worktree's copy took a *private* lock and this rule was silently not enforced across worktrees: a build ran beside
    a running capture on the night of the Sprint 10 close. The default follows git's common dir now, so every worktree
    of this repository resolves to one lock; if you ever override it, `LOOP_LOCK_PATH` must be the same path for
-   everyone.
+   everyone. **The lock queues (since Sprint 13 H2, `49d6fba2`):** `--wait` is in minutes and writes a ticket served in
+   arrival order, and a take without `--wait` is refused while anyone is queued -- `docs/LOOP_PROMPT.md`'s "Lock
+   protocol" is the reference.
 7. **The VM `socom-linux` is powered off; leave it off unless a task needs it and the host is quiet. Never touch the
    owner's VM named "Work".** `scripts/vm_sync.sh` is the only door (ssh/tree/generated/iso); keys are in `vm/keys`
    (git-ignored).
@@ -202,12 +202,12 @@ rather than rule. At most two C++-building agents at once.
 7. **A long-lived `tools_py.parity` helper blocks the lock's reap** (a DNS stub ran for two days). If the lock will not
    reap, look for a stray python on the busy list.
 8. **Never read a ladder CRASH as NO-KILL** (exit 4 = LOBBY-FAIL, 5 = CRASH, 7 = pin failed). Any `loop_lock.sh`
-   change needs `LOOP_LOCK_SLOW_TESTS=1` (about 16 minutes) before its commit.
+   change needs `LOOP_LOCK_SLOW_TESTS=1` (~16 min before Sprint 13's queue tests, longer now; `docs/DEVELOPING.md`) before its commit.
 9. **The VM lies in two ways:** three C++ cases are wall-clock flaky there and 18 Python cases fail for environment
    reasons -- read a VM suite by suite name, not by exit code; and llvmpipe renders at a few frames a second (the measured figure is `docs/KNOWN.md` §1's Linux title-stage
    row; this trap said "about 2 fps" until 2026-09-25, Sprint 13 S1), so no audio or
    frame-rate bar can be read there (R107b).
-10. **`docs/STATUS.md` is a log, newest on top, 2504 lines (2026-09-25, `wc -l`).** Only its "Current state" block
+10. **`docs/STATUS.md` is a log, newest on top.** Only its "Current state" block
     is current.
     `docs/ROADMAP.md` was rewritten 2026-09-22 and is now narrative and pointers only, never live state -- its §0 is
     a claim-by-claim audit of the old one (nine claims held, two were wrong, the rest overtaken). The Sprint 4-7
@@ -315,11 +315,12 @@ rather than rule. At most two C++-building agents at once.
   all answered (the plan's Log).
 - **Agents in worktrees** (`C:\projects\wt-*`, one branch each) whenever the controller has dispatched any. They
   never touch this tree; the controller merges. `.superpowers/sdd/<plan>/progress.md` is the ledger that says who
-  holds what. As of 2026-09-25 `git worktree list` gives three -- `wt-cherry` (`agent/picks-keep`, merged into Sprint 11), `wt-ci-fix`
-  (`agent/ci-fix`, merged) and `wt-s12` (`sprint-12`: the Sprint 12 proof and close ran there; remove it once the
-  Sprint 12 PR has merged) -- plus an orphan directory `C:\projects\wt-issues`
-  that is not a registered worktree; leave it until someone identifies it, and **rmdir the junctions before
-  `git worktree remove`**.
+  holds what. `git worktree list` is the truth; its shape (2026-09-25): the durable ones -- `socom_pc_web` (the browser side
+  project), `wt-cherry` (`agent/picks-keep`, merged into Sprint 11) and `wt-ci-fix` (merged) -- plus one
+  `wt-s13-<task>` (generally `wt-s<sprint>-<task>`) per agent in flight, created by `scripts/agent_worktree.sh
+  create` and removed at merge by `scripts/agent_worktree.sh remove` (a merged one left behind is removed the same way). An orphan
+  directory `C:\projects\wt-issues` is not a registered worktree; leave it until someone identifies it, and
+  **rmdir the junctions before `git worktree remove`** (the script does).
 - **Relays owed to the site session, not yet confirmed done:** (1) drop the "keyboard/mouse support" claim from
   s2u.scotho.com (the owner's instruction, 2026-09-20); (2) after a report is sent, the site's form should say that
   contributors can also open a GitHub issue and quote the `BR-` id (Sprint 11 Goal 7; not urgent).

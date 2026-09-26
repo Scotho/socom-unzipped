@@ -44,9 +44,10 @@ next ruling:  R269 (R265-R268, 2026-09-25 night, the project audit `docs/audits/
 baselines:    the suite counts live in `docs/DEVELOPING.md` ("What a green run looks like") and nowhere else -- this
               line said C++ 686/686 and Python 1457 from 2026-09-20 to 2026-09-22, four sprints after they stopped
               being true, which is why `tools_py/tests/test_doc_maintenance.py` now refuses an undated count outside
-              that file. `./build.sh test` exit 0 on the renamed tree (2026-09-25); last gates: `s12_names_gate`
-              (3/3 with PINS MATCH on the renamed tree's exe, sha256 804dd172..., 2026-09-25), before it Sprint 11's
-              `s11_close_gate`, `s11_picks_keep_gate`, `s11_r0004_rebuild1` (r0004); audio parity
+              that file. `./build.sh test` exit 0 on the renamed tree (2026-09-25); last gates (Sprint 13,
+              2026-09-25): `s13_proof4_gate` 3/3 PINS MATCH (exe f90eeec0..., 22:16Z), `s13_v4_gate1` PASS on the
+              same exe (23:51Z), `s13_proof3_gate` 3/3 (r0001, 20:54Z), `s13_names_r0004_gate` 3/3 PINS MATCH (r0004,
+              d027546d...); the plan's Log has each; audio parity
               `s9_q1_parity_ours2` 31/48 (2026-09-20, unchanged since)
 ```
 
@@ -73,8 +74,8 @@ online and the box. The bar: nothing leaves the sprint carried twice without a r
 compiled; the record under its ceilings; the first ten minutes measured; the gate 3/3 plus one ladder run and one
 mixed leg on the sprint's final exe. The plan's Log is the live state; this block gains its table at the close.
 
-**Owner decisions:** the audit's §3 (O1–O13) and the plan's D1–D2, each with the default the loop is on; `docs/HUMAN_TASKS.md`
-carries them once Task R4 reduces it.
+**Owner decisions:** `docs/HUMAN_TASKS.md` carries them, O1–O15 (reduced by Task R4, `4adbf2bc`, `1ed975a4`), with
+the plan's D1–D2; each has the default the loop is on.
 
 ## Sprint 12 — CLOSED 2026-09-25 (merged to `main` as `v0.12.0` at `74fe2a9b`, PR #50; the record of the sprint is the block below)
 
@@ -218,38 +219,20 @@ file. The two blocks below stay because the standing backlog is the filler list 
 (`docs/DOC_MAINTENANCE.md`, the first review's lesson 1) and the ledger says it is the one home of R181-R244;
 Sprint 11's ledger R245-R263 stays above for the same reason.*
 
-#### Standing backlog, carried from the roadmap 2026-09-23 (filler; no sprint owns these)
+#### Standing backlog, carried from the roadmap 2026-09-23 -- superseded 2026-09-25
 
-Moved here verbatim from `docs/ROADMAP.md` §6, which is class N and may hold no task list. Nothing here is
-scheduled: these are the items a sprint takes when it has lock-free time and nothing better ranked. Two of them
-already have live homes and are repeated here only so the queue is in one place -- item 4's online freeze and item
-7's voice peek (R221) are both `docs/KNOWN.md` §2 rows with their experiments attached. Two have survived three
-sprints without an owner.
+**Superseded 2026-09-25 by R265 and R267** (`docs/audits/2026-09-25-project-audit.md` §4). The eight-item filler list
+that stood here (moved from `docs/ROADMAP.md` §6 on 2026-09-23; its text is in this file's history before the Sprint 13
+close) is no longer the queue: `docs/BACKLOG.md` is the carry's one home (R267), and the rows R265 declined are in
+`docs/backlog_ruled_out.txt` with their bars. Where each item went: 1, the EE soft-double chain, **declined** by R265
+(`soft-double-chain`); 2, HLE audit leg three, **owned** by Sprint 13 Task C2 (the plan's C2 row); 3, the gameplay-state
+probe, **declined as a gate leg** by R265 (`gameplay-state-probe`), and 5, its `rx`-hold teleport count, goes with it;
+4, the online freeze, is issue #34 (`docs/KNOWN.md` §4), its `waitReadable` shape bounded by V7 (`160ffdae`) with the
+console-peer run as its bar; 6, the two believed render rows, carry R265's retire-or-test bar (`render-believed-rows`);
+7, voice, and 8, multiplayer security, are `docs/BACKLOG.md` rows (the `voice-*` rows, `multiplayer-security`).
 
-1. **The EE soft-double chain** (`litodp -> dpmul -> dpdiv -> exp -> dptofp`) against host `double`, and a faithful
-   `__ieee754_rem_pio2f` port against a reference. Open and unowned since 2026-09-12.
-2. **HLE audit leg three** -- consumer readings for research/20's flagged rows. Never started.
-3. **The gameplay-state correctness probe** as the gate's correctness leg. Never built.
-4. **The online freeze root cause** -- research/29's **shape 2** (`socom2_libnetb::waitReadable` blocking the EE
-   executor for up to 10 s, not excluded from the guest clock) is still a live candidate; the CLUT and clock fixes
-   addressed a different freeze. It needs a peer that stops sending, and the mixed match that can produce one now
-   runs **both ways** on the hosted server (Sprint 10 Goal 3) -- so this is testable in a way it was not when
-   research/29 was written.
-5. **The live teleport count.** The single-player turn teleport itself is **fixed and proven** (`a81eb74`,
-   2026-09-15: our `sceGsExecLoadImage`/`StoreImage` HLE multiplied the BITBLTBUF block pointer by 8, smearing the
-   motion-pack restore) -- *not* by the root-motion trace the archived roadmap planned, which is worth recording as
-   another finding-A case. What is still owed is the `rx`-hold teleport count from the guest-value probe, which is
-   item 3's instrument and lands with it.
-6. **The transition residual strip** and **the intro-cinematic freeze** -- both still *believed*, both still with the
-   experiment that would settle them unrun (`docs/KNOWN.md` §2).
-7. **Voice** -- R221: one peek of `0x4415c4/0x4415c5` in a live round says whether the talk slot is bound at all.
-8. **Multiplayer security** -- `SECURITY.md`'s "Known" section. The largest gap between what the project is and
-   what its README has to warn about. Sprint 11's milestone S closed the one reported hole on both sides
-   (2026-09-23; the README narrowed the same day, Task 4); everything else in the network path is unaudited.
-
-**One citation that does not resolve in this tree:** R243 cites `docs/research/40-upstream-divergence.md`, which lives
-on branch `agent/upstream` (`83c02d9`) and has not been merged forward. `docs/research/41-cucumber-fork.md` is here
-(`18b8c78`). Merging `agent/upstream` is milestone U's first act in Sprint 11.
+**Resolved 2026-09-25:** the citation R243 makes, `docs/research/40-upstream-divergence.md` (`83c02d98`), is in this
+tree; the note that said it lived only on `agent/upstream` is withdrawn.
 
 #### Sprint 10's rulings ledger, R181-R244 (reconciled at the close; this table is the one home)
 
@@ -321,7 +304,7 @@ working notes behind this table are `.superpowers/sdd/2026-09-22-sprint-10-close
 | R240 | "the join driver **presses REFRESH LIST before JOIN GAME, and takes a channel**" | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, the playthrough block | stands; landed in `00d8348`, and R244 proves its path through the ladder |
 | R241 | "the four external-repo items … **become Sprint 11 milestone U, early**" | `docs/archive/sprints-7-12/2026-09-22-sprint-10-close.md` | stands |
 | R242 | "**Goal 4's per-map kill routes carry to Sprint 11 as [A] filler**; the speed-freeze half is re-measured from existing logs" | `docs/archive/sprints-7-12/2026-09-22-sprint-10-close.md` | stands -- it supersedes road-table row 3 in `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` |
-| R243 | "milestone U item 1's **step (b) is redefined as a differential test**, not a music-parity number" | `docs/archive/sprints-7-12/2026-09-22-sprint-10-close.md` | stands; committed `564ef99`. Its citation `docs/research/40-upstream-divergence.md` is on `agent/upstream` |
+| R243 | "milestone U item 1's **step (b) is redefined as a differential test**, not a music-parity number" | `docs/archive/sprints-7-12/2026-09-22-sprint-10-close.md` | stands; committed `564ef99`. Its citation `docs/research/40-upstream-divergence.md` was on `agent/upstream`; in this tree since (`83c02d98`) |
 | R244 | "**W8's fallback run is not run separately**: the ladder streak proves the join driver's R240 path" | `docs/archive/sprints-7-12/2026-09-22-sprint-10-close.md` | stands; committed `22d1900` |
 
 
