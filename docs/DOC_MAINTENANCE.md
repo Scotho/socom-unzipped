@@ -94,7 +94,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `SECURITY.md` | **C** | controller | The "Known: the game's own network code" section is live in spirit; review it whenever the network path changes |
 | `THIRD_PARTY_NOTICES.md` | **G** | licence test | A test fails on a dependency, vendored directory or release DLL without a row |
 | `CLAUDE.md` | **C** | controller | Loaded into every Claude Code session at start. A map, never state: at most 60 lines, no suite count, the live documents and the four skill names named (`ClaudeMdTest`). Sprint 14 I1 |
-| `docs/STATUS.md` | **L** | controller | **Only the "Current state" block is live.** Everything under it is a dated log, newest first, and is class S by paragraph — an entry keeps the numbers it was written with, on purpose. This is why STATUS is exempt from the single-source count rule |
+| `docs/STATUS.md` | **L** | controller | The "Current state" block (its ceiling is check 7's) and one pointer paragraph: nothing else since 2026-09-26 (Sprint 14 S1, R272). The dated log that stood under the block is `docs/archive/STATUS-log-to-2026-09-26.md`; what merged is `docs/CHANGELOG.md`, why is the plan's Log. Held to the single-source count rule like any L document |
 | `docs/KNOWN.md` | **L** | every task | Proven vs believed, with the artefact for each. **It wins on any disagreement.** The model this schema is generalised from |
 | `docs/HAZARDS.md` | **L** | every task | The standing hazards by the area each bites -- KNOWN's section 4 until 2026-09-26 (R270, Sprint 14 I5). A hazard is a trap, not a claim; retired in place, never deleted; KNOWN wins on any disagreement |
 | `docs/CURRENT_SPRINT.md` | **L** | controller | The live queue and the road to the next tag |
@@ -109,6 +109,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/BACKLOG.md` | **G** | `tools_py.issues backlog` | The carry's one home (R267): the open issues with their milestone, carried count and closing bar, then `docs/backlog_ruled_out.txt` as a second table. Regenerated and committed at every sprint close (§7 step 5) and whenever the list changes; `backlog --check` exits 1 on a stale file, and the docs test runs its `--offline` half |
 | `docs/backlog_ruled_out.txt` | **L** | controller | Not a markdown file, registered because it is the source `docs/BACKLOG.md` renders: one row per unfinished item ruled not to be an issue, with its ruling (an R-number or `no issue`) and its bar. A row leaves it when it becomes an issue or a task |
 | `docs/RULINGS.md` | **G** | `tools_py.rulings` | Every ruling with its status (active, superseded, retracted, withdrawn, vacant) and its home, global newest first, then the `S13-R<n>` and `S12-R<n>` namespaces; held to `docmaint.ruling_records()` by `rulings --check` (exit 1 on a stale file). Regenerate in the commit that makes or changes a ruling; `--check` in the close. Sprint 14 D1 |
+| `docs/CHANGELOG.md` | **G** | `tools_py.changelog` | Every merge commit, grouped by the oldest `v*` tag that contains it, newest first: the first-parent line and the lines of the branches those merges brought in (agent branches, `main` merged into a sprint). Held to `git log` by `changelog --check` (exit 1 on a stale file); the suite holds the page to a render of the commit that last wrote it. Regenerate at every merge to a sprint branch (the merge's follow-up commit) and at the close. Replaced STATUS's hand-written log. Sprint 14 S1, R272 |
 | `docs/ROADMAP.md` | **N** | controller | Narrative and pointers only. Rewritten 2026-09-22; its §0 is the audit of what it replaced |
 | `docs/STORY.md` | **N** | story | Every entry cited; `tools_py/story/cite.py` fails on a dead hash or an unwitnessed run |
 | `docs/HOW_IT_WAS_BUILT.md` | **N** | controller | How the project was made, for a stranger: the method, the owner's share and the agents', and the process failures worth keeping. Pointers only — the live documents own every current number. `README.md` links it |
@@ -125,6 +126,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/archive/LOOP_PROMPT-to-2026-09-26.md` | **A** | — | Cut 2026-09-26 (Sprint 14 I2): `docs/LOOP_PROMPT.md` verbatim before it became a pointer, superseded by the four skills. Every "LOOP_PROMPT step N", "Every iteration" or "Lock protocol" cited before that day means this file |
 | `docs/archive/HANDOFF-loop-history-to-2026-09-25.md` | **A** | — | Cut 2026-09-25 (Sprint 13 Task R1, R268): HANDOFF §2's older pick-up points, §4 and §10, verbatim |
 | `docs/archive/HUMAN_TASKS-to-2026-09-25.md` | **A** | — | Cut 2026-09-25 (Sprint 13 Task R4): the owner's queue before it became one table, verbatim, under a disposition for each of its 87 items. Every HUMAN_TASKS section, item or line cited before that day means this file |
+| `docs/archive/STATUS-log-to-2026-09-26.md` | **A** | — | Cut 2026-09-26 (Sprint 14 Task S1, R272): everything under STATUS's "Current state" block, verbatim as it stood at `04d75f6f` (the dated log, 2026-09-05 to the Sprint 13 close), superseded by `docs/CHANGELOG.md` and the plans' Logs. Every STATUS entry cited by date before that day means this file; line N there is line N-5 here |
 | `docs/archive/KNOWN-section-4-to-2026-09-26.md` | **A** | — | Cut 2026-09-26 (Sprint 14 Task I5, R270): KNOWN's section 4, the 104 standing hazards, verbatim as they stood at the split. Every "KNOWN §4" written before that day resolves to `docs/HAZARDS.md` by headline, or to this file as it was |
 | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` | **A** | — | Cut 2026-09-25 (Sprint 13 Task R1, R268): the Sprint 9-11 records, verbatim. The ruling counter reads it (`max_ruling()` scans all of `docs/archive/`) |
 | `docs/archive/HANDOFF-reference-to-2026-09-13.md` | **A** | — | |
@@ -142,8 +144,8 @@ Sprint 13 Task R3's, all added 2026-09-25):
 2. **The ruling counter** — `docs/HANDOFF.md`'s "Next free ruling number: R\<n\>" must be exactly `max(R<n>) + 1` over
    the live documents. *Catches the R179-against-R241 collision, which had already happened once.*
 3. **Single-source suite counts** — `Total Tests: <n>`, `Ran <n> tests` and `<n>/<n>` baselines may appear only in
-   `docs/DEVELOPING.md`. S and A documents are exempt (they are records), and `docs/STATUS.md` is exempt by the §3
-   note. *Catches the 686/686 defect, in all four places it had reached.*
+   `docs/DEVELOPING.md`. S and A documents are exempt (they are records); `docs/STATUS.md` is not, since its log was
+   archived (2026-09-26, R272), and a line under a dated heading is dated by it. *Catches the 686/686 defect, in all four places it had reached.*
 4. **Snapshots are dated** — every S file has a date in its filename or in its first fifteen lines. *Catches a
    `REPORT.md` that reads as the current report.*
 5. **Archives announce themselves** — every A file says "archived" or "superseded" in its first fifteen lines, in any

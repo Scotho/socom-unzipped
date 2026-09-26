@@ -299,6 +299,15 @@ class PlantedDefectsTest(unittest.TestCase):
         self.write("README.md", "# r\n\nRun on 2026-09-21: C++ 686/686.\n")
         self.assertEqual(docmaint.report()["count_offenders"], [])
 
+    def test_an_undated_count_in_status_state_block_fires_check_3(self):
+        """STATUS has no exemption since its log was archived (Sprint 14 S1, R272): the block is live state, and
+        its "## Current state" heading carries no date to excuse a bare count under it."""
+        self.write("docs/STATUS.md", "# s\n\n## Current state (keep it short)\n- tests: C++ 944/944\n\n"
+                                     "## Where the log went\n\nArchived.\n")
+        self.registry([("docs/STATUS.md", "L"), ("docs/DOC_MAINTENANCE.md", "C")])
+        hits = docmaint.report()["count_offenders"]
+        self.assertTrue(any(h[0] == "docs/STATUS.md" and h[1] == 4 for h in hits), hits)
+
     def test_a_count_under_a_dated_heading_does_not_fire_check_3(self):
         self.write("README.md", "# r\n\n## 2026-09-18 entry\n\nC++ 554/554 that day.\n")
         self.assertEqual(docmaint.report()["count_offenders"], [])
