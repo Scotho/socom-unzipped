@@ -7,7 +7,7 @@
 #   MINUTES=2 bash scripts/parity/capture_audio_out.sh  # two: the check that the capture's own records run
 #
 # It runs the tools and the runner of the tree it lives in (TOOLS) over the game, dist/ and logs/ of the data tree
-# (SOCOM_DATA_ROOT, the main tree by default) -- an agent worktree never holds game/ (HANDOFF). Tracked here, not
+# (SOCOM_DATA_ROOT, the main tree by default) -- an agent worktree never holds game/ (the agent-worktree skill). Tracked here, not
 # under logs/: logs/ is ignored, and the worktree it used to live in disappears when this branch merges (audio-out
 # fix round 2, R8). After the merge the two trees are the same one and nothing below changes.
 TOOLS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

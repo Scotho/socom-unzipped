@@ -8,7 +8,7 @@
 # The capture records what Windows sends to the DEFAULT output endpoint (WASAPI loopback) while drive.py plays the
 # step script on the target -- so it measures the whole path to the speaker, which is what the owner hears and what
 # the visual gate's audio dump never could. Reference: scripts/parity/refs/audio_<script>.pcsx2.json, pinned from a
-# PCSX2 capture of the same script. Windows routes PCSX2 per app (KNOWN section 4): instance A's override silences
+# PCSX2 capture of the same script. Windows routes PCSX2 per app (docs/HAZARDS.md audio): instance A's override silences
 # it at every endpoint, so for a pcsx2 capture this script removes that override for the run and restores it after.
 #
 # W7 (fix wave A, 2026-09-22): `drive_s` (the game's own run length, drive.py --seconds) and `record_s` (the
@@ -19,7 +19,7 @@
 # recording (scripts/parity/mission_music_long.sh is the caller that sets it; unset, nothing is written).
 set -u
 # Two roots (audio-out fix round 1, I3). The game, its data and the capture directories live in the DATA root
-# (game/, dist/, logs/): the main tree, or SOCOM_DATA_ROOT -- an agent's worktree never holds game/ (HANDOFF). The
+# (game/, dist/, logs/): the main tree, or SOCOM_DATA_ROOT -- an agent's worktree never holds game/ (the agent-worktree skill). The
 # audio tools come from beside this script (TOOLS_ROOT), so a capture run from a worktree exercises the worktree's
 # recorder, monitor and scorers: `python -P` keeps the cwd off sys.path and PYTHONPATH names the tools' tree. The
 # drive and run.sh stay the data root's: they find the game by their own tree.
@@ -110,7 +110,7 @@ case "$cmd" in
     exe=socom2.exe; [ "$target" = pcsx2 ] && exe=pcsx2-qt.exe
     pya -m tools_py.parity.app_volume hold "$exe" --seconds "$drive_s" > "$OUT/app_volume.log" 2>&1 &
     VOL=$!
-    # KNOWN §4 / issue #38: what the game ran under, written the moment before it launches -- every PS2X_* exported
+    # docs/HAZARDS.md harness / issue #38: what the game ran under, written the moment before it launches -- every PS2X_* exported
     # here, the gate's env pin over them, the executable and its digest (the "off" half of an A/B needs the binary's
     # identity, not only the knobs). The shared writer (write_env.sh); run.sh adds PS2X_DEV=1 itself when unset.
     write_env_ps2x "$OUT" "audio_parity.sh capture $target $(basename "$script"); run.sh exports PS2X_DEV=1 when it is unset"

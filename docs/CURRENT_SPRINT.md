@@ -1,50 +1,40 @@
 # Current sprint
 
-The loop's aim. `docs/LOOP_PROMPT.md` reads this file instead of carrying a sprint pointer of its own; the controller
+The loop's aim. The `loop-iteration` skill (`.claude/skills/loop-iteration/SKILL.md`) reads this file instead of carrying a sprint pointer of its own; the controller
 updates it when a sprint opens or closes, and whenever the order changes. **If you are a new controller, read
-`docs/HANDOFF.md` first** -- it says where the project is and what the traps are; this file says what to do next.
+`docs/HANDOFF.md` first** -- it says what is in flight and what is owed (the traps are `docs/HAZARDS.md`); this file says what to do next.
 
 **The goal every sprint serves:** SOCOM II running natively on PC with online play, that a stranger runs by pointing the
 launcher at their own r0001 ISO and playing a round against another stranger on a hosted Horizon server -- from a public
 repository another person can fork, build and contribute to.
 
 ```
-branch:       sprint-13 -- CLOSED 2026-09-26 04:17Z (the close-out commit bbdd26b8; PR #61 sprint-13 -> main is OPEN and waits
-              on the owner's merge, HUMAN_TASKS O17 -- the ruleset's extra-approval rule and the gh token's missing
-              workflow scope stop the loop; the tag v0.13.0 goes on the merge commit after;
-              Sprint 12 merged as v0.12.0 at 74fe2a9b, PR #50, Sprint 11 as v0.11.0 at 173608af, PR #49). The next
-              sprint's controller opens sprint-14 off main after the merge; this machine's checkout stays on sprint-13
-              until then. See "Sprint 13 -- CLOSED" below, then the two earlier CLOSED blocks.
-spec:         docs/superpowers/specs/2026-09-25-sprint-13-nothing-carried-twice-design.md (eight milestones V, R, H,
-              C, U, S, N, O with a bar each; the acceptance bar is its section 4). The Sprint 12 and Sprint 11 specs
-              closed with v0.12.0 and v0.11.0.
-plans:        docs/superpowers/plans/2026-09-25-sprint-13.md (the task table, the Log newest first, the rulings
-              S13-R<n>); it came from docs/audits/2026-09-25-project-audit.md (the master list: 133 carry rows, six
-              reports, R265-R268, the owner's sitting O1-O13). The Sprint 12 plan (its rulings S12-R1..R25) and the
-              Sprint 11 plan are closed and listed in their blocks below; Sprint 10's and older are in
+branch:       sprint-14 -- CLOSED 2026-09-26 16:28Z (the PR to main and the tag v0.14.0 follow; opened 05:17Z off main at 6a82caaa (the Sprint 13 merge, PR #61, tagged v0.13.0;
+              Sprint 12 merged as v0.12.0 at 74fe2a9b, PR #50; Sprint 11 as v0.11.0 at 173608af, PR #49). This
+              machine's checkout is on sprint-14 (the Sprint 14 controller session); agents work in worktrees on
+              agent/s14-* branches and the controller merges them. See "Sprint 14 -- CLOSED" below, then the Sprint 13
+              CLOSED block (12's and 11's are archived, see plans). No cloud session runs from 2026-09-26.
+spec:         docs/superpowers/specs/2026-09-26-sprint-14-guards-not-sentences-design.md (seven milestones G, I, W, D,
+              S, E, M with a bar each, the filler X1; the acceptance bar is its section 4; section 1.5 says what the
+              loss of the cloud changed). The Sprint 13, 12 and 11 specs closed with v0.13.0, v0.12.0 and v0.11.0.
+plans:        docs/superpowers/plans/2026-09-26-sprint-14.md (the task table, the Log newest first, the rulings
+              R269-R281 from the global counter -- no sprint-local names from this sprint on, R273); it came from
+              docs/audits/2026-09-26-autonomy-structure-review.md (nine findings, options A-I, six notes beside it).
+              The Sprint 13 plan (its rulings S13-R1..R14), the Sprint 12 plan (S12-R1..R25) and the Sprint 11 plan
+              are closed; Sprint 13 is listed in its block below, Sprints 12 and 11 in
+              docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md (moved 2026-09-26); Sprint 10's and older are in
               docs/archive/CURRENT_SPRINT-sprints-9-to-11.md (the 2026-09-25 split, R268).
-next sprint:  Sprint 14 "guards, not sentences" (its plan and spec under docs/superpowers/, committed by its own
-              controller's Task 0 after the merge), then Sprint 15 "borrowed confidence" (Sprint 14 D8). No cloud session
-              runs from 2026-09-26; the cloud handoff of 2026-09-25 never ran and is kept under a NEVER RUN banner.
-              Sprint 12 was "the readable image" (R263, 2026-09-24): it opened with the demo-name rename pass into the function map (R257 + the provenance sidecar R261, a recomp + runtime + r0001 gate), then Task 7c vtable slots through RTTI (the peer's scripts in tools_py/research/symbols/), BinDiff as the cross-check, the ccc types with the layout-age caveat, the toml names into the generated output.
-              Sprint 12 ran 2026-09-24/25 in a Claude cloud session on origin/sprint-12 (fifteen research notes,
-              47-61; rulings S12-R1..R25; every task's code half) and its local half (the proof, the merge, the
-              close) was session socom-pc-6c's: see the "Sprint 12 -- CLOSED" block below.
-              Sprint 11 was docs/superpowers/plans/2026-09-23-sprint-11.md -- nineteen tasks across milestones S (the chat hole),
-              U (upstream and external), R (r0004 groundwork), P (the public repository), with eight owner decisions
-              and the default each one proceeds on.
+next sprint:  Sprint 15 "borrowed confidence" (R276): docs/superpowers/specs/2026-09-26-sprint-15-borrowed-confidence-design.md
+              and docs/superpowers/plans/2026-09-26-sprint-15.md, PROPOSED, opened from the confidence register at
+              this sprint's close; the standing "visible defects first" order resumes inside it. Its origin, the
+              cloud handoff of 2026-09-25, never ran and is kept under a NEVER RUN banner
+              (docs/superpowers/plans/2026-09-25-borrowed-confidence-cloud-handoff.md).
 human tasks:  docs/HUMAN_TASKS.md      playtest script: docs/PLAYTEST.md
 git strategy: docs/GIT_STRATEGY.md     contributing: CONTRIBUTING.md
-next ruling:  R269 (R265-R268, 2026-09-25 night, the project audit `docs/audits/2026-09-25-project-audit.md` §4: the four
-              oldest backlog rows owned or declined, the six carried issues into Sprint 13, one home for the carry,
-              ceilings on the appending documents. R264, 2026-09-25, the Sprint 12 close: Sprint 12's twenty-five rulings keep their S12-R<n>
-              names in the Sprint 12 plan, the one home; the global sequence continues from here -- the "Sprint 12
-              -- CLOSED" block. R263, 2026-09-24 night: the naming programme -- the rename pass R257/R261, Task 7c, BinDiff, ccc -- is Sprint 12, "the readable image"; Sprint 11 keeps Task 7 and 7b. R260-R262, 2026-09-24 night: Task 7c vtable slots through RTTI after 7b (R260); a provenance sidecar in the rename commit (R261); FID database and r0004-as-corpus declined, BinDiff replaces Version Tracking in the deferred item (R262). R257-R259, 2026-09-24 evening: the demo names apply in Class_Method form at a build window (R257); Task 7b, positional + the Aug 18 demo bridge (R258); Version Tracking and ccc deferred, the voice codecs recorded: SOCOM 1 LPC-10, SOCOM II SASE, GSM nowhere (R259). R253-R256, 2026-09-24: the closed security row retired from the public docs, history stays (R253); the r0004 reboot is an image defect, undone from the capsule's decoded stack (R254); the lock goes to the r0004 critical path first (R255); an unrunnable override is not an override (R256). R245-R252, 2026-09-23: the known-issue stack on GitHub (R252); r0004 is a real rebuild, its ELF built (R251); the package is behind the bypass, served by PSRewired (R250); r0004 is the DNAS bypass we already carry (R249); the r0004 patch is PSRewired's resident capsule (R248); option B not scheduled; the chat bound's install is the Milestone S proof, the traversal a filler row; the vendored baggage deleted -- the Sprint 11 plan's rulings section) -- nothing is renumbered. The sprint's sixty-four numbers R181-R244 are
-              reconciled row by row in ONE table below ("Sprint 10's rulings ledger, R181-R244"): the decision
-              in its own words, where it is written, and its status. R229 is deliberately vacant. This line used
-              to carry that index as a single 2,700-character paragraph, which no reader could use; the table is
-              its one home now, per docs/DOC_MAINTENANCE.md section 6.
-baselines:    the suite counts live in `docs/DEVELOPING.md` ("What a green run looks like") and nowhere else -- this
+rulings:      indexed in docs/RULINGS.md (generated: every ruling with its status and home, Sprint 10's
+              R181-R244 ledger table below included) and numbered from the one counter line, docs/HANDOFF.md
+              section 2 (Sprint 14 D2).
+baselines:    the suite counts live in `docs/DEVELOPING.md` (the table under "Build, run, verify — a newcomer's first hour", rows 3–4) and nowhere else -- this
               line said C++ 686/686 and Python 1457 from 2026-09-20 to 2026-09-22, four sprints after they stopped
               being true, which is why `tools_py/tests/test_doc_maintenance.py` now refuses an undated count outside
               that file. `./build.sh test` exit 0 on the renamed tree (2026-09-25); last gates (Sprint 13,
@@ -60,7 +50,50 @@ long builds); "lock-free" can run at any time.
 
 ---
 
-## Sprint 13 — CLOSED 2026-09-26 (the close-out commit on `sprint-13`; PR #61 to `main` is open and waits on the owner's merge (HUMAN_TASKS O17); the tag `v0.13.0` is set on the merge commit after; the record of the sprint is the block below)
+## Sprint 14 — CLOSED 2026-09-26 (the PR `sprint-14` -> `main` and the tag `v0.14.0` on its merge commit follow this close-out; the release waits on the owner's word; the record of the sprint is the block below)
+
+**Close-out (the PR body).** Opened 2026-09-26 05:17Z, closed 2026-09-26 16:28Z: 231 commits, 46 merges (26 agent branches, five
+of `main`, the close's three), every task reviewed by a fresh agent. No feature work (R269). Landed: the guards (a Bash and an
+Edit/Write PreToolUse hook, the watcher reaper, `build.sh`'s lock check, the memory guard, the commit-msg hook); the read-first
+set from 250 KB to 51 KB (`CLAUDE.md`, four skills, HANDOFF transient, HAZARDS split out, a budget check); four generated
+pages (rulings, changelog, sitting, flow) each held to its source; the WIP cap (a third build waiter exits 4) and the merged
+chain as the gate unit (two chains today: `s14_chain1` and `s14_close1`, both ALL GREEN, gate 3/3, the fourth leg 12/12);
+gate freshness (exit 5), the recompiler reference job (red once on a planted change, run 36237829527), PRs to `main` built
+on their heads (#61, #65, #66 observed). Rulings R269-R281. Issues since the open at 05:17Z: opened 1 (#67), closed 3
+(#51, #53, #56), carried 0; the highest is #67. The DOC_MAINTENANCE §5 review fixed 31 stale claims across nineteen files
+and archived two blocks; the §7 stack read found the audit clean, placed one evidence note, labelled four issues. The
+owner's word at the close: the release waits; upstream filings wait (`docs/UPSTREAM.md`); candidate work now lives in
+`docs/LATER.md`; Sprint 15 re-cut to value (audio first). The Outcome in the plan has the bar row by row.
+
+**As it stood while open:**
+
+
+Opened by the Sprint 14 controller off `main` at `6a82caaa` (the Sprint 13 merge, `v0.13.0`) on the owner's
+instruction of 2026-09-26 ("begin with sprint 14 once sprint 13 is finished, committed, and live on main"). The
+sprint came from the structure review `docs/audits/2026-09-26-autonomy-structure-review.md` (nine findings: the
+record is the failure surface; rules recur, tools do not; greens that were not; an unbounded ruling log; one host,
+many writers; handoffs lose state; the owner loop never closes; nothing measures cost; a thin verification
+architecture). **No feature work.** Every rule that has recurred becomes something that fails on its own, every
+document a session must read becomes small, generated or loaded on demand, and concurrency is capped until the host
+stops corrupting measurements. The owner's word of 2026-09-26 sets aside "visible defects first" for this one sprint
+(R269); the order resumes in Sprint 15.
+
+Seven milestones in order, then a filler — **G** guards (a PreToolUse hook refusing the eight recurring git and lock
+mistakes; an Edit/Write hook for running chain scripts; a session-end hook that reaps orphaned watchers; agent
+definitions; `build.sh` consults the lock; a memory guard), **I** instructions on demand (a root `CLAUDE.md` under
+sixty lines; four skills replace the prose procedures; HANDOFF transient under 6 KB; a read-first budget check;
+KNOWN's hazards to their own file), **W** the host (the queue refuses a third building agent; the merged chain is the
+gate unit, with eviction and ticket waits logged), **D** decisions with status (a generated rulings page; the scope
+rule and one counter; a generated owner's sitting page; the circuit breaker; PLAYTEST's build block written by the
+chain), **S** the record generated (the changelog; STATUS's log archived; a commit-msg hook; ceilings that ratchet
+down; one home each), **E** evidence that is hard to fake (a PR to `main` built on its head; a held-out capture leg;
+recompiler re-derivation in CI; gate freshness), **M** measurement (a generated flow page; token spend read locally,
+never committed); **X1** the external sweep for Sprint 15, filler when the host is quiet. **Every guard is fired
+against a planted violation before it counts as done.** The bar is the spec's section 4; the nine owner defaults and
+their rulings R269-R277 are the plan's "Owner decisions" and "Rulings" sections. The plan's Log is the live state;
+this block gains its table at the close.
+
+## Sprint 13 — CLOSED 2026-09-26 (merged to `main` as `v0.13.0` at `6a82caaa`, PR #61, 2026-09-26 ~05:00Z after the owner granted the gh token the workflow scope; the record of the sprint is the block below)
 
 **Close-out (the PR body).** Opened 2026-09-25 08:40Z, closed 2026-09-26 04:17Z: 285 commits, 43 agent merges, every task
 reviewed by a fresh agent. Closed #27, #30, #31, #33, #35, #36, #37, #38, #39, #40, #45, #46, #48; opened #45–#48, #51–#60;
@@ -93,139 +126,7 @@ mixed leg on the sprint's final exe. The plan's Log is the live state; this bloc
 **Owner decisions:** `docs/HUMAN_TASKS.md` carries them, O1–O15 (reduced by Task R4, `4adbf2bc`, `1ed975a4`), with
 the plan's D1–D2; each has the default the loop is on.
 
-## Sprint 12 — CLOSED 2026-09-25 (merged to `main` as `v0.12.0` at `74fe2a9b`, PR #50; the record of the sprint is the block below)
-
-**Goal, as R263 and the spec stated it:** a readable generated image — every proven name from the SOCOM 1 demo's symbols into the function map, in `Class_Method` form with its provenance recorded, for the hooks, HLE, the address table across revisions and voice chat; its own tooling and review loops; the whole sprint gated on the renamed tree. **Outcome:** the generated image carries **1,771 readable names with a recorded reason each** (`recomp/socom2_names.csv`, 1,840 rows with the 69 Ghidra syscall stubs; r0004 1,705 rows through `carry_names`), against about 120 on 2026-09-24. Every name came through one applier (`tools_py/apply_names.py`) from a proposals file under a rule stated in code; every rule has a holdout or a link-order measurement in its note; every number in every note names its command. The recompiler reads the names from the sidecar (`[general] names`), so the csv's `Name` column is untouched and the renamed tree differs from the old one in identifiers only. **The local proof (Task 3 Step 4, 2026-09-25 04:51–05:38Z; the r0004 leg 07:24–07:40Z — `s12_names_r0004_gate` 3/3 PINS MATCH on the r0004 runtime built with its own 1,705-name sidecar):** recomp `14882 files, unhandled=114399, unmapped=0` with `Loaded 1840 display names`; against the pre-rename output **1,771 files renamed, 0 extents moved, 0 functions dropped** (`S12-R11 … OK`); the runtime built from scratch (exe `804dd172…`); `build.sh test` exit 0; **the r0001 gate `s12_names_gate` 3/3 with PINS MATCH** — on `cb56fc8`, this branch merged with Sprint 11's final `3bb866f`. The sprint was executed by a Claude cloud session (no game, no lock) on `sprint-12` under `docs/superpowers/plans/2026-09-24-sprint-12-cloud-handoff.md`; the local half (the proof, the merge, this block) is session socom-pc-6c's.
-
-| Task | State | Evidence |
-|---|---|---|
-| 0 the open: spec, plan, the research wave, the inputs regenerated | done | `6c35ed1`; spec `docs/superpowers/specs/2026-09-24-sprint-12-the-readable-image-design.md`, plan `docs/superpowers/plans/2026-09-24-sprint-12.md`; research/47–61 (46 is the peer's day-one record) |
-| 1 the readable-name renderer | done | `tools_py/readable_names.py`, 19 tests; 868 of 871 set-D rows rendered, 0 collisions, longest 41 |
-| 2 the provenance sidecar | done | `tools_py/name_provenance.py` (read, write, audit), 69 `Pass=ghidra` rows backfilled, `carry_names` carries it |
-| 3 the applier; every lever applied to the sidecar; the r0004 sidecar; **the proof** | done | `cd2fbfc` (1,491 names) then Tasks 6 and 8 (1,771); 5 held, 1 refused, 0 contradictions; the local proof above |
-| 3a the recompiler runs in the cloud; the census tool | done | `ps2_recomp` on Linux in 52 s; `tools_py/recomp_census.py` (5 tests) reproduces 14,882 / 7,958 `FUN_` / 6,750 `sub_` / 171 named — the same census this machine measured before the rename |
-| 3b the recompiler reads display names from the sidecar | done | `d83afc9`: `[general] names`, `makeName`, the `// Function:` header; a synthetic-ELF case in `ps2xTest`; `revision_toml --set-names`, `build_revision.sh` step 3 |
-| 4 Task 7c, the `vtable-slot` pass | done | `tools_py/vtable_lever.py`, 27 tests; 211 classes resolve by RTTI; 199 rows at 0.75; leave-one-out 37/0; research/60 |
-| 5 the r0004 seed list | done | `tools_py/derive_seeds.py`, `recomp/r0004_seeds.txt` (294 seeds); `match.json` reproducible at 81.56 % |
-| 6 BinDiff as the second signal | done | research/49; `tools_py/bindiff_lever.py`, 24 tests; 21 `prefix+bindiff` rows, 0 contradictions on the 828 under the bounded rule; S12-R22, S12-R23 |
-| 7 the demo's types beside the probes' offsets | done | `OFFSET_NAMES` in `tools_py/parity/guest_addresses.py` (root_node 0x2E8 = `CZSealBody::m_root`, +0x7c from SOCOM 1), 8 tests, no number changed; research/50 (536 DWARF1 layouts) |
-| 8 the `toml-stub` pass and the toml-to-sidecar agreement test | done | `baa525c`: 274 applied, 214 of 223 stub selectors agree, 9 are not csv rows |
-| 9 what a stranger sees | done | `dd2ec66`: HOW_IT_WAS_BUILT "How the generated code got its names", DEVELOPING "Names in the generated code", the symbols README's script rows, research/59 |
-| 10 the wave's added tasks: 12 `string-set`, 13 `offset-multiset` + `prefix+offsets`, 14 `ui-binding`, 15 `callgraph` | done | `tools_py/string_lever.py` 214 (+45 loose); `offset_lever.py` 188 + 43; `ui_binding_lever.py` 124 + 83 (20/20 with research/11); `callgraph_lever.py` 235 (+522 loose, 106 promoted); holdouts 0 wrong each |
-| 11 the close | done | this block; the two reviews below; the PR and the tag |
-
-**Carried out of Sprint 12** (to the backlog with the `carried` label unless a line names another home): the 518 loose rows that wait for a second independent lever; the Outcome's follow-ups — the `// Function:` header wording and a header on named stubs, `build_revision.sh --out` copying the sidecar beside the toml, research/50's nine other safe offsets in `sp_death_probe`/`verdict_core`/the runtime, the csv's Ghidra-split boundaries (0x00183024 and the 64 rows inside vtable data, research/60 §7), `std::unexpected`/`std::terminate` as `Pass=hand` candidates, the 41 toml addresses that are not csv rows, the 26 toml names research/57 §3 calls wrong, constructors under research/51's variant C; research/61 §5's r0001 literals outside the per-revision table (Sprint 11 carried it here; nothing in Sprint 12 took it). To the owner (HUMAN_TASKS "Sprint 12 close — what needs you"): the seven defaults D1–D7 to confirm or overturn, and the five big engine routines' hand review (D5).
-
-**Rulings.** Sprint 12's rulings are `S12-R1`–`S12-R25` in the plan's "Rulings made on the owner's behalf" (the one home; the cloud numbered in its own namespace by the handoff's §5). **R264** (2026-09-25, the local controller): they keep those names — renumbering twenty-five rulings cited across fifteen notes and the plan would buy nothing and risk a wrong citation; the global counter continues from HANDOFF's next free number, and any later ruling that touches a Sprint 12 decision cites the `S12-R<n>` it amends. The owner can overturn it.
-
-**The two reviews the close ran (DOC_MAINTENANCE §5 and §7), 2026-09-25:** The §5 review read every live document (a read-only agent's table of 60 rows across thirteen documents; the controller applied 45 of them in this commit): the sprint file's header rewritten for two closed sprints and no open one; `HANDOFF`'s state line, gates and worktree list; `HUMAN_TASKS`' new section and its Sprint 12 window struck as done; `STATUS`'s top bullet, its dated entry and its `Next:` line (which had said "Sprint 10 is CLOSED, what is left is the merge" since 2026-09-23, through the whole of Sprint 11 and its close review — corrected to a pointer); `DEVELOPING`'s `recomp/` row, its names paragraph ("research/61–57" was a backwards range) and its green-run rows; README's status paragraph and two table cells; `ROADMAP` §6 and `STORY`'s Sprint 12 promise superseded in place; `GIT_STRATEGY`'s NOW line; the symbols README's note number (46 → 61, S12-R25); HOW_IT_WAS_BUILT's tense; KNOWN's new §1 row, §4 lesson and §4 hazard; three documents' "thirteen research notes" corrected to fifteen (47–61). The §7 review: `python -m tools_py.issues audit --stale-since 2026-09-24` OK; all twenty open issues read against the tree — none met, none closed, four commented (#25 the Python half's cause is fixed by Sprint 11's `587709d0`; #28 and #42 the audio-out branch merged as `ae862a8` and its finding is in KNOWN; #40 research/57 §3 and Task 8's agreement test as adjacent measurements); nothing closed since 2026-09-24; **one issue opened by the review, #48** (the `--out` hazard above), the highest number now; the `Sprint 12` milestone held no issue and is closed; the six issues Sprint 11 carried (#25, #26, #33, #37, #38, #42) were never in Sprint 12's milestone and are **ruled not carried twice** — a single-theme sprint took nothing from the backlog, so they remain `carried` once, in the backlog; the story's missing days are the one item carried twice, an owner question in HUMAN_TASKS (row O9 since 2026-09-25). Opened 1, closed 0, carried 0.
-
-## Sprint 11 — CLOSED 2026-09-25 (merged to `main` as `v0.11.0`; the record of the sprint is `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`)
-
-**Goal, as the plan stated it:** close the chat hole on both sides, answer the upstream-IOP question with a measured divergence table, land the r0004 groundwork, finish the public repository's owes. **Outcome:** all four, plus what the r0004 package's arrival opened (Task 19) and what the two demo discs opened (Tasks 7 and 7b). Sprint 12 ("the readable image", R263) already runs in the cloud on branch `sprint-12`; its local half is session socom-pc-6c's; this machine's checkout stays on `sprint-11`. *(Sprint 12 closed 2026-09-25: see its block above.)*
-
-| Task | State | Evidence |
-|---|---|---|
-| 1 the open block | done | the record block, archived 2026-09-25 to `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` |
-| 2, 2b the chat receive wrap; the record readers bounded | done | `f2064d3`, `6aed718`; the two-instance chat proof (chain 11) |
-| 3 the server clamp | done | `5b7d20e`, `4d7e481`; deployed to the project box 2026-09-23 06:58Z |
-| 4 README and SECURITY narrowed | done | `3efa6a7` |
-| 5 U1 the differential test's result | done | research/40 §9 (R245) |
-| 6 U2 the upstream picks | done | Step 2 `f65da5f` (research/42); Step 3 all ten KEEP, each gated 3/3 (vram 15/15 where it applies; #241 also the online lane), the combined branch 891/891 and `s11_picks_keep_gate` 3/3, fast-forwarded `3bb866f4`, verdicts `6be03dac` |
-| 7, 7b U3 the demo's symbols | done | `007d651`…`f1efa5b` (987 names matched, 479 safe proposals, research/44); 7b `716f969`…`7feebf0` (6 image-wide positional names, the Aug 2003 demo corroborates 704 pairs, research/45); applying them is Sprint 12's first task (R257, R263) — applied in Sprint 12 (Task 3; 476 of them, 3 held; gate `s12_names_gate` 3/3) |
-| 8 U4 the fork's takeable pieces | done as 8a, 8b, 8c | 8a chain 11 (`s11_u_translators_gate`); 8b `2381c8a` (four subsystems per runtime, `s11_rtstate_gate` 3/3; the CD group and `g_iopHeapNext` left, KNOWN §4); 8c chain 12 (`s11_savestate_gate` 3/3) |
-| 9 `build_revision.sh` | done | Task 9 (`5a2dc44`'s parent); step 0 makes the fixed map a build product `9ade5a3`, `06cccc9`, proven `s11_r0004_rebuild1` 3/3 with a clean tree |
-| 10 the matcher and the address table | done | `a201221`…`86c2912`; the relinked-body method `e92691a` (81 % on r0004) |
-| 11 the launcher's revision plumbing | done; 11b withdrawn | `098ef08`, `50831a0`; 11b waits on D1, reopened by R251 (HUMAN_TASKS O5) |
-| 12 the leak gate's sixth leg | done | `c0e60e3`, `a021c52` |
-| 13 the bug pipeline's GitHub half | done | `4c8ad5e`; two owner words in HUMAN_TASKS (O4) |
-| 14, 15, 16, 17 the install page and FAQ; how it was built; the dead history and badges; the vendored baggage | done | the merge-forward `4732892`; `3615dbb`; `f4a2f87` |
-| 18 the VM ring; the release-draft workflow | Step 2 done; Step 1 measured, carried | `4d10d71`; the VM's suites are not green there (issue #25, carried); the `v0.10.0` draft's archives are the owner's |
-| 19 the r0004 capsule and package | done | the package obtained the sanctioned way and decoded (R250, R251); the ELF built; the reboot solved to its root — two of the capsule's stub words baked into the dumped image, undone from its decoded write stack (`07dc937`…`259bb48`); the harness made per-revision three seams deep (`91f245f`…`189b118`, `4ab6e9f`…`0a01ba3`); **gate 3/3 `s11_r0004_probe2` and `s11_r0004_rebuild1`; a scored online round on our own server `s11_r0004_round2c`**. Carried: D1 the distribution, Goal F, the capsule's r0004-layout stub table, what r0004 expects of its package data |
-| filler: audio-out, the music dips | done | `ae862a8` after two fix rounds |
-| also, none of it in the plan | done | the recompiler's cross-row continuation fix `5f3b354`, `77f02bc` (`s11_cfa_gate` 3/3); an override the runtime cannot execute is not an override `38161fd`, `1b47be2` (`s11_override_gate` 3/3, R256); the closed security row retired from the public docs on both branches (R253, the owner's); `--accept-pins` keeps every pin `fccf3b5d`; research/43b (what changed in r0004), /46 (the readable image, day one) |
-
-**Carried out of Sprint 11.** To Sprint 12: the rename pass with its provenance sidecar (R257, R261), Task 7c (R260), BinDiff and the ccc types (R259, R262), the toml names into the generated output, research/61 §5's r0001 literals outside the per-revision table. To the owner, HUMAN_TASKS "Sprint 11 close — what needs you" (now in `docs/archive/HUMAN_TASKS-to-2026-09-25.md`, each item's live row in its table): D1, Goal F, the two bug-pipeline words, the `v0.10.0`/`v0.11.0` archives, the branch sweep (now with `sprint-11`), the VM ring, the five big engine routines' hand review, the Horizon box's unmodelled `MediusVersionServer`. To the backlog with the `carried` label and a comment each: issues #25, #26, #33, #37, #38, #42; the Sprint 11 milestone closed, Sprint 12's created.
-
-**The close proof (chain 22, on the close commit `d8518bd0`):** the runtime rebuilt, the suites three times over (`PS2X_TEST_REPEAT=3`; C++ 881/881 and the Python suite 2,562 OK, the same numbers CI printed green on that commit for `secrets`, `linux` and `windows`), the r0001 gate **`s11_close_gate` 3/3** (exe `b74a6132…`). The one suite failure on the way was this close's own: the tracked story timeline out of step with STORY after the review's edit, regenerated (`d8518bd0`).
-
-**The two reviews the close ran (DOC_MAINTENANCE §5 and §7), 2026-09-25:** The §5 review read every live document and applied 30 of its 36 rows (`8612c2d3`; two rows were code fixes that landed as `0061a2b0`, `a8329c5` and `6658d863`; the rest are this commit's): Sprint 12's existence written into every live document; GIT_STRATEGY's sprint-10 line and HANDOFF's first-hour CI line corrected; FAQ's Bluetooth attribution replaced by KNOWN §1's measured retraction; the two dangling gitlinks removed; STORY's three missing days stated in the document and carried; the audit's uncited KNOWN rows went 20 → 0 once the three rows below got their issues. The §7 stack review: 18 issues opened this sprint (#25–#42, the stack's birth under R252) and three at the close (#45 the accept-pins start-up write, #46 `movie_blocks.py`, #47 VU0 flag latency), 1 closed (#29), 20 open; the 6 in the Sprint 11 milestone carried to the backlog with the `carried` label and a comment each (#25 #26 #33 #37 #38 #42; none is in Sprint 12's plan), the milestone closed and Sprint 12's created; highest issue #47.
-
-#### Sprint 11's rulings ledger, R245-R263 (reconciled at the close; this table is the one home)
-
-Nineteen numbers, nineteen rulings: **no number is vacant and none is reused.** One was retracted on substance
-(R249, by R251) after being half-corrected the same evening (R250); one is the owner's own (R253); and R263 moved the
-naming programme to Sprint 12, so five of this sprint's rulings are carried rather than closed here. The working
-notes behind this table are `.superpowers/sdd/2026-09-23-sprint-11/progress.md`.
-
-| R | The decision (its own key words) | Where it is written | Status |
-|---|---|---|---|
-| R245 | "**option B is not scheduled**" — the real IRX agrees with our model on 1,775 of 1,794 calls, and 13 of the 19 disagreements are emulator gaps, so a 1,500–2,500-line native libsd is not justified | `plans/2026-09-23-sprint-11.md`, "Rulings made on the owner's behalf"; the row is `docs/KNOWN.md` §1 | stands — Task 5 closed on it: the two model alignments `7b44d70`, `776e423`, the streamer blind spot a filler row, the three #244 patches written up |
-| R246 | "the chat bound's **install** is the proof Milestone S ships on; **the traversal is a filler row**" | same rulings section; `docs/KNOWN.md` §2 holds the row (issue #26) | stands — the traversal is still unobserved and carries as a filler item; the README claims only "bounded on the client, clamped on the server" |
-| R247 | "**the vendored tree's baggage goes**" — `vita/`, `android/`, `ps2xStudio/` deleted, the four font headers generated at build time | same rulings section | stands; **done** (Task 17, `f4a2f87`) |
-| R248 | "the r0004 patch is **PSRewired's resident capsule**, and the build applies it, not a package" | same rulings section; `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, the 14:30Z block | stands **as to what the capsule is** (ps2-packer ELF, encrypted code stack, `mc0:UPDATE.DAT` probe) — its second half, "not a package", is **superseded by R250 and R251**: the package exists and was obtained |
-| R249 | "**'r0004' is the DNAS bypass**, which this build already has; no second recompilation; Task 11b withdrawn" | same rulings section; `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, the 16:00Z block | **RETRACTED on substance by R251** (2026-09-23 night), after R250 had already shown it half wrong. What survives of it: the decoder, the `PS2X_SOCOM2_DNAS_BYPASS` knob and the `versionString` correction, all landed |
-| R250 | "**R249 was half right**: the DNAS bypass is the door, and the r0004 package is behind it, served by PSRewired" | same rulings section; `docs/archive/HUMAN_TASKS-to-2026-09-25.md`, the r0004 section ("Evening correction (R250)") | stands — and the route it named (PCSX2 + their pnach + their DNS, the update saved to the card, `APACHE00.ZDB` out with mymcplus) is the route that was walked the same night |
-| R251 | "**r0004 is a real rebuild and its ELF exists**" — the package in hand and decoded, the overlays read through PINE, `build_revision.sh r0004` built the ELF (5,016,016 B, `62f4f877…`) | same rulings section; `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, the 02:5xZ block; `docs/archive/HUMAN_TASKS-to-2026-09-25.md`, r0004 D1 (row O5 of `docs/HUMAN_TASKS.md` since 2026-09-25) | stands; **done** — the r0004 gate is 3/3 (`s11_r0004_probe2`) and the build plays online on our server (`s11_r0004_round2c`). It **reopened HUMAN_TASKS D1** (the per-player pipeline is the owner's to accept) and left Task 11b moot |
-| R252 | "**the known-issue stack opens on GitHub issues**" — every defined unresolved KNOWN defect a public issue cited from its row, `tools_py.issues audit` holding the stack to the documents, KNOWN still winning | same rulings section; `docs/GIT_STRATEGY.md` §7 and `docs/DOC_MAINTENANCE.md` §7 | stands; **done** (issues #25–#42; #29 closed by the owner the same night). Its audit is run at this close |
-| R253 | **the owner's**: "one closed KNOWN §2 row and every pointer to it are **retired from the public documentation**; history and the old branch tips stay" ("history is fine") | same rulings section; `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, the 13:00Z block | stands; **done** on `sprint-11` (`0bf1a5d`) and on `main` (PR #43, `a548dd1`) |
-| R254 | "the r0004 reboot is **an image defect, undone from the capsule's decoded write stack**, never patched per call site" | same rulings section; `docs/KNOWN.md` §2's r0004 row | stands; **done** — `tools_py/overlay_repair.py` (`07dc937`) in its stack-driven form after two re-reviews (`3bac4a2`, `3eba1b3`, `259bb48`); zero words change in r0001 |
-| R255 | "**the loop lock goes to the r0004 critical path first**"; batch work yields after its current hold | same rulings section; `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`, the 13:00Z block | stands — **spent**: the r0004 critical path is complete, and the lock ran the close's batch (ten picks, the rebuild proof) afterwards under the same rule |
-| R256 | "**an override the runtime cannot execute is not an override**" — `dispatchSyscallOverride` falls through to the built-in when the handler is in no function table | same rulings section | stands; **done** (`38161fd`, `1b47be2`; r0001 gate 3/3 `s11_override_gate`). Finding 9 (`GetEntryAddress` still returns the unrunnable handler) is deliberately deferred |
-| R257 | "the demo names apply to the function map in **`Class_Method` form, one reviewed commit at a build window**" — the 479 proposals, the `Mangled` column kept, the prefix matches reviewed by hand for the big engine routines | same rulings section; `docs/research/44-*` §2 | stands, **carried to Sprint 12 by R263**: the rename pass is Sprint 12's first task. Amended there already — `S12-R1` (the four defaults), `S12-R3`/`S12-R12`/`S12-R22` (a second mechanical signal replaces the hand reading, then the five big engine routines return to the owner's hand), `S12-R11` (the recomp half proved in the cloud), and 3 of the 479 measured wrong and held (`S12-R8/R9`, `S12-R17`, `S12-R20`) — **done in Sprint 12** (Task 3: 476 of the 479 applied, proven `s12_names_gate` 3/3) |
-| R258 | "**Task 7b**: positional naming between anchors and the Aug 18 2003 demo as a bridge, lock-free, a second proposals file under its own rule, never the csv directly" | same rulings section; `docs/research/45-*` | stands; **done in Sprint 11** — R263 kept 7b here and it completed (`716f969`, `5388f05`, `80a3d60`, `7feebf0`: 6 image-wide positional names, the bridge corroborating 704 pairs and adding none, 167 tests). Its output file is Sprint 12's to apply |
-| R259 | "**deferred to a future sprint**: Ghidra Version Tracking as a cross-check of the 987, and the ccc route for the demo's `.debug` types"; the voice-codec record (SOCOM 1 LPC-10, SOCOM II SASE, GSM nowhere) | same rulings section; `docs/research/44-*` addendum | stands **as amended by R262** (BinDiff in place of Version Tracking). **Carried to Sprint 12**, where both deferrals were taken up (BinDiff = S12 Task 6, ccc = research/50). One amendment owed here: the S12 Log's `LOCAL:` line on research/56 — the "Nellymoser" reading in KNOWN's voice-chat row, research/23, the Sprint 8 voice plan and two source comments is an **inference**, and the "11025 Hz / 58.05 ms" belongs to two other `lgaud` callers |
-| R260 | "**Task 7c: vtable-slot matching through RTTI**, its own lock-free task after 7b lands, a third proposals file (pass `vtable-slot`)" | same rulings section; the peer's scripts, now `tools_py/research/symbols/` | **carried to Sprint 12** by R263, and by the ratified handoff (`b53f956`) it is the cloud session's, not local. Amended there by **`S12-R16`**: the key is the demo's own *qualified* RTTI string, 211 classes resolve (not 111), the vtable start is a fixed point, and the constructor half of the rule is **withdrawn** — **done in Sprint 12** (Task 4: 199 `vtable-slot` rows, research/60) |
-| R261 | "R257's rename commit also writes **a tracked provenance sidecar** beside `recomp/socom2_ghidra.csv` (address, name, source pass, score, evidence); the csv itself keeps only `Name`" | same rulings section | **carried to Sprint 12** with R257. Amended there by **`S12-R13`/`S12-R4`**: the sidecar is the *one home* of a name and the recompiler reads it (`[general] names`), so the csv's `Name` column is never rewritten by the applier at all — R261's intent kept, its mechanism improved — **done in Sprint 12** (Tasks 2 and 3: `recomp/socom2_names.csv`, 1,840 rows, both audits 0 findings) |
-| R262 | "**declined**: a custom Ghidra Function ID database, and r0004 as a version-tracking corpus"; **amends R259** — BinDiff replaces Version Tracking, the ccc types carry a layout-age caveat | same rulings section | stands — **the decline stands on its own reasons**; its "99.66 % identical" figure was **corrected in place 2026-09-25** (that is r0001's self-match, KNOWN §1; r0004 against r0001 is research/43b's ~81 % run, itself unreproducible per `S12-R5`). The BinDiff and ccc halves are **carried to Sprint 12** (done there, and narrowed by `S12-R22`/`S12-R23`) — **done in Sprint 12** (Task 6 and research/49 for BinDiff; research/50 and Task 7 for the ccc types) |
-| R263 | **the owner's question answered**: "**the naming programme is Sprint 12, not Sprint 11**" — Sprint 11 keeps Task 7 and 7b; the rename pass, 7c, BinDiff and ccc move to Sprint 12, "the readable image", which opens with the rename pass so its gates run on the renamed tree | same rulings section; this file, the `next sprint:` line | stands; **done** — Sprint 12 closed 2026-09-25 with every task done and the proof green (`s12_names_gate` 3/3); the peer's measurement scripts are tracked at `tools_py/research/symbols/` |
-
-*Paths written `plans/...` are relative to `docs/superpowers/`; all others are from the repository root. "Same rulings
-section" means `docs/superpowers/plans/2026-09-23-sprint-11.md`, "Rulings made on the owner's behalf".*
-
-**What changed state during the sprint:** R249 was **retracted** by R251 after R250 had shown it half wrong — the only
-retraction in the range; R248's second half was superseded by the same pair; R259 was amended by R262 within a day; and
-R263 carried R257, R260, R261 and the deferred halves of R259/R262 into Sprint 12. **Collisions: none. Missing: none.
-Vacant: none.**
-
-**Carried to Sprint 12** (the naming programme, R263): **R257**, **R260**, **R261**, and the deferred BinDiff/ccc halves
-of **R259** and **R262**. R258's Task 7b was completed here; only its proposals file travels.
-
----
-
-#### Sprint 12's `S12-Rn` rulings and `LOCAL:` lines that touch these rows (for the global sequence at the merge)
-
-The Sprint 12 cloud session numbers its rulings `S12-R<n>` in `docs/superpowers/plans/2026-09-24-sprint-12.md` and <!-- docmaint: future -->
-leaves the global numbering to the local controller at the merge (its §Rulings: *"the global counter is the local
-controller's to fold in"*). These are the ones that amend a Sprint 11 fact or ask Sprint 11 for something; the rest are
-internal to that sprint. Read `origin/sprint-12` for the full set.
-
-| S12-R / `LOCAL:` | The decision or request (its own key words) | Where it is written | What it touches in Sprint 11 |
-|---|---|---|---|
-| S12-R1 | "the four naming defaults stand as the spec states them" — `Class_Method`, argument suffix only on collision, **no hand-named row ever renamed by a proposals file**, the 138 sub-64-byte pairs stay out | `plans/2026-09-24-sprint-12.md`, Rulings | **R257** — confirms its form and fixes its rule 5 |
-| S12-R3 | "**no prefix pair is admitted on a person's reading**; R257's 'reviewed by hand for the big engine routines' is replaced for this sprint by a second mechanical signal" (`prefix+bindiff` or a vtable slot; never a prologue alone) | same, Rulings | **R257**, explicitly |
-| S12-R12 | "an `offset-multiset` pass is Task 13 … and **an independent body key is a valid second signal for a prologue pair** (amends S12-R3)" — 44 of R257's prologue pairs admitted as `prefix+offsets` | same, Rulings | **R257**'s 159 prefix matches |
-| S12-R22 | "**BinDiff confirms under a bounded rule and never proposes alone**; the big engine routines stay the owner's hand review (amends S12-R3 and D5)" — 21 of the 159 confirmed; `CMission::Init` 0.200, `ThrottlesPreTick` 0.006 | same, Rulings | **R257** (the hand review returns) and **R262** (BinDiff as the cross-check) |
-| S12-R23 | "**BinDiff is not a confirming key for promotion** (narrows S12-R22), and a BinDiff contradiction of another lever's strict row is a dispute to read" | same, Rulings | **R262**'s "BinDiff replaces Version Tracking" — it is a second signal, not an oracle |
-| S12-R8, S12-R9, S12-R17, S12-R20 (with S12-R10, retired by S12-R13) | **three of Task 7's pairs measured wrong and held** — row 478 is `MediusGetBuildTimeStamp` not `Net…`; `sceCdDiskReady` is 0x0018ef70 as the toml binds it; the UI binding table outranks the sub-64-byte `exact` anchor at 0x27a250; the applier keeps a tracked holds file | same, Rulings | **R257** — its 479 proposals become **476 with 3 held**, and one of the 987 anchors is withdrawn |
-| S12-R11 | "a rename that moves a decoded range is accepted only when **the cloud's own recomp** shows no new `unmapped`/`unhandled` and no function dropped; and the recompiler is built and run in the cloud for that" | same, Rulings | **R257**'s "the commit carries a recomp, the runtime rebuild and the r0001 gate" — the recomp half moves off the local lock |
-| S12-R13 | "**the sidecar is the one home of a name, and the recompiler reads it**; the csv's `Name` column is never rewritten by the applier" (amends S12-R4's letter; retires S12-R10, narrows S12-R11) | same, Rulings | **R261** — keeps its intent, replaces its mechanism |
-| S12-R4 | "the csv and the sidecar are the one home of a name; **the toml's stub list stays a handler selector**, held to the csv by a test" | same, Rulings | **R261**, and **R263**'s "the toml names into the generated output" item |
-| S12-R16 | "**Goal 3's rules are amended to what research/51 measured**" — the qualified RTTI string as the key, **211** classes not 111, the vtable start a fixed point, **the constructor rule withdrawn** | same, Rulings | **R260** (Task 7c's stated rule and yield) |
-| S12-R5 | "research/43b's `match.json` rate (**81.1 %, 12,071 placements**) **is not reproducible from tracked inputs**"; the documented recipe gives 67.26 %, seed-derived 81.6 %; Task 5 commits a seed list | same, Rulings | **R251**'s r0004 carry and **R262**'s corrected number |
-| S12-R2 | "the tools are installed **natively under `/home/user/tools/`**, not in a container, and **a refusal retires the goal**" (Ghidra 11.0.3, BinExport 12 patched for R5900, BinDiff 8, ccc) | same, Rulings | **R259**/**R262** — the route their deferred items actually took |
-| S12-R25 | "**research/46 is the peer's day-one record; the consumers note is research/61**"; the handoff amended to "47 onward" | same, Rulings | the ratified Sprint 12 handoff's item 2 (Sprint 11's `b53f956`), where research 46+ had been given to the cloud |
-| S12-R6 | "**research numbers 46–59 are Sprint 12's**; the sequence is shared with Sprint 11, **whose close writes no note**" | same, Rulings | this close — no research note is numbered here |
-| `LOCAL:` 2026-09-25 morning (CI) | "**Sprint 11's to fix, in its tests**" — twelve Python tests (`test_gate_pins` ×10, `TestGateDiskRefusal`, `BuildRevisionRepairMapTest`) fail on every runner since `91f245f`/`aea1966` because `launch_revision` refuses with no game ELF; the proposed shape is `gate.launch_env(…, default_ok=True)` and a synthetic `SOCOM_GAME_ELF` naming `r0001` | same, Log (newest first) | **R251/Task 19's review fix** — `sprint-11`'s `linux` workflow has been red on every non-docs push since 2026-09-23 21:29Z; `sprint-12` goes green one push after this lands |
-| `LOCAL:` 2026-09-24 late night (4) | "**Sprint 11's rows to amend**" — research/56: no image carries a "Nellymoser" string (only the `NellyNull` assert macro), so KNOWN's voice-chat row, research/23, the Sprint 8 voice plan and two source comments state an **inference**; and "11025 Hz / 58.05 ms" belongs to two other `lgaud` callers (the voice object opens at 8000 Hz, reads every 80 ms) | same, Log | **R259**'s voice-codec record |
-| `LOCAL:` 2026-09-24 night (research/61 §5) | "**Sprint 11's to rule on** (an r0004 run reads r0001's place)" — r0001 addresses outside the per-revision table at `scripts/parity/env.sh:33`, `sim_walk_to_b.py:70`, the LOD globals `game_overrides_socom2.cpp:1926-1971`, `Kernel/Stubs/MPEG.cpp:1973` | same, Log | the per-revision hazard of **R251/R254** (KNOWN §4's defect class). `env.sh` was fixed since, by the online slice (`4ab6e9f`…`0a01ba3`); the other three stand |
-| `LOCAL:` 2026-09-24 night (research/58) | "**R262's '99.66 % identical to r0001' is r0001's self-match** … the number in the Sprint 11 plan is the local controller's to amend in place" | same, Log | **R262** — amended in place 2026-09-25 (rides the close commit) |
-| `LOCAL:` 2026-09-25 early | "**D5's hand review of R257's five big engine routines is a HUMAN_TASKS line**" — `CMission::Init` 0x002ad290, `CSealCtrl::ThrottlesPreTick` 0x005966a0, `CZSealBody::GetNodePos` 0x005df930, `CActionTxtrMachine::Open` 0x0021f850, `CNodeAction::Open` 0x002b4f40; a hand name goes in the sidecar with `Pass=hand` | same, Log | **R257** — filed: HUMAN_TASKS "Sprint 11 close — what needs you" item 7, and named with its five addresses in the "Sprint 12 close" section (both now in `docs/archive/HUMAN_TASKS-to-2026-09-25.md`; the live row is O11) |
-| `LOCAL:` 2026-09-25 morning (the close of the cloud's side) | "**when Sprint 11 closes and `main` carries it**, merge `origin/main` into `sprint-12` and run the PROOF row's four commands in a worktree of `sprint-12`; the sprint merges to `main` after that proof, as a Sprint 12 PR the local controller opens" | same, Log | the merge and the batched proof window — Sprint 12's PROOF REQUESTED row (Task 3 Step 4: recomp, runtime, the C++ suite, the r0001 gate 3/3 with PINS MATCH) — **done 2026-09-25 05:40Z** (`83e9696c`, gate `s12_names_gate` 3/3 PINS MATCH; run on `sprint-12` merged with `origin/sprint-11` directly, before Sprint 11 reached `main`) |
-
-*Sprint 12's own plan lists more `S12-R` numbers (R7, R14, R15, R18, R19, R21, R24 and the rest); they are internal to
-that sprint's levers and touch no Sprint 11 row. `S12-R6` is the cloud's own statement that the two sprints share one
-research-note sequence, which is why every number above is folded at the merge rather than renumbered now.*
+*Sprint 12's and Sprint 11's CLOSED blocks -- with Sprint 11's rulings ledger R245-R263 and the table of Sprint 12's `S12-Rn` rulings that touch Sprint 11 -- moved verbatim on 2026-09-26 (the Sprint 14 close, `docs/DOC_MAINTENANCE.md` §5 step 5) to `docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md`.*
 
 ## The standing backlog and the Sprint 10 ledger (kept live at the 2026-09-25 split)
 
@@ -233,7 +134,8 @@ research-note sequence, which is why every number above is folded at the merge r
 (Sprint 13 Task R1, R268) to `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`: "Sprint 11 — the record of the sprint" (the task-by-task record, the worktree table, the timestamped blocks such as 14:30Z, 16:00Z, 02:5xZ and 13:00Z), "The close, 2026-09-22 evening → 2026-09-23 morning", "Sprint 10 — CLOSED 2026-09-23", "The order, reworked 2026-09-20", "Sprint 9, milestone P", "Sprint 9, milestone Q", "Sprint 10, REORGANIZED 2026-09-20" (with its chunk table, its road table and "Rulings (R181-R183)"), "The playthrough, 2026-09-22" (the R236-R240 blocks), the Sprint 10 and Sprint 11 drafts, "Rulings made on the owner's behalf (no plan of their own)" (R174-R178) and "The Sprint 9 record". A citation of any of those block names means that
 file. The two blocks below stay because the standing backlog is the filler list this file must keep
 (`docs/DOC_MAINTENANCE.md`, the first review's lesson 1) and the ledger says it is the one home of R181-R244;
-Sprint 11's ledger R245-R263 stays above for the same reason.*
+Sprint 11's ledger R245-R263 stayed above for the same reason until 2026-09-26, when it moved with Sprint 11's CLOSED
+block to `docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md` (the Sprint 14 close).*
 
 #### Standing backlog, carried from the roadmap 2026-09-23 -- superseded 2026-09-25
 
@@ -243,7 +145,7 @@ close) is no longer the queue: `docs/BACKLOG.md` is the carry's one home (R267),
 `docs/backlog_ruled_out.txt` with their bars. Where each item went: 1, the EE soft-double chain, **declined** by R265
 (`soft-double-chain`); 2, HLE audit leg three, **owned** by Sprint 13 Task C2 (the plan's C2 row); 3, the gameplay-state
 probe, **declined as a gate leg** by R265 (`gameplay-state-probe`), and 5, its `rx`-hold teleport count, goes with it;
-4, the online freeze, is issue #34 (`docs/KNOWN.md` §4), its `waitReadable` shape bounded by V7 (`160ffdae`) with the
+4, the online freeze, is issue #34 (`docs/HAZARDS.md` network), its `waitReadable` shape bounded by V7 (`160ffdae`) with the
 console-peer run as its bar; 6, the two believed render rows, carry R265's retire-or-test bar (`render-believed-rows`);
 7, voice, and 8, multiplayer security, are `docs/BACKLOG.md` rows (the `voice-*` rows, `multiplayer-security`).
 
@@ -341,6 +243,7 @@ and R237's premise was reversed by W10 on 2026-09-23. **Collisions: none. Missin
 ---
 
 *The "Standing rules" block that closed this file until 2026-09-25 was deleted, not archived: it duplicated
-`docs/HANDOFF.md` §5, the one home of the rules, and still said to push to `sprint-9` (the 2026-09-25 audit, D21).*
+what was then `docs/HANDOFF.md` §5, the one home of the rules (since 2026-09-26 the rules are HANDOFF §4, one
+line each, and their reasons `docs/archive/HANDOFF-to-2026-09-26.md` §5), and still said to push to `sprint-9` (the 2026-09-25 audit, D21).*
 
-*Sprints 9 to 11: `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`. Sprint 8 and earlier: `docs/archive/CURRENT_SPRINT-to-sprint-8.md` (the record, unedited; nothing in either is an instruction).*
+*Sprints 12 and 11's CLOSED blocks: `docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md`. Sprints 9 to 11: `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md`. Sprint 8 and earlier: `docs/archive/CURRENT_SPRINT-to-sprint-8.md` (the record, unedited; nothing in either is an instruction).*

@@ -22,7 +22,7 @@ code had been folded into a single function — so it had to be normalised and r
 code could be trusted (`ac7de47`, 2026-09-04).
 
 The target shape is the one the Nintendo 64 recompilation projects settled on, and it is the acceptance bar the owner
-set (quoted in `docs/LOOP_PROMPT.md`): **the game's logic stays recompiled; the renderer, audio, input and network are
+set (quoted in the `loop-iteration` skill, `.claude/skills/loop-iteration/SKILL.md`): **the game's logic stays recompiled; the renderer, audio, input and network are
 native code written for this project.** What is still emulated is the console around the game — the EE kernel and
 scheduler, the DMA controller, the vector units, the IOP services at the RPC boundary.
 
@@ -57,8 +57,8 @@ that would have produced this on its own.
 
 ## The loop
 
-There is no scheduler and no framework. The loop is a controller session working one page — `docs/LOOP_PROMPT.md` —
-one iteration after another, for as long as the owner leaves it running. Seven steps, in order:
+There is no scheduler and no framework. The loop is a controller session working one page — the `loop-iteration` skill,
+`.claude/skills/loop-iteration/SKILL.md` (until 2026-09-26 `docs/LOOP_PROMPT.md`) — one iteration after another, for as long as the owner leaves it running. Seven steps, in order:
 
 1. **Look before you touch.** Other sessions share the working tree; a modified file you did not modify is someone
    else's.
@@ -71,7 +71,7 @@ one iteration after another, for as long as the owner leaves it running. Seven s
    could change what the game does.
 5. **Commit and push** with an explicit pathspec, never `git add -A`. Since 2026-09-21, a proven item goes to `main`
    the day it is proven, on its own pull request, rather than waiting for the sprint to close.
-6. **Write it down where it will be read** — the status log, the known/believed ledger, the plan's boxes, a numbered
+6. **Write it down where it will be read** — the plan's Log, the known/believed ledger, the plan's boxes, a numbered
    ruling for anything decided on the owner's behalf, the owner's queue for anything only they can check.
 7. **Then the next item.** Do not wait on the owner; do not do what is the owner's.
 
@@ -102,7 +102,7 @@ emulator-as-golden-reference is the only outside opinion the project has about w
 
 **What the gate proves, and what it does not.** It proves the game still looks and behaves the way it did last time
 at those three points. It is a regression check, not a correctness check, and it has two structural blind spots that
-are written down in `docs/KNOWN.md` §4 rather than hidden:
+are written down in `docs/HAZARDS.md` (harness) rather than hidden:
 
 - **A defect present in every run looks exactly like the reference.** Title and mission scoring compare our runs to
   our own earlier runs.
@@ -207,7 +207,7 @@ life of the project every roll came up almost the lowest number it could — und
 **A ruling written in prose cannot fail.** A measured decision to build the release at a lower optimisation level was
 recorded in three documents and applied in none; the build script went on doing the opposite for six days, and it was
 found by asking why an archive was larger than the number those three documents quoted (`210cb78`, 2026-09-20). The
-generalisation in `docs/KNOWN.md` §4: a ruling that names a default, a threshold or a flag should get a test that
+generalisation in `docs/HAZARDS.md` (documents): a ruling that names a default, a threshold or a flag should get a test that
 reads the real artefact and asserts the ruled value.
 
 **An instrument may be opt-in; a failure may not.** When the owner's first save failed, the build they were playing
@@ -239,7 +239,7 @@ same shape: **turn a judgement into something that can fail.**
 | `docs/KNOWN.md` | Proven, believed, retracted, and what will bite again. It wins on any disagreement |
 | `docs/CURRENT_SPRINT.md` | The live queue |
 | `docs/HANDOFF.md` | What a new controller reads first |
-| `docs/LOOP_PROMPT.md` | The loop, in full, carrying no state |
+| `docs/LOOP_PROMPT.md` | A pointer to the loop's four skills in `.claude/skills/` (the loop in full until 2026-09-26) |
 | `docs/DEVELOPING.md` | The build, the tests, the knobs, the harness |
 | `docs/GIT_STRATEGY.md` | Branches, slices, tags, releases |
 | `docs/DOC_MAINTENANCE.md` | The document classes and the checks that hold them |

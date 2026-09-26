@@ -1,6 +1,6 @@
 """Sprint 6 Task 4: the burst-to-burst aim correction, against the simulator's aim-bias world (sim_walk_to_b.run_aim_bias).
 
-Ladder launch 2 round 4 (research/22 "Ladder launch 2", KNOWN §4) read the same -4.1 deg aim error on all 111 cycles --
+Ladder launch 2 round 4 (research/22 "Ladder launch 2", docs/HAZARDS.md harness) read the same -4.1 deg aim error on all 111 cycles --
 inside the tolerance, so aim_yaw never pulsed -- and fired 111 bursts with no damage. The world here carries that
 signature as a FIXED bias on the actor-matrix heading; the hit model is the sim's (a burst hits iff the TRUE aim error
 is inside half the subtended angle; a hit lowers the stander's actor+0x1044 word, read by the health watch exactly

@@ -48,8 +48,8 @@ machine; a build of the community's r0004 revision plays a round too. Not yet: a
 frame rate in missions, a finished Linux client, and any disc other than the NTSC r0001 release.
 The game does not send your voice yet.
 
-The audited version of this, with the evidence for each claim, is `docs/KNOWN.md`; `docs/STATUS.md` is the
-day-by-day, and `docs/CURRENT_SPRINT.md` says what is being worked on now.
+The audited version of this, with the evidence for each claim, is `docs/KNOWN.md`; `docs/CHANGELOG.md` is
+what merged when, and `docs/CURRENT_SPRINT.md` says what is being worked on now.
 
 ## For players: get it
 

@@ -1,6 +1,6 @@
 """The PS2X_* environment a capture ran with, written beside its output in the gate's pin format (issue #38).
 
-KNOWN section 4, "A capture that does not record its own environment cannot prove the 'off' half of an A/B": on
+docs/HAZARDS.md harness, "A capture that does not record its own environment cannot prove the 'off' half of an A/B": on
 2026-09-23 the W6 A/B took two walking captures, one with `PS2X_GS_NO_TEX_REVALIDATE=1`, and nothing in either run
 directory could show which was which. The parity gate pins every `PS2X_*` it scores against (pins.env_pin); the
 capture scripts under scripts/parity/ recorded nothing, or (audio_parity.sh, from 2026-09-23) a free-form dump. This

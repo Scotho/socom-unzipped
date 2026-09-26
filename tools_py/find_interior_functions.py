@@ -3,7 +3,7 @@
 
 Ghidra sometimes merges adjacent functions into one range. The recompiler keys generated bodies by
 range start, so an indirect call to the second function's address finds no target and does nothing
-(docs/HANDOFF gotcha 1). A boundary is a `jr $ra` + delay slot followed, after any padding, by more
+(docs/archive/HANDOFF-reference-to-2026-09-13.md gotcha 1). A boundary is a `jr $ra` + delay slot followed, after any padding, by more
 code inside the same range. Only boundaries that are actually *referenced* — as a `jal` target or as
 a 32-bit word stored anywhere in the loaded image (a vtable / ctor-table entry) — are reported, so
 a mid-function second return point is not mistaken for a new function.

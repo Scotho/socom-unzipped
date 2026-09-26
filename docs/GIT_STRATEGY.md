@@ -68,8 +68,27 @@ shape, six times over in Sprint 10:
 5. `git merge origin/main` back into the sprint branch immediately, delete the slice branch. `main` and `sprint-N` are
    identical again; the next item starts from a clean diff.
 
-**Never** let an implementation agent do this: it merges its own unreviewed work (it happened -- see `docs/HANDOFF.md`
-on handing out a worktree). The controller opens and merges every slice.
+**What a slice carries is proved by the merged chain, and a red chain evicts (Sprint 14 W2).** An agent's branch is
+merged into the sprint branch at a clean review (DONE (code)); the proof is one chain per batch of merged branches --
+recomp, runtime, suites, the gate on the exe the chain built, the held-out leg, the release archive and PLAYTEST's
+block -- from the template `scripts/parity/merged_chain.sh`, launched once under one holding of the lock (its header).
+A green chain records the commit it proved; only proved commits go to `main` in a slice. A red step prints the merges
+since the last green chain, and the batch is bisected by branch: the chain is rerun with a suspect merge reverted
+until it is green. The culprit is **evicted**:
+
+1. `git revert -m 1 <merge>` on the sprint branch -- the merge's first parent is the sprint branch, so `-m 1` undoes
+   exactly what the branch brought in -- committed with its paths named and a subject that says why
+   (`revert(sprint-N): evict <branch> -- <the red step>`);
+2. the eviction is recorded in the plan's `## Log`: the merge, the red step and its stamp, the reason;
+3. the branch is re-queued for its author: its task goes back to open, and the fix lands on the same branch, which
+   is merged again (a merge after a revert re-applies nothing by itself: revert the revert first, then merge the
+   fix -- the git documentation's "revert a faulty merge").
+
+The other merges of the batch stay; nothing is force-pushed and no history is rewritten.
+
+**Never** let an implementation agent do this: it merges its own unreviewed work (it happened -- see `docs/archive/HANDOFF-to-2026-09-26.md`
+§5 on handing out a worktree, now the `agent-worktree` skill). The controller opens and merges every slice.
+The role definitions every brief dispatches by name are `.claude/agents/implementer.md` and `.claude/agents/reviewer.md`.
 
 **Merging a sprint (AT S9 CLOSE and after):** open a PR `sprint-N -> main`, title `Sprint N: <its name>`, body = the
 close-out block from `docs/CURRENT_SPRINT.md`; merge with a **merge commit** (not squash: the per-task commits are the
@@ -88,16 +107,27 @@ review is not closed.**
 - **Explicit pathspec, always:** `git commit -m "..." -- <paths>`. Never `git add -A`, never a bare `git commit` after
   `git add` (it takes the whole index, and other sessions' files with it -- it happened on 2026-09-13 and again in
   `6b7a2b3`). Never stage a file another session is editing.
-- **Never committed:** `server/config/simulated.db`, `ONBOARDING.md`, root `*.bin`/`*.wav`, `dist*/`, `build*/`,
-  anything under `game/`, `tools/`, `logs/`, `vm/`, any key, token, or address of a machine that is not the public
-  server's.
+- **Never committed** (this list's one home), each entry either git-ignored -- `server/config/simulated.db`, the
+  box env files in `server/ops/`, `ONBOARDING.md`, root `*.bin`/`*.wav`, root `build*/` and `dist*/` folders,
+  `*.iso`, `*.7z`, anything under `game/`, `tools/`, `logs/`, `vm/`, `research/`, `out/`, `recomp/output/`,
+  `ghidra_proj/`, `server/logs/`, `server/ops/pulled/`, `server/horizon-docker/`,
+  `server/horizon-server-database-middleware/`, `mc0/`, `mc1/`, `.claude/skills/s2u-bug-reports/`,
+  `tools_py/release/leak_extra.txt` -- or key-shaped by name: SSH private-key names,
+  `*.pem`/`*.ppk`/`*.key`/`*.p12`/`*.pfx`, dotenv files, credential files, `known_hosts`, ...
+  How the hooks refuse each: an ignored path staged anyway is `forced-ignored-file` in the pre-commit leak check
+  (`.gitignore` is the rule; `leakcheck ignored` proves sample paths from `SENSITIVE_IGNORED`,
+  `tools_py/release/leakcheck.py`); a key-shaped name is refused wherever it sits (`KEYNAME_PATH_RE`,
+  `tools_py/release/leakrules.py`). Beyond the list, the content rules refuse key material, tokens, and the
+  address of any machine that is not the public server's, in any file.
 - **Subject:** `type(scope): what changed and why it mattered` -- types `feat`, `fix`, `refactor`, `test`, `docs`,
-  `build`, `ci`, `chore`. The project's subjects are long and say the finding; keep that. Name the sprint goal/task
-  and any ruling (`R170`) in the subject or body.
+  `build`, `ci`, `chore`. The subject (git's first paragraph) stays at or under 120 characters -- the `commit-msg` hook
+  (`scripts/hooks/commit-msg`) refuses longer; the finding goes in the body (a default `Merge branch '...'` or
+  `Revert "..."` or `Reapply "..."` subject with a body is exempt). Name the sprint goal/task and any ruling (`R170`) in the subject or
+  body.
 - **Trailer:** the `Co-Authored-By` line your session is given -- not one copied from an older commit. Human
   contributors add none.
 - A runtime change is committed only after `./build.sh test` and the three-stage gate are green on the rebuilt exe;
-  the gate's stamp goes in the body or the STATUS entry.
+  the gate's stamp goes in the body or the plan's Log (and STATUS's Current state bullet).
 
 ## 4. Tags and versions
 
@@ -217,9 +247,9 @@ What is **not** on the stack, and where it goes instead:
   `Closes #N` in its commit;
 - a security vulnerability -> a private advisory (`SECURITY.md`), never an issue;
 - a bug report's content -> the inbox; only the `BR-` id crosses (the triage routine above);
-- a lesson, or a hazard with nothing left to fix (most of KNOWN §4) -> KNOWN §4 stays its home. A hazard with a fix
-  that could be made IS a defect and gets an issue -- and its §4 headline says `HAZARD:` or `Open:`, the two forms
-  KNOWN already uses for a live one, because those are the only §4 bullets the audit asks the review about;
+- a lesson, or a hazard with nothing left to fix (most of `docs/HAZARDS.md`) -> HAZARDS stays its home. A hazard with a fix
+  that could be made IS a defect and gets an issue -- and its HAZARDS headline says `HAZARD:` or `Open:`, the two forms
+  KNOWN already uses for a live one, because those are the only HAZARDS bullets the audit asks the review about;
 - a research question with no bar -> `docs/research/`.
 
 **The owner's reports, and the line between them.** What the owner hears or sees is a report, not yet a defect. It
@@ -254,9 +284,11 @@ issue is what gets corrected.
   and the row is kept as a record, `issue #N (closed)`. A bare `#N` is not a citation: the tree uses that form for
   upstream pull requests. `docs/STATUS.md` is read whole by the audit although only its top block is live, so a
   dated log entry writes `issue #N (closed)` once the issue settles, or leaves the number out -- an old entry
-  saying `issue #N` would read as an open citation for ever.
+  saying `issue #N` would read as an open citation for ever. (True until 2026-09-26, when Sprint 14 S1 archived the
+  log to `docs/archive/STATUS-log-to-2026-09-26.md` (R272): STATUS is the Current state block and a pointer now.)
 - **Rulings:** a ruling that moves an issue's bar or drops it is cited by number in a comment on the issue, and the
-  ruling names the issue.
+  ruling names the issue. What is a ruling at all, and where its number comes from, is
+  `docs/DOC_MAINTENANCE.md` section 6.
 - **Nothing sensitive, ever.** An issue is public and permanent. No key, address, contact, path under a home
   directory, and nothing from a bug report but its id. The leak check does not read GitHub; the writer is the check.
 
@@ -264,7 +296,7 @@ issue is what gets corrected.
 
 Any agent may do all of these; the conventions are the boundary, not a person.
 
-- **Add**, in the same commit as the KNOWN row it belongs to -- a new §2 row, or a §4 hazard that turns out fixable:
+- **Add**, in the same commit as the KNOWN row it belongs to -- a new §2 row, or a `docs/HAZARDS.md` bullet that turns out fixable:
   ```
   python -m tools_py.issues skeleton > body.md         # fill it in, in your own words
   python -m tools_py.issues open --title "..." --body-file body.md --area harness [--milestone "Sprint 11"] [--label needs-repro]

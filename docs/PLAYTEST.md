@@ -11,14 +11,16 @@ next sitting is for. *(Rewritten 2026-09-25, Sprint 13 S1, stranger audit S24 an
 still presented the 2026-09-21 build as "Ready" three days after it was played, and its decisions section asked
 questions already answered.)*
 
+<!-- build:begin -->
 ```
-build:    NOT BUILT. No archive exists for the current tree: the v0.12.0 draft release has no assets
-          (gh release view v0.12.0, 2026-09-25). Whoever builds the next archive fills this block from
-          the run that built it -- not from the directory (KNOWN §4: a failed packaging leaves the
-          previous archive in place):
-          commit, `git describe`, release optimisation, archive path, size and sha256, the gate stamp
-          3/3 on the exe INSIDE the archive with that exe's size and sha256, and the release leak check.
+build:    2026-09-26T16:19:17Z   commit 352fed01dc2b (sprint-14)
+archive:  socom2-portable.zip   (dist-release/portable/socom2-portable.zip)
+          sha256: 6f8246448ecbb8bd4fe1d909a793813ea1130f3436c64ede69b6d6681cf533f6
+exe:      socom2.exe sha256: 8be2ee0c8bc9aa059f79392f2150c199a46916f22abc1fc45f27083183f23568
 ```
+
+Written by `python -m tools_py.playtest_block` from the manifest `scripts/make_portable.sh` wrote with this archive (the chain's last step); play that archive, unzipped to a new folder.
+<!-- build:end -->
 
 > Superseded 2026-09-25 (Sprint 13 S1) -- the block that stood here, kept as the record of the last sitting's build:
 >

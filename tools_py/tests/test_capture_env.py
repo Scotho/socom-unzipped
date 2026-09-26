@@ -1,6 +1,6 @@
 """Issue #38: every capture that produces evidence writes the PS2X_* environment it ran with beside its output.
 
-KNOWN section 4, "A capture that does not record its own environment cannot prove the 'off' half of an A/B": the W6
+docs/HAZARDS.md harness, "A capture that does not record its own environment cannot prove the 'off' half of an A/B": the W6
 A/B (2026-09-23, `logs/parity/mission_music_ours_20260922_224425` against `logs/parity/w6_norevalidate`) took two
 mission captures, one with `PS2X_GS_NO_TEX_REVALIDATE=1`, and neither run directory could say which was which. The
 closing bar: a test that runs one capture entry point dry and finds the file, in the gate's pin format.

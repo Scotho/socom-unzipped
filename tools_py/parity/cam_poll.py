@@ -9,7 +9,7 @@ Default spec: the mission camera object (static scene 0x4887c0 + 0x628 -> pointe
 +0x120. The pointer's address is read from tools_py/parity/guest_addresses.py by name (`camera_ptr`),
 in the column --revision names -- r0001 by default, because the console boots the r0001 disc. r0004's
 POINTER is placed (data_via_twin, 14 twinned referrers in 11 functions, unanimous), but the +0x120 window
-start is a struct offset measured on r0001 only (KNOWN.md §4: a wrong offset answers with a number), so
+start is a struct offset measured on r0001 only (docs/HAZARDS.md recompiler: a wrong offset answers with a number), so
 the r0004 DEFAULT refuses; an explicit --spec is taken as written.
 
 Usage: python -m tools_py.parity.cam_poll --out logs/parity/cam_pcsx2.txt [--seconds 330]

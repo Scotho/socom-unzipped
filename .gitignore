@@ -30,6 +30,13 @@ __pycache__/
 # ~192 MB exe in each, and this repo is public, so one `git add -A` must not be able to commit one.
 # /dist/ above is deliberately left as its own rule; this covers only the dist-r<rev>/ siblings.
 /dist-r[0-9]*/
+# Sprint 14 S4: docs/GIT_STRATEGY.md section 3's never-commit list, made true here: every build or dist folder at
+# the root (build-clang/, build-linux/, any dist-*/) and root-level .bin/.wav dumps. Root-anchored and
+# folder-only, so build.sh and the tracked fixtures under tests/ and scripts/ stay tracked.
+/build*/
+/dist*/
+/*.bin
+/*.wav
 /logs/
 /server/horizon-server-database-middleware/
 /server/horizon-docker/
@@ -43,6 +50,13 @@ __pycache__/
 /server/ops/pulled/
 imgui.ini
 vm/
+# .claude/: only the tracked project configuration; the harness's local state (worktrees/, scheduled_tasks.lock,
+# settings.local.json) stays out (Sprint 14 G1). This block owns the policy: it outranks a global excludes file
+# with `.claude/*` on every clone. Git needs a parent un-ignored before a child negation works, hence the dirs.
+/.claude/*
+!/.claude/settings.json
+!/.claude/agents/
+!/.claude/skills/
 # a local Claude skill that names a host and an SSH key (owner 2026-09-19)
 /.claude/skills/s2u-bug-reports/
 # 2026-09-20 (controller handoff): what showed as untracked on every `git status` and must never be committed.

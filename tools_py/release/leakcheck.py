@@ -53,7 +53,7 @@ BINARY_SNIFF_BYTES = 8 * 1024 * 1024
 TEXT_SNIFF_BYTES = 8 * 1024
 MAX_LINE = 4000          # a minified or hex-dump line longer than this is scanned in pieces, never skipped
 
-# The paths that hold the real secrets and the owner's data (HANDOFF §5 rule 2, the Sprint 11 spec Goal 9 item 1).
+# The paths that hold the real secrets and the owner's data (HANDOFF §4 rule 2, the Sprint 11 spec Goal 9 item 1).
 # "It is git-ignored" is a claim with a shelf life; the gate re-proves it on every run: ignored now, not in the
 # index now, and never added by any commit on any ref.
 SENSITIVE_IGNORED = (
@@ -61,6 +61,13 @@ SENSITIVE_IGNORED = (
     "dist/", "dist-release/", "dist-linux/", "dist-linux-release/", "server/config/simulated.db",
     "server/logs/", ".claude/skills/s2u-bug-reports/", "ONBOARDING.md", "ghidra_proj/", "recomp/output/",
     "tools_py/release/leak_extra.txt", "mc0/", "mc1/",
+    # Sprint 14 S4: the rest of docs/GIT_STRATEGY.md section 3's never-commit list, one sample path per
+    # pattern (`/*.bin`, `/*.wav`, `/build*/`, `/dist*/`, `*.iso`, `*.7z`, the box's pulled tree). Not here:
+    # server/horizon-docker/ and server/horizon-server-database-middleware/ -- ignored (a staged file under them
+    # is refused as forced-ignored), but `a3cef6ce` added both as gitlinks to their public upstreams, so the
+    # history half can never pass; a gitlink is a commit hash, not a secret.
+    "out.bin", "out.wav", "build/", "build-clang/", "build-linux/", "dist-r0004/", "dist-foo/", "game.iso",
+    "disc.7z", "out/", "server/ops/pulled/", "server/ops/ops.env",
 )
 # Shapes of file that must never be tracked whatever their path (the .gitignore has the same list; this is
 # the proof that it held).

@@ -1,6 +1,6 @@
 """The documentation registry (docs/DOC_MAINTENANCE.md) held to the tree.
 
-Ten checks, each aimed at a rot mechanism that actually bit this project (the reasons are in
+Eleven checks, each aimed at a rot mechanism that actually bit this project (the reasons are in
 docs/DOC_MAINTENANCE.md section 0). No build needed, so this runs in CI. Nothing here fails on a
 calendar -- cadence is the sprint-close review, a human step with a stamp.
 """
@@ -51,6 +51,24 @@ class RulingCounterTest(unittest.TestCase):
             docmaint.next_free_ruling(), highest + 1,
             "docs/HANDOFF.md offers R%s but R%d is already in use (%s). Take your number from HANDOFF "
             "and bump that line in the same commit." % (docmaint.next_free_ruling(), highest, where))
+
+    def test_exactly_one_counter_line(self):
+        """The counter had two homes, HANDOFF's line and CURRENT_SPRINT's `next ruling:` header line, kept in
+        step by hand; on 2026-09-22 they said R242 and R241. From Sprint 14 (Task D2, R273) HANDOFF section 2
+        is the one home and docs/RULINGS.md is the index, so a second counter line is a defect."""
+        hits = []
+        for path in docmaint.by_class("L"):
+            if not os.path.isfile(os.path.join(docmaint.ROOT, path)):
+                continue
+            for i, line in enumerate(docmaint._read(path).split("\n"), 1):
+                if docmaint.RULING_LINE.search(line):
+                    hits.append((path, i))
+        self.assertEqual([p for p, _ in hits], ["docs/HANDOFF.md"],
+                         "the next free ruling number is stated once, in docs/HANDOFF.md section 2: %s" % hits)
+        header = docmaint._read("docs/CURRENT_SPRINT.md").split("```")[1]
+        self.assertIsNone(re.search(r"^next ruling\s*:", header, re.M | re.I),
+                          "docs/CURRENT_SPRINT.md's header carries a `next ruling:` line again -- point at "
+                          "docs/HANDOFF.md section 2 instead")
 
 
 class SingleSourceCountsTest(unittest.TestCase):
@@ -131,10 +149,66 @@ class CeilingsTest(unittest.TestCase):
         self.assertLessEqual(limit, 12500, "raise nothing: archive the old rows (docs/DOC_MAINTENANCE.md check 7)")
 
     def test_every_ceiling_names_a_block_that_exists(self):
-        for path, heading, limit in docmaint.CEILINGS:
+        for path, heading, limit in docmaint.ceilings():
             self.assertIsNotNone(docmaint.block_bytes(path, heading),
                                  "%s has no %r block -- a renamed heading must not switch its ceiling off"
                                  % (path, heading))
+
+    # --- Sprint 14 S3: the new ceilings and the ratchet ------------------------------------------------
+
+    def test_loop_prompt_claude_md_and_the_open_plan_have_whole_file_ceilings(self):
+        whole = {p: n for p, h, n in docmaint.ceilings() if h is None}
+        # A ceiling may only fall (check 7's ratchet), so the numbers are held to at most the set value, never pinned.
+        self.assertLessEqual(whole.get("docs/LOOP_PROMPT.md"), 2000)
+        self.assertLessEqual(whole.get("CLAUDE.md"), 4900)
+        plan = docmaint._plans_line_path()
+        self.assertIn(plan, whole, "the open plan (CURRENT_SPRINT's plans: line) has no ceiling")
+        self.assertIn((docmaint.OPEN_PLAN, None), [(p, h) for p, h, _ in docmaint.CEILINGS])
+
+    def test_no_ceiling_proposes_a_rise(self):
+        """The ratchet only goes down: every proposed number is at or under the ceiling it replaces."""
+        for row in docmaint.ratchet():
+            self.assertLessEqual(row["proposed"], row["ceiling"], row)
+
+    def test_the_real_plans_log_is_its_last_heading(self):
+        """Check 11 counts the plan's Log to the end of the file and archive-log refuses otherwise, so a
+        "## " heading after the Log is a mistake: put it above the Log."""
+        plan = docmaint._plans_line_path()
+        self.assertTrue(docmaint.plan_log_is_last(plan), "%s has a '## ' heading after its '## Log'" % plan)
+
+
+class ReadFirstBudgetTest(unittest.TestCase):
+    """Check 11 (Sprint 14 I4): what a new controller reads before acting stays under 160,000 bytes.
+
+    The review of 2026-09-26 (F1) found HANDOFF's read-first list at 975 KB, a quarter-million tokens before the
+    first action. The set is HANDOFF itself, the files its section 3 "Read" step names, the "## Log" block of the
+    plan CURRENT_SPRINT's `plans:` line names (whole if it has none), and STATUS's "## Current state" block.
+    """
+
+    def test_the_real_read_first_set_is_under_the_budget(self):
+        members = docmaint.read_first_bytes()
+        paths = [p for p, _ in members]
+        total = sum(n for _, n in members)
+        listing = docmaint.describe_read_first(members)
+        self.assertIn("docs/HANDOFF.md", paths, listing)
+        self.assertIn("CLAUDE.md", paths, listing)
+        self.assertIn("docs/STATUS.md", paths, listing)
+        self.assertEqual(docmaint.read_first_missing(), [], "the plans: line names a plan that is not there")
+        self.assertIn("docs/CURRENT_SPRINT.md", paths, "HANDOFF section 3 no longer names it: %s" % listing)
+        self.assertTrue(any(p.startswith("docs/superpowers/plans/") for p in paths),
+                        "CURRENT_SPRINT's plans: line named no plan the parser found: %s" % listing)
+        self.assertLessEqual(total, docmaint.READ_FIRST_BUDGET,
+                             "over the read-first budget (the plan counts by its '## Log' block, STATUS by its "
+                             "'## Current state' block) -- shrink or archive, never raise the number: %s" % listing)
+
+    def test_handoff_section_3_names_the_pinned_set(self):
+        """The set is pinned in READ_FIRST, so a rewording of HANDOFF section 3 cannot silently shrink it: the
+        paths its "Read ..." step backticks must be exactly the pinned members after HANDOFF itself. When this
+        fails, either section 3 lost a read-first document (put it back) or the set really changed (edit
+        READ_FIRST and DOC_MAINTENANCE check 11 in the same commit)."""
+        self.assertEqual(docmaint.READ_FIRST[0], "docs/HANDOFF.md")
+        self.assertEqual(tuple(docmaint.handoff_read_step_paths()), docmaint.READ_FIRST[1:],
+                         "docs/HANDOFF.md section 3's Read step and docmaint.READ_FIRST disagree")
 
 
 class TagClaimsTest(unittest.TestCase):
@@ -166,7 +240,8 @@ class ReportTest(unittest.TestCase):
         problems = {k: r[k] for k in ("unregistered", "missing_files", "duplicate_rows",
                                       "count_offenders", "undated_snapshots", "silent_archives",
                                       "dangling_doc_links", "over_ceiling", "unknown_tags",
-                                      "duplicate_rulings", "undefined_rulings") if r[k]}
+                                      "duplicate_rulings", "undefined_rulings", "read_first_over",
+                                      "read_first_missing") if r[k]}
         self.assertEqual(problems, {}, "python -m tools_py.docmaint says: %s" % problems)
 
     def test_the_review_stamp_parses(self):
@@ -197,7 +272,7 @@ class GeneratedBacklogTest(unittest.TestCase):
 
 
 class PlantedDefectsTest(unittest.TestCase):
-    """A gate that has never failed is not known to work (KNOWN section 4).
+    """A gate that has never failed is not known to work (docs/HAZARDS.md harness).
 
     Each check is fired once against a tree built to break exactly it, so a future refactor that
     quietly turns a check into a no-op reddens here instead of passing forever.
@@ -206,6 +281,8 @@ class PlantedDefectsTest(unittest.TestCase):
     def setUp(self):
         self._root = docmaint.ROOT
         self._tags = docmaint.remote_tags
+        self._ceilings = docmaint.CEILINGS
+        self._module = getattr(docmaint, "MODULE_PATH", None)
         self._tmp = tempfile.mkdtemp(prefix="docmaint_")
         docmaint.ROOT = self._tmp
         # The planted tree is not a clone: origin's tags are planted too, so no test here touches the network.
@@ -219,7 +296,7 @@ class PlantedDefectsTest(unittest.TestCase):
         self.write("docs/DEVELOPING.md", "# d\n\nTotal Tests: 764\n")
         self.write("docs/HANDOFF.md", "# h\n\n## 2. Where it stands\n\nNext free ruling number: R100\n\n"
                                      "R99 was decided earlier.\n")
-        # ...in a plan, where a ruling is made (HANDOFF section 5 rule 9), so the clean tree cites nothing undefined.
+        # ...in a plan, where a ruling is made (HANDOFF section 4 rule 9), so the clean tree cites nothing undefined.
         self.write("docs/superpowers/plans/2026-01-01-plan.md",
                    "# plan\n\n## Rulings made on the owner's behalf\n\n- **R99** (Task 1): the decision.\n")
         self.registry([("README.md", "L"), ("CONTRIBUTING.md", "C"), ("SECURITY.md", "C"),
@@ -229,10 +306,13 @@ class PlantedDefectsTest(unittest.TestCase):
     def tearDown(self):
         docmaint.ROOT = self._root
         docmaint.remote_tags = self._tags
+        docmaint.CEILINGS = self._ceilings
+        docmaint.MODULE_PATH = self._module
         shutil.rmtree(self._tmp, ignore_errors=True)
 
-    def ceiling(self, path):
-        return [c for c in docmaint.CEILINGS if c[0] == path][0]
+    def ceiling(self, path, whole=False):
+        """The first ceiling on `path` -- or, with whole=True, its whole-file one (HANDOFF has both)."""
+        return [c for c in docmaint.CEILINGS if c[0] == path and (not whole or c[1] is None)][0]
 
     def write(self, rel, text):
         path = os.path.join(self._tmp, rel)
@@ -257,6 +337,8 @@ class PlantedDefectsTest(unittest.TestCase):
         self.assertEqual(r["dangling_doc_links"], [])
         self.assertEqual(r["over_ceiling"], [])
         self.assertEqual(r["unknown_tags"], [])
+        self.assertEqual(r["read_first_over"], [])
+        self.assertEqual(r["read_first_missing"], [])
         self.assertEqual(r["next_free_ruling"], r["max_ruling"] + 1, "the counter check's own control")
 
     def test_an_unregistered_document_fires_check_1(self):
@@ -272,13 +354,6 @@ class PlantedDefectsTest(unittest.TestCase):
         self.assertEqual(docmaint.max_ruling()[0], 240)
         self.assertNotEqual(docmaint.next_free_ruling(), 241)
 
-    def test_two_counter_lines_that_disagree_are_visible(self):
-        self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n")
-        self.write("docs/CURRENT_SPRINT.md", "# cs\n\nnext ruling:  R101\n")
-        self.registry([("docs/HANDOFF.md", "L"), ("docs/CURRENT_SPRINT.md", "L"),
-                       ("docs/DOC_MAINTENANCE.md", "C")])
-        self.assertEqual(sorted(docmaint.ruling_counters().values()), [100, 101])
-
     def test_an_undated_suite_count_fires_check_3(self):
         self.write("README.md", "# r\n\nbaselines: C++ 686/686 today\n")
         hits = docmaint.report()["count_offenders"]
@@ -287,6 +362,15 @@ class PlantedDefectsTest(unittest.TestCase):
     def test_a_dated_suite_count_does_not_fire_check_3(self):
         self.write("README.md", "# r\n\nRun on 2026-09-21: C++ 686/686.\n")
         self.assertEqual(docmaint.report()["count_offenders"], [])
+
+    def test_an_undated_count_in_status_state_block_fires_check_3(self):
+        """STATUS has no exemption since its log was archived (Sprint 14 S1, R272): the block is live state, and
+        its "## Current state" heading carries no date to excuse a bare count under it."""
+        self.write("docs/STATUS.md", "# s\n\n## Current state (keep it short)\n- tests: C++ 944/944\n\n"
+                                     "## Where the log went\n\nArchived.\n")
+        self.registry([("docs/STATUS.md", "L"), ("docs/DOC_MAINTENANCE.md", "C")])
+        hits = docmaint.report()["count_offenders"]
+        self.assertTrue(any(h[0] == "docs/STATUS.md" and h[1] == 4 for h in hits), hits)
 
     def test_a_count_under_a_dated_heading_does_not_fire_check_3(self):
         self.write("README.md", "# r\n\n## 2026-09-18 entry\n\nC++ 554/554 that day.\n")
@@ -348,6 +432,19 @@ class PlantedDefectsTest(unittest.TestCase):
         self.write("README.md", "# r\n\nSee `docs/NOPE.md`.\n")
         self.assertTrue(any(h[0] == "README.md" for h in docmaint.report()["dangling_doc_links"]))
 
+    def test_a_skill_or_an_agent_definition_is_scanned_too(self):
+        """Sprint 14 I2: the live procedures are .claude/skills/**/SKILL.md and .claude/agents/*.md."""
+        self.write(".claude/skills/some-skill/SKILL.md", "---\nname: some-skill\n---\n\nRead `docs/GONE-SKILL.md`.\n")
+        self.write(".claude/agents/some-agent.md", "---\nname: some-agent\n---\n\nRead `docs/GONE-AGENT.md`.\n")
+        hits = docmaint.report()["dangling_doc_links"]
+        self.assertIn((".claude/skills/some-skill/SKILL.md", 5, "docs/GONE-SKILL.md"), hits)
+        self.assertIn((".claude/agents/some-agent.md", 5, "docs/GONE-AGENT.md"), hits)
+
+    def test_a_future_marked_path_in_a_skill_does_not_fire_check_6(self):
+        self.write(".claude/skills/some-skill/SKILL.md",
+                   "---\nname: some-skill\n---\n\nRead `docs/LATER.md`. <!-- docmaint: future -->\n")
+        self.assertEqual(docmaint.report()["dangling_doc_links"], [])
+
     def test_a_struck_through_path_is_a_retraction_and_does_not_fire_check_6(self):
         self.write("README.md", "# r\n\n~~`docs/research/19-old.md`~~ `docs/DEVELOPING.md` (renumbered).\n")
         self.assertEqual(docmaint.report()["dangling_doc_links"], [])
@@ -381,11 +478,33 @@ class PlantedDefectsTest(unittest.TestCase):
                          "## 2. Where it stands\n\n" + "- now\n" * (limit // 6 + 10) + "\n## 3. Next\n\nshort\n")
         self.assertTrue(any(h[0] == path and h[1] == heading for h in docmaint.report()["over_ceiling"]))
 
-    def test_only_handoff_section_2_is_measured(self):
-        """The rest of HANDOFF is reference and may be long; only the pick-up block appends."""
+    def test_handoff_section_2_ceiling_measures_only_section_2(self):
+        """A long section 3 does not fire the section-2 ceiling; the whole-file one (I3) owns the rest."""
         path, heading, limit = self.ceiling("docs/HANDOFF.md")
         self.write(path, "# h\n\nNext free ruling number: R100\n\n## 2. Where it stands\n\n- now\n\n"
-                         "## 3. Next\n\n" + "y" * (limit * 2) + "\n")
+                         "## 3. Next\n\n" + "y" * (limit + 100) + "\n")
+        self.assertEqual(docmaint.report()["over_ceiling"], [])
+
+    # --- Sprint 14 I3: HANDOFF is transient, and the whole file has a ceiling ---------------------------
+
+    def test_a_handoff_one_byte_over_its_whole_file_ceiling_fires(self):
+        """HANDOFF grew to 36 KB doing three jobs (handoff, runbook, postmortem); I3 cut it to the first."""
+        path, heading, limit = self.ceiling("docs/HANDOFF.md", whole=True)
+        self.assertLessEqual(limit, 6000, "a ceiling may only fall (check 7's ratchet)")
+        head = "# h\n\nNext free ruling number: R100\n\n## 2. Where it stands\n\n- now\n\n## 3. Next\n\n"
+        self.write(path, head + "y" * (limit + 1 - len(head) - 1) + "\n")
+        self.assertEqual(docmaint.block_bytes(path, None), limit + 1)
+        hits = [h for h in docmaint.report()["over_ceiling"] if h[0] == path and h[1] is None]
+        self.assertEqual(len(hits), 1, docmaint.report()["over_ceiling"])
+        self.assertIn("(whole file)", docmaint.describe_ceiling(hits[0]))
+        self.assertIn("{:,}".format(limit + 1), docmaint.describe_ceiling(hits[0]))
+
+    def test_a_handoff_exactly_at_its_whole_file_ceiling_does_not_fire(self):
+        """The negative control: 6,000 bytes is inside the ceiling."""
+        path, heading, limit = self.ceiling("docs/HANDOFF.md", whole=True)
+        head = "# h\n\nNext free ruling number: R100\n\n## 2. Where it stands\n\n- now\n\n## 3. Next\n\n"
+        self.write(path, head + "y" * (limit - len(head) - 1) + "\n")
+        self.assertEqual(docmaint.block_bytes(path, None), limit)
         self.assertEqual(docmaint.report()["over_ceiling"], [])
 
     def test_the_status_state_block_over_its_ceiling_fires(self):
@@ -408,6 +527,307 @@ class PlantedDefectsTest(unittest.TestCase):
         self.assertEqual(len(hits), 1)
         self.assertIsNone(hits[0][2])
         self.assertIn("not found", docmaint.describe_ceiling(hits[0]))
+
+    # --- Sprint 14 I4: check 11, the read-first budget ---------------------------------------------------
+
+    READ_FIRST_HANDOFF = ("# h\n\n## 2. Where it stands\n\nNext free ruling number: R100\n\n"
+                          "## 3. Your first hour\n\n1. `bash scripts/install_hooks.sh`.\n"
+                          "2. Read `CLAUDE.md`, then `docs/CURRENT_SPRINT.md`, then\n   the open plan's Log.\n"
+                          "3. Where anything disagrees with `docs/KNOWN.md`, KNOWN wins.\n\n## 4. Rules\n\n- x\n")
+    PLAN = "docs/superpowers/plans/2026-01-01-plan.md"
+
+    def plant_read_first(self, each, plans_path=None):
+        """CLAUDE.md and CURRENT_SPRINT at `each` bytes each; the sprint file's plans: line names `plans_path`."""
+        self.write("docs/HANDOFF.md", self.READ_FIRST_HANDOFF)
+        self.write("CLAUDE.md", "c" * (each - 1) + "\n")
+        head = "# c\n\n```\nplans:   %s (the Log)\n```\n" % (plans_path or self.PLAN)
+        self.write("docs/CURRENT_SPRINT.md", head + "s" * (each - len(head) - 1) + "\n")
+        self.write("docs/KNOWN.md", "k" * 300000 + "\n")
+
+    def test_two_90000_byte_members_fire_check_11_with_the_sum_printed(self):
+        self.plant_read_first(90000)
+        members = docmaint.read_first_bytes()
+        self.assertEqual([p for p, _ in members],
+                         ["docs/HANDOFF.md", "CLAUDE.md", "docs/CURRENT_SPRINT.md", self.PLAN])
+        total = sum(n for _, n in members)
+        self.assertGreater(total, 180000)
+        over = docmaint.report()["read_first_over"]
+        self.assertEqual(len(over), 1, over)
+        text = docmaint.describe_read_first(over[0])
+        self.assertIn("{:,}".format(total), text)
+        self.assertIn("CLAUDE.md 90,000", text)
+        self.assertIn("docs/CURRENT_SPRINT.md 90,000", text)
+        import contextlib
+        import io
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = docmaint.main([])
+        self.assertEqual(code, 1, out.getvalue())
+        self.assertIn("read_first_over", out.getvalue())
+        self.assertIn("{:,}".format(total), out.getvalue())
+
+    def test_a_150000_byte_set_does_not_fire_check_11(self):
+        """The negative control; also: a path named outside the Read step (KNOWN here, 300 KB) is not a member."""
+        self.plant_read_first(75000)
+        self.assertEqual(docmaint.report()["read_first_over"], [])
+        self.assertNotIn("docs/KNOWN.md", [p for p, _ in docmaint.read_first_bytes()])
+        import contextlib
+        import io
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            docmaint.main([])
+        self.assertIn("read-first:", out.getvalue())
+
+    def test_the_plans_line_and_statuss_block_are_members(self):
+        self.write("docs/HANDOFF.md", self.READ_FIRST_HANDOFF)
+        self.write("docs/CURRENT_SPRINT.md", "# c\n\n```\nbranch:  x\nplans:   %s "
+                                             "(the Log), and docs/superpowers/plans/old.md\n```\n" % self.PLAN)
+        # old.md exists, so its absence from the set proves "the first path only", not "a missing file skipped".
+        self.write("docs/superpowers/plans/old.md", "# old plan\n")
+        self.write("docs/STATUS.md", "# s\n\n## Current state (keep it short)\n\n- now\n\n## Log\n\n" + "z" * 50000 + "\n")
+        members = dict(docmaint.read_first_bytes())
+        self.assertIn(self.PLAN, members)
+        self.assertNotIn("docs/superpowers/plans/old.md", members)
+        self.assertEqual(members["docs/STATUS.md"], docmaint.block_bytes("docs/STATUS.md", "## Current state"))
+        self.assertLess(members["docs/STATUS.md"], 100, "the log below STATUS's block must not count")
+
+    def test_a_mistyped_plans_path_is_a_check_11_problem_not_a_smaller_sum(self):
+        """The plans: line is not backticked, so check 6 never sees it; check 11 must say the plan is missing."""
+        typo = "docs/superpowers/plans/2026-01-01-plam.md"
+        self.plant_read_first(1000, plans_path=typo)
+        r = docmaint.report()
+        self.assertEqual(r["read_first_missing"], [typo])
+        self.assertNotIn(typo, [p for p, _ in r["read_first_bytes"]])
+        import contextlib
+        import io
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = docmaint.main([])
+        self.assertEqual(code, 1, out.getvalue())
+        self.assertIn("read_first_missing", out.getvalue())
+        self.assertIn(typo, out.getvalue())
+
+    def test_the_plan_counts_by_its_log_block_and_the_report_prints_both_sizes(self):
+        """HANDOFF section 3 sends a new controller to the open plan's Log; the task sections are consulted per
+        task, not read first. So the member is the "## Log" block, and the whole plan's size is printed beside it."""
+        self.plant_read_first(1000)
+        self.write(self.PLAN, "# plan\n\n## Task 1: a task\n\n" + "t" * 40000 + "\n\n## Rulings made on the owner's "
+                              "behalf\n\n- **R99** (Task 1): the decision.\n\n"
+                              "## Log (newest first)\n\n" + "- 2026-01-01 entry\n" * 100)
+        log = docmaint.block_bytes(self.PLAN, "## Log")
+        whole = docmaint.block_bytes(self.PLAN, None)
+        self.assertGreater(log, 1800)
+        self.assertEqual(dict(docmaint.read_first_bytes())[self.PLAN], log, "the task sections must not count")
+        import contextlib
+        import io
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            docmaint.main([])
+        line = [ln for ln in out.getvalue().splitlines() if "## Log" in ln]
+        self.assertEqual(len(line), 1, out.getvalue())
+        self.assertIn(self.PLAN, line[0])
+        self.assertIn("{:,}".format(log), line[0])
+        self.assertIn("{:,}".format(whole), line[0])
+
+    def test_a_plan_with_no_log_heading_counts_whole(self):
+        """No "## Log" block to measure: the whole plan counts, so a renamed heading cannot shrink the set."""
+        self.plant_read_first(1000)
+        self.write(self.PLAN, "# plan\n\n## Task 1: a task\n\n" + "t" * 5000 + "\n")
+        self.assertEqual(dict(docmaint.read_first_bytes())[self.PLAN], docmaint.block_bytes(self.PLAN, None))
+
+    # --- Sprint 14 S3: the ratchet, the new ceilings, the plan's Log to the end, archive-log -------------
+
+    def run_main(self, argv):
+        import contextlib
+        import io
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            code = docmaint.main(argv)
+        return code, out.getvalue()
+
+    def test_a_plans_log_followed_by_another_heading_counts_to_the_end_of_the_file(self):
+        """I4's reviewer: a "## " heading added after the Log must not shrink the counted block silently."""
+        self.plant_read_first(1000)
+        log = "## Log (newest first)\n\n" + "- 2026-01-01 entry\n" * 100
+        after = "\n## Appendix\n\n" + "a" * 5000 + "\n"
+        self.write(self.PLAN, "# plan\n\n## Task 1: a task\n\n" + "t" * 4000 + "\n\n" + log + after)
+        counted = dict(docmaint.read_first_bytes())[self.PLAN]
+        self.assertEqual(counted, len(log + after))
+        self.assertGreater(counted, docmaint.block_bytes(self.PLAN, "## Log") + 5000)
+        self.assertFalse(docmaint.plan_log_is_last(self.PLAN))
+        code, out = self.run_main([])
+        line = [ln for ln in out.splitlines() if "## Log" in ln]
+        self.assertIn("{:,}".format(counted), line[0])
+
+    def test_ratchet_proposes_live_plus_ten_percent_rounded_up_to_100(self):
+        docmaint.CEILINGS = (("docs/X.md", None, 2000),)
+        self.write("docs/X.md", "x" * 999 + "\n")
+        rows = docmaint.ratchet()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]["live"], rows[0]["ceiling"], rows[0]["proposed"]), (1000, 2000, 1100))
+
+    def test_ratchet_never_proposes_above_the_current_ceiling(self):
+        docmaint.CEILINGS = (("docs/X.md", None, 2000),)
+        self.write("docs/X.md", "x" * 1899 + "\n")
+        self.assertEqual(docmaint.ratchet()[0]["proposed"], 2000)
+        self.assertEqual(docmaint.propose(2500, 2000), 2000, "over the ceiling: still never above it")
+        self.assertEqual(docmaint.propose(None, 2000), 2000, "nothing measured: the number stands")
+        self.assertEqual(docmaint.propose(1001, 5000), 1200)
+
+    def test_ratchet_prints_the_table(self):
+        docmaint.CEILINGS = (("docs/X.md", None, 2000), ("docs/HANDOFF.md", "## 2.", 3800))
+        self.write("docs/X.md", "x" * 999 + "\n")
+        code, out = self.run_main(["ratchet"])
+        self.assertEqual(code, 0, out)
+        row = [ln for ln in out.splitlines() if "docs/X.md" in ln][0]
+        for cell in ("(whole file)", "1,000", "2,000", "1,100"):
+            self.assertIn(cell, row)
+        self.assertTrue(any("docs/HANDOFF.md" in ln and "## 2." in ln and "3,800" in ln for ln in out.splitlines()))
+
+    def test_ratchet_write_rewrites_exactly_the_numbers_on_a_copy_of_the_module(self):
+        src = self._module
+        copy = os.path.join(self._tmp, "docmaint_copy.py")
+        shutil.copyfile(src, copy)
+        docmaint.MODULE_PATH = copy
+        # The planted tree has a small HANDOFF and none of the other ceilinged files: the HANDOFF rows drop, the
+        # rest (live unmeasured) stand.
+        expect = {r["index"]: r["proposed"] for r in docmaint.ratchet()}
+        code, out = self.run_main(["ratchet", "--write"])
+        self.assertEqual(code, 0, out)
+        with open(src, "rb") as f:
+            old = f.read().split(b"\n")
+        with open(copy, "rb") as f:
+            new = f.read().split(b"\n")
+        self.assertEqual(len(old), len(new))
+        changed = [i for i in range(len(old)) if old[i] != new[i]]
+        self.assertTrue(changed, "the planted HANDOFF is small, so its numbers must have come down")
+        start = old.index(b"CEILINGS = (")
+        entries = [i for i in range(start + 1, old.index(b")", start)) if old[i].lstrip().startswith(b"(")]
+        self.assertEqual(len(entries), len(docmaint.CEILINGS))
+        for k, i in enumerate(entries):
+            cur = docmaint.CEILINGS[k][2]
+            want = old[i].replace(b", %d)" % cur, b", %d)" % expect[k], 1)
+            self.assertEqual(new[i], want, "entry %d" % k)
+        self.assertTrue(set(changed) <= set(entries), "only the CEILINGS numbers may change")
+
+    def test_ratchet_write_refuses_a_rise(self):
+        copy = os.path.join(self._tmp, "docmaint_copy.py")
+        shutil.copyfile(self._module, copy)
+        rows = docmaint.ratchet()
+        rows[0] = dict(rows[0], proposed=rows[0]["ceiling"] + 100)
+        with self.assertRaises(ValueError):
+            docmaint.ratchet_write(copy, rows)
+        with open(copy, "rb") as a, open(self._module, "rb") as b:
+            self.assertEqual(a.read(), b.read(), "a refused write writes nothing")
+
+    def test_loop_prompt_over_its_ceiling_fires_and_at_it_does_not(self):
+        path, heading, limit = self.ceiling("docs/LOOP_PROMPT.md")
+        self.assertIsNone(heading)
+        self.assertLessEqual(limit, 2000, "a ceiling may only fall (check 7's ratchet)")
+        self.write(path, "p" * (limit - 1) + "\n")
+        self.assertEqual(docmaint.report()["over_ceiling"], [])
+        self.write(path, "p" * limit + "\n")
+        hits = [h for h in docmaint.report()["over_ceiling"] if h[0] == path]
+        self.assertEqual(len(hits), 1)
+        self.assertIn("{:,}".format(limit + 1), docmaint.describe_ceiling(hits[0]))
+
+    def test_claude_md_over_its_ceiling_fires_and_at_it_does_not(self):
+        """The byte twin of ClaudeMdTest's sixty lines: 4,453 bytes on 2026-09-26 plus ten percent."""
+        path, heading, limit = self.ceiling("CLAUDE.md")
+        self.assertIsNone(heading)
+        self.assertLessEqual(limit, 4900, "a ceiling may only fall (check 7's ratchet)")
+        self.write(path, "c" * (limit - 1) + "\n")
+        self.assertEqual(docmaint.report()["over_ceiling"], [])
+        self.write(path, "c" * limit + "\n")
+        hits = [h for h in docmaint.report()["over_ceiling"] if h[0] == path]
+        self.assertEqual(len(hits), 1)
+        self.assertIn("{:,}".format(limit + 1), docmaint.describe_ceiling(hits[0]))
+
+    def test_the_open_plan_over_its_ceiling_fires_under_its_own_name(self):
+        limit = [c for c in docmaint.CEILINGS if c[0] == docmaint.OPEN_PLAN][0][2]
+        self.assertLessEqual(limit, 92000, "a ceiling may only fall (check 7's ratchet, R279)")
+        self.plant_read_first(1000)
+        self.write(self.PLAN, "# plan\n\n## Log (newest first)\n\n" + "- e\n" * ((limit - 32) // 4) + "\n")
+        n = docmaint.block_bytes(self.PLAN, None)
+        self.assertLessEqual(n, limit)
+        self.assertFalse([h for h in docmaint.report()["over_ceiling"] if h[0] == self.PLAN])
+        self.write(self.PLAN, "# plan\n\n## Log (newest first)\n\n" + "- e\n" * (limit // 4 + 1))
+        hits = [h for h in docmaint.report()["over_ceiling"] if h[0] == self.PLAN]
+        self.assertEqual(len(hits), 1, docmaint.report()["over_ceiling"])
+        self.assertIn(self.PLAN, docmaint.describe_ceiling(hits[0]))
+        self.assertIn("(whole file)", docmaint.describe_ceiling(hits[0]))
+
+    def test_no_plans_line_means_no_plan_ceiling_and_no_problem(self):
+        """The clean planted tree has no CURRENT_SPRINT: the open-plan entry resolves to nothing."""
+        self.assertNotIn(docmaint.OPEN_PLAN, [p for p, _, _ in docmaint.ceilings()])
+        self.assertEqual(docmaint.report()["over_ceiling"], [])
+
+    ENTRY = "- **2026-01-%02d 10:00Z -- entry %d.** A line,\n  and its continuation `code`.\n"
+
+    def plant_log(self, n, after=""):
+        """A plan whose Log has n entries, newest first (entry n at the top); `after` follows the Log."""
+        self.plant_read_first(1000)
+        entries = "".join(self.ENTRY % (i, i) for i in range(n, 0, -1))
+        text = ("# plan\n\n## Rulings made on the owner's behalf\n\n- **R99** (Task 1): the decision.\n\n"
+                "## Log (newest first)\n\n" + entries + after)
+        self.write(self.PLAN, text)
+        return text
+
+    def test_archive_log_moves_the_oldest_entries_verbatim_and_leaves_a_pointer(self):
+        before = self.plant_log(14)
+        code, out = self.run_main(["archive-log", "--plan", self.PLAN, "--keep", "10", "--date", "2026-01-20"])
+        self.assertEqual(code, 0, out)
+        archive = "docs/archive/2026-01-01-plan-log-to-2026-01-20.md"
+        with open(os.path.join(self._tmp, archive), encoding="utf-8") as f:
+            arch = f.read()
+        oldest = "".join(self.ENTRY % (i, i) for i in range(4, 0, -1))
+        newest = "".join(self.ENTRY % (i, i) for i in range(14, 4, -1))
+        self.assertTrue(arch.endswith(oldest), arch)
+        self.assertRegex(arch.split("\n")[0], r"(?i)archived 2026-01-20")
+        with open(os.path.join(self._tmp, self.PLAN), encoding="utf-8") as f:
+            after = f.read()
+        keep_end = before.index(newest) + len(newest)
+        self.assertEqual(after[:keep_end], before[:keep_end], "the ten newest must be byte-identical")
+        rest = after[keep_end:]
+        self.assertEqual(rest.count("\n"), 1, rest)
+        self.assertIn("`%s`" % archive, rest)
+        self.assertNotIn("entry 4.", after)
+        # The registry row (class A), the banner and the pointer satisfy checks 1, 5 and 6.
+        self.assertIn(archive, docmaint.by_class("A"))
+        r = docmaint.report()
+        self.assertNotIn(archive, r["unregistered"])
+        self.assertEqual((r["silent_archives"], r["dangling_doc_links"]), ([], []))
+
+    def test_archive_log_a_second_time_keeps_the_first_pointer(self):
+        self.plant_log(14)
+        docmaint.archive_log(self.PLAN, keep=10, date="2026-01-20")
+        with open(os.path.join(self._tmp, self.PLAN), encoding="utf-8") as f:
+            text = f.read()
+        text = text.replace("## Log (newest first)\n\n", "## Log (newest first)\n\n" + self.ENTRY % (21, 21), 1)
+        self.write(self.PLAN, text)
+        res = docmaint.archive_log(self.PLAN, keep=10, date="2026-01-21")
+        self.assertEqual(res["moved"], 1)
+        with open(os.path.join(self._tmp, self.PLAN), encoding="utf-8") as f:
+            text = f.read()
+        self.assertEqual(text.count("moved verbatim to"), 2, text)
+        self.assertLess(text.index("log-to-2026-01-21"), text.index("log-to-2026-01-20"))
+
+    def test_archive_log_refuses_when_a_heading_follows_the_log(self):
+        before = self.plant_log(14, after="\n## Appendix\n\nx\n")
+        code, out = self.run_main(["archive-log", "--plan", self.PLAN, "--date", "2026-01-20"])
+        self.assertEqual(code, 1, out)
+        self.assertIn("last", out)
+        with open(os.path.join(self._tmp, self.PLAN), encoding="utf-8") as f:
+            self.assertEqual(f.read(), before)
+        self.assertFalse(os.path.exists(os.path.join(self._tmp, "docs/archive/2026-01-01-plan-log-to-2026-01-20.md")))
+
+    def test_archive_log_with_ten_or_fewer_entries_does_nothing(self):
+        before = self.plant_log(10)
+        code, out = self.run_main(["archive-log", "--plan", self.PLAN, "--date", "2026-01-20"])
+        self.assertEqual(code, 0, out)
+        with open(os.path.join(self._tmp, self.PLAN), encoding="utf-8") as f:
+            self.assertEqual(f.read(), before)
+        self.assertEqual(os.listdir(os.path.join(self._tmp, "docs/archive")), [])
 
     # --- R268: "merged to main as vX" names a tag origin has ---------------------------------------------
 
@@ -521,7 +941,7 @@ class PlantedDefectsTest(unittest.TestCase):
         self.assertEqual(docmaint.report()["duplicate_rulings"], [])
 
     def test_a_restatement_outside_the_plans_is_not_a_definition(self):
-        """HANDOFF section 5 rule 9: a ruling is made in a plan, or in CURRENT_SPRINT when there is none."""
+        """HANDOFF section 4 rule 9: a ruling is made in a plan, or in CURRENT_SPRINT when there is none."""
         self.plan("a.md", "- **R90** (Task 1): the decision.\n")
         self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n\n- **R90** the decision, restated.\n")
         self.assertEqual(docmaint.report()["duplicate_rulings"], [])
@@ -594,6 +1014,213 @@ class PlantedDefectsTest(unittest.TestCase):
             self.assertEqual(docmaint.main([]), 1)
         self.assertIn("R90 defined 2 times: docs/superpowers/plans/a.md:5; docs/superpowers/plans/b.md:5",
                       out.getvalue())
+
+
+class ClaudeMdTest(unittest.TestCase):
+    """Sprint 14 I1: the root CLAUDE.md the harness loads into every session. It stays short (a line
+    ceiling), points at the live documents instead of restating them, names the skills Task I2
+    creates (naming them first is the contract), and carries nothing that rots -- no suite count."""
+
+    PATH = os.path.join(docmaint.ROOT, "CLAUDE.md")
+    MAX_LINES = 60
+    NAMES = ("docs/CURRENT_SPRINT.md", "docs/KNOWN.md", "docs/HUMAN_TASKS.md",
+             "loop-iteration", "agent-worktree", "run-gate", "sprint-close")
+
+    def text(self):
+        self.assertTrue(os.path.isfile(self.PATH), "CLAUDE.md is missing at the repository root")
+        with open(self.PATH, encoding="utf-8") as f:
+            return f.read()
+
+    def test_it_exists_and_is_at_most_sixty_lines(self):
+        lines = self.text().splitlines()
+        self.assertLessEqual(len(lines), self.MAX_LINES,
+                             "CLAUDE.md has %d lines; the ceiling is %d -- move detail to docs/DEVELOPING.md"
+                             % (len(lines), self.MAX_LINES))
+
+    def test_it_names_the_live_documents_and_the_skills(self):
+        text = self.text()
+        missing = [n for n in self.NAMES if n not in text]
+        self.assertEqual(missing, [], "CLAUDE.md does not name: %s" % missing)
+
+    def test_it_states_no_suite_count(self):
+        text = self.text()
+        hits = [p.pattern for p in docmaint.COUNT_PATTERNS if p.search(text)]
+        self.assertEqual(hits, [], "CLAUDE.md states a suite count (%s); %s owns them"
+                         % (hits, docmaint.COUNT_OWNER))
+
+    def test_it_is_registered_as_a_contract(self):
+        self.assertIn("CLAUDE.md", docmaint.covered_files())
+        rows = {r["path"]: r["cls"] for r in docmaint.registry()}
+        self.assertEqual(rows.get("CLAUDE.md"), "C", "CLAUDE.md needs a class C row in docs/DOC_MAINTENANCE.md section 3")
+
+
+class SkillsTest(unittest.TestCase):
+    """Sprint 14 I2: the four procedures are project skills (.claude/skills/<name>/SKILL.md, tracked), each
+    with a frontmatter `name:` equal to its directory and a `description:`; docs/LOOP_PROMPT.md is a pointer
+    under 2,000 bytes that names the loop's skill; CLAUDE.md's procedure lines point at the SKILL.md files."""
+
+    NAMES = ("loop-iteration", "agent-worktree", "run-gate", "sprint-close")
+    LOOP_PROMPT = os.path.join(docmaint.ROOT, "docs", "LOOP_PROMPT.md")
+    POINTER_MAX_BYTES = 2000
+
+    def skill_path(self, name):
+        return os.path.join(docmaint.ROOT, ".claude", "skills", name, "SKILL.md")
+
+    def frontmatter(self, path):
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        m = re.match(r"---\r?\n(.*?)\r?\n---\r?\n", text, re.S)
+        self.assertIsNotNone(m, "%s has no YAML frontmatter between --- lines at the top" % path)
+        fields = {}
+        for line in m.group(1).splitlines():
+            k, sep, v = line.partition(":")
+            if sep and not line.startswith((" ", "\t")):
+                fields[k.strip()] = v.strip()
+        return fields
+
+    def test_each_skill_exists_with_its_name_and_a_description(self):
+        for name in self.NAMES:
+            with self.subTest(skill=name):
+                path = self.skill_path(name)
+                self.assertTrue(os.path.isfile(path), "missing %s" % path)
+                fields = self.frontmatter(path)
+                self.assertEqual(fields.get("name"), name, "%s: name: must equal its directory" % path)
+                self.assertTrue(fields.get("description"), "%s: description: is empty or missing" % path)
+
+    def test_loop_prompt_is_a_pointer_naming_the_loop_skill(self):
+        with open(self.LOOP_PROMPT, "rb") as f:
+            data = f.read()
+        self.assertLess(len(data), self.POINTER_MAX_BYTES,
+                        "docs/LOOP_PROMPT.md is %d bytes; it is a pointer under %d" % (len(data), self.POINTER_MAX_BYTES))
+        self.assertIn(b"loop-iteration", data)
+
+    def test_claude_md_points_at_each_skill_file(self):
+        with open(os.path.join(docmaint.ROOT, "CLAUDE.md"), encoding="utf-8") as f:
+            text = f.read()
+        missing = [n for n in self.NAMES if ".claude/skills/%s/SKILL.md" % n not in text]
+        self.assertEqual(missing, [], "CLAUDE.md does not point at .claude/skills/<name>/SKILL.md for: %s" % missing)
+
+
+class OneHomeTest(unittest.TestCase):
+    """Sprint 14 S4: a rule stated in two places drifts (the ruling counter did, R242 against R241). Two
+    lists get one home each: the never-commit list is docs/GIT_STRATEGY.md section 3's, and the lock's rules
+    are scripts/loop_lock.sh's header. Every other live document points. Exempt: docs/HAZARDS.md (its lock
+    hazards are kept verbatim by contract), docs/STATUS.md (a dated log), docs/RULINGS.md (generated from the
+    rulings), the run-gate skill (the lock COMMANDS a controller runs, not rule text), and the mechanisms'
+    own configuration (.gitignore, leakcheck's SENSITIVE_IGNORED), which are not documents."""
+
+    EXEMPT = {"docs/HAZARDS.md", "docs/STATUS.md", "docs/RULINGS.md", "docs/CHANGELOG.md"}
+    ITEM = re.compile(r"(?<![\w./-])(?:(?:game|logs|vm|tools|research|ghidra_proj|recomp/output|dist\*?|build\*?)/"
+                      r"|simulated\.db)")
+    NEVER_COMMIT = re.compile(r"never\s+commit|do\s+not\s+commit|must\s+not\s+be\s+committed", re.I)
+    COMMAND_LINE = re.compile(r"^\s*`?(?:bash|python|powershell|gh|git) ")
+
+    def live_documents(self):
+        out = []
+        docs = os.path.join(docmaint.ROOT, "docs")
+        for name in sorted(os.listdir(docs)):
+            if name.endswith(".md") and "docs/" + name not in self.EXEMPT:
+                out.append("docs/" + name)
+        out.append("CLAUDE.md")
+        skills = os.path.join(docmaint.ROOT, ".claude", "skills")
+        for name in sorted(os.listdir(skills)):
+            if os.path.isfile(os.path.join(skills, name, "SKILL.md")):
+                out.append(".claude/skills/%s/SKILL.md" % name)
+        return out
+
+    ITEM_START = re.compile(r"^\s*(?:[-*] |\d+\. )")
+
+    @classmethod
+    def sentences(cls, text):
+        """Paragraphs and list items, whitespace joined across line breaks, split at sentence ends ("e.g." and
+        "i.e." do not end one). A lead-in line ending in ":" followed by list items is ONE unit, lead-in and
+        items together, never split -- a list under "Never commit:" is the list."""
+        text = re.sub(r"(?m)^[ \t]*#+ ?", "", text)            # comment markers of a shell header
+        blocks, cur, leadin = [], [], False
+        for line in text.split("\n"):
+            if not line.strip():
+                blocks.append((cur, leadin))
+                cur, leadin = [], False
+                continue
+            if cls.ITEM_START.match(line) and cur and not leadin:
+                if cur[-1].rstrip().endswith(":"):
+                    leadin = True                                # this item continues a lead-in's list
+                else:
+                    blocks.append((cur, leadin))
+                    cur = []
+            cur.append(line)
+        blocks.append((cur, leadin))
+        out = []
+        for lines, whole in blocks:
+            block = " ".join(" ".join(lines).split())
+            if not block:
+                continue
+            if whole:
+                out.append(block)
+                continue
+            protected = re.sub(r"\b(e\.g|i\.e)\.", lambda m: m.group(1).replace(".", "\0") + "\0", block, flags=re.I)
+            out.extend(s.replace("\0", ".") for s in re.split(r"(?<=[.!?])\s+(?=[A-Z*`(])", protected))
+        return out
+
+    def never_commit_lists(self, text):
+        return [s for s in self.sentences(text)
+                if self.NEVER_COMMIT.search(s) and len(set(self.ITEM.findall(s))) >= 2]
+
+    @staticmethod
+    def lock_rules(text):
+        """Sentences stating the lock's rules; "renew" also matches "renewal", case never matters."""
+        out = []
+        for s in OneHomeTest.sentences(text):
+            low = s.lower()
+            if ("heartbeat" in low and "renew" in low) or ("--wait" in low and "minutes" in low):
+                out.append(s)
+        return out
+
+    @classmethod
+    def without_command_lines(cls, text):
+        """The run-gate skill carries the lock's COMMANDS: a line that starts (after blanks) with a command --
+        `bash `, `python `, `powershell `, `gh ` or `git `, bare or opening a backtick span -- is a command line
+        and is dropped. A bare leading backtick is not enough: wrapped prose often starts with a code span
+        (`<cmd>` did not run. `--wait` is ...), and that prose is rule text the test still holds."""
+        return "\n".join(line for line in text.split("\n") if not cls.COMMAND_LINE.match(line))
+
+    def test_planted_sentences_are_detected(self):
+        self.assertTrue(self.never_commit_lists("- Never commit `game/`, `logs/` or keys.\n"))
+        self.assertTrue(self.never_commit_lists("Never commit these:\n- `game/`\n- `logs/`\n"))
+        self.assertTrue(self.never_commit_lists("You DO NOT COMMIT `vm/` or `tools/`.\n"))
+        self.assertTrue(self.never_commit_lists("Paths that must not be committed:\n- `game/`\n- `simulated.db`\n"))
+        self.assertTrue(self.never_commit_lists("Never commit the disc, e.g. `game/`, or `logs/`.\n"))
+        self.assertFalse(self.never_commit_lists("The never-commit list is GIT_STRATEGY's (`game/` too).\n"
+                                                 "Never commit a file you were not given.\n"))
+        self.assertFalse(self.never_commit_lists("Never commit a stranger's file:\n\n- `game/`\n- `logs/`\n"))
+        self.assertTrue(self.lock_rules("A waiter\nrenews its heartbeat.\n"))
+        self.assertTrue(self.lock_rules("The renewal keeps the HEARTBEAT fresh.\n"))
+        self.assertTrue(self.lock_rules("# run --wait <minutes> -- <cmd>\n"))
+        self.assertTrue(self.lock_rules("`--wait` is wall-clock MINUTES and queues.\n"))
+        self.assertTrue(self.lock_rules("A --wait, e.g. a long one, counts minutes.\n"))
+        self.assertFalse(self.lock_rules("The lock's rules are `scripts/loop_lock.sh`'s header.\n"))
+        self.assertFalse(self.lock_rules(self.without_command_lines(
+            "2. **Foreground**:\n   `bash scripts/loop_lock.sh run o [--wait <minutes>] -- cmd`\n")))
+        self.assertTrue(self.lock_rules(self.without_command_lines(
+            "   `bash scripts/loop_lock.sh check`\n   `--wait` is in minutes and queues.\n")))
+        self.assertTrue(self.lock_rules(self.without_command_lines(
+            "   `bash scripts/loop_lock.sh check`\n   The queue: --wait counts minutes.\n")))
+
+    def test_the_never_commit_list_has_one_home(self):
+        self.assertTrue(self.never_commit_lists(docmaint._read("docs/GIT_STRATEGY.md")),
+                        "docs/GIT_STRATEGY.md section 3 lost its never-commit list")
+        hits = [(p, s[:90]) for p in self.live_documents() if p != "docs/GIT_STRATEGY.md"
+                for s in self.never_commit_lists(docmaint._read(p))]
+        self.assertEqual(hits, [], "the never-commit list is docs/GIT_STRATEGY.md's; point at it instead: %s" % hits)
+
+    def test_the_lock_rules_have_one_home(self):
+        self.assertTrue(self.lock_rules(docmaint._read("scripts/loop_lock.sh")),
+                        "scripts/loop_lock.sh's header no longer states the lock's rules")
+        run_gate = ".claude/skills/run-gate/SKILL.md"
+        hits = [(p, s[:90]) for p in self.live_documents()
+                for s in self.lock_rules(self.without_command_lines(docmaint._read(p)) if p == run_gate
+                                         else docmaint._read(p))]
+        self.assertEqual(hits, [], "the lock's rules are scripts/loop_lock.sh's header; point at it: %s" % hits)
 
 
 if __name__ == "__main__":

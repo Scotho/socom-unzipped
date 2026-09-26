@@ -819,3 +819,20 @@ Deferred by the owner on 2026-09-19 ("a future wishlist item instead of an actio
   SOCOM II server; and can an r0001 client log in at all, or is r0004 required. Until you report the answer the loop does
   not connect anything to their server; the launcher's community preset only stores the address (67.222.156.250).
 
+
+## Struck rows moved from the live table (R268's ceiling)
+
+Moved 2026-09-26 05:17Z at the Sprint 14 open, verbatim as the row stood before it was struck; the live table keeps
+a one-line struck stub with the same number.
+
+| O | the decision or the hand | the default the loop is on | settles | first asked |
+|---|---|---|---|---|
+| O17 | **Merge PR #61 (Sprint 13 -> main)**: every check is green, but the loop cannot merge it -- main's ruleset wants a second approver for unattributed changes (the cloud sessions' Claude-authored commits, the upstream cherry-picks) and your account is the PR author; the admin route is refused because the gh token on this machine has no `workflow` scope and the PR touches `.github/workflows/`. Either merge it from the web (a merge commit, not squash) or run `gh auth refresh -h github.com -s workflow` here and tell the loop; it then tags `v0.13.0` on the merge commit and hands the tree to Sprint 14. | the PR stays open; Sprint 14 waits (your instruction of 2026-09-26) | Sprint 13 Task 99 | 2026-09-26 |
+
+Moved 2026-09-26 at the Sprint 14 close (`docs/DOC_MAINTENANCE.md` §5), verbatim: the struck stubs of O9 and O17 as
+they stood in the live table (O17's full row is above).
+
+| O | the decision or the hand | the default the loop is on | settles | first asked |
+|---|---|---|---|---|
+| O9 | ~~**The story's five missing days** (three of Sprint 11, two of Sprint 12), carried twice: keep them or drop them under a ruling.~~ **Answered by default (keep), 2026-09-25: S13 S4 wrote them (`d4a8f0ea`, merged `1dcaa57b`); the `../scotho` site copy is the controller's.** | ~~keep; S13 S4 writes them from the record~~ | carry C128; audit B12 | 2026-09-25 |
+| O17 | ~~**Merge PR #61 (Sprint 13 -> main)**: the ruleset's extra-approval rule and the token's missing `workflow` scope~~ **Done 2026-09-26: you granted the scope; merged `6a82caaa`, tagged `v0.13.0`. The full row is in the archive.** | ~~the PR stays open~~ | Sprint 13 Task 99 | 2026-09-26 |

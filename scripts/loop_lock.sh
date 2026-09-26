@@ -12,16 +12,19 @@
 #   loop_lock.sh release <owner>                 exit 1 if <owner> is not the holder
 #   loop_lock.sh check                           FREE, or HELD with the heartbeat age; then one QUEUED line
 #                                                per waiting ticket, oldest (the next grant) first
-#   loop_lock.sh wait <owner> [<minutes>] [--wait-seconds <s>] [--purpose <p>] [--print-id]
+#   loop_lock.sh wait <owner> [<minutes>] [--wait-seconds <s>] [--purpose <p>] [--print-id] [--class build|run]
 #       take, QUEUEING for up to <minutes> (default 40) of wall time -- minutes whatever the poll
 #       interval (issue #35: until Sprint 13 the number was a count of attempts, so a 5 s poll turned
-#       --wait 180 into 15 minutes). --wait-seconds gives the duration in seconds instead.
-#   loop_lock.sh run <owner> [--purpose <p>] [--wait <minutes> | --wait-seconds <s>] -- <cmd...>
+#       --wait 180 into 15 minutes). --wait-seconds gives the duration in seconds instead. --class gives
+#       the ticket's class (default run; THE QUEUE, the WIP cap): a build waiter is refused, exit 4,
+#       when LOOP_LOCK_MAX_QUEUE build tickets already queue.
+#   loop_lock.sh run <owner> [--purpose <p>] [--wait <minutes> | --wait-seconds <s>] [--class build|run] -- <cmd...>
 #       take (or queue up to that long), renew the heartbeat every LOOP_LOCK_RENEW_SEC (60) from a
 #       background loop while <cmd> runs, release on exit (also on failure or a signal) and return
-#       <cmd>'s exit code. If the lock cannot be taken, <cmd> does not run and the exit code is 75.
-#       If a renew finds the lock no longer ours, it prints "LOCK LOST" to stderr and stops renewing
-#       (the command is not killed).
+#       <cmd>'s exit code. If the lock cannot be taken, <cmd> does not run and the exit code is 75
+#       (4 when a --wait was refused by the WIP cap). The ticket's class comes from <cmd> unless --class
+#       says otherwise. If a renew finds the lock no longer ours, it prints "LOCK LOST" to stderr and
+#       stops renewing (the command is not killed).
 #   loop_lock.sh id                              print "<owner> <take_id>" of the live record
 #   loop_lock.sh busy                            print the busy list as this caller sees it
 #   loop_lock.sh version                         print the git blob of the script ON DISK ("blob <sha1>").
@@ -30,6 +33,12 @@
 #                                                waiter from before a landing keeps printing the OLD blob
 #                                                (bash runs the code it started with, by offset). Compare
 #                                                a waiter's own line with `git hash-object`, not `version`.
+#   loop_lock.sh _class -- <cmd...>              print the class `run` would give <cmd> (build or run)
+#
+# Exit codes: 0 TAKEN / RELEASED / RENEWED / a query answered (`run`: <cmd>'s own code); 1 BUSY, not held,
+# TIMEOUT, ORPHANED, or `id` on a free lock; 2 usage; 4 QUEUE FULL -- a build waiter (`wait --class build`,
+# `run --wait` of a build) refused by the WIP cap, no ticket written, nothing run (Sprint 14 W1); 75 `run`
+# could not take the lock (<cmd> did not run); 129/130/143 a waiter or `run` ended by HUP/INT/TERM.
 #
 # THE QUEUE (Sprint 13 H2, issue #36). Fairness is a property of the grant, not of poll speed: until
 # Sprint 13 whoever polled the moment a holder released won, so a 60 s poller lost every hand-off to a
@@ -37,8 +46,27 @@
 #   - A waiter (`wait`, `run --wait`, `run_detached.sh --wait`) that is refused writes a TICKET, under the
 #     mutex, into the queue dir "$LOCK.q/": the file <arrival>-<owner>-<pid>x<rand>, where <arrival> is
 #     16 digits (epoch seconds + microseconds) so the names sort in arrival order. It holds
-#     "<owner> blob=<the waiter's own start blob, 12> <purpose>" (so `check` shows which script each live
-#     waiter runs); its mtime is the waiter's own HEARTBEAT.
+#     "<owner> blob=<the waiter's own start blob, 12> class=<build|run> <purpose>" (so `check` shows which
+#     script each live waiter runs, and its class); its mtime is the waiter's own HEARTBEAT.
+#   - THE WIP CAP (Sprint 14 W1): at most LOOP_LOCK_MAX_QUEUE (2) live tickets of class `build` queue at
+#     once -- two builds waiting is already the host's working set, and a third build agent is told to do
+#     lock-free work instead of adding to the wait. A build waiter's FIRST enqueue counts the live build
+#     tickets under the mutex (stale ones are dropped first, as at a grant); at the cap it writes no ticket,
+#     prints "QUEUE FULL: ... queue full: do lock-free work ..." and exits 4. A waiter that already queued
+#     is never refused later (a re-queue after a false drop keeps its place). The holder is not counted, nor
+#     is a plain take (it never queues). The class: `wait` is `run` unless `--class build`; `run --wait`
+#     takes it from its command -- after any NAME=value words, and after a `bash`/`sh` and its -options
+#     (`-o`/`-O` with their argument: `bash -o pipefail ./build.sh` is a build, Sprint 14 W2), a first word
+#     `build.sh`, `./build.sh` or ending in `/build.sh` is `build`, anything else (`bash -c "..."` included)
+#     is `run`; `--class` overrides. `run_detached.sh --wait` asks `_class` the same question of its job's
+#     command, `bash <script> [args...]`, and passes the answer on (its own --class overrides) -- until
+#     Sprint 14 W2 it passed none, and a build queued through it was never capped. A ticket without a
+#     class= field (a waiter from before W1) counts as `run`.
+#   - THE QUEUE LOG (Sprint 14 W2): a waiter granted the lock after it QUEUED appends one line to
+#     loop_lock.queue.log beside the lock (the main tree's logs/), stamped as the history is:
+#     "<UTC stamp> TICKET <ticket name> waited <whole seconds since its arrival> owner=<o> class=<c>
+#     [loop_lock.sh <blob12>]". A grant at the first attempt (no ticket) writes nothing. tools_py/flow.py
+#     reads the stamped `TICKET <id> waited <s>` lines for the median wait and leaves unstamped ones out.
 #   - A FREE lock is granted only to the oldest LIVE ticket's waiter; a take with no ticket (a plain
 #     `take`, `run` without --wait, or a waiter on its first attempt) is granted only when the queue is
 #     empty -- otherwise BUSY, naming the head. The claim removes the winner's ticket in the same mutex
@@ -61,7 +89,9 @@
 #     One take per step leaves a gap between steps, and the queue then grants that gap to the head.
 #   - Mixed fleet: a script from before the queue ignores "$LOCK.q/" (it barges; nothing breaks -- the
 #     record and the mutex are unchanged). Land a new lock script only when `check` says FREE with no
-#     queue and `busy` is empty, then restart every waiter (docs/KNOWN.md section 4, the rollout row).
+#     queue and `busy` is empty, then restart every waiter (docs/HAZARDS.md "## lock", the rollout
+#     procedure's five steps). Sprint 14 W1's rollout adds the ticket CLASS: a waiter from before it writes
+#     no class= (counted as run, never capped) -- the cap holds only once every waiter was restarted.
 #
 # Layout: the claim dir "$LOCK.d" holds the record "$LOCK.d/record":
 #   <owner> <take_id> <heartbeat_epoch> <purpose...>      take_id = <epoch>-<pid>x<random>
@@ -108,7 +138,8 @@
 # sortable number or empty), LOOP_LOCK_SELF_WINPID (the Windows PID the ancestor walk starts from),
 # LOOP_LOCK_RENEW_SEC, LOOP_LOCK_WAIT_SEC (a waiter's full-attempt interval, 60; it never changes how long
 # --wait waits), LOOP_LOCK_TICKET_STALE_SEC (180), LOOP_LOCK_WAIT_PARENT (the pids a waiter watches, space-separated;
-# default its parent, empty = none), LOOP_LOCK_REAP_MIN, LOOP_LOCK_STALE_MIN,
+# default its parent, empty = none), LOOP_LOCK_MAX_QUEUE (the WIP cap, 2: a whole number of queued build
+# tickets; 0 = a build never queues; anything else = 2), LOOP_LOCK_REAP_MIN, LOOP_LOCK_STALE_MIN,
 # LOOP_LOCK_MUTEX_WAIT_SEC, LOOP_LOCK_MUTEX_STALE_SEC, and LOOP_LOCK_TEST_PAUSE_AT=<point>[,...] with
 # LOOP_LOCK_TEST_PAUSE_DIR: at a named point the script touches <dir>/<point>.paused and waits for
 # <dir>/<point>.go (points: reap_before_mutex, reap_inside_mutex, renew_before_mutex, renew_inside_mutex,
@@ -136,6 +167,7 @@ REC="$LOCKD/record"
 MX="$LOCK.mx"
 Q="$LOCK.q"
 HISTORY="$(dirname "$LOCK")/.loop_lock_history"
+QLOG="$(dirname "$LOCK")/loop_lock.queue.log"
 REAP_MIN="${LOOP_LOCK_REAP_MIN:-15}"
 STALE_MIN="${LOOP_LOCK_STALE_MIN:-45}"
 RENEW_SEC="${LOOP_LOCK_RENEW_SEC:-60}"
@@ -143,6 +175,7 @@ WAIT_SEC="${LOOP_LOCK_WAIT_SEC:-60}"
 MX_WAIT_SEC="${LOOP_LOCK_MUTEX_WAIT_SEC:-10}"
 MX_STALE_SEC="${LOOP_LOCK_MUTEX_STALE_SEC:-30}"
 TICKET_STALE_SEC="${LOOP_LOCK_TICKET_STALE_SEC:-180}"
+MAX_QUEUE="${LOOP_LOCK_MAX_QUEUE:-2}"; case "$MAX_QUEUE" in ''|*[!0-9]*) MAX_QUEUE=2;; esac
 SLICE_SEC=5; [ "$WAIT_SEC" -lt "$SLICE_SEC" ] 2>/dev/null && SLICE_SEC="$WAIT_SEC"
 [ "$SLICE_SEC" -ge 1 ] 2>/dev/null || SLICE_SEC=1
 SELF="$0"
@@ -464,11 +497,48 @@ q_busy() {   # the BUSY line for a refusal by the queue (uses Q_N, Q_HEAD)
 # Under the mutex, right after a claim: the winner's ticket leaves the queue.
 q_claimed() { [ -n "$QTICKET" ] && rm -f "$Q/$QTICKET" 2>/dev/null; rmdir "$Q" 2>/dev/null; return 0; }
 
-q_enqueue() {   # owner purpose -- write (or re-write, under the same name) this waiter's ticket
+# The WIP cap (Sprint 14 W1). QCLASS is this waiter's class (build|run); Q_ENQUEUED is set once its ticket was
+# first written (a later re-queue is never capped); Q_FULL names the build tickets' owners at a refusal.
+QCLASS=run Q_ENQUEUED="" Q_FULL=""
+
+# The class `run` gives a command (its words): after NAME=value words, and after a bash/sh and its -options (-o/-O
+# with their argument), a first word build.sh, ./build.sh or */build.sh is "build"; anything else (bash -c "..."
+# included) is "run".
+cmd_class() {
+  while [ $# -gt 0 ]; do
+    case "$1" in [A-Za-z_]*=*) case "${1%%=*}" in *[!A-Za-z0-9_]*) break;; esac; shift;; *) break;; esac
+  done
+  case "${1##*/}" in
+    bash|sh|bash.exe|sh.exe)
+      shift
+      # -o/-O (and +o/+O) take an argument: `bash -o pipefail ./build.sh` must not read "pipefail" as the script.
+      while [ $# -gt 0 ]; do
+        case "$1" in -c) echo run; return;; [-+][oO]) shift; [ $# -gt 0 ] && shift;; -*) shift;; *) break;; esac
+      done;;
+  esac
+  case "$1" in build.sh|./build.sh|*/build.sh) echo build;; *) echo run;; esac
+}
+
+# Under the mutex: the owners of the live build-class tickets, one per line (stale tickets dropped first).
+q_build_owners() {
+  local n e c
+  q_list drop | while read -r n e; do
+    c=""; { read -r _ _ c _ < "$Q/$n"; } 2>/dev/null
+    [ "$c" = class=build ] && ticket_owner "$n"
+  done
+}
+
+q_enqueue() {   # owner purpose -- write (or re-write, under the same name) this waiter's ticket; 4 = the cap
   mx_acquire || return 1
+  if [ "$QCLASS" = build ] && [ -z "$Q_ENQUEUED" ]; then
+    Q_FULL=""; [ -d "$Q" ] && Q_FULL=$(q_build_owners)
+    if [ "$(printf '%s' "$Q_FULL" | grep -c .)" -ge "$MAX_QUEUE" ]; then
+      rmdir "$Q" 2>/dev/null; mx_release; return 4
+    fi
+  fi
   mkdir -p "$Q" 2>/dev/null
-  [ -f "$Q/$QTICKET" ] || { printf '%s blob=%s %s\n' "$1" "${START_BLOB:0:12}" "$2" > "$Q/$QTICKET"; } 2>/dev/null
-  local rc=1; [ -f "$Q/$QTICKET" ] && rc=0
+  [ -f "$Q/$QTICKET" ] || { printf '%s blob=%s class=%s %s\n' "$1" "${START_BLOB:0:12}" "$QCLASS" "$2" > "$Q/$QTICKET"; } 2>/dev/null
+  local rc=1; [ -f "$Q/$QTICKET" ] && rc=0 && Q_ENQUEUED=1
   mx_release; return $rc
 }
 q_leave() {   # remove this waiter's ticket (and the dir if that empties it)
@@ -610,13 +680,16 @@ do_release() {
 }
 
 USAGE="usage: $SELF take|renew|release|check|wait|run|id|busy|version <owner> ...
-  wait <owner> [<minutes>] [--wait-seconds <s>] [--purpose <p>] [--print-id]
-  run <owner> [--purpose <p>] [--wait <minutes> | --wait-seconds <s>] -- <cmd...>"
-parse_opts() {   # sets PURPOSE, WAITSEC (empty = no wait), PRINT_ID, REST (the args after --)
-  PURPOSE=""; WAITSEC=""; PRINT_ID=""; REST=()
+  wait <owner> [<minutes>] [--wait-seconds <s>] [--purpose <p>] [--print-id] [--class build|run]
+  run <owner> [--purpose <p>] [--wait <minutes> | --wait-seconds <s>] [--class build|run] -- <cmd...>"
+parse_opts() {   # sets PURPOSE, WAITSEC (empty = no wait), PRINT_ID, CLASS_OPT (empty = none), REST (the args after --)
+  PURPOSE=""; WAITSEC=""; PRINT_ID=""; CLASS_OPT=""; REST=()
   while [ $# -gt 0 ]; do
     case "$1" in
       --purpose) PURPOSE="$2"; shift 2;;
+      --class)
+        case "$2" in build|run) CLASS_OPT="$2";; *) echo "--class build|run: '$2' is neither"; echo "$USAGE"; exit 2;; esac
+        shift 2;;
       --wait) want_count "$2" "--wait <minutes>"; WAITSEC=$(( $2 * 60 )); shift 2;;
       --wait-seconds) want_count "$2" "--wait-seconds <s>"; WAITSEC=$(( $2 )); shift 2;;
       --print-id) PRINT_ID=1; shift;;
@@ -650,6 +723,10 @@ do_wait() {   # owner max_seconds purpose  (sets TAKEN_ID)
     TAKEN_ID=$(printf '%s\n' "$out" | sed -n 's/^@@ID //p')
     out=$(printf '%s\n' "$out" | grep -v '^@@ID ')
     if [ $rc -eq 0 ]; then
+      # Sprint 14 W2: a waiter that QUEUED (it holds a ticket; a first-attempt grant has none) logs its wait, stamped
+      # as the history is, one line per granted ticket -- tools_py/flow.py's median wait reads these.
+      [ -n "$QTICKET" ] && { printf '%s TICKET %s waited %s owner=%s class=%s [loop_lock.sh %s]\n' "$(stamp)" "$QTICKET" \
+        "$(( $(now) - $(ticket_arrival "$QTICKET") ))" "$owner" "$QCLASS" "${START_BLOB:0:12}" >> "$QLOG"; } 2>/dev/null
       QTICKET=""; trap - INT TERM HUP
       echo "$out after $i attempt(s), $(( $(now) - start )) s [loop_lock.sh ${START_BLOB:0:12}]"; return 0
     fi
@@ -658,7 +735,15 @@ do_wait() {   # owner max_seconds purpose  (sets TAKEN_ID)
     while :; do
       t=$(now)
       [ "$t" -ge "$deadline" ] && break 2
-      [ -f "$Q/$QTICKET" ] || q_enqueue "$owner" "$purpose"
+      if [ ! -f "$Q/$QTICKET" ]; then
+        q_enqueue "$owner" "$purpose"
+        if [ $? -eq 4 ]; then                        # the WIP cap: no ticket was written
+          QTICKET=""; trap - INT TERM HUP
+          p=$(printf '%s' "$Q_FULL" | tr '\n' ' ' | sed 's/ $//')
+          echo "QUEUE FULL: $(printf '%s' "$Q_FULL" | grep -c .) build ticket(s) already queued (LOOP_LOCK_MAX_QUEUE=$MAX_QUEUE${p:+: $p}); this build was not queued -- queue full: do lock-free work and ask again later [loop_lock.sh ${START_BLOB:0:12}]"
+          return 4
+        fi
+      fi
       [ $(( t - last )) -ge "$WAIT_SEC" ] && break
       local s=$SLICE_SEC; [ $(( deadline - t )) -lt "$s" ] && s=$(( deadline - t ))
       sleep "$s"
@@ -723,6 +808,10 @@ case "$1" in
     if [ -n "$line" ]; then id_of "$line"; else exit 1; fi;;
   _release_id)
     release_id "$2"; exit $?;;
+  _class)
+    shift; [ "$1" = -- ] && shift
+    [ $# -gt 0 ] || { echo "$USAGE"; exit 2; }
+    cmd_class "$@";;
   busy)
     busy_list;;
   version)
@@ -731,6 +820,7 @@ case "$1" in
     valid_owner "$2"
     case "$3" in ''|-*) mins=40; parse_opts "${@:3}";; *) want_count "$3" "wait <owner> <minutes>"; mins="$3"; parse_opts "${@:4}";; esac
     [ -n "$WAITSEC" ] || WAITSEC=$(( mins * 60 ))
+    QCLASS="${CLASS_OPT:-run}"
     do_wait "$2" "$WAITSEC" "$PURPOSE"; rc=$?
     [ $rc -eq 0 ] && [ -n "$PRINT_ID" ] && echo "ID: $TAKEN_ID"
     exit $rc;;
@@ -741,6 +831,7 @@ case "$1" in
       # The waiter runs in a $(...) subshell: watch this `run` process ($$) too, so a killed run never
       # leaves a subshell that claims the lock with nobody to run the command or renew it.
       WAIT_PARENTS="$WAIT_PARENTS $$"
+      QCLASS="${CLASS_OPT:-$(cmd_class "${REST[@]}")}"
       out=$(do_wait "$owner" "$WAITSEC" "$PURPOSE"; rc=$?; echo "@@ID $TAKEN_ID"; exit $rc); rc=$?
     else
       out=$(do_take "$owner" "$PURPOSE"; rc=$?; echo "@@ID $TAKEN_ID"; exit $rc); rc=$?
@@ -748,6 +839,7 @@ case "$1" in
     held_id=$(printf '%s\n' "$out" | sed -n 's/^@@ID //p')
     out_text=$(printf '%s\n' "$out" | grep -v '^@@ID ')
     echo "[loop_lock] $out_text"
+    [ -n "$WAITSEC" ] && [ $rc -eq 4 ] && exit 4      # the WIP cap (Sprint 14 W1): QUEUE FULL, <cmd> not run
     [ $rc -eq 0 ] || exit 75
     case "$out" in *NESTED*) exec "${REST[@]}";; esac
     export LOOP_LOCK_HELD="$held_id"

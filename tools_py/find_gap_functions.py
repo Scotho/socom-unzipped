@@ -2,7 +2,7 @@
 """Report executable gaps between Ghidra CSV functions that look like real function bodies.
 
 Ghidra's function list misses small leaves and trampolines; a table- or register-dispatched call
-into one of them finds no recompiled target and silently does nothing (see docs/HANDOFF gotcha 1).
+into one of them finds no recompiled target and silently does nothing (see docs/archive/HANDOFF-reference-to-2026-09-13.md gotcha 1).
 A gap counts as a function body when it is non-empty after padding and contains `jr $ra`.
 
 Addresses that socom2.toml stubs (`name@0xADDR`) are skipped: those run as runtime stubs and must

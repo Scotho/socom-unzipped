@@ -31,6 +31,15 @@ KNOWN.md §1's two-instance clock row keeps the two apart) -- over the scripted 
 last step), from the sampler rows of mission.game.log (tools_py/parity/frame_time.py says which fields and
 why), and records the numbers in its pins.json as an informational
 `PIN frame` that is never compared (S13-R3: no refusal until three gates agree on its spread).
+
+A launch refuses (exit 5, REFUSE_STALE) when the exe is older than the newest file it is built from (freshness_roots;
+Sprint 14 E4); `--stale-ok` proceeds and the summary says so. Every summary and pins.json carries `TREE <head>
+dirty=<n>` -- the tree the gate measured.
+
+A fourth leg (Sprint 14 E2) scores a finished stamp against frozen references and launches nothing:
+  python -m tools_py.parity.gate --capture-heldout logs/parity/gate/<green stamp>   # once, exit 9 if refused
+  python -m tools_py.parity.gate --leg heldout logs/parity/gate/<stamp>             # 0 only at 12/12; 6 before
+the captures. See LEG_REFS_DIR below; the name appears in this file and the merged-chain template only.
 """
 import argparse
 import glob
@@ -657,7 +666,7 @@ def launch_env(name, card_dir, base=None, default_ok=False):
 
 def card_source(base=None):
     """The memory card a launch boots from: the operator's PS2X_MC_DIR when set, else the pristine card
-    run_gate copies. Its CONTENTS are the `card` pin (HANDOFF trap 5: the card is shared state, and a saved
+    run_gate copies. Its CONTENTS are the `card` pin (`docs/HAZARDS.md` harness, once HANDOFF trap 5: the card is shared state, and a saved
     controller configuration on it changes the boot flow the transition stage keys on)."""
     env = os.environ if base is None else base
     return env.get("PS2X_MC_DIR") or PRISTINE_CARD
@@ -745,6 +754,185 @@ def score_baseline(stamp, revision=None):
     return 1 if failed else 0
 
 
+# Sprint 14 E2 -- the heldout leg (the spec's D6: frozen scene references the agents never see). Twelve step captures
+# the three stages already take are frozen once, from a green 3/3 gate stamp, into LEG_REFS_DIR (`--capture-heldout`,
+# the controller's, at a quiet window); `--leg heldout <stamp>` then scores a stamp the chain made against them. It
+# never launches, never locks, never reads the disk: it reads two directories. The name lives in this file and the
+# merged-chain template only -- tools_py/tests' isolation test fails on any other file that mentions it (docs/ aside),
+# so no skill, brief or DEVELOPING paragraph can name it.
+#
+# The stamps: drive.py writes exactly one `s<NN>_<buttons>.png` per step of a stage's script (the settled screen;
+# the `s<NN>_burst_<k>.png` frames and the `w<NN>_<k>.png` waits are other files), under <stamp>/<stage>/. The
+# buttons part moves with the run (an `ifref` step is `s12_RIGHT` when its dialog showed, `s12_none` when not), so a
+# reference is filed by stage and step only: <stage>_s<NN>.png.
+#
+# The scorer and the bar: the one comparison of a capture against a reference image the gate already makes --
+# score_title's, compare.score through _score_value, at TITLE_MIN_SCORE. The other stages' scorers are structural
+# (black_rows' band peak, the briefing band, the gameplay band, live pairs) and compare no capture with a reference,
+# so there is no other bar to take; and no new threshold is set here (a threshold is a KNOWN row or a test).
+LEG_REFS_DIR = os.path.join("scripts", "parity", "refs", "heldout")
+LEGS = ("heldout",)
+# The twelve are R280's (the E2 review, 2026-09-26), chosen for stability across green runs: over 36 archived green
+# stamps the plan's first choice (transition s02 s05, mission s01 s04) scored 12/12 on at most 11 of the other 35,
+# because those steps land on boot screens that shift by one screen between runs (s02: main menu or select rank;
+# mission s01: attract or menu; s04: black or briefing). Every step from 6 on in both stages, and title s00..s18,
+# scores 35/35. So the leg covers the menu and the briefing; the transition's own structure is score_transition's.
+LEG_STAMPS = (
+    ("title_s03", "title", 3), ("title_s09", "title", 9), ("title_s15", "title", 15),
+    ("transition_s06", "transition", 6), ("transition_s08", "transition", 8),
+    ("mission_s06", "mission", 6), ("mission_s08", "mission", 8), ("mission_s10", "mission", 10),
+    ("mission_s12", "mission", 12), ("mission_s16", "mission", 16), ("mission_s20", "mission", 20),
+    ("mission_s24", "mission", 24),
+)
+# 6 and 9: free in this file and in run_detached.sh (2 lock busy, 3 disk, 4 nothing to score, 5 stale exe, 7 pin drift,
+# 8 unknown revision). 6: the references do not exist yet, so the leg cannot run -- not a FAIL of the exe. 9: a
+# capture refused (the directory exists: a re-capture is a deliberate delete first; or the stamp is not a green 3/3
+# with every stamp present).
+REFUSE_NO_REFS = 6
+REFUSE_CAPTURE = 9
+GATE_STAGES = ("title", "transition", "mission")
+
+
+def leg_refs_root():
+    return os.path.join(ROOT, LEG_REFS_DIR)
+
+
+def leg_ref_name(ref):
+    """The pin name of a reference: its path as LEG_REFS_DIR spells it, forward slashes (repo-relative in the tree)."""
+    return _rel(os.path.join(LEG_REFS_DIR, ref + ".png"))
+
+
+def stamp_capture(run_dir, stage, step):
+    """<run_dir>/<stage>/s<NN>_<buttons>.png, the step's own capture (never a burst frame), or None."""
+    caps = sorted(p for p in glob.glob(os.path.join(run_dir, stage, "s%02d_*.png" % step))
+                  if "_burst_" not in os.path.basename(p))
+    return caps[0] if caps else None
+
+
+def run_is_green(run_dir):
+    """(ok, why): does <run_dir>/summary.txt record a green 3/3 -- a PASS line for each of the three stages, no FAIL,
+    a pin verdict of MATCH or ACCEPTED, and no --stale-ok acceptance (a reference must be of the exe its tree says)."""
+    try:
+        with open(os.path.join(run_dir, "summary.txt"), encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+    except OSError as e:
+        return False, "no summary.txt (%s)" % (e.strerror or e)
+    missing = [s for s in GATE_STAGES if not any(l.startswith("PASS %s (" % s) for l in lines)]
+    if missing:
+        return False, "no PASS line for %s" % ", ".join(missing)
+    failed = [l.split(" (", 1)[0] for l in lines if l.startswith("FAIL ")]
+    if failed:
+        return False, "; ".join(failed)
+    if not any(l.startswith(("PINS MATCH", "PINS ACCEPTED")) for l in lines):
+        return False, "its pins did not match (no PINS MATCH or PINS ACCEPTED line)"
+    if any("STALE exe accepted" in l for l in lines):
+        return False, "it ran a stale exe (--stale-ok)"
+    return True, "green 3/3"
+
+
+def capture_leg(run_dir):
+    """--capture-heldout: freeze the twelve stamps of a green 3/3 stamp as the leg's references, and pin them."""
+    root = leg_refs_root()
+    if os.path.exists(root):
+        print("gate: %s already exists -- refusing to capture over it (a re-capture is a deliberate delete first)"
+              % _rel(LEG_REFS_DIR))
+        return REFUSE_CAPTURE
+    ok, why = run_is_green(run_dir)
+    if not ok:
+        print("gate: %s is not a green 3/3 gate stamp (%s) -- refusing to capture" % (run_dir, why))
+        return REFUSE_CAPTURE
+    found = [(ref, stamp_capture(run_dir, stage, step), stage, step) for ref, stage, step in LEG_STAMPS]
+    gaps = ["%s s%02d" % (stage, step) for _, cap, stage, step in found if cap is None]
+    if gaps:
+        print("gate: %s has no capture for %s -- refusing to capture" % (run_dir, ", ".join(gaps)))
+        return REFUSE_CAPTURE
+    os.makedirs(root)
+    try:
+        pinned = OrderedDict()
+        for ref, cap, _, _ in found:
+            dst = os.path.join(root, ref + ".png")
+            shutil.copyfile(cap, dst)
+            pinned[leg_ref_name(ref)] = pins.file_sha256(dst)
+            print("CAPTURED %s <- %s" % (ref, _rel(cap)))
+        doc = {
+            "_about": "The references of the gate's fourth leg (Sprint 14 E2): sha256 of each frozen capture, the "
+                      "shape of scripts/parity/pins.json. The leg refuses to score (exit 7) while any reference "
+                      "differs from its pin. Captured once; a re-capture is a deliberate delete first.",
+            "accepted": "%s -- gate --capture-%s, stamp %s" % (time.strftime("%Y-%m-%d %H:%M"), LEGS[0],
+                                                               os.path.basename(os.path.normpath(run_dir))),
+            "pins": pinned,
+        }
+        with open(os.path.join(root, pins.RECORD_NAME), "w", encoding="utf-8") as f:
+            json.dump(doc, f, indent=1)
+            f.write("\n")
+    except BaseException:
+        shutil.rmtree(root, ignore_errors=True)       # never a half-captured directory
+        raise
+    print("CAPTURE %d references -> %s (from %s)" % (len(found), _rel(LEG_REFS_DIR), _rel(run_dir)))
+    return 0
+
+
+def leg_pin_drifts(root):
+    """The references that are missing or differ from the directory's pins.json, as printable names."""
+    expected = pins.load_expected(os.path.join(root, pins.RECORD_NAME))
+    if expected is None:
+        return ["%s (no pins.json)" % _rel(LEG_REFS_DIR)]
+    bad = []
+    for ref, _, _ in LEG_STAMPS:
+        name = leg_ref_name(ref)
+        path = os.path.join(root, ref + ".png")
+        if name not in expected:
+            bad.append("%s (unpinned)" % name)
+        elif not os.path.isfile(path):
+            bad.append("%s (missing)" % name)
+        elif pins.file_sha256(path) != expected[name]:
+            bad.append("%s (sha256 differs from its pin)" % name)
+    return bad
+
+
+def score_leg(run_dir):
+    """--leg heldout: (rc, summary line). Each stamp against its reference at TITLE_MIN_SCORE; exit 0 only at 12/12.
+    The summary line replaces any earlier one of this leg in <run_dir>/summary.txt."""
+    root = leg_refs_root()
+    tag = LEGS[0].upper()
+    if not os.path.isdir(root):
+        print("gate: no references captured yet (%s absent) -- the %s leg cannot run" % (_rel(LEG_REFS_DIR), tag))
+        return REFUSE_NO_REFS
+    if not os.path.isdir(run_dir):
+        print("gate: nothing to score: %s is not a directory" % run_dir)
+        return 4
+    drifts = leg_pin_drifts(root)
+    if drifts:
+        print("gate: %s REFUSED -- references off their pins: %s" % (tag, "; ".join(drifts)))
+        return 7
+    passed, parts = 0, []
+    for ref, stage, step in LEG_STAMPS:
+        cap = stamp_capture(run_dir, stage, step)
+        if cap is None:
+            print("%s %s MISSING (no s%02d capture in %s/)" % (tag, ref, step, stage))
+            parts.append("%s=missing" % ref)
+            continue
+        s = _score_value(os.path.join(root, ref + ".png"), cap)
+        # TITLE_MIN_SCORE measured 2026-09-26 against 36 archived green stamps at the R280 steps: 35/35 at >= 90 (the bar); the lowest pairwise score 95.3 (transition s06, mission s06).
+        ok = s >= TITLE_MIN_SCORE
+        passed += ok
+        print("%s %s %s %.1f (%s/%s)" % (tag, ref, "PASS" if ok else "FAIL", s, stage, os.path.basename(cap)))
+        parts.append("%s=%.1f" % (ref, s))
+    total = len(LEG_STAMPS)
+    line = "%s %d/%d %s (>= %.1f: %s)" % (tag, passed, total, "PASS" if passed == total else "FAIL",
+                                          TITLE_MIN_SCORE, " ".join(parts))
+    summary = os.path.join(run_dir, "summary.txt")
+    try:
+        with open(summary, encoding="utf-8") as f:
+            kept = [l for l in f.read().splitlines() if not l.startswith(tag + " ")]
+    except OSError:
+        kept = []
+    with open(summary, "w", encoding="utf-8") as f:
+        f.write("".join(l + "\n" for l in kept + [line]))
+    print(line)
+    return 0 if passed == total else 1
+
+
 def exe_line(env=None):
     """Which runner this gate scores: path, size, SHA-256. Sprint 9 Goal 2 gates the release build through
     $SOCOM_EXE (hostplatform.runtime_exe), and a record that does not say which binary it ran proves nothing."""
@@ -758,6 +946,170 @@ def exe_line(env=None):
         return "EXE %s bytes=%d sha256=%s" % (path, os.path.getsize(full), digest.hexdigest())
     except OSError as e:
         return "EXE %s UNREADABLE (%s)" % (path, e.strerror or e)
+
+
+# Sprint 14 E4 -- the structure review's F3, "stale greens: a gate run that predates the last edit". The gate
+# launches whatever exe is on disk and `./build.sh test` does not rebuild it, so a PASS could be the verdict on a
+# binary built before the change it is quoted for. A launch refuses (REFUSE_STALE) when the exe is older than the
+# newest file it is built from; `--stale-ok` proceeds and says so on the console and in summary.txt. The merged-chain
+# template (Sprint 14 W2) never passes --stale-ok: a chain's gate measures the exe the chain just built, or nothing.
+# 5, not 3: 3 is the disk refusal here and in run_detached.sh, 4 a --baseline with nothing to score, 7 a pin
+# drift, 8 an unknown revision -- a caller reading the code must be able to tell "rebuild" from all of them.
+REFUSE_STALE = 5
+# What a rebuild depends on, repo-relative (E4 review 1). Every revision's exe is ps2EntryRunner linked from
+# ps2_runtime, which links ps2_iop (ps2xIOP), ps2x_shared (ps2xShared) and ps2x_snd989 (whose three sources are
+# ps2xRuntime/src/lib) -- ps2xRuntime/CMakeLists.txt, the target_link_libraries of ps2_runtime; the CMake files that
+# decide what is compiled (the top level's add_subdirectory set and each library's, ps2xRuntime/cmake's modules);
+# the recompiler's own sources (ps2xRecomp: a recompiler change means the generated code should be regenerated;
+# build.sh's recomp step rebuilds it first); build.sh itself, and the two tools its recomp step runs before
+# ps2_recomp (make_overlay_elf.py, fix_ghidra_csv.py, which reads merge_ranges.txt beside the extra-functions list).
+# Not ps2xLauncher, ps2xAnalyzer or ps2xTest: the exe links none of them. Not the hand name proposals or the name
+# holds: apply_names.py and bindiff_lever.py read those, the build does not.
+FRESHNESS_COMMON = (
+    "third_party/ps2recomp/CMakeLists.txt",
+    "third_party/ps2recomp/ps2xRuntime/CMakeLists.txt", "third_party/ps2recomp/ps2xRuntime/src",
+    "third_party/ps2recomp/ps2xRuntime/include", "third_party/ps2recomp/ps2xRuntime/cmake",
+    "third_party/ps2recomp/ps2xIOP/CMakeLists.txt", "third_party/ps2recomp/ps2xIOP/src",
+    "third_party/ps2recomp/ps2xIOP/include",
+    "third_party/ps2recomp/ps2xShared/CMakeLists.txt", "third_party/ps2recomp/ps2xShared/src",
+    "third_party/ps2recomp/ps2xShared/include",
+    "third_party/ps2recomp/ps2xRecomp/CMakeLists.txt", "third_party/ps2recomp/ps2xRecomp/src",
+    "third_party/ps2recomp/ps2xRecomp/include",
+    "build.sh", "tools_py/fix_ghidra_csv.py", "tools_py/make_overlay_elf.py",
+    "recomp/loader_text_end.txt", "recomp/merge_ranges.txt",
+)
+# ... and per revision, only that revision's inputs: `./build.sh recomp` for r0001 (recomp/output, git-ignored,
+# is the code the runtime compiles; the overlay ELF under game/ is what ps2_recomp reads, never tracked, its mtime
+# only is read); scripts/build_revision.sh for r0004 (recomp/output_r0004, build_revision.sh:141; its tracked toml
+# is DERIVED from recomp/socom2.toml by revision_toml.py and rewritten on every run, so socom2.toml counts for r0004
+# too). Per revision, so that build_revision.sh r0004 rewriting socom2_r0004.toml never refuses an r0001 gate.
+FRESHNESS_BY_REVISION = {
+    "r0001": ("recomp/output", "recomp/socom2.toml", "recomp/socom2_ghidra.csv", "recomp/socom2_names.csv",
+              "recomp/extra_functions.txt", "game/overlays/socom2_game.elf"),
+    "r0004": ("recomp/output_r0004", "recomp/socom2.toml", "recomp/socom2_r0004.toml",
+              "recomp/socom2_ghidra_r0004.csv", "recomp/socom2_names_r0004.csv", "recomp/extra_functions_r0004.txt",
+              "scripts/build_revision.sh", "tools_py/revision_toml.py", "tools_py/overlay_repair.py",
+              "tools_py/disc_to_elf.py", "tools_py/decrypt_apache.py", "game/overlays_r0004/socom2_game_r0004.elf"),
+}
+EXE_REVISION_RE = re.compile(r"(?:^|[-_])(r\d{4})$")
+
+
+def freshness_roots(root=ROOT, revision="r0001"):
+    """The directories and files an exe of `revision` is rebuilt from, under `root` (FRESHNESS_COMMON and that
+    revision's FRESHNESS_BY_REVISION row)."""
+    rel = FRESHNESS_COMMON + FRESHNESS_BY_REVISION.get(revision, FRESHNESS_BY_REVISION["r0001"])
+    return [os.path.join(root, *r.split("/")) for r in rel]
+
+
+def exe_revision(exe_path):
+    """Which revision an exe was built for, from its own path: build_revision.sh writes dist/socom2_<rev>.exe, and a
+    runner launched through $SOCOM_EXE must be called socom2[.exe] (hostplatform.runtime_exe), so it sits in a
+    folder named for it (dist-r0004/socom2.exe). Neither says a revision: r0001, `./build.sh runtime`'s.
+    (A launch has no --revision: that flag is --baseline's, and the image's banner says which game it RUNS, not
+    which generated code the exe was built from.)"""
+    p = exe_path.replace("\\", "/").rstrip("/").split("/")
+    stem = os.path.splitext(p[-1])[0]
+    for name in (stem, p[-2] if len(p) > 1 else ""):
+        m = EXE_REVISION_RE.search(name)
+        if m and m.group(1) in FRESHNESS_BY_REVISION:
+            return m.group(1)
+    return "r0001"
+
+
+def exe_tree(exe_path, default=ROOT):
+    """The checkout an exe was built in: the nearest directory above it holding build.sh -- so a gate run from the
+    main tree against a worktree's exe ($SOCOM_EXE) compares it with that worktree's sources, not this one's. No
+    such directory: `default`."""
+    d = os.path.dirname(os.path.abspath(exe_path))
+    while True:
+        if os.path.isfile(os.path.join(d, "build.sh")):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            return default
+        d = parent
+
+
+def freshness(exe_path, source_roots):
+    """(stale, newest_path, newest_mtime): is `exe_path` older than the newest file under `source_roots` (each a
+    directory, walked, or a file; a missing one is skipped). Pure: no printing, no globals. A missing exe is not
+    stale -- the EXE line already records it UNREADABLE and the drive fails on it; this is not that refusal."""
+    newest_path, newest_mtime = None, None
+    for src in source_roots:
+        if os.path.isfile(src):
+            candidates = [src]
+        else:
+            candidates = (os.path.join(d, n) for d, _, names in os.walk(src) for n in names)
+        for p in candidates:
+            try:
+                m = os.path.getmtime(p)
+            except OSError:
+                continue
+            if newest_mtime is None or m > newest_mtime:
+                newest_path, newest_mtime = p, m
+    try:
+        exe_mtime = os.path.getmtime(exe_path)
+    except OSError:
+        return False, newest_path, newest_mtime
+    return newest_mtime is not None and exe_mtime < newest_mtime, newest_path, newest_mtime
+
+
+def _stamp_time(t):
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t))
+
+
+def stale_message(exe_mtime, newest_path, newest_mtime, root=ROOT):
+    try:
+        rel = os.path.relpath(newest_path, root) if os.path.isabs(newest_path) else newest_path
+    except ValueError:          # another drive on Windows
+        rel = newest_path
+    if rel.startswith(".."):
+        rel = newest_path
+    return "gate: exe older than source (%s < %s %s): rebuild, or --stale-ok" % (
+        _stamp_time(exe_mtime), _rel(rel), _stamp_time(newest_mtime))
+
+
+def exe_staleness(env=None):
+    """The call site's half: the launch's exe (hostplatform.runtime_exe, $SOCOM_EXE honoured) against its own
+    checkout's (exe_tree) sources for its own revision (exe_revision). None when fresh, else the refusal line."""
+    path = hostplatform.runtime_exe(env=env)
+    full = path if os.path.isabs(path) else os.path.join(hostplatform.ROOT, path)
+    root = exe_tree(full)
+    stale, newest, newest_mtime = freshness(full, freshness_roots(root, exe_revision(full)))
+    if not stale:
+        return None
+    return stale_message(os.path.getmtime(full), newest, newest_mtime, root)
+
+
+TREE_EXCLUDED = ("logs/", "game/")
+
+
+def dirty_count(porcelain):
+    """The lines of a `git status --porcelain` output whose path is outside logs/ and game/ (a rename counts by
+    its destination)."""
+    n = 0
+    for line in porcelain.splitlines():
+        if len(line) < 4:
+            continue
+        path = line[3:].split(" -> ")[-1].strip().strip('"')
+        if not path.startswith(TREE_EXCLUDED):
+            n += 1
+    return n
+
+
+def tree_line(root=ROOT):
+    """`TREE <head> dirty=<n>`: which tree this gate measured -- `git rev-parse --short HEAD` and the count of
+    `git status --porcelain` lines outside logs/ and game/ (Sprint 14 E4). `TREE unknown (<why>)` off a
+    repository."""
+    try:
+        head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=root, capture_output=True, text=True,
+                              check=True).stdout.strip()
+        status = subprocess.run(["git", "status", "--porcelain"], cwd=root, capture_output=True, text=True,
+                                check=True).stdout
+    except (OSError, subprocess.CalledProcessError) as e:
+        why = (getattr(e, "stderr", None) or str(e)).strip().splitlines()
+        return "TREE unknown (%s)" % (why[0] if why else "git failed")
+    return "TREE %s dirty=%d" % (head, dirty_count(status))
 
 
 def elf_line(env=None):
@@ -872,7 +1224,7 @@ def expected_pins_rel(revision):
     lets it run REWRITES THE r0001 STANDARD. That is not a hazard in the abstract: on 2026-09-24 at 10:25
     an unattended `gate --accept-pins --stamp s11_r0004_reg3` replaced this file's r0001 env pin with the
     r0004 spec and dropped the mapping pin, exactly as review F2 predicted it would. Two files, and
-    neither revision's gate can reach the other's (KNOWN §4's accept-pins hazard, closed)."""
+    neither revision's gate can reach the other's (docs/HAZARDS.md harness, the accept-pins hazard, closed)."""
     if revision == "r0001":
         return pins.EXPECTED
     stem, ext = os.path.splitext(pins.EXPECTED)
@@ -1054,7 +1406,28 @@ def main(argv=None):
                          "instead of refusing -- a launch writes it once, after a run whose every stage PASSed "
                          "(S13-R5), never before the lock; the summary says so. It rewrites THIS REVISION's file "
                          "only -- an r0004 gate cannot reach %s" % pins.EXPECTED)
+    ap.add_argument("--stale-ok", action="store_true",
+                    help="launch an exe older than its sources (its own checkout's runtime, IOP, shared and "
+                         "recompiler sources, CMake files and build.sh, and its revision's generated code and "
+                         "recompiler inputs) instead of refusing with exit %d; the summary says so. The "
+                         "merged-chain template never passes it" % REFUSE_STALE)
+    ap.add_argument("--leg", nargs=2, metavar=("LEG", "RUN_DIR"),
+                    help="score a finished gate stamp's leg %s against its frozen references; no launch, no lock"
+                         % "/".join(LEGS))
+    ap.add_argument("--capture-" + LEGS[0], metavar="RUN_DIR", dest="capture_leg",
+                    help="freeze a green 3/3 stamp's twelve step captures as the leg's references (once)")
     args = ap.parse_args(argv)
+
+    # The fourth leg reads two directories and writes a summary line: exempt from the disk refusal, the freshness
+    # check, the pins and the lock, like the re-scores below.
+    if args.leg or args.capture_leg:
+        if args.accept_pins or args.baseline or args.revision:
+            ap.error("--leg and --capture-%s take no other flag" % LEGS[0])
+        if args.capture_leg:
+            return capture_leg(args.capture_leg)
+        if args.leg[0] not in LEGS:
+            ap.error("--leg: unknown leg %r" % args.leg[0])
+        return score_leg(args.leg[1])
 
     if args.baseline:
         if args.accept_pins:
@@ -1099,6 +1472,17 @@ def main(argv=None):
               % (free, hostplatform.free_space_path(), min_free))
         return 3
 
+    # Sprint 14 E4: an exe older than its sources is refused before anything is written or locked (the chain
+    # template never passes --stale-ok; see REFUSE_STALE).
+    stale_lines = []
+    stale = exe_staleness()
+    if stale is not None:
+        print(stale, flush=True)
+        if not args.stale_ok:
+            return REFUSE_STALE
+        stale_lines = [stale, "gate: STALE exe accepted (--stale-ok)"]
+        print(stale_lines[-1], flush=True)
+
     # Make the output root before taking the lock: a makedirs failure must not leak the lock.
     out_root = os.path.join("logs", "parity", "gate", args.stamp)
     os.makedirs(out_root, exist_ok=True)
@@ -1106,6 +1490,8 @@ def main(argv=None):
     print(exe, flush=True)
     elf = elf_line()
     print(elf, flush=True)
+    tree = tree_line()
+    print(tree, flush=True)
     # Which revision is this? It decides the probes' address column AND which pin standard is the
     # standard. A launch does not get the bare-clone default: it has an image, and if it cannot be read
     # the gate refuses with its own line rather than a traceback out of collect_pins (review F3, F9).
@@ -1133,9 +1519,21 @@ def main(argv=None):
         word, verdict = pins_verdict(all_drifts, accepted, compared, revision, when=" after the run")
         pin_lines = pins.lines(current, all_drifts, accepted, expected) + pins.informational_lines(info)
         with open(os.path.join(out_root, "summary.txt"), "w", encoding="utf-8") as f:
-            f.write("".join(l + "\n" for l in stage_lines + list(frame_lines) + [exe, elf] + pin_lines + [verdict]))
-        pins.write_record(current, os.path.join(out_root, pins.RECORD_NAME), all_drifts, accepted, word,
+            f.write("".join(l + "\n" for l in stage_lines + list(frame_lines) + [exe, elf, tree] + stale_lines
+                            + pin_lines + [verdict]))
+        record = os.path.join(out_root, pins.RECORD_NAME)
+        pins.write_record(current, record, all_drifts, accepted, word,
                           exe, expected_pins_rel(revision), informational=info)
+        # The TREE line (and a --stale-ok acceptance) in the record too: pins.write_record's shape is pins.py's,
+        # so the keys are added here rather than there.
+        with open(record, encoding="utf-8") as f:
+            doc = json.load(f)
+        doc["tree"] = tree
+        if stale_lines:
+            doc["stale"] = stale_lines[0]
+        with open(record, "w", encoding="utf-8") as f:
+            json.dump(doc, f, indent=1)
+            f.write("\n")
         return pin_lines, verdict
 
     if drifts and not pending:

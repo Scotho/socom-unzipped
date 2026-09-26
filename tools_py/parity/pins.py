@@ -3,7 +3,7 @@
 Sprint 10 Q1b. A gate's summary.txt used to pin one thing, the EXE line, while everything else the score
 depends on -- the reference images, the memory card the run boots from, the drive scripts, the harness
 revision, the PS2X_* environment -- could change with no record. A silently-changed reference image moves
-every score with nothing saying that anything moved: the sibling of HANDOFF trap 4 (the pipeline cannot see
+every score with nothing saying that anything moved: the sibling of the `docs/HAZARDS.md` harness hazard, once HANDOFF trap 4 (the pipeline cannot see
 a defect present in every run; it cannot see a change in its own standard either).
 
 This module is the mechanism and knows nothing about the gate: `gate.collect_pins` names the gate's set, and

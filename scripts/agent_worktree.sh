@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The worktree an agent gets, exactly as docs/HANDOFF.md "Giving an agent a worktree" prescribes (learned the hard
+# The worktree an agent gets, exactly as docs/archive/HANDOFF-to-2026-09-26.md "Giving an agent a worktree" prescribes (learned the hard
 # way on 2026-09-21: the toolchain was deleted THROUGH a junction twice, and an agent pushed to main three times
 # against its brief). One command creates it right; one command removes it right.
 #

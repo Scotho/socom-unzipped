@@ -1,6 +1,6 @@
 # Documentation maintenance — the classes, the registry, and the sprint-close review
 
-**Last full review: 2026-09-26 (Sprint 13 close; §5 by a read-only agent's table, 24 findings fixed; §7 by a read-only agent's table, the audit clean, acted on in S13-R12 and S13-R14).** Next: at the next sprint's close, by its controller.
+**Last full review: 2026-09-26 (Sprint 14 close; §5 by a read-only agent's table, 31 findings fixed across nineteen files and two blocks archived; §7 by a read-only agent's table, the audit clean, one evidence note, four labels, the milestone closed).** Next: at the next sprint's close, by its controller.
 
 > **The first review under this schema, 2026-09-23 (Sprint 10's close), and what it changed.** Step 1: `docmaint`
 > OK. Step 2: every L document read for truth by a read-only agent against the tree and the night's ledgers — 56
@@ -66,7 +66,7 @@ themselves, and why the checks below enforce exactly that and nothing else about
 
 The table in §3 must account for every `.md` file in these locations, one row each:
 
-- the repository root: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `THIRD_PARTY_NOTICES.md`
+- the repository root: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `THIRD_PARTY_NOTICES.md`, `CLAUDE.md`
 - `docs/*.md`, `docs/parity/*.md`, `docs/story/*.md`, `docs/archive/*.md`
 
 Everything else is classified **by location**, and needs no row:
@@ -89,15 +89,18 @@ document gets a class, and an unclassified document is one nobody has decided th
 
 | Path | Class | Owner | Note |
 |---|---|---|---|
-| `README.md` | **L** | controller | The public front page. Its "Works / Not yet" table is a live claim and is the highest-stakes row here — a stranger reads it before anything else |
+| `README.md` | **L** | controller | The public front page. Its Status paragraph is a live claim (the "Works / Not yet" table it replaced was removed in `f55196a6`) and is the highest-stakes row here — a stranger reads it before anything else |
 | `CONTRIBUTING.md` | **C** | controller | |
 | `SECURITY.md` | **C** | controller | The "Known: the game's own network code" section is live in spirit; review it whenever the network path changes |
 | `THIRD_PARTY_NOTICES.md` | **G** | licence test | A test fails on a dependency, vendored directory or release DLL without a row |
-| `docs/STATUS.md` | **L** | controller | **Only the "Current state" block is live.** Everything under it is a dated log, newest first, and is class S by paragraph — an entry keeps the numbers it was written with, on purpose. This is why STATUS is exempt from the single-source count rule |
+| `CLAUDE.md` | **C** | controller | Loaded into every Claude Code session at start. A map, never state: at most 60 lines, no suite count, the live documents and the four skill names named (`ClaudeMdTest`). Sprint 14 I1 |
+| `docs/STATUS.md` | **L** | controller | The "Current state" block (its ceiling is check 7's) and one pointer paragraph: nothing else since 2026-09-26 (Sprint 14 S1, R272). The dated log that stood under the block is `docs/archive/STATUS-log-to-2026-09-26.md`; what merged is `docs/CHANGELOG.md`, why is the plan's Log. Held to the single-source count rule like any L document |
 | `docs/KNOWN.md` | **L** | every task | Proven vs believed, with the artefact for each. **It wins on any disagreement.** The model this schema is generalised from |
+| `docs/HAZARDS.md` | **L** | every task | The standing hazards by the area each bites -- KNOWN's section 4 until 2026-09-26 (R270, Sprint 14 I5). A hazard is a trap, not a claim; retired in place, never deleted; KNOWN wins on any disagreement |
 | `docs/CURRENT_SPRINT.md` | **L** | controller | The live queue and the road to the next tag |
-| `docs/HANDOFF.md` | **L** | controller | What a new controller reads first. Holds the **ruling counter**, checked mechanically |
+| `docs/HANDOFF.md` | **L** | controller | What a new controller reads first. **Transient since 2026-09-26** (Sprint 14 I3): in flight, owed, the first hour, the rules one line each; rewritten at every handoff under a 6,000-byte whole-file ceiling (check 7). Holds the **ruling counter**, checked mechanically |
 | `docs/HUMAN_TASKS.md` | **L** | controller | The owner's queue |
+| `docs/UPSTREAM.md` | **L** | controller | The register of bugs to report upstream, by vendor (owner, 2026-09-26): only a defect located at `path:line` on the vendor's `main`, with its draft and patch in `docs/research/assets/63-upstream-drafts/`, its local status checked against the tree, its confidence, and "not filed" until the owner files it (`docs/HUMAN_TASKS.md` O10). Feedback that is not a bug and the research on open PRs live beside the drafts (`NOT-UPSTREAM.md`, `OPEN-PRS.md`); a vendor's `main` moving or a patch entering the tree changes a row |
 | `docs/DEVELOPING.md` | **L** | controller | **Owns the suite counts.** No other registered document may state them |
 | `docs/INSTALL.md` | **L** | controller | The player's setup page. Live because it quotes the launcher's own sentences and describes a download that does not exist yet — the "get the archive" paragraph changes the day the distribution decision is answered |
 | `docs/FAQ.md` | **L** | controller | The player's failure page. Every exit-code sentence is quoted from `ps2x/exit_codes.h`; a change to that table changes this file |
@@ -106,11 +109,16 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/LADDER.md` | **G** | `ladder_ledger.py` | One row per scheduled ladder run, written from `logs/ladder/ledger.jsonl`, committed by a person |
 | `docs/BACKLOG.md` | **G** | `tools_py.issues backlog` | The carry's one home (R267): the open issues with their milestone, carried count and closing bar, then `docs/backlog_ruled_out.txt` as a second table. Regenerated and committed at every sprint close (§7 step 5) and whenever the list changes; `backlog --check` exits 1 on a stale file, and the docs test runs its `--offline` half |
 | `docs/backlog_ruled_out.txt` | **L** | controller | Not a markdown file, registered because it is the source `docs/BACKLOG.md` renders: one row per unfinished item ruled not to be an issue, with its ruling (an R-number or `no issue`) and its bar. A row leaves it when it becomes an issue or a task |
+| `docs/LATER.md` | **L** | controller | The candidates nobody has committed to (the owner, 2026-09-26): one table by value, size and confidence, each row with the trigger that promotes it, then the dismissals the owner confirms or strikes. One home per item: an issue lives in `docs/BACKLOG.md` and a task in its plan, and LATER points at an issue by number. The loop adds a row when a plan, a review or a note names future work; a row leaves when it becomes an issue or a task; the sprint close re-sorts it |
+| `docs/RULINGS.md` | **G** | `tools_py.rulings` | Every ruling with its status (active, superseded, retracted, withdrawn, vacant) and its home, global newest first, then the `S13-R<n>` and `S12-R<n>` namespaces; held to `docmaint.ruling_records()` by `rulings --check` (exit 1 on a stale file). Regenerate in the commit that makes or changes a ruling; `--check` in the close. Sprint 14 D1 |
+| `docs/CHANGELOG.md` | **G** | `tools_py.changelog` | Every merge commit, grouped by the oldest `v*` tag that contains it, newest first: the first-parent line and the lines of the branches those merges brought in (agent branches, `main` merged into a sprint). Held to `git log` by `changelog --check` (exit 1 on a stale file); the suite holds the page to a render of the commit that last wrote it. Regenerate at every merge to a sprint branch (the merge's follow-up commit) and at the close. Replaced STATUS's hand-written log. Sprint 14 S1, R272 |
+| `docs/FLOW.md` | **G** | `tools_py.flow` | How work moves, measured from git with the review's note 03 methods: merges per day, fix rounds per merge (on the merged branch), " again" subjects, the docs share of seven days' churn, the lock's median ticket wait, open-issue age, sessions and commits per session; every number names its command, descriptive, no targets. It names the commit it was rendered at and `flow --check` (and the suite) re-render there (exit 1 on a stale file); `--check --rev HEAD` asks whether it is current. Regenerate at the close. Sprint 14 M1 |
+| `docs/SITTING.md` | **G** | `tools_py.sitting` | The owner's sitting page: the open O rows of `docs/HUMAN_TASKS.md` with their defaults and days waited (struck rows listed as answered), the rows past two sittings marked to close by default (R271, §7 step 8), the active rulings since the latest date on HUMAN_TASKS' `last sitting:` / `sittings:` stamp (dated, or placed by the counter or their home's date; the unplaceable counted), the issues at `Carried` 2 or more in `docs/BACKLOG.md`, and the build `docs/PLAYTEST.md` names or **NOT BUILT**. The suite holds it to its sources at the commit that last wrote it; the loop regenerates it when an O row, a ruling or the backlog changes (loop-iteration step 6), and `sitting --check` exits 0 at the close (sprint-close, the known-issue review's step 7). Sprint 14 D3 |
 | `docs/ROADMAP.md` | **N** | controller | Narrative and pointers only. Rewritten 2026-09-22; its §0 is the audit of what it replaced |
 | `docs/STORY.md` | **N** | story | Every entry cited; `tools_py/story/cite.py` fails on a dead hash or an unwitnessed run |
 | `docs/HOW_IT_WAS_BUILT.md` | **N** | controller | How the project was made, for a stranger: the method, the owner's share and the agents', and the process failures worth keeping. Pointers only — the live documents own every current number. `README.md` links it |
 | `docs/GIT_STRATEGY.md` | **C** | controller | Branches, slices, releases. Carries the sprint-close step that invokes this file |
-| `docs/LOOP_PROMPT.md` | **C** | controller | **Carries no state at all** — the model for C. Rewritten 2026-09-20 after the old one aimed the loop at Sprint 6 for six days |
+| `docs/LOOP_PROMPT.md` | **C** | controller | **A pointer since 2026-09-26** (Sprint 14 I2): under 2,000 bytes, naming the four skills in `.claude/skills/` that hold the procedure now (`SkillsTest` holds both). Carries no state at all — the model for C. Rewritten 2026-09-20 after the old one aimed the loop at Sprint 6 for six days |
 | `docs/PLAYTEST.md` | **C** | controller | The owner's one-sitting script |
 | `docs/DOC_MAINTENANCE.md` | **C** | controller | This file |
 | `docs/story/release-entry.template.md` | **C** | story | A template |
@@ -119,43 +127,69 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/archive/README.md` | **A** | — | |
 | `docs/archive/ROADMAP-sprint-4-to-sprint-7.md` | **A** | — | Fifteen files cite it; every `ROADMAP.md §N` written before 2026-09-22 means this file |
 | `docs/archive/CURRENT_SPRINT-to-sprint-8.md` | **A** | — | |
+| `docs/archive/LOOP_PROMPT-to-2026-09-26.md` | **A** | — | Cut 2026-09-26 (Sprint 14 I2): `docs/LOOP_PROMPT.md` verbatim before it became a pointer, superseded by the four skills. Every "LOOP_PROMPT step N", "Every iteration" or "Lock protocol" cited before that day means this file |
+| `docs/archive/HANDOFF-to-2026-09-26.md` | **A** | — | Cut 2026-09-26 (Sprint 14 I3): the whole `docs/HANDOFF.md` verbatim before it became transient -- §5's rules with their reasons, §6's traps (now `docs/HAZARDS.md`), §7's instruments (now DEVELOPING). Every HANDOFF section, rule or trap cited before that day means this file |
 | `docs/archive/HANDOFF-loop-history-to-2026-09-25.md` | **A** | — | Cut 2026-09-25 (Sprint 13 Task R1, R268): HANDOFF §2's older pick-up points, §4 and §10, verbatim |
 | `docs/archive/HUMAN_TASKS-to-2026-09-25.md` | **A** | — | Cut 2026-09-25 (Sprint 13 Task R4): the owner's queue before it became one table, verbatim, under a disposition for each of its 87 items. Every HUMAN_TASKS section, item or line cited before that day means this file |
+| `docs/archive/STATUS-log-to-2026-09-26.md` | **A** | — | Cut 2026-09-26 (Sprint 14 Task S1, R272): everything under STATUS's "Current state" block, verbatim as it stood at `04d75f6f` (the dated log, 2026-09-05 to the Sprint 13 close), superseded by `docs/CHANGELOG.md` and the plans' Logs. Every STATUS entry cited by date before that day means this file; line N there is line N-5 here |
+| `docs/archive/KNOWN-section-4-to-2026-09-26.md` | **A** | — | Cut 2026-09-26 (Sprint 14 Task I5, R270): KNOWN's section 4, the 104 standing hazards, verbatim as they stood at the split. Every "KNOWN §4" written before that day resolves to `docs/HAZARDS.md` by headline, or to this file as it was |
 | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` | **A** | — | Cut 2026-09-25 (Sprint 13 Task R1, R268): the Sprint 9-11 records, verbatim. The ruling counter reads it (`max_ruling()` scans all of `docs/archive/`) |
+| `docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md` | **A** | — | Cut 2026-09-26 (the Sprint 14 close, §5 step 5): the Sprint 12 and Sprint 11 CLOSED blocks with Sprint 11's rulings ledger R245-R263 and the `S12-Rn` table, verbatim. The ruling counter and check 10 read it |
 | `docs/archive/HANDOFF-reference-to-2026-09-13.md` | **A** | — | |
 | `docs/archive/HANDOFF-2026-09-08.md` | **A** | — | Banded 2026-09-22 |
 | `docs/archive/HANDOFF-AUDIT-2026-09-14.md` | **A** | — | Banded 2026-09-22 |
+| `docs/archive/2026-09-26-sprint-14-log-to-2026-09-26.md` | **A** | — | Cut 2026-09-26 (`python -m tools_py.docmaint archive-log`, check 7): the oldest 17 entries of `docs/superpowers/plans/2026-09-26-sprint-14.md`'s Log, verbatim; the Log points here |
 
 ## 4. What is enforced mechanically
 
-`tools_py/tests/test_doc_maintenance.py`, in the Python suite, so it runs in CI and needs no build. Ten checks, each
+`tools_py/tests/test_doc_maintenance.py`, in the Python suite, so it runs in CI and needs no build. Eleven checks, each
 aimed at a rot mechanism that actually bit this project (the seventh and eighth are R268's, the ninth and tenth
-Sprint 13 Task R3's, all added 2026-09-25):
+Sprint 13 Task R3's, all added 2026-09-25; the eleventh Sprint 14 I4's, 2026-09-26):
 
 1. **Registry completeness** — every covered file has exactly one row; every row points at a file that exists. *Catches
    a new document nobody classified, and a row left behind by a move.*
 2. **The ruling counter** — `docs/HANDOFF.md`'s "Next free ruling number: R\<n\>" must be exactly `max(R<n>) + 1` over
    the live documents. *Catches the R179-against-R241 collision, which had already happened once.*
 3. **Single-source suite counts** — `Total Tests: <n>`, `Ran <n> tests` and `<n>/<n>` baselines may appear only in
-   `docs/DEVELOPING.md`. S and A documents are exempt (they are records), and `docs/STATUS.md` is exempt by the §3
-   note. *Catches the 686/686 defect, in all four places it had reached.*
+   `docs/DEVELOPING.md` -- or, in any other registered document, with a date on the line or under a dated heading.
+   Only A rows are exempt (archives, verbatim records); a registered S row is held to the date rule, and the
+   snapshots classified by location (research, plans, audits) have no row and are not read. `docs/STATUS.md` has no
+   exemption since its log was archived (2026-09-26, R272). *Catches the 686/686 defect, in all four places it had reached.*
 4. **Snapshots are dated** — every S file has a date in its filename or in its first fifteen lines. *Catches a
    `REPORT.md` that reads as the current report.*
 5. **Archives announce themselves** — every A file says "archived" or "superseded" in its first fifteen lines, in any
    case. *Catches an archive that reads as live.*
 6. **No dangling `docs/` path** — every backticked path starting `docs/` in a markdown file at the root or under
-   `docs/` must exist in the tree. *Catches the citation a move left pointing at nothing* — which is why the Sprint 1–6
+   `docs/`, and in the live procedures -- `.claude/skills/**/SKILL.md` and `.claude/agents/*.md` (Sprint 14 I2) --
+   must exist in the tree. *Catches the citation a move left pointing at nothing* — which is why the Sprint 1–6
    specs and plans sat under `docs/superpowers/` for a sprint after they were dead: nobody could move them without
    breaking citations nothing would catch. It found 44 on the tree the day it was written, in fifteen documents.
 7. **Ceilings on the appending documents (R268)** -- `docs/CURRENT_SPRINT.md`, the "## 2." section of
-   `docs/HANDOFF.md`, the "## Current state" block of `docs/STATUS.md` and `docs/HUMAN_TASKS.md` each have a byte
+   `docs/HANDOFF.md` and the whole of it (6,000 bytes, Sprint 14 I3: the file is transient), the "## Current state"
+   block of `docs/STATUS.md` and `docs/HUMAN_TASKS.md` each have a byte
    ceiling (`CEILINGS` in `tools_py/docmaint.py`, counted with LF line ends; the failure prints the measured size). A
    measured heading that has gone fires too, so renaming it cannot switch the ceiling off. *Catches the stack nobody
    retires:* on 2026-09-25 the sprint file was 190 KB with about 12 % of it live, HANDOFF §2 held twelve pick-up
    points and three of them said "now", and STATUS's "keep it short" block was 30 KB. The ceilings were set at that
    day's split (Sprint 13 Task R1) with about 25 % headroom. **When one fires, archive the oldest blocks** (a banner,
    a registry row, the citations re-pointed) -- never raise the number to make it pass; a lower number after a cut
-   (Task R4 for HUMAN_TASKS) is the only edit it expects.
+   (Task R4 for HUMAN_TASKS) is the only edit it expects. **The ratchet (Sprint 14 S3): at each close,
+   `python -m tools_py.docmaint ratchet` proposes the numbers** (live plus ten percent, rounded up to 100, never above
+   the current one); **the close commits them with `ratchet --write`** (it rewrites only the numbers in `CEILINGS`,
+   and refuses a rise); **a ceiling never goes up.** S3 added three whole-file ceilings: `docs/LOOP_PROMPT.md` 2,000
+   (a pointer since I2), `CLAUDE.md` 4,900 (4,453 plus ten percent, the byte twin of its sixty-line test) and **the
+   open plan** -- the plan named on `docs/CURRENT_SPRINT.md`'s `plans:` line, resolved at run time (`OPEN_PLAN`),
+   set at 92,000 at the open (the Sprint 14 plan's 83,025 plus ten percent); the ratchet rounds it to 100 like
+   the rest, so its first proposal on 2026-09-26 was 90,900. **R279: the open plan's ceiling is one number in
+   `CEILINGS` like the others: ratcheted at each close from the closing plan's size (before `docs/CURRENT_SPRINT.md`'s
+   `plans:` line switches to the next plan) and carried to the next plan, never raised; when a plan's ceiling fires
+   mid-sprint the remedy is `docmaint archive-log` on its Log, never a raise.** The ratchet is the last step before
+   the close-out commit, after the close's own edits, and `python -m tools_py.docmaint` must print OK after it.
+   **When the plan's ceiling fires,** its
+   Log's entries older than the newest ten move verbatim to `docs/archive/<plan>-log-to-<date>.md` (a banner, a
+   class A row) and the Log keeps a one-line pointer where they were:
+   `python -m tools_py.docmaint archive-log --plan <path> [--keep 10]` does exactly that, leaves the ten newest
+   entries byte-identical, and refuses when the Log is not the plan's last `## ` heading. The Log must stay last.
 8. **"merged to `main` as `vX.Y.Z`" names a tag origin has (R268)** -- every such phrase in an L document is checked
    against `git ls-remote --tags origin`; a struck-through claim is a retraction and is skipped. *Catches a close
    recorded before it happened:* on 2026-09-25 four live documents said Sprint 11 was merged as `v0.11.0` while no such
@@ -171,8 +205,25 @@ Sprint 13 Task R3's, all added 2026-09-25):
    up to the highest in use, has a definition, a ledger row, or a vacancy note `R<n> -- vacant: <reason>` in the plan
    or ledger that owns its range. *Catches a decision nobody can find to overturn:* R114, R116 and R124 were cited for
    a week with no findable text; the check also found R112, R113 and R139 in the same state.
+11. **The read-first budget (Sprint 14 I4)** -- what a new controller reads before acting sums to at most 160,000
+   bytes (`READ_FIRST_BUDGET` in `tools_py/docmaint.py`, LF-counted like the ceilings). The set: the pinned
+   `READ_FIRST` (`docs/HANDOFF.md`, `CLAUDE.md`, `docs/CURRENT_SPRINT.md`); the "## Log" block of the plan named on
+   `docs/CURRENT_SPRINT.md`'s `plans:` line (its first `docs/superpowers/plans/` path), measured from its heading to
+   the end of the file (Sprint 14 S3: a `## ` heading added after the Log cannot shrink it; a test holds the real
+   plan's Log last) -- §3 sends a controller to
+   "the open plan's Log", and the task sections are consulted per task -- or the whole plan when it has no
+   "## Log" heading, so renaming the heading cannot shrink the set; and `docs/STATUS.md`'s
+   "## Current state" block only. A test holds the "Read ..." step of HANDOFF §3 ("Your first hour") to the pinned
+   paths after HANDOFF itself, so a rewording that drops one fails instead of shrinking the set (a path in another
+   step, such as KNOWN in "KNOWN wins", is not a member). A `plans:` path that is not a file is a problem too
+   (`read_first_missing`: the line is not backticked, so check 6 never sees it). The report prints each member's
+   bytes and the sum, then, for information, the whole plan's size beside the Log block that counts. *Catches the
+   review's F1:* on 2026-09-26 HANDOFF's "read first" list summed to 975 KB, a quarter-million tokens before the
+   first action, with the minimum useful subset at 268 KB. The day it landed the set was 93,021 bytes (the sprint
+   file 61,190; the plan's Log 20,281 of its 80,182). **When it fires, shrink or archive** -- the Log's older
+   entries archived, the sprint file split -- never raise the number.
 
-**What counts as a definition (checks 9 and 10).** A line in a document where a ruling is *made* -- HANDOFF §5 rule 9:
+**What counts as a definition (checks 9 and 10).** A line in a document where a ruling is *made* -- HANDOFF §4 rule 9:
 a plan's rulings, or `docs/CURRENT_SPRINT.md` when there is no plan, and what `docs/archive/` keeps of both -- in a
 house shape: `- **R107** (Task 1): ...`, `**R181 -- ...**`, `- **R169 — ...`, `1. **R237, ...`, a list
 `- **R265**, **R266** (...)`, or a bold label anywhere on the line, `**R173:**`, `**Ruling R115: ...`, `**R264** (date,
@@ -199,9 +250,9 @@ file that moved.
 Run it by hand with `python -m tools_py.docmaint`, which prints the registry size, the ruling numbers and every problem.
 
 **Each check is fired once against a planted defect** (`PlantedDefectsTest`: an unregistered document, a row whose file
-is gone, a colliding ruling number, two counter lines that disagree, an undated count, an undated snapshot, a silent
+is gone, a colliding ruling number, an undated count, an undated snapshot, a silent
 archive, a silent file in an archive subdirectory, a dangling `docs/` path in a `docs/` file and in a root file, a ruling
-defined twice, a cited ruling with no text — plus
+defined twice, a cited ruling with no text, a read-first set of 180 KB — plus
 the negative controls that must *not* fire, and a clean-tree control for the controls). A gate
 that has never failed is not known to work, and this one found two real defects and one bug in its own test on the day
 it was written.
@@ -233,7 +284,7 @@ the count half is check 3; the rest is a reading, and §5 is where it happens.
    `README.md`. For each, three questions: *is every claim still true; is anything the sprint closed still listed as
    open; is anything the sprint opened missing?*
 3. **`README.md` gets its own pass**, because it is the only one a stranger reads and the only one where being *behind*
-   is as damaging as being wrong. Walk the "Works / Not yet" table row by row against `KNOWN.md`.
+   is as damaging as being wrong. Walk README's Status paragraph, sentence by sentence against `KNOWN.md`.
 4. **Every N document, read for live state that has crept in.** A number, a task list, a "next", an instruction to go
    and edit another file: move it to its L document and leave a pointer.
 5. **Anything superseded this sprint moves to S or A** with a banner naming what replaced it. A document that is
@@ -255,18 +306,24 @@ knows which documents to distrust.
   held the suite count; one was right.
 - **Prefer a pointer to a copy**, and prefer a generated file to either. `KNOBS.md` and `LADDER.md` have never been
   wrong, because nobody writes them.
-- **A document that tells agents what to do is code.** It gets audited like code. `LOOP_PROMPT.md` is opened first by
+- **A document that tells agents what to do is code.** It gets audited like code. The `loop-iteration` skill is opened first by
   every iteration, so it carries no state; `HANDOFF.md` must carry state, so its one dangerous number is now tested.
 - **Date anything that is a moment.** A filename date costs nothing and makes the class obvious at a glance.
 - **Supersede in place, never rewrite history.** Blockquote the old claim, say what replaced it, keep the text. The
   archived roadmap is readable *because* its wrong turns are still in it.
 - **If a claim cannot be checked, do not make it.** "The game runs well" ages badly; "43-45 fps in a mission,
   measured on <date>, against the console's 60" does not — it simply becomes a dated fact.
+- **A ruling is narrow, and it has one counter.** A ruling records a moved owner default, a moved acceptance bar or a
+  moved spec goal. A threshold, a skipped measurement, a naming choice or a tool's behaviour is not a ruling: it is a
+  KNOWN row with its artefact, a knob default in the registry, or a test. From Sprint 14 the global counter is the
+  only namespace (R273); a ruling is written in the sprint plan's Rulings section, numbered from `docs/HANDOFF.md`
+  section 2 (the one counter line, check 2), with the counter bumped and `docs/RULINGS.md` regenerated
+  (`python -m tools_py.rulings`) in the same commit. `docs/RULINGS.md` is the index, generated; nobody keeps one by hand.
 
 ## 7. The known-issue stack review — deep, at every sprint close
 
 `docs/GIT_STRATEGY.md` §7 puts every technically well-defined, unresolved defect on GitHub issues, one each, cited
-from its `docs/KNOWN.md` row as `issue #N`. Between closes the loop keeps the pair true per task (`docs/LOOP_PROMPT.md`
+from its `docs/KNOWN.md` row as `issue #N`. Between closes the loop keeps the pair true per task (the `loop-iteration` skill's
 step 6). At the close the whole stack is read, because an issue tracker rots exactly the way a document does: a
 fixed thing left open, an open thing nobody owns, a bar that no longer says what would close it, a milestone that
 became a wish list. This runs beside §5, under the same rule (a sprint without it is not closed), and its result is
@@ -282,13 +339,14 @@ acts on it.
    artefact. *Is the bar still the right bar?* — the experiment may have been superseded: rewrite the Closing bar
    section and say why. *Is the evidence still where the body says?* — an archived log moved to `D:`: say where.
    *Is the area right?*
-3. **Every KNOWN §2 row and every live §4 hazard, the other way round.** Each either cites an open issue, cites a
-   closed one and reads as settled, or is ruled not to qualify — and the audit's "rows neither cited, settled nor
-   ruled out" list is exactly the set to rule on. A row ruled out says why in a few words at its end (*no issue: the
-   owner's ears*; *no issue: a lesson, nothing left to fix*), so the next review does not re-ask. In §4 the audit
-   lists only a bullet whose headline says `HAZARD` or `Open:` — the two forms KNOWN already uses for a hazard that
-   is still live — because most of §4 is lessons, which `docs/GIT_STRATEGY.md` §7.1 keeps out of the stack; a §4
-   entry that is a live defect is written in one of those two forms, or the audit will not ask about it.
+3. **Every KNOWN §2 row and every live hazard in `docs/HAZARDS.md` (by area), the other way round.** Each either
+   cites an open issue, cites a closed one and reads as settled, or is ruled not to qualify — and the audit's "rows
+   neither cited, settled nor ruled out" list is exactly the set to rule on. A row ruled out says why in a few words
+   at its end (*no issue: the owner's ears*; *no issue: a lesson, nothing left to fix*), so the next review does not
+   re-ask. In `docs/HAZARDS.md` the audit lists only a bullet whose headline says `HAZARD` or `Open:` — the two forms
+   KNOWN already uses for a hazard that is still live — because most of the hazards are lessons, which
+   `docs/GIT_STRATEGY.md` §7.1 keeps out of the stack; a hazard that is a live defect is written in one of those two
+   forms, or the audit will not ask about it.
 4. **Every issue closed this sprint** (`gh issue list --state closed --label known-issue --search "closed:>=<open
    date>"`): its closing comment names an artefact, and the KNOWN row says the same thing. A close with no artefact is
    reopened -- **unless the owner closed it.** An owner's close stands (`docs/HANDOFF.md` rule 13: the loop does not
@@ -307,6 +365,14 @@ acts on it.
 6. **Duplicates and contributor handles.** Merge duplicates (close as not planned, "duplicate of #M"; the survivor
    gets the evidence). Put `help wanted` on what a stranger without a disc could take, `good first issue` only where
    the bar is a test they can run themselves.
-7. **The record.** The close-out commit and `docs/STATUS.md`'s entry say, dated: opened, closed and carried this
+7. **The record.** The close-out commit and the plan's Log (and STATUS's Current state bullet) say, dated: opened, closed and carried this
    sprint, the highest issue number, and what the review changed. A review that changed nothing says so. The
    first half is `python -m tools_py.issues tally --since <the day the sprint opened>`, one sentence to paste.
+8. **The circuit breaker (R271).** An O row that has stood through two sittings without an answer is closed by
+   default under a ruling, struck with the date and the default that now stands; the owner can reopen it by number.
+   `python -m tools_py.sitting` marks such a row in `docs/SITTING.md` §1 "closes by default at the next close
+   (R271)" -- two dates on HUMAN_TASKS' stamp line strictly after its first-asked date (a sitting on the day a row
+   is asked has not seen it) -- and only marks. The close strikes each marked row by hand in `docs/HUMAN_TASKS.md` under a new ruling from HANDOFF's counter (the default
+   column struck, the second column ending "**Closed by default under R<n>, <date>: <the default>; reopen by
+   number.**"), then regenerates the page. The stamp is one line: `last sitting: <date>` after the first sitting,
+   `sittings: <date>, <date>, ...` (oldest first) from the second; a sitting appends its date.

@@ -82,7 +82,7 @@ class Clock:
     """Simulated time. wait() advances to now + seconds, running the hooks at every 0.25 s grid point crossed (a wait
     shorter than 0.25 s still ticks when it crosses one).
 
-    Threads (Sprint 10, the CI flake KNOWN §4 records): the clock is shared by every thread born after it, plus the
+    Threads (Sprint 10, the CI flake docs/HAZARDS.md harness records): the clock is shared by every thread born after it, plus the
     one that made it (the endgames start their stander / victim loop as a daemon thread; the shooter runs on the
     caller's or a second thread). Simulated time cannot be advanced by whichever thread the OS happens to schedule --
     that let a victim walk 23 legs before the shooter's first loop check on a loaded runner, so the outcome depended

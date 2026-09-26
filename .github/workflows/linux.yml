@@ -7,7 +7,7 @@
 # compile on every code push (scripts/build_synthetic_runner.sh).
 #
 # What green means: the library, the two suites and the launcher build and pass without the game. It proves
-# nothing about the game -- only the three-stage gate on a rebuilt exe does that (docs/HANDOFF.md §5 rule 4).
+# nothing about the game -- only the three-stage gate on a rebuilt exe does that (docs/HANDOFF.md §4 rule 4).
 #
 # Sprint 10 hardening: a cheap first job decides whether anything outside docs/ changed, and the hour-long build
 # is skipped when not -- a skipped `build` satisfies the required check, which is what lets `build` be required on
@@ -153,3 +153,50 @@ jobs:
           name: linux-test-output
           path: logs/ci/build_linux_test.log
           if-no-files-found: warn
+
+  # Sprint 14 Task E3: the recompiler re-derives a synthetic ELF on every code push. tests/fixtures/recomp_ref holds
+  # the inputs (make_fixture.py writes them: ps2xTest's Sprint 12 3b ELF, a two-row function map, a one-row names
+  # sidecar, a toml) and expected/, the output ps2_recomp built from the tree wrote for them. Any codegen drift --
+  # intended or not -- fails here with the diff printed; an intended one regenerates expected/ in the same commit
+  # (docs/DEVELOPING.md "Recompiler reference"). Not a required check. tools_py/tests/test_workflows.py pins it.
+  recomp-ref:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # apt-unpinned (reviewed): the install line below, for the build job's reason above (the image upgrades the
+      # runtime packages on its own); the recompiler needs only the compiler, CMake and Ninja.
+      - name: Install the toolchain the recompiler needs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential clang lld cmake ninja-build
+
+      # The configuration Sprint 12's plan (row 1a) proved on Linux: the recompiler alone, no runtime, analyzer or tests.
+      - name: Build ps2_recomp (nothing else)
+        run: |
+          set -euo pipefail
+          cmake -S third_party/ps2recomp -B "$RUNNER_TEMP/build-recomp" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DPS2X_BUILD_RUNTIME=OFF -DPS2X_BUILD_ANALYZER=OFF -DPS2X_BUILD_TEST=OFF
+          cmake --build "$RUNNER_TEMP/build-recomp" --target ps2_recomp -j "$(nproc)"
+
+      # ps2_recomp resolves the toml's paths against the current directory, so it runs in a copy of the fixture
+      # (output = "out/"), never in the checkout.
+      - name: Recompile the fixture and diff the reference
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/recomp_ref"
+          rm -rf "$work"
+          cp -r tests/fixtures/recomp_ref "$work"
+          rm -rf "$work/expected"
+          cd "$work"
+          "$RUNNER_TEMP/build-recomp/ps2xRecomp/ps2_recomp" recomp_ref.toml
+          if ! diff -r out "$GITHUB_WORKSPACE/tests/fixtures/recomp_ref/expected"; then
+            echo "::error::the recompiler's output drifted from tests/fixtures/recomp_ref/expected (the diff is above);"\
+              "an intended codegen change regenerates it -- docs/DEVELOPING.md \"Recompiler reference\""
+            exit 1
+          fi
+          echo "recomp-ref: $(ls out | wc -l) files, identical to expected/"

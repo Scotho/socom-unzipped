@@ -2,7 +2,7 @@
 
 A HELP pop-up pauses gameplay behind a lit HUD, so a hold sent over it moves nothing and the mission
 gate's liveness scorer (rightly) FAILs the run: `s5_head_1x` and `s6_depth_m2` both had 6/6 gameplay-band
-holds with frame diffs 0.00-0.05 (docs/KNOWN.md section 4). The step presses CROSS only while the prompt
+holds with frame diffs 0.00-0.05 (docs/HAZARDS.md harness). The step presses CROSS only while the prompt
 is on screen and never on a clean gameplay frame, where a stray CROSS would fire the weapon's alternate
 action or dismiss nothing."""
 import os

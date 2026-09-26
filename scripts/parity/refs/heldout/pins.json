@@ -1,0 +1,18 @@
+{
+ "_about": "The references of the gate's fourth leg (Sprint 14 E2): sha256 of each frozen capture, the shape of scripts/parity/pins.json. The leg refuses to score (exit 7) while any reference differs from its pin. Captured once; a re-capture is a deliberate delete first.",
+ "accepted": "2026-09-26 12:26 -- gate --capture-heldout, stamp s14_chain1",
+ "pins": {
+  "scripts/parity/refs/heldout/title_s03.png": "83a5c7f30620ddf43233b02237bc5db180b7fe8d1823c0302f338cf2468745d2",
+  "scripts/parity/refs/heldout/title_s09.png": "e5baf341df8b03255d30019c110c334c8b8bb80e04db5dbd6962297cb6c8f03a",
+  "scripts/parity/refs/heldout/title_s15.png": "2c8cac023e83657c69ebd6d2c86534094d34fdd6ed84f45bb4d11f3d3a49fa73",
+  "scripts/parity/refs/heldout/transition_s06.png": "a4ca8ebc8eeb8aa95ea406f3d31c1ef18a1dfb0378af621898b6015f8a7037f4",
+  "scripts/parity/refs/heldout/transition_s08.png": "bec6f6a33704122531bab36e38af7c3f08aff017f3a3f9ad018c30c4267603db",
+  "scripts/parity/refs/heldout/mission_s06.png": "ca95e405b66bb1016bf84bc52d130608c75fb8d3e11bdeeb6cad52e5e8907048",
+  "scripts/parity/refs/heldout/mission_s08.png": "f801415a71878ecf142c59bcbfe09ef8cf0cdcf3f363d431a0ed7153b442e9ce",
+  "scripts/parity/refs/heldout/mission_s10.png": "a6a5afa36010dc9f3078332acebda8c518cc3a1aeb2fa9fd6021bf173a164581",
+  "scripts/parity/refs/heldout/mission_s12.png": "7a7662b57f34367cba3072d8348348667c535fc5c8925016ea22224d7d17afe4",
+  "scripts/parity/refs/heldout/mission_s16.png": "c2f53438dddaa48cd22767fa1d77fb6049144bd0081e4654a81484f44349fbdb",
+  "scripts/parity/refs/heldout/mission_s20.png": "27038448657178c65547736715207b139ab921a761a56b72de68d93c88e8b735",
+  "scripts/parity/refs/heldout/mission_s24.png": "b3cb5300a8c653fcc99c931b1b74e5bc8be7577162566633ebbd902b6b0a48e3"
+ }
+}

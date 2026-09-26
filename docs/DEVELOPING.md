@@ -50,8 +50,9 @@ licences, with empty `cards/` and `logs/` — which is the folder INSTALL descri
 
 The repository is public. `python -m tools_py.release.leakcheck <mode>` is the gate (Sprint 10 hardening; the design is
 Sprint 11 Goal 9): `tree` every tracked file, `staged` the index (the pre-commit hook), `ignored` proves the paths that
-hold real secrets (`vm/`, `logs/`, `game/`, `server/config/simulated.db`, ...) are ignored, untracked and never
-committed, `metadata` the commit identities, `history [range]` every added line of every commit (the pre-push hook),
+hold real secrets (`SENSITIVE_IGNORED` in `leakcheck.py`; the never-commit list is `docs/GIT_STRATEGY.md` section
+3's) are ignored, untracked and never committed, `metadata` the commit identities, `history [range]` every added
+line of every commit (the pre-push hook),
 `artifact <dir>` an unpacked release, `external` the sibling repositories' own scanners (`../scotho`'s
 `scripts/check-secrets.mjs` and `../socom_monitor`'s `leakcheck.py`, folded into this report with their excerpts
 masked), `all` the four repository modes plus `external`. A sibling that is not beside this repository prints
@@ -135,8 +136,8 @@ a rename is accepted only when it prints `S12-R11 … OK` (no extent moved, no f
 ## The `tools_py/` map
 
 Every tracked module under `tools_py/` except the tests, one line each, grouped by what it is for — 165 on
-2026-09-25 after Sprint 13 Task H4 (`git ls-files 'tools_py/*.py'`, less `tools_py/tests/` and the four package
-`__init__.py` files). The one line is the module's own docstring, shortened; the docstring is the reference. Run a
+2026-09-25 after Sprint 13 Task H4, 177 on 2026-09-26 at the Sprint 14 close (`git ls-files 'tools_py/*.py'`, less `tools_py/tests/` and the five package
+`__init__.py` files: hooks, parity, r0004, release, story). The one line is the module's own docstring, shortened; the docstring is the reference. Run a
 module as `python -m tools_py.<name>` (or `tools_py.parity.<name>`, …) from the repository root unless its docstring
 says otherwise.
 
@@ -247,7 +248,7 @@ vendored runtime when run. `docs/archive/README.md` lists them with what each wa
 
 | Module | What it is for |
 |---|---|
-| `docmaint.py` | The document registry held to the tree (`docs/DOC_MAINTENANCE.md` §4's ten checks) |
+| `docmaint.py` | The document registry held to the tree (`docs/DOC_MAINTENANCE.md` §4's eleven checks) |
 | `issues.py` | The known-issue stack on GitHub, held to the live documents (`skeleton`, `open`, `close`, `audit`) |
 | `knobs.py` | The `PS2X_*` registry read out of `knobs.h`; `write` regenerates `docs/KNOBS.md` |
 | `exit_codes.py` | The game's exit codes read out of `exit_codes.h` |
@@ -256,6 +257,20 @@ vendored runtime when run. `docs/archive/README.md` lists them with what each wa
 | `release/leakrules.py` | The leak shapes, as one set of regular expressions |
 | `vm_prune.py` | What `scripts/vm_sync.sh tree` must delete in the VM |
 | `vm_restamp.py` | What `scripts/vm_sync.sh tree` must re-stamp in the VM so ninja rebuilds it |
+| `rulings.py` | Every ruling with its status and home, generated into `docs/RULINGS.md` (`--check`) |
+| `changelog.py` | Every merge commit grouped by release tag, generated from git into `docs/CHANGELOG.md` (`--check`) |
+| `sitting.py` | The owner's sitting page, generated into `docs/SITTING.md` (`--check`) |
+| `flow.py` | How work moves through this repository, measured from git into `docs/FLOW.md` (`--check`) |
+| `playtest_block.py` | `docs/PLAYTEST.md`'s build block, rendered from the manifest `scripts/make_portable.sh` writes (`--check`) |
+
+**The guards** ("Guards" below):
+
+| Module | What it is for |
+|---|---|
+| `hooks/pretool.py` | The PreToolUse guard: refuse a Bash call that breaks one of the repository's git or lock rules |
+| `hooks/reap.py` | The SessionEnd/Stop reaper: kill orphaned watcher processes, never a shell |
+| `hooks/commitmsg.py` | The commit-msg hook: a commit subject over 120 characters is refused |
+| `bashpath.py` | Where `bash` is, for Python that runs the repository's shell scripts (Git Bash before WSL's) |
 
 **The story** (`docs/STORY.md` and its checks):
 
@@ -288,7 +303,7 @@ vendored runtime when run. `docs/archive/README.md` lists them with what each wa
 | `scale_compare.py` | Is a 1280x896 frame the 640x448 frame, or a different render |
 | `scale_shot.py` | One screen captured at 640x448 and at 1280x896 from the runtime |
 | `resize_window.py` | Give the running game window a client area of a given size (captures to look at, not gate results). Run it as: `python -m tools_py.parity.resize_window <w> <h>` |
-| `frame_burst.py` | Capture the game window at a fixed rate for a while (KNOWN §4: check a burst on ours by its first frame). Run it as: `python -m tools_py.parity.frame_burst <pcsx2\|ours> <out_dir> <start_after_s> <count> <interval_s>` |
+| `frame_burst.py` | Capture the game window at a fixed rate for a while (`docs/HAZARDS.md` harness: check a burst on ours by its first frame). Run it as: `python -m tools_py.parity.frame_burst <pcsx2\|ours> <out_dir> <start_after_s> <count> <interval_s>` |
 | `movie_blocks.py` | Find 16x16 movie blocks the GL target lacks but shadow VRAM has; runs in `build.sh test` over the saved fixture `tests/fixtures/movie/` (`test_movie_blocks_fixture.py`), and by hand over a `PS2X_GS_DUMP_DISPLAY` capture |
 | `motion_pack_check.py` | Is the motion pack intact in an RDRAM image |
 | `object_diff.py` | Object-keyed uninitialised-field diff between our heap and the console's |
@@ -333,6 +348,8 @@ vendored runtime when run. `docs/archive/README.md` lists them with what each wa
 | `sim_walk_to_b.py` | A closed-loop dry run of the approach loop against a simulated world |
 | `sp_death_probe.py` | One single-player run that confirms the kill readout |
 | `two_machine_readout.py` | The readout for the first two-machine match |
+| `control_round_readout.py` | The verdict lines of Sprint 13's two control rounds, read off the rounds' own logs |
+| `peer_pause.py` | Pause the peer of a running online round and record A through it (Sprint 13 V7's bar) |
 | `online_login.py` | Drive the PCSX2 client from savestate 9 through login |
 | `online_match.py` | Two PCSX2 clients on the local Horizon stack: host, join, READY |
 
@@ -415,11 +432,12 @@ python -m tools_py.parity.gate   # in-game gate: title / transition / mission, P
                        # `./build.sh test` does NOT rebuild it.
 PS2X_PC_SAMPLER=5 ./run.sh 40    # run 40 s; logs/latest.log; prints guest thread PCs every 5 s
 ```
+`build.sh` refuses (exit 3) while another holder has the loop lock unless it runs as that holder's child; `--dry-run` prints the plan.
 
 > Superseded 2026-09-25 (Sprint 13 R2): the block above said `./build.sh recomp` took "~10 s" (the same file measured
 > 352 s, and `docs/KNOWN.md` §1 273 s) and that `build.sh test` "runs NO Python tests: python -m unittest discover
 > ... (by hand, for now)". `build.sh`'s `test_step` runs `python -m unittest discover -s tools_py/tests -t . -v`
-> before the C++ suite, and has since Sprint 5 (`docs/KNOWN.md` §4, "`build.sh test` runs zero Python tests",
+> before the C++ suite, and has since Sprint 5 (`docs/HAZARDS.md` build, "`build.sh test` runs zero Python tests",
 > struck as fixed) — documents audit rows 3 and 7.
 
 **A re-recomp rebuilds only what changed (issue #57, 2026-09-26).** `./build.sh recomp` no longer deletes
@@ -516,7 +534,7 @@ checked against the tree -- every other revision's derived config is git-ignored
 regenerates r0004's from `game/r0004/match.json` and the two images with step 3's arguments and fails on a byte of
 drift, skipping where those git-ignored inputs are absent, `SOCOM_DATA_ROOT` naming a checkout that has them), `--check-against <elf>`
 compares the produced ELF's sha256 with a known one, `--out <dir>` puts every product under one directory
-(`overlays_<rev>/`, `recomp_<rev>/`, `build-clang-<rev>/`, `dist/`) while the inputs stay the tree's (issue #56):
+(`overlays_<rev>/`, `recomp_<rev>/`, `build-clang-<rev>/`, `dist/`) while the inputs stay the tree's (issue #56 (closed) 2026-09-26, `9b566459`):
 the map is the tracked `recomp/socom2_ghidra_<rev>.csv` unless `--ghidra` names another, and when the tree's
 `game/overlays_<rev>/` holds both overlays, the merged ELF and an `<elf>.repair.json` that is current for the run's
 repair inputs (the sha256 test step 2 skips on), those four files are copied into `<out>/overlays_<rev>/` and
@@ -655,7 +673,7 @@ only ever grow, so more than the number here is fine and fewer is a regression t
 | 1 | `./build.sh recomp` | `recomp: 14882 files, unhandled=114399, unmapped=<n>` — and `Recompilation completed successfully` at the end of `recomp/recomp_run.log`, which also carries `Loaded 1871 display names from socom2_names.csv` (2026-09-25, after Sprint 13 N1; r0004's reads `Loaded 1736`; the number grows with the sidecar — its absence means the names were not applied and every function is still `FUN_`/`sub_`). **`unhandled=` is not a failure**: it counts `unhandled-instruction` lines in the log, which the recompiler emits and carries on from, and the exe built from exactly this generated code is the one the gate passes 3/3 on (measured twice on 2026-09-21, identically, in two working trees). What would be a failure is a non-zero exit (the last 20 log lines are printed then) or a file count that fell. `unmapped=` (since 2026-09-24) counts `unmapped-continuation` warnings: continuation pcs — a call's return, a syscall's return, a not-taken branch's fallthrough — that no recompiled row owns, each one a `[guest-branch:missing-target]` waiting for a thread to reach it. It is read, not gated, like `unhandled=`; r0001 printed `unmapped=0` on 2026-09-24 (chain 18), and a value that climbs after a map change is the map's holes, not the recompiler's. |
 | 2 | `./build.sh runtime` | `built dist/socom2.exe` (the launcher lands beside it) |
 | 3 | `./build.sh test` | First the Python suite's `OK` (row 4), then `Total Tests: 940` / `Passed: 940` / `Failed: 0` (2026-09-25 23:31Z, this machine, the tree at `2eca9389`, Sprint 13 V3's green run; the Linux runner runs one platform-guarded case fewer, so its count one below is not a regression), then `PASS: vram diff against 1.00% tolerance, checked=15 skipped=0` |
-| 4 | `python -m unittest discover -s tools_py/tests -t .` | The same suite `./build.sh test` runs first — run it alone when you changed only Python. **`OK`, with no failures, is the bar** — match that, not a number. The count only ever grows: 3164 tests, `OK` with 134 skipped (2026-09-25 23:31Z, this machine, the tree at `2eca9389`, Sprint 13 V3's green run). Before it: `Ran 2795 tests` (2026-09-25, the tree at `eb190a42`, this machine and the Windows runner; the Linux runner ran 2797 at the same head). The **skip** count is not a constant and is not worth matching, because cases skip on what you have (a disc extracted into `game/`, a worktree without one). |
+| 4 | `python -m unittest discover -s tools_py/tests -t .` | The same suite `./build.sh test` runs first — run it alone when you changed only Python. **`OK`, with no failures, is the bar** — match that, not a number. The count only ever grows: 3530 tests, `OK` with 93 skipped (2026-09-26 12:40Z, this machine, the tree at `3bdf80e8`, Sprint 14 with every lock-free part merged; 3164 with 134 skipped at `2eca9389` on 2026-09-25). Before it: `Ran 2795 tests` (2026-09-25, the tree at `eb190a42`, this machine and the Windows runner; the Linux runner ran 2797 at the same head). The **skip** count is not a constant and is not worth matching, because cases skip on what you have (a disc extracted into `game/`, a worktree without one). |
 | 5 | `python -m tools_py.parity.gate --stamp first_run` | `GATE PASS (3/3) -> logs\parity\gate\first_run` (15 to 17 minutes: three gates on 2026-09-25 took about 15, 17 and 16 — `s12_names_gate`, `s11_close_gate`, `s12_names_r0004_gate`, from the first file each wrote under `logs/parity/gate/<stamp>/` to its `summary.txt`; the game window opens and closes three times; do not touch the keyboard) |
 
 > Superseded 2026-09-25 (Sprint 13 R2, fix round 1): rows 1, 3 and 4 carried every earlier count (881, 880, 876 and
@@ -696,10 +714,133 @@ document may state one without a date beside it.**
 
 `python -m tools_py.parity.gate --baseline first_run` re-scores that saved run without launching, which is the
 fastest way to check a scoring change. A gate refuses to start under 4 GB free on C: (`RUN_MIN_FREE_GB`) and
-while another launch holds the loop lock (`scripts/loop_lock.sh status`). Anything else: `docs/STATUS.md` has the
-day-by-day, `docs/KNOWN.md` what is proven and what is believed, `docs/HUMAN_TASKS.md` the checks only a person can do.
+while another launch holds the loop lock (`scripts/loop_lock.sh status`). **Freshness (Sprint 14 E4):** a launch also
+refuses when the exe (`dist/socom2.exe`, or `$SOCOM_EXE`) is older than the newest file it is built from. For every
+revision (`gate.FRESHNESS_COMMON`): under `third_party/ps2recomp/`, the top-level `CMakeLists.txt`, and for
+`ps2xRuntime` (which carries the `ps2x_snd989` sources in `src/lib`), `ps2xIOP`, `ps2xShared` and the recompiler
+`ps2xRecomp` their `CMakeLists.txt`, `src` and `include` (plus `ps2xRuntime/cmake`); `build.sh`,
+`tools_py/make_overlay_elf.py`, `tools_py/fix_ghidra_csv.py`, `recomp/loader_text_end.txt` and
+`recomp/merge_ranges.txt`. Then that revision's own inputs only (`gate.FRESHNESS_BY_REVISION`). For r0001:
+`recomp/output`, `socom2.toml`, `socom2_ghidra.csv`, `socom2_names.csv`, `extra_functions.txt` and
+`game/overlays/socom2_game.elf`. For r0004: `recomp/output_r0004`, `socom2.toml` (the source of the derived toml),
+the `_r0004` toml, csvs and extra-functions list, `scripts/build_revision.sh`, the tools it runs and
+`game/overlays_r0004/socom2_game_r0004.elf`. So `build_revision.sh r0004` rewriting its tracked toml never refuses an
+r0001 gate. **The revision** is read from the exe's own path: `socom2_r0004.exe`, or a folder named for it
+(`dist-r0004/socom2.exe`); neither means r0001. **The tree** is the exe's own: the nearest directory above it that
+holds `build.sh`, so a gate run from the main tree against a worktree's exe compares that worktree's sources (this
+checkout when there is none). Still outside the set: the build configuration in the CMake cache (`PS2X_GENERATED_OPT`,
+LTO), the compiler, and the FetchContent/ffmpeg downloads -- each changes only with a deliberate reconfigure. A stale
+exe prints `gate: exe older than source (<exe mtime> < <path> <mtime>): rebuild, or --stale-ok`, before the lock and
+before anything is written.
+`--stale-ok` launches anyway and the summary carries `gate: STALE exe accepted (--stale-ok)`; the merged-chain
+template never passes it. Every summary and `pins.json` carries `TREE <head> dirty=<n>` (the short HEAD and the count
+of `git status --porcelain` lines outside `logs/` and `game/`), so a record says which tree it measured. The gate's
+exit codes: 0 PASS, 1 a stage FAILed, 2 the lock busy, 3 low disk, 4 a `--baseline` with nothing to score, **5 a
+stale exe**, 7 a pin drift, 8 an unknown revision. Anything else: `docs/CHANGELOG.md` has what merged and
+the plan's Log why, `docs/KNOWN.md` what is proven and what is believed, `docs/HUMAN_TASKS.md` the checks only a person can do.
 
 **The pinned references (Sprint 13 H3):** `scripts/parity/pins.json` (r0001; `pins_r0004.json` for r0004) is the gate's standard and the gate refuses on a drift; `scripts/parity/pins_refs.json` pins every OTHER reference PNG under `scripts/parity/` -- a tripwire, not a refusal: `test_gate_pins.EveryReferenceIsPinned` fails the suite when one changes and the file does not, so re-pin in the same commit.
+
+## Recompiler reference
+
+Since Sprint 14 Task E3 the `linux` workflow's `recomp-ref` job re-derives a synthetic program on every code push:
+it builds `ps2_recomp` alone (`-DPS2X_BUILD_RUNTIME=OFF -DPS2X_BUILD_ANALYZER=OFF -DPS2X_BUILD_TEST=OFF`, `--target
+ps2_recomp`), runs it on `tests/fixtures/recomp_ref/` and `diff -r`s the output against that directory's `expected/`.
+**Any difference fails the job and prints the diff** -- a codegen change nobody meant, and equally one somebody did
+mean but did not regenerate. It is not a required check.
+
+The fixture is synthetic, nothing from the disc: `make_fixture.py` writes `input.elf` (4,268 bytes; ps2xTest's
+Sprint 12 3b ELF -- eight MIPS words at `0x00100000`, a `jal 0x00100010` and two returns), `functions.csv` (a
+two-row Ghidra-shaped map), `names.csv` (one sidecar row naming `0x00100010` `sceVu0MulMatrix`) and
+`recomp_ref.toml` (`recomp/socom2.toml`'s shape). `tools_py/tests/test_workflows.py` holds the inputs to the
+generator's bytes, `expected/` free of absolute paths, dates and the game's addresses and LF in the index, and the
+job's shape. ps2_recomp resolves the toml's paths against the **current directory**, not the toml's, so it runs in a
+copy of the fixture and writes `out/`; the output carries no path but the sidecar's file name, no date and no host.
+The recompiler writes text-mode files, so a Windows run's `expected/` is CRLF in the working tree; `core.autocrlf`
+makes it LF on `git add`, which is what the Linux job compares (a CRLF blob fails `test_expected_is_lf_in_the_index`).
+
+**When a codegen change is intended**, regenerate `expected/` in the same commit, with a recompiler built from that
+tree (`./build.sh tools`; on Linux `scripts/build_linux.sh tools` and `build-linux-tools/ps2xRecomp/ps2_recomp`):
+
+```bash
+RECOMP="$PWD/third_party/ps2recomp/build-tools/ps2xRecomp/ps2_recomp.exe"    # llvm-mingw's bin/ on PATH, as build.sh sets
+python tests/fixtures/recomp_ref/make_fixture.py                             # only when the inputs change
+WORK="$(mktemp -d)" && cp -r tests/fixtures/recomp_ref/. "$WORK" && rm -rf "$WORK/expected"
+(cd "$WORK" && "$RECOMP" recomp_ref.toml)
+rm -rf tests/fixtures/recomp_ref/expected && cp -r "$WORK/out" tests/fixtures/recomp_ref/expected
+git diff --stat -- tests/fixtures/recomp_ref/expected                       # the change you meant, and only it
+```
+
+## Instruments and diagnostics
+
+*(Moved verbatim from `docs/HANDOFF.md` §7 on 2026-09-26, Sprint 14 I3, when HANDOFF became transient; the file as it was is `docs/archive/HANDOFF-to-2026-09-26.md`. "Section 7" in an older citation means this section.)*
+
+- **Developer mode (Sprint 10 Q2, 2026-09-21).** Every recipe below that sets a `PS2X_*` probe works through `./run.sh`
+  unchanged (it is a developer-mode launch: `drive.py` adds `PS2X_DEV=1` below the gate's env pin, R203) and needs
+  `--dev` or `PS2X_DEV=1` when the runner is started any other way -- a stranger's environment cannot switch a probe
+  on (proved by `s9_g3_poisoned_env`: six probes set, `[knobs] dev=0 ... ignored without --dev: <the six>`, the game
+  ran 90 s clean). `docs/KNOBS.md` is the list. Five names are gone and will still appear in STATUS's history:
+  `PS2X_GS_TEX_FROM_CPU`, `PS2X_GS_PROBE`, `PS2X_GS_GL_DEBUG_NODEPTH`, `PS2X_MPEG_PIC_TRACE` and `PS2X_TIMER_*` (the plan's Task 6
+  commit names them exactly), plus two ghosts the README had already lost.
+
+- **The leak check** (`python -m tools_py.release.leakcheck <mode>`; modes `tree`, `staged`, `ignored`, `metadata`,
+  `history [range]`, `artifact <dir>`, `all`): exit 0 clean, 1 findings, **2 the scanner did not run -- never a
+  pass**. Every run starts with a planted control of 28 secret shapes; `--reveal` shows a hit unmasked on the terminal;
+  `--json FILE` writes the masked report. `tree` ~20 s, `history` ~16 s over 920 commits. Rules: `leakrules.py`;
+  decisions: `leak_allow.txt`; tests: `tools_py/tests/test_leakcheck.py` (25). gitleaks is CI's second opinion
+  (`.gitleaks.toml`), a local copy runs in ~2 s: `gitleaks git --log-opts=--all --redact .`.
+
+- **Build:** `./build.sh tools | recomp | runtime | release | test | all` (Git Bash; `all` = recomp + runtime).
+  Runtime about 3 minutes incremental, 10-15 for a header change or a full generated rebuild. Linux:
+  `scripts/build_linux.sh [tools|runtime|release|test|all] [--no-runner]`. Packaging: `scripts/make_portable.sh
+  [--release]`, `scripts/make_server_zip.sh`.
+- **The gate** (`python -m tools_py.parity.gate`, `--only <stage>`, `--stamp <name>`, `--baseline <stamp>` to re-score
+  without a launch; `SOCOM_EXE` points it at another exe): title about 3 min, transition about 3, mission about 11.
+  The project's only regression bar. Refuses under 4 GB free on C: (exit 3) and on an exe older than its sources
+  (exit 5 unless `--stale-ok`). Results under `logs/parity/gate/<stamp>/`, each with its `TREE <head> dirty=<n>` line.
+- **The merged chain** (`scripts/parity/merged_chain.sh`, Sprint 14 W2) is the gate unit: recomp, runtime, the suites,
+  the gate on the exe it just built, the fourth leg (its references, when present; named only in the gate), a release
+  build, then the release archive and PLAYTEST's block (`scripts/parity/playtest_block.sh --release`, over
+  `python -m tools_py.playtest_block`),
+  run once per batch of merged branches, from a copy, under one holding of the lock (its header says how); a green
+  end writes the commit it proved to `logs/merged_chain.last_green`. The four generated pages -- `docs/RULINGS.md`,
+  `docs/CHANGELOG.md`, `docs/SITTING.md`, `docs/FLOW.md` -- are written by `python -m tools_py.rulings`, `changelog`,
+  `sitting` and `flow`, and each one's `--check` exits 1 when the page on disk differs from a fresh render.
+- **The ladder** (`scripts/parity/ladder_frostfire.sh`, pins HEAD's harness first) and **control rounds**
+  (`scripts/parity/online_control_round.sh "<map>"`): two instances, online, against our server only.
+  `scripts/parity/env.sh` sets the server address for the harness. `mixed_match.sh` (ours against PCSX2) **runs both ways on
+  the hosted server** -- the console joins a game we host and we join a game it hosts, both proven 2026-09-20
+  (Sprint 10 Goal 3; `docs/KNOWN.md` §1, `logs/parity/mixed2_ours_hosts_d` and `mixed2_pcsx2_hosts_f`). This line
+  said it had never produced a result until 2026-09-23.
+- **Audio (rebuilt 2026-09-20, Q0/Q1):** the ear's path is measured now, not the mixer's. `tools_py/parity/audio_envelope.py`
+  scores any WAV reference-free (envelope oscillation, splices, silences, sub-second holes); `loopback_record.py`
+  records what Windows sends to the default endpoint (WASAPI loopback -- this is what the owner hears);
+  `stream_events.py` reads the runtime's stream trace (`[audio] 989snd stream <h> start|done|UNDERRUN frame=N`, on
+  the WAV clock) into boundary gaps and starvation per stem; and **`scripts/parity/audio_parity.sh capture|compare`**
+  is the audio parity check against PCSX2: the same step script on both targets, per-step windows scored, ours
+  compared to the console's pinned scores (`scripts/parity/refs/audio_<script>.pcsx2.json`) with tolerances --
+  PASS/FAIL per window. `audio_corr.py` (correlation, `--repeat`) still exists for the title path. The old driven
+  dump alone (`PS2X_AUDIO_DUMP`) cannot see the device path; record the endpoint beside it.
+- **Run recipes, the env-gated diagnostics list, landmarks and gotchas from the first two weeks:**
+  `docs/archive/HANDOFF-reference-to-2026-09-13.md` ("The run you will repeat", "Diagnostics", "Gotchas",
+  "Landmarks"). Every recipe there that sets a `PS2X_*` probe works through `./run.sh` unchanged; a runner started
+  any other way needs `--dev` or `PS2X_DEV=1` for a probe to be honoured (developer mode, since 2026-09-21).
+  > Superseded 2026-09-25 (Sprint 13 R2): this said "once Goal 3 lands"; it landed as Sprint 10's Q2 on 2026-09-21
+  > (the first bullet of this section) -- documents audit row 18.
+- **The ladder, scheduled (Sprint 10 Goal 1):** `scripts/ladder_job.sh [rounds]` is what the Task Scheduler entry
+  `SOCOM Unzipped ladder` (disabled until the owner names the windows) fires: quiet gate, lock free, no game, then
+  `scripts/parity/ladder_frostfire.sh` pinned and detached against the hosted server, then
+  `tools_py/parity/ladder_ledger.py add` -- one record per run in `logs/ladder/ledger.jsonl`, the three rates and
+  the clean streak rendered to `docs/LADDER.md` (a person commits it). The bar is seven consecutive runs with no
+  LOBBY-FAIL and no CRASH.
+- **Logs:** `logs/` is 27 GB and git-ignored. `scripts/archive_logs.ps1` (dry-run by default; refuses to move anything
+  KNOWN §1 names as evidence) has not been applied since it was written. Run its dry run, read it, then `-Apply` in a
+  quiet window -- it is filler, and it is evidence you are moving, so read before you apply.
+- **Bug reports:** `.claude/skills/s2u-bug-reports/` (git-ignored, local). Read its SKILL.md before use.
+- **The known-issue stack** (2026-09-23): `python -m tools_py.issues skeleton | check-body | open | close | audit`
+  over the repository's issues labelled `known-issue`, one milestone per sprint. `audit` exits 0 or names the row,
+  citation, label or body that is wrong; `--json FILE` replays a saved `gh issue list` listing offline.
+- **The hosted box:** agent instructions are git-ignored in `vm/lightsail/README.md`. It is the server session's.
 
 ## Knobs
 
@@ -908,9 +1049,10 @@ scheduled form is `scripts/ladder_job.sh`, whose runs `tools_py/parity/ladder_le
 
 ## The loop lock
 
-`scripts/loop_lock.sh` serialises every build and every game run on the machine (its header is the reference, and
-`docs/LOOP_PROMPT.md`'s "Lock protocol" the rules). `LOOP_LOCK_PATH` overrides the lock's base path (tests use it to
-avoid touching the real lock). `tools_py/tests/test_loop_lock.py` runs a smoke subset by default and the whole lock
+`scripts/loop_lock.sh` serialises every build and every game run on the machine (its header is the reference and the
+rules' one home; the commands a controller runs are the `run-gate` skill, `.claude/skills/run-gate/SKILL.md`). `LOOP_LOCK_PATH` overrides the lock's base path (tests use it to
+avoid touching the real lock). `tools_py/tests/test_loop_lock.py` runs a smoke subset by default (plus the always-on
+`TestQueueClassFast`, Sprint 14 W1: the WIP cap's class rule and exit-4 refusal against planted tickets) and the whole lock
 suite with `LOOP_LOCK_SLOW_TESTS=1` (every race, interleaving, queue, `run`/`run_detached`/`ladder_job` test and the
 real-scale `run -- sleep 130` renewal; ~16 min before Sprint 13's queue tests, longer now, and much longer on a
 host whose process starts are slow -- stray `tail -f` watchers once made it fail the stale-mutex cases outright, so
@@ -921,9 +1063,104 @@ online match) writes a quiet marker (the MAIN tree's `logs/.quiet`, found throug
 to the Windows pid) that tells other agents to stay off `build.sh test`, the gate, `unittest` and large-log parsing
 while a match runs (`build.sh test` refuses to start under it unless `FORCE_QUIET=1`). The marker is machine-wide:
 **in an agent worktree, `build.sh test` exits 3 while ANY launch runs, including one from the main tree** -- wait
-for it, do not force it; `run_detached.sh --wait <minutes>` queues for the lock (in arrival order) instead of
-refusing; records a host CPU sampler into the run directory; refuses to start below 4 GB free on
-`C:`; and takes the loop lock for the job.
+for it, do not force it; `run_detached.sh` can queue for the lock instead of refusing (the lock's rules are
+`scripts/loop_lock.sh`'s header); records a host CPU sampler into the run directory; refuses to start below 4 GB free on
+`C:`; and takes the loop lock for the job. It also refuses (exit 3, before touching the lock) below 3 GB of free
+physical memory (`RUN_MIN_FREE_MEM_GB`). **The WIP cap** (Sprint 14 W1): at most `LOOP_LOCK_MAX_QUEUE` (default 2)
+build tickets queue at once; a third build waiter writes no ticket and exits 4 ("queue full: do lock-free work"),
+and every ticket carries a class, `build` or `run` (`--class` overrides).
+
+## Guards
+
+Claude Code runs `scripts/hooks/claude_pretool.sh` (-> `tools_py/hooks/pretool.py`) before every Bash tool call,
+wired by the tracked `.claude/settings.json` (Sprint 14 G1). It refuses with exit 2 and one sentence naming the rule's
+home; anything it cannot parse or judge is allowed. A call whose JSON names none of `git`, `loop_lock` and `logs/`
+exits 0 in the shell before Python starts (about 0.1 s; a judged call costs about 1 s). The command is split on `;`, `&&`, `||`,
+`|`, `&`, parentheses, brace groups and newlines (heredoc bodies and quoted strings are data); the wrappers `time`,
+`timeout`, `nice`, `nohup`, `stdbuf`, `ionice`, `env`, `sudo`, `command`, `exec` and `xargs` are stripped; a `bash -c`, `sh -c` or `eval` string is judged
+as a command; `cd`, `pushd`/`popd` and `git -C <dir>` are followed for the worktree rules, and a subshell's `cd` ends
+at its `)`. Each rule is proved by planted commands in `tools_py/tests/test_hooks.py` (`PretoolPlantedTest`: the
+`CASES`, `MORE_CASES` and `REVIEW_CASES` tables); `PretoolWiringTest` drives the shell script with a hook JSON
+document on stdin. The repository's `.gitignore` owns `.claude/`: `settings.json`, `agents/` and `skills/` are
+tracked, the harness's local state is not (`ClaudeDirIgnoreTest`), whatever a global excludes file says.
+
+- **Bulk add** -- `git add` with no pathspec, a whole-tree pathspec (`.`, `:/`), or `-A`/`--all`/`-u`/`--update`
+  without a `-- <paths>` limiting it (`git add -A -- a` passes); `xargs git add` shows no pathspec, so a computed
+  list goes through `git add --pathspec-from-file=<list>`; test `git add -A`, `.`, `-u`; home
+  `docs/GIT_STRATEGY.md` section 3.
+- **Commit everything** -- `git commit -a`/`--all` (and `-am`); test `git commit -a -m 'x'`; home
+  `docs/GIT_STRATEGY.md` section 3.
+- **Commit without paths** -- `git commit` (and `--amend`) with no `-- <paths>`, since a bare commit takes whatever
+  any session staged; allowed while `MERGE_HEAD` exists in the directory the commit works in, after `cd`/`git -C`
+  (git refuses a partial commit mid-merge); test
+  `git commit -m 'x'`, `git commit --no-edit`; home `docs/HANDOFF.md` section 4 rule 1.
+- **No-verify** -- in any git command, `--no-verify` or any abbreviation of it from `--no-v` up (git accepts unique
+  prefixes), commit's `-n`, and `-c core.hooksPath=...` (any case, `-ckey=` too); test `git commit --no-verif ...`,
+  `git push --no-verify`, `git -c core.hooksPath=/dev/null commit ...`; home `docs/GIT_STRATEGY.md` section 3.
+- **Push from a worktree** -- `git push` when the session's cwd or the command's directory (after `cd`/`git -C`) is a
+  linked worktree (`--git-dir` differs from `--git-common-dir`); a worktree session never pushes, even with
+  `git -C <main tree>`; test `git push origin sprint-14` with is_worktree; home `docs/GIT_STRATEGY.md` section 3.
+- **Rewriting a shared branch** -- `git push` with `--force`, `-f`, `--force-with-lease`, `--force-if-includes`
+  or a `+refspec` whose target is `main`, `sprint-*` or not named (HEAD, no refspec); a delete of `main` or
+  `sprint-*` (`--delete`/`-d`, or an empty-source refspec `:main`); `--mirror` to any remote; `agent/*`, `fix/*`,
+  `feat/*`, `docs/*`, `spike/*` pass; test `git push -f origin main`, `git push origin +HEAD:sprint-14`,
+  `git push origin :main`, `git push --mirror origin`; home `docs/GIT_STRATEGY.md` section 2.
+- **Config in a worktree** -- in a worktree, a `git config` that writes: a `key value` pair, `--unset`,
+  `--unset-all`, `--add`, `--replace-all`, `--remove-section`, `--rename-section`, `-e`/`--edit`, or the `set`,
+  `unset`, `edit`, `rename-section`, `remove-section` subcommands -- unless `--worktree`, `--global`, `--system` or
+  `--file` is given; reads pass (`--get*`, `--list`/`-l`, `get`/`list`, a lone key); test
+  `git config remote.origin.pushurl x`, `git config --unset ...`; home `scripts/agent_worktree.sh`.
+- **Worktree lifecycle** -- `git worktree remove`/`prune`/`add` outside `scripts/agent_worktree.sh`; test
+  `git worktree remove --force ...`; home `scripts/agent_worktree.sh`.
+- **The lock by hand** -- `loop_lock.sh take` or `release` called directly (`check`, `run`, `wait`, `version` pass);
+  test `bash scripts/loop_lock.sh take`, `... release`; home `scripts/loop_lock.sh` (`run`, or `run_detached.sh`).
+
+The same script also runs before every Edit, Write, MultiEdit and NotebookEdit call (a second PreToolUse entry,
+Sprint 14 G2; the path from `tool_input.file_path`, or `notebook_path`). It judges the path relative to the root of
+the repository that holds it, and only a repository with `scripts/loop_lock.sh`; the JSON reaches Python when it
+names `git`, `logs/` or `loop_lock` (the fast path is shared with the Bash half), and `loop_lock.sh check` runs only
+for a script under `logs/` or the lock script. The lock is shared by every worktree, so both rules refuse only what
+something is actually running. An edit through Bash (`sed -i`, a heredoc) is not seen. `EditWritePlantedTest` holds the planted calls;
+`PretoolWiringTest` drives them through the shell script against a stub `scripts/loop_lock.sh` in a temp repo.
+
+- **A running chain script** -- an edit of an EXISTING `logs/**/*.sh` while `bash scripts/loop_lock.sh check` says
+  `HELD` (the holder is named in the refusal): bash reads a running script by offset, so an edit breaks it at the
+  edit point. A new file cannot be running, and a `QUEUED` waiter has not started its chain (`run_detached.sh
+  --wait` launches it only after the grant), so neither refuses; test `decide("Edit", {"file_path":
+  "logs/x.sh"}, ..., lock_holder="agent-x51")` with the file existing (2), new (0), and `lock_holder="queued:1"` (0);
+  home `docs/HAZARDS.md` lock (the running-chain hazard).
+- **The lock script in use** -- an edit of `scripts/loop_lock.sh` when a `QUEUED` line's `blob=<12 hex>` equals the
+  file's `git hash-object` (that waiter is a live bash reading this exact copy by offset), or while the lock is
+  `HELD` and the file is the MAIN tree's copy (`--git-dir` equals `--git-common-dir`: the loop's `run` wrappers and
+  chains start there); a worktree's copy under `HELD` with no matching waiter passes; test `decide("Write",
+  {"file_path": "scripts/loop_lock.sh"}, ...)` with a matching and a non-matching queued blob, and `HELD` with
+  `main_tree_of` true and false, plus the wiring tests on a temp repo and its linked worktree; home the
+  `scripts/loop_lock.sh` header (the rollout procedure).
+- **Landing the lock script** (the Bash half) -- a `git commit` whose `--` pathspec names `loop_lock.sh`, unless
+  `logs/.loop_lock_slow_green` is newer than the script; a complete green
+  `LOOP_LOCK_SLOW_TESTS=1 python -m unittest tools_py.tests.test_loop_lock` writes that marker (`SlowGreenSuite`;
+  never a smoke, `-k` or single-class run); the marker is the one of the repository the commit works in (after
+  `cd`/`pushd`/`git -C`, as the merge exception is judged), looked at only for a commit naming `loop_lock.sh`; test
+  `git commit -m x -- scripts/loop_lock.sh` with and without `slow_tests_ran`, the four rows of a marker in M or W
+  with `cd W` and `git -C W` from M, and the wiring tests with no marker, a fresh one, one older than the script,
+  and a linked worktree; home the `scripts/loop_lock.sh` header (the rollout procedure). Limits: the marker gates
+  the commit form the loop uses, not every landing -- a glob pathspec (`-- 'scripts/*.sh'`), `git commit -i`, and a
+  `git merge` or `git cherry-pick` of a commit that changes the script land it without a commit naming it.
+
+The subject cap (Sprint 14 S2): git's `commit-msg` hook, `scripts/hooks/commit-msg` (-> `tools_py/hooks/commitmsg.py`,
+live in every clone that ran `scripts/install_hooks.sh`), refuses a subject (git's first paragraph, joined as `%s`
+shows it) over 120 characters with one sentence (a default merge, revert or reapply subject with a body is exempt;
+`fixup!`/`squash!` judge the subject they wrap); test `CommitMsgTest` and `CommitMsgWiringTest` in `tools_py/tests/test_hooks.py`; home `docs/GIT_STRATEGY.md` section 3.
+
+The reaper (Sprint 14 G3): at `SessionEnd` and every `Stop`, `scripts/hooks/claude_session_end.sh` runs
+`python -m tools_py.hooks.reap`, which `kill -9`s every orphaned watcher -- an MSYS `tail`, `grep`, `sleep` or
+`inotifywait` whose ppid is not in `ps -W`, or is 1 without leading its own process group (a watcher started directly
+by a Windows program leads its group and is kept) -- and never a `bash`/`sh`/`python`/`git`, a native Windows
+process, pid 1 or itself. No live session's process is on the list: live Monitor watchers sit under a live bash, the
+lock renewer's `sleep 1` under a live subshell, run_detached's child is a `nohup bash`, and the parity scripts'
+background jobs are python/powershell. It prints one `reap: ...` line and always exits 0 (exit 2 on `Stop` would keep
+Claude going); test `tools_py/tests/test_reap.py` (the plan's twelve-row planted table, a captured `ps -W` sample);
+home the Sprint 14 plan, Task G3 (213 orphans on 2026-09-25; no `docs/KNOWN.md` row exists).
 
 ## The launcher
 
