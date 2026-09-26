@@ -502,7 +502,13 @@ take no lock at all; `toml` is the last step that does not, and it is how the tr
 checked against the tree -- every other revision's derived config is git-ignored; `test_build_products.py`
 regenerates r0004's from `game/r0004/match.json` and the two images with step 3's arguments and fails on a byte of
 drift, skipping where those git-ignored inputs are absent, `SOCOM_DATA_ROOT` naming a checkout that has them), `--check-against <elf>`
-compares the produced ELF's sha256 with a known one, `--out <dir>` puts every product under one directory,
+compares the produced ELF's sha256 with a known one, `--out <dir>` puts every product under one directory
+(`overlays_<rev>/`, `recomp_<rev>/`, `build-clang-<rev>/`, `dist/`) while the inputs stay the tree's (issue #56 (closed) 2026-09-26, `9b566459`):
+the map is the tracked `recomp/socom2_ghidra_<rev>.csv` unless `--ghidra` names another, and when the tree's
+`game/overlays_<rev>/` holds both overlays, the merged ELF and an `<elf>.repair.json` that is current for the run's
+repair inputs (the sha256 test step 2 skips on), those four files are copied into `<out>/overlays_<rev>/` and
+nothing is decrypted again -- the sidecar records no disc input, so the disc tree given is not matched, and
+`--force` decrypts regardless.
 `--dry-run` prints the six steps with their paths. `<rev>` is `r` and four digits with an optional suffix that
 starts with a letter. The package must sit in its extracted disc tree, whose loader must be named `SCUS_972.75`
 (`tools_py/decrypt_apache.py` joins that name onto the tree and runs that loader's own code on the package, after
@@ -972,6 +978,16 @@ edit through Bash (`sed -i`, a heredoc) is not seen. `EditWritePlantedTest` hold
   never a smoke, `-k` or single-class run); the marker is looked at only when the command names `loop_lock.sh`; test
   `git commit -m x -- scripts/loop_lock.sh` with and without `slow_tests_ran`, and the wiring test with no marker, a
   fresh one and one older than the script; home the `scripts/loop_lock.sh` header (the rollout procedure).
+
+The reaper (Sprint 14 G3): at `SessionEnd` and every `Stop`, `scripts/hooks/claude_session_end.sh` runs
+`python -m tools_py.hooks.reap`, which `kill -9`s every orphaned watcher -- an MSYS `tail`, `grep`, `sleep` or
+`inotifywait` whose ppid is not in `ps -W`, or is 1 without leading its own process group (a watcher started directly
+by a Windows program leads its group and is kept) -- and never a `bash`/`sh`/`python`/`git`, a native Windows
+process, pid 1 or itself. No live session's process is on the list: live Monitor watchers sit under a live bash, the
+lock renewer's `sleep 1` under a live subshell, run_detached's child is a `nohup bash`, and the parity scripts'
+background jobs are python/powershell. It prints one `reap: ...` line and always exits 0 (exit 2 on `Stop` would keep
+Claude going); test `tools_py/tests/test_reap.py` (the plan's twelve-row planted table, a captured `ps -W` sample);
+home the Sprint 14 plan, Task G3 (213 orphans on 2026-09-25; no `docs/KNOWN.md` row exists).
 
 ## The launcher
 
