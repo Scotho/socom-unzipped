@@ -169,12 +169,23 @@ class ReadFirstBudgetTest(unittest.TestCase):
         total = sum(n for _, n in members)
         listing = docmaint.describe_read_first(members)
         self.assertIn("docs/HANDOFF.md", paths, listing)
+        self.assertIn("CLAUDE.md", paths, listing)
         self.assertIn("docs/STATUS.md", paths, listing)
+        self.assertEqual(docmaint.read_first_missing(), [], "the plans: line names a plan that is not there")
         self.assertIn("docs/CURRENT_SPRINT.md", paths, "HANDOFF section 3 no longer names it: %s" % listing)
         self.assertTrue(any(p.startswith("docs/superpowers/plans/") for p in paths),
                         "CURRENT_SPRINT's plans: line named no plan the parser found: %s" % listing)
         self.assertLessEqual(total, docmaint.READ_FIRST_BUDGET,
                              "over the read-first budget -- shrink or archive, never raise the number: %s" % listing)
+
+    def test_handoff_section_3_names_the_pinned_set(self):
+        """The set is pinned in READ_FIRST, so a rewording of HANDOFF section 3 cannot silently shrink it: the
+        paths its "Read ..." step backticks must be exactly the pinned members after HANDOFF itself. When this
+        fails, either section 3 lost a read-first document (put it back) or the set really changed (edit
+        READ_FIRST and DOC_MAINTENANCE check 11 in the same commit)."""
+        self.assertEqual(docmaint.READ_FIRST[0], "docs/HANDOFF.md")
+        self.assertEqual(tuple(docmaint.handoff_read_step_paths()), docmaint.READ_FIRST[1:],
+                         "docs/HANDOFF.md section 3's Read step and docmaint.READ_FIRST disagree")
 
 
 class TagClaimsTest(unittest.TestCase):
@@ -206,7 +217,8 @@ class ReportTest(unittest.TestCase):
         problems = {k: r[k] for k in ("unregistered", "missing_files", "duplicate_rows",
                                       "count_offenders", "undated_snapshots", "silent_archives",
                                       "dangling_doc_links", "over_ceiling", "unknown_tags",
-                                      "duplicate_rulings", "undefined_rulings", "read_first_over") if r[k]}
+                                      "duplicate_rulings", "undefined_rulings", "read_first_over",
+                                      "read_first_missing") if r[k]}
         self.assertEqual(problems, {}, "python -m tools_py.docmaint says: %s" % problems)
 
     def test_the_review_stamp_parses(self):
@@ -299,6 +311,7 @@ class PlantedDefectsTest(unittest.TestCase):
         self.assertEqual(r["over_ceiling"], [])
         self.assertEqual(r["unknown_tags"], [])
         self.assertEqual(r["read_first_over"], [])
+        self.assertEqual(r["read_first_missing"], [])
         self.assertEqual(r["next_free_ruling"], r["max_ruling"] + 1, "the counter check's own control")
 
     def test_an_unregistered_document_fires_check_1(self):
@@ -483,26 +496,31 @@ class PlantedDefectsTest(unittest.TestCase):
 
     READ_FIRST_HANDOFF = ("# h\n\n## 2. Where it stands\n\nNext free ruling number: R100\n\n"
                           "## 3. Your first hour\n\n1. `bash scripts/install_hooks.sh`.\n"
-                          "2. Read `docs/A.md`, then `docs/B.md`, then\n   `CLAUDE.md` (the plans: line names it).\n"
+                          "2. Read `CLAUDE.md`, then `docs/CURRENT_SPRINT.md`, then\n   the open plan's Log.\n"
                           "3. Where anything disagrees with `docs/KNOWN.md`, KNOWN wins.\n\n## 4. Rules\n\n- x\n")
+    PLAN = "docs/superpowers/plans/2026-01-01-plan.md"
 
-    def plant_read_first(self, each):
+    def plant_read_first(self, each, plans_path=None):
+        """CLAUDE.md and CURRENT_SPRINT at `each` bytes each; the sprint file's plans: line names `plans_path`."""
         self.write("docs/HANDOFF.md", self.READ_FIRST_HANDOFF)
-        self.write("docs/A.md", "a" * (each - 1) + "\n")
-        self.write("docs/B.md", "b" * (each - 1) + "\n")
+        self.write("CLAUDE.md", "c" * (each - 1) + "\n")
+        head = "# c\n\n```\nplans:   %s (the Log)\n```\n" % (plans_path or self.PLAN)
+        self.write("docs/CURRENT_SPRINT.md", head + "s" * (each - len(head) - 1) + "\n")
         self.write("docs/KNOWN.md", "k" * 300000 + "\n")
 
     def test_two_90000_byte_members_fire_check_11_with_the_sum_printed(self):
         self.plant_read_first(90000)
         members = docmaint.read_first_bytes()
-        self.assertEqual([p for p, _ in members], ["docs/HANDOFF.md", "docs/A.md", "docs/B.md"])
+        self.assertEqual([p for p, _ in members],
+                         ["docs/HANDOFF.md", "CLAUDE.md", "docs/CURRENT_SPRINT.md", self.PLAN])
         total = sum(n for _, n in members)
         self.assertGreater(total, 180000)
         over = docmaint.report()["read_first_over"]
         self.assertEqual(len(over), 1, over)
         text = docmaint.describe_read_first(over[0])
         self.assertIn("{:,}".format(total), text)
-        self.assertIn("docs/A.md 90,000", text)
+        self.assertIn("CLAUDE.md 90,000", text)
+        self.assertIn("docs/CURRENT_SPRINT.md 90,000", text)
         import contextlib
         import io
         out = io.StringIO()
@@ -525,16 +543,50 @@ class PlantedDefectsTest(unittest.TestCase):
         self.assertIn("read-first:", out.getvalue())
 
     def test_the_plans_line_and_statuss_block_are_members(self):
-        self.write("docs/HANDOFF.md", self.READ_FIRST_HANDOFF.replace("`docs/A.md`, then `docs/B.md`",
-                                                                      "`docs/CURRENT_SPRINT.md`"))
-        self.write("docs/CURRENT_SPRINT.md", "# c\n\n```\nbranch:  x\nplans:   docs/superpowers/plans/2026-01-01-plan.md "
-                                             "(the Log), and docs/superpowers/plans/old.md\n```\n")
+        self.write("docs/HANDOFF.md", self.READ_FIRST_HANDOFF)
+        self.write("docs/CURRENT_SPRINT.md", "# c\n\n```\nbranch:  x\nplans:   %s "
+                                             "(the Log), and docs/superpowers/plans/old.md\n```\n" % self.PLAN)
+        # old.md exists, so its absence from the set proves "the first path only", not "a missing file skipped".
+        self.write("docs/superpowers/plans/old.md", "# old plan\n")
         self.write("docs/STATUS.md", "# s\n\n## Current state (keep it short)\n\n- now\n\n## Log\n\n" + "z" * 50000 + "\n")
         members = dict(docmaint.read_first_bytes())
-        self.assertIn("docs/superpowers/plans/2026-01-01-plan.md", members)
+        self.assertIn(self.PLAN, members)
         self.assertNotIn("docs/superpowers/plans/old.md", members)
         self.assertEqual(members["docs/STATUS.md"], docmaint.block_bytes("docs/STATUS.md", "## Current state"))
         self.assertLess(members["docs/STATUS.md"], 100, "the log below STATUS's block must not count")
+
+    def test_a_mistyped_plans_path_is_a_check_11_problem_not_a_smaller_sum(self):
+        """The plans: line is not backticked, so check 6 never sees it; check 11 must say the plan is missing."""
+        typo = "docs/superpowers/plans/2026-01-01-plam.md"
+        self.plant_read_first(1000, plans_path=typo)
+        r = docmaint.report()
+        self.assertEqual(r["read_first_missing"], [typo])
+        self.assertNotIn(typo, [p for p, _ in r["read_first_bytes"]])
+        import contextlib
+        import io
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = docmaint.main([])
+        self.assertEqual(code, 1, out.getvalue())
+        self.assertIn("read_first_missing", out.getvalue())
+        self.assertIn(typo, out.getvalue())
+
+    def test_the_report_prints_the_open_plans_log_block(self):
+        """So the controller sees which part of the plan to archive when check 11 nears the bar."""
+        self.plant_read_first(1000)
+        self.write(self.PLAN, "# plan\n\n## Rulings made on the owner's behalf\n\n- **R99** (Task 1): the decision.\n\n"
+                              "## Log (newest first)\n\n" + "- 2026-01-01 entry\n" * 100)
+        log = docmaint.block_bytes(self.PLAN, "## Log")
+        self.assertGreater(log, 1800)
+        import contextlib
+        import io
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            docmaint.main([])
+        line = [ln for ln in out.getvalue().splitlines() if "## Log" in ln]
+        self.assertEqual(len(line), 1, out.getvalue())
+        self.assertIn(self.PLAN, line[0])
+        self.assertIn("{:,}".format(log), line[0])
 
     # --- R268: "merged to main as vX" names a tag origin has ---------------------------------------------
 

@@ -180,11 +180,14 @@ Sprint 13 Task R3's, all added 2026-09-25; the eleventh Sprint 14 I4's, 2026-09-
    or ledger that owns its range. *Catches a decision nobody can find to overturn:* R114, R116 and R124 were cited for
    a week with no findable text; the check also found R112, R113 and R139 in the same state.
 11. **The read-first budget (Sprint 14 I4)** -- what a new controller reads before acting sums to at most 160,000
-   bytes (`READ_FIRST_BUDGET` in `tools_py/docmaint.py`, LF-counted like the ceilings). The set: `docs/HANDOFF.md`
-   itself; the root or `docs/` `.md` paths backticked in the "Read ..." step of its §3 ("Your first hour"; a path
-   named in another step, such as KNOWN in "KNOWN wins", is not a member); the plan named on
+   bytes (`READ_FIRST_BUDGET` in `tools_py/docmaint.py`, LF-counted like the ceilings). The set: the pinned
+   `READ_FIRST` (`docs/HANDOFF.md`, `CLAUDE.md`, `docs/CURRENT_SPRINT.md`); the plan named on
    `docs/CURRENT_SPRINT.md`'s `plans:` line (its first `docs/superpowers/plans/` path); and `docs/STATUS.md`'s
-   "## Current state" block only. The report prints each member's bytes and the sum. *Catches the review's F1:* on
+   "## Current state" block only. A test holds the "Read ..." step of HANDOFF §3 ("Your first hour") to the pinned
+   paths after HANDOFF itself, so a rewording that drops one fails instead of shrinking the set (a path in another
+   step, such as KNOWN in "KNOWN wins", is not a member). A `plans:` path that is not a file is a problem too
+   (`read_first_missing`: the line is not backticked, so check 6 never sees it). The report prints each member's
+   bytes, the sum, and the open plan's "## Log" block, the part to archive first. *Catches the review's F1:* on
    2026-09-26 HANDOFF's "read first" list summed to 975 KB, a quarter-million tokens before the first action, with
    the minimum useful subset at 268 KB. The day it landed the set was 152,922 bytes (the sprint file 61,190, the
    plan 80,182). **When it fires, shrink or archive** -- a ceiling on the plan, its Log's older entries archived at

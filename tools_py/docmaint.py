@@ -546,11 +546,15 @@ def describe_ceiling(item):
 # STATUS's "## Current state" block (the rest of STATUS is a log). LF-counted, like the ceilings. When it fires,
 # shrink or archive a member -- never raise the number.
 READ_FIRST_BUDGET = 160000
+# The pinned members, in reading order (the I4 review): HANDOFF itself, then what its section 3 "Read" step names.
+# ReadFirstBudgetTest holds that step to READ_FIRST[1:], so a rewording of section 3 fails loudly rather than
+# silently shrinking the set. The open plan and STATUS's block are added by read_first_set().
+READ_FIRST = ("docs/HANDOFF.md", "CLAUDE.md", "docs/CURRENT_SPRINT.md")
 _BACKTICKED = re.compile(r"`([^`\s]+)`")
 _PLAN_PATH = re.compile(r"docs/superpowers/plans/[^\s`()]+?\.md")
 
 
-def _handoff_read_step_paths():
+def handoff_read_step_paths():
     """The backticked root or docs/ .md paths in HANDOFF section 3's list items that begin "Read"."""
     if not os.path.isfile(os.path.join(ROOT, "docs/HANDOFF.md")):
         return []
@@ -594,7 +598,7 @@ def _plans_line_path():
 
 def read_first_set():
     """The read-first set, in reading order, without repeats (check 11)."""
-    names = ["docs/HANDOFF.md"] + _handoff_read_step_paths()
+    names = list(READ_FIRST)
     plan = _plans_line_path()
     if plan:
         names.append(plan)
@@ -620,6 +624,24 @@ def read_first_over():
     """[members] when the set's sum exceeds READ_FIRST_BUDGET, else [] (check 11)."""
     members = read_first_bytes()
     return [members] if sum(n for _, n in members) > READ_FIRST_BUDGET else []
+
+
+def read_first_missing():
+    """[path] when CURRENT_SPRINT's plans: line names a plan that is not a file (check 11). The line is not
+    backticked, so check 6 never sees it, and a dropped member would only make the sum look smaller."""
+    plan = _plans_line_path()
+    return [plan] if plan and not os.path.isfile(os.path.join(ROOT, plan)) else []
+
+
+def describe_plan_log():
+    """The open plan's "## Log" block, so the controller sees which part of the plan to archive; None without a plan."""
+    plan = _plans_line_path()
+    if not plan or not os.path.isfile(os.path.join(ROOT, plan)):
+        return None
+    n = block_bytes(plan, "## Log")
+    if n is None:
+        return "%s has no '## Log' block" % plan
+    return "%s '## Log' block {:,} bytes of {:,}".format(n, block_bytes(plan, None)) % plan
 
 
 def describe_read_first(members):
@@ -698,6 +720,7 @@ def report():
         "undefined_rulings": undefined_rulings(),
         "read_first_bytes": read_first_bytes(),
         "read_first_over": read_first_over(),
+        "read_first_missing": read_first_missing(),
         "tags_on_origin": len(tags) if tags is not None else None,
         "tag_check_skipped": why,
     }
@@ -714,6 +737,9 @@ def main(argv=None):
             print("ceiling: %s" % describe_ceiling((path, heading, n, limit)))
     if not r["read_first_over"]:
         print("read-first: %s" % describe_read_first(r["read_first_bytes"]))
+    log = describe_plan_log()
+    if log:
+        print("read-first: of which the open plan's %s" % log)
     if r["tag_check_skipped"]:
         # Never pass silently: the run is OK only on what it could check, and says what it could not.
         print("tags: SKIPPED -- origin unreachable (%s); the 'merged to main as vX' check did not run"
@@ -737,6 +763,11 @@ def main(argv=None):
         bad += 1
         print("read_first_over (check 11; shrink a member or archive its oldest blocks, never raise the number):")
         print("    read-first: %s" % describe_read_first(r["read_first_over"][0]))
+    if r["read_first_missing"]:
+        bad += len(r["read_first_missing"])
+        print("read_first_missing (check 11; docs/CURRENT_SPRINT.md's plans: line names a plan that is not there):")
+        for path in r["read_first_missing"]:
+            print("   ", path)
     if r["duplicate_rulings"]:
         bad += len(r["duplicate_rulings"])
         print("duplicate_rulings (one number, one ruling; record the second as R<n>b beside it, do not renumber):")
