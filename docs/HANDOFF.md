@@ -54,7 +54,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 - **The Sprint 14 controller** in the main tree on `sprint-14`; its agents in `C:\projects\wt-s14-<task>`, one
   branch each, made and removed by `scripts/agent_worktree.sh`: `wt-s14-d3` (D3), `wt-s14-s1` (S1).
 - **The Sprint 13 controller's fillers** off `main`, to `fix/*` PRs merged with a merge commit and then merged
-  into `sprint-14` here: `wt-x51` (issue #51, PR #65 open) and `wt-x57` (issue #57, on its chain).
+  into `sprint-14` here: `wt-x57` (issue #57, on its chain; the last tonight). #51 landed as PR #65, `123dd1c5`.
 - **Durable:** `socom_pc_web` (the browser side project), `wt-cherry` and `wt-ci-fix` (both merged). `wt-issues` is
   an orphan directory, not a worktree; leave it until someone identifies it.
 - **The hosted-server / site session** owns `server/`, the Lightsail box and `../scotho`; never edit those.

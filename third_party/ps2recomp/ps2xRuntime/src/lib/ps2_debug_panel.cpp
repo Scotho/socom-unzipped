@@ -1794,7 +1794,7 @@ namespace
             ImGui::EndTable();
         }
 
-        const ps2_stubs::CdDebugSnapshot cd = ps2_stubs::getCdDebugSnapshot();
+        const ps2_stubs::CdDebugSnapshot cd = ps2_stubs::getCdDebugSnapshot(&runtime);
         ImGui::SeparatorText("CDVD / sceCd state");
         ImGui::Text("initialized=%u lastError=%d mode=0x%08X streamingLbn=0x%08X endLbn=0x%08X streamActive=%u readLbn=0x%08X nextPseudoLbn=0x%08X",
                     cd.initialized ? 1u : 0u,

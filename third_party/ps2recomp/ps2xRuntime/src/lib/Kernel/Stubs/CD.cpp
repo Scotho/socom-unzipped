@@ -43,6 +43,13 @@ namespace ps2_stubs
         uint32_t g_cdStReadTraceCount = 0u;
         CdStreamTimingState g_cdStreamTiming;
 
+        // Issue #51: the CD group every entry point below reads and writes -- the runtime's own
+        // CdRuntimeState (Helpers/CdRuntimeState.h), or the process-wide fallback for a null runtime.
+        CdRuntimeState &cdStateFor(PS2Runtime *runtime)
+        {
+            return cdRuntimeStateFor(runtime);
+        }
+
         // research/36 item 11 (2026-09-20): PS2X_CD_STREAM_TRACE=1 stamps every CD stream read -- the request,
         // a park on the modelled drive and its resume -- with the mixer's output-frame clock (the one the
         // [audio] events and the PS2X_AUDIO_DUMP wav carry) and the VSync tick, so a PCM ring that ran dry can be
@@ -61,14 +68,14 @@ namespace ps2_stubs
                          static_cast<unsigned long long>(runtime->audioBackend().mixerRenderedFrames()),
                          static_cast<unsigned long long>(runtime->eeScheduler().currentVSyncTick()), what,
                          static_cast<unsigned long long>(a), static_cast<unsigned long long>(b), static_cast<unsigned long long>(c),
-                         g_cdStreamingLbn, runtime->eeScheduler().currentThreadId());   // item 16: the calling guest thread
+                         cdStateFor(runtime).streamingLbn, runtime->eeScheduler().currentThreadId());   // item 16: the calling guest thread
         }
 
-        // The plain-read cursor.  `g_cdStreamingLbn` (Support.h) is the *stream*
+        // The plain-read cursor.  `CdRuntimeState::streamingLbn` is the *stream*
         // cursor and is moved only by the stream entry points; a plain read must
         // not disturb an open stream (audit 2026-09-17 §2.3, CD.cpp:328).
-        // Kept here rather than in Support.h, whose globals live in an anonymous
-        // namespace in a header and so are one copy per translation unit.
+        // Kept here, in CD.cpp's own anonymous namespace (one translation unit, one copy), not in
+        // CdRuntimeState: issue #51 moved Support.h's fourteen and nothing else.
         uint32_t g_cdReadLbn = 0u;
 
         // Which of the two cursors the caller last moved: the stream entry points set it, the plain
@@ -107,13 +114,14 @@ namespace ps2_stubs
             g_cdStreamTiming.lastVSyncTick = currentCdStreamTick(runtime);
         }
 
-        uint64_t totalCdStreamSectors()
+        uint64_t totalCdStreamSectors(PS2Runtime *runtime)
         {
-            if (g_cdStreamingEndLbn == 0xFFFFFFFFu || g_cdStreamingEndLbn < g_cdStreamingLbn)
+            const CdRuntimeState &cd = cdStateFor(runtime);
+            if (cd.streamingEndLbn == 0xFFFFFFFFu || cd.streamingEndLbn < cd.streamingLbn)
             {
                 return std::numeric_limits<uint64_t>::max();
             }
-            return g_cdStreamTiming.consumedSectors + static_cast<uint64_t>(g_cdStreamingEndLbn - g_cdStreamingLbn);
+            return g_cdStreamTiming.consumedSectors + static_cast<uint64_t>(cd.streamingEndLbn - cd.streamingLbn);
         }
 
         void updateCdStreamProduction(PS2Runtime *runtime)
@@ -147,7 +155,7 @@ namespace ps2_stubs
             const uint64_t space = buffered < effectiveCapacity ? effectiveCapacity - buffered : 0u;
             uint64_t newlyProduced = std::min(elapsedProduction, space);
 
-            const uint64_t streamTotal = totalCdStreamSectors();
+            const uint64_t streamTotal = totalCdStreamSectors(runtime);
             if (streamTotal != std::numeric_limits<uint64_t>::max())
             {
                 const uint64_t remainingToProduce = streamTotal > g_cdStreamTiming.producedSectors
@@ -178,7 +186,7 @@ namespace ps2_stubs
                 return 0u;
             }
 
-            const uint64_t streamTotal = totalCdStreamSectors();
+            const uint64_t streamTotal = totalCdStreamSectors(runtime);
             if (streamTotal != std::numeric_limits<uint64_t>::max() && g_cdStreamTiming.producedSectors >= streamTotal)
             {
                 return buffered;
@@ -207,36 +215,38 @@ namespace ps2_stubs
 
         void restartCdStreamAt(uint32_t lbn, PS2Runtime *runtime)
         {
-            g_cdStreamingLbn = lbn;
+            CdRuntimeState &cd = cdStateFor(runtime);
+            cd.streamingLbn = lbn;
             g_cdLastMovedWasStream = true;
-            g_cdStreamingEndLbn = cdStreamingEndLbnForStart(lbn);
+            cd.streamingEndLbn = cdStreamingEndLbnForStart(cd, lbn);
             resetCdStreamProduction(runtime);
         }
     }
 
-    CdDebugSnapshot getCdDebugSnapshot()
+    CdDebugSnapshot getCdDebugSnapshot(PS2Runtime *runtime)
     {
+        const CdRuntimeState &cd = cdStateFor(runtime);
         CdDebugSnapshot snapshot{};
-        snapshot.initialized = g_cdInitialized;
-        snapshot.lastError = g_lastCdError;
-        snapshot.mode = g_cdMode;
-        snapshot.streamingLbn = g_cdStreamingLbn;
-        snapshot.streamingEndLbn = g_cdStreamingEndLbn;
+        snapshot.initialized = cd.initialized;
+        snapshot.lastError = cd.lastError;
+        snapshot.mode = cd.mode;
+        snapshot.streamingLbn = cd.streamingLbn;
+        snapshot.streamingEndLbn = cd.streamingEndLbn;
         snapshot.readLbn = g_cdReadLbn;
         snapshot.streamActive = g_cdStreamTiming.active;
-        snapshot.nextPseudoLbn = g_nextPseudoLbn;
-        snapshot.imageSizeBytes = g_cdImageSizeBytes;
-        snapshot.imageSizeValid = g_cdImageSizeValid;
+        snapshot.nextPseudoLbn = cd.nextPseudoLbn;
+        snapshot.imageSizeBytes = cd.imageSizeBytes;
+        snapshot.imageSizeValid = cd.imageSizeValid;
         snapshot.cdRoot = getCdRootPath();
         snapshot.cdImage = getCdImagePath();
-        snapshot.imageSizePath = g_cdImageSizePath;
-        snapshot.leafIndexRoot = g_cdLeafIndexRoot;
-        snapshot.leafIndexBuilt = g_cdLeafIndexBuilt;
-        snapshot.leafIndexCount = g_cdLeafIndex.size();
-        snapshot.loosePathIndexCount = g_cdLoosePathIndex.size();
+        snapshot.imageSizePath = cd.imageSizePath;
+        snapshot.leafIndexRoot = cd.leafIndexRoot;
+        snapshot.leafIndexBuilt = cd.leafIndexBuilt;
+        snapshot.leafIndexCount = cd.leafIndex.size();
+        snapshot.loosePathIndexCount = cd.loosePathIndex.size();
 
-        snapshot.files.reserve(g_cdFilesByKey.size());
-        for (const auto &[key, entry] : g_cdFilesByKey)
+        snapshot.files.reserve(cd.filesByKey.size());
+        for (const auto &[key, entry] : cd.filesByKey)
         {
             CdDebugFileEntry row{};
             row.key = key;
@@ -253,6 +263,7 @@ namespace ps2_stubs
 
     void sceCdRead(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
+        CdRuntimeState &cd = cdStateFor(runtime);
         const uint32_t a0 = getRegU32(ctx, 4); // usually lbn
         const uint32_t a1 = getRegU32(ctx, 5); // usually sector count
         const uint32_t a2 = getRegU32(ctx, 6); // usually destination buffer
@@ -289,7 +300,7 @@ namespace ps2_stubs
                 return true;
             }
 
-            return readCdSectors(args.lbn, args.sectors, rdram + offset, bytes);
+            return readCdSectors(cd, args.lbn, args.sectors, rdram + offset, bytes);
         };
 
         CdReadArgs selected{a0, a1, a2, "a0/a1/a2"};
@@ -300,7 +311,7 @@ namespace ps2_stubs
             // Some game-side wrappers use a nonstandard register layout.
             // If primary decode does not resolve to a known LBN, try safe alternatives.
             constexpr uint32_t kMaxReasonableSectors = PS2_RAM_SIZE / kCdSectorSize;
-            if (!isResolvableCdLbn(selected.lbn))
+            if (!isResolvableCdLbn(cd, selected.lbn))
             {
                 const std::array<CdReadArgs, 5> alternatives = {
                     CdReadArgs{a2, a1, a0, "a2/a1/a0"},
@@ -315,7 +326,7 @@ namespace ps2_stubs
                     {
                         continue;
                     }
-                    if (!isResolvableCdLbn(candidate.lbn))
+                    if (!isResolvableCdLbn(cd, candidate.lbn))
                     {
                         continue;
                     }
@@ -380,7 +391,8 @@ namespace ps2_stubs
 
     void sceCdGetError(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
-        setReturnS32(ctx, g_lastCdError);
+        CdRuntimeState &cd = cdStateFor(runtime);
+        setReturnS32(ctx, cd.lastError);
     }
 
     void sceCdRI(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
@@ -431,10 +443,11 @@ namespace ps2_stubs
 
     void sceCdGetReadPos(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
+        CdRuntimeState &cd = cdStateFor(runtime);
         // The position the caller is asking about is the one it last moved: the stream cursor when a
         // stream is open and a stream entry point moved last, the plain-read cursor otherwise (a plain
         // sceCdRead/sceCdReadChain/sceCdSeek during an open stream, or no stream open at all).
-        setReturnU32(ctx, (g_cdStreamTiming.active && g_cdLastMovedWasStream) ? g_cdStreamingLbn : g_cdReadLbn);
+        setReturnU32(ctx, (g_cdStreamTiming.active && g_cdLastMovedWasStream) ? cd.streamingLbn : g_cdReadLbn);
     }
 
     void sceCdGetToc(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
@@ -449,8 +462,9 @@ namespace ps2_stubs
 
     void sceCdInit(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
-        g_cdInitialized = true;
-        g_lastCdError = 0;
+        CdRuntimeState &cd = cdStateFor(runtime);
+        cd.initialized = true;
+        cd.lastError = 0;
         g_cdStreamTiming = {};
         g_cdLastMovedWasStream = false;
         g_cdReadLbn = 0u;   // review finding F11: the drive is back at the start, not wherever the last read left it
@@ -488,7 +502,8 @@ namespace ps2_stubs
 
     void sceCdMmode(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
-        g_cdMode = getRegU32(ctx, 4);
+        CdRuntimeState &cd = cdStateFor(runtime);
+        cd.mode = getRegU32(ctx, 4);
         setReturnS32(ctx, 1);
     }
 
@@ -522,6 +537,7 @@ namespace ps2_stubs
 
     void sceCdReadChain(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
+        CdRuntimeState &cd = cdStateFor(runtime);
         uint32_t chainAddr = getRegU32(ctx, 4);
         bool ok = true;
 
@@ -550,7 +566,7 @@ namespace ps2_stubs
                 bytes = maxBytes;
             }
 
-            if (!readCdSectors(lbn, sectors, rdram + offset, bytes))
+            if (!readCdSectors(cd, lbn, sectors, rdram + offset, bytes))
             {
                 ok = false;
                 break;
@@ -600,6 +616,7 @@ namespace ps2_stubs
 
     void sceCdSearchFile(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
+        CdRuntimeState &cd = cdStateFor(runtime);
         uint32_t fileAddr = getRegU32(ctx, 4);
         uint32_t pathAddr = getRegU32(ctx, 5);
         const std::string path = readPs2CStringBounded(rdram, pathAddr, 260);
@@ -637,7 +654,7 @@ namespace ps2_stubs
                           << " ra=0x" << callerRa << std::dec << std::endl;
             }
             ++emptyPathCount;
-            g_lastCdError = -1;
+            cd.lastError = -1;
             setReturnS32(ctx, 0);
             return;
         }
@@ -652,13 +669,13 @@ namespace ps2_stubs
                           << std::endl;
             }
             ++emptyNormalizedCount;
-            g_lastCdError = -1;
+            cd.lastError = -1;
             setReturnS32(ctx, 0);
             return;
         }
 
         CdFileEntry entry;
-        bool found = registerCdFile(path, entry);
+        bool found = registerCdFile(cd, path, entry);
         CdFileEntry resolvedEntry = entry;
         std::string resolvedPath;
 
@@ -688,13 +705,13 @@ namespace ps2_stubs
 
         if (!writeCdSearchResult(rdram, fileAddr, path, resolvedEntry))
         {
-            g_lastCdError = -1;
+            cd.lastError = -1;
             setReturnS32(ctx, 0);
             return;
         }
 
-        g_cdStreamingLbn = resolvedEntry.baseLbn;
-        g_cdStreamingEndLbn = resolvedEntry.baseLbn + resolvedEntry.sectors;
+        cd.streamingLbn = resolvedEntry.baseLbn;
+        cd.streamingEndLbn = resolvedEntry.baseLbn + resolvedEntry.sectors;
         g_cdLastMovedWasStream = true;
         if (cdTraceEnabled())
             std::cout << "[cd] SearchFile ok lsn=0x" << std::hex << resolvedEntry.baseLbn << " size=0x" << resolvedEntry.sizeBytes << std::dec << std::endl;
@@ -725,7 +742,8 @@ namespace ps2_stubs
 
     void sceCdStatus(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
-        setReturnS32(ctx, g_cdInitialized ? 6 : 0);
+        CdRuntimeState &cd = cdStateFor(runtime);
+        setReturnS32(ctx, cd.initialized ? 6 : 0);
     }
 
     void sceCdStInit(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
@@ -786,6 +804,7 @@ namespace ps2_stubs
                               PS2Runtime *runtime,
                               CdStReadContinuation state)
         {
+            CdRuntimeState &cd = cdStateFor(runtime);
             if (!g_cdStreamTiming.active || state.requestedSectors == 0u)
             {
                 finishCdStRead(rdram, ctx, state, 0);
@@ -796,16 +815,16 @@ namespace ps2_stubs
             {
                 uint32_t remaining = state.requestedSectors - state.sectorsRead;
                 bool atEnd = false;
-                if (g_cdStreamingEndLbn != 0xFFFFFFFFu)
+                if (cd.streamingEndLbn != 0xFFFFFFFFu)
                 {
-                    if (g_cdStreamingLbn >= g_cdStreamingEndLbn)
+                    if (cd.streamingLbn >= cd.streamingEndLbn)
                     {
                         remaining = 0u;
                         atEnd = true;
                     }
                     else
                     {
-                        const uint32_t streamRemaining = g_cdStreamingEndLbn - g_cdStreamingLbn;
+                        const uint32_t streamRemaining = cd.streamingEndLbn - cd.streamingLbn;
                         if (remaining > streamRemaining)
                         {
                             remaining = streamRemaining;
@@ -816,7 +835,7 @@ namespace ps2_stubs
 
                 if (remaining == 0u)
                 {
-                    if (atEnd || (g_cdStreamingEndLbn != 0xFFFFFFFFu && g_cdStreamingLbn >= g_cdStreamingEndLbn))
+                    if (atEnd || (cd.streamingEndLbn != 0xFFFFFFFFu && cd.streamingLbn >= cd.streamingEndLbn))
                     {
                         notifyMpegCdStreamEof(runtime);
                     }
@@ -867,20 +886,20 @@ namespace ps2_stubs
 
                 if (sectors == 0u)
                 {
-                    g_lastCdError = -1;
-                    finishCdStRead(rdram, ctx, state, g_lastCdError);
+                    cd.lastError = -1;
+                    finishCdStRead(rdram, ctx, state, cd.lastError);
                     return;
                 }
 
-                const uint32_t readLbn = g_cdStreamingLbn;
+                const uint32_t readLbn = cd.streamingLbn;
                 const size_t readBytes = static_cast<size_t>(sectors) * kCdSectorSize;
-                if (!readCdSectors(readLbn, sectors, rdram + offset, readBytes))
+                if (!readCdSectors(cd, readLbn, sectors, rdram + offset, readBytes))
                 {
-                    finishCdStRead(rdram, ctx, state, g_lastCdError);
+                    finishCdStRead(rdram, ctx, state, cd.lastError);
                     return;
                 }
 
-                g_cdStreamingLbn += sectors;
+                cd.streamingLbn += sectors;
                 g_cdLastMovedWasStream = true;
                 if (runtime == nullptr)
                 {
@@ -889,7 +908,7 @@ namespace ps2_stubs
                 g_cdStreamTiming.consumedSectors += sectors;
                 state.sectorsRead += sectors;
 
-                const bool hitStreamEnd = g_cdStreamingEndLbn != 0xFFFFFFFFu && g_cdStreamingLbn >= g_cdStreamingEndLbn;
+                const bool hitStreamEnd = cd.streamingEndLbn != 0xFFFFFFFFu && cd.streamingLbn >= cd.streamingEndLbn;
                 notifyMpegCdStreamDataProduced(static_cast<uint32_t>(readBytes), hitStreamEnd);
 
                 if (g_cdStReadTraceCount < 32u)
@@ -899,7 +918,7 @@ namespace ps2_stubs
                               << " chunk=" << sectors
                               << " buffered=" << readableCdStreamSectors(runtime)
                               << " lbn=0x" << std::hex << readLbn
-                              << " end=0x" << g_cdStreamingEndLbn
+                              << " end=0x" << cd.streamingEndLbn
                               << std::dec << std::endl;
                     ++g_cdStReadTraceCount;
                 }
@@ -919,6 +938,7 @@ namespace ps2_stubs
 
     void sceCdStRead(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
+        CdRuntimeState &cd = cdStateFor(runtime);
         const uint32_t requestedSectors = getRegU32(ctx, 4);
         const uint32_t buffer = getRegU32(ctx, 5);
         const uint32_t mode = getRegU32(ctx, 6);
@@ -948,10 +968,10 @@ namespace ps2_stubs
         }
 
         uint32_t remaining = requestedSectors;
-        if (g_cdStreamingEndLbn != 0xFFFFFFFFu)
+        if (cd.streamingEndLbn != 0xFFFFFFFFu)
         {
-            remaining = g_cdStreamingLbn < g_cdStreamingEndLbn
-                            ? std::min(remaining, g_cdStreamingEndLbn - g_cdStreamingLbn)
+            remaining = cd.streamingLbn < cd.streamingEndLbn
+                            ? std::min(remaining, cd.streamingEndLbn - cd.streamingLbn)
                             : 0u;
         }
 
@@ -961,7 +981,7 @@ namespace ps2_stubs
         const uint32_t sectors = std::min(remaining, available);
         if (sectors == 0u)
         {
-            if (g_cdStreamingEndLbn != 0xFFFFFFFFu && g_cdStreamingLbn >= g_cdStreamingEndLbn)
+            if (cd.streamingEndLbn != 0xFFFFFFFFu && cd.streamingLbn >= cd.streamingEndLbn)
             {
                 notifyMpegCdStreamEof(runtime);
             }
@@ -999,6 +1019,7 @@ namespace ps2_stubs
 
     void sceCdStStart(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
+        CdRuntimeState &cd = cdStateFor(runtime);
         const uint32_t lbn = getRegU32(ctx, 4);
         const uint32_t modeAddr = getRegU32(ctx, 5);
         uint8_t spindleControl = 0u;
@@ -1015,8 +1036,8 @@ namespace ps2_stubs
 
         notifyMpegCdStreamStart(runtime);
 
-        std::cerr << "[sceCdStStart] lbn=0x" << std::hex << g_cdStreamingLbn
-                  << " endLbn=0x" << g_cdStreamingEndLbn << std::dec
+        std::cerr << "[sceCdStStart] lbn=0x" << std::hex << cd.streamingLbn
+                  << " endLbn=0x" << cd.streamingEndLbn << std::dec
                   << " rate=" << g_cdStreamTiming.sectorsPerSecond << " sectors/s"
                   << " buffer=" << g_cdStreamTiming.capacitySectors << " sectors"
                   << " bank=" << g_cdStreamTiming.sectorsPerBank << " sectors"
