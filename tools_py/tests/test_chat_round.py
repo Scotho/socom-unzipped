@@ -259,6 +259,15 @@ class ChatVerdicts(unittest.TestCase):
         _, _, overall = R.chat_round([], {}, "LOBBY class=ok\n", {})
         self.assertEqual(overall, "INCOMPLETE")
 
+    def test_chat_call_lines_are_reported(self):
+        log = (b"[call] 1.0s NetIdle #0 a0=0x0\n"
+               b"[call] 412.3s ChatAppend #0 a0=0x1 a1=0x2 a2=0x3 a3=0x4 ra=0x1f4d58 f12=0 f13=0 f14=0 a0=\"hello\"\n")
+        self.assertEqual(R.chat_call_lines(log), ['[call] 412.3s ChatAppend #0 a0=0x1 a1=0x2 a2=0x3 a3=0x4 ra=0x1f4d58 '
+                                                  'f12=0 f13=0 f14=0 a0="hello"'])
+        self.assertEqual(R.chat_call_lines(None), [])
+        _, info, _ = R.chat_round([], {"B": log}, "LOBBY class=ok\n", {})
+        self.assertTrue(any(i.startswith("INFO calls-B [call] 412.3s ChatAppend") for i in info), info)
+
     def test_main_reads_the_round_directory(self):
         with tempfile.TemporaryDirectory() as d:
             a, b = os.path.join(d, "A.log"), os.path.join(d, "B.log")

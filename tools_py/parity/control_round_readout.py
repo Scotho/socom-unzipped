@@ -599,6 +599,19 @@ def chat_receive_verdict(chat, receiver_bytes):
     return v(tag, FAIL, "no chat receive bound: seen= line in the receiver's log after byte %d" % mark)
 
 
+CHAT_CALL_RE = re.compile(r"\[call\] [\d.]+s Chat\w* #\d+[^\r\n]*")
+CHAT_CALL_MAX = 12
+
+
+def chat_call_lines(data, limit=CHAT_CALL_MAX):
+    """The first `limit` PS2X_CALL_TRACE lines of functions the operator named `Chat...` (round 3 traced the chat
+    path's candidates under those names from its ignored lock script): which function a received line went
+    through, and its caller (ra)."""
+    if data is None:
+        return []
+    return CHAT_CALL_RE.findall(data.decode("utf-8", errors="replace"))[:limit]
+
+
 def chat_round(chats, logs, drive_text, peek_lines, revision="r0001"):
     """Verdicts of the chat round. `chats` is chat.json's list (A->B first, B->A only when A->B was not seen);
     `logs` is {tag: bytes}; `peek_lines` is {tag: lines}. The RESULT is A->B's: lobby, keyboard-A and receive-B."""
@@ -613,6 +626,9 @@ def chat_round(chats, logs, drive_text, peek_lines, revision="r0001"):
     ptr_addr = talk_table_ptr(revision)
     for tag in sorted(peek_lines):
         verdicts.append(talk_slot_verdict(talk_slot_reading(peek_lines[tag], ptr_addr), tag, ptr_addr))
+    for tag in sorted(logs):
+        for line in chat_call_lines(logs[tag]):
+            info.append("INFO calls-%s %s" % (tag, line))
     for line in RESULT_RE.findall(drive_text or ""):
         info.append("INFO drive %s" % line.strip())
     need = [x for x in verdicts if x.name in ("lobby", "keyboard-A", "receive-B")]
