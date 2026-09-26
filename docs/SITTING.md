@@ -2,7 +2,7 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.sitting` from `docs/HUMAN_TASKS.md` (the O rows and the stamp of the sittings), the rulings `docs/RULINGS.md` shows (`tools_py.rulings.rows()`), `docs/BACKLOG.md` (the `Carried` column) and `docs/PLAYTEST.md` (its build block). Change a source and regenerate; `python -m tools_py.sitting --check` exits 1 when this file is stale.
 
-The page as of 2026-09-26, for the sitting after the one of 2026-09-17: 16 open O rows (2 answered or struck); 234 active rulings since 2026-09-17 (100 dated, 134 placed by number or home, 68 undated and unplaceable, not listed); 3 issues carried twice; the build: **NOT BUILT**.
+The page as of 2026-09-26, for the sitting after the one of 2026-09-17: 16 open O rows (2 answered or struck); 235 active rulings since 2026-09-17 (101 dated, 134 placed by number or home, 68 undated and unplaceable, not listed); 3 issues carried twice; the build: **NOT BUILT**.
 
 **How to answer.** One line per item, by number -- "O5: acceptable for v1", "R271: overturn", "#25: close" -- in the next session's prompt or as a note in `docs/STATUS.md`.
 
@@ -36,7 +36,7 @@ Answered or struck (the row stays in HUMAN_TASKS as the record):
 
 ## 2. The rulings since the last sitting
 
-234 active rulings on or after 2026-09-17, in the counter's order (the sprint-local names last, by date): 100 dated on or after it, and 134 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-09-17 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 68 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
+235 active rulings on or after 2026-09-17, in the counter's order (the sprint-local names last, by date): 101 dated on or after it, and 134 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-09-17 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 68 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
 
 - **R81** (2026-09-17) the guest clock counts wall time by default; the 2026-09-08 exclusion of VU1 and render back-pressure time is now `PS2X_CLOCK_EXCLUDE=1` for an A/B. -- overturn by number
 - **R82** (2026-09-17) texture-cache CLUT ids are keyed on the palette's content (FNV-1a over the snapshot), not the CLUT serial. -- overturn by number
@@ -234,6 +234,7 @@ Answered or struck (the row stays in HUMAN_TASKS as the record):
 - **R277** (2026-09-26) the private location that served the owner's ELF dumps to cloud sessions has no consumer and is the owner's to retire or rotate (HUMAN_TASKS row O18); the fetc… -- overturn by number
 - **R278** (2026-09-26) while the lock is held or queued by other sessions' builders, lock-free tasks from Milestones D, S and M may run ahead of Milestone W; W's tasks start at the f… -- overturn by number
 - **R279** (2026-09-26) the open plan's ceiling is one number in `CEILINGS` like the others: ratcheted at each close from the closing plan's size (before CURRENT_SPRINT's `plans:` lin… -- overturn by number
+- **R280** (2026-09-26) the held-out leg's twelve stamps are chosen for stability across green runs: title s03, s09, s15; transition s06, s08; mission s06, s08, s10, s12, s16, s20, s2… -- overturn by number
 - **S12-R1** (2026-09-24) the four naming defaults stand as the spec states them: `Class_Method` with an argument-list suffix only on collision (D1); no hand-named row is ever renamed b… -- overturn by number
 - **S12-R11** (2026-09-24) a rename that moves a decoded range is accepted only when the cloud's own recomp shows no new `unmapped` or `unhandled` continuation and no function dropped; a… -- overturn by number
 - **S12-R12** (2026-09-24) an `offset-multiset` pass is Task 13 at 0.75, and an independent body key is a valid second signal for a prologue pair (amends S12-R3). research/54: the multis… -- overturn by number

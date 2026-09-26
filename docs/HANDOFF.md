@@ -16,7 +16,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
   exit 4). In flight: W2 (the merged chain; its lock-script commit waits for a slow run), E3's pushed red run on
   `agent/e3probe`. Left: E2 (night), X1 (filler), the close. The plan `docs/superpowers/plans/2026-09-26-sprint-14.md`
   (its Log) is the live state. No cloud session from 2026-09-26.
-- **Next free ruling number: R280.**
+- **Next free ruling number: R281.**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
 
