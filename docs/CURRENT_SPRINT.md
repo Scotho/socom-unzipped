@@ -9,10 +9,10 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 repository another person can fork, build and contribute to.
 
 ```
-branch:       sprint-13 -- OPEN 2026-09-25 08:40Z off main at 74fe2a9b (the Sprint 12 merge, PR #50, tagged v0.12.0;
-              Sprint 11 merged as v0.11.0 at 173608af, PR #49, the same night). This machine's checkout is on
-              sprint-13 (the local controller, session socom-pc-6c); agents work in worktrees on agent/s13-* branches
-              and the controller merges them. See "Sprint 13 -- OPEN" below, then the two CLOSED blocks.
+branch:       sprint-13 -- CLOSED 2026-09-26 04:17Z (the close-out commit; the PR sprint-13 -> main and the tag v0.13.0 follow it;
+              Sprint 12 merged as v0.12.0 at 74fe2a9b, PR #50, Sprint 11 as v0.11.0 at 173608af, PR #49). The next
+              sprint's controller opens sprint-14 off main after the merge; this machine's checkout stays on sprint-13
+              until then. See "Sprint 13 -- CLOSED" below, then the two earlier CLOSED blocks.
 spec:         docs/superpowers/specs/2026-09-25-sprint-13-nothing-carried-twice-design.md (eight milestones V, R, H,
               C, U, S, N, O with a bar each; the acceptance bar is its section 4). The Sprint 12 and Sprint 11 specs
               closed with v0.12.0 and v0.11.0.
@@ -21,8 +21,9 @@ plans:        docs/superpowers/plans/2026-09-25-sprint-13.md (the task table, th
               reports, R265-R268, the owner's sitting O1-O13). The Sprint 12 plan (its rulings S12-R1..R25) and the
               Sprint 11 plan are closed and listed in their blocks below; Sprint 10's and older are in
               docs/archive/CURRENT_SPRINT-sprints-9-to-11.md (the 2026-09-25 split, R268).
-next sprint:  not planned; Sprint 13's close names it from what it leaves (spec section 5 says what Sprint 13 does
-              not do: voice, the LEAVE items, a public download, the community preset).
+next sprint:  Sprint 14 "guards, not sentences" (docs/superpowers/plans/2026-09-26-sprint-14.md and its spec, opened by
+              its own controller after the merge), then Sprint 15 "borrowed confidence" (Sprint 14 D8). No cloud session
+              runs from 2026-09-26; the cloud handoff of 2026-09-25 never ran and is kept under a NEVER RUN banner.
               Sprint 12 was "the readable image" (R263, 2026-09-24): it opened with the demo-name rename pass into the function map (R257 + the provenance sidecar R261, a recomp + runtime + r0001 gate), then Task 7c vtable slots through RTTI (the peer's scripts in tools_py/research/symbols/), BinDiff as the cross-check, the ccc types with the layout-age caveat, the toml names into the generated output.
               Sprint 12 ran 2026-09-24/25 in a Claude cloud session on origin/sprint-12 (fifteen research notes,
               47-61; rulings S12-R1..R25; every task's code half) and its local half (the proof, the merge, the
@@ -57,7 +58,20 @@ long builds); "lock-free" can run at any time.
 
 ---
 
-## Sprint 13 — OPEN 2026-09-25 08:40Z (plan `docs/superpowers/plans/2026-09-25-sprint-13.md`, "nothing carried twice")
+## Sprint 13 — CLOSED 2026-09-26 (the close-out commit on `sprint-13`; the PR to `main` follows, and the tag `v0.13.0` is set once it merges; the record of the sprint is the block below)
+
+**Close-out (the PR body).** Opened 2026-09-25 08:40Z, closed 2026-09-26 04:17Z: 285 commits, 43 agent merges, every task
+reviewed by a fresh agent. Closed #27, #30, #31, #33, #35, #36, #37, #38, #39, #40, #45, #46, #48; opened #45–#48, #51–#60;
+carried #28, #32, #34, #59 once to the backlog and #25, #26, #42 to the owner (S13-R14, HUMAN_TASKS O16). The gate
+`s13_merged_gate` 3/3 on the final exe `0633c484`; proofs 1–4 green on r0001 and r0004; CI green. Found unplanned: a
+server-to-client memory write refused on the client (U6, SECURITY); the Sprint 11 chat bound is not on the game-lobby
+path (O2, SECURITY 'partly fixed', #26 restated); a stub's table slot can hold an owner's resume entry (#60); the
+loop lock's queue proven by a night hand-off and a first-time scheduled ladder. Not done on purpose: V5's audio steps
+(the client muted), O1's console-peer leg (the owner's hands). Rulings S13-R1..R14. The DOC_MAINTENANCE §5 review
+fixed 24 stale claims across nine documents and three KNOWN rows; the §7 stack read found the audit clean, relabelled
+two issues, rewrote two bars, and placed three evidence notes. The Outcome in the plan has the bar row by row.
+
+**As it stood while open:**
 
 Opened by the local controller on the owner's instruction of the same night ("audit the entire structure of the
 project, compile a master list, clean up docs as you go, and start your own sprint 13"). The audit is

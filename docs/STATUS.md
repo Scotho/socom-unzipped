@@ -1,7 +1,7 @@
 # Project status — "Current state" below is kept current; everything under it is a dated log, newest first
 
 ## Current state (keep it short; update when it changes, dated entries below are the log)
-- **2026-09-25 08:40Z -- Sprint 13 ("nothing carried twice") is OPEN on `sprint-13`, off `main` at `74fe2a9b`, and closing tonight.** The plan `docs/superpowers/plans/2026-09-25-sprint-13.md` (its Log) is the live state; `docs/CURRENT_SPRINT.md` "Sprint 13 — OPEN" is the block. What Sprint 12 carried in: the r0004 leg of its proof ran green (`s13_proof_gate_r0004` 3/3 PINS MATCH, `2c873710`); the story's five missing days are written (S13 S4, `d4a8f0ea`). The previous bullet (Sprint 12 CLOSED) is the log's 2026-09-25 (morning) entry below.
+- **2026-09-26 04:17Z -- Sprint 13 ("nothing carried twice") is CLOSED on `sprint-13`; the PR to `main` and the tag `v0.13.0` follow the close-out commit.** The record is `docs/CURRENT_SPRINT.md` "Sprint 13 -- CLOSED" and the plan's Outcome. Next: Sprint 14 "guards, not sentences" (its pair is in `docs/superpowers/`, opened by its own controller off `main` after the merge), then Sprint 15. Carried to the owner: #25, #26, #42 (HUMAN_TASKS O16).
 - Older state bullets: the twenty below the one above (2026-09-19 to 2026-09-25 early) became dated
   entries of the log below on 2026-09-25, verbatim, one each (Sprint 13 Task R1, R268). This block has a byte
   ceiling (`tools_py/docmaint.py` `CEILINGS`): when the state changes, replace the bullet above and make the old
@@ -15,6 +15,10 @@
   now points instead of stating.)
 
 
+
+### 2026-09-26 — the Sprint 13 open bullet, moved from Current state at the close
+
+- **2026-09-25 08:40Z -- Sprint 13 ("nothing carried twice") is OPEN on `sprint-13`, off `main` at `74fe2a9b`, and closing tonight.** The plan `docs/superpowers/plans/2026-09-25-sprint-13.md` (its Log) is the live state; `docs/CURRENT_SPRINT.md` "Sprint 13 — OPEN" is the block. What Sprint 12 carried in: the r0004 leg of its proof ran green (`s13_proof_gate_r0004` 3/3 PINS MATCH, `2c873710`); the story's five missing days are written (S13 S4, `d4a8f0ea`). The previous bullet (Sprint 12 CLOSED) is the log's 2026-09-25 (morning) entry below.
 
 ## 2026-09-25 (morning) — the Current state bullet from the Sprint 12 close to Sprint 13's close review
 

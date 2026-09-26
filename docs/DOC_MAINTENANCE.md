@@ -1,6 +1,6 @@
 # Documentation maintenance — the classes, the registry, and the sprint-close review
 
-**Last full review: 2026-09-25 (Sprint 12 close, the same day as Sprint 11's).** Next: at the next sprint's close, by its controller.
+**Last full review: 2026-09-26 (Sprint 13 close; §5 by a read-only agent's table, 24 findings fixed; §7 by a read-only agent's table, the audit clean, acted on in S13-R12 and S13-R14).** Next: at the next sprint's close, by its controller.
 
 > **The first review under this schema, 2026-09-23 (Sprint 10's close), and what it changed.** Step 1: `docmaint`
 > OK. Step 2: every L document read for truth by a read-only agent against the tree and the night's ledgers — 56
