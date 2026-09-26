@@ -35,6 +35,11 @@ why), and records the numbers in its pins.json as an informational
 A launch refuses (exit 5, REFUSE_STALE) when the exe is older than the newest file it is built from (freshness_roots;
 Sprint 14 E4); `--stale-ok` proceeds and the summary says so. Every summary and pins.json carries `TREE <head>
 dirty=<n>` -- the tree the gate measured.
+
+A fourth leg (Sprint 14 E2) scores a finished stamp against frozen references and launches nothing:
+  python -m tools_py.parity.gate --capture-heldout logs/parity/gate/<green stamp>   # once, exit 9 if refused
+  python -m tools_py.parity.gate --leg heldout logs/parity/gate/<stamp>             # 0 only at 12/12; 6 before
+the captures. See LEG_REFS_DIR below; the name appears in this file and the merged-chain template only.
 """
 import argparse
 import glob
@@ -749,6 +754,185 @@ def score_baseline(stamp, revision=None):
     return 1 if failed else 0
 
 
+# Sprint 14 E2 -- the heldout leg (the spec's D6: frozen scene references the agents never see). Twelve step captures
+# the three stages already take are frozen once, from a green 3/3 gate stamp, into LEG_REFS_DIR (`--capture-heldout`,
+# the controller's, at a quiet window); `--leg heldout <stamp>` then scores a stamp the chain made against them. It
+# never launches, never locks, never reads the disk: it reads two directories. The name lives in this file and the
+# merged-chain template only -- tools_py/tests' isolation test fails on any other file that mentions it (docs/ aside),
+# so no skill, brief or DEVELOPING paragraph can name it.
+#
+# The stamps: drive.py writes exactly one `s<NN>_<buttons>.png` per step of a stage's script (the settled screen;
+# the `s<NN>_burst_<k>.png` frames and the `w<NN>_<k>.png` waits are other files), under <stamp>/<stage>/. The
+# buttons part moves with the run (an `ifref` step is `s12_RIGHT` when its dialog showed, `s12_none` when not), so a
+# reference is filed by stage and step only: <stage>_s<NN>.png.
+#
+# The scorer and the bar: the one comparison of a capture against a reference image the gate already makes --
+# score_title's, compare.score through _score_value, at TITLE_MIN_SCORE. The other stages' scorers are structural
+# (black_rows' band peak, the briefing band, the gameplay band, live pairs) and compare no capture with a reference,
+# so there is no other bar to take; and no new threshold is set here (a threshold is a KNOWN row or a test).
+LEG_REFS_DIR = os.path.join("scripts", "parity", "refs", "heldout")
+LEGS = ("heldout",)
+# The twelve are R280's (the E2 review, 2026-09-26), chosen for stability across green runs: over 36 archived green
+# stamps the plan's first choice (transition s02 s05, mission s01 s04) scored 12/12 on at most 11 of the other 35,
+# because those steps land on boot screens that shift by one screen between runs (s02: main menu or select rank;
+# mission s01: attract or menu; s04: black or briefing). Every step from 6 on in both stages, and title s00..s18,
+# scores 35/35. So the leg covers the menu and the briefing; the transition's own structure is score_transition's.
+LEG_STAMPS = (
+    ("title_s03", "title", 3), ("title_s09", "title", 9), ("title_s15", "title", 15),
+    ("transition_s06", "transition", 6), ("transition_s08", "transition", 8),
+    ("mission_s06", "mission", 6), ("mission_s08", "mission", 8), ("mission_s10", "mission", 10),
+    ("mission_s12", "mission", 12), ("mission_s16", "mission", 16), ("mission_s20", "mission", 20),
+    ("mission_s24", "mission", 24),
+)
+# 6 and 9: free in this file and in run_detached.sh (2 lock busy, 3 disk, 4 nothing to score, 5 stale exe, 7 pin drift,
+# 8 unknown revision). 6: the references do not exist yet, so the leg cannot run -- not a FAIL of the exe. 9: a
+# capture refused (the directory exists: a re-capture is a deliberate delete first; or the stamp is not a green 3/3
+# with every stamp present).
+REFUSE_NO_REFS = 6
+REFUSE_CAPTURE = 9
+GATE_STAGES = ("title", "transition", "mission")
+
+
+def leg_refs_root():
+    return os.path.join(ROOT, LEG_REFS_DIR)
+
+
+def leg_ref_name(ref):
+    """The pin name of a reference: its path as LEG_REFS_DIR spells it, forward slashes (repo-relative in the tree)."""
+    return _rel(os.path.join(LEG_REFS_DIR, ref + ".png"))
+
+
+def stamp_capture(run_dir, stage, step):
+    """<run_dir>/<stage>/s<NN>_<buttons>.png, the step's own capture (never a burst frame), or None."""
+    caps = sorted(p for p in glob.glob(os.path.join(run_dir, stage, "s%02d_*.png" % step))
+                  if "_burst_" not in os.path.basename(p))
+    return caps[0] if caps else None
+
+
+def run_is_green(run_dir):
+    """(ok, why): does <run_dir>/summary.txt record a green 3/3 -- a PASS line for each of the three stages, no FAIL,
+    a pin verdict of MATCH or ACCEPTED, and no --stale-ok acceptance (a reference must be of the exe its tree says)."""
+    try:
+        with open(os.path.join(run_dir, "summary.txt"), encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+    except OSError as e:
+        return False, "no summary.txt (%s)" % (e.strerror or e)
+    missing = [s for s in GATE_STAGES if not any(l.startswith("PASS %s (" % s) for l in lines)]
+    if missing:
+        return False, "no PASS line for %s" % ", ".join(missing)
+    failed = [l.split(" (", 1)[0] for l in lines if l.startswith("FAIL ")]
+    if failed:
+        return False, "; ".join(failed)
+    if not any(l.startswith(("PINS MATCH", "PINS ACCEPTED")) for l in lines):
+        return False, "its pins did not match (no PINS MATCH or PINS ACCEPTED line)"
+    if any("STALE exe accepted" in l for l in lines):
+        return False, "it ran a stale exe (--stale-ok)"
+    return True, "green 3/3"
+
+
+def capture_leg(run_dir):
+    """--capture-heldout: freeze the twelve stamps of a green 3/3 stamp as the leg's references, and pin them."""
+    root = leg_refs_root()
+    if os.path.exists(root):
+        print("gate: %s already exists -- refusing to capture over it (a re-capture is a deliberate delete first)"
+              % _rel(LEG_REFS_DIR))
+        return REFUSE_CAPTURE
+    ok, why = run_is_green(run_dir)
+    if not ok:
+        print("gate: %s is not a green 3/3 gate stamp (%s) -- refusing to capture" % (run_dir, why))
+        return REFUSE_CAPTURE
+    found = [(ref, stamp_capture(run_dir, stage, step), stage, step) for ref, stage, step in LEG_STAMPS]
+    gaps = ["%s s%02d" % (stage, step) for _, cap, stage, step in found if cap is None]
+    if gaps:
+        print("gate: %s has no capture for %s -- refusing to capture" % (run_dir, ", ".join(gaps)))
+        return REFUSE_CAPTURE
+    os.makedirs(root)
+    try:
+        pinned = OrderedDict()
+        for ref, cap, _, _ in found:
+            dst = os.path.join(root, ref + ".png")
+            shutil.copyfile(cap, dst)
+            pinned[leg_ref_name(ref)] = pins.file_sha256(dst)
+            print("CAPTURED %s <- %s" % (ref, _rel(cap)))
+        doc = {
+            "_about": "The references of the gate's fourth leg (Sprint 14 E2): sha256 of each frozen capture, the "
+                      "shape of scripts/parity/pins.json. The leg refuses to score (exit 7) while any reference "
+                      "differs from its pin. Captured once; a re-capture is a deliberate delete first.",
+            "accepted": "%s -- gate --capture-%s, stamp %s" % (time.strftime("%Y-%m-%d %H:%M"), LEGS[0],
+                                                               os.path.basename(os.path.normpath(run_dir))),
+            "pins": pinned,
+        }
+        with open(os.path.join(root, pins.RECORD_NAME), "w", encoding="utf-8") as f:
+            json.dump(doc, f, indent=1)
+            f.write("\n")
+    except BaseException:
+        shutil.rmtree(root, ignore_errors=True)       # never a half-captured directory
+        raise
+    print("CAPTURE %d references -> %s (from %s)" % (len(found), _rel(LEG_REFS_DIR), _rel(run_dir)))
+    return 0
+
+
+def leg_pin_drifts(root):
+    """The references that are missing or differ from the directory's pins.json, as printable names."""
+    expected = pins.load_expected(os.path.join(root, pins.RECORD_NAME))
+    if expected is None:
+        return ["%s (no pins.json)" % _rel(LEG_REFS_DIR)]
+    bad = []
+    for ref, _, _ in LEG_STAMPS:
+        name = leg_ref_name(ref)
+        path = os.path.join(root, ref + ".png")
+        if name not in expected:
+            bad.append("%s (unpinned)" % name)
+        elif not os.path.isfile(path):
+            bad.append("%s (missing)" % name)
+        elif pins.file_sha256(path) != expected[name]:
+            bad.append("%s (sha256 differs from its pin)" % name)
+    return bad
+
+
+def score_leg(run_dir):
+    """--leg heldout: (rc, summary line). Each stamp against its reference at TITLE_MIN_SCORE; exit 0 only at 12/12.
+    The summary line replaces any earlier one of this leg in <run_dir>/summary.txt."""
+    root = leg_refs_root()
+    tag = LEGS[0].upper()
+    if not os.path.isdir(root):
+        print("gate: no references captured yet (%s absent) -- the %s leg cannot run" % (_rel(LEG_REFS_DIR), tag))
+        return REFUSE_NO_REFS
+    if not os.path.isdir(run_dir):
+        print("gate: nothing to score: %s is not a directory" % run_dir)
+        return 4
+    drifts = leg_pin_drifts(root)
+    if drifts:
+        print("gate: %s REFUSED -- references off their pins: %s" % (tag, "; ".join(drifts)))
+        return 7
+    passed, parts = 0, []
+    for ref, stage, step in LEG_STAMPS:
+        cap = stamp_capture(run_dir, stage, step)
+        if cap is None:
+            print("%s %s MISSING (no s%02d capture in %s/)" % (tag, ref, step, stage))
+            parts.append("%s=missing" % ref)
+            continue
+        s = _score_value(os.path.join(root, ref + ".png"), cap)
+        # TITLE_MIN_SCORE measured 2026-09-26 against 36 archived green stamps at the R280 steps: 35/35 at >= 90 (the bar); the lowest pairwise score 95.3 (transition s06, mission s06).
+        ok = s >= TITLE_MIN_SCORE
+        passed += ok
+        print("%s %s %s %.1f (%s/%s)" % (tag, ref, "PASS" if ok else "FAIL", s, stage, os.path.basename(cap)))
+        parts.append("%s=%.1f" % (ref, s))
+    total = len(LEG_STAMPS)
+    line = "%s %d/%d %s (>= %.1f: %s)" % (tag, passed, total, "PASS" if passed == total else "FAIL",
+                                          TITLE_MIN_SCORE, " ".join(parts))
+    summary = os.path.join(run_dir, "summary.txt")
+    try:
+        with open(summary, encoding="utf-8") as f:
+            kept = [l for l in f.read().splitlines() if not l.startswith(tag + " ")]
+    except OSError:
+        kept = []
+    with open(summary, "w", encoding="utf-8") as f:
+        f.write("".join(l + "\n" for l in kept + [line]))
+    print(line)
+    return 0 if passed == total else 1
+
+
 def exe_line(env=None):
     """Which runner this gate scores: path, size, SHA-256. Sprint 9 Goal 2 gates the release build through
     $SOCOM_EXE (hostplatform.runtime_exe), and a record that does not say which binary it ran proves nothing."""
@@ -1227,7 +1411,23 @@ def main(argv=None):
                          "recompiler sources, CMake files and build.sh, and its revision's generated code and "
                          "recompiler inputs) instead of refusing with exit %d; the summary says so. The "
                          "merged-chain template never passes it" % REFUSE_STALE)
+    ap.add_argument("--leg", nargs=2, metavar=("LEG", "RUN_DIR"),
+                    help="score a finished gate stamp's leg %s against its frozen references; no launch, no lock"
+                         % "/".join(LEGS))
+    ap.add_argument("--capture-" + LEGS[0], metavar="RUN_DIR", dest="capture_leg",
+                    help="freeze a green 3/3 stamp's twelve step captures as the leg's references (once)")
     args = ap.parse_args(argv)
+
+    # The fourth leg reads two directories and writes a summary line: exempt from the disk refusal, the freshness
+    # check, the pins and the lock, like the re-scores below.
+    if args.leg or args.capture_leg:
+        if args.accept_pins or args.baseline or args.revision:
+            ap.error("--leg and --capture-%s take no other flag" % LEGS[0])
+        if args.capture_leg:
+            return capture_leg(args.capture_leg)
+        if args.leg[0] not in LEGS:
+            ap.error("--leg: unknown leg %r" % args.leg[0])
+        return score_leg(args.leg[1])
 
     if args.baseline:
         if args.accept_pins:

@@ -2,7 +2,7 @@
 # The merged chain -- the gate unit (Sprint 14 Task W2; spec Milestone W, W2). An agent's task is DONE (code) at a
 # clean review of its branch; the proof is this chain, run ONCE per batch of merged branches on the sprint branch:
 #
-#   recomp -> runtime -> suites -> gate (on the exe it just built) -> held-out leg (E2) -> release build ->
+#   recomp -> runtime -> suites -> gate (on the exe it just built) -> the fourth leg (E2, scored on the gate's run) -> release build ->
 #   the release archive and PLAYTEST's build block (D5: playtest_block.sh --release)
 #
 # RUN A COPY, NEVER THIS FILE: bash reads a script by offset, and a merge that rewrites the tracked template under a
@@ -160,12 +160,11 @@ fi
 step test "test" ./build.sh test
 step gate "gate" env SOCOM_EXE="$EXE" "$PYTHON" -m tools_py.parity.gate --stamp "$STAMP" --owner "$OWNER"
 if [ -d "$LEG_REFS" ]; then
-  step leg "held-out leg" env SOCOM_EXE="$EXE" "$PYTHON" -m tools_py.parity.gate --leg heldout \
-    --stamp "${STAMP}_heldout" --owner "$OWNER"
+  step leg "the fourth leg" env SOCOM_EXE="$EXE" "$PYTHON" -m tools_py.parity.gate --leg heldout "$ROOT/logs/parity/gate/$STAMP"
 else
   N=$((N + 1))
   echo
-  echo "=== step $N: held-out leg === $(date -u +%FT%TZ)"
+  echo "=== step $N: the fourth leg === $(date -u +%FT%TZ)"
   echo "SKIPPED: $LEG_REFS does not exist yet (Task E2 captures its references at the first quiet window);" \
     "nothing is scored and nothing is claimed for this leg"
 fi

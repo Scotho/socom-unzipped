@@ -24,7 +24,7 @@ CHAIN = os.path.join(ROOT, "scripts", "parity", "merged_chain.sh")
 LOCK_SH = os.path.join(ROOT, "scripts", "loop_lock.sh")
 PY_ENV = os.path.join(ROOT, "scripts", "python_env.sh")
 GIT = shutil.which("git")
-STEPS = ["recomp", "runtime", "test", "gate", "held-out leg", "release", "archive and PLAYTEST block"]
+STEPS = ["recomp", "runtime", "test", "gate", "the fourth leg", "release", "archive and PLAYTEST block"]
 
 FAKE_BUILD = """#!/usr/bin/env bash
 # a fake build.sh: logs its step; FAKE_FAIL=<step> fails it, FAKE_DIRTY=<step> edits a tracked file
