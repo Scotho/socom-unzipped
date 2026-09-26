@@ -14,6 +14,7 @@ commits and one; the docs share of the churn 1 line of 5. A queue log of three T
 """
 import contextlib
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -295,13 +296,136 @@ class ShallowCloneTest(unittest.TestCase):
         self.assertFalse(os.path.exists(out))
 
 
+def _assistant(ts, mid, usage, sidechain=False):
+    """One transcript line of an assistant turn, the shape Claude Code writes (Task M2's brief)."""
+    line = {"type": "assistant", "timestamp": ts, "sessionId": "zq9x7",
+            "message": {"id": mid, "role": "assistant", "content": [{"type": "text", "text": "SECRET CONTENT"}],
+                        "usage": {"input_tokens": usage[0], "output_tokens": usage[1],
+                                  "cache_read_input_tokens": usage[2], "cache_creation_input_tokens": usage[3]}}}
+    if sidechain:
+        line.update(isSidechain=True, agentId="agent-1")
+    return json.dumps(line)
+
+
+# Two planted transcripts, three assistant messages each (all stamped inside the test repo's window, 2026-01-01 to
+# the merge at 2026-01-06T12:00:00Z). One: a user line (no usage) and a repeat of m2's line, which Claude Code writes
+# once per content block with the same message id and usage -- counted once. Two: its third message a sidechain (an
+# agent's), a malformed line, and a line stamped after the rendered commit (left out, so --check stays stable).
+TRANSCRIPT_ONE = "\n".join([
+    json.dumps({"type": "user", "timestamp": "2026-01-03T00:00:00Z", "message": {"content": "SECRET PROMPT"}}),
+    _assistant("2026-01-03T00:00:01Z", "m1", (10, 100, 1000, 10000)),
+    _assistant("2026-01-03T00:00:02Z", "m2", (20, 200, 2000, 20000)),
+    _assistant("2026-01-03T00:00:02Z", "m2", (20, 200, 2000, 20000)),
+    _assistant("2026-01-03T00:00:03Z", "m3", (30, 300, 3000, 30000)),
+]) + "\n"
+TRANSCRIPT_TWO = "\n".join([
+    _assistant("2026-01-04T00:00:01Z", "n1", (1, 2, 3, 4)),
+    "{not json at all",
+    _assistant("2026-01-04T00:00:02Z", "n2", (5, 6, 7, 8)),
+    _assistant("2026-01-04T00:00:03Z", "n3", (100, 200, 300, 400), sidechain=True),
+    _assistant("2027-01-01T00:00:00Z", "n4", (9999, 9999, 9999, 9999)),
+]) + "\n"
+
+
+class TokenTest(_WithRepo):
+    """Task M2: the token spend, summed from the transcripts a directory holds, only sums on the page."""
+
+    def setUp(self):
+        self.dir = os.path.join(tempfile.mkdtemp(prefix="flow_tx_"), "project-key")
+        os.makedirs(self.dir)
+        for name, text in (("sess-one.jsonl", TRANSCRIPT_ONE), ("sess-two.jsonl", TRANSCRIPT_TWO)):
+            with open(os.path.join(self.dir, name), "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(text)
+
+    def tearDown(self):
+        shutil.rmtree(os.path.dirname(self.dir), ignore_errors=True)
+
+    def measure(self, transcripts):
+        return flow.measure(self.repo.path, "2026-01-01", self.queue, self.backlog, transcripts=transcripts)
+
+    def test_the_sums_per_transcript_and_the_total(self):
+        t = self.measure(self.dir)["tokens"]
+        self.assertEqual(t["state"], "measured")
+        self.assertEqual(t["sessions"]["sess-one"]["main"],
+                         {"messages": 3, "input": 60, "output": 600, "cache_read": 6000, "cache_creation": 60000})
+        self.assertEqual(t["sessions"]["sess-one"]["agents"],
+                         {"messages": 0, "input": 0, "output": 0, "cache_read": 0, "cache_creation": 0})
+        self.assertEqual(t["sessions"]["sess-two"]["main"],
+                         {"messages": 2, "input": 6, "output": 8, "cache_read": 10, "cache_creation": 12})
+        self.assertEqual(t["sessions"]["sess-two"]["agents"],
+                         {"messages": 1, "input": 100, "output": 200, "cache_read": 300, "cache_creation": 400})
+        self.assertEqual(t["total"],
+                         {"messages": 6, "input": 166, "output": 808, "cache_read": 6310, "cache_creation": 60412})
+        self.assertEqual((t["malformed"], t["outside"]), (1, 1))
+
+    def test_the_page_shows_sums_never_content_or_a_path(self):
+        page = flow.render(self.measure(self.dir))
+        line = [l for l in page.splitlines() if l.startswith("- **token spend**")]
+        self.assertEqual(len(line), 1)
+        self.assertIn("input 166, output 808, cache-read 6310, cache-creation 60412 tokens over 6 messages",
+                      line[0])
+        self.assertIn("agents (sidechains): input 100, output 200", line[0])
+        self.assertIn("1 malformed line skipped", line[0])
+        self.assertIn("read only by name", line[0])
+        self.assertIn("transcript ids", page)
+        self.assertIn("| sess-one | session | 3 | 60 | 600 | 6000 | 60000 |", page)
+        self.assertIn("| sess-two | agents | 1 | 100 | 200 | 300 | 400 |", page)
+        self.assertIn("`project-key`", page)
+        for leak in ("SECRET", "zq9x7", os.path.dirname(self.dir), os.path.dirname(self.dir).replace("\\", "/")):
+            self.assertNotIn(leak, page)
+
+    def test_without_the_variable_the_page_says_not_measured(self):
+        page = flow.render(self.measure(None))
+        self.assertIn("**token spend**: not measured: SOCOM_CLAUDE_TRANSCRIPTS is not set", page)
+        self.assertNotIn("## Tokens per transcript", page)
+
+    def test_a_missing_or_empty_directory_says_so(self):
+        m = self.measure(os.path.join(self.dir, "absent"))
+        self.assertIn("**token spend**: not measured: SOCOM_CLAUDE_TRANSCRIPTS names `absent`, which is not a "
+                      "directory", flow.render(m))
+        empty = os.path.join(self.dir, "empty")
+        os.makedirs(empty)
+        self.assertIn("**token spend**: not measured: SOCOM_CLAUDE_TRANSCRIPTS names `empty`, which holds no .jsonl "
+                      "transcript", flow.render(self.measure(empty)))
+
+    def test_the_cli_reads_the_variable_and_usage_prints_only_the_token_lines(self):
+        out = os.path.join(os.path.dirname(self.dir), "FLOW.md")
+        args = ["--repo", self.repo.path, "--out", out, "--queue-log", self.queue, "--backlog", self.backlog,
+                "--since", "2026-01-01"]
+        old = os.environ.get(flow.TRANSCRIPTS_VAR)
+        os.environ[flow.TRANSCRIPTS_VAR] = self.dir
+        try:
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                self.assertEqual(flow.main(args + ["--usage"]), 0)
+            self.assertFalse(os.path.exists(out), "--usage writes nothing")
+            self.assertTrue(buf.getvalue().startswith("- **token spend**: sums over 2 transcripts"), buf.getvalue())
+            self.assertIn("| sess-two | session | 2 |", buf.getvalue())
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(flow.main(args), 0)
+                self.assertEqual(flow.main(args[:-2] + ["--check"]), 0, "the window ends at the rendered commit")
+        finally:
+            if old is None:
+                os.environ.pop(flow.TRANSCRIPTS_VAR, None)
+            else:
+                os.environ[flow.TRANSCRIPTS_VAR] = old
+
+    def test_the_tree_test_holds_everything_but_the_machine_local_lines(self):
+        self.assertEqual(flow.held(flow.render(self.measure(self.dir))), flow.held(flow.render(self.measure(None))))
+
+    def test_the_fix_round_histogram_explains_rounds_committed_on_a_sprint_branch(self):
+        page = flow.render(self.measure(None))
+        self.assertIn("rounds committed straight on a sprint branch count at the sprint's merge into main", page)
+
+
 class TreeTest(unittest.TestCase):
     """Class G: the page on this tree is a render of the commit it names, every suite run.
 
     The page counts commits, so it can never be a render of the commit that writes it (that commit is one more);
     it names the commit it was rendered at and the suite re-renders there. The ticket-wait line is left out of the
     comparison: the queue log is a git-ignored local file, so only `flow --check` on the machine that has it can
-    hold that line."""
+    hold that line. So are the token lines (Task M2): the transcripts are local to the machine that ran the
+    sessions (flow.held())."""
 
     def test_the_page_is_a_render_of_the_commit_it_names(self):
         reason = flow.changelog.shallow_reason(REPO)
@@ -311,11 +435,7 @@ class TreeTest(unittest.TestCase):
             on_disk = fh.read()
         rev, since = flow.page_header(on_disk)
         fresh = flow.render(flow.measure(REPO, since, None, None, rev=rev))
-
-        def held(text):
-            return [l for l in text.splitlines() if not l.startswith("- **%s**" % flow.LABELS["median_ticket_wait_s"])]
-
-        self.assertTrue(held(on_disk) == held(fresh),
+        self.assertTrue(flow.held(on_disk) == flow.held(fresh),
                         "docs/FLOW.md is not a render of %s: run python -m tools_py.flow and commit it" % rev)
 
 

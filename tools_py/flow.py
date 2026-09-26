@@ -1,7 +1,7 @@
 """The flow page: how work moves through this repository, measured from git (Sprint 14 Task M1; the review's F8).
 
-Run: python -m tools_py.flow [--since DATE] [--check] [--rev REV] [--queue-log PATH] [--backlog PATH]
-                             [--repo PATH] [--out FILE]
+Run: python -m tools_py.flow [--since DATE] [--check] [--usage] [--rev REV] [--queue-log PATH]
+                             [--backlog PATH] [--repo PATH] [--out FILE]
 
 Writes `docs/FLOW.md`. The numbers are the ones `docs/audits/2026-09-26-autonomy-structure-review/03-git-forensics.md`
 computed once by hand, with its methods; each line of the page names the command that reproduces it. They are
@@ -44,6 +44,21 @@ What each number is, and where it differs from note 03:
   sessions              the distinct `Claude-Session:` trailer values in the bodies of the commits since --since
                         (note 03 section 1.3's `grep '^Claude-Session:' | sort -u`).
   commits_per_session   {session: commits}; the page shows the counts, largest first, not the URLs.
+  tokens                (Task M2) the token spend, local only. When the environment variable SOCOM_CLAUDE_TRANSCRIPTS
+                        names a directory, the `.jsonl` files directly in it (Claude Code's per-session transcripts,
+                        ~/.claude/projects/<project-key>/<uuid>.jsonl; subdirectories are not walked) are read and the
+                        `message.usage` fields of their lines summed per transcript: input_tokens, output_tokens,
+                        cache_read_input_tokens, cache_creation_input_tokens and a message count, the session's own
+                        lines and its agents' (`isSidechain: true`) apart, and a total. A line repeating a message id
+                        already counted in that transcript is skipped (Claude Code writes one line per content block,
+                        each carrying the message's usage). A line whose timestamp is before --since or after the
+                        rendered commit is left out, as the queue log's are, so a transcript still being written does
+                        not make the page stale; a usage line with no timestamp cannot be placed and is left out too.
+                        A line that is not JSON is skipped and counted. The page holds ONLY the sums, keyed by the
+                        transcript's file stem (a transcript id: it need not equal a commit's Claude-Session trailer
+                        id, and no mapping is assumed), and the directory's last component: never a line of content,
+                        never a path. Unset, the page says "not measured" and why; set to a missing directory or one
+                        holding no transcript, it says that. `--usage` prints the token lines alone and writes nothing.
 
 "Since" is a UTC calendar day and every commit is placed by its committer time (note 03 used the author date).
 
@@ -52,12 +67,15 @@ suite test renders at the commit that last wrote the page). The flow page counts
 of the commit that writes it -- that commit is one more -- and so it names the commit it was rendered at, and
 `--check` re-renders there (with the --since the page names) unless --rev is given: `--check` asks "is this file what
 the tool says about that commit", and `--check --rev HEAD` asks "is it current". Regenerate at the close. On a shallow
-clone the command refuses with exit 2 (`changelog.ShallowHistory`), as the changelog does.
+clone the command refuses with exit 2 (`changelog.ShallowHistory`), as the changelog does. The ticket-wait and token
+lines come from files local to one machine, so `--check` holds them only where those files are; the suite's page test
+compares held() -- the page without them.
 """
 import argparse
 import calendar
 import datetime
 import difflib
+import json
 import os
 import re
 import statistics
@@ -75,17 +93,22 @@ FIX_ROUND = re.compile(r"review round|fix round")
 FIX_ROUND_BROAD = re.compile(r"review round|fix round|fix\(|review")
 PLAN_RECORD = re.compile(r"^docs\(sprint-[0-9]+\)")    # [0-9], not \d: the page prints it for grep -E
 ROUND_RULE = ("A round counts once, at the first merge whose range brings it in; merge commits and docs(sprint-N) "
-              "plan commits are not rounds")
+              "plan commits are not rounds; rounds committed straight on a sprint branch count at the sprint's merge "
+              "into main (Sprint 11's seven at PR #49)")
 AGAIN = " again"
 SESSION = re.compile(r"^Claude-Session:\s*(\S+)", re.M)
 TICKET = re.compile(r"^(?:(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ)\s+)?.*?\bTICKET\s+(\S+)\s+waited\s+(\d+)\b")
 DATE = re.compile(r"\b(\d{4}-\d\d-\d\d)\b")
 HEADER = re.compile(r"^Rendered at commit `([0-9a-f]{40})`.*? since (\d{4}-\d\d-\d\d)\b", re.M)
 WEEK = 7 * 86400
+TRANSCRIPTS_VAR = "SOCOM_CLAUDE_TRANSCRIPTS"
+USAGE_FIELDS = (("input", "input_tokens"), ("output", "output_tokens"), ("cache_read", "cache_read_input_tokens"),
+                ("cache_creation", "cache_creation_input_tokens"))
+TOKENS_SECTION = "## Tokens per transcript"
 
 NUMBERS = ("merges_per_day", "fix_rounds_per_merge", "fix_rounds_per_merge_broad", "again_subjects",
            "docs_share_of_churn_7d", "median_ticket_wait_s", "open_issue_age_days", "sessions",
-           "commits_per_session")
+           "commits_per_session", "tokens")
 LABELS = {
     "merges_per_day": "merges per day",
     "fix_rounds_per_merge": "fix rounds per merge",
@@ -96,7 +119,9 @@ LABELS = {
     "open_issue_age_days": "open-issue age",
     "sessions": "sessions",
     "commits_per_session": "commits per session",
+    "tokens": "token spend",
 }
+LOCAL_ONLY = ("median_ticket_wait_s", "tokens")    # lines from files on one machine: held() leaves them out
 
 
 def _git(repo, *args):
@@ -156,6 +181,68 @@ def ticket_waits(path, since, until_stamp):
     return waits, unstamped
 
 
+def _zero():
+    return dict([("messages", 0)] + [(k, 0) for k, _ in USAGE_FIELDS])
+
+
+def transcript_usage(directory, since, until_stamp):
+    """The token sums of the `.jsonl` transcripts directly in `directory`, their lines stamped within [since,
+    until_stamp] (the module docstring's "tokens"). Only numbers leave this function, and the directory's last
+    component: {"state": "unset"|"missing"|"empty"|"measured", "name", "sessions": {stem: {"main": sums,
+    "agents": sums}}, "total", "agents", "malformed", "outside", "unplaced"}."""
+    if not directory:
+        return {"state": "unset"}
+    name = os.path.basename(os.path.normpath(directory))
+    if not os.path.isdir(directory):
+        return {"state": "missing", "name": name}
+    files = sorted(f for f in os.listdir(directory)
+                   if f.endswith(".jsonl") and os.path.isfile(os.path.join(directory, f)))
+    if not files:
+        return {"state": "empty", "name": name}
+    sessions, total, agents = {}, _zero(), _zero()
+    malformed = outside = unplaced = 0
+    for f in files:
+        sums = {"main": _zero(), "agents": _zero()}
+        seen = set()
+        with open(os.path.join(directory, f), "r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                try:
+                    obj = json.loads(line)
+                    msg = obj.get("message") if isinstance(obj, dict) else None
+                    usage = msg.get("usage") if isinstance(msg, dict) else None
+                    if not isinstance(obj, dict):
+                        raise ValueError("not an object")
+                    if not isinstance(usage, dict):
+                        continue
+                    counts = [(k, int(usage.get(field) or 0)) for k, field in USAGE_FIELDS]
+                except (ValueError, TypeError, AttributeError):
+                    malformed += 1
+                    continue
+                stamp = obj.get("timestamp")
+                if not isinstance(stamp, str) or len(stamp) < 19:
+                    unplaced += 1
+                    continue
+                stamp = stamp[:19] + "Z"
+                if stamp > until_stamp or stamp[:10] < since:
+                    outside += 1
+                    continue
+                mid = msg.get("id")
+                if mid is not None:
+                    if mid in seen:
+                        continue
+                    seen.add(mid)
+                who = "agents" if obj.get("isSidechain") else "main"
+                for bucket in (sums[who], total) + ((agents,) if who == "agents" else ()):
+                    bucket["messages"] += 1
+                    for k, n in counts:
+                        bucket[k] += n
+        sessions[f[:-len(".jsonl")]] = sums
+    return {"state": "measured", "name": name, "sessions": sessions, "total": total, "agents": agents,
+            "malformed": malformed, "outside": outside, "unplaced": unplaced}
+
+
 def issue_ages(text, day):
     """The ages in days at `day` of the open issues in a BACKLOG text's open-issues table, from its Opened column;
     None when there is no such column."""
@@ -211,11 +298,12 @@ def _numstat(repo, rev, start, end):
     return docs, total
 
 
-def measure(repo, since, queue_log, backlog_md, rev="HEAD"):
+def measure(repo, since, queue_log, backlog_md, rev="HEAD", transcripts=None):
     """The numbers of the page, measured at `rev` since the UTC day `since` (the module docstring defines each).
 
     `queue_log`: the lock's queue log, or None. `backlog_md`: a BACKLOG file to read, or None to read
-    docs/BACKLOG.md as it stood at `rev`. Raises changelog.ShallowHistory on a shallow clone."""
+    docs/BACKLOG.md as it stood at `rev`. `transcripts`: the directory SOCOM_CLAUDE_TRANSCRIPTS names, or None
+    (unset: the tokens are not measured). Raises changelog.ShallowHistory on a shallow clone."""
     rows = changelog.entries(repo, rev)
     g = changelog._Graph(repo, rev)
     head = g.head
@@ -286,6 +374,7 @@ def measure(repo, since, queue_log, backlog_md, rev="HEAD"):
         "open_issue_age_days": _median(ages or []),
         "sessions": len(per_session),
         "commits_per_session": dict(sorted(per_session.items(), key=lambda kv: (-kv[1], kv[0]))),
+        "tokens": transcript_usage(transcripts, since, until),
     }
 
 
@@ -298,6 +387,69 @@ def _rounds(hist, n):
     at_most_one = sum(v for k, v in hist.items() if k <= 1)
     return "%s; none: %s, at most one: %s" % ("; ".join(parts) or "no merges", _pct(hist.get(0, 0), n),
                                               _pct(at_most_one, n))
+
+
+def _sums(b):
+    return "input %d, output %d, cache-read %d, cache-creation %d tokens over %s" % (
+        b["input"], b["output"], b["cache_read"], b["cache_creation"], _plural(b["messages"], "message"))
+
+
+def _plural(n, word):
+    return "%d %s%s" % (n, word, "" if n == 1 else "s")
+
+
+def token_lines(t):
+    """(value, command, table lines) of the tokens number, from transcript_usage()'s dict: sums only."""
+    cmd = ("`%s=<the transcripts directory> python -m tools_py.flow --usage` (Claude Code's are under "
+           "~/.claude/projects/<project-key>/), the `message.usage` fields of each `.jsonl` summed" % TRANSCRIPTS_VAR)
+    if t["state"] == "unset":
+        return ("not measured: %s is not set. The transcripts are local to the machine that ran the sessions, so "
+                "the page sums them only when the controller names their directory" % TRANSCRIPTS_VAR), cmd, []
+    if t["state"] == "missing":
+        return "not measured: %s names `%s`, which is not a directory" % (TRANSCRIPTS_VAR, t["name"]), cmd, []
+    if t["state"] == "empty":
+        return ("not measured: %s names `%s`, which holds no .jsonl transcript" % (TRANSCRIPTS_VAR, t["name"]),
+                cmd, [])
+    left = []
+    if t["malformed"]:
+        left.append("%s skipped" % _plural(t["malformed"], "malformed line"))
+    if t["outside"]:
+        left.append("%s stamped outside the window left out" % _plural(t["outside"], "line"))
+    if t["unplaced"]:
+        left.append("%s with no timestamp left out" % _plural(t["unplaced"], "usage line"))
+    value = ("sums over %s in the directory `%s` (the directory is read only by name: neither its path nor a "
+             "line of content reaches the page, only these sums) -- total: %s; of which agents (sidechains): %s%s. Per transcript below; the ids are "
+             "transcript ids (file stems), not Claude-Session trailer ids" % (
+                 _plural(len(t["sessions"]), "transcript"), t["name"], _sums(t["total"]), _sums(t["agents"]),
+                 "; " + ", ".join(left) if left else ""))
+    table = ["", TOKENS_SECTION, "",
+             "Sums of `message.usage` per transcript id; \"session\" is the session's own lines, \"agents\" its "
+             "sidechains'.", "",
+             "| transcript id | whose | messages | input | output | cache-read | cache-creation |",
+             "|---|---|---:|---:|---:|---:|---:|"]
+    for stem, sums in sorted(t["sessions"].items()):
+        for who, label in (("main", "session"), ("agents", "agents")):
+            b = sums[who]
+            if who == "agents" and not b["messages"]:
+                continue
+            table.append("| %s | %s | %d | %d | %d | %d | %d |" % (
+                stem, label, b["messages"], b["input"], b["output"], b["cache_read"], b["cache_creation"]))
+    return value, cmd, table
+
+
+def held(text):
+    """The page less the lines read from files local to one machine (LOCAL_ONLY's numbers and the tokens table):
+    what the suite can hold on any clone."""
+    out = []
+    for line in (text or "").splitlines():
+        if line == TOKENS_SECTION:
+            break
+        if any(line.startswith("- **%s**" % LABELS[k]) for k in LOCAL_ONLY):
+            continue
+        out.append(line)
+    while out and not out[-1]:
+        out.pop()
+    return out
 
 
 def render(m):
@@ -325,6 +477,7 @@ def render(m):
                % (BACKLOG, short))
     else:
         age = "median %s days over %d open issues" % (m["open_issue_age_days"], m["open_issues_dated"])
+    tokens = token_lines(m["tokens"])
 
     lines = {
         "merges_per_day": (
@@ -366,16 +519,19 @@ def render(m):
             ("largest first: %s; median %s" % (", ".join(str(c) for c in counts), _median(counts)))
             if counts else "no session trailers",
             "`git log %s --format=%%B %s | grep '^Claude-Session:' | sort | uniq -c | sort -rn`" % (s, short)),
+        "tokens": tokens[:2],
     }
 
     out = [
         "# Flow: how work moves through this repository",
         "",
         "> **Generated -- do not edit.** Written by `python -m tools_py.flow --since %s` (Sprint 14 M1, the review's "
-        "F8) from the git history at the commit named below, the lock's queue log and `%s`. The methods are note "
-        "03's (`%s`); each number names the command that reproduces it, and where the method differs from the "
-        "note's the module docstring says how. Descriptive, not targets. `python -m tools_py.flow --check` exits 1 "
-        "when this file is not a render of the commit it names; regenerate at the close." % (since, BACKLOG, NOTE03),
+        "F8; tokens M2) from the git history at the commit named below, the lock's queue log, `%s` and, when "
+        "%s names a directory, the sums of its transcripts' usage fields. The methods are note 03's (`%s`); each "
+        "number names the command that reproduces it, and where the method differs from the note's the module "
+        "docstring says how. Descriptive, not targets. `python -m tools_py.flow --check` exits 1 "
+        "when this file is not a render of the commit it names; regenerate at the close." % (
+            since, BACKLOG, TRANSCRIPTS_VAR, NOTE03),
         "",
         "Rendered at commit `%s` (committer time %s), since %s (UTC days): %d commits, %d merges."
         % (rev, m["rev_time"], since, m["commits"], n),
@@ -389,6 +545,7 @@ def render(m):
     out += ["", "## Merges per UTC day", "", "| day | merges |", "|---|---:|"]
     for day, count in days.items():
         out.append("| %s | %d |" % (day, count))
+    out += tokens[2]                                    # last, so held() can cut the page there
     return "\n".join(out) + "\n"
 
 
@@ -412,6 +569,8 @@ def main(argv=None):
     ap.add_argument("--since", default=None, help="the first UTC day counted (default: the page's, else %s)"
                     % DEFAULT_SINCE)
     ap.add_argument("--check", action="store_true", help="exit 1 when the page is not a render of the commit it names")
+    ap.add_argument("--usage", action="store_true", help="print the token lines alone (from $%s) and write nothing"
+                    % TRANSCRIPTS_VAR)
     ap.add_argument("--rev", default=None, help="the commit measured (default: HEAD; with --check, the page's)")
     ap.add_argument("--queue-log", default=None, help="the lock's queue log (default: the main tree's logs/)")
     ap.add_argument("--backlog", default=None, help="a BACKLOG file (default: docs/BACKLOG.md at the commit)")
@@ -434,13 +593,18 @@ def main(argv=None):
     rev = args.rev or (named[0] if args.check else "HEAD")
     queue = args.queue_log or default_queue_log(args.repo)
     try:
-        m = measure(args.repo, since, queue, args.backlog, rev=rev)
+        m = measure(args.repo, since, queue, args.backlog, rev=rev,
+                    transcripts=os.environ.get(TRANSCRIPTS_VAR) or None)
     except changelog.ShallowHistory as exc:
         print("flow: refused -- %s" % exc)
         return 2
     except subprocess.CalledProcessError as exc:
         print("flow: git failed on %s (%s); run python -m tools_py.flow" % (rev, exc))
         return 1
+    if args.usage:
+        value, cmd, table = token_lines(m["tokens"])
+        print("\n".join(["- **%s**: %s -- command: %s" % (LABELS["tokens"], value, cmd)] + table))
+        return 0
     fresh = render(m)
     if args.check:
         if current == fresh:
