@@ -181,11 +181,18 @@ class PretoolPlantedTest(unittest.TestCase):
 
 
 class EditWritePlantedTest(unittest.TestCase):
-    """Sprint 14 G2: an Edit/Write/MultiEdit/NotebookEdit on a running chain script (logs/**/*.sh while the lock is
-    HELD) or on scripts/loop_lock.sh before a green slow lock suite is refused; everything else passes."""
+    """Sprint 14 G2: an Edit/Write/MultiEdit/NotebookEdit on a running chain script (an existing logs/**/*.sh while
+    the lock is HELD) or on a scripts/loop_lock.sh something runs (a QUEUED waiter's blob, or the main tree's copy
+    while HELD) is refused; everything else passes. The file system and git are stood in for by the probes
+    (file_exists, blob_of, main_tree_of); PretoolWiringTest runs the real ones."""
 
-    def edit(self, tool, path, holder=None, slow=False, key="file_path"):
-        return pretool.decide(tool, {key: path}, ROOT, False, lock_holder=holder, slow_tests_ran=slow)
+    BLOB = "0123456789ab" + "c" * 28
+
+    def edit(self, tool, path, holder=None, slow=False, key="file_path", queued=(), exists=True, blob=BLOB,
+             main=True):
+        return pretool.decide(tool, {key: path}, ROOT, False, lock_holder=holder, slow_tests_ran=slow,
+                              queued_blobs=queued, file_exists=lambda p: exists, blob_of=lambda p: blob,
+                              main_tree_of=lambda r: main)
 
     def test_a_chain_script_under_the_lock_is_refused(self):
         code, why = self.edit("Edit", "logs/s14_chain.sh", holder="chain:s14")
@@ -194,15 +201,50 @@ class EditWritePlantedTest(unittest.TestCase):
         self.assertIn("home: docs/KNOWN.md section 4", why)
         self.assertEqual(self.edit("Edit", "logs/s14_chain.sh", holder=None), (0, ""))
 
-    def test_the_lock_script_is_refused_while_held_or_queued(self):
-        # the ruling of 2026-09-26: the marker gates LANDING (the commit), not typing; waiters run it by offset
-        for busy in ("chain:s14", "queued:2"):
-            code, why = self.edit("Write", "scripts/loop_lock.sh", holder=busy)
-            self.assertEqual(code, 2, why)
-            self.assertIn(busy, why)
-            self.assertIn("home: scripts/loop_lock.sh header (the rollout procedure)", why)
-        self.assertEqual(self.edit("Write", "scripts/loop_lock.sh", holder=None, slow=False), (0, ""))
-        self.assertEqual(self.edit("Edit", "logs/s14_chain.sh", holder="queued:1")[0], 2)   # a waiter runs chains too
+    def test_a_chain_script_is_refused_only_when_it_exists_and_the_lock_is_held(self):
+        # G2 review: the lock is shared by every worktree; a new file cannot be running, a waiter has not started
+        self.assertEqual(self.edit("Edit", "logs/x.sh", holder="agent-x51")[0], 2)            # existing, HELD
+        self.assertEqual(self.edit("Edit", "logs/x.sh", holder="queued:1", queued=["0123456789ab"]), (0, ""))
+        self.assertEqual(self.edit("Write", "logs/x.sh", holder="agent-x51", exists=False), (0, ""))  # new file
+
+    def test_the_lock_script_is_refused_when_a_waiter_runs_this_copy_or_the_main_copy_is_held(self):
+        # the ruling of 2026-09-26: the marker gates LANDING (the commit), not typing; what runs it is refused
+        code, why = self.edit("Write", "scripts/loop_lock.sh", holder="queued:1", queued=["0123456789ab"])
+        self.assertEqual(code, 2, why)                                   # a waiter runs this exact copy
+        self.assertIn("blob 0123456789ab", why)
+        self.assertIn("home: scripts/loop_lock.sh header (the rollout procedure)", why)
+        self.assertEqual(self.edit("Write", "scripts/loop_lock.sh", holder="queued:1", queued=["ffffffffffff"]),
+                         (0, ""))                                        # the waiter runs another copy
+        code, why = self.edit("Write", "scripts/loop_lock.sh", holder="chain:s14", main=True)
+        self.assertEqual(code, 2, why)                                   # HELD, the main tree's copy
+        self.assertIn("chain:s14", why)
+        self.assertEqual(self.edit("Write", "scripts/loop_lock.sh", holder="chain:s14", main=False), (0, ""))
+        self.assertEqual(self.edit("Write", "scripts/loop_lock.sh", holder=None), (0, ""))
+
+    def test_the_queued_blobs_are_parsed_from_check(self):
+        check = ("FREE, but 2 waiter(s) queued: the next grant goes to the first QUEUED line\n"
+                 "QUEUED: w1 queued 30 s ago, heartbeat 2 s old (blob=0123456789AB s14 chain) [1]\n"
+                 "QUEUED: STALE (dropped at the next grant) w2 queued 900 s ago, heartbeat 400 s old (blob= p) [2]\n"
+                 "QUEUED: w3 queued 5 s ago, heartbeat 1 s old (blob=fedcba987654 x) [3]")
+        self.assertEqual(pretool.parse_queued_blobs(check), ["0123456789ab", "fedcba987654"])
+        self.assertEqual(pretool.parse_queued_blobs("HELD: a taken 1 min ago, (blob=0123456789ab)"), [])
+        self.assertEqual(pretool.parse_queued_blobs(""), [])
+
+    def test_the_slow_marker_is_the_one_where_the_commit_runs(self):
+        # G2 review: two repositories M (the session's cwd) and W; the marker of the one the commit lands in counts
+        def judge(cmd, marker_in):
+            def probe(path):
+                return path.replace("\\", "/").rstrip("/").endswith("/projects/" + marker_in)
+            return pretool.decide("Bash", {"command": cmd}, "C:/projects/m", False, slow_probe=probe)[0]
+        in_w = "cd /c/projects/w && git commit -m x -- scripts/loop_lock.sh"
+        dash_c = "git -C /c/projects/w commit -m x -- scripts/loop_lock.sh"
+        in_m = "git commit -m x -- scripts/loop_lock.sh"
+        self.assertEqual(judge(in_w, "w"), 0)          # marker in W only: W's own green run lands W's copy
+        self.assertEqual(judge(dash_c, "w"), 0)
+        self.assertEqual(judge(in_w, "m"), 2)          # marker in M only: no bypass through cd or -C
+        self.assertEqual(judge(dash_c, "m"), 2)
+        self.assertEqual(judge(in_m, "m"), 0)
+        self.assertEqual(judge(in_m, "w"), 2)
 
     def test_a_commit_of_the_lock_script_needs_the_slow_marker(self):
         def commit(cmd, slow):
@@ -389,11 +431,31 @@ class PretoolWiringTest(unittest.TestCase):
         self.assertEqual(run("GIT status").returncode, 2)
         self.assertTrue(os.path.exists(marker))
 
-    def stub_lock(self, check_line):
-        """A stub scripts/loop_lock.sh in the temp repo whose `check` prints check_line."""
-        os.makedirs(os.path.join(self.tmp.name, "scripts"), exist_ok=True)
-        with open(os.path.join(self.tmp.name, "scripts", "loop_lock.sh"), "w", newline="\n") as f:
-            f.write("#!/usr/bin/env bash\n[ \"$1\" = check ] && cat <<'EOF'\n%s\nEOF\nexit 0\n" % check_line)
+    STUB = "#!/usr/bin/env bash\n[ \"$1\" = check ] && cat .check_out 2>/dev/null\nexit 0\n"
+
+    def stub_lock(self, check_text, root=None):
+        """A stub scripts/loop_lock.sh in root (the temp repo by default) whose `check` prints root/.check_out,
+        which is check_text: the script's own bytes, hence its blob, stay the same whatever `check` says."""
+        root = root or self.tmp.name
+        os.makedirs(os.path.join(root, "scripts"), exist_ok=True)
+        with open(os.path.join(root, "scripts", "loop_lock.sh"), "w", newline="\n") as f:
+            f.write(self.STUB)
+        with open(os.path.join(root, ".check_out"), "w", newline="\n") as f:
+            f.write(check_text + "\n")
+
+    def blob12(self, path):
+        return subprocess.run(["git", "hash-object", path], check=True, capture_output=True,
+                              text=True).stdout.strip()[:12]
+
+    def linked_worktree(self):
+        """Commit the stub lock script in the temp repo (the MAIN tree) and add a linked worktree that has it."""
+        git = ["git", "-C", self.tmp.name, "-c", "user.name=t", "-c", "user.email=t@t"]
+        self.stub_lock("FREE")
+        subprocess.run(git + ["add", "--", "scripts/loop_lock.sh"], check=True, capture_output=True)
+        subprocess.run(git + ["commit", "-q", "-m", "stub"], check=True, capture_output=True)
+        linked = os.path.join(self.tmp.name, "linked")
+        subprocess.run(git + ["worktree", "add", "-q", "-b", "side", linked], check=True, capture_output=True)
+        return linked
 
     def edit_hook(self, path, tool_name="Edit"):
         doc = {"session_id": "t", "cwd": self.tmp.name, "hook_event_name": "PreToolUse", "tool_name": tool_name,
@@ -404,28 +466,83 @@ class PretoolWiringTest(unittest.TestCase):
     def test_an_edit_of_a_running_chain_script_is_refused(self):
         chain = os.path.join(self.tmp.name, "logs", "s14_chain.sh")
         self.stub_lock("HELD: chain:s14 taken 3 min ago, heartbeat 0 min (5 s) old, purpose: s14")
-        p = self.edit_hook(chain)
+        p = self.edit_hook(chain)                                              # not on disk: a new file
+        self.assertEqual(p.returncode, 0, p.stderr)
+        os.makedirs(os.path.dirname(chain))
+        with open(chain, "w", newline="\n") as f:
+            f.write("echo step\n")
+        p = self.edit_hook(chain)                                              # existing, HELD
         self.assertEqual(p.returncode, 2, p.stderr)
         self.assertIn("chain:s14", p.stderr)
         self.assertEqual(self.edit_hook(chain.replace("\\", "/"), tool_name="Write").returncode, 2)
+        self.stub_lock("FREE, but 1 waiter(s) queued: the next grant goes to the first QUEUED line\n"
+                       "QUEUED: w1 queued 30 s ago, heartbeat 2 s old (blob=%s p) [1]"
+                       % self.blob12(os.path.join(self.tmp.name, "scripts", "loop_lock.sh")))
+        p = self.edit_hook(chain)                                              # QUEUED only: not started
+        self.assertEqual(p.returncode, 0, p.stderr)
         self.stub_lock("FREE")
         p = self.edit_hook(chain)
         self.assertEqual(p.returncode, 0, p.stderr)
 
-    def test_an_edit_of_the_lock_script_waits_for_exactly_free(self):
+    def test_an_edit_of_the_main_trees_lock_script(self):
+        # the temp repo is a MAIN tree: HELD refuses its copy; a waiter refuses only the copy it runs
         script = os.path.join(self.tmp.name, "scripts", "loop_lock.sh")
         self.stub_lock("HELD: chain:s14 taken 3 min ago, heartbeat 0 min (5 s) old")
         p = self.edit_hook(script)
         self.assertEqual(p.returncode, 2, p.stderr)
         self.assertIn("chain:s14", p.stderr)
-        self.stub_lock("FREE, but 1 waiter(s) queued: the next grant goes to the first QUEUED line\n"
-                       "QUEUED: w1 queued 30 s ago, heartbeat 2 s old (blob=abc p) [1]")
+        waiter = ("FREE, but 1 waiter(s) queued: the next grant goes to the first QUEUED line\n"
+                  "QUEUED: w1 queued 30 s ago, heartbeat 2 s old (blob=%s p) [1]")
+        self.stub_lock(waiter % self.blob12(script))
         p = self.edit_hook(script)
         self.assertEqual(p.returncode, 2, p.stderr)
-        self.assertIn("queued:1", p.stderr)
+        self.assertIn("blob %s" % self.blob12(script), p.stderr)
+        self.stub_lock(waiter % "ffffffffffff")
+        p = self.edit_hook(script)
+        self.assertEqual(p.returncode, 0, p.stderr)
         self.stub_lock("FREE")
         p = self.edit_hook(script)
         self.assertEqual(p.returncode, 0, p.stderr)
+
+    def test_an_edit_of_a_worktrees_lock_script(self):
+        # a linked worktree's copy: HELD alone passes (the loop runs the main tree's); a waiter on this copy refuses
+        linked = self.linked_worktree()
+        script = os.path.join(linked, "scripts", "loop_lock.sh")
+        self.stub_lock("HELD: agent-x51 taken 3 min ago, heartbeat 0 min (5 s) old", root=linked)
+        p = self.edit_hook(script)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.stub_lock("HELD: agent-x51 taken 3 min ago, heartbeat 0 min (5 s) old\n"
+                       "QUEUED: w1 queued 30 s ago, heartbeat 2 s old (blob=%s p) [1]" % self.blob12(script),
+                       root=linked)
+        p = self.edit_hook(script)
+        self.assertEqual(p.returncode, 2, p.stderr)
+
+    def test_a_commit_of_the_lock_script_is_judged_on_the_marker_where_it_lands(self):
+        # G2 review: the session's cwd is the main tree M; the commit cds (or -C) into the worktree W
+        linked = self.linked_worktree()
+        wd = linked.replace("\\", "/")
+        in_w = "cd '%s' && git commit -m x -- scripts/loop_lock.sh" % wd
+        dash_c = "git -C '%s' commit -m x -- scripts/loop_lock.sh" % wd
+
+        def mark(root, fresh):
+            os.makedirs(os.path.join(root, "logs"), exist_ok=True)
+            marker = os.path.join(root, "logs", ".loop_lock_slow_green")
+            if fresh:
+                open(marker, "w").close()
+                os.utime(os.path.join(root, "scripts", "loop_lock.sh"), (1000, 1000))
+                os.utime(marker, (2000, 2000))
+            elif os.path.exists(marker):
+                os.remove(marker)
+        mark(linked, True)                                                     # marker in W only
+        mark(self.tmp.name, False)
+        self.assertEqual(self.hook(in_w).returncode, 0)
+        self.assertEqual(self.hook(dash_c).returncode, 0)
+        self.assertEqual(self.hook("git commit -m x -- scripts/loop_lock.sh").returncode, 2)
+        mark(linked, False)                                                    # marker in M only
+        mark(self.tmp.name, True)
+        self.assertEqual(self.hook(in_w).returncode, 2)
+        self.assertEqual(self.hook(dash_c).returncode, 2)
+        self.assertEqual(self.hook("git commit -m x -- scripts/loop_lock.sh").returncode, 0)
 
     def test_a_commit_of_the_lock_script_waits_for_a_fresh_slow_marker(self):
         self.stub_lock("FREE")

@@ -1757,10 +1757,11 @@ SLOW_MARKER = os.path.join(ROOT, "logs", ".loop_lock_slow_green")
 
 
 class SlowGreenSuite(unittest.TestSuite):
-    """Sprint 14 G2: a GREEN slow run of this whole module touches logs/.loop_lock_slow_green, which the Edit/Write
-    guard (tools_py/hooks/pretool.py) reads -- an edit of scripts/loop_lock.sh passes only while the marker is newer
-    than the script. Written only when the run was slow, covered every test of the module (no -k, no single class),
-    added no failure or error, and the script was not changed while it ran; never under LOOP_LOCK_TEST_SCRIPTS.
+    """Sprint 14 G2: a GREEN slow run of this whole module touches logs/.loop_lock_slow_green, which the Bash guard
+    (tools_py/hooks/pretool.py, rule_lock_script_commit) reads -- a commit naming scripts/loop_lock.sh passes only
+    while the marker of the repository it lands in is newer than the script (the marker gates landing, not edits).
+    Written only when the run was slow, covered every test of the module (no -k, no single class), added no failure
+    or error, and the script was not changed while it ran; never under LOOP_LOCK_TEST_SCRIPTS.
     The fixture stamp (TestSlowSuiteStamp) is still recorded by hand."""
 
     def __init__(self, tests=(), slow=False, full_count=0, marker=SLOW_MARKER, script=None):
