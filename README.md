@@ -7,33 +7,20 @@ hosted server.**
 [![windows](https://github.com/Scotho/socom-unzipped/actions/workflows/windows.yml/badge.svg)](https://github.com/Scotho/socom-unzipped/actions/workflows/windows.yml)
 [![secrets](https://github.com/Scotho/socom-unzipped/actions/workflows/secrets.yml/badge.svg)](https://github.com/Scotho/socom-unzipped/actions/workflows/secrets.yml)
 
-A green badge means the runtime library, the test suites and the launcher build without the game and the leak check is
-clean; the parity gate needs a disc and runs on the maintainer's machine. No release has been published yet; each
-draft release's checklist names the gate stamp its archive must pass before it can be.
-*(Superseded 2026-09-25, Sprint 13 S1: this said the gate's "stamps are in the release notes"; the only releases are unpublished
-drafts whose stamp field is still blank.)*
+A green badge means everything that builds without the game built and passed its tests on a clean machine. The game
+itself is checked on the maintainer's machine, with a disc. There is no public release yet.
 
 > ## ⚠️ Multiplayer disclaimer
 >
-> Online play is at your own risk. SOCOM II's network code is the game's own, recompiled as-is and **not audited**,
-> and it runs as a native program with your user's access: a successful exploit is code on your PC, not a crashed
-> console. The community servers patched the known holes on the console years ago; on the PC side this project
-> has partly closed one reported hole (2026-09-23: one chat receive path bounded on the client, chat clamped on the
-> project's server; a 2026-09-26 test found that game-lobby chat takes another client path, not yet bounded) and closed
-> one it found by its own read (2026-09-25, refused on the client every launch). Both hardenings install on every launch,
-> the game log says so, and the mechanics of neither are published (`SECURITY.md`). The rest is unaudited.
->
-> Play only with people you trust, on the project's server or one you run yourself, and never with a build you did
-> not compile or verify. Do not point this at any community server.
+> Online play is at your own risk. The game's network code is twenty years old, recompiled as it was, and it runs as
+> a native program on your PC. Some known problems have been addressed and others have not; what is known, and what
+> to do if you find something, is in `SECURITY.md`. Play only with people you trust, on the project's server or one
+> you run yourself, never with a build you did not compile or verify, and never against a community server.
 
-> **Early stage.** This is a working prototype, not a finished port. It boots, renders the menus and missions, and two
-> copies of the game, driven by the project's test harness on one machine, have finished online rounds against each
-> other on the hosted server -- no two people have played each other yet. Audio, some maps, and the rough edges of a
-> first release are still being worked through, and things break between builds. Read [Status](#status) before you
-> expect anything.
->
-> *(Superseded 2026-09-25, Sprint 13 S1: this said "two players have finished online rounds against each other"; every online
-> result is two automated instances on one host.)*
+> **Early stage.** This is a working prototype, not a finished port. It boots, plays the menus and the missions, and
+> two copies of the game have finished online rounds against each other on the hosted server, driven by the project's
+> own test harness on one machine. No two people have played each other yet, audio and some maps still have rough
+> edges, and things break between builds. Read [Status](#status) before you expect anything.
 
 ## What it is, and what it is not
 
@@ -54,21 +41,14 @@ drafts whose stamp field is still blank.)*
 
 ## Status
 
-As of 2026-09-25 (**Sprints 11 and 12 are merged to `main` as `v0.11.0` and `v0.12.0`**; each tag's release
-draft waits for its archives, which are the owner's by `docs/GIT_STRATEGY.md`. **Sprint 12, "the readable image",
-gave the generated code 1,771 readable names, each with its provenance**, without changing what a player sees —
-`docs/superpowers/plans/2026-09-24-sprint-12.md`. The sprint now open is `docs/CURRENT_SPRINT.md`'s):
+As of 2026-09-26 the game boots from your own disc to the title, through the menus and into the missions, with a pad
+or the keyboard, and renders through OpenGL at up to four times the console's resolution. Online login, the lobby and
+full rounds work on the hosted server, so far only between copies of the game driven by the test harness on one
+machine; a build of the community's r0004 revision plays a round too. Not yet: a public download, the console's full
+frame rate in missions, a finished Linux client, and any disc other than the NTSC r0001 release.
 
-| Works | Not yet |
-|---|---|
-| Boots from the ISO to the title, through the menus, into a mission; Xbox/DirectInput pads for play, the keyboard for the menus and typing | A public release download. Builds are handed to testers by hand; the download waits on the owner's legal position on shipping the recompiled executable and the game's decrypted ELF (decision D2, row O1 of `docs/HUMAN_TASKS.md`). *(Until 2026-09-25 this cell blamed the r0004 distribution decision.)* |
-| Rendering through an OpenGL backend with an integer up-scale (`PS2X_GS_SCALE` 1-4; 3-4 are untested); a CPU rasteriser for tests | Frame rate below the console's 60: over the parity gate's scripted mission walk on 2026-09-25 the guest ran about 31-46 VBlanks a second, on three different exes (`FRAME mean=21.86 worst1s=30.30 n=3067` ms per VBlank in `s13_proof4_gate`, means 23.15 in `s13_proof2_gate2` and 32.41 in `s13_proof3_gate`), a spread too wide for a bar yet (S13-R3; Sprint 13 Task V4) -- and the measure changed: this is VBlank pacing, a lower bound on the time between presents, where the older 43-45 fps was research/34's GL present rate (`docs/KNOWN.md` §1's two-instance clock row keeps the two apart). |
-| Online: login, lobby, and full rounds on the hosted Horizon server -- two of our instances, and one of ours against a console client through PCSX2, and a build of the community revision **r0004**, rebuilt from PSRewired's package, plays a full round on the same server | r0001 and r0004 clients cannot join each other's games -- the filter is the game's own, on the client. Mission music: the stems play correctly and the pauses are the game's own design, but about a dozen 50 ms dropouts a mission still reach the speaker that are not in the mix as rendered -- proven on 2026-09-23 to be **ours** rather than the listener's audio device, and not yet located. The game does not send your voice yet (the protocol is read and the headset path is proven as far as `docs/KNOWN.md`'s voice row takes it -- notably, the game's protocol has no headset button) |
-| A launcher that owns the settings, checks the disc, picks the server, and files bug reports | Linux: CI builds and proves the runtime library, both test suites and the launcher on every push, and the game client was rebuilt from wiped trees in the VM on 2026-09-23. In that VM it boots, draws the same frame as Windows and passes the gate's title stage, at the few frames a second the VM's software GL manages (the figure and its run, `s8_vm_title5` of 2026-09-18, are `docs/KNOWN.md` §1's Linux title-stage row); no `docs/KNOWN.md` row shows Linux past the title stage, and the VM's own suite run is not green yet (`docs/KNOWN.md` §1 and §2). *(Until 2026-09-25 this cell called the VM build "the playable build".)* |
-| An automated parity gate (title / transition / mission) and an online "ladder" that plays rounds unattended | Anything but the NTSC r0001 disc |
-
-The live, audited version of this table is `docs/KNOWN.md` (proven, believed, and retracted, each with its evidence),
-and `docs/STATUS.md` is the day-by-day.
+The audited version of this, with the evidence for each claim, is `docs/KNOWN.md`; `docs/STATUS.md` is the
+day-by-day, and `docs/CURRENT_SPRINT.md` says what is being worked on now.
 
 ## For players: get it
 
