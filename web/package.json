@@ -1,5 +1,13 @@
 {
-  "name": "socom-unzipped-web",
+  "name": "socom-unzipped-map-viewer",
+  "version": "0.1.0",
+  "description": "SOCOM II's multiplayer maps decoded from the disc and drawn in a browser -- a spin-off of SOCOM Unzipped",
+  "license": "GPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Scotho/socom-unzipped-map-viewer.git"
+  },
+  "homepage": "https://s2u.scotho.com/map-viewer/",
   "private": true,
   "type": "module",
   "workspaces": [
