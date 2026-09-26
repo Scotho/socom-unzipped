@@ -46,7 +46,7 @@ of the owner's order (2026-09-26) -- *the controller's read, the owner may strik
 | 29 | PCSX2 2.8.2 as the reference | low; moves the goldens | M | unknown | a stable release touching the software renderer, SPU2, PINE or DEV9 | research/63 §2 |
 | 30 | Ghidra 12.1.4 | low | S | unknown | an EE-extension release for it | research/63 §2 |
 | 31 | Horizon PR #35 | low | S | unknown | the DEV9 error 107 seen in a run | research/63 §2 |
-| 32 | Upstream's paraLLEl-GS default (`feature/performance-patch-1`) | unknown | L | unknown | the branch merges to upstream `main` | research/67 §5 |
+| 32 | Upstream's paraLLEl-GS default (`feature/performance-patch-1`) | unknown | L | unknown | the branch merges to upstream `main` | research/67 §6 item 2 |
 
 ## Dismissed outright
 
