@@ -909,26 +909,39 @@ refusing; records a host CPU sampler into the run directory; refuses to start be
 
 Claude Code runs `scripts/hooks/claude_pretool.sh` (-> `tools_py/hooks/pretool.py`) before every Bash tool call,
 wired by the tracked `.claude/settings.json` (Sprint 14 G1). It refuses with exit 2 and one sentence naming the rule's
-home; anything it cannot parse or judge is allowed. The command is split on `;`, `&&`, `||`, `|`, `&` and newlines
-(heredoc bodies and quoted strings are data), and a `cd <dir>` or `git -C <dir>` is followed for the worktree rules.
-Each rule is proved by a planted command in `tools_py/tests/test_hooks.py` (`PretoolPlantedTest`, the `CASES` and
-`MORE_CASES` tables); `PretoolWiringTest` drives the shell script with a hook JSON document on stdin. The
-repository's `.gitignore` owns `.claude/`: `settings.json`, `agents/` and `skills/` are tracked, the harness's local
-state is not (`ClaudeDirIgnoreTest`), whatever a global excludes file says.
+home; anything it cannot parse or judge is allowed. A call whose JSON names neither `git` nor `loop_lock` exits 0 in
+the shell before Python starts (about 0.1 s; a judged call costs about 1 s). The command is split on `;`, `&&`, `||`,
+`|`, `&`, parentheses, brace groups and newlines (heredoc bodies and quoted strings are data); the wrappers `time`,
+`nice`, `env`, `sudo`, `command`, `exec` and `xargs` are stripped; a `bash -c`, `sh -c` or `eval` string is judged
+as a command; `cd`, `pushd`/`popd` and `git -C <dir>` are followed for the worktree rules, and a subshell's `cd` ends
+at its `)`. Each rule is proved by planted commands in `tools_py/tests/test_hooks.py` (`PretoolPlantedTest`: the
+`CASES`, `MORE_CASES` and `REVIEW_CASES` tables); `PretoolWiringTest` drives the shell script with a hook JSON
+document on stdin. The repository's `.gitignore` owns `.claude/`: `settings.json`, `agents/` and `skills/` are
+tracked, the harness's local state is not (`ClaudeDirIgnoreTest`), whatever a global excludes file says.
 
-- **Bulk add** -- `git add` with no pathspec, `-A`/`--all`, `-u`/`--update`, or `.`; test `git add -A`, `.`, `-u`;
-  home `docs/GIT_STRATEGY.md` section 3.
+- **Bulk add** -- `git add` with no pathspec, a whole-tree pathspec (`.`, `:/`), or `-A`/`--all`/`-u`/`--update`
+  without a `-- <paths>` limiting it (`git add -A -- a` passes); test `git add -A`, `.`, `-u`; home
+  `docs/GIT_STRATEGY.md` section 3.
 - **Commit everything** -- `git commit -a`/`--all` (and `-am`); test `git commit -a -m 'x'`; home
   `docs/GIT_STRATEGY.md` section 3.
 - **Commit without paths** -- `git commit` (and `--amend`) with no `-- <paths>`, since a bare commit takes whatever
   any session staged; allowed while `MERGE_HEAD` exists (git refuses a partial commit mid-merge); test
   `git commit -m 'x'`, `git commit --no-edit`; home `docs/HANDOFF.md` section 5 rule 1.
-- **No-verify** -- `--no-verify` in any git command, and commit's `-n`; test `git commit --no-verify ...`,
-  `git push --no-verify`; home `docs/GIT_STRATEGY.md` section 3.
-- **Push from a worktree** -- `git push` when the cwd is a linked worktree (`--git-dir` differs from
-  `--git-common-dir`); test `git push origin sprint-14` with is_worktree; home `docs/GIT_STRATEGY.md` section 3.
-- **Config in a worktree** -- a writing `git config` in a worktree without `--worktree` (reads, `--global`,
-  `--system` and `--file` pass); test `git config remote.origin.pushurl x`; home `scripts/agent_worktree.sh`.
+- **No-verify** -- in any git command, `--no-verify` or any abbreviation of it from `--no-v` up (git accepts unique
+  prefixes), commit's `-n`, and `-c core.hooksPath=...` (any case, `-ckey=` too); test `git commit --no-verif ...`,
+  `git push --no-verify`, `git -c core.hooksPath=/dev/null commit ...`; home `docs/GIT_STRATEGY.md` section 3.
+- **Push from a worktree** -- `git push` when the session's cwd or the command's directory (after `cd`/`git -C`) is a
+  linked worktree (`--git-dir` differs from `--git-common-dir`); a worktree session never pushes, even with
+  `git -C <main tree>`; test `git push origin sprint-14` with is_worktree; home `docs/GIT_STRATEGY.md` section 3.
+- **Force-push of a shared branch** -- `git push` with `--force`, `-f`, `--force-with-lease`, `--force-if-includes`
+  or a `+refspec` whose target is `main`, `sprint-*` or not named (HEAD, no refspec); `agent/*`, `fix/*`, `feat/*`,
+  `docs/*`, `spike/*` pass; test `git push -f origin main`, `git push origin +HEAD:sprint-14`; home
+  `docs/GIT_STRATEGY.md` section 2.
+- **Config in a worktree** -- in a worktree, a `git config` that writes: a `key value` pair, `--unset`,
+  `--unset-all`, `--add`, `--replace-all`, `--remove-section`, `--rename-section`, `-e`/`--edit`, or the `set`,
+  `unset`, `edit`, `rename-section`, `remove-section` subcommands -- unless `--worktree`, `--global`, `--system` or
+  `--file` is given; reads pass (`--get*`, `--list`/`-l`, `get`/`list`, a lone key); test
+  `git config remote.origin.pushurl x`, `git config --unset ...`; home `scripts/agent_worktree.sh`.
 - **Worktree lifecycle** -- `git worktree remove`/`prune`/`add` outside `scripts/agent_worktree.sh`; test
   `git worktree remove --force ...`; home `scripts/agent_worktree.sh`.
 - **The lock by hand** -- `loop_lock.sh take` or `release` called directly (`check`, `run`, `wait`, `version` pass);

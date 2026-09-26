@@ -53,6 +53,43 @@ MORE_CASES = [  # compound commands, quoting, spellings the table does not reach
     ("git commit -F - -- f <<'EOF'\ngit add -A\nEOF", False, 0),   # a heredoc body is not a command
 ]
 
+REVIEW_CASES = [  # the G1 review's bypass table (round one), each closed by a planted case
+    # (1) config writes with at most one positional
+    ("git config --unset remote.origin.pushurl", True, 2), ("git config --unset-all remote.origin.push", True, 2),
+    ("git config --remove-section remote.origin", True, 2), ("git config --rename-section a b", True, 2),
+    ("git config -e", True, 2), ("git config --edit", True, 2), ("git config --add remote.origin.push x", True, 2),
+    ("git config --replace-all k v", True, 2), ("git config unset k", True, 2), ("git config set k v", True, 2),
+    ("git config --worktree --unset remote.origin.pushurl", True, 0), ("git config --global --unset k", True, 0),
+    ("git config --system -e", True, 0), ("git config --file x.cfg --add k v", True, 0),
+    ("git config --type bool core.bare", True, 0), ("git config get user.name", True, 0),
+    ("git config --unset k", False, 0),
+    # (2) abbreviated --no-verify, and core.hooksPath on the command line
+    ("git commit --no-verif -m x -- a", False, 2), ("git push --no-v", False, 2), ("git commit --no-ver -- a", False, 2),
+    ("git -c core.hooksPath=/dev/null commit -m x -- a", False, 2), ("git -c core.hookspath= push", False, 2),
+    ("git -ccore.hooksPath=x commit -m x -- a", False, 2),
+    ("git commit --no-edit -- a", False, 0), ("git -c user.name=x commit -m x -- a", False, 0),
+    # (3) wrappers, brace groups, bash -c / sh -c / eval payloads
+    ("time git add -A", False, 2), ("nice -n 5 git add .", False, 2), ("env FOO=1 git add -A", False, 2),
+    ("env -u X git add -A", False, 2), ("sudo git push --no-verify", False, 2), ("command git add -A", False, 2),
+    ("ls | xargs -0 git add -A", False, 2), ("{ git status; git add -A; }", False, 2),
+    ('bash -c "git add -A"', False, 2), ("sh -c 'git commit -a -m x'", False, 2), ('eval "git add ."', False, 2),
+    ('bash -lc "git add -A"', False, 2), ('bash -c "cd x && bash scripts/loop_lock.sh take"', False, 2),
+    ('bash -c "git status"', False, 0), ("env git status", False, 0), ("time ./build.sh test", False, 0),
+    # (4) a bulk flag limited by a `--` pathspec is not a bulk add
+    ("git add -A -- docs/a.md", False, 0), ("git add -u -- a b", False, 0), ("git add -A -- .", False, 2),
+    ("git add -A docs/a.md", False, 2),
+    # (5) force-push of a shared branch
+    ("git push --force origin sprint-14", False, 2), ("git push -f origin main", False, 2),
+    ("git push --force-with-lease origin main", False, 2), ("git push --force-if-includes origin sprint-14", False, 2),
+    ("git push origin +main", False, 2), ("git push origin +HEAD:sprint-14", False, 2),
+    ("git push --force", False, 2), ("git push -f origin", False, 2), ("git push -uf origin HEAD", False, 2),
+    ("git push --force origin HEAD:refs/heads/main", False, 2),
+    ("git push --force origin agent/s14-g1", False, 0), ("git push -f origin HEAD:fix/x", False, 0),
+    ("git push origin +feat/y", False, 0), ("git push --force-with-lease=docs/z:abc origin docs/z", False, 0),
+    ("git push -f origin spike/q", False, 0), ("git push origin main", False, 0),
+    ("git push origin sprint-14 main", False, 0),
+]
+
 
 class PretoolPlantedTest(unittest.TestCase):
     def run_cases(self, cases):
@@ -77,6 +114,28 @@ class PretoolPlantedTest(unittest.TestCase):
         self.assertEqual(pretool.decide("Bash", {"command": "git commit -a --no-edit"}, ".", False,
                                         merge_in_progress=True)[0], 2)
 
+    def test_review_round_one_cases(self):
+        self.run_cases(REVIEW_CASES)
+
+    def follow(self, cmd, session_wt):
+        return pretool.decide("Bash", {"command": cmd}, "C:/projects/socom_pc" if not session_wt else
+                              "C:/projects/wt-s14-g1", session_wt, worktree_of=lambda p: "wt-" in p)
+
+    def test_a_subshell_cd_does_not_leak_out(self):
+        self.assertEqual(self.follow("(cd /c/projects/wt-x && git status); git push origin sprint-14", False), (0, ""))
+        self.assertEqual(self.follow("(cd /c/projects/wt-x && git push origin b)", False)[0], 2)
+        # a brace group runs in the current shell: its cd does carry on
+        self.assertEqual(self.follow("{ cd /c/projects/wt-x; }; git push origin b", False)[0], 2)
+
+    def test_pushd_is_followed_like_cd(self):
+        self.assertEqual(self.follow("pushd /c/projects/wt-x && git push origin b", False)[0], 2)
+        self.assertEqual(self.follow("pushd /c/projects/wt-x && popd && git push origin b", False), (0, ""))
+
+    def test_a_worktree_session_never_pushes_even_through_dash_c(self):
+        self.assertEqual(self.follow("git -C /c/projects/socom_pc push origin sprint-14", True)[0], 2)
+        self.assertEqual(self.follow("cd /c/projects/socom_pc && git push origin sprint-14", True)[0], 2)
+        self.assertEqual(self.follow("git -C /c/projects/socom_pc push origin sprint-14", False), (0, ""))
+
     def test_a_cd_into_a_worktree_is_followed(self):
         seen = []
 
@@ -88,7 +147,7 @@ class PretoolPlantedTest(unittest.TestCase):
                                    "C:/projects/socom_pc", False, worktree_of=worktree_of)
         self.assertEqual(code, 2, why)
         self.assertTrue(seen)
-        code, why = pretool.decide("Bash", {"command": "cd /c/projects/socom_pc && git push"},
+        code, why = pretool.decide("Bash", {"command": "cd /c/projects/socom_pc && git status"},
                                    "C:/projects/wt-s14-g1", True, worktree_of=worktree_of)
         self.assertEqual(code, 0, why)
 
@@ -169,6 +228,24 @@ class PretoolWiringTest(unittest.TestCase):
 
     def test_other_tool_passes(self):
         self.assertEqual(self.hook("git add -A", tool_name="Read").returncode, 0)
+
+    def test_fast_path_skips_python_when_no_git_or_lock_is_named(self):
+        # PYTHON is a stand-in that leaves a marker and refuses: it must not run for `ls`, and must for `git status`
+        marker = os.path.join(self.tmp.name, "ran")
+        fake = os.path.join(self.tmp.name, "fakepy.sh")
+        with open(fake, "w", newline="\n") as f:
+            f.write("#!/bin/sh\ntouch '%s'\nexit 2\n" % marker.replace("\\", "/"))
+        os.chmod(fake, 0o755)
+        env = dict(os.environ, PYTHON=fake.replace("\\", "/"))
+
+        def run(command):
+            doc = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": "."}
+            return subprocess.run([BASH, HOOK_SH.replace("\\", "/")], input=json.dumps(doc), capture_output=True,
+                                  text=True, cwd=self.tmp.name, env=env, timeout=60)
+        self.assertEqual(run("ls -la").returncode, 0)
+        self.assertFalse(os.path.exists(marker))
+        self.assertEqual(run("GIT status").returncode, 2)
+        self.assertTrue(os.path.exists(marker))
 
     def test_garbage_on_stdin_passes(self):
         p = subprocess.run([BASH, HOOK_SH.replace("\\", "/")], input="not json", capture_output=True, text=True,
