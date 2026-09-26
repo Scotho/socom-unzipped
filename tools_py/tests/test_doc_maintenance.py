@@ -158,8 +158,9 @@ class CeilingsTest(unittest.TestCase):
 
     def test_loop_prompt_claude_md_and_the_open_plan_have_whole_file_ceilings(self):
         whole = {p: n for p, h, n in docmaint.ceilings() if h is None}
-        self.assertEqual(whole.get("docs/LOOP_PROMPT.md"), 2000)
-        self.assertIn("CLAUDE.md", whole)
+        # A ceiling may only fall (check 7's ratchet), so the numbers are held to at most the set value, never pinned.
+        self.assertLessEqual(whole.get("docs/LOOP_PROMPT.md"), 2000)
+        self.assertLessEqual(whole.get("CLAUDE.md"), 4900)
         plan = docmaint._plans_line_path()
         self.assertIn(plan, whole, "the open plan (CURRENT_SPRINT's plans: line) has no ceiling")
         self.assertIn((docmaint.OPEN_PLAN, None), [(p, h) for p, h, _ in docmaint.CEILINGS])
@@ -480,14 +481,14 @@ class PlantedDefectsTest(unittest.TestCase):
     def test_a_handoff_one_byte_over_its_whole_file_ceiling_fires(self):
         """HANDOFF grew to 36 KB doing three jobs (handoff, runbook, postmortem); I3 cut it to the first."""
         path, heading, limit = self.ceiling("docs/HANDOFF.md", whole=True)
-        self.assertEqual(limit, 6000)
+        self.assertLessEqual(limit, 6000, "a ceiling may only fall (check 7's ratchet)")
         head = "# h\n\nNext free ruling number: R100\n\n## 2. Where it stands\n\n- now\n\n## 3. Next\n\n"
         self.write(path, head + "y" * (limit + 1 - len(head) - 1) + "\n")
         self.assertEqual(docmaint.block_bytes(path, None), limit + 1)
         hits = [h for h in docmaint.report()["over_ceiling"] if h[0] == path and h[1] is None]
         self.assertEqual(len(hits), 1, docmaint.report()["over_ceiling"])
         self.assertIn("(whole file)", docmaint.describe_ceiling(hits[0]))
-        self.assertIn("6,001", docmaint.describe_ceiling(hits[0]))
+        self.assertIn("{:,}".format(limit + 1), docmaint.describe_ceiling(hits[0]))
 
     def test_a_handoff_exactly_at_its_whole_file_ceiling_does_not_fire(self):
         """The negative control: 6,000 bytes is inside the ceiling."""
@@ -712,28 +713,30 @@ class PlantedDefectsTest(unittest.TestCase):
 
     def test_loop_prompt_over_its_ceiling_fires_and_at_it_does_not(self):
         path, heading, limit = self.ceiling("docs/LOOP_PROMPT.md")
-        self.assertEqual((heading, limit), (None, 2000))
+        self.assertIsNone(heading)
+        self.assertLessEqual(limit, 2000, "a ceiling may only fall (check 7's ratchet)")
         self.write(path, "p" * (limit - 1) + "\n")
         self.assertEqual(docmaint.report()["over_ceiling"], [])
         self.write(path, "p" * limit + "\n")
         hits = [h for h in docmaint.report()["over_ceiling"] if h[0] == path]
         self.assertEqual(len(hits), 1)
-        self.assertIn("2,001", docmaint.describe_ceiling(hits[0]))
+        self.assertIn("{:,}".format(limit + 1), docmaint.describe_ceiling(hits[0]))
 
     def test_claude_md_over_its_ceiling_fires_and_at_it_does_not(self):
         """The byte twin of ClaudeMdTest's sixty lines: 4,453 bytes on 2026-09-26 plus ten percent."""
         path, heading, limit = self.ceiling("CLAUDE.md")
-        self.assertEqual((heading, limit), (None, 4900))
+        self.assertIsNone(heading)
+        self.assertLessEqual(limit, 4900, "a ceiling may only fall (check 7's ratchet)")
         self.write(path, "c" * (limit - 1) + "\n")
         self.assertEqual(docmaint.report()["over_ceiling"], [])
         self.write(path, "c" * limit + "\n")
         hits = [h for h in docmaint.report()["over_ceiling"] if h[0] == path]
         self.assertEqual(len(hits), 1)
-        self.assertIn("4,901", docmaint.describe_ceiling(hits[0]))
+        self.assertIn("{:,}".format(limit + 1), docmaint.describe_ceiling(hits[0]))
 
     def test_the_open_plan_over_its_ceiling_fires_under_its_own_name(self):
         limit = [c for c in docmaint.CEILINGS if c[0] == docmaint.OPEN_PLAN][0][2]
-        self.assertEqual(limit, 92000)
+        self.assertLessEqual(limit, 92000, "a ceiling may only fall (check 7's ratchet, R279)")
         self.plant_read_first(1000)
         self.write(self.PLAN, "# plan\n\n## Log (newest first)\n\n" + "- e\n" * ((limit - 32) // 4) + "\n")
         n = docmaint.block_bytes(self.PLAN, None)

@@ -169,7 +169,13 @@ Sprint 13 Task R3's, all added 2026-09-25; the eleventh Sprint 14 I4's, 2026-09-
    and refuses a rise); **a ceiling never goes up.** S3 added three whole-file ceilings: `docs/LOOP_PROMPT.md` 2,000
    (a pointer since I2), `CLAUDE.md` 4,900 (4,453 plus ten percent, the byte twin of its sixty-line test) and **the
    open plan** -- the plan named on `docs/CURRENT_SPRINT.md`'s `plans:` line, resolved at run time (`OPEN_PLAN`),
-   92,000 (the Sprint 14 plan's 83,025 plus ten percent, rounded to 1,000). **When the plan's ceiling fires,** its
+   set at 92,000 at the open (the Sprint 14 plan's 83,025 plus ten percent); the ratchet rounds it to 100 like
+   the rest, so its first proposal on 2026-09-26 was 90,900. **R279: the open plan's ceiling is one number in
+   `CEILINGS` like the others: ratcheted at each close from the closing plan's size (before `docs/CURRENT_SPRINT.md`'s
+   `plans:` line switches to the next plan) and carried to the next plan, never raised; when a plan's ceiling fires
+   mid-sprint the remedy is `docmaint archive-log` on its Log, never a raise.** The ratchet is the last step before
+   the close-out commit, after the close's own edits, and `python -m tools_py.docmaint` must print OK after it.
+   **When the plan's ceiling fires,** its
    Log's entries older than the newest ten move verbatim to `docs/archive/<plan>-log-to-<date>.md` (a banner, a
    class A row) and the Log keeps a one-line pointer where they were:
    `python -m tools_py.docmaint archive-log --plan <path> [--keep 10]` does exactly that, leaves the ten newest

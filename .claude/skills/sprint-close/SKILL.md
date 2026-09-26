@@ -17,14 +17,12 @@ merge and the tag). The open plan's Task 99 adds the sprint's own close steps.
 
 ## The documentation review (DOC_MAINTENANCE §5)
 
-1. `python -m tools_py.docmaint` -- exit 0. If it fails, fix the document, not the check. Then **the ratchet**
-   (check 7): `python -m tools_py.docmaint ratchet` prints each ceiling's live size, current number and proposal;
-   `python -m tools_py.docmaint ratchet --write` rewrites the numbers in `tools_py/docmaint.py`'s `CEILINGS`, and the
-   close-out commit carries that file. A ceiling never goes up.
-   **When the plan's ceiling fires** (the open plan's whole-file ceiling): run
+1. `python -m tools_py.docmaint` -- exit 0. If it fails, fix the document, not the check. **When the plan's ceiling
+   fires** (the open plan's whole-file ceiling, check 7): run
    `python -m tools_py.docmaint archive-log --plan <the plan> --keep 10` -- the Log's entries older than the newest
    ten move verbatim to `docs/archive/<plan>-log-to-<date>.md` with a banner and a class A row, and the Log keeps a
    one-line pointer. It refuses when the Log is not the plan's last `## ` heading: move that section above the Log.
+   Never raise the number (R279). The ratchet itself comes last -- see "The ratchet" below.
 2. Every L document read for truth, in order: `KNOWN.md`, `CURRENT_SPRINT.md`, `HANDOFF.md`, `HUMAN_TASKS.md`,
    `STATUS.md`'s Current state block, `DEVELOPING.md`, `README.md` -- is every claim still true; is anything the
    sprint closed still listed as open; is anything the sprint opened missing? A fresh read-only agent's table is the
@@ -58,11 +56,25 @@ merge and the tag). The open plan's Task 99 adds the sprint's own close steps.
 7. The record: `python -m tools_py.issues tally --since <the day the sprint opened>` -- the one sentence (opened,
    closed, carried, highest number) for the close-out commit and STATUS's entry, with what the review changed.
 
+## The ratchet -- the last step before the close-out commit (DOC_MAINTENANCE check 7)
+
+After every other close edit (HANDOFF §2, STATUS's block, the sprint file's CLOSED block), and while
+`docs/CURRENT_SPRINT.md`'s `plans:` line still names the closing plan:
+1. `python -m tools_py.docmaint ratchet` -- each ceiling's live size, current number and proposal (live plus ten
+   percent, rounded up to 100, never above the current number).
+2. `python -m tools_py.docmaint ratchet --write` -- rewrites the numbers in `tools_py/docmaint.py`'s `CEILINGS`; the
+   close-out commit carries that file. A ceiling never goes up.
+3. `python -m tools_py.docmaint` -- must print `OK` after the write; if it does not, a close edit landed after the
+   ratchet: archive or shrink, never raise.
+
+**R279, short:** the open plan's ceiling is one `CEILINGS` number like the others -- ratcheted here from the closing
+plan's size, carried to the next plan, never raised; mid-sprint, `archive-log` on its Log is the remedy.
+
 ## The close-out, the merge and the tag
 
 1. **The close-out commit** on the sprint branch, explicit pathspec: both reviews' results in one sentence each, the
    stamped "Last full review" line, `docs/BACKLOG.md`, the sprint file's **CLOSED block** (the sprint's record, the
-   Outcome), STATUS's entry, HANDOFF's line. `git push origin sprint-N`; `gh run list --commit <sha>` green.
+   Outcome), STATUS's entry, HANDOFF's line, the ratcheted `tools_py/docmaint.py`. `git push origin sprint-N`; `gh run list --commit <sha>` green.
 2. **The PR** `sprint-N -> main`: `gh pr create --base main --head sprint-N --title "Sprint N: <its name>"`, body =
    the close-out block from `docs/CURRENT_SPRINT.md`. Wait for `build`, `build-windows` and `leakcheck`, then
    `gh pr merge --merge` -- a merge commit, never squash (the per-task commits are the record cited by hash).
