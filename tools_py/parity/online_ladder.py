@@ -1,7 +1,7 @@
 """The engagement ladder's round loop and stop rules (Sprint 5 Amendment A: A1 per-round stop rules, A2 `--rounds N`).
 
 One lobby success carries several rounds: a clock round end or a kill keeps the actor block and resets both players to
-their spawns (KNOWN §4, launch 8c: mp_round_count steps ~5.4 s after the clock reads 00:00, the guest clock stands still
+their spawns (docs/HAZARDS.md harness, launch 8c: mp_round_count steps ~5.4 s after the clock reads 00:00, the guest clock stands still
 ~5.5 s and the players reset at its restart). So a ladder launch plays up to N rounds; each is scored on its own
 (`LADDER round=<n> ...`), round 1 carrying the controllable precondition and rung 0, rounds 2..N engaging only.
 

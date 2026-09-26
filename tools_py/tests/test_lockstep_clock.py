@@ -1,4 +1,4 @@
-"""Sprint 10 -- the simulated Clock runs its threads in lockstep (KNOWN §4: "A threaded Python simulation test can
+"""Sprint 10 -- the simulated Clock runs its threads in lockstep (docs/HAZARDS.md harness: "A threaded Python simulation test can
 redden CI on a push that did not touch Python").
 
 The endgames run their stander / victim as a daemon thread beside the shooter, and the tests inject one fake Clock

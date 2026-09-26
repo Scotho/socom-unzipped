@@ -2,7 +2,7 @@
 compared with console numbers on disk.
 
 The title, transition and mission stages compare our runs with our own earlier runs, so they were blind to the 15-bit
-rand(), the skeleton root decay and the soft-double chain (KNOWN §4 "the gate proves regression only"). This reads
+rand(), the skeleton root decay and the soft-double chain (docs/HAZARDS.md harness, "the gate proves regression only"). This reads
 values whose console numbers are already measured -- `scripts/parity/guest_probe_console.json` names each peek chain,
 the console value, a tolerance and the source -- and reports them beside the mission verdict.
 

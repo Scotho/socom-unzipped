@@ -1,6 +1,6 @@
 """No bare guest address outside the per-revision table (Sprint 13 Task H6, audit harness-tools H19-H23).
 
-KNOWN.md §4's rule: a guest address is read from `tools_py/parity/guest_addresses.py`'s table BY NAME, one
+docs/HAZARDS.md recompiler's rule: a guest address is read from `tools_py/parity/guest_addresses.py`'s table BY NAME, one
 column per revision, and a value the table lacks for a revision is UNCONFIRMED and refused, never guessed.
 A literal written at the place that uses it is how every r0004 silence so far happened (`s11_r0004_round1`
 scored NO-DATA on a round both clients played to its clock): an instrument reading another build's memory

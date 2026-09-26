@@ -9,7 +9,7 @@
     arrive -- a freeze or a teleport in the LAST window, each visible only late;
   * I6: the same re-check for a window inside the loop, at the next iteration.
 
-Sprint 10 (KNOWN §4, the CI flake): the stander / victim thread and the shooter share the Clock in lockstep
+Sprint 10 (docs/HAZARDS.md harness, the CI flake): the stander / victim thread and the shooter share the Clock in lockstep
 (online_rows.Clock), so the victim cannot walk legs while the shooter has not had its turn -- these tests ran 50
 failures in 100 contended runs before that -- and the endgames end their side thread in simulated time
 (M.join_in), which the last test of each class checks.

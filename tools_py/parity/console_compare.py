@@ -2,7 +2,7 @@
 owner-agreed 2026-09-14).
 
 The parity gate compares our runs only with our own earlier runs, so a defect present in every run -- the grey water
-shards, in every gameplay frame since Sprint 3 -- scores as perfect agreement (KNOWN §4). This module scores the mission
+shards, in every gameplay frame since Sprint 3 -- scores as perfect agreement (docs/HAZARDS.md harness). This module scores the mission
 stage's s28 capture against the PCSX2 slot-8 screenshot (`scripts/parity/refs/console_spawn_slot8.png`).
 
 Two kinds of number:

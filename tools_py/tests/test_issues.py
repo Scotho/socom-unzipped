@@ -287,6 +287,36 @@ class ReplayTest(unittest.TestCase):
         self.assertIn("does not exist", text)
 
 
+class HazardsFileTest(ReplayTest):
+    """R270 (Sprint 14 I5): KNOWN's section 4 moved to docs/HAZARDS.md, headed by area. `audit --json FILE` on a
+    planted tree whose KNOWN keeps only a pointer where section 4 was must still find a live HAZARD row -- in the
+    hazards file, named by its file and area -- and must still skip a settled one there."""
+
+    def setUp(self):
+        super().setUp()
+        with open(os.path.join(self.tmp, "docs", "KNOWN.md"), "w", encoding="utf-8") as f:
+            f.write("# K\n\n## 2. Believed\n\n| **A row.** *(issue #1)* | exp |\n\n"
+                    "## 4. Standing hazards -- moved\n\nThe hazards live in `docs/HAZARDS.md`.\n")
+        with open(os.path.join(self.tmp, "docs", "HAZARDS.md"), "w", encoding="utf-8") as f:
+            f.write("# Standing hazards\n\nThe header: a hazard is a standing trap, not a claim.\n\n"
+                    "## renderer\n\n- **HAZARD: a live hazard in the new file.** text\n"
+                    "- **A lesson, not a hazard.** text\n\n"
+                    "## lock\n\n- **HAZARD: settled in its blockquote.** text\n"
+                    "  > Superseded 2026-09-21: fixed\n"
+                    "- **Open: a question under the lock.** text\n")
+
+    def test_a_live_hazard_in_the_hazards_file_is_listed_with_its_file_and_area(self):
+        code, text = self.run_audit([planted(1)])
+        self.assertEqual(code, 0, text)
+        self.assertIn("[docs/HAZARDS.md: renderer] HAZARD: a live hazard in the new file.", text)
+        self.assertIn("[docs/HAZARDS.md: lock] Open: a question under the lock.", text)
+        self.assertNotIn("settled in its blockquote", text)
+        self.assertNotIn("A lesson, not a hazard", text)
+
+    def test_the_hazards_file_is_a_live_document(self):
+        self.assertIn("docs/HAZARDS.md", issues.live_docs())
+
+
 class LabelsAgreeTest(unittest.TestCase):
     """The areas this module accepts are the areas scripts/github_labels.sh creates, and the stack's two labels
     exist there too -- otherwise `open` would apply a label the repository does not have."""

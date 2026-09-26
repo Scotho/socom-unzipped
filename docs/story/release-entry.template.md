@@ -2,7 +2,7 @@
 
 There is no release yet, so `docs/STORY.md` cannot truthfully carry a release entry; what it carries instead is the
 uncited "Where it stands tonight" section, which this entry replaces when the release exists. Everything in braces is a
-field the release run stamps — from the run, never from the directory (`docs/KNOWN.md` §4: a failed packaging leaves
+field the release run stamps — from the run, never from the directory (`docs/HAZARDS.md` build: a failed packaging leaves
 the previous archive in place). `tools_py/story/cite.py` fails the suite if a `{{` or `}}` survives in `STORY.md`, so a
 pasted-but-unfilled template cannot ship.
 
@@ -20,7 +20,7 @@ disc, and what happens next. No sentence a player would not understand.}}
 *How:* {{one line at most, e.g. the gate id and its 3/3 on the exe inside the archive, and the release workflow that cut it}}
 
 *But:* {{the honest edge: what has never been tried (a second network? a stranger's machine? a real Linux GPU?), what is
-unsigned, what is believed rather than proven — read docs/KNOWN.md §4 at the release commit and quote it}}
+unsigned, what is believed rather than proven — read docs/HAZARDS.md at the release commit and quote it}}
 
 `Cited:` `{{release commit short sha}}` {{a fragment of its subject} · gate {{gate id on the released exe}} · docs/PLAYTEST.md · docs/KNOWN.md
 ```

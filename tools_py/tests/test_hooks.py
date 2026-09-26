@@ -198,7 +198,7 @@ class EditWritePlantedTest(unittest.TestCase):
         code, why = self.edit("Edit", "logs/s14_chain.sh", holder="chain:s14")
         self.assertEqual(code, 2, why)
         self.assertIn("chain:s14", why)
-        self.assertIn("home: docs/KNOWN.md section 4", why)
+        self.assertIn("home: docs/HAZARDS.md lock", why)
         self.assertEqual(self.edit("Edit", "logs/s14_chain.sh", holder=None), (0, ""))
 
     def test_a_chain_script_is_refused_only_when_it_exists_and_the_lock_is_held(self):

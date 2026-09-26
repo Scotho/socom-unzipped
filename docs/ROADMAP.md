@@ -128,7 +128,7 @@ the plan's C2 row has its state.)*
 
 **B. A check that can pass quietly is the recurring defect class on our side of the fence.** Sprint 4 found six.
 Sprints 5–10 kept finding them: the mission gate scoring the intro cinematic, the console-spawn score riding inside a
-PASS line so `grep FAIL` reddens a clean gate (`KNOWN.md` §4, the `grep FAIL` hazard), a ruling in prose that no test could fail so
+PASS line so `grep FAIL` reddens a clean gate (`docs/HAZARDS.md` harness, the `grep FAIL` hazard), a ruling in prose that no test could fail so
 `build.sh` quietly kept shipping `-O2` against R151, and a screenshot walk that changed pages at a moment no player
 could produce. It is the first thing reviewers are told to attack and it should stay that way.
 

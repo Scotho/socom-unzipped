@@ -872,7 +872,7 @@ def expected_pins_rel(revision):
     lets it run REWRITES THE r0001 STANDARD. That is not a hazard in the abstract: on 2026-09-24 at 10:25
     an unattended `gate --accept-pins --stamp s11_r0004_reg3` replaced this file's r0001 env pin with the
     r0004 spec and dropped the mapping pin, exactly as review F2 predicted it would. Two files, and
-    neither revision's gate can reach the other's (KNOWN §4's accept-pins hazard, closed)."""
+    neither revision's gate can reach the other's (docs/HAZARDS.md harness, the accept-pins hazard, closed)."""
     if revision == "r0001":
         return pins.EXPECTED
     stem, ext = os.path.splitext(pins.EXPECTED)

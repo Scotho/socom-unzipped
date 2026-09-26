@@ -180,7 +180,7 @@ REVISIONS = tuple(sorted({r for table in (PROBE_ADDRESSES, ONLINE_ADDRESSES, TRA
 #
 # The audio poll, the motion-pack check, cam_poll's default spec and verdict_core's valve pointer mode
 # carried these as r0001 literals where they were used, outside this table, and nothing refused them on an
-# r0004 run (KNOWN.md §4's hazard exactly: the numbers come back, they are just somebody else's memory).
+# r0004 run (docs/HAZARDS.md recompiler's hazard exactly: the numbers come back, they are just somebody else's memory).
 # `tools_py/tests/test_no_bare_guest_addresses.py` now refuses a new one anywhere under tools_py/parity.
 #
 # UNLIKE THE THREE TABLES ABOVE, A COLUMN HERE MAY BE MISSING. A value `data_via_twin` cannot place is not
@@ -427,7 +427,7 @@ OFFSET_NAMES = {
                             "triple is not"},
         "r0004": {"name": UNNAMED, "verdict": "unknown", "socom1_offset": None, "note": "research/50 §4a",
                   "reason": "no demo twin (as r0001); the value is r0001's field moved +4 by the word r0004 "
-                            "inserted at 0x1334 (all 6 uses -> 0x136c, KNOWN §4)"},
+                            "inserted at 0x1334 (all 6 uses -> 0x136c, docs/HAZARDS.md recompiler)"},
     },
     "actor_pos": {
         "r0001": {"name": UNNAMED, "verdict": "contradicted", "socom1_offset": None, "note": "research/50 §4a",

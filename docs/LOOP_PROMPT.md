@@ -92,7 +92,7 @@ reference). **Never hold it across tool calls except through `run` or `run_detac
 between two tool calls is not renewed, and the calling shell dies when its tool call returns.
 **Mixed versions:** a job started under an older `loop_lock.sh` (plain `logs/.loop_lock` file, or a
 claim dir without the `logs/.loop_lock.mx` mutex) must finish before anything uses the current lock.
-A new lock script lands only by the rollout procedure (`docs/KNOWN.md` section 4: `check` exactly
+A new lock script lands only by the rollout procedure (`docs/HAZARDS.md` lock: `check` exactly
 `FREE`, `busy` empty, land, restart every waiter, then every waiter's OWN blob -- `blob=` in `check`'s
 `QUEUED:` lines, `[loop_lock.sh <blob12>]` in its result line -- equals the landed `git hash-object`).
 - Foreground: `bash scripts/loop_lock.sh run <owner> --purpose "<what>" [--wait 40] -- <cmd...>`
