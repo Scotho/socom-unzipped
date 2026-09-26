@@ -2,6 +2,7 @@
 # `git hash-object scripts/loop_lock.sh` to the blob line below. Update this file ONLY after
 #   LOOP_LOCK_SLOW_TESTS=1 python -m unittest tools_py.tests.test_loop_lock
 # is green on the script as it stands.
-blob 36236f947bd95bbeee96969f1f13c4b7adffac22
-date 2026-09-25T15:45:57Z
-run 90 tests in 3853.6 s (test_loop_lock + test_loop_lock_closeout), 2026-09-25T14:41Z..15:45Z on a quiet host (bash start ~47 ms with ~1-in-5 hiccups of ~460 ms): 88 OK, skipped=1 (this stamp test itself), 2 FAIL -- the two renewal cases' fixed windows (test_run_reports_lock_lost_and_does_not_release_the_new_holder, test_detached_renews_releases_and_writes_exit_code; a renew measured 0.68-1.62 s). Per the controller's ruling those two were widened to poll for the heartbeat (test file only; the blob is unchanged) and then passed with LOOP_LOCK_SLOW_TESTS=1 (Ran 2 tests in 34.2 s, OK). Sprint 13 H2: the ticket queue, --wait in minutes, orphaned waiters leave the queue.
+blob 3322d20142d4e05cbff819ad2c941902cbdfc9cd
+date 2026-09-26T10:52:38Z
+run 95 tests in 2136.3 s (test_loop_lock), ending 2026-09-26T10:52:38Z (logs/.loop_lock_slow_green written by SlowGreenSuite, 95 tests): OK, skipped=1 (this stamp test itself). Run by the Sprint 14 controller in wt-s14-w1 on agent/s14-w1. Sprint 14 W1: the queue's WIP cap -- tickets carry class=build|run, a third queued build ticket is refused (exit 4, "queue full: do lock-free work"), LOOP_LOCK_MAX_QUEUE (2).
+Previous: blob 36236f947bd95bbeee96969f1f13c4b7adffac22, 2026-09-25T15:45:57Z, 90 tests in 3853.6 s (test_loop_lock + test_loop_lock_closeout), Sprint 13 H2: the ticket queue, --wait in minutes, orphaned waiters leave the queue.
