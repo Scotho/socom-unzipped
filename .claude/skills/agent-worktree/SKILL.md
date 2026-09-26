@@ -5,10 +5,10 @@ description: Give an implementer agent its own worktree and take its work back -
 
 # An agent's worktree, from create to remove
 
-The controller does every step here except the agent's own work. Sources: `docs/HANDOFF.md` §5 "Giving an agent a
+The controller does every step here except the agent's own work. Sources: `docs/archive/HANDOFF-to-2026-09-26.md` §5 "Giving an agent a
 worktree", the open sprint plan's Global Constraints, `scripts/agent_worktree.sh`'s header, `docs/GIT_STRATEGY.md` §2.
 
-*Why a script and not a recipe (HANDOFF §5, 2026-09-21):* a worktree is a second tree with the same scripts in it.
+*Why a script and not a recipe (the archived HANDOFF §5, 2026-09-21):* a worktree is a second tree with the same scripts in it.
 One agent pushed and merged to `main` three times against an explicit "do not push"; `git worktree remove` deleted
 the toolchain THROUGH a surviving junction twice. The script makes both impossible; the Bash hook refuses
 `git worktree add/remove/prune` by hand.

@@ -56,7 +56,7 @@ GIT_COMMITS = "docs/GIT_STRATEGY.md section 3 (Commits)"
 GIT_BRANCHES = "docs/GIT_STRATEGY.md section 2 (Branches)"
 AGENT_WORKTREE = "scripts/agent_worktree.sh"
 LOOP_LOCK = "scripts/loop_lock.sh"
-HANDOFF_RULE_1 = "docs/HANDOFF.md section 5 rule 1"
+HANDOFF_RULE_1 = "docs/HANDOFF.md section 4 rule 1"
 
 _PUNCT = "();<>|&\n"
 _HEREDOC = re.compile(r"<<(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")

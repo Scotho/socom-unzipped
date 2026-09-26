@@ -3,7 +3,7 @@
 Before this, summary.txt pinned one thing (the EXE line) and every other input the score depends on could
 change with no record: the reference images, the memory card the run boots from, the drive scripts, the
 harness revision, the PS2X_* environment. A silently-changed reference image moves every score with no
-record that anything moved -- the sibling of HANDOFF trap 4 (the pipeline cannot see a defect present in
+record that anything moved -- the sibling of the docs/HAZARDS.md harness hazard, once HANDOFF trap 4 (the pipeline cannot see a defect present in
 every run; it cannot see a change in its own standard either).
 
 tools_py/parity/pins.py is the mechanism (hash, compare, lines, files); gate.collect_pins names the gate's

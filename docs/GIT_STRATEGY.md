@@ -68,8 +68,8 @@ shape, six times over in Sprint 10:
 5. `git merge origin/main` back into the sprint branch immediately, delete the slice branch. `main` and `sprint-N` are
    identical again; the next item starts from a clean diff.
 
-**Never** let an implementation agent do this: it merges its own unreviewed work (it happened -- see `docs/HANDOFF.md`
-on handing out a worktree). The controller opens and merges every slice.
+**Never** let an implementation agent do this: it merges its own unreviewed work (it happened -- see `docs/archive/HANDOFF-to-2026-09-26.md`
+§5 on handing out a worktree, now the `agent-worktree` skill). The controller opens and merges every slice.
 The role definitions every brief dispatches by name are `.claude/agents/implementer.md` and `.claude/agents/reviewer.md`.
 
 **Merging a sprint (AT S9 CLOSE and after):** open a PR `sprint-N -> main`, title `Sprint N: <its name>`, body = the

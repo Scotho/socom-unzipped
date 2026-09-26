@@ -688,6 +688,68 @@ day-by-day, `docs/KNOWN.md` what is proven and what is believed, `docs/HUMAN_TAS
 
 **The pinned references (Sprint 13 H3):** `scripts/parity/pins.json` (r0001; `pins_r0004.json` for r0004) is the gate's standard and the gate refuses on a drift; `scripts/parity/pins_refs.json` pins every OTHER reference PNG under `scripts/parity/` -- a tripwire, not a refusal: `test_gate_pins.EveryReferenceIsPinned` fails the suite when one changes and the file does not, so re-pin in the same commit.
 
+## Instruments and diagnostics
+
+*(Moved verbatim from `docs/HANDOFF.md` §7 on 2026-09-26, Sprint 14 I3, when HANDOFF became transient; the file as it was is `docs/archive/HANDOFF-to-2026-09-26.md`. "Section 7" in an older citation means this section.)*
+
+- **Developer mode (Sprint 10 Q2, 2026-09-21).** Every recipe below that sets a `PS2X_*` probe works through `./run.sh`
+  unchanged (it is a developer-mode launch: `drive.py` adds `PS2X_DEV=1` below the gate's env pin, R203) and needs
+  `--dev` or `PS2X_DEV=1` when the runner is started any other way -- a stranger's environment cannot switch a probe
+  on (proved by `s9_g3_poisoned_env`: six probes set, `[knobs] dev=0 ... ignored without --dev: <the six>`, the game
+  ran 90 s clean). `docs/KNOBS.md` is the list. Five names are gone and will still appear in STATUS's history:
+  `PS2X_GS_TEX_FROM_CPU`, `PS2X_GS_PROBE`, `PS2X_GS_GL_DEBUG_NODEPTH`, `PS2X_MPEG_PIC_TRACE` and `PS2X_TIMER_*` (the plan's Task 6
+  commit names them exactly), plus two ghosts the README had already lost.
+
+- **The leak check** (`python -m tools_py.release.leakcheck <mode>`; modes `tree`, `staged`, `ignored`, `metadata`,
+  `history [range]`, `artifact <dir>`, `all`): exit 0 clean, 1 findings, **2 the scanner did not run -- never a
+  pass**. Every run starts with a planted control of 28 secret shapes; `--reveal` shows a hit unmasked on the terminal;
+  `--json FILE` writes the masked report. `tree` ~20 s, `history` ~16 s over 920 commits. Rules: `leakrules.py`;
+  decisions: `leak_allow.txt`; tests: `tools_py/tests/test_leakcheck.py` (25). gitleaks is CI's second opinion
+  (`.gitleaks.toml`), a local copy runs in ~2 s: `gitleaks git --log-opts=--all --redact .`.
+
+- **Build:** `./build.sh tools | recomp | runtime | release | test | all` (Git Bash; `all` = recomp + runtime).
+  Runtime about 3 minutes incremental, 10-15 for a header change or a full generated rebuild. Linux:
+  `scripts/build_linux.sh [tools|runtime|release|test|all] [--no-runner]`. Packaging: `scripts/make_portable.sh
+  [--release]`, `scripts/make_server_zip.sh`.
+- **The gate** (`python -m tools_py.parity.gate`, `--only <stage>`, `--stamp <name>`, `--baseline <stamp>` to re-score
+  without a launch; `SOCOM_EXE` points it at another exe): title about 3 min, transition about 3, mission about 11.
+  The project's only regression bar. Refuses under 4 GB free on C:. Results under `logs/parity/gate/<stamp>/`.
+- **The ladder** (`scripts/parity/ladder_frostfire.sh`, pins HEAD's harness first) and **control rounds**
+  (`scripts/parity/online_control_round.sh "<map>"`): two instances, online, against our server only.
+  `scripts/parity/env.sh` sets the server address for the harness. `mixed_match.sh` (ours against PCSX2) **runs both ways on
+  the hosted server** -- the console joins a game we host and we join a game it hosts, both proven 2026-09-20
+  (Sprint 10 Goal 3; `docs/KNOWN.md` §1, `logs/parity/mixed2_ours_hosts_d` and `mixed2_pcsx2_hosts_f`). This line
+  said it had never produced a result until 2026-09-23.
+- **Audio (rebuilt 2026-09-20, Q0/Q1):** the ear's path is measured now, not the mixer's. `tools_py/parity/audio_envelope.py`
+  scores any WAV reference-free (envelope oscillation, splices, silences, sub-second holes); `loopback_record.py`
+  records what Windows sends to the default endpoint (WASAPI loopback -- this is what the owner hears);
+  `stream_events.py` reads the runtime's stream trace (`[audio] 989snd stream <h> start|done|UNDERRUN frame=N`, on
+  the WAV clock) into boundary gaps and starvation per stem; and **`scripts/parity/audio_parity.sh capture|compare`**
+  is the audio parity check against PCSX2: the same step script on both targets, per-step windows scored, ours
+  compared to the console's pinned scores (`scripts/parity/refs/audio_<script>.pcsx2.json`) with tolerances --
+  PASS/FAIL per window. `audio_corr.py` (correlation, `--repeat`) still exists for the title path. The old driven
+  dump alone (`PS2X_AUDIO_DUMP`) cannot see the device path; record the endpoint beside it.
+- **Run recipes, the env-gated diagnostics list, landmarks and gotchas from the first two weeks:**
+  `docs/archive/HANDOFF-reference-to-2026-09-13.md` ("The run you will repeat", "Diagnostics", "Gotchas",
+  "Landmarks"). Every recipe there that sets a `PS2X_*` probe works through `./run.sh` unchanged; a runner started
+  any other way needs `--dev` or `PS2X_DEV=1` for a probe to be honoured (developer mode, since 2026-09-21).
+  > Superseded 2026-09-25 (Sprint 13 R2): this said "once Goal 3 lands"; it landed as Sprint 10's Q2 on 2026-09-21
+  > (the first bullet of this section) -- documents audit row 18.
+- **The ladder, scheduled (Sprint 10 Goal 1):** `scripts/ladder_job.sh [rounds]` is what the Task Scheduler entry
+  `SOCOM Unzipped ladder` (disabled until the owner names the windows) fires: quiet gate, lock free, no game, then
+  `scripts/parity/ladder_frostfire.sh` pinned and detached against the hosted server, then
+  `tools_py/parity/ladder_ledger.py add` -- one record per run in `logs/ladder/ledger.jsonl`, the three rates and
+  the clean streak rendered to `docs/LADDER.md` (a person commits it). The bar is seven consecutive runs with no
+  LOBBY-FAIL and no CRASH.
+- **Logs:** `logs/` is 27 GB and git-ignored. `scripts/archive_logs.ps1` (dry-run by default; refuses to move anything
+  KNOWN §1 names as evidence) has not been applied since it was written. Run its dry run, read it, then `-Apply` in a
+  quiet window -- it is filler, and it is evidence you are moving, so read before you apply.
+- **Bug reports:** `.claude/skills/s2u-bug-reports/` (git-ignored, local). Read its SKILL.md before use.
+- **The known-issue stack** (2026-09-23): `python -m tools_py.issues skeleton | check-body | open | close | audit`
+  over the repository's issues labelled `known-issue`, one milestone per sprint. `audit` exits 0 or names the row,
+  citation, label or body that is wrong; `--json FILE` replays a saved `gh issue list` listing offline.
+- **The hosted box:** agent instructions are git-ignored in `vm/lightsail/README.md`. It is the server session's.
+
 ## Knobs
 
 **`docs/KNOBS.md` is the complete, generated list** (since Sprint 10 Q2, 2026-09-21), and it states its own count by
@@ -936,7 +998,7 @@ tracked, the harness's local state is not (`ClaudeDirIgnoreTest`), whatever a gl
 - **Commit without paths** -- `git commit` (and `--amend`) with no `-- <paths>`, since a bare commit takes whatever
   any session staged; allowed while `MERGE_HEAD` exists in the directory the commit works in, after `cd`/`git -C`
   (git refuses a partial commit mid-merge); test
-  `git commit -m 'x'`, `git commit --no-edit`; home `docs/HANDOFF.md` section 5 rule 1.
+  `git commit -m 'x'`, `git commit --no-edit`; home `docs/HANDOFF.md` section 4 rule 1.
 - **No-verify** -- in any git command, `--no-verify` or any abbreviation of it from `--no-v` up (git accepts unique
   prefixes), commit's `-n`, and `-c core.hooksPath=...` (any case, `-ckey=` too); test `git commit --no-verif ...`,
   `git push --no-verify`, `git -c core.hooksPath=/dev/null commit ...`; home `docs/GIT_STRATEGY.md` section 3.
