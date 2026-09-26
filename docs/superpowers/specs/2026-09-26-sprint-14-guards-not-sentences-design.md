@@ -172,8 +172,9 @@ when the host is quiet. The private location that served the owner's ELF dumps t
   the merged chain. Bar: the leg 12/12 on the sprint's final exe; the grep test.
 - **E3** Recompiler re-derivation in CI: the synthetic ELF fixture recompiled on the Linux runner and diffed against
   a checked-in reference; a planted codegen change reddens it once, recorded. Bar: the CI job; the red run's id.
-- **E4** Gate freshness: the gate refuses (exit 3) an exe older than the newest runtime source under
-  `third_party/ps2recomp` unless `--stale-ok`, and records `TREE <head> dirty=<n>`. Bar: the temp-file test.
+- **E4** Gate freshness: the gate refuses (exit 5 — 3 was the low-disk refusal already) an exe older than the newest
+  source it was built from under `third_party/ps2recomp` (the runtime, the linked libraries, the CMake files, the
+  revision's recompiler inputs) unless `--stale-ok`, and records `TREE <head> dirty=<n>`. Bar: the temp-file test.
 
 ### Milestone M — measurement **[A]**
 
