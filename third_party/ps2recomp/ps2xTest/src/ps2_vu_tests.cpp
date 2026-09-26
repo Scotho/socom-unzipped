@@ -775,6 +775,91 @@ void register_ps2_vu_tests()
                      "RotTransPers should FTOI0-truncate z/w instead of FTOI4 when fullFtoi4 is clear");
         });
 
+        // Issue #33: the three HLE FTOI sites convert through Ps2VuFtoiScalar -- the emitter's VFTOI
+        // clamps and its NaN rule (a NaN of either sign answers INT_MIN, the Cucumber fork's answer;
+        // PCSX2 saturates a positive NaN pattern to INT_MAX) -- where they used a bare cast, which is
+        // undefined out of range and on x86 answered INT_MIN for positive overflow too.
+        tc.Run("FTOI0Vector clamps infinities and out-of-range values and answers INT_MIN for NaN", [](TestCase &t)
+        {
+            VuEnv env;
+            writeVec4(env, kA, INFINITY, -INFINITY, 3.0e9f, -3.0e9f);
+            SET_GPR_U32(&env.ctx, 4, kDst);
+            SET_GPR_U32(&env.ctx, 5, kA);
+            ps2_stubs::sceVu0FTOI0Vector(env.rdram.data(), &env.ctx, &env.runtime);
+            int32_t out[4]{};
+            readVec4i(env, kDst, out);
+            t.Equals(out[0], INT32_MAX, "FTOI0 of +inf clamps to INT_MAX");
+            t.Equals(out[1], INT32_MIN, "FTOI0 of -inf clamps to INT_MIN");
+            t.Equals(out[2], INT32_MAX, "FTOI0 past INT32_MAX clamps to INT_MAX");
+            t.Equals(out[3], INT32_MIN, "FTOI0 past INT32_MIN clamps to INT_MIN");
+
+            writeVec4(env, kA, NAN, -NAN, 1234.75f, -1234.75f);
+            ps2_stubs::sceVu0FTOI0Vector(env.rdram.data(), &env.ctx, &env.runtime);
+            readVec4i(env, kDst, out);
+            t.Equals(out[0], INT32_MIN, "FTOI0 of a positive NaN answers INT_MIN (the rule chosen)");
+            t.Equals(out[1], INT32_MIN, "FTOI0 of a negative NaN answers INT_MIN");
+            t.Equals(out[2], 1234, "FTOI0 truncates toward zero");
+            t.Equals(out[3], -1234, "FTOI0 truncates a negative toward zero");
+        });
+
+        tc.Run("FTOI4Vector clamps what the x16 scale carries out of range and answers INT_MIN for NaN", [](TestCase &t)
+        {
+            VuEnv env;
+            writeVec4(env, kA, 200000000.0f, -200000000.0f, INFINITY, NAN);
+            SET_GPR_U32(&env.ctx, 4, kDst);
+            SET_GPR_U32(&env.ctx, 5, kA);
+            ps2_stubs::sceVu0FTOI4Vector(env.rdram.data(), &env.ctx, &env.runtime);
+            int32_t out[4]{};
+            readVec4i(env, kDst, out);
+            t.Equals(out[0], INT32_MAX, "FTOI4: a value x16 carries past INT32_MAX clamps to INT_MAX");
+            t.Equals(out[1], INT32_MIN, "FTOI4: a value x16 carries past INT32_MIN clamps to INT_MIN");
+            t.Equals(out[2], INT32_MAX, "FTOI4 of +inf clamps to INT_MAX");
+            t.Equals(out[3], INT32_MIN, "FTOI4 of a NaN answers INT_MIN (the rule chosen)");
+
+            writeVec4(env, kA, 0.5f, -1234.5625f, -134217728.0f, 0.0f);
+            ps2_stubs::sceVu0FTOI4Vector(env.rdram.data(), &env.ctx, &env.runtime);
+            readVec4i(env, kDst, out);
+            t.Equals(out[0], 8, "FTOI4 scales before truncating");
+            t.Equals(out[1], -19753, "FTOI4 keeps the sign and truncates toward zero");
+            t.Equals(out[2], INT32_MIN, "FTOI4 landing exactly on INT32_MIN converts exactly");
+            t.Equals(out[3], 0, "FTOI4 of zero is zero");
+        });
+
+        tc.Run("RotTransPers converts through the saturating FTOI in both modes", [](TestCase &t)
+        {
+            VuEnv env;
+            float ident[16]{};
+            makeIdentity(ident);
+            writeMat4(env, kA, ident);
+            // w = 1, so the divide leaves x/y/z as they are; x16 carries x/y out of range.
+            writeVec4(env, kB, 200000000.0f, -200000000.0f, 3.0e9f, 1.0f);
+            SET_GPR_U32(&env.ctx, 4, kDst);
+            SET_GPR_U32(&env.ctx, 5, kA);
+            SET_GPR_U32(&env.ctx, 6, kB);
+            SET_GPR_U32(&env.ctx, 7, 1u); // fullFtoi4
+            ps2_stubs::sceVu0RotTransPers(env.rdram.data(), &env.ctx, &env.runtime);
+            int32_t out[4]{};
+            readVec4i(env, kDst, out);
+            t.Equals(out[0], INT32_MAX, "x through FTOI4 past INT32_MAX clamps to INT_MAX");
+            t.Equals(out[1], INT32_MIN, "y through FTOI4 past INT32_MIN clamps to INT_MIN");
+            t.Equals(out[2], INT32_MAX, "z through FTOI4 past INT32_MAX clamps to INT_MAX");
+            t.Equals(out[3], 16, "w = 1 through FTOI4");
+
+            SET_GPR_U32(&env.ctx, 7, 0u); // z/w through FTOI0
+            ps2_stubs::sceVu0RotTransPers(env.rdram.data(), &env.ctx, &env.runtime);
+            readVec4i(env, kDst, out);
+            t.Equals(out[2], INT32_MAX, "z through FTOI0 past INT32_MAX clamps to INT_MAX");
+            t.Equals(out[3], 1, "w = 1 through FTOI0");
+
+            // A NaN in the vertex reaches every lane through the matrix apply (0 x NaN is NaN).
+            writeVec4(env, kB, NAN, 0.0f, 0.0f, 1.0f);
+            SET_GPR_U32(&env.ctx, 7, 1u);
+            ps2_stubs::sceVu0RotTransPers(env.rdram.data(), &env.ctx, &env.runtime);
+            readVec4i(env, kDst, out);
+            t.IsTrue(out[0] == INT32_MIN && out[1] == INT32_MIN && out[2] == INT32_MIN && out[3] == INT32_MIN,
+                     "a NaN vertex answers INT_MIN in every lane (the rule chosen)");
+        });
+
         tc.Run("RotTransPers_persp_wzero_zero", [](TestCase &t)
         {
             VuEnv env;

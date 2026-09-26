@@ -1050,6 +1050,83 @@ void register_ps2_runtime_kernel_tests()
             runtime.registerFunction(kFloat, nullptr);
         });
 
+        tc.Run("PS2X_HLE_STATS counts a tail call (J) to a stub once, like a dispatched call (issue #40)", [](TestCase &t)
+        {
+            constexpr uint32_t kStub = 0x00300100u;
+            PS2Runtime runtime;
+            static int s_stubBodyRuns = 0;
+            s_stubBodyRuns = 0;
+            // The stub's generated wrapper: ctx->pc = $ra, then the handler.
+            const PS2Runtime::RecompiledFunction stubWrapper = [](uint8_t *, R5900Context *ctx, PS2Runtime *)
+            {
+                ctx->pc = ::getRegU32(ctx, 31);
+                ++s_stubBodyRuns;
+                ::setReturnU32(ctx, 0x1234u);
+            };
+            runtime.registerFunction(kStub, stubWrapper);
+
+            std::istringstream toml("[general]\nstubs = [\n  \"tail_target@0x00300100\",\n]\n");
+            t.Equals(ps2_hle_stats::install(runtime, ps2_hle_stats::parseTomlStubs(toml)), static_cast<size_t>(1),
+                     "the stub's table entry is wrapped");
+
+            // The generated shape of a function that ends in `j tail_target`: the delay slot, the pc,
+            // then the line ControlFlowEmitter::emitDirectFunctionJumpIfAvailable writes for a stub
+            // target (code_generator_tests' "a tail call (J) to an HLE stub" holds that text).
+            const PS2Runtime::RecompiledFunction tailCaller = [](uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+            {
+                ctx->pc = 0x00300100u;
+                runtime->lookupFunction(0x00300100u)(rdram, ctx, runtime); return;
+            };
+
+            std::vector<uint8_t> rdram(64, 0);
+            R5900Context ctx{};
+            setRegU32(ctx, 31, 0x00200040u);
+            tailCaller(rdram.data(), &ctx, &runtime);
+            t.Equals(s_stubBodyRuns, 1, "the stub ran once");
+            t.Equals(ctx.pc, 0x00200040u, "the stub returned to the tail caller's $ra");
+
+            // The row: "[hle-stats] <addr> <name> <calls> <rets> <distinct> <first> <last>".
+            struct Row
+            {
+                std::string text;
+                unsigned long long calls = 0u;
+                unsigned long long rets = 0u;
+            };
+            auto rowOf = [](const std::string &table) -> Row
+            {
+                std::istringstream in(table);
+                std::string line;
+                while (std::getline(in, line))
+                {
+                    if (line.find(" tail_target ") == std::string::npos)
+                        continue;
+                    Row r;
+                    r.text = line;
+                    std::istringstream fields(line);
+                    std::string tag, addr, name;
+                    fields >> tag >> addr >> name >> r.calls >> r.rets;
+                    return r;
+                }
+                return {};
+            };
+            Row row = rowOf(ps2_hle_stats::formatTable("tail"));
+            t.Equals(row.calls, 1ull, "the tail call is counted once: " + row.text);
+            t.Equals(row.rets, 1ull, "the tail call's return is recorded: " + row.text);
+            t.IsTrue(row.text.find("0x00001234") != std::string::npos, "the return value is the stub's: " + row.text);
+
+            // The dispatched call (a JAL's path) reaches the same counting entry.
+            setRegU32(ctx, 31, 0x00200080u);
+            ctx.pc = 0x00200078u;
+            (void)runtime.dispatchGuestBranch(rdram.data(), &ctx, kStub, 0x00200078u, 0x00200080u,
+                                              PS2Runtime::GuestBranchKind::DirectCall, "JAL");
+            t.Equals(s_stubBodyRuns, 2, "the dispatched call ran the stub");
+            row = rowOf(ps2_hle_stats::formatTable("tail+dispatch"));
+            t.Equals(row.calls, 2ull, "the tail call and the dispatched call count 2: " + row.text);
+
+            ps2_hle_stats::uninstall(runtime);
+            runtime.registerFunction(kStub, nullptr);
+        });
+
         tc.Run("PS2X_SCHED_TRACE: the stub line, its threshold and the timing wrapper (research/36 item 16)", [](TestCase &t)
         {
             // The threshold rule: at or above prints, below does not, 0 prints everything, negative never.
