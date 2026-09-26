@@ -9,6 +9,9 @@ are not meant to be posted. Every claim in the notes cites a file and line or a 
 numbers were read from GitHub on 2026-09-25 and are marked as such. No draft carries anything taken from the
 disc's bytes. The module names, ordinals, addresses and option strings stay in research/40 and research/49.
 
+The register is `docs/UPSTREAM.md` (2026-09-26): the bugs in a vendor's `main`, with local status and filing state.
+What is not a bug is `NOT-UPSTREAM.md` here; the research on open PRs is `OPEN-PRS.md` here.
+
 | file | for | what it is | recommendation |
 |---|---|---|---|
 | `issue-modload-argv-abi.md` | ran-j/PS2Recomp, issue | #244's `loadImage` starts an IRX as `_start(byteCount, rawBuffer)`, where modload passes `(argc, argv)` | **file**, with `ps2recomp-argv.patch` |
