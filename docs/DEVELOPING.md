@@ -684,7 +684,29 @@ document may state one without a date beside it.**
 
 `python -m tools_py.parity.gate --baseline first_run` re-scores that saved run without launching, which is the
 fastest way to check a scoring change. A gate refuses to start under 4 GB free on C: (`RUN_MIN_FREE_GB`) and
-while another launch holds the loop lock (`scripts/loop_lock.sh status`). Anything else: `docs/STATUS.md` has the
+while another launch holds the loop lock (`scripts/loop_lock.sh status`). **Freshness (Sprint 14 E4):** a launch also
+refuses when the exe (`dist/socom2.exe`, or `$SOCOM_EXE`) is older than the newest file it is built from. For every
+revision (`gate.FRESHNESS_COMMON`): under `third_party/ps2recomp/`, the top-level `CMakeLists.txt`, and for
+`ps2xRuntime` (which carries the `ps2x_snd989` sources in `src/lib`), `ps2xIOP`, `ps2xShared` and the recompiler
+`ps2xRecomp` their `CMakeLists.txt`, `src` and `include` (plus `ps2xRuntime/cmake`); `build.sh`,
+`tools_py/make_overlay_elf.py`, `tools_py/fix_ghidra_csv.py`, `recomp/loader_text_end.txt` and
+`recomp/merge_ranges.txt`. Then that revision's own inputs only (`gate.FRESHNESS_BY_REVISION`). For r0001:
+`recomp/output`, `socom2.toml`, `socom2_ghidra.csv`, `socom2_names.csv`, `extra_functions.txt` and
+`game/overlays/socom2_game.elf`. For r0004: `recomp/output_r0004`, `socom2.toml` (the source of the derived toml),
+the `_r0004` toml, csvs and extra-functions list, `scripts/build_revision.sh`, the tools it runs and
+`game/overlays_r0004/socom2_game_r0004.elf`. So `build_revision.sh r0004` rewriting its tracked toml never refuses an
+r0001 gate. **The revision** is read from the exe's own path: `socom2_r0004.exe`, or a folder named for it
+(`dist-r0004/socom2.exe`); neither means r0001. **The tree** is the exe's own: the nearest directory above it that
+holds `build.sh`, so a gate run from the main tree against a worktree's exe compares that worktree's sources (this
+checkout when there is none). Still outside the set: the build configuration in the CMake cache (`PS2X_GENERATED_OPT`,
+LTO), the compiler, and the FetchContent/ffmpeg downloads -- each changes only with a deliberate reconfigure. A stale
+exe prints `gate: exe older than source (<exe mtime> < <path> <mtime>): rebuild, or --stale-ok`, before the lock and
+before anything is written.
+`--stale-ok` launches anyway and the summary carries `gate: STALE exe accepted (--stale-ok)`; the merged-chain
+template never passes it. Every summary and `pins.json` carries `TREE <head> dirty=<n>` (the short HEAD and the count
+of `git status --porcelain` lines outside `logs/` and `game/`), so a record says which tree it measured. The gate's
+exit codes: 0 PASS, 1 a stage FAILed, 2 the lock busy, 3 low disk, 4 a `--baseline` with nothing to score, **5 a
+stale exe**, 7 a pin drift, 8 an unknown revision. Anything else: `docs/STATUS.md` has the
 day-by-day, `docs/KNOWN.md` what is proven and what is believed, `docs/HUMAN_TASKS.md` the checks only a person can do.
 
 **The pinned references (Sprint 13 H3):** `scripts/parity/pins.json` (r0001; `pins_r0004.json` for r0004) is the gate's standard and the gate refuses on a drift; `scripts/parity/pins_refs.json` pins every OTHER reference PNG under `scripts/parity/` -- a tripwire, not a refusal: `test_gate_pins.EveryReferenceIsPinned` fails the suite when one changes and the file does not, so re-pin in the same commit.
@@ -714,7 +736,8 @@ day-by-day, `docs/KNOWN.md` what is proven and what is believed, `docs/HUMAN_TAS
   [--release]`, `scripts/make_server_zip.sh`.
 - **The gate** (`python -m tools_py.parity.gate`, `--only <stage>`, `--stamp <name>`, `--baseline <stamp>` to re-score
   without a launch; `SOCOM_EXE` points it at another exe): title about 3 min, transition about 3, mission about 11.
-  The project's only regression bar. Refuses under 4 GB free on C:. Results under `logs/parity/gate/<stamp>/`.
+  The project's only regression bar. Refuses under 4 GB free on C: (exit 3) and on an exe older than its sources
+  (exit 5 unless `--stale-ok`). Results under `logs/parity/gate/<stamp>/`, each with its `TREE <head> dirty=<n>` line.
 - **The ladder** (`scripts/parity/ladder_frostfire.sh`, pins HEAD's harness first) and **control rounds**
   (`scripts/parity/online_control_round.sh "<map>"`): two instances, online, against our server only.
   `scripts/parity/env.sh` sets the server address for the harness. `mixed_match.sh` (ours against PCSX2) **runs both ways on

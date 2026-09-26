@@ -31,6 +31,10 @@ KNOWN.md §1's two-instance clock row keeps the two apart) -- over the scripted 
 last step), from the sampler rows of mission.game.log (tools_py/parity/frame_time.py says which fields and
 why), and records the numbers in its pins.json as an informational
 `PIN frame` that is never compared (S13-R3: no refusal until three gates agree on its spread).
+
+A launch refuses (exit 5, REFUSE_STALE) when the exe is older than the newest file it is built from (freshness_roots;
+Sprint 14 E4); `--stale-ok` proceeds and the summary says so. Every summary and pins.json carries `TREE <head>
+dirty=<n>` -- the tree the gate measured.
 """
 import argparse
 import glob
@@ -760,6 +764,170 @@ def exe_line(env=None):
         return "EXE %s UNREADABLE (%s)" % (path, e.strerror or e)
 
 
+# Sprint 14 E4 -- the structure review's F3, "stale greens: a gate run that predates the last edit". The gate
+# launches whatever exe is on disk and `./build.sh test` does not rebuild it, so a PASS could be the verdict on a
+# binary built before the change it is quoted for. A launch refuses (REFUSE_STALE) when the exe is older than the
+# newest file it is built from; `--stale-ok` proceeds and says so on the console and in summary.txt. The merged-chain
+# template (Sprint 14 W2) never passes --stale-ok: a chain's gate measures the exe the chain just built, or nothing.
+# 5, not 3: 3 is the disk refusal here and in run_detached.sh, 4 a --baseline with nothing to score, 7 a pin
+# drift, 8 an unknown revision -- a caller reading the code must be able to tell "rebuild" from all of them.
+REFUSE_STALE = 5
+# What a rebuild depends on, repo-relative (E4 review 1). Every revision's exe is ps2EntryRunner linked from
+# ps2_runtime, which links ps2_iop (ps2xIOP), ps2x_shared (ps2xShared) and ps2x_snd989 (whose three sources are
+# ps2xRuntime/src/lib) -- ps2xRuntime/CMakeLists.txt, the target_link_libraries of ps2_runtime; the CMake files that
+# decide what is compiled (the top level's add_subdirectory set and each library's, ps2xRuntime/cmake's modules);
+# the recompiler's own sources (ps2xRecomp: a recompiler change means the generated code should be regenerated;
+# build.sh's recomp step rebuilds it first); build.sh itself, and the two tools its recomp step runs before
+# ps2_recomp (make_overlay_elf.py, fix_ghidra_csv.py, which reads merge_ranges.txt beside the extra-functions list).
+# Not ps2xLauncher, ps2xAnalyzer or ps2xTest: the exe links none of them. Not the hand name proposals or the name
+# holds: apply_names.py and bindiff_lever.py read those, the build does not.
+FRESHNESS_COMMON = (
+    "third_party/ps2recomp/CMakeLists.txt",
+    "third_party/ps2recomp/ps2xRuntime/CMakeLists.txt", "third_party/ps2recomp/ps2xRuntime/src",
+    "third_party/ps2recomp/ps2xRuntime/include", "third_party/ps2recomp/ps2xRuntime/cmake",
+    "third_party/ps2recomp/ps2xIOP/CMakeLists.txt", "third_party/ps2recomp/ps2xIOP/src",
+    "third_party/ps2recomp/ps2xIOP/include",
+    "third_party/ps2recomp/ps2xShared/CMakeLists.txt", "third_party/ps2recomp/ps2xShared/src",
+    "third_party/ps2recomp/ps2xShared/include",
+    "third_party/ps2recomp/ps2xRecomp/CMakeLists.txt", "third_party/ps2recomp/ps2xRecomp/src",
+    "third_party/ps2recomp/ps2xRecomp/include",
+    "build.sh", "tools_py/fix_ghidra_csv.py", "tools_py/make_overlay_elf.py",
+    "recomp/loader_text_end.txt", "recomp/merge_ranges.txt",
+)
+# ... and per revision, only that revision's inputs: `./build.sh recomp` for r0001 (recomp/output, git-ignored,
+# is the code the runtime compiles; the overlay ELF under game/ is what ps2_recomp reads, never tracked, its mtime
+# only is read); scripts/build_revision.sh for r0004 (recomp/output_r0004, build_revision.sh:141; its tracked toml
+# is DERIVED from recomp/socom2.toml by revision_toml.py and rewritten on every run, so socom2.toml counts for r0004
+# too). Per revision, so that build_revision.sh r0004 rewriting socom2_r0004.toml never refuses an r0001 gate.
+FRESHNESS_BY_REVISION = {
+    "r0001": ("recomp/output", "recomp/socom2.toml", "recomp/socom2_ghidra.csv", "recomp/socom2_names.csv",
+              "recomp/extra_functions.txt", "game/overlays/socom2_game.elf"),
+    "r0004": ("recomp/output_r0004", "recomp/socom2.toml", "recomp/socom2_r0004.toml",
+              "recomp/socom2_ghidra_r0004.csv", "recomp/socom2_names_r0004.csv", "recomp/extra_functions_r0004.txt",
+              "scripts/build_revision.sh", "tools_py/revision_toml.py", "tools_py/overlay_repair.py",
+              "tools_py/disc_to_elf.py", "tools_py/decrypt_apache.py", "game/overlays_r0004/socom2_game_r0004.elf"),
+}
+EXE_REVISION_RE = re.compile(r"(?:^|[-_])(r\d{4})$")
+
+
+def freshness_roots(root=ROOT, revision="r0001"):
+    """The directories and files an exe of `revision` is rebuilt from, under `root` (FRESHNESS_COMMON and that
+    revision's FRESHNESS_BY_REVISION row)."""
+    rel = FRESHNESS_COMMON + FRESHNESS_BY_REVISION.get(revision, FRESHNESS_BY_REVISION["r0001"])
+    return [os.path.join(root, *r.split("/")) for r in rel]
+
+
+def exe_revision(exe_path):
+    """Which revision an exe was built for, from its own path: build_revision.sh writes dist/socom2_<rev>.exe, and a
+    runner launched through $SOCOM_EXE must be called socom2[.exe] (hostplatform.runtime_exe), so it sits in a
+    folder named for it (dist-r0004/socom2.exe). Neither says a revision: r0001, `./build.sh runtime`'s.
+    (A launch has no --revision: that flag is --baseline's, and the image's banner says which game it RUNS, not
+    which generated code the exe was built from.)"""
+    p = exe_path.replace("\\", "/").rstrip("/").split("/")
+    stem = os.path.splitext(p[-1])[0]
+    for name in (stem, p[-2] if len(p) > 1 else ""):
+        m = EXE_REVISION_RE.search(name)
+        if m and m.group(1) in FRESHNESS_BY_REVISION:
+            return m.group(1)
+    return "r0001"
+
+
+def exe_tree(exe_path, default=ROOT):
+    """The checkout an exe was built in: the nearest directory above it holding build.sh -- so a gate run from the
+    main tree against a worktree's exe ($SOCOM_EXE) compares it with that worktree's sources, not this one's. No
+    such directory: `default`."""
+    d = os.path.dirname(os.path.abspath(exe_path))
+    while True:
+        if os.path.isfile(os.path.join(d, "build.sh")):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            return default
+        d = parent
+
+
+def freshness(exe_path, source_roots):
+    """(stale, newest_path, newest_mtime): is `exe_path` older than the newest file under `source_roots` (each a
+    directory, walked, or a file; a missing one is skipped). Pure: no printing, no globals. A missing exe is not
+    stale -- the EXE line already records it UNREADABLE and the drive fails on it; this is not that refusal."""
+    newest_path, newest_mtime = None, None
+    for src in source_roots:
+        if os.path.isfile(src):
+            candidates = [src]
+        else:
+            candidates = (os.path.join(d, n) for d, _, names in os.walk(src) for n in names)
+        for p in candidates:
+            try:
+                m = os.path.getmtime(p)
+            except OSError:
+                continue
+            if newest_mtime is None or m > newest_mtime:
+                newest_path, newest_mtime = p, m
+    try:
+        exe_mtime = os.path.getmtime(exe_path)
+    except OSError:
+        return False, newest_path, newest_mtime
+    return newest_mtime is not None and exe_mtime < newest_mtime, newest_path, newest_mtime
+
+
+def _stamp_time(t):
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t))
+
+
+def stale_message(exe_mtime, newest_path, newest_mtime, root=ROOT):
+    try:
+        rel = os.path.relpath(newest_path, root) if os.path.isabs(newest_path) else newest_path
+    except ValueError:          # another drive on Windows
+        rel = newest_path
+    if rel.startswith(".."):
+        rel = newest_path
+    return "gate: exe older than source (%s < %s %s): rebuild, or --stale-ok" % (
+        _stamp_time(exe_mtime), _rel(rel), _stamp_time(newest_mtime))
+
+
+def exe_staleness(env=None):
+    """The call site's half: the launch's exe (hostplatform.runtime_exe, $SOCOM_EXE honoured) against its own
+    checkout's (exe_tree) sources for its own revision (exe_revision). None when fresh, else the refusal line."""
+    path = hostplatform.runtime_exe(env=env)
+    full = path if os.path.isabs(path) else os.path.join(hostplatform.ROOT, path)
+    root = exe_tree(full)
+    stale, newest, newest_mtime = freshness(full, freshness_roots(root, exe_revision(full)))
+    if not stale:
+        return None
+    return stale_message(os.path.getmtime(full), newest, newest_mtime, root)
+
+
+TREE_EXCLUDED = ("logs/", "game/")
+
+
+def dirty_count(porcelain):
+    """The lines of a `git status --porcelain` output whose path is outside logs/ and game/ (a rename counts by
+    its destination)."""
+    n = 0
+    for line in porcelain.splitlines():
+        if len(line) < 4:
+            continue
+        path = line[3:].split(" -> ")[-1].strip().strip('"')
+        if not path.startswith(TREE_EXCLUDED):
+            n += 1
+    return n
+
+
+def tree_line(root=ROOT):
+    """`TREE <head> dirty=<n>`: which tree this gate measured -- `git rev-parse --short HEAD` and the count of
+    `git status --porcelain` lines outside logs/ and game/ (Sprint 14 E4). `TREE unknown (<why>)` off a
+    repository."""
+    try:
+        head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=root, capture_output=True, text=True,
+                              check=True).stdout.strip()
+        status = subprocess.run(["git", "status", "--porcelain"], cwd=root, capture_output=True, text=True,
+                                check=True).stdout
+    except (OSError, subprocess.CalledProcessError) as e:
+        why = (getattr(e, "stderr", None) or str(e)).strip().splitlines()
+        return "TREE unknown (%s)" % (why[0] if why else "git failed")
+    return "TREE %s dirty=%d" % (head, dirty_count(status))
+
+
 def elf_line(env=None):
     """Which GAME IMAGE this gate ran, and which revision it names: path, size, SHA-256, banner revision.
     The EXE line says which recompiled runtime was launched; it does not say which pressing of the game
@@ -1054,6 +1222,11 @@ def main(argv=None):
                          "instead of refusing -- a launch writes it once, after a run whose every stage PASSed "
                          "(S13-R5), never before the lock; the summary says so. It rewrites THIS REVISION's file "
                          "only -- an r0004 gate cannot reach %s" % pins.EXPECTED)
+    ap.add_argument("--stale-ok", action="store_true",
+                    help="launch an exe older than its sources (its own checkout's runtime, IOP, shared and "
+                         "recompiler sources, CMake files and build.sh, and its revision's generated code and "
+                         "recompiler inputs) instead of refusing with exit %d; the summary says so. The "
+                         "merged-chain template never passes it" % REFUSE_STALE)
     args = ap.parse_args(argv)
 
     if args.baseline:
@@ -1099,6 +1272,17 @@ def main(argv=None):
               % (free, hostplatform.free_space_path(), min_free))
         return 3
 
+    # Sprint 14 E4: an exe older than its sources is refused before anything is written or locked (the chain
+    # template never passes --stale-ok; see REFUSE_STALE).
+    stale_lines = []
+    stale = exe_staleness()
+    if stale is not None:
+        print(stale, flush=True)
+        if not args.stale_ok:
+            return REFUSE_STALE
+        stale_lines = [stale, "gate: STALE exe accepted (--stale-ok)"]
+        print(stale_lines[-1], flush=True)
+
     # Make the output root before taking the lock: a makedirs failure must not leak the lock.
     out_root = os.path.join("logs", "parity", "gate", args.stamp)
     os.makedirs(out_root, exist_ok=True)
@@ -1106,6 +1290,8 @@ def main(argv=None):
     print(exe, flush=True)
     elf = elf_line()
     print(elf, flush=True)
+    tree = tree_line()
+    print(tree, flush=True)
     # Which revision is this? It decides the probes' address column AND which pin standard is the
     # standard. A launch does not get the bare-clone default: it has an image, and if it cannot be read
     # the gate refuses with its own line rather than a traceback out of collect_pins (review F3, F9).
@@ -1133,9 +1319,21 @@ def main(argv=None):
         word, verdict = pins_verdict(all_drifts, accepted, compared, revision, when=" after the run")
         pin_lines = pins.lines(current, all_drifts, accepted, expected) + pins.informational_lines(info)
         with open(os.path.join(out_root, "summary.txt"), "w", encoding="utf-8") as f:
-            f.write("".join(l + "\n" for l in stage_lines + list(frame_lines) + [exe, elf] + pin_lines + [verdict]))
-        pins.write_record(current, os.path.join(out_root, pins.RECORD_NAME), all_drifts, accepted, word,
+            f.write("".join(l + "\n" for l in stage_lines + list(frame_lines) + [exe, elf, tree] + stale_lines
+                            + pin_lines + [verdict]))
+        record = os.path.join(out_root, pins.RECORD_NAME)
+        pins.write_record(current, record, all_drifts, accepted, word,
                           exe, expected_pins_rel(revision), informational=info)
+        # The TREE line (and a --stale-ok acceptance) in the record too: pins.write_record's shape is pins.py's,
+        # so the keys are added here rather than there.
+        with open(record, encoding="utf-8") as f:
+            doc = json.load(f)
+        doc["tree"] = tree
+        if stale_lines:
+            doc["stale"] = stale_lines[0]
+        with open(record, "w", encoding="utf-8") as f:
+            json.dump(doc, f, indent=1)
+            f.write("\n")
         return pin_lines, verdict
 
     if drifts and not pending:
