@@ -50,8 +50,8 @@ licences, with empty `cards/` and `logs/` — which is the folder INSTALL descri
 
 The repository is public. `python -m tools_py.release.leakcheck <mode>` is the gate (Sprint 10 hardening; the design is
 Sprint 11 Goal 9): `tree` every tracked file, `staged` the index (the pre-commit hook), `ignored` proves the paths that
-hold real secrets (`vm/`, `logs/`, `game/`, `server/config/simulated.db`, ...) are ignored, untracked and never
-committed, `metadata` the commit identities, `history [range]` every added line of every commit (the pre-push hook),
+hold real secrets (`SENSITIVE_IGNORED` in `leakcheck.py`; the never-commit list is `docs/GIT_STRATEGY.md` section
+3's) are ignored, untracked and never committed, `metadata` the commit identities, `history [range]` every added line of every commit (the pre-push hook),
 `artifact <dir>` an unpacked release, `external` the sibling repositories' own scanners (`../scotho`'s
 `scripts/check-secrets.mjs` and `../socom_monitor`'s `leakcheck.py`, folded into this report with their excerpts
 masked), `all` the four repository modes plus `external`. A sibling that is not beside this repository prints
@@ -970,8 +970,8 @@ online match) writes a quiet marker (the MAIN tree's `logs/.quiet`, found throug
 to the Windows pid) that tells other agents to stay off `build.sh test`, the gate, `unittest` and large-log parsing
 while a match runs (`build.sh test` refuses to start under it unless `FORCE_QUIET=1`). The marker is machine-wide:
 **in an agent worktree, `build.sh test` exits 3 while ANY launch runs, including one from the main tree** -- wait
-for it, do not force it; `run_detached.sh --wait <minutes>` queues for the lock (in arrival order) instead of
-refusing; records a host CPU sampler into the run directory; refuses to start below 4 GB free on
+for it, do not force it; `run_detached.sh` can queue for the lock instead of refusing (the lock's rules are
+`scripts/loop_lock.sh`'s header); records a host CPU sampler into the run directory; refuses to start below 4 GB free on
 `C:`; and takes the loop lock for the job. It also refuses (exit 3, before touching the lock) below 3 GB of free
 physical memory (`RUN_MIN_FREE_MEM_GB`).
 

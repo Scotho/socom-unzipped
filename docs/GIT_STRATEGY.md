@@ -89,9 +89,13 @@ review is not closed.**
 - **Explicit pathspec, always:** `git commit -m "..." -- <paths>`. Never `git add -A`, never a bare `git commit` after
   `git add` (it takes the whole index, and other sessions' files with it -- it happened on 2026-09-13 and again in
   `6b7a2b3`). Never stage a file another session is editing.
-- **Never committed:** `server/config/simulated.db`, `ONBOARDING.md`, root `*.bin`/`*.wav`, `dist*/`, `build*/`,
-  anything under `game/`, `tools/`, `logs/`, `vm/`, any key, token, or address of a machine that is not the public
-  server's.
+- **Never committed** (this is the list's one home; the leak hooks refuse it and `leakcheck ignored` proves it,
+  from `SENSITIVE_IGNORED` in `tools_py/release/leakcheck.py` and `.gitignore`): `server/config/simulated.db`,
+  `ONBOARDING.md`, root `*.bin`/`*.wav`, `dist*/`, `build*/`, anything under `game/`, `tools/`, `logs/`, `vm/`,
+  `research/`, `recomp/output/`, `ghidra_proj/`, `server/logs/`, `mc0/`, `mc1/`, `.claude/skills/s2u-bug-reports/`,
+  `tools_py/release/leak_extra.txt`; any key or credential file by name (`KEYNAME_PATH_RE` in
+  `tools_py/release/leakrules.py`: SSH private-key names, `*.pem`/`*.ppk`/`*.key`/`*.p12`/`*.pfx`, dotenv files,
+  credential files, `known_hosts`, ...); any key material, token, or address of a machine that is not the public server's.
 - **Subject:** `type(scope): what changed and why it mattered` -- types `feat`, `fix`, `refactor`, `test`, `docs`,
   `build`, `ci`, `chore`. The subject (git's first paragraph) stays at or under 120 characters -- the `commit-msg` hook
   (`scripts/hooks/commit-msg`) refuses longer; the finding goes in the body (a default `Merge branch '...'` or

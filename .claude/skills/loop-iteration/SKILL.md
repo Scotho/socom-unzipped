@@ -98,7 +98,6 @@ Long term: the N64-recomp model -- game logic stays recompiled; renderer, audio,
 
 ## The lock
 
-The lock serializes every build and every game run; its rules -- `run` and `run_detached.sh`, the queue and
-`--wait` in minutes, a chain as one holding, the heartbeat and the reaper, mixed versions -- are `scripts/loop_lock.sh`'s header; the
+The lock serializes every build and every game run; the lock's rules are `scripts/loop_lock.sh`'s header; the
 five-step rollout of a new lock script, which the header only sketches and defers, is the rollout hazard in
 `docs/HAZARDS.md`'s lock area. The commands a controller runs: the `run-gate` skill.

@@ -728,5 +728,73 @@ class SkillsTest(unittest.TestCase):
         self.assertEqual(missing, [], "CLAUDE.md does not point at .claude/skills/<name>/SKILL.md for: %s" % missing)
 
 
+class OneHomeTest(unittest.TestCase):
+    """Sprint 14 S4: a rule stated in two places drifts (the ruling counter did, R242 against R241). Two
+    lists get one home each: the never-commit list is docs/GIT_STRATEGY.md section 3's, and the lock's rules
+    are scripts/loop_lock.sh's header. Every other live document points. Exempt: docs/HAZARDS.md (its lock
+    hazards are kept verbatim by contract), docs/STATUS.md (a dated log), docs/RULINGS.md (generated from the
+    rulings), the run-gate skill (the lock COMMANDS a controller runs, not rule text), and the mechanisms'
+    own configuration (.gitignore, leakcheck's SENSITIVE_IGNORED), which are not documents."""
+
+    EXEMPT = {"docs/HAZARDS.md", "docs/STATUS.md", "docs/RULINGS.md"}
+    ITEM = re.compile(r"(?<![\w./-])(?:(?:game|logs|vm|tools|research|ghidra_proj|recomp/output|dist\*?|build\*?)/"
+                      r"|simulated\.db)")
+    NEVER_COMMIT = re.compile(r"never\s+commit", re.I)
+
+    def live_documents(self):
+        out = []
+        docs = os.path.join(docmaint.ROOT, "docs")
+        for name in sorted(os.listdir(docs)):
+            if name.endswith(".md") and "docs/" + name not in self.EXEMPT:
+                out.append("docs/" + name)
+        out.append("CLAUDE.md")
+        skills = os.path.join(docmaint.ROOT, ".claude", "skills")
+        for name in sorted(os.listdir(skills)):
+            if os.path.isfile(os.path.join(skills, name, "SKILL.md")):
+                out.append(".claude/skills/%s/SKILL.md" % name)
+        return out
+
+    @staticmethod
+    def sentences(text):
+        """Paragraphs and list items, whitespace joined across line breaks, split at sentence ends."""
+        text = re.sub(r"(?m)^[ \t]*#+ ?", "", text)            # comment markers of a shell header
+        out = []
+        for block in re.split(r"\n\s*\n|\n\s*(?=[-*] |\d+\. )", text):
+            block = " ".join(block.split())
+            out.extend(re.split(r"(?<=[.!?])\s+(?=[A-Z*`(])", block))
+        return out
+
+    def never_commit_lists(self, text):
+        return [s for s in self.sentences(text)
+                if self.NEVER_COMMIT.search(s) and len(set(self.ITEM.findall(s))) >= 2]
+
+    @staticmethod
+    def lock_rules(text):
+        return [s for s in OneHomeTest.sentences(text)
+                if ("heartbeat" in s and "renew" in s) or ("--wait" in s and "minutes" in s)]
+
+    def test_planted_sentences_are_detected(self):
+        self.assertTrue(self.never_commit_lists("- Never commit `game/`, `logs/` or keys.\n"))
+        self.assertFalse(self.never_commit_lists("The never-commit list is GIT_STRATEGY's (`game/` too).\n"
+                                                 "Never commit a file you were not given.\n"))
+        self.assertTrue(self.lock_rules("A waiter\nrenews its heartbeat.\n"))
+        self.assertTrue(self.lock_rules("# run --wait <minutes> -- <cmd>\n"))
+        self.assertFalse(self.lock_rules("The lock's rules are `scripts/loop_lock.sh`'s header.\n"))
+
+    def test_the_never_commit_list_has_one_home(self):
+        self.assertTrue(self.never_commit_lists(docmaint._read("docs/GIT_STRATEGY.md")),
+                        "docs/GIT_STRATEGY.md section 3 lost its never-commit list")
+        hits = [(p, s[:90]) for p in self.live_documents() if p != "docs/GIT_STRATEGY.md"
+                for s in self.never_commit_lists(docmaint._read(p))]
+        self.assertEqual(hits, [], "the never-commit list is docs/GIT_STRATEGY.md's; point at it instead: %s" % hits)
+
+    def test_the_lock_rules_have_one_home(self):
+        self.assertTrue(self.lock_rules(docmaint._read("scripts/loop_lock.sh")),
+                        "scripts/loop_lock.sh's header no longer states the lock's rules")
+        hits = [(p, s[:90]) for p in self.live_documents() if p != ".claude/skills/run-gate/SKILL.md"
+                for s in self.lock_rules(docmaint._read(p))]
+        self.assertEqual(hits, [], "the lock's rules are scripts/loop_lock.sh's header; point at it: %s" % hits)
+
+
 if __name__ == "__main__":
     unittest.main()
