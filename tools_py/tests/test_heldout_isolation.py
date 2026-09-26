@@ -13,8 +13,20 @@ Excluded from the search, deliberately:
   - the leg's own reference directory (scripts/parity/refs/<name>/): its pins.json names its own files.
 This module never writes the name as one literal (it is built from parts below), or it would be the stray mention.
 
+Three spellings are searched, any case: the joined word anywhere, and the hyphenated and spaced forms when "leg"
+follows them. The bare hyphenated and spaced phrase is ordinary English with thirteen unrelated users in the tree (the
+symbol-matching tools' hold-out validation, a build.sh comment, a third_party test), so it is matched only when it
+names this leg.
+
+One stray is known and listed in KNOWN_STRAYS: .claude/skills/loop-iteration/SKILL.md names the leg in its hyphenated
+form in the merged-chain paragraph, and Sprint 14 W2's branch rewrites that paragraph and keeps the word, so the fix
+belongs at W2's merge, not in this branch. The list must equal what the search finds: removing the word without
+removing the entry fails too.
+
 Also here, because the leg must say so rather than fail obscurely: before the controller's captures exist, the leg
-refuses with gate.REFUSE_NO_REFS and says "no references captured yet"; once they exist, it scores.
+refuses with gate.REFUSE_NO_REFS and says "no references captured yet"; once they exist, it scores. This deviates from
+the plan's "fails until the directory exists": a test that stays red until a night capture would keep CI red all day,
+so the missing directory is asserted as a refusal (exit 6 and its message) instead.
 """
 import contextlib
 import io
@@ -29,6 +41,9 @@ from tools_py.parity import gate
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 LEG = "held" + "out"
+# The joined word anywhere; the hyphenated and spaced forms only when they name the leg (the docstring says why).
+PATTERN = "held" + "(out|[- ]out[[:space:]]+leg)"
+KNOWN_STRAYS = [".claude/skills/loop-iteration/SKILL.md"]
 ALLOWED = ("tools_py/parity/gate.py", "scripts/parity/merged_chain.sh")
 EXCLUDED_PREFIXES = ("docs/", "scripts/parity/refs/" + LEG + "/")
 
@@ -46,7 +61,7 @@ def stray_mentions(paths):
 
 def mentioning_files(root=ROOT):
     """Tracked and untracked-but-not-ignored text files under `root` whose content mentions the leg, any case."""
-    r = subprocess.run(["git", "grep", "-l", "-I", "-i", "-F", "--untracked", "-e", LEG],
+    r = subprocess.run(["git", "grep", "-l", "-I", "-i", "-E", "--untracked", "-e", PATTERN],
                        cwd=root, capture_output=True, text=True)
     if r.returncode not in (0, 1):          # 1: no match
         raise RuntimeError("git grep failed: %s" % r.stderr.strip())
@@ -55,8 +70,9 @@ def mentioning_files(root=ROOT):
 
 class NothingElseNamesTheLeg(unittest.TestCase):
     def test_no_file_outside_the_gate_and_the_template_mentions_it(self):
-        self.assertEqual(stray_mentions(mentioning_files()), [],
-                         "the leg is named only in gate.py and the merged-chain template")
+        self.assertEqual(stray_mentions(mentioning_files()), KNOWN_STRAYS,
+                         "the leg is named only in gate.py and the merged-chain template (KNOWN_STRAYS aside; "
+                         "a fixed stray leaves the list)")
 
     def test_the_gate_is_where_it_lives(self):
         with open(os.path.join(ROOT, "tools_py", "parity", "gate.py"), encoding="utf-8") as f:
@@ -86,7 +102,13 @@ class TheCheckerOnPlantedPaths(unittest.TestCase):
             f.write("LEG = '%s'\n" % LEG.upper())
         with open(os.path.join(tmp, "brief.md"), "w") as f:
             f.write("run the %s leg\n" % LEG)
-        self.assertEqual(stray_mentions(mentioning_files(tmp)), ["brief.md"])
+        with open(os.path.join(tmp, "skill.md"), "w") as f:
+            f.write("gate -> %s-%s leg -> archive\n" % ("Held", "Out"))       # the hyphenated spelling
+        with open(os.path.join(tmp, "note.txt"), "w") as f:
+            f.write("then the %s %s  leg of the chain\n" % ("held", "out"))   # the spaced spelling
+        with open(os.path.join(tmp, "symbols.py"), "w") as f:                 # the phrase, not the leg
+            f.write("# pairs %s-%s in 3 folds; a %s %s pair\n" % ("held", "out", "held", "out"))
+        self.assertEqual(stray_mentions(mentioning_files(tmp)), ["brief.md", "note.txt", "skill.md"])
 
 
 def _leg(run_dir):

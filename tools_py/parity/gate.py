@@ -772,10 +772,15 @@ def score_baseline(stamp, revision=None):
 # so there is no other bar to take; and no new threshold is set here (a threshold is a KNOWN row or a test).
 LEG_REFS_DIR = os.path.join("scripts", "parity", "refs", "heldout")
 LEGS = ("heldout",)
+# The twelve are R280's (the E2 review, 2026-09-26), chosen for stability across green runs: over 36 archived green
+# stamps the plan's first choice (transition s02 s05, mission s01 s04) scored 12/12 on at most 11 of the other 35,
+# because those steps land on boot screens that shift by one screen between runs (s02: main menu or select rank;
+# mission s01: attract or menu; s04: black or briefing). Every step from 6 on in both stages, and title s00..s18,
+# scores 35/35. So the leg covers the menu and the briefing; the transition's own structure is score_transition's.
 LEG_STAMPS = (
     ("title_s03", "title", 3), ("title_s09", "title", 9), ("title_s15", "title", 15),
-    ("transition_s02", "transition", 2), ("transition_s05", "transition", 5),
-    ("mission_s01", "mission", 1), ("mission_s04", "mission", 4), ("mission_s08", "mission", 8),
+    ("transition_s06", "transition", 6), ("transition_s08", "transition", 8),
+    ("mission_s06", "mission", 6), ("mission_s08", "mission", 8), ("mission_s10", "mission", 10),
     ("mission_s12", "mission", 12), ("mission_s16", "mission", 16), ("mission_s20", "mission", 20),
     ("mission_s24", "mission", 24),
 )
@@ -908,6 +913,7 @@ def score_leg(run_dir):
             parts.append("%s=missing" % ref)
             continue
         s = _score_value(os.path.join(root, ref + ".png"), cap)
+        # TITLE_MIN_SCORE measured 2026-09-26 against 36 archived green stamps at the R280 steps: 35/35 at >= 98.5.
         ok = s >= TITLE_MIN_SCORE
         passed += ok
         print("%s %s %s %.1f (%s/%s)" % (tag, ref, "PASS" if ok else "FAIL", s, stage, os.path.basename(cap)))

@@ -4,7 +4,7 @@ The leg is named only in tools_py/parity/gate.py (the isolation test beside this
 the name from parts. Two halves:
 
   capture   gate --capture-<leg> <run_dir>: from a green 3/3 gate stamp, copy the twelve step captures the three
-            stages already take (title s03 s09 s15, transition s02 s05, mission s01 s04 s08 s12 s16 s20 s24 --
+            stages already take (R280: title s03 s09 s15, transition s06 s08, mission s06 s08 s10 s12 s16 s20 s24 --
             drive.py writes one s<NN>_<buttons>.png per step) into the leg's reference directory as
             <stage>_s<NN>.png, and pin them in its pins.json (the shape of scripts/parity/pins.json). Refuses
             (gate.REFUSE_CAPTURE) when the directory exists, the run is not green 3/3, or a stamp is missing.
@@ -30,8 +30,8 @@ from tools_py.parity import gate, pins
 
 LEG = "held" + "out"
 STAMPS = [("title", 3, "none"), ("title", 9, "none"), ("title", 15, "none"),
-          ("transition", 2, "CROSS"), ("transition", 5, "CROSS"),
-          ("mission", 1, "CROSS"), ("mission", 4, "CROSS"), ("mission", 8, "CROSS"), ("mission", 12, "none"),
+          ("transition", 6, "CROSS"), ("transition", 8, "CROSS"),
+          ("mission", 6, "CROSS"), ("mission", 8, "CROSS"), ("mission", 10, "none"), ("mission", 12, "none"),
           ("mission", 16, "none"), ("mission", 20, "none"), ("mission", 24, "none")]
 GREEN = ["PASS title (19/23 menu captures >= 90.0)", "PASS transition (5 black-screen frames examined)",
          "PASS mission (HUD reached)", "EXE dist/socom2.exe bytes=1 sha256=00", "TREE abc1234 dirty=0",
@@ -58,7 +58,7 @@ def plant_run(root, summary=GREEN, skip=(), negate=(), seed_offset=0):
         im = _pattern(step * 7 + len(stage) + seed_offset)
         (_negative(im) if (stage, step) in negate else im).save(os.path.join(d, "s%02d_%s.png" % (step, btn)))
         _pattern(999).save(os.path.join(d, "s%02d_none.png" % (step + 1)))     # the step after: never taken
-    _pattern(555).save(os.path.join(root, "transition", "s02_burst_000.png"))
+    _pattern(555).save(os.path.join(root, "transition", "s06_burst_000.png"))
     with open(os.path.join(root, "summary.txt"), "w", encoding="utf-8") as f:
         f.write("".join(l + "\n" for l in summary))
     return root
@@ -95,8 +95,8 @@ class Capture(LegCase):
         names = sorted(n for n in os.listdir(self.refs) if n.endswith(".png"))
         self.assertEqual(names, sorted("%s_s%02d.png" % (s, n) for s, n, _ in STAMPS))
         # the step's own capture, not the burst frame that shares its index
-        with open(os.path.join(run, "transition", "s02_CROSS.png"), "rb") as a, \
-                open(os.path.join(self.refs, "transition_s02.png"), "rb") as b:
+        with open(os.path.join(run, "transition", "s06_CROSS.png"), "rb") as a, \
+                open(os.path.join(self.refs, "transition_s06.png"), "rb") as b:
             self.assertEqual(a.read(), b.read())
         with open(os.path.join(self.refs, pins.RECORD_NAME), encoding="utf-8") as f:
             doc = json.load(f)
@@ -166,13 +166,13 @@ class Score(LegCase):
 
     def test_rejected_and_missing_stamps_count_against_it(self):
         run = plant_run(os.path.join(self.tmp, "worse"), negate=[("title", 9), ("mission", 20)],
-                        skip=[("transition", 5)])
+                        skip=[("transition", 8)])
         rc, out = self.leg(run)
         self.assertEqual(rc, 1, out)
         self.assertIn("%s 9/12 FAIL" % LEG.upper(), out)
         self.assertRegex(out, r"title_s09 FAIL \d+\.\d")
         self.assertRegex(out, r"mission_s20 FAIL \d+\.\d")
-        self.assertIn("transition_s05 MISSING", out)
+        self.assertIn("transition_s08 MISSING", out)
 
     def test_the_bar_is_the_title_scorers_bar(self):
         run = plant_run(os.path.join(self.tmp, "bar"))
@@ -182,10 +182,10 @@ class Score(LegCase):
         self.assertIn("%s 0/12 FAIL" % LEG.upper(), out)
 
     def test_a_reference_that_moved_off_its_pin_refuses(self):
-        _pattern(4242).save(os.path.join(self.refs, "mission_s04.png"))
+        _pattern(4242).save(os.path.join(self.refs, "mission_s06.png"))
         rc, out = self.leg(plant_run(os.path.join(self.tmp, "any")))
         self.assertEqual(rc, 7, out)
-        self.assertIn("mission_s04.png", out)
+        self.assertIn("mission_s06.png", out)
 
     def test_no_run_directory_is_nothing_to_score(self):
         rc, out = self.leg(os.path.join(self.tmp, "nowhere"))
