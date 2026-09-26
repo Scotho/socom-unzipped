@@ -1,5 +1,7 @@
 # Human tasks — the owner's sitting
 
+last sitting: 2026-09-17 (read by tools_py.sitting)
+
 What only the owner can decide or do, in one table. Every row stands on a default: the loop proceeds on it and never
 waits. Rewritten 2026-09-25 (Sprint 13 Task R4) from the project audit's owner sitting
 (`docs/audits/2026-09-25-project-audit.md` §3, rows O1–O13), with two rows that audit missed (O14, O15).

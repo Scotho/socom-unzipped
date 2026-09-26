@@ -58,6 +58,8 @@ merge and the tag). The open plan's Task 99 adds the sprint's own close steps.
 6. Duplicates closed as not planned ("duplicate of #M"); `help wanted` / `good first issue` where they fit.
 7. The record: `python -m tools_py.issues tally --since <the day the sprint opened>` -- the one sentence (opened,
    closed, carried, highest number) for the close-out commit and STATUS's entry, with what the review changed.
+   Then `python -m tools_py.sitting` regenerates `docs/SITTING.md`, the owner's page, from the carry and the
+   rulings just settled, and `python -m tools_py.sitting --check` exits 0 (R271, Sprint 14 D3).
 
 ## The ratchet -- the last step before the close-out commit (DOC_MAINTENANCE check 7)
 

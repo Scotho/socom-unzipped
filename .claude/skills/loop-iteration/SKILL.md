@@ -68,7 +68,8 @@ suggestions, stop rules and the owner-only list are not.
    without one), and its class decides what may be written in it -- a narrative file that holds live state is how
    `ROADMAP.md` went two sprints out of date. Take a ruling number from `docs/HANDOFF.md` and bump that line in the
    same commit, and run `python -m tools_py.rulings`, committing `docs/RULINGS.md` in the same commit (also when a commit only edits a ledger row); both are
-   checked.
+   checked. When an O row, a ruling or the backlog changes, run `python -m tools_py.sitting` beside it and commit
+   `docs/SITTING.md` in the same commit (R271, Sprint 14 D3).
 7. **Then the next item.** Do not wait on the owner; do not perform what is the owner's (publish, make public,
    permissions, signing, money, the site's deploy, any server that is not ours).
 
