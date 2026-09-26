@@ -68,10 +68,10 @@ def _build():
     return r
 
 
-QUEUE = ("TICKET t1 waited 5\n"
+QUEUE = ("2026-01-02T00:00:00Z TICKET t1 waited 5\n"
          "2026-01-03T00:00:00Z TICKET t2 waited 40\n"
          "a line that is not a ticket\n"
-         "TICKET t3 waited 12\n")
+         "2026-01-04T08:00:00Z TICKET t3 waited 12\n")
 
 BACKLOG_WITH_DATES = """# Backlog
 
@@ -226,6 +226,47 @@ class CliTest(_WithRepo):
         p = subprocess.run([sys.executable, "-m", "tools_py.flow", "--check", "--repo", self.repo.path,
                             "--out", self.out], cwd=REPO, capture_output=True, text=True)
         self.assertEqual(p.returncode, 1, p.stdout + p.stderr)
+
+
+class UnstampedTicketTest(_WithRepo):
+
+    def test_an_unstamped_ticket_line_is_left_out_and_counted_as_such(self):
+        path = os.path.join(self.tmp, "unstamped.log")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(QUEUE + "TICKET t6 waited 999\nTICKET t7 waited 999\n")
+        m = flow.measure(self.repo.path, "2026-01-01", path, None)
+        self.assertEqual((m["tickets"], m["median_ticket_wait_s"], m["tickets_unstamped"]), (3, 12, 2))
+        self.assertIn("2 unstamped TICKET lines left out", flow.render(m))
+
+
+class IntegrationMergeTest(unittest.TestCase):
+    """An agent branch merged into a sprint branch, then the sprint merged into main: the agent's fix round is
+    counted once, at the agent merge. The integration merge's range also holds the agent merge commit (its subject
+    says "fix round") and the controller's plan commit `docs(sprint-1): A fix round merged`: neither is a round."""
+
+    @classmethod
+    def setUpClass(cls):
+        r = cls.repo = _Repo()
+        r.commit("root.txt", ["root"], "feat: the root", 2)
+        r.git("checkout", "-q", "-b", "sprint-1", day=2)
+        r.git("checkout", "-q", "-b", "agent/a", day=2)
+        r.commit("a.txt", ["one"], "feat(a): the thing", 3)
+        r.commit("a.txt", ["two"], "fix(a): review fix round 1", 4)
+        r.git("checkout", "-q", "sprint-1", day=4)
+        r.git("merge", "-q", "--no-ff", "-m", "merge agent/a: review PASS after one fix round", "agent/a", day=5)
+        r.commit("docs/plan.md", ["log"], "docs(sprint-1): A fix round merged", 6)
+        r.git("checkout", "-q", "main", day=6)
+        r.git("merge", "-q", "--no-ff", "-m", "Sprint 1: the sprint to main", "sprint-1", day=7)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.repo.remove()
+
+    def test_the_round_is_counted_once_at_the_agent_merge(self):
+        m = flow.measure(self.repo.path, "2026-01-01", None, None)
+        self.assertEqual(m["merges"], 2)
+        self.assertEqual(m["fix_rounds_per_merge"], {0: 1, 1: 1})
+        self.assertEqual(m["fix_rounds_per_merge_broad"], {0: 1, 1: 1})
 
 
 class ShallowCloneTest(unittest.TestCase):

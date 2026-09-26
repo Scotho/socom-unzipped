@@ -14,10 +14,16 @@ What each number is, and where it differs from note 03:
                         zone; the page states both merge counts, so a merge the walk does not reach shows.
   fix_rounds_per_merge  a histogram {rounds: merges}: for each such merge, the commits on the merged side (reachable
                         from a second parent, not from the first) whose subject matches FIX_ROUND, note 03 section
-                        2.2's `review round|fix round` (case-sensitive, as its grep -E was).
+                        2.2's `review round|fix round` (case-sensitive, as its grep -E was). Unlike note 03, a round
+                        counts ONCE, at the first merge (committer-time order, the merges before --since included)
+                        whose range brings it in: an integration merge (a sprint into main, main into an agent
+                        branch) counts only the rounds no earlier merge brought. And only a non-merge commit that is
+                        not the controller's plan record (`docs(sprint-N): ...`, PLAN_RECORD) is a round: a merge
+                        subject ("review PASS after one fix round") and a plan-Log commit report a round, they are
+                        not one (is_round()).
   fix_rounds_per_merge_broad   the same with FIX_ROUND_BROAD, `review round|fix round|fix\\(|review`, the Task M1
                         brief's wider pattern: it also counts every `fix(scope):` commit and every subject naming a
-                        review, so it is an upper bound, not a round count.
+                        review, so it is an upper bound, not a round count. The same once-only rule.
   again_subjects        the commits since --since whose subject contains " again", case-insensitive (note 03 section
                         3.2, `grep -ci -- " again"`), merges included.
   docs_share_of_churn_7d   lines added + deleted under docs/ over all lines added + deleted, `git log --numstat
@@ -28,7 +34,8 @@ What each number is, and where it differs from note 03:
   median_ticket_wait_s  the median of the `TICKET <id> waited <s>` lines of the lock's queue log (Task W2 writes
                         them into logs/loop_lock.queue.log beside the main tree). A line stamped (the lock's
                         `YYYY-MM-DDTHH:MM:SSZ` prefix) after the rendered commit or before --since is left out, so an
-                        appended log does not make an old page stale; an unstamped line is counted. None when the log
+                        appended log does not make an old page stale; an unstamped line cannot be placed, so it is
+                        treated as after the rendered commit: left out, and counted on the page. None when the log
                         is missing or holds no such line: the page says "not measured" and why.
   open_issue_age_days   the median age, in days at the rendered commit, of the open issues in `docs/BACKLOG.md` as it
                         stood at that commit, read from an "Opened" column of its open-issues table. None when the
@@ -66,6 +73,9 @@ NOTE03 = "docs/audits/2026-09-26-autonomy-structure-review/03-git-forensics.md"
 DEFAULT_SINCE = "2026-09-01"
 FIX_ROUND = re.compile(r"review round|fix round")
 FIX_ROUND_BROAD = re.compile(r"review round|fix round|fix\(|review")
+PLAN_RECORD = re.compile(r"^docs\(sprint-[0-9]+\)")    # [0-9], not \d: the page prints it for grep -E
+ROUND_RULE = ("A round counts once, at the first merge whose range brings it in; merge commits and docs(sprint-N) "
+              "plan commits are not rounds")
 AGAIN = " again"
 SESSION = re.compile(r"^Claude-Session:\s*(\S+)", re.M)
 TICKET = re.compile(r"^(?:(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ)\s+)?.*?\bTICKET\s+(\S+)\s+waited\s+(\d+)\b")
@@ -115,21 +125,35 @@ def _histogram(counts):
     return dict(sorted(out.items()))
 
 
+def is_round(commit, pattern):
+    """A fix round: a non-merge commit whose subject matches `pattern`, not the controller's plan record
+    (`docs(sprint-N): ...`). A merge subject ("review PASS after one fix round") and a plan-Log commit report a
+    round; they are not one, and counting them would count the round twice."""
+    if len(commit["parents"]) > 1 or PLAN_RECORD.match(commit["subject"]):
+        return False
+    return bool(pattern.search(commit["subject"]))
+
+
 def ticket_waits(path, since, until_stamp):
-    """The waits (seconds) of the queue log's TICKET lines, within [since, until_stamp] where a line is stamped."""
+    """(waits, unstamped): the waits (seconds) of the queue log's stamped TICKET lines within [since, until_stamp],
+    and the count of unstamped TICKET lines, which are left out -- a line with no time cannot be placed before
+    the rendered commit, so it is treated as after it. (None, 0) when the log is missing."""
     if not path or not os.path.isfile(path):
-        return None
-    waits = []
+        return None, 0
+    waits, unstamped = [], 0
     with open(path, "r", encoding="utf-8", errors="replace") as fh:
         for line in fh:
             m = TICKET.match(line.strip())
             if not m:
                 continue
             stamp = m.group(1)
-            if stamp and (stamp > until_stamp or stamp[:10] < since):
+            if not stamp:
+                unstamped += 1
+                continue
+            if stamp > until_stamp or stamp[:10] < since:
                 continue
             waits.append(int(m.group(3)))
-    return waits
+    return waits, unstamped
 
 
 def issue_ages(text, day):
@@ -199,20 +223,30 @@ def measure(repo, since, queue_log, backlog_md, rev="HEAD"):
     start = _day_epoch(since)
     recent = {s: c for s, c in g.commits.items() if c["ct"] >= start}
 
-    merges = [r["sha"] for r in rows if g.commits[r["sha"]]["ct"] >= start]
+    # Oldest first, the merges before --since included, so a round an earlier merge brought in is never
+    # counted again by a later (integration) merge whose range holds it too.
+    ordered = sorted((r["sha"] for r in rows), key=lambda s: (g.commits[s]["ct"], s))
+    merges = [s for s in ordered if g.commits[s]["ct"] >= start]
     per_day, narrow, broad = {}, [], []
-    for sha in merges:
+    counted = {FIX_ROUND: set(), FIX_ROUND_BROAD: set()}
+    for sha in ordered:
         c = g.commits[sha]
-        day = _utc(c["ct"])
-        per_day[day] = per_day.get(day, 0) + 1
         first = g.ancestors(c["parents"][0])
         side = set()
         for other in c["parents"][1:]:
             side |= g.ancestors(other)
         side -= first
-        subjects = [g.commits[s]["subject"] for s in side]
-        narrow.append(sum(1 for s in subjects if FIX_ROUND.search(s)))
-        broad.append(sum(1 for s in subjects if FIX_ROUND_BROAD.search(s)))
+        found = {}
+        for pat, seen in counted.items():
+            new = set(s for s in side if s not in seen and is_round(g.commits[s], pat))
+            seen |= new
+            found[pat] = len(new)
+        if c["ct"] < start:
+            continue
+        day = _utc(c["ct"])
+        per_day[day] = per_day.get(day, 0) + 1
+        narrow.append(found[FIX_ROUND])
+        broad.append(found[FIX_ROUND_BROAD])
 
     per_session = {}
     for c in recent.values():
@@ -221,7 +255,7 @@ def measure(repo, since, queue_log, backlog_md, rev="HEAD"):
 
     docs, total = _numstat(repo, head, end - WEEK, end)
     until = _utc(end, "%Y-%m-%dT%H:%M:%SZ")
-    waits = ticket_waits(queue_log, since, until)
+    waits, unstamped = ticket_waits(queue_log, since, until)
     if backlog_md is None:
         text = _backlog_at(repo, head)
     else:
@@ -246,6 +280,7 @@ def measure(repo, since, queue_log, backlog_md, rev="HEAD"):
         "docs_share_of_churn_7d": (docs / total) if total else None,
         "queue_log_found": waits is not None,
         "tickets": len(waits or []),
+        "tickets_unstamped": unstamped,
         "median_ticket_wait_s": _median(waits or []),
         "open_issues_dated": len(ages or []),
         "open_issue_age_days": _median(ages or []),
@@ -281,6 +316,9 @@ def render(m):
                   "logs/loop_lock.queue.log at each grant; until then there is nothing to read" % why)
     else:
         ticket = "median %s s over %d tickets" % (m["median_ticket_wait_s"], m["tickets"])
+    if m.get("tickets_unstamped"):
+        ticket += " (%d unstamped TICKET lines left out: no time, so not placed before the commit)" % (
+            m["tickets_unstamped"])
     if m["open_issue_age_days"] is None:
         age = ("not measured: the open-issues table of %s at `%s` has no Opened column; the dates live on GitHub "
                "(`gh issue list --state open --json number,createdAt`), a network read this page does not make"
@@ -296,13 +334,15 @@ def render(m):
             "cross-check: `TZ=UTC git log --merges %s --date=format-local:%%F --format=%%cd %s | sort | uniq -c`"
             % (short, s, short)),
         "fix_rounds_per_merge": (
-            "rounds: merges -- %s" % _rounds(m["fix_rounds_per_merge"], n),
-            "`git log --format=%%s P1..P2 | grep -c -E '%s'` per merge with parents P1 P2 (note 03 section 2.2)"
-            % FIX_ROUND.pattern),
+            "rounds: merges -- %s. %s" % (_rounds(m["fix_rounds_per_merge"], n), ROUND_RULE),
+            "`git log --no-merges --format=%%s P1..P2 | grep -v -E '%s' | grep -c -E '%s'` per merge with parents "
+            "P1 P2, oldest first, less the commits an earlier merge counted (note 03 section 2.2, deduplicated)"
+            % (PLAN_RECORD.pattern, FIX_ROUND.pattern)),
         "fix_rounds_per_merge_broad": (
-            "matches: merges -- %s (an upper bound: every fix(scope) commit counts)"
+            "matches: merges -- %s (an upper bound: every fix(scope) commit counts). The same rule"
             % _rounds(m["fix_rounds_per_merge_broad"], n),
-            "`git log --format=%%s P1..P2 | grep -c -E '%s'` per merge" % FIX_ROUND_BROAD.pattern),
+            "`git log --no-merges --format=%%s P1..P2 | grep -v -E '%s' | grep -c -E '%s'` per merge, oldest first, "
+            "less the commits an earlier merge counted" % (PLAN_RECORD.pattern, FIX_ROUND_BROAD.pattern)),
         "again_subjects": (
             "%d of %d commits" % (m["again_subjects"], m["commits"]),
             "`git log %s --format=%%s %s | grep -ci -- ' again'`" % (s, short)),
@@ -315,7 +355,7 @@ def render(m):
         "median_ticket_wait_s": (
             ticket,
             "`grep -E 'TICKET [^ ]+ waited [0-9]+' logs/loop_lock.queue.log` (the main tree's), the median of the "
-            "last field, lines stamped after %s or before %s left out" % (m["rev_time"], since)),
+            "last field, unstamped lines and lines stamped after %s or before %s left out" % (m["rev_time"], since)),
         "open_issue_age_days": (
             age,
             "`git show %s:%s`, the Opened column of section 1's table, days to %s" % (short, BACKLOG, m["rev_time"][:10])),
