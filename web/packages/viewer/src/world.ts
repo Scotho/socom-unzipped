@@ -37,6 +37,9 @@ export interface WorldView {
   box: Box3;
   /** How many of the group's draws are drawing without a texture: the highlight's subject, counted. */
   untextured: number;
+  /** How many draws are drop shadows, and how many are alternate states -- what the two toggles govern. */
+  shadowDraws: number;
+  alternateDraws: number;
   /** Every material at once, for seeing the topology through the skin. */
   setWireframe(on: boolean): void;
   /**
@@ -228,7 +231,9 @@ export function buildWorld(map: LoadedMap): WorldView {
       material.blending = NoBlending;
     }
     material.alphaTest = spec.alphaTest;
-    material.side = spec.cull ? FrontSide : DoubleSide;
+    // A shadow decal has no back to cull: its quad carries the cull flag like the prop it belongs to,
+    // and culled by its winding it vanished from above, which is the only place it is ever seen from.
+    material.side = spec.cull && !b.shadow ? FrontSide : DoubleSide;
     // A destination brighten reads only `As`, which the GS does not fog; fogging the carrier would fog it.
     material.fog = spec.fog && !carrier;
     material.needsUpdate = true;
@@ -384,6 +389,8 @@ export function buildWorld(map: LoadedMap): WorldView {
     triangles,
     box,
     untextured: untexturedDraws,
+    shadowDraws: drawn.filter((d) => d.shadow).length,
+    alternateDraws: drawn.filter((d) => d.alternate).length,
     setWireframe: (on) => {
       // `needsUpdate` as well as the flag: three's WebGPU renderer builds a geometry's wireframe index
       // the first time a render object is refreshed in full, and a bare flag change is not a refresh.

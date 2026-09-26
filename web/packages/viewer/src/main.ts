@@ -471,6 +471,8 @@ window.__viewer = {
     map: loaded?.name ?? null,
     collisionPolys: loaded?.collision.polygons ?? 0,
     untexturedDraws: view?.untextured ?? 0,
+    shadowDraws: view?.shadowDraws ?? 0,
+    alternateDraws: view?.alternateDraws ?? 0,
     spawns: (loaded && spawnsFor(loaded.name)) ?? null,
   }),
   toggles: () => ui.toggles(),

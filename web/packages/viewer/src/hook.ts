@@ -16,7 +16,7 @@ export interface ViewerHook {
   pose(): Pose;
   stats(): {
     triangles: number; backend: Backend; diagnostics: string[]; loadMs: number; map: string | null;
-    collisionPolys: number; untexturedDraws: number; spawns: Spawns | null;
+    collisionPolys: number; untexturedDraws: number; shadowDraws: number; alternateDraws: number; spawns: Spawns | null;
   };
   toggles(): Record<ToggleName, boolean>;
   chromeHidden(): boolean;
