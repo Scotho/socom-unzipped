@@ -1,6 +1,6 @@
 # Current sprint
 
-The loop's aim. `docs/LOOP_PROMPT.md` reads this file instead of carrying a sprint pointer of its own; the controller
+The loop's aim. The `loop-iteration` skill (`.claude/skills/loop-iteration/SKILL.md`) reads this file instead of carrying a sprint pointer of its own; the controller
 updates it when a sprint opens or closes, and whenever the order changes. **If you are a new controller, read
 `docs/HANDOFF.md` first** -- it says where the project is and what the traps are; this file says what to do next.
 
@@ -30,7 +30,8 @@ next sprint:  Sprint 15 "borrowed confidence" (R276): docs/superpowers/specs/202
               (docs/superpowers/plans/2026-09-25-borrowed-confidence-cloud-handoff.md).
 human tasks:  docs/HUMAN_TASKS.md      playtest script: docs/PLAYTEST.md
 git strategy: docs/GIT_STRATEGY.md     contributing: CONTRIBUTING.md
-next ruling:  R278 (R269-R277, 2026-09-26 05:17Z, the Sprint 14 open, one per owner default D1-D9 of the Sprint 14
+next ruling:  R279 (R278, 2026-09-26 08:17Z, the Sprint 14 plan's Log: while other sessions' builders hold or
+              queue the lock, lock-free tasks from D, S and M run ahead of W. R269-R277, 2026-09-26 05:17Z, the Sprint 14 open, one per owner default D1-D9 of the Sprint 14
               spec: the infrastructure sprint and its order (R269); KNOWN §4 to a hazards file (R270); owner rows
               closed by default after two sittings (R271); STATUS's log archived, the changelog generated (R272);
               sprint-local ruling namespaces retired (R273); the held-out leg (R274); two building agents (R275);

@@ -113,7 +113,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/STORY.md` | **N** | story | Every entry cited; `tools_py/story/cite.py` fails on a dead hash or an unwitnessed run |
 | `docs/HOW_IT_WAS_BUILT.md` | **N** | controller | How the project was made, for a stranger: the method, the owner's share and the agents', and the process failures worth keeping. Pointers only — the live documents own every current number. `README.md` links it |
 | `docs/GIT_STRATEGY.md` | **C** | controller | Branches, slices, releases. Carries the sprint-close step that invokes this file |
-| `docs/LOOP_PROMPT.md` | **C** | controller | **Carries no state at all** — the model for C. Rewritten 2026-09-20 after the old one aimed the loop at Sprint 6 for six days |
+| `docs/LOOP_PROMPT.md` | **C** | controller | **A pointer since 2026-09-26** (Sprint 14 I2): under 2,000 bytes, naming the four skills in `.claude/skills/` that hold the procedure now (`SkillsTest` holds both). Carries no state at all — the model for C. Rewritten 2026-09-20 after the old one aimed the loop at Sprint 6 for six days |
 | `docs/PLAYTEST.md` | **C** | controller | The owner's one-sitting script |
 | `docs/DOC_MAINTENANCE.md` | **C** | controller | This file |
 | `docs/story/release-entry.template.md` | **C** | story | A template |
@@ -122,6 +122,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/archive/README.md` | **A** | — | |
 | `docs/archive/ROADMAP-sprint-4-to-sprint-7.md` | **A** | — | Fifteen files cite it; every `ROADMAP.md §N` written before 2026-09-22 means this file |
 | `docs/archive/CURRENT_SPRINT-to-sprint-8.md` | **A** | — | |
+| `docs/archive/LOOP_PROMPT-to-2026-09-26.md` | **A** | — | Cut 2026-09-26 (Sprint 14 I2): `docs/LOOP_PROMPT.md` verbatim before it became a pointer, superseded by the four skills. Every "LOOP_PROMPT step N", "Every iteration" or "Lock protocol" cited before that day means this file |
 | `docs/archive/HANDOFF-loop-history-to-2026-09-25.md` | **A** | — | Cut 2026-09-25 (Sprint 13 Task R1, R268): HANDOFF §2's older pick-up points, §4 and §10, verbatim |
 | `docs/archive/HUMAN_TASKS-to-2026-09-25.md` | **A** | — | Cut 2026-09-25 (Sprint 13 Task R4): the owner's queue before it became one table, verbatim, under a disposition for each of its 87 items. Every HUMAN_TASKS section, item or line cited before that day means this file |
 | `docs/archive/KNOWN-section-4-to-2026-09-26.md` | **A** | — | Cut 2026-09-26 (Sprint 14 Task I5, R270): KNOWN's section 4, the 104 standing hazards, verbatim as they stood at the split. Every "KNOWN §4" written before that day resolves to `docs/HAZARDS.md` by headline, or to this file as it was |
@@ -148,7 +149,8 @@ Sprint 13 Task R3's, all added 2026-09-25):
 5. **Archives announce themselves** — every A file says "archived" or "superseded" in its first fifteen lines, in any
    case. *Catches an archive that reads as live.*
 6. **No dangling `docs/` path** — every backticked path starting `docs/` in a markdown file at the root or under
-   `docs/` must exist in the tree. *Catches the citation a move left pointing at nothing* — which is why the Sprint 1–6
+   `docs/`, and in the live procedures -- `.claude/skills/**/SKILL.md` and `.claude/agents/*.md` (Sprint 14 I2) --
+   must exist in the tree. *Catches the citation a move left pointing at nothing* — which is why the Sprint 1–6
    specs and plans sat under `docs/superpowers/` for a sprint after they were dead: nobody could move them without
    breaking citations nothing would catch. It found 44 on the tree the day it was written, in fifteen documents.
 7. **Ceilings on the appending documents (R268)** -- `docs/CURRENT_SPRINT.md`, the "## 2." section of
@@ -259,7 +261,7 @@ knows which documents to distrust.
   held the suite count; one was right.
 - **Prefer a pointer to a copy**, and prefer a generated file to either. `KNOBS.md` and `LADDER.md` have never been
   wrong, because nobody writes them.
-- **A document that tells agents what to do is code.** It gets audited like code. `LOOP_PROMPT.md` is opened first by
+- **A document that tells agents what to do is code.** It gets audited like code. The `loop-iteration` skill is opened first by
   every iteration, so it carries no state; `HANDOFF.md` must carry state, so its one dangerous number is now tested.
 - **Date anything that is a moment.** A filename date costs nothing and makes the class obvious at a glance.
 - **Supersede in place, never rewrite history.** Blockquote the old claim, say what replaced it, keep the text. The
@@ -270,7 +272,7 @@ knows which documents to distrust.
 ## 7. The known-issue stack review — deep, at every sprint close
 
 `docs/GIT_STRATEGY.md` §7 puts every technically well-defined, unresolved defect on GitHub issues, one each, cited
-from its `docs/KNOWN.md` row as `issue #N`. Between closes the loop keeps the pair true per task (`docs/LOOP_PROMPT.md`
+from its `docs/KNOWN.md` row as `issue #N`. Between closes the loop keeps the pair true per task (the `loop-iteration` skill's
 step 6). At the close the whole stack is read, because an issue tracker rots exactly the way a document does: a
 fixed thing left open, an open thing nobody owns, a bar that no longer says what would close it, a milestone that
 became a wish list. This runs beside §5, under the same rule (a sprint without it is not closed), and its result is
