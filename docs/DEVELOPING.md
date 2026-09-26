@@ -917,8 +917,8 @@ physical memory (`RUN_MIN_FREE_MEM_GB`).
 
 Claude Code runs `scripts/hooks/claude_pretool.sh` (-> `tools_py/hooks/pretool.py`) before every Bash tool call,
 wired by the tracked `.claude/settings.json` (Sprint 14 G1). It refuses with exit 2 and one sentence naming the rule's
-home; anything it cannot parse or judge is allowed. A call whose JSON names neither `git` nor `loop_lock` exits 0 in
-the shell before Python starts (about 0.1 s; a judged call costs about 1 s). The command is split on `;`, `&&`, `||`,
+home; anything it cannot parse or judge is allowed. A call whose JSON names none of `git`, `loop_lock` and `logs/`
+exits 0 in the shell before Python starts (about 0.1 s; a judged call costs about 1 s). The command is split on `;`, `&&`, `||`,
 `|`, `&`, parentheses, brace groups and newlines (heredoc bodies and quoted strings are data); the wrappers `time`,
 `timeout`, `nice`, `nohup`, `stdbuf`, `ionice`, `env`, `sudo`, `command`, `exec` and `xargs` are stripped; a `bash -c`, `sh -c` or `eval` string is judged
 as a command; `cd`, `pushd`/`popd` and `git -C <dir>` are followed for the worktree rules, and a subshell's `cd` ends
@@ -934,7 +934,8 @@ tracked, the harness's local state is not (`ClaudeDirIgnoreTest`), whatever a gl
 - **Commit everything** -- `git commit -a`/`--all` (and `-am`); test `git commit -a -m 'x'`; home
   `docs/GIT_STRATEGY.md` section 3.
 - **Commit without paths** -- `git commit` (and `--amend`) with no `-- <paths>`, since a bare commit takes whatever
-  any session staged; allowed while `MERGE_HEAD` exists (git refuses a partial commit mid-merge); test
+  any session staged; allowed while `MERGE_HEAD` exists in the directory the commit works in, after `cd`/`git -C`
+  (git refuses a partial commit mid-merge); test
   `git commit -m 'x'`, `git commit --no-edit`; home `docs/HANDOFF.md` section 5 rule 1.
 - **No-verify** -- in any git command, `--no-verify` or any abbreviation of it from `--no-v` up (git accepts unique
   prefixes), commit's `-n`, and `-c core.hooksPath=...` (any case, `-ckey=` too); test `git commit --no-verif ...`,
@@ -956,6 +957,38 @@ tracked, the harness's local state is not (`ClaudeDirIgnoreTest`), whatever a gl
   `git worktree remove --force ...`; home `scripts/agent_worktree.sh`.
 - **The lock by hand** -- `loop_lock.sh take` or `release` called directly (`check`, `run`, `wait`, `version` pass);
   test `bash scripts/loop_lock.sh take`, `... release`; home `scripts/loop_lock.sh` (`run`, or `run_detached.sh`).
+
+The same script also runs before every Edit, Write, MultiEdit and NotebookEdit call (a second PreToolUse entry,
+Sprint 14 G2; the path from `tool_input.file_path`, or `notebook_path`). It judges the path relative to the root of
+the repository that holds it, and only a repository with `scripts/loop_lock.sh`; the JSON reaches Python when it
+names `git`, `logs/` or `loop_lock` (the fast path is shared with the Bash half), and `loop_lock.sh check` runs only
+for a script under `logs/` or the lock script. The lock is shared by every worktree, so both rules refuse only what
+something is actually running. An edit through Bash (`sed -i`, a heredoc) is not seen. `EditWritePlantedTest` holds the planted calls;
+`PretoolWiringTest` drives them through the shell script against a stub `scripts/loop_lock.sh` in a temp repo.
+
+- **A running chain script** -- an edit of an EXISTING `logs/**/*.sh` while `bash scripts/loop_lock.sh check` says
+  `HELD` (the holder is named in the refusal): bash reads a running script by offset, so an edit breaks it at the
+  edit point. A new file cannot be running, and a `QUEUED` waiter has not started its chain (`run_detached.sh
+  --wait` launches it only after the grant), so neither refuses; test `decide("Edit", {"file_path":
+  "logs/x.sh"}, ..., lock_holder="agent-x51")` with the file existing (2), new (0), and `lock_holder="queued:1"` (0);
+  home `docs/KNOWN.md` section 4 (the running-chain hazard).
+- **The lock script in use** -- an edit of `scripts/loop_lock.sh` when a `QUEUED` line's `blob=<12 hex>` equals the
+  file's `git hash-object` (that waiter is a live bash reading this exact copy by offset), or while the lock is
+  `HELD` and the file is the MAIN tree's copy (`--git-dir` equals `--git-common-dir`: the loop's `run` wrappers and
+  chains start there); a worktree's copy under `HELD` with no matching waiter passes; test `decide("Write",
+  {"file_path": "scripts/loop_lock.sh"}, ...)` with a matching and a non-matching queued blob, and `HELD` with
+  `main_tree_of` true and false, plus the wiring tests on a temp repo and its linked worktree; home the
+  `scripts/loop_lock.sh` header (the rollout procedure).
+- **Landing the lock script** (the Bash half) -- a `git commit` whose `--` pathspec names `loop_lock.sh`, unless
+  `logs/.loop_lock_slow_green` is newer than the script; a complete green
+  `LOOP_LOCK_SLOW_TESTS=1 python -m unittest tools_py.tests.test_loop_lock` writes that marker (`SlowGreenSuite`;
+  never a smoke, `-k` or single-class run); the marker is the one of the repository the commit works in (after
+  `cd`/`pushd`/`git -C`, as the merge exception is judged), looked at only for a commit naming `loop_lock.sh`; test
+  `git commit -m x -- scripts/loop_lock.sh` with and without `slow_tests_ran`, the four rows of a marker in M or W
+  with `cd W` and `git -C W` from M, and the wiring tests with no marker, a fresh one, one older than the script,
+  and a linked worktree; home the `scripts/loop_lock.sh` header (the rollout procedure). Limits: the marker gates
+  the commit form the loop uses, not every landing -- a glob pathspec (`-- 'scripts/*.sh'`), `git commit -i`, and a
+  `git merge` or `git cherry-pick` of a commit that changes the script land it without a commit naming it.
 
 The reaper (Sprint 14 G3): at `SessionEnd` and every `Stop`, `scripts/hooks/claude_session_end.sh` runs
 `python -m tools_py.hooks.reap`, which `kill -9`s every orphaned watcher -- an MSYS `tail`, `grep`, `sleep` or

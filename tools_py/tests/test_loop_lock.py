@@ -1753,5 +1753,89 @@ class TestSlowSuiteStamp(unittest.TestCase):
                          "is green, update %s" % (blob, stamped, self.STAMP))
 
 
+SLOW_MARKER = os.path.join(ROOT, "logs", ".loop_lock_slow_green")
+
+
+class SlowGreenSuite(unittest.TestSuite):
+    """Sprint 14 G2: a GREEN slow run of this whole module touches logs/.loop_lock_slow_green, which the Bash guard
+    (tools_py/hooks/pretool.py, rule_lock_script_commit) reads -- a commit naming scripts/loop_lock.sh passes only
+    while the marker of the repository it lands in is newer than the script (the marker gates landing, not edits).
+    Written only when the run was slow, covered every test of the module (no -k, no single class), added no failure
+    or error, and the script was not changed while it ran; never under LOOP_LOCK_TEST_SCRIPTS.
+    The fixture stamp (TestSlowSuiteStamp) is still recorded by hand."""
+
+    def __init__(self, tests=(), slow=False, full_count=0, marker=SLOW_MARKER, script=None):
+        super().__init__(tests)
+        self.slow, self.full_count, self.marker = slow, full_count, marker
+        self.script = script or os.path.join(ROOT, "scripts", "loop_lock.sh")
+
+    def _mtime(self):
+        try:
+            return os.path.getmtime(self.script)
+        except OSError:
+            return None
+
+    def run(self, result, debug=False):
+        armed = self.slow and self.full_count > 0 and self.countTestCases() == self.full_count
+        before = (len(result.failures), len(result.errors), len(getattr(result, "unexpectedSuccesses", ())))
+        mtime = self._mtime()
+        out = super().run(result, debug)
+        after = (len(result.failures), len(result.errors), len(getattr(result, "unexpectedSuccesses", ())))
+        if armed and after == before and not result.shouldStop and mtime is not None and self._mtime() == mtime:
+            os.makedirs(os.path.dirname(self.marker), exist_ok=True)
+            with open(self.marker, "w") as f:
+                f.write("green slow run of tools_py.tests.test_loop_lock, %d tests, %s\n"
+                        % (self.full_count, time.strftime("%Y-%m-%dT%H:%M:%S")))
+        return out
+
+
+def _module_test_count():
+    loader = unittest.TestLoader()
+    return sum(len(loader.getTestCaseNames(obj)) for obj in list(globals().values())
+               if isinstance(obj, type) and issubclass(obj, unittest.TestCase) and obj.__module__ == __name__)
+
+
+def load_tests(loader, tests, pattern):
+    slow = SLOW and not os.environ.get("LOOP_LOCK_TEST_SCRIPTS")
+    return SlowGreenSuite([tests], slow=slow, full_count=_module_test_count())
+
+
+class TestSlowGreenMarker(unittest.TestCase):
+    """The marker is written by a complete, green, slow run only (fake inner suites, a temp marker path)."""
+
+    class _Pass(unittest.TestCase):
+        def test_a(self):
+            pass
+
+        def test_b(self):
+            pass
+
+    class _Fail(unittest.TestCase):
+        def test_a(self):
+            self.fail("planted")
+
+    def run_suite(self, cls, slow=True, full=None, touch_script=False):
+        d = tempfile.mkdtemp(prefix="slowgreen_")
+        self.addCleanup(shutil.rmtree, d, True)
+        script, marker = os.path.join(d, "loop_lock.sh"), os.path.join(d, "logs", ".loop_lock_slow_green")
+        open(script, "w").close()
+        inner = unittest.TestLoader().loadTestsFromTestCase(cls)
+        if touch_script:
+            inner.addTest(unittest.FunctionTestCase(lambda: os.utime(script, (1, 1))))
+        suite = SlowGreenSuite([inner], slow=slow, marker=marker, script=script,
+                               full_count=full if full is not None else inner.countTestCases())
+        suite.run(unittest.TestResult())
+        return os.path.exists(marker)
+
+    def test_a_complete_green_slow_run_writes_it(self):
+        self.assertTrue(self.run_suite(self._Pass))
+
+    def test_a_failure_a_smoke_run_a_partial_run_or_an_edited_script_does_not(self):
+        self.assertFalse(self.run_suite(self._Fail))
+        self.assertFalse(self.run_suite(self._Pass, slow=False))
+        self.assertFalse(self.run_suite(self._Pass, full=3))
+        self.assertFalse(self.run_suite(self._Pass, touch_script=True))
+
+
 if __name__ == "__main__":
     unittest.main()
