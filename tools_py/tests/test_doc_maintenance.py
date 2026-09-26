@@ -149,10 +149,31 @@ class CeilingsTest(unittest.TestCase):
         self.assertLessEqual(limit, 12500, "raise nothing: archive the old rows (docs/DOC_MAINTENANCE.md check 7)")
 
     def test_every_ceiling_names_a_block_that_exists(self):
-        for path, heading, limit in docmaint.CEILINGS:
+        for path, heading, limit in docmaint.ceilings():
             self.assertIsNotNone(docmaint.block_bytes(path, heading),
                                  "%s has no %r block -- a renamed heading must not switch its ceiling off"
                                  % (path, heading))
+
+    # --- Sprint 14 S3: the new ceilings and the ratchet ------------------------------------------------
+
+    def test_loop_prompt_claude_md_and_the_open_plan_have_whole_file_ceilings(self):
+        whole = {p: n for p, h, n in docmaint.ceilings() if h is None}
+        self.assertEqual(whole.get("docs/LOOP_PROMPT.md"), 2000)
+        self.assertIn("CLAUDE.md", whole)
+        plan = docmaint._plans_line_path()
+        self.assertIn(plan, whole, "the open plan (CURRENT_SPRINT's plans: line) has no ceiling")
+        self.assertIn((docmaint.OPEN_PLAN, None), [(p, h) for p, h, _ in docmaint.CEILINGS])
+
+    def test_no_ceiling_proposes_a_rise(self):
+        """The ratchet only goes down: every proposed number is at or under the ceiling it replaces."""
+        for row in docmaint.ratchet():
+            self.assertLessEqual(row["proposed"], row["ceiling"], row)
+
+    def test_the_real_plans_log_is_its_last_heading(self):
+        """Check 11 counts the plan's Log to the end of the file and archive-log refuses otherwise, so a
+        "## " heading after the Log is a mistake: put it above the Log."""
+        plan = docmaint._plans_line_path()
+        self.assertTrue(docmaint.plan_log_is_last(plan), "%s has a '## ' heading after its '## Log'" % plan)
 
 
 class ReadFirstBudgetTest(unittest.TestCase):
@@ -259,6 +280,8 @@ class PlantedDefectsTest(unittest.TestCase):
     def setUp(self):
         self._root = docmaint.ROOT
         self._tags = docmaint.remote_tags
+        self._ceilings = docmaint.CEILINGS
+        self._module = getattr(docmaint, "MODULE_PATH", None)
         self._tmp = tempfile.mkdtemp(prefix="docmaint_")
         docmaint.ROOT = self._tmp
         # The planted tree is not a clone: origin's tags are planted too, so no test here touches the network.
@@ -282,6 +305,8 @@ class PlantedDefectsTest(unittest.TestCase):
     def tearDown(self):
         docmaint.ROOT = self._root
         docmaint.remote_tags = self._tags
+        docmaint.CEILINGS = self._ceilings
+        docmaint.MODULE_PATH = self._module
         shutil.rmtree(self._tmp, ignore_errors=True)
 
     def ceiling(self, path, whole=False):
@@ -599,6 +624,198 @@ class PlantedDefectsTest(unittest.TestCase):
         self.plant_read_first(1000)
         self.write(self.PLAN, "# plan\n\n## Task 1: a task\n\n" + "t" * 5000 + "\n")
         self.assertEqual(dict(docmaint.read_first_bytes())[self.PLAN], docmaint.block_bytes(self.PLAN, None))
+
+    # --- Sprint 14 S3: the ratchet, the new ceilings, the plan's Log to the end, archive-log -------------
+
+    def run_main(self, argv):
+        import contextlib
+        import io
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            code = docmaint.main(argv)
+        return code, out.getvalue()
+
+    def test_a_plans_log_followed_by_another_heading_counts_to_the_end_of_the_file(self):
+        """I4's reviewer: a "## " heading added after the Log must not shrink the counted block silently."""
+        self.plant_read_first(1000)
+        log = "## Log (newest first)\n\n" + "- 2026-01-01 entry\n" * 100
+        after = "\n## Appendix\n\n" + "a" * 5000 + "\n"
+        self.write(self.PLAN, "# plan\n\n## Task 1: a task\n\n" + "t" * 4000 + "\n\n" + log + after)
+        counted = dict(docmaint.read_first_bytes())[self.PLAN]
+        self.assertEqual(counted, len(log + after))
+        self.assertGreater(counted, docmaint.block_bytes(self.PLAN, "## Log") + 5000)
+        self.assertFalse(docmaint.plan_log_is_last(self.PLAN))
+        code, out = self.run_main([])
+        line = [ln for ln in out.splitlines() if "## Log" in ln]
+        self.assertIn("{:,}".format(counted), line[0])
+
+    def test_ratchet_proposes_live_plus_ten_percent_rounded_up_to_100(self):
+        docmaint.CEILINGS = (("docs/X.md", None, 2000),)
+        self.write("docs/X.md", "x" * 999 + "\n")
+        rows = docmaint.ratchet()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]["live"], rows[0]["ceiling"], rows[0]["proposed"]), (1000, 2000, 1100))
+
+    def test_ratchet_never_proposes_above_the_current_ceiling(self):
+        docmaint.CEILINGS = (("docs/X.md", None, 2000),)
+        self.write("docs/X.md", "x" * 1899 + "\n")
+        self.assertEqual(docmaint.ratchet()[0]["proposed"], 2000)
+        self.assertEqual(docmaint.propose(2500, 2000), 2000, "over the ceiling: still never above it")
+        self.assertEqual(docmaint.propose(None, 2000), 2000, "nothing measured: the number stands")
+        self.assertEqual(docmaint.propose(1001, 5000), 1200)
+
+    def test_ratchet_prints_the_table(self):
+        docmaint.CEILINGS = (("docs/X.md", None, 2000), ("docs/HANDOFF.md", "## 2.", 3800))
+        self.write("docs/X.md", "x" * 999 + "\n")
+        code, out = self.run_main(["ratchet"])
+        self.assertEqual(code, 0, out)
+        row = [ln for ln in out.splitlines() if "docs/X.md" in ln][0]
+        for cell in ("(whole file)", "1,000", "2,000", "1,100"):
+            self.assertIn(cell, row)
+        self.assertTrue(any("docs/HANDOFF.md" in ln and "## 2." in ln and "3,800" in ln for ln in out.splitlines()))
+
+    def test_ratchet_write_rewrites_exactly_the_numbers_on_a_copy_of_the_module(self):
+        src = self._module
+        copy = os.path.join(self._tmp, "docmaint_copy.py")
+        shutil.copyfile(src, copy)
+        docmaint.MODULE_PATH = copy
+        # The planted tree has a small HANDOFF and none of the other ceilinged files: the HANDOFF rows drop, the
+        # rest (live unmeasured) stand.
+        expect = {r["index"]: r["proposed"] for r in docmaint.ratchet()}
+        code, out = self.run_main(["ratchet", "--write"])
+        self.assertEqual(code, 0, out)
+        with open(src, "rb") as f:
+            old = f.read().split(b"\n")
+        with open(copy, "rb") as f:
+            new = f.read().split(b"\n")
+        self.assertEqual(len(old), len(new))
+        changed = [i for i in range(len(old)) if old[i] != new[i]]
+        self.assertTrue(changed, "the planted HANDOFF is small, so its numbers must have come down")
+        start = old.index(b"CEILINGS = (")
+        entries = [i for i in range(start + 1, old.index(b")", start)) if old[i].lstrip().startswith(b"(")]
+        self.assertEqual(len(entries), len(docmaint.CEILINGS))
+        for k, i in enumerate(entries):
+            cur = docmaint.CEILINGS[k][2]
+            want = old[i].replace(b", %d)" % cur, b", %d)" % expect[k], 1)
+            self.assertEqual(new[i], want, "entry %d" % k)
+        self.assertTrue(set(changed) <= set(entries), "only the CEILINGS numbers may change")
+
+    def test_ratchet_write_refuses_a_rise(self):
+        copy = os.path.join(self._tmp, "docmaint_copy.py")
+        shutil.copyfile(self._module, copy)
+        rows = docmaint.ratchet()
+        rows[0] = dict(rows[0], proposed=rows[0]["ceiling"] + 100)
+        with self.assertRaises(ValueError):
+            docmaint.ratchet_write(copy, rows)
+        with open(copy, "rb") as a, open(self._module, "rb") as b:
+            self.assertEqual(a.read(), b.read(), "a refused write writes nothing")
+
+    def test_loop_prompt_over_its_ceiling_fires_and_at_it_does_not(self):
+        path, heading, limit = self.ceiling("docs/LOOP_PROMPT.md")
+        self.assertEqual((heading, limit), (None, 2000))
+        self.write(path, "p" * (limit - 1) + "\n")
+        self.assertEqual(docmaint.report()["over_ceiling"], [])
+        self.write(path, "p" * limit + "\n")
+        hits = [h for h in docmaint.report()["over_ceiling"] if h[0] == path]
+        self.assertEqual(len(hits), 1)
+        self.assertIn("2,001", docmaint.describe_ceiling(hits[0]))
+
+    def test_claude_md_over_its_ceiling_fires_and_at_it_does_not(self):
+        """The byte twin of ClaudeMdTest's sixty lines: 4,453 bytes on 2026-09-26 plus ten percent."""
+        path, heading, limit = self.ceiling("CLAUDE.md")
+        self.assertEqual((heading, limit), (None, 4900))
+        self.write(path, "c" * (limit - 1) + "\n")
+        self.assertEqual(docmaint.report()["over_ceiling"], [])
+        self.write(path, "c" * limit + "\n")
+        hits = [h for h in docmaint.report()["over_ceiling"] if h[0] == path]
+        self.assertEqual(len(hits), 1)
+        self.assertIn("4,901", docmaint.describe_ceiling(hits[0]))
+
+    def test_the_open_plan_over_its_ceiling_fires_under_its_own_name(self):
+        limit = [c for c in docmaint.CEILINGS if c[0] == docmaint.OPEN_PLAN][0][2]
+        self.assertEqual(limit, 92000)
+        self.plant_read_first(1000)
+        self.write(self.PLAN, "# plan\n\n## Log (newest first)\n\n" + "- e\n" * ((limit - 32) // 4) + "\n")
+        n = docmaint.block_bytes(self.PLAN, None)
+        self.assertLessEqual(n, limit)
+        self.assertFalse([h for h in docmaint.report()["over_ceiling"] if h[0] == self.PLAN])
+        self.write(self.PLAN, "# plan\n\n## Log (newest first)\n\n" + "- e\n" * (limit // 4 + 1))
+        hits = [h for h in docmaint.report()["over_ceiling"] if h[0] == self.PLAN]
+        self.assertEqual(len(hits), 1, docmaint.report()["over_ceiling"])
+        self.assertIn(self.PLAN, docmaint.describe_ceiling(hits[0]))
+        self.assertIn("(whole file)", docmaint.describe_ceiling(hits[0]))
+
+    def test_no_plans_line_means_no_plan_ceiling_and_no_problem(self):
+        """The clean planted tree has no CURRENT_SPRINT: the open-plan entry resolves to nothing."""
+        self.assertNotIn(docmaint.OPEN_PLAN, [p for p, _, _ in docmaint.ceilings()])
+        self.assertEqual(docmaint.report()["over_ceiling"], [])
+
+    ENTRY = "- **2026-01-%02d 10:00Z -- entry %d.** A line,\n  and its continuation `code`.\n"
+
+    def plant_log(self, n, after=""):
+        """A plan whose Log has n entries, newest first (entry n at the top); `after` follows the Log."""
+        self.plant_read_first(1000)
+        entries = "".join(self.ENTRY % (i, i) for i in range(n, 0, -1))
+        text = ("# plan\n\n## Rulings made on the owner's behalf\n\n- **R99** (Task 1): the decision.\n\n"
+                "## Log (newest first)\n\n" + entries + after)
+        self.write(self.PLAN, text)
+        return text
+
+    def test_archive_log_moves_the_oldest_entries_verbatim_and_leaves_a_pointer(self):
+        before = self.plant_log(14)
+        code, out = self.run_main(["archive-log", "--plan", self.PLAN, "--keep", "10", "--date", "2026-01-20"])
+        self.assertEqual(code, 0, out)
+        archive = "docs/archive/2026-01-01-plan-log-to-2026-01-20.md"
+        with open(os.path.join(self._tmp, archive), encoding="utf-8") as f:
+            arch = f.read()
+        oldest = "".join(self.ENTRY % (i, i) for i in range(4, 0, -1))
+        newest = "".join(self.ENTRY % (i, i) for i in range(14, 4, -1))
+        self.assertTrue(arch.endswith(oldest), arch)
+        self.assertRegex(arch.split("\n")[0], r"(?i)archived 2026-01-20")
+        with open(os.path.join(self._tmp, self.PLAN), encoding="utf-8") as f:
+            after = f.read()
+        keep_end = before.index(newest) + len(newest)
+        self.assertEqual(after[:keep_end], before[:keep_end], "the ten newest must be byte-identical")
+        rest = after[keep_end:]
+        self.assertEqual(rest.count("\n"), 1, rest)
+        self.assertIn("`%s`" % archive, rest)
+        self.assertNotIn("entry 4.", after)
+        # The registry row (class A), the banner and the pointer satisfy checks 1, 5 and 6.
+        self.assertIn(archive, docmaint.by_class("A"))
+        r = docmaint.report()
+        self.assertNotIn(archive, r["unregistered"])
+        self.assertEqual((r["silent_archives"], r["dangling_doc_links"]), ([], []))
+
+    def test_archive_log_a_second_time_keeps_the_first_pointer(self):
+        self.plant_log(14)
+        docmaint.archive_log(self.PLAN, keep=10, date="2026-01-20")
+        with open(os.path.join(self._tmp, self.PLAN), encoding="utf-8") as f:
+            text = f.read()
+        text = text.replace("## Log (newest first)\n\n", "## Log (newest first)\n\n" + self.ENTRY % (21, 21), 1)
+        self.write(self.PLAN, text)
+        res = docmaint.archive_log(self.PLAN, keep=10, date="2026-01-21")
+        self.assertEqual(res["moved"], 1)
+        with open(os.path.join(self._tmp, self.PLAN), encoding="utf-8") as f:
+            text = f.read()
+        self.assertEqual(text.count("moved verbatim to"), 2, text)
+        self.assertLess(text.index("log-to-2026-01-21"), text.index("log-to-2026-01-20"))
+
+    def test_archive_log_refuses_when_a_heading_follows_the_log(self):
+        before = self.plant_log(14, after="\n## Appendix\n\nx\n")
+        code, out = self.run_main(["archive-log", "--plan", self.PLAN, "--date", "2026-01-20"])
+        self.assertEqual(code, 1, out)
+        self.assertIn("last", out)
+        with open(os.path.join(self._tmp, self.PLAN), encoding="utf-8") as f:
+            self.assertEqual(f.read(), before)
+        self.assertFalse(os.path.exists(os.path.join(self._tmp, "docs/archive/2026-01-01-plan-log-to-2026-01-20.md")))
+
+    def test_archive_log_with_ten_or_fewer_entries_does_nothing(self):
+        before = self.plant_log(10)
+        code, out = self.run_main(["archive-log", "--plan", self.PLAN, "--date", "2026-01-20"])
+        self.assertEqual(code, 0, out)
+        with open(os.path.join(self._tmp, self.PLAN), encoding="utf-8") as f:
+            self.assertEqual(f.read(), before)
+        self.assertEqual(os.listdir(os.path.join(self._tmp, "docs/archive")), [])
 
     # --- R268: "merged to main as vX" names a tag origin has ---------------------------------------------
 

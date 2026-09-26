@@ -17,7 +17,14 @@ merge and the tag). The open plan's Task 99 adds the sprint's own close steps.
 
 ## The documentation review (DOC_MAINTENANCE §5)
 
-1. `python -m tools_py.docmaint` -- exit 0. If it fails, fix the document, not the check.
+1. `python -m tools_py.docmaint` -- exit 0. If it fails, fix the document, not the check. Then **the ratchet**
+   (check 7): `python -m tools_py.docmaint ratchet` prints each ceiling's live size, current number and proposal;
+   `python -m tools_py.docmaint ratchet --write` rewrites the numbers in `tools_py/docmaint.py`'s `CEILINGS`, and the
+   close-out commit carries that file. A ceiling never goes up.
+   **When the plan's ceiling fires** (the open plan's whole-file ceiling): run
+   `python -m tools_py.docmaint archive-log --plan <the plan> --keep 10` -- the Log's entries older than the newest
+   ten move verbatim to `docs/archive/<plan>-log-to-<date>.md` with a banner and a class A row, and the Log keeps a
+   one-line pointer. It refuses when the Log is not the plan's last `## ` heading: move that section above the Log.
 2. Every L document read for truth, in order: `KNOWN.md`, `CURRENT_SPRINT.md`, `HANDOFF.md`, `HUMAN_TASKS.md`,
    `STATUS.md`'s Current state block, `DEVELOPING.md`, `README.md` -- is every claim still true; is anything the
    sprint closed still listed as open; is anything the sprint opened missing? A fresh read-only agent's table is the

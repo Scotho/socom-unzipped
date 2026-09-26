@@ -163,7 +163,17 @@ Sprint 13 Task R3's, all added 2026-09-25; the eleventh Sprint 14 I4's, 2026-09-
    points and three of them said "now", and STATUS's "keep it short" block was 30 KB. The ceilings were set at that
    day's split (Sprint 13 Task R1) with about 25 % headroom. **When one fires, archive the oldest blocks** (a banner,
    a registry row, the citations re-pointed) -- never raise the number to make it pass; a lower number after a cut
-   (Task R4 for HUMAN_TASKS) is the only edit it expects.
+   (Task R4 for HUMAN_TASKS) is the only edit it expects. **The ratchet (Sprint 14 S3): at each close,
+   `python -m tools_py.docmaint ratchet` proposes the numbers** (live plus ten percent, rounded up to 100, never above
+   the current one); **the close commits them with `ratchet --write`** (it rewrites only the numbers in `CEILINGS`,
+   and refuses a rise); **a ceiling never goes up.** S3 added three whole-file ceilings: `docs/LOOP_PROMPT.md` 2,000
+   (a pointer since I2), `CLAUDE.md` 4,900 (4,453 plus ten percent, the byte twin of its sixty-line test) and **the
+   open plan** -- the plan named on `docs/CURRENT_SPRINT.md`'s `plans:` line, resolved at run time (`OPEN_PLAN`),
+   92,000 (the Sprint 14 plan's 83,025 plus ten percent, rounded to 1,000). **When the plan's ceiling fires,** its
+   Log's entries older than the newest ten move verbatim to `docs/archive/<plan>-log-to-<date>.md` (a banner, a
+   class A row) and the Log keeps a one-line pointer where they were:
+   `python -m tools_py.docmaint archive-log --plan <path> [--keep 10]` does exactly that, leaves the ten newest
+   entries byte-identical, and refuses when the Log is not the plan's last `## ` heading. The Log must stay last.
 8. **"merged to `main` as `vX.Y.Z`" names a tag origin has (R268)** -- every such phrase in an L document is checked
    against `git ls-remote --tags origin`; a struck-through claim is a retraction and is skipped. *Catches a close
    recorded before it happened:* on 2026-09-25 four live documents said Sprint 11 was merged as `v0.11.0` while no such
@@ -182,7 +192,9 @@ Sprint 13 Task R3's, all added 2026-09-25; the eleventh Sprint 14 I4's, 2026-09-
 11. **The read-first budget (Sprint 14 I4)** -- what a new controller reads before acting sums to at most 160,000
    bytes (`READ_FIRST_BUDGET` in `tools_py/docmaint.py`, LF-counted like the ceilings). The set: the pinned
    `READ_FIRST` (`docs/HANDOFF.md`, `CLAUDE.md`, `docs/CURRENT_SPRINT.md`); the "## Log" block of the plan named on
-   `docs/CURRENT_SPRINT.md`'s `plans:` line (its first `docs/superpowers/plans/` path) -- §3 sends a controller to
+   `docs/CURRENT_SPRINT.md`'s `plans:` line (its first `docs/superpowers/plans/` path), measured from its heading to
+   the end of the file (Sprint 14 S3: a `## ` heading added after the Log cannot shrink it; a test holds the real
+   plan's Log last) -- §3 sends a controller to
    "the open plan's Log", and the task sections are consulted per task -- or the whole plan when it has no
    "## Log" heading, so renaming the heading cannot shrink the set; and `docs/STATUS.md`'s
    "## Current state" block only. A test holds the "Read ..." step of HANDOFF §3 ("Your first hour") to the pinned
