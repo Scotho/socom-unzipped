@@ -368,8 +368,8 @@ acts on it.
 8. **The circuit breaker (R271).** An O row that has stood through two sittings without an answer is closed by
    default under a ruling, struck with the date and the default that now stands; the owner can reopen it by number.
    `python -m tools_py.sitting` marks such a row in `docs/SITTING.md` §1 "closes by default at the next close
-   (R271)" -- two dates on HUMAN_TASKS' stamp line on or after its first-asked date -- and only marks. The close
-   strikes each marked row by hand in `docs/HUMAN_TASKS.md` under a new ruling from HANDOFF's counter (the default
+   (R271)" -- two dates on HUMAN_TASKS' stamp line strictly after its first-asked date (a sitting on the day a row
+   is asked has not seen it) -- and only marks. The close strikes each marked row by hand in `docs/HUMAN_TASKS.md` under a new ruling from HANDOFF's counter (the default
    column struck, the second column ending "**Closed by default under R<n>, <date>: <the default>; reopen by
    number.**"), then regenerates the page. The stamp is one line: `last sitting: <date>` after the first sitting,
    `sittings: <date>, <date>, ...` (oldest first) from the second; a sitting appends its date.

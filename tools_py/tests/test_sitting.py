@@ -163,12 +163,14 @@ class ORowsTest(unittest.TestCase):
 
 # Sprint 14 D4 (R271): the stamp has grown to the history of sittings. O1 was asked before both (the mark); O2
 # before both but struck (answered: no mark); O3 between them (one sitting: no mark); O4 on the second sitting's
-# own date (it stood through that one only: no mark).
+# own date (a sitting on the day a row is asked has not seen it -- section 2's rule for a ruling: no sitting); O5
+# on the first sitting's date (only the second counts: no mark; a third sitting marks it).
 HUMAN_TASKS_TWO = HUMAN_TASKS.replace(
     "last sitting: 2026-01-05", "sittings: 2026-01-03, 2026-01-05 (read by tools_py.sitting)").replace(
     "| O3 | **The crouch default**: the launcher writes `l3`. | the launcher's `l3` | audit A10 | 2026-01-04 |",
     "| O3 | **The crouch default**: the launcher writes `l3`. | the launcher's `l3` | audit A10 | 2026-01-04 |\n"
-    "| O4 | **The pad map**, asked at the sitting. | the shipped map | audit A11 | 2026-01-05 |")
+    "| O4 | **The pad map**, asked at the sitting. | the shipped map | audit A11 | 2026-01-05 |\n"
+    "| O5 | **The mic gate**, asked at the first sitting. | the gate off | audit A12 | 2026-01-03 |")
 BREAKER = "closes by default at the next close (R271)"
 
 
@@ -182,19 +184,28 @@ class CircuitBreakerTest(unittest.TestCase):
 
     def test_the_rows_that_stood_through_two_sittings(self):
         rows = {r["number"]: r for r in sitting.o_rows(HUMAN_TASKS_TWO, today=TODAY)}
-        self.assertEqual({n: r["sittings"] for n, r in rows.items()}, {"O1": 2, "O2": 2, "O3": 1, "O4": 1})
+        self.assertEqual({n: r["sittings"] for n, r in rows.items()},
+                         {"O1": 2, "O2": 2, "O3": 1, "O4": 0, "O5": 1})
         self.assertEqual({n: r["closes"] for n, r in rows.items()},
-                         {"O1": True, "O2": False, "O3": False, "O4": False})
+                         {"O1": True, "O2": False, "O3": False, "O4": False, "O5": False})
+
+    def test_a_row_asked_on_the_first_sittings_date_needs_two_later_sittings(self):
+        three = HUMAN_TASKS_TWO.replace("sittings: 2026-01-03, 2026-01-05", "sittings: 2026-01-03, 2026-01-05, 2026-01-07")
+        rows = {r["number"]: r for r in sitting.o_rows(three, today=TODAY)}
+        self.assertEqual((rows["O5"]["sittings"], rows["O5"]["closes"]), (2, True))
+        self.assertEqual((rows["O4"]["sittings"], rows["O4"]["closes"]), (1, False))
+        s1 = section(sitting.build(three, RULINGS, BACKLOG, PLAYTEST_BUILT, "2026-01-07", today=TODAY), 1)
+        self.assertIn("3 rows close by default at the next close (R271)", s1)   # O1, O3, O5
 
     def test_the_mark_on_the_page(self):
         s1 = section(sitting.build(HUMAN_TASKS_TWO, RULINGS, BACKLOG, PLAYTEST_BUILT, "2026-01-05", today=TODAY), 1)
         by = {l.split("|")[1].strip(): l for l in s1.split("\n") if l.startswith("| O")}
         self.assertIn(BREAKER, by["O1"])
-        for n in ("O3", "O4"):
+        for n in ("O3", "O4", "O5"):
             self.assertNotIn(BREAKER, by[n])
         self.assertNotIn("O2", by)   # struck: answered, listed apart
         self.assertEqual(s1.count(BREAKER), 1 + 1, s1)   # the row and the section's count sentence
-        self.assertIn("1 closes by default at the next close", s1)
+        self.assertIn("1 row closes by default at the next close (R271).", s1)
 
     def test_one_sitting_marks_nothing(self):
         self.assertNotIn(BREAKER, section(page(), 1))

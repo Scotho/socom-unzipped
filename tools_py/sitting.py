@@ -19,10 +19,11 @@ The history of sittings is ONE stamp line under HUMAN_TASKS' header (Sprint 14 D
 `sittings: 2026-09-17, 2026-10-03 (read by tools_py.sitting)` -- the dates oldest first, the close appending the
 new one. Both forms are read. `since` defaults to the latest date on it (`--since` overrides it).
 
-The circuit breaker (R271): an open O row that has stood through two sittings -- two stamped dates on or after its
-first-asked date -- is marked in section 1 "closes by default at the next close (R271)". The tool only marks; the
-close strikes the row by hand in HUMAN_TASKS under a new ruling, with the date and the default that now stands, and
-the owner can reopen it by number (docs/DOC_MAINTENANCE.md section 7, step 8).
+The circuit breaker (R271): an open O row that has stood through two sittings -- two stamped dates strictly after
+its first-asked date (a sitting on the day a row is asked has not seen it, as section 2 treats a ruling dated that
+day) -- is marked in section 1 "closes by default at the next close (R271)". The tool only marks; the close strikes
+the row by hand in HUMAN_TASKS under a new ruling, with the date and the default that now stands, and the owner can
+reopen it by number (docs/DOC_MAINTENANCE.md section 7, step 8).
 
 The page's date ("as of") is today when it is written; `--check` renders with the date and the `since` the page on
 disk carries, so the page goes stale when a source changes, not when the calendar does -- the days waited are as of
@@ -84,7 +85,7 @@ def _esc(text):
 
 def stamps(human_tasks_md):
     """Every sitting's date on the stamp line(s), oldest first, each once. The circuit breaker counts the sittings
-    a row has stood through (those on or after its first-asked date)."""
+    a row has stood through (those strictly after its first-asked date)."""
     found = set()
     for dates in STAMP.findall(human_tasks_md):
         found.update(docmaint.DATE.findall(dates))
@@ -98,7 +99,7 @@ def last_sitting(human_tasks_md):
 
 def o_rows(human_tasks_md, today=None):
     """[{number, hand, default, first_asked, days, struck, answer, sittings, closes}] in table order. `sittings` is
-    how many stamped sittings fell on or after the row's first-asked date; `closes` is True for an open row that
+    how many stamped sittings fell strictly after the row's first-asked date; `closes` is True for an open row that
     has stood through two or more (R271: it closes by default at the next close)."""
     today = today or datetime.date.today()
     held = stamps(human_tasks_md)
@@ -124,7 +125,7 @@ def o_rows(human_tasks_md, today=None):
         days = None
         if not struck and first_asked:
             days = (today - datetime.date.fromisoformat(first_asked)).days
-        sittings = len([s for s in held if first_asked and s >= first_asked])
+        sittings = len([s for s in held if first_asked and s > first_asked])
         out.append({"number": number, "hand": hand, "default": _plain(default), "first_asked": first_asked,
                     "days": days, "struck": struck, "answer": answer, "sittings": sittings,
                     "closes": not struck and sittings >= 2})
@@ -270,7 +271,9 @@ def build(human_tasks_md, rulings_rows, backlog_md, playtest_md, since, today=No
         "%d open, %d answered or struck. Each stands on its default until you answer; days waited are to %s.%s" % (
             len(open_rows), len(answered), today.isoformat(),
             (" A row that has stood through two sittings unanswered is struck at the next close with its default "
-             "standing, under a ruling, and reopened by number: %d %s." % (len(closing), BREAKER))
+             "standing, under a ruling, and reopened by number: %s." % (
+                "1 row " + BREAKER if len(closing) == 1 else
+                "%d rows %s" % (len(closing), BREAKER.replace("closes", "close", 1))))
             if closing else ""),
         "",
         "| O | the hand needed | the default the loop is on | first asked | days waited |",
