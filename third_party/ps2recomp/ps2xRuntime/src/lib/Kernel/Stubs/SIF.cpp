@@ -130,13 +130,12 @@ namespace ps2_stubs
             return id;
         }
 
-        // Issue #51 RED: the IOP heap cursor the allocator below writes. At this commit it is still the
-        // one process-wide instance whatever runtime the stub was handed -- the ownership is in place
-        // and SIF.cpp does not use it yet. Written under g_sifHeapMutex.
+        // Issue #51: the IOP heap cursor the allocator below writes -- the runtime's own
+        // IopHeapRuntimeState (Helpers/IopHeapRuntimeState.h), or the process-wide fallback for a null
+        // runtime. Written under g_sifHeapMutex.
         IopHeapRuntimeState &iopHeapStateFor(PS2Runtime *runtime)
         {
-            (void)runtime;
-            return iopHeapRuntimeStateFor(nullptr);
+            return iopHeapRuntimeStateFor(runtime);
         }
 
         uint32_t alignIopHeapSize(uint32_t size)
