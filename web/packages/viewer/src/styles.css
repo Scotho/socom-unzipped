@@ -38,7 +38,12 @@ body.ps2-look #view {
   border: 1px solid #333a44; border-radius: 8px; overflow: hidden;
   background: rgba(20, 22, 26, 0.86); backdrop-filter: blur(4px); font-size: 12px; line-height: 1.5;
 }
-#panel-body { padding: 10px 12px; }
+/*
+ * Capped to the viewport and scrolling inside itself: with every section unfolded the body is taller
+ * than a 720px window, and a control below the fold could not be reached at all -- the panel's own
+ * `overflow: hidden` clipped it. 48px is the panel's top, 44px its title bar, 12px a margin below.
+ */
+#panel-body { padding: 10px 12px; max-height: calc(100dvh - 104px); overflow-y: auto; overscroll-behavior: contain; }
 /*
  * The title bar. It is meant to read as the top of a window rather than as the first line of a box:
  * its own slightly lighter background, a rule under it, the label in small caps, and the whole strip
