@@ -122,7 +122,9 @@ returning a stale register) and observed that each was invisible to the gate, ea
 fix was one function in our runtime. That prediction has kept paying: the texture-cache generation bump (R123), the
 CLUT snapshot serial, the MPEG picture-count gate starving the PCM ring, the stereo VPK interleave, the scheduler
 unwinding a `replaceFunction` wrap mid-open — all the same shape. **The audit it prescribed is still only two-thirds
-done: legs one and two ran (research/20), leg three — reading the guest's consumer for each flagged row — never did.**
+done: legs one and two ran (research/20), leg three — reading the guest's consumer for each flagged row — never did.** *(Superseded 2026-09-25 by R265,
+`docs/audits/2026-09-25-project-audit.md` §4: leg three is owned by Sprint 13 Task C2, with the throwing-stub census;
+the plan's C2 row has its state.)*
 
 **B. A check that can pass quietly is the recurring defect class on our side of the fence.** Sprint 4 found six.
 Sprints 5–10 kept finding them: the mission gate scoring the intro cinematic, the console-spawn score riding inside a
@@ -135,7 +137,9 @@ for the project's whole life. The gate has since grown real teeth — mission-fa
 comparison, input pinning that refuses to score on drift — but the sentence still holds, and the **gameplay-state
 correctness leg** the archived §5 asked for (root-node Y, a rand-derived field, MoveScale `+0x1368`, the heading
 matrix, a teleport count, all against console numbers already on disk) is still the cheapest unbuilt instrument in
-the project.
+the project. *(Superseded 2026-09-25 by R265: the probe is declined as a gate leg -- the ladder, the twenty-map queue
+and the online verdict are the correctness legs built instead -- and its one live number, the `rx`-hold teleport
+count, is a `docs/BACKLOG.md` matter; `docs/backlog_ruled_out.txt` row `gameplay-state-probe`.)*
 
 Two Sprint 4 rulings worth restating because they were right and are easy to drift back from: **prove the mechanism
 before fixing** (it earned its keep every time it bit — the macroblocks were not the suspected mechanism, the water
@@ -167,11 +171,14 @@ path it exercises — see `SECURITY.md`.
 
 The archived §5's advice has mostly been taken. What is left, plus what this audit adds:
 
-- **Finish the HLE audit's leg three.** Finding A says the remaining unexplained wrongness is probably this shape;
-  legs one and two produced the list and nobody has read the consumers. It is bounded by a list that already exists.
-- **Build the gameplay-state probe.** Finding C. Asked for on 2026-09-12, agreed on 2026-09-14, never built.
-- **Own the soft-double chain, or write down that we are not going to.** It has been "open and unowned" for ten days
-  across three sprints. Either is an acceptable answer; drifting is not.
+- **Superseded 2026-09-25 by R265 (`docs/audits/2026-09-25-project-audit.md` §4); the live list is `docs/BACKLOG.md`
+  and the Sprint 13 plan's C2 row.** R265 owned leg three (Task C2), declined the gameplay-state probe as a gate leg,
+  and declined the soft-double chain until a defect points at it. The three items as written:
+  > **Finish the HLE audit's leg three.** Finding A says the remaining unexplained wrongness is probably this shape;
+  > legs one and two produced the list and nobody has read the consumers. It is bounded by a list that already exists.
+  > **Build the gameplay-state probe.** Finding C. Asked for on 2026-09-12, agreed on 2026-09-14, never built.
+  > **Own the soft-double chain, or write down that we are not going to.** It has been "open and unowned" for ten days
+  > across three sprints. Either is an acceptable answer; drifting is not.
 - **New, from this audit: a document that tells agents what to do must be audited like code.** The archived roadmap
   sent readers to a numbered goal list in `LOOP_PROMPT.md` for two days after that list was deleted. `KNOWN.md` is
   audited after every task and stayed true; `ROADMAP.md` was audited by nobody and went two sprints and two wrong

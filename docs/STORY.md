@@ -829,6 +829,11 @@ perfectly clean HELP popups, and the garbled one I saw was after the church, whi
 insertion point can never reach. The experiment wasn't wrong; the route was too short, and the capture didn't even
 record which settings it ran with — which is its own lesson, now written down.
 
+> Superseded 2026-09-25 (Sprint 13 V6, issue #27 closed): the card never lost the saved password. The driver misread
+> the screen -- it pressed CROSS first, which connected, and read the password off the CONNECTING screen. With the
+> driver fixed (`6ff8229f`), a virgin card relaunched with nothing typed read the saved password and reached the lobby
+> (`logs/parity/v6_20260925_160634`). The sentence above is kept as what was believed that morning.
+
 Sprint 10 is closed. Sprint 11 is open, and the specs became a plan; `docs/CURRENT_SPRINT.md` is where its tasks
 live, and this page does not count them.
 
