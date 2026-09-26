@@ -10,11 +10,11 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 2. Where it stands
 
-- **Where the loop is now (2026-09-26 12:14Z, LATEST) -- Sprint 14 ("guards, not sentences") is OPEN on `sprint-14`, off
+- **Where the loop is now (2026-09-26 12:25Z, LATEST) -- Sprint 14 ("guards, not sentences") is OPEN on `sprint-14`, off
   `main` at `6a82caaa` (Sprint 13 merged as `v0.13.0`, PR #61); `main` merged in five times, last `b3dae300` (PR #66).
-  Merged: every task but E2 (G1-G5, I1-I5, D1-D5, S1-S4, E1, E3, E4, M1, M2, W1, W2, X1); the WIP cap and the merged
-  chain are live. In flight: E2's fix round under re-review (R280 stamps). Left, lock-bound at night once the main tree is
-  clean: the first merged chain (W2 step 3), E2's twelve captures, the close chain; then Task 99. The plan
+  Every task's lock-free part is merged (G, I, D, S, E, M, W, X1; the WIP cap, the merged chain and the fourth leg's
+  tooling are live). Left, lock-bound at night (scheduled 02:07Z 09-27 in the controller's session): the first merged
+  chain (W2 step 3), E2's twelve captures, the close chain, then Task 99 and Sprint 15's open (D8). The plan
   `docs/superpowers/plans/2026-09-26-sprint-14.md` (its Log) is the live state. No cloud session from 2026-09-26.
 - **Next free ruling number: R282.**
 
@@ -51,8 +51,8 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 5. Who else is in the tree (`git worktree list` is the truth)
 
-- **The Sprint 14 controller** in the main tree on `sprint-14`; its agents in `C:/projects/wt-s14-<task>`, one
-  branch each, made and removed by `scripts/agent_worktree.sh`: `wt-s14-e2` (E2).
+- **The Sprint 14 controller** in the main tree on `sprint-14`; no agent worktree open (all `wt-s14-*` removed, their
+  branches deleted); the next ones come from `scripts/agent_worktree.sh create`.
 - **The Sprint 13 controller** is done with its fillers (#51 as PR #65 `123dd1c5`, #57 as PR #66 `b3dae300`, the row
   open for the r0004 leg); no worktree of its remains; it stands by for the owner's sitting.
 - **Durable:** `socom_pc_web` (the browser side project), `wt-cherry` and `wt-ci-fix` (both merged). `wt-issues` is
@@ -64,7 +64,8 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 - **The owner's rows:** `docs/HUMAN_TASKS.md` O1-O8, O10-O16, O18 and O19 (O16: issues #25, #26 and #42). Under R271 a row
   unanswered through two sittings after it was asked closes by default at the next close: nothing today; at a third
   sitting without answers all 16 open rows would close together (`docs/SITTING.md` marks them).
-- **Sprint 14, lock-free:** E2's fix round to re-review and merge; then nothing until the night.
+- **Sprint 14, lock-free:** nothing until the night; if the controller's session dies before 02:07Z, a new one runs
+  the night's list below by hand (the `loop-iteration` skill, step 4; then the `sprint-close` skill).
 - **Lock-bound** (lock FREE, queue empty, one at a time, at night, once the main tree is clean -- the story session's
   uncommitted `tools_py/story/site.py` makes the chain refuse): the first merged chain (`scripts/parity/merged_chain.sh`
   copied to `logs/`, launched once through `run_detached.sh --wait`), E2's gate run and `--capture-heldout`, then the
