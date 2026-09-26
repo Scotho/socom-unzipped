@@ -165,3 +165,7 @@ eleven in the order they matter. Nothing was dropped.
 | The site must stop claiming keyboard/mouse support | Section 8 relay | Owed to the site session |
 | A playtest is planned | Milestone P; `docs/PLAYTEST.md` | Scheduled |
 | Make the project public and forkable, with intentional git planning | `docs/GIT_STRATEGY.md`, `CONTRIBUTING.md`, `SECURITY.md`, `.github/`, Sprint 11 spec Goals 0, 1, 7 | Designed and scheduled; early files landed |
+
+## Moved 2026-09-26 05:17Z at the Sprint 14 open (HANDOFF §2's one "now" bullet, verbatim)
+
+- **Where the loop is now (2026-09-26 04:17Z, LATEST) -- Sprint 13 is CLOSED on `sprint-13` (the close-out commit); PR #61 to `main` is open, green, and waits on the owner's merge (HUMAN_TASKS O17); the loop tags `v0.13.0` on the merge commit after.** Read `docs/CURRENT_SPRINT.md`'s "Sprint 13 -- CLOSED" block and the plan's Outcome (`docs/superpowers/plans/2026-09-25-sprint-13.md`). The next controller opens Sprint 14 ("guards, not sentences", its pair in `docs/superpowers/`) off `main` after the merge; its Task 0 commits the Sprint 14 and 15 pairs and the never-run cloud handoff. Three issues wait on the owner (HUMAN_TASKS O16).

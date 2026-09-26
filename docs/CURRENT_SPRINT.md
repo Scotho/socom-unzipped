@@ -9,33 +9,33 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 repository another person can fork, build and contribute to.
 
 ```
-branch:       sprint-13 -- CLOSED 2026-09-26 04:17Z (the close-out commit bbdd26b8; PR #61 sprint-13 -> main is OPEN and waits
-              on the owner's merge, HUMAN_TASKS O17 -- the ruleset's extra-approval rule and the gh token's missing
-              workflow scope stop the loop; the tag v0.13.0 goes on the merge commit after;
-              Sprint 12 merged as v0.12.0 at 74fe2a9b, PR #50, Sprint 11 as v0.11.0 at 173608af, PR #49). The next
-              sprint's controller opens sprint-14 off main after the merge; this machine's checkout stays on sprint-13
-              until then. See "Sprint 13 -- CLOSED" below, then the two earlier CLOSED blocks.
-spec:         docs/superpowers/specs/2026-09-25-sprint-13-nothing-carried-twice-design.md (eight milestones V, R, H,
-              C, U, S, N, O with a bar each; the acceptance bar is its section 4). The Sprint 12 and Sprint 11 specs
-              closed with v0.12.0 and v0.11.0.
-plans:        docs/superpowers/plans/2026-09-25-sprint-13.md (the task table, the Log newest first, the rulings
-              S13-R<n>); it came from docs/audits/2026-09-25-project-audit.md (the master list: 133 carry rows, six
-              reports, R265-R268, the owner's sitting O1-O13). The Sprint 12 plan (its rulings S12-R1..R25) and the
-              Sprint 11 plan are closed and listed in their blocks below; Sprint 10's and older are in
+branch:       sprint-14 -- OPEN 2026-09-26 05:17Z off main at 6a82caaa (the Sprint 13 merge, PR #61, tagged v0.13.0;
+              Sprint 12 merged as v0.12.0 at 74fe2a9b, PR #50; Sprint 11 as v0.11.0 at 173608af, PR #49). This
+              machine's checkout is on sprint-14 (the Sprint 14 controller session); agents work in worktrees on
+              agent/s14-* branches and the controller merges them. See "Sprint 14 -- OPEN" below, then the three
+              CLOSED blocks. No cloud session runs from 2026-09-26.
+spec:         docs/superpowers/specs/2026-09-26-sprint-14-guards-not-sentences-design.md (seven milestones G, I, W, D,
+              S, E, M with a bar each, the filler X1; the acceptance bar is its section 4; section 1.5 says what the
+              loss of the cloud changed). The Sprint 13, 12 and 11 specs closed with v0.13.0, v0.12.0 and v0.11.0.
+plans:        docs/superpowers/plans/2026-09-26-sprint-14.md (the task table, the Log newest first, the rulings
+              R269-R277 from the global counter -- no sprint-local names from this sprint on, R273); it came from
+              docs/audits/2026-09-26-autonomy-structure-review.md (nine findings, options A-I, six notes beside it).
+              The Sprint 13 plan (its rulings S13-R1..R14), the Sprint 12 plan (S12-R1..R25) and the Sprint 11 plan
+              are closed and listed in their blocks below; Sprint 10's and older are in
               docs/archive/CURRENT_SPRINT-sprints-9-to-11.md (the 2026-09-25 split, R268).
-next sprint:  Sprint 14 "guards, not sentences" (its plan and spec under docs/superpowers/, committed by its own
-              controller's Task 0 after the merge), then Sprint 15 "borrowed confidence" (Sprint 14 D8). No cloud session
-              runs from 2026-09-26; the cloud handoff of 2026-09-25 never ran and is kept under a NEVER RUN banner.
-              Sprint 12 was "the readable image" (R263, 2026-09-24): it opened with the demo-name rename pass into the function map (R257 + the provenance sidecar R261, a recomp + runtime + r0001 gate), then Task 7c vtable slots through RTTI (the peer's scripts in tools_py/research/symbols/), BinDiff as the cross-check, the ccc types with the layout-age caveat, the toml names into the generated output.
-              Sprint 12 ran 2026-09-24/25 in a Claude cloud session on origin/sprint-12 (fifteen research notes,
-              47-61; rulings S12-R1..R25; every task's code half) and its local half (the proof, the merge, the
-              close) was session socom-pc-6c's: see the "Sprint 12 -- CLOSED" block below.
-              Sprint 11 was docs/superpowers/plans/2026-09-23-sprint-11.md -- nineteen tasks across milestones S (the chat hole),
-              U (upstream and external), R (r0004 groundwork), P (the public repository), with eight owner decisions
-              and the default each one proceeds on.
+next sprint:  Sprint 15 "borrowed confidence" (R276): docs/superpowers/specs/2026-09-26-sprint-15-borrowed-confidence-design.md
+              and docs/superpowers/plans/2026-09-26-sprint-15.md, PROPOSED, opened from the confidence register at
+              this sprint's close; the standing "visible defects first" order resumes inside it. Its origin, the
+              cloud handoff of 2026-09-25, never ran and is kept under a NEVER RUN banner
+              (docs/superpowers/plans/2026-09-25-borrowed-confidence-cloud-handoff.md).
 human tasks:  docs/HUMAN_TASKS.md      playtest script: docs/PLAYTEST.md
 git strategy: docs/GIT_STRATEGY.md     contributing: CONTRIBUTING.md
-next ruling:  R269 (R265-R268, 2026-09-25 night, the project audit `docs/audits/2026-09-25-project-audit.md` §4: the four
+next ruling:  R278 (R269-R277, 2026-09-26 05:17Z, the Sprint 14 open, one per owner default D1-D9 of the Sprint 14
+              spec: the infrastructure sprint and its order (R269); KNOWN §4 to a hazards file (R270); owner rows
+              closed by default after two sittings (R271); STATUS's log archived, the changelog generated (R272);
+              sprint-local ruling namespaces retired (R273); the held-out leg (R274); two building agents (R275);
+              Sprint 15 is "borrowed confidence" (R276); the private-inputs location is the owner's to retire (R277).
+              R265-R268, 2026-09-25 night, the project audit `docs/audits/2026-09-25-project-audit.md` §4: the four
               oldest backlog rows owned or declined, the six carried issues into Sprint 13, one home for the carry,
               ceilings on the appending documents. R264, 2026-09-25, the Sprint 12 close: Sprint 12's twenty-five rulings keep their S12-R<n>
               names in the Sprint 12 plan, the one home; the global sequence continues from here -- the "Sprint 12
@@ -60,7 +60,34 @@ long builds); "lock-free" can run at any time.
 
 ---
 
-## Sprint 13 — CLOSED 2026-09-26 (the close-out commit on `sprint-13`; PR #61 to `main` is open and waits on the owner's merge (HUMAN_TASKS O17); the tag `v0.13.0` is set on the merge commit after; the record of the sprint is the block below)
+## Sprint 14 — OPEN 2026-09-26 05:17Z (plan `docs/superpowers/plans/2026-09-26-sprint-14.md`, "guards, not sentences")
+
+Opened by the Sprint 14 controller off `main` at `6a82caaa` (the Sprint 13 merge, `v0.13.0`) on the owner's
+instruction of 2026-09-26 ("begin with sprint 14 once sprint 13 is finished, committed, and live on main"). The
+sprint came from the structure review `docs/audits/2026-09-26-autonomy-structure-review.md` (nine findings: the
+record is the failure surface; rules recur, tools do not; greens that were not; an unbounded ruling log; one host,
+many writers; handoffs lose state; the owner loop never closes; nothing measures cost; a thin verification
+architecture). **No feature work.** Every rule that has recurred becomes something that fails on its own, every
+document a session must read becomes small, generated or loaded on demand, and concurrency is capped until the host
+stops corrupting measurements. The owner's word of 2026-09-26 sets aside "visible defects first" for this one sprint
+(R269); the order resumes in Sprint 15.
+
+Seven milestones in order, then a filler — **G** guards (a PreToolUse hook refusing the eight recurring git and lock
+mistakes; an Edit/Write hook for running chain scripts; a session-end hook that reaps orphaned watchers; agent
+definitions; `build.sh` consults the lock; a memory guard), **I** instructions on demand (a root `CLAUDE.md` under
+sixty lines; four skills replace the prose procedures; HANDOFF transient under 6 KB; a read-first budget check;
+KNOWN's hazards to their own file), **W** the host (the queue refuses a third building agent; the merged chain is the
+gate unit, with eviction and ticket waits logged), **D** decisions with status (a generated rulings page; the scope
+rule and one counter; a generated owner's sitting page; the circuit breaker; PLAYTEST's build block written by the
+chain), **S** the record generated (the changelog; STATUS's log archived; a commit-msg hook; ceilings that ratchet
+down; one home each), **E** evidence that is hard to fake (a PR to `main` built on its head; a held-out capture leg;
+recompiler re-derivation in CI; gate freshness), **M** measurement (a generated flow page; token spend read locally,
+never committed); **X1** the external sweep for Sprint 15, filler when the host is quiet. **Every guard is fired
+against a planted violation before it counts as done.** The bar is the spec's section 4; the nine owner defaults and
+their rulings R269-R277 are the plan's "Owner decisions" and "Rulings" sections. The plan's Log is the live state;
+this block gains its table at the close.
+
+## Sprint 13 — CLOSED 2026-09-26 (merged to `main` as `v0.13.0` at `6a82caaa`, PR #61, 2026-09-26 ~05:00Z after the owner granted the gh token the workflow scope; the record of the sprint is the block below)
 
 **Close-out (the PR body).** Opened 2026-09-25 08:40Z, closed 2026-09-26 04:17Z: 285 commits, 43 agent merges, every task
 reviewed by a fresh agent. Closed #27, #30, #31, #33, #35, #36, #37, #38, #39, #40, #45, #46, #48; opened #45–#48, #51–#60;
