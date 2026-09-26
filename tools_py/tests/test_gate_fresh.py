@@ -65,13 +65,101 @@ class Freshness(unittest.TestCase):
         self.assertTrue(stale)
         self.assertEqual(os.path.normcase(path), os.path.normcase(single))
 
-    def test_the_default_roots_are_the_runtime_and_the_recompilers_inputs(self):
-        roots = [r.replace("\\", "/") for r in gate.freshness_roots("/r")]
-        for want in ("/r/third_party/ps2recomp/ps2xRuntime/src", "/r/third_party/ps2recomp/ps2xRuntime/include",
-                     "/r/recomp/output", "/r/recomp/socom2.toml", "/r/recomp/socom2_names.csv",
-                     "/r/recomp/socom2_ghidra.csv", "/r/recomp/extra_functions.txt"):
-            self.assertIn(want, roots)
+    # What every exe is linked from (ps2xRuntime/CMakeLists.txt: ps2_runtime links ps2_iop, ps2x_shared and
+    # ps2x_snd989, whose sources are ps2xRuntime/src/lib), what the recompiler is built from, and what decides
+    # what is compiled -- for either revision.
+    COMMON = ("third_party/ps2recomp/CMakeLists.txt", "third_party/ps2recomp/ps2xRuntime/CMakeLists.txt",
+              "third_party/ps2recomp/ps2xRuntime/src", "third_party/ps2recomp/ps2xRuntime/include",
+              "third_party/ps2recomp/ps2xRuntime/cmake",
+              "third_party/ps2recomp/ps2xIOP/CMakeLists.txt", "third_party/ps2recomp/ps2xIOP/src",
+              "third_party/ps2recomp/ps2xIOP/include",
+              "third_party/ps2recomp/ps2xShared/CMakeLists.txt", "third_party/ps2recomp/ps2xShared/src",
+              "third_party/ps2recomp/ps2xShared/include",
+              "third_party/ps2recomp/ps2xRecomp/CMakeLists.txt", "third_party/ps2recomp/ps2xRecomp/src",
+              "third_party/ps2recomp/ps2xRecomp/include",
+              "build.sh", "tools_py/fix_ghidra_csv.py", "tools_py/make_overlay_elf.py",
+              "recomp/loader_text_end.txt", "recomp/merge_ranges.txt")
+
+    def _roots(self, revision):
+        return [r.replace("\\", "/") for r in gate.freshness_roots("/r", revision)]
+
+    def test_r0001_roots_are_the_common_set_and_r0001s_inputs_only(self):
+        roots = self._roots("r0001")
+        for want in self.COMMON + ("recomp/output", "recomp/socom2.toml", "recomp/socom2_names.csv",
+                                   "recomp/socom2_ghidra.csv", "recomp/extra_functions.txt",
+                                   "game/overlays/socom2_game.elf"):
+            self.assertIn("/r/" + want, roots)
+        self.assertFalse([r for r in roots if "r0004" in r], roots)
         self.assertFalse([r for r in roots if "names_proposals" in r or "name_holds" in r], roots)
+
+    def test_r0004_roots_are_the_common_set_and_r0004s_inputs_only(self):
+        roots = self._roots("r0004")
+        for want in self.COMMON + ("recomp/output_r0004", "recomp/socom2_r0004.toml", "recomp/socom2_names_r0004.csv",
+                                   "recomp/socom2_ghidra_r0004.csv", "recomp/extra_functions_r0004.txt",
+                                   "recomp/socom2.toml", "scripts/build_revision.sh", "tools_py/revision_toml.py",
+                                   "game/overlays_r0004/socom2_game_r0004.elf"):
+            self.assertIn("/r/" + want, roots)
+        for unwanted in ("recomp/output", "recomp/socom2_names.csv", "recomp/socom2_ghidra.csv",
+                         "recomp/extra_functions.txt"):
+            self.assertNotIn("/r/" + unwanted, roots)
+
+    def test_the_revision_comes_from_the_exes_name_or_folder(self):
+        self.assertEqual(gate.exe_revision("C:/x/dist/socom2.exe"), "r0001")
+        self.assertEqual(gate.exe_revision("C:/x/dist/socom2_r0004.exe"), "r0004")
+        self.assertEqual(gate.exe_revision("C:/x/dist-r0004/socom2.exe"), "r0004")
+        self.assertEqual(gate.exe_revision("dist-linux/socom2"), "r0001")
+
+
+class RevisionAndTree(unittest.TestCase):
+    """exe_staleness on a planted checkout: the exe's own tree (the directory holding build.sh above it), and only
+    its revision's inputs."""
+
+    def setUp(self):
+        self.tree = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tree, True)
+        _touch(os.path.join(self.tree, "build.sh"), 1999999000)
+        _touch(os.path.join(self.tree, "third_party", "ps2recomp", "ps2xRuntime", "src", "a.cpp"), 1999999000)
+        _touch(os.path.join(self.tree, "recomp", "output", "sub_1.cpp"), 1999999000)
+        _touch(os.path.join(self.tree, "recomp", "output_r0004", "sub_1.cpp"), 1999999000)
+
+    def _exe(self, folder):
+        exe = os.path.join(self.tree, folder, hostplatform.exe_name("socom2"))
+        _touch(exe, 2000000000)
+        return exe
+
+    def test_the_roots_come_from_the_exes_own_checkout(self):
+        exe = self._exe("dist")
+        self.assertEqual(os.path.normcase(gate.exe_tree(exe)), os.path.normcase(self.tree))
+        self.assertIsNone(gate.exe_staleness({"SOCOM_EXE": exe}))
+        _touch(os.path.join(self.tree, "third_party", "ps2recomp", "ps2xIOP", "src", "iop.cpp"), 2000000100)
+        msg = gate.exe_staleness({"SOCOM_EXE": exe})
+        self.assertIsNotNone(msg)
+        self.assertIn("third_party/ps2recomp/ps2xIOP/src/iop.cpp", msg)
+
+    def test_no_build_sh_above_the_exe_falls_back_to_this_checkout(self):
+        loose = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, loose, True)
+        self.assertEqual(gate.exe_tree(os.path.join(loose, "socom2.exe")), gate.ROOT)
+
+    def test_an_r0004_toml_rewrite_does_not_refuse_an_r0001_exe(self):
+        exe = self._exe("dist")
+        _touch(os.path.join(self.tree, "recomp", "socom2_r0004.toml"), 2000000100)
+        _touch(os.path.join(self.tree, "recomp", "output_r0004", "sub_2.cpp"), 2000000100)
+        self.assertIsNone(gate.exe_staleness({"SOCOM_EXE": exe}))
+
+    def test_an_r0004_exe_after_a_stop_after_recomp_is_refused(self):
+        exe = self._exe("dist-r0004")
+        self.assertIsNone(gate.exe_staleness({"SOCOM_EXE": exe}))
+        _touch(os.path.join(self.tree, "recomp", "output_r0004", "sub_2.cpp"), 2000000100)
+        msg = gate.exe_staleness({"SOCOM_EXE": exe})
+        self.assertIsNotNone(msg)
+        self.assertIn("recomp/output_r0004/sub_2.cpp", msg)
+
+    def test_an_r0001_output_does_not_refuse_an_r0004_exe(self):
+        exe = self._exe("dist-r0004")
+        _touch(os.path.join(self.tree, "recomp", "output", "sub_2.cpp"), 2000000100)
+        _touch(os.path.join(self.tree, "recomp", "socom2_names.csv"), 2000000100)
+        self.assertIsNone(gate.exe_staleness({"SOCOM_EXE": exe}))
 
 
 class LaunchRefusesAStaleExe(unittest.TestCase):

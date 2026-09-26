@@ -772,22 +772,78 @@ def exe_line(env=None):
 # 5, not 3: 3 is the disk refusal here and in run_detached.sh, 4 a --baseline with nothing to score, 7 a pin
 # drift, 8 an unknown revision -- a caller reading the code must be able to tell "rebuild" from all of them.
 REFUSE_STALE = 5
-# What a rebuild depends on (`./build.sh recomp` then `./build.sh runtime`; scripts/build_revision.sh for r0004):
-# the runtime's sources and headers, the generated code the runtime compiles (recomp/output, git-ignored), and the
-# recompiler's tracked inputs -- both revisions' tomls, function maps, names sidecars and extra-function lists, the
-# loader's text end and the merge ranges. Not the hand name proposals or the name holds (apply_names.py and
-# bindiff_lever.py read those; the build does not). Both revisions' inputs count, so an r0004 edit calls an r0001
-# exe stale too: a false refusal costs a rebuild or --stale-ok, a missed one a green on the wrong binary.
-FRESHNESS_DIRS = ("third_party/ps2recomp/ps2xRuntime/src", "third_party/ps2recomp/ps2xRuntime/include", "recomp/output")
-FRESHNESS_FILES = ("socom2.toml", "socom2_r0004.toml", "socom2_ghidra.csv", "socom2_ghidra_r0004.csv",
-                   "socom2_names.csv", "socom2_names_r0004.csv", "extra_functions.txt", "extra_functions_r0004.txt",
-                   "loader_text_end.txt", "merge_ranges.txt")
+# What a rebuild depends on, repo-relative (E4 review 1). Every revision's exe is ps2EntryRunner linked from
+# ps2_runtime, which links ps2_iop (ps2xIOP), ps2x_shared (ps2xShared) and ps2x_snd989 (whose three sources are
+# ps2xRuntime/src/lib) -- ps2xRuntime/CMakeLists.txt, the target_link_libraries of ps2_runtime; the CMake files that
+# decide what is compiled (the top level's add_subdirectory set and each library's, ps2xRuntime/cmake's modules);
+# the recompiler's own sources (ps2xRecomp: a recompiler change means the generated code should be regenerated;
+# build.sh's recomp step rebuilds it first); build.sh itself, and the two tools its recomp step runs before
+# ps2_recomp (make_overlay_elf.py, fix_ghidra_csv.py, which reads merge_ranges.txt beside the extra-functions list).
+# Not ps2xLauncher, ps2xAnalyzer or ps2xTest: the exe links none of them. Not the hand name proposals or the name
+# holds: apply_names.py and bindiff_lever.py read those, the build does not.
+FRESHNESS_COMMON = (
+    "third_party/ps2recomp/CMakeLists.txt",
+    "third_party/ps2recomp/ps2xRuntime/CMakeLists.txt", "third_party/ps2recomp/ps2xRuntime/src",
+    "third_party/ps2recomp/ps2xRuntime/include", "third_party/ps2recomp/ps2xRuntime/cmake",
+    "third_party/ps2recomp/ps2xIOP/CMakeLists.txt", "third_party/ps2recomp/ps2xIOP/src",
+    "third_party/ps2recomp/ps2xIOP/include",
+    "third_party/ps2recomp/ps2xShared/CMakeLists.txt", "third_party/ps2recomp/ps2xShared/src",
+    "third_party/ps2recomp/ps2xShared/include",
+    "third_party/ps2recomp/ps2xRecomp/CMakeLists.txt", "third_party/ps2recomp/ps2xRecomp/src",
+    "third_party/ps2recomp/ps2xRecomp/include",
+    "build.sh", "tools_py/fix_ghidra_csv.py", "tools_py/make_overlay_elf.py",
+    "recomp/loader_text_end.txt", "recomp/merge_ranges.txt",
+)
+# ... and per revision, only that revision's inputs: `./build.sh recomp` for r0001 (recomp/output, git-ignored,
+# is the code the runtime compiles; the overlay ELF under game/ is what ps2_recomp reads, never tracked, its mtime
+# only is read); scripts/build_revision.sh for r0004 (recomp/output_r0004, build_revision.sh:141; its tracked toml
+# is DERIVED from recomp/socom2.toml by revision_toml.py and rewritten on every run, so socom2.toml counts for r0004
+# too). Per revision, so that build_revision.sh r0004 rewriting socom2_r0004.toml never refuses an r0001 gate.
+FRESHNESS_BY_REVISION = {
+    "r0001": ("recomp/output", "recomp/socom2.toml", "recomp/socom2_ghidra.csv", "recomp/socom2_names.csv",
+              "recomp/extra_functions.txt", "game/overlays/socom2_game.elf"),
+    "r0004": ("recomp/output_r0004", "recomp/socom2.toml", "recomp/socom2_r0004.toml",
+              "recomp/socom2_ghidra_r0004.csv", "recomp/socom2_names_r0004.csv", "recomp/extra_functions_r0004.txt",
+              "scripts/build_revision.sh", "tools_py/revision_toml.py", "tools_py/overlay_repair.py",
+              "tools_py/disc_to_elf.py", "tools_py/decrypt_apache.py", "game/overlays_r0004/socom2_game_r0004.elf"),
+}
+EXE_REVISION_RE = re.compile(r"(?:^|[-_])(r\d{4})$")
 
 
-def freshness_roots(root=ROOT):
-    """The directories and files an exe is rebuilt from, under `root` (FRESHNESS_DIRS, FRESHNESS_FILES)."""
-    return ([os.path.join(root, d) for d in FRESHNESS_DIRS]
-            + [os.path.join(root, "recomp", f) for f in FRESHNESS_FILES])
+def freshness_roots(root=ROOT, revision="r0001"):
+    """The directories and files an exe of `revision` is rebuilt from, under `root` (FRESHNESS_COMMON and that
+    revision's FRESHNESS_BY_REVISION row)."""
+    rel = FRESHNESS_COMMON + FRESHNESS_BY_REVISION.get(revision, FRESHNESS_BY_REVISION["r0001"])
+    return [os.path.join(root, *r.split("/")) for r in rel]
+
+
+def exe_revision(exe_path):
+    """Which revision an exe was built for, from its own path: build_revision.sh writes dist/socom2_<rev>.exe, and a
+    runner launched through $SOCOM_EXE must be called socom2[.exe] (hostplatform.runtime_exe), so it sits in a
+    folder named for it (dist-r0004/socom2.exe). Neither says a revision: r0001, `./build.sh runtime`'s.
+    (A launch has no --revision: that flag is --baseline's, and the image's banner says which game it RUNS, not
+    which generated code the exe was built from.)"""
+    p = exe_path.replace("\\", "/").rstrip("/").split("/")
+    stem = os.path.splitext(p[-1])[0]
+    for name in (stem, p[-2] if len(p) > 1 else ""):
+        m = EXE_REVISION_RE.search(name)
+        if m and m.group(1) in FRESHNESS_BY_REVISION:
+            return m.group(1)
+    return "r0001"
+
+
+def exe_tree(exe_path, default=ROOT):
+    """The checkout an exe was built in: the nearest directory above it holding build.sh -- so a gate run from the
+    main tree against a worktree's exe ($SOCOM_EXE) compares it with that worktree's sources, not this one's. No
+    such directory: `default`."""
+    d = os.path.dirname(os.path.abspath(exe_path))
+    while True:
+        if os.path.isfile(os.path.join(d, "build.sh")):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            return default
+        d = parent
 
 
 def freshness(exe_path, source_roots):
@@ -818,8 +874,11 @@ def _stamp_time(t):
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(t))
 
 
-def stale_message(exe_mtime, newest_path, newest_mtime):
-    rel = os.path.relpath(newest_path, ROOT) if os.path.isabs(newest_path) else newest_path
+def stale_message(exe_mtime, newest_path, newest_mtime, root=ROOT):
+    try:
+        rel = os.path.relpath(newest_path, root) if os.path.isabs(newest_path) else newest_path
+    except ValueError:          # another drive on Windows
+        rel = newest_path
     if rel.startswith(".."):
         rel = newest_path
     return "gate: exe older than source (%s < %s %s): rebuild, or --stale-ok" % (
@@ -827,14 +886,15 @@ def stale_message(exe_mtime, newest_path, newest_mtime):
 
 
 def exe_staleness(env=None):
-    """The call site's half: the launch's exe (hostplatform.runtime_exe, $SOCOM_EXE honoured) against
-    freshness_roots(). None when fresh, else the refusal line."""
+    """The call site's half: the launch's exe (hostplatform.runtime_exe, $SOCOM_EXE honoured) against its own
+    checkout's (exe_tree) sources for its own revision (exe_revision). None when fresh, else the refusal line."""
     path = hostplatform.runtime_exe(env=env)
     full = path if os.path.isabs(path) else os.path.join(hostplatform.ROOT, path)
-    stale, newest, newest_mtime = freshness(full, freshness_roots())
+    root = exe_tree(full)
+    stale, newest, newest_mtime = freshness(full, freshness_roots(root, exe_revision(full)))
     if not stale:
         return None
-    return stale_message(os.path.getmtime(full), newest, newest_mtime)
+    return stale_message(os.path.getmtime(full), newest, newest_mtime, root)
 
 
 TREE_EXCLUDED = ("logs/", "game/")
@@ -1163,8 +1223,9 @@ def main(argv=None):
                          "(S13-R5), never before the lock; the summary says so. It rewrites THIS REVISION's file "
                          "only -- an r0004 gate cannot reach %s" % pins.EXPECTED)
     ap.add_argument("--stale-ok", action="store_true",
-                    help="launch an exe older than its sources (the runtime's src/include, recomp/output, the "
-                         "recompiler's inputs) instead of refusing with exit %d; the summary says so. The "
+                    help="launch an exe older than its sources (its own checkout's runtime, IOP, shared and "
+                         "recompiler sources, CMake files and build.sh, and its revision's generated code and "
+                         "recompiler inputs) instead of refusing with exit %d; the summary says so. The "
                          "merged-chain template never passes it" % REFUSE_STALE)
     args = ap.parse_args(argv)
 

@@ -684,11 +684,23 @@ document may state one without a date beside it.**
 `python -m tools_py.parity.gate --baseline first_run` re-scores that saved run without launching, which is the
 fastest way to check a scoring change. A gate refuses to start under 4 GB free on C: (`RUN_MIN_FREE_GB`) and
 while another launch holds the loop lock (`scripts/loop_lock.sh status`). **Freshness (Sprint 14 E4):** a launch also
-refuses when the exe (`dist/socom2.exe`, or `$SOCOM_EXE`) is older than the newest file it is built from --
-`third_party/ps2recomp/ps2xRuntime/src` and `include`, `recomp/output`, and the recompiler's tracked inputs in
-`recomp/` (both revisions' tomls, `socom2_ghidra*.csv`, `socom2_names*.csv`, `extra_functions*.txt`,
-`loader_text_end.txt`, `merge_ranges.txt`; `gate.FRESHNESS_DIRS`/`FRESHNESS_FILES`) -- printing `gate: exe older than
-source (<exe mtime> < <path> <mtime>): rebuild, or --stale-ok`, before the lock and before anything is written.
+refuses when the exe (`dist/socom2.exe`, or `$SOCOM_EXE`) is older than the newest file it is built from. For every
+revision (`gate.FRESHNESS_COMMON`): under `third_party/ps2recomp/`, the top-level `CMakeLists.txt`, and for
+`ps2xRuntime` (which carries the `ps2x_snd989` sources in `src/lib`), `ps2xIOP`, `ps2xShared` and the recompiler
+`ps2xRecomp` their `CMakeLists.txt`, `src` and `include` (plus `ps2xRuntime/cmake`); `build.sh`,
+`tools_py/make_overlay_elf.py`, `tools_py/fix_ghidra_csv.py`, `recomp/loader_text_end.txt` and
+`recomp/merge_ranges.txt`. Then that revision's own inputs only (`gate.FRESHNESS_BY_REVISION`). For r0001:
+`recomp/output`, `socom2.toml`, `socom2_ghidra.csv`, `socom2_names.csv`, `extra_functions.txt` and
+`game/overlays/socom2_game.elf`. For r0004: `recomp/output_r0004`, `socom2.toml` (the source of the derived toml),
+the `_r0004` toml, csvs and extra-functions list, `scripts/build_revision.sh`, the tools it runs and
+`game/overlays_r0004/socom2_game_r0004.elf`. So `build_revision.sh r0004` rewriting its tracked toml never refuses an
+r0001 gate. **The revision** is read from the exe's own path: `socom2_r0004.exe`, or a folder named for it
+(`dist-r0004/socom2.exe`); neither means r0001. **The tree** is the exe's own: the nearest directory above it that
+holds `build.sh`, so a gate run from the main tree against a worktree's exe compares that worktree's sources (this
+checkout when there is none). Still outside the set: the build configuration in the CMake cache (`PS2X_GENERATED_OPT`,
+LTO), the compiler, and the FetchContent/ffmpeg downloads -- each changes only with a deliberate reconfigure. A stale
+exe prints `gate: exe older than source (<exe mtime> < <path> <mtime>): rebuild, or --stale-ok`, before the lock and
+before anything is written.
 `--stale-ok` launches anyway and the summary carries `gate: STALE exe accepted (--stale-ok)`; the merged-chain
 template never passes it. Every summary and `pins.json` carries `TREE <head> dirty=<n>` (the short HEAD and the count
 of `git status --porcelain` lines outside `logs/` and `game/`), so a record says which tree it measured. The gate's
