@@ -10,12 +10,11 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 2. Where it stands
 
-- **Where the loop is now (2026-09-26 12:25Z, LATEST) -- Sprint 14 ("guards, not sentences") is OPEN on `sprint-14`, off
-  `main` at `6a82caaa` (Sprint 13 merged as `v0.13.0`, PR #61); `main` merged in five times, last `b3dae300` (PR #66).
-  Every task's lock-free part is merged (G, I, D, S, E, M, W, X1; the WIP cap, the merged chain and the fourth leg's
-  tooling are live). Left, lock-bound at night (scheduled 02:07Z 09-27 in the controller's session): the first merged
-  chain (W2 step 3), E2's twelve captures, the close chain, then Task 99 and Sprint 15's open (D8). The plan
-  `docs/superpowers/plans/2026-09-26-sprint-14.md` (its Log) is the live state. No cloud session from 2026-09-26.
+- **Where the loop is now (2026-09-26 16:28Z, LATEST) -- Sprint 14 ("guards, not sentences") is CLOSED on `sprint-14`, off
+  `main` at `6a82caaa`; the PR `sprint-14` -> `main` and the tag `v0.14.0` on its merge commit follow the close-out
+  commit (the release waits on the owner). Two merged chains ALL GREEN today, the fourth leg 12/12. Next: Sprint 15
+  "borrowed confidence", re-cut to value on the owner's word (audio first, #67, two measurements; the walk list in
+  `docs/LATER.md`); it opens on `sprint-15` off `main` at the Sprint 14 merge. No cloud session from 2026-09-26.
 - **Next free ruling number: R282.**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
@@ -64,9 +63,6 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 - **The owner's rows:** `docs/HUMAN_TASKS.md` O1-O8, O10-O16, O18 and O19 (O16: issues #25, #26 and #42). Under R271 a row
   unanswered through two sittings after it was asked closes by default at the next close: nothing today; at a third
   sitting without answers all 17 open rows would close together (`docs/SITTING.md` marks them).
-- **Sprint 14, lock-free:** nothing until the night; if the controller's session dies before 02:07Z, a new one runs
-  the night's list below by hand (the `loop-iteration` skill, step 4; then the `sprint-close` skill).
-- **Lock-bound** (lock FREE, queue empty, one at a time, at night, once the main tree is clean -- the story session's
-  uncommitted `tools_py/story/site.py` makes the chain refuse): the first merged chain (`scripts/parity/merged_chain.sh`
-  copied to `logs/`, launched once through `run_detached.sh --wait`), E2's gate run and `--capture-heldout`, then the
-  Sprint 14 close chain (the `sprint-close` skill).
+- **Sprint 15's open** (the `loop-iteration` skill, its plan's Task 0): the branch, the milestone (open on GitHub already,
+  #5), the sprint file's header, the rulings for its defaults from the counter.
+- **Lock-bound:** nothing until Sprint 15's first trial; the WIP cap's two-night watch continues (every exit 4 to the Log).

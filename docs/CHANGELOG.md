@@ -2,12 +2,15 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.changelog` from `git log` (R272): every merge commit on the first-parent line of the history it was rendered from, and on the first-parent line of each branch those merges brought in, grouped by the oldest `v*` tag that contains it. `python -m tools_py.changelog --check` exits 1 when this file is stale; regenerate at every merge to a sprint branch (in the merge's follow-up commit) and at the close. The rules are the module's docstring. The reasoning behind a merge is its commit message and the sprint plan's Log; the hand-written log this page replaced is `docs/archive/STATUS-log-to-2026-09-26.md`.
 
-158 merges (54 on the first-parent line, 104 from the branches they merged) in 10 sections: 9 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
+161 merges (57 on the first-parent line, 104 from the branches they merged) in 10 sections: 9 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
 
 ## Since v0.13.0
 
-44 merges.
+47 merges.
 
+- 2026-09-26 `17400817` merge(sprint-14): Sprint 15 re-cut to value [branch not named]
+- 2026-09-26 `e760bc75` merge(sprint-14): docs/LATER.md [branch not named]
+- 2026-09-26 `d8b6075e` merge(sprint-14): the close's documentation review fixes [branch not named]
 - 2026-09-26 `01650b22` merge(sprint-14): the upstream register docs/UPSTREAM.md (bugs in the vendors' main only); the close chain's block [branch not named]
 - 2026-09-26 `3bdf80e8` merge(sprint-14): E2 the fourth leg's tooling [branch not named]
 - 2026-09-26 `37ca3511` merge(sprint-14): W2 the merged chain as the gate unit [branch not named]

@@ -9,10 +9,10 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 repository another person can fork, build and contribute to.
 
 ```
-branch:       sprint-14 -- OPEN 2026-09-26 05:17Z off main at 6a82caaa (the Sprint 13 merge, PR #61, tagged v0.13.0;
+branch:       sprint-14 -- CLOSED 2026-09-26 16:28Z (the PR to main and the tag v0.14.0 follow; opened 05:17Z off main at 6a82caaa (the Sprint 13 merge, PR #61, tagged v0.13.0;
               Sprint 12 merged as v0.12.0 at 74fe2a9b, PR #50; Sprint 11 as v0.11.0 at 173608af, PR #49). This
               machine's checkout is on sprint-14 (the Sprint 14 controller session); agents work in worktrees on
-              agent/s14-* branches and the controller merges them. See "Sprint 14 -- OPEN" below, then the Sprint 13
+              agent/s14-* branches and the controller merges them. See "Sprint 14 -- CLOSED" below, then the Sprint 13
               CLOSED block (12's and 11's are archived, see plans). No cloud session runs from 2026-09-26.
 spec:         docs/superpowers/specs/2026-09-26-sprint-14-guards-not-sentences-design.md (seven milestones G, I, W, D,
               S, E, M with a bar each, the filler X1; the acceptance bar is its section 4; section 1.5 says what the
@@ -50,7 +50,23 @@ long builds); "lock-free" can run at any time.
 
 ---
 
-## Sprint 14 — OPEN 2026-09-26 05:17Z (plan `docs/superpowers/plans/2026-09-26-sprint-14.md`, "guards, not sentences")
+## Sprint 14 — CLOSED 2026-09-26 (the PR `sprint-14` -> `main` and the tag `v0.14.0` on its merge commit follow this close-out; the release waits on the owner's word; the record of the sprint is the block below)
+
+**Close-out (the PR body).** Opened 2026-09-26 05:17Z, closed 2026-09-26 16:28Z: 231 commits, 46 merges (26 agent branches, five
+of `main`, the close's three), every task reviewed by a fresh agent. No feature work (R269). Landed: the guards (a Bash and an
+Edit/Write PreToolUse hook, the watcher reaper, `build.sh`'s lock check, the memory guard, the commit-msg hook); the read-first
+set from 250 KB to 51 KB (`CLAUDE.md`, four skills, HANDOFF transient, HAZARDS split out, a budget check); four generated
+pages (rulings, changelog, sitting, flow) each held to its source; the WIP cap (a third build waiter exits 4) and the merged
+chain as the gate unit (two chains today: `s14_chain1` and `s14_close1`, both ALL GREEN, gate 3/3, the fourth leg 12/12);
+gate freshness (exit 5), the recompiler reference job (red once on a planted change, run 36237829527), PRs to `main` built
+on their heads (#61, #65, #66 observed). Rulings R269-R281. Issues since the open at 05:17Z: opened 1 (#67), closed 3
+(#51, #53, #56), carried 0; the highest is #67. The DOC_MAINTENANCE §5 review fixed 31 stale claims across nineteen files
+and archived two blocks; the §7 stack read found the audit clean, placed one evidence note, labelled four issues. The
+owner's word at the close: the release waits; upstream filings wait (`docs/UPSTREAM.md`); candidate work now lives in
+`docs/LATER.md`; Sprint 15 re-cut to value (audio first). The Outcome in the plan has the bar row by row.
+
+**As it stood while open:**
+
 
 Opened by the Sprint 14 controller off `main` at `6a82caaa` (the Sprint 13 merge, `v0.13.0`) on the owner's
 instruction of 2026-09-26 ("begin with sprint 14 once sprint 13 is finished, committed, and live on main"). The
