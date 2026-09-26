@@ -284,7 +284,10 @@ class ChainStepTest(unittest.TestCase):
         self.assertNotIn("NOT BUILT", text)
 
     def test_the_manifest_dir_by_platform_and_release(self):
+        # Sprint 14 W2 review (c): the test switch prints and exits 3, so a switch leaked into a chain's environment
+        # can never make the chain's last step green without packaging anything.
         r = self.run_step({"MAKE_PORTABLE_SYSTEM": "Linux", "PLAYTEST_BLOCK_PRINT_DIR": "1"}, "--release")
+        self.assertEqual(r.returncode, 3, r.stderr + r.stdout)
         self.assertEqual(r.stdout.strip().replace("\\", "/").rsplit("/", 1)[-1], "dist-linux-release", r.stderr)
         r = self.run_step({"MAKE_PORTABLE_SYSTEM": "Linux", "PLAYTEST_BLOCK_PRINT_DIR": "1"})
         self.assertEqual(r.stdout.strip().replace("\\", "/").rsplit("/", 1)[-1], "dist-linux", r.stderr)

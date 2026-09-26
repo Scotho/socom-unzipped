@@ -3,7 +3,7 @@
 # lock for exactly as long as the job's PID lives.
 #
 # Usage: scripts/run_detached.sh [--owner <o>] [--purpose <p>] [--log <path>] [--quiet]
-#                                [--wait <minutes> | --wait-seconds <s>] <script> <marker> [args...]
+#                                [--wait <minutes> | --wait-seconds <s>] [--class build|run] <script> <marker> [args...]
 #
 #   - refuses to start (exit 3, before touching the lock) when C: has less than RUN_MIN_FREE_GB
 #     (default 4) GB free -- Sprint 5 R46/A5, the host was at ~9 GB. RUN_FREE_GB_CMD overrides the
@@ -15,7 +15,11 @@
 #     <marker> and exits 75 without launching. With --wait (Sprint 13 H2) it QUEUES instead
 #     (`loop_lock.sh wait`: a ticket, served in arrival order) for up to that long, in the foreground --
 #     run it in the background of a tool call if the wait may be long -- and only a TIMEOUT writes
-#     "exit=75 TIMEOUT ..." to <marker>. Until the lock is had, <marker> does not exist;
+#     "exit=75 TIMEOUT ..." to <marker>. Until the lock is had, <marker> does not exist. The ticket's CLASS
+#     (Sprint 14 W1's WIP cap) is the one `loop_lock.sh run` would give the job's command, `bash <script>
+#     [args...]` -- asked of `loop_lock.sh _class`, so a <script> named build.sh is a build -- unless --class
+#     says otherwise (Sprint 14 W2; until then a build queued through here was never capped). A build refused
+#     by the cap writes "exit=4 QUEUE FULL ..." to <marker> and exits 4 without launching;
 #   - a CHAIN is one run_detached of the chain script: its steps run under that one holding (their own
 #     loop_lock.sh take/run are NESTED); a run_detached INSIDE a held lock is refused (exit 2);
 #   - launches `bash <script> [args...]` under nohup, stdout+stderr to <log> (default <marker>.log), and
@@ -220,7 +224,7 @@ fi
 # The launch side is ONE brace group, parsed whole before it runs: a --wait can sit here for hours, and a
 # landing that rewrites this file meanwhile must not be read by offset into the rest (Sprint 13 H2 review).
 {
-owner="detached" purpose="" log="" quiet_flag=0 wait_sec=""
+owner="detached" purpose="" log="" quiet_flag=0 wait_sec="" class_opt=""
 _count() { case "$1" in ''|*[!0-9]*) echo "run_detached: $2 takes a whole number, not '$1'"; exit 2;; esac; }
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -230,13 +234,15 @@ while [ $# -gt 0 ]; do
     --quiet) quiet_flag=1; shift;;
     --wait) _count "$2" --wait; wait_sec=$(( $2 * 60 )); shift 2;;
     --wait-seconds) _count "$2" --wait-seconds; wait_sec=$(( $2 )); shift 2;;
+    --class) case "$2" in build|run) class_opt="$2";; *) echo "run_detached: --class build|run, not '$2'"; exit 2;; esac
+      shift 2;;
     --) shift; break;;
     -*) echo "run_detached: unknown option $1"; exit 2;;
     *) break;;
   esac
 done
 if [ $# -lt 2 ]; then
-  echo "usage: $0 [--owner <o>] [--purpose <p>] [--log <path>] [--quiet] [--wait <minutes> | --wait-seconds <s>] <script> <marker> [args...]"; exit 2
+  echo "usage: $0 [--owner <o>] [--purpose <p>] [--log <path>] [--quiet] [--wait <minutes> | --wait-seconds <s>] [--class build|run] <script> <marker> [args...]"; exit 2
 fi
 script="$1" marker="$2"; shift 2
 [ -f "$script" ] || { echo "run_detached: no such script: $script"; exit 2; }
@@ -285,7 +291,10 @@ if [ -n "$wait_sec" ]; then
   # read by offset too.
   watch="$$"; case "$PPID" in ''|0|1) ;; *) watch="$$ $PPID";; esac
   echo "run_detached: queueing for the loop lock as $owner (up to $wait_sec s, watching pids $watch) [run_detached.sh $(git hash-object "$0" 2>/dev/null | cut -c1-12)]"
-  out=$(LOOP_LOCK_WAIT_PARENT="$watch" bash "$LOCKSH" wait "$owner" --wait-seconds "$wait_sec" --purpose "$purpose" --print-id)
+  # The class `loop_lock.sh run` would give the job's command (Sprint 14 W2): the WIP cap counts builds queued here too.
+  class="${class_opt:-$(bash "$LOCKSH" _class -- bash "$script" "$@")}"
+  case "$class" in build|run) ;; *) class=run;; esac
+  out=$(LOOP_LOCK_WAIT_PARENT="$watch" bash "$LOCKSH" wait "$owner" --wait-seconds "$wait_sec" --purpose "$purpose" --class "$class" --print-id)
 else
   out=$(bash "$LOCKSH" take "$owner" --purpose "$purpose" --print-id)
 fi
@@ -299,6 +308,10 @@ case "$out" in
     echo "run_detached: REFUSED -- called inside a lock held by '$LOOP_LOCK_HELD'; the job would outlive it"
     exit 2;;
 esac
+if [ -n "$wait_sec" ] && [ $rc -eq 4 ]; then      # the WIP cap: QUEUE FULL, no ticket, nothing launched
+  printf 'exit=4 %s\n' "$out" > "$marker"
+  echo "run_detached: $out"; exit 4
+fi
 if [ $rc -ne 0 ]; then
   printf 'exit=75 %s\n' "$out" > "$marker"
   echo "run_detached: $out"; exit 75

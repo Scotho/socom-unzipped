@@ -16,6 +16,9 @@ Sprint 13 H2 added the ticket queue (TestQueue: arrival order whatever the poll,
 through run_detached --wait (TestLadderJob, issue #37) and `version`; one queue case joins the smoke.
 Sprint 14 W1 added the queue's WIP cap (a third queued build ticket is refused, exit 4): two slow cases in TestQueue
 with real waiters, and TestQueueClassFast (FAST, always on, planted tickets: the class rule, --class, the refusal).
+Sprint 14 W2 added TestRunDetachedClassFast (FAST): run_detached --wait queues with its job's class, so the cap holds there;
+cmd_class's -o/-O cases (in TestQueueClassFast); and one slow TestQueue case, the stamped `TICKET <id> waited <s>`
+line a granted ticket appends to loop_lock.queue.log.
 R73's hygiene test (TestSlowSuiteStamp, always on outside the slow run) fails when scripts/loop_lock.sh's git blob
 differs from fixtures/loop_lock_slow_green.txt: an edit to the lock script needs a green slow run, and only then a
 new stamp (`git hash-object scripts/loop_lock.sh`).
@@ -925,6 +928,33 @@ class TestQueue(LockTestBase):
         finally:
             self.reap_procs(p)
 
+    def test_a_granted_ticket_writes_one_stamped_line_into_the_queue_log(self):
+        # Sprint 14 W2: `<stamp> TICKET <id> waited <seconds>` into loop_lock.queue.log beside the lock, one line per
+        # granted ticket, stamped as the history is (tools_py/flow.py ignores an unstamped TICKET line). A waiter
+        # granted at its first attempt never queued: no ticket, no line.
+        qlog = os.path.join(self.tmp, "loop_lock.queue.log")
+        rc, out = self.sh("wait", "first", "1")
+        self.assertEqual(rc, 0, out)
+        self.assertFalse(os.path.exists(qlog) and "TICKET" in _read(qlog), "a waiter that never queued wrote a line")
+        self.assertEqual(self.sh("release", "first")[0], 0)
+        self.write_record("holder", 60, hb_age_s=0)
+        p = self.popen("wait", "w", "1", env=self.env(LOOP_LOCK_WAIT_SEC=1))
+        try:
+            name = self.wait_tickets(1)[0]
+            time.sleep(3)
+            self.assertEqual(self.sh("release", "holder")[0], 0)
+            out = p.communicate(timeout=60)[0]
+            self.assertEqual(p.returncode, 0, out)
+        finally:
+            self.reap_procs(p)
+        lines = [l for l in _read(qlog).splitlines() if "TICKET" in l]
+        self.assertEqual(len(lines), 1, lines)
+        m = re.match(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ TICKET (\S+) waited (\d+)\b", lines[0])
+        self.assertIsNotNone(m, lines[0])
+        self.assertEqual(m.group(1), name)
+        self.assertGreaterEqual(int(m.group(2)), 3)
+        self.assertLess(int(m.group(2)), 60)
+
     def test_run_wait_is_minutes_at_any_poll_interval(self):
         self.write_record("holder", 60, hb_age_s=0)
         ran = os.path.join(self.tmp, "ran")
@@ -1223,6 +1253,10 @@ class TestQueueClassFast(LockTestBase):
             (["bash", "-c", "./build.sh runtime"], "run"), (["./build.sh.bak"], "run"), (["./rebuild.sh"], "run"),
             (["python", "-m", "tools_py.parity.gate"], "run"), (["true", "./build.sh"], "run"),
             (["bash", "scripts/parity/control_round_chat.sh"], "run"),
+            # Sprint 14 W2 (the W1 review): an option that takes an argument must not eat the script's name
+            (["bash", "-o", "pipefail", "./build.sh", "runtime"], "build"), (["bash", "-O", "extglob", "build.sh"], "build"),
+            (["bash", "-e", "-o", "pipefail", "-c", "./build.sh"], "run"), (["bash", "-o", "pipefail", "job.sh"], "run"),
+            (["bash", "-o"], "run"),
         ]
         # The script's own cmd_class, lifted out and run over every case in ONE bash (a script start costs ~1 s
         # on this host, and this class is in the default suite); `_class` is driven once below for its wiring.
@@ -1261,6 +1295,47 @@ class TestQueueClassFast(LockTestBase):
         self.assertIn("queue full: do lock-free work", p.stdout)
         self.assertFalse(os.path.exists(ran))
         self.assertEqual(len(self.tickets()), 2)
+
+
+class TestRunDetachedClassFast(LockTestBase):
+    """Sprint 14 W2 (the W1 review): run_detached.sh --wait gives its ticket the class of the command it launches
+    (`bash <script>`, through `loop_lock.sh _class`), so a build queued through it is capped like any other; its
+    --class overrides. Planted tickets under a planted holder, as TestQueueClassFast: the refusal is immediate."""
+    FAST = True
+    plant_build = TestQueueClassFast.plant_build
+
+    def detached(self, *args, script_name="build.sh"):
+        ran = os.path.join(self.tmp, "ran")
+        script = os.path.join(self.tmp, script_name)
+        with open(script, "w", newline="\n") as f:
+            f.write("touch '%s'\n" % fwd(ran))
+        marker = os.path.join(self.tmp, "job.done")
+        p = subprocess.run([BASH, DETACHED_SH, "--owner", "det"] + list(args) + [fwd(script), fwd(marker), "runtime"],
+                           capture_output=True, text=True, env=self.env(RUN_CPU_SAMPLER=0), timeout=60)
+        return p.returncode, p.stdout + p.stderr, marker, ran
+
+    def test_a_detached_build_is_capped(self):
+        self.write_record("holder", 60, hb_age_s=0)
+        self.plant_build("b1", 20)
+        self.plant_build("b2", 10)
+        rc, out, marker, ran = self.detached("--wait", "1")
+        self.assertEqual(rc, 4, out)
+        self.assertIn("queue full: do lock-free work", out)
+        self.assertTrue(_read(marker).startswith("exit=4 QUEUE FULL"), _read(marker))
+        self.assertFalse(os.path.exists(ran))
+        self.assertEqual(len(self.tickets()), 2, "the refused build left a ticket")
+
+    def test_class_run_overrides_and_a_non_build_is_not_capped(self):
+        self.write_record("holder", 60, hb_age_s=0)
+        self.plant_build("b1", 20)
+        self.plant_build("b2", 10)
+        for args, name in ((["--class", "run"], "build.sh"), ([], "job.sh")):
+            rc, out, marker, ran = self.detached("--wait-seconds", "2", *args, script_name=name)
+            self.assertEqual(rc, 75, out)
+            self.assertIn("TIMEOUT", _read(marker))
+            self.assertFalse(os.path.exists(ran))
+        rc, out, marker, ran = self.detached("--class", "tests")
+        self.assertEqual(rc, 2, out)
 
 
 class TestVersion(unittest.TestCase):

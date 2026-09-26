@@ -55,10 +55,18 @@
 #     prints "QUEUE FULL: ... queue full: do lock-free work ..." and exits 4. A waiter that already queued
 #     is never refused later (a re-queue after a false drop keeps its place). The holder is not counted, nor
 #     is a plain take (it never queues). The class: `wait` is `run` unless `--class build`; `run --wait`
-#     takes it from its command -- after any NAME=value words, and after a `bash`/`sh` and its -options,
-#     a first word `build.sh`, `./build.sh` or ending in `/build.sh` is `build`, anything else (`bash -c
-#     "..."` included) is `run`; `--class` overrides. A ticket without a class= field (a waiter from before
-#     W1) counts as `run`.
+#     takes it from its command -- after any NAME=value words, and after a `bash`/`sh` and its -options
+#     (`-o`/`-O` with their argument: `bash -o pipefail ./build.sh` is a build, Sprint 14 W2), a first word
+#     `build.sh`, `./build.sh` or ending in `/build.sh` is `build`, anything else (`bash -c "..."` included)
+#     is `run`; `--class` overrides. `run_detached.sh --wait` asks `_class` the same question of its job's
+#     command, `bash <script> [args...]`, and passes the answer on (its own --class overrides) -- until
+#     Sprint 14 W2 it passed none, and a build queued through it was never capped. A ticket without a
+#     class= field (a waiter from before W1) counts as `run`.
+#   - THE QUEUE LOG (Sprint 14 W2): a waiter granted the lock after it QUEUED appends one line to
+#     loop_lock.queue.log beside the lock (the main tree's logs/), stamped as the history is:
+#     "<UTC stamp> TICKET <ticket name> waited <whole seconds since its arrival> owner=<o> class=<c>
+#     [loop_lock.sh <blob12>]". A grant at the first attempt (no ticket) writes nothing. tools_py/flow.py
+#     reads the stamped `TICKET <id> waited <s>` lines for the median wait and leaves unstamped ones out.
 #   - A FREE lock is granted only to the oldest LIVE ticket's waiter; a take with no ticket (a plain
 #     `take`, `run` without --wait, or a waiter on its first attempt) is granted only when the queue is
 #     empty -- otherwise BUSY, naming the head. The claim removes the winner's ticket in the same mutex
@@ -159,6 +167,7 @@ REC="$LOCKD/record"
 MX="$LOCK.mx"
 Q="$LOCK.q"
 HISTORY="$(dirname "$LOCK")/.loop_lock_history"
+QLOG="$(dirname "$LOCK")/loop_lock.queue.log"
 REAP_MIN="${LOOP_LOCK_REAP_MIN:-15}"
 STALE_MIN="${LOOP_LOCK_STALE_MIN:-45}"
 RENEW_SEC="${LOOP_LOCK_RENEW_SEC:-60}"
@@ -492,8 +501,9 @@ q_claimed() { [ -n "$QTICKET" ] && rm -f "$Q/$QTICKET" 2>/dev/null; rmdir "$Q" 2
 # first written (a later re-queue is never capped); Q_FULL names the build tickets' owners at a refusal.
 QCLASS=run Q_ENQUEUED="" Q_FULL=""
 
-# The class `run` gives a command (its words): after NAME=value words, and after a bash/sh and its -options, a
-# first word build.sh, ./build.sh or */build.sh is "build"; anything else (bash -c "..." included) is "run".
+# The class `run` gives a command (its words): after NAME=value words, and after a bash/sh and its -options (-o/-O
+# with their argument), a first word build.sh, ./build.sh or */build.sh is "build"; anything else (bash -c "..."
+# included) is "run".
 cmd_class() {
   while [ $# -gt 0 ]; do
     case "$1" in [A-Za-z_]*=*) case "${1%%=*}" in *[!A-Za-z0-9_]*) break;; esac; shift;; *) break;; esac
@@ -501,7 +511,10 @@ cmd_class() {
   case "${1##*/}" in
     bash|sh|bash.exe|sh.exe)
       shift
-      while [ $# -gt 0 ]; do case "$1" in -c) echo run; return;; -*) shift;; *) break;; esac; done;;
+      # -o/-O (and +o/+O) take an argument: `bash -o pipefail ./build.sh` must not read "pipefail" as the script.
+      while [ $# -gt 0 ]; do
+        case "$1" in -c) echo run; return;; [-+][oO]) shift; [ $# -gt 0 ] && shift;; -*) shift;; *) break;; esac
+      done;;
   esac
   case "$1" in build.sh|./build.sh|*/build.sh) echo build;; *) echo run;; esac
 }
@@ -710,6 +723,10 @@ do_wait() {   # owner max_seconds purpose  (sets TAKEN_ID)
     TAKEN_ID=$(printf '%s\n' "$out" | sed -n 's/^@@ID //p')
     out=$(printf '%s\n' "$out" | grep -v '^@@ID ')
     if [ $rc -eq 0 ]; then
+      # Sprint 14 W2: a waiter that QUEUED (it holds a ticket; a first-attempt grant has none) logs its wait, stamped
+      # as the history is, one line per granted ticket -- tools_py/flow.py's median wait reads these.
+      [ -n "$QTICKET" ] && { printf '%s TICKET %s waited %s owner=%s class=%s [loop_lock.sh %s]\n' "$(stamp)" "$QTICKET" \
+        "$(( $(now) - $(ticket_arrival "$QTICKET") ))" "$owner" "$QCLASS" "${START_BLOB:0:12}" >> "$QLOG"; } 2>/dev/null
       QTICKET=""; trap - INT TERM HUP
       echo "$out after $i attempt(s), $(( $(now) - start )) s [loop_lock.sh ${START_BLOB:0:12}]"; return 0
     fi
