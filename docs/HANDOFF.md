@@ -15,7 +15,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
   commit (the release waits on the owner). Two merged chains ALL GREEN today, the fourth leg 12/12. Next: Sprint 15
   "borrowed confidence", re-cut to value on the owner's word (audio first, #67, two measurements; the walk list in
   `docs/LATER.md`); it opens on `sprint-15` off `main` at the Sprint 14 merge. No cloud session from 2026-09-26.
-- **Next free ruling number: R282.**
+- **Next free ruling number: R298** (R290-R297 are the owner's sitting of 2026-09-26, `docs/superpowers/plans/2026-09-26-owner-sitting.md`).
 
 ## 3. Your first hour (lock-free; start nothing heavy)
 
