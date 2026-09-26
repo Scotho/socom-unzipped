@@ -54,17 +54,22 @@ describe.skipIf(absent)(`the draw order out of loadMap${absent ? ` (${FIXTURES_A
     expect(map.props.filter((p) => !p.alternate).length).toBeGreaterThan(alternate.length);
   });
 
-  it.skipIf(absent)('the far LOD copies of the Frostfire railings and grates are alternate, the near ones are not', async () => {
+  it.skipIf(absent)('the LOD pairs of the Frostfire railings carry their bands, and the facades and scrolls are marked', async () => {
     const map = await load('RUN/MP2.ZDB');
     // `railings_low` fades in at 100-120 units where `railings_high` fades out; the graph places both
     // sets on the same rails (10 placements each). `grate_lowlod` is in the table but never placed.
     const by = (name: string) => map.props.filter((p) => p.modelName === name);
     expect(by('railstraitlo1').length).toBeGreaterThan(0);
-    expect(by('railstraitlo1').every((p) => p.alternate)).toBe(true);
+    expect(by('railstraitlo1').every((p) => p.lod?.nearFade[0] === 100 && p.lod.farFade[1] === 440)).toBe(true);
     expect(by('railstraithi1').length).toBe(by('railstraitlo1').length);
-    expect(by('railstraithi1').every((p) => !p.alternate)).toBe(true);
-    expect(by('tankrailbarslo').every((p) => p.alternate)).toBe(true);
-    expect(by('grate_midlod').every((p) => !p.alternate)).toBe(true);
+    expect(by('railstraithi1').every((p) => p.lod?.nearFade[0] === 0 && p.lod.farFade[0] === 100)).toBe(true);
+    expect(by('railstraitlo1').every((p) => !p.alternate)).toBe(true);   // a LOD copy is not a state
+    expect(map.props.filter((p) => p.lod === null).length).toBeGreaterThan(map.props.filter((p) => p.lod !== null).length);
+    // The facade flag reaches the props; the scroll bands reach the world chunks they name.
+    expect(map.props.some((p) => p.facade !== 0)).toBe(true);
+    const scrolled = map.world.filter((m) => m.scroll !== null);
+    expect(scrolled.length).toBeGreaterThan(0);
+    expect(scrolled.every((m) => m.orderEnd === m.order || m.scroll !== null)).toBe(true);
   });
 
   it.skipIf(absent)('the line strips come out grouped by texture and fog, with a uv per point and a place in the walk', async () => {

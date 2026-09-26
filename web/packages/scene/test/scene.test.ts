@@ -95,6 +95,21 @@ describe('Frostfire scene graph', () => {
     expect(world.defaultMaterial).toBe('METAL_THICK');
     expect(world.nightMission).toBe(false);
     expect(world.shadowVector.map((v) => Number(v.toFixed(3)))).toEqual([-0.811, -0.2, 0.55]);
+    // `TextureScroll_Object`: the three ocean chunks and the sky horizon scroll, nothing else does.
+    expect(world.textureScroll.map((b) => `${b.nodeName} ${b.du.toFixed(2)},${b.dv.toFixed(2)}`).sort()).toEqual([
+      'ocean_1 -0.04,-0.04', 'ocean_2 0.04,0.04', 'ocean_3 0.00,0.02', 'skyhorizon 0.00,0.02',
+    ]);
+    expect(world.textureScroll.every((b) => b.modelName === 'alaska1a_sky')).toBe(true);
+  });
+
+  it.skipIf(!MP2)('marks the facade nodes -- the flares -- and nothing else (m_facade, node flags bits 8-9)', () => {
+    const { models } = open('MP2');
+    const placed = placeInstances(models);
+    const facades = placed.filter((p) => p.facade !== 0);
+    expect(facades.length).toBeGreaterThan(0);
+    expect(facades.every((p) => /flare|g\d/.test(p.path))).toBe(true);
+    // A shadow quad or a lamp body is never a facade, whatever its shape.
+    expect(placed.filter((p) => /shadow|lightcage$|light01$/.test(p.path)).every((p) => p.facade === 0)).toBe(true);
   });
 
   it.skipIf(!MP2)('reads the params word of each visual, whose bit 3 is the cull the EE emits (vis_main, FUN_003b5f20 flags & 8)', () => {

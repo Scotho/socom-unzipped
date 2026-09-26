@@ -2,14 +2,14 @@ import {
   Box3, BufferAttribute, BufferGeometry, ClampToEdgeWrapping, CustomBlending, DataTexture, DoubleSide, DstColorFactor,
   FrontSide, Group, type Object3D, InstancedMesh, LinearFilter, LinearMipmapLinearFilter, LineSegments, Matrix4, Mesh,
   NearestFilter, NoBlending, NoColorSpace, OneFactor, OneMinusSrcAlphaFactor, RGBAFormat, RepeatWrapping, SrcAlphaFactor,
-  Texture, Vector3, ZeroFactor,
+  Texture, Vector2, Vector3, ZeroFactor,
 } from 'three';
 import type { Camera } from 'three';
 import { LineBasicNodeMaterial, MeshBasicNodeMaterial, type Node } from 'three/webgpu';
-import { materialReference, uniform, vec4, vertexColor } from 'three/tsl';
+import { materialReference, texture as textureNode, uniform, uv, vec4, vertexColor } from 'three/tsl';
+import { lodVisible } from '@s2u/scene';
 import { drawState, materialSpec, type Factor, type MaterialSpec, type TextureFlags } from './materialSpec';
 import type { Rgba } from '@s2u/gs';
-import type { MeshData } from '@s2u/mesh';
 import { applyLighting, brightenOf, DEFAULT_LIGHTING, type Lightable, type Lighting } from './lighting';
 import type { LoadedMap, LoadedMesh } from './loadMap';
 
@@ -82,13 +82,17 @@ export interface WorldView {
    */
   setLineStrips(on: boolean): void;
   /**
-   * Turns every flare quad to face the camera. Called once a frame, before the render.
+   * The per-frame work, called once a frame before the render: turns the facades to the camera,
+   * picks each LOD pair's copy by range, and advances the scrolling textures.
    *
    * A flare on disc is a single quad on a single plane -- `lightcage`'s `lightrays.tif` node is 4
    * vertices and 2 triangles, normal (0, 0.96, -0.24) -- so a fixed quad that nearly faces the sky is
-   * edge-on from a standing player. The hardware turns them; so does this.
+   * edge-on from a standing player. The engine turns the nodes flagged `m_facade` (`facadeOf`); so
+   * does this. `CVisual::DrawLOD` shows one copy of a LOD pair by the camera's range; so does this,
+   * at the middle of each fade. A `TextureScroll_Object` band adds its `du, dv` to a node's uvs each
+   * tick; so does this, at `SCROLL_TICKS_PER_SECOND`.
    */
-  faceCamera(camera: Camera): void;
+  frame(camera: Camera, dt: number): void;
   /** Whether the flares are turned at all, for seeing the pose the disc actually holds. */
   setBillboards(on: boolean): void;
   /** Where the flares are, in world space -- for aiming a camera at one. */
@@ -118,6 +122,8 @@ interface Built {
   cull: boolean;
   /** A `shadow*.tif`: drawn as a decal, see `setShadows`. */
   shadow: boolean;
+  /** A scrolling texture's own shading graph, which `apply` must keep rather than replace. */
+  scrollNode: ColorNode | null;
 }
 
 /** A drawn object with the facts its visibility and its place in the draw order depend on. */
@@ -127,10 +133,19 @@ interface Drawn {
   alternate: boolean;
   shadow: boolean;
   line: boolean;
+  /** Shown only in its LOD band's range; null for everything drawn at every range. */
+  lod: { band: import('@s2u/scene').LodBand; at: Vector3; visible: boolean } | null;
 }
 
 /** The textures that are drop shadows: `shadow.tif`, `shadow_square.tif`, `t_shadow*`, and their kin. */
 const SHADOW_TEXTURE = /shadow/i;
+/**
+ * How many engine ticks a second the scroll steps are taken at. `CScrollingTexture_band` holds a uv
+ * step and nothing about time; the game ran its world at the field rate. Frostfire's ocean at 0.04
+ * a tick is then 2.4 texture widths a second, its horizon at 0.02 half that -- an assumption to check
+ * against a capture, and one number to change if it is wrong.
+ */
+const SCROLL_TICKS_PER_SECOND = 60;
 
 const FACTOR = {
   zero: ZeroFactor, one: OneFactor, srcAlpha: SrcAlphaFactor, oneMinusSrcAlpha: OneMinusSrcAlphaFactor, dstColor: DstColorFactor,
@@ -169,9 +184,12 @@ export function buildWorld(map: LoadedMap): WorldView {
   const drawn: Drawn[] = [];
   const refreshVisibility = (): void => {
     for (const d of drawn) {
-      d.object.visible = (!d.alternate || alternateOn) && (!d.shadow || shadowsOn) && (!d.line || (lineStripsOn && !wireframeOn));
+      d.object.visible = (!d.alternate || alternateOn) && (!d.shadow || shadowsOn) && (!d.line || (lineStripsOn && !wireframeOn))
+        && (d.lod === null || d.lod.visible);
     }
   };
+  /** The scrolling materials beside their offsets, advanced every frame. */
+  const scrolling: { offset: ReturnType<typeof vec2Uniform>; du: number; dv: number }[] = [];
   // Every drawn part beside the buffer its lit colours go into, so a rig change can rewrite them in place.
   const lit: { part: Lightable; attribute: BufferAttribute }[] = [];
   /** How many drawn objects have no texture: the number the status line reports. */
@@ -192,6 +210,7 @@ export function buildWorld(map: LoadedMap): WorldView {
    * - **Magenta**, flat, for the untextured highlight.
    */
   const brighten = uniform(brightenOf(lighting));
+  const vec2Uniform = (x: number, y: number) => uniform(new Vector2(x, y));
   // The typings do not know a material reference to a texture is a vec4, which is what the sampler yields.
   const texel = materialReference('map', 'texture') as unknown as Node<'vec4'>;
   const modulated = vec4(texel.mul(vertexColor())).clamp(0, 1);
@@ -218,7 +237,7 @@ export function buildWorld(map: LoadedMap): WorldView {
     material.polygonOffsetUnits = b.shadow ? -1 : 0;
     material.colorNode = highlight && !b.textured ? MAGENTA
       : carrier ? (b.textured ? CARRIER : CARRIER_PLAIN)
-      : (b.textured ? SHADED : SHADED_PLAIN);
+      : b.scrollNode ?? (b.textured ? SHADED : SHADED_PLAIN);
     material.transparent = state.transparent;
     material.depthWrite = state.depthWrite;
     if (state.factors) {
@@ -245,8 +264,8 @@ export function buildWorld(map: LoadedMap): WorldView {
    * `PRIM.FGE` fog bit, so a sky texture drawn fogged in one chunk and clear in another gets two.
    */
   const materialCache = new Map<string, Basic>();
-  const materialFor = (name: string | null, fog: boolean, kind: 'mesh' | 'line', cull: boolean): Basic => {
-    const cacheKey = `${kind}|${name ?? ''}|${fog ? 1 : 0}|${cull ? 1 : 0}`;
+  const materialFor = (name: string | null, fog: boolean, kind: 'mesh' | 'line', cull: boolean, scroll: [number, number] | null = null): Basic => {
+    const cacheKey = `${kind}|${name ?? ''}|${fog ? 1 : 0}|${cull ? 1 : 0}|${scroll ? `${scroll[0]},${scroll[1]}` : ''}`;
     const cached = materialCache.get(cacheKey);
     if (cached) return cached;
     const rgba = name === null ? undefined : map.textures[name];
@@ -272,7 +291,15 @@ export function buildWorld(map: LoadedMap): WorldView {
     const material: Basic = kind === 'mesh' ? new MeshBasicNodeMaterial() : new LineBasicNodeMaterial();
     material.map = texture ?? null;
     material.vertexColors = false;                     // the shading graph reads the attribute itself
-    const entry: Built = { material, flags, fog, textured: !!texture, cull, shadow: name !== null && SHADOW_TEXTURE.test(name) };
+    const entry: Built = { material, flags, fog, textured: !!texture, cull, shadow: name !== null && SHADOW_TEXTURE.test(name), scrollNode: null };
+    if (scroll && texture) {
+      // A scrolling texture gets a graph of its own: the same modulate, with the uv pushed along by an
+      // offset that `frame` advances. One program per scrolling texture, a handful per map at most.
+      const offset = vec2Uniform(0, 0);
+      const moved = vec4(textureNode(texture, uv().add(offset)).mul(vertexColor())).clamp(0, 1);
+      entry.scrollNode = vec4(moved.rgb.mul(brighten), moved.a);
+      scrolling.push({ offset, du: scroll[0], dv: scroll[1] });
+    }
     apply(entry);
     built.push(entry);
     materialCache.set(cacheKey, material);
@@ -290,19 +317,23 @@ export function buildWorld(map: LoadedMap): WorldView {
   const revealProps: (() => void)[] = [];
   const box = new Box3();
   /** Queues an object at its place in the walk, and grows the map's extent by it. */
-  const later = (queue: (() => void)[], object: Object3D, order: number, alternate: boolean, texture: string | null, line = false): void => {
+  const later = (
+    queue: (() => void)[], object: Object3D, order: number, alternate: boolean, texture: string | null,
+    line = false, lod: Drawn['lod'] = null,
+  ): void => {
     object.updateWorldMatrix(false, false);
     // An alternate state is not part of the extent the camera frames: it sits where its twin sits.
     if (!alternate) box.expandByObject(object);
     const shadow = texture !== null && SHADOW_TEXTURE.test(texture);
-    drawn.push({ object, order, alternate, shadow, line });
+    drawn.push({ object, order, alternate, shadow, line, lod });
     object.renderOrder = discOrder ? order : 0;
-    object.visible = (!alternate || alternateOn) && (!shadow || shadowsOn) && (!line || (lineStripsOn && !wireframeOn));
+    object.visible = (!alternate || alternateOn) && (!shadow || shadowsOn) && (!line || (lineStripsOn && !wireframeOn))
+      && (lod === null || lod.visible);
     queue.push(() => group.add(object));
   };
 
   for (const part of map.world) {
-    const mesh = new Mesh(geometryOf(part, lighting, lit), materialFor(part.textureName, part.fog, 'mesh', part.cull));
+    const mesh = new Mesh(geometryOf(part, lighting, lit), materialFor(part.textureName, part.fog, 'mesh', part.cull, part.scroll));
     mesh.name = part.textureName ?? 'untextured';
     if (!part.textureName) untexturedDraws++;
     mesh.frustumCulled = false;                           // one mesh spans the whole map; culling it hides it
@@ -320,13 +351,13 @@ export function buildWorld(map: LoadedMap): WorldView {
     // a mesh per placement would cost 26 draws to fix a shading error of a few degrees.
     const rotation = new Matrix4().fromArray(prop.matrices, 0);
     for (const part of prop.parts) {
-      const partFlags = part.textureName === null ? undefined : map.textureFlags[part.textureName];
-      if (isBillboard(part, partFlags)) {
-        // A lamp flare is one quad on one plane, and the hardware turns it to face the camera: left
-        // where it was modelled it is edge-on from most of the map and a flat card from the rest. Each
-        // placement becomes its own mesh, centred on the quad so a spin about that centre keeps it
-        // where it belongs, and `faceCamera` turns them every frame.
-        const flareMaterial = materialFor(part.textureName, part.fog, 'mesh', part.cull);
+      if (prop.facade !== 0) {
+        // A facade node -- a lamp flare, a star, the moon -- is turned to face the camera by the
+        // engine every frame: left where it was modelled a flare is edge-on from most of the map and
+        // a flat card from the rest. Each placement becomes its own mesh, centred on its geometry so
+        // a spin about that centre keeps it where it belongs, and `frame` turns them every frame.
+        // Both faces are kept: the facade matrix decides which way the quad ends up, not its winding.
+        const flareMaterial = materialFor(part.textureName, part.fog, 'mesh', false);
         if (!part.textureName) untexturedDraws += count;
         for (let i = 0; i < count; i++) {
           const m = new Matrix4().fromArray(prop.matrices, i * 16);
@@ -343,6 +374,20 @@ export function buildWorld(map: LoadedMap): WorldView {
       const geometry = geometryOf(rotateNormals(part, rotation), lighting, lit);
       const material = materialFor(part.textureName, part.fog, 'mesh', part.cull);
       if (!part.textureName) untexturedDraws++;
+      if (prop.lod) {
+        // A model in a LOD band is shown by the camera's range to each placement, so every placement
+        // is its own mesh -- there are tens of these per map, not the hundreds instancing is for.
+        for (let i = 0; i < count; i++) {
+          const mesh = new Mesh(geometry, material);
+          mesh.name = `${prop.modelName} (lod)`;
+          const m = new Matrix4().fromArray(prop.matrices, i * 16);
+          mesh.applyMatrix4(m);
+          const at = new Vector3().setFromMatrixPosition(m);
+          later(revealProps, mesh, part.order, prop.alternate, part.textureName, false, { band: prop.lod, at, visible: lodVisible(prop.lod, 0) });
+        }
+        triangles += (part.indices.length / 3) * count;
+        continue;
+      }
       if (count === 1) {
         const mesh = new Mesh(geometry, material);
         mesh.name = prop.modelName;
@@ -420,9 +465,21 @@ export function buildWorld(map: LoadedMap): WorldView {
         attribute.needsUpdate = true;
       }
     },
-    faceCamera: (camera) => {
-      if (!billboardsOn) return;
-      for (const mesh of billboards) mesh.quaternion.copy(camera.quaternion);
+    frame: (camera, dt) => {
+      if (billboardsOn) for (const mesh of billboards) mesh.quaternion.copy(camera.quaternion);
+      let lodChanged = false;
+      for (const d of drawn) {
+        if (d.lod === null) continue;
+        const visible = lodVisible(d.lod.band, d.lod.at.distanceTo(camera.position));
+        if (visible !== d.lod.visible) { d.lod.visible = visible; lodChanged = true; }
+      }
+      if (lodChanged) refreshVisibility();
+      for (const s of scrolling) {
+        const v = s.offset.value;
+        // Kept in 0..1: a uv offset of 3.04 samples the same texel as 0.04 and drifts in precision.
+        v.x = (v.x + s.du * dt * SCROLL_TICKS_PER_SECOND) % 1;
+        v.y = (v.y + s.dv * dt * SCROLL_TICKS_PER_SECOND) % 1;
+      }
     },
     flarePositions: () => billboards.map((m) => [m.position.x, m.position.y, m.position.z]),
     lineGroups: () => lineObjects.map((line) => {
@@ -483,17 +540,6 @@ function rotateNormals(part: LoadedMesh, m: Matrix4): LoadedMesh {
     out[i + 2] = nz * k;
   }
   return { ...part, normals: out };
-}
-
-/**
- * Whether a part is a flare: one quad, one plane, and a texture whose alpha is a ramp rather than a
- * switch. The three together separate a lamp's glow from a window or a ceiling panel, which are also
- * single quads but whose textures are not graded, and from a graded floor decal, which is not a quad.
- */
-function isBillboard(part: MeshData, flags: TextureFlags | undefined): boolean {
-  return (flags?.graded ?? false)
-    && part.positions.length === 4 * 3
-    && part.indices.length === 2 * 3;
 }
 
 /** A quad moved so its centre is the origin, with that centre, so a mesh can be spun about it. */

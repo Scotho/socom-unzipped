@@ -15,7 +15,22 @@ export interface WorldRoot {
   defaultMaterial: string;
   /** `GlobalLighting`, the map's light rig, or null when the key is absent or short. */
   lighting: GlobalLighting | null;
+  /**
+   * `TextureScroll_Object`: the nodes whose texture scrolls, and by how much. Frostfire's four are
+   * `ocean_1..3` and `skyhorizon` (du, dv of 0.02-0.04); most maps have none. The rate's unit is not
+   * on the disc: `CScrollingTexture_band` holds `m_du`/`m_dv` and the engine adds them each tick.
+   */
+  textureScroll: TextureScrollBand[];
 }
+
+/** One `CScrollingTexture_band` (`zRender/zrender.h:241`): two 256-byte names and the uv step. */
+export interface TextureScrollBand {
+  modelName: string;
+  nodeName: string;
+  du: number;
+  dv: number;
+}
+const SCROLL_BAND_SIZE = 520;
 
 /**
  * `GlobalLighting`: the three directional lights and the ambient the whole map is lit by.
@@ -78,5 +93,17 @@ export function parseWorldRoot(zar: Zar): WorldRoot {
     nightMission: night !== undefined && night.size >= 4 && new Reader(zar.data(night)).u32(0) !== 0,
     defaultMaterial: material ? new Reader(zar.data(material)).cstr(0, material.size) : '',
     lighting: parseGlobalLighting(zar),
+    textureScroll: parseTextureScroll(zar),
   };
+}
+
+function parseTextureScroll(zar: Zar): TextureScrollBand[] {
+  const key = zar.find('TextureScroll_Object');
+  if (!key) return [];
+  const r = new Reader(zar.data(key));
+  const out: TextureScrollBand[] = [];
+  for (let at = 0; at + SCROLL_BAND_SIZE <= key.size; at += SCROLL_BAND_SIZE) {
+    out.push({ modelName: r.cstr(at, 256), nodeName: r.cstr(at + 256, 256), du: r.f32(at + 512), dv: r.f32(at + 516) });
+  }
+  return out;
 }

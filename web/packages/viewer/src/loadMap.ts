@@ -6,8 +6,8 @@ import {
 import { decodeTexture, parseTextureRecord, PaletteTable, type Rgba } from '@s2u/gs';
 import { interpretChainParts, mergeMeshes, walkChain, type LineStrip, type MeshData } from '@s2u/mesh';
 import {
-  collisionLines, farLodModels, IDENTITY, loadModelLibrary, parseCameraParams, parseClutter, parseGlobalLighting,
-  parseSceneGraph, placeClutter,
+  collisionLines, IDENTITY, loadModelLibrary, lodBands, parseCameraParams, parseClutter, parseGlobalLighting,
+  parseSceneGraph, parseWorldRoot, placeClutter, type LodBand,
   placeInstances, transformPoint, worldCollision,
   type CameraParams, type CollisionLines, type GlobalLighting, type ModelLibrary, type PlacedModel,
   type SceneNode,
@@ -41,11 +41,16 @@ export type LoadedMesh = MeshData & {
   /** Whether the engine culls this chunk's back faces (`PlacedModel.cull`, the disc's own flag). */
   cull: boolean;
   /**
-   * An alternate state the game shows only later, or only from afar: a destructible's `whats_left`
-   * and its debris `parts`, a lamp's `nolight`, a far LOD copy (`Placement.alternate`). Drawn over the
+   * An alternate state the game shows only later: a destructible's `whats_left` and its debris
+   * `parts`, a lamp's `nolight`, the pulsing objective ribbon (`Placement.alternate`). Drawn over the
    * state the map opens in, these z-fight with it; the viewer hides them unless asked.
    */
   alternate: boolean;
+  /**
+   * The uv step per engine tick of a scrolling texture (`TextureScroll_Object` on the world root:
+   * Frostfire's oceans and sky horizon), or null for the still majority.
+   */
+  scroll: [number, number] | null;
 };
 
 export interface LoadedMap {
@@ -64,7 +69,13 @@ export interface LoadedMap {
    * One entry per prop model-node: its geometry once, a column-major 4x4 per placement, and the place
    * of its first placement in the scene walk (see `LoadedMesh.order`).
    */
-  props: { modelName: string; parts: LoadedMesh[]; matrices: Float32Array; order: number; alternate: boolean }[];
+  props: {
+    modelName: string; parts: LoadedMesh[]; matrices: Float32Array; order: number; alternate: boolean;
+    /** `m_facade` on the node: non-zero, every placement is turned to face the camera each frame. */
+    facade: number;
+    /** The model's LOD band, or null: shown by camera range, one copy of a pair at a time. */
+    lod: LodBand | null;
+  }[];
   textures: Record<string, Rgba>;
   /**
    * Per texture: the record's flags, two facts read off the decoded pixels (`graded`, `opaque`), and the
@@ -177,9 +188,10 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     step('geometry', chunk++, placement.world.length);
     const { meshes, lines } = chunksOf(p);
     const alternate = placement.alternate(p);
+    const scroll = placement.scroll(p);
     meshes.forEach((mesh, i) => {
       const order = orderOf(p, i);
-      parts.push({ ...placeMesh(mesh, p.rowMajor), lit: p.lit, order, orderEnd: order, cull: mesh.cull, alternate });
+      parts.push({ ...placeMesh(mesh, p.rowMajor), lit: p.lit, order, orderEnd: order, cull: mesh.cull, alternate, scroll });
     });
     for (const strip of lines) segments.add(strip, p.rowMajor, orderOf(p, 0));
   }
@@ -200,12 +212,15 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     const alternate = placement.alternate(first);
     const geometry: LoadedMesh[] = decoded.meshes.map((mesh, i) => ({
       ...mesh, textureName: mesh.textureName === null ? null : textureKey(mesh.textureName), lit: first.lit,
-      order: orderOf(first, i), orderEnd: orderOf(first, i), cull: mesh.cull, alternate,
+      order: orderOf(first, i), orderEnd: orderOf(first, i), cull: mesh.cull, alternate, scroll: placement.scroll(first),
     }));
     if (geometry.length === 0) continue;
     const matrices = new Float32Array(group.length * 16);
     group.forEach((p, i) => matrices.set(p.world, i * 16));
-    props.push({ modelName: first.modelName, parts: geometry, matrices, order, alternate });
+    props.push({
+      modelName: first.modelName, parts: geometry, matrices, order, alternate,
+      facade: first.facade, lod: placement.lod.get(first.modelName) ?? null,
+    });
   }
 
   // The textures those meshes name, and only those: a map's TXR holds every texture the mission uses.
@@ -267,7 +282,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     const blended = (flags?.graded ?? false) && !(flags?.opaque ?? true);
     // A lit part (`PlacedModel.lit`) keeps its own draw as well: the rig is applied per vertex, and a
     // merge cannot be half lit.
-    const group = `${key}|${part.fog ? 1 : 0}${part.lit ? 'L' : ''}${part.cull ? 'C' : ''}${part.alternate ? 'A' : ''}|${blended ? `b${part.order}` : `r${run}`}`;
+    const scroll = part.scroll ? `|s${part.scroll[0]},${part.scroll[1]}` : '';
+    const group = `${key}|${part.fog ? 1 : 0}${part.lit ? 'L' : ''}${part.cull ? 'C' : ''}${part.alternate ? 'A' : ''}${scroll}|${blended ? `b${part.order}` : `r${run}`}`;
     if (blended) run++;
     const list = byGroup.get(group);
     if (list) list.push(part);
@@ -282,6 +298,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     orderEnd: list[list.length - 1]!.order,
     cull: list[0]!.cull,
     alternate: list[0]!.alternate,
+    scroll: list[0]!.scroll,
   })).sort((a, b) => a.order - b.order);
 
   return {
@@ -527,17 +544,18 @@ interface Placement {
    */
   rank: (p: PlacedModel) => number;
   /**
-   * Whether a placement is a state the map does not open in. Two sources, neither of which is a
-   * flag on the node -- the engine sets them from game logic and its LOD table:
-   *
-   * - **The destructibles and the lights.** A crate is `crates_weapons/healthy` beside
-   *   `crates_weapons/whats_left` and `crates_weapons/parts/part1..15`; a lamp is `light02` with a
-   *   `light02/nolight` child; an alarm has `hornlightbox_on` and `hornlightbox_off`. The graph
-   *   holds every state and the game switches them; the map opens on the intact, lit one. The
-   *   naming is the exporter's and is the same on every map (surveyed over all 22).
-   * - **The far LOD copies** (`farLodModels`): `railings_low` placed on top of `railings_high`.
+   * Whether a placement is a state the map does not open in. Not a flag on the node -- the engine
+   * sets these from game logic. A crate is `crates_weapons/healthy` beside
+   * `crates_weapons/whats_left` and `crates_weapons/parts/part1..15`; a lamp is `light02` with a
+   * `light02/nolight` child; an alarm has `hornlightbox_on` and `hornlightbox_off`. The graph holds
+   * every state and the game switches them; the map opens on the intact, lit one. The naming is the
+   * exporter's and is the same on every map (surveyed over all 22).
    */
   alternate: (p: PlacedModel) => boolean;
+  /** The LOD band per model name (`lodBands`), for the copies the engine shows by camera range. */
+  lod: Map<string, LodBand>;
+  /** The texture scroll of a placement's node (`TextureScroll_Object`), or null. */
+  scroll: (p: PlacedModel) => [number, number] | null;
   /** Zero once the graph has been read: the matrices are already in the positions. */
   origin: [number, number, number];
   /** The collision hull, already in world space and already cut into segments (36 section 6). */
@@ -577,13 +595,18 @@ function place(library: ModelLibrary, bytes: Uint8Array, toc: ZdbEntry[], stem: 
       if (group) group.push(p);
       else groups.set(key, [p]);
     }
-    const far = farLods(bytes, toc, notes);
-    const alternate = (p: PlacedModel): boolean =>
-      far.has(p.modelName) || p.path.split(/[/=]/).some((segment) => ALTERNATE_STATE.test(segment));
+    const alternate = (p: PlacedModel): boolean => p.path.split(/[/=]/).some((segment) => ALTERNATE_STATE.test(segment));
+    const scrolls = textureScroll(bytes, toc, stem, notes);
+    const scroll = (p: PlacedModel): [number, number] | null => {
+      const node = p.path.split('/').pop()?.split('=')[0] ?? '';
+      return scrolls.get(node) ?? null;
+    };
     return {
       world, props: [...groups.values()], origin: [0, 0, 0], collision: hull(models, notes),
       rank: (p) => ranks.get(p) ?? 0,
       alternate,
+      lod: lods(bytes, toc, notes),
+      scroll,
     };
   } catch (e) {
     notes.add(`scene graph: ${say(e)} -- falling back to the modal node translation, props omitted`);
@@ -592,25 +615,37 @@ function place(library: ModelLibrary, bytes: Uint8Array, toc: ZdbEntry[], stem: 
       modelName: WORLD_MODEL, path: WORLD_MODEL, nodeIndex: -1, instanceIndex: null,
       chunks: entry ? entry.nodes.map((n) => n.name) : [],
       cull: entry ? entry.nodes.map(() => true) : [],
+      facade: 0,
       world: Float32Array.from(IDENTITY), rowMajor: Float32Array.from(IDENTITY), lit: false,
     };
     return {
       world: [every], props: [], origin: worldOrigin(bytes, toc, stem, notes), collision: noCollision(),
-      rank: () => 0, alternate: () => false,
+      rank: () => 0, alternate: () => false, lod: new Map(), scroll: () => null,
     };
   }
 }
 
-/** The far LOD copies named by `READERM.ZAR/lod.rdr`, or none when the record is missing or will not parse. */
-function farLods(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes): Set<string> {
+/** The LOD band per model named by `READERM.ZAR/lod.rdr`, or none when the record is missing or will not parse. */
+function lods(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes): Map<string, LodBand> {
   try {
     const readerm = Zar.parse(zdbMember(bytes, toc, 'READERM.ZAR'));
     const lod = readerm.root.children.find((k) => k.name.toLowerCase() === 'lod.rdr');
-    if (!lod) return new Set();
-    return farLodModels(parseRdr(readerm.data(lod)) as RdrNode);
+    if (!lod) return new Map();
+    return lodBands(parseRdr(readerm.data(lod)) as RdrNode);
   } catch (e) {
     notes.add(`lod table: ${say(e)}`);
-    return new Set();
+    return new Map();
+  }
+}
+
+/** The scrolling textures of the world root, by node name, or none. */
+function textureScroll(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes): Map<string, [number, number]> {
+  try {
+    const root = parseWorldRoot(Zar.parse(zdbMember(bytes, toc, `${stem}.ZED`)));
+    return new Map(root.textureScroll.map((b) => [b.nodeName, [b.du, b.dv]]));
+  } catch (e) {
+    notes.add(`texture scroll: ${say(e)}`);
+    return new Map();
   }
 }
 

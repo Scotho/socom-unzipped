@@ -189,19 +189,31 @@ Settled on 2026-09-26 (the polish spec linked at the top):
   A packet whose GIFtag clears `FGE` — every sky, moon, star, water plane and self-lit surface on every
   map (`tools/dump-fge.ts`) — takes no fog, which is what puts the horizon back.
 - **The camera is the map's**: a 49° vertical field (`m_vfov`, a half-angle of 24.5°), 46° on Rat's Nest.
-- **The PS2 picture** (`options`): the 640×448 frame the console drew, projected with the map's own
-  half-angles and stretched onto a 4:3 box the way the television did.
+- **The PS2 picture** (the Modern / PS2 switch at the top of the panel): the 640×448 frame the console
+  drew, projected with the map's own half-angles and stretched onto a 4:3 box the way the television
+  did. The choice is remembered. Everything else the panel offers is under **Advanced**.
 - **Backface culling is the visual's own flag.** Bit 3 of each visual's `vparams` word is the cull
   the EE emits (`FUN_003b5f20`, `flags & 8`; `VISUAL_FLAG_CULL` in `scene`). Across the maps it is
   clear on exactly the things drawn from both sides -- Frostfire's ladders, whose rungs used to vanish
   from behind, grates, fan blades, Bitter Jungle's foliage, Desert Glory's grass, rugs, the glow quads
   -- and set on the solid objects. It replaces the old rule that culled wherever the texture was solid.
 - **One state per object.** A map's graph holds every state of a destructible (`healthy` beside
-  `whats_left` and the debris `parts`), a lamp beside its `nolight` copy, and both copies of every
-  LOD pair (`READERM.ZAR/lod.rdr`: `railings_high` fades out at 100-120 units where `railings_low`
-  fades in, on the same rails). The game switches them by play and by range; drawn together they
-  z-fight. The viewer draws the intact, lit, near ones and hides the rest (`LoadedMesh.alternate`,
-  "alternate states" in `options` shows them).
+  `whats_left` and the debris `parts`), a lamp beside its `nolight` copy, and the crates' pulsing
+  objective ribbon. The game switches them by play; drawn together they z-fight. The viewer draws the
+  intact, lit ones and hides the rest (`LoadedMesh.alternate`, "alternate states" in `options` shows them).
+- **LOD by range.** `READERM.ZAR/lod.rdr` pairs models into bands with fade-in and fade-out ranges
+  (`railings_high` out at 100-120 units where `railings_low` comes in, on the same rails), and the
+  world root's `LOD_Object` holds the same numbers squared for `CVisual::DrawLOD` to compare the
+  camera's range against. Each placement of a banded model is its own mesh and is shown by its
+  distance from the camera, switching at the middle of each fade (`lodVisible` in `scene`).
+- **Facades face the camera because the disc says so.** `m_facade` (node flags bits 8-9) marks the
+  lamp flares, the stars, the moon and the sun -- 41 nodes over 22 maps -- and applies to everything
+  under a flagged node, as the engine's matrix stack does. It replaces the old guess that turned
+  every graded single quad, which also turned the drop shadows.
+- **Scrolling textures scroll.** The world root's `TextureScroll_Object` names the nodes whose uvs
+  the engine steps each tick (Frostfire's `ocean_1..3` and `skyhorizon`, by 0.02-0.04); those chunks
+  get a uv offset the viewer advances at the field rate (`SCROLL_TICKS_PER_SECOND`, an assumption
+  until a capture settles it).
 - **Drop shadows are a decal pass** ("prop shadows" in `options`, on by default): every draw whose
   texture is a `shadow*.tif`, blended source-over after the world with no depth written and a polygon
   offset off its ground, whatever the draw-order mode.
@@ -226,13 +238,14 @@ Settled on 2026-09-26 (the polish spec linked at the top):
 
 ## Known gaps
 
-- **The engine's grid walk, region culling and LOD ranges are not modelled.** `RenderWorld` walks the
+- **The engine's grid walk, region culling and LOD fades are not modelled.** `RenderWorld` walks the
   grid outward from the camera and `CanSeeRegion` skips whole nodes by region mask; `DrawLOD` fades a
-  copy in and out by range. The viewer draws every node, in three's order, with the near LOD copy only.
-- **Animated map objects are not drawn.** The scrolling textures (`m_scrolling_texture` on Frostfire's
-  `ocean_1..3` and `skyhorizon`), the door animations (`actions.rdr`, `MOTION_S.ZAR`), the destructible
-  states, and the particle effects (`COMMON/EFFE_*`: `fire_hardedge.tif` and the smoke sprites) are
-  all driven by game code the viewer does not run; the flames are effect emitters, not map geometry.
+  copy's opacity across its band where the viewer switches at the middle. The two facade modes are
+  drawn alike, reCOM's `ComputeFacadeMatrix` being a stub.
+- **Animated map objects beyond the uv scrolls are not drawn.** The door animations (`actions.rdr`,
+  `MOTION_S.ZAR`), the destructible states, and the particle effects (`COMMON/EFFE_*`:
+  `fire_hardedge.tif` and the smoke sprites) are driven by game code the viewer does not run; the
+  flames are effect emitters, not map geometry.
 - **The one EE-animated `FIX` glow** (`lightglow.tif` on MP61, `(Cs - 0) * FIX + Cd`) is drawn additive:
   its factor is game logic, and at rest it draws nothing.
 - **The auto-exposure is a slider.** `FIX` is computed per frame from a column of frame pixels; the

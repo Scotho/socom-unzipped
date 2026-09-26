@@ -204,6 +204,32 @@ export class Ui {
     return document.body.classList.contains('chrome-hidden');
   }
 
+  /**
+   * The picture switch: Modern or PS2. It drives the hidden `ps2look` checkbox -- the state the
+   * toggles, the hook and the tests read -- and remembers the choice, so a return visit opens on it.
+   */
+  onLook(): void {
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('#look .look'));
+    const box = this.checks.ps2look;
+    const show = (): void => {
+      for (const b of buttons) b.setAttribute('aria-pressed', (b.dataset['look'] === 'ps2') === box.checked ? 'true' : 'false');
+    };
+    for (const b of buttons) {
+      b.addEventListener('click', () => {
+        const ps2 = b.dataset['look'] === 'ps2';
+        if (box.checked === ps2) return;
+        box.checked = ps2;
+        box.dispatchEvent(new Event('change', { bubbles: true }));
+        write(LOOK_KEY, ps2 ? 'ps2' : 'modern');
+        show();
+      });
+    }
+    box.addEventListener('change', show);
+    const stored = read(LOOK_KEY);
+    if (stored === 'ps2' || stored === 'modern') box.checked = stored === 'ps2';
+    show();
+  }
+
   /** The fog checkbox follows the map's own enable bit. */
   setFogEnabled(on: boolean): void {
     this.checks.fog.checked = on;
@@ -338,6 +364,7 @@ function find<T extends HTMLElement>(id: string): T {
 
 /** `localStorage`, best-effort both ways: it throws in a private window and returns null when cleared. */
 const PANEL_KEY = 's2u.viewer.panelCollapsed';
+const LOOK_KEY = 's2u.viewer.look';
 function read(key: string): string | null {
   try { return localStorage.getItem(key); } catch { return null; }
 }

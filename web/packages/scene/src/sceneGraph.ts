@@ -31,6 +31,14 @@ export const NODE_FLAG_DYNAMIC_MOTION = 1 << 1, NODE_FLAG_DYNAMIC_LIGHT = 1 << 2
 export const NODE_FLAGS_LIT = NODE_FLAG_DYNAMIC_MOTION | NODE_FLAG_DYNAMIC_LIGHT;
 /** `vparams` word 0, bit 3: the visual is drawn with VU1's backface cull (see `SceneNode.visualParams`). */
 export const VISUAL_FLAG_CULL = 1 << 3;
+/**
+ * `m_facade`, bits 8-9 of the node flags: the node is turned to face the camera every frame
+ * (`CNode::ComputeFacadeMatrix`, called from `CPipe::RenderNode`). 0 on all but 41 nodes across the
+ * 22 maps: the lamp flares, the stars, the moon and the sun. Two values occur, 1 (stars, moon, the
+ * `g*` flare quads) and 2 (the `flare*` nodes, the sun); reCOM's `ComputeFacadeMatrix` is a stub, so
+ * what distinguishes them is not known and both are drawn facing the camera.
+ */
+export const facadeOf = (flags: number): number => (flags >>> 8) & 3;
 
 /** 36 section 6 / `CDI::Read` (`zIntersect/int_main.cpp:52-67`): 12-byte params, then 16 B per point. */
 const DI_PARAMS_SIZE = 12, DI_POINT_SIZE = 16;

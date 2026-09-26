@@ -289,6 +289,26 @@ experimental toggle, off; the default is three's sort again. What the same sessi
   emitter the game code places, not map geometry. The map-side animation that *is* on the disc is
   `m_scrolling_texture` (node flag bit 25) on `ocean_1..3` and `skyhorizon`: a uv scroll.
 
+### Facades, LOD ranges and scrolling textures are on the disc (2026-09-26, later still)
+
+The shadow quads turned with the camera: the billboard rule was "a graded single quad", and a shadow
+square is one. The engine's rule is `m_facade`, node flags bits 8-9 (`CPipe::RenderNode`,
+`ComputeFacadeMatrix` on the matrix stack, so it reaches the subtree): over all 22 maps it is set on 41
+nodes -- `flare*`, `g*` flare quads, `star*`, `moon`, `thesun`, `lamp_light` -- and on nothing else.
+Everything the old guess turned that the flag does not is a shadow, a window or `lightcage`'s
+`lightrays.tif` cone, which the disc leaves in place. `facadeOf` in `scene`, inherited down the walk.
+
+`lod.rdr` gives each band a `nearFade` and `farFade` pair and the world root's `LOD_Object` the same
+numbers squared (`CLOD_band`), which `DrawLOD` compares to the camera range squared -- a plain
+distance. So the LOD copies are no longer hidden as alternates: each placement of a banded model is
+its own mesh, shown from the middle of its fade-in to the middle of its fade-out (`lodVisible`), and
+exactly one copy of a pair is up at any range.
+
+`TextureScroll_Object` on the world root is `CScrollingTexture_band[]` -- 256-byte model and node
+names and a `du, dv` -- four on Frostfire (`ocean_1..3`, `skyhorizon`, 0.02-0.04 a tick), none on
+Desert Glory or Crossroads. The named chunks get a material of their own whose uv is pushed by an
+offset the frame advances at 60 ticks a second; the rate's unit is not on the disc.
+
 ## 5. Verification
 
 - Unit: the new decoders (`GsState`, `fog` on `MeshData`) pinned on synthetic packets and on the

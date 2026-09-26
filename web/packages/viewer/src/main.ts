@@ -148,6 +148,7 @@ ui.onMapChange((path) => {
   ui.setStatus(`loading ${path} ...`);
   load(path);
 });
+ui.onLook();                 // restores the remembered picture before the toggles are read
 ui.onToggle(applyToggle);
 ui.apply(applyToggle);
 ui.onChromeToggle();
@@ -277,7 +278,7 @@ async function boot(): Promise<void> {
     timer.update();
     const dt = Math.min(timer.getDelta(), 0.1);     // a backgrounded tab must not teleport the camera
     fly.update(dt);
-    view?.faceCamera(fly.camera);   // the flares turn before the frame is drawn, not after
+    view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
     render(scene, fly.camera);
 
     if (dt > 0) {

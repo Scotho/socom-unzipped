@@ -41,6 +41,21 @@
         </button>
       </div>
       <p id="status">booting</p>
+      <!--
+        The one choice a visitor makes: the picture as a modern screen shows it, or as the console drew
+        it. It is the `ps2look` checkbox under Advanced, presented as a switch; the checkbox stays the
+        state everything else reads, hidden, so the toggles, the hook and the tests see one thing.
+      -->
+      <div id="look" role="radiogroup" aria-label="picture">
+        <button type="button" class="look" data-look="modern" aria-pressed="true">
+          <span class="look-name">Modern</span>
+          <span class="look-what">your screen&rsquo;s size and shape</span>
+        </button>
+        <button type="button" class="look" data-look="ps2" aria-pressed="false">
+          <span class="look-name">PS2</span>
+          <span class="look-what">640&times;448 on 4:3, as the console drew it</span>
+        </button>
+      </div>
       <details id="about">
         <summary>Unzipped Project Map Viewer <span class="badge">dev build</span></summary>
         <p><b>Not a port and not emulation.</b> No game code runs. The disc's own data &mdash; geometry,
@@ -53,8 +68,8 @@
         <p>A spin-off of <b>SOCOM Unzipped</b>, the actual port.
           <a href="https://s2u.scotho.com" target="_blank" rel="noopener noreferrer">s2u.scotho.com &rarr;</a></p>
       </details>
-      <details id="options">
-        <summary>options</summary>
+      <details id="advanced">
+        <summary>Advanced</summary>
         <div class="row">
           <label><input type="checkbox" id="grid" /> grid at y=100</label>
           <label><input type="checkbox" id="collision" /> collision</label>
@@ -64,9 +79,7 @@
           <label><input type="checkbox" id="wireframe" /> wireframe</label>
           <label><input type="checkbox" id="untextured" /> highlight untextured</label>
         </div>
-        <div class="row">
-          <label title="Draw the frame the console drew: 640 by 448 pixels, the map's own 70-degree field, stretched onto a 4:3 picture the way the television did. Off draws at the screen's own size and shape."><input type="checkbox" id="ps2look" /> PS2 picture (640&times;448 on 4:3)</label>
-        </div>
+        <input type="checkbox" id="ps2look" hidden aria-hidden="true" />
         <div class="row">
           <label title="A lamp flare on disc is a single quad on a single plane, so left where it was modelled it is edge-on from most of the map. The hardware turns them to face the camera. Off shows the pose the disc holds."><input type="checkbox" id="billboards" checked /> turn flares to face the camera</label>
         </div>
@@ -106,10 +119,10 @@
         <label class="slider" title="F = 0 at this distance: everything further is the fog colour outright."><span>far</span>
           <input type="range" id="fogfar" min="10" max="6000" step="10" value="875" /><output id="fogfar-out"></output></label>
       </details>
-      </details>
-      <details id="diagnostics-box">
+        <details id="diagnostics-box">
         <summary><span id="diagnostics-count">0</span> diagnostics</summary>
         <ul id="diagnostics"></ul>
+      </details>
       </details>
       <p id="warning"><strong>EXPERIMENTAL</strong> &mdash; a work in progress.</p>
       <p class="rights">SOCOM II: U.S. Navy SEALs and all of its assets &mdash; models, textures, maps,

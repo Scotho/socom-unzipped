@@ -125,7 +125,7 @@ body.chrome-hidden #fullscreen { display: none; }
   border: 1px solid #333a44; border-radius: 6px; background: rgba(20, 22, 26, 0.86);
   font-size: 12px; line-height: 1.4; color: #9fe6b0; font-variant-numeric: tabular-nums;
 }
-#sliders-box, #fog-box, #options, #about { margin: 4px 0; }
+#sliders-box, #fog-box, #advanced, #about { margin: 4px 0; }
 #about summary { cursor: pointer; color: #9aa4b1; }
 #about .badge {
   margin-left: 6px; padding: 1px 5px; border-radius: 3px; font-size: 10px;
@@ -137,8 +137,9 @@ body.chrome-hidden #fullscreen { display: none; }
 #about b { color: #c7cedb; font-weight: normal; }
 #about a { color: #9fe6b0; }
 #about a:hover { color: #c7f5d2; }
-#options summary { cursor: pointer; color: #9aa4b1; }
-#options > details { margin-left: 10px; }
+#advanced > summary { cursor: pointer; color: #9aa4b1; }
+#advanced > details { margin-left: 10px; }
+#advanced > .row:first-of-type { margin-top: 6px; }
 #fog-box summary { cursor: pointer; color: #9aa4b1; }
 label.colour { display: inline-flex; align-items: center; gap: 6px; color: #b9c1cb; }
 label.colour input[type="color"] { width: 34px; height: 20px; padding: 0; border: 1px solid #39414d; border-radius: 4px; background: none; }
@@ -220,3 +221,19 @@ body.touch #touch { display: block; }
     width: 56px; height: 56px; border-radius: 50%; border-color: #39414d; font-size: 20px;
   }
 }
+
+/*
+ * The picture switch: two equal buttons, the chosen one lit in the panel's green. A name on the first
+ * line and what it means on the second, so nobody has to open Advanced to learn what PS2 does.
+ */
+#look { display: flex; gap: 6px; margin: 8px 0 6px; }
+#look .look {
+  flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 7px 10px;
+  font: inherit; text-align: left; color: #b9c1cb; background: #1d2027; border: 1px solid #39414d; border-radius: 6px;
+  cursor: pointer;
+}
+#look .look:hover { border-color: #5a6572; }
+#look .look[aria-pressed="true"] { color: #e6f7ea; border-color: #9fe6b0; background: #1f2b24; }
+#look .look-name { font-weight: bold; letter-spacing: 0.04em; }
+#look .look-what { font-size: 10px; color: #79828f; line-height: 1.3; }
+#look .look[aria-pressed="true"] .look-what { color: #9fe6b0; }

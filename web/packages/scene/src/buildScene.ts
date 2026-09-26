@@ -1,7 +1,7 @@
 import { chunkKey } from './modelLibrary';
 import {
   IDENTITY, multiply, toColumnMajor, transformPoint, NODE_INSTANCE, type CollisionPoly, type SceneNode, NODE_FLAGS_LIT,
-  VISUAL_FLAG_CULL } from './sceneGraph';
+  VISUAL_FLAG_CULL, facadeOf } from './sceneGraph';
 
 /**
  * Turning `MP*_GEO.ZED`'s prototype forest into placements: what gets drawn where, and which chain in
@@ -27,6 +27,11 @@ export interface SceneInstance {
   world: Float32Array;
   /** The path of node names from the root, for diagnostics. */
   path: string;
+  /**
+   * `m_facade` on this node or on any node above it in the walk: the engine applies the facade to
+   * the matrix stack, so everything under a flagged node turns with it.
+   */
+  facade: number;
 }
 
 /** One drawn placement: a node's chunks and the matrix that puts them in the world. */
@@ -39,6 +44,8 @@ export interface PlacedModel {
   chunks: string[];
   /** Per chunk, in `chunks` order: whether the engine culls its back faces (`VISUAL_FLAG_CULL`). */
   cull: boolean[];
+  /** `m_facade` on this node: non-zero, the engine turns it to face the camera (`facadeOf`). */
+  facade: number;
   /** 16 floats, column-major: what three.js wants (the transpose of `rowMajor`). */
   world: Float32Array;
   /** 16 floats, row-major, as the engine computes it. */
@@ -131,29 +138,31 @@ export function flattenScene(models: SceneNode[], rootName = 'worldmodel'): Scen
     return Math.min(next, total - 1);
   };
 
-  const realise = (model: SceneNode, parent: Float32Array, path: string, instanceIndex: number | null, depth: number): void => {
+  const realise = (model: SceneNode, parent: Float32Array, path: string, instanceIndex: number | null, depth: number, inherited: number): void => {
     let nodeIndex = 0;
-    const rec = (node: SceneNode, above: Float32Array, where: string): void => {
+    const rec = (node: SceneNode, above: Float32Array, where: string, facadeAbove: number): void => {
       const world = multiply(node.matrix, above);
-      out.push({ modelName: model.name, node, nodeIndex: node.visuals > 0 ? nodeIndex++ : -1, instanceIndex, world, path: where });
+      const facade = facadeOf(node.flags) || facadeAbove;
+      out.push({ modelName: model.name, node, nodeIndex: node.visuals > 0 ? nodeIndex++ : -1, instanceIndex, world, path: where, facade });
       for (const child of node.children) {
         const childPath = `${where}/${child.name}`;
         if (child.type !== NODE_INSTANCE) {
-          rec(child, world, childPath);
+          rec(child, world, childPath, facade);
           continue;
         }
         const childWorld = multiply(child.matrix, world);
-        out.push({ modelName: model.name, node: child, nodeIndex: -1, instanceIndex, world: childWorld, path: childPath });
+        const childFacade = facadeOf(child.flags) || facade;
+        out.push({ modelName: model.name, node: child, nodeIndex: -1, instanceIndex, world: childWorld, path: childPath, facade: childFacade });
         const prototype = child.modelName === null ? undefined : byName.get(child.modelName);
         if (prototype && depth < MAX_DEPTH) {
-          realise(prototype, childWorld, `${childPath}=${prototype.name}`, takeIndex(prototype.name), depth + 1);
+          realise(prototype, childWorld, `${childPath}=${prototype.name}`, takeIndex(prototype.name), depth + 1, childFacade);
         }
       }
     };
-    rec(model, parent, path);
+    rec(model, parent, path, inherited);
   };
 
-  realise(root, IDENTITY, rootName, takeIndex(rootName), 0);
+  realise(root, IDENTITY, rootName, takeIndex(rootName), 0, 0);
   return out;
 }
 
@@ -169,6 +178,7 @@ export function placeInstances(models: SceneNode[], rootName = 'worldmodel'): Pl
       instanceIndex: f.instanceIndex,
       chunks: Array.from({ length: f.node.visuals }, (_, v) => chunkKey(f.nodeIndex, f.instanceIndex, v)),
       cull: Array.from({ length: f.node.visuals }, (_, v) => ((f.node.visualParams[v] ?? VISUAL_FLAG_CULL) & VISUAL_FLAG_CULL) !== 0),
+      facade: f.facade,
       world: toColumnMajor(f.world),
       rowMajor: f.world,
       lit: ((f.node.flags | (modelFlags.get(f.modelName) ?? 0)) & NODE_FLAGS_LIT) !== 0,
