@@ -1900,7 +1900,7 @@ void register_ps2_runtime_io_tests()
 
 #ifdef _WIN32
             // NUL stats as a character device, not a regular file, so the old join already answered
-            // 0 for it; this pins that the walk refuses the name before anything touches the host.
+            // 0 for it; this case guards the answer, not the order -- it passes with or without the walk.
             for (const std::string &device : {std::string("\\NUL"), std::string("cdrom0:\\CON"),
                                               std::string("\\DATA\\NUL.txt;1"), std::string("\\COM1")})
             {
