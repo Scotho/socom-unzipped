@@ -1153,6 +1153,13 @@ void register_ps2_recompiler_tests()
             std::ofstream(stale) << "void gone_0xdead0() {}\n";
             std::ofstream(foreign) << "kept\n";
             fs::last_write_time(stale, past);
+            // Review round (#57): a config's `output` may be a folder holding other sources, so the prune removes
+            // only names this emitter writes, and never below the output folder.
+            const fs::path keep = outputPath / "keep.cpp";
+            const fs::path nested = outputPath / "sub" / "nested_0xbeef0.cpp";
+            std::ofstream(keep) << "int keep;\n";
+            fs::create_directories(nested.parent_path());
+            std::ofstream(nested) << "int nested;\n";
 
             t.IsTrue(runOnce(true), "the second run, one display name changed, should recompile");
             t.IsTrue(fs::last_write_time(unchanged) == past, "a file whose bytes did not change keeps its timestamp");
@@ -1160,6 +1167,8 @@ void register_ps2_recompiler_tests()
             t.IsFalse(fs::exists(oldName), "the renamed function's old file is removed");
             t.IsFalse(fs::exists(stale), "a generated file this run did not produce is removed");
             t.IsTrue(fs::exists(foreign), "a file that is not .cpp or .h is left alone");
+            t.IsTrue(fs::exists(keep), "a .cpp without the emitter's _0x<address> name is left alone");
+            t.IsTrue(fs::exists(nested), "a file below the output folder is left alone, whatever its name");
             t.IsTrue(fs::last_write_time(outputPath / "register_functions.cpp") != past,
                      "the function table, which names the renamed function, is rewritten");
             t.IsTrue(fs::last_write_time(outputPath / "ps2_recompiled_functions.h") != past,

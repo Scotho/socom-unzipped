@@ -2198,7 +2198,10 @@ namespace ps2recomp
         // Issue #57: build.sh used to delete the whole output directory before a recomp, which gave every
         // generated file a new timestamp and rebuilt every object. Now the files are rewritten only when their
         // bytes change, and what a previous run wrote that this run did not (a renamed function's old file) is
-        // removed here. Only generated kinds (.cpp, .h) are touched.
+        // removed here. The tool never deleted anything before, and a config may point `output` at a folder
+        // that holds other sources (".", ".."), so the prune is bounded twice: the output folder itself, never
+        // below it, and only the names this emitter writes -- a function file `<name>_0x<hex>.cpp` or one of
+        // the four fixed files. Anything else (a `keep.cpp`, a README) is left alone.
         const fs::path outputDir(m_config.outputPath);
         std::error_code ec;
         if (!fs::is_directory(outputDir, ec))
@@ -2206,15 +2209,36 @@ namespace ps2recomp
             return;
         }
 
+        auto isGeneratedName = [](const std::string &name) -> bool
+        {
+            if (name == "register_functions.cpp" || name == "ps2_recompiled_functions.cpp" ||
+                name == "ps2_recompiled_functions.h" || name == "ps2_recompiled_stubs.h")
+            {
+                return true;
+            }
+            const std::string ext = ".cpp";
+            if (name.size() <= ext.size() || name.compare(name.size() - ext.size(), ext.size(), ext) != 0)
+            {
+                return false;
+            }
+            const std::string stem = name.substr(0, name.size() - ext.size());
+            const size_t marker = stem.rfind("_0x");
+            if (marker == std::string::npos || marker + 3 >= stem.size())
+            {
+                return false;
+            }
+            return std::all_of(stem.begin() + static_cast<std::ptrdiff_t>(marker + 3), stem.end(), [](char c)
+                               { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); });
+        };
+
         std::vector<fs::path> stale;
-        for (fs::recursive_directory_iterator it(outputDir, ec), end; !ec && it != end; it.increment(ec))
+        for (fs::directory_iterator it(outputDir, ec), end; !ec && it != end; it.increment(ec))
         {
             if (!it->is_regular_file(ec))
             {
                 continue;
             }
-            const std::string ext = it->path().extension().string();
-            if (ext != ".cpp" && ext != ".h")
+            if (!isGeneratedName(it->path().filename().string()))
             {
                 continue;
             }
