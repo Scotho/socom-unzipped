@@ -12,12 +12,14 @@ still presented the 2026-09-21 build as "Ready" three days after it was played, 
 questions already answered.)*
 
 <!-- build:begin -->
-**NOT BUILT** -- no release archive has been packaged from this tree, so there is no build to play or to check
-against. The merged chain's last step (`scripts/parity/playtest_block.sh`) packages the build it made and writes
-this block. By hand, after `./build.sh release`: `bash scripts/make_portable.sh --release` under the lock
-(`bash scripts/loop_lock.sh run <name> --purpose "release archive" -- bash scripts/make_portable.sh --release`),
-then `python -m tools_py.playtest_block --manifest dist-release/manifest.json` writes this block from the
-manifest the packaging leaves in `dist-release/`.
+```
+build:    2026-09-26T15:25:18Z   commit 56430d7cbc26 (sprint-14)
+archive:  socom2-portable.zip   (dist-release/portable/socom2-portable.zip)
+          sha256: 76774b5d72522c614534e20fad0c5f3ea08aa07057c1ee27fd92547ec8066127
+exe:      socom2.exe sha256: 8be2ee0c8bc9aa059f79392f2150c199a46916f22abc1fc45f27083183f23568
+```
+
+Written by `python -m tools_py.playtest_block` from the manifest `scripts/make_portable.sh` wrote with this archive (the chain's last step); play that archive, unzipped to a new folder.
 <!-- build:end -->
 
 > Superseded 2026-09-25 (Sprint 13 S1) -- the block that stood here, kept as the record of the last sitting's build:
