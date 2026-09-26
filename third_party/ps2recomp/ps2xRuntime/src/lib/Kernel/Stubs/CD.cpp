@@ -43,13 +43,11 @@ namespace ps2_stubs
         uint32_t g_cdStReadTraceCount = 0u;
         CdStreamTimingState g_cdStreamTiming;
 
-        // Issue #51 RED: the CD group every entry point below reads and writes. At this commit it is
-        // still the one process-wide instance whatever runtime the stub was handed -- the ownership
-        // is in place and CD.cpp does not use it yet.
+        // Issue #51: the CD group every entry point below reads and writes -- the runtime's own
+        // CdRuntimeState (Helpers/CdRuntimeState.h), or the process-wide fallback for a null runtime.
         CdRuntimeState &cdStateFor(PS2Runtime *runtime)
         {
-            (void)runtime;
-            return cdRuntimeStateFor(nullptr);
+            return cdRuntimeStateFor(runtime);
         }
 
         // research/36 item 11 (2026-09-20): PS2X_CD_STREAM_TRACE=1 stamps every CD stream read -- the request,
