@@ -501,7 +501,13 @@ take no lock at all; `toml` is the last step that does not, and it is how the tr
 checked against the tree -- every other revision's derived config is git-ignored; `test_build_products.py`
 regenerates r0004's from `game/r0004/match.json` and the two images with step 3's arguments and fails on a byte of
 drift, skipping where those git-ignored inputs are absent, `SOCOM_DATA_ROOT` naming a checkout that has them), `--check-against <elf>`
-compares the produced ELF's sha256 with a known one, `--out <dir>` puts every product under one directory,
+compares the produced ELF's sha256 with a known one, `--out <dir>` puts every product under one directory
+(`overlays_<rev>/`, `recomp_<rev>/`, `build-clang-<rev>/`, `dist/`) while the inputs stay the tree's (issue #56):
+the map is the tracked `recomp/socom2_ghidra_<rev>.csv` unless `--ghidra` names another, and when the tree's
+`game/overlays_<rev>/` holds both overlays, the merged ELF and an `<elf>.repair.json` that is current for the run's
+repair inputs (the sha256 test step 2 skips on), those four files are copied into `<out>/overlays_<rev>/` and
+nothing is decrypted again -- the sidecar records no disc input, so the disc tree given is not matched, and
+`--force` decrypts regardless.
 `--dry-run` prints the six steps with their paths. `<rev>` is `r` and four digits with an optional suffix that
 starts with a letter. The package must sit in its extracted disc tree, whose loader must be named `SCUS_972.75`
 (`tools_py/decrypt_apache.py` joins that name onto the tree and runs that loader's own code on the package, after

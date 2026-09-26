@@ -35,6 +35,12 @@
 #                       revision falling back to it is warned. tools_py/find_imm_targets.py writes a revision its own:
 #                         python tools_py/find_imm_targets.py <rev elf> <rev csv> recomp/extra_functions_<rev>.txt
 #   1 decrypt           tools_py.decrypt_apache.main(<tree>, game/overlays_<rev>)  -> ftscore.bin, zsealetc.bin
+#                       Under --out, when the tree's own game/overlays_<rev>/ holds both overlays, the merged ELF
+#                       and its repair.json, and that sidecar is current for this run's repair inputs (the test
+#                       step 2 skips on), the four files are COPIED into <out>/overlays_<rev>/ and steps 1-2 skip
+#                       (#56). The sidecar records no disc input, so the disc tree given is not matched: on the
+#                       machine whose r0004 overlays come from the capsule, decrypting the given tree read r0001's
+#                       package through a junction and the out ELF mismatched. --force decrypts regardless.
 #   2 make_overlay_elf  loader + both overlays                                    -> game/overlays_<rev>/socom2_game_<rev>.elf
 #     --check-against <elf>: sha256 of that ELF against the given one; a mismatch prints both digests and exits 1
 #   3 toml              recomp/socom2.toml with input/output/ghidra_output rewritten -> recomp/socom2_<rev>.toml;
@@ -72,7 +78,10 @@
 #                     tracked (the others are git-ignored), and tools_py/tests/test_build_products.py regenerates
 #                     it with step 3's arguments and holds the tracked bytes to the result (Sprint 13 C5).
 #   --out <dir>       every product under <dir> instead (overlays_<rev>/, recomp_<rev>/, build-clang-<rev>/, dist/),
-#                     so a check build run from the main tree can land in a worktree
+#                     so a check build run from the main tree can land in a worktree. The INPUTS stay the tree's
+#                     (#56): the map is recomp/socom2_ghidra_<rev>.csv unless --ghidra names another (step 3
+#                     copies it beside the out toml), and the tree's current game/overlays_<rev>/ is copied
+#                     rather than decrypted again (step 1 above)
 #   --dry-run         print the six steps with their paths and exit 0, touching nothing
 #
 # Exit 2 on a bad argument or a missing input, 1 on a failed step or a --check-against mismatch, 75 when the loop
@@ -136,6 +145,10 @@ fi
 ELF="$OVERLAYS/socom2_game_$REV.elf"
 TOML="$RECOMP_DIR/socom2_$REV.toml"
 CSV="$RECOMP_DIR/socom2_ghidra_$REV.csv"
+# #56: the tree's own inputs, which an --out build reads rather than looking for them under <out>. In-tree they
+# are the same paths as $CSV and $OVERLAYS, and nothing below changes.
+TREE_CSV="$ROOT/recomp/socom2_ghidra_$REV.csv"
+TREE_OVERLAYS="$ROOT/game/overlays_$REV"
 # Step 0's product. The tracked map above is a SOURCE: the build reads it and never writes it. This one is
 # git-ignored (.gitignore /recomp/build/) and is what steps 2-5 read -- including the repair sidecar's input
 # hash, so the ELF is repaired against the same rows the recompiler compiles.
@@ -206,6 +219,10 @@ if [ "$TAIL" = 0 ]; then
   if [ -n "$GHIDRA" ]; then
     [ -f "$GHIDRA" ] || die2 "no such function map: $GHIDRA"
     GHIDRA_SRC="$(cd "$(dirname "$GHIDRA")" && pwd)/$(basename "$GHIDRA")"
+  elif [ "$CSV" != "$TREE_CSV" ] && [ -f "$TREE_CSV" ]; then
+    # --out: the tracked map is the tree's (#56). <out>/recomp_<rev>/ holds only the copy step 3 makes of it, so
+    # looking there refused every first out run unless --ghidra named the tracked map by hand.
+    GHIDRA_SRC="$TREE_CSV"
   elif [ ! -f "$CSV" ]; then
     case "$REV" in
       r0001*) GHIDRA_SRC="$ROOT/recomp/socom2_ghidra.csv" ;;
@@ -232,6 +249,7 @@ if [ "$DRY" = 1 ]; then
   say "  disc tree      $(rel "$GAME")   loader $(rel "${LOADER:-<none found: SCUS_*/SCES_*/SLUS_*/SLES_* in the tree, or --loader>}")"
   say "  step 0  map               $(rel "${GHIDRA_SRC:-$CSV}") + forced entry points $(rel "$EXTRA")$([ "$EXTRA_BORROWED" = 1 ] && echo ' (r0001'"'"'s -- another build'"'"'s overlay addresses)') -> $(rel "$FIXED") (a build product; the tracked map is never written)"
   say "  step 1  decrypt           tools_py.decrypt_apache.main(tree, overlays) -> $(rel "$OVERLAYS")/{ftscore,zsealetc}.bin"
+  [ "$TREE_OVERLAYS" = "$OVERLAYS" ] || say "                            (or $(rel "$TREE_OVERLAYS")/ copied there when its repair.json is current -- no decrypt)"
   say "  step 2  make_overlay_elf  loader + overlays (--loader-text-end=$LTE) -> $(rel "$ELF")${CHECK:+   check-against $(rel "$CHECK")}"
   if [ "$GHIDRA_NEED" = 1 ]; then
     MAPNOTE="$(rel "$CSV") is not there -- the run will refuse it: pass --ghidra <csv>, or --ghidra-from-r0001"
@@ -277,6 +295,58 @@ if [ "$TAIL" = 0 ]; then
   else
     say "names: $(rel "$NAMES_SRC"), beside the toml that names it"
   fi
+  # Step 2's repair inputs, settled before step 1 because the --out reuse below is decided by them too: the
+  # revision's own decoded capsule stack names the addresses, the r0001 image supplies the replacement words,
+  # and the two function maps bound the functions. All four or none -- make_overlay_elf rewrites nothing
+  # without --stub-writes.
+  #
+  # The revision's map is step 0's fixed one -- the rows the recompiler will actually compile, derived from
+  # "$GHIDRA_SRC" when --ghidra named one and from "$CSV" otherwise. Reading "$CSV" here instead would refuse
+  # a revision being bootstrapped with --ghidra (its own map does not exist yet), and -- worse -- would
+  # silently repair against the OLD map when --ghidra names a new one. Reading the fixed file rather than
+  # either source is what makes the sidecar's "rows" digest stable: it is derived, not edited under the image.
+  REPAIR_ARGS=()
+  STACK="$ROOT/game/$REV/decoded/stack.txt"
+  TWIN_ELF="$ROOT/game/disc/socom2_game.elf"
+  TWIN_ROWS="$ROOT/recomp/socom2_ghidra.csv"
+  ROWS_CSV="$FIXED"
+  if [ -f "$STACK" ]; then
+    [ -f "$TWIN_ELF" ] || die2 "step 2: the repair takes its replacement words from the r0001 image, but $(rel "$TWIN_ELF") is not there. Build the r0001 lane first (bash build.sh elf), or drop $(rel "$STACK") to merge without a repair"
+    [ -f "$TWIN_ROWS" ] || die2 "step 2: the repair needs r0001's own function map to find the twin function, but $(rel "$TWIN_ROWS") is not there. It is tracked: git checkout -- $(rel "$TWIN_ROWS") (or regenerate it with the r0001 Ghidra pass, docs/DEVELOPING.md)"
+    REPAIR_ARGS=(--stub-writes "$STACK" --twin "$TWIN_ELF" --rows "$ROWS_CSV" --twin-rows "$TWIN_ROWS")
+    say "elf: repair inputs -- stack $(rel "$STACK"), twin $(rel "$TWIN_ELF"), map $(rel "$ROWS_CSV") sha256 $(sha "$ROWS_CSV")"
+  fi
+  # 1 reuse (#56) -- under --out, the tree's own overlays when they are current, instead of decrypting the disc
+  # tree again. "Current" is the sidecar's test, the one step 2 skips on: every repair input it records (stack,
+  # twin, both maps, the three modules) still has the recorded sha256. The sidecar records no disc input (no
+  # package, no loader), so the tree given is not part of the match -- and on the machine where it mattered the
+  # r0004 overlays were never decrypted from a package at all (they come from the capsule).
+  if [ "$TREE_OVERLAYS" != "$OVERLAYS" ] && [ "$FORCE" = 0 ] && [ -d "$TREE_OVERLAYS" ]; then
+    if [ -f "$OVERLAYS/ftscore.bin" ] && [ -f "$OVERLAYS/zsealetc.bin" ]; then
+      say "overlays: $(rel "$OVERLAYS") already holds ftscore.bin and zsealetc.bin -- the tree's are not copied (delete them, or --force)"
+    else
+      TREE_ELF="$TREE_OVERLAYS/socom2_game_$REV.elf"
+      REUSE_WHY=""
+      for f in ftscore.bin zsealetc.bin "socom2_game_$REV.elf" "socom2_game_$REV.elf.repair.json"; do
+        [ -f "$TREE_OVERLAYS/$f" ] || { REUSE_WHY="it holds no $f"; break; }
+      done
+      if [ -z "$REUSE_WHY" ]; then
+        if REUSE_WHY="$(cd "$ROOT" && "$py" -m tools_py.overlay_repair --check "$TREE_ELF.repair.json" ${REPAIR_ARGS[@]+"${REPAIR_ARGS[@]}"} 2>&1)"; then
+          # Staged: a copy that fails half-way (a full disk, a Ctrl-C) leaves nothing in $OVERLAYS for step 1 to
+          # skip on. The four arrive by rename, the repair.json LAST -- its presence marks the copy complete.
+          STAGE="$OVERLAYS/.reuse.$$"
+          rm -rf "$STAGE"; mkdir -p "$STAGE"
+          cp -p "$TREE_OVERLAYS/ftscore.bin" "$TREE_OVERLAYS/zsealetc.bin" "$TREE_ELF" "$TREE_ELF.repair.json" "$STAGE/"
+          mv "$STAGE/ftscore.bin" "$STAGE/zsealetc.bin" "$STAGE/socom2_game_$REV.elf" "$OVERLAYS/"
+          mv "$STAGE/socom2_game_$REV.elf.repair.json" "$OVERLAYS/"
+          rmdir "$STAGE"
+          say "overlays: $(rel "$TREE_OVERLAYS")/ is current (${REUSE_WHY#current: }) -- copied ftscore.bin, zsealetc.bin, socom2_game_$REV.elf and its repair.json into $(rel "$OVERLAYS")/; no decrypt"
+          REUSE_WHY=""
+        fi
+      fi
+      [ -z "$REUSE_WHY" ] || say "overlays: $(rel "$TREE_OVERLAYS")/ not reused -- ${REUSE_WHY#stale: }; step 1 decrypts from the disc tree"
+    fi
+  fi
   # 1 decrypt
   if [ "$FORCE" = 0 ] && [ -f "$OVERLAYS/ftscore.bin" ] && [ -f "$OVERLAYS/zsealetc.bin" ]; then
     say "decrypt: ftscore.bin and zsealetc.bin are already in $(rel "$OVERLAYS") -- skipped (--force redoes it)"
@@ -304,27 +374,7 @@ if [ "$TAIL" = 0 ]; then
     fi
     say "decrypt: ftscore.bin ($(stat -c %s "$OVERLAYS/ftscore.bin") B) + zsealetc.bin ($(stat -c %s "$OVERLAYS/zsealetc.bin") B) written"
   fi
-  # 2 elf
-  # The repair inputs: the revision's own decoded capsule stack names the addresses, the r0001 image
-  # supplies the replacement words, and the two function maps bound the functions. All four or none --
-  # make_overlay_elf rewrites nothing without --stub-writes.
-  #
-  # The revision's map is step 0's fixed one -- the rows the recompiler will actually compile, derived from
-  # "$GHIDRA_SRC" when --ghidra named one and from "$CSV" otherwise. Reading "$CSV" here instead would refuse
-  # a revision being bootstrapped with --ghidra (its own map does not exist yet), and -- worse -- would
-  # silently repair against the OLD map when --ghidra names a new one. Reading the fixed file rather than
-  # either source is what makes the sidecar's "rows" digest stable: it is derived, not edited under the image.
-  REPAIR_ARGS=()
-  STACK="$ROOT/game/$REV/decoded/stack.txt"
-  TWIN_ELF="$ROOT/game/disc/socom2_game.elf"
-  TWIN_ROWS="$ROOT/recomp/socom2_ghidra.csv"
-  ROWS_CSV="$FIXED"
-  if [ -f "$STACK" ]; then
-    [ -f "$TWIN_ELF" ] || die2 "step 2: the repair takes its replacement words from the r0001 image, but $(rel "$TWIN_ELF") is not there. Build the r0001 lane first (bash build.sh elf), or drop $(rel "$STACK") to merge without a repair"
-    [ -f "$TWIN_ROWS" ] || die2 "step 2: the repair needs r0001's own function map to find the twin function, but $(rel "$TWIN_ROWS") is not there. It is tracked: git checkout -- $(rel "$TWIN_ROWS") (or regenerate it with the r0001 Ghidra pass, docs/DEVELOPING.md)"
-    REPAIR_ARGS=(--stub-writes "$STACK" --twin "$TWIN_ELF" --rows "$ROWS_CSV" --twin-rows "$TWIN_ROWS")
-    say "elf: repair inputs -- stack $(rel "$STACK"), twin $(rel "$TWIN_ELF"), map $(rel "$ROWS_CSV") sha256 $(sha "$ROWS_CSV")"
-  fi
+  # 2 elf (its step-2 half is below)
   # Freshness is decided by the sha256s the sidecar records for every one of those inputs (and for
   # the three modules that turn them into bytes), not by an mtime against two files: a re-decoded
   # stack or a new function map changes the answer a merged ELF has already baked in. A sidecar that
