@@ -725,6 +725,36 @@ day-by-day, `docs/KNOWN.md` what is proven and what is believed, `docs/HUMAN_TAS
 
 **The pinned references (Sprint 13 H3):** `scripts/parity/pins.json` (r0001; `pins_r0004.json` for r0004) is the gate's standard and the gate refuses on a drift; `scripts/parity/pins_refs.json` pins every OTHER reference PNG under `scripts/parity/` -- a tripwire, not a refusal: `test_gate_pins.EveryReferenceIsPinned` fails the suite when one changes and the file does not, so re-pin in the same commit.
 
+## Recompiler reference
+
+Since Sprint 14 Task E3 the `linux` workflow's `recomp-ref` job re-derives a synthetic program on every code push:
+it builds `ps2_recomp` alone (`-DPS2X_BUILD_RUNTIME=OFF -DPS2X_BUILD_ANALYZER=OFF -DPS2X_BUILD_TEST=OFF`, `--target
+ps2_recomp`), runs it on `tests/fixtures/recomp_ref/` and `diff -r`s the output against that directory's `expected/`.
+**Any difference fails the job and prints the diff** -- a codegen change nobody meant, and equally one somebody did
+mean but did not regenerate. It is not a required check.
+
+The fixture is synthetic, nothing from the disc: `make_fixture.py` writes `input.elf` (4,268 bytes; ps2xTest's
+Sprint 12 3b ELF -- eight MIPS words at `0x00100000`, a `jal 0x00100010` and two returns), `functions.csv` (a
+two-row Ghidra-shaped map), `names.csv` (one sidecar row naming `0x00100010` `sceVu0MulMatrix`) and
+`recomp_ref.toml` (`recomp/socom2.toml`'s shape). `tools_py/tests/test_workflows.py` holds the inputs to the
+generator's bytes, `expected/` free of absolute paths, dates and the game's addresses and LF in the index, and the
+job's shape. ps2_recomp resolves the toml's paths against the **current directory**, not the toml's, so it runs in a
+copy of the fixture and writes `out/`; the output carries no path but the sidecar's file name, no date and no host.
+The recompiler writes text-mode files, so a Windows run's `expected/` is CRLF in the working tree; `core.autocrlf`
+makes it LF on `git add`, which is what the Linux job compares (a CRLF blob fails `test_expected_is_lf_in_the_index`).
+
+**When a codegen change is intended**, regenerate `expected/` in the same commit, with a recompiler built from that
+tree (`./build.sh tools`; on Linux `scripts/build_linux.sh tools` and `build-linux-tools/ps2xRecomp/ps2_recomp`):
+
+```bash
+RECOMP="$PWD/third_party/ps2recomp/build-tools/ps2xRecomp/ps2_recomp.exe"    # llvm-mingw's bin/ on PATH, as build.sh sets
+python tests/fixtures/recomp_ref/make_fixture.py                             # only when the inputs change
+rm -rf "$TMP/recomp_ref" && cp -r tests/fixtures/recomp_ref "$TMP/recomp_ref" && rm -rf "$TMP/recomp_ref/expected"
+(cd "$TMP/recomp_ref" && "$RECOMP" recomp_ref.toml)
+rm -rf tests/fixtures/recomp_ref/expected && cp -r "$TMP/recomp_ref/out" tests/fixtures/recomp_ref/expected
+git diff --stat -- tests/fixtures/recomp_ref/expected                       # the change you meant, and only it
+```
+
 ## Instruments and diagnostics
 
 *(Moved verbatim from `docs/HANDOFF.md` §7 on 2026-09-26, Sprint 14 I3, when HANDOFF became transient; the file as it was is `docs/archive/HANDOFF-to-2026-09-26.md`. "Section 7" in an older citation means this section.)*

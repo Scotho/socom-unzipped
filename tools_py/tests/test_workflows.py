@@ -254,6 +254,99 @@ class SyntheticGeneratedSetShape(unittest.TestCase):
                 self.assertLess(int(m.group(1), 16), GAME_TEXT_START, f"{name}: {m.group(0)} is in the game's range")
 
 
+RECOMP_REF = os.path.join(ROOT, "tests", "fixtures", "recomp_ref")
+RECOMP_REF_JOB = "recomp-ref"
+RECOMP_REF_INPUTS = ("input.elf", "functions.csv", "names.csv", "recomp_ref.toml")
+
+
+class RecompilerReferenceJob(unittest.TestCase):
+    """Sprint 14 Task E3: the recompiler re-derives a synthetic ELF's output on every code push, diffed to a reference."""
+
+    def _job(self):
+        jobs = _jobs(_text("linux.yml"))
+        self.assertIn(RECOMP_REF_JOB, jobs, "linux.yml: no recomp-ref job")
+        return jobs[RECOMP_REF_JOB]
+
+    def test_its_own_job_gated_on_changes(self):
+        body = self._job()
+        self.assertRegex(body, r"(?m)^    runs-on: ubuntu-24\.04\s*$")
+        self.assertRegex(body, r"(?m)^    needs: changes\s*$")
+        self.assertRegex(body, r"(?m)^    if: needs\.changes\.outputs\.code == 'true'\s*$")
+        self.assertNotIn(RECOMP_REF_JOB, REQUIRED_CHECKS, "not a required check (a ruleset change is the owner's)")
+
+    def test_builds_only_the_recompiler(self):
+        code = "\n".join(l for l in self._job().splitlines() if not l.lstrip().startswith("#"))
+        self.assertEqual(re.findall(r"--target\s+(\S+)", code), ["ps2_recomp"], "only the ps2_recomp target")
+        for off in ("RUNTIME", "ANALYZER", "TEST"):
+            self.assertIn(f"-DPS2X_BUILD_{off}=OFF", code, f"configure without {off}")
+        self.assertNotIn("build_linux.sh", code, "not the runtime build")
+
+    def test_runs_the_fixture_and_diffs_the_reference(self):
+        code = "\n".join(l for l in self._job().splitlines() if not l.lstrip().startswith("#"))
+        self.assertIn("tests/fixtures/recomp_ref", code)
+        self.assertRegex(code, r"ps2xRecomp/ps2_recomp\"? recomp_ref\.toml", "run on the fixture's toml")
+        self.assertRegex(code, r"diff -r \S+ \"?\$GITHUB_WORKSPACE/tests/fixtures/recomp_ref/expected\"?",
+                         "diff -r the output against expected/")
+        self.assertIn("set -euo pipefail", code)
+
+
+class RecompilerReferenceFixture(unittest.TestCase):
+    """tests/fixtures/recomp_ref: synthetic inputs (its make_fixture.py) and the recompiler's output."""
+
+    def _read(self, *parts):
+        with open(os.path.join(RECOMP_REF, *parts), "rb") as f:
+            return f.read()
+
+    def test_the_generator_reproduces_the_inputs(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("make_fixture", os.path.join(RECOMP_REF, "make_fixture.py"))
+        make_fixture = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(make_fixture)
+        made = make_fixture.inputs()
+        self.assertEqual(sorted(made), sorted(RECOMP_REF_INPUTS))
+        self.assertEqual(made["input.elf"], self._read("input.elf"), "input.elf is the generator's bytes")
+        for name in RECOMP_REF_INPUTS[1:]:
+            # A Windows checkout (core.autocrlf) may carry CRLF; the blob is the generator's LF text.
+            self.assertEqual(made[name], self._read(name).replace(b"\r\n", b"\n"), name)
+
+    def test_synthetic_and_small(self):
+        elf = self._read("input.elf")
+        self.assertEqual(elf[:4], b"\x7fELF")
+        self.assertLess(len(elf), 8192, "a few KB, no disc bytes")
+        toml = self._read("recomp_ref.toml").decode()
+        for key in ("input", "ghidra_output", "names", "output"):
+            value = re.search(r'(?m)^' + key + r' = "([^"]*)"', toml).group(1)
+            self.assertFalse(os.path.isabs(value) or ".." in value or ":" in value,
+                             f"{key} = {value!r}: relative to the fixture directory, never the game")
+
+    def test_expected_is_path_and_date_free(self):
+        expected = os.path.join(RECOMP_REF, "expected")
+        names = sorted(os.listdir(expected))
+        self.assertIn("register_functions.cpp", names)
+        self.assertIn("sceVu0MulMatrix_0x100010.cpp", names, "the sidecar name reached the output")
+        for name in names:
+            text = self._read("expected", name).decode("utf-8")
+            self.assertNotRegex(text, r"[A-Za-z]:[\\/]|/c/|/home/|/tmp/|\\Users\\", f"{name}: an absolute path")
+            self.assertNotRegex(text, r"\b20\d\d-\d\d-\d\d\b|\b\d\d:\d\d:\d\d\b", f"{name}: a date or a time")
+            for m in re.finditer(r"(?<!: )0x([0-9a-fA-F]{5,8})", text):
+                self.assertLess(int(m.group(1), 16), GAME_TEXT_START, f"{name}: {m.group(0)} is in the game's range")
+
+    def test_expected_is_lf_in_the_index(self):
+        # The Linux job's recompiler writes LF; a Windows one writes CRLF (text-mode streams), which core.autocrlf
+        # turns into LF on add. A CRLF blob would fail the job on every push, so the index must say lf.
+        import subprocess
+        try:
+            out = subprocess.run(["git", "ls-files", "--eol", "--", "tests/fixtures/recomp_ref/expected"], cwd=ROOT,
+                                 capture_output=True, text=True, check=True).stdout
+        except (OSError, subprocess.CalledProcessError) as e:
+            self.skipTest(f"no git here ({e})")
+        rows = [l for l in out.splitlines() if l.strip()]
+        if not rows:
+            self.skipTest("expected/ not in the index (an uncommitted tree)")
+        for row in rows:
+            self.assertTrue(row.startswith("i/lf "), f"a CRLF or binary blob in expected/: {row}")
+
+
 class WithPyYAML(unittest.TestCase):
     """The same facts through a real parser, where one is installed (the owner's machine has 6.0.3)."""
 

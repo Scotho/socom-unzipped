@@ -1,0 +1,13 @@
+# Sprint 14 Task E3: the recompiler reference fixture (tests/fixtures/recomp_ref/make_fixture.py writes it).
+# recomp/socom2.toml's shape; every path is relative to the directory ps2_recomp runs in (a copy of this one).
+[general]
+input = "input.elf"
+ghidra_output = "functions.csv"
+names = "names.csv"
+output = "out/"
+single_file_output = false
+patch_syscalls = false
+patch_cop0 = true
+patch_cache = true
+stubs = []
+skip = []
