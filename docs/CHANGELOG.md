@@ -2,12 +2,18 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.changelog` from `git log` (R272): every merge commit on the first-parent line of the history it was rendered from, and on the first-parent line of each branch those merges brought in, grouped by the oldest `v*` tag that contains it. `python -m tools_py.changelog --check` exits 1 when this file is stale; regenerate at every merge to a sprint branch (in the merge's follow-up commit) and at the close. The rules are the module's docstring. The reasoning behind a merge is its commit message and the sprint plan's Log; the hand-written log this page replaced is `docs/archive/STATUS-log-to-2026-09-26.md`.
 
-136 merges (35 on the first-parent line, 101 from the branches they merged) in 10 sections: 9 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
+142 merges (39 on the first-parent line, 103 from the branches they merged) in 10 sections: 9 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
 
 ## Since v0.13.0
 
-22 merges.
+28 merges.
 
+- 2026-09-26 `41ef8678` the generated changelog from merge commits and tags; STATUS's log archived (S14 S1, R272) [agent/s14-s1]
+- 2026-09-26 `edf2a0df` check 11, the read-first budget over HANDOFF, CLAUDE.md, CURRENT_SPRINT, the Log, STATUS (S14 I4) [agent/s14-i4]
+- 2026-09-26 `73f0f0f8` origin/main (123dd1c5, PR #65 the CD group and g_iopHeapNext runtime-owned, #51 closed) into sprint-14 [origin/main, main merged in]
+  - 2026-09-26 `123dd1c5` fix(runtime): the CD group and g_iopHeapNext runtime-owned, not per-TU (#65) [branch not named]
+- 2026-09-26 `d26aaa48` HANDOFF transient under 6 KB [agent/s14-i3]
+  - 2026-09-26 `d09ee23d` merge sprint-14 into agent/s14-i3: S2's commit-msg hook, D1's RULINGS page, D2's scope rule [sprint-14]
 - 2026-09-26 `da20068c` the ruling scope rule in DOC_MAINTENANCE section 6; one counter line (Sprint 14 D2) [agent/s14-d2]
 - 2026-09-26 `ca7cac84` the commit-msg hook caps the subject at 120 characters (Sprint 14 S2) [agent/s14-s2]
 - 2026-09-26 `635eeabf` the generated rulings page with a status per ruling, held by --check (Sprint 14 D1) [agent/s14-d1]
