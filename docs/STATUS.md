@@ -1,7 +1,7 @@
 # Project status — "Current state" below is kept current; everything under it is a dated log, newest first
 
 ## Current state (keep it short; update when it changes, dated entries below are the log)
-- **2026-09-25 (morning) -- Sprint 12 ("the readable image") is CLOSED: the proof is green and the sprint merges to `main` as `v0.12.0` behind Sprint 11's `v0.11.0`.** The generated image carries 1,771 readable names with a recorded reason each (the sidecar `recomp/socom2_names.csv`; r0004 1,705 rows through `carry_names`), applied by one tool from ten levers whose rules are code, and proven on this machine: recomp 14,882 files with 1,771 renamed and no extent moved, the runtime rebuilt from scratch, both suites green, the r0001 gate `s12_names_gate` 3/3 with PINS MATCH (exe `804dd172…`, at `cb56fc8`). The sprint ran in a Claude cloud session (plan `docs/superpowers/plans/2026-09-24-sprint-12.md`, research/47–61, rulings S12-R1–R25); the local half was the proof, the merge and the close. Carried: the r0004 leg of the proof, the 518 loose rows, the plan's follow-ups, the story's missing days — `docs/CURRENT_SPRINT.md` "Sprint 12 — CLOSED". Next sprint: not yet planned; the owner names it.
+- **2026-09-25 08:40Z -- Sprint 13 ("nothing carried twice") is OPEN on `sprint-13`, off `main` at `74fe2a9b`, and closing tonight.** The plan `docs/superpowers/plans/2026-09-25-sprint-13.md` (its Log) is the live state; `docs/CURRENT_SPRINT.md` "Sprint 13 — OPEN" is the block. What Sprint 12 carried in: the r0004 leg of its proof ran green (`s13_proof_gate_r0004` 3/3 PINS MATCH, `2c873710`); the story's five missing days are written (S13 S4, `d4a8f0ea`). The previous bullet (Sprint 12 CLOSED) is the log's 2026-09-25 (morning) entry below.
 - Older state bullets: the twenty below the one above (2026-09-19 to 2026-09-25 early) became dated
   entries of the log below on 2026-09-25, verbatim, one each (Sprint 13 Task R1, R268). This block has a byte
   ceiling (`tools_py/docmaint.py` `CEILINGS`): when the state changes, replace the bullet above and make the old
@@ -15,6 +15,12 @@
   now points instead of stating.)
 
 
+
+## 2026-09-25 (morning) — the Current state bullet from the Sprint 12 close to Sprint 13's close review
+
+*(Moved here verbatim on 2026-09-25 at the Sprint 13 close review, R268; it stood as the Current state bullet from the Sprint 12 close until then.)*
+
+**2026-09-25 (morning) -- Sprint 12 ("the readable image") is CLOSED: the proof is green and the sprint merges to `main` as `v0.12.0` behind Sprint 11's `v0.11.0`.** The generated image carries 1,771 readable names with a recorded reason each (the sidecar `recomp/socom2_names.csv`; r0004 1,705 rows through `carry_names`), applied by one tool from ten levers whose rules are code, and proven on this machine: recomp 14,882 files with 1,771 renamed and no extent moved, the runtime rebuilt from scratch, both suites green, the r0001 gate `s12_names_gate` 3/3 with PINS MATCH (exe `804dd172…`, at `cb56fc8`). The sprint ran in a Claude cloud session (plan `docs/superpowers/plans/2026-09-24-sprint-12.md`, research/47–61, rulings S12-R1–R25); the local half was the proof, the merge and the close. Carried: the r0004 leg of the proof, the 518 loose rows, the plan's follow-ups, the story's missing days — `docs/CURRENT_SPRINT.md` "Sprint 12 — CLOSED". Next sprint: not yet planned; the owner names it.
 
 ## 2026-09-25 — Sprint 12 closed: the generated image is readable, and two controllers shared one machine for a day
 
