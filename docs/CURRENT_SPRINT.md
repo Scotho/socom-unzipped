@@ -21,8 +21,8 @@ plans:        docs/superpowers/plans/2026-09-25-sprint-13.md (the task table, th
               reports, R265-R268, the owner's sitting O1-O13). The Sprint 12 plan (its rulings S12-R1..R25) and the
               Sprint 11 plan are closed and listed in their blocks below; Sprint 10's and older are in
               docs/archive/CURRENT_SPRINT-sprints-9-to-11.md (the 2026-09-25 split, R268).
-next sprint:  Sprint 14 "guards, not sentences" (docs/superpowers/plans/2026-09-26-sprint-14.md and its spec, opened by
-              its own controller after the merge), then Sprint 15 "borrowed confidence" (Sprint 14 D8). No cloud session
+next sprint:  Sprint 14 "guards, not sentences" (its plan and spec under docs/superpowers/, committed by its own
+              controller's Task 0 after the merge), then Sprint 15 "borrowed confidence" (Sprint 14 D8). No cloud session
               runs from 2026-09-26; the cloud handoff of 2026-09-25 never ran and is kept under a NEVER RUN banner.
               Sprint 12 was "the readable image" (R263, 2026-09-24): it opened with the demo-name rename pass into the function map (R257 + the provenance sidecar R261, a recomp + runtime + r0001 gate), then Task 7c vtable slots through RTTI (the peer's scripts in tools_py/research/symbols/), BinDiff as the cross-check, the ccc types with the layout-age caveat, the toml names into the generated output.
               Sprint 12 ran 2026-09-24/25 in a Claude cloud session on origin/sprint-12 (fifteen research notes,
