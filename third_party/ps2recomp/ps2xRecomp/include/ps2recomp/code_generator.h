@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
 #include "ps2recomp/control_flow_analyzer.h"
@@ -76,6 +77,9 @@ namespace ps2recomp
         bool m_emitInstructionComments = true;
         RecompilerReporter *m_reporter = nullptr;
         std::string m_currentFunctionName;
+        // The generated functions the current function's body calls by name (a direct tail call, a jump-table
+        // case), filled while it is emitted; the per-function file declares exactly these (issue #57).
+        std::set<std::string> m_directCallees;
 
         std::string translateInstruction(const Instruction &inst);
         std::string translateInstruction(const Instruction &inst, const MemoryAccessHint &memoryHint);

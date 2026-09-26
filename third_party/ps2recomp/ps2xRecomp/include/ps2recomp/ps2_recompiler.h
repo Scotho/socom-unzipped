@@ -94,6 +94,10 @@ namespace ps2recomp
         bool generateFunctionHeader();
         bool generateStubHeader();
         bool writeToFile(const std::string &path, const std::string &content);
+        // Issue #57: every file this run produced (written or left alone because its bytes matched), so the
+        // output directory can be pruned of what an earlier run left behind instead of being deleted first.
+        std::unordered_set<std::string> m_producedOutputPaths;
+        void pruneStaleOutput();
         std::filesystem::path getOutputPath(const Function &function) const;
         static std::string clampFilenameLength(const std::string& baseName, const std::string& extension, std::size_t maxLength);
         std::string sanitizeFunctionName(const std::string &name) const;       

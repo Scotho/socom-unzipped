@@ -229,6 +229,7 @@ namespace ps2recomp
             return true;
         }
 
+        m_gen.m_directCallees.insert(functionName);   // the file declares it (issue #57)
         m_ss << indent << functionName << "(rdram, ctx, runtime); return;\n";
         return true;
     }
