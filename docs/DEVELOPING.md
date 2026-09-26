@@ -136,7 +136,7 @@ a rename is accepted only when it prints `S12-R11 … OK` (no extent moved, no f
 ## The `tools_py/` map
 
 Every tracked module under `tools_py/` except the tests, one line each, grouped by what it is for — 165 on
-2026-09-25 after Sprint 13 Task H4, 177 on 2026-09-26 at the Sprint 14 close (`git ls-files 'tools_py/*.py'`, less `tools_py/tests/` and the five package
+2026-09-25 after Sprint 13 Task H4, 177 on 2026-09-26 at the Sprint 14 close, 178 on 2026-09-26 with Sprint 15 T2's `window_drag.py` (`git ls-files 'tools_py/*.py'`, less `tools_py/tests/` and the five package
 `__init__.py` files: hooks, parity, r0004, release, story). The one line is the module's own docstring, shortened; the docstring is the reference. Run a
 module as `python -m tools_py.<name>` (or `tools_py.parity.<name>`, …) from the repository root unless its docstring
 says otherwise.
@@ -289,6 +289,7 @@ vendored runtime when run. `docs/archive/README.md` lists them with what each wa
 | `gate.py` | The three-stage gate (title, transition, mission): PASS/FAIL, stamps under `logs/parity/gate/` |
 | `pins.py` | What a measurement was computed against, and the refusal when it drifted |
 | `frame_time.py` | The mission stage's `FRAME` line: VBlank pacing (host ms per guest VBlank, a lower bound on the time between presents) over the scripted walk, from the `[pc-sampler]` rows (informational, S13-R3). Run it on saved stamps as: `python -m tools_py.parity.frame_time <stamp dir> ...` |
+| `window_drag.py` | Issue #67: a scripted title-bar drag of the game window, and the readout of what the guest clock (`[pc-sampler]` `t=`/`vsync=`) and the `[audio-trace]` counters did through it -- FROZEN / SLOWED / ADVANCING. Run it as: `python -m tools_py.parity.window_drag drag --log <game log> --seconds 10 --stamps <file>`, then `python -m tools_py.parity.window_drag readout <game log> --stamps <file>` |
 | `compare.py` | Score screens against the golden set and write `docs/parity/REPORT.md` |
 | `guest_probe.py` | The gate's guest-value probe against console numbers on disk |
 | `guest_addresses.py` | One home for the guest addresses the instruments read, and the per-revision rule |
