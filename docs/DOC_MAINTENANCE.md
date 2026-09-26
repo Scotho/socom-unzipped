@@ -98,7 +98,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/KNOWN.md` | **L** | every task | Proven vs believed, with the artefact for each. **It wins on any disagreement.** The model this schema is generalised from |
 | `docs/HAZARDS.md` | **L** | every task | The standing hazards by the area each bites -- KNOWN's section 4 until 2026-09-26 (R270, Sprint 14 I5). A hazard is a trap, not a claim; retired in place, never deleted; KNOWN wins on any disagreement |
 | `docs/CURRENT_SPRINT.md` | **L** | controller | The live queue and the road to the next tag |
-| `docs/HANDOFF.md` | **L** | controller | What a new controller reads first. Holds the **ruling counter**, checked mechanically |
+| `docs/HANDOFF.md` | **L** | controller | What a new controller reads first. **Transient since 2026-09-26** (Sprint 14 I3): in flight, owed, the first hour, the rules one line each; rewritten at every handoff under a 6,000-byte whole-file ceiling (check 7). Holds the **ruling counter**, checked mechanically |
 | `docs/HUMAN_TASKS.md` | **L** | controller | The owner's queue |
 | `docs/DEVELOPING.md` | **L** | controller | **Owns the suite counts.** No other registered document may state them |
 | `docs/INSTALL.md` | **L** | controller | The player's setup page. Live because it quotes the launcher's own sentences and describes a download that does not exist yet — the "get the archive" paragraph changes the day the distribution decision is answered |
@@ -123,6 +123,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/archive/ROADMAP-sprint-4-to-sprint-7.md` | **A** | — | Fifteen files cite it; every `ROADMAP.md §N` written before 2026-09-22 means this file |
 | `docs/archive/CURRENT_SPRINT-to-sprint-8.md` | **A** | — | |
 | `docs/archive/LOOP_PROMPT-to-2026-09-26.md` | **A** | — | Cut 2026-09-26 (Sprint 14 I2): `docs/LOOP_PROMPT.md` verbatim before it became a pointer, superseded by the four skills. Every "LOOP_PROMPT step N", "Every iteration" or "Lock protocol" cited before that day means this file |
+| `docs/archive/HANDOFF-to-2026-09-26.md` | **A** | — | Cut 2026-09-26 (Sprint 14 I3): the whole `docs/HANDOFF.md` verbatim before it became transient -- §5's rules with their reasons, §6's traps (now `docs/HAZARDS.md`), §7's instruments (now DEVELOPING). Every HANDOFF section, rule or trap cited before that day means this file |
 | `docs/archive/HANDOFF-loop-history-to-2026-09-25.md` | **A** | — | Cut 2026-09-25 (Sprint 13 Task R1, R268): HANDOFF §2's older pick-up points, §4 and §10, verbatim |
 | `docs/archive/HUMAN_TASKS-to-2026-09-25.md` | **A** | — | Cut 2026-09-25 (Sprint 13 Task R4): the owner's queue before it became one table, verbatim, under a disposition for each of its 87 items. Every HUMAN_TASKS section, item or line cited before that day means this file |
 | `docs/archive/KNOWN-section-4-to-2026-09-26.md` | **A** | — | Cut 2026-09-26 (Sprint 14 Task I5, R270): KNOWN's section 4, the 104 standing hazards, verbatim as they stood at the split. Every "KNOWN §4" written before that day resolves to `docs/HAZARDS.md` by headline, or to this file as it was |
@@ -154,7 +155,8 @@ Sprint 13 Task R3's, all added 2026-09-25):
    specs and plans sat under `docs/superpowers/` for a sprint after they were dead: nobody could move them without
    breaking citations nothing would catch. It found 44 on the tree the day it was written, in fifteen documents.
 7. **Ceilings on the appending documents (R268)** -- `docs/CURRENT_SPRINT.md`, the "## 2." section of
-   `docs/HANDOFF.md`, the "## Current state" block of `docs/STATUS.md` and `docs/HUMAN_TASKS.md` each have a byte
+   `docs/HANDOFF.md` and the whole of it (6,000 bytes, Sprint 14 I3: the file is transient), the "## Current state"
+   block of `docs/STATUS.md` and `docs/HUMAN_TASKS.md` each have a byte
    ceiling (`CEILINGS` in `tools_py/docmaint.py`, counted with LF line ends; the failure prints the measured size). A
    measured heading that has gone fires too, so renaming it cannot switch the ceiling off. *Catches the stack nobody
    retires:* on 2026-09-25 the sprint file was 190 KB with about 12 % of it live, HANDOFF §2 held twelve pick-up
@@ -178,7 +180,7 @@ Sprint 13 Task R3's, all added 2026-09-25):
    or ledger that owns its range. *Catches a decision nobody can find to overturn:* R114, R116 and R124 were cited for
    a week with no findable text; the check also found R112, R113 and R139 in the same state.
 
-**What counts as a definition (checks 9 and 10).** A line in a document where a ruling is *made* -- HANDOFF §5 rule 9:
+**What counts as a definition (checks 9 and 10).** A line in a document where a ruling is *made* -- HANDOFF §4 rule 9:
 a plan's rulings, or `docs/CURRENT_SPRINT.md` when there is no plan, and what `docs/archive/` keeps of both -- in a
 house shape: `- **R107** (Task 1): ...`, `**R181 -- ...**`, `- **R169 — ...`, `1. **R237, ...`, a list
 `- **R265**, **R266** (...)`, or a bold label anywhere on the line, `**R173:**`, `**Ruling R115: ...`, `**R264** (date,

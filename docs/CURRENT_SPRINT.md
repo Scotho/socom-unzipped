@@ -2,7 +2,7 @@
 
 The loop's aim. The `loop-iteration` skill (`.claude/skills/loop-iteration/SKILL.md`) reads this file instead of carrying a sprint pointer of its own; the controller
 updates it when a sprint opens or closes, and whenever the order changes. **If you are a new controller, read
-`docs/HANDOFF.md` first** -- it says where the project is and what the traps are; this file says what to do next.
+`docs/HANDOFF.md` first** -- it says what is in flight and what is owed (the traps are `docs/HAZARDS.md`); this file says what to do next.
 
 **The goal every sprint serves:** SOCOM II running natively on PC with online play, that a stranger runs by pointing the
 launcher at their own r0001 ISO and playing a round against another stranger on a hosted Horizon server -- from a public

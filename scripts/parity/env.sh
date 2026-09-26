@@ -11,7 +11,7 @@
 # address (R175: the runtime resolves the name to the same integer the guest has always been handed).
 # A bare run by a stranger, or by a cloud session, reaches the hosted box and nobody's private network
 # (Sprint 13 Task H6, audit harness-tools H19). A Horizon stack on your own network is one override away;
-# give that machine's LAN address, or the exe advertises 127.0.0.1 as its own (docs/HANDOFF.md):
+# give that machine's LAN address, or the exe advertises 127.0.0.1 as its own (docs/archive/HANDOFF-reference-to-2026-09-13.md):
 #
 #     SOCOM_SERVER_IP=<the Horizon machine's address> bash scripts/parity/online_control_round.sh "foxhunt"
 #

@@ -7,10 +7,10 @@ description: Run a build, a game launch or the three-stage parity gate under the
 
 What a controller runs. The lock's full rules (the queue, the reaper, mixed versions, the rollout of a new lock
 script) are `scripts/loop_lock.sh`'s header; the gate's options are `tools_py/parity/gate.py`'s docstring. Sources:
-the old `docs/LOOP_PROMPT.md` "Lock protocol" (`docs/archive/LOOP_PROMPT-to-2026-09-26.md`), `docs/HANDOFF.md` §5
-rules 5-6 and §7 "Instruments".
+the old `docs/LOOP_PROMPT.md` "Lock protocol" (`docs/archive/LOOP_PROMPT-to-2026-09-26.md`), `docs/HANDOFF.md` §4
+rules 5-6 (their reasons: `docs/archive/HANDOFF-to-2026-09-26.md` §5) and `docs/DEVELOPING.md` "Instruments and diagnostics".
 
-**When the gate is owed** (HANDOFF §5 rule 5): anything touching `third_party/ps2recomp/`, `recomp/`,
+**When the gate is owed** (HANDOFF §4 rule 5): anything touching `third_party/ps2recomp/`, `recomp/`,
 `tools_py/parity/`, `scripts/parity/` or `build.sh` -- `./build.sh test` and the three-stage gate green BEFORE the
 commit, `./build.sh runtime` first when the runtime changed (`build.sh test` does not rebuild `dist/socom2.exe`).
 **One build or launch at a time, host-wide** (rule 6): the owner feels long builds and game runs on this machine;

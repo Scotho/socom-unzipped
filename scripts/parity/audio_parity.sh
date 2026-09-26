@@ -19,7 +19,7 @@
 # recording (scripts/parity/mission_music_long.sh is the caller that sets it; unset, nothing is written).
 set -u
 # Two roots (audio-out fix round 1, I3). The game, its data and the capture directories live in the DATA root
-# (game/, dist/, logs/): the main tree, or SOCOM_DATA_ROOT -- an agent's worktree never holds game/ (HANDOFF). The
+# (game/, dist/, logs/): the main tree, or SOCOM_DATA_ROOT -- an agent's worktree never holds game/ (the agent-worktree skill). The
 # audio tools come from beside this script (TOOLS_ROOT), so a capture run from a worktree exercises the worktree's
 # recorder, monitor and scorers: `python -P` keeps the cwd off sys.path and PYTHONPATH names the tools' tree. The
 # drive and run.sh stay the data root's: they find the game by their own tree.

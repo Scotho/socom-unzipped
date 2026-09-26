@@ -9,7 +9,7 @@
 # compile on every code push (scripts/build_synthetic_runner.sh).
 #
 # What green means: a fresh Windows clone, following only CONTRIBUTING.md, reaches a green C++ and Python suite. It
-# proves nothing about the game -- only the three-stage gate on a rebuilt exe does that (docs/HANDOFF.md §5 rule 4).
+# proves nothing about the game -- only the three-stage gate on a rebuilt exe does that (docs/HANDOFF.md §4 rule 4).
 # Like linux.yml, a cheap first job skips the build when only docs/ moved, and a skipped `build-windows` satisfies the
 # required check. Sprint 13 H1, how to read a run (linux.yml's header has the why): a docs-only push starts no
 # `windows` run at all (`on.push.paths-ignore`); any other push builds, so its `success` means built and tested; a

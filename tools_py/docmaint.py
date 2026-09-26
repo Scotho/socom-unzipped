@@ -96,6 +96,7 @@ ROW = re.compile(r"^\|\s*`([^`]+)`\s*\|\s*\*{0,2}([LGNSCA])\*{0,2}\s*\|")
 CEILINGS = (
     ("docs/CURRENT_SPRINT.md", None, 72000),       # 57,829 after the R1 split
     ("docs/HANDOFF.md", "## 2.", 3800),           # 3,022
+    ("docs/HANDOFF.md", None, 6000),              # Sprint 14 I3: the whole file, transient (was 36,232)
     ("docs/STATUS.md", "## Current state", 2900),  # 2,309
     ("docs/HUMAN_TASKS.md", None, 12230),         # 9,786 after the R4 cut (was 104,000 over 82,968)
 )
@@ -110,7 +111,7 @@ STRUCK = re.compile(r"~~.*?~~")
 # counter (check 2) only proves the NEXT number is free; it never noticed that R107, R109 and R110 had each
 # been issued by two Sprint 8 plans for unrelated decisions, or that R114, R116 and R124 were cited for a
 # week with no findable text (documents audit D55-D56). Both need a definition told apart from a citation.
-# A definition is a line in a place a ruling is MADE (HANDOFF section 5 rule 9: a plan's rulings, or
+# A definition is a line in a place a ruling is MADE (HANDOFF section 4 rule 9: a plan's rulings, or
 # CURRENT_SPRINT when there is no plan, and what docs/archive/ keeps of both) in one of the house shapes:
 #   - **R107** (Task 1): ...      **R181 -- ...**      - **R169 <em dash> ...**      1. **R237, REWRITTEN ...
 #   - **R265**, **R266** (...)    ... **R173:** ...    **Ruling R115: ...**          **R264** (date, who): ...
@@ -223,7 +224,7 @@ def _ruling_key(name):
 
 
 def ruling_definition_sources():
-    """The documents a ruling may be MADE in (HANDOFF section 5 rule 9), as repo-relative posix paths."""
+    """The documents a ruling may be MADE in (HANDOFF section 4 rule 9), as repo-relative posix paths."""
     # Under docs/archive/ only what WAS a plan or the sprint file is a home: the archived sprint-file records
     # (CURRENT_SPRINT-*.md) and the archived plans and specs (sprints-*/). An archived HANDOFF, HUMAN_TASKS or
     # STATUS restates rulings in the house shape and is not where they were made (2026-09-25: the archived

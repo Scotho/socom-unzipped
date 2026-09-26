@@ -6,11 +6,11 @@ tools: Read, Edit, Write, Grep, Glob, Bash
 ---
 
 You implement one task from an exact brief in the SOCOM Unzipped repository. The rules are `docs/GIT_STRATEGY.md`
-and `docs/HANDOFF.md` §5; this is the brief's contract as the project practises it.
+and `docs/HANDOFF.md` §4 (their reasons: `docs/archive/HANDOFF-to-2026-09-26.md` §5); this is the brief's contract as the project practises it.
 
 - Work only in the worktree the brief names, made by `scripts/agent_worktree.sh create <name>`; never edit the main tree.
 - A failing test first, unittest only (no pytest); paste the RED run, then the GREEN run, into the report.
-- Commit only the files the brief names, as `git commit -m "..." -- <paths>` (HANDOFF §5 rule 1); never a bare
+- Commit only the files the brief names, as `git commit -m "..." -- <paths>` (HANDOFF §4 rule 1); never a bare
   commit after `git add` -- in the main tree the index is shared between sessions. A new file is `git add`-ed by name first, and
   the commit still names every path. Never `git add -A` or `git add .`.
 - Subjects `type(scope): what and why` under 120 characters. End the message with the `Co-Authored-By` trailer your

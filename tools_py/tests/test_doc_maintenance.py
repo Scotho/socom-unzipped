@@ -237,7 +237,7 @@ class PlantedDefectsTest(unittest.TestCase):
         self.write("docs/DEVELOPING.md", "# d\n\nTotal Tests: 764\n")
         self.write("docs/HANDOFF.md", "# h\n\n## 2. Where it stands\n\nNext free ruling number: R100\n\n"
                                      "R99 was decided earlier.\n")
-        # ...in a plan, where a ruling is made (HANDOFF section 5 rule 9), so the clean tree cites nothing undefined.
+        # ...in a plan, where a ruling is made (HANDOFF section 4 rule 9), so the clean tree cites nothing undefined.
         self.write("docs/superpowers/plans/2026-01-01-plan.md",
                    "# plan\n\n## Rulings made on the owner's behalf\n\n- **R99** (Task 1): the decision.\n")
         self.registry([("README.md", "L"), ("CONTRIBUTING.md", "C"), ("SECURITY.md", "C"),
@@ -249,8 +249,9 @@ class PlantedDefectsTest(unittest.TestCase):
         docmaint.remote_tags = self._tags
         shutil.rmtree(self._tmp, ignore_errors=True)
 
-    def ceiling(self, path):
-        return [c for c in docmaint.CEILINGS if c[0] == path][0]
+    def ceiling(self, path, whole=False):
+        """The first ceiling on `path` -- or, with whole=True, its whole-file one (HANDOFF has both)."""
+        return [c for c in docmaint.CEILINGS if c[0] == path and (not whole or c[1] is None)][0]
 
     def write(self, rel, text):
         path = os.path.join(self._tmp, rel)
@@ -405,11 +406,33 @@ class PlantedDefectsTest(unittest.TestCase):
                          "## 2. Where it stands\n\n" + "- now\n" * (limit // 6 + 10) + "\n## 3. Next\n\nshort\n")
         self.assertTrue(any(h[0] == path and h[1] == heading for h in docmaint.report()["over_ceiling"]))
 
-    def test_only_handoff_section_2_is_measured(self):
-        """The rest of HANDOFF is reference and may be long; only the pick-up block appends."""
+    def test_handoff_section_2_ceiling_measures_only_section_2(self):
+        """A long section 3 does not fire the section-2 ceiling; the whole-file one (I3) owns the rest."""
         path, heading, limit = self.ceiling("docs/HANDOFF.md")
         self.write(path, "# h\n\nNext free ruling number: R100\n\n## 2. Where it stands\n\n- now\n\n"
-                         "## 3. Next\n\n" + "y" * (limit * 2) + "\n")
+                         "## 3. Next\n\n" + "y" * (limit + 100) + "\n")
+        self.assertEqual(docmaint.report()["over_ceiling"], [])
+
+    # --- Sprint 14 I3: HANDOFF is transient, and the whole file has a ceiling ---------------------------
+
+    def test_a_handoff_one_byte_over_its_whole_file_ceiling_fires(self):
+        """HANDOFF grew to 36 KB doing three jobs (handoff, runbook, postmortem); I3 cut it to the first."""
+        path, heading, limit = self.ceiling("docs/HANDOFF.md", whole=True)
+        self.assertEqual(limit, 6000)
+        head = "# h\n\nNext free ruling number: R100\n\n## 2. Where it stands\n\n- now\n\n## 3. Next\n\n"
+        self.write(path, head + "y" * (limit + 1 - len(head) - 1) + "\n")
+        self.assertEqual(docmaint.block_bytes(path, None), limit + 1)
+        hits = [h for h in docmaint.report()["over_ceiling"] if h[0] == path and h[1] is None]
+        self.assertEqual(len(hits), 1, docmaint.report()["over_ceiling"])
+        self.assertIn("(whole file)", docmaint.describe_ceiling(hits[0]))
+        self.assertIn("6,001", docmaint.describe_ceiling(hits[0]))
+
+    def test_a_handoff_exactly_at_its_whole_file_ceiling_does_not_fire(self):
+        """The negative control: 6,000 bytes is inside the ceiling."""
+        path, heading, limit = self.ceiling("docs/HANDOFF.md", whole=True)
+        head = "# h\n\nNext free ruling number: R100\n\n## 2. Where it stands\n\n- now\n\n## 3. Next\n\n"
+        self.write(path, head + "y" * (limit - len(head) - 1) + "\n")
+        self.assertEqual(docmaint.block_bytes(path, None), limit)
         self.assertEqual(docmaint.report()["over_ceiling"], [])
 
     def test_the_status_state_block_over_its_ceiling_fires(self):
@@ -545,7 +568,7 @@ class PlantedDefectsTest(unittest.TestCase):
         self.assertEqual(docmaint.report()["duplicate_rulings"], [])
 
     def test_a_restatement_outside_the_plans_is_not_a_definition(self):
-        """HANDOFF section 5 rule 9: a ruling is made in a plan, or in CURRENT_SPRINT when there is none."""
+        """HANDOFF section 4 rule 9: a ruling is made in a plan, or in CURRENT_SPRINT when there is none."""
         self.plan("a.md", "- **R90** (Task 1): the decision.\n")
         self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n\n- **R90** the decision, restated.\n")
         self.assertEqual(docmaint.report()["duplicate_rulings"], [])

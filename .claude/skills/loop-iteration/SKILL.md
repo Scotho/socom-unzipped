@@ -6,8 +6,8 @@ description: One firing of the SOCOM Unzipped loop, for whoever is the controlle
 # The loop -- one iteration
 
 This skill carries **no state at all**: no sprint, no goal, no number. State lives in CURRENT_SPRINT, KNOWN, HANDOFF:
-`docs/CURRENT_SPRINT.md` (what to do), `docs/KNOWN.md` (what is true) and `docs/HANDOFF.md` (where things are, the
-rules with their reasons, the traps). If you find yourself writing a fact about the project into this file, it belongs
+`docs/CURRENT_SPRINT.md` (what to do), `docs/KNOWN.md` (what is true) and `docs/HANDOFF.md` (what is in flight and owed,
+the rules one line each; the traps are `docs/HAZARDS.md`). If you find yourself writing a fact about the project into this file, it belongs
 in one of those. Moved from `docs/LOOP_PROMPT.md` on 2026-09-26 (Sprint 14 I2); its old text is
 `docs/archive/LOOP_PROMPT-to-2026-09-26.md`.
 
@@ -29,7 +29,7 @@ suggestions, stop rules and the owner-only list are not.
    A new item that needs more than an hour gets a plan first (`docs/superpowers/plans/`, the existing ones are the
    pattern: handoff notes, global constraints, tasks with RED/GREEN steps and exact commands, rulings).
 3. **Work in bounded steps:** one hypothesis -> a failing test -> the change -> one build -> one run -> read the
-   evidence. Builds and runs go through the lock (the `run-gate` skill; `docs/HANDOFF.md` §5 rule 6),
+   evidence. Builds and runs go through the lock (the `run-gate` skill; `docs/HANDOFF.md` §4 rule 6),
    `scripts/check_quiet_gate.sh` first.
    While one is running, do lock-free work rather than waiting: pure scorers and their tests, reading the decompilation,
    analysis of logs already on disk, documents, the filler list in the sprint file. Never return control to wait on a
@@ -44,7 +44,7 @@ suggestions, stop rules and the owner-only list are not.
    A red step names the merges since the last green chain; eviction is `git revert -m 1 <merge>` on the sprint
    branch, recorded in the Log with the reason, the branch re-queued for its author. Until the template lands,
    every merge is followed by the full Python suite on the sprint branch.
-5. **Commit and push** by `docs/HANDOFF.md` §5 rules 1-4 (explicit pathspec; the never-commit list; your session's own
+5. **Commit and push** by `docs/HANDOFF.md` §4 rules 1-4 (explicit pathspec; the never-commit list; your session's own
    trailer; `git push origin <sprint branch>`; check CI -- `secrets` runs on every push, `linux` and `windows` when
    anything outside `docs/` moved). **The repository is public:** the hooks (`bash scripts/install_hooks.sh`, once
    per clone) run the leak check before the commit and again before the push, and CI runs it over the full history;
@@ -60,7 +60,7 @@ suggestions, stop rules and the owner-only list are not.
    settled row closes it with the artefact, a rewritten row gets a comment; `python -m tools_py.issues audit` exits 0
    before the commit); tick the
    plan's boxes; update the item's row in `docs/CURRENT_SPRINT.md`; a numbered ruling for every moved default or
-   skipped measurement; `docs/HUMAN_TASKS.md` for anything only the owner can verify; `docs/HANDOFF.md` §2 and §8
+   skipped measurement; `docs/HUMAN_TASKS.md` for anything only the owner can verify; `docs/HANDOFF.md` §2, §5 and §6
    when the pick-up point changes (§2's one "now" bullet is replaced, the old one moved to its archive). **A committed
    sentence found false is corrected the same hour, where it is written**, with a `> Superseded by ...` blockquote --
    never queued for a close-out that may not come.

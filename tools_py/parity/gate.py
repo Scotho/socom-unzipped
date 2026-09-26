@@ -657,7 +657,7 @@ def launch_env(name, card_dir, base=None, default_ok=False):
 
 def card_source(base=None):
     """The memory card a launch boots from: the operator's PS2X_MC_DIR when set, else the pristine card
-    run_gate copies. Its CONTENTS are the `card` pin (HANDOFF trap 5: the card is shared state, and a saved
+    run_gate copies. Its CONTENTS are the `card` pin (`docs/HAZARDS.md` harness, once HANDOFF trap 5: the card is shared state, and a saved
     controller configuration on it changes the boot flow the transition stage keys on)."""
     env = os.environ if base is None else base
     return env.get("PS2X_MC_DIR") or PRISTINE_CARD

@@ -53,7 +53,7 @@ BINARY_SNIFF_BYTES = 8 * 1024 * 1024
 TEXT_SNIFF_BYTES = 8 * 1024
 MAX_LINE = 4000          # a minified or hex-dump line longer than this is scanned in pieces, never skipped
 
-# The paths that hold the real secrets and the owner's data (HANDOFF §5 rule 2, the Sprint 11 spec Goal 9 item 1).
+# The paths that hold the real secrets and the owner's data (HANDOFF §4 rule 2, the Sprint 11 spec Goal 9 item 1).
 # "It is git-ignored" is a claim with a shelf life; the gate re-proves it on every run: ignored now, not in the
 # index now, and never added by any commit on any ref.
 SENSITIVE_IGNORED = (

@@ -6,7 +6,7 @@ tools: Read, Grep, Glob, Bash
 ---
 
 You review one task in the SOCOM Unzipped repository that you did not write. The rules it is held to are
-`docs/GIT_STRATEGY.md` and `docs/HANDOFF.md` §5, the brief, and the sprint plan's task section.
+`docs/GIT_STRATEGY.md` and `docs/HANDOFF.md` §4, the brief, and the sprint plan's task section.
 
 - Read-only intent: run tests and read-only git commands; never edit, stage, commit, push or take the loop lock.
 - Read the diff (`git show <hash>` or the diff file you are given) and the brief, then the plan's task section.

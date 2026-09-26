@@ -9,7 +9,7 @@ This file is a map, not the state: nothing here changes weekly; each line points
 
 - `docs/CURRENT_SPRINT.md` -- what to do: the open sprint, its plan and the road to the next tag.
 - `docs/KNOWN.md` -- what is true (proven, believed, retracted) with its artefacts; hazards by area: `docs/HAZARDS.md`.
-- `docs/HANDOFF.md` -- where things are, the standing rules with their reasons, the traps, the ruling counter.
+- `docs/HANDOFF.md` -- the transient handoff: in flight, owed, the rules one line each, the ruling counter.
 - `docs/HUMAN_TASKS.md` -- the owner's rows: what only Craig can do.
 - `docs/DEVELOPING.md` -- the developer reference: build, run, tests, tools, the guards; it owns the suite counts.
 - The open sprint's plan under `docs/superpowers/plans/` (CURRENT_SPRINT names it) -- its `## Log` is the live state.
@@ -20,7 +20,7 @@ Bash rules: the PreToolUse hook `scripts/hooks/claude_pretool.sh` -> `tools_py/h
 `tools_py/tests/test_hooks.py`; every hook is wired in `.claude/settings.json`.
 - Bulk staging: a bare `git add`, `-A`/`--all`, `-u`/`--update`, a whole-tree pathspec (`.`, `-- .`), `git commit -a`
   (`-A`/`-u` limited by `-- <paths>` pass) -- enforced by: the Bash hook; home `docs/GIT_STRATEGY.md` section 3.
-- A commit without `-- <paths>` (allowed mid-merge) -- enforced by: Bash hook; home `docs/HANDOFF.md` section 5 rule 1.
+- A commit without `-- <paths>` (allowed mid-merge) -- enforced by: Bash hook; home `docs/HANDOFF.md` section 4 rule 1.
 - `--no-verify` and its abbreviations from `--no-v` up, commit `-n`, `-c core.hooksPath=` -- enforced by: the Bash
   hook; home `docs/GIT_STRATEGY.md` section 3.
 - A push from a linked worktree; a force push, `+refspec` or delete aimed at `main` or `sprint-*`; `--mirror` --

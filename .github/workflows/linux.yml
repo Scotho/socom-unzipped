@@ -7,7 +7,7 @@
 # compile on every code push (scripts/build_synthetic_runner.sh).
 #
 # What green means: the library, the two suites and the launcher build and pass without the game. It proves
-# nothing about the game -- only the three-stage gate on a rebuilt exe does that (docs/HANDOFF.md §5 rule 4).
+# nothing about the game -- only the three-stage gate on a rebuilt exe does that (docs/HANDOFF.md §4 rule 4).
 #
 # Sprint 10 hardening: a cheap first job decides whether anything outside docs/ changed, and the hour-long build
 # is skipped when not -- a skipped `build` satisfies the required check, which is what lets `build` be required on
