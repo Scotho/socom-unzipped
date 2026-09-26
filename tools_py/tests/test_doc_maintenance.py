@@ -596,5 +596,43 @@ class PlantedDefectsTest(unittest.TestCase):
                       out.getvalue())
 
 
+class ClaudeMdTest(unittest.TestCase):
+    """Sprint 14 I1: the root CLAUDE.md the harness loads into every session. It stays short (a line
+    ceiling), points at the live documents instead of restating them, names the skills Task I2
+    creates (naming them first is the contract), and carries nothing that rots -- no suite count."""
+
+    PATH = os.path.join(docmaint.ROOT, "CLAUDE.md")
+    MAX_LINES = 60
+    NAMES = ("docs/CURRENT_SPRINT.md", "docs/KNOWN.md", "docs/HUMAN_TASKS.md",
+             "loop-iteration", "agent-worktree", "run-gate", "sprint-close")
+
+    def text(self):
+        self.assertTrue(os.path.isfile(self.PATH), "CLAUDE.md is missing at the repository root")
+        with open(self.PATH, encoding="utf-8") as f:
+            return f.read()
+
+    def test_it_exists_and_is_at_most_sixty_lines(self):
+        lines = self.text().splitlines()
+        self.assertLessEqual(len(lines), self.MAX_LINES,
+                             "CLAUDE.md has %d lines; the ceiling is %d -- move detail to docs/DEVELOPING.md"
+                             % (len(lines), self.MAX_LINES))
+
+    def test_it_names_the_live_documents_and_the_skills(self):
+        text = self.text()
+        missing = [n for n in self.NAMES if n not in text]
+        self.assertEqual(missing, [], "CLAUDE.md does not name: %s" % missing)
+
+    def test_it_states_no_suite_count(self):
+        text = self.text()
+        hits = [p.pattern for p in docmaint.COUNT_PATTERNS if p.search(text)]
+        self.assertEqual(hits, [], "CLAUDE.md states a suite count (%s); %s owns them"
+                         % (hits, docmaint.COUNT_OWNER))
+
+    def test_it_is_registered_as_a_contract(self):
+        self.assertIn("CLAUDE.md", docmaint.covered_files())
+        rows = {r["path"]: r["cls"] for r in docmaint.registry()}
+        self.assertEqual(rows.get("CLAUDE.md"), "C", "CLAUDE.md needs a class C row in docs/DOC_MAINTENANCE.md section 3")
+
+
 if __name__ == "__main__":
     unittest.main()
