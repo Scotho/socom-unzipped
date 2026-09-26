@@ -36,6 +36,17 @@
                (a reading with no data -- no [gs-gl stats] line, too few readable captures -- is None, not "stands")
                plus freeze_trace's windows over the pause slice (its `net-park` shape once V7's freeze_trace is in).
 
+  chat         O2's #26 proof (scripts/parity/control_round_chat.sh): A hosts, B joins, A opens the chat box (R1) and
+               types a line (online_match_ours --chat; chat.json holds each exchange's byte marks). Criteria:
+                 lobby        as udp-shift's
+                 keyboard-A   A's log, past the mark: the OSK wrap's `on-screen keyboard open:
+                              purpose="_361_EnterChatMessage_MSG"` line (R1 opened the chat box)
+                 receive-B    B's log, past its mark: `[socom2] chat receive bound: seen=<n>` (NO-DATA when the only
+                              seen line predates the mark: the wrap prints its first call only, so it is unattributable)
+               plus keyboard-B / receive-A when the drive typed back (A->B not seen), and R221's talk-slot reading on
+               each side: the loaded controller configuration's slot bytes for actions 0x0a and 0x0b (0x10 unbound)
+               through guest_addresses' talk_table_ptr, PASS whenever read (a reading, not a proof).
+
 PURE parsers over lines and bytes; `main` does the IO. Every verdict line reads
 `VERDICT <round> <criterion> <PASS|FAIL|NO-DATA|SKIP> -- <detail>` and the last line
 `RESULT <ROUND> <PASS|FAIL|INCOMPLETE> ...` -- for paused-peer `RESULT PAUSED-PEER <CLOSES|RETRACT|BLOCKED|MIXED|NONE>
@@ -44,6 +55,7 @@ PURE parsers over lines and bytes; `main` does the IO. Every verdict line reads
 
 Run: python -m tools_py.parity.control_round_readout udp-shift <round dir>
      python -m tools_py.parity.control_round_readout paused-peer <round dir>
+     python -m tools_py.parity.control_round_readout chat <round dir>
 The round dir's round.txt (KEY=value lines the scripts write) names the logs; flags override it.
 """
 import argparse
@@ -54,6 +66,7 @@ import struct
 import sys
 from collections import namedtuple
 
+from tools_py.parity import guest_addresses as ga
 from tools_py.parity import verdict_core as vc
 
 PASS, FAIL, NO_DATA, SKIP = "PASS", "FAIL", "NO-DATA", "SKIP"
@@ -456,6 +469,161 @@ def paused_peer(window_lines, before_lines=(), after_lines=(), frames=(), before
 
 
 # ------------------------------------------------------------------------------------------------------------------
+# chat (O2)
+# ------------------------------------------------------------------------------------------------------------------
+# R221's peek (research/39 section 2.3): FUN_002c64e0 reads the action -> pad-slot table as
+# `*(byte *)((action & 0xff) + DAT_004415a8 + 0x12)`, and DAT_004415a8 is a POINTER (it is assigned, compared with 0
+# and copied to DAT_004415b0 in the same unit): the talk actions' bytes are at *(ptr) + 0x1c (action 0x0a) and
+# *(ptr) + 0x1d (action 0x0b). R221's pair of addresses added the offsets to the global's own address, which reads
+# the global's neighbours, not the table. The pointer is guest_addresses' `talk_table_ptr` (both columns).
+TALK_TABLE_NAME = "talk_table_ptr"
+TALK_TABLE_WORDS = 12                       # *(ptr) + 0x00..0x2f: the table from +0x12, both talk bytes inside
+TALK_ACTION_OFFSETS = {0x0a: 0x12 + 0x0a, 0x0b: 0x12 + 0x0b}
+SLOT_UNBOUND = 0x10
+PEEK_WORD_RE = re.compile(r"([0-9a-f]{8})\(")
+CHAT_PURPOSE = "_361_EnterChatMessage_MSG"
+OSK_OPEN_RE = re.compile(r'\[socom2\] on-screen keyboard open: purpose="([^"]*)" skb="([^"]*)"')
+CHAT_SEEN_RE = re.compile(r"\[socom2\] chat receive bound: seen=(\d+) fixed=(\d+) skipped=(\d+)")
+
+
+def talk_table_ptr(revision="r0001"):
+    return ga.address(TALK_TABLE_NAME, revision)
+
+
+def chat_peek_items(revision="r0001"):
+    """The PS2X_PEEK items the chat round appends to env.sh's spec (scripts/parity/control_round_chat.sh): the
+    pointer itself and the words it points at."""
+    ptr = talk_table_ptr(revision)
+    return "0x%x:1,*0x%x:%d" % (ptr, ptr, TALK_TABLE_WORDS)
+
+
+def peek_cells(line):
+    """{cell key: [words] | 'unresolved ...'} of one `[peek]` row. A resolved cell's key is the address it read, in
+    the runtime's lower-case hex without the 0x (`@416054:`); an unresolved one keeps its chain as written."""
+    cells = {}
+    if "[peek]" not in line:
+        return cells
+    for part in line.split("[peek]", 1)[1].split(" @")[1:]:
+        key, _, rest = part.partition(":")
+        rest = rest.strip()
+        if rest.startswith("unresolved"):
+            cells[key] = rest
+        else:
+            cells[key] = [int(w, 16) for w in PEEK_WORD_RE.findall(rest)]
+    return cells
+
+
+def _byte(words, off):
+    if off // 4 >= len(words):
+        return None
+    return (words[off // 4] >> (8 * (off % 4))) & 0xff
+
+
+def talk_slot_reading(lines, ptr_addr):
+    """What the peek rows say about the two talk actions' slot bytes: a dict with `rows` (peek rows carrying the
+    pointer's cell), `resolved` (rows where the pointer was non-null and the words it points at were read), `values`
+    ({(pointer, byte for action 0x0a, byte for action 0x0b): rows}) and `first` / `last` of those tuples."""
+    ptr_key = "%x" % ptr_addr
+    out = {"rows": 0, "resolved": 0, "values": {}, "first": None, "last": None}
+    for line in lines:
+        cells = peek_cells(line)
+        if ptr_key not in cells:
+            continue
+        out["rows"] += 1
+        ptr_words = cells[ptr_key]
+        if not isinstance(ptr_words, list) or not ptr_words or ptr_words[0] == 0:
+            continue
+        table = cells.get("%x" % ptr_words[0])
+        if not isinstance(table, list) or len(table) < TALK_TABLE_WORDS:
+            continue
+        t = (ptr_words[0], _byte(table, TALK_ACTION_OFFSETS[0x0a]), _byte(table, TALK_ACTION_OFFSETS[0x0b]))
+        out["resolved"] += 1
+        out["values"][t] = out["values"].get(t, 0) + 1
+        out["first"] = out["first"] or t
+        out["last"] = t
+    return out
+
+
+def slot_word(b):
+    return "unbound (0x10)" if b == SLOT_UNBOUND else "slot 0x%02x" % b
+
+
+def talk_slot_verdict(reading, tag, ptr_addr):
+    """PASS when the table was read at least once: the peek is a reading, not a proof, so either answer passes and
+    the detail carries it (0x10 = unbound, research/39 section 2.3)."""
+    name = "talk-slot-%s" % tag
+    if not reading["rows"]:
+        return v(name, NO_DATA, "no [peek] row carries the %s cell (PS2X_PEEK without it, or no sampler)" % TALK_TABLE_NAME)
+    if not reading["resolved"]:
+        return v(name, NO_DATA, "%d rows, %s null (or its target unread) in every one" % (reading["rows"], TALK_TABLE_NAME))
+    ptr, a, b = reading["last"]
+    distinct = ", ".join("*=0x%x: 0x0a=0x%02x 0x0b=0x%02x x%d" % (p, x, y, n)
+                         for (p, x, y), n in sorted(reading["values"].items()))
+    return v(name, PASS, "last row: %s (0x%x) -> 0x%x, action 0x0a %s, action 0x0b %s; %d of %d rows resolved; "
+             "distinct: %s" % (TALK_TABLE_NAME, ptr_addr, ptr, slot_word(a), slot_word(b), reading["resolved"],
+                               reading["rows"], distinct))
+
+
+def chat_keyboard_verdict(chat, sender_bytes):
+    """The sender's R1 opened the chat keyboard: the OSK wrap's open line with the chat Purpose after the mark (a
+    byte offset of the sender's log)."""
+    mark = int(chat.get("mark") or 0)
+    tail = sender_bytes[mark:].decode("utf-8", errors="replace") if sender_bytes is not None else ""
+    opens = [o for o in OSK_OPEN_RE.findall(tail) if o[0] == CHAT_PURPOSE]
+    tag = "keyboard-%s" % chat.get("sender", "?")
+    if opens:
+        return v(tag, PASS, 'purpose="%s" skb="%s" after byte %d; by=%s closed=%s'
+                 % (opens[0][0], opens[0][1], mark, chat.get("by"), chat.get("closed")))
+    if sender_bytes is None:
+        return v(tag, NO_DATA, "no sender log")
+    return v(tag, FAIL, "no %s open line after byte %d (by=%s: %s)" % (CHAT_PURPOSE, mark, chat.get("by"),
+             "the screen saw a keyboard" if chat.get("by") == "screen" else "nothing opened"))
+
+
+def chat_receive_verdict(chat, receiver_bytes):
+    """The receiver's chat receive wrap printed `seen=` after the sender's press (byte offsets of the receiver's log).
+    A seen line only BEFORE the mark is NO-DATA: the wrap prints its first call and then only changed ones, so a
+    receive that came from someone else first leaves the round's own line unprintable."""
+    mark = int(chat.get("receiver_mark") or 0)
+    tag = "receive-%s" % chat.get("receiver", "?")
+    if receiver_bytes is None:
+        return v(tag, NO_DATA, "no receiver log")
+    seen = [(m.start(), int(m.group(1))) for m in re.finditer(CHAT_SEEN_RE.pattern.encode(), receiver_bytes)]
+    after = [s for s in seen if s[0] >= mark]
+    before = [s for s in seen if s[0] < mark]
+    if after:
+        return v(tag, PASS, "[socom2] chat receive bound: seen=%d at byte %d (mark %d)" % (after[0][1], after[0][0], mark))
+    if before:
+        return v(tag, NO_DATA, "seen=%d printed at byte %d, BEFORE the sender's press (mark %d): not attributable"
+                 % (before[-1][1], before[-1][0], mark))
+    return v(tag, FAIL, "no chat receive bound: seen= line in the receiver's log after byte %d" % mark)
+
+
+def chat_round(chats, logs, drive_text, peek_lines, revision="r0001"):
+    """Verdicts of the chat round. `chats` is chat.json's list (A->B first, B->A only when A->B was not seen);
+    `logs` is {tag: bytes}; `peek_lines` is {tag: lines}. The RESULT is A->B's: lobby, keyboard-A and receive-B."""
+    verdicts, info = [lobby_verdict(drive_text)], []
+    if not chats:
+        verdicts.append(v("keyboard-A", NO_DATA, "no chat.json (the drive never reached the chat step)"))
+    for chat in chats:
+        s, r = chat.get("sender"), chat.get("receiver")
+        s_bytes, r_bytes = logs.get(s), logs.get(r)
+        verdicts.append(chat_keyboard_verdict(chat, s_bytes))
+        verdicts.append(chat_receive_verdict(chat, r_bytes))
+    ptr_addr = talk_table_ptr(revision)
+    for tag in sorted(peek_lines):
+        verdicts.append(talk_slot_verdict(talk_slot_reading(peek_lines[tag], ptr_addr), tag, ptr_addr))
+    for line in RESULT_RE.findall(drive_text or ""):
+        info.append("INFO drive %s" % line.strip())
+    need = [x for x in verdicts if x.name in ("lobby", "keyboard-A", "receive-B")]
+    if len(need) < 3 or any(x.status == NO_DATA for x in need):
+        overall = "INCOMPLETE" if not any(x.status == FAIL for x in need) else FAIL
+    else:
+        overall = PASS if all(x.status == PASS for x in need) else FAIL
+    return verdicts, info, overall
+
+
+# ------------------------------------------------------------------------------------------------------------------
 # IO
 # ------------------------------------------------------------------------------------------------------------------
 def read_round(round_dir):
@@ -504,6 +672,34 @@ def _emit(round_name, verdicts, info, overall, extra="", outcome=None):
     return {PASS: 0, FAIL: 1}.get(overall, 2)
 
 
+def read_bytes(path):
+    if not path or not os.path.isfile(path):
+        return None
+    with open(path, "rb") as f:
+        return f.read()
+
+
+def peek_rows(data):
+    """The `[peek]` lines of a log's bytes."""
+    if data is None:
+        return []
+    return [ln for ln in data.decode("utf-8", errors="replace").splitlines() if "[peek]" in ln]
+
+
+def chat_main(a, meta):
+    chat_path = a.chat or os.path.join(a.round_dir, "chat.json")
+    try:
+        with open(chat_path, encoding="utf-8") as f:
+            chats = json.load(f)
+    except (OSError, ValueError):
+        chats = []
+    logs = {"A": read_bytes(a.a or meta.get("A_LOG")), "B": read_bytes(a.b or meta.get("B_LOG"))}
+    peeks = {tag: peek_rows(data) for tag, data in logs.items() if data is not None}
+    verdicts, info, overall = chat_round(chats, logs, read_text(a.drive or meta.get("DRIVE")), peeks,
+                                         a.revision or meta.get("REVISION") or "r0001")
+    return _emit("chat", verdicts, info, overall)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="the Sprint 13 control rounds' verdict lines")
     sub = ap.add_subparsers(dest="round", required=True)
@@ -516,8 +712,16 @@ def main(argv=None):
     p.add_argument("--a", default=None)
     p.add_argument("--pause", default=None, help="pause.json (default <round_dir>/pause.json)")
     p.add_argument("--before", action="store_true", help="read as the BEFORE run (a pre-V7 exe)")
+    c = sub.add_parser("chat", help="O2's #26 round (and R221's talk-slot peek)")
+    c.add_argument("round_dir")
+    c.add_argument("--chat", default=None, help="chat.json (default <round_dir>/chat.json)")
+    for flag in ("--a", "--b", "--drive"):
+        c.add_argument(flag, default=None)
+    c.add_argument("--revision", default=None, help="the image's revision (default round.txt's REVISION, else r0001)")
     a = ap.parse_args(argv)
     meta = read_round(a.round_dir)
+    if a.round == "chat":
+        return chat_main(a, meta)
     if a.round == "udp-shift":
         dme = a.dme or meta.get("DME_LOG") or os.path.join(a.round_dir, "server-dme.log")
         r0004 = a.r0004 or meta.get("R0004_LOG")

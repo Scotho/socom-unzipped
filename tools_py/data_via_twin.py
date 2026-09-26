@@ -246,7 +246,9 @@ COLUMN = (("camera_record", 0x00416054, 0x00442A14, "twin"),
           ("music_globals", 0x0048E080, 0x00491440, "twin"),
           ("music_off", 0x003E0080, 0x0040B250, "twin"),
           ("music_tables", 0x0048E010, 0x004913D0, "twin"),
-          ("camera_ptr", 0x00488DE8, 0x0048C1B8, "twin"))
+          ("camera_ptr", 0x00488DE8, 0x0048C1B8, "twin"),
+          # Sprint 13 Task O2: R221's talk-slot table pointer (the loaded controller configuration).
+          ("talk_table_ptr", 0x004415A8, 0x0044DFC8, "twin"))
 
 
 # ---------------------------------------------------------------------------

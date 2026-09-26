@@ -4447,6 +4447,36 @@ def endgame_cooperative(sides, duel, watch, log, map_name=None, route=None, figh
     return out
 
 
+# Sprint 13 O2 (#26): how long the receiver's log is watched for the chat receive wrap's line after the sender's
+# ENTER. The line is Medius's ChatFwd through the hosted box: a round trip, well under a second on a quiet night.
+CHAT_RECEIVE_WAIT_S = 30.0
+
+
+def chat_exchange(sender, receiver, text, wait_s=CHAT_RECEIVE_WAIT_S, clock=time.time, sleep=time.sleep):
+    """`sender` opens the chat box (R1) and types `text`; `receiver`'s run log is then watched for the chat receive
+    wrap's `seen=` line past the mark taken before the press. Returns the record chat.json keeps: the chat_line
+    dict plus the receiver's mark, the seen lines before it (a pre-existing seen=1 means a later receive prints
+    nothing, so the round could not attribute one -- the record says so) and the first one after it."""
+    r_mark = L.log_size(receiver.run_log)
+    pre = L.chat_seen_lines(L.read_log_bytes(receiver.run_log, 0)[:r_mark])
+    rec = L.chat_line(sender.sh, text, run_log=sender.run_log)
+    rec.update(sender=sender.tag, receiver=receiver.tag, receiver_mark=r_mark, receiver_pre=pre, receiver_seen=None,
+               sender_log=sender.run_log, receiver_log=receiver.run_log)
+    t0 = clock()
+    while rec["opened"] and clock() - t0 < wait_s:
+        seen = L.chat_seen_lines(L.read_log_bytes(receiver.run_log, r_mark), base=r_mark)
+        if seen:
+            rec["receiver_seen"] = seen[0]
+            break
+        sleep(1.0)
+    got = rec["receiver_seen"]
+    sender.sh.log(f"CHAT {sender.tag}->{receiver.tag} opened={rec['opened']} by={rec['by']} closed={rec['closed']} "
+                  f"receiver_seen={'seen=%d at byte %d' % (got[1], got[0]) if got else 'none'}"
+                  f"{' (the receiver had already printed seen=%d before the mark)' % pre[-1][1] if pre else ''}")
+    receiver.sh.shot(f"chat_{sender.tag}_to_{receiver.tag}")
+    return rec
+
+
 # Both personas' password. It was a bare "socom" literal inside Client.login; --prefilled needs the same
 # value to build the game's environment with, and two copies of a password is how they drift.
 LOGIN_PASSWORD = "socom"
@@ -4508,6 +4538,9 @@ def main():
                     help="export each persona and the password to its game and ENTER the prefilled "
                          "keyboards instead of typing them")
     ap.add_argument("--only", default="", help="A or B: run one instance's login only (setup check)")
+    ap.add_argument("--chat", default="", help="after B joins: A opens the chat box (R1) and types this line; B's log "
+                                               "is watched for the chat receive wrap (Sprint 13 O2, #26; needs --prefilled "
+                                               "for the keyboard's read-back)")
     ap.add_argument("--foreign-b", action="store_true",
                     help="Sprint 6 Task 7: A hosts and waits for a joiner the harness does not drive (a PCSX2 client "
                          "played by tools_py.parity.pcsx2_ctl), readies, holds, then walks --play bursts")
@@ -4760,6 +4793,15 @@ def main():
                 raise c.error
         L.host_game(A.sh, game_map=a.map)
         L.join_game(B.sh, switch=a.same_team and not a.host_switch)   # the joiner is auto-assigned to the other team
+        if a.chat:
+            # Sprint 13 O2 (#26): A hosts, B joins, A types -- #26's sequencing. B's log must carry the chat receive
+            # wrap's line. Only when it does not, B types back: which direction (if any) the line crosses is the
+            # finding a failed round is worth.
+            chats = [chat_exchange(A, B, a.chat)]
+            if not chats[0]["receiver_seen"]:
+                chats.append(chat_exchange(B, A, a.chat))
+            with open(os.path.join(a.out, "chat.json"), "w") as fh:
+                json.dump(chats, fh, indent=1, default=str)
         if a.host_switch:
             A.sh.log(f"teams before host switch {L.lobby_teams(A.sh)}")
             L.lobby_select(A.sh, 1, "SWITCH TEAMS")

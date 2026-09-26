@@ -1512,6 +1512,129 @@ def glyph_run_count(gray, box, ink_min=OSK_INK_MIN):
     return count
 
 
+# ---------------------------------------------------------------------------
+# Sprint 13 O2 (#26): the chat step.
+# ---------------------------------------------------------------------------
+# The chat box is opened by R1. Both rooms say so on screen: the BRIEFING ROOM's button bar reads "R1 TEXT CHAT"
+# (s11_chat_A/11_briefing_room.png) and the GAME LOBBY's chat panel "R1 Text chat.  L1 and L2 to scroll chat"
+# (s11_chat_A/17_game_lobby_ok.png) -- the disc's _518_TextChat_MSG and _343_TextChat_MSG. chain7's `type:hello`
+# (R246) waited for a keyboard nothing had opened, and its recovery pressed CROSS and TRIANGLE+CROSS, never R1.
+# R1 is a Full-scope key of the host keyboard (socom2_host_input.cpp, Q3): a PS2X_DEV launch -- every harness
+# launch -- posts it as 'E'.
+#
+# The keyboard R1 opens is the UI's GetTextInput with Purpose _361_EnterChatMessage_MSG ("Enter a Chat Message") on
+# PlayerChatSkb in the game lobby or ChatSkb in the briefing room (the disc's compiled UI scripts; research/66). Its
+# background is not the login keyboards' (SKB_English_Set*.tif), so the screen references the login measured
+# (OSK_ACCENT_BOX) are not trusted to see it: the step's read-back is the runtime's OSK wrap, which prints one
+# `[socom2] on-screen keyboard open: purpose="..." skb="..."` line per open once --prefilled has armed it.
+CHAT_PURPOSE = "_361_EnterChatMessage_MSG"
+CHAT_OPEN_BUTTON = "r1"
+CHAT_OPEN_TIMEOUT_S = 12.0
+CHAT_OPEN_PRESSES = 2
+OSK_OPEN_LINE_RE = re.compile(r'\[socom2\] on-screen keyboard open: purpose="([^"]*)" skb="([^"]*)"')
+# The chat receive wrap's line (game_overrides_socom2.cpp BoundWrapLog::note): the first call always prints, later
+# ones only when they changed a field -- so `seen=1` is the first forwarded line the client took, and a second
+# plain one prints nothing.
+CHAT_SEEN_RE = re.compile(r"\[socom2\] chat receive bound: seen=(\d+) fixed=(\d+) skipped=(\d+)")
+CHAT_SEEN_BYTES_RE = re.compile(CHAT_SEEN_RE.pattern.encode("ascii"))
+CHAT_ROOM_TITLES = ("game_lobby", "briefing_room")
+
+
+def osk_opens(text):
+    """[(purpose, skb)] of every keyboard the OSK wrap reported opening in `text`, in order."""
+    return OSK_OPEN_LINE_RE.findall(text or "")
+
+
+def chat_seen_lines(text, base=0):
+    """[(byte offset, seen, fixed, skipped)] of the chat receive wrap's count lines in `text` (a log read from byte
+    `base` on; offsets are the log's, so a line can be placed before or after a mark)."""
+    raw = text if isinstance(text, bytes) else (text or "").encode("utf-8", errors="replace")
+    return [(base + m.start(), int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            for m in CHAT_SEEN_BYTES_RE.finditer(raw)]
+
+
+def log_size(path):
+    """Bytes in `path` now (0 when it does not exist yet): the mark a later read starts from."""
+    try:
+        return os.path.getsize(path) if path else 0
+    except OSError:
+        return 0
+
+
+def read_log_bytes(path, offset):
+    """The bytes of `path` from byte `offset` (b'' when unreadable)."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(offset)
+            return f.read()
+    except (OSError, TypeError):
+        return b""
+
+
+def read_log_from(path, offset):
+    """The text of `path` from byte `offset` ('' when unreadable)."""
+    return read_log_bytes(path, offset).decode("utf-8", errors="replace")
+
+
+def chat_room_title(sh):
+    """Which chat room's title the frame shows ('game_lobby' / 'briefing_room'), or None -- the keyboard covers it."""
+    gray = lobby_gray(sh)
+    for name in CHAT_ROOM_TITLES:
+        if lobby_title_is(gray, name):
+            return name
+    return None
+
+
+def chat_line(sh, text, run_log=None, open_timeout=CHAT_OPEN_TIMEOUT_S, presses=CHAT_OPEN_PRESSES):
+    """Open the chat box with R1 in the room on screen, type `text` on its keyboard and ENTER it.
+
+    Returns a dict: opened (bool), by ('log' | 'screen' | None), skb, room (the title before the press), closed (the
+    room's title read back after ENTER), mark (the run log's size before the press). Never raises for the chat
+    itself -- a keyboard that does not open is the finding, logged as `CHAT keyboard not opened`, and the round goes
+    on to the peek. The typing is the login's dead-reckoned pad walk from OSK_START at the slow pacing (two instances
+    on one host), then one ENTER re-press if the room has not come back."""
+    rec = {"text": text, "opened": False, "by": None, "skb": None, "closed": False, "mark": log_size(run_log)}
+    rec["room"] = chat_room_title(sh)
+    sh.shot("chat_00_before")
+    sh.log(f"CHAT open: {CHAT_OPEN_BUTTON.upper()} in the {rec['room'] or 'unrecognised room'} "
+           f"(run log mark {rec['mark']})")
+    for attempt in range(1, presses + 1):
+        sh.press(CHAT_OPEN_BUTTON, 1.0)
+        t = time.time()
+        while time.time() - t < open_timeout:
+            chats = [o for o in osk_opens(read_log_from(run_log, rec["mark"])) if o[0] == CHAT_PURPOSE] if run_log else []
+            if chats:
+                rec.update(opened=True, by="log", skb=chats[-1][1])
+                break
+            if sh.osk_open():
+                rec.update(opened=True, by="screen")
+                break
+            time.sleep(0.5)
+        if rec["opened"]:
+            break
+        sh.log(f"CHAT keyboard not up after {CHAT_OPEN_BUTTON.upper()} press {attempt} ({open_timeout:.0f}s)")
+    sh.shot("chat_01_open")
+    if not rec["opened"]:
+        sh.log(f"CHAT keyboard not opened after {presses} {CHAT_OPEN_BUTTON.upper()} presses "
+               f"(no {CHAT_PURPOSE} open line, accent-box distance {sh.osk_refs()})")
+        return rec
+    sh.log(f"CHAT keyboard open by {rec['by']} (skb {rec['skb']}, accent-box distance {sh.osk_refs()})")
+    if sh.osk_open():
+        sh.osk_normal_mode()                         # the login's references see this keyboard: read its mode back
+    cur = sh.osk_type_pad(text, shots=sh.out, tag=f"{sh.tag}chat", enter=True, slow=True)
+    time.sleep(OSK_ENTER_SETTLE_S)
+    sh.shot("chat_02_entered")
+    rec["closed"] = chat_room_title(sh) is not None
+    if not rec["closed"]:
+        sh.log("CHAT the room is not back after ENTER -> one ENTER re-press")
+        sh.osk_press_key(cur, "ENTER")
+        time.sleep(OSK_ENTER_SETTLE_S)
+        sh.shot("chat_03_reenter")
+        rec["closed"] = chat_room_title(sh) is not None
+    sh.log(f"CHAT typed {text!r}: keyboard {'closed' if rec['closed'] else 'STILL UP'}")
+    return rec
+
+
 def attach(proc, title, out, tag="", pad_file=None):
     """Find the instance's window (by title substring) and wait for its first frame."""
     t0 = time.time()
@@ -2532,7 +2655,8 @@ def main():
     ap.add_argument("--no-refresh", dest="refresh", action="store_false",
                     help="with --join: do NOT press REFRESH LIST before JOIN GAME (the pre-R240 path)")
     ap.add_argument("--instance", default="", help="A or B: window title, memory card dir and UDP ports of that instance")
-    ap.add_argument("--then", default="", help="extra presses after the lobby, e.g. cross:3,type:test")
+    ap.add_argument("--then", default="", help="extra presses after the lobby, e.g. cross:3,type:test; chat:<text> "
+                                               "opens the chat box with R1 and types <text> (Sprint 13 O2)")
     # Sprint 10 Goal 9: the name and password reach the game as the launcher's ONLINE fields would (PS2X_SOCOM2_LOGIN_NAME
     # / _PASS), its keyboards open already holding them, and the login presses ENTER on each instead of typing.
     ap.add_argument("--prefilled", action="store_true",
@@ -2592,6 +2716,9 @@ def main():
             if b == "type":
                 sh.type(w)
                 sh.shot(f"20_then_{n:02d}_typed")
+                continue
+            if b == "chat":                                  # Sprint 13 O2: R1 opens the chat box, then type:<w>
+                chat_line(sh, w, run_log=os.environ.get("PS2X_RUN_LOG"))
                 continue
             sh.press(b, float(w))
             sh.shot(f"20_then_{n:02d}_{b}")

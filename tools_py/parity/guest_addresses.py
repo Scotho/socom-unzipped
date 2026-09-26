@@ -212,6 +212,11 @@ REVISIONS = tuple(sorted({r for table in (PROBE_ADDRESSES, ONLINE_ADDRESSES, TRA
 #                                             cam_poll's default spec reads 96 words from +0x120 of the
 #                                             object it points at: that is a WINDOW, not one field, and
 #                                             the camera object's layout on r0004 is not established.
+#   talk_table_ptr    0x4415a8 -> 0x0044dfc8  16 sites, 15 twinned in 13 functions, unanimous (Sprint 13 O2).
+#                                             A POINTER to the loaded controller configuration: FUN_002c64e0
+#                                             reads the action -> pad-slot byte at *(ptr) + 0x12 + action
+#                                             (research/39 section 2.3; R221's talk-slot peek). The chat
+#                                             round peeks it and the 12 words it points at.
 #
 # ... and the ones it CANNOT place, whose r0004 cell is absent (UNPLACED):
 #
@@ -240,6 +245,7 @@ INSTRUMENT_ADDRESSES = {
     "motion_pack_ptr": {"r0001": 0x00415E08},
     "motion_pack_size": {"r0001": 0x00415E0C},
     "camera_ptr": {"r0001": 0x00488DE8, "r0004": 0x0048C1B8},
+    "talk_table_ptr": {"r0001": 0x004415A8, "r0004": 0x0044DFC8},
     "valve_name.mp_round_count": {"r0001": 0x006B7F30},
     "valve_name.mp_game_over": {"r0001": 0x006B7F20},
     "valve_name.player_team": {"r0001": 0x006CC9FC},
