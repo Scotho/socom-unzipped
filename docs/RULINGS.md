@@ -2,16 +2,17 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.rulings` from the ruling records `tools_py/docmaint.py` reads for checks 9 and 10 (`ruling_records()`: the definitions in the plans, the sprint file and `docs/archive/`, the ledger rows and the vacancy notes), plus the sprint-local `S12-R<n>` and `S13-R<n>` definitions in the same documents. Change the source and regenerate; `python -m tools_py.rulings --check` exits 1 when this file is stale. The status rules are the module's docstring; the conventions are `docs/DOC_MAINTENANCE.md` section 4.
 
-312 rulings (273 global, 39 sprint-local): 306 active, 3 superseded, 1 retracted, 1 withdrawn, 1 vacant.
+313 rulings (274 global, 39 sprint-local): 307 active, 3 superseded, 1 retracted, 1 withdrawn, 1 vacant.
 
 *Home* is where the ruling is written: its definition, else its ledger row, else its vacancy note. *The line* is its first sentence, cut at 160 characters.
 
 ## Global (R<n>), newest first
 
-273 rulings.
+274 rulings.
 
 | Number | Date | Status | The line | Home |
 |---|---|---|---|---|
+| R279 | 2026-09-26 | active | the open plan's ceiling is one number in `CEILINGS` like the others: ratcheted at each close from the closing plan's size (before CURRENT_SPRINT's `plans:` lin… | `docs/superpowers/plans/2026-09-26-sprint-14.md` **R279** |
 | R278 | 2026-09-26 | active | while the lock is held or queued by other sessions' builders, lock-free tasks from Milestones D, S and M may run ahead of Milestone W; W's tasks start at the f… | `docs/superpowers/plans/2026-09-26-sprint-14.md` **R278** |
 | R277 | 2026-09-26 | active | the private location that served the owner's ELF dumps to cloud sessions has no consumer and is the owner's to retire or rotate (HUMAN_TASKS row O18); the fetc… | `docs/superpowers/plans/2026-09-26-sprint-14.md` **R277** |
 | R276 | 2026-09-26 | active | Sprint 15 is "borrowed confidence", opened from the confidence register at this sprint's close, its pair proposed beside this one (… | `docs/superpowers/plans/2026-09-26-sprint-14.md` **R276** |
