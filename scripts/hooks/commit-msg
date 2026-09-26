@@ -1,5 +1,5 @@
 #!/bin/sh
-# The subject cap: a commit whose subject (its first line) is over 120 characters is refused -- the subject says
+# The subject cap: a commit whose subject (git's first paragraph) is over 120 characters is refused -- the subject says
 # what changed, the finding goes in the body (Sprint 14 S2; the rule's home is docs/GIT_STRATEGY.md section 3).
 # git passes the message file as $1. The policy and its exemptions (a default merge or revert subject with a body,
 # fixup!/squash! wrapping) are tools_py/hooks/commitmsg.py. Installed by scripts/install_hooks.sh

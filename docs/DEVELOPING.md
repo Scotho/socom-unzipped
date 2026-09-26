@@ -991,9 +991,9 @@ something is actually running. An edit through Bash (`sed -i`, a heredoc) is not
   `git merge` or `git cherry-pick` of a commit that changes the script land it without a commit naming it.
 
 The subject cap (Sprint 14 S2): git's `commit-msg` hook, `scripts/hooks/commit-msg` (-> `tools_py/hooks/commitmsg.py`,
-live in every clone that ran `scripts/install_hooks.sh`), refuses a subject over 120 characters with one sentence (a
-default merge or revert subject with a body is exempt; `fixup!`/`squash!` judge the subject they wrap); test
-`CommitMsgTest` and `CommitMsgWiringTest` in `tools_py/tests/test_hooks.py`; home `docs/GIT_STRATEGY.md` section 3.
+live in every clone that ran `scripts/install_hooks.sh`), refuses a subject (git's first paragraph, joined as `%s`
+shows it) over 120 characters with one sentence (a default merge, revert or reapply subject with a body is exempt;
+`fixup!`/`squash!` judge the subject they wrap); test `CommitMsgTest` and `CommitMsgWiringTest` in `tools_py/tests/test_hooks.py`; home `docs/GIT_STRATEGY.md` section 3.
 
 The reaper (Sprint 14 G3): at `SessionEnd` and every `Stop`, `scripts/hooks/claude_session_end.sh` runs
 `python -m tools_py.hooks.reap`, which `kill -9`s every orphaned watcher -- an MSYS `tail`, `grep`, `sleep` or

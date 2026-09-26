@@ -635,6 +635,41 @@ class CommitMsgTest(unittest.TestCase):
     def test_leading_comments_and_blank_lines_are_skipped(self):
         self.assertEqual(commitmsg.check("# c\n\n" + self.subject(121) + "\n")[0], 1)
 
+    def test_the_subject_is_the_first_paragraph(self):
+        # git's subject (%s, --oneline, GitHub) is the lines up to the first blank line, joined with spaces
+        code, why = commitmsg.check("a" * 100 + "\n" + "b" * 100 + "\n\nbody\n")
+        self.assertEqual(code, 1)
+        self.assertIn("subject over 120 chars (201)", why)
+        self.assertEqual(commitmsg.check("c" * 120 + "\n"), (0, ""))
+        self.assertEqual(commitmsg.check("a" * 60 + "\n" + "b" * 59 + "\n\nbody\n"), (0, ""))   # 60 + 1 + 59
+
+    def test_reapply_default_with_a_body_passes(self):
+        r = ('Reapply "' + "r" * 130)[:129] + '"'
+        self.assertEqual(commitmsg.check(r + "\n\nThis reverts commit 0123456789abcdef.\n")[0], 0)
+        self.assertEqual(commitmsg.check(r + "\n")[0], 1)
+
+    def test_a_bom_is_not_a_character(self):
+        import contextlib
+        import io
+        with tempfile.NamedTemporaryFile("wb", suffix=".msg", delete=False) as f:
+            f.write(b"\xef\xbb\xbf" + b"d" * 120 + b"\n")
+        try:
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                code = commitmsg.main(["commitmsg", f.name])
+        finally:
+            os.unlink(f.name)
+        self.assertEqual(code, 0, err.getvalue())
+
+    def test_a_trailer_block_needs_a_known_trailer(self):
+        merge = ("Merge branch '" + "b" * 130)[:130]
+        # a last paragraph shaped like `Token: value` but naming no known trailer is a body
+        self.assertEqual(commitmsg.check(merge + "\n\nNote: the finding\n")[0], 0)
+        # every line token-shaped and one of them known: a trailer block, not a body
+        self.assertEqual(commitmsg.check(merge + "\n\nNote: x\nSigned-off-by: A <a@b>\n")[0], 1)
+        # a line that is not token-shaped makes the paragraph a body
+        self.assertEqual(commitmsg.check(merge + "\n\nCo-Authored-By: A <a@b>\nand a sentence\n")[0], 0)
+
     def test_main_on_a_broken_input_passes_and_says_so(self):
         import contextlib
         import io

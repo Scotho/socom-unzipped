@@ -93,7 +93,7 @@ review is not closed.**
   anything under `game/`, `tools/`, `logs/`, `vm/`, any key, token, or address of a machine that is not the public
   server's.
 - **Subject:** `type(scope): what changed and why it mattered` -- types `feat`, `fix`, `refactor`, `test`, `docs`,
-  `build`, `ci`, `chore`. The subject stays at or under 120 characters -- the `commit-msg` hook
+  `build`, `ci`, `chore`. The subject (git's first paragraph) stays at or under 120 characters -- the `commit-msg` hook
   (`scripts/hooks/commit-msg`) refuses longer; the finding goes in the body (a default `Merge branch '...'` or
   `Revert "..."` subject with a body is exempt). Name the sprint goal/task and any ruling (`R170`) in the subject or
   body.
