@@ -39,6 +39,7 @@ online server is Horizon Private Server configured for SOCOM II under `server/`.
 | `tools/` (ignored) | Portable toolchain: llvm-mingw clang, CMake, Ninja, Ghidra 12.1 + EE extension, PCSX2 2.8.1 (+BIOS) |
 | `ghidra_proj/` (ignored) | Ghidra project `socom` (programs: SCUS_972.75, DNAS.BIN/.dec.bin, socom2_game.elf, 989SND.IRX) |
 | `dist/` (ignored) | `socom2.exe` + DLLs |
+| `web/` | **The browser map viewer** — a separate project that happens to live here: its own npm workspace, tests, README and CI (`web.yml`). It reads the disc's map archives directly and needs nothing from the recompilation; the recompilation needs nothing from it. Its design docs are in `web/docs/`. Working on the recomp? Skip it. |
 
 ## Run it (players)
 `scripts/make_portable.sh` builds `dist/portable/socom2/` (and a zip) from a finished build: the game, its DLLs, the

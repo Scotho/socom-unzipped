@@ -5,7 +5,8 @@
   "license": "GPL-3.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Scotho/socom-unzipped-map-viewer.git"
+    "url": "https://github.com/Scotho/socom-unzipped.git",
+    "directory": "web"
   },
   "homepage": "https://s2u.scotho.com/map-viewer/",
   "private": true,

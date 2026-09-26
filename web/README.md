@@ -6,21 +6,21 @@ fog, collision — and drawn again with three.js as close to the console's own p
 allows, without emulating the game. Nothing is pre-baked and no asset is committed; **you supply your
 own disc**. It runs at [s2u.scotho.com/map-viewer](https://s2u.scotho.com/map-viewer/).
 
-It is a spin-off of [**SOCOM Unzipped**](https://github.com/Scotho/socom-unzipped), the static
-recompilation of the game for PC. This repository is the `web/` tree of that project on its own: the
-viewer stands alone, builds alone, and deploys as a static site, and the research it stands on lives
-in the parent project (see [What you need from SOCOM Unzipped](#what-you-need-from-socom-unzipped)).
+It is a spin-off of [**SOCOM Unzipped**](../README.md), the static recompilation of the game for PC,
+and lives in that repository's `web/` directory as **a separate project**: its own npm workspace,
+tests, docs and CI, building alone and deploying as a static site. It needs nothing from the
+recompilation and the recompilation needs nothing from it (see
+[What the viewer takes from the rest of the repository](#what-the-viewer-takes-from-the-rest-of-the-repository)).
+An agent working on the recomp can skip this directory entirely.
 
 **Start here if you are a new agent or contributor:** the design and the findings recorded as the
-viewer was built are in the parent project's
-[`docs/superpowers/specs/2026-09-20-web-map-viewer-design.md`](https://github.com/Scotho/socom-unzipped/blob/main/docs/superpowers/specs/2026-09-20-web-map-viewer-design.md)
-and
-[`2026-09-26-web-map-viewer-polish-design.md`](https://github.com/Scotho/socom-unzipped/blob/main/docs/superpowers/specs/2026-09-26-web-map-viewer-polish-design.md);
-the byte-level format authority is
-[`docs/research/36-mp-map-archive-anatomy.md`](https://github.com/Scotho/socom-unzipped/blob/main/docs/research/36-mp-map-archive-anatomy.md),
-and the meaning of every vertex lane is [`packages/mesh/SEMANTICS.md`](packages/mesh/SEMANTICS.md), here.
-Comments in the code cite `docs/research/NN` and `FUN_00xxxxxx` decompilation addresses: those are the
-parent project's research notes and its Ghidra function names.
+viewer was built are in [`docs/specs/2026-09-20-web-map-viewer-design.md`](docs/specs/2026-09-20-web-map-viewer-design.md)
+and [`docs/specs/2026-09-26-web-map-viewer-polish-design.md`](docs/specs/2026-09-26-web-map-viewer-polish-design.md)
+(the plan beside them in `docs/plans/`); the byte-level format authority is the repository's
+[`docs/research/36-mp-map-archive-anatomy.md`](../docs/research/36-mp-map-archive-anatomy.md), and the
+meaning of every vertex lane is [`packages/mesh/SEMANTICS.md`](packages/mesh/SEMANTICS.md). Comments in
+the code cite `docs/research/NN` and `FUN_00xxxxxx` decompilation addresses: the repository's research
+notes and its Ghidra function names.
 
 ## How it works (one paragraph)
 
@@ -43,28 +43,27 @@ brighten, blend) in the order the engine drew them, and puts a fly camera in fro
   SCUS-97275). The viewer needs only those 22 archives, about 224 MB. See the next section for where
   to get them.
 
-### What you need from SOCOM Unzipped
+### What the viewer takes from the rest of the repository
 
-The viewer needs **no recompiled game, no toolchain and no emulator** — nothing from the parent
-project's build. What it takes from SOCOM Unzipped is:
+The viewer needs **no recompiled game, no toolchain and no emulator** — nothing from the
+recompilation's build (`build.sh`, `recomp/`, `third_party/`, `tools/`). What it does take:
 
-1. **The disc tree.** SOCOM Unzipped's launcher and tooling read the game out of your own ISO into a
-   `game/disc/` directory ([its README](https://github.com/Scotho/socom-unzipped#readme), "The user
-   supplies their own disc image"); `tools/extract-maps.ts` defaults to that location. You do not have
-   to go through the recompilation to get one: mounting the ISO (double-click on Windows, `hdiutil`
-   on a Mac, `mount -o loop` on Linux) gives you the same `RUN/` directory, and that is all the
-   extractor reads.
-2. **The research.** The format is documented in the parent project's `docs/research/` — `36` for
-   the archives, `13` for the VU1 world-object program the vertex decode mirrors, `31` for the
-   brighten and the blend equations, `26` for the GS state — and the design specs above. The code
-   here cites them by number; they are not copied into this repository.
-3. **reCOM**, the open-source re-implementation of the engine SOCOM Unzipped vendors under `recom/`,
-   which is where the engine's draw order (`zRender/zrndr_pipe.cpp`) and the scene-graph hookup
+1. **The disc tree.** The recompilation's launcher and tooling read the game out of your own ISO into
+   `game/disc/` ([the root README](../README.md), "The user supplies their own disc image");
+   `tools/extract-maps.ts` defaults to that location. You do not have to go through the
+   recompilation to get one: mounting the ISO (double-click on Windows, `hdiutil` on a Mac,
+   `mount -o loop` on Linux) gives you the same `RUN/` directory, and that is all the extractor reads.
+2. **The research.** The format is documented in [`docs/research/`](../docs/research/) — `36` for the
+   archives, `13` for the VU1 world-object program the vertex decode mirrors, `31` for the brighten
+   and the blend equations, `26` for the GS state — and the design specs in `web/docs/`. The code
+   cites the notes by number.
+3. **reCOM**, the open-source re-implementation of the engine vendored under `recom/`, which is where
+   the engine's draw order (`zRender/zrndr_pipe.cpp`) and the scene-graph hookup
    (`zVisual/vis_main.cpp`) were read.
 
 ### Commands
 
-Run from the repository root:
+Run from `web/`:
 
 | command | what it does |
 |---|---|
@@ -87,6 +86,8 @@ where you are entitled to.
 
 ## Layout
 
+Everything below is relative to `web/`.
+
 | Path | What |
 |---|---|
 | `packages/archive` | ZDB table of contents, ZAR/ZED v2, compiled `.rdr`, and the `AssetSource` the rest read through (`/node` for the file system, `http` for the browser) |
@@ -95,6 +96,7 @@ where you are entitled to.
 | `packages/scene` | world root, scene graph and node matrices, the engine's walk order, clutter, collision, the measured spawn table |
 | `packages/viewer` | the Vite app: renderer, shading graph, fly camera, map picker, overlays, diagnostics panel, the Playwright e2e |
 | `tools/` | the extractor and the dump/export tools |
+| `docs/specs/`, `docs/plans/` | the viewer's own design specs and plan, kept here rather than in the repository's `docs/superpowers/` so the recomp's agents do not have to read past them |
 | `public/maps/`, `test-fixtures/` (ignored) | your extracted game data; never committed |
 
 ## Controls
@@ -247,16 +249,5 @@ Entertainment.
 
 ## Licence
 
-GPL-3.0, as the parent project ([`LICENSE`](LICENSE)).
-
-## This repository and the parent project
-
-This tree is developed as `web/` inside
-[SOCOM Unzipped](https://github.com/Scotho/socom-unzipped) and published here with `git subtree`:
-
-```
-# from the socom-unzipped checkout, on the branch that carries web/
-git subtree push --prefix=web git@github.com:Scotho/socom-unzipped-map-viewer.git main
-```
-
-Pull requests here are welcome and are carried back the same way (`git subtree pull`).
+GPL-3.0, the repository's ([`LICENSE`](../LICENSE)). CI for this directory is
+[`.github/workflows/web.yml`](../.github/workflows/web.yml), which runs only when `web/` changes.
