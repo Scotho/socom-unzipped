@@ -29,7 +29,7 @@
 | R267 | 2026-09-25 | active | one home for the carry (`docs/BACKLOG.md`, generated, a Sprint 13 file) | `docs/superpowers/plans/2026-09-24-sprint-12.md` **R267** |
 | R266 | 2026-09-25 | active | the six issues Sprint 11 carried go once into Sprint 13's milestone | `docs/superpowers/plans/2026-09-24-sprint-12.md` **R266** |
 | R265 | 2026-09-25 | active | the four oldest backlog rows owned or declined | `docs/superpowers/plans/2026-09-24-sprint-12.md` **R265** |
-| R264 | 2026-09-25 | active | (after: Sprint 12's rulings are `S12-R1`–`S12-R25` in the plan's "Rulings made on the o…) they keep those names — renumbering twenty-five rulings cited across… | `docs/CURRENT_SPRINT.md` **R264** |
+| R264 | 2026-09-25 | active | (after: Sprint 12's rulings are `S12-R1`–`S12-R25` in the plan's "Rulings made on the o…) they keep those names — renumbering twenty-five rulings cited across… | `docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md` **R264** |
 | R263 | 2026-09-24 | active | the naming programme is Sprint 12, not Sprint 11. | `docs/superpowers/plans/2026-09-23-sprint-11.md` **R263** |
 | R262 | 2026-09-24 | active | declined, with the peer's reasons: a custom Ghidra Function ID database (it is `fingerprint.py` plus the callee-set pass re-implemented, and cannot cross the 7… (amended: see the ledger) | `docs/superpowers/plans/2026-09-23-sprint-11.md` **R262** |
 | R261 | 2026-09-24 | active | R257's rename commit also writes a tracked provenance sidecar beside `recomp/socom2_ghidra.csv` (address, name, source pass, score, evidence), carried by… (amended: see the ledger) | `docs/superpowers/plans/2026-09-23-sprint-11.md` **R261** |

@@ -63,7 +63,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 - **The owner's rows:** `docs/HUMAN_TASKS.md` O1-O8, O10-O16, O18 and O19 (O16: issues #25, #26 and #42). Under R271 a row
   unanswered through two sittings after it was asked closes by default at the next close: nothing today; at a third
-  sitting without answers all 16 open rows would close together (`docs/SITTING.md` marks them).
+  sitting without answers all 17 open rows would close together (`docs/SITTING.md` marks them).
 - **Sprint 14, lock-free:** nothing until the night; if the controller's session dies before 02:07Z, a new one runs
   the night's list below by hand (the `loop-iteration` skill, step 4; then the `sprint-close` skill).
 - **Lock-bound** (lock FREE, queue empty, one at a time, at night, once the main tree is clean -- the story session's

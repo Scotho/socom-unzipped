@@ -58,13 +58,13 @@ suggestions, stop rules and the owner-only list are not.
    commit, then `main` merged back into the sprint branch (`docs/GIT_STRATEGY.md` §2, "Slices"). The owner asked for
    this on 2026-09-21 and it is now how the loop works: `main` is never more than one proven item behind, so anyone who
    clones the public repository gets work that has passed its bar. Unproven work stays on the sprint branch.
-6. **Write it down where it will be read:** a dated entry on top of `docs/STATUS.md` and its "Current state" block if
-   the state changed; **audit `docs/KNOWN.md`** -- promote, retire or retract every row this step touched -- **and
+6. **Write it down where it will be read:** update STATUS's "Current state" block if the state changed; the entry
+   goes in the plan's Log; **audit `docs/KNOWN.md`** -- promote, retire or retract every row this step touched -- **and
    the issue behind each such row** (`docs/GIT_STRATEGY.md` §7: a new §2 row or a fixable hazard opens one, a
    settled row closes it with the artefact, a rewritten row gets a comment; `python -m tools_py.issues audit` exits 0
    before the commit); tick the
-   plan's boxes; update the item's row in `docs/CURRENT_SPRINT.md`; a numbered ruling for every moved default or
-   skipped measurement; `docs/HUMAN_TASKS.md` for anything only the owner can verify; `docs/HANDOFF.md` §2, §5 and §6
+   plan's boxes; update the item's row in `docs/CURRENT_SPRINT.md`; a numbered ruling for every moved owner default, acceptance
+   bar or spec goal; a skipped measurement is a KNOWN row or a test (`docs/DOC_MAINTENANCE.md` §6); `docs/HUMAN_TASKS.md` for anything only the owner can verify; `docs/HANDOFF.md` §2, §5 and §6
    when the pick-up point changes (§2's one "now" bullet is replaced, the old one moved to its archive). **A committed
    sentence found false is corrected the same hour, where it is written**, with a `> Superseded by ...` blockquote --
    never queued for a close-out that may not come.

@@ -184,7 +184,9 @@ The archived §5's advice has mostly been taken. What is left, plus what this au
   audited after every task and stayed true; `ROADMAP.md` was audited by nobody and went two sprints and two wrong
   instructions past its usefulness. The cheap fix is the rule this rewrite adopts: **the roadmap carries narrative
   and pointers, never live state**, so there is less in it that *can* rot. The less cheap fix is the link-and-claim
-  check Sprint 11 Goal 1 already wants — it should cover claims about the tree, not only paths.
+  check Sprint 11 Goal 1 already wants — it should cover claims about the tree, not only paths. (2026-09-26: the
+  path half exists as `docs/DOC_MAINTENANCE.md` §4 check 6, which covers the skills too since Sprint 14 I2; the claim
+  half is unbuilt.)
 - **Retire the archived §6 sprint lists rather than maintain them.** Sprint planning lives in
   `docs/CURRENT_SPRINT.md` and `docs/superpowers/specs/`. The roadmap duplicating it is what produced a Sprint 6 task
   list still being read as current in Sprint 10.
@@ -222,6 +224,9 @@ and who owns each item. This section holds no queue and no task list, by this do
 **The standing backlog no sprint owns** lives in `docs/CURRENT_SPRINT.md`, under "Standing backlog, carried from the
 roadmap 2026-09-23" — its eight items were written here until that date, which was a task list in a narrative
 document and is the very thing §5 above says to retire.
+
+> Superseded 2026-09-25 by R265 and R267: the backlog's one home is `docs/BACKLOG.md` (generated); the CURRENT_SPRINT
+> block named above now only says where each of its eight items went.
 
 ---
 
