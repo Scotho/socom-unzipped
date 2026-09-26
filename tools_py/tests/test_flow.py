@@ -307,14 +307,17 @@ def _assistant(ts, mid, usage, sidechain=False):
     return json.dumps(line)
 
 
-# Two planted transcripts, three assistant messages each (all stamped inside the test repo's window, 2026-01-01 to
-# the merge at 2026-01-06T12:00:00Z). One: a user line (no usage) and a repeat of m2's line, which Claude Code writes
-# once per content block with the same message id and usage -- counted once. Two: its third message a sidechain (an
-# agent's), a malformed line, and a line stamped after the rendered commit (left out, so --check stays stable).
+# The real layout (the M2 review read it, structure only): one `<stem>.jsonl` per session at the top level, its
+# agents' transcripts under `<stem>/subagents/*.jsonl`, and a subfolder may have no top-level file. Every line below
+# is stamped inside the test repo's window (2026-01-01 to the merge at 2026-01-06T12:00:00Z) unless it says not.
+# One: a user line (no usage) and m2 written twice, a streamed partial first -- its output grows, so the LAST line
+# per message id is the one counted. Two: a sidechain line at the top level (isSidechain, the second agent signal),
+# a malformed line, and a line stamped after the rendered commit (left out, so --check stays stable). sess-one's
+# agent: a1 written twice with growing output, and a2. sess-three: an agent transcript with no top-level file.
 TRANSCRIPT_ONE = "\n".join([
     json.dumps({"type": "user", "timestamp": "2026-01-03T00:00:00Z", "message": {"content": "SECRET PROMPT"}}),
     _assistant("2026-01-03T00:00:01Z", "m1", (10, 100, 1000, 10000)),
-    _assistant("2026-01-03T00:00:02Z", "m2", (20, 200, 2000, 20000)),
+    _assistant("2026-01-03T00:00:02Z", "m2", (20, 3, 2000, 20000)),
     _assistant("2026-01-03T00:00:02Z", "m2", (20, 200, 2000, 20000)),
     _assistant("2026-01-03T00:00:03Z", "m3", (30, 300, 3000, 30000)),
 ]) + "\n"
@@ -325,6 +328,14 @@ TRANSCRIPT_TWO = "\n".join([
     _assistant("2026-01-04T00:00:03Z", "n3", (100, 200, 300, 400), sidechain=True),
     _assistant("2027-01-01T00:00:00Z", "n4", (9999, 9999, 9999, 9999)),
 ]) + "\n"
+AGENT_OF_ONE = "\n".join([
+    _assistant("2026-01-03T01:00:00Z", "a1", (1, 2, 3, 4), sidechain=True),
+    _assistant("2026-01-03T01:00:01Z", "a1", (1, 50, 3, 4), sidechain=True),
+    _assistant("2026-01-03T01:00:02Z", "a2", (10, 20, 30, 40), sidechain=True),
+]) + "\n"
+AGENT_OF_THREE = _assistant("2026-01-05T00:00:00Z", "b1", (7, 7, 7, 7), sidechain=True) + "\n"
+PLANTED = (("sess-one.jsonl", TRANSCRIPT_ONE), ("sess-two.jsonl", TRANSCRIPT_TWO),
+           ("sess-one/subagents/agent-a.jsonl", AGENT_OF_ONE), ("sess-three/subagents/agent-b.jsonl", AGENT_OF_THREE))
 
 
 class TokenTest(_WithRepo):
@@ -333,8 +344,10 @@ class TokenTest(_WithRepo):
     def setUp(self):
         self.dir = os.path.join(tempfile.mkdtemp(prefix="flow_tx_"), "project-key")
         os.makedirs(self.dir)
-        for name, text in (("sess-one.jsonl", TRANSCRIPT_ONE), ("sess-two.jsonl", TRANSCRIPT_TWO)):
-            with open(os.path.join(self.dir, name), "w", encoding="utf-8", newline="\n") as fh:
+        for name, text in PLANTED:
+            path = os.path.join(self.dir, *name.split("/"))
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8", newline="\n") as fh:
                 fh.write(text)
 
     def tearDown(self):
@@ -349,27 +362,45 @@ class TokenTest(_WithRepo):
         self.assertEqual(t["sessions"]["sess-one"]["main"],
                          {"messages": 3, "input": 60, "output": 600, "cache_read": 6000, "cache_creation": 60000})
         self.assertEqual(t["sessions"]["sess-one"]["agents"],
-                         {"messages": 0, "input": 0, "output": 0, "cache_read": 0, "cache_creation": 0})
+                         {"messages": 2, "input": 11, "output": 70, "cache_read": 33, "cache_creation": 44})
         self.assertEqual(t["sessions"]["sess-two"]["main"],
                          {"messages": 2, "input": 6, "output": 8, "cache_read": 10, "cache_creation": 12})
         self.assertEqual(t["sessions"]["sess-two"]["agents"],
                          {"messages": 1, "input": 100, "output": 200, "cache_read": 300, "cache_creation": 400})
+        self.assertEqual(t["sessions"]["sess-three"]["main"],
+                         {"messages": 0, "input": 0, "output": 0, "cache_read": 0, "cache_creation": 0})
+        self.assertEqual(t["sessions"]["sess-three"]["agents"],
+                         {"messages": 1, "input": 7, "output": 7, "cache_read": 7, "cache_creation": 7})
+        self.assertEqual(t["agents"],
+                         {"messages": 4, "input": 118, "output": 277, "cache_read": 340, "cache_creation": 451})
         self.assertEqual(t["total"],
-                         {"messages": 6, "input": 166, "output": 808, "cache_read": 6310, "cache_creation": 60412})
-        self.assertEqual((t["malformed"], t["outside"]), (1, 1))
+                         {"messages": 9, "input": 184, "output": 885, "cache_read": 6350, "cache_creation": 60463})
+        self.assertEqual((t["malformed"], t["outside"], t["files"], t["agent_files"]), (1, 1, 4, 2))
+
+    def test_a_repeated_message_id_counts_its_last_line(self):
+        # the streamed partial comes first and its output only grows: first-wins would give m2 3 and a1 2
+        t = self.measure(self.dir)["tokens"]
+        self.assertEqual(t["sessions"]["sess-one"]["main"]["output"], 600)
+        self.assertEqual(t["sessions"]["sess-one"]["agents"]["output"], 70)
 
     def test_the_page_shows_sums_never_content_or_a_path(self):
         page = flow.render(self.measure(self.dir))
         line = [l for l in page.splitlines() if l.startswith("- **token spend**")]
         self.assertEqual(len(line), 1)
-        self.assertIn("input 166, output 808, cache-read 6310, cache-creation 60412 tokens over 6 messages",
+        self.assertIn("input 184, output 885, cache-read 6350, cache-creation 60463 tokens over 9 messages",
                       line[0])
-        self.assertIn("agents (sidechains): input 100, output 200", line[0])
+        self.assertIn("agents (subagent transcripts and sidechain lines): input 118, output 277", line[0])
+        self.assertIn("messages stamped before 2026-01-01 or after 2026-01-06T12:00:00Z left out (1)", line[0])
+        self.assertIn("the directory's name only", line[0])
         self.assertIn("1 malformed line skipped", line[0])
         self.assertIn("read only by name", line[0])
         self.assertIn("transcript ids", page)
         self.assertIn("| sess-one | session | 3 | 60 | 600 | 6000 | 60000 |", page)
         self.assertIn("| sess-two | agents | 1 | 100 | 200 | 300 | 400 |", page)
+        self.assertIn("| sess-one | agents | 2 | 11 | 70 | 33 | 44 |", page)
+        self.assertIn("| sess-three | agents | 1 | 7 | 7 | 7 | 7 |", page)
+        self.assertNotIn("subagents/", page)
+        self.assertNotIn("agent-a", page)
         self.assertIn("`project-key`", page)
         for leak in ("SECRET", "zq9x7", os.path.dirname(self.dir), os.path.dirname(self.dir).replace("\\", "/")):
             self.assertNotIn(leak, page)
@@ -399,7 +430,7 @@ class TokenTest(_WithRepo):
             with contextlib.redirect_stdout(buf):
                 self.assertEqual(flow.main(args + ["--usage"]), 0)
             self.assertFalse(os.path.exists(out), "--usage writes nothing")
-            self.assertTrue(buf.getvalue().startswith("- **token spend**: sums over 2 transcripts"), buf.getvalue())
+            self.assertTrue(buf.getvalue().startswith("- **token spend**: sums over 3 sessions"), buf.getvalue())
             self.assertIn("| sess-two | session | 2 |", buf.getvalue())
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(flow.main(args), 0)

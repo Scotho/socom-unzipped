@@ -45,20 +45,24 @@ What each number is, and where it differs from note 03:
                         (note 03 section 1.3's `grep '^Claude-Session:' | sort -u`).
   commits_per_session   {session: commits}; the page shows the counts, largest first, not the URLs.
   tokens                (Task M2) the token spend, local only. When the environment variable SOCOM_CLAUDE_TRANSCRIPTS
-                        names a directory, the `.jsonl` files directly in it (Claude Code's per-session transcripts,
-                        ~/.claude/projects/<project-key>/<uuid>.jsonl; subdirectories are not walked) are read and the
-                        `message.usage` fields of their lines summed per transcript: input_tokens, output_tokens,
-                        cache_read_input_tokens, cache_creation_input_tokens and a message count, the session's own
-                        lines and its agents' (`isSidechain: true`) apart, and a total. A line repeating a message id
-                        already counted in that transcript is skipped (Claude Code writes one line per content block,
-                        each carrying the message's usage). A line whose timestamp is before --since or after the
-                        rendered commit is left out, as the queue log's are, so a transcript still being written does
-                        not make the page stale; a usage line with no timestamp cannot be placed and is left out too.
+                        names a directory, its transcripts are read and the `message.usage` fields summed per session:
+                        input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens and a message
+                        count, the session's own spend and its agents' apart, and a total. Claude Code's layout, under
+                        ~/.claude/projects/<project-key>/: the session's own transcript is `<stem>.jsonl` at the top
+                        level; its agents' are `<stem>/subagents/*.jsonl` (every `.jsonl` under `<stem>/` counts as
+                        agents', a folder with no top-level file of its name included); a line with `isSidechain:
+                        true` counts as agents' wherever it is. A message id written on several lines of a transcript
+                        counts once, by its LAST line: Claude Code writes a streamed partial first, and the output count
+                        only grows (the M2 review measured a 6x undercount keeping the first). A message whose (last)
+                        line is stamped before --since or after the rendered commit is left out, as the queue log's
+                        are, and the page states that window, so a transcript still being written does not make the
+                        page stale; a usage line with no timestamp cannot be placed and is left out too.
                         A line that is not JSON is skipped and counted. The page holds ONLY the sums, keyed by the
                         transcript's file stem (a transcript id: it need not equal a commit's Claude-Session trailer
-                        id, and no mapping is assumed), and the directory's last component: never a line of content,
-                        never a path. Unset, the page says "not measured" and why; set to a missing directory or one
-                        holding no transcript, it says that. `--usage` prints the token lines alone and writes nothing.
+                        id, and no mapping is assumed), and the directory's last component, named as such: never a
+                        line of content, never a path, never an agent transcript's file name. Unset, the page says
+                        "not measured" and why; set to a missing directory or one holding no transcript, it says that.
+                        `--usage` prints the token lines alone and writes nothing.
 
 "Since" is a UTC calendar day and every commit is placed by its committer time (note 03 used the author date).
 
@@ -185,62 +189,98 @@ def _zero():
     return dict([("messages", 0)] + [(k, 0) for k, _ in USAGE_FIELDS])
 
 
+def _transcript_files(directory):
+    """{stem: [(path, is_agents_file)]}: each top-level `<stem>.jsonl` (the session's own transcript) and every
+    `.jsonl` anywhere under a top-level `<stem>/` folder (its agents': Claude Code writes `<stem>/subagents/*.jsonl`),
+    a folder with no top-level file of its name included. Paths stay in this module; the page gets stems."""
+    found = {}
+    for entry in sorted(os.listdir(directory)):
+        path = os.path.join(directory, entry)
+        if entry.endswith(".jsonl") and os.path.isfile(path):
+            found.setdefault(entry[:-len(".jsonl")], []).append((path, False))
+        elif os.path.isdir(path):
+            for root, dirs, files in os.walk(path):
+                dirs.sort()
+                for f in sorted(files):
+                    if f.endswith(".jsonl"):
+                        found.setdefault(entry, []).append((os.path.join(root, f), True))
+    return found
+
+
+def _read_usage(path):
+    """(entries, malformed): the usage lines of one transcript as [(timestamp or None, is_sidechain, counts)], one
+    per message id -- the LAST line of that id, since Claude Code writes a streamed partial first and the output
+    count only grows -- and the count of lines that are not a JSON object or carry a non-numeric usage."""
+    by_id, entries, malformed = {}, [], 0
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            if not line.strip():
+                continue
+            try:
+                obj = json.loads(line)
+                if not isinstance(obj, dict):
+                    raise ValueError("not an object")
+                msg = obj.get("message")
+                usage = msg.get("usage") if isinstance(msg, dict) else None
+                if not isinstance(usage, dict):
+                    continue
+                counts = [(k, int(usage.get(field) or 0)) for k, field in USAGE_FIELDS]
+            except (ValueError, TypeError, AttributeError):
+                malformed += 1
+                continue
+            stamp = obj.get("timestamp")
+            entry = (stamp if isinstance(stamp, str) and len(stamp) >= 19 else None, bool(obj.get("isSidechain")),
+                     counts)
+            mid = msg.get("id")
+            if mid is None:
+                entries.append(entry)
+            elif mid in by_id:
+                entries[by_id[mid]] = entry
+            else:
+                by_id[mid] = len(entries)
+                entries.append(entry)
+    return entries, malformed
+
+
 def transcript_usage(directory, since, until_stamp):
-    """The token sums of the `.jsonl` transcripts directly in `directory`, their lines stamped within [since,
-    until_stamp] (the module docstring's "tokens"). Only numbers leave this function, and the directory's last
-    component: {"state": "unset"|"missing"|"empty"|"measured", "name", "sessions": {stem: {"main": sums,
-    "agents": sums}}, "total", "agents", "malformed", "outside", "unplaced"}."""
+    """The token sums of the transcripts in `directory` (_transcript_files()), their messages stamped within
+    [since, until_stamp] (the module docstring's "tokens"). Only numbers leave this function, and the directory's
+    last component: {"state": "unset"|"missing"|"empty"|"measured", "name", "until", "sessions": {stem: {"main":
+    sums, "agents": sums}}, "total", "agents", "files", "agent_files", "malformed", "outside", "unplaced"}."""
     if not directory:
         return {"state": "unset"}
     name = os.path.basename(os.path.normpath(directory))
     if not os.path.isdir(directory):
         return {"state": "missing", "name": name}
-    files = sorted(f for f in os.listdir(directory)
-                   if f.endswith(".jsonl") and os.path.isfile(os.path.join(directory, f)))
-    if not files:
+    found = _transcript_files(directory)
+    if not found:
         return {"state": "empty", "name": name}
     sessions, total, agents = {}, _zero(), _zero()
-    malformed = outside = unplaced = 0
-    for f in files:
+    files = agent_files = malformed = outside = unplaced = 0
+    for stem, paths in sorted(found.items()):
         sums = {"main": _zero(), "agents": _zero()}
-        seen = set()
-        with open(os.path.join(directory, f), "r", encoding="utf-8", errors="replace") as fh:
-            for line in fh:
-                if not line.strip():
-                    continue
-                try:
-                    obj = json.loads(line)
-                    msg = obj.get("message") if isinstance(obj, dict) else None
-                    usage = msg.get("usage") if isinstance(msg, dict) else None
-                    if not isinstance(obj, dict):
-                        raise ValueError("not an object")
-                    if not isinstance(usage, dict):
-                        continue
-                    counts = [(k, int(usage.get(field) or 0)) for k, field in USAGE_FIELDS]
-                except (ValueError, TypeError, AttributeError):
-                    malformed += 1
-                    continue
-                stamp = obj.get("timestamp")
-                if not isinstance(stamp, str) or len(stamp) < 19:
+        for path, agents_file in paths:
+            files += 1
+            agent_files += agents_file
+            entries, bad = _read_usage(path)
+            malformed += bad
+            for stamp, sidechain, counts in entries:
+                if stamp is None:
                     unplaced += 1
                     continue
                 stamp = stamp[:19] + "Z"
                 if stamp > until_stamp or stamp[:10] < since:
                     outside += 1
                     continue
-                mid = msg.get("id")
-                if mid is not None:
-                    if mid in seen:
-                        continue
-                    seen.add(mid)
-                who = "agents" if obj.get("isSidechain") else "main"
+                who = "agents" if agents_file or sidechain else "main"
                 for bucket in (sums[who], total) + ((agents,) if who == "agents" else ()):
                     bucket["messages"] += 1
                     for k, n in counts:
                         bucket[k] += n
-        sessions[f[:-len(".jsonl")]] = sums
-    return {"state": "measured", "name": name, "sessions": sessions, "total": total, "agents": agents,
-            "malformed": malformed, "outside": outside, "unplaced": unplaced}
+        sessions[stem] = sums
+    return {"state": "measured", "name": name, "since": since, "until": until_stamp, "sessions": sessions,
+            "total": total, "agents": agents, "files": files, "agent_files": agent_files, "malformed": malformed,
+            "outside": outside, "unplaced": unplaced}
 
 
 def issue_ages(text, day):
@@ -410,21 +450,21 @@ def token_lines(t):
     if t["state"] == "empty":
         return ("not measured: %s names `%s`, which holds no .jsonl transcript" % (TRANSCRIPTS_VAR, t["name"]),
                 cmd, [])
-    left = []
+    left = ["messages stamped before %s or after %s left out (%d)" % (t["since"], t["until"], t["outside"])]
+    if t["unplaced"]:
+        left.append("%s with no timestamp left out" % _plural(t["unplaced"], "message"))
     if t["malformed"]:
         left.append("%s skipped" % _plural(t["malformed"], "malformed line"))
-    if t["outside"]:
-        left.append("%s stamped outside the window left out" % _plural(t["outside"], "line"))
-    if t["unplaced"]:
-        left.append("%s with no timestamp left out" % _plural(t["unplaced"], "usage line"))
-    value = ("sums over %s in the directory `%s` (the directory is read only by name: neither its path nor a "
-             "line of content reaches the page, only these sums) -- total: %s; of which agents (sidechains): %s%s. Per transcript below; the ids are "
-             "transcript ids (file stems), not Claude-Session trailer ids" % (
-                 _plural(len(t["sessions"]), "transcript"), t["name"], _sums(t["total"]), _sums(t["agents"]),
-                 "; " + ", ".join(left) if left else ""))
+    value = ("sums over %s (%s, %d of them agents') in the directory `%s` (the directory's name only, its last "
+             "component; the directory is read only by name: neither its path nor a line of content reaches the "
+             "page, only these sums) -- total: %s; of which agents (subagent transcripts and sidechain lines): %s; "
+             "%s. A repeated message id counts its last line. Per session below; the ids are transcript ids (file "
+             "stems), not Claude-Session trailer ids" % (
+                 _plural(len(t["sessions"]), "session"), _plural(t["files"], "transcript file"), t["agent_files"],
+                 t["name"], _sums(t["total"]), _sums(t["agents"]), ", ".join(left)))
     table = ["", TOKENS_SECTION, "",
-             "Sums of `message.usage` per transcript id; \"session\" is the session's own lines, \"agents\" its "
-             "sidechains'.", "",
+             "Sums of `message.usage` per transcript id; \"session\" is the session's own transcript, \"agents\" "
+             "the transcripts in its folder and its sidechain lines.", "",
              "| transcript id | whose | messages | input | output | cache-read | cache-creation |",
              "|---|---|---:|---:|---:|---:|---:|"]
     for stem, sums in sorted(t["sessions"].items()):
