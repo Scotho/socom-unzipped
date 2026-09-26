@@ -52,6 +52,24 @@ class RulingCounterTest(unittest.TestCase):
             "docs/HANDOFF.md offers R%s but R%d is already in use (%s). Take your number from HANDOFF "
             "and bump that line in the same commit." % (docmaint.next_free_ruling(), highest, where))
 
+    def test_exactly_one_counter_line(self):
+        """The counter had two homes, HANDOFF's line and CURRENT_SPRINT's `next ruling:` header line, kept in
+        step by hand; on 2026-09-22 they said R242 and R241. From Sprint 14 (Task D2, R273) HANDOFF section 2
+        is the one home and docs/RULINGS.md is the index, so a second counter line is a defect."""
+        hits = []
+        for path in docmaint.by_class("L"):
+            if not os.path.isfile(os.path.join(docmaint.ROOT, path)):
+                continue
+            for i, line in enumerate(docmaint._read(path).split("\n"), 1):
+                if docmaint.RULING_LINE.search(line):
+                    hits.append((path, i))
+        self.assertEqual([p for p, _ in hits], ["docs/HANDOFF.md"],
+                         "the next free ruling number is stated once, in docs/HANDOFF.md section 2: %s" % hits)
+        header = docmaint._read("docs/CURRENT_SPRINT.md").split("```")[1]
+        self.assertIsNone(re.search(r"^next ruling\s*:", header, re.M | re.I),
+                          "docs/CURRENT_SPRINT.md's header carries a `next ruling:` line again -- point at "
+                          "docs/HANDOFF.md section 2 instead")
+
 
 class SingleSourceCountsTest(unittest.TestCase):
     """686/686 had reached four documents; DEVELOPING.md owns the counts."""
@@ -271,13 +289,6 @@ class PlantedDefectsTest(unittest.TestCase):
         self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n\nR240 was decided.\n")
         self.assertEqual(docmaint.max_ruling()[0], 240)
         self.assertNotEqual(docmaint.next_free_ruling(), 241)
-
-    def test_two_counter_lines_that_disagree_are_visible(self):
-        self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n")
-        self.write("docs/CURRENT_SPRINT.md", "# cs\n\nnext ruling:  R101\n")
-        self.registry([("docs/HANDOFF.md", "L"), ("docs/CURRENT_SPRINT.md", "L"),
-                       ("docs/DOC_MAINTENANCE.md", "C")])
-        self.assertEqual(sorted(docmaint.ruling_counters().values()), [100, 101])
 
     def test_an_undated_suite_count_fires_check_3(self):
         self.write("README.md", "# r\n\nbaselines: C++ 686/686 today\n")

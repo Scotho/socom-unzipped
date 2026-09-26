@@ -268,6 +268,12 @@ knows which documents to distrust.
   archived roadmap is readable *because* its wrong turns are still in it.
 - **If a claim cannot be checked, do not make it.** "The game runs well" ages badly; "43-45 fps in a mission,
   measured on <date>, against the console's 60" does not — it simply becomes a dated fact.
+- **A ruling is narrow, and it has one counter.** A ruling records a moved owner default, a moved acceptance bar or a
+  moved spec goal. A threshold, a skipped measurement, a naming choice or a tool's behaviour is not a ruling: it is a
+  KNOWN row with its artefact, a knob default in the registry, or a test. From Sprint 14 the global counter is the
+  only namespace (R273); a ruling is written in the sprint plan's Rulings section, numbered from `docs/HANDOFF.md`
+  section 2 (the one counter line, check 2), with the counter bumped and `docs/RULINGS.md` regenerated
+  (`python -m tools_py.rulings`) in the same commit. `docs/RULINGS.md` is the index, generated; nobody keeps one by hand.
 
 ## 7. The known-issue stack review — deep, at every sprint close
 

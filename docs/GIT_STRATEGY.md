@@ -259,7 +259,8 @@ issue is what gets corrected.
   dated log entry writes `issue #N (closed)` once the issue settles, or leaves the number out -- an old entry
   saying `issue #N` would read as an open citation for ever.
 - **Rulings:** a ruling that moves an issue's bar or drops it is cited by number in a comment on the issue, and the
-  ruling names the issue.
+  ruling names the issue. What is a ruling at all, and where its number comes from, is
+  `docs/DOC_MAINTENANCE.md` section 6.
 - **Nothing sensitive, ever.** An issue is public and permanent. No key, address, contact, path under a home
   directory, and nothing from a bug report but its id. The leak check does not read GitHub; the writer is the check.
 
