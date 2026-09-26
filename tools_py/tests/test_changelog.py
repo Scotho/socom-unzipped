@@ -209,6 +209,50 @@ class CliTest(unittest.TestCase):
         self.assertIn("stale", p.stdout)
 
 
+class ShallowCloneTest(unittest.TestCase):
+    """A depth-1 clone has no merges to read: the skip condition is computed from git, and the tool refuses
+    rather than rendering "0 merges" as though that were the history."""
+
+    @classmethod
+    def setUpClass(cls):
+        r = cls.repo = _Repo()
+        r.commit("root.txt", "root\n")
+        r.git("checkout", "-q", "-b", "feat/one")
+        r.commit("one.txt", "one\n")
+        r.git("checkout", "-q", "main")
+        r.merge("feat/one")
+        cls.shallow = tempfile.mkdtemp(prefix="changelog_shallow_")
+        url = "file:///" + r.path.replace("\\", "/").lstrip("/")
+        subprocess.run(["git", "clone", "-q", "--depth", "1", url, os.path.join(cls.shallow, "c")],
+                       capture_output=True, check=True)
+        cls.clone = os.path.join(cls.shallow, "c")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.repo.remove()
+        shutil.rmtree(cls.shallow, ignore_errors=True)
+
+    def test_a_shallow_clone_gives_a_reason(self):
+        reason = changelog.shallow_reason(self.clone)
+        self.assertTrue(reason and "shallow" in reason, reason)
+
+    def test_a_full_repository_gives_none(self):
+        self.assertIsNone(changelog.shallow_reason(self.repo.path))
+
+    def test_entries_refuse_a_shallow_clone(self):
+        with self.assertRaises(changelog.ShallowHistory):
+            changelog.entries(self.clone)
+
+    def test_the_command_refuses_a_shallow_clone_with_a_sentence(self):
+        out = os.path.join(self.shallow, "page.md")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = changelog.main(["--repo", self.clone, "--out", out, "--check"])
+        self.assertEqual(rc, 2)
+        self.assertIn("shallow", buf.getvalue())
+        self.assertFalse(os.path.exists(out))
+
+
 class TreeTest(unittest.TestCase):
     """Class G: the page on this tree is held to the history it was rendered from, every suite run.
 
@@ -219,6 +263,12 @@ class TreeTest(unittest.TestCase):
     """
 
     def test_the_page_on_this_tree_is_a_render_of_its_own_history(self):
+        # A depth-1 checkout (windows.yml's second job runs the whole suite on one) holds one commit and no merges:
+        # the page cannot be rendered there, so the test says so instead of failing (test_story_cite's
+        # TestShallowClone is the precedent for a check that must know it is on a shallow clone).
+        reason = changelog.shallow_reason(REPO)
+        if reason:
+            self.skipTest(reason)
         with open(os.path.join(REPO, changelog.PAGE), "r", encoding="utf-8") as fh:
             on_disk = fh.read()
         rev = changelog.page_rev(REPO)

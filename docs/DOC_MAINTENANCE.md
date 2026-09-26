@@ -144,8 +144,10 @@ Sprint 13 Task R3's, all added 2026-09-25):
 2. **The ruling counter** — `docs/HANDOFF.md`'s "Next free ruling number: R\<n\>" must be exactly `max(R<n>) + 1` over
    the live documents. *Catches the R179-against-R241 collision, which had already happened once.*
 3. **Single-source suite counts** — `Total Tests: <n>`, `Ran <n> tests` and `<n>/<n>` baselines may appear only in
-   `docs/DEVELOPING.md`. S and A documents are exempt (they are records); `docs/STATUS.md` is not, since its log was
-   archived (2026-09-26, R272), and a line under a dated heading is dated by it. *Catches the 686/686 defect, in all four places it had reached.*
+   `docs/DEVELOPING.md` -- or, in any other registered document, with a date on the line or under a dated heading.
+   Only A rows are exempt (archives, verbatim records); a registered S row is held to the date rule, and the
+   snapshots classified by location (research, plans, audits) have no row and are not read. `docs/STATUS.md` has no
+   exemption since its log was archived (2026-09-26, R272). *Catches the 686/686 defect, in all four places it had reached.*
 4. **Snapshots are dated** — every S file has a date in its filename or in its first fifteen lines. *Catches a
    `REPORT.md` that reads as the current report.*
 5. **Archives announce themselves** — every A file says "archived" or "superseded" in its first fifteen lines, in any

@@ -3,7 +3,8 @@
 Run: python -m tools_py.changelog [--check] [--repo <path>] [--out <file>] [--rev <commit>]
 
 Writes `docs/CHANGELOG.md`; `--check` exits 1 when the file differs from a fresh render and prints the head of the
-diff. Until 2026-09-26 `docs/STATUS.md` carried a hand-written log below its "Current state" block, 260 KB that
+diff. On a shallow clone both refuse with exit 2 and a sentence (`entries()` raises ShallowHistory): a depth-1
+checkout holds no merges, and a page of "0 merges" would read as the history. Until 2026-09-26 `docs/STATUS.md` carried a hand-written log below its "Current state" block, 260 KB that
 nobody read; that log is archived (`docs/archive/STATUS-log-to-2026-09-26.md`) and this page replaces its record of
 what landed. The reasoning behind a merge lives in its commit message and in the sprint plan's Log.
 
@@ -60,6 +61,19 @@ LEAD_BRANCH = re.compile(r"^([A-Za-z0-9._-]+/[A-Za-z0-9._/-]+) -- ")     # "merg
 def _git(repo, *args):
     out = subprocess.run(["git", "-C", repo] + list(args), capture_output=True, check=True)
     return out.stdout.decode("utf-8", errors="replace")
+
+
+class ShallowHistory(RuntimeError):
+    """The repository is a shallow clone: the merges before its boundary are not there to read."""
+
+
+def shallow_reason(repo):
+    """A sentence when `repo` is a shallow clone (CI's default depth-1 checkout), else None."""
+    if _git(repo, "rev-parse", "--is-shallow-repository").strip() == "true":
+        return ("%s is a shallow clone (git rev-parse --is-shallow-repository: true): the merges before its "
+                "boundary are missing, so the changelog cannot be rendered or checked here; fetch the full history "
+                "(git fetch --unshallow --tags)" % repo)
+    return None
 
 
 def branch_of(subject):
@@ -150,7 +164,12 @@ def tags(repo, rev="HEAD", graph=None):
 
 
 def entries(repo, rev="HEAD"):
-    """Every merge in rev's history as the module docstring defines it, newest first, each with its tag."""
+    """Every merge in rev's history as the module docstring defines it, newest first, each with its tag.
+
+    Raises ShallowHistory on a shallow clone rather than returning the few merges it happens to hold."""
+    reason = shallow_reason(repo)
+    if reason:
+        raise ShallowHistory(reason)
     g = _Graph(repo, rev)
     rows, seen = [], set()
 
@@ -247,7 +266,11 @@ def main(argv=None):
     ap.add_argument("--rev", default="HEAD", help="the commit whose history is rendered (default: HEAD)")
     args = ap.parse_args(argv)
     target = args.out or os.path.join(args.repo, PAGE)
-    rows = entries(args.repo, args.rev)
+    try:
+        rows = entries(args.repo, args.rev)
+    except ShallowHistory as exc:
+        print("changelog: refused -- %s" % exc)
+        return 2
     tag_list = tags(args.repo, args.rev)
     fresh = render(rows, tag_list)
     if args.check:
