@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import unittest
 
-from tools_py.hooks import pretool
+from tools_py.hooks import commitmsg, pretool
 from tools_py.tests.shell import BASH
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -576,6 +576,99 @@ class PretoolWiringTest(unittest.TestCase):
         p = subprocess.run([BASH, HOOK_SH.replace("\\", "/")], input="not json", capture_output=True, text=True,
                            cwd=self.tmp.name, timeout=60)
         self.assertEqual(p.returncode, 0, p.stderr)
+
+
+class CommitMsgTest(unittest.TestCase):
+    """Sprint 14 S2: the commit-msg hook caps the subject at 120 characters (the review's 03-git-forensics.md
+    section 5: median 126, 42 % of merge subjects over 200). Each exemption is planted once."""
+
+    SENTENCE = "put the finding in the body; home: docs/GIT_STRATEGY.md section 3"
+
+    @staticmethod
+    def subject(n, prefix="feat(x): "):
+        return (prefix + "a" * n)[:n]
+
+    def test_121_is_refused_with_the_sentence(self):
+        code, why = commitmsg.check(self.subject(121) + "\n")
+        self.assertEqual(code, 1)
+        self.assertIn("subject over 120 chars (121)", why)
+        self.assertIn(self.SENTENCE, why)
+
+    def test_120_and_119_pass(self):
+        self.assertEqual(commitmsg.check(self.subject(120)), (0, ""))
+        self.assertEqual(commitmsg.check(self.subject(119) + "\n\nbody\n"), (0, ""))
+
+    def test_merge_default_is_exempt_only_with_a_body(self):
+        merge = ("Merge branch '" + "b" * 100 + "' into sprint-14" + "x" * 130)[:130]
+        self.assertEqual(len(merge), 130)
+        self.assertEqual(commitmsg.check(merge + "\n\nThe finding.\n")[0], 0)
+        self.assertEqual(commitmsg.check(merge + "\n")[0], 1)
+        # a trailer block and comment lines are not a body
+        self.assertEqual(commitmsg.check(merge + "\n\n# Conflicts:\n#\tx\n\nCo-Authored-By: A <a@b>\n")[0], 1)
+        for head in ("Merge remote-tracking branch 'origin/", "Merge pull request #12 from "):
+            m = (head + "c" * 130)[:130]
+            self.assertEqual(commitmsg.check(m + "\n\nbody\n")[0], 0, head)
+            self.assertEqual(commitmsg.check(m)[0], 1, head)
+
+    def test_the_house_merge_prefix_is_not_a_default(self):
+        m = self.subject(130, "merge agent/s14-i5: ")
+        self.assertEqual(commitmsg.check(m + "\n\nbody\n")[0], 1)
+
+    def test_revert_default_with_a_body_passes(self):
+        r = ('Revert "' + "r" * 130)[:129] + '"'
+        self.assertEqual(len(r), 130)
+        self.assertEqual(commitmsg.check(r + "\n\nThis reverts commit 0123456789abcdef.\n")[0], 0)
+        self.assertEqual(commitmsg.check(r + "\n")[0], 1)
+
+    def test_fixup_follows_the_wrapped_subject(self):
+        code, why = commitmsg.check("fixup! " + self.subject(125) + "\n")
+        self.assertEqual(code, 1)
+        self.assertIn(self.SENTENCE, why)
+        self.assertEqual(commitmsg.check("squash! " + self.subject(118))[0], 0)
+        merge = ("Merge branch '" + "b" * 130)[:130]
+        self.assertEqual(commitmsg.check("fixup! " + merge + "\n\nbody\n")[0], 0)
+
+    def test_only_comments_passes(self):
+        self.assertEqual(commitmsg.check("# Please enter the commit message\n#\n# " + "x" * 200 + "\n"), (0, ""))
+        self.assertEqual(commitmsg.check(""), (0, ""))
+
+    def test_leading_comments_and_blank_lines_are_skipped(self):
+        self.assertEqual(commitmsg.check("# c\n\n" + self.subject(121) + "\n")[0], 1)
+
+    def test_main_on_a_broken_input_passes_and_says_so(self):
+        import contextlib
+        import io
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            code = commitmsg.main(["commitmsg", os.path.join(tempfile.gettempdir(), "no_such_msg_file_s14s2")])
+        self.assertEqual(code, 0)
+        self.assertIn("commit-msg", err.getvalue())
+
+
+@unittest.skipUnless(BASH, "bash not found")
+class CommitMsgWiringTest(unittest.TestCase):
+    """scripts/hooks/commit-msg on a temp message file, run from the repository root (where git runs hooks)."""
+
+    HOOK = os.path.join(ROOT, "scripts", "hooks", "commit-msg")
+
+    def run_hook(self, message):
+        with tempfile.NamedTemporaryFile("w", suffix=".msg", delete=False, encoding="utf-8", newline="\n") as f:
+            f.write(message)
+        try:
+            return subprocess.run([BASH, self.HOOK.replace("\\", "/"), f.name.replace("\\", "/")],
+                                  capture_output=True, text=True, cwd=ROOT, timeout=60)
+        finally:
+            os.unlink(f.name)
+
+    def test_long_subject_is_refused(self):
+        p = self.run_hook("feat(x): " + "a" * 121 + "\n")
+        self.assertEqual(p.returncode, 1, p.stderr)
+        self.assertIn("subject over 120 chars (130)", p.stderr)
+
+    def test_short_subject_passes(self):
+        p = self.run_hook("test: a short subject\n")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(p.stderr, "")
 
 
 if __name__ == "__main__":
