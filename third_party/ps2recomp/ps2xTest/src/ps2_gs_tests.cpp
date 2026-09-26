@@ -6353,7 +6353,7 @@ void register_ps2_gs_tests()
             auto up = [&](const GsGlUploadIdentity::Key &k, const std::vector<uint8_t> &bytes,
                           const std::vector<uint32_t> &blocks, bool whole, bool underGpu)
             {
-                return gate.decide(k, bytes.data(), bytes.size(), whole, blocks, 6u, 1u, underGpu, false).reason;
+                return gate.decide(k, bytes.data(), bytes.size(), whole, blocks, 6u, 1u, 10u, underGpu, false).reason;
             };
             t.IsTrue(up(tile, a, tileBlocks, true, false) == R::New, "the first upload of a rectangle is new");
             t.IsTrue(up(tile, a, tileBlocks, true, false) == R::SameFree, "the same bytes again, nothing between: same_free");
@@ -6404,7 +6404,7 @@ void register_ps2_gs_tests()
             int performed = 0;
             auto upload = [&](const std::vector<uint8_t> &bytes, bool underGpu)
             {
-                if (!gate.decide(tile, bytes.data(), bytes.size(), true, blocks, 6u, 1u, underGpu, true).skip)
+                if (!gate.decide(tile, bytes.data(), bytes.size(), true, blocks, 6u, 1u, 10u, underGpu, true).skip)
                     ++performed;
             };
             upload(a, false);
@@ -6421,7 +6421,7 @@ void register_ps2_gs_tests()
             std::vector<uint32_t> overlapBlocks;
             GsGlUploadReasons::blocksOf(GS_PSM_CT32, 0x0c0u, 10u, 8u, 8u, 8u, 8u, overlapBlocks);
             const std::vector<uint8_t> c(256u, 0x33u);
-            gate.decide(overlap, c.data(), c.size(), true, overlapBlocks, 6u, 1u, false, true);
+            gate.decide(overlap, c.data(), c.size(), true, overlapBlocks, 6u, 1u, 10u, false, true);
             upload(b, false);
             t.Equals(performed, 4, "an upload into one of its blocks since: it uploads");
             upload(b, false);
@@ -6432,13 +6432,42 @@ void register_ps2_gs_tests()
             gate.noteForeignWrite(6u, 1u);
             upload(b, false);
             t.Equals(performed, 6, "a VRAM write, local copy or download into its page since: it uploads");
-            t.IsFalse(gate.decide(tile, b.data(), b.size(), false, blocks, 6u, 1u, false, true).skip,
+            t.IsFalse(gate.decide(tile, b.data(), b.size(), false, blocks, 6u, 1u, 10u, false, true).skip,
                       "one packet of a split rectangle is never skipped");
-            t.IsFalse(gate.decide(tile, b.data(), b.size(), true, blocks, 6u, 1u, false, false).skip,
+            t.IsFalse(gate.decide(tile, b.data(), b.size(), true, blocks, 6u, 1u, 10u, false, false).skip,
                       "with PS2X_GS_UPLOAD_SKIP off the gate only counts");
             gate.reset();
-            t.IsFalse(gate.decide(tile, b.data(), b.size(), true, blocks, 6u, 1u, false, true).skip,
+            t.IsFalse(gate.decide(tile, b.data(), b.size(), true, blocks, 6u, 1u, 10u, false, true).skip,
                       "a GS reset forgets every remembered upload");
+        });
+
+        tc.Run("V2 review: a page-granular write at an unaligned dbp stamps the page row it spills into", [](TestCase &t)
+        {
+            // pageSpan counts from the base page; a copy to dbp 0xc8 (page 6, block 8) with one page
+            // row of height reaches into page 7. The tile remembered in page 7 must not be skipped.
+            using R = GsGlUploadReasons::Reason;
+            t.Equals(GsGlUploadReasons::stampSpan(0x0c0u, 1u, 1u), 1u, "an aligned dbp stamps its span");
+            t.Equals(GsGlUploadReasons::stampSpan(0x0c8u, 1u, 1u), 2u, "an unaligned dbp stamps one more page row");
+            t.Equals(GsGlUploadReasons::stampSpan(0x0c8u, 10u, 10u), 20u, "a page row is dbw pages wide");
+            auto gateOwner = std::make_unique<GsGlUploadReasons::Gate>();
+            GsGlUploadReasons::Gate &gate = *gateOwner;
+            const GsGlUploadIdentity::Key tile{0x0e0u, 1u, 0u, 0u, 16u, 16u, GS_PSM_CT32};
+            std::vector<uint32_t> blocks;
+            GsGlUploadReasons::blocksOf(GS_PSM_CT32, 0x0e0u, 1u, 0u, 0u, 16u, 16u, blocks);
+            const std::vector<uint8_t> a(1024u, 0x77u);
+            auto up = [&]() { return gate.decide(tile, a.data(), a.size(), true, blocks, 7u, 1u, 1u, false, false).reason; };
+            up();
+            gate.noteForeignWrite(6u, GsGlUploadReasons::stampSpan(0x0c0u, 1u, 1u));
+            t.IsTrue(up() == R::SameFree, "an aligned copy into page 6 leaves page 7's tile valid");
+            gate.noteForeignWrite(6u, GsGlUploadReasons::stampSpan(0x0c8u, 1u, 1u));
+            t.IsTrue(up() == R::SameRewritten, "an unaligned copy into page 6 spills into page 7: same_rewritten");
+            // decide's own fallback (a Z-format upload has no block map) widens the same way.
+            const GsGlUploadIdentity::Key z{0x0c8u, 1u, 0u, 0u, 16u, 16u, GS_PSM_Z32};
+            const std::vector<uint32_t> none;
+            up();
+            t.IsTrue(up() == R::SameFree, "valid again after its re-upload");
+            gate.decide(z, a.data(), a.size(), true, none, 6u, 1u, 1u, false, false);
+            t.IsTrue(up() == R::SameRewritten, "a Z-format upload at an unaligned dbp in page 6 stamps page 7 too");
         });
 
     });

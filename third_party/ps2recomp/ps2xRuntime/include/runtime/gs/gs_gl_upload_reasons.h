@@ -26,13 +26,24 @@
 // moved and the bytes did -- a changed texture or a changed palette window), new (a key never
 // cached: first use, or a new CLUT snapshot id or TEX0 field).
 //
-// Why the skip is correct where R122's was not affordable: R122 kept a remembered hash per
-// rectangle valid "until a write of different content overlaps it", which needed a sweep over the
-// remembered rectangles on every write (~84 ms/s). Here validity is a generation compare: every
-// upload stamps the GS blocks it writes, every other shadow writer stamps its pages, and a
-// remembered upload is still in the shadow iff none of its blocks or pages carry a newer stamp.
-// A sibling tile in the same page writes other blocks and leaves it valid; that is the case R118's
-// page-granular guard could never pass (91.6% refused by the generation clause).
+// How this differs from R118 and R122. R118 guarded a remembered hash with the page generation, and
+// a sibling tile in the same page re-stamped it: it refused 91.6%. R122's FINAL version already
+// validated per rectangle -- a remembered hash valid until a write of different content overlapped
+// it, invalidated by a sweep (~84 ms/s) -- and fired on 4.0% of 2.27 M login-screen uploads, its
+// GPU-drawn-target guard refusing 84% of the identical ones, fps unmoved (54.3 vs 54.2;
+// docs/archive/sprints-7-12/2026-09-19-sprint-8-menu-cost-2b.md:927). So per-rectangle validity is
+// NOT new; what is new here is the cost (a generation compare: every upload stamps the GS blocks it
+// writes, every other shadow writer stamps its pages) and a narrower GPU guard (the target's
+// drawn-row window since its last download, not the whole used extent) -- which may let same_free
+// fire more often than R122 did. Unproven: the controller's A/B expects a SMALL same_free.
+//
+// The hash is hashBytes below, a custom 64-bit multiply/xor-shift over 8-byte words (not FNV):
+// two buffers differing in one word cannot collide (the multiplier is odd and the shifts are
+// bijective), and any collision is bounded to one stale rectangle until its next write.
+//
+// Untested without a GL context: the backend wiring -- uploadUnderGpuRows' page arithmetic, the
+// stamp sites (VRAM write, local copy, the two render-target downloads, target create/grow/
+// re-address), and CompleteImageTransfer's early return. ps2xTest drives only this header.
 //
 // Header-only and free of GL includes on purpose, so ps2xTest drives the same Gate the backend
 // runs -- the reason gs_gl_upload_trace.h and gs_gl_upload_identity.h are headers too.
@@ -116,6 +127,14 @@ namespace GsGlUploadReasons
         out.erase(std::unique(out.begin(), out.end()), out.end());
     }
 
+    // The pages to stamp for a page-granular write: `span` counts from the base page (pageSpan), so a
+    // dbp inside a page (dbp & 31) lets the last block row spill one page row (`rowPages`, i.e.
+    // pageSpan(psm, bw, 1)) past it. Used by the local-copy stamp and decide's no-block-map fallback.
+    inline uint32_t stampSpan(uint32_t dbp, uint32_t span, uint32_t rowPages)
+    {
+        return span + ((dbp & 0x1Fu) ? rowPages : 0u);
+    }
+
     // 8 bytes a step: FNV-1a's byte loop is ~1 us on a 1 KB tile, a tenth of the tile's whole cost.
     inline uint64_t hashBytes(const uint8_t *data, size_t size)
     {
@@ -191,11 +210,12 @@ namespace GsGlUploadReasons
 
         // One call per Upload command. `whole`: this call carries the entire rectangle. `blocks`: what
         // blocksOf returned for the rectangle (empty = no map). `page`/`span`: the pages the backend
-        // marks for it (the fallback stamp when there is no block map). `underGpu`: a render target
+        // marks for it (the fallback stamp when there is no block map, widened by `rowPages` -- one
+        // page row, pageSpan(psm, bw, 1) -- when the key's dbp is inside a page). `underGpu`: a render target
         // has GPU-drawn rows over the rectangle since its last download. `skipEnabled`: the knob.
         // When the result says skip, the caller must not write the shadow and must not mark anything.
         Decision decide(const GsGlUploadIdentity::Key &key, const uint8_t *data, size_t size, bool whole,
-                        const std::vector<uint32_t> &blocks, uint32_t page, uint32_t span, bool underGpu,
+                        const std::vector<uint32_t> &blocks, uint32_t page, uint32_t span, uint32_t rowPages, bool underGpu,
                         bool skipEnabled)
         {
             Decision d;
@@ -226,7 +246,8 @@ namespace GsGlUploadReasons
             ++m_gen;
             if (blocks.empty())
             {
-                for (uint32_t i = 0; i < span && i < kPages; ++i)
+                const uint32_t stamped = stampSpan(key.dbp, span, rowPages);
+                for (uint32_t i = 0; i < stamped && i < kPages; ++i)
                     m_pageGen[(page + i) & (kPages - 1u)] = m_gen;
             }
             else

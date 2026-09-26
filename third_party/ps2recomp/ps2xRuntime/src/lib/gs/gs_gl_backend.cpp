@@ -2008,7 +2008,12 @@ GSGlBackend::RenderTarget *GSGlBackend::getRenderTarget(uint32_t fbp, uint32_t f
     for (RenderTarget &rt : m_renderTargets)
         if (rt.fbp == fbp)
         {
-            rt.fbw = std::max<uint32_t>(fbw, 1u);
+            // V2 review: a narrower re-address changes fbw without a grow, so the texture maps to
+            // other VRAM; no remembered upload may stand across it.
+            const uint32_t newFbw = std::max<uint32_t>(fbw, 1u);
+            if (newFbw != rt.fbw && uploadGateOn())
+                m_uploadGate.noteTargetsChanged();
+            rt.fbw = newFbw;
             // Sprint 7 Task 1c: the target was sized from the use known when it was created, and
             // the use can grow -- the same base page is re-addressed at a wider FBW (1024-wide at
             // boot, 640-wide in the shell) and a later draw's scissor reaches further down. Grow
@@ -2139,7 +2144,11 @@ void GSGlBackend::executeTransfer(const GSTransferCommand &command)
         const uint32_t span = pageSpan(command.bitbltbuf.dpsm, command.bitbltbuf.dbw, command.trxpos.dsay + command.trxreg.rrh);
         markShadowPages(page, span);
         if (uploadGateOn())
-            m_uploadGate.noteForeignWrite(page, span);
+            // V2 review: pageSpan counts from the base page, so a dbp inside a page (dbp & 31)
+            // lets the last block row spill one page row past the span; stamp that row too.
+            // markShadowPages above has the same gap (pre-existing, default path, KNOWN section 4).
+            m_uploadGate.noteForeignWrite(page, GsGlUploadReasons::stampSpan(command.bitbltbuf.dbp, span,
+                                                                          pageSpan(command.bitbltbuf.dpsm, command.bitbltbuf.dbw, 1u)));
         if (tracePagesHit(page, span))
             std::fprintf(stderr, "[gs-pages] frame=%llu local-copy sbp=%05x -> dbp=%05x dbw=%u %ux%u pages %03x+%u\n",
                          (unsigned long long)m_frameCounter, command.bitbltbuf.sbp, command.bitbltbuf.dbp, command.bitbltbuf.dbw,
@@ -2194,7 +2203,8 @@ void GSGlBackend::executeUpload(const uint8_t *data, size_t size)
         if (wholeTransfer && !m_uploadBlocks.empty())
             underGpu = uploadUnderGpuRows(m_uploadBlocks.front() >> 5, (m_uploadBlocks.back() >> 5) + 1u);
         const GsGlUploadReasons::Gate::Decision decision =
-            m_uploadGate.decide(key, data, size, wholeTransfer, m_uploadBlocks, page, span, underGpu, uploadGateSkip());
+            m_uploadGate.decide(key, data, size, wholeTransfer, m_uploadBlocks, page, span,
+                                pageSpan(t.bitbltbuf.dpsm, t.bitbltbuf.dbw, 1u), underGpu, uploadGateSkip());
         if (decision.skip)
         {
             // Leave the shadow's transfer where the write would have: complete, so a stray packet
