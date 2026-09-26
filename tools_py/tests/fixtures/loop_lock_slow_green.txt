@@ -2,7 +2,8 @@
 # `git hash-object scripts/loop_lock.sh` to the blob line below. Update this file ONLY after
 #   LOOP_LOCK_SLOW_TESTS=1 python -m unittest tools_py.tests.test_loop_lock
 # is green on the script as it stands.
-blob 3322d20142d4e05cbff819ad2c941902cbdfc9cd
-date 2026-09-26T10:52:38Z
-run 95 tests in 2136.3 s (test_loop_lock), ending 2026-09-26T10:52:38Z (logs/.loop_lock_slow_green written by SlowGreenSuite, 95 tests): OK, skipped=1 (this stamp test itself). Run by the Sprint 14 controller in wt-s14-w1 on agent/s14-w1. Sprint 14 W1: the queue's WIP cap -- tickets carry class=build|run, a third queued build ticket is refused (exit 4, "queue full: do lock-free work"), LOOP_LOCK_MAX_QUEUE (2).
+blob d9f14ca7ee183df8313f478239aa3712065b3dd6
+date 2026-09-26T12:05:58Z
+run 98 tests in 2407.0 s (test_loop_lock), ending 2026-09-26T12:05:58Z (logs/.loop_lock_slow_green written by SlowGreenSuite, 98 tests): OK, skipped=1 (this stamp test itself). Run by the Sprint 14 controller in wt-s14-w2 on agent/s14-w2. Sprint 14 W2: a granted ticket appends a stamped `TICKET <id> waited <s>` line to loop_lock.queue.log; cmd_class skips -o/-O with their argument.
+Previous: blob 3322d20142d4e05cbff819ad2c941902cbdfc9cd, 2026-09-26T10:52:38Z, 95 tests in 2136.3 s (test_loop_lock), Sprint 14 W1: the queue's WIP cap -- tickets classed, a third queued build ticket refused (exit 4).
 Previous: blob 36236f947bd95bbeee96969f1f13c4b7adffac22, 2026-09-25T15:45:57Z, 90 tests in 3853.6 s (test_loop_lock + test_loop_lock_closeout), Sprint 13 H2: the ticket queue, --wait in minutes, orphaned waiters leave the queue.
