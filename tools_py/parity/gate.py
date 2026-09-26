@@ -22,7 +22,15 @@ environment, the harness revision (record only) and, once the runtime prints it,
 and a run's pins.json beside it. The committed standard is scripts/parity/pins.json; a launch whose pins do
 not match it is REFUSED before anything is launched (exit 7, distinct from a stage FAIL's 1), and so is a
 `--baseline` re-score whose recorded pins, or today's reference files, do not match. `--accept-pins` makes the
-measured values the standard (the summary says so); `--pins` is the lock-free dry check.
+measured values the standard, written once after the run (the summary says so; a gate the lock refuses
+writes nothing -- issue #45); `--pins` is the lock-free dry check.
+
+A run with the mission stage also carries `FRAME mean=<ms> worst1s=<ms> n=<VBlanks>` (Sprint 13 V4): VBlank
+pacing -- host ms per guest VBlank, a lower bound on the time between presents, not the present rate (docs/
+KNOWN.md §1's two-instance clock row keeps the two apart) -- over the scripted walk (the HUD step to the drive's
+last step), from the sampler rows of mission.game.log (tools_py/parity/frame_time.py says which fields and
+why), and records the numbers in its pins.json as an informational
+`PIN frame` that is never compared (S13-R3: no refusal until three gates agree on its spread).
 """
 import argparse
 import glob
@@ -39,8 +47,8 @@ from collections import OrderedDict
 import numpy as np
 from PIL import Image
 
-from tools_py.parity import (black_rows, compare, console_compare, drive, guest_addresses, guest_probe,
-                             hostplatform, mission_fail, pins, screen_bands, sp_death_probe)
+from tools_py.parity import (black_rows, compare, console_compare, drive, frame_time, guest_addresses,
+                             guest_probe, hostplatform, mission_fail, pins, screen_bands, sp_death_probe)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_MIN_FREE_GB = 4.0
@@ -67,8 +75,27 @@ TITLE_REF = os.path.join("scripts", "parity", "ref_main_menu_ours.png")
 # Every clean run scores exactly 19/23 >= 90.0, so 90.0 sits ~3 points under the menu band and
 # ~5 points over the fade, and 16 leaves three captures of headroom. A mission run scored as a
 # title run gives 1/36 (negative control, logs/parity/runs/gameplay_probe5).
+# [SUPERSEDED 2026-09-25 by the issue #30 block below: the verdict is no longer a count. The three
+# captures of headroom sat inside the menu, not at the tail (s7_cpu_fallback2 lost s16..s18 and passed),
+# and the "~3 points" band is 2.0 on the full record (lowest window capture 92.0, research/64 command G).
+# The scores and the fade/movie reading above still stand.]
+#
+# Issue #30 (research/64, 2026-09-25): s19..s22 are not menu screens that were lost -- they are the game's idle
+# attract sequence (the menu fading to black, then the mission flyovers), already named in the calibration
+# above. Of the 165 archived stamps with a title line (native_on 2026-09-10 .. s11_close_gate), 123 score
+# exactly 19/23, 7 score 20-21/23 (the attract a capture late) and 14 score 23/23 (no attract inside the
+# window; s8_audio_mc_gate2, the issue's "before", is one of those). The count bar hid the one real loss on
+# record: s7_cpu_fallback2 froze on the menu-over-black from s16 on (s16..s22 = 82.7-82.9) and PASSED at 16/23.
+# So the verdict is positional: every capture the run wrote inside the menu window s00..s18 must score
+# >= TITLE_MIN_SCORE (on the record each of those positions matched the reference, and so did the capture
+# before it; the lowest window capture on a clean stamp is 92.0, 2.0 over the bar, and the lowest s18 alone
+# 93.0, s5_gsbp2c), and the attract tail s19..s22 is printed,
+# not counted. Replayed over the 165 stamps this changes one verdict, s7_cpu_fallback2 PASS -> FAIL.
+# TITLE_MIN_MATCHES stays as the floor on how many window captures a run must have written (the committed
+# fixture tests/fixtures/gate/title holds s00..s15).
 TITLE_MIN_SCORE = 90.0      # compare.score of a capture vs the main-menu reference
-TITLE_MIN_MATCHES = 16      # of the 23 captures s00..s22 (19 are at the menu on a clean run, then the attract movie)
+TITLE_MENU_WINDOW = 19      # s00..s18 are the menu on every clean run; s19.. is the attract sequence
+TITLE_MIN_MATCHES = 16      # at least this many menu-window captures must exist (and all of them must match)
 HUD_REF_NAME = "ref_hud_ours.png"
 MISSION_MIN_HOLDS = 3       # sNN_hold* steps after the HUD: fewer means the probe died on entry
 # ... and of their captures (sNN_hold*.png), at least this many must be gameplay by the letterbox-band test
@@ -168,9 +195,21 @@ def score_title(run_dir):
         return False, "no captures in %s" % run_dir
     scores = [(os.path.basename(p), _score_value(TITLE_REF, p)) for p in caps]
     good = sum(1 for _, s in scores if s >= TITLE_MIN_SCORE)
-    detail = "%d/%d menu captures >= %.1f; scores: %s" % (
-        good, len(scores), TITLE_MIN_SCORE, " ".join("%s=%.1f" % (n[:3], s) for n, s in scores))
-    return good >= TITLE_MIN_MATCHES, detail
+    window = [(n, s) for n, s in scores if int(n[1:3]) < TITLE_MENU_WINDOW]
+    tail = [(n, s) for n, s in scores if int(n[1:3]) >= TITLE_MENU_WINDOW]
+    lost = [n[:3] for n, s in window if s < TITLE_MIN_SCORE]
+    ok = not lost and len(window) >= TITLE_MIN_MATCHES
+    notes = []
+    if lost:
+        notes.append("menu capture(s) under %.1f: %s" % (TITLE_MIN_SCORE, " ".join(lost)))
+    if len(window) < TITLE_MIN_MATCHES:
+        notes.append("only %d menu-window captures, need %d" % (len(window), TITLE_MIN_MATCHES))
+    if tail and all(s >= TITLE_MIN_SCORE for _, s in tail):
+        notes.append("attract not reached by s%02d" % int(tail[-1][0][1:3]))
+    detail = "%d/%d menu captures >= %.1f (window s00..s%02d: %d/%d)%s; scores: %s" % (
+        good, len(scores), TITLE_MIN_SCORE, TITLE_MENU_WINDOW - 1, len(window) - len(lost), len(window),
+        "".join("; " + x for x in notes), " ".join("%s=%.1f" % (n[:3], s) for n, s in scores))
+    return ok, detail
 
 
 BURST_CAPTURE_RE = re.compile(r"^s(\d+)_burst_")
@@ -700,6 +739,8 @@ def score_baseline(stamp, revision=None):
     for name, ok, detail in results:
         print("%s %s (%s)" % ("PASS" if ok else "FAIL", name, detail), flush=True)
         failed += 0 if ok else 1
+        if name == "mission":
+            print(frame_time.line(*frame_time.read_stamp(out_root)), flush=True)   # informational (S13-R3)
     print("GATE %s (%d/%d) [baseline %s]" % ("FAIL" if failed else "PASS", len(results) - failed, len(results), out_root))
     return 1 if failed else 0
 
@@ -893,16 +934,17 @@ def stamp_revision(out_root):
                      "re-scored without one" % out_root)
 
 
-def pins_verdict(drifts, accepted, compared, revision="r0001"):
+def pins_verdict(drifts, accepted, compared, revision="r0001", when=""):
     """(word, line): the PINS line of a summary -- MATCH, ACCEPTED (the standard was rewritten) or DRIFTED
     (refused) -- and its one-word form for the record. The line names the revision's OWN standard, so a
-    summary says which file it was measured against."""
+    summary says which file it was measured against; `when` (a launch's " after the run") says when an
+    accepted standard was written."""
     standard = expected_pins_rel(revision)
     names = ", ".join(d.name for d in drifts)
     if not drifts:
         return "MATCH", "PINS MATCH %s (%d compared)" % (standard, compared)
     if accepted:
-        return "ACCEPTED", "PINS ACCEPTED: %s -> %s rewritten" % (names, standard)
+        return "ACCEPTED", "PINS ACCEPTED: %s -> %s rewritten%s" % (names, standard, when)
     return "DRIFTED", ("PINS DRIFTED: %s -- refused to score (pass --accept-pins to make the measured values the "
                        "standard in %s, or restore the input)" % (names, standard))
 
@@ -1009,8 +1051,9 @@ def main(argv=None):
                          "(0 match, 7 drifted); no launch, no lock" % pins.EXPECTED)
     ap.add_argument("--accept-pins", action="store_true",
                     help="a launch (or --pins) whose pins drifted rewrites the standard from the measured values "
-                         "instead of refusing; the summary says so. It rewrites THIS REVISION's file only -- an "
-                         "r0004 gate cannot reach %s" % pins.EXPECTED)
+                         "instead of refusing -- a launch writes it once, after a run whose every stage PASSed "
+                         "(S13-R5), never before the lock; the summary says so. It rewrites THIS REVISION's file "
+                         "only -- an r0004 gate cannot reach %s" % pins.EXPECTED)
     args = ap.parse_args(argv)
 
     if args.baseline:
@@ -1074,43 +1117,57 @@ def main(argv=None):
     print("REVISION %s (probe addresses and pin standard %s)" % (revision, expected_pins_rel(revision)), flush=True)
     # The pins are checked BEFORE the lock and the launch: a drifted standard refuses without spending a
     # run. The record (pins.json) and the summary are written either way, so the refusal is on file.
+    # They are only CHECKED here: with --accept-pins the standard is written once, after the run, when
+    # every pin (the late `mapping` too) has been measured -- never before the lock wait, where a gate
+    # queued and then cancelled used to rewrite it anyway (issue #45: s11_r0004_node1, s11_r0004_rebuild1).
     current = collect_pins()
-    drifts, expected, accepted = check_pins(current, args.accept_pins,
-                                            note="gate --accept-pins, stamp %s" % args.stamp,
-                                            revision=revision)
+    drifts, expected, _ = check_pins(current, False, revision=revision)
+    # `pending`: a drift --accept-pins will accept IF the run completes; `accepted`: it has been written.
+    pending = bool(drifts) and args.accept_pins
+    accepted = False
     compared = len(pins.comparable(current))
 
-    def write_summary(stage_lines, all_drifts):
-        """summary.txt (stage lines, EXE, PIN lines, PINS verdict) and pins.json; returns the lines."""
-        word, verdict = pins_verdict(all_drifts, accepted, compared, revision)
-        pin_lines = pins.lines(current, all_drifts, accepted, expected)
+    def write_summary(stage_lines, all_drifts, frame_lines=(), info=None):
+        """summary.txt (stage lines, the FRAME line, EXE, PIN lines, the informational PIN frame, PINS verdict)
+        and pins.json; returns the PIN lines (the informational one last) and the verdict."""
+        word, verdict = pins_verdict(all_drifts, accepted, compared, revision, when=" after the run")
+        pin_lines = pins.lines(current, all_drifts, accepted, expected) + pins.informational_lines(info)
         with open(os.path.join(out_root, "summary.txt"), "w", encoding="utf-8") as f:
-            f.write("".join(l + "\n" for l in stage_lines + [exe, elf] + pin_lines + [verdict]))
+            f.write("".join(l + "\n" for l in stage_lines + list(frame_lines) + [exe, elf] + pin_lines + [verdict]))
         pins.write_record(current, os.path.join(out_root, pins.RECORD_NAME), all_drifts, accepted, word,
-                          exe, expected_pins_rel(revision))
+                          exe, expected_pins_rel(revision), informational=info)
         return pin_lines, verdict
 
-    if drifts and not accepted:
+    if drifts and not pending:
         pin_lines, verdict = write_summary([], drifts)
         for line in pin_lines + [verdict]:
             print(line)
         print("GATE REFUSED (pins drifted: %s) -> %s" % (", ".join(d.name for d in drifts), out_root))
         return 7
-    for line in pins.lines(current, drifts, accepted, expected):
+    # Printed as they stand (DRIFTED), not as accepted: nothing is accepted until the run has completed,
+    # and a lock refusal below must not follow lines that say otherwise.
+    for line in pins.lines(current, drifts, False, expected):
         print(line, flush=True)
+    if pending:
+        print("PINS ACCEPT PENDING: %s -- %s is written after the run, and only if every stage PASSes"
+              % (", ".join(d.name for d in drifts), expected_pins_rel(revision)), flush=True)
     take = _lock("take", args.owner)
     if take.returncode != 0:
         print("gate: lock busy: " + take.stdout.strip())
+        if args.accept_pins:
+            print("gate: nothing ran, nothing accepted -- %s standard unchanged" % expected_pins_rel(revision))
         return 2
     wanted = [g.strip() for g in args.only.split(",") if g.strip()]
     results = []
     rc = 1
+    completed = False
     try:
         for name in wanted:
             ok, detail = run_gate(name, out_root)
             line = "%s %s (%s)" % ("PASS" if ok else "FAIL", name, detail)
             print(line, flush=True)
             results.append((ok, line))
+        completed = True
     finally:
         # Release the lock and leave a summary even when a gate raises part-way through.
         _lock("release", args.owner)
@@ -1123,15 +1180,37 @@ def main(argv=None):
         # unless --accept-pins -- and an absent line is recorded as absent, never refused.
         current["mapping"] = pins.mapping_pin([os.path.join(out_root, name + ".game.log") for name in wanted])
         late = [d for d in pins.compare(current, expected) if d.name == "mapping"]
-        if late and args.accept_pins:
+        all_drifts = drifts + late
+        if all_drifts and args.accept_pins and completed and not failed:
+            # The one write of an accepted standard (issue #45): after the run, with every pin measured
+            # that can be; accepted_standard still carries any the run could not (fccf3b5d). Only a run
+            # whose every wanted stage reached a PASS may write it (S13-R5): a standard is the measured
+            # input set of a run that passed. A stage that raised, or a Ctrl-C after the lock, is the
+            # cancelled gate #45 names; a FAILed run says nothing about whether its inputs are right, and
+            # accepting them would bake a broken input into the standard. Both leave it as they found it.
             path = expected_pins_path(revision)
             pins.write_expected(accepted_standard(current, path), path,
                                 note="gate --accept-pins, stamp %s" % args.stamp)
             accepted = True
-        all_drifts = drifts + late
+        elif all_drifts and args.accept_pins and not completed:
+            print("PINS NOT ACCEPTED: the run did not complete (%d of %d stages reached a verdict) -- %s unchanged"
+                  % (len([1 for _, l in results if "(gate did not run)" not in l]), len(wanted),
+                     expected_pins_rel(revision)))
+        elif all_drifts and args.accept_pins:
+            print("PINS NOT ACCEPTED: %d of %d stages FAILed -- %s unchanged"
+                  % (len(failed), len(results), expected_pins_rel(revision)))
         refused = bool(all_drifts) and not accepted
-        pin_lines, verdict = write_summary([line for _, line in results], all_drifts)
-        print(pin_lines[-1])        # the mapping line, now that the game logs exist
+        # The mission's frame time (Sprint 13 V4): printed and recorded, never compared (S13-R3).
+        frame_lines, info = [], None
+        if "mission" in wanted:
+            ft, why = frame_time.read_stamp(out_root)
+            frame_lines, info = [frame_time.line(ft, why)], pins.frame_info(ft, why)
+        pin_lines, verdict = write_summary([line for _, line in results], all_drifts, frame_lines, info)
+        for line in frame_lines:
+            print(line)
+        # the mapping line, now that the game logs exist, and the informational frame pin after it
+        for line in pin_lines[-1 - len(pins.informational_lines(info)):]:
+            print(line)
         print(verdict)
         if refused:
             print("GATE REFUSED (pins drifted: %s) -> %s" % (", ".join(d.name for d in all_drifts), out_root))

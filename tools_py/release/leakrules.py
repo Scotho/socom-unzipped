@@ -142,8 +142,8 @@ def opaque_hit(s):
     Key material mixes its cases and scatters its digits; a mangled C++ name (`FindExceptionHandler__FP12Throw`),
     a build path (`RTBUILD/ps2xRuntime/ps2EntryRunner`) and a NuGet id do not. So: both cases, at least three
     separate digit runs, no path separator, no `__`, and at most two of `_-`."""
-    if re.match(r"(?i)sha\d{3}-", s):
-        return False                                  # a subresource-integrity hash (package-lock.json)
+    if re.match(r"(?i)sha\d{3}[-=]", s):
+        return False                                  # an integrity hash: `sha512-...` (package-lock.json), `SHA256=...` (CMake URL_HASH)
     return (any(c.islower() for c in s) and any(c.isupper() for c in s)
             and len(re.findall(r"\d+", s)) >= 3
             and "/" not in s and "__" not in s
@@ -320,7 +320,9 @@ def text_rules(users=None, extras=None, hosted=HOSTED_IPS, surface="tree"):
 
     `surface` is what is being scanned: the source `tree` (and its history), or an `artifact` that reaches a
     stranger's disk. A LAN address is unroutable and a source tree's tests and research notes are full of
-    them, so `private-ip` runs only on artifacts -- where a log naming the builder's LAN is a leak."""
+    them, so `private-ip` runs only on artifacts -- where a log naming the builder's LAN is a leak. (The tree as it
+    is now, and the index, are held to more: leakcheck's `scan_private` reports every private address in a tracked
+    file as `tracked-private-ip` unless leak_allow.txt says why it is there -- Sprint 13 S6.)"""
     rules = _literal_rules("owner-user-name", users if users is not None else owner_names())
     rules += _literal_rules("owner-literal", extras if extras is not None else extra_literals())
     rules += [("home-directory-path", _home_dir_rule())]
@@ -378,7 +380,7 @@ SEVERITY = {
     "bearer-token": "critical", "secret-assignment": "high", "opaque-secret": "medium",
     "key-file-name": "high", "aws-account-id": "high", "owner-literal": "high",
     "owner-user-name": "medium", "home-directory-path": "medium", "street-address": "high",
-    "postcode": "medium", "email": "medium", "ip-address": "medium", "private-ip": "low",
+    "postcode": "medium", "email": "medium", "ip-address": "medium", "private-ip": "low", "tracked-private-ip": "low",
     "ignored-path-tracked": "critical", "ignored-path-not-ignored": "high", "ignored-path-in-history": "critical",
     "commit-author": "medium", "commit-committer": "medium", "unreadable": "high", "forced-ignored-file": "critical",
 }

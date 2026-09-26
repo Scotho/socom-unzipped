@@ -1,6 +1,8 @@
 """Scan the "lod t=... comp=... dist=... entry=... near=a/b/c far=d/e/f flags=... fade=x->y result=r" lines of a
 PS2X_CULL_TRACE log: per frame how many components the LOD band test rejected, with the rejected ones' distance
-against their band, so a mis-scaled distance (camera + 0x2c8) shows as rejections far outside plausible bands."""
+against their band, so a mis-scaled distance (camera + 0x2c8) shows as rejections far outside plausible bands.
+
+Run: python -m tools_py.research.terrain.lod_trace_scan <PS2X_CULL_TRACE log>"""
 import re, sys, collections
 rx = re.compile(r"lod t=([\d.]+) comp=(\w+) dist=([^ ]+) entry=(\w+) near=([^/]+)/([^/]+)/([^ ]+) far=([^/]+)/([^/]+)/([^ ]+) flags=(\w+) fade=([^-]+)->([^ ]+) result=(\d+)")
 rows = []

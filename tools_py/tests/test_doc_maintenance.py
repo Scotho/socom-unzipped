@@ -1,6 +1,6 @@
 """The documentation registry (docs/DOC_MAINTENANCE.md) held to the tree.
 
-Six checks, each aimed at a rot mechanism that actually bit this project (the reasons are in
+Ten checks, each aimed at a rot mechanism that actually bit this project (the reasons are in
 docs/DOC_MAINTENANCE.md section 0). No build needed, so this runs in CI. Nothing here fails on a
 calendar -- cadence is the sprint-close review, a human step with a stamp.
 """
@@ -105,12 +105,68 @@ class DanglingLinksTest(unittest.TestCase):
             % (bad, docmaint.FUTURE_MARK))
 
 
+class CeilingsTest(unittest.TestCase):
+    """R268: the four documents that grow by appending get a byte ceiling each.
+
+    The 2026-09-25 audit found CURRENT_SPRINT at 190 KB with 12 % of it live, HANDOFF section 2 holding
+    twelve pick-up points, and the STATUS "Current state" block at 30 KB of dated bullets under a heading
+    that says "keep it short". Nothing retired a block, so the close review read only the newest one.
+    """
+
+    def test_the_appending_documents_are_under_their_ceilings(self):
+        bad = docmaint.over_ceiling()
+        self.assertEqual(
+            bad, [],
+            "over the R268 ceiling(s): %s -- archive the oldest blocks (docs/archive/, a banner, a registry "
+            "row) rather than raising the number" % "; ".join(docmaint.describe_ceiling(b) for b in bad))
+
+    def test_human_tasks_stays_one_table(self):
+        """Sprint 13 R4 cut HUMAN_TASKS from 702 lines (82,968 B) to one table of the owner's decisions (9,786 B).
+
+        Its ceiling was lowered to that size plus 25 %; a number back near the old 104,000 would let the
+        stack of "Start here" blocks grow again unnoticed.
+        """
+        path, heading, limit = [c for c in docmaint.CEILINGS if c[0] == "docs/HUMAN_TASKS.md"][0]
+        self.assertIsNone(heading)
+        self.assertLessEqual(limit, 12500, "raise nothing: archive the old rows (docs/DOC_MAINTENANCE.md check 7)")
+
+    def test_every_ceiling_names_a_block_that_exists(self):
+        for path, heading, limit in docmaint.CEILINGS:
+            self.assertIsNotNone(docmaint.block_bytes(path, heading),
+                                 "%s has no %r block -- a renamed heading must not switch its ceiling off"
+                                 % (path, heading))
+
+
+class TagClaimsTest(unittest.TestCase):
+    """R268: "merged to `main` as `vX`" is a claim about origin, and Sprint 11's was written before its tag."""
+
+    def test_every_merged_as_names_a_tag_on_origin(self):
+        tags, why = docmaint.remote_tags()
+        if tags is None:
+            self.skipTest("the tag check did not run -- origin unreachable: %s" % why)
+        self.assertEqual(
+            docmaint.unknown_tags(tags), [],
+            "a live document says 'merged to main as vX' for a tag origin does not list -- write it after "
+            "the tag is pushed, or say 'merges ... as' until then")
+
+
+class RulingScanTest(unittest.TestCase):
+    def test_the_ruling_scan_reads_every_archive_file(self):
+        """A ledger archived out of a live file must not let the counter walk backwards."""
+        sources = docmaint.ruling_sources()
+        for rel in docmaint.linked_docs():
+            if rel.startswith("docs/archive/"):
+                self.assertIn(rel, sources)
+        self.assertIn("docs/archive/CURRENT_SPRINT-sprints-9-to-11.md", sources)
+
+
 class ReportTest(unittest.TestCase):
     def test_the_report_runs_clean_on_this_tree(self):
         r = docmaint.report()
         problems = {k: r[k] for k in ("unregistered", "missing_files", "duplicate_rows",
                                       "count_offenders", "undated_snapshots", "silent_archives",
-                                      "dangling_doc_links") if r[k]}
+                                      "dangling_doc_links", "over_ceiling", "unknown_tags",
+                                      "duplicate_rulings", "undefined_rulings") if r[k]}
         self.assertEqual(problems, {}, "python -m tools_py.docmaint says: %s" % problems)
 
     def test_the_review_stamp_parses(self):
@@ -118,6 +174,26 @@ class ReportTest(unittest.TestCase):
         text = docmaint._read("docs/DOC_MAINTENANCE.md")
         m = re.search(r"\*\*Last full review:\s*(20\d{2}-\d{2}-\d{2})", text)
         self.assertIsNotNone(m, "docs/DOC_MAINTENANCE.md lost its 'Last full review:' stamp")
+
+
+class GeneratedBacklogTest(unittest.TestCase):
+    """docs/BACKLOG.md (R267) is class G: `python -m tools_py.issues backlog` writes it. Its issue table needs
+    the network, so this holds the half that does not -- the head and the ruled-out table against the tracked
+    docs/backlog_ruled_out.txt -- through the tool's own `--check --offline`."""
+
+    def test_the_backlog_and_its_list_are_registered(self):
+        rows = {r["path"]: r["cls"] for r in docmaint.registry()}
+        self.assertEqual(rows.get("docs/BACKLOG.md"), "G")
+        self.assertIn("docs/backlog_ruled_out.txt", rows)
+
+    def test_the_backlog_is_not_stale_against_its_ruled_out_list(self):
+        from tools_py import issues
+        import contextlib
+        import io
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = issues.main(["backlog", "--check", "--offline"])
+        self.assertEqual(code, 0, out.getvalue())
 
 
 class PlantedDefectsTest(unittest.TestCase):
@@ -129,8 +205,11 @@ class PlantedDefectsTest(unittest.TestCase):
 
     def setUp(self):
         self._root = docmaint.ROOT
+        self._tags = docmaint.remote_tags
         self._tmp = tempfile.mkdtemp(prefix="docmaint_")
         docmaint.ROOT = self._tmp
+        # The planted tree is not a clone: origin's tags are planted too, so no test here touches the network.
+        docmaint.remote_tags = lambda: ({"v0.10.0", "v0.11.0"}, None)
         for sub in ("docs", "docs/archive", "docs/parity", "docs/story"):
             os.makedirs(os.path.join(self._tmp, sub), exist_ok=True)
         self.write("README.md", "# r\n")
@@ -138,14 +217,22 @@ class PlantedDefectsTest(unittest.TestCase):
         self.write("SECURITY.md", "# s\n")
         self.write("THIRD_PARTY_NOTICES.md", "# t\n")
         self.write("docs/DEVELOPING.md", "# d\n\nTotal Tests: 764\n")
-        self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n\nR99 was decided earlier.\n")
+        self.write("docs/HANDOFF.md", "# h\n\n## 2. Where it stands\n\nNext free ruling number: R100\n\n"
+                                     "R99 was decided earlier.\n")
+        # ...in a plan, where a ruling is made (HANDOFF section 5 rule 9), so the clean tree cites nothing undefined.
+        self.write("docs/superpowers/plans/2026-01-01-plan.md",
+                   "# plan\n\n## Rulings made on the owner's behalf\n\n- **R99** (Task 1): the decision.\n")
         self.registry([("README.md", "L"), ("CONTRIBUTING.md", "C"), ("SECURITY.md", "C"),
                        ("THIRD_PARTY_NOTICES.md", "G"), ("docs/DEVELOPING.md", "L"),
                        ("docs/HANDOFF.md", "L"), ("docs/DOC_MAINTENANCE.md", "C")])
 
     def tearDown(self):
         docmaint.ROOT = self._root
+        docmaint.remote_tags = self._tags
         shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def ceiling(self, path):
+        return [c for c in docmaint.CEILINGS if c[0] == path][0]
 
     def write(self, rel, text):
         path = os.path.join(self._tmp, rel)
@@ -168,6 +255,8 @@ class PlantedDefectsTest(unittest.TestCase):
         self.assertEqual(r["undated_snapshots"], [])
         self.assertEqual(r["silent_archives"], [])
         self.assertEqual(r["dangling_doc_links"], [])
+        self.assertEqual(r["over_ceiling"], [])
+        self.assertEqual(r["unknown_tags"], [])
         self.assertEqual(r["next_free_ruling"], r["max_ruling"] + 1, "the counter check's own control")
 
     def test_an_unregistered_document_fires_check_1(self):
@@ -270,6 +359,241 @@ class PlantedDefectsTest(unittest.TestCase):
     def test_a_glob_or_a_placeholder_is_not_a_citation(self):
         self.write("README.md", "# r\n\n`docs/research/**` and `docs/audits/*.md` and `docs/research/<n>-x.md`.\n")
         self.assertEqual(docmaint.report()["dangling_doc_links"], [])
+
+    # --- R268: the ceilings -------------------------------------------------------------------------------
+
+    def test_a_sprint_file_over_its_ceiling_fires_and_prints_its_size(self):
+        path, _, limit = self.ceiling("docs/CURRENT_SPRINT.md")
+        self.write(path, "# cs\n" + "x" * limit + "\n")
+        hits = [h for h in docmaint.report()["over_ceiling"] if h[0] == path]
+        self.assertEqual(len(hits), 1, docmaint.report()["over_ceiling"])
+        self.assertEqual(hits[0][2], limit + 6)
+        self.assertIn("{:,}".format(limit + 6), docmaint.describe_ceiling(hits[0]))
+
+    def test_a_sprint_file_under_its_ceiling_does_not_fire(self):
+        path, _, limit = self.ceiling("docs/CURRENT_SPRINT.md")
+        self.write(path, "# cs\n" + "x" * (limit - 100) + "\n")
+        self.assertEqual(docmaint.report()["over_ceiling"], [])
+
+    def test_handoff_section_2_over_its_ceiling_fires(self):
+        path, heading, limit = self.ceiling("docs/HANDOFF.md")
+        self.write(path, "# h\n\nNext free ruling number: R100\n\n## 1. What\n\nshort\n\n"
+                         "## 2. Where it stands\n\n" + "- now\n" * (limit // 6 + 10) + "\n## 3. Next\n\nshort\n")
+        self.assertTrue(any(h[0] == path and h[1] == heading for h in docmaint.report()["over_ceiling"]))
+
+    def test_only_handoff_section_2_is_measured(self):
+        """The rest of HANDOFF is reference and may be long; only the pick-up block appends."""
+        path, heading, limit = self.ceiling("docs/HANDOFF.md")
+        self.write(path, "# h\n\nNext free ruling number: R100\n\n## 2. Where it stands\n\n- now\n\n"
+                         "## 3. Next\n\n" + "y" * (limit * 2) + "\n")
+        self.assertEqual(docmaint.report()["over_ceiling"], [])
+
+    def test_the_status_state_block_over_its_ceiling_fires(self):
+        path, heading, limit = self.ceiling("docs/STATUS.md")
+        self.write(path, "# s\n\n## Current state (keep it short)\n" + "- 2026-09-25 x\n" * (limit // 15 + 10)
+                         + "\n## 2026-09-25 -- the log\n\n" + "z" * (limit * 2) + "\n")
+        hits = [h for h in docmaint.report()["over_ceiling"] if h[0] == path]
+        self.assertEqual(len(hits), 1)
+        self.assertLess(hits[0][2], limit * 2, "the log below the block must not count")
+
+    def test_human_tasks_over_its_ceiling_fires(self):
+        path, _, limit = self.ceiling("docs/HUMAN_TASKS.md")
+        self.write(path, "# ht\n" + "x" * limit + "\n")
+        self.assertTrue(any(h[0] == path for h in docmaint.report()["over_ceiling"]))
+
+    def test_a_renamed_heading_fires_rather_than_switching_the_ceiling_off(self):
+        path, heading, limit = self.ceiling("docs/STATUS.md")
+        self.write(path, "# s\n\n## State of things\n\n- short\n")
+        hits = [h for h in docmaint.report()["over_ceiling"] if h[0] == path]
+        self.assertEqual(len(hits), 1)
+        self.assertIsNone(hits[0][2])
+        self.assertIn("not found", docmaint.describe_ceiling(hits[0]))
+
+    # --- R268: "merged to main as vX" names a tag origin has ---------------------------------------------
+
+    def test_a_merged_as_for_a_missing_tag_fires(self):
+        self.write("README.md", "# r\n\nSprint 12 is merged to `main` as `v0.12.0`.\n")
+        self.assertIn(("README.md", 3, "v0.12.0"), docmaint.report()["unknown_tags"])
+
+    def test_a_merged_as_for_a_tag_origin_has_does_not_fire(self):
+        self.write("README.md", "# r\n\nSprint 11 CLOSED and merged to `main` as `v0.11.0`; also merged to main as v0.10.0.\n")
+        self.assertEqual(docmaint.report()["unknown_tags"], [])
+
+    def test_the_merged_as_check_ignores_case(self):
+        self.write("README.md", "# r\n\nSprint 12 is Merged to MAIN as V0.12.0.\n")
+        self.assertIn(("README.md", 3, "v0.12.0"), docmaint.report()["unknown_tags"])
+
+    def test_a_crlf_checkout_measures_the_same_as_lf(self):
+        """A Windows checkout carries CRLF; CI carries LF. The ceiling must not depend on which."""
+        path, _, limit = self.ceiling("docs/HUMAN_TASKS.md")
+        body = "# ht\n" + ("x" * 99 + "\n") * 10
+        with open(os.path.join(self._tmp, "docs", "HUMAN_TASKS.md"), "wb") as fh:
+            fh.write(body.replace("\n", "\r\n").encode("utf-8"))
+        self.assertEqual(docmaint.block_bytes(path, None), len(body.encode("utf-8")))
+        self.write("docs/HUMAN_TASKS.md", body)
+        self.assertEqual(docmaint.block_bytes(path, None), len(body.encode("utf-8")))
+
+    def test_a_struck_through_merged_as_is_a_retraction(self):
+        self.write("README.md", "# r\n\n~~Sprint 12 is merged to `main` as `v0.12.0`~~ -- not yet.\n")
+        self.assertEqual(docmaint.report()["unknown_tags"], [])
+
+    def test_an_unreachable_origin_skips_the_tag_check_out_loud(self):
+        import io
+        from contextlib import redirect_stdout
+        docmaint.remote_tags = lambda: (None, "could not resolve host")
+        self.write("README.md", "# r\n\nSprint 12 is merged to `main` as `v0.12.0`.\n")
+        r = docmaint.report()
+        self.assertEqual(r["unknown_tags"], [])
+        self.assertIn("could not resolve host", r["tag_check_skipped"])
+        out = io.StringIO()
+        with redirect_stdout(out):
+            docmaint.main([])
+        self.assertIn("SKIPPED", out.getvalue())
+
+    # --- the ruling scan reads the archive --------------------------------------------------------------
+
+    def test_a_ruling_that_lives_only_in_an_archive_file_still_counts(self):
+        self.write("docs/archive/CURRENT_SPRINT-old.md", "# old\n\n> ARCHIVED.\n\n| R250 | a ruling |\n")
+        self.assertEqual(docmaint.max_ruling(), (250, "docs/archive/CURRENT_SPRINT-old.md"))
+
+    def test_a_ruling_in_an_archive_subdirectory_still_counts(self):
+        self.write("docs/archive/sprints-7-12/plan.md", "# p\n\n> ARCHIVED.\n\nR251 was ruled here.\n")
+        self.assertEqual(docmaint.max_ruling()[0], 251)
+
+    # --- Sprint 13 R3: one number, one ruling; a cited number has a text ---------------------------------
+
+    def plan(self, rel, body):
+        self.write("docs/superpowers/plans/" + rel, "# a plan\n\n## Rulings made on the owner's behalf\n\n" + body)
+
+    def test_a_ruling_defined_twice_fires_with_both_locations(self):
+        """R107, R109 and R110 were each issued by two Sprint 8 plans for unrelated decisions (audit D55)."""
+        self.plan("a.md", "- **R90** (Task 1): the first decision.\n")
+        self.plan("b.md", "intro\n\n- **R90 (2026-09-19).** A different decision.\n")
+        hits = docmaint.report()["duplicate_rulings"]
+        self.assertEqual(hits, [("R90", [("docs/superpowers/plans/a.md", 5), ("docs/superpowers/plans/b.md", 7)])])
+
+    def test_an_archived_owner_list_restating_a_ruling_is_not_a_second_definition(self):
+        """Only a plan, the sprint file and their archives make a ruling (rule 9); the archived HUMAN_TASKS
+        restated R246/R247 in the house shape on 2026-09-25 and read as a duplicate until this held."""
+        self.plan("a.md", "- **R90** (Task 1): the decision.\n")
+        self.write("docs/archive/HUMAN_TASKS-to-2026-09-25.md",
+                   "# Archived (2026-09-25): the owner's list, verbatim\n\n- **R90** the decision restated for the owner.\n")
+        self.write("docs/archive/CURRENT_SPRINT-sprints-9-to-11.md",
+                   "# Archived (2026-09-25): the sprint file's records\n\n- **R91** (2026-09-20): made in the sprint file.\n")
+        self.plan("b.md", "- **R91** (2026-09-21): made again.\n")
+        hits = docmaint.report()["duplicate_rulings"]
+        self.assertEqual([name for name, _ in hits], ["R91"], hits)
+
+    def test_every_house_shape_of_a_definition_is_a_definition(self):
+        self.plan("a.md", "- **R90** (Task 1): one.\n"
+                          "**R90 -- two.**\n"
+                          "- **R90 — three.**\n"
+                          "1. **R90, four.**\n"
+                          "Mid-line **R90:** five.\n"
+                          "  **Ruling R90: six.**\n"
+                          "and **R90** (2026-09-25, the controller): seven.\n")
+        hits = docmaint.report()["duplicate_rulings"]
+        self.assertEqual([len(locs) for _, locs in hits], [7], hits)
+
+    def test_a_citation_is_not_a_definition(self):
+        self.plan("a.md", "- **R90** (Task 1): the decision.\n\n"
+                          "R90's cost; the stop rule (R90); see **R90** below.\n"
+                          "1. **R90 was wrong on its first telling.**\n"
+                          "The winner is chosen by **R90**: the smaller wins.\n"
+                          "- **R89–R90** (the close): a range restated.\n")
+        self.assertEqual(docmaint.report()["duplicate_rulings"], [])
+
+    def test_a_spaced_range_is_not_a_definition(self):
+        self.plan("a.md", "- **R90** (Task 1): the decision.\n"
+                          "- **R90 – R92** (the close): a range restated.\n"
+                          "- **R90 - R92** (the close): again.\n"
+                          "**R90 -- R92**: and again.\n")
+        self.assertEqual(docmaint.report()["duplicate_rulings"], [])
+
+    def test_a_line_naming_a_number_twice_is_one_location(self):
+        self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n\nR89 (it corrects R89) and R99.\n")
+        self.assertEqual(docmaint.report()["undefined_rulings"], [("R89", [("docs/HANDOFF.md", 5)])])
+
+    def test_a_quote_or_a_code_fence_is_not_a_definition(self):
+        self.plan("a.md", "- **R90** (Task 1): the decision.\n\n"
+                          "> **R90: the text as it read before it was rewritten.**\n\n"
+                          "```\n- **R90** (Task 1): a commit message template\n```\n")
+        self.assertEqual(docmaint.report()["duplicate_rulings"], [])
+
+    def test_a_restatement_outside_the_plans_is_not_a_definition(self):
+        """HANDOFF section 5 rule 9: a ruling is made in a plan, or in CURRENT_SPRINT when there is none."""
+        self.plan("a.md", "- **R90** (Task 1): the decision.\n")
+        self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n\n- **R90** the decision, restated.\n")
+        self.assertEqual(docmaint.report()["duplicate_rulings"], [])
+
+    def test_a_ledger_row_indexes_a_definition_rather_than_repeating_it(self):
+        self.plan("a.md", "- **R90** (Task 1): the decision.\n")
+        self.write("docs/CURRENT_SPRINT.md", "# cs\n\n#### The rulings ledger\n\n| R | decision | where |\n"
+                                             "|---|---|---|\n| R90 | the decision | `plans/a.md` |\n")
+        self.assertEqual(docmaint.report()["duplicate_rulings"], [])
+
+    def test_two_ledger_rows_for_one_number_fire(self):
+        self.write("docs/CURRENT_SPRINT.md", "# cs\n\n| R90 | one |\n| R90 | two |\n")
+        hits = docmaint.report()["duplicate_rulings"]
+        self.assertEqual(hits, [("R90", [("docs/CURRENT_SPRINT.md", 3), ("docs/CURRENT_SPRINT.md", 4)])])
+
+    def test_a_second_issue_recorded_as_b_does_not_fire_and_defines_the_b_name(self):
+        """Recorded, not renumbered: the second definition carries 'cited as R<n>b' and is counted as R<n>b."""
+        self.plan("a.md", "- **R90** (Task 1): the first decision.\n")
+        self.plan("b.md", "- **R90** (2026-09-19; *R90 was issued twice; this, the second, is cited as R90b "
+                          "from 2026-09-25*): a different decision.\n")
+        self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n\nR90 and R90b were decided.\n")
+        r = docmaint.report()
+        self.assertEqual(r["duplicate_rulings"], [])
+        self.assertEqual(r["undefined_rulings"], [])
+
+    def test_a_cited_ruling_with_no_definition_fires(self):
+        """R114, R116 and R124 were cited for a week with no text anywhere (audit D56)."""
+        self.plan("a.md", "- **R90** (Task 1): the decision.\n")
+        self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n\nR89 was decided (R90).\n")
+        hits = docmaint.report()["undefined_rulings"]
+        self.assertEqual([h[0] for h in hits], ["R89"])
+        self.assertEqual(hits[0][1], [("docs/HANDOFF.md", 5)])
+
+    def test_the_clean_planted_tree_defines_every_ruling_it_cites(self):
+        r = docmaint.report()
+        self.assertEqual(r["duplicate_rulings"], [])
+        self.assertEqual(r["undefined_rulings"], [])
+
+    def test_a_ledger_row_is_a_definition_for_the_undefined_check(self):
+        self.write("docs/CURRENT_SPRINT.md", "# cs\n\n| R89 | decided in the ledger itself |\n")
+        self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n\nR89 and R99 were decided.\n")
+        self.assertEqual(docmaint.report()["undefined_rulings"], [])
+
+    def test_a_vacancy_note_in_a_plan_answers_an_undefined_number(self):
+        self.plan("a.md", "R89 — vacant: named in a range, never issued.\n")
+        self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n\nR88, R89 and R99 were decided.\n")
+        hits = docmaint.report()["undefined_rulings"]
+        self.assertEqual([h[0] for h in hits], ["R88"])
+
+    def test_a_vacancy_note_outside_the_plans_and_ledgers_does_not_count(self):
+        self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n\nR89 -- vacant: says who? R99.\n")
+        self.assertEqual([h[0] for h in docmaint.report()["undefined_rulings"]], ["R89"])
+
+    def test_a_b_citation_needs_its_b_definition(self):
+        self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n\nR99 and R99b were decided.\n")
+        self.assertEqual([h[0] for h in docmaint.report()["undefined_rulings"]], ["R99b"])
+
+    def test_a_sprint_local_name_is_not_a_global_ruling(self):
+        """Sprint 12 numbered its own rulings S12-R<n>; S12-R13 is not R13."""
+        self.write("docs/HANDOFF.md", "# h\n\nNext free ruling number: R100\n\nR99 amended by S12-R13 and S12-R5.\n")
+        self.assertEqual(docmaint.report()["undefined_rulings"], [])
+
+    def test_main_prints_both_locations_of_a_duplicate(self):
+        import io
+        from contextlib import redirect_stdout
+        self.plan("a.md", "- **R90** (Task 1): one.\n")
+        self.plan("b.md", "- **R90** (Task 2): two.\n")
+        out = io.StringIO()
+        with redirect_stdout(out):
+            self.assertEqual(docmaint.main([]), 1)
+        self.assertIn("R90 defined 2 times: docs/superpowers/plans/a.md:5; docs/superpowers/plans/b.md:5",
+                      out.getvalue())
 
 
 if __name__ == "__main__":

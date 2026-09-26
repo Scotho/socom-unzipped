@@ -261,7 +261,7 @@ void register_launcher_tests()
             c.gsScale = 2;
             c.presentFilter = "integer";
             c.windowSize = "1280x896";
-            c.server = "192.168.2.10";
+            c.server = "192.0.2.10";
             c.profile = "craig";
             c.secondInstance = true;
             const std::string json = launcher::toJson(c);
@@ -319,15 +319,15 @@ void register_launcher_tests()
             t.Equals(c.serverPreset, std::string("unzipped"), "the default preset is the project's hosted server, now that it is real");
             // A config.json from before the picker existed carries a typed server and no preset: it must stay the player's own.
             launcher::Config legacy;
-            t.IsTrue(launcher::fromJson("{\"server\": \"192.168.2.10\"}", legacy), "a pre-picker config parses");
+            t.IsTrue(launcher::fromJson("{\"server\": \"192.0.2.10\"}", legacy), "a pre-picker config parses");
             t.Equals(legacy.serverPreset, std::string("custom"), "a typed server with no preset stays custom");
-            t.Equals(launcher::effectiveServer(legacy), std::string("192.168.2.10"), "and its address still applies");
+            t.Equals(launcher::effectiveServer(legacy), std::string("192.0.2.10"), "and its address still applies");
             c.serverPreset = "unzipped";
-            c.server = "192.168.2.10";
+            c.server = "192.0.2.10";
             launcher::Config back;
             t.IsTrue(launcher::fromJson(launcher::toJson(c), back), "parses its own output");
             t.Equals(back.serverPreset, std::string("unzipped"), "the preset survives the round trip");
-            t.Equals(back.server, std::string("192.168.2.10"), "... and so does the custom address behind it");
+            t.Equals(back.server, std::string("192.0.2.10"), "... and so does the custom address behind it");
             launcher::Config odd;
             t.IsTrue(launcher::fromJson("{\"serverPreset\": \"horizon-2\"}", odd), "an unknown preset parses");
             t.Equals(odd.serverPreset, std::string("custom"), "... as custom, so the player's own address still applies");
@@ -338,7 +338,8 @@ void register_launcher_tests()
 
         // Sprint 7 Task 4 Step 5: the assertion that goes live the moment the owner supplies the hosted address.
         // Until then it reports itself as skipped rather than failing - MiniTest has no Skip, so the reason is
-        // printed and nothing is asserted (docs/HUMAN_TASKS.md: "The two server addresses for the launcher's picker").
+        // printed and nothing is asserted (docs/archive/HUMAN_TASKS-to-2026-09-25.md: "The two server addresses for the
+        // launcher's picker"; ours is real since 2026-09-19, the community one is row O5 of docs/HUMAN_TASKS.md).
         tc.Run("server presets: the Unzipped preset ships a real address and is the default", [](TestCase &t)
         {
             const launcher::ServerPreset *unzipped = launcher::findServerPreset("unzipped");
@@ -347,7 +348,7 @@ void register_launcher_tests()
                 return;
             if (std::string(unzipped->address) == "UNZIPPED_SERVER_ADDRESS_TBC")
             {
-                std::cout << "[skipped: the owner has not supplied the hosted address yet (docs/HUMAN_TASKS.md)] ";
+                std::cout << "[skipped: the owner has not supplied the hosted address yet (docs/archive/HUMAN_TASKS-to-2026-09-25.md)] ";
             }
             else
             {
@@ -367,7 +368,7 @@ void register_launcher_tests()
             };
             launcher::Config c;
             c.serverPreset = "community";
-            c.server = "10.0.0.5";
+            c.server = "198.51.100.5";
             // Fourth pass: a preset still carrying a placeholder is not playable, so it does not win the
             // field -- it resolves to the project's own server rather than sending the game a placeholder.
             t.Equals(serverOf(c), std::string("socom.scotho.com"), "an unavailable preset resolves to the one that exists");
@@ -382,7 +383,7 @@ void register_launcher_tests()
             t.Equals(retired.serverPreset, std::string("unzipped"), "a config naming the retired id heals to the project server");
             t.Equals(serverOf(retired), std::string("socom.scotho.com"), "and reaches it by name");
             c.serverPreset = "custom";
-            t.Equals(serverOf(c), std::string("10.0.0.5"), "custom uses the typed address");
+            t.Equals(serverOf(c), std::string("198.51.100.5"), "custom uses the typed address");
             c.server.clear();
             t.Equals(serverOf(c), std::string("127.0.0.1"), "custom with nothing typed: the loopback default");
             t.Equals(launcher::effectiveServer(c), std::string("127.0.0.1"), "effectiveServer agrees");
@@ -1506,7 +1507,7 @@ void register_launcher_tests()
 
             launcher::Config c;
             c.serverPreset = "community";
-            c.server = "192.168.2.10";
+            c.server = "192.0.2.10";
             t.Equals(launcher::effectiveServer(c), std::string("socom.scotho.com"),
                      "a config still naming community plays on the project's server, not on a placeholder");
             const std::vector<std::string> env = launcher::environmentFor(c);
@@ -1527,9 +1528,9 @@ void register_launcher_tests()
             t.Equals(loaded.serverPreset, std::string("unzipped"),
                      "and is healed on load: the owner's saved choice moves to the server that exists");
             launcher::Config kept;
-            t.IsTrue(launcher::fromJson("{\"serverPreset\": \"custom\", \"server\": \"192.168.2.10\"}", kept), "a custom config parses");
+            t.IsTrue(launcher::fromJson("{\"serverPreset\": \"custom\", \"server\": \"192.0.2.10\"}", kept), "a custom config parses");
             t.Equals(kept.serverPreset, std::string("custom"), "and a playable preset is left alone");
-            t.Equals(launcher::effectiveServer(kept), std::string("192.168.2.10"), "with the address the player typed");
+            t.Equals(launcher::effectiveServer(kept), std::string("192.0.2.10"), "with the address the player typed");
         });
 
         // ---- Task 11 (Sprint 11 Goal D): the launcher's revision plumbing --------------------------------
@@ -1764,14 +1765,29 @@ void register_launcher_tests()
 
         tc.Run("why LAUNCH is disabled, in the player's words", [](TestCase &t)
         {
-            t.Equals(ui::launchBlockedReason(false, false, true), std::string("choose your SOCOM II disc image first"),
+            t.Equals(ui::launchBlockedReason(false, false, true, ""), std::string("choose your SOCOM II disc image first"),
                      "no image chosen: the first thing to do, not an error about a file");
-            t.Equals(ui::launchBlockedReason(false, false, false), std::string("that file is not SOCOM II (NTSC, r0001)"),
-                     "a file that is not the game");
-            t.Equals(ui::launchBlockedReason(true, true, false), std::string("the game is running"), "one game at a time");
-            t.Equals(ui::launchBlockedReason(false, true, true), std::string("the game is running"),
+            t.Equals(ui::launchBlockedReason(true, true, false, ""), std::string("the game is running"), "one game at a time");
+            t.Equals(ui::launchBlockedReason(false, true, true, ""), std::string("the game is running"),
                      "the running game comes first: it is the blocker the player just created");
-            t.Equals(ui::launchBlockedReason(true, false, false), std::string(), "verified and idle: nothing in the way");
+            t.Equals(ui::launchBlockedReason(true, false, false, ui::kDiscCannotOpen), std::string(),
+                     "verified and idle: nothing in the way");
+        });
+
+        // Sprint 13 V8 (stranger audit row 10): a path that does not exist was "cannot open the file" on DISC and
+        // "that file is not SOCOM II (NTSC, r0001)" under LAUNCH -- a moved ISO reported as the wrong disc. One
+        // state, one sentence: LAUNCH says what the DISC page says, for every state the disc check can end in.
+        tc.Run("LAUNCH's blocked reason is the DISC page's sentence for the same state", [](TestCase &t)
+        {
+            t.Equals(ui::launchBlockedReason(false, false, false, ui::kDiscCannotOpen), std::string("cannot open the file"),
+                     "a path that does not exist (or cannot be read) is a file that cannot be opened, not the wrong disc");
+            for (const char *state : {ui::kDiscCannotOpen, ui::kDiscNoElf, ui::kDiscCannotReadElf, ui::kDiscWrongRevision})
+                t.Equals(ui::launchBlockedReason(false, false, false, state), std::string(state),
+                         std::string("LAUNCH repeats the DISC page: ") + state);
+            t.Equals(ui::launchBlockedReason(false, false, false, ""), std::string(ui::kDiscNotChecked),
+                     "a disc not checked yet is said as the DISC page says it");
+            t.Equals(ui::launchBlockedReason(false, false, true, ui::kDiscNotChosen), std::string(ui::kDiscNotChosen),
+                     "no image: the DISC page and LAUNCH share the sentence too");
         });
 
 

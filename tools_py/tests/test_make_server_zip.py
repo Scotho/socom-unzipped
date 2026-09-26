@@ -72,5 +72,58 @@ class MakeServerZipRefusalTest(unittest.TestCase):
             self.assertIn("start-servers.ps1", r.stderr)
 
 
+@unittest.skipUnless(BASH and shutil.which("powershell"), "bash and PowerShell only")
+class MakeServerZipBuildIdTest(unittest.TestCase):
+    """Sprint 13 Task O3: the package says which commit it is (BUILD_ID, served as the stats JSON's "build") and
+    carries the box scripts but never their ops.env. A stand-in server tree -- empty files where the binaries go --
+    so it runs on a fresh clone too."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.server = os.path.join(self.tmp, "server")
+        for rel in ("start-servers.ps1", "seed-simulated-db.ps1", "README.md", "linux/install.sh",
+                    "config/medius.json", "ops/backup.sh", "ops/health.sh", "ops/backup.cron",
+                    "ops/ops.env.example", "ops/ops.env"):
+            path = os.path.join(self.server, rel)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as fh:
+                fh.write("{}\n" if rel.endswith(".json") else "x\n")
+        for p in ("Server.Unified.Launcher", "Server.NAT", "Server.UniverseInformation", "Server.Medius", "Server.Dme"):
+            d = os.path.join(self.server, "horizon-server", p, "bin", "Release", "net9.0")
+            os.makedirs(d)
+            open(os.path.join(d, p + ".exe"), "w").close()
+        self.pkg = os.path.join(self.tmp, "out", "socom-unzipped-server")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _build_id(self):
+        with open(os.path.join(self.pkg, "BUILD_ID")) as fh:
+            return fh.read()
+
+    def test_the_override_is_written(self):
+        r = _run(os.path.join(self.tmp, "out"), {"SERVER": self.server, "SERVER_BUILD_ID": "0123456789ab"})
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertEqual(self._build_id(), "0123456789ab\n")
+
+    def test_the_repository_commit_is_the_default(self):
+        env = {k: v for k, v in os.environ.items() if k != "SERVER_BUILD_ID"}
+        r = subprocess.run([BASH, SCRIPT, os.path.join(self.tmp, "out")], capture_output=True, text=True, cwd=ROOT,
+                           env={**env, "SERVER": self.server})
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        head = subprocess.run(["git", "rev-parse", "--short=12", "HEAD"], capture_output=True, text=True,
+                              cwd=ROOT, check=True).stdout.strip()
+        # the stand-in tree is not this checkout's server/, so the id says it came from a copy
+        self.assertRegex(self._build_id(), r"^%s(-dirty)?-copy\n$" % head)
+
+    def test_the_box_scripts_ship_and_their_env_file_does_not(self):
+        r = _run(os.path.join(self.tmp, "out"), {"SERVER": self.server, "SERVER_BUILD_ID": "x"})
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        shipped = sorted(os.listdir(os.path.join(self.pkg, "ops")))
+        self.assertEqual(shipped, ["backup.cron", "backup.sh", "health.sh", "ops.env.example"])
+        names = zipfile.ZipFile(os.path.join(self.tmp, "out", "socom-unzipped-server.zip")).namelist()
+        self.assertFalse(any(n.endswith("ops.env") for n in names), "ops.env must never ship")
+
+
 if __name__ == "__main__":
     unittest.main()

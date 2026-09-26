@@ -6,10 +6,14 @@ ruling number as R179 while R241 was in use -- a collision that had already happ
 difference between the documents that stayed true and the ones that rotted was not care; it was
 whether anything could fail. This module is the thing that fails.
 
-It is deliberately small. Six checks, each one aimed at a rot mechanism that actually bit this
+It is deliberately small. Ten checks, each one aimed at a rot mechanism that actually bit this
 project. The sixth was added on 2026-09-23 for the opposite reason -- a rot mechanism that had not
 bitten yet only because nobody dared move anything: the Sprint 1-6 specs and plans were cited by
 path from a hundred places, and `docs/archive/README.md` recorded them as "not moved, on purpose".
+The seventh and eighth are R268's (2026-09-25): a byte ceiling on each document that grows by
+appending, and "merged to main as vX" held to origin's tags.
+The ninth and tenth are Sprint 13 Task R3's (2026-09-25): a ruling number defined twice, and a
+cited ruling number with no definition, each found by the audit of that day and by nothing before it.
 
 Nothing here fails on a calendar: a test that reddens because a week passed gets disabled,
 and then the check is worse than nothing. Cadence is the sprint-close review in
@@ -17,6 +21,7 @@ and then the check is worse than nothing. Cadence is the sprint-close review in
 """
 import os
 import re
+import subprocess
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REGISTRY = "docs/DOC_MAINTENANCE.md"   # repo-relative, so tests can point ROOT at a planted tree
@@ -74,6 +79,58 @@ RULING_ANY = re.compile(r"\bR(\d{2,3})\b")
 DATE = re.compile(r"\b20\d{2}-\d{2}-\d{2}\b")
 ROW = re.compile(r"^\|\s*`([^`]+)`\s*\|\s*\*{0,2}([LGNSCA])\*{0,2}\s*\|")
 
+# R268 (2026-09-25): the four documents that grow by appending get a byte ceiling each. The project
+# audit of that day found CURRENT_SPRINT at 190 KB with about 12 % of it live, HANDOFF section 2 holding
+# twelve pick-up points (three of them "now"), and STATUS's "Current state" block at 30 KB of dated
+# bullets under a heading that says "keep it short". Nothing retired a block, so every close review read
+# the newest one and never the stack under it. A ceiling makes skipping the archive step a failure.
+# (path, heading prefix of the measured "## " block or None for the whole file, bytes). Set at the
+# Sprint 13 Task R1 split from the content left live, with about 25 % headroom; HUMAN_TASKS was cut by
+# Task R4 the same day (702 lines to one table, the old file archived) and its number lowered to
+# match. Bytes are counted with LF line ends, so a Windows checkout (CRLF) and CI measure the same
+# document the same way. When one fires, archive the
+# oldest blocks (docs/archive/, a banner, a registry row) -- do not raise the number.
+CEILINGS = (
+    ("docs/CURRENT_SPRINT.md", None, 72000),       # 57,829 after the R1 split
+    ("docs/HANDOFF.md", "## 2.", 3800),           # 3,022
+    ("docs/STATUS.md", "## Current state", 2900),  # 2,309
+    ("docs/HUMAN_TASKS.md", None, 12230),         # 9,786 after the R4 cut (was 104,000 over 82,968)
+)
+
+# R268 too: "merged to `main` as `vX.Y.Z`" is a claim about origin. On 2026-09-25 four live documents
+# said it of v0.11.0 before the tag or the merge existed, so nobody was prompted to do either. A
+# struck-through claim (~~...~~) is a retraction and is skipped, as check 6 skips a struck path.
+MERGED_AS = re.compile(r"merged to `?main`? as `?(v\d+\.\d+\.\d+)`?", re.I)   # "Merged to MAIN as" too
+STRUCK = re.compile(r"~~.*?~~")
+
+# Checks 9 and 10 (Sprint 13 Task R3, 2026-09-25): one number, one ruling; a cited number has a text. The
+# counter (check 2) only proves the NEXT number is free; it never noticed that R107, R109 and R110 had each
+# been issued by two Sprint 8 plans for unrelated decisions, or that R114, R116 and R124 were cited for a
+# week with no findable text (documents audit D55-D56). Both need a definition told apart from a citation.
+# A definition is a line in a place a ruling is MADE (HANDOFF section 5 rule 9: a plan's rulings, or
+# CURRENT_SPRINT when there is no plan, and what docs/archive/ keeps of both) in one of the house shapes:
+#   - **R107** (Task 1): ...      **R181 -- ...**      - **R169 <em dash> ...**      1. **R237, REWRITTEN ...
+#   - **R265**, **R266** (...)    ... **R173:** ...    **Ruling R115: ...**          **R264** (date, who): ...
+# and NOT "R107's", "(R107)", "see **R107**", "**R238 was wrong**", "chosen by **R143**: ...", a bold range
+# "**R241-R245**", a quoted line ("> ..."; a rewritten ruling quotes its first telling) or a code fence.
+# A ledger row ("| R181 | ... | where it is written | status |") indexes a definition rather than repeating
+# it: it counts as a definition for check 10 (R209 and R229 have only their rows) and is held to one row per
+# number among ledger rows, but a row beside its plan's bullet is not a duplicate.
+# A second issue is RECORDED, not renumbered: its definition line carries "cited as R<n>b" and is counted
+# as R<n>b, and the citations that mean it say R<n>b. A number named but never issued carries a vacancy
+# note, "R<n> -- vacant: <reason>", in the plan or ledger that owns its range.
+# A range is never a definition, spaced or not ("**R241-R245**", "- **R107 - R110** (the close)").
+RULING_DEF_LEAD = re.compile(
+    r"^\s*(?:[-*+]\s+|\d+\.\s+)?\*\*R(\d{2,3})(?!\s*(?:—|–|--?)\s*R\d)(?=\*\*|\s*[(:,.]|\s+(?:—|–|--?)\s)")
+RULING_DEF_MORE = re.compile(r"\*\*,\s*(?:and\s+)?\*\*R(\d{2,3})(?=\*\*)")
+RULING_DEF_LABEL = re.compile(r"\*\*(?:Ruling\s+)?R(\d{2,3})(?::|\*\*\s+\([^)\n]*\):)")
+RULING_LEDGER_ROW = re.compile(r"^\s*\|\s*\*{0,2}R(\d{2,3})\*{0,2}\s*\|")
+RULING_SECOND = re.compile(r"cited as R(\d{2,3})b\b")
+RULING_VACANT = re.compile(r"\bR(\d{2,3})\s*(?:—|–|--?)\s*vacant\s*:", re.I)
+# A citation: the global number, or a recorded second issue (R107b). Sprint 12 numbered its own rulings
+# S12-R<n> in their own namespace (R264), so "S12-R13" is not R13.
+RULING_CITE = re.compile(r"(?<!S\d-)(?<!S\d\d-)\bR(\d{2,3})(b?)\b")
+
 
 def _read(relpath):
     with open(os.path.join(ROOT, relpath), "r", encoding="utf-8", errors="replace") as fh:
@@ -116,21 +173,33 @@ def head(relpath, lines=15):
     return "\n".join(_read(relpath).split("\n")[:lines])
 
 
-def max_ruling():
-    """The highest R<n> in use across the live documents, and where it was found."""
-    best, where = 0, None
+def ruling_sources():
+    """Every document max_ruling() reads, as repo-relative posix paths."""
     # Rulings are numbered where they are made: the live documents AND the plans' own "## Rulings"
     # sections (house convention since Sprint 5). A plan-only ruling not scanned here made the
     # counter read one too high on 2026-09-22, the first night the check ran.
-    # docs/archive/sprints-1-6/ is in the list because the Sprint 1-6 plans moved there on
-    # 2026-09-23 and their rulings did not stop existing: dropping them would let the counter walk
-    # backwards, which is the exact failure this check was written for.
-    plans = []
-    for folder in ("docs/superpowers/plans", "docs/archive/sprints-1-6"):
-        d = os.path.join(ROOT, *folder.split("/"))
-        if os.path.isdir(d):
-            plans += [folder + "/" + n for n in sorted(os.listdir(d)) if n.endswith(".md")]
-    for path in by_class("L") + ["docs/STATUS.md"] + plans:
+    # The whole of docs/archive/ is read, top level and every subdirectory, because a ruling does not
+    # stop existing when its block is archived: the Sprint 1-6 plans moved on 2026-09-23, and on
+    # 2026-09-25 (Task R1) the Sprint 9-11 record and the Sprint 7-10 plans followed. Until then only
+    # docs/archive/sprints-1-6/ was listed, so a close that archived the newest ledger would have let
+    # the counter walk backwards -- the exact failure this check was written for.
+    out = list(by_class("L")) + ["docs/STATUS.md"]
+    d = os.path.join(ROOT, "docs", "superpowers", "plans")
+    if os.path.isdir(d):
+        out += ["docs/superpowers/plans/" + n for n in sorted(os.listdir(d)) if n.endswith(".md")]
+    out += [p for p in linked_docs() if p.startswith("docs/archive/")]
+    seen, uniq = set(), []
+    for p in out:
+        if p not in seen:
+            seen.add(p)
+            uniq.append(p)
+    return uniq
+
+
+def max_ruling():
+    """The highest R<n> in use across the live documents, and where it was found."""
+    best, where = 0, None
+    for path in ruling_sources():
         if not os.path.isfile(os.path.join(ROOT, path)):
             continue
         for line in _read(path).split("\n"):
@@ -142,6 +211,107 @@ def max_ruling():
                 if n > best:
                     best, where = n, path
     return best, where
+
+
+def _ruling_key(name):
+    """'R107b' -> (107, 'b'), so a report lists R107 before R107b before R108."""
+    m = re.match(r"R(\d+)(b?)$", name)
+    return (int(m.group(1)), m.group(2))
+
+
+def ruling_definition_sources():
+    """The documents a ruling may be MADE in (HANDOFF section 5 rule 9), as repo-relative posix paths."""
+    # Under docs/archive/ only what WAS a plan or the sprint file is a home: the archived sprint-file records
+    # (CURRENT_SPRINT-*.md) and the archived plans and specs (sprints-*/). An archived HANDOFF, HUMAN_TASKS or
+    # STATUS restates rulings in the house shape and is not where they were made (2026-09-25: the archived
+    # HUMAN_TASKS restated R246 and R247 and read as a second definition of each).
+    def is_home(p):
+        if p.startswith("docs/superpowers/plans/"):
+            return True
+        if p.startswith("docs/archive/"):
+            rest = p[len("docs/archive/"):]
+            return rest.startswith("sprints-") or rest.startswith("CURRENT_SPRINT")
+        return False
+    out = [p for p in ruling_sources() if is_home(p)]
+    return ["docs/CURRENT_SPRINT.md"] + out   # the rule names it, whatever its registry row says
+
+
+def ruling_records():
+    """(definitions, ledger rows, vacancy notes), each {name: [(path, line), ...]}; see RULING_DEF_LEAD."""
+    defs, rows, vacant = {}, {}, {}
+    for path in ruling_definition_sources():
+        if not os.path.isfile(os.path.join(ROOT, path)):
+            continue
+        fenced = False
+        for i, line in enumerate(_read(path).split("\n"), 1):
+            if line.lstrip().startswith("```"):
+                fenced = not fenced
+                continue
+            if fenced or line.lstrip().startswith(">"):
+                continue
+            for m in RULING_VACANT.finditer(line):
+                vacant.setdefault("R" + m.group(1), []).append((path, i))
+            m = RULING_LEDGER_ROW.match(line)
+            if m:
+                rows.setdefault("R" + m.group(1), []).append((path, i))
+                continue
+            found = []
+            m = RULING_DEF_LEAD.match(line)
+            if m:
+                found.append(m.group(1))
+                pos = m.end()
+                while True:
+                    more = RULING_DEF_MORE.match(line, pos)
+                    if not more:
+                        break
+                    found.append(more.group(1))
+                    pos = more.end()
+            for m in RULING_DEF_LABEL.finditer(line):
+                if m.group(1) not in found:
+                    found.append(m.group(1))
+            seconds = set(RULING_SECOND.findall(line))
+            for n in found:
+                name = "R%s%s" % (n, "b" if n in seconds else "")
+                defs.setdefault(name, []).append((path, i))
+    return defs, rows, vacant
+
+
+def duplicate_rulings():
+    """[(name, [(path, line), ...])] for every ruling number defined more than once (check 9)."""
+    defs, rows, _ = ruling_records()
+    out = [(name, locs) for name, locs in defs.items() if len(locs) > 1]
+    out += [(name, locs) for name, locs in rows.items() if len(locs) > 1]
+    return sorted(out, key=lambda item: _ruling_key(item[0]))
+
+
+def ruling_citations():
+    """{name: [(path, line), ...]}: every R<n> and R<n>b named across the ruling scan (check 2's sources)."""
+    cites = {}
+    for path in ruling_sources():
+        if not os.path.isfile(os.path.join(ROOT, path)):
+            continue
+        for i, line in enumerate(_read(path).split("\n"), 1):
+            if RULING_LINE.search(line):
+                continue   # the counter names the number NOT yet in use
+            for m in RULING_CITE.finditer(line):
+                locs = cites.setdefault("R%s%s" % (m.group(1), m.group(2)), [])
+                if (path, i) not in locs:   # a line naming a number twice is one location
+                    locs.append((path, i))
+    return cites
+
+
+def undefined_rulings():
+    """[(name, [(path, line), ...])]: cited, at or under the highest number in use, and with no definition,
+    no ledger row and no vacancy note anywhere (check 10). The locations are the citations."""
+    defs, rows, vacant = ruling_records()
+    hi = max_ruling()[0]
+    out = []
+    for name, locs in ruling_citations().items():
+        n, _ = _ruling_key(name)
+        if n > hi or name in defs or name in rows or name in vacant:
+            continue
+        out.append((name, locs))
+    return sorted(out, key=lambda item: _ruling_key(item[0]))
 
 
 def ruling_counters():
@@ -298,12 +468,104 @@ def dangling_doc_links():
     return bad
 
 
+def block_bytes(relpath, heading):
+    """Bytes (LF line ends) of a whole file, or of the "## " block whose heading starts with `heading`.
+
+    The block runs from its heading line to the next level-2 heading or the end of the file. None when
+    the file or the heading is missing.
+    """
+    full = os.path.join(ROOT, relpath)
+    if not os.path.isfile(full):
+        return None
+    with open(full, "rb") as fh:
+        data = fh.read().replace(b"\r\n", b"\n")
+    if heading is None:
+        return len(data)
+    lines = data.split(b"\n")
+    want = heading.encode("utf-8")
+    start = next((i for i, ln in enumerate(lines) if ln.startswith(want)), None)
+    if start is None:
+        return None
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith(b"## ")), len(lines))
+    return len(b"\n".join(lines[start:end]))
+
+
+def over_ceiling():
+    """[(path, heading, measured bytes or None, ceiling)] for every R268 ceiling that is broken.
+
+    A missing file is not a problem here (check 1 owns that); a file whose measured heading has gone is,
+    because renaming a heading must not quietly switch its ceiling off.
+    """
+    bad = []
+    for path, heading, limit in CEILINGS:
+        if not os.path.isfile(os.path.join(ROOT, path)):
+            continue
+        n = block_bytes(path, heading)
+        if n is None or n > limit:
+            bad.append((path, heading, n, limit))
+    return bad
+
+
+def describe_ceiling(item):
+    path, heading, n, limit = item
+    where = "%s %r block" % (path, heading) if heading else "%s (whole file)" % path
+    if n is None:
+        return "%s: heading not found (ceiling {:,} bytes)".format(limit) % where
+    return "%s: {:,} bytes, ceiling {:,}".format(n, limit) % where
+
+
+_TAGS = {}
+
+
+def remote_tags():
+    """(set of tag names on origin, None) -- or (None, why) when origin cannot be asked.
+
+    Asked once per ROOT per process (`git ls-remote --tags origin`, 30 s, no credential prompt).
+    """
+    if ROOT in _TAGS:
+        return _TAGS[ROOT]
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+    try:
+        p = subprocess.run(["git", "ls-remote", "--tags", "origin"], cwd=ROOT, env=env,
+                           capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as exc:
+        res = (None, "%s: %s" % (type(exc).__name__, exc))
+    else:
+        if p.returncode != 0:
+            err = (p.stderr or "").strip().splitlines()
+            res = (None, "git ls-remote exit %d%s" % (p.returncode, (": " + err[0]) if err else ""))
+        else:
+            tags = set()
+            for line in p.stdout.splitlines():
+                ref = line.split("\t")[-1].strip()
+                if ref.startswith("refs/tags/"):
+                    tags.add(ref[len("refs/tags/"):].replace("^{}", ""))
+            res = (tags, None)
+    _TAGS[ROOT] = res
+    return res
+
+
+def unknown_tags(tags):
+    """(path, line, tag) for every live-document "merged to main as vX" whose tag origin lacks."""
+    bad = []
+    for path in by_class("L"):
+        if not os.path.isfile(os.path.join(ROOT, path)):
+            continue
+        for i, line in enumerate(_read(path).split("\n"), 1):
+            for m in MERGED_AS.finditer(STRUCK.sub("", line)):
+                tag = "v" + m.group(1)[1:]
+                if tag not in tags:
+                    bad.append((path, i, tag))
+    return bad
+
+
 def report():
     """One dict for a human or a close-out step."""
     reg = registry()
     listed = [r["path"] for r in reg]
     files = covered_files()
     hi, where = max_ruling()
+    tags, why = remote_tags()
     return {
         "rows": len(reg),
         "unregistered": [p for p in files if p not in listed],
@@ -316,6 +578,12 @@ def report():
         "undated_snapshots": undated_snapshots(),
         "silent_archives": silent_archives(),
         "dangling_doc_links": dangling_doc_links(),
+        "over_ceiling": over_ceiling(),
+        "unknown_tags": unknown_tags(tags) if tags is not None else [],
+        "duplicate_rulings": duplicate_rulings(),
+        "undefined_rulings": undefined_rulings(),
+        "tags_on_origin": len(tags) if tags is not None else None,
+        "tag_check_skipped": why,
     }
 
 
@@ -324,14 +592,41 @@ def main(argv=None):
     print("doc registry: %d rows, %d files covered" % (r["rows"], len(covered_files())))
     print("rulings: highest in use R%d (%s); HANDOFF offers R%s"
           % (r["max_ruling"], r["max_ruling_in"], r["next_free_ruling"]))
+    for path, heading, limit in CEILINGS:
+        n = block_bytes(path, heading)
+        if n is not None and n <= limit:
+            print("ceiling: %s" % describe_ceiling((path, heading, n, limit)))
+    if r["tag_check_skipped"]:
+        # Never pass silently: the run is OK only on what it could check, and says what it could not.
+        print("tags: SKIPPED -- origin unreachable (%s); the 'merged to main as vX' check did not run"
+              % r["tag_check_skipped"])
+    else:
+        print("tags: %d on origin; every 'merged to main as vX' checked against them" % r["tags_on_origin"])
     bad = 0
     for key in ("unregistered", "missing_files", "duplicate_rows", "count_offenders",
-                "undated_snapshots", "silent_archives", "dangling_doc_links"):
+                "undated_snapshots", "silent_archives", "dangling_doc_links", "unknown_tags"):
         if r[key]:
             bad += len(r[key])
             print("%s:" % key)
             for item in r[key]:
                 print("   ", item)
+    if r["over_ceiling"]:
+        bad += len(r["over_ceiling"])
+        print("over_ceiling (R268; archive the oldest blocks, do not raise the number):")
+        for item in r["over_ceiling"]:
+            print("   ", describe_ceiling(item))
+    if r["duplicate_rulings"]:
+        bad += len(r["duplicate_rulings"])
+        print("duplicate_rulings (one number, one ruling; record the second as R<n>b beside it, do not renumber):")
+        for name, locs in r["duplicate_rulings"]:
+            print("    %s defined %d times: %s" % (name, len(locs), "; ".join("%s:%d" % loc for loc in locs)))
+    if r["undefined_rulings"]:
+        bad += len(r["undefined_rulings"])
+        print("undefined_rulings (cited, never defined; write its text, or 'R<n> -- vacant: <reason>' where "
+              "its range is owned):")
+        for name, locs in r["undefined_rulings"]:
+            more = " (+%d more)" % (len(locs) - 3) if len(locs) > 3 else ""
+            print("    %s cited at %s%s" % (name, "; ".join("%s:%d" % loc for loc in locs[:3]), more))
     if r["next_free_ruling"] != r["max_ruling"] + 1:
         bad += 1
         print("ruling counter: HANDOFF says R%s, should be R%d" % (r["next_free_ruling"], r["max_ruling"] + 1))

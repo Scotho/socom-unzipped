@@ -5,7 +5,7 @@ frame at that box. Run from the repo root:
     python tools_py/tests/fixtures/lobby/make_first_login_fixtures.py
 
 The two sources are the reference captures of 2026-09-19:
-  logs/parity/s8_lan_login_check/A_02_persona.png -- the LAN server (192.168.2.10): PLAYER NAME shows
+  logs/parity/s8_lan_login_check/A_02_persona.png -- the LAN server (the dev box's LAN address): PLAYER NAME shows
       the persona saved on the card ("socomc") and the cursor is on PASSWORD;
   logs/parity/s8_hosted_control/A_02_persona.png -- the hosted Horizon (3.143.65.100), which keeps
       personas per server and has none: PLAYER NAME is empty and lit.

@@ -14,9 +14,9 @@ build and test everything else, which is where most contributions land:
 |---|---|---|
 | A clone, Linux (Ubuntu 24.04 is what CI uses) | the runtime library, the C++ suite, the launcher, the tools; the Python suite | `bash scripts/build_linux.sh --no-runner`, then `bash scripts/build_linux.sh test --no-runner`. The package list is in `.github/workflows/linux.yml`. |
 | A clone, Windows (Git Bash, Python 3) | the runtime library, the C++ suite, the launcher, the tools; the Python suite | `bash scripts/bootstrap_windows.sh` (fetches llvm-mingw, CMake and Ninja into `tools/`, each pinned by sha256; ~245 MB once), then `./build.sh runtime --no-runner` and `./build.sh test --no-runner`. The `windows` workflow does exactly this on a bare runner. |
-| Your own r0001 disc as well | the game | `pip install unicorn`, then `bash scripts/disc_to_elf.sh "<your ISO>"` (eight minutes and 4.2 GB: it extracts the disc and decrypts the overlays), then `./build.sh recomp`, `./build.sh runtime`, `./build.sh test` (Windows, Git Bash) or `scripts/build_linux.sh`; the recipe is `docs/DEVELOPING.md` "From your own disc to a buildable ELF". |
+| Your own r0001 disc as well | the game | `pip install -r requirements.txt`, then `bash scripts/disc_to_elf.sh "<your ISO>"` (eight minutes and 4.2 GB: it extracts the disc and decrypts the overlays), then `./build.sh recomp`, `./build.sh runtime`, `./build.sh test` (Windows, Git Bash) or `scripts/build_linux.sh`; the recipe is `docs/DEVELOPING.md` "From your own disc to a buildable ELF". |
 
-**The state of the game build (2026-09-21).** `./build.sh recomp` starts from files this repository does not and must not contain: the extracted disc tree (`game/disc/`) and the plaintext overlays merged into one ELF (`game/overlays/socom2_game.elf`). Producing them from your own disc is now one command -- `bash scripts/disc_to_elf.sh "<your ISO>"` -- which extracts the ISO9660 filesystem, decrypts the DNAS overlay and the `RUN/RAW/APACHE00.ZDB` code package by running the game's own code under Unicorn, merges the result into the ELF, and verifies every step against the digests recorded in `tools_py/disc_to_elf_expected.json`. It is idempotent: a second run is a no-op that still verifies. **What is proven:** the whole path a newcomer is told to walk, run end to end on 2026-09-21 from a genuine `git clone` of this repository into an empty directory on Windows -- clone, `install_hooks.sh`, `bootstrap_windows.sh` (a real 245 MB download from no cache), `build.sh runtime --no-runner`, `build.sh test --no-runner` (764/764), the Python suite, `disc_to_elf.sh` against an r0001 ISO, `build.sh recomp`, `build.sh runtime` -- **42 minutes from `git clone` to a `dist/socom2.exe` of 236,852,224 bytes**, with the overlays and the merged ELF hashing to the recorded digests on the third independent reproduction of them. The numbers are in `docs/superpowers/plans/2026-09-21-sprint-10-disc-to-elf.md`. **What is not:** any other disc image of that revision (the command says clearly which check failed if yours differs), and the same chain on Linux, where only `scripts/build_linux.sh` has been run and never from an ISO. If either fails for you, open an issue with the line it refused on -- that is exactly the report this needs.
+**The state of the game build (2026-09-21).** `./build.sh recomp` starts from files this repository does not and must not contain: the extracted disc tree (`game/disc/`) and the plaintext overlays merged into one ELF (`game/overlays/socom2_game.elf`). Producing them from your own disc is now one command -- `bash scripts/disc_to_elf.sh "<your ISO>"` -- which extracts the ISO9660 filesystem, decrypts the DNAS overlay and the `RUN/RAW/APACHE00.ZDB` code package by running the game's own code under Unicorn, merges the result into the ELF, and verifies every step against the digests recorded in `tools_py/disc_to_elf_expected.json`. It is idempotent: a second run is a no-op that still verifies. **What is proven:** the whole path a newcomer is told to walk, run end to end on 2026-09-21 from a genuine `git clone` of this repository into an empty directory on Windows -- clone, `install_hooks.sh`, `bootstrap_windows.sh` (a real 245 MB download from no cache), `build.sh runtime --no-runner`, `build.sh test --no-runner` (764/764), the Python suite, `disc_to_elf.sh` against an r0001 ISO, `build.sh recomp`, `build.sh runtime` -- **42 minutes from `git clone` to a `dist/socom2.exe` of 236,852,224 bytes**, with the overlays and the merged ELF hashing to the recorded digests on the third independent reproduction of them. The numbers are in `docs/archive/sprints-7-12/2026-09-21-sprint-10-disc-to-elf.md`. **What is not:** any other disc image of that revision (the command says clearly which check failed if yours differs), and the same chain on Linux, where only `scripts/build_linux.sh` has been run and never from an ISO. If either fails for you, open an issue with the line it refused on -- that is exactly the report this needs.
 
 Not sure your disc is r0001? The launcher checks it and says so (exit code 67 is "not r0001").
 
@@ -71,9 +71,29 @@ documentation that a stranger followed successfully. Large refactors and new fea
 The open defects the project knows about are the issues labelled
 [`known-issue`](https://github.com/Scotho/socom-unzipped/issues?q=is%3Aissue+is%3Aopen+label%3Aknown-issue): each
 says what happens, what evidence shows it, where it is written in `docs/KNOWN.md`, and the **closing bar** -- the
-test, measurement or gate result that would show it fixed. `help wanted` marks the ones that need no disc;
-`needs-disc-gate` marks the ones that do. The milestone says which sprint intends to close it; no milestone is the
-backlog. The conventions behind the list are `docs/GIT_STRATEGY.md` §7, and the stack is reviewed in full at every
+test, measurement or gate result that would show it fixed. The milestone says which sprint intends to close it; no
+milestone is the backlog.
+
+[`help wanted`](https://github.com/Scotho/socom-unzipped/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)
+marks the ones you can close without a disc. The rule is `docs/DOC_MAINTENANCE.md` §7 step 6, applied at every sprint
+close: the label goes on an issue only when its closing bar needs no disc, no run of the in-game gate and nothing
+that lives on the maintainer's machine, and `good first issue` only where that bar is a test you can run yourself.
+On 2026-09-25 that was #33, #39, #40, #46 and #48, with #48 also `good first issue`; each of them carries a comment
+saying what you can do there without a disc and what you cannot. `needs-disc-gate` marks the ones that need the disc.
+An issue whose body opens with "Internal:" is the maintainer's loop lock or gate harness: public for the record, not
+something a contributor can run. Some Evidence sections cite paths under `logs/`: those are git-ignored files on the
+maintainer's machine, and the same section says so and names what a clone holds instead (the test, the KNOWN row, a
+fixture under `tools_py/tests/fixtures/`).
+
+**What you can do without a disc.** Everything in `docs/DEVELOPING.md`'s "a newcomer's first hour" that is not the
+disc chain: `bash scripts/bootstrap_windows.sh`, then `./build.sh runtime --no-runner` (the runtime library and the
+launcher) and `./build.sh test --no-runner` (the C++ suite, the Python suite and the VU1 fixture verify), or
+`bash scripts/build_linux.sh --no-runner` and its `test` step on Linux; the Python suite alone,
+`python -m unittest discover -s tools_py/tests -t .` (cases that need an extracted disc skip themselves, so a skip
+count different from CI's is not a failure); the documentation checks, `python -m tools_py.docmaint`; the leak check,
+`python -m tools_py.release.leakcheck all`; and an issue body's shape, `python -m tools_py.issues check-body FILE`.
+What needs your own r0001 disc: `scripts/disc_to_elf.sh`, `./build.sh recomp`, a `./build.sh runtime` that builds
+the game, and the gate (`python -m tools_py.parity.gate`). The conventions behind the list are `docs/GIT_STRATEGY.md` §7, and the stack is reviewed in full at every
 sprint close.
 
 To take one: comment on the issue first so two people do not do the same work; your pull request says `Closes #N`

@@ -1,0 +1,41 @@
+# Sprint 13 H1, fix round 1: the documentation checks on the pushes that change documentation. Since Sprint 10 the
+# doc tests (test_doc_maintenance, test_tools_py_inventory -- both read the real docs/ tree) ran only inside the
+# `linux` and `windows` builds, which a docs-only change skips, so a docs-only push was never doc-checked on CI.
+# This job is minutes, needs nothing beyond the standard library, and is NOT a required check on `main` (the
+# ruleset requires `build`, `build-windows` and `leakcheck`; docs/GIT_STRATEGY.md section 6).
+name: docs
+
+on:
+  push:
+    paths:
+      - 'docs/**'
+      - 'tools_py/docmaint.py'
+      - 'tools_py/tests/test_doc_maintenance.py'
+      - 'tools_py/tests/test_tools_py_inventory.py'
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0          # docmaint checks every "merged to main as vX" against the tags
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+
+      - name: The documentation maintenance check (registry, rulings, ceilings, tags)
+        run: python -m tools_py.docmaint
+
+      - name: The doc tests and the workflow pins
+        run: python -m unittest tools_py.tests.test_doc_maintenance tools_py.tests.test_tools_py_inventory tools_py.tests.test_workflows -v

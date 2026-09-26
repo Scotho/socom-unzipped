@@ -7,6 +7,10 @@
 #                 and `./build.sh test --no-runner`. The recompiled game needs your own disc (README).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
+# Python the way every script here finds it (scripts/python_env.sh: PYTHON, else python, else python3), resolved
+# once, before the toolchain goes on the PATH; each step that runs it calls socom_require_python first, so a
+# runtime-only build still needs no interpreter (Sprint 13 H7, harness audit #32).
+. "$ROOT/scripts/python_env.sh"
 export PATH="$ROOT/tools/llvm-mingw/bin:$ROOT/tools/cmake/bin:$ROOT/tools/ninja:$PATH"
 STEP=""
 NO_RUNNER=0
@@ -40,11 +44,17 @@ build_tools() {
 recomp() {
   local lte
   lte="$(cat "$ROOT/recomp/loader_text_end.txt")"
-  python "$ROOT/tools_py/make_overlay_elf.py" "--loader-text-end=$lte" \
+  socom_require_python build.sh
+  "$PYTHON" "$ROOT/tools_py/make_overlay_elf.py" "--loader-text-end=$lte" \
       "$ROOT/game/overlays/socom2_game.elf" "$ROOT/game/disc/SCUS_972.75" \
       "$ROOT/game/overlays/ftscore.bin" "$ROOT/game/overlays/zsealetc.bin"
   cp "$ROOT/game/overlays/socom2_game.elf" "$ROOT/game/disc/socom2_game.elf"
-  python "$ROOT/tools_py/fix_ghidra_csv.py" "$ROOT/recomp/socom2_ghidra.csv" "$ROOT/recomp/extra_functions.txt"
+  # The function map is a SOURCE: the fixed rows are a product under the git-ignored recomp/build/, the file
+  # recomp/socom2.toml's ghidra_output names (build_revision.sh step 0's rule; Sprint 13 C5 -- until then this
+  # rewrote the tracked recomp/socom2_ghidra.csv in place on every recomp). Nothing this step writes is tracked:
+  # tools_py/tests/test_build_products.py reads this function and holds that.
+  "$PYTHON" "$ROOT/tools_py/fix_ghidra_csv.py" "$ROOT/recomp/socom2_ghidra.csv" "$ROOT/recomp/extra_functions.txt" \
+      --out "$ROOT/recomp/build/socom2_ghidra.fixed.csv"
   build_tools   # incremental; the recompiler embeds the runtime call list, keep it in sync
   rm -rf "$GEN"
   (cd "$ROOT/recomp" && "$TOOLBUILD/ps2xRecomp/ps2_recomp.exe" socom2.toml > recomp_run.log 2>&1) \
@@ -53,6 +63,9 @@ recomp() {
   # fallthrough) that no recompiled row owns: each one is a [guest-branch:missing-target] waiting
   # for a thread to reach it. Read, not gated -- like unhandled=.
   echo "recomp: $(ls "$GEN" | wc -l) files, unhandled=$(grep -c unhandled-instruction "$ROOT/recomp/recomp_run.log" || true), unmapped=$(grep -c unmapped-continuation "$ROOT/recomp/recomp_run.log" || true)"
+  # The names sidecar's events (#48): "Loaded N display names", or the WARNING that the toml's names path does
+  # not resolve (every function then keeps its FUN_/sub_ placeholder). Printed, not gated.
+  grep -E '^ *\[(info|warning)\] names - ' "$ROOT/recomp/recomp_run.log" | sed -e 's/^ *\[warning\] names - /WARNING: names: /' -e 's/^ *\[info\] names - /recomp: names: /' || true
 }
 
 runtime() {
@@ -88,6 +101,7 @@ release() {
   # script plainly had shipped the configuration the measurement rejected.
   local genopt="${REL_GENOPT:--O1}" lto="${REL_LTO:-OFF}" scope="${REL_LTO_SCOPE:-all}" icf="${REL_ICF:-}"
   local fc=() src name
+  socom_require_python build.sh      # the import closure below (portable_audit.py) -- before a long build, not after
   # Reuse the developer tree's fetched sources read-only (raylib, imgui, ...): a second tree would clone them all again.
   for src in "$RTBUILD"/_deps/*-src; do
     [ -d "$src" ] || continue
@@ -110,7 +124,7 @@ release() {
     [ -f "$ROOT/tools/llvm-mingw/bin/$d" ] && cp "$ROOT/tools/llvm-mingw/bin/$d" "$stage/"
   done
   rm -f "$RELDIST"/*.dll
-  python "$ROOT/tools_py/portable_audit.py" closure --system Windows --dir "$stage" \
+  "$PYTHON" "$ROOT/tools_py/portable_audit.py" closure --system Windows --dir "$stage" \
       "$stage/socom2.exe" "$stage/socom_unzipped_launcher.exe" | tr -d '\r' | while read -r dll; do
     [ -n "$dll" ] && cp "$stage/$dll" "$RELDIST/"
   done
@@ -137,7 +151,8 @@ test_step() {
   fi
   # Python tests first: no build needed, and the whole parity gate's scorers live here. The one runner is
   # unittest (no pytest); tools_py/tests/test_test_hygiene.py fails on a test file this line would miss.
-  ( cd "$ROOT" && python -m unittest discover -s tools_py/tests -t . -v )
+  socom_require_python build.sh
+  ( cd "$ROOT" && "$PYTHON" -m unittest discover -s tools_py/tests -t . -v )
   cmake --build "$RTBUILD" --target ps2x_tests vu1_replay -j "$(nproc)"
   # ps2x_tests reads ps2xRecomp/include/ps2recomp/instructions.h relative to its own directory.
   local ps2x_test_repeat="${PS2X_TEST_REPEAT:-1}"

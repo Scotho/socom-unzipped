@@ -1,6 +1,6 @@
 # Documentation maintenance — the classes, the registry, and the sprint-close review
 
-**Last full review: 2026-09-25 (Sprint 12 close, the same day as Sprint 11's).** Next: at the next sprint's close, by its controller.
+**Last full review: 2026-09-26 (Sprint 13 close; §5 by a read-only agent's table, 24 findings fixed; §7 by a read-only agent's table, the audit clean, acted on in S13-R12 and S13-R14).** Next: at the next sprint's close, by its controller.
 
 > **The first review under this schema, 2026-09-23 (Sprint 10's close), and what it changed.** Step 1: `docmaint`
 > OK. Step 2: every L document read for truth by a read-only agent against the tree and the night's ledgers — 56
@@ -104,6 +104,8 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/story/PICTURES.md` | **L** | story | The inventory of what `STORY.md` shows; the citation test keeps them honest |
 | `docs/KNOBS.md` | **G** | `tools_py.knobs` | Generated from `ps2x/knobs.h`; a test fails on a stale row, an unregistered read or a row nothing reads |
 | `docs/LADDER.md` | **G** | `ladder_ledger.py` | One row per scheduled ladder run, written from `logs/ladder/ledger.jsonl`, committed by a person |
+| `docs/BACKLOG.md` | **G** | `tools_py.issues backlog` | The carry's one home (R267): the open issues with their milestone, carried count and closing bar, then `docs/backlog_ruled_out.txt` as a second table. Regenerated and committed at every sprint close (§7 step 5) and whenever the list changes; `backlog --check` exits 1 on a stale file, and the docs test runs its `--offline` half |
+| `docs/backlog_ruled_out.txt` | **L** | controller | Not a markdown file, registered because it is the source `docs/BACKLOG.md` renders: one row per unfinished item ruled not to be an issue, with its ruling (an R-number or `no issue`) and its bar. A row leaves it when it becomes an issue or a task |
 | `docs/ROADMAP.md` | **N** | controller | Narrative and pointers only. Rewritten 2026-09-22; its §0 is the audit of what it replaced |
 | `docs/STORY.md` | **N** | story | Every entry cited; `tools_py/story/cite.py` fails on a dead hash or an unwitnessed run |
 | `docs/HOW_IT_WAS_BUILT.md` | **N** | controller | How the project was made, for a stranger: the method, the owner's share and the agents', and the process failures worth keeping. Pointers only — the live documents own every current number. `README.md` links it |
@@ -112,21 +114,23 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/PLAYTEST.md` | **C** | controller | The owner's one-sitting script |
 | `docs/DOC_MAINTENANCE.md` | **C** | controller | This file |
 | `docs/story/release-entry.template.md` | **C** | story | A template |
-| `docs/AUDIT-2026-09-17.md` | **S** | — | Sprint 6's ledger. Dated in the filename |
-| `docs/process-audit.md` | **S** | — | Written 2026-09-12, end of Sprint 4. Says so in its first line; it should move to `docs/audits/` at the next tidy |
 | `docs/parity/REPORT.md` | **S** | — | One parity run from 2026-09-07. Banded 2026-09-22 — it had read as the project's parity status for fifteen days |
 | `docs/parity/NOTES.md` | **S** | — | Dated spike notes, append-only |
 | `docs/archive/README.md` | **A** | — | |
 | `docs/archive/ROADMAP-sprint-4-to-sprint-7.md` | **A** | — | Fifteen files cite it; every `ROADMAP.md §N` written before 2026-09-22 means this file |
 | `docs/archive/CURRENT_SPRINT-to-sprint-8.md` | **A** | — | |
+| `docs/archive/HANDOFF-loop-history-to-2026-09-25.md` | **A** | — | Cut 2026-09-25 (Sprint 13 Task R1, R268): HANDOFF §2's older pick-up points, §4 and §10, verbatim |
+| `docs/archive/HUMAN_TASKS-to-2026-09-25.md` | **A** | — | Cut 2026-09-25 (Sprint 13 Task R4): the owner's queue before it became one table, verbatim, under a disposition for each of its 87 items. Every HUMAN_TASKS section, item or line cited before that day means this file |
+| `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` | **A** | — | Cut 2026-09-25 (Sprint 13 Task R1, R268): the Sprint 9-11 records, verbatim. The ruling counter reads it (`max_ruling()` scans all of `docs/archive/`) |
 | `docs/archive/HANDOFF-reference-to-2026-09-13.md` | **A** | — | |
 | `docs/archive/HANDOFF-2026-09-08.md` | **A** | — | Banded 2026-09-22 |
 | `docs/archive/HANDOFF-AUDIT-2026-09-14.md` | **A** | — | Banded 2026-09-22 |
 
 ## 4. What is enforced mechanically
 
-`tools_py/tests/test_doc_maintenance.py`, in the Python suite, so it runs in CI and needs no build. Six checks, each
-aimed at a rot mechanism that actually bit this project:
+`tools_py/tests/test_doc_maintenance.py`, in the Python suite, so it runs in CI and needs no build. Ten checks, each
+aimed at a rot mechanism that actually bit this project (the seventh and eighth are R268's, the ninth and tenth
+Sprint 13 Task R3's, all added 2026-09-25):
 
 1. **Registry completeness** — every covered file has exactly one row; every row points at a file that exists. *Catches
    a new document nobody classified, and a row left behind by a move.*
@@ -143,6 +147,45 @@ aimed at a rot mechanism that actually bit this project:
    `docs/` must exist in the tree. *Catches the citation a move left pointing at nothing* — which is why the Sprint 1–6
    specs and plans sat under `docs/superpowers/` for a sprint after they were dead: nobody could move them without
    breaking citations nothing would catch. It found 44 on the tree the day it was written, in fifteen documents.
+7. **Ceilings on the appending documents (R268)** -- `docs/CURRENT_SPRINT.md`, the "## 2." section of
+   `docs/HANDOFF.md`, the "## Current state" block of `docs/STATUS.md` and `docs/HUMAN_TASKS.md` each have a byte
+   ceiling (`CEILINGS` in `tools_py/docmaint.py`, counted with LF line ends; the failure prints the measured size). A
+   measured heading that has gone fires too, so renaming it cannot switch the ceiling off. *Catches the stack nobody
+   retires:* on 2026-09-25 the sprint file was 190 KB with about 12 % of it live, HANDOFF §2 held twelve pick-up
+   points and three of them said "now", and STATUS's "keep it short" block was 30 KB. The ceilings were set at that
+   day's split (Sprint 13 Task R1) with about 25 % headroom. **When one fires, archive the oldest blocks** (a banner,
+   a registry row, the citations re-pointed) -- never raise the number to make it pass; a lower number after a cut
+   (Task R4 for HUMAN_TASKS) is the only edit it expects.
+8. **"merged to `main` as `vX.Y.Z`" names a tag origin has (R268)** -- every such phrase in an L document is checked
+   against `git ls-remote --tags origin`; a struck-through claim is a retraction and is skipped. *Catches a close
+   recorded before it happened:* on 2026-09-25 four live documents said Sprint 11 was merged as `v0.11.0` while no such
+   tag or merge existed, so nobody was prompted to do either. It needs the network: when origin cannot be reached the
+   check is **skipped out loud** (`python -m tools_py.docmaint` prints `tags: SKIPPED` with the reason, and the unit
+   test reports a skip), never passed silently.
+9. **One number, one ruling (Sprint 13 R3)** -- no ruling number is *defined* twice; the failure prints every
+   location. *Catches the collision the counter cannot see:* check 2 proves only that the next number is free, and on
+   2026-09-25 the audit found R107, R109 and R110 each issued by two Sprint 8 plans for unrelated decisions (and this
+   check found R108 issued twice inside one of them). A second issue is **recorded, not renumbered**: its definition
+   line carries "cited as R\<n\>b", the check counts that line as R\<n\>b, and every citation that means it says R\<n\>b.
+10. **A cited ruling has a text (Sprint 13 R3)** -- every R\<n\> (and R\<n\>b) cited in the documents check 2 reads,
+   up to the highest in use, has a definition, a ledger row, or a vacancy note `R<n> -- vacant: <reason>` in the plan
+   or ledger that owns its range. *Catches a decision nobody can find to overturn:* R114, R116 and R124 were cited for
+   a week with no findable text; the check also found R112, R113 and R139 in the same state.
+
+**What counts as a definition (checks 9 and 10).** A line in a document where a ruling is *made* -- HANDOFF §5 rule 9:
+a plan's rulings, or `docs/CURRENT_SPRINT.md` when there is no plan, and what `docs/archive/` keeps of both -- in a
+house shape: `- **R107** (Task 1): ...`, `**R181 -- ...**`, `- **R169 — ...`, `1. **R237, ...`, a list
+`- **R265**, **R266** (...)`, or a bold label anywhere on the line, `**R173:**`, `**Ruling R115: ...`, `**R264** (date,
+who): ...`. A citation is not one: `R107's`, `(R107)`, `see **R107**`, `**R238 was wrong**`, `chosen by **R143**:`, a
+bold range `**R241–R245**`, a quoted line (`> ...`, where a rewritten ruling keeps its first telling) or a code fence.
+A restatement elsewhere (HUMAN_TASKS's summary of the plan's rulings) is not one either. A ledger row (`| R181 | ... |`)
+*indexes* a definition: it answers check 10 on its own (R209 and R229 have only their rows) and two rows for one number
+fire check 9, but a row beside its plan's bullet is not a duplicate. `S12-R<n>` is Sprint 12's own namespace (R264) and
+is not R\<n\>.
+
+`max_ruling()` (check 2) reads every file under `docs/archive/`, top level and subdirectories, as well as the live
+documents and the plans: a ruling does not stop existing when its block is archived, and a counter that dropped the
+newest archived ledger would walk backwards.
 
 **Check 6's exception, and its scope.** A path that does not exist *yet* is legitimate in a plan or a design: put
 `<!-- docmaint: future -->` on that line and the check skips it, so the exception is visible in the document itself
@@ -157,7 +200,8 @@ Run it by hand with `python -m tools_py.docmaint`, which prints the registry siz
 
 **Each check is fired once against a planted defect** (`PlantedDefectsTest`: an unregistered document, a row whose file
 is gone, a colliding ruling number, two counter lines that disagree, an undated count, an undated snapshot, a silent
-archive, a silent file in an archive subdirectory, a dangling `docs/` path in a `docs/` file and in a root file — plus
+archive, a silent file in an archive subdirectory, a dangling `docs/` path in a `docs/` file and in a root file, a ruling
+defined twice, a cited ruling with no text — plus
 the negative controls that must *not* fire, and a clean-tree control for the controls). A gate
 that has never failed is not known to work, and this one found two real defects and one bug in its own test on the day
 it was written.
@@ -193,7 +237,9 @@ the count half is check 3; the rest is a reading, and §5 is where it happens.
 4. **Every N document, read for live state that has crept in.** A number, a task list, a "next", an instruction to go
    and edit another file: move it to its L document and leave a pointer.
 5. **Anything superseded this sprint moves to S or A** with a banner naming what replaced it. A document that is
-   *wrong* is archived, never quietly deleted — things cite it.
+   *wrong* is archived, never quietly deleted — things cite it. **The appending documents in particular** (R268,
+   check 7): keep two CLOSED blocks in the sprint file; the third moves to the archive at the close. HANDOFF §2 keeps
+   one "now" bullet and STATUS's Current state one dated bullet; the one they replace moves to the archive or the log.
 6. **Stamp this file's "Last full review" line** with the date and the sprint, and name in the close-out commit what
    the review changed. A review that changed nothing says so explicitly; that is a result too.
 7. **The known-issue stack, in full** -- §7 below. Its result goes into the same close-out commit, in the same
@@ -253,8 +299,14 @@ acts on it.
    (because the next plan names it) or to no milestone (the backlog) — with the `carried` label and one comment
    saying why it did not close. Then the milestone is closed and the next sprint's is created. **An issue carried
    twice is a question for the owner** (`docs/HUMAN_TASKS.md`): keep it, or close it as not planned under a ruling.
+   Two commands do it: `python -m tools_py.issues carry N --comment "..." [--milestone "Sprint N+1"]` for each
+   issue (label, comment and milestone at once; it refuses an issue already carried twice), then
+   `python -m tools_py.issues milestone close "Sprint N" --next "Sprint N+1"` (it refuses while an open issue is
+   left in it). A third records it: `python -m tools_py.issues backlog` regenerates `docs/BACKLOG.md` (R267), the carry's one home, and the close-out commit carries it; an
+   item ruled not to be an issue goes into `docs/backlog_ruled_out.txt` with its ruling and bar.
 6. **Duplicates and contributor handles.** Merge duplicates (close as not planned, "duplicate of #M"; the survivor
    gets the evidence). Put `help wanted` on what a stranger without a disc could take, `good first issue` only where
    the bar is a test they can run themselves.
 7. **The record.** The close-out commit and `docs/STATUS.md`'s entry say, dated: opened, closed and carried this
-   sprint, the highest issue number, and what the review changed. A review that changed nothing says so.
+   sprint, the highest issue number, and what the review changed. A review that changed nothing says so. The
+   first half is `python -m tools_py.issues tally --since <the day the sprint opened>`, one sentence to paste.

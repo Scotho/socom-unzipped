@@ -25,6 +25,10 @@
 #                       map as a repair input -- then called the image stale and re-merged it to the same bytes.
 #                       Steps 2-5 all read the fixed file: the ELF is repaired against exactly the rows the
 #                       recompiler will compile, and its sha256 in the sidecar is stable across builds.
+#                       Step 0 also places the display-name sidecar (recomp/socom2_names_<rev>.csv; r0001*
+#                       reads recomp/socom2_names.csv) beside the toml step 3 writes, which names it by basename:
+#                       under --out it is copied there (#48 -- it used to be left behind, and the out build's
+#                       functions all came out FUN_/sub_); a revision without one is warned.
 #                       The forced entry points are recomp/extra_functions_<rev>.txt when it is there, or
 #                       --extra <file>, else recomp/extra_functions.txt -- which is r0001's, and 1,453 of whose
 #                       1,619 entries are overlay addresses that mean nothing in another revision, so a foreign
@@ -64,8 +68,9 @@
 #
 #   --stop-after elf|toml|recomp|runtime   stop after that step (runtime is the default); elf and toml take
 #                     no lock at all. elf covers step 0, so it is the cheapest way to see that a build leaves
-#                     git status clean; toml goes one further and writes recomp/socom2_<rev>.toml, which is
-#                     tracked and regenerated on every build, so it is how that file is checked the same way.
+#                     git status clean; toml goes one further and writes recomp/socom2_<rev>.toml -- r0004's is
+#                     tracked (the others are git-ignored), and tools_py/tests/test_build_products.py regenerates
+#                     it with step 3's arguments and holds the tracked bytes to the result (Sprint 13 C5).
 #   --out <dir>       every product under <dir> instead (overlays_<rev>/, recomp_<rev>/, build-clang-<rev>/, dist/),
 #                     so a check build run from the main tree can land in a worktree
 #   --dry-run         print the six steps with their paths and exit 0, touching nothing
@@ -137,6 +142,17 @@ CSV="$RECOMP_DIR/socom2_ghidra_$REV.csv"
 FIXED="$RECOMP_DIR/build/socom2_ghidra_$REV.fixed.csv"
 TOML_GHIDRA="build/socom2_ghidra_$REV.fixed.csv"   # as ps2_recomp reads it: relative to $RECOMP_DIR, its cwd
 EXE="$DIST/socom2_$REV.exe"
+# The revision's display-name sidecar (#48). Step 3 writes its basename into the toml's [general] names, which
+# ps2_recomp resolves against $RECOMP_DIR; in-tree that is recomp/ where the sidecar lives, and under --out step 0
+# copies it there -- before, an --out build's toml named a file that was not beside it and every function came
+# out FUN_/sub_. The r0001 disc under a suffix (r0001check) reads r0001's own recomp/socom2_names.csv.
+NAMES_SRC=""
+if [ -f "$ROOT/recomp/socom2_names_$REV.csv" ]; then
+  NAMES_SRC="$ROOT/recomp/socom2_names_$REV.csv"
+else
+  case "$REV" in r0001*) [ -f "$ROOT/recomp/socom2_names.csv" ] && NAMES_SRC="$ROOT/recomp/socom2_names.csv" ;; esac
+fi
+if [ -n "$NAMES_SRC" ]; then TOML_NAMES="$(basename "$NAMES_SRC")"; else TOML_NAMES="socom2_names_$REV.csv"; fi
 rel() { case "$1" in "$ROOT"/*) echo "${1#"$ROOT"/}" ;; *) echo "$1" ;; esac; }
 # The revision's forced entry points, settled here so both halves of the script (and the dry run) say the
 # same thing. r0001's list is address-keyed like its map is: handed to another revision, its 1,453 overlay
@@ -232,6 +248,7 @@ if [ "$DRY" = 1 ]; then
     TOMLNOTE="input/output/ghidra_output rewritten; every other address stays r0001's"
   fi
   say "  step 3  toml              recomp/socom2.toml -> $(rel "$TOML") ($TOMLNOTE); $MAPNOTE"
+  say "                            names $(rel "${NAMES_SRC:-$ROOT/recomp/socom2_names_$REV.csv}")$([ -z "$NAMES_SRC" ] && echo ' is not there -- every function will keep its placeholder name')$([ -n "$NAMES_SRC" ] && [ "$RECOMP_DIR" != "$ROOT/recomp" ] && echo " (copied to $(rel "$RECOMP_DIR/$TOML_NAMES") at step 0)")"
   say "  step 4  recomp   [lock]   ps2_recomp socom2_$REV.toml -> $(rel "$GEN")/; function map $(rel "$FIXED")"
   say "  step 5  runtime  [lock]   cmake $(rel "$RTBUILD") -> $(rel "$EXE") (+ $(rel "$DIST")/socom2_game_$REV.elf)"
   [ "$STOP" = runtime ] || say "  stop after $STOP"
@@ -250,6 +267,16 @@ if [ "$TAIL" = 0 ]; then
   say "map: $(rel "$MAP_SRC") + forced entry points $(rel "$EXTRA")"
   "$py" "$ROOT/tools_py/fix_ghidra_csv.py" "$MAP_SRC" "$EXTRA" --out "$FIXED"
   say "map: $(rel "$FIXED") sha256 $(sha "$FIXED") -- a build product; $(rel "$MAP_SRC") was not written"
+  # 0 names -- the sidecar step 3's toml names, placed where ps2_recomp resolves it (#48). In-tree it is already
+  # there; under --out it is copied beside the toml, every run, so the out tree carries its own names.
+  if [ -z "$NAMES_SRC" ]; then
+    echo "WARNING: $REV has no names sidecar (recomp/socom2_names_$REV.csv); the toml will name one that is not there and every function will keep its placeholder (FUN_/sub_) name" >&2
+  elif [ "$NAMES_SRC" != "$RECOMP_DIR/$TOML_NAMES" ]; then
+    cp "$NAMES_SRC" "$RECOMP_DIR/$TOML_NAMES"
+    say "names: $(rel "$NAMES_SRC") copied to $(rel "$RECOMP_DIR/$TOML_NAMES"), beside the toml that names it"
+  else
+    say "names: $(rel "$NAMES_SRC"), beside the toml that names it"
+  fi
   # 1 decrypt
   if [ "$FORCE" = 0 ] && [ -f "$OVERLAYS/ftscore.bin" ] && [ -f "$OVERLAYS/zsealetc.bin" ]; then
     say "decrypt: ftscore.bin and zsealetc.bin are already in $(rel "$OVERLAYS") -- skipped (--force redoes it)"
@@ -352,7 +379,7 @@ if [ "$TAIL" = 0 ]; then
     if ! (cd "$ROOT" && "$py" -m tools_py.revision_toml "$ROOT/recomp/socom2.toml" "$MATCH" \
             --elf-b "$ELF" \
             --set-input "$TOML_INPUT" --set-output "$TOML_OUTPUT" \
-            --set-ghidra-output "$TOML_GHIDRA" --set-names "socom2_names_$REV.csv" --out "$TOML"); then
+            --set-ghidra-output "$TOML_GHIDRA" --set-names "$TOML_NAMES" --out "$TOML"); then
       echo "build_revision: step 3 could not translate the config through $(rel "$MATCH") -- run tools_py.revision_toml by hand to see why, or drop --match to copy r0001's addresses across unchanged" >&2
       exit 1
     fi
@@ -360,12 +387,13 @@ if [ "$TAIL" = 0 ]; then
     sed -e "s|^input *=.*|input = \"$TOML_INPUT\"|" \
         -e "s|^output *=.*|output = \"$TOML_OUTPUT\"|" \
         -e "s|^ghidra_output *=.*|ghidra_output = \"$TOML_GHIDRA\"|" \
-        -e "s|^names *= *\"[^\"]*\"|names = \"socom2_names_$REV.csv\"|" \
+        -e "s|^names *= *\"[^\"]*\"|names = \"$TOML_NAMES\"|" \
         "$ROOT/recomp/socom2.toml" > "$TOML"
   fi
   say "toml: $(rel "$TOML") (input $TOML_INPUT, output $TOML_OUTPUT, ghidra_output $TOML_GHIDRA)"
-  # The last lock-free product. recomp/socom2_<rev>.toml is tracked and step 3 rewrites it every run, so
-  # --stop-after toml is how a change to what step 3 writes is checked against the tree without the lock.
+  # The last lock-free product. recomp/socom2_r0004.toml is tracked and step 3 rewrites it every run (every other
+  # revision's is git-ignored), so --stop-after toml is how a change to what step 3 writes is checked against the
+  # tree without the lock; test_build_products.py makes the same check without a build.
   [ "$STOP" = toml ] && { say "stop after toml"; exit 0; }
   # 4-5 under the lock, re-entering this script
   export BR_REV="$REV" BR_STOP="$STOP" BR_FORCE="$FORCE" BR_OUT="$OUT" BR_EXTRA="$EXTRA"
@@ -392,6 +420,8 @@ else
       || { tail -20 "$RECOMP_DIR/recomp_run_$REV.log" >&2; echo "build_revision: recomp failed (the log above)" >&2; exit 1; }
   # unmapped= : continuation pcs no recompiled row owns (build.sh has the same field and why)
   say "recomp: $(ls "$GEN" | wc -l) files in $(rel "$GEN"), unhandled=$(grep -c unhandled-instruction "$RECOMP_DIR/recomp_run_$REV.log" || true), unmapped=$(grep -c unmapped-continuation "$RECOMP_DIR/recomp_run_$REV.log" || true)"
+  # The names sidecar's events (#48): "Loaded N display names", or the WARNING that the toml's names path does not resolve.
+  grep -E '^ *\[(info|warning)\] names - ' "$RECOMP_DIR/recomp_run_$REV.log" | sed -e 's/^ *\[warning\] names - /WARNING: names: /' -e 's/^ *\[info\] names - /recomp: names: /' || true
   : > "$GEN/.complete"      # the mark the skip above trusts: written only when ps2_recomp returned 0
 fi
 [ "$STOP" = recomp ] && { say "stop after recomp"; exit 0; }

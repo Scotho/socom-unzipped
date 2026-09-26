@@ -1,7 +1,7 @@
 # The loop — one iteration, for whoever is the controller (SOCOM Unzipped)
 
 Rewritten 2026-09-20. The previous text was last touched on 2026-09-14 and still aimed the loop at Sprint 6, a runtime
-freeze that was lifted long ago and a ban on speed work that Sprint 8 broke on purpose; `docs/process-audit.md` §8 had
+freeze that was lifted long ago and a ban on speed work that Sprint 8 broke on purpose; `docs/audits/2026-09-12-process-audit.md` §8 had
 predicted exactly that. This file therefore carries **no state at all**: no sprint, no goal, no number. State lives in
 `docs/CURRENT_SPRINT.md` (what to do), `docs/KNOWN.md` (what is true) and `docs/HANDOFF.md` (where things are, the
 rules with their reasons, the traps). If you find yourself writing a fact about the project into this file, it belongs
@@ -49,8 +49,8 @@ suggestions, stop rules and the owner-only list are not.
    settled row closes it with the artefact, a rewritten row gets a comment; `python -m tools_py.issues audit` exits 0
    before the commit); tick the
    plan's boxes; update the item's row in `docs/CURRENT_SPRINT.md`; a numbered ruling for every moved default or
-   skipped measurement; `docs/HUMAN_TASKS.md` for anything only the owner can verify; `docs/HANDOFF.md` §2, §4, §8, §10
-   when the pick-up point changes. **A committed sentence found false is corrected the same hour, where it is
+   skipped measurement; `docs/HUMAN_TASKS.md` for anything only the owner can verify; `docs/HANDOFF.md` §2 and §8
+   when the pick-up point changes (§2's one "now" bullet is replaced, the old one moved to its archive). **A committed sentence found false is corrected the same hour, where it is
    written**, with a `> Superseded by ...` blockquote -- never queued for a close-out that may not come.
    **A new document under `docs/` needs a row in `docs/DOC_MAINTENANCE.md` §3 giving it a class** (the suite fails
    without one), and its class decides what may be written in it -- a narrative file that holds live state is how
@@ -71,9 +71,14 @@ it. A sub-agent never commits a file it was not given, and never stages with `gi
 `docs/CURRENT_SPRINT.md`'s close-out item; the two reviews that a close cannot skip -- the documents
 (`docs/DOC_MAINTENANCE.md` §5) and, deep, the known-issue stack (`docs/DOC_MAINTENANCE.md` §7: every open issue read
 against the tree, every KNOWN row ruled on, the carry, the milestone closed); `docs/GIT_STRATEGY.md` for the merge and
-the tag; then open the next sprint: its spec is already drafted, its plan is written against the tree as it then is,
-its milestone exists on GitHub, and the sprint file's header block is rewritten -- it is the only sprint pointer in
-the project.
+the tag; then open the next sprint when the owner names it: its spec is written (or a draft finished) and agreed, its
+plan is written against the tree as it then is, its milestone exists on GitHub, and the sprint file's header block is
+rewritten -- it is the only sprint pointer in the project. Until then no sprint branch is open, and a change goes on
+a topic branch (`docs/GIT_STRATEGY.md` §2).
+
+> Superseded 2026-09-25 (Sprint 13 R2): this said "its spec is already drafted" -- true of Sprints 10 and 11, but not a
+> rule: at Sprint 12's close no next spec existed and the sprint file said "next sprint: not yet planned" (documents
+> audit row 43).
 
 ## The acceptance bar that has never changed (owner, 2026-09-09)
 
@@ -87,15 +92,26 @@ reference). **Never hold it across tool calls except through `run` or `run_detac
 between two tool calls is not renewed, and the calling shell dies when its tool call returns.
 **Mixed versions:** a job started under an older `loop_lock.sh` (plain `logs/.loop_lock` file, or a
 claim dir without the `logs/.loop_lock.mx` mutex) must finish before anything uses the current lock.
+A new lock script lands only by the rollout procedure (`docs/KNOWN.md` section 4: `check` exactly
+`FREE`, `busy` empty, land, restart every waiter, then every waiter's OWN blob -- `blob=` in `check`'s
+`QUEUED:` lines, `[loop_lock.sh <blob12>]` in its result line -- equals the landed `git hash-object`).
 - Foreground: `bash scripts/loop_lock.sh run <owner> --purpose "<what>" [--wait 40] -- <cmd...>`
   takes the lock, renews its heartbeat every 60 s while `<cmd>` runs, releases on exit (also on
   failure) and returns `<cmd>`'s exit code; exit 75 = the lock was busy and `<cmd>` did not run.
+  `--wait <minutes>` is wall-clock minutes (since Sprint 13; before, a count of attempts) and QUEUES:
+  the first refusal writes a ticket, and the lock is granted in arrival order whatever anyone's poll
+  interval -- so there is no reason left to shorten `LOOP_LOCK_WAIT_SEC`. A take without `--wait` is
+  refused while anyone is queued, even when the lock is free (`check` lists the queue).
+- **A chain is ONE holding:** wrap the whole chain in one `run` (or one `run_detached.sh`); its steps'
+  own `run`/`take`/`release` are NESTED. One take per step leaves a gap, and the queue gives the gap
+  to whoever waits.
   Wrap a build -> test -> gate sequence as ONE run, e.g.
   `bash scripts/loop_lock.sh run main --purpose "test+gate" -- bash -c './build.sh test && python -m tools_py.parity.gate'`
   (gate.py's own take/release are NESTED no-ops inside a run).
-- Detached (game runs): `bash scripts/run_detached.sh --owner <owner> <script> <marker>` takes the
-  lock, launches the script under nohup, renews every 5 min while the script's PID lives, releases
-  and then writes `exit=<code>` to `<marker>`. The script must keep its work in the foreground (the
+- Detached (game runs): `bash scripts/run_detached.sh --owner <owner> [--wait <minutes>] <script> <marker>`
+  takes the lock (with `--wait`, queues for it in the foreground first -- background the call if the
+  wait may be long), launches the script under nohup, renews every 5 min while the script's PID lives,
+  releases and then writes `exit=<code>` to `<marker>`. The script must keep its work in the foreground (the
   lock lives as long as the script's PID). Poll the marker; run
   `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kill_stale_drivers.ps1` before every
   launch while you hold the lock (a finished drive.py taskkills the next run's game; it kills only

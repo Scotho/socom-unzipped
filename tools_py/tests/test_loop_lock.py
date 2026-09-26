@@ -11,6 +11,9 @@ one reaper race (4 takers x 2 rounds on a stale ghost, 0-0.3 s of process-list l
 double-entry check (3 takers through the critical-section detector). Every other test -- the longer races, the
 interleavings, run/run_detached, the hammer, the real-scale renewal (`run -- sleep 130`, ~135 s) -- runs only with
 LOOP_LOCK_SLOW_TESTS=1, which runs them all (~16 min).
+Sprint 13 H2 added the ticket queue (TestQueue: arrival order whatever the poll, issue #36; --wait in minutes, issue
+#35; a chain's single holding), run_detached --wait and the machine-wide quiet marker (TestRunDetached), ladder_job.sh
+through run_detached --wait (TestLadderJob, issue #37) and `version`; one queue case joins the smoke.
 R73's hygiene test (TestSlowSuiteStamp, always on outside the slow run) fails when scripts/loop_lock.sh's git blob
 differs from fixtures/loop_lock_slow_green.txt: an edit to the lock script needs a green slow run, and only then a
 new stamp (`git hash-object scripts/loop_lock.sh`).
@@ -43,6 +46,7 @@ SMOKE = {
     "test_quiet_flag_writes_marker_even_for_a_non_launch_purpose",      # one quiet-marker check
     "test_smoke_racing_reapers_with_process_list_latency_one_wins",     # R73: one reaper race
     "test_smoke_stale_mutex_takers_never_double_enter",                 # R73: one mutex double-entry check
+    "test_smoke_a_take_is_refused_behind_a_live_ticket_and_a_stale_ticket_is_dropped",  # S13 H2: the queue's grant
 }
 
 
@@ -150,6 +154,49 @@ class LockTestBase(unittest.TestCase):
         return subprocess.Popen([BASH, LOCK_SH] + list(args), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 text=True, env=env)
 
+    # -- the queue (Sprint 13 H2, issue #36): tickets in "$LOCK.q/" --------------------------------------
+    @property
+    def qdir(self):
+        return self.lock + ".q"
+
+    def tickets(self):
+        try:
+            return sorted(os.listdir(self.qdir))
+        except OSError:
+            return []
+
+    def wait_tickets(self, n, seconds=15):
+        """Until n tickets are queued (or the time is up: a script without a queue writes none)."""
+        deadline = time.time() + seconds
+        while len(self.tickets()) < n and time.time() < deadline:
+            time.sleep(0.1)
+        return self.tickets()
+
+    def holder(self):
+        try:
+            rec = _read(self.rec).split()
+        except OSError:
+            return None
+        return rec[0] if rec else None
+
+    def wait_holder(self, other_than=None, seconds=30):
+        deadline = time.time() + seconds
+        while time.time() < deadline:
+            h = self.holder()
+            if h and h != other_than:
+                return h
+            time.sleep(0.1)
+        return None
+
+    def reap_procs(self, *procs):
+        for p in procs:
+            if p.poll() is None:
+                p.kill()
+            try:
+                p.communicate(timeout=10)
+            except (subprocess.TimeoutExpired, ValueError):
+                pass
+
 
 class TestTakeReapBreak(LockTestBase):
     def test_free_take_writes_four_field_record_inside_the_claim_dir(self):
@@ -171,7 +218,10 @@ class TestTakeReapBreak(LockTestBase):
         self.assertIn("RENEWED by alice", out)
         rec = self.record()
         self.assertEqual(rec[:2], ["alice", take_id])
-        self.assertLessEqual(abs(int(rec[2]) - time.time()), 5)
+        # The record was 600 s stale; a renew refreshes it to "now". One `renew` costs 0.7-9 s on this host under a
+        # build (Sprint 13 H2's measurements; the third proof's suite run failed this at 5 s while C8 built), so the
+        # window is 30 s: still proof of a refresh, no longer a measure of the host's speed.
+        self.assertLessEqual(abs(int(rec[2]) - time.time()), 30)
 
     def test_held_lock_is_busy_even_for_its_owner(self):
         self.assertEqual(self.sh("take", "alice")[0], 0)
@@ -358,13 +408,16 @@ class TestTakeReapBreak(LockTestBase):
         self.assertFalse(os.path.isdir(self.lockd), out)
 
     def test_wait_times_out_then_succeeds(self):
+        # --wait-seconds: the duration in seconds (issue #35); `wait <owner> <n>` is minutes.
         self.write_record("worker", 60, hb_age_s=0)
-        rc, out = self.sh("wait", "bob", "2", env=self.env(LOOP_LOCK_WAIT_SEC=1))
+        rc, out = self.sh("wait", "bob", "--wait-seconds", "2", env=self.env(LOOP_LOCK_WAIT_SEC=1))
         self.assertEqual(rc, 1, out)
         self.assertIn("TIMEOUT", out)
+        self.assertEqual(self.tickets(), [], "a waiter that timed out must leave the queue")
         self.sh("release", "worker")
-        rc, out = self.sh("wait", "bob", "2", env=self.env(LOOP_LOCK_WAIT_SEC=1))
+        rc, out = self.sh("wait", "bob", "--wait-seconds", "2", env=self.env(LOOP_LOCK_WAIT_SEC=1))
         self.assertEqual(rc, 0, out)
+        self.assertEqual(self.strays(), [])
 
 
 class TestRaces(LockTestBase):
@@ -694,11 +747,23 @@ class TestInterleavings(LockTestBase):
 
 class TestRun(LockTestBase):
     def test_run_reports_lock_lost_and_does_not_release_the_new_holder(self):
-        p = subprocess.Popen([BASH, LOCK_SH, "run", "runner", "--", "sleep", "4"], stdout=subprocess.PIPE,
+        # Sprint 13 H2 ruling: a renew costs 0.7-1.6 s of process starts on this host, so the thief takes the lock
+        # only after the first renew has landed (polled, up to 5 s), and the command outlives the next renews.
+        p = subprocess.Popen([BASH, LOCK_SH, "run", "runner", "--", "sleep", "10"], stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, text=True, env=self.env(LOOP_LOCK_RENEW_SEC=1))
         deadline = time.time() + 30
         while not os.path.exists(self.rec) and time.time() < deadline:
             time.sleep(0.1)
+        first_hb = int(self.record()[2])
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            try:
+                if int(self.record()[2]) > first_hb:
+                    break
+            except (OSError, IndexError, ValueError):
+                pass
+            time.sleep(0.1)
+        self.assertGreater(int(self.record()[2]), first_hb, "no renew landed within 5 s")
         runner_id = self.sh("id")[1].strip()
         self.assertEqual(self.sh("_release_id", runner_id)[0], 0)
         self.assertEqual(self.sh("take", "thief")[0], 0)
@@ -785,6 +850,277 @@ class TestRun(LockTestBase):
         self.assertTrue(self.is_free())
 
 
+class TestQueue(LockTestBase):
+    """Sprint 13 H2: the ticket queue (issue #36) and --wait in minutes (issue #35)."""
+
+    def plant_ticket(self, owner, arrived_s_ago, hb_age_s=0):
+        os.makedirs(self.qdir, exist_ok=True)
+        path = os.path.join(self.qdir, "%d000000-%s-1x1" % (int(time.time()) - arrived_s_ago, owner))
+        with open(path, "w", newline="\n") as f:
+            f.write("%s planted\n" % owner)
+        if hb_age_s:
+            old = time.time() - hb_age_s
+            os.utime(path, (old, old))
+        return path
+
+    def test_smoke_a_take_is_refused_behind_a_live_ticket_and_a_stale_ticket_is_dropped(self):
+        # The lock is FREE, but a waiter queued first: a plain take (no ticket of its own) must not barge past it.
+        t = self.plant_ticket("early", 5)
+        rc, out = self.sh("take", "bob")
+        self.assertEqual(rc, 1, out)
+        self.assertTrue(out.startswith("BUSY"), out)
+        self.assertIn("early", out)
+        self.assertIsNone(self.holder())
+        self.assertIn("early", self.sh("check")[1], "check prints the queue")
+        # A ticket whose own heartbeat stopped (a waiter killed hard) is dropped, and the take goes through.
+        old = time.time() - 600
+        os.utime(t, (old, old))
+        rc, out = self.sh("take", "bob")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("TICKET-DROPPED", self.history())
+        self.assertEqual(self.tickets(), [])
+        self.assertEqual(self.strays(), [], "an empty queue dir is removed")
+
+    def test_waiters_are_served_in_arrival_order_whatever_their_poll(self):
+        # Issue #36's bar: the 60 s poller asked first, the 5 s poller second; the 60 s poller gets the lock first.
+        self.write_record("holder", 60, hb_age_s=0)
+        slow = self.popen("wait", "slowpoll", "5", env=self.env(LOOP_LOCK_WAIT_SEC=60))
+        fast = None
+        try:
+            self.wait_tickets(1)
+            time.sleep(1.0)
+            fast = self.popen("wait", "fastpoll", "5", env=self.env(LOOP_LOCK_WAIT_SEC=5))
+            self.wait_tickets(2)
+            time.sleep(6.0)                                   # the fast poller has polled at least once
+            self.assertEqual(self.sh("release", "holder")[0], 0)
+            first = self.wait_holder(seconds=45)
+            self.assertEqual(first, "slowpoll", "the later, faster poller took the hand-off")
+            self.assertEqual(slow.communicate(timeout=60)[0].count("TAKEN"), 1)
+            self.assertIsNone(fast.poll(), "the second waiter must still be queued")
+            self.assertEqual(self.sh("release", "slowpoll")[0], 0)
+            fout = fast.communicate(timeout=60)[0]
+            self.assertEqual(fast.returncode, 0, fout)
+            self.assertEqual(self.holder(), "fastpoll")
+            self.assertEqual(self.tickets(), [])
+        finally:
+            self.reap_procs(slow, *([fast] if fast else []))
+
+    def test_wait_n_is_minutes_at_any_poll_interval(self):
+        # Issue #35: `wait <owner> 1` with a 1 s poll used to be ONE attempt; it is one minute.
+        self.write_record("holder", 60, hb_age_s=0)
+        p = self.popen("wait", "w", "1", env=self.env(LOOP_LOCK_WAIT_SEC=1))
+        try:
+            time.sleep(8)
+            self.assertIsNone(p.poll(), "gave up within 8 s: %s" % (p.communicate()[0] if p.poll() is not None else ""))
+            self.assertEqual(self.sh("release", "holder")[0], 0)
+            out = p.communicate(timeout=30)[0]
+            self.assertEqual(p.returncode, 0, out)
+            self.assertIn("TAKEN by w", out)
+        finally:
+            self.reap_procs(p)
+
+    def test_run_wait_is_minutes_at_any_poll_interval(self):
+        self.write_record("holder", 60, hb_age_s=0)
+        ran = os.path.join(self.tmp, "ran")
+        p = self.popen("run", "r", "--wait", "1", "--", "touch", fwd(ran), env=self.env(LOOP_LOCK_WAIT_SEC=1))
+        try:
+            time.sleep(8)
+            self.assertIsNone(p.poll(), "run --wait 1 gave up within 8 s")
+            self.assertEqual(self.sh("release", "holder")[0], 0)
+            out = p.communicate(timeout=120)[0]
+            self.assertEqual(p.returncode, 0, out)
+            self.assertTrue(os.path.exists(ran))
+            self.assertTrue(self.is_free())
+        finally:
+            self.reap_procs(p)
+
+    def test_usage_says_minutes_and_rejects_a_non_number(self):
+        rc, out = self.sh("run", "r", "--wait", "soon", "--", "true")
+        self.assertEqual(rc, 2, out)
+        rc, out = self.sh("nonsense")
+        self.assertIn("--wait <minutes>", out)
+
+    def test_a_waiter_heartbeats_its_ticket_and_requeues_at_its_arrival_key(self):
+        self.write_record("holder", 60, hb_age_s=0)
+        p = self.popen("wait", "hb", "2", env=self.env(LOOP_LOCK_WAIT_SEC=60))
+        try:
+            name = self.wait_tickets(1)[0]
+            path = os.path.join(self.qdir, name)
+            old = time.time() - 120
+            os.utime(path, (old, old))
+            time.sleep(12)                                    # one 5 s slice, with room for a loaded host
+            self.assertLess(time.time() - os.path.getmtime(path), 12, "the waiter did not renew its ticket")
+            os.remove(path)                                   # dropped as if stale: the live waiter re-queues
+            self.assertEqual(self.wait_tickets(1, seconds=10), [name], "re-queued under a different key")
+            self.assertEqual(self.sh("release", "holder")[0], 0)
+            out = p.communicate(timeout=30)[0]
+            self.assertEqual(p.returncode, 0, out)
+            self.assertEqual(self.tickets(), [])
+        finally:
+            self.reap_procs(p)
+
+    def test_a_chain_holds_one_lock_across_its_steps(self):
+        # One `run` around the chain; its steps' run/take/release are NESTED (LOOP_LOCK_HELD) -- a queued waiter
+        # never gets the gap between two steps (2026-09-25: a 30 s poller lost it to a 5 s poller, twice).
+        ids = os.path.join(self.tmp, "ids")
+        step = os.path.join(self.tmp, "step.sh")
+        with open(step, "w", newline="\n") as f:
+            f.write("bash '%s' id >> '%s'\n" % (LOCK_SH, fwd(ids)))
+        chain = ("bash '{l}' run step1 -- true && sleep 3 && bash '{l}' take step2 && bash '{s}' && "
+                 "bash '{l}' release step2 && sleep 2 && bash '{l}' run step3 -- bash '{s}'"
+                 ).format(l=LOCK_SH, s=fwd(step))
+        outer = subprocess.Popen([BASH, LOCK_SH, "run", "chain", "--", "bash", "-c", chain], stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT, text=True, env=self.env())
+        waiter = None
+        try:
+            self.assertEqual(self.wait_holder(), "chain")
+            waiter = self.popen("wait", "other", "2", env=self.env(LOOP_LOCK_WAIT_SEC=1))
+            oout = outer.communicate(timeout=60)[0]
+            self.assertEqual(outer.returncode, 0, oout)
+            self.assertEqual(oout.count("NESTED"), 4, oout)
+            self.assertEqual([l.split()[0] for l in _read(ids).splitlines()], ["chain", "chain"])
+            wout = waiter.communicate(timeout=30)[0]
+            self.assertEqual(waiter.returncode, 0, wout)
+            self.assertEqual(self.holder(), "other")
+        finally:
+            self.reap_procs(outer, *([waiter] if waiter else []))
+
+
+    def test_a_waiter_whose_caller_is_killed_leaves_the_queue(self):
+        # Review round 1 (Important 3): TaskStop kills the caller and leaves its children running; an orphaned
+        # waiter must not reach the front and claim the lock for a job nobody runs.
+        self.write_record("holder", 60, hb_age_s=0)
+        pidf = os.path.join(self.tmp, "parent.pid")
+        outf = os.path.join(self.tmp, "waiter.out")          # a file: Git's bash.exe launcher relays a pipe and dies
+        parent = subprocess.Popen([BASH, "-c", "echo $$ > '%s'; bash '%s' wait orphan 3 > '%s' 2>&1 & sleep 120" % (fwd(pidf), LOCK_SH, fwd(outf))],
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                  env=self.env(LOOP_LOCK_WAIT_SEC=60))
+        try:
+            self.assertEqual(len(self.wait_tickets(1, seconds=30)), 1, "the waiter never queued")
+            # Kill the calling shell -- what TaskStop kills, leaving its children running (Popen.kill would hit only
+            # Git's bash.exe launcher, not the MSYS shell).
+            subprocess.run([BASH, "-c", "kill -9 %s" % _read(pidf).strip()], timeout=30)
+            self.assert_orphan_left(self.wait_tickets_gone())
+            self.assertIn("ORPHANED: watched process %s" % _read(pidf).strip(), _read(outf))
+        finally:
+            self.reap_procs(parent)
+
+    def wait_tickets_gone(self, seconds=30):
+        deadline = time.time() + seconds
+        while self.tickets() and time.time() < deadline:
+            time.sleep(0.2)
+        return self.tickets()
+
+    def assert_orphan_left(self, tickets, holder="holder"):
+        self.assertEqual(tickets, [], "the orphaned waiter is still queued")
+        self.assertEqual(self.sh("release", holder)[0], 0)
+        time.sleep(8)                                         # more than a slice: nobody claims the free lock
+        self.assertIsNone(self.holder())
+        self.assertTrue(self.is_free())
+
+    def _sleeper(self):
+        """An MSYS process to watch, and its MSYS pid."""
+        pidf = os.path.join(self.tmp, "sleeper.pid")
+        s = subprocess.Popen([BASH, "-c", "echo $$ > '%s'; exec sleep 120" % fwd(pidf)])
+        deadline = time.time() + 30
+        while not (os.path.exists(pidf) and _read(pidf).strip()) and time.time() < deadline:
+            time.sleep(0.1)
+        return s, _read(pidf).strip()
+
+    def test_an_orphaned_wait_says_so_and_exits_1(self):
+        # Review round 2: the ORPHANED line and the exit code, with the waiter a direct child of this test (its
+        # watched process named by LOOP_LOCK_WAIT_PARENT).
+        self.write_record("holder", 60, hb_age_s=0)
+        sleeper, spid = self._sleeper()
+        p = self.popen("wait", "orphan", "3", env=self.env(LOOP_LOCK_WAIT_SEC=60, LOOP_LOCK_WAIT_PARENT=spid))
+        try:
+            self.assertEqual(len(self.wait_tickets(1, seconds=30)), 1, "the waiter never queued")
+            subprocess.run([BASH, "-c", "kill -9 %s" % spid], timeout=30)
+            out = p.communicate(timeout=60)[0]
+            self.assertEqual(p.returncode, 1, out)
+            self.assertIn("ORPHANED: watched process %s" % spid, out)
+            self.assert_orphan_left(self.tickets())
+        finally:
+            self.reap_procs(p, sleeper)
+
+    def test_a_killed_run_wait_leaves_no_waiter_behind(self):
+        # Review round 2: `run --wait` queues from a $(...) subshell; killing the run process must not leave that
+        # subshell to claim the lock with nobody to run the command or renew it. The ticket name carries the run
+        # process's pid ($$ is the run's own inside the subshell).
+        self.write_record("holder", 60, hb_age_s=0)
+        ran = os.path.join(self.tmp, "ran")
+        errf = os.path.join(self.tmp, "run.err")
+        p = subprocess.Popen([BASH, "-c", "exec bash '%s' run r --wait 3 -- touch '%s' 2> '%s'" % (LOCK_SH, fwd(ran), fwd(errf))],
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                             env=self.env(LOOP_LOCK_WAIT_SEC=60))
+        try:
+            name = self.wait_tickets(1, seconds=30)[0]
+            run_pid = re.search(r"-(\d+)x\d+$", name).group(1)
+            subprocess.run([BASH, "-c", "kill -9 %s" % run_pid], timeout=30)
+            self.assert_orphan_left(self.wait_tickets_gone())
+            self.assertIn("ORPHANED: watched process %s" % run_pid, _read(errf))
+            self.assertFalse(os.path.exists(ran))
+        finally:
+            self.reap_procs(p)
+
+    def test_a_waiters_blob_is_the_code_it_started_with(self):
+        # Review round 1 (Important 2): after a landing the file on disk has a new blob; a waiter from before it
+        # must print the blob of the code it runs, in its ticket and in its result line.
+        git = shutil.which("git")
+        if not git:
+            self.skipTest("git not found")
+        copy = os.path.join(self.tmp, "loop_lock_copy.sh")
+        shutil.copy(LOCK_SH, copy)
+        old = subprocess.run([git, "hash-object", copy], capture_output=True, text=True).stdout.strip()
+        self.write_record("holder", 60, hb_age_s=0)
+        p = subprocess.Popen([BASH, fwd(copy), "wait", "w", "2"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             text=True, env=self.env(LOOP_LOCK_WAIT_SEC=1))
+        try:
+            name = self.wait_tickets(1, seconds=30)[0]
+            self.assertIn("blob=" + old[:12], _read(os.path.join(self.qdir, name)))
+            with open(copy, "a", newline="\n") as f:
+                f.write("# landed\n")                           # the "landing": the file on disk changes
+            new = subprocess.run([git, "hash-object", copy], capture_output=True, text=True).stdout.strip()
+            self.assertNotEqual(old, new)
+            self.assertIn("blob " + new, subprocess.run([BASH, fwd(copy), "version"], capture_output=True,
+                                                        text=True, env=self.env()).stdout)
+            self.assertEqual(self.sh("release", "holder")[0], 0)
+            out = p.communicate(timeout=60)[0]
+            self.assertEqual(p.returncode, 0, out)
+            self.assertIn("[loop_lock.sh %s]" % old[:12], out)
+        finally:
+            self.reap_procs(p)
+
+    def test_check_marks_and_drops_a_stale_ticket(self):
+        # Review round 1 (Minor 4): the rollout waits for `check` to say exactly FREE; a hard-killed waiter's ticket
+        # must not hold that up past its staleness.
+        self.plant_ticket("dead", 400, hb_age_s=300)
+        rc, out = self.sh("check")
+        self.assertEqual(out.strip(), "FREE", out)
+        self.assertIn("TICKET-DROPPED", self.history())
+        self.assertEqual(self.strays(), [])
+        self.plant_ticket("dead2", 400, hb_age_s=300)
+        os.makedirs(self.lock + ".mx")                        # a fresh mutex token: busy, not stale
+        open(os.path.join(self.lock + ".mx", "t.%d.999.1" % int(time.time())), "w").close()
+        rc, out = self.sh("check", env=self.env(LOOP_LOCK_MUTEX_WAIT_SEC=1))
+        self.assertIn("QUEUED: STALE", out, "with the mutex busy the stale ticket is at least marked")
+
+
+class TestVersion(unittest.TestCase):
+    """Sprint 13 H2: `loop_lock.sh version` prints the script's own git blob, so a waiter can tell which script
+    served it (the rollout: a waiter still running the old script from before a landing must be restarted)."""
+
+    @unittest.skipUnless(BASH, "bash not found")
+    def test_version_prints_the_scripts_own_blob(self):
+        git = shutil.which("git")
+        if not git:
+            self.skipTest("git not found")
+        blob = subprocess.run([git, "hash-object", LOCK_SH], capture_output=True, text=True, timeout=60).stdout.strip()
+        p = subprocess.run([BASH, LOCK_SH, "version"], capture_output=True, text=True, timeout=60)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("blob " + blob, p.stdout)
+
+
 class TestRunDetached(LockTestBase):
     def _wait_marker(self, marker, seconds=60):
         deadline = time.time() + seconds
@@ -797,7 +1133,7 @@ class TestRunDetached(LockTestBase):
     def test_detached_renews_releases_and_writes_exit_code(self):
         job = os.path.join(self.tmp, "job.sh")
         with open(job, "w", newline="\n") as f:
-            f.write("bash '%s' take gate\nsleep 6\nbash '%s' release gate\nexit 4\n" % (LOCK_SH, LOCK_SH))
+            f.write("bash '%s' take gate\nsleep 12\nbash '%s' release gate\nexit 4\n" % (LOCK_SH, LOCK_SH))
         marker = os.path.join(self.tmp, "job.done")
         p = subprocess.run([BASH, DETACHED_SH, "--owner", "det", fwd(job), fwd(marker)],
                            capture_output=True, text=True, env=self.env(LOOP_LOCK_DETACHED_RENEW_SEC=2),
@@ -805,8 +1141,16 @@ class TestRunDetached(LockTestBase):
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         self.assertIn("DETACHED", p.stdout)
         epoch = int(self.record()[2])
-        time.sleep(4.5)
+        # Sprint 13 H2 ruling: poll up to 10 s for the heartbeat to advance (a renew costs 0.7-1.6 s of process
+        # starts here) instead of one look after a fixed 4.5 s; the job sleeps 12 s so it outlives the window.
+        deadline = time.time() + 10
         rec = self.record()
+        while int(rec[2]) <= epoch and time.time() < deadline:
+            time.sleep(0.2)
+            try:
+                rec = self.record()
+            except OSError:
+                pass
         self.assertEqual(rec[0], "det")
         self.assertGreater(int(rec[2]), epoch, "heartbeat not renewed while the job ran")
         self.assertEqual(self._wait_marker(marker).strip(), "exit=4")
@@ -1060,6 +1404,235 @@ class TestRunDetached(LockTestBase):
         time.sleep(2.5)
         rows_after = [l for l in _read(csv).splitlines() if l.strip()]
         self.assertLessEqual(len(rows_after), n + 1, "sampler kept appending after the job exited")
+
+    # -- Sprint 13 H2: run_detached --wait joins the queue (audit H8), the quiet marker is machine-wide (H13) -----
+
+    def _job(self, body):
+        job = os.path.join(self.tmp, "job.sh")
+        with open(job, "w", newline="\n") as f:
+            f.write(body)
+        return job
+
+    def test_detached_wait_queues_behind_the_holder_then_launches(self):
+        self.write_record("worker", 60, hb_age_s=0)
+        ran = os.path.join(self.tmp, "ran")
+        job = self._job("bash '%s' id > '%s'\nexit 0\n" % (LOCK_SH, fwd(ran)))
+        marker = os.path.join(self.tmp, "job.done")
+        p = subprocess.Popen([BASH, DETACHED_SH, "--owner", "det", "--wait", "1", fwd(job), fwd(marker)],
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                             env=self.env(RUN_FREE_GB_CMD="echo 500", RUN_CPU_SAMPLER=0, LOOP_LOCK_WAIT_SEC=1))
+        try:
+            time.sleep(5)
+            self.assertIsNone(p.poll(), "run_detached --wait gave up at once: %s"
+                              % (p.communicate()[0] if p.poll() is not None else ""))
+            self.assertFalse(os.path.exists(marker))
+            self.assertFalse(os.path.exists(ran))
+            self.assertEqual(len(self.wait_tickets(1)), 1, "the detached waiter holds a ticket")
+            self.assertEqual(self.sh("release", "worker")[0], 0)
+            out = p.communicate(timeout=30)[0]
+            self.assertEqual(p.returncode, 0, out)
+            self.assertIn("DETACHED", out)
+            self.assertEqual(self._wait_marker(marker).strip(), "exit=0")
+            self.assertTrue(_read(ran).startswith("det "), "the job ran under the detached holding")
+            self.assertTrue(self.is_free())
+            self.assertEqual(self.strays(), [])
+        finally:
+            self.reap_procs(p)
+
+    def test_detached_wait_that_times_out_exits_75_without_launching(self):
+        self.write_record("worker", 60, hb_age_s=0)
+        ran = os.path.join(self.tmp, "ran")
+        job = self._job("touch '%s'\n" % fwd(ran))
+        marker = os.path.join(self.tmp, "job.done")
+        p = subprocess.run([BASH, DETACHED_SH, "--wait-seconds", "3", fwd(job), fwd(marker)], capture_output=True,
+                           text=True, env=self.env(RUN_FREE_GB_CMD="echo 500", LOOP_LOCK_WAIT_SEC=1), timeout=60)
+        self.assertEqual(p.returncode, 75, p.stdout + p.stderr)
+        self.assertTrue(_read(marker).startswith("exit=75"), _read(marker))
+        self.assertIn("TIMEOUT", _read(marker))
+        time.sleep(1)
+        self.assertFalse(os.path.exists(ran))
+        self.assertEqual(self.tickets(), [])
+        self.assertEqual(self.record()[0], "worker")
+
+    def test_detached_waiter_leaves_the_queue_when_run_detached_is_killed(self):
+        # Review round 1 (Important 3): the waiter watches run_detached itself (its $$ in LOOP_LOCK_WAIT_PARENT), not
+        # the $(...) subshell a killed run_detached leaves behind.
+        self.write_record("worker", 60, hb_age_s=0)
+        ran = os.path.join(self.tmp, "ran")
+        job = self._job("touch '%s'\n" % fwd(ran))
+        marker = os.path.join(self.tmp, "job.done")
+        errf = os.path.join(self.tmp, "rd.err")
+        p = subprocess.Popen([BASH, "-c", "exec bash '%s' --wait 3 '%s' '%s' 2> '%s'" % (DETACHED_SH, fwd(job), fwd(marker), fwd(errf))],
+                             stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, text=True,
+                             env=self.env(RUN_FREE_GB_CMD="echo 500", RUN_CPU_SAMPLER=0, LOOP_LOCK_WAIT_SEC=60))
+        try:
+            name = self.wait_tickets(1, seconds=30)[0]
+            # The waiter's pid is in its ticket name, and the pids it watches (run_detached's own first) in its
+            # environment. Kill run_detached itself (-9: no trap runs) and leave its $(...) subshell and the waiter.
+            waiter = re.search(r"-(\d+)x\d+$", name).group(1)
+            find = "tr '\\0' '\\n' < /proc/%s/environ | sed -n 's/^LOOP_LOCK_WAIT_PARENT=//p'" % waiter
+            rd = subprocess.run([BASH, "-c", find], capture_output=True, text=True, timeout=30).stdout.split()[0]
+            self.assertTrue(rd.isdigit(), rd)
+            subprocess.run([BASH, "-c", "kill -9 %s" % rd], timeout=30)
+            deadline = time.time() + 30
+            while self.tickets() and time.time() < deadline:
+                time.sleep(0.2)
+            self.assertEqual(self.tickets(), [], "the orphaned detached waiter is still queued")
+            self.assertEqual(self.sh("release", "worker")[0], 0)
+            time.sleep(8)
+            self.assertIsNone(self.holder())
+            self.assertFalse(os.path.exists(ran))
+            self.assertIn("ORPHANED: watched process %s" % rd, _read(errf))
+        finally:
+            self.reap_procs(p)
+
+    def test_detached_waiter_leaves_the_queue_when_its_caller_is_killed(self):
+        # Review round 2 (Important 1): TaskStop kills the CALLING shell -- run_detached's parent -- and leaves
+        # run_detached running. Its waiter watches that caller too: it leaves the queue, run_detached writes
+        # exit=75 ORPHANED to the marker, and the abandoned job never launches.
+        self.write_record("worker", 60, hb_age_s=0)
+        ran = os.path.join(self.tmp, "ran")
+        job = self._job("touch '%s'\n" % fwd(ran))
+        marker = os.path.join(self.tmp, "job.done")
+        pidf = os.path.join(self.tmp, "caller.pid")
+        caller = subprocess.Popen([BASH, "-c", "echo $$ > '%s'; bash '%s' --wait 3 '%s' '%s'; sleep 1"
+                                   % (fwd(pidf), DETACHED_SH, fwd(job), fwd(marker))],
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                  env=self.env(RUN_FREE_GB_CMD="echo 500", RUN_CPU_SAMPLER=0, LOOP_LOCK_WAIT_SEC=60))
+        try:
+            self.assertEqual(len(self.wait_tickets(1, seconds=30)), 1, "run_detached never queued")
+            subprocess.run([BASH, "-c", "kill -9 %s" % _read(pidf).strip()], timeout=30)
+            text = self._wait_marker(marker, 60)
+            self.assertTrue(text.startswith("exit=75"), text)
+            self.assertIn("ORPHANED", text)
+            self.assertEqual(self.tickets(), [])
+            self.assertEqual(self.sh("release", "worker")[0], 0)
+            time.sleep(8)
+            self.assertIsNone(self.holder())
+            self.assertFalse(os.path.exists(ran), "the abandoned job launched")
+        finally:
+            self.reap_procs(caller)
+
+    def _git_repo_with_worktree(self):
+        """A throwaway repository (main + one linked worktree) carrying the scripts under test."""
+        git = shutil.which("git")
+        if not git:
+            self.skipTest("git not found")
+        main = os.path.join(self.tmp, "main")
+        wt = os.path.join(self.tmp, "wt")
+        os.makedirs(os.path.join(main, "scripts"))
+        for name in ("loop_lock.sh", "run_detached.sh", "check_quiet_gate.sh"):
+            shutil.copy(os.path.join(SCRIPTS, name), os.path.join(main, "scripts", name))
+        g = [git, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "core.autocrlf=false"]
+        for args in (["init", "-q", main], ["-C", main, "add", "scripts"], ["-C", main, "commit", "-q", "-m", "s"],
+                     ["-C", main, "worktree", "add", "-q", "-b", "w", wt]):
+            p = subprocess.run(g + args, capture_output=True, text=True, timeout=60)
+            self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        return main, wt
+
+    def test_quiet_marker_lives_under_the_git_common_dir(self):
+        # H13: a launch from a worktree must be seen by check_quiet_gate.sh in the main tree, and the other way round.
+        main, wt = self._git_repo_with_worktree()
+        for launch_tree, gate_tree in ((wt, main), (main, wt)):
+            with self.subTest(launch=os.path.basename(launch_tree), gate=os.path.basename(gate_tree)):
+                job = self._job("sleep 6\nexit 0\n")
+                marker = os.path.join(self.tmp, "job_%s.done" % os.path.basename(launch_tree))
+                env = self.env(RUN_FREE_GB_CMD="echo 500", RUN_CPU_SAMPLER=0)
+                env.pop("RUN_QUIET_MARKER", None)
+                env.pop("FORCE_QUIET", None)
+                p = subprocess.run([BASH, fwd(os.path.join(launch_tree, "scripts", "run_detached.sh")), "--quiet",
+                                    fwd(job), fwd(marker)], capture_output=True, text=True, env=env, timeout=30)
+                self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+                quiet = os.path.join(main, "logs", ".quiet")
+                deadline = time.time() + 10
+                while not os.path.exists(quiet) and time.time() < deadline:
+                    time.sleep(0.1)
+                self.assertTrue(os.path.exists(quiet), "the quiet marker is not in the main tree's logs/")
+                self.assertFalse(os.path.exists(os.path.join(wt, "logs", ".quiet")))
+                # The marker's own pid, echoed back, is "alive" to the gate's probe.
+                genv = dict(env, QUIET_GATE_TASKLIST_CMD="cat '%s'" % fwd(quiet))
+                g = subprocess.run([BASH, fwd(os.path.join(gate_tree, "scripts", "check_quiet_gate.sh"))],
+                                   capture_output=True, text=True, env=genv, timeout=30)
+                self.assertEqual(g.returncode, 3, g.stdout + g.stderr)
+                self.assertEqual(self._wait_marker(marker, 30).strip(), "exit=0")
+                time.sleep(0.5)
+                self.assertFalse(os.path.exists(quiet))
+
+
+class TestLadderJobStatic(unittest.TestCase):
+    """Issue #37 and audit H14, read off the script: no hard-coded checkout, no check-then-take."""
+
+    def setUp(self):
+        self.src = _read(os.path.join(SCRIPTS, "ladder_job.sh"))
+        self.code = "\n".join(l for l in self.src.splitlines() if not l.lstrip().startswith("#"))
+
+    def test_ladder_job_runs_in_its_own_tree(self):
+        self.assertNotIn("/c/projects/socom_pc", self.code)
+        self.assertIn('ROOT="$(cd "$(dirname "$0")/.." && pwd)"', self.code)
+
+    def test_ladder_job_never_checks_the_lock_before_taking_it(self):
+        self.assertNotRegex(self.code, r"loop_lock\.sh\"?\s+check")
+        self.assertIn("--wait", self.code)
+
+
+class TestLadderJob(LockTestBase):
+    """Issue #37: ladder_job.sh takes the lock through run_detached --wait. A competing taker is planted in the gap
+    between the job's start and its acquisition; the ladder must queue behind it and launch, not exit 75."""
+
+    FROSTFIRE_STUB = r'''#!/usr/bin/env bash
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; cd "$ROOT" || exit 1
+if [ "$1" = --child ]; then
+  OUT="$2"; NAME="$(basename "$OUT")"
+  bash scripts/loop_lock.sh id > child_lock_id
+  echo "done 0 mpexit=0 KILL" > "logs/$NAME.done"
+  exit 0
+fi
+OUT="$1"; NAME="$(basename "$OUT")"
+# the plant: an agent build takes the lock in the gap, and releases it three seconds later
+bash scripts/loop_lock.sh take agent-build --purpose planted > planted.txt
+( sleep 3; bash scripts/loop_lock.sh release agent-build >> planted.txt ) </dev/null >/dev/null 2>&1 &
+mkdir -p logs/parity
+exec bash "${RUN_DETACHED_SH:-scripts/run_detached.sh}" --purpose launch-ladder --log "logs/parity/detached_$NAME.txt" \
+     "$0" "logs/$NAME.detached" --child "$OUT"
+'''
+
+    def _tree(self):
+        tree = os.path.join(self.tmp, "tree")
+        os.makedirs(os.path.join(tree, "scripts", "parity"))
+        os.makedirs(os.path.join(tree, "logs"))
+        for name in ("ladder_job.sh", "loop_lock.sh", "run_detached.sh"):
+            shutil.copy(os.path.join(SCRIPTS, name), os.path.join(tree, "scripts", name))
+        stubs = {
+            "python_env.sh": "PYTHON=true\nsocom_require_python() { :; }\n",
+            "check_quiet_gate.sh": "exit 0\n",
+            "kill_stale_drivers.ps1": "",
+            os.path.join("parity", "ladder_frostfire.sh"): self.FROSTFIRE_STUB,
+        }
+        for name, body in stubs.items():
+            with open(os.path.join(tree, "scripts", name), "w", newline="\n") as f:
+                f.write(body)
+        return tree
+
+    def test_ladder_job_queues_behind_a_planted_taker_and_launches(self):
+        src = _read(os.path.join(SCRIPTS, "ladder_job.sh"))
+        self.assertNotIn("ROOT=/c/projects/socom_pc", src, "refusing to run a ladder_job.sh bound to the main checkout")
+        tree = self._tree()
+        env = self.env(RUN_FREE_GB_CMD="echo 500", RUN_CPU_SAMPLER=0, RUN_QUIET_MARKER=fwd(os.path.join(tree, "q")),
+                       LOOP_LOCK_WAIT_SEC=1, LADDER_POLL_SEC=1, LADDER_GAME_COUNT_CMD="echo 0")
+        p = subprocess.run([BASH, fwd(os.path.join(tree, "scripts", "ladder_job.sh")), "1"], capture_output=True,
+                           text=True, env=env, timeout=120)
+        logs = [os.path.join(tree, "logs", "ladder", n) for n in os.listdir(os.path.join(tree, "logs", "ladder"))]
+        log = _read(logs[0]) if logs else ""
+        self.assertEqual(p.returncode, 0, log + p.stdout + p.stderr)
+        self.assertIn("TAKEN by agent-build", _read(os.path.join(tree, "planted.txt")), "the plant never took the lock")
+        self.assertIn("launch rc=0", log)
+        self.assertTrue(_read(os.path.join(tree, "child_lock_id")).startswith("detached "), log)
+        deadline = time.time() + 30                          # the wrapper releases, then writes <name>.detached
+        while not [n for n in os.listdir(os.path.join(tree, "logs")) if n.endswith(".detached")]                 and time.time() < deadline:
+            time.sleep(0.2)
+        self.assertTrue(self.is_free())
+        self.assertEqual(self.strays(), [])
 
 
 @unittest.skipUnless(POWERSHELL, "Windows PowerShell not available")

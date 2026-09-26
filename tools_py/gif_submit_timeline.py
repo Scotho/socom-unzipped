@@ -4,7 +4,7 @@ title labels, in guest submission order: the set[11] flush chain (first BITBLTBU
 holds the LOAD GAME / NEW GAME / ONLINE label images), the 512x256 background uploads
 (dbp 0x2bc0 overlaps the label pages, 0x33d9 does not) and every TEX0 bind of a label texture.
 
-Usage: python tools_py/gif_submit_timeline.py logs/run_X.log [--from N] [--count M]
+Run: python -m tools_py.gif_submit_timeline logs/run_X.log [--from N] [--count M]
 """
 import argparse
 import re

@@ -1848,6 +1848,11 @@ namespace
 
     // Parse either packet back: the A+D entries name BITBLTBUF / TRXPOS / TRXREG / TRXDIR, and TRXDIR says
     // which half of BITBLTBUF and TRXPOS (destination for host->local, source for local->host) is the image.
+    // Read at exec time from guest memory, so a field the guest patches between calls counts: the streamed
+    // full-screen image path (FUN_001c6570) advances DBP, the halfword at packet offset 0x14, per strip (#31).
+    // TRXDIR is the last A+D entry of both layouts (load quadword 4, store quadword 6), so the scan stops there:
+    // past a six-quadword load packet lies memory that is not the packet's (FUN_001c6570's packet ends at the
+    // top of its frame), and an A+D-looking quadword there must not replace the packet's BITBLTBUF.
     static bool readGsImage(uint8_t *rdram, uint32_t addr, GsImageMem &out)
     {
         const uint8_t *ptr = getConstMemPtr(rdram, addr);
@@ -1855,7 +1860,7 @@ namespace
             return false;
         uint64_t bitbltbuf = 0, trxpos = 0, trxreg = 0, trxdir = 3;
         bool sawBuf = false, sawReg = false, sawDir = false;
-        for (int q = 0; q < 7; ++q)
+        for (int q = 0; q < 7 && !sawDir; ++q)
         {
             uint64_t lo = 0, hi = 0;
             std::memcpy(&lo, ptr + q * 16, 8);

@@ -2,20 +2,28 @@
 # Launch a long job (a game run, a build, a gate) detached from the agent's tool call, holding the loop
 # lock for exactly as long as the job's PID lives.
 #
-# Usage: scripts/run_detached.sh [--owner <o>] [--purpose <p>] [--log <path>] [--quiet] <script> <marker> [args...]
+# Usage: scripts/run_detached.sh [--owner <o>] [--purpose <p>] [--log <path>] [--quiet]
+#                                [--wait <minutes> | --wait-seconds <s>] <script> <marker> [args...]
 #
 #   - refuses to start (exit 3, before touching the lock) when C: has less than RUN_MIN_FREE_GB
 #     (default 4) GB free -- Sprint 5 R46/A5, the host was at ~9 GB. RUN_FREE_GB_CMD overrides the
 #     free-space query (a shell command whose last stdout line is the free GB figure) for tests;
 #   - takes the loop lock as <owner> (default "detached"); if it is BUSY, writes "exit=75 BUSY ..." to
-#     <marker> and exits 75 without launching;
+#     <marker> and exits 75 without launching. With --wait (Sprint 13 H2) it QUEUES instead
+#     (`loop_lock.sh wait`: a ticket, served in arrival order) for up to that long, in the foreground --
+#     run it in the background of a tool call if the wait may be long -- and only a TIMEOUT writes
+#     "exit=75 TIMEOUT ..." to <marker>. Until the lock is had, <marker> does not exist;
+#   - a CHAIN is one run_detached of the chain script: its steps run under that one holding (their own
+#     loop_lock.sh take/run are NESTED); a run_detached INSIDE a held lock is refused (exit 2);
 #   - launches `bash <script> [args...]` under nohup, stdout+stderr to <log> (default <marker>.log), and
 #     returns at once, printing "DETACHED pid=... marker=... log=...";
 #   - renews the heartbeat every LOOP_LOCK_DETACHED_RENEW_SEC (300) while the JOB's PID lives -- the
 #     renew loop watches the job, never the caller, whose shell dies when its tool call returns;
 #   - QUIET MARKER (R46/A8: "no build.sh test, sims, unittest suites... while it exists"): while the
 #     job runs, if --purpose (or the lock's default purpose) starts with "launch", or --quiet is given,
-#     writes RUN_QUIET_MARKER (default <repo root>/logs/.quiet) as one line "<owner> <winpid> <start
+#     writes RUN_QUIET_MARKER (default: logs/.quiet of the MAIN tree, beside git's common dir, as the lock
+#     itself -- audit H13, Sprint 13: a per-checkout marker let a worktree's launch run beside a main-tree
+#     `build.sh test` and vice versa) as one line "<owner> <winpid> <start
 #     epoch> <msys pid>" -- the pid field is the WINDOWS pid (via /proc/<msys pid>/winpid), because
 #     check_quiet_gate.sh and any other host-side liveness probe (tasklist, Get-Process) work in
 #     that domain, not MSYS's; removed on every exit path (normal, failure, or signalled) EXCEPT a
@@ -55,7 +63,12 @@ ROOT="$(cd "$HERE/.." && pwd)"
 # (CI) cannot exec it -- "Permission denied", exit 75. gate.py calls it the same way.
 LOCKSH="$HERE/loop_lock.sh"
 RENEW_SEC="${LOOP_LOCK_DETACHED_RENEW_SEC:-300}"
-QUIET_MARKER="${RUN_QUIET_MARKER:-$ROOT/logs/.quiet}"
+# The machine-wide logs/ (the main tree's, found through git's common dir, as loop_lock.sh finds the lock).
+_shared_logs() {
+  local common; common="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+  if [ -n "$common" ] && [ -d "$common" ]; then echo "$(cd "$common/.." && pwd)/logs"; else echo "$ROOT/logs"; fi
+}
+QUIET_MARKER="${RUN_QUIET_MARKER:-$(_shared_logs)/.quiet}"
 
 _free_gb() {
   if [ -n "${RUN_FREE_GB_CMD:-}" ]; then
@@ -185,20 +198,26 @@ if [ "$1" = "--_child" ]; then
   exit 0
 fi
 
-owner="detached" purpose="" log="" quiet_flag=0
+# The launch side is ONE brace group, parsed whole before it runs: a --wait can sit here for hours, and a
+# landing that rewrites this file meanwhile must not be read by offset into the rest (Sprint 13 H2 review).
+{
+owner="detached" purpose="" log="" quiet_flag=0 wait_sec=""
+_count() { case "$1" in ''|*[!0-9]*) echo "run_detached: $2 takes a whole number, not '$1'"; exit 2;; esac; }
 while [ $# -gt 0 ]; do
   case "$1" in
     --owner) owner="$2"; shift 2;;
     --purpose) purpose="$2"; shift 2;;
     --log) log="$2"; shift 2;;
     --quiet) quiet_flag=1; shift;;
+    --wait) _count "$2" --wait; wait_sec=$(( $2 * 60 )); shift 2;;
+    --wait-seconds) _count "$2" --wait-seconds; wait_sec=$(( $2 )); shift 2;;
     --) shift; break;;
     -*) echo "run_detached: unknown option $1"; exit 2;;
     *) break;;
   esac
 done
 if [ $# -lt 2 ]; then
-  echo "usage: $0 [--owner <o>] [--purpose <p>] [--log <path>] [--quiet] <script> <marker> [args...]"; exit 2
+  echo "usage: $0 [--owner <o>] [--purpose <p>] [--log <path>] [--quiet] [--wait <minutes> | --wait-seconds <s>] <script> <marker> [args...]"; exit 2
 fi
 script="$1" marker="$2"; shift 2
 [ -f "$script" ] || { echo "run_detached: no such script: $script"; exit 2; }
@@ -224,7 +243,18 @@ purpose="${purpose:-detached $(basename "$script")}"
 want_quiet=$quiet_flag
 case "$purpose" in launch*) want_quiet=1;; esac
 
-out=$(bash "$LOCKSH" take "$owner" --purpose "$purpose" --print-id)
+if [ -n "$wait_sec" ]; then
+  # The waiter watches THIS process and its CALLER (not the $(...) subshell it is forked from, which a
+  # killed parent leaves behind): TaskStop kills the calling shell and leaves run_detached running, so a
+  # stopped agent's queued launch must die with its caller, not launch the abandoned job hours later. A
+  # Windows-native caller (python) shows as pid 1 and is skipped. The blob is recorded now -- this file is
+  # read by offset too.
+  watch="$$"; case "$PPID" in ''|0|1) ;; *) watch="$$ $PPID";; esac
+  echo "run_detached: queueing for the loop lock as $owner (up to $wait_sec s, watching pids $watch) [run_detached.sh $(git hash-object "$0" 2>/dev/null | cut -c1-12)]"
+  out=$(LOOP_LOCK_WAIT_PARENT="$watch" bash "$LOCKSH" wait "$owner" --wait-seconds "$wait_sec" --purpose "$purpose" --print-id)
+else
+  out=$(bash "$LOCKSH" take "$owner" --purpose "$purpose" --print-id)
+fi
 rc=$?
 held_id=$(printf '%s\n' "$out" | sed -n 's/^ID: //p')
 out=$(printf '%s\n' "$out" | grep -v '^ID: ')
@@ -243,3 +273,5 @@ export LOOP_LOCK_HELD="$held_id"
 export _RUN_DETACHED_QUIET="$want_quiet"
 nohup bash "$0" --_child "$owner" "$log" "$marker" "$script" "$@" </dev/null >/dev/null 2>&1 &
 echo "DETACHED pid=$! owner=$owner marker=$marker log=$log ($out)"
+exit 0
+}

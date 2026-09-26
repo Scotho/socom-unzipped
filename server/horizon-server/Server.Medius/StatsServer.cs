@@ -32,6 +32,55 @@ namespace Server.Medius
         static int _peakPlayers;
         static DateTime? _peakPlayersUtc;
 
+        // Sprint 13 Task O3: which build is running, served as "build" so /api/stats says it. The package's
+        // BUILD_ID file (scripts/make_server_zip.sh writes the repository commit into it) is looked for in the
+        // working directory -- the package root under the systemd units and start-servers.ps1 -- and then up from
+        // the binaries' folder; a build without one says "unknown".
+        public const string BuildIdFile = "BUILD_ID";
+        public static readonly string BuildId = ReadBuildId(BuildIdSearchDirs());
+
+        static IEnumerable<string> BuildIdSearchDirs()
+        {
+            yield return System.IO.Directory.GetCurrentDirectory();
+            var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+            for (int i = 0; dir != null && i < 6; i++, dir = dir.Parent)
+                yield return dir.FullName;
+        }
+
+        /// <summary>The first readable BUILD_ID in <paramref name="dirs"/>, cleaned; "unknown" when none is.</summary>
+        public static string ReadBuildId(IEnumerable<string> dirs)
+        {
+            foreach (var d in dirs)
+            {
+                try
+                {
+                    var path = System.IO.Path.Combine(d, BuildIdFile);
+                    if (System.IO.File.Exists(path))
+                    {
+                        var id = CleanBuildId(System.IO.File.ReadAllText(path));
+                        if (id != null)
+                            return id;
+                    }
+                }
+                catch { /* an unreadable folder is skipped */ }
+            }
+            return "unknown";
+        }
+
+        /// <summary>The first line, trimmed, when it is 1..64 of [0-9A-Za-z._+-]; otherwise null.</summary>
+        public static string CleanBuildId(string raw)
+        {
+            if (raw == null)
+                return null;
+            var line = raw.Split('\n')[0].Trim();
+            if (line.Length == 0 || line.Length > 64)
+                return null;
+            foreach (var c in line)
+                if (!(char.IsAsciiLetterOrDigit(c) || c == '.' || c == '_' || c == '+' || c == '-'))
+                    return null;
+            return line;
+        }
+
         public static void Start(string prefix)
         {
             if (string.IsNullOrWhiteSpace(prefix) || _listener != null)
@@ -105,6 +154,7 @@ namespace Server.Medius
                 var snapshot = new
                 {
                     status = "online",
+                    build = BuildId,
                     server = serverName,
                     location,
                     generatedUtc = now.ToString("o"),

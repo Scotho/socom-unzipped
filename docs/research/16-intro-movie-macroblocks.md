@@ -360,7 +360,7 @@ check passed hardest exactly where it was weakest.
    references in the tree are its own docstring and `logs/run_mb_s4.sh`. **There is no saved
    baseline map in the repo and no job that would compare against one.** Whoever next touches the
    movie path has to run the check by hand, and to get limit 1 closed has to save a baseline first.
-   (`movie_blocks.py` also has no tests — `docs/KNOWN.md` §4 and `docs/process-audit.md`.)
+   (`movie_blocks.py` also has no tests — `docs/KNOWN.md` §4 and `docs/audits/2026-09-12-process-audit.md`.)
 
 Carried out of `.superpowers/sdd/2026-09-12-sprint-4-visible-defects-and-first-kill/task-1-report.md`
 (gitignored) at Sprint 4 close-out; this section is the durable copy.

@@ -247,11 +247,15 @@ namespace ui
             // Sprint 10 Q3 (R210): the keyboard is menus and typing only, and the mouse is gone -- so the SETUP
             // section says so once, where the mouse-look toggle used to be (its row was 44 under the dead zone).
             // Two lines: the column is 340 units wide and one line of it ran off the panel (the first capture).
+            // Sprint 13 V8 (stranger audit row 13): the first line said "only ... Z/X/C/V" while the crouch hint sent
+            // fire mode to "the keyboard's 2 key" -- the default map (mapping.cpp, kDefaultKeys) binds Q/E and 1-4
+            // to the shoulders and the stick clicks. The line now names them; test_launcher_wording.py holds it
+            // to the map.
             text(ctx, "KEYBOARD", Vec2{deadZone.x, deadZone.y + 44.0f}, metrics::labelSize, theme::dim, Face::Bold, 0.06f);
             caption(ctx, Vec2{deadZone.x, deadZone.y + 44.0f + metrics::labelSize + 8.0f},
-                    "Menus and typing only: arrows, Enter, Backspace, Z/X/C/V.");
+                    "Menus and typing: arrows, Enter, Esc, Backspace, Space, Z/X/C/V.");
             caption(ctx, Vec2{deadZone.x, deadZone.y + 44.0f + metrics::labelSize + 8.0f + metrics::captionSize * 1.4f},
-                    "Playing needs a controller.");
+                    "Q/E/1/2/3/4: L1/R1/L2/L3/R2/R3. Playing needs a controller.");
 
             // One line under it all: the crouch shortcut's trade while one is on (the mark on the drawing is
             // explained where it is seen), else what the drawing is for. Where the sensitivity slider's bottom was.

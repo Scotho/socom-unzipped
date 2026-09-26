@@ -15,6 +15,7 @@
 #include "runtime/gs/gs_gl_target_extent.h"
 #include "runtime/gs/gs_gl_upload_trace.h"
 #include "runtime/gs/gs_gl_upload_identity.h"
+#include "runtime/gs/gs_gl_upload_reasons.h"
 #include "runtime/gs/gs_gl_texture_identity.h"
 #include "Stubs/Helpers/Support.h"
 #include "Stubs/GS.h"
@@ -27,6 +28,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <memory>
 #include <set>
 #include "raylib.h"
 #include "runtime/socom2_lum_readback.h"
@@ -5215,6 +5217,122 @@ void register_ps2_gs_tests()
             }
         });
 
+        // Issue #31 (research/25 §10, KNOWN §2): the streamed full-screen image path FUN_001c6570 (decomp 45100/45108)
+        // calls sceGsSetDefLoadImage ONCE -- its packet on the stack at sp+0xA0070, the top of the frame -- then per
+        // 640x64 CT32 strip reads 0x28000 bytes, calls sceGsExecLoadImage and advances DBP itself:
+        //   lhu v1,0x14(pkt); v1 = (v1 & 0xC000) | ((v1 & 0x3FFF) + 0x280) & 0x3FFF; sh v1,0x14(pkt)
+        // Only the DBP halfword changes; DBW (0x16), DPSM (0x17), TRXPOS and TRXREG stay as set. LOADING.RAW is
+        // 640x448 at x=y=0: seven strips, DBP 0, 0x280 ... 0xF00. Each strip must land at the DBP the packet holds
+        // at exec time. `foreignQword` puts an A+D-looking quadword (register byte 0x50) right after the six-quadword
+        // load packet, where the guest's packet ends and its caller's frame begins: the exec-time parse must stop at
+        // the packet's TRXDIR, not read a seventh quadword that is not the packet's.
+        auto runStreamedImage = [](TestCase &t, bool foreignQword)
+        {
+            PS2Runtime runtime;
+            t.IsTrue(runtime.memory().initialize(), "runtime memory initialize should succeed");
+            uint8_t *const rdram = runtime.memory().getRDRAM();
+            constexpr uint32_t kPacketAddr = 0x4000u;
+            constexpr uint32_t kStoreImageAddr = 0x5000u;
+            constexpr uint32_t kSrcAddr = 0x1800000u;   // above the guest heap, where the stub mallocs its packet
+            constexpr uint32_t kDstAddr = 0x1900000u;
+            constexpr uint32_t kWidth = 640u;
+            constexpr uint32_t kStripLines = 64u;
+            constexpr uint32_t kStripBytes = kWidth * kStripLines * 4u; // 0x28000, the guest's read size
+            constexpr uint32_t kStrips = 448u / kStripLines;           // LOADING.RAW: param_3 = 0x1c0
+            constexpr uint32_t kDbpStep = kStripBytes / 256u;           // 0x280, the guest's +0x280
+            constexpr uint32_t kDbw = kWidth / 64u;                     // 10
+
+            if (foreignQword)
+            {
+                const uint64_t strayLo = (0x3F00ull << 32) | (static_cast<uint64_t>(kDbw) << 48);
+                writeGsQword(rdram + kPacketAddr + 0x60u, strayLo, 0x50ull);
+            }
+
+            R5900Context defCtx{};
+            setRegU32(defCtx, 4, kPacketAddr);
+            setRegU32(defCtx, 5, 0u);        // DBP: (x*4 + y*0xa00) >> 8 = 0 for LOADING.RAW
+            setRegU32(defCtx, 6, kDbw);      // DBW: 640 >> 6
+            setRegU32(defCtx, 7, 0u);        // PSMCT32
+            setRegU32(defCtx, 8, 0u);        // x
+            setRegU32(defCtx, 9, 0u);        // y
+            setRegU32(defCtx, 10, kWidth);   // w
+            setRegU32(defCtx, 11, kStripLines); // h = 0x40
+            ps2_stubs::sceGsSetDefLoadImage(rdram, &defCtx, &runtime);
+
+            uint16_t setTimeDbpHalf = 0u;
+            std::memcpy(&setTimeDbpHalf, rdram + kPacketAddr + 0x14u, sizeof(setTimeDbpHalf));
+            t.Equals(static_cast<uint32_t>(setTimeDbpHalf), 0u,
+                     "the halfword at packet offset 0x14 is BITBLTBUF's DBP (the one the guest advances)");
+
+            for (uint32_t i = 0; i < kStrips; ++i)
+            {
+                for (uint32_t off = 0; off < kStripBytes; off += 4u)
+                {
+                    const uint32_t word = (i << 24) | (off & 0x00FFFFFFu);
+                    std::memcpy(rdram + kSrcAddr + off, &word, sizeof(word));
+                }
+
+                R5900Context loadCtx{};
+                setRegU32(loadCtx, 4, kPacketAddr);
+                setRegU32(loadCtx, 5, kSrcAddr);
+                ps2_stubs::sceGsExecLoadImage(rdram, &loadCtx, &runtime);
+                t.Equals(static_cast<int32_t>(getRegU32Test(loadCtx, 2)), 0,
+                         "sceGsExecLoadImage strip " + std::to_string(i) + " should succeed");
+
+                // The freed packet still holds the BITBLTBUF the stub sent.
+                uint64_t bitbltbuf = 0u;
+                std::memcpy(&bitbltbuf, rdram + runtime.guestHeapBase() + 16u, sizeof(bitbltbuf));
+                t.Equals(static_cast<uint32_t>((bitbltbuf >> 32) & 0x3FFFu), i * kDbpStep,
+                         "strip " + std::to_string(i) + " should be sent to the DBP the guest wrote at packet "
+                         "offset 0x14, not the set-time DBP or a stray quadword's");
+                t.Equals(static_cast<uint32_t>((bitbltbuf >> 48) & 0x3Fu), kDbw,
+                         "strip " + std::to_string(i) + " keeps DBW 10");
+                t.Equals(static_cast<uint32_t>((bitbltbuf >> 56) & 0x3Fu), 0u,
+                         "strip " + std::to_string(i) + " keeps DPSM PSMCT32");
+
+                // FUN_001c6570 0x1c66f0..0x1c6714: advance DBP in the packet, keeping the halfword's top two bits.
+                uint16_t half = 0u;
+                std::memcpy(&half, rdram + kPacketAddr + 0x14u, sizeof(half));
+                half = static_cast<uint16_t>((half & 0xC000u) | (((half & 0x3FFFu) + kDbpStep) & 0x3FFFu));
+                std::memcpy(rdram + kPacketAddr + 0x14u, &half, sizeof(half));
+            }
+
+            // Read every strip back from its own blocks: each must hold its own bytes, not the last strip's.
+            for (uint32_t i = 0; i < kStrips; ++i)
+            {
+                const GsImageMem image{0u, 0u, static_cast<uint16_t>(kWidth), static_cast<uint16_t>(kStripLines),
+                                       static_cast<uint16_t>(i * kDbpStep), static_cast<uint8_t>(kDbw), 0u};
+                writeGsImageTest(rdram, kStoreImageAddr, image);
+                std::memset(rdram + kDstAddr, 0xEE, kStripBytes);
+
+                R5900Context storeCtx{};
+                setRegU32(storeCtx, 4, kStoreImageAddr);
+                setRegU32(storeCtx, 5, kDstAddr);
+                ps2_stubs::sceGsExecStoreImage(rdram, &storeCtx, &runtime);
+                t.Equals(static_cast<int32_t>(getRegU32Test(storeCtx, 2)), 0,
+                         "sceGsExecStoreImage strip " + std::to_string(i) + " should succeed");
+
+                bool wholeStripOk = true;
+                uint32_t firstBad = 0u;
+                for (uint32_t off = 0; off < kStripBytes && wholeStripOk; off += 4u)
+                {
+                    uint32_t word = 0u;
+                    std::memcpy(&word, rdram + kDstAddr + off, sizeof(word));
+                    wholeStripOk = word == ((i << 24) | (off & 0x00FFFFFFu));
+                    firstBad = word;
+                }
+                t.IsTrue(wholeStripOk, "strip " + std::to_string(i) + " should read back its own bytes from DBP " +
+                                           std::to_string(i * kDbpStep) + " (first wrong word's strip id " +
+                                           std::to_string(firstBad >> 24) + ")");
+            }
+        };
+
+        tc.Run("streamed full-screen image (FUN_001c6570): each 640x64 strip lands at the DBP the guest wrote at packet offset 0x14",
+               [runStreamedImage](TestCase &t) { runStreamedImage(t, false); });
+
+        tc.Run("streamed full-screen image: a quadword after the six-quadword load packet is not read as the packet's BITBLTBUF",
+               [runStreamedImage](TestCase &t) { runStreamedImage(t, true); });
+
         tc.Run("sceGifPkRefLoadImage seeds A+D GIFtag nloop once (no double-count)", [](TestCase &t)
         {
             std::vector<uint8_t> rdram(PS2_RAM_SIZE, 0u);
@@ -6192,6 +6310,164 @@ void register_ps2_gs_tests()
             const std::string line = GsGlUploadTrace::format(a, 1000.0);
             t.IsTrue(line.find("revalidated=500/s") != std::string::npos, "revalidations per second");
             t.IsTrue(line.find("revalidate_us=12.0") != std::string::npos, "and the cost of one");
+        });
+
+        // --- Sprint 13 V2 (#32): why each upload happened, and the one that need not ---
+        //
+        // gs_gl_upload_reasons.h is the Gate executeUpload runs (with PS2X_GS_STATS or
+        // PS2X_GS_UPLOAD_SKIP set): the reasons line's counters and the skip decision both come
+        // from Gate::decide, so these cases drive the backend's own code without a GL context.
+
+        tc.Run("V2: blocksOf names the 256-byte blocks a rectangle writes, and nothing for a Z format", [](TestCase &t)
+        {
+            std::vector<uint32_t> blocks;
+            GsGlUploadReasons::blocksOf(GS_PSM_CT32, 0x0c0u, 10u, 0u, 0u, 16u, 16u, blocks);
+            t.IsTrue(blocks == std::vector<uint32_t>({0x0c0u, 0x0c1u, 0x0c2u, 0x0c3u}),
+                     "a 16x16 PSMCT32 tile at (0,0) of dbp 0xc0 is the four 8x8 blocks 0xc0..0xc3");
+            std::vector<uint32_t> beside;
+            GsGlUploadReasons::blocksOf(GS_PSM_CT32, 0x0c0u, 10u, 16u, 0u, 16u, 16u, beside);
+            t.IsTrue(beside == std::vector<uint32_t>({0x0c4u, 0x0c5u, 0x0c6u, 0x0c7u}),
+                     "the tile beside it is in the same page and writes other blocks");
+            std::vector<uint32_t> frame;
+            GsGlUploadReasons::blocksOf(GS_PSM_CT32, 0u, 10u, 0u, 0u, 640u, 448u, frame);
+            t.Equals(frame.size(), static_cast<size_t>(10u * 14u * 32u), "a 640x448 frame is 140 whole pages: every block visited");
+            std::vector<uint32_t> nibbles;
+            GsGlUploadReasons::blocksOf(GS_PSM_T4, 0x0c0u, 10u, 0u, 0u, 16u, 16u, nibbles);
+            t.IsTrue(nibbles == std::vector<uint32_t>({0x0c0u}), "a 16x16 PSMT4 tile lies in one 32x16 block");
+            GsGlUploadReasons::blocksOf(GS_PSM_Z32, 0x0c0u, 10u, 0u, 0u, 16u, 16u, blocks);
+            t.IsTrue(blocks.empty(), "a Z format has no block map here: it is never a skip candidate");
+        });
+
+        tc.Run("V2: the reason counters name every branch of a synthetic upload sequence", [](TestCase &t)
+        {
+            using R = GsGlUploadReasons::Reason;
+            using X = GsGlUploadReasons::Tex;
+            auto gateOwner = std::make_unique<GsGlUploadReasons::Gate>();   // 132 KB of generations: not on the stack
+            GsGlUploadReasons::Gate &gate = *gateOwner;
+            const GsGlUploadIdentity::Key tile{0x0c0u, 10u, 0u, 0u, 16u, 16u, GS_PSM_CT32};
+            const GsGlUploadIdentity::Key beside{0x0c0u, 10u, 16u, 0u, 16u, 16u, GS_PSM_CT32};
+            std::vector<uint32_t> tileBlocks, besideBlocks;
+            GsGlUploadReasons::blocksOf(GS_PSM_CT32, 0x0c0u, 10u, 0u, 0u, 16u, 16u, tileBlocks);
+            GsGlUploadReasons::blocksOf(GS_PSM_CT32, 0x0c0u, 10u, 16u, 0u, 16u, 16u, besideBlocks);
+            const std::vector<uint8_t> a(1024u, 0x11u), b(1024u, 0x22u);
+            auto up = [&](const GsGlUploadIdentity::Key &k, const std::vector<uint8_t> &bytes,
+                          const std::vector<uint32_t> &blocks, bool whole, bool underGpu)
+            {
+                return gate.decide(k, bytes.data(), bytes.size(), whole, blocks, 6u, 1u, 10u, underGpu, false).reason;
+            };
+            t.IsTrue(up(tile, a, tileBlocks, true, false) == R::New, "the first upload of a rectangle is new");
+            t.IsTrue(up(tile, a, tileBlocks, true, false) == R::SameFree, "the same bytes again, nothing between: same_free");
+            t.IsTrue(up(beside, b, besideBlocks, true, false) == R::New, "a sibling tile in the same page is its own rectangle");
+            t.IsTrue(up(tile, a, tileBlocks, true, false) == R::SameFree,
+                     "and does not disturb this one (other blocks) -- R118's page guard refused exactly this");
+            t.IsTrue(up(tile, b, tileBlocks, true, false) == R::Changed, "different bytes: changed");
+            gate.noteForeignWrite(6u, 1u);
+            t.IsTrue(up(tile, b, tileBlocks, true, false) == R::SameRewritten,
+                     "the same bytes after a VRAM write or a download into its page: same_rewritten");
+            t.IsTrue(up(tile, b, tileBlocks, true, true) == R::SameUnderGpu, "GPU-drawn rows over it: same_gpu");
+            t.IsTrue(up(tile, b, tileBlocks, false, false) == R::Chunked, "one packet of a split rectangle: chunked");
+            for (int i = 0; i < 3; ++i)
+                gate.noteTex(X::Hit);
+            gate.noteTex(X::RtDirect);
+            gate.noteTex(X::Revalidated);
+            gate.noteTex(X::Revalidated);
+            gate.noteTex(X::Redecoded);
+            gate.noteTex(X::New);
+            const GsGlUploadReasons::Tally tally = gate.take();
+            t.Equals(tally.uploads[static_cast<size_t>(R::New)], static_cast<uint64_t>(2), "two new");
+            t.Equals(tally.uploads[static_cast<size_t>(R::SameFree)], static_cast<uint64_t>(2), "two same_free");
+            t.Equals(tally.uploads[static_cast<size_t>(R::Changed)], static_cast<uint64_t>(1), "one changed");
+            t.Equals(tally.uploads[static_cast<size_t>(R::SameRewritten)], static_cast<uint64_t>(1), "one same_rewritten");
+            t.Equals(tally.uploads[static_cast<size_t>(R::SameUnderGpu)], static_cast<uint64_t>(1), "one same_gpu");
+            t.Equals(tally.uploads[static_cast<size_t>(R::Chunked)], static_cast<uint64_t>(1), "one chunked");
+            t.Equals(tally.skipped, static_cast<uint64_t>(0), "with the knob off nothing is skipped, only counted");
+            const std::string line = GsGlUploadReasons::format(tally, false);
+            t.IsTrue(line.find("[gs-gl stats] reasons uploads: chunked=1 new=2 changed=1 same_rewritten=1 same_gpu=1 same_free=2 skipped=0 skip=off") == 0,
+                     "the reasons line, uploads half: " + line);
+            t.IsTrue(line.find("textures: hit=3 rt=1 revalidated=2 redecoded=1 new=1") != std::string::npos,
+                     "the reasons line, texture half: " + line);
+            t.Equals(gate.take().uploads[static_cast<size_t>(R::New)], static_cast<uint64_t>(0), "take() starts the next interval at zero");
+        });
+
+        tc.Run("V2 (#32): a 16x16 tile uploaded twice with the same bytes uploads once", [](TestCase &t)
+        {
+            // Before V2, executeUpload had no branch that could decline: every Upload command swizzled
+            // into the shadow, bumped the page generation of the whole base..span range and marked a
+            // dirty rectangle on every target over it, so the same bytes twice were two uploads. The
+            // only identical-bytes check was PS2X_GS_UPLOAD_TRACE's identical= counter, which counts.
+            auto gateOwner = std::make_unique<GsGlUploadReasons::Gate>();   // 132 KB of generations: not on the stack
+            GsGlUploadReasons::Gate &gate = *gateOwner;
+            const GsGlUploadIdentity::Key tile{0x0c0u, 10u, 0u, 0u, 16u, 16u, GS_PSM_CT32};
+            std::vector<uint32_t> blocks;
+            GsGlUploadReasons::blocksOf(GS_PSM_CT32, 0x0c0u, 10u, 0u, 0u, 16u, 16u, blocks);
+            const std::vector<uint8_t> a(1024u, 0x5Au), b(1024u, 0xA5u);
+            int performed = 0;
+            auto upload = [&](const std::vector<uint8_t> &bytes, bool underGpu)
+            {
+                if (!gate.decide(tile, bytes.data(), bytes.size(), true, blocks, 6u, 1u, 10u, underGpu, true).skip)
+                    ++performed;
+            };
+            upload(a, false);
+            upload(a, false);
+            t.Equals(performed, 1, "the same 16x16 tile twice with nothing between: ONE upload");
+            t.Equals(gate.tally().skipped, static_cast<uint64_t>(1), "and the reasons line says skipped=1");
+
+            // Never where the bytes may not already be everywhere:
+            upload(b, false);
+            t.Equals(performed, 2, "different bytes upload");
+            upload(b, true);
+            t.Equals(performed, 3, "under GPU-drawn rows it uploads: the GPU may have drawn over the tile");
+            const GsGlUploadIdentity::Key overlap{0x0c0u, 10u, 8u, 8u, 8u, 8u, GS_PSM_CT32};
+            std::vector<uint32_t> overlapBlocks;
+            GsGlUploadReasons::blocksOf(GS_PSM_CT32, 0x0c0u, 10u, 8u, 8u, 8u, 8u, overlapBlocks);
+            const std::vector<uint8_t> c(256u, 0x33u);
+            gate.decide(overlap, c.data(), c.size(), true, overlapBlocks, 6u, 1u, 10u, false, true);
+            upload(b, false);
+            t.Equals(performed, 4, "an upload into one of its blocks since: it uploads");
+            upload(b, false);
+            t.Equals(performed, 4, "and once it is back, the next identical one is skipped again");
+            gate.noteTargetsChanged();
+            upload(b, false);
+            t.Equals(performed, 5, "a render target created or grown since: it uploads");
+            gate.noteForeignWrite(6u, 1u);
+            upload(b, false);
+            t.Equals(performed, 6, "a VRAM write, local copy or download into its page since: it uploads");
+            t.IsFalse(gate.decide(tile, b.data(), b.size(), false, blocks, 6u, 1u, 10u, false, true).skip,
+                      "one packet of a split rectangle is never skipped");
+            t.IsFalse(gate.decide(tile, b.data(), b.size(), true, blocks, 6u, 1u, 10u, false, false).skip,
+                      "with PS2X_GS_UPLOAD_SKIP off the gate only counts");
+            gate.reset();
+            t.IsFalse(gate.decide(tile, b.data(), b.size(), true, blocks, 6u, 1u, 10u, false, true).skip,
+                      "a GS reset forgets every remembered upload");
+        });
+
+        tc.Run("V2 review: a page-granular write at an unaligned dbp stamps the page row it spills into", [](TestCase &t)
+        {
+            // pageSpan counts from the base page; a copy to dbp 0xc8 (page 6, block 8) with one page
+            // row of height reaches into page 7. The tile remembered in page 7 must not be skipped.
+            using R = GsGlUploadReasons::Reason;
+            t.Equals(GsGlUploadReasons::stampSpan(0x0c0u, 1u, 1u), 1u, "an aligned dbp stamps its span");
+            t.Equals(GsGlUploadReasons::stampSpan(0x0c8u, 1u, 1u), 2u, "an unaligned dbp stamps one more page row");
+            t.Equals(GsGlUploadReasons::stampSpan(0x0c8u, 10u, 10u), 20u, "a page row is dbw pages wide");
+            auto gateOwner = std::make_unique<GsGlUploadReasons::Gate>();
+            GsGlUploadReasons::Gate &gate = *gateOwner;
+            const GsGlUploadIdentity::Key tile{0x0e0u, 1u, 0u, 0u, 16u, 16u, GS_PSM_CT32};
+            std::vector<uint32_t> blocks;
+            GsGlUploadReasons::blocksOf(GS_PSM_CT32, 0x0e0u, 1u, 0u, 0u, 16u, 16u, blocks);
+            const std::vector<uint8_t> a(1024u, 0x77u);
+            auto up = [&]() { return gate.decide(tile, a.data(), a.size(), true, blocks, 7u, 1u, 1u, false, false).reason; };
+            up();
+            gate.noteForeignWrite(6u, GsGlUploadReasons::stampSpan(0x0c0u, 1u, 1u));
+            t.IsTrue(up() == R::SameFree, "an aligned copy into page 6 leaves page 7's tile valid");
+            gate.noteForeignWrite(6u, GsGlUploadReasons::stampSpan(0x0c8u, 1u, 1u));
+            t.IsTrue(up() == R::SameRewritten, "an unaligned copy into page 6 spills into page 7: same_rewritten");
+            // decide's own fallback (a Z-format upload has no block map) widens the same way.
+            const GsGlUploadIdentity::Key z{0x0c8u, 1u, 0u, 0u, 16u, 16u, GS_PSM_Z32};
+            const std::vector<uint32_t> none;
+            up();
+            t.IsTrue(up() == R::SameFree, "valid again after its re-upload");
+            gate.decide(z, a.data(), a.size(), true, none, 6u, 1u, 1u, false, false);
+            t.IsTrue(up() == R::SameRewritten, "a Z-format upload at an unaligned dbp in page 6 stamps page 7 too");
         });
 
     });

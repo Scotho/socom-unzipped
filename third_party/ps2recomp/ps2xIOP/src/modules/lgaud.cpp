@@ -104,6 +104,8 @@ namespace ps2x::iop::detail
         constexpr uint32_t kMaxReplyBytes = 0x840u;      // the EE's own buffer, :90871-90878
         // HostMic::kSampleRate (runtime/host_mic.h): the ring is 16 kHz mono s16 and lgAudOpen asks for
         // 11025 (openparam+0x04 = 0x2b11, :48341), so Read always resamples. The module never sees HostMic.
+        // (11025 is the tuner path's rate only; the voice object opens at 8000 Hz -- docs/research/56 sections 3
+        // and 6, audit C52. Read resamples to whatever rate the openparam names.)
         constexpr uint32_t kRingSampleRate = 16000u;
         // A handle that is neither 0 nor -1, the two values the game tests (:48348, :211480).
         constexpr uint32_t kHandleTag = 0x4c470000u;     // 'LG'
@@ -382,7 +384,7 @@ namespace ps2x::iop::detail
                         answer(kStatusNoDevice, kStateSteady);
                         return;
                     }
-                    // The game has already Nellymoser-decoded the other player and duplicated each sample
+                    // The game has already SASE-decoded the other player and duplicated each sample
                     // L/R (:211305-211380), so this payload is plain PCM at the playback half of the
                     // openparam. Handing it to the host is what writes PS2X_MIC_DUMP_PLAYBACK; the host
                     // discards it when no dump is open. Mixing it into 989snd is Task 5.

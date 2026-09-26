@@ -34,7 +34,7 @@ were not present in the sampled games, and ambiguous matches are intentionally i
 
 ### 4. Ghidra Integration (For Retail and Stripped Games, Preferred)
 This is the recommended workflow for almost every commercial game:
-1. Use the provided script: `ps2xRecomp/tools/ghidra/ExportPS2Functions.java`.
+1. Use the provided script: `ghidra_scripts/ExportPS2Functions.java` at the repository root (this tree's copy was a byte-identical duplicate, removed by Sprint 13 Task C7).
 2. Run it in Ghidra to export a CSV map of all functions.
 3. Let the script generate the TOML, and keep the CSV path in `ghidra_output = "path/to/map.csv"`.
 4. Run the recompiler with that exported TOML.
@@ -61,7 +61,7 @@ ps2_analyzer <input_elf> <output_toml> [sce_symbol_db_dir]
 
 ## Example Workflow
 1. Open `game.elf` in Ghidra.
-2. Run `ps2xRecomp/tools/ghidra/ExportPS2Functions.java`.
+2. Run `ghidra_scripts/ExportPS2Functions.java` at the repository root (this tree's copy was a byte-identical duplicate, removed by Sprint 13 Task C7).
 3. Use the exported TOML and CSV.
 4. Run the recompiler:
    `ps2recomp config.toml`

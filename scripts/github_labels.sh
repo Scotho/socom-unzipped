@@ -8,6 +8,9 @@
 #     bash scripts/github_labels.sh --dry-run    # print the gh commands and touch nothing
 #     GITHUB_LABELS_REPO=me/fork bash scripts/github_labels.sh
 #
+# GitHub's own default labels `help wanted` and `good first issue` are NOT in this set: they exist on every
+# repository, their names carry spaces (this set is lower-case hyphenated), and the sprint-close review hands them
+# out under docs/DOC_MAINTENANCE.md section 7 step 6 (2026-09-25, Sprint 13 S3).
 # Every label is created with `gh label create --force`, so the script is IDEMPOTENT: a second run updates the
 # colour and the description of a label that already exists instead of failing, and nothing is ever deleted --
 # a label this file does not name is left alone, because issues may already carry it.

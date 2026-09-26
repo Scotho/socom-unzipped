@@ -105,6 +105,148 @@ static uint32_t rpcAllocServerAddr(uint8_t *rdram)
     return addr;
 }
 
+// Sprint 13 U2 (upstream ran-j/PS2Recomp #239's class): a guest path may name
+// only what lies under its root.
+//
+// Every root gets the lexical walk, component by component (separators already
+// normalised to '/'): a ".." that climbs above the root, a component carrying
+// ':' (a drive, or an NTFS stream -- on Windows `root /= "C:/x"` replaces the
+// root outright), one made only of dots and spaces other than "." and ".."
+// (Win32 strips trailing dots and spaces, so ".. " and "..." climb), and on
+// Windows a reserved device name (CON, NUL, COM1, ...: the path would open the
+// device, not a file) are all refused.
+//
+// Only mcRoot (resolveLinks) is also resolved through links (ruling S13-R8): the
+// joined path and the root are both weakly_canonical'd and the path must stay
+// under the root, so a symlink or junction inside the card folder that points
+// outside it is refused. The memory-card folder is the one a player might be
+// SENT; hostRoot and cdRoot are laid out by whoever installs the game, and an
+// operator may legitimately build a disc tree out of links (game/disc_r0004's
+// RUN, OVERLAY, NETGUI and CNF are junctions into game/disc), so there a link is
+// followed wherever it points and only the lexical walk applies.
+//
+// A refusal is an empty string; every caller already turns that into the -1 the
+// PS2 fio library reports for a path it cannot open.
+inline bool isWindowsReservedDeviceName(const std::string &part)
+{
+#ifdef _WIN32
+    // The device is matched on the name before the first dot, trailing spaces
+    // ignored: "nul", "NUL.txt" and "com1 .log" all open the device.
+    std::string stem = part.substr(0, part.find('.'));
+    while (!stem.empty() && stem.back() == ' ')
+    {
+        stem.pop_back();
+    }
+    stem = toLowerAscii(stem);
+    if (stem == "con" || stem == "prn" || stem == "aux" || stem == "nul" ||
+        stem == "conin$" || stem == "conout$")
+    {
+        return true;
+    }
+    return stem.size() == 4 && (stem.compare(0, 3, "com") == 0 || stem.compare(0, 3, "lpt") == 0) &&
+           stem[3] >= '1' && stem[3] <= '9';
+#else
+    (void)part;
+    return false;
+#endif
+}
+
+inline bool isPs2PathWithinRoot(const std::filesystem::path &root, const std::filesystem::path &path)
+{
+    auto sameComponent = [](const std::filesystem::path &a, const std::filesystem::path &b)
+    {
+#ifdef _WIN32
+        return toLowerAscii(a.string()) == toLowerAscii(b.string());
+#else
+        return a == b;
+#endif
+    };
+
+    auto it = path.begin();
+    for (const std::filesystem::path &part : root)
+    {
+        if (part.empty())
+        {
+            continue; // a trailing separator on the root
+        }
+        while (it != path.end() && it->empty())
+        {
+            ++it;
+        }
+        if (it == path.end() || !sameComponent(part, *it))
+        {
+            return false;
+        }
+        ++it;
+    }
+    return true;
+}
+
+inline std::string resolvePs2PathUnderRoot(const std::filesystem::path &base,
+                                           const std::string &suffix,
+                                           bool resolveLinks)
+{
+    const std::string normalizedSuffix = normalizePs2PathSuffix(suffix);
+
+    std::vector<std::string> parts;
+    std::size_t start = 0;
+    while (start <= normalizedSuffix.size())
+    {
+        std::size_t slash = normalizedSuffix.find('/', start);
+        if (slash == std::string::npos)
+        {
+            slash = normalizedSuffix.size();
+        }
+        const std::string part = normalizedSuffix.substr(start, slash - start);
+        start = slash + 1;
+
+        if (part.empty() || part == ".")
+        {
+            continue;
+        }
+        if (part == "..")
+        {
+            if (parts.empty())
+            {
+                return {};
+            }
+            parts.pop_back();
+            continue;
+        }
+        if (part.find(':') != std::string::npos || part.find_first_not_of(". ") == std::string::npos ||
+            isWindowsReservedDeviceName(part))
+        {
+            return {};
+        }
+        parts.push_back(part);
+    }
+
+    const std::filesystem::path root = base.lexically_normal();
+    std::filesystem::path resolved = root;
+    for (const std::string &part : parts)
+    {
+        resolved /= std::filesystem::path(part, std::filesystem::path::generic_format);
+    }
+    resolved = resolved.lexically_normal();
+    if (!resolveLinks)
+    {
+        return resolved.string();
+    }
+
+    std::error_code ec;
+    const std::filesystem::path canonicalRoot = std::filesystem::weakly_canonical(root, ec);
+    if (ec)
+    {
+        return {};
+    }
+    const std::filesystem::path canonicalPath = std::filesystem::weakly_canonical(resolved, ec);
+    if (ec || !isPs2PathWithinRoot(canonicalRoot, canonicalPath))
+    {
+        return {};
+    }
+    return resolved.string();
+}
+
 inline std::string translatePs2Path(const char *ps2Path)
 {
     if (!ps2Path || !*ps2Path)
@@ -115,46 +257,27 @@ inline std::string translatePs2Path(const char *ps2Path)
     std::string pathStr(ps2Path);
     std::string lower = toLowerAscii(pathStr);
 
-    auto resolveWithBase = [&](const std::filesystem::path &base, const std::string &suffix) -> std::string
-    {
-        const std::string normalizedSuffix = normalizePs2PathSuffix(suffix);
-        std::filesystem::path resolved = base;
-        if (!normalizedSuffix.empty())
-        {
-            resolved /= std::filesystem::path(normalizedSuffix);
-        }
-        return resolved.lexically_normal().string();
-    };
-
     if (lower.rfind("host0:", 0) == 0 || lower.rfind("host:", 0) == 0)
     {
         const std::size_t prefixLength = (lower.rfind("host0:", 0) == 0) ? 6 : 5;
-        return resolveWithBase(getConfiguredHostRoot(), pathStr.substr(prefixLength));
+        return resolvePs2PathUnderRoot(getConfiguredHostRoot(), pathStr.substr(prefixLength), false);
     }
 
     if (lower.rfind("cdrom0:", 0) == 0 || lower.rfind("cdrom:", 0) == 0)
     {
         const std::size_t prefixLength = (lower.rfind("cdrom0:", 0) == 0) ? 7 : 6;
-        return resolveWithBase(getConfiguredCdRoot(), pathStr.substr(prefixLength));
+        return resolvePs2PathUnderRoot(getConfiguredCdRoot(), pathStr.substr(prefixLength), false);
     }
 
     if (lower.rfind(kMc0Prefix, 0) == 0)
     {
         const std::size_t prefixLength = sizeof(kMc0Prefix) - 1;
-        return resolveWithBase(getConfiguredMcRoot(), pathStr.substr(prefixLength));
+        return resolvePs2PathUnderRoot(getConfiguredMcRoot(), pathStr.substr(prefixLength), true);
     }
 
-    if (!pathStr.empty() && (pathStr.front() == '/' || pathStr.front() == '\\'))
-    {
-        return resolveWithBase(getConfiguredCdRoot(), pathStr);
-    }
-
-    if (pathStr.size() > 1 && pathStr[1] == ':')
-    {
-        return pathStr;
-    }
-
-    return resolveWithBase(getConfiguredCdRoot(), pathStr);
+    // No device prefix: the path is the CD's. A host drive path ("C:\\...") used to
+    // pass through verbatim here; it now meets the ':' refusal like any other.
+    return resolvePs2PathUnderRoot(getConfiguredCdRoot(), pathStr, false);
 }
 
 static bool localtimeSafe(const std::time_t *t, std::tm *out)

@@ -220,6 +220,15 @@ namespace ps2recomp
             return false;
         }
 
+        // A tail call to an HLE wrapper goes through the function table, the entry a JAL's dispatch
+        // reaches, so the table's wrappers (PS2X_HLE_STATS, PS2X_CALL_TRACE) count it. The host frame
+        // shape is the direct call's: the entry is called here and the caller returns (issue #40).
+        if (m_gen.m_stubTargets.count(target) != 0u)
+        {
+            m_ss << indent << fmt::format("runtime->lookupFunction(0x{:X}u)(rdram, ctx, runtime); return;\n", target);
+            return true;
+        }
+
         m_ss << indent << functionName << "(rdram, ctx, runtime); return;\n";
         return true;
     }

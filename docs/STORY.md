@@ -418,7 +418,7 @@ The launcher is a small window that owns the settings file. It reads the disc im
 
 *But:* nobody had tried the launcher by hand, and the zip had never run on a clean machine. The audit's biggest gap was left alone: every online result was two copies on one machine behind one router.
 
-`Cited:` `770d5fb` SOCOM Unzipped launcher, first cut · `2a8f8e4` scripts/make_portable.sh -- the portable folder · `docs/STATUS.md` · `logs/parity/gate/s6_launcher_gate/summary.txt` · `logs/launcher_server_picker.png` · `docs/research/assets/launcher-first-cut.png` · `09b793a` the 2026-09-17 audit and code review · `fae7d0e` the audit's fix wave · `32aec0b` Sprint 7 opened -- two strangers, two machines, one hosted server · `a843385` the stranger's machine, defensively · `39cd17f` equal-priority guest threads are never time-sliced · `docs/AUDIT-2026-09-17.md` · `logs/parity/gate/s6_fixwave_gate/summary.txt` · `logs/parity/gate/s7_gl_gate/summary.txt` · `logs/parity/gate/s7_gl_gate2/summary.txt`
+`Cited:` `770d5fb` SOCOM Unzipped launcher, first cut · `2a8f8e4` scripts/make_portable.sh -- the portable folder · `docs/STATUS.md` · `logs/parity/gate/s6_launcher_gate/summary.txt` · `logs/launcher_server_picker.png` · `docs/research/assets/launcher-first-cut.png` · `09b793a` the 2026-09-17 audit and code review · `fae7d0e` the audit's fix wave · `32aec0b` Sprint 7 opened -- two strangers, two machines, one hosted server · `a843385` the stranger's machine, defensively · `39cd17f` equal-priority guest threads are never time-sliced · `docs/audits/2026-09-17-audit-and-code-review.md` · `logs/parity/gate/s6_fixwave_gate/summary.txt` · `logs/parity/gate/s7_gl_gate/summary.txt` · `logs/parity/gate/s7_gl_gate2/summary.txt`
 
 ## 2026-09-18 .. 2026-09-20 - Linux, a server, a stranger
 
@@ -574,7 +574,7 @@ Four hours of measuring instead of reading. Recording what Windows actually sent
 
 *But:* the owner listened again an hour later: better, not done. "Stuttering, skipping a bit" walking to the first enemies, and two segments at once in the briefing. The rest of the night is the next entry.
 
-`Cited:` `c611ad6` the mission music, investigated to the speaker · `7c0620f` R177 -- the mix device buffer · gate s9_q0_device_gate · gate s9_q0_trace_gate · docs/superpowers/plans/2026-09-20-sprint-9-q0-mission-music-investigation.md
+`Cited:` `c611ad6` the mission music, investigated to the speaker · `7c0620f` R177 -- the mix device buffer · gate s9_q0_device_gate · gate s9_q0_trace_gate · docs/archive/sprints-7-12/2026-09-20-sprint-9-q0-mission-music-investigation.md
 
 ### 2026-09-20 - An audio parity test, and the sound that was never there
 
@@ -586,7 +586,7 @@ The picture gate compares our frames to the console's. The new check does the sa
 
 *But:* the bed plays 7-12 dB quieter than the console's, the logo movies' audio is about 18 dB low at the source, and the still-playing fix is in verification as this is written. The owner's ear closes this, not a number.
 
-`Cited:` `19ae5f6` an audio parity check against the console · `842174c` the mission ambience is a CONDUCTOR sound · `77d5522` a VAG stream that played out still answers snd_SoundIsStillPlaying · gate s9_q0_children_gate · scripts/parity/audio_parity.sh · docs/superpowers/plans/2026-09-20-sprint-9-q0-mission-music-investigation.md
+`Cited:` `19ae5f6` an audio parity check against the console · `842174c` the mission ambience is a CONDUCTOR sound · `77d5522` a VAG stream that played out still answers snd_SoundIsStillPlaying · gate s9_q0_children_gate · scripts/parity/audio_parity.sh · docs/archive/sprints-7-12/2026-09-20-sprint-9-q0-mission-music-investigation.md
 
 ### 2026-09-20 - Version 0.9.0, and a robot that plays every night
 
@@ -612,7 +612,7 @@ The console side is the reference emulator running the retail disc, driven by th
 
 *But:* the "console" is an emulator on the same PC as ours, not a PlayStation 2 on a couch. Still owed: each guest's copy of the other's position, so "seen by the other" is measured rather than assumed. And still: no two humans have ever played each other.
 
-`Cited:` `93677a5` the mixed match's leg 1 on the verified flow · `136c635` leg 1 reached · `25690ad` leg 2 reached · `984a342` Sprint 10 Goal 3's bar met · run mixed2_ours_hosts_g · run mixed2_pcsx2_hosts_g · tools_py/parity/pcsx2_shell.py · docs/superpowers/plans/2026-09-20-sprint-10-goal-3-mixed-match.md
+`Cited:` `93677a5` the mixed match's leg 1 on the verified flow · `136c635` leg 1 reached · `25690ad` leg 2 reached · `984a342` Sprint 10 Goal 3's bar met · run mixed2_ours_hosts_g · run mixed2_pcsx2_hosts_g · tools_py/parity/pcsx2_shell.py · docs/archive/sprints-7-12/2026-09-20-sprint-10-goal-3-mixed-match.md
 
 ## 2026-09-21 .. 2026-09-22 - Public, and played
 
@@ -700,7 +700,7 @@ The archive was built the night before, gated on the exact executable inside it 
 
 *But:* the first cut of the diagnostics ruling was wrong. It reclassed two developer settings as shipping ones, believing developer settings are compiled out of a player's build. They aren't, and the suite refused the change. Fixing the actual hole, silence on failure, is what found the save bug.
 
-`Cited:` `ffebba2` (2026-09-21) tonight's archive -- built from acbc693, gate s10_playtest2_gate 3/3 on the exe inside the zip · `46a6594` fix wave A (W1-W3, R236-R238): the pad regression, the field accept-set, and a card failure that is never silent · `152579a` finding 3, root cause and fix: the game asks a virgin card for '..' and we answered "card refused" · gate s10_playtest2_gate · gate fixwave_a · docs/superpowers/plans/2026-09-22-fix-wave-playthrough.md
+`Cited:` `ffebba2` (2026-09-21) tonight's archive -- built from acbc693, gate s10_playtest2_gate 3/3 on the exe inside the zip · `46a6594` fix wave A (W1-W3, R236-R238): the pad regression, the field accept-set, and a card failure that is never silent · `152579a` finding 3, root cause and fix: the game asks a virgin card for '..' and we answered "card refused" · gate s10_playtest2_gate · gate fixwave_a · docs/archive/sprints-7-12/2026-09-22-fix-wave-playthrough.md
 
 ### 2026-09-22 - Hold a button to remap it, and a sound that was never there
 
@@ -713,6 +713,104 @@ The owner asked for a second way to remap: hold any pad button on the CONTROLLER
 *But:* a lead, not a finding: one run, one device. It settles on a wired speaker, and that run hasn't happened. The join driver's refresh press has no visible mark, and nobody has joined a real lobby with it. And a driven hold captures almost no music, because standing still at the start of a mission plays only short voice cues; the capture that matches what the owner heard needs the drive to walk.
 
 `Cited:` `668c7f5` fix wave A (W9, W5): hold a button to remap it, a better pad, and the bank cleared of the online blop · `00d8348` fix wave A (W7, W8, R240): an empty games list is not a join failure · `0b1250b` fix wave A (W7): the instrument is proven, the drive that feeds it is not -- and the endpoint is dropping audio again · gate fixwave_b · run blop_c · run mission_music_ours_20260922_024457 · docs/KNOWN.md
+
+## 2026-09-23 .. 2026-09-25 - A second edition, and names for the code
+
+*Three days, two sprints closed and a third opened on the last morning. The later edition of the game the community server runs is rebuilt from its own package, passes the same checks as the disc's edition and plays a round on our server. A sprint run in the cloud gives 1,771 of the program's nameless functions their real names, and the machine with the disc proves nothing else changed. The third sprint spends its one day on what the record said was owed. Still: the later edition has never met a community player, and nobody outside this house has played.*
+
+### 2026-09-23 - The update the community server asks for, taken apart
+
+**The community's server wants a later edition of the game than the disc holds. Just before midnight that edition was running under our program, as far as its opening credits.**
+
+The day opened with Sprint 10's close: merged to the main branch as version 0.10.0, once the scheduled nightly match had run seven times in a row without a failed login or a crash, the bar called "it stays up". The chat path was hardened at both ends, bounded in the game on the player's machine and clamped on the server. Every known, unfixed defect became a public issue, cited from the page that describes it. Then the owner brought the update. The community server runs r0004, a rebuild of SOCOM II from thirteen months after the disc's r0001, and its patch turned out to be a small program that boots the disc and rewrites it in memory. Decoding it said, at first, that all it did was skip Sony's long-dead online check, which this project already skips, so "no second build" was ruled at noon. By evening that was wrong: behind the check, the community server hands out the real r0004 package. The project fetched it the way a player's console would, decoded it, and built a second program from it. The new build showed the loading screen, typed out its developer's name, and then rebooted itself into an error dialog.
+
+![The r0004 build under our program, the first time it got past loading: the developer credit typed out letter by letter, seconds before the game decided to reboot itself. The gate run that caught it failed all three of its stages.](docs/story/img/2026-09-23-r0004-types-its-credits.png)
+
+*How:* the patch is PSRewired's capsule, a packed MIPS program whose encrypted stack decodes to 491 writes; the package behind it was saved to a memory card through the reference emulator, and scripts/build_revision.sh turned its overlays into a second executable with a function map of its own, 81 % of r0001's functions placed in it by the matcher.
+
+*But:* the noon ruling that there was nothing to rebuild was retracted the same night, in writing (R249, by R251). And a build that reboots at the credits is not a build that plays.
+
+`Cited:` `f15acfab` merge: Sprint 10 to main -- it stays up (7 of 7), v0.10.0 · `d23c4b1d` the ladder streak is 7 of 7 · `f2064d3c` hardening of the chat receive path · `5b7d20e7` (2026-09-22) forwarded chat fields are clamped · `d5b8757f` the known-issue stack -- every defined, unresolved defect is a GitHub issue · `61faf530` (2026-09-24) after a report is received, the one line that invites a public issue · `52e10a36` the r0004 patch is in hand and it is PSRewired's resident capsule · `0c580739` the capsule's encrypted code stack decoded · `cf5d4745` R249 -- PSRewired's r0004 patch is a DNAS bypass this build already carries; no second recompilation · `ed07a16f` R251 -- r0004 is a real rebuild, the package is decoded and its ELF built · `e92691a2` relinked-body, the r0001/r0004 rate from 63% to 81% · `8a576346` the r0004 build boots to the intro credits · gate s11_r0004_loopd1 · docs/research/43-r0004-capsule.md · docs/archive/CURRENT_SPRINT-sprints-9-to-11.md
+
+### 2026-09-24 - The update plays, and cannot meet the original
+
+**The r0004 build passed the same three-stage check as the disc's own edition, then played a round on our server. And the two editions turned out to be unable to join each other's games.**
+
+The reboot took a night to run to ground, one measured link at a time. The game rebooted because a memory request failed. The request failed because it asked for 111 MB. It asked for 111 MB because a function returned from the middle of its own ending, and that was because two of its words had been overwritten by the community patch: written into the game's memory while the reference emulator ran it, then copied out with everything else when the project dumped the updated game. Undo exactly what the patch wrote, and nothing else, and the rebuild boots to its menu, reaches the first mission, and passes all three gate stages. In the evening two copies of it logged into our server, one hosted, the other joined, and they played a round to the end of its clock, both answering the controls. Then the question the community cares about: an r0004 player and an r0001 player see each other's games, the join goes through at the server, and within ten seconds the joining game quietly walks itself back to the online menu. The check is in the game itself, on both sides, and no server can change it. The same day the SOCOM 1 demo disc, which shipped with its function names left in, put names on 987 of this game's nameless functions, and 11.6 MB of unused files that came with the recompiler's source were deleted.
+
+![The r0004 build in a round on the project's own server, the evening of the 24th: one of the two copies, both driven by the harness, five and a half minutes left on the clock. The round ran out that clock without a shot.](docs/story/img/2026-09-24-r0004-round-on-our-server.png)
+
+*How:* tools_py/overlay_repair.py undoes the capsule's decoded write stack on the dumped image, so a word changes only where the capsule wrote one, and zero words change in r0001; the online harness's memory probes became per revision (tools_py/parity/guest_addresses.py) because r0004 keeps its data at different offsets.
+
+*But:* the round ended on the clock with no shot fired. The r0004 build has only ever run on the r0001 disc's own art and sound. And whether a player gets r0004 at all is the owner's decision, not made yet.
+
+`Cited:` `07dc937f` the two words in the overlay that are not code · `3bac4a2b` the repair is an undo of the capsule's write stack, not a shape · `2613a26a` the r0004 gate is 3/3 · `d447bb1b` the r0004 build plays online on our server; the two revisions cannot join each other's games · `f9555c75` the r0004 round is scored on our server · `007d6511` the SOCOM 1 demo names 987 of our anonymous functions · `71750904` R247 -- the vendored tree's baggage goes · gate s11_r0004_probe2 · run s11_r0004_round2c · docs/research/43-what-changed-in-r0004.md · docs/superpowers/plans/2026-09-23-sprint-11.md · docs/KNOWN.md
+
+### 2026-09-24 - A sprint in the cloud, and names for the code
+
+**The program is built from about 14,900 functions the original makers left nameless. In one evening, 1,771 of them got their real names back, each with its reason written down.**
+
+The SOCOM 1 demo's names were the start. The owner moved the whole naming programme into a sprint of its own and handed it to a session running in the cloud, with no disc and no game, only the tracked function map and the tools. It worked in waves: fifteen research notes first, then one lever per note, each a rule written in code with its own measured error rate. The demo's names matched by the shape of a function's body. The class tables the compiler left behind. The text a function refers to. Who calls it and whom it calls. The menus' own tables that bind a button to the function behind it. One program writes every name, and it cannot write one without a row saying which lever found it, how strongly, and on what evidence. About 120 functions had names that morning; by night the file held 1,771. Nothing the game does changes: the recompiler reads the names only to label the code it writes, and the cloud rebuilt the whole tree to show that the labels were the only difference. No picture for this day: nothing on it drew a frame, because the cloud has no disc. The run that proves the renamed program still plays is the next morning's gate, cited here.
+
+*How:* tools_py/apply_names.py is the only writer of recomp/socom2_names.csv; the recompiler's `[general] names` key reads it into display names only, and a census of two cloud recomp runs showed 1,771 files renamed, 0 extents moved, 0 functions dropped.
+
+*But:* six names were held back because other evidence contradicted them, and 518 more wait for a second, independent lever to agree. The cloud's numbers were claims until a machine with the disc built and ran them.
+
+`Cited:` `41a6a169` R263 -- the naming programme is Sprint 12, "the readable image" · `6c35ed13` the spec and the plan for "the readable image" · `6c96ef8f` the provenance sidecar · `5cde14d5` the readable-name renderer · `9381e3c6` the recompiler runs in the cloud · `cd2fbfc7` the applier, and the first 1,491 names applied to the sidecar · `fee229d7` the sidecar at 1,840 rows / 1,771 readable names · recomp/socom2_names.csv · docs/superpowers/plans/2026-09-24-sprint-12.md · gate s12_names_gate
+
+### 2026-09-25 - Sprint 11 closes, and the borrowed fixes stay
+
+**Ten fixes from the upstream recompiler project, each tried alone against the gate and then all together, and all ten kept. Then the sprint closed and went to the main branch as version 0.11.0.**
+
+The recompiler this project forked keeps improving without us. Ten of its changes, among them how textures find their colours, how packed model data unpacks, how interlaced frames keep their rows, and a handshake at boot, were taken one at a time: each built, each gated on its own, then the ten combined and gated again. All ten stayed. The close found its own defects. The build service had been red on every code push since the evening of the 23rd: twelve tests reached a check that now refuses to guess which edition of the game it is looking at, and the build service has no game. The tests were made to say which edition they mean; the check was left strict. The gate's switch for accepting new reference values could drop one pin while it accepted another; fixed. And this story was found three days short, and carried rather than half-written. The close proof: the suites three times over, the gate three of three on the close commit, the build service green.
+
+![The last frame of the close gate's mission stage, on the executable that went to main as 0.11.0: the first mission's team-command help card over autumn trees. Every close ends on a frame like this one; the gate scores it, and nobody usually looks.](docs/story/img/2026-09-25-the-sprint-11-close-frame.png)
+
+*How:* each pick ran in its own worktree with its own gate (s11_pr227_gate and its siblings); research/42 holds the verdict column; the combined branch passed 891 of 891 C++ tests and s11_picks_keep_gate 3/3.
+
+*But:* six known issues went to the backlog unfixed, labelled as carried, among them the Linux machine's red test suites. And the missing story days were carried a second time the same morning, by Sprint 12's close. They are the entries you are reading.
+
+`Cited:` `6be03dac` research/42's verdict column -- all ten upstream picks are KEEP · `3bb866f4` Merge branch 'agent/cherry' into sprint-11 · `a8329c58` the twelve cases that reached launch_revision without an image now state their revision · `fccf3b5d` --accept-pins must not drop a pin while it accepts another · `425bae9d` Sprint 11 CLOSED · `f142b513` the close proof recorded -- gate s11_close_gate 3/3, CI green · `173608af` Merge pull request #49 from Scotho/sprint-11 · gate s11_picks_keep_gate · gate s11_close_gate · docs/research/42-upstream-cherry-picks.md · docs/CURRENT_SPRINT.md
+
+### 2026-09-25 - The names come home, and both editions still pass
+
+**What the cloud claimed, the machine with the disc proved: the renamed program rebuilt, played and passed the gate, on the disc's edition and on r0004.**
+
+The cloud has no disc, so its sprint ended with a request: build it here. The same morning this machine recompiled the whole game with 1,840 names loaded, compared the result against the output from before the rename, 1,771 files renamed and not one function moved or lost, built the program from scratch, ran the test suite, and ran the gate: three of three, every pinned input matching. Then the same for r0004, with its own list of 1,705 names carried across by the address matcher. The r0004 run was refused once first. An earlier proof's shell had carried a stray setting that muted the sound, and the switch that accepts new reference values had written it into r0004's standard; the gate measured the true value and said no. The standard was put back to its last clean value, and the next run passed. Sprint 12 closed and went to main as version 0.12.0, a few hours after Sprint 11.
+
+![The renamed r0004 build's main menu during its gate run, the morning of the 25th. The bottom line is the game's own build stamp: SOCOM 2 r0004, built 3 November 2004, thirteen months after the disc's edition.](docs/story/img/2026-09-25-the-renamed-r0004-menu.png)
+
+*How:* build_revision.sh builds r0004 with recomp/socom2_names_r0004.csv; the gate compares every pinned input (PINS MATCH), the r0001 leg on exe 804dd172 and the r0004 leg on the runtime built with its own sidecar.
+
+*But:* a name is not an understanding. The five biggest engine routines still have none; no lever reaches them, and they wait for the owner's own reading. And the refused run was the second time that accept switch had written a stray setting into a standard.
+
+`Cited:` `83e9696c` the local proof is green -- 1,840 display names loaded, 1,771 renamed with 0 extents moved; the r0001 gate s12_names_gate 3/3 with PINS MATCH · `3e5b5b78` the r0004 leg of the proof is green -- s12_names_r0004_gate 3/3 with PINS MATCH on the r0004 runtime built with its own 1,705-name sidecar · `7588fead` the r0004 pin standard's env restored -- a stray PS2X_AUDIO_VOLUME=0 · `32c06a0c` Sprint 12 CLOSED · `74fe2a9b` merge: Sprint 12 to main -- the readable image: 1,771 names with provenance from one sidecar, proven on both revisions; v0.12.0 · gate s12_names_gate · gate s12_names_r0004_gate · recomp/socom2_names_r0004.csv
+
+### 2026-09-25 - The client stops taking orders from the server
+
+**A game server can send the game on your machine a message that writes into its memory. Ours now refuses that message, every time, and both editions still pass the gate.**
+
+Sprint 13 opened the same morning the other two closed, on an audit of the whole project, six reports and 403 findings, under one rule: nothing gets carried twice. Its first job came from a private note written the day before, about what a server could do to a connected game through a record the game trusts. Before breakfast the client refused the record that writes, and an hour later the one that reads memory back. The same morning a file path the game asks for can no longer leave the disc's, the game's or the memory card's own folder, and no private address of the owner's is a tracked default anywhere in the repository. The refusal was relinked into the program and gated three of three, then proven again on both editions with the rest of the morning's merges. No picture for this entry: a refusal draws no frame.
+
+*How:* the record class and the check are written down in `docs/KNOWN.md`'s row and SECURITY's bullet by what they do, not how, on purpose; the network path's full inventory is a private backlog row.
+
+*But:* a refusal is as good as the list it covers, and this one covers two records. The community server was never the threat here; the model of a hostile one was.
+
+`Cited:` `6b30e42e` a server-to-client record that writes game memory is refused on the client, every time · `8df7c036` a server-to-client record that writes game memory, and one that reads it back, are refused on the client, every time · `4587afae` the client refuses a server record that writes or reads its game memory -- the KNOWN row and the SECURITY bullet, without mechanics · `4eb07b45` a translated PS2 path cannot leave its root · `eda61d3a` no private address as a tracked default · gate s13_u6_gate · gate s13_proof_gate · gate s13_proof_gate_r0004 · docs/audits/2026-09-25-project-audit.md · docs/KNOWN.md
+
+### 2026-09-25 - The debts, paid in one day
+
+**The saved password was never lost. A nightly match launched itself, first time, through a queue that did not exist that morning. And every check now prints how fast the mission ran.**
+
+The rest of the day went to what the record said was owed. The sprint file went from 189 KB to 59 KB with the closed sprints archived whole; the owner's to-do list went from 87 items to fifteen, each with the default the loop is on; the list of what is proven, believed and retracted was read end to end; and the backlog became a generated file. Two of the six carried issues turned out not to be defects at all: four "lost" menu frames were the idle attract sequence the scorer should never have counted, and a loading-screen defect had been fixed nine days earlier and never written down. The password: on the 23rd this page said a fresh card lost it. It never did. The driver pressed the connect button before reading the form, and read the password off the next screen. Read as it arrives, a card relaunched with nothing typed showed the name, five glyphs and SAVE PASSWORD ticked, and reached the lobby. The launcher's wording was fixed against a stranger's read of it, and a server name that does not resolve now says so instead of quietly meaning this machine. The machine's lock got a queue, and the scheduled match went through it on the first attempt: four rounds, two kills. The gate learned to print the mission's frame time, and three runs of it on one program spread by 30 %, so the number is recorded and has no bar yet. One copy of the game was paused for 28 seconds mid-round, and the other played on. And the music's first clean capture brought its dips from eleven-to-fourteen down to six in sixteen minutes, with the device's own thread never once late.
+
+![The relaunch, with nothing typed: the card had kept the name, the password and the SAVE PASSWORD answer, and the cursor was already on CONNECT. For two days the driver had been pressing that button and then reading the password off the screen after it.](docs/story/img/2026-09-25-the-relaunch-form-with-the-password-kept.png)
+
+*How:* FRAME mean 24.24 / 30.09 / 22.72 ms over the scripted walk on exe f90eeec0 (s13_v4_gate1..3, an informational pin, S13-R13); the ladder job waits on the lock's ticket queue (`scripts/ladder_job.sh`; #35, #36, #37 closed).
+
+*But:* this entry was written with the sprint still open: its close proof, the round against a real console and the menus' tile question were still in the queue. The six music dips have no owner yet, and the frame rate has a number and no bar.
+
+`Cited:` `ae84b1c6` the Sprint 9-11 record archived verbatim · `4adbf2bc` HUMAN_TASKS archived whole, every old item given a disposition · `33fa5940` docs/BACKLOG.md generated from the stack · `79aad10c` s19..s22 are the idle attract sequence, not lost menus · `413439d3` the premise was fixed on 2026-09-16 by 545b85a1 and never recorded · `65431302` the saved password was read off the CONNECTING screen, not lost · `6ff8229f` #27 was the login driver pressing before reading the relaunch form, not a lost password · `5565f2ca` the launcher's wording defects; a server name that does not resolve is a LAST RUN notice · `49d6fba2` the lock's ticket queue · `ef4b17fc` the ladder ran through the queue; #35, #36, #37 closed · `318fbd60` the mission stage's FRAME line and an informational frame-time pin · `c7fe15c3` V4 done -- three gates on one exe spread 30 % · `38761e2b` the game ran on through a 28 s peer pause · `b43e5325` V5 Step 1's clean capture (DEVICE 6 / 16 min, 0 late callbacks) · run v6_20260925_160634 · run ladder_20260925_194510 · gate s13_v4_gate3 · run s13_v7_paused_peer_20260925_193109 · run audio_out_20260925_074147 · docs/LADDER.md · docs/BACKLOG.md · docs/HUMAN_TASKS.md
 
 ---
 
@@ -757,8 +855,17 @@ perfectly clean HELP popups, and the garbled one I saw was after the church, whi
 insertion point can never reach. The experiment wasn't wrong; the route was too short, and the capture didn't even
 record which settings it ran with — which is its own lesson, now written down.
 
+> Superseded 2026-09-25 (Sprint 13 V6, issue #27 closed): the card never lost the saved password. The driver misread
+> the screen -- it pressed CROSS first, which connected, and read the password off the CONNECTING screen. With the
+> driver fixed (`6ff8229f`), a virgin card relaunched with nothing typed read the saved password and reached the lobby
+> (`logs/parity/v6_20260925_160634`). The sentence above is kept as what was believed that morning.
+
 Sprint 10 is closed. Sprint 11 is open, and the specs became a plan; `docs/CURRENT_SPRINT.md` is where its tasks
 live, and this page does not count them.
+
+> Superseded 2026-09-25 (Sprint 13 R2): that paragraph was true on 2026-09-23. Sprints 11 and 12 both closed and
+> merged to `main` on 2026-09-25 (`v0.11.0`, `v0.12.0`); which sprint is open now is `docs/CURRENT_SPRINT.md`'s to say,
+> and the note below says what this page still owes.
 
 No stranger has played yet. No two humans have played each other. Those are still the two sentences this page most
 wants to lose.
@@ -772,8 +879,12 @@ functions. Writing those entries is not a one-line edit — each needs its hashe
 **carried explicitly as a Sprint 12 item** rather than left to slip (Sprint 11 close review, row A22) — *and carried a
 second time at Sprint 12's close (2026-09-25): that sprint took nothing but the naming programme, so the missing days
 are now these three plus Sprint 12's two, a line in `docs/CURRENT_SPRINT.md`'s "Sprint 12 — CLOSED" carry and an
-owner question in `docs/HUMAN_TASKS.md`*. Until it
+owner question in `docs/HUMAN_TASKS.md` (row O9 since 2026-09-25)*. Until it
 lands, `docs/STATUS.md` and `docs/CURRENT_SPRINT.md` are where those three days are written down.
+
+> Superseded 2026-09-25 (Sprint 13 Task S4, the owner's row O9 on its default, keep): the five days are written
+> above, from the record — 2026-09-23, 2026-09-24 twice and 2026-09-25 twice, under "A second edition, and names for
+> the code". The paragraph is kept as the record of the carry.
 
 ---
 

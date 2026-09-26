@@ -42,7 +42,7 @@ namespace Server.Medius
         public static ServerSettings Settings = new ServerSettings();
         public static DbController Database = null;
 
-        public static IPAddress SERVER_IP = IPAddress.Parse("192.168.0.178");
+        public static IPAddress SERVER_IP = IPAddress.Parse("192.0.2.1"); // RFC 5737 placeholder until the config loads (was a LAN address; SOCOM Unzipped S13 S6)
 
         public static MediusManager Manager = new MediusManager();
         public static PluginsManager Plugins = null;

@@ -325,7 +325,8 @@ void PS2IopHostAdapter::micGameRead(const int16_t *frames, size_t count, uint32_
 }
 
 // PS2X_MIC_DUMP_PLAYBACK: what the other player's voice looked like by the time it reached the headset --
-// already Nellymoser-decoded and duplicated L/R by the game (:211305-211380).
+// already SASE-decoded (SaseDec; not Nellymoser, which no image names -- docs/research/56, audit C52) and
+// duplicated L/R by the game (:211305-211380).
 void PS2IopHostAdapter::micPlaybackWrite(const uint8_t *pcm, size_t bytes, uint32_t rate, uint8_t channels)
 {
     hostMicPlaybackDump(pcm, bytes, rate, channels);

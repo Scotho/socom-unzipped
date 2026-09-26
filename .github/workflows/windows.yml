@@ -4,13 +4,23 @@
 # the C++ suite WITHOUT the generated game code (14,882 files produced from the owner's disc, not in the repository),
 # and runs both suites.
 #
+# Sprint 13 C1: the same job then links the runner against a synthetic generated set (tests/fixtures/synthetic_recomp,
+# three hand-written functions), so the files only the runner compiles -- game_overrides_socom2.cpp, socom2_crypto.cpp --
+# compile on every code push (scripts/build_synthetic_runner.sh).
+#
 # What green means: a fresh Windows clone, following only CONTRIBUTING.md, reaches a green C++ and Python suite. It
 # proves nothing about the game -- only the three-stage gate on a rebuilt exe does that (docs/HANDOFF.md §5 rule 4).
-# Like linux.yml, a cheap first job skips the build when only docs/ moved, and a skipped `build-windows` reports success.
+# Like linux.yml, a cheap first job skips the build when only docs/ moved, and a skipped `build-windows` satisfies the
+# required check. Sprint 13 H1, how to read a run (linux.yml's header has the why): a docs-only push starts no
+# `windows` run at all (`on.push.paths-ignore`); any other push builds, so its `success` means built and tested; a
+# pull_request always runs and compares the pull request's base.sha...head.sha (merge base), and only a docs-only PR reads
+# `success` with `build-windows` skipped. tools_py/tests/test_workflows.py pins this.
 name: windows
 
 on:
   push:
+    paths-ignore:
+      - 'docs/**'
   pull_request:
 
 permissions:
@@ -19,7 +29,8 @@ permissions:
 concurrency:
   group: windows-${{ github.ref }}
   # false: a documentation-only push right behind a code push must not cancel the hour-long build that push
-  # started (it did, 2026-09-21); the docs-only run's `changes` job takes ten seconds and skips the build.
+  # started (it did, 2026-09-21). Since Sprint 13 H1 a docs-only push starts no run here at all; this stays false
+  # for a docs-only pull_request synchronize, whose ten-second run would otherwise still cancel.
   cancel-in-progress: false
 
 jobs:
@@ -35,19 +46,28 @@ jobs:
       - name: Did anything outside docs/ change?
         id: diff
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          # pull_request: base...head (three dots: from the merge base, so main moving since the fork is not "code changed";
+          # the whole branch, not its last push); push: before...after (the same as two dots unless the push was forced).
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
+          echo "$EVENT: comparing $BASE...$HEAD (from their merge base)"
           zero=0000000000000000000000000000000000000000
           if [ -z "$BASE" ] || [ "$BASE" = "$zero" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             echo "no usable base ($BASE): building"; echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
-          changed=$(git diff --name-only "$BASE" "$HEAD" | grep -v '^docs/' || true)
+          if ! git merge-base "$BASE" "$HEAD" >/dev/null 2>&1; then
+            echo "no merge base for $BASE and $HEAD: building"; echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # A failing diff fails the step (set -e on the assignment); it can never read as "docs/ only".
+          files=$(git diff --name-only "$BASE...$HEAD")
+          changed=$(echo "$files" | grep -v -e '^docs/' -e '^$' || true)
           if [ -n "$changed" ]; then
             echo "code changed:"; echo "$changed" | head -50; echo "code=true" >> "$GITHUB_OUTPUT"
           else
-            echo "docs/ only: the build is skipped and reports success"; echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "docs/ only: the build job is skipped (its required check reads skipped; this run reads success)"; echo "code=false" >> "$GITHUB_OUTPUT"
           fi
 
   build-windows:
@@ -65,9 +85,10 @@ jobs:
         with:
           python-version: '3.12'
 
-      # What tools_py/parity and tools_py/tests import beyond the standard library.
+      # What the Python tooling imports beyond the standard library, pinned: requirements.txt.
+      # tools_py/tests/test_requirements.py holds this line and the file to the tree.
       - name: Install the Python packages the suite imports
-        run: python -m pip install numpy pillow zstandard
+        run: python -m pip install -r requirements.txt
 
       # The three archives are 245 MB; the cache key is the bootstrap script itself, so a version bump refetches.
       - name: Cache the toolchain archives
@@ -80,6 +101,7 @@ jobs:
         run: bash scripts/bootstrap_windows.sh
 
       - name: Build the runtime library and the launcher (no generated code)
+        id: build
         run: bash build.sh runtime --no-runner
 
       - name: Test (the Python suite, then ps2x_tests and the VU1 fixture verify)
@@ -87,6 +109,14 @@ jobs:
           mkdir -p logs/ci
           set -o pipefail
           bash build.sh test --no-runner 2>&1 | tee logs/ci/build_windows_test.log
+
+      # Sprint 13 C1: the files only the runner compiles, and the runner's link, against a hand-written synthetic
+      # generated set (tests/fixtures/synthetic_recomp) -- without it CMake skips the runner and nothing here ever
+      # compiled them. In build.sh's tree (build-clang), so only the runner's own sources compile. After the suite,
+      # so both verdicts print; not after a failed build, which would only fail again.
+      - name: Compile game_overrides_socom2.cpp and socom2_crypto.cpp and link the runner (synthetic generated set)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: bash scripts/build_synthetic_runner.sh --build-dir third_party/ps2recomp/build-clang
 
       - name: Upload the launcher
         if: always()

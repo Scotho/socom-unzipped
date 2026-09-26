@@ -162,10 +162,11 @@ namespace ps2_stubs
             t[0] *= q;
             t[1] *= q;
             t[2] *= q;
-            out[0] = static_cast<int32_t>(t[0] * 16.0f);
-            out[1] = static_cast<int32_t>(t[1] * 16.0f);
-            out[2] = fullFtoi4 ? static_cast<int32_t>(t[2] * 16.0f) : static_cast<int32_t>(t[2]);
-            out[3] = fullFtoi4 ? static_cast<int32_t>(t[3] * 16.0f) : static_cast<int32_t>(t[3]);
+            // Through the VU's saturating FTOI (Ps2VuFtoiScalar, issue #33), not a bare cast.
+            out[0] = Ps2VuFtoiScalar(t[0], 16.0f);
+            out[1] = Ps2VuFtoiScalar(t[1], 16.0f);
+            out[2] = Ps2VuFtoiScalar(t[2], fullFtoi4 ? 16.0f : 1.0f);
+            out[3] = Ps2VuFtoiScalar(t[3], fullFtoi4 ? 16.0f : 1.0f);
         }
 
         // Guard-band proxy for the COP2 sticky clip flags: nonzero => the
@@ -521,7 +522,7 @@ namespace ps2_stubs
         {
             for (int i = 0; i < 4; ++i)
             {
-                out[i] = static_cast<int32_t>(src[i]);
+                out[i] = Ps2VuFtoiScalar(src[i], 1.0f); // VFTOI0, saturating (issue #33)
             }
             (void)writeVuVec4i(rdram, dstAddr, out);
         }
@@ -538,7 +539,7 @@ namespace ps2_stubs
         {
             for (int i = 0; i < 4; ++i)
             {
-                out[i] = static_cast<int32_t>(src[i] * 16.0f);
+                out[i] = Ps2VuFtoiScalar(src[i], 16.0f); // VFTOI4, saturating (issue #33)
             }
             (void)writeVuVec4i(rdram, dstAddr, out);
         }

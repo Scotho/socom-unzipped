@@ -2,7 +2,7 @@
 """Fold and symbolize the call stacks of a PS2X_HOST_PROF_STACKS=1 histogram (logs/hostprof.txt
 "stack <count> leaf;caller;..." lines, raw addresses).
 
-Usage: python tools_py/hostprof_stacks.py [logs/hostprof.txt] [--exe dist/socom2.exe] [--top 30]
+Run: python -m tools_py.hostprof_stacks [logs/hostprof.txt] [--exe dist/socom2.exe] [--top 30]
 Prints: inclusive samples per exe function (the function appears anywhere in the stack), the exe
 callers of samples whose leaf is in another module (where the DLL time comes from), and the top
 folded stacks.

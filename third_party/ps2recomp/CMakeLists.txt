@@ -1,13 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
-if(NOT DEFINED CMAKE_TOOLCHAIN_FILE AND DEFINED ENV{VITASDK})
-    set(PS2X_VITA_TOOLCHAIN_FILE "$ENV{VITASDK}/share/vita.toolchain.cmake")
-    if(EXISTS "${PS2X_VITA_TOOLCHAIN_FILE}")
-        set(CMAKE_TOOLCHAIN_FILE "${PS2X_VITA_TOOLCHAIN_FILE}" CACHE PATH
-            "Toolchain file used for cross-compiling" FORCE)
-        message(STATUS "Using VitaSDK toolchain from VITASDK: ${CMAKE_TOOLCHAIN_FILE}")
-    endif()
-endif()
+# Sprint 13 Task C7 (audit F20): upstream's Vita and Android backends (the VitaSDK toolchain pick-up, the
+# runtime-only Android switch, the VPK packager) are removed; this tree builds Windows and Linux only.
 
 project(PS2RetroX)
 
@@ -42,24 +36,12 @@ if(PS2X_LINK_ICF AND NOT MSVC)
     add_link_options(-Wl,--icf=${PS2X_LINK_ICF})
 endif()
 
-if(ANDROID)
-    message(STATUS "Android target detected, building runtime only")
-    set(PS2X_BUILD_RECOMP OFF)
-    set(PS2X_BUILD_ANALYZER OFF)
-    set(PS2X_BUILD_TEST OFF)
-endif()
-
 set(PS2X_IS_ARM_TARGET OFF)
 set(PS2X_IS_AARCH64_TARGET OFF)
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
     set(PS2X_IS_ARM_TARGET ON)
     set(PS2X_IS_AARCH64_TARGET ON)
 elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^arm|^ARM")
-    set(PS2X_IS_ARM_TARGET ON)
-endif()
-
-if((CMAKE_C_COMPILER MATCHES "arm-vita-eabi") OR
-   (CMAKE_CXX_COMPILER MATCHES "arm-vita-eabi"))
     set(PS2X_IS_ARM_TARGET ON)
 endif()
 
@@ -70,8 +52,7 @@ if(PS2X_IS_ARM_TARGET)
     FetchContent_Declare(
         sse2neon
         GIT_REPOSITORY https://github.com/DLTcollab/sse2neon.git
-        GIT_TAG v1.9.1
-        GIT_SHALLOW TRUE
+        GIT_TAG 92f6de174717aef09033ad21568d5bb9e5470404 # v1.9.1
     )
     FetchContent_MakeAvailable(sse2neon)
 
@@ -113,7 +94,7 @@ if(PS2X_BUILD_RUNTIME)
     add_subdirectory("ps2xRuntime")
 endif()
 
-if(PS2X_BUILD_RUNTIME AND NOT PS2X_IS_VITA AND NOT PS2X_IS_ANDROID)
+if(PS2X_BUILD_RUNTIME)
     add_subdirectory("ps2xLauncher")
 endif()
 

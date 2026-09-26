@@ -44,11 +44,15 @@
 #include <cstdlib>
 #include <thread>
 #include <unordered_map>
-// game_overrides_socom2.cpp (PS2X_HOST_PROF). The parameter is the game thread native handle as
-// std::thread hands it over: a HANDLE (void *) on Windows, a pthread_t on Linux -- Sprint 8 Goal 1
-// design item 3, where the Linux sampler needs the thread rather than the Windows handle.
-void ps2HostProfStart(std::thread::native_handle_type nativeHandle);
+#include "runtime/host_prof_start.h"
 #include <sstream>
+
+// Sprint 13 Task C8 (audit F22): the runtime's own default for the host profiler -- nothing to start. A game runner
+// that has a sampler (game_overrides_socom2.cpp, PS2X_HOST_PROF) defines ps2HostProfStart strongly and wins the link;
+// every other executable (ps2x_tests, vu1_replay, a runner without one) gets this, with no stand-in of its own.
+PS2X_WEAK void ps2HostProfStart(std::thread::native_handle_type)
+{
+}
 
 namespace ps2_stubs
 {
@@ -2617,7 +2621,8 @@ void PS2Runtime::run()
             std::cerr << "Error during program execution: unknown exception" << std::endl;
         }
         gameThreadFinished.store(true, std::memory_order_release); });
-    // PS2X_HOST_PROF=<ms>: host-level sampling profiler of the game thread (game_overrides_socom2.cpp).
+    // PS2X_HOST_PROF=<ms>: host-level sampling profiler of the game thread (runtime/host_prof_start.h: the runner's
+    // sampler when it has one, else the runtime's weak no-op).
     ps2HostProfStart(gameThread.native_handle());
 
     uint64_t tick = 0;

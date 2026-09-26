@@ -53,6 +53,10 @@ namespace ps2recomp
         void setRelocationCallNames(const std::unordered_map<uint32_t, std::string> &callNames);
         void setConfiguredJumpTables(const std::vector<JumpTable> &jumpTables);
         void setResumeEntryTargets(const std::unordered_map<uint32_t, std::vector<uint32_t>> &resumeTargetsByOwner);
+        // The guest addresses whose generated function is an HLE wrapper (a stub or a skipped library
+        // function). A `J` to one of them is emitted through the function table, not as a direct call,
+        // so the table's wrappers (PS2X_HLE_STATS, PS2X_CALL_TRACE) see tail calls too (issue #40).
+        void setStubTargets(const std::unordered_set<uint32_t> &stubTargets);
         void setEmitInstructionComments(bool emitInstructionComments);
         void setReporter(RecompilerReporter *reporter);
 
@@ -66,6 +70,7 @@ namespace ps2recomp
         std::unordered_map<uint32_t, std::string> m_relocationCallNames;
         std::unordered_map<uint32_t, std::vector<uint32_t>> m_configJumpTableTargetsByAddress;
         std::unordered_map<uint32_t, std::vector<uint32_t>> m_resumeEntryTargetsByOwner;
+        std::unordered_set<uint32_t> m_stubTargets;
         const std::vector<Section>& m_sections;
         BootstrapInfo m_bootstrapInfo;
         bool m_emitInstructionComments = true;

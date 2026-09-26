@@ -437,7 +437,7 @@ class LaunchPins(_LaunchCase):
         summary = self._summary()
         self.assertIn("PIN scripts/parity/ref_hud_ours.png sha256=%s accepted (was %s)\n"
                       % (current["scripts/parity/ref_hud_ours.png"].sha256, "ff" * 32), summary)
-        self.assertIn("PINS ACCEPTED: scripts/parity/ref_hud_ours.png, card -> %s rewritten\n" % self.expected, summary)
+        self.assertIn("PINS ACCEPTED: scripts/parity/ref_hud_ours.png, card -> %s rewritten after the run\n" % self.expected, summary)
         with open(os.path.join(self.out_root, "pins.json")) as f:
             record = json.load(f)
         self.assertTrue(record["accepted"])
@@ -694,6 +694,94 @@ class ArchivedStampRevision(unittest.TestCase):
             open(os.path.join(tmp, "mission.game.log"), "w").close()
             self.assertEqual(gate.probe_lines(os.path.join(tmp, "mission.game.log"))[0].split(" ")[1],
                              "UNKNOWN-REVISION")
+
+
+REFS_EXPECTED = os.path.join(ROOT, "scripts", "parity", "pins_refs.json")
+_TRACKED_SUFFIXES = (".py", ".sh", ".txt", ".json", ".ps1")
+
+
+def _harness_png_files():
+    """Every reference image under scripts/parity/, repo-relative with forward slashes."""
+    out = []
+    for dirpath, dirnames, filenames in os.walk(os.path.join(ROOT, "scripts", "parity")):
+        dirnames[:] = sorted(d for d in dirnames if d != "__pycache__")
+        out += [os.path.relpath(os.path.join(dirpath, n), ROOT).replace("\\", "/")
+                for n in sorted(filenames) if n.endswith(".png")]
+    return out
+
+
+def _harness_texts():
+    """The text of every file that can read a reference: tools_py and scripts, not the tests (a test naming a
+    reference is not a reader), not the pin standards (a standard naming one is not a reader either)."""
+    texts = []
+    for tree in ("tools_py", "scripts"):
+        for dirpath, dirnames, filenames in os.walk(os.path.join(ROOT, tree)):
+            dirnames[:] = [d for d in dirnames if d not in ("__pycache__", "tests")]
+            for n in filenames:
+                if not n.endswith(_TRACKED_SUFFIXES) or (n.startswith("pins") and n.endswith(".json")):
+                    continue
+                with open(os.path.join(dirpath, n), encoding="utf-8", errors="replace") as f:
+                    texts.append(f.read())
+    return "\n".join(texts)
+
+
+def _stem(rel):
+    """`scripts/parity/refs/map_frostfire.pcsx2.png` -> `map_frostfire`: a target sibling is read through its
+    stem (drive.ref_for_target, online_login_ours.map_ref_path / lobby_title_ref)."""
+    name = os.path.basename(rel)[:-len(".png")]
+    for target in (".pcsx2", ".ours"):
+        if name.endswith(target):
+            name = name[:-len(target)]
+    return name
+
+
+def _dynamic_reader(rel):
+    """The two families read by a computed path, never by a literal stem: online_login_ours.map_ref_path
+    (refs/map_<slug>[.<target>].png, for whatever map a round is asked for) and lobby_title_ref
+    (refs/lobby/title_<name>[.<target>].png, for LOBBY_TITLES)."""
+    from tools_py.parity import online_login_ours as L
+    stem = _stem(rel)
+    if rel.startswith("scripts/parity/refs/lobby/title_"):
+        return stem[len("title_"):] in L.LOBBY_TITLES
+    if rel.startswith("scripts/parity/refs/map_"):
+        return os.path.normpath(os.path.join(ROOT, L.map_ref_path(stem[len("map_"):], target="ours"))) == \
+            os.path.normpath(os.path.join(ROOT, "scripts", "parity", "refs", stem + ".png"))
+    return False
+
+
+class EveryReferenceIsPinned(unittest.TestCase):
+    """Sprint 13 H3 (the audit's harness row 25 and its neighbours): the gate pinned 7 of the 58 PNGs under
+    scripts/parity/ -- the ones its three stages read. The other 51 (the online login and lobby screens, the
+    lobby titles, the twenty-odd map rows, the on-screen keyboard, the console-side siblings, the save-card
+    screens) could change with nothing saying so, which is the failure pins.py exists to make impossible. Every
+    reference the harness reads is in a standard now: the gate's own in pins.json (unchanged -- the gate compares
+    every name its standard holds, so a name it does not read cannot go there), the rest in pins_refs.json, the
+    same shape (pins.write_expected / load_expected). And a reference nothing reads is not kept."""
+
+    def test_every_reference_image_has_a_reader(self):
+        texts = _harness_texts()
+        dead = [rel for rel in _harness_png_files() if _stem(rel) not in texts and not _dynamic_reader(rel)]
+        self.assertEqual(dead, [], "reference images nothing under tools_py/ or scripts/ reads")
+
+    def test_every_reference_image_is_in_a_standard_and_matches_it(self):
+        standard = dict(pins.load_expected(REAL_EXPECTED) or {})
+        refs = pins.load_expected(REFS_EXPECTED)
+        self.assertIsNotNone(refs, "scripts/parity/pins_refs.json is committed")
+        overlap = sorted(set(standard) & set(refs))
+        self.assertEqual(overlap, [], "a reference is pinned in one standard, not two")
+        standard.update(refs)
+        unpinned, drifted = [], []
+        for rel in _harness_png_files():
+            if rel not in standard:
+                unpinned.append(rel)
+            elif standard[rel] != pins.file_sha256(os.path.join(ROOT, rel)):
+                drifted.append(rel)
+        self.assertEqual(unpinned, [], "reference images in no standard")
+        self.assertEqual(drifted, [], "reference images that no longer match their standard")
+
+    def test_the_references_standard_names_only_files_that_exist(self):
+        refs = pins.load_expected(REFS_EXPECTED) or {}
+        self.assertEqual([n for n in refs if not os.path.isfile(os.path.join(ROOT, n))], [])
 
 
 if __name__ == "__main__":

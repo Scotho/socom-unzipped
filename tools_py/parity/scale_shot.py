@@ -31,7 +31,7 @@ import sys
 import tempfile
 import time
 
-from tools_py.parity import keys, scale_compare, winshot
+from tools_py.parity import capture_env, keys, scale_compare, winshot
 
 DEFAULT_EXE = os.path.join("dist", "socom2.exe")
 DEFAULT_ELF = os.path.join("game", "disc", "socom2_game.elf")
@@ -148,6 +148,9 @@ def shoot(out, size="1280x896", seconds=40, exe=DEFAULT_EXE, elf=DEFAULT_ELF,
     tmp_dir = tempfile.mkdtemp(prefix="scale_shot_")    # this run's own export dir, so "newest" is ours
     latest = os.path.join(tmp_dir, "latest_frame.png") if mode == "export" else None
     env = child_env(size, latest)
+    # Issue #38: this shot's PS2X_* beside it, one record per shot (--both writes two into one directory).
+    capture_env.write(out_dir or ".", env=env, exe=exe, note="scale_shot size=%s mode=%s" % (size, mode),
+                      prefix=os.path.splitext(os.path.basename(out))[0] + ".")
     started = time.time()
     proc = subprocess.Popen([exe, elf], env=env,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

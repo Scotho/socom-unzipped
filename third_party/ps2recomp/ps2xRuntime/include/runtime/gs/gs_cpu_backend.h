@@ -18,6 +18,9 @@ public:
     void Submit(const GSPrimitiveBatch &batch) override;
     void BeginTransfer(const GSTransferCommand &command) override;
     void UploadImage(const uint8_t *data, uint32_t sizeBytes) override;
+    // Sprint 13 V2 (#32): end an open host->local transfer as its last pixel would have, without
+    // writing: the GL backend's shadow, when the upload gate found the bytes already in place.
+    void CompleteImageTransfer();
 
     void Flush() override;
     void TextureFlush() override;

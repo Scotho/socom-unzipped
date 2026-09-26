@@ -131,32 +131,32 @@ namespace
         st.checked = true;
         if (isoPath.empty())
         {
-            st.message = "choose the SOCOM II ISO";
+            st.message = ui::kDiscNotChosen;
             return st;
         }
         iso9660::Reader read = iso9660::fileReader(isoPath);
         if (!read)
         {
-            st.message = "cannot open the file";
+            st.message = ui::kDiscCannotOpen;
             return st;
         }
         iso9660::FileEntry e;
         if (!iso9660::findRootFile(read, launcher::kSocom2ElfName, e))
         {
-            st.message = "not a SOCOM II disc image (no SCUS_972.75)";
+            st.message = ui::kDiscNoElf;
             return st;
         }
         std::vector<uint8_t> bytes;
         if (!iso9660::readFile(read, e, bytes))
         {
-            st.message = "cannot read SCUS_972.75";
+            st.message = ui::kDiscCannotReadElf;
             return st;
         }
         const std::string digest = sha256::hex(bytes.data(), bytes.size());
         st.revision = launcher::discRevisionForDigest(digest);
         if (st.revision.empty())
         {
-            st.message = "not SOCOM II NTSC r0001 (SCUS_972.75 differs)";
+            st.message = ui::kDiscWrongRevision;
             return st;
         }
         st.ok = true;
@@ -647,7 +647,7 @@ namespace
         }
         drawPrompts(ctx, app, promptsX, bar.y + 12.0f, 26.0f);
 
-        const std::string blocked = launchBlockedReason(app.discOk, app.running, app.config.isoPath.empty());
+        const std::string blocked = launchBlockedReason(app.discOk, app.running, app.config.isoPath.empty(), app.discMessage);
         if (onPlay)
         {
             // PLAY has its own large LAUNCH; a second one here would be the same button twice. The state of
@@ -1968,7 +1968,7 @@ int main(int argc, char **argv)
                     if (suffix == "_sent")
                     {
                         report.state = ui::ReportUi::State::Sent;
-                        report.id = "BR-20260919-A1B2C3";
+                        report.id = launcher::bugreport::kSampleShownId;
                         report.copied = true;
                         report.form.title.clear();
                         report.form.description.clear();
@@ -2079,7 +2079,7 @@ int main(int argc, char **argv)
                 {
                     // A saved config naming the unplayable preset: fromJson moves it to the one that exists.
                     launcher::Config saved;
-                    launcher::fromJson("{\"serverPreset\": \"community\", \"server\": \"192.168.2.10\"}", saved);
+                    launcher::fromJson("{\"serverPreset\": \"community\", \"server\": \"192.0.2.10\"}", saved);
                     app.config.serverPreset = saved.serverPreset;
                     app.config.server = saved.server;
                 }

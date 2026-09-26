@@ -31,7 +31,11 @@ _socom_refusal() {
 }
 trap _socom_refusal EXIT
 . "$(dirname "$0")/env.sh"
+. "$(dirname "$0")/write_env.sh"    # write_env_ps2x: the PS2X_* record beside a capture (issue #38)
 socom_require_python mixed_match2
+# The DNS stub binds LAN_IP and answers SOCOM_SERVER_IP: both must be IPv4, and neither has a default.
+socom_require_ipv4 LAN_IP mixed_match2 || exit 9
+socom_require_ipv4 SOCOM_SERVER_IP mixed_match2 || exit 9
 OUT="${1:-logs/parity/mixed2_ours_hosts}"
 PERSONA="${2:-socomq}"
 EXISTING="${3:-}"
@@ -58,7 +62,7 @@ fi
 eval "$_socom_mixed_peek"
 unset _socom_mixed_peek
 export PS2X_PEEK
-LAN="${LAN_IP:-192.168.2.10}"
+LAN="$LAN_IP"
 if ! netstat -an | grep -q "$LAN:53 "; then
   echo "mixed_match2: the DNS stub is not listening on $LAN:53 -- start tools_py.parity.dns_stub --bind $LAN --answer $SOCOM_SERVER_IP first" >&2
   echo "done 5" > "logs/${NAME}.done"; exit 5
@@ -70,8 +74,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kill_stale_drivers.p
 "$PYTHON" -c "from tools_py.parity import hostplatform; hostplatform.kill_process_by_name('socom2')" > /dev/null 2>&1
 "$PYTHON" -m tools_py.parity.pcsx2_ctl launch B > "$OUT/pcsx2_launch.txt" 2>&1 || { echo "done 6" > "logs/${NAME}.done"; exit 6; }
 # Ours logs in and hosts (verified), holds the lobby and then walks; the console client joins beside it.
-"$PYTHON" -m tools_py.parity.online_match_ours --existing-b --foreign-b --hold 30 --play 4 --map "Frostfire" \
-       --out "$OUT" --seconds 900 > "logs/parity/drive_${NAME}.txt" 2>&1 &
+# Issue #38: the PS2X_* the launch is handed (env.sh's instruments and this script's own), beside its output,
+# the moment before it starts; the driver adds only per-instance plumbing (screenshot path, card dir) on top.
+write_env_ps2x "$OUT" "mixed_match2.sh (ours; the PCSX2 side has no PS2X_* knobs)"
+# MIXED_HOLD (default 30): how long ours holds the round after READY. Sprint 13 V7's paused-peer round
+# (control_round_paused_peer.sh --peer console) holds it for minutes, so the console can be paused mid-round while
+# ours is still in it; the game's own budget grows with it (900 s at the default, as before).
+MIXED_HOLD="${MIXED_HOLD:-30}"
+# --prefilled (Sprint 13 O1, the plan's "online_match_ours.py --prefilled against PCSX2"): ours ENTERs a keyboard the
+# runtime opened holding its persona and password instead of typing it -- PCSX2 beside ours on one host is the load
+# at which the typing walk drops keys (research/28 section 5). MIXED_PREFILLED=0 restores the typing walk.
+PREFILLED=(--prefilled)
+[ "${MIXED_PREFILLED:-1}" = 0 ] && PREFILLED=()
+"$PYTHON" -m tools_py.parity.online_match_ours --existing-b --foreign-b "${PREFILLED[@]}" --hold "$MIXED_HOLD" --play 4 --map "Frostfire" \
+       --out "$OUT" --seconds "$(( MIXED_HOLD + 870 ))" > "logs/parity/drive_${NAME}.txt" 2>&1 &
 OURS_PID=$!
 PYTHONPATH="$ROOT" "$PYTHON" -m tools_py.parity.pcsx2_shell join B --name "$PERSONA" $EXISTING --out "$PCSX2_OUT" > "$OUT/pcsx2_join.txt" 2>&1
 JOIN_RC=$?

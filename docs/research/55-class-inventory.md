@@ -274,7 +274,7 @@ toml name, binding-table command or hand name): 27
 (`PS2X_CALL_TRACE`).** The 40 are 32 table fields and 8 boot-loader literals. Of the loader literals, five
 are Task 7 pairs: `sceSifSendCmd` [exact], `sceSifMInitRpc` [relinked-body, proposed], `sceSifMBindRpcParam`
 [prefix], `sceSifMUnBindRpc` and `sceSifMCallRpc` [exact, proposed]. `0x00181c90` carries the toml's
-`mwLoadOverlay`. `0x001c59c0` and `0x001c5b30`, the disc and memory-card game-code loaders (research/43), are
+`mwLoadOverlay`. `0x001c59c0` and `0x001c5b30`, the disc and memory-card game-code loaders (research/43a), are
 named by nothing.
 
 ```

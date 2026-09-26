@@ -5,6 +5,10 @@ accesses to their `lui` high-half (e.g. I_STAT 0x1000F000 -> 0x10000000), which 
 routes guest MMIO to the wrong register.  For each mmio instruction we backward-reconstruct
 the base register value via lui/ori/addiu within its Ghidra function and compute
 base + sign_extend(imm16).  Prints a diff; with --write, rewrites the [mmio] table.
+
+Run: python -m tools_py.resolve_mmio [--write]   (from the repository root; reads the r0001
+game/overlays/socom2_game.elf, recomp/socom2.toml and recomp/socom2_ghidra.csv; no diff means the
+table is right)
 """
 import struct
 import sys

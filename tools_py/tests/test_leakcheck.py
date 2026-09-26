@@ -86,6 +86,7 @@ INNOCENT = [
     '"FindExceptionHandler__FP12ThrowContextP13ExceptionInfoPl@0x00182C80",',
     "MediusWorldGenericFieldLevel1234 = (1 << 6),",
     '"integrity": "sha512-sB9y4ovltoQP+WaUPwmSxO9WIg9Ig694Di5PalVPsYHklAdE027mehpWF2SQSVq+k6sFgaivbTjTJwZLSHbedA=="',
+    "        URL_HASH SHA256=6c9fcb0ef3136a1e5947319f8043ec60589da3a87e8044775f89b694d236e95c",
     "MW MIPS C Compiler 2.4.1.01",
     '<PackageReference Include="HighPrecisionTimeStamps" Version="1.0.0.6" />',
     "ssh -i vm/keys/socom_linux -p 2222 socom@127.0.0.1 'ls'",

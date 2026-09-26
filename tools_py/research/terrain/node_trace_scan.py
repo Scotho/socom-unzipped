@@ -1,6 +1,8 @@
 """Scan a PS2X_CULL_TRACE log that also carries the scene-node lines ("node t=... obj=..."): pair each cull call with
 the node entered just before it (the traversal calls the cull from inside FUN_00338480), find the node whose box
-held the given world point in the first frames, and print that node's gate fields in every later frame."""
+held the given world point in the first frames, and print that node's gate fields in every later frame.
+
+Run: python -m tools_py.research.terrain.node_trace_scan <PS2X_CULL_TRACE log> [x,y,z]"""
 import re, sys, collections
 path = sys.argv[1]
 pt = tuple(float(v) for v in sys.argv[2].split(",")) if len(sys.argv) > 2 else (947.0, -139.0, 969.0)

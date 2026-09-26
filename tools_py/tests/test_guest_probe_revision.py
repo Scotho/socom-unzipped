@@ -483,5 +483,94 @@ class OffsetNames(unittest.TestCase):
                     self.assertEqual(code, [], path)
 
 
+
+class InstrumentStatics(unittest.TestCase):
+    """Sprint 13 Task H6: INSTRUMENT_ADDRESSES may leave a cell ABSENT, and an absent cell refuses with its
+    reason -- never answers another column's number, never a guessed one."""
+
+    def test_every_absent_cell_has_a_reason_and_every_reason_an_absent_cell(self):
+        absent = {(n, r) for n, col in ga.INSTRUMENT_ADDRESSES.items() for r in ga.REVISIONS if r not in col}
+        self.assertEqual(absent, set(ga.UNPLACED))
+
+    def test_every_instrument_name_has_its_r0001_column(self):
+        for n in ga.instrument_names():
+            self.assertIsInstance(ga.address(n, "r0001"), int, n)
+
+    def test_every_placed_r0004_cell_is_one_data_via_twin_re_derives(self):
+        """The reverse of test_data_via_twin's check: a cell written here without a COLUMN row would be a
+        number `python -m tools_py.data_via_twin --column` never re-derives."""
+        from tools_py import data_via_twin as dvt
+        column = {name: (r1, r4) for name, r1, r4, _how in dvt.COLUMN}
+        for name, col in ga.INSTRUMENT_ADDRESSES.items():
+            if "r0004" in col:
+                self.assertEqual(column.get(name), (col["r0001"], col["r0004"]), name)
+
+    def test_an_absent_cell_refuses_with_its_reason(self):
+        with self.assertRaises(ValueError) as e:
+            ga.address("vagstore_base", "r0004")
+        self.assertIn("UNPLACED on r0004", str(e.exception))
+
+    def test_addresses_refuses_the_whole_set_naming_every_absent_one(self):
+        with self.assertRaises(ValueError) as e:
+            ga.addresses(["cue_route", "motion_pack_ptr", "motion_pack_size"], "r0004")
+        self.assertIn("2 of 3", str(e.exception))
+        self.assertEqual(ga.addresses(["cue_route", "camera_ptr"], "r0004"),
+                         {"cue_route": 0x004A1510, "camera_ptr": 0x0048C1B8})
+
+    def test_the_instrument_names_do_not_widen_all_names(self):
+        """all_names() promises both columns for every name; the instrument statics do not."""
+        self.assertFalse(set(ga.instrument_names()) & set(ga.all_names()))
+
+    def test_no_placed_cell_shares_an_address_with_another_name(self):
+        for r in ga.REVISIONS:
+            seen = {}
+            for n in ga.all_names() + ga.instrument_names():
+                col = ga.INSTRUMENT_ADDRESSES.get(n) or {r: ga.address(n, r)}
+                if r not in col:
+                    continue
+                self.assertNotIn(col[r], seen, "%s and %s are both 0x%x on %s" % (n, seen.get(col[r]), col[r], r))
+                seen[col[r]] = n
+
+    def test_cam_poll_renders_its_default_from_the_table(self):
+        from tools_py.parity import cam_poll
+        self.assertEqual(cam_poll.DEFAULT_SPEC, "*0x488de8+0x120:96")
+
+    def test_cam_poll_refuses_the_r0004_default_the_window_offset_is_r0001s(self):
+        """The pointer is placed on r0004; the +0x120 window inside the object is not (KNOWN §4: a wrong
+        struct offset answers with a number). The default refuses rather than render r0001's offset."""
+        from tools_py.parity import cam_poll
+        with self.assertRaises(ValueError) as e:
+            cam_poll.default_spec("r0004")
+        self.assertIn("unverified", str(e.exception))
+        self.assertIn("0x48c1b8", str(e.exception))
+
+
+class PointerModeIsR0001Only(unittest.TestCase):
+    """Sprint 13 Task H6 (audit H22): verdict_core's valve pointer mode compares against heap name
+    pointers the table has no r0004 column for; --round-name-ptr refuses a log that is not r0001's."""
+
+    def test_the_valves_chains_and_pointers_come_from_the_table(self):
+        self.assertEqual(vc.VALVES["mp_round_count"].value_item, "*0x437ce8+0x0c*:2")
+        self.assertEqual(vc.VALVES["mission_abort"].name_item, "*0x43668c*:3")
+        for name, v in vc.VALVES.items():
+            self.assertEqual(v.ours_name_ptr, ga.address("valve_name." + name, "r0001"), name)
+            with self.assertRaises(ValueError):
+                ga.address("valve_name." + name, "r0004")
+
+    def test_the_refusal_reads_the_log_line_then_the_rows(self):
+        r4 = ["[socom2] address table: the image names itself r0004 -- using the r0004 addresses"]
+        self.assertIn("r0004", vc.pointer_mode_refusal(r4, []))
+        r1 = ["[socom2] address table: the image names itself r0001 -- using the r0001 addresses"]
+        self.assertIsNone(vc.pointer_mode_refusal(r1, []))
+        rows_r4 = [(0.0, [(ga.address("guest_clock", "r0004"), [0])])]
+        self.assertIn("r0004", vc.pointer_mode_refusal([], rows_r4))
+        rows_r1 = [(0.0, [(ga.address("guest_clock", "r0001"), [0])])]
+        self.assertIsNone(vc.pointer_mode_refusal([], rows_r1))
+
+    def test_a_log_that_says_nothing_is_refused_not_assumed_r0001(self):
+        self.assertIn("does not say", vc.pointer_mode_refusal([], []))
+        self.assertIn("does not say", vc.pointer_mode_refusal([], [(0.0, [(0x01794000, [0])])]))
+
+
 if __name__ == "__main__":
     unittest.main()

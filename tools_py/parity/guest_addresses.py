@@ -175,30 +175,159 @@ REVISIONS = tuple(sorted({r for table in (PROBE_ADDRESSES, ONLINE_ADDRESSES, TRA
                           for col in table.values() for r in col}))
 
 
+# ---------------------------------------------------------------------------
+# THE OTHER INSTRUMENTS' STATICS (Sprint 13 Task H6, audit harness-tools H20-H23).
+#
+# The audio poll, the motion-pack check, cam_poll's default spec and verdict_core's valve pointer mode
+# carried these as r0001 literals where they were used, outside this table, and nothing refused them on an
+# r0004 run (KNOWN.md §4's hazard exactly: the numbers come back, they are just somebody else's memory).
+# `tools_py/tests/test_no_bare_guest_addresses.py` now refuses a new one anywhere under tools_py/parity.
+#
+# UNLIKE THE THREE TABLES ABOVE, A COLUMN HERE MAY BE MISSING. A value `data_via_twin` cannot place is not
+# written down at all -- the r0004 cell is ABSENT, `address()` raises for it, and UNPLACED says
+# why and what would settle it.
+#
+# UNPLACED IS NOT UNCONFIRMED. `UNCONFIRMED` (above) is a set of names whose value IS carried -- it rests
+# on one twinned referrer, the instrument keeps peeking it, and no scorer may key a verdict on it.
+# `UNPLACED` is a set of (name, revision) cells with NO value at all: nothing reads them, `address()`
+# refuses them, and the reason is what it prints. A guessed number (the neighbour's delta, the object base plus r0001's
+# displacement) is exactly what this table exists to keep out. So these names are NOT in `all_names()`,
+# which promises every revision's column for every name (the online harness's tests iterate it on both
+# columns); `instrument_names()` lists them.
+#
+# Every r0004 value below is `python -m tools_py.data_via_twin <r0001 addr>` against game/r0004/match.json
+# (see the header): unanimous votes of evidence-twinned referrer FUNCTIONS, none split.
+#
+#   cue_route         0x49e150 -> 0x004a1510  11 sites, 8 twinned in 6 functions, unanimous (+0x33c0).
+#   cue_manager_ptr   0x49e158 -> 0x004a1518  9 sites, 8 twinned in 4 functions, unanimous (+0x33c0).
+#   music_globals     0x48e080 -> 0x00491440  26 sites, 26 twinned in 7 functions, unanimous (+0x33c0). The
+#                                             block's other words move with it: 0x48e088 -> 0x491448 (19
+#                                             twinned, 7 fns), 0x48e090 -> 0x491450 (14, 4), 0x48e0a0 ->
+#                                             0x491460 (13, 4) -- the 14-word block read as one is whole.
+#   music_off         0x3e0080 -> 0x0040b250  4 sites, 4 twinned in 4 functions, unanimous (+0x2b1d0 -- a
+#                                             different region's delta from the block above).
+#   music_tables      0x48e010 -> 0x004913d0  6 sites, 5 twinned in 4 functions, unanimous (+0x33c0); its
+#                                             weight half 0x48e050 -> 0x491410 (8 twinned, 5 fns) agrees.
+#   camera_ptr        0x488de8 -> 0x0048c1b8  14 sites, 14 twinned in 11 functions, unanimous (+0x33d0).
+#                                             cam_poll's default spec reads 96 words from +0x120 of the
+#                                             object it points at: that is a WINDOW, not one field, and
+#                                             the camera object's layout on r0004 is not established.
+#   talk_table_ptr    0x4415a8 -> 0x0044dfc8  16 sites, 15 twinned in 13 functions, unanimous (Sprint 13 O2).
+#                                             A POINTER to the loaded controller configuration: FUN_002c64e0
+#                                             reads the action -> pad-slot byte at *(ptr) + 0x12 + action
+#                                             (research/39 section 2.3; R221's talk-slot peek). The chat
+#                                             round peeks it and the 12 words it points at.
+#
+# ... and the ones it CANNOT place, whose r0004 cell is absent (UNPLACED):
+#
+#   vagstore_base     0x48dc48                0 materialising sites: the game reaches it as +0x18 inside
+#                                             the VAGSTORE object 0x48dc30, which the tool DOES place
+#                                             (0x48dc30 -> 0x490ff0, 6 twinned in 5 functions, unanimous).
+#                                             0x490ff0 + 0x18 is the obvious candidate and it is r0001's
+#                                             displacement assumed, so it is not written here.
+#   motion_pack_ptr   0x415e08                1 site, 0 evidence-twinned. It sits at +0xc8 of the pack
+#   motion_pack_size  0x415e0c                object copy 0x415d40 (-> 0x442700, 4 twinned in 4 fns), so
+#                                             base + 0xc8 / + 0xcc would be the candidates -- again a
+#                                             displacement assumed, not a value placed.
+#   valve_name.*      ten valve NAME POINTERS verdict_core's pointer mode compares against (research/21
+#                     §2.1, OURS only: a PCSX2 run's differ). 0 sites each: they are above every PT_LOAD
+#                     segment of the r0001 image (the last ends at 0x686f80), i.e. the heap, so no twin
+#                     scan can place them and a different build's heap need not agree. The valves are
+#                     identified by NAME BYTES everywhere that scores (verdict_core.row_valve); the pointer
+#                     mode is r0001-only and refuses on anything else.
+INSTRUMENT_ADDRESSES = {
+    "cue_route": {"r0001": 0x0049E150, "r0004": 0x004A1510},
+    "cue_manager_ptr": {"r0001": 0x0049E158, "r0004": 0x004A1518},
+    "music_globals": {"r0001": 0x0048E080, "r0004": 0x00491440},
+    "music_off": {"r0001": 0x003E0080, "r0004": 0x0040B250},
+    "music_tables": {"r0001": 0x0048E010, "r0004": 0x004913D0},
+    "vagstore_base": {"r0001": 0x0048DC48},
+    "motion_pack_ptr": {"r0001": 0x00415E08},
+    "motion_pack_size": {"r0001": 0x00415E0C},
+    "camera_ptr": {"r0001": 0x00488DE8, "r0004": 0x0048C1B8},
+    "talk_table_ptr": {"r0001": 0x004415A8, "r0004": 0x0044DFC8},
+    "valve_name.mp_round_count": {"r0001": 0x006B7F30},
+    "valve_name.mp_game_over": {"r0001": 0x006B7F20},
+    "valve_name.player_team": {"r0001": 0x006CC9FC},
+    "valve_name.mp_major_game_state": {"r0001": 0x00694AE0},
+    "valve_name.mp_minor_game_state": {"r0001": 0x00694B08},
+    "valve_name.late_joiner": {"r0001": 0x006CCA14},
+    "valve_name.aiteam_00": {"r0001": 0x006CCAD4},
+    "valve_name.aiteam_08": {"r0001": 0x006CCAEC},
+    "valve_name.total_mp_kills": {"r0001": 0x006B7F70},
+    "valve_name.mission_abort": {"r0001": 0x006B7FB0},
+}
+_VALVE_NAME_WHY = ("a heap pointer (above every PT_LOAD segment of the image), so data_via_twin has no "
+                   "materialising site to twin; verdict_core's pointer mode is r0001-only -- identify the "
+                   "valve by its name bytes (verdict_core.row_valve) instead")
+# (name, revision) -> why that cell is absent, and what would fill it. `address()` puts this in its refusal.
+# Not UNCONFIRMED (a carried value on thin evidence): an UNPLACED cell has no value to carry.
+UNPLACED = {
+    ("vagstore_base", "r0004"): "data_via_twin: 0 materialising sites (the game reaches it as +0x18 of "
+                                "the VAGSTORE object 0x48dc30 -> 0x490ff0, which IS placed); the r0004 "
+                                "displacement of that field is not established -- read the twin of "
+                                "FUN_0034d480's store accessors to settle it",
+    ("motion_pack_ptr", "r0004"): "data_via_twin: 1 materialising site, 0 evidence-twinned referrers "
+                                  "(UNRESOLVED); +0xc8 of the pack object 0x415d40 -> 0x442700, whose "
+                                  "r0004 layout is not established",
+    ("motion_pack_size", "r0004"): "data_via_twin: 1 materialising site, 0 evidence-twinned referrers "
+                                   "(UNRESOLVED); +0xcc of the pack object 0x415d40 -> 0x442700, whose "
+                                   "r0004 layout is not established",
+}
+UNPLACED.update({(n, "r0004"): _VALVE_NAME_WHY for n in INSTRUMENT_ADDRESSES
+                            if n.startswith("valve_name.")})
+
+
 def _column_of(name):
-    for table in (PROBE_ADDRESSES, ONLINE_ADDRESSES, TRACE_ADDRESSES):
+    for table in (PROBE_ADDRESSES, ONLINE_ADDRESSES, TRACE_ADDRESSES, INSTRUMENT_ADDRESSES):
         if name in table:
             return table[name]
     return None
 
 
 def all_names():
-    """Every address name this module answers for, across its three tables."""
+    """Every name of the three online/probe tables -- each has EVERY revision's column (the harness's
+    tests iterate it on both). `instrument_names()` are the rest, whose columns may be absent."""
     return sorted(set(PROBE_ADDRESSES) | set(ONLINE_ADDRESSES) | set(TRACE_ADDRESSES))
+
+
+def instrument_names():
+    """The names of INSTRUMENT_ADDRESSES: the audio poll, the motion-pack check, cam_poll, the valve
+    name pointers. A column here may be absent -- see UNPLACED."""
+    return sorted(INSTRUMENT_ADDRESSES)
 
 
 def address(name, revision):
     """This revision's address for one probe input. A name or a revision the table does not carry raises,
-    naming what it does have -- never the other column's number."""
+    naming what it does have -- never the other column's number. For a cell the table leaves absent on
+    purpose, the refusal says why (UNPLACED)."""
     col = _column_of(name)
     if col is None:
         raise ValueError("guest addresses: no probe address called %r (have: %s)"
-                         % (name, ", ".join(all_names())))
+                         % (name, ", ".join(all_names() + instrument_names())))
     if revision not in col:
+        why = UNPLACED.get((name, revision))
         raise ValueError("guest addresses: no %s address for revision %r -- this table has columns for "
-                         "%s. Reading another revision's address is the defect this table exists to stop."
-                         % (name, revision, ", ".join(sorted(col))))
+                         "%s.%s Reading another revision's address is the defect this table exists to stop."
+                         % (name, revision, ", ".join(sorted(col)),
+                            (" UNPLACED on %s: %s." % (revision, why)) if why else ""))
     return col[revision]
+
+
+def addresses(names, revision):
+    """{name: address} for several names on one revision, refusing ALL of them if ANY is absent -- an
+    instrument that reads a block of statics must not come up with some of them read in the wrong build.
+    The refusal lists every absent name with its reason."""
+    out, missing = {}, []
+    for n in names:
+        try:
+            out[n] = address(n, revision)
+        except ValueError as e:
+            missing.append(str(e))
+    if missing:
+        raise ValueError("guest addresses: refusing %s -- %d of %d addresses have no %s column:\n  %s"
+                         % (revision, len(missing), len(names), revision, "\n  ".join(missing)))
+    return out
 
 
 # The build banner in the game image ("SOCOM 2 r0001 17:22:21 Oct 11 2003"): the same evidence

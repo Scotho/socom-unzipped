@@ -80,11 +80,12 @@ _SPLIT = re.compile(r"(?=\[(?:%s)\] )" % "|".join(re.escape(t) for t in _TAGS))
 _SAMPLER = re.compile(r"^\[pc-sampler\] live pc=0x([0-9a-fA-F]+).*? running=(-?\d+) threads:(.*)$")
 # Sprint 7 Task 2e (research/29 section 4 items 1-8): the freeze fields the sampler gained, all optional so a log
 # from before the change still parses. `t`/`ee` are seconds, `dpc` hex, `net_wait` is "<0|1>/<cumulative ms>".
+# #34 (Sprint 13 V7) added `net_park` = "<threads parked in a libnetb recv>/<cumulative ms>".
 _FIELD_FLOAT = ("t", "ee")
 _FIELD_INT = ("vsync", "seq", "idle", "bp_pending", "bp_waiters", "bp_wait_ms")
-_FIELDS = re.compile(r"\b(t|vsync|ee|seq|dpc|idle|bp_pending|bp_waiters|bp_wait_ms|net_wait)="
+_FIELDS = re.compile(r"\b(t|vsync|ee|seq|dpc|idle|bp_pending|bp_waiters|bp_wait_ms|net_wait|net_park)="
                      r"(0x[0-9a-fA-F]+|\d+/\d+|-?\d+(?:\.\d+)?)")
-FREEZE_FIELDS = _FIELD_FLOAT + _FIELD_INT + ("dpc", "net_wait", "net_wait_ms")
+FREEZE_FIELDS = _FIELD_FLOAT + _FIELD_INT + ("dpc", "net_wait", "net_wait_ms", "net_park", "net_park_ms")
 # Sprint 7 Task 2a put a prio= field between st= and wait= in the thread table; a log from before it has none,
 # so the field is optional here and BOTH shapes of log read the same (without this the table parses as empty).
 _THREAD = re.compile(r"\[(\d+) pc=0x([0-9a-fA-F]+) ra=0x[0-9a-fA-F]+ sp=0x[0-9a-fA-F]+ st=(\d+)"
@@ -118,10 +119,10 @@ def _sampler_fields(seg):
     for key, raw in _FIELDS.findall(seg):
         if key == "dpc":
             out["dpc"] = int(raw, 16)
-        elif key == "net_wait":
+        elif key in ("net_wait", "net_park"):
             flag, _, ms = raw.partition("/")
-            out["net_wait"] = int(flag)
-            out["net_wait_ms"] = int(ms)
+            out[key] = int(flag)
+            out[key + "_ms"] = int(ms)
         elif key in _FIELD_FLOAT:
             out[key] = float(raw)
         else:
@@ -132,7 +133,7 @@ def _sampler_fields(seg):
 def parse(lines):
     """-> [row] for every [pc-sampler] line, in order: live_pc, running, threads {tid: (pc, st, wait)} and the
     Sprint 7 freeze fields (t, vsync, ee, seq, dpc, idle, bp_pending, bp_waiters, bp_wait_ms, net_wait,
-    net_wait_ms), each None on a log written before the sampler printed them. classify() reads these rows."""
+    net_wait_ms) and #34's net_park, net_park_ms, each None on a log written before the sampler printed them. classify() reads these rows."""
     rows = []
     for raw in lines:
         for seg in _segments(raw):
@@ -164,6 +165,8 @@ def classify(rows):
     """Which of research/29's two freeze shapes a window of sampler rows is, from the fields alone:
       "net-wait"          -- seq frozen, dpc frozen, net_wait=1: the guest is inside the blocking libnetb
                              waitReadable poll (shape 2); no guest instruction runs, the thread table is stale.
+      "net-park"          -- net_park >= 1 on every row with vsync and seq climbing: since #34 a guest thread is
+                             parked in a libnetb recv on a quiet peer while the executor runs (shape 2 bounded).
       "host-load"         -- vsync flat, a producer inside the GS back-pressure wait (bp_waiters >= 1) and
                              bp_wait_ms climbing: the GL thread is starved by the host (shape 1, by design).
       "runtime-oversleep" -- vsync flat, nobody in the back-pressure wait, idle climbing: the EE executor is
@@ -174,6 +177,8 @@ def classify(rows):
         return "unknown"
     if all(r.get("net_wait") == 1 for r in rows) and _flat(rows, "seq") and _flat(rows, "dpc"):
         return "net-wait"
+    if all((r.get("net_park") or 0) >= 1 for r in rows) and _climbing(rows, "vsync") and _climbing(rows, "seq"):
+        return "net-park"
     if _flat(rows, "vsync"):
         if any((r.get("bp_waiters") or 0) >= 1 for r in rows) and _climbing(rows, "bp_wait_ms"):
             return "host-load"

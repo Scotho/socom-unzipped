@@ -7,7 +7,7 @@ recompiler emits):
     python -m tools_py.apply_names recomp/socom2_ghidra.csv recomp/socom2_names.csv \\
         game/demo_symbol_renames.csv game/demo_symbol_renames_7b.csv ... \\
         [--holds recomp/socom2_name_holds.csv] [--demo game/demo_scus_972_05/SCUS_972.05] \\
-        [--report-only] [--strict] [--date YYYY-MM-DD]
+        [--report-only] [--strict] [--date YYYY-MM-DD] [--through game/r0004/match.json]
 
 Every proposals file a lever writes is read (`read_proposals`, tolerant of each lever's columns). Per address,
 every proposal is gathered and ONE outcome decided (`plan`), in this order:
@@ -35,6 +35,15 @@ every proposal is gathered and ONE outcome decided (`plan`), in this order:
    fewer times) reads `refused: one name, two addresses (...)`; a name the sidecar already holds at another
    address is refused the same way; `is_legal` is re-checked on every final name.
 
+**A hand row** (`Pass=hand`, Sprint 13 Task N1) is a name the project's own code already asserts (an override's
+comment, the address table's field): strict, and it carries its evidence (a `file:line`), never a score. A hand
+row with a `Score` cell is an error, and its sidecar row's `Score` is empty.
+
+**`--through <match.json>`** reads the proposals as r0001 addresses and applies them onto another revision's
+csv and sidecar (the r0004 pair): an address travels only where `tools_py.address_matcher` placed it `exact`,
+with `Pass=carried:<pass>` and `Evidence` led by `match.json exact from 0x<r0001 address>`, as `carry_names` writes
+its rows; every other address is printed `NOT CARRIED` with the matcher's `how`, never silently dropped.
+
 Nothing is written until the whole plan is computed AND `name_provenance.audit` over (csv, old sidecar + new
 rows) is empty; otherwise nothing is written and the exit is 2 with the findings. Exit 1 with `--strict` when
 anything was refused (a contradiction is a refusal), else 0. A held, refused, deferred or contradicted address
@@ -44,6 +53,7 @@ import argparse
 import collections
 import csv
 import datetime
+import json
 import os
 import re
 import sys
@@ -54,6 +64,9 @@ from tools_py import readable_names as rn
 
 LOOSE_DEFAULT = 0.75
 PROJECT_PREFIX = "socom2_"   # the project's own prefix in the toml's stub names (S12-R24's alias rule)
+HAND_PASS = "hand"   # Sprint 13 Task N1: a name the runtime asserts; evidence, no score
+HAND_PASSES = (HAND_PASS, "carried:" + HAND_PASS)
+THROUGH_HOW = ("exact",)   # `--through`: the one matcher placement a hand name travels on
 PASS_JOIN = "&"      # agreeing passes (S12-R18); `+` is inside pass names (`prefix+offsets`, `hash+callees`)
 # A strict file that has no Score column: the pass's score from spec §1.4's table.
 PASS_SCORE = {"positional": 0.80}
@@ -71,7 +84,7 @@ class Proposal(NamedTuple):
     address: int
     mangled: str        # the demo's spelling; for a ui-binding-derived row the plain derived name
     pass_name: str
-    score: float
+    score: Optional[float]   # None for a hand row: it carries evidence, not a score
     evidence: str
     source: str         # the file's basename + the note its header cites
     loose: bool
@@ -151,6 +164,13 @@ def read_proposals(path: str) -> List[Proposal]:
                 evidence = "fingerprint %s, %s B" % (g("How"), g("Size"))
         if not pass_name:
             raise ValueError("%s:%d: no pass (How/Pass/Source column)" % (path, reader.line_num))
+        if pass_name == HAND_PASS:
+            if g("Score"):
+                raise ValueError("%s:%d: a hand row carries its evidence, not a score" % (path, reader.line_num))
+            if not evidence:
+                raise ValueError("%s:%d: a hand row with no evidence" % (path, reader.line_num))
+            out.append(Proposal(addr, mangled, pass_name, None, evidence, source, False, base, family))
+            continue
         empty_score = "Score" in cols and not g("Score")
         loose = file_loose or g("Level") == "loose" or empty_score
         if g("Score"):
@@ -264,9 +284,10 @@ def plan(csv_rows: List[dict], sidecar: Dict[int, dict], holds: Dict[int, dict],
             decided[a] = Decision(a, "refused", "%s: %s" % (name, bad), by_addr[a])
             continue
         decided[a] = Decision(a, "applied", "", by_addr[a])
+        scores = [p.score for p in ps if p.score is not None]
         rows.append({"Address": a, "Name": name, "Mangled": m,
                      "Pass": PASS_JOIN.join(_uniq(p.pass_name for p in ps)),
-                     "Score": "%.2f" % max(p.score for p in ps),
+                     "Score": "%.2f" % max(scores) if scores else "",
                      "Evidence": " | ".join(_uniq("%s: %s" % (p.pass_name, p.evidence) for p in ps)),
                      "Source": " | ".join(_uniq(p.source for p in ps))})
 
@@ -283,6 +304,21 @@ def apply(p: Plan, sidecar_path: str, date: str) -> None:
     rows = [dict(r) for r in p.sidecar.values()]
     rows += [dict(r, Date=date) for r in p.rows]
     npv.write(sidecar_path, rows)
+
+
+def through(props: List[Proposal], matches: Dict[str, dict]) -> List[Proposal]:
+    """`--through`: each proposal moved onto the address match.json places its r0001 address at, `exact` only;
+    every other one printed `NOT CARRIED` with the matcher's `how` and left out."""
+    out = []
+    for p in props:
+        m = matches.get("0x%08x" % p.address) or {}
+        how = m.get("how") or "absent"
+        if how not in THROUGH_HOW or not m.get("b"):
+            print("NOT CARRIED 0x%08x %s: match.json how=%s" % (p.address, p.mangled, how))
+            continue
+        out.append(p._replace(address=int(m["b"], 16), pass_name="carried:" + p.pass_name,
+                              evidence="match.json %s from 0x%08x; %s" % (how, p.address, p.evidence)))
+    return out
 
 
 def read_holds(path: str) -> Dict[int, dict]:
@@ -349,6 +385,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--report-only", action="store_true", help="print the plan and the census; write nothing")
     ap.add_argument("--strict", action="store_true", help="exit 1 when anything was refused")
     ap.add_argument("--date", default=datetime.date.today().isoformat())
+    ap.add_argument("--through", metavar="MATCH_JSON",
+                    help="apply r0001 proposals onto another revision's pair through match.json (exact only)")
     args = ap.parse_args(argv)
 
     files, props = [], []
@@ -365,6 +403,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("read %s: %d rows (%d loose)" % (f, len(got), sum(1 for x in got if x.loose)))
         files.append(f)
         props.extend(got)
+    if args.through:
+        with open(args.through, encoding="utf-8") as fh:
+            props = through(props, json.load(fh).get("matches", {}))
+        print("through %s: %d rows carried" % (args.through, len(props)))
     holds = read_holds(args.holds) if args.holds else {}
     demo_counts = demo_name_counts(args.demo) if args.demo else {}
     csv_rows = npv.read_map(args.ghidra_csv)

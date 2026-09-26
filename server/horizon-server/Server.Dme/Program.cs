@@ -42,7 +42,7 @@ namespace Server.Dme
         private static Dictionary<int, AppSettings> _appSettings = new Dictionary<int, AppSettings>();
         private static AppSettings _defaultAppSettings = new AppSettings(0);
 
-        public static IPAddress SERVER_IP = IPAddress.Parse("192.168.0.178");
+        public static IPAddress SERVER_IP = IPAddress.Parse("192.0.2.1"); // RFC 5737 placeholder until the config loads (was a LAN address; SOCOM Unzipped S13 S6)
 
         public static Dictionary<int, MediusManager> Managers = new Dictionary<int, MediusManager>();
         public static TcpServer TcpServer = new TcpServer();

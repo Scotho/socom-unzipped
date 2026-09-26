@@ -1,7 +1,7 @@
 {
  "schema": 1,
  "generated": "2026-09-25",
- "head": "7588fead",
+ "head": "3804d10b",
  "about": "Machine-readable form of docs/STORY.md. Built by reading the document; the citation test asserts the two agree.",
  "entries": [
   {
@@ -1655,7 +1655,7 @@
     },
     {
      "kind": "path",
-     "ref": "docs/AUDIT-2026-09-17.md"
+     "ref": "docs/audits/2026-09-17-audit-and-code-review.md"
     },
     {
      "kind": "log",
@@ -2315,7 +2315,7 @@
     },
     {
      "kind": "path",
-     "ref": "docs/superpowers/plans/2026-09-20-sprint-9-q0-mission-music-investigation.md"
+     "ref": "docs/archive/sprints-7-12/2026-09-20-sprint-9-q0-mission-music-investigation.md"
     }
    ]
   },
@@ -2358,7 +2358,7 @@
     },
     {
      "kind": "path",
-     "ref": "docs/superpowers/plans/2026-09-20-sprint-9-q0-mission-music-investigation.md"
+     "ref": "docs/archive/sprints-7-12/2026-09-20-sprint-9-q0-mission-music-investigation.md"
     }
    ]
   },
@@ -2452,7 +2452,7 @@
     },
     {
      "kind": "path",
-     "ref": "docs/superpowers/plans/2026-09-20-sprint-10-goal-3-mixed-match.md"
+     "ref": "docs/archive/sprints-7-12/2026-09-20-sprint-10-goal-3-mixed-match.md"
     }
    ],
    "picture": {
@@ -2849,7 +2849,7 @@
     },
     {
      "kind": "path",
-     "ref": "docs/superpowers/plans/2026-09-22-fix-wave-playthrough.md"
+     "ref": "docs/archive/sprints-7-12/2026-09-22-fix-wave-playthrough.md"
     }
    ]
   },
@@ -2901,6 +2901,628 @@
      "ref": "docs/KNOWN.md"
     }
    ]
+  },
+  {
+   "id": "2026-09-23-the-update-the-community-server-asks-for-taken-apart",
+   "date": "2026-09-23",
+   "title": "The update the community server asks for, taken apart",
+   "era": "2026-09-23 .. 2026-09-25 - A second edition, and names for the code",
+   "hook": "The community's server wants a later edition of the game than the disc holds. Just before midnight that edition was running under our program, as far as its opening credits.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "f15acfab",
+     "sha": "f15acfabcc7415a35af75e6c08b3647829ec3e2b",
+     "date": "2026-09-23",
+     "subject": "merge: Sprint 10 to main -- console players in the same lobby, and it stays up (7 of 7); the close's audit, the fix wave's answers, v0.10.0"
+    },
+    {
+     "kind": "commit",
+     "ref": "d23c4b1d",
+     "sha": "d23c4b1da0dfe2d0cea113c212411954db72069b",
+     "date": "2026-09-23",
+     "subject": "docs: the ladder streak is 7 of 7 -- \"it stays up\" met; runs 5, 6 and 7 KILL overnight on the hosted box"
+    },
+    {
+     "kind": "commit",
+     "ref": "f2064d3c",
+     "sha": "f2064d3cb043f5251248349276c996464d3a6ac2",
+     "date": "2026-09-23",
+     "subject": "fix(socom2): hardening of the chat receive path (Sprint 11 S)"
+    },
+    {
+     "kind": "commit",
+     "ref": "5b7d20e7",
+     "sha": "5b7d20e7ce534b72a98e97ae8e7d7bb12ce3cb70",
+     "date": "2026-09-22",
+     "subject": "fix(server): forwarded chat fields are clamped to leave room for their terminator (Sprint 11 S)"
+    },
+    {
+     "kind": "commit",
+     "ref": "d5b8757f",
+     "sha": "d5b8757f257914b90f91021014015b9c79802800",
+     "date": "2026-09-23",
+     "subject": "docs+tools: the known-issue stack -- every defined, unresolved defect is a GitHub issue cited from its KNOWN row, with the conventions, the audit tool and the deep review at every sprint close"
+    },
+    {
+     "kind": "commit",
+     "ref": "61faf530",
+     "sha": "61faf53078de3fd86506f6b0543b308a7d60f4d3",
+     "date": "2026-09-24",
+     "subject": "launcher: after a report is received, the one line that invites a public issue"
+    },
+    {
+     "kind": "commit",
+     "ref": "52e10a36",
+     "sha": "52e10a362b59b21cd1c5e18f4e034bf925671634",
+     "date": "2026-09-23",
+     "subject": "docs: the r0004 patch is in hand and it is PSRewired's resident capsule, not a code package -- R248, Task 19 (decode and apply), Task 11b (download per user, upload fallback)"
+    },
+    {
+     "kind": "commit",
+     "ref": "0c580739",
+     "sha": "0c58073917392f48913f5c6a68647fdb118a601b",
+     "date": "2026-09-23",
+     "subject": "feat(r0004): the capsule's encrypted code stack decoded -- unpack, locate, decrypt, classify"
+    },
+    {
+     "kind": "commit",
+     "ref": "cf5d4745",
+     "sha": "cf5d4745737b1cd6d7c9b32d0ff00135b34ad232",
+     "date": "2026-09-23",
+     "subject": "docs: R249 -- PSRewired's r0004 patch is a DNAS bypass this build already carries; no second recompilation; Task 11b withdrawn pending the owner"
+    },
+    {
+     "kind": "commit",
+     "ref": "ed07a16f",
+     "sha": "ed07a16f9fe76ba360bf100e449ace4d8e5844ed",
+     "date": "2026-09-23",
+     "subject": "docs: R251 -- r0004 is a real rebuild, PSRewired serves it, the package is decoded and its ELF built; what remains is Task 9/10's own path"
+    },
+    {
+     "kind": "commit",
+     "ref": "e92691a2",
+     "sha": "e92691a2b6eed3b873c3b2d913343a6e25db2830",
+     "date": "2026-09-23",
+     "subject": "tools: relinked-body -- the matcher's fourth method, and the r0001/r0004 rate from 63% to 81%"
+    },
+    {
+     "kind": "commit",
+     "ref": "8a576346",
+     "sha": "8a576346a9bb66c3464223e032b225cfee3a4e60",
+     "date": "2026-09-23",
+     "subject": "docs: the r0004 build boots to the intro credits (KNOWN section 2, three section-4 hazards, the sprint and the owner's block)"
+    },
+    {
+     "kind": "gate",
+     "ref": "s11_r0004_loopd1",
+     "path": "logs/parity/gate/s11_r0004_loopd1"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/43-r0004-capsule.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/archive/CURRENT_SPRINT-sprints-9-to-11.md"
+    }
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-23-r0004-types-its-credits.png",
+    "caption": "The r0004 build under our program, the first time it got past loading: the developer credit typed out letter by letter, seconds before the game decided to reboot itself. The gate run that caught it failed all three of its stages."
+   }
+  },
+  {
+   "id": "2026-09-24-the-update-plays-and-cannot-meet-the-original",
+   "date": "2026-09-24",
+   "title": "The update plays, and cannot meet the original",
+   "era": "2026-09-23 .. 2026-09-25 - A second edition, and names for the code",
+   "hook": "The r0004 build passed the same three-stage check as the disc's own edition, then played a round on our server. And the two editions turned out to be unable to join each other's games.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "07dc937f",
+     "sha": "07dc937f6be5b53cd8a989aeb6e4d138550560df",
+     "date": "2026-09-24",
+     "subject": "image(r0004): the two words in the overlay that are not code (Task 19 register)"
+    },
+    {
+     "kind": "commit",
+     "ref": "3bac4a2b",
+     "sha": "3bac4a2b42b9f65843a2b6baf5fe3aedefaf1b4e",
+     "date": "2026-09-24",
+     "subject": "image(r0004): the repair is an undo of the capsule's write stack, not a shape (Task 19 register, fix round 1)"
+    },
+    {
+     "kind": "commit",
+     "ref": "2613a26a",
+     "sha": "2613a26ac73ec1727a44131d5aca969140470e33",
+     "date": "2026-09-24",
+     "subject": "docs: the r0004 gate is 3/3 -- Task 19's remaining shape met; the struct-offset lesson as a KNOWN section 4 row"
+    },
+    {
+     "kind": "commit",
+     "ref": "d447bb1b",
+     "sha": "d447bb1b64ca88efa0342eb71827c54e070a87b9",
+     "date": "2026-09-24",
+     "subject": "docs: the r0004 build plays online on our server; the two revisions cannot join each other's games (the client's token filter); the online harness's r0001 instruments"
+    },
+    {
+     "kind": "commit",
+     "ref": "f9555c75",
+     "sha": "f9555c75144efdc5fba19b7bdead4b27ca18c9e7",
+     "date": "2026-09-24",
+     "subject": "docs: the r0004 round is scored on our server (s11_r0004_round2c)"
+    },
+    {
+     "kind": "commit",
+     "ref": "007d6511",
+     "sha": "007d6511860e9049722d0ebab658ea063c81550e",
+     "date": "2026-09-24",
+     "subject": "symbols: the SOCOM 1 demo names 987 of our anonymous functions (Task 7, U3)"
+    },
+    {
+     "kind": "commit",
+     "ref": "71750904",
+     "sha": "71750904725ec74b36c475a14050353c29e32dfb",
+     "date": "2026-09-24",
+     "subject": "recomp: R247 -- the vendored tree's baggage goes, the launcher's fonts are generated"
+    },
+    {
+     "kind": "gate",
+     "ref": "s11_r0004_probe2",
+     "path": "logs/parity/gate/s11_r0004_probe2"
+    },
+    {
+     "kind": "run",
+     "ref": "s11_r0004_round2c",
+     "path": "logs/parity/s11_r0004_round2c"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/43-what-changed-in-r0004.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/superpowers/plans/2026-09-23-sprint-11.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/KNOWN.md"
+    }
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-24-r0004-round-on-our-server.png",
+    "caption": "The r0004 build in a round on the project's own server, the evening of the 24th: one of the two copies, both driven by the harness, five and a half minutes left on the clock. The round ran out that clock without a shot."
+   }
+  },
+  {
+   "id": "2026-09-24-a-sprint-in-the-cloud-and-names-for-the-code",
+   "date": "2026-09-24",
+   "title": "A sprint in the cloud, and names for the code",
+   "era": "2026-09-23 .. 2026-09-25 - A second edition, and names for the code",
+   "hook": "The program is built from about 14,900 functions the original makers left nameless. In one evening, 1,771 of them got their real names back, each with its reason written down.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "41a6a169",
+     "sha": "41a6a16964596205e7aa9ab4bce7dc9f7993b67d",
+     "date": "2026-09-24",
+     "subject": "docs: R263 -- the naming programme is Sprint 12, \"the readable image\"; the peer's symbol measurement scripts kept under tools_py/research/symbols"
+    },
+    {
+     "kind": "commit",
+     "ref": "6c35ed13",
+     "sha": "6c35ed138c29a4090a7a1cb6ce10fc9321954234",
+     "date": "2026-09-24",
+     "subject": "docs(sprint-12): the spec and the plan for \"the readable image\" -- every proven name into the generated code in Class_Method form with a provenance sidecar, the vtable/BinDiff/ccc/toml levers as proposals files under rules in code, proofs batched to the local machine; research/43's 81.1 % match rate marked unreproducible (S12-R5: 285 uncommitted seeds)"
+    },
+    {
+     "kind": "commit",
+     "ref": "6c96ef8f",
+     "sha": "6c96ef8f209ea57905c6198a31b626ea4a174d43",
+     "date": "2026-09-24",
+     "subject": "feat(names): the provenance sidecar (R261, S12-R7, S12-R13) -- recomp/socom2_names.csv holds every non-placeholder name with its pass, score, evidence, source and date; name_provenance.py reads, writes and audits it against the function map (a rename is a row on a placeholder csv name; a non-placeholder csv name must have its row; no orphan); carry_names carries the sidecar to r0004 and refuses placeholders by the anchored predicate instead of an 8-hex run (which dropped a readable name and let caseD_ labels travel); the 69 Ghidra syscall stubs backfilled; Sprint 12 Task 2"
+    },
+    {
+     "kind": "commit",
+     "ref": "5cde14d5",
+     "sha": "5cde14d5755b0c9c2bb6f7d8ce08da4d8db0b0f2",
+     "date": "2026-09-24",
+     "subject": "feat(names): the readable-name renderer (Sprint 12 Task 1, research/47 R1-R12, S12-R14, S12-R19) -- Metrowerks mangled names to Class_Method: thunks, the split, class paths, operators, sinit_, leading underscores stripped where the live sanitiser would rewrite them, overloads by argument list else a six-hex hash, one-name-several-addresses by the demo's own multiplicity, 87 characters, placeholders never rendered; the live sanitiser replicated in Python as the legality bar; proof: 0 collisions and 0 sanitiser changes over the names that will coexist and over the demo's 9,703"
+    },
+    {
+     "kind": "commit",
+     "ref": "9381e3c6",
+     "sha": "9381e3c6cf92610029c431fe1abb15cc62c6cb2c",
+     "date": "2026-09-24",
+     "subject": "feat(names): the recompiler runs in the cloud (Sprint 12 Task 3a) -- ps2_recomp builds on Linux unchanged and the baseline recomp reproduces the documented output (14,882 files, 7,958 FUN_, 6,750 sub_, 171 named, unhandled=114399, unmapped=0, byte-identical twice); tools_py/recomp_census.py censuses and diffs two runs (identifiers, extents from the // Address line, stubs, unmapped/unhandled addresses) with an S12-R11 verdict line; the holds file recomp/socom2_name_holds.csv carries the three pairs the body reads settled (row 478, setD3_CHCR, sceCdDiskReady: S12-R9, S12-R13, S12-R17)"
+    },
+    {
+     "kind": "commit",
+     "ref": "cd2fbfc7",
+     "sha": "cd2fbfc714491cd310a130683345e0b966607733",
+     "date": "2026-09-24",
+     "subject": "feat(names): the applier, and the first 1,491 names applied to the sidecar (Sprint 12 Task 3, Goal 1; R257, R261, S12-R13, S12-R18, S12-R21) -- tools_py/apply_names.py is the only writer of recomp/socom2_names.csv: it reads every lever's proposals file, holds the (address, name) pairs the holds file names, refuses a contradiction between levers, defers a loose row until a strict row of another lever agrees, renders the surviving mangled names through readable_names, re-audits before writing, and writes nothing on a finding. Applied: 1,491 of 1,975 proposed addresses (476 Task 7, 6 positional, 199 vtable-slot, 214 string-set, 188 offset-multiset, 43 prefix+offsets, 124 ui-binding, 83 ui-binding-derived, 235 callgraph; 90 loose rows promoted by a second lever; 3 held; 0 refused; 0 contradictions); carry_names carries sidecar renames to r0004 through match.json (1,362 of them); both audits 0 findings; the cloud recomp of the renamed tree renames exactly 1,491 files with 0 extents changed, 0 functions dropped, unhandled and unmapped unchanged (S12-R11 OK). The leak check's one allow line: the Mangled column's template argument lists and @unnamed@ markers are not secrets"
+    },
+    {
+     "kind": "commit",
+     "ref": "fee229d7",
+     "sha": "fee229d7e05051a3a4b7bada92e2af9ab33e4f7d",
+     "date": "2026-09-24",
+     "subject": "feat(names): the sidecar at 1,840 rows / 1,771 readable names (Sprint 12 Tasks 6 and 8 applied through the applier; S12-R24) -- toml-stub 274 and prefix+bindiff 21 applied, 106 loose rows promoted by a second lever; the applier now un-applies a row the holds file names, treats a socom2_-prefixed spelling as an alias, and the agreement test compares through the same key; three body reads: initEzNetCtl stands at 0x001e89e8 (BinDiff picked its identical eznetcnf twin), 0x00183024 is the split tail of __unexpected (held; the toml's 0x00182fc0 applies), the entry row keeps entry (_start held); r0004 sidecar 1,705 rows; both audits 0 findings; the cloud recomp renames 1,771 files with 0 extents changed and unhandled/unmapped unchanged (S12-R11 OK)"
+    },
+    {
+     "kind": "path",
+     "ref": "recomp/socom2_names.csv"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/superpowers/plans/2026-09-24-sprint-12.md"
+    },
+    {
+     "kind": "gate",
+     "ref": "s12_names_gate",
+     "path": "logs/parity/gate/s12_names_gate"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-25-sprint-11-closes-and-the-borrowed-fixes-stay",
+   "date": "2026-09-25",
+   "title": "Sprint 11 closes, and the borrowed fixes stay",
+   "era": "2026-09-23 .. 2026-09-25 - A second edition, and names for the code",
+   "hook": "Ten fixes from the upstream recompiler project, each tried alone against the gate and then all together, and all ten kept. Then the sprint closed and went to the main branch as version 0.11.0.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "6be03dac",
+     "sha": "6be03dac84cb28070df63023d5bcb41b042d4307",
+     "date": "2026-09-25",
+     "subject": "docs: research/42's verdict column -- all ten upstream picks are KEEP (Task 6 Step 3)"
+    },
+    {
+     "kind": "commit",
+     "ref": "3bb866f4",
+     "sha": "3bb866f4d8a0f162724c3f7b0f702b9211784af8",
+     "date": "2026-09-25",
+     "subject": "Merge branch 'agent/cherry' into sprint-11"
+    },
+    {
+     "kind": "commit",
+     "ref": "a8329c58",
+     "sha": "a8329c58a96e6ba21ba4d56136b7a619cad2b4de",
+     "date": "2026-09-25",
+     "subject": "tests: the twelve cases that reached launch_revision without an image now state their revision"
+    },
+    {
+     "kind": "commit",
+     "ref": "fccf3b5d",
+     "sha": "fccf3b5d1949f095435254a0c7218c9682195626",
+     "date": "2026-09-25",
+     "subject": "gate: --accept-pins must not drop a pin while it accepts another"
+    },
+    {
+     "kind": "commit",
+     "ref": "425bae9d",
+     "sha": "425bae9d21c993d7e11b2ec67fa1ad004389bc46",
+     "date": "2026-09-25",
+     "subject": "docs: Sprint 11 CLOSED -- the outcome table, the carry, the rulings ledger R245-R263, the two close reviews' record, three issues opened"
+    },
+    {
+     "kind": "commit",
+     "ref": "f142b513",
+     "sha": "f142b513359564fe4158ac8cc18988f6db6ba154",
+     "date": "2026-09-25",
+     "subject": "docs: the close proof recorded -- chain 22 on the close commit, gate s11_close_gate 3/3, CI green"
+    },
+    {
+     "kind": "commit",
+     "ref": "173608af",
+     "sha": "173608af36a648fc5163a90699d56b198aae6d73",
+     "date": "2026-09-25",
+     "subject": "Merge pull request #49 from Scotho/sprint-11"
+    },
+    {
+     "kind": "gate",
+     "ref": "s11_picks_keep_gate",
+     "path": "logs/parity/gate/s11_picks_keep_gate"
+    },
+    {
+     "kind": "gate",
+     "ref": "s11_close_gate",
+     "path": "logs/parity/gate/s11_close_gate"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/42-upstream-cherry-picks.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/CURRENT_SPRINT.md"
+    }
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-25-the-sprint-11-close-frame.png",
+    "caption": "The last frame of the close gate's mission stage, on the executable that went to main as 0.11.0: the first mission's team-command help card over autumn trees. Every close ends on a frame like this one; the gate scores it, and nobody usually looks."
+   }
+  },
+  {
+   "id": "2026-09-25-the-names-come-home-and-both-editions-still-pass",
+   "date": "2026-09-25",
+   "title": "The names come home, and both editions still pass",
+   "era": "2026-09-23 .. 2026-09-25 - A second edition, and names for the code",
+   "hook": "What the cloud claimed, the machine with the disc proved: the renamed program rebuilt, played and passed the gate, on the disc's edition and on r0004.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "83e9696c",
+     "sha": "83e9696c43316311a5d97cc7368cecb4e29aa369",
+     "date": "2026-09-25",
+     "subject": "docs(sprint-12): the local proof is green -- Task 3 Step 4's RESULT on cb56fc8 (recomp 14,882 files, 1,840 display names loaded, 1,771 renamed with 0 extents moved, S12-R11 OK; runtime from scratch, exe 804dd172...; build.sh test exit 0; the r0001 gate s12_names_gate 3/3 with PINS MATCH from the main tree on the worktree's exe); Task 3 DONE, acceptance bar item 1 met, the Outcome's pending paragraph superseded; the local controller's log line"
+    },
+    {
+     "kind": "commit",
+     "ref": "3e5b5b78",
+     "sha": "3e5b5b78daf8a010d18720c2c52103282b87cd38",
+     "date": "2026-09-25",
+     "subject": "docs(sprint-12): the r0004 leg of the proof is green -- s12_names_r0004_gate 3/3 with PINS MATCH on the r0004 runtime built with its own 1,705-name sidecar (Task 3 Step 4 item 5); the carry loses the leg, HUMAN_TASKS' window item is done, KNOWN's section-1 row and STATUS's entry say both revisions; two worktree traps recorded in the row"
+    },
+    {
+     "kind": "commit",
+     "ref": "7588fead",
+     "sha": "7588fead19102cb80c02eff766b9bfbcd05997e5",
+     "date": "2026-09-25",
+     "subject": "parity: the r0004 pin standard's env restored to aea19660's value -- the rebuild proof's agent shell carried a stray PS2X_AUDIO_VOLUME=0 and --accept-pins wrote it into the standard (issue #45's class, second instance, recorded in KNOWN section 4); the Sprint 12 r0004 gate measured the original value and was refused against the stray one"
+    },
+    {
+     "kind": "commit",
+     "ref": "32c06a0c",
+     "sha": "32c06a0c5f21192ef88081720ad5a1a33c827764",
+     "date": "2026-09-25",
+     "subject": "docs: Sprint 12 CLOSED -- the close's two reviews applied (DOC_MAINTENANCE 5 and 7: 45 rows across thirteen documents, the sprint file's header for two closed sprints and no open one, the Sprint 12 CLOSED block, KNOWN's new section-1 row, section-4 lesson and section-4 hazard with issue #48, HUMAN_TASKS' owner list, STATUS's entry and its Next line made a pointer, DEVELOPING's counts on the renamed tree C++ 892 / Python 2795, the milestone closed, four issues commented); R264 the S12-R names stand; the counter to R269 for the audit's R265-R268; the story timeline regenerated after this close's STORY edit"
+    },
+    {
+     "kind": "commit",
+     "ref": "74fe2a9b",
+     "sha": "74fe2a9b91ec7e28013fe468cc5662b2c21216fd",
+     "date": "2026-09-25",
+     "subject": "merge: Sprint 12 to main -- the readable image: 1,771 names with provenance from one sidecar, proven on both revisions; v0.12.0"
+    },
+    {
+     "kind": "gate",
+     "ref": "s12_names_gate",
+     "path": "logs/parity/gate/s12_names_gate"
+    },
+    {
+     "kind": "gate",
+     "ref": "s12_names_r0004_gate",
+     "path": "logs/parity/gate/s12_names_r0004_gate"
+    },
+    {
+     "kind": "path",
+     "ref": "recomp/socom2_names_r0004.csv"
+    }
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-25-the-renamed-r0004-menu.png",
+    "caption": "The renamed r0004 build's main menu during its gate run, the morning of the 25th. The bottom line is the game's own build stamp: SOCOM 2 r0004, built 3 November 2004, thirteen months after the disc's edition."
+   }
+  },
+  {
+   "id": "2026-09-25-the-client-stops-taking-orders-from-the-server",
+   "date": "2026-09-25",
+   "title": "The client stops taking orders from the server",
+   "era": "2026-09-23 .. 2026-09-25 - A second edition, and names for the code",
+   "hook": "A game server can send the game on your machine a message that writes into its memory. Ours now refuses that message, every time, and both editions still pass the gate.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "6b30e42e",
+     "sha": "6b30e42ecb99851859869b5a7c0cd1010a3438a6",
+     "date": "2026-09-25",
+     "subject": "fix(net): a server-to-client record that writes game memory is refused on the client, every time (Sprint 13 U6)"
+    },
+    {
+     "kind": "commit",
+     "ref": "8df7c036",
+     "sha": "8df7c036bfa964c1ea199bb7d2785c284847fad4",
+     "date": "2026-09-25",
+     "subject": "fix(net): a server-to-client record that writes game memory, and one that reads it back, are refused on the client, every time (Sprint 13 U6)"
+    },
+    {
+     "kind": "commit",
+     "ref": "4587afae",
+     "sha": "4587afae9888d713899c6ce1d832dfbe0340f2f7",
+     "date": "2026-09-25",
+     "subject": "docs(security): the client refuses a server record that writes or reads its game memory -- the KNOWN row and the SECURITY bullet, without mechanics (Sprint 13 U6 Step 4)"
+    },
+    {
+     "kind": "commit",
+     "ref": "4eb07b45",
+     "sha": "4eb07b453e8bf0064d0ed2b8b99552094440fa26",
+     "date": "2026-09-25",
+     "subject": "fix(fileio): a translated PS2 path cannot leave its root (.. and drive letters refused, symlinks resolved and checked) -- upstream #239's class, with tests (Sprint 13 U2)"
+    },
+    {
+     "kind": "commit",
+     "ref": "eda61d3a",
+     "sha": "eda61d3acaf827b7b5a51e085782da83f6f46332",
+     "date": "2026-09-25",
+     "subject": "fix(server,launcher): no private address as a tracked default -- required values or RFC 5737 examples; a test that greps the tree (Sprint 13 Task S6)"
+    },
+    {
+     "kind": "gate",
+     "ref": "s13_u6_gate",
+     "path": "logs/parity/gate/s13_u6_gate"
+    },
+    {
+     "kind": "gate",
+     "ref": "s13_proof_gate",
+     "path": "logs/parity/gate/s13_proof_gate"
+    },
+    {
+     "kind": "gate",
+     "ref": "s13_proof_gate_r0004",
+     "path": "logs/parity/gate/s13_proof_gate_r0004"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/audits/2026-09-25-project-audit.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/KNOWN.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-25-the-debts-paid-in-one-day",
+   "date": "2026-09-25",
+   "title": "The debts, paid in one day",
+   "era": "2026-09-23 .. 2026-09-25 - A second edition, and names for the code",
+   "hook": "The saved password was never lost. A nightly match launched itself, first time, through a queue that did not exist that morning. And every check now prints how fast the mission ran.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "ae84b1c6",
+     "sha": "ae84b1c6904634119db663070dee8881a6783a03",
+     "date": "2026-09-25",
+     "subject": "docs(sprint-file): the Sprint 9-11 record archived verbatim; the live file keeps the header, the two CLOSED blocks, the backlog and both ledgers"
+    },
+    {
+     "kind": "commit",
+     "ref": "4adbf2bc",
+     "sha": "4adbf2bccb6c8b606b33efaa986453c88421b13b",
+     "date": "2026-09-25",
+     "subject": "docs(record): HUMAN_TASKS archived whole, every old item given a disposition, its citations re-pointed (Sprint 13 Task R4, 1 of 2)"
+    },
+    {
+     "kind": "commit",
+     "ref": "33fa5940",
+     "sha": "33fa5940958018e78a39fd1da32675499b27fc8d",
+     "date": "2026-09-25",
+     "subject": "Merge agent/s13-r7 (Sprint 13 R7: one home for the carry -- issues backlog/carry/milestone/tally/labels, docs/BACKLOG.md generated from the stack plus the ruled-out list) into sprint-13"
+    },
+    {
+     "kind": "commit",
+     "ref": "79aad10c",
+     "sha": "79aad10ca3345e4046e345e4db27b665a1b71429",
+     "date": "2026-09-25",
+     "subject": "gate(title): the verdict is positional -- every menu-window capture s00..s18 must score >= 90; s19..s22 are the idle attract sequence, not lost menus (issue #30, research/64)"
+    },
+    {
+     "kind": "commit",
+     "ref": "413439d3",
+     "sha": "413439d30bba18d2e36e8cdfa73c186f188f8aa9",
+     "date": "2026-09-25",
+     "subject": "Merge agent/s13-v3 (Sprint 13 V3, #31: the premise was fixed on 2026-09-16 by 545b85a1 and never recorded; readGsImage no longer scans past the load packet into the caller's stack; two tests; 940/940; review PASS, merge as is; the gate and one loading-screen capture owed) into sprint-13"
+    },
+    {
+     "kind": "commit",
+     "ref": "65431302",
+     "sha": "6543130273beaf15409229a59379efda438268ce",
+     "date": "2026-09-25",
+     "subject": "parity(driver): the saved password was read off the CONNECTING screen, not lost; read the relaunch form as it arrives (#27) (Sprint 13 Task V6)"
+    },
+    {
+     "kind": "commit",
+     "ref": "6ff8229f",
+     "sha": "6ff8229fc161da5c79de719d953fb913cd55413c",
+     "date": "2026-09-25",
+     "subject": "Merge agent/s13-v6 (Sprint 13 V6: #27 was the login driver pressing before reading the relaunch form, not a lost password -- the form is read as it arrives, a clean-exit step, the kill logged; review PASS on the finding, findings fixed; the three confirming launches owed) into sprint-13"
+    },
+    {
+     "kind": "commit",
+     "ref": "5565f2ca",
+     "sha": "5565f2ca47ac32a3099b8ced4e9ab7a7a578ffe6",
+     "date": "2026-09-25",
+     "subject": "Merge agent/s13-v8 (Sprint 13 V8+S2: the launcher's wording defects (stranger rows 9-15, F53) with tests; a server name that does not resolve is a LAST RUN notice (S13-R9); review PASS WITH FINDINGS then the layout fixed and walked at both sizes) into sprint-13"
+    },
+    {
+     "kind": "commit",
+     "ref": "49d6fba2",
+     "sha": "49d6fba288ea0997b41a9fc8e5308d8157743026",
+     "date": "2026-09-25",
+     "subject": "Merge agent/s13-h2 (Sprint 13 H2: the lock's ticket queue (#36), --wait in minutes (#35), run_detached --wait, ladder_job waits for the lock (#37), the quiet marker at the main tree, orphaned waiters leave the queue, the waiter's own blob in its lines; two review rounds; the slow suite green on 36236f94 and stamped) into sprint-13"
+    },
+    {
+     "kind": "commit",
+     "ref": "ef4b17fc",
+     "sha": "ef4b17fc3dad3a649a238eedc088f4a1ea56736f",
+     "date": "2026-09-25",
+     "subject": "docs: the ladder ran through the queue (docs/LADDER.md re-rendered); H2 done; #35, #36, #37 closed on the evening's hand-offs and the first-time ladder launch"
+    },
+    {
+     "kind": "commit",
+     "ref": "318fbd60",
+     "sha": "318fbd6084176e4de02eb9d2d2d7346425e62a4d",
+     "date": "2026-09-25",
+     "subject": "parity(gate): the mission stage's FRAME line and an informational frame-time pin (S13-R3); the frame_time reader; README's cell dated (Sprint 13 Task V4)"
+    },
+    {
+     "kind": "commit",
+     "ref": "c7fe15c3",
+     "sha": "c7fe15c37aff9d05465bfec0f41ca32fef407572",
+     "date": "2026-09-25",
+     "subject": "docs(sprint-13): V4 done -- three gates on one exe spread 30 % (host not quiet); the frame-time pin stays informational, #59 carries with the measured reason (S13-R13)"
+    },
+    {
+     "kind": "commit",
+     "ref": "38761e2b",
+     "sha": "38761e2bcfe6947b77d52ea82d346c95822c55e2",
+     "date": "2026-09-25",
+     "subject": "docs(sprint-13): the paused-peer round -- the game ran on through a 28 s peer pause and no recv parked; #34 keeps its console-peer bar"
+    },
+    {
+     "kind": "commit",
+     "ref": "b43e5325",
+     "sha": "b43e5325cab80fcde33609708077d542c26dae31",
+     "date": "2026-09-25",
+     "subject": "docs(sprint-13): the Log at 09:30Z -- CI green on the merged tree, V5 Step 1's clean capture (DEVICE 6 / 16 min, 0 late callbacks), U1 merged, R2+S1 in review, C9 added"
+    },
+    {
+     "kind": "run",
+     "ref": "v6_20260925_160634",
+     "path": "logs/parity/v6_20260925_160634"
+    },
+    {
+     "kind": "run",
+     "ref": "ladder_20260925_194510",
+     "path": "logs/parity/ladder_20260925_194510"
+    },
+    {
+     "kind": "gate",
+     "ref": "s13_v4_gate3",
+     "path": "logs/parity/gate/s13_v4_gate3"
+    },
+    {
+     "kind": "run",
+     "ref": "s13_v7_paused_peer_20260925_193109",
+     "path": "logs/parity/s13_v7_paused_peer_20260925_193109"
+    },
+    {
+     "kind": "run",
+     "ref": "audio_out_20260925_074147",
+     "path": "logs/parity/audio_out_20260925_074147"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/LADDER.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/BACKLOG.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/HUMAN_TASKS.md"
+    }
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-25-the-relaunch-form-with-the-password-kept.png",
+    "caption": "The relaunch, with nothing typed: the card had kept the name, the password and the SAVE PASSWORD answer, and the cursor was already on CONNECT. For two days the driver had been pressing that button and then reading the password off the screen after it."
+   }
   }
  ]
 }

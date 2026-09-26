@@ -20,26 +20,34 @@ namespace ui
         text(ctx, "The game's disc image is yours and stays yours: nothing from it ships here.",
              Vec2{x, y}, 17.0f, theme::text);
 
-        y += 40.0f;
+        // Sprint 13 V8 review: the credits grew by a row, and the flow ran under OPEN LOGS (b.bottom() - 48); the
+        // gaps and the credit pitch are tightened so the last line ends above b.bottom() - 56 at the design size.
+        y += 30.0f;
         text(ctx, "BUILT FROM", Vec2{x, y}, 15.0f, theme::dim, Face::Bold);
         y += 22.0f;
-        // Two columns on the same grid: what it is on the left, the licence it carries on the right.
+        // Two columns on the same grid: what it is on the left, the licence it carries on the right, as the
+        // SPDX id THIRD_PARTY_NOTICES.md gives it. Sprint 13 V8 (stranger audit row 14): this credited SDL2, which
+        // does not ship, and left out Dear ImGui, libjxl, libwebp and Brotli, which do. One row per licence;
+        // test_third_party_notices.py holds these rows and the notices' "yes" rows to each other (winpthreads
+        // is "when the closure needs it", and nothing imports it today: scripts/make_portable.sh).
         static const char *credits[][2] = {
-            {"the PS2Recomp fork", "GPL-3.0"},
-            {"raylib (window, input, audio)", "zlib"},
-            {"ffmpeg (video)", "LGPL-2.1-or-later"},
-            {"SDL2", "zlib"},
-            {"Saira Stencil One, Rajdhani (type)", "SIL Open Font License 1.1"},
+            {"the PS2Recomp fork", "GPL-3.0-only"},
+            {"raylib (window, input, audio), rlImGui, zlib", "Zlib"},
+            {"FFmpeg (video)", "LGPL-3.0-or-later"},
+            {"libjxl, libwebp (via FFmpeg)", "BSD-3-Clause"},
+            {"Dear ImGui, Brotli", "MIT"},
+            {"libc++, libunwind (LLVM)", "Apache-2.0 WITH LLVM-exception"},
+            {"Saira Stencil One, Rajdhani (type)", "OFL-1.1"},
         };
         for (const auto &line : credits)
         {
             text(ctx, line[0], Vec2{x, y}, 16.0f, theme::text);
             text(ctx, line[1], Vec2{x + 300.0f, y}, 16.0f, theme::dim);
-            y += 22.0f;
+            y += 20.0f;
         }
         text(ctx, "Every licence text ships in LICENSES/ next to the game.", Vec2{x, y}, 15.0f, theme::dim);
 
-        y += 36.0f;
+        y += 26.0f;
         text(ctx, "WHERE THINGS LIVE", Vec2{x, y}, 15.0f, theme::dim, Face::Bold);
         y += 24.0f;
         text(ctx, "config", Vec2{x, y}, 16.0f, theme::dim);

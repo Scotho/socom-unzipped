@@ -29,7 +29,10 @@ _socom_refusal() {
 }
 trap _socom_refusal EXIT
 . "$(dirname "$0")/env.sh"
+. "$(dirname "$0")/write_env.sh"    # write_env_ps2x: the PS2X_* record beside a capture (issue #38)
 socom_require_python mixed_match2_leg2
+# The DNS stub binds LAN_IP: it must be IPv4, and it has no default.
+socom_require_ipv4 LAN_IP mixed_match2_leg2 || exit 9
 OUT="${1:-logs/parity/mixed2_pcsx2_hosts}"
 PERSONA="${2:-socomp}"
 EXISTING="${3:-}"
@@ -58,7 +61,7 @@ fi
 eval "$_socom_mixed_peek"
 unset _socom_mixed_peek
 export PS2X_PEEK
-LAN="${LAN_IP:-192.168.2.10}"
+LAN="$LAN_IP"
 if ! netstat -an | grep -q "$LAN:53 "; then
   echo "mixed_match2_leg2: the DNS stub is not listening on $LAN:53" >&2
   echo "done 5" > "logs/${NAME}.done"; exit 5
@@ -76,6 +79,9 @@ if [ "$HOST_RC" -ne 0 ]; then
   "$PYTHON" -m tools_py.parity.pcsx2_ctl kill > /dev/null 2>&1
   echo "done $HOST_RC" > "logs/${NAME}.done"; exit $HOST_RC
 fi
+# Issue #38: the PS2X_* the launch is handed (env.sh's instruments and this script's own), beside its output,
+# the moment before it starts; the driver adds only per-instance plumbing (screenshot path, card dir) on top.
+write_env_ps2x "$OUT" "mixed_match2_leg2.sh (ours; the PCSX2 side has no PS2X_* knobs)"
 "$PYTHON" -m tools_py.parity.online_login_ours --existing --name socomc --join --hold 30 --play 4 --out "$OUT" --seconds 600 >> "logs/parity/drive_${NAME}.txt" 2>&1 &
 OURS_PID=$!
 # The host readies only once ours has joined and dismissed the notice (leg 2e: a host already READY launched the

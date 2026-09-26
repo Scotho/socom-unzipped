@@ -5,6 +5,8 @@ Area: `tools_py/` (every module, `tools_py/tests/`, `tools_py/research/`), `scri
 (sprint-12, with another session's uncommitted doc edits in the working copy — cited lines are the working copy's
 unless marked `HEAD:`). Nothing was built, run or tested; the suite numbers below are read from logs and CI.
 
+> Added 2026-09-25 (Sprint 13 Task R4): `docs/HUMAN_TASKS.md` became one table that day. Every `HUMAN_TASKS.md` line cited below is the old file, now `docs/archive/HUMAN_TASKS-to-2026-09-25.md` -- its banner gives the line offset, the quoted text finds each line, and its table gives each item's disposition.
+
 Method notes. The inventory (Appendix A) is `ast.get_docstring` of every tracked `tools_py/**/*.py` except the tests,
 and `git grep -l -w <module name>` over `tools_py scripts build.sh docs .github tests CMakeLists.txt server`, split
 into code / test / doc hits. A "code refs" count for a module with a common-word name (`compare`, `keys`, `pins`,

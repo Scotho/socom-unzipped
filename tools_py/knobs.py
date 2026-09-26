@@ -46,7 +46,20 @@ TEST_FIXTURE_PREFIXES = ("PS2X_BARE_TEST_",)
 # Sprint 9 Goal 3 Task 4 migrated every raw getenv("PS2X_..."); a file that grows one fails test_knobs_registry.
 RAW_GETENV_PENDING = set()
 
-_ROW = re.compile(r'^\s*X\("(PS2X_[A-Z0-9_]+)",\s*(\w+),\s*(\w+),\s*"([^"]*)",\s*"([^"]*)"\)', re.M)
+# A row may end with its read sites, `/* read: <file>:<function> [...] */` (Sprint 13 C9): the file relative to
+# third_party/ps2recomp, the function the knob's name is read in. Required on a Shipping or Switch row.
+_ROW = re.compile(r'^\s*X\("(PS2X_[A-Z0-9_]+)",\s*(\w+),\s*(\w+),\s*"([^"]*)",\s*"([^"]*)"\)'
+                  r'(?:[ \t]*/\*\s*read:\s*([^*]*?)\s*\*/)?', re.M)
+# A read: a call whose first argument is the name (ps2x::knob, knobOn, the file-local helpers that wrap knob --
+# envFlag, traceSkip ... -- and knobs.cpp's one getenv of PS2X_DEV). "PS2X_X=" (an environment entry the launcher
+# builds) and a name inside an expression (a log line's label) are not calls with the name first.
+_READ_CALL = re.compile(r'\b[A-Za-z_]\w*\s*\(\s*"(PS2X_[A-Z0-9_]+)"\s*[,)]')
+# The classes whose rows must cite their read sites, and the mark a meaning carries when the code alone could not
+# settle it (the test allows it; the report names the knob and why).
+CITED_CLASSES = ("Shipping", "Switch")
+UNVERIFIED = "(unverified)"
+# A log line a meaning names, e.g. "[gs-gl stats]": the tag must be printed somewhere in the shipped trees.
+_LOG_TAG = re.compile(r'\[([a-z][a-z0-9 _-]*)\]')
 _LITERAL = re.compile(r'"(PS2X_[A-Z0-9_]+)(?=["=])')
 _RAW_GETENV = re.compile(r'getenv\s*\(\s*"PS2X_')
 _HELPER_GETENV = re.compile(r'getenv\s*\(\s*(?!["\s])')   # getenv(name), getenv(env), getenv(br::kApiBaseEnv) ...
@@ -60,11 +73,21 @@ _EARLY = re.compile(r'^(?:static\b.*|\s*(?:static\s+)?(?:const\s+)?[\w:<>]+\s+g_
 
 
 def table(path=HEADER):
-    """[{name, cls, kind, default, meaning}, ...] in the header's order."""
+    """[{name, cls, kind, default, meaning, read: [(file, function), ...]}, ...] in the header's order."""
     with open(path, "r", encoding="utf-8") as fh:
         text = fh.read()
-    return [{"name": m.group(1), "cls": m.group(2), "kind": m.group(3), "default": m.group(4), "meaning": m.group(5)}
+    return [{"name": m.group(1), "cls": m.group(2), "kind": m.group(3), "default": m.group(4), "meaning": m.group(5),
+             "read": _citations(m.group(6))}
             for m in _ROW.finditer(text)]
+
+
+def _citations(text):
+    """'a.cpp:f b.h:g' -> [('a.cpp', 'f'), ('b.h', 'g')]; None or '' -> []."""
+    out = []
+    for token in (text or "").split():
+        path, _, function = token.rpartition(":")
+        out.append((path, function) if path else (token, ""))
+    return out
 
 
 def _files(root, trees, suffixes=(".cpp", ".h")):
@@ -173,6 +196,201 @@ def accessor_mismatches(root=ROOT, rows=None):
     return out
 
 
+_PREPROCESSOR = re.compile(r'^[ \t]*#(?:[^\n]*\\\n)*[^\n]*', re.M)
+
+
+def _code_only(text):
+    """The text with comments and string/char literals blanked (newlines kept), so every offset still lines up and
+    a brace inside a string or comment cannot move the brace count. Preprocessor lines are blanked too: an
+    `#if defined(X)` above a block is not the block's function."""
+    text = _PREPROCESSOR.sub(lambda m: re.sub(r'[^\n]', " ", m.group()), text)
+    out = list(text)
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        if c == "/" and i + 1 < n and text[i + 1] == "/":
+            while i < n and text[i] != "\n":
+                out[i] = " "
+                i += 1
+        elif c == "/" and i + 1 < n and text[i + 1] == "*":
+            end = text.find("*/", i + 2)
+            end = n if end < 0 else end + 2
+            for k in range(i, end):
+                if text[k] != "\n":
+                    out[k] = " "
+            i = end
+        elif c == '"' and i > 0 and text[i - 1] == "R" and (i < 2 or not (text[i - 2].isalnum() or text[i - 2] == "_")
+                                                             or text[i - 2] in "uUL8"):
+            # A raw string literal, R"TAG(...)TAG": no escapes, may span lines, may hold quotes and braces.
+            paren = text.find("(", i + 1)
+            close = text.find(")" + text[i + 1:paren] + '"', paren) if paren >= 0 else -1
+            end = n if close < 0 else close + (paren - i) + 1        # one past the closing quote
+            for j in range(i + 1, min(end, n)):
+                if text[j] != "\n":
+                    out[j] = " "
+            i = end
+        elif c in "\"'":
+            k = i + 1
+            while k < n and text[k] != c and text[k] != "\n":
+                k += 2 if text[k] == "\\" else 1
+            for j in range(i + 1, min(k, n)):
+                out[j] = " "
+            i = k + 1
+        else:
+            i += 1
+    return "".join(out)
+
+
+_CONTROL = {"if", "for", "while", "switch", "catch", "return", "sizeof", "decltype", "alignof", "static_assert"}
+_SCOPE = re.compile(r'\b(namespace|struct|class|enum|union|extern)\b')
+_TAIL = re.compile(r'\)\s*(?:(?:const|noexcept|override|final|mutable|volatile)\b\s*|->\s*[\w:<>*&\s]+?\s*)*$')
+
+
+def _function_of(code, brace):
+    """The name of the function whose body opens at `brace`, or None (a lambda, a control block, a scope)."""
+    start = max(code.rfind(";", 0, brace), code.rfind("{", 0, brace), code.rfind("}", 0, brace)) + 1
+    head = code[start:brace].strip()
+    if not head or _SCOPE.search(head.split("(")[0]):
+        return None
+    constructor = _constructor_head(head)
+    if constructor:
+        return constructor[0]
+    tail = _TAIL.search(head)
+    if not tail:
+        return None
+    depth, k = 0, tail.start()
+    while k >= 0:
+        depth += {")": 1, "(": -1}.get(head[k], 0)
+        if depth == 0:
+            break
+        k -= 1
+    before = head[:max(k, 0)].rstrip()
+    if before.endswith("]"):
+        return None
+    m = re.search(r'([~A-Za-z_][\w:~]*)$', before)
+    if not m:
+        return None
+    name = m.group(1).split("::")[-1]
+    return None if name in _CONTROL else name
+
+
+def _constructor_head(head):
+    """(name, index just past the parameter list) when `head` is `Name(params) [noexcept] : inits`, else None."""
+    m = re.match(r'\s*([~A-Za-z_][\w:~]*)\s*\(', head)
+    if not m or m.group(1).split("::")[-1] in _CONTROL:
+        return None
+    depth, k = 0, m.end() - 1
+    while k < len(head):
+        depth += {"(": 1, ")": -1}.get(head[k], 0)
+        if depth == 0:
+            break
+        k += 1
+    rest = head[k + 1:].lstrip()
+    if rest.startswith("noexcept"):
+        rest = rest[len("noexcept"):].lstrip()
+    if not rest.startswith(":") or rest.startswith("::"):
+        return None
+    return m.group(1).split("::")[-1], k + 1
+
+
+def _constructor_of(code, offset):
+    """The constructor whose member-initialiser list holds `offset` (`Foo::Foo() : m_x(knob("PS2X_X")) {`), or None.
+    Such a read sits before the body's brace, so the brace stack alone cannot name it. (An initialiser written with
+    braces, m_x{...}, ends the search early: the tree has none around a knob read.)"""
+    brace = code.find("{", offset)
+    if brace < 0 or any(c in code[offset:brace] for c in ";}"):
+        return None
+    start = max(code.rfind(";", 0, offset), code.rfind("{", 0, offset), code.rfind("}", 0, offset)) + 1
+    found = _constructor_head(code[start:brace])
+    if not found or start + found[1] > offset:
+        return None
+    return found[0]
+
+
+def read_sites(root=ROOT):
+    """{name: [(file relative to third_party/ps2recomp, line, enclosing function or None), ...]} for every read of
+    a PS2X_* name (_READ_CALL) in the shipped trees.
+
+    A read is ANY call whose first argument is the name as a string literal: ps2x::knob, knobOn, the file-local
+    wrappers (envFlag, traceSkip ...) and knobs.cpp's getenv("PS2X_DEV") -- and so would a setenv("PS2X_X", ...) or a
+    find("PS2X_X"), were the shipped trees to grow one. The function is the innermost enclosing named function
+    (lambdas and control blocks are looked through); a read in a constructor's member-initialiser list names the
+    constructor. None when neither applies (a namespace-scope initialiser)."""
+    found = {}
+    base = os.path.join(root, RECOMP)
+    for path in _files(root, SHIPPED_TREES):
+        if os.path.basename(path) == REGISTRY_FILE:
+            continue
+        with open(path, "r", encoding="latin-1") as fh:
+            text = fh.read()
+        if "PS2X_" not in text:
+            continue
+        code = _code_only(text)
+        stack = []
+        reads = [(m.start(), m.group(1)) for m in _READ_CALL.finditer(text)
+                 if code[m.start():m.start() + 1].strip()]          # the call itself is code, not a comment
+        if not reads:
+            continue
+        ri = 0
+        for pos, ch in enumerate(code):
+            while ri < len(reads) and reads[ri][0] <= pos:
+                offset, name = reads[ri]
+                function = _constructor_of(code, offset)
+                for brace in ([] if function else reversed(stack)):
+                    function = _function_of(code, brace)
+                    if function:
+                        break
+                rel = os.path.relpath(path, base).replace("\\", "/")
+                found.setdefault(name, []).append((rel, text.count("\n", 0, offset) + 1, function))
+                ri += 1
+            if ch == "{":
+                stack.append(pos)
+            elif ch == "}" and stack:
+                stack.pop()
+    return found
+
+
+def citation_problems(root=ROOT, rows=None):
+    """A Shipping or Switch row names where its knob is read; this holds the citation to the tree both ways."""
+    rows = table(os.path.join(root, os.path.relpath(HEADER, ROOT))) if rows is None else rows
+    sites = read_sites(root)
+    out = []
+    for r in rows:
+        if not r["read"]:
+            if r["cls"] in CITED_CLASSES:
+                out.append("%s is %s and its row cites no read site: end the row with /* read: <file>:<function> */"
+                           % (r["name"], r["cls"]))
+            continue
+        actual = sites.get(r["name"], [])
+        for path, function in r["read"]:
+            if not os.path.isfile(os.path.join(root, RECOMP, path)):
+                out.append("%s cites %s:%s and there is no such file under %s" % (r["name"], path, function, RECOMP))
+            elif not any(p == path and f == function for p, _, f in actual):
+                out.append("%s cites %s:%s and that function does not read it" % (r["name"], path, function))
+        for path, line, function in actual:
+            if (path, function) not in r["read"]:
+                out.append("%s is read at %s:%d in %s and its row does not cite it"
+                           % (r["name"], path, line, function or "no named function"))
+    return out
+
+
+def log_tag_problems(root=ROOT, rows=None):
+    """A meaning that names a log line ("[gs-gl stats]") names one the shipped source prints."""
+    rows = table(os.path.join(root, os.path.relpath(HEADER, ROOT))) if rows is None else rows
+    tags = {t for r in rows for t in _LOG_TAG.findall(r["meaning"])}
+    if not tags:
+        return []
+    seen = set()
+    for path in _files(root, SHIPPED_TREES):
+        if os.path.basename(path) == REGISTRY_FILE:
+            continue
+        with open(path, "r", encoding="latin-1") as fh:
+            text = fh.read()
+        seen.update(t for t in tags if "[" + t + "]" in text)
+    return ["%s's meaning names the log line [%s] and no shipped source prints it" % (r["name"], t)
+            for r in rows for t in _LOG_TAG.findall(r["meaning"]) if t not in seen]
+
+
 def problems(root=ROOT):
     """Every disagreement between the registry and the tree, as sentences. [] is the bar."""
     rows = table(os.path.join(root, os.path.relpath(HEADER, ROOT)))
@@ -209,6 +427,8 @@ def problems(root=ROOT):
         out.append("%s reads a knob while initialising a namespace-scope object, before main() has seen --dev: "
                    "make it a function with a function-local static" % site)
     out.extend(accessor_mismatches(root, rows))
+    out.extend(citation_problems(root, rows))
+    out.extend(log_tag_problems(root, rows))
     return out
 
 
@@ -239,17 +459,25 @@ def render(rows=None):
            "Generated by `python -m tools_py.knobs write` from "
            "`third_party/ps2recomp/ps2xShared/include/ps2x/knobs.h`. **Do not edit**: change the header and "
            "regenerate. `tools_py/tests/test_knobs_registry.py` fails when this file is stale, when the source reads "
-           "a `PS2X_*` name that has no row, and when a row is read by nothing.", "",
+           "a `PS2X_*` name that has no row, and when a row is read by nothing. A Shipping or Switch row names the "
+           "function that reads it (under `third_party/ps2recomp/`); `tools_py/tests/test_knob_read_sites.py` fails "
+           "when that function no longer reads the name or a read is not cited.", "",
            "%d names: %s." % (len(rows), ", ".join("%d %s" % (sum(1 for r in rows if r["cls"] == cls), cls)
                                                    for cls, _, _ in _CLASS_TITLES)), ""]
     for cls, title, blurb in _CLASS_TITLES:
         mine = [r for r in rows if r["cls"] == cls]
         if not mine:
             continue
-        out += ["## " + title, "", blurb, "", "| Name | Kind | Default | Meaning |", "|---|---|---|---|"]
+        cited = cls in CITED_CLASSES
+        out += ["## " + title, "", blurb, "",
+                "| Name | Kind | Default | Meaning |" + (" Read in |" if cited else ""),
+                "|---|---|---|---|" + ("---|" if cited else "")]
         for r in mine:
             default = "`%s`" % _cell(r["default"]) if r["default"] else "unset"
-            out.append("| `%s` | %s | %s | %s |" % (r["name"], r["kind"], default, _cell(r["meaning"])))
+            line = "| `%s` | %s | %s | %s |" % (r["name"], r["kind"], default, _cell(r["meaning"]))
+            if cited:
+                line += " %s |" % "<br>".join("`%s` `%s`" % (path, function) for path, function in r.get("read", []))
+            out.append(line)
         out.append("")
     out += ["## Harness-only names", "",
             "Used by the scripts and the Python harness; no C++ reads them: " +

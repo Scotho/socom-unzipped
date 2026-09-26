@@ -289,6 +289,56 @@ class Plan(Fixture):
         self.assertIn("applied 1", out)
 
 
+HAND = ("# recomp/names_proposals_hand_test.csv -- Pass=hand: the runtime's own names; evidence, no score.\n"
+        "Address,Current,Proposed,Mangled,Pass,Evidence\n"
+        "0x00200000,FUN_00200000,netbExOpen,netbExOpen,hand,socom2_addresses.h:170 the r0001 row netbExOpen\n"
+        "0x00200100,FUN_00200100,cull,cull,hand,socom2_addresses.h:144 the r0001 row cull\n")
+
+MATCH = ('{"matches": {"0x00200000": {"b": "0x00200400", "how": "exact", "name": "FUN_00200000", "tie": null},'
+         ' "0x00200100": {"b": "0x00200300", "how": "relinked-body", "name": "FUN_00200100", "tie": null}}}')
+
+
+class HandRows(Fixture):
+    """Sprint 13 Task N1: `Pass=hand` rows carry their evidence and no score; `--through` carries them onto
+    another revision's addresses through match.json, `exact` placements only."""
+
+    def test_a_hand_row_is_strict_with_no_score(self):
+        ps = an.read_proposals(self.put("names_proposals_hand_test.csv", HAND))
+        self.assertEqual([(p.address, p.mangled, p.pass_name, p.score, p.loose) for p in ps],
+                         [(0x200000, "netbExOpen", "hand", None, False), (0x200100, "cull", "hand", None, False)])
+
+    def test_a_hand_row_is_applied_with_an_empty_score(self):
+        code, out = self.run_cli(self.put("names_proposals_hand_test.csv", HAND))
+        self.assertEqual(code, 0, out)
+        row = npv.read(self.names)[0x200000]
+        self.assertEqual((row["Name"], row["Mangled"], row["Pass"], row["Score"], row["Evidence"]),
+                         ("netbExOpen", "netbExOpen", "hand", "",
+                          "hand: socom2_addresses.h:170 the r0001 row netbExOpen"))
+        self.assertIn("applied 2", out)
+
+    def test_a_hand_row_that_claims_a_score_is_an_error(self):
+        text = HAND.replace("Pass,Evidence", "Pass,Score,Evidence").replace("hand,soc", "hand,0.90,soc")
+        with self.assertRaises(ValueError):
+            an.read_proposals(self.put("names_proposals_hand_test.csv", text))
+
+    def test_through_carries_exact_placements_only(self):
+        csv4 = self.put("ghidra4.csv", CSV)
+        names4 = os.path.join(self.dir, "names4.csv")
+        npv.write(names4, [dict(GHIDRA_ROW)])
+        argv = [csv4, names4, self.put("names_proposals_hand_test.csv", HAND), "--date", "2026-09-25",
+                "--through", self.put("match.json", MATCH)]
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = an.main(argv)
+        self.assertEqual(code, 0, out.getvalue())
+        side = npv.read(names4)
+        self.assertEqual(sorted(side), [0x1A3720, 0x200400])
+        row = side[0x200400]
+        self.assertEqual((row["Name"], row["Pass"], row["Score"]), ("netbExOpen", "carried:hand", ""))
+        self.assertTrue(row["Evidence"].startswith("carried:hand: match.json exact from 0x00200000; "), row)
+        self.assertIn("NOT CARRIED 0x00200100 cull: match.json how=relinked-body", out.getvalue())
+
+
 class TrackedFiles(unittest.TestCase):
     def test_every_applied_row_carries_its_provenance(self):
         rows = npv.read_map(os.path.join(ROOT, "recomp/socom2_ghidra.csv"))
@@ -299,8 +349,21 @@ class TrackedFiles(unittest.TestCase):
                 continue
             with self.subTest(address="0x%08x" % a):
                 self.assertIsNone(is_legal(r["Name"]))
-                for col in ("Mangled", "Pass", "Score", "Evidence", "Source", "Date"):
+                cols = ("Mangled", "Pass", "Evidence", "Source", "Date")
+                if r["Pass"] not in an.HAND_PASSES:
+                    cols += ("Score",)
+                for col in cols:
                     self.assertTrue(r[col], col)
+
+    def test_a_hand_row_cites_the_runtime_and_claims_no_score(self):
+        # Sprint 13 Task N1: a hand name's evidence is a file:line of the runtime; a score would be invented.
+        for rel in ("recomp/socom2_names.csv", "recomp/socom2_names_r0004.csv"):
+            for a, r in npv.read(os.path.join(ROOT, rel)).items():
+                if r["Pass"] not in an.HAND_PASSES:
+                    continue
+                with self.subTest(file=rel, address="0x%08x" % a):
+                    self.assertEqual(r["Score"], "")
+                    self.assertRegex(r["Evidence"], r"\.(h|cpp):\d+")
 
 
 if __name__ == "__main__":

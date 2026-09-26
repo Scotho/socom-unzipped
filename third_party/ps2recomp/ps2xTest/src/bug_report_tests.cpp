@@ -6,6 +6,7 @@
 #include "launcher/bug_report.h"
 #include "launcher/launcher_config.h"
 
+#include <cctype>
 #include <string>
 #include <vector>
 
@@ -282,6 +283,21 @@ void register_bug_report_tests()
             br::Inputs noLog = inputs();
             noLog.logText.clear();
             t.IsTrue(has(br::previewLine(br::build(config(), f, noLog), f), "no log"), "a ticked box with no log on disk still says no log");
+        });
+
+        // Sprint 13 V8 (stranger audit row 15): the id the screenshots show must be one the launcher could show.
+        // The check is the launcher's own: parseReply keeps an id only when it passes report.ts's regex
+        // (lower-case hex), then upper-cases it for the screen -- so the sample, lower-cased and sent back
+        // through parseReply, must come out as itself.
+        tc.Run("the screenshots' sample reference id is one the launcher's own id check accepts", [](TestCase &t)
+        {
+            // As the site issues it: "BR-" and the date as they are, the six hex digits lower-case.
+            std::string lower = br::kSampleShownId;
+            for (size_t k = 12; k < lower.size(); ++k)
+                lower[k] = static_cast<char>(std::tolower(static_cast<unsigned char>(lower[k])));
+            const br::Reply r = br::parseReply(201, "{\"ok\":true,\"id\":\"" + lower + "\"}");
+            t.IsTrue(r.kind == br::Reply::Kind::Sent, "a 201 with the sample id is a receipt");
+            t.Equals(r.id, std::string(br::kSampleShownId), "the sample, as the site issues it, passes the id check and shows as itself");
         });
 
         tc.Run("parseReply: 201, 400, 413, 429, 500, no connection, garbage", [](TestCase &t)

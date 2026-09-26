@@ -1,12 +1,23 @@
 # Developing SOCOM Unzipped
 
-The developer reference that used to be the README: the repository layout, the build and test commands, the first hour on a fresh checkout, every runtime knob (`PS2X_*`) with its exact effect, the online harness flags, the loop lock, and the launcher internals. It is kept as written by the sprints that added each entry; the dates in it are when a behaviour landed. For orientation start at `docs/HANDOFF.md`; for what is proven and what is only believed, `docs/KNOWN.md`.
+The developer reference: the repository layout, a map of `tools_py/`, the build and test commands, the first hour on
+a fresh checkout, the runtime knobs (`PS2X_*`) that need more than their one line in `docs/KNOBS.md`, the online
+harness flags, the loop lock, and the launcher internals. **This file is class L** (`docs/DOC_MAINTENANCE.md` §3): it
+says what is true of the tree now. A date in parentheses is when a behaviour landed, not when the sentence was
+written; a number carries the date it was measured. It **owns the suite counts** — no other registered document
+states them. For orientation start at `docs/HANDOFF.md`; for what is proven and what is only believed, `docs/KNOWN.md`,
+which wins on any disagreement.
+
+> Superseded 2026-09-25 (Sprint 13 R2): this paragraph said the file was "kept as written by the sprints that added
+> each entry; the dates in it are when a behaviour landed" — a dated history in a class-L file, which the 2026-09-25
+> audit found six wrong facts in (its documents report, rows 3–8 and 67). It was rewritten as current truth; each
+> sentence that had been wrong is marked where it stood.
 
 ## How it works (one paragraph)
 The retail ELF is only a loader; the game is two Metrowerks overlays that the loader decrypts
-from `RUN/RAW/APACHE00.ZDB` with libdnas2. We recovered the plaintext overlays once
-(`tools_py/decrypt_apache.py`, Unicorn-driven), merged them with the loader into one ELF
-(`game/overlays/socom2_game.elf`), and statically recompile that ELF to C++ with a vendored fork
+from `RUN/RAW/APACHE00.ZDB` with libdnas2. The tooling recovers the plaintext overlays from the player's own disc
+(`tools_py/decrypt_apache.py`, Unicorn-driven), merges them with the loader into one ELF
+(`game/overlays/socom2_game.elf`), and statically recompiles that ELF to C++ with a vendored fork
 of PS2Recomp (`third_party/ps2recomp`, GPL-3.0). The fork's runtime provides the EE kernel,
 DMAC/VIF/GIF, a GS (an OpenGL backend with an integer up-scale is the default path; the CPU
 rasteriser is the test path), a VU1 interpreter and IOP services emulated at the SIF-RPC level.
@@ -17,23 +28,23 @@ online server is Horizon Private Server configured for SOCOM II under `server/`.
 ## Layout
 | Path | What |
 |---|---|
-| `build.sh`, `run.sh` | Build (`tools`, `recomp`, `runtime`, `test`, `all`) and run (`./run.sh <seconds>`) — Git Bash |
-| `recomp/` | Recompiler config (`socom2.toml`), Ghidra function map (`socom2_ghidra.csv`), forced entry points (`extra_functions.txt`), the readable names with their provenance (`socom2_names.csv`, `socom2_names_r0004.csv`; the holds `socom2_name_holds.csv`; the r0004 seeds `r0004_seeds.txt` — "Names in the generated code" below), generated C++ in `output/` (ignored) |
+| `build.sh`, `run.sh` | Build (`tools`, `recomp`, `runtime`, `release`, `test`, `all`; `--no-runner` builds without generated code) and run (`./run.sh <seconds>`) — Git Bash. Linux: `scripts/build_linux.sh` |
+| `recomp/` | Recompiler config (`socom2.toml`, hand-maintained; `socom2_r0004.toml` is derived from it by `build_revision.sh` step 3 and held to those bytes by `tools_py/tests/test_build_products.py`), Ghidra function map (`socom2_ghidra.csv`, a source the build never writes), forced entry points (`extra_functions.txt`), the readable names with their provenance (`socom2_names.csv`, `socom2_names_r0004.csv`; the holds `socom2_name_holds.csv`; the r0004 seeds `r0004_seeds.txt` — "Names in the generated code" below), generated C++ in `output/` and the build's products under `build/` (both ignored; the fixed function map is `build/socom2_ghidra.fixed.csv`) |
 | `third_party/ps2recomp/` | Vendored PS2Recomp fork (our changes are committed in place; see `git log -- third_party`) |
-| `tools_py/` | Python tooling: Unicorn EE harness, APACHE00 decryptor, DNAS self-decryptor, ELF builder, Ghidra CSV fixers, screenshot helper |
+| `tools_py/` | Python tooling: 165 modules (2026-09-25 after Sprint 13 Task H4, `git ls-files 'tools_py/*.py'` less the tests and `__init__.py`), mapped by purpose in "The `tools_py/` map" below; the tests in `tools_py/tests/` |
+| `scripts/` | Shell and PowerShell entry points: the disc chain, the revision build, packaging, the loop lock, the VM sync, the hooks; `scripts/parity/` holds the harness's launch scripts, step scripts and reference images |
 | `ghidra_scripts/` | Headless Ghidra scripts (export, pointer/vtable scan, function forcing) |
 | `server/` | Horizon Private Server sources+config for app id 10472, `start-servers.ps1`, README |
-| `docs/` | Status, spec, plan, research |
+| `docs/` | The live documents (`HANDOFF`, `KNOWN`, `STATUS`, `CURRENT_SPRINT`, `HUMAN_TASKS`, this file), the player pages (`INSTALL`, `FAQ`), the research notes under `docs/research/`, each sprint's spec and plan under `docs/superpowers/`, dated audits under `docs/audits/`; `docs/DOC_MAINTENANCE.md` classifies every one |
 | `game/` (ignored) | ISO, extracted disc tree, decrypted overlays, Ghidra decompilation exports |
-| `tools/` (ignored) | Portable toolchain: llvm-mingw clang, CMake, Ninja, Ghidra 12.1 + EE extension, PCSX2 2.8.1 (+BIOS) |
+| `tools/` (ignored) | Portable toolchain: llvm-mingw clang, CMake, Ninja (the three `scripts/bootstrap_windows.sh` fetches), plus Ghidra and PCSX2 on the maintainer's machine |
 | `ghidra_proj/` (ignored) | Ghidra project `socom` (programs: SCUS_972.75, DNAS.BIN/.dec.bin, socom2_game.elf, 989SND.IRX) |
-| `dist/` (ignored) | `socom2.exe` + DLLs |
+| `dist/` (ignored) | `socom2.exe`, the launcher, their DLLs |
 
 ## Run it (players)
-`scripts/make_portable.sh` builds `dist/portable/socom2/` (and a zip) from a finished build: the game, its DLLs, the
-launcher, a README and the licences, with empty `cards/` and `logs/`. In that folder, **run
-`socom_unzipped_launcher.exe`**, point it at your SOCOM II ISO (NTSC r0001), pick video and controller settings, Launch.
-Nothing is installed; delete the folder to uninstall.
+The player's page is `docs/INSTALL.md`, and what goes wrong is `docs/FAQ.md`. For a developer: `scripts/make_portable.sh`
+builds `dist/portable/socom2/` (and a zip) from a finished build — the game, its DLLs, the launcher, a README and the
+licences, with empty `cards/` and `logs/` — which is the folder INSTALL describes.
 
 ## Publishing anything: the leak check
 
@@ -58,7 +69,15 @@ owner-specific literals in the git-ignored `leak_extra.txt`. Install the hooks w
 `[general] names = "socom2_names.csv"` in `recomp/socom2.toml` (opened relative to the directory the recompiler
 runs in, which `build.sh` makes `recomp/`; the r0004 toml names `socom2_names_r0004.csv`) makes the recompiler use
 the sidecar's `Name` for the generated identifier, the output filename and the `// Function:` comment —
-`<Name>_0x<start>.cpp`, headed `// Function: <Name> (identity <map name>)`.
+`<Name>_0x<start>.cpp`, headed (since Sprint 13 N2, `a517291a`; `function_emitter.cpp`) by two lines:
+
+```
+// Function: <Name>
+// Name source: socom2_names.csv row 0x<8-digit start> (map name <map name>)
+```
+
+The row is the sidecar's own padded spelling of the address, so it greps; the map name is the one the recompiler
+still reads for extent and stubbing.
 **The `Name` column of `recomp/socom2_ghidra.csv` is not where a name goes:** it is Ghidra's export, and to this
 recompiler a name there is the function's identity — it decides the extent and can stub the body by name
 (research/57 §4, ruling S12-R13). Do not rename anything there. A function still called `FUN_…` or `sub_…` has no
@@ -87,8 +106,11 @@ python -m tools_py.apply_names recomp/socom2_ghidra.csv recomp/socom2_names.csv 
 
 prints every decision (applied, held, refused with its reason, deferred, contradiction) and writes nothing; drop
 `--report-only` to write, which it does only when the re-audit of the whole file is clean. A name given by hand is
-a proposals file like any other: columns `Address,Mangled,Pass,Score,Evidence`, `Pass=hand`, `Score=1.00`, the
-reason in `Evidence`, and a `#` header line citing where the reason is written down. The applier will not rename a
+a proposals file like any other (Sprint 13 N1; `recomp/names_proposals_hand_2026-09-25.csv` is the model): columns
+`Address,Current,Proposed,Mangled,Pass,Evidence`, `Pass=hand`, no `Score` (a hand row with a score is refused), the
+reason as a `file:line` in `Evidence`, and a `#` header line saying what the file is. For r0004, apply the same
+r0001 rows with `--through game/r0004/match.json`: each address travels only where the matcher placed it `exact`,
+as `Pass=carried:hand`, and every other is printed `NOT CARRIED`. The applier will not rename a
 name it already wrote (`refused: sidecar disagrees`): a wrong applied name is a finding for the controller, settled
 by a ruling and a holds-file line, not a second proposal.
 
@@ -99,8 +121,10 @@ suite: `test_the_tracked_csv_and_sidecar_agree` (`tools_py/tests/test_name_prove
 tracked pairs, and `tools_py/tests/test_toml_names_agree.py` holds every `[general].stubs` selector of
 `recomp/socom2.toml` that has a sidecar row to that row's `Mangled` name, so the handler selector and the name
 cannot drift. **`./build.sh recomp` reads the sidecar**: `recomp/recomp_run.log` says `Loaded <n> display names from …socom2_names.csv`, and
-if it says `no names file` instead, the path did not resolve and the output carries the map's placeholder names —
-the recompiler treats that as information, not an error, so look for the line.
+`build.sh` prints that line as `recomp: names: Loaded <n> display names …`. If the toml's path does not resolve, the
+recompiler writes a `[warning] names` event (since `9cafac47`, #48) and `build.sh` prints
+`WARNING: names: names file does not resolve: …`; the output then carries the map's placeholder names. The build
+does not fail on it, so look for the line.
 
 How many names are applied, by which pass, and what is proven on the owner's machine: the task table and the Log of
 `docs/superpowers/plans/2026-09-24-sprint-12.md`, and research/47–61 for what each pass measured. Two recomps are
@@ -108,22 +132,300 @@ compared with `python -m tools_py.recomp_census <output> <recomp_run.log> --json
 a rename is accepted only when it prints `S12-R11 … OK` (no extent moved, no function dropped, no new `unhandled` or
 `unmapped`); the 2026-09-25 proof read `renamed 1771`, `extents_changed: 0`.
 
+## The `tools_py/` map
+
+Every tracked module under `tools_py/` except the tests, one line each, grouped by what it is for — 165 on
+2026-09-25 after Sprint 13 Task H4 (`git ls-files 'tools_py/*.py'`, less `tools_py/tests/` and the four package
+`__init__.py` files). The one line is the module's own docstring, shortened; the docstring is the reference. Run a
+module as `python -m tools_py.<name>` (or `tools_py.parity.<name>`, …) from the repository root unless its docstring
+says otherwise.
+
+**Entry points.** A module whose name no other code file contains (no module, script, workflow, `build.sh` or test
+-- the harness audit's Appendix A rule, `docs/audits/2026-09-25-project-audit/harness-tools.md`) is run by a person or
+not at all. Its row below says **Run it as:** `python -m …`, and its docstring carries the same `Run: python -m …` line.
+`tools_py/tests/test_tools_py_inventory.py` fails on any module outside `tests/` and `research/` that has neither a
+caller nor that row, and on any file in `docs/archive/tools/` without its banner and its row in
+`docs/archive/README.md`. The research scripts are run by hand from their notes; the ones the audit flagged carry the
+same line.
+> Superseded 2026-09-25 (Sprint 13 Task H4): this paragraph marked 28 modules **†**, the audit's "invoked by nothing"
+> flag, and said "`movie_blocks` has tests but no caller (issue #46 (closed)); the † modules have no issue yet". H4 archived
+> nine of the 28 to `docs/archive/tools/` (the four `patch_*` source patchers, the four `dbg_*` decryptor probes and
+> `parity/blue_marker.py`) and made the other nineteen entry points; `movie_blocks` has run in `build.sh test` through
+> `tools_py/tests/test_movie_blocks_fixture.py` since `bd27443e` (2026-09-17).
+> Superseded 2026-09-25 (Sprint 13 R2, fix round 1): this paragraph gave the method as "`git grep -l -w <name>`,
+> zero hits outside the module itself", which does not yield 28 (seventeen more modules pass it, most of them
+> research scripts), and said issue #46 (closed) carried one of the 28; `movie_blocks` is not among them.
+
+Beside the modules, `tools_py/screenshot.ps1` captures a window by hand.
+> Superseded 2026-09-25 (Sprint 13 Task H4): this also said "`tools_py/decrypt.log` / `decrypt2.log` are tracked
+> because a KNOWN §1 evidence manifest hashes them". The manifest (`docs/research/assets/22-first-kill-evidence.txt`)
+> hashes copies under a harness snapshot in `logs/`, not the tracked files; the two logs, with the owner's absolute
+> paths in them, were deleted (harness audit H29).
+
+**From the disc to the ELF** (the chain `scripts/disc_to_elf.sh` runs; section "From your own disc" below):
+
+| Module | What it is for |
+|---|---|
+| `disc_to_elf.py` | The one command: your ISO → the extracted tree, the decrypted overlays and `socom2_game.elf`, each stage verified |
+| `iso_lbn.py` | Map disc LBNs to file names (ISO9660), look an LBN up, and annotate a run log's CD reads |
+| `dnas_selfdecrypt.py` | Decrypt the self-encrypting code blocks of the DNAS.BIN overlay (stage 2) |
+| `decrypt_apache.py` | Run the retail loader's own decryption of `APACHE00.ZDB` under Unicorn and write the plain overlays (stage 3) |
+| `ee_unicorn.py` | The minimal R5900 execution harness on Unicorn that the decryptors run on |
+| `make_overlay_elf.py` | Wrap the loader and the decrypted `MWo3` overlays into one synthetic MIPS ELF (stage 4) |
+| `decrypt_card_package.py` | Decrypt the update package the server writes to the memory card, through the loader's memory-card path |
+| `overlay_repair.py` | Undo the r0004 capsule's baked-in stub writes in a decrypted overlay |
+| `r0004/capsule.py` | Decode the encrypted code stack inside PSRewired's r0004 patch capsule |
+
+**The function map and the recompiler's inputs:**
+
+| Module | What it is for |
+|---|---|
+| `fix_ghidra_csv.py` | Normalise Ghidra's function export for PS2Recomp (End = Start + Size, the forced entries, the merge ranges) into a build product (`--out`, required); on the `./build.sh recomp` path and `build_revision.sh` step 0 |
+| `find_imm_targets.py` | Find code addresses built as immediates (`lui`/`addiu`) that no function covers and append them to the forced entry points |
+| `find_escaping_branches.py` | Report conditional branches whose target lies outside their own function range |
+| `find_gap_functions.py` | Report executable gaps between functions that look like real function bodies |
+| `find_interior_functions.py` | Report function starts hidden inside another function's range |
+| `find_data_entries.py` | Find entry points no branch names (data-referenced entries, and their kin) |
+| `find_ctor_thunks.py` | Enumerate an overlay's static-constructor thunks from its `MWo3` header and force each as an entry |
+| `resolve_mmio.py` | Re-derive the true effective address of every `[mmio]` override in `recomp/socom2.toml` (r0001; no diff means the table is right). Run it as: `python -m tools_py.resolve_mmio [--write]` |
+| `hle_constants.py` | Census of every HLE stub bound in the toml: its callers and what they do with the return value |
+| `recomp_census.py` | Census of a recompiler output directory and its log, and the diff of two (the S12-R11 bar) |
+
+**Another revision of the disc (r0004):**
+
+| Module | What it is for |
+|---|---|
+| `address_matcher.py` | Match one build's functions onto another's (fingerprints, then seed+delta) |
+| `fingerprint.py` | The per-function fingerprint: the instruction stream with address-carrying immediates zeroed |
+| `derive_seeds.py` | Derive the matcher's `--seed` list from its own seedless run |
+| `addresses_from_match.py` | Print the r0004 column of `runtime/socom2_addresses.h` from the match report |
+| `data_via_twin.py` | Place an r0001 data address in r0004 by way of a twin function |
+| `translate_extras.py` | Carry one build's forced entry points onto another build's addresses |
+| `revision_toml.py` | Carry the recompiler's config from one build's addresses onto another's (`scripts/build_revision.sh` step 3) |
+| `carry_names.py` | Carry one build's function names onto another build's matched addresses |
+
+**Names** (Sprint 12; "Names in the generated code" above):
+
+| Module | What it is for |
+|---|---|
+| `readable_names.py` | The renderer: a demo mangled name → the readable `Name` (research/47's rules) |
+| `apply_names.py` | The only writer of the sidecar: proposals files → applied, held, refused or deferred names |
+| `name_provenance.py` | The sidecar's schema and its `audit` against the function map |
+| `elf_symbols.py` | The function table of an ELF that still has its `.symtab` (the SOCOM 1 demo) |
+| `ghidra_symbol_match.py` | Name our anonymous functions from the demo's symbols by body match (Task 7) |
+| `symbol_levers.py` | Two more levers on the demo's names: position between anchors, and a third build |
+| `bindiff_lever.py` | BinDiff as the second signal, never a proposer alone (S12-R22) |
+| `callgraph_lever.py` | Callers and callees of placed pairs name the bodies between |
+| `offset_lever.py` | The `offset-multiset` and `prefix+offsets` passes (research/54) |
+| `string_lever.py` | Names from the set of shared strings a body references |
+| `toml_stub_lever.py` | The toml's own `name@addr` stub selectors as proposals |
+| `ui_binding_lever.py` | Name r0001's UI script handlers from the demo's dispatch table |
+| `vtable_lever.py` | Name a virtual function by its vtable slot |
+
+**Reading what the runtime writes** (logs, dumps, profiles):
+
+| Module | What it is for |
+|---|---|
+| `gif_packets.py` | List the vertices a `vu1_replay` packet file kicks. Run it as: `python -m tools_py.gif_packets <packets.bin> [--verts] [--limit N]` |
+| `gif_submit_timeline.py` | Reduce a run log's `[gif-submit]` lines (`PS2X_GIF_TRACE`) to the title-label events. Run it as: `python -m tools_py.gif_submit_timeline <run.log> [--from N] [--count M]` |
+| `gsdump_extract.py` | Turn a PCSX2 GS dump into the console-replay fixture `ps2x_tests` reads |
+| `gsdump_timeline.py` | Per frame of a PCSX2 GS dump, every transfer, texture bind and kick. Run it as: `python -m tools_py.gsdump_timeline <dump.gs> [--pages P:N] [--all]` |
+| `hostprof_symbolize.py` | Symbolise a `PS2X_HOST_PROF` histogram against `dist/socom2.exe` |
+| `hostprof_diff.py` | Symbolise the difference of two `PS2X_HOST_PROF` histograms. Run it as: `python -m tools_py.hostprof_diff <pre.txt> <end.txt> [--top N] [--exe dist/socom2.exe] [--start-exe <pre's exe>]`; functions pair by the `_0x<start>` guest-address suffix, so a renamed function pairs with its old profile (Sprint 13 N1) |
+| `hostprof_stacks.py` | Fold and symbolise the stacks of a `PS2X_HOST_PROF_STACKS=1` histogram. Run it as: `python -m tools_py.hostprof_stacks [logs/hostprof.txt] [--exe dist/socom2.exe] [--top N]` |
+| `marker_timeline.py` | Merge a run log's game-thread events into one stream for the texture-set marker protocol. Run it as: `python -m tools_py.marker_timeline <run.log> [--from-frame N] [--frames M]` |
+| `rdr_tree.py` | Print a parsed `.rdr` tree from a guest RAM dump (`PS2X_RDRAM_DUMP`) |
+| `ra2fun.py` | Map guest addresses (a call trace's `ra=`) to the decompiled function holding them (reads `game/analysis/`). Run it as: `python -m tools_py.ra2fun 0x357028 …` |
+| `vu1dis.py` | A minimal VU0/VU1 micro-program disassembler. Run it as: `python -m tools_py.vu1dis <dump.bin> [--start 0xPC] [--count N] [--raw]` |
+| `vu1_headers.py` | Print the VU1 dispatcher header counts of a set of program dumps |
+| `vu1stats_summary.py` | Summarise a run log's `[vu1-stats]` lines by phase. Run it as: `python -m tools_py.vu1stats_summary [run.log]` (default: the newest `logs/run_*.log`) |
+
+**Early-bring-up one-offs** -- archived 2026-09-25 (Sprint 13 Task H4) to `docs/archive/tools/`: the four `dbg_*` decryptor probes and the four `patch_*` source patchers of the first week, which still wrote into the
+vendored runtime when run. `docs/archive/README.md` lists them with what each was.
+
+**The project's own records and gates:**
+
+| Module | What it is for |
+|---|---|
+| `docmaint.py` | The document registry held to the tree (`docs/DOC_MAINTENANCE.md` §4's ten checks) |
+| `issues.py` | The known-issue stack on GitHub, held to the live documents (`skeleton`, `open`, `close`, `audit`) |
+| `knobs.py` | The `PS2X_*` registry read out of `knobs.h`; `write` regenerates `docs/KNOBS.md` |
+| `exit_codes.py` | The game's exit codes read out of `exit_codes.h` |
+| `portable_audit.py` | What the portable folder carries, decided from import tables, and checked |
+| `release/leakcheck.py` | The leak check ("Publishing anything" above) |
+| `release/leakrules.py` | The leak shapes, as one set of regular expressions |
+| `vm_prune.py` | What `scripts/vm_sync.sh tree` must delete in the VM |
+| `vm_restamp.py` | What `scripts/vm_sync.sh tree` must re-stamp in the VM so ninja rebuilds it |
+
+**The story** (`docs/STORY.md` and its checks):
+
+| Module | What it is for |
+|---|---|
+| `story/cite.py` | The citation test for `docs/STORY.md` |
+| `story/remap.py` | Carry the story's commit citations across a history rewrite |
+| `story/site.py` | Render the story as one page in the site's chrome |
+| `story/timeline.py` | Rebuild `docs/story/timeline.json` from `docs/STORY.md` |
+| `story/witness.py` | Freeze a witness for every run, gate and log the story cites |
+
+**The parity harness, `tools_py/parity/` — the gate and its scorers:**
+
+| Module | What it is for |
+|---|---|
+| `gate.py` | The three-stage gate (title, transition, mission): PASS/FAIL, stamps under `logs/parity/gate/` |
+| `pins.py` | What a measurement was computed against, and the refusal when it drifted |
+| `frame_time.py` | The mission stage's `FRAME` line: VBlank pacing (host ms per guest VBlank, a lower bound on the time between presents) over the scripted walk, from the `[pc-sampler]` rows (informational, S13-R3). Run it on saved stamps as: `python -m tools_py.parity.frame_time <stamp dir> ...` |
+| `compare.py` | Score screens against the golden set and write `docs/parity/REPORT.md` |
+| `guest_probe.py` | The gate's guest-value probe against console numbers on disk |
+| `guest_addresses.py` | One home for the guest addresses the instruments read, and the per-revision rule |
+| `addresses.py` | Guest addresses shared by the PCSX2 driver and our runtime |
+| `black_rows.py` | The brightest pixel in the band that must stay black on the transition |
+| `screen_bands.py` | The letterbox-band test: gameplay or the intro cinematic |
+| `mission_fail.py` | Does a mission capture show the MISSION FAILURE screen |
+| `console_compare.py` | Console against ours at the Seeding Chaos spawn view |
+| `make_gate_fixtures.py` | Build the committed fixtures `test_gate.py` runs on |
+| `montage.py` | Tile a directory's PNGs into one labelled contact sheet |
+| `motion_diff.py` | Is our player seen moving on the console client |
+| `scale_compare.py` | Is a 1280x896 frame the 640x448 frame, or a different render |
+| `scale_shot.py` | One screen captured at 640x448 and at 1280x896 from the runtime |
+| `resize_window.py` | Give the running game window a client area of a given size (captures to look at, not gate results). Run it as: `python -m tools_py.parity.resize_window <w> <h>` |
+| `frame_burst.py` | Capture the game window at a fixed rate for a while (KNOWN §4: check a burst on ours by its first frame). Run it as: `python -m tools_py.parity.frame_burst <pcsx2\|ours> <out_dir> <start_after_s> <count> <interval_s>` |
+| `movie_blocks.py` | Find 16x16 movie blocks the GL target lacks but shadow VRAM has; runs in `build.sh test` over the saved fixture `tests/fixtures/movie/` (`test_movie_blocks_fixture.py`), and by hand over a `PS2X_GS_DUMP_DISPLAY` capture |
+| `motion_pack_check.py` | Is the motion pack intact in an RDRAM image |
+| `object_diff.py` | Object-keyed uninitialised-field diff between our heap and the console's |
+| `facing_check.py` | Validate the at-rest facing estimate offline |
+| `mc_trace.py` | Read the runtime's `[MC]` trace lines out of a run log |
+| `freeze_trace.py` | Where and for how long an instance's round clock stood still |
+| `host_samples.py` | Read `run_detached.sh`'s host sampler CSV |
+
+**The parity harness, `tools_py/parity/` — driving a game and PCSX2:**
+
+| Module | What it is for |
+|---|---|
+| `drive.py` | Drive one side (PCSX2 or our exe) through a step script and capture each screen |
+| `keys.py` | Post keyboard messages to a game window without changing focus |
+| `winshot.py` | Focus-free capture of a window's client area (Windows) |
+| `x11shot.py` | winshot's Linux half, under X11 |
+| `hostplatform.py` | Which host the harness drives on, and the two things it does to the OS |
+| `pcsx2_ctl.py` | Stepwise control of the two PCSX2 instances |
+| `pcsx2_keys.py` | Post keyboard messages to PCSX2's window |
+| `pcsx2_shell.py` | The console side of the mixed match, pressing on what its screen shows |
+| `pine.py` | A minimal PCSX2 PINE client |
+| `cam_poll.py` | Poll guest memory over PINE while PCSX2 runs |
+| `state_poll.py` | Load a PCSX2 savestate and sample pointer chains as `[peek]` rows |
+| `probe_poll.py` | Poll the collision query object on PCSX2 at a savestate |
+| `gsdump_capture.py` | Capture a multi-frame PCSX2 GS dump at a savestate |
+| `find_dialog_ptr.py` | Find a static pointer chain to the current dialog's name in a RAM dump |
+| `capture_env.py` | The `PS2X_*` environment a capture ran with, written beside its output in the gate's pin format (issue #38 (closed); `scripts/parity/write_env.sh` for the shell scripts) |
+| `p2s_extract.py` | Extract a member from a PCSX2 `.p2s` savestate (zstd entries). Run it as: `python -m tools_py.parity.p2s_extract <state.p2s> <out.bin> [member]` |
+| `dns_stub.py` | A tiny DNS responder that points the PCSX2 guest at the Horizon host |
+
+**The parity harness, `tools_py/parity/` — online:**
+
+| Module | What it is for |
+|---|---|
+| `online_login_ours.py` | Drive our exe from boot to the lobby, CREATE GAME or JOIN GAME |
+| `online_match_ours.py` | Two instances of our exe play a match ("Online" below) |
+| `online_ladder.py` | The engagement ladder's round loop and stop rules |
+| `ladder_ledger.py` | The scheduled ladder's ledger, rendered to `docs/LADDER.md` |
+| `lobby_report.py` | Per-launch lobby summary from a two-instance drive log |
+| `verdict_core.py` | The pure online verdict scorers the harness and the replay share |
+| `verdict_replay.py` | The independent, valve-primary kill scorer over two stored logs |
+| `sim_walk_to_b.py` | A closed-loop dry run of the approach loop against a simulated world |
+| `sp_death_probe.py` | One single-player run that confirms the kill readout |
+| `two_machine_readout.py` | The readout for the first two-machine match |
+| `online_login.py` | Drive the PCSX2 client from savestate 9 through login |
+| `online_match.py` | Two PCSX2 clients on the local Horizon stack: host, join, READY |
+
+**The parity harness, `tools_py/parity/` — audio:**
+
+| Module | What it is for |
+|---|---|
+| `audio_parity.py` | The audio parity test against PCSX2, in the gate's shape |
+| `audio_envelope.py` | The mission music's two reported symptoms as numbers with timestamps |
+| `audio_dips.py` | Level dips in an endpoint capture, aligned to the mixer's dump and classified |
+| `audio_corr.py` | How faithful the mixed audio is to the disc's own PCM |
+| `cb_trace.py` | The host audio callback trace: where a 50 ms hole at the endpoint went |
+| `stream_events.py` | The mixer's stream-event trace → stem-boundary holes and starvation |
+| `pcm_dump.py` | Read a `PS2X_AUDIO_PCM_DUMP` file |
+| `music_state_poll.py` | Poll the game's EE-side sound decision machines and log every change |
+| `loopback_record.py` | Record what Windows sends to an output device (WASAPI loopback) |
+| `endpoint_route.py` | Move the game's audio to a chosen endpoint for one run, and put it back |
+| `app_volume.py` | List or hold one exe's per-app session volume |
+
+**Research scripts, `tools_py/research/`** — each backs a research note and is run by hand from it; none has a test,
+by design:
+
+| Module | What it is for |
+|---|---|
+| `research/symbols/bindiff_join.py` | BinDiff's demo → r0001 matches joined to Task 7's pairs (research/49) |
+| `research/symbols/callgraph_propagation.py` | Call-graph propagation from anchors (research/52) |
+| `research/symbols/class_inventory.py` | The demo's class inventory as an architecture map (research/55) |
+| `research/symbols/debug_paths.py` | What the demo's `.debug` section covers, by source path |
+| `research/symbols/dwarf_types.py` | The demo's DWARF1 types and the raw guest offsets they name (research/50) |
+| `research/symbols/link_order.py` | Does link order survive between the demo and our image |
+| `research/symbols/name_consumers.py` | Who reads a function name or a raw guest offset (research/46) |
+| `research/symbols/offset_multiset.py` | Member-offset multisets as a looser body key (research/54) |
+| `research/symbols/readable_names.py` | Mangled name → `Class_Method`, with the overload-collision census |
+| `research/symbols/readable_proof.py` | The readable-name scheme proven over four name sets (research/47) |
+| `research/symbols/sase_probe.py` | SASE, the voice codec: what the images say about it (research/56) |
+| `research/symbols/sidecar_census.py` | The provenance sidecar checked against the tree (research/48) |
+| `research/symbols/string_correlator.py` | A shared-string correlator between the demo and r0001 (research/53) |
+| `research/symbols/toml_names.py` | The recompiler's naming pipeline re-derived (research/57) |
+| `research/symbols/toml_overlap.py` | How much of Task 7's proposals the toml already named |
+| `research/symbols/vtable_anchors.py` | How far body-matched pairs get a vtable-slot matcher |
+| `research/symbols/vtable_coverage.py` | Vtable coverage after 7c (research/51) |
+| `research/symbols/vtable_rtti.py` | Locate retail vtables from a class-name string |
+| `research/terrain/classify2.py` | Both terrain program families replayed with clipping and culling off, matched to the console's fans |
+| `research/terrain/clip_planes.py` | A terrain dump's clip planes and each primitive's distances to them |
+| `research/terrain/cull_trace_scan.py` | Scan a `PS2X_CULL_TRACE` log: the guest's cull results against a recomputation |
+| `research/terrain/deferred_trace_scan.py` | Per frame, the deferred-list enqueues and flushes of a cull trace (research/31 §16-17). Run it as: `python -m tools_py.research.terrain.deferred_trace_scan <trace> [comp,…]` |
+| `research/terrain/detail_sections_scan.py` | Per frame, every component the object renderer sized. Run it as: `python -m tools_py.research.terrain.detail_sections_scan <trace>` |
+| `research/terrain/detail_trace_scan.py` | Components whose triangle count the distance table cut. Run it as: `python -m tools_py.research.terrain.detail_trace_scan <trace>` |
+| `research/terrain/ee_compare.py` | Our guest RAM at the spawn view against the PCSX2 savestate's. Run it as: `python -m tools_py.research.terrain.ee_compare <ours.bin> <console.bin> [c8,ca;…]` |
+| `research/terrain/eye_experiment.py` | Does the under-water fan's kick count depend on the cull's eye position |
+| `research/terrain/fan_detail.py` | Parse a GIF packet stream for fan primitives (no docstring) |
+| `research/terrain/fan_sizes.py` | Per stream, the terrain texture's fan packets and their first vertex |
+| `research/terrain/lod_trace_scan.py` | Components the LOD band test rejected, with their distances. Run it as: `python -m tools_py.research.terrain.lod_trace_scan <trace>` |
+| `research/terrain/node_trace_scan.py` | Pair each cull call with its scene node and find the node holding a point. Run it as: `python -m tools_py.research.terrain.node_trace_scan <trace> [x,y,z]` |
+| `research/terrain/patch_dump.py` | Print one VU1 terrain dump's header and vertices (no docstring) |
+| `research/terrain/terrain_dumps.py` | Terrain VU1 dumps: header counts, command list, the fans emitted |
+| `research/terrain/unproject.py` | Fit the world→screen map and unproject the console's absent fans |
+| `research/ladder/r242_speed_freeze.py` | R242: the two-instance speed freeze re-measured from the ladder streak's logs (KNOWN §1) |
+
+> Superseded 2026-09-25 (Sprint 13 R2): the Layout table's `tools_py/` row said "Python tooling: Unicorn EE harness,
+> APACHE00 decryptor, DNAS self-decryptor, ELF builder, Ghidra CSV fixers, screenshot helper" — six things, for a
+> directory that held 172 modules (harness audit H50). The map above replaces it.
+
 ## Build and run (developer machine)
 ```
-./build.sh recomp      # regenerate ELF, normalize the function map, run ps2_recomp (~10 s)
-./build.sh runtime     # cmake+ninja, clang, LTO off (~15 min from scratch, ~3 min runtime-only)
-./build.sh test        # ps2x_tests + vu1_replay (builds both, copies vu1_replay to dist/) and
-                       # replays the VU1 fixtures against their goldens, native path on and off,
-                       # plus a --vram-diff equivalence check (checked=15 skipped=0; a
-                       # [vu1_replay] WARNING about a texture inside the replay's blanked
-                       # framebuffer/z region fails the suite); PS2X_TEST_REPEAT=N runs the
-                       # unit suite N times (determinism check). It runs NO Python tests:
-                       # python -m unittest discover -s tools_py/tests -t .   (by hand, for now)
+./build.sh recomp      # regenerate the ELF, normalise the function map, run ps2_recomp
+                       # (273 s and 352 s, two runs on 2026-09-21 -- minutes, not seconds)
+./build.sh runtime     # cmake+ninja, clang, LTO off -> dist/socom2.exe and the launcher
+                       # (624 s and 983 s from an empty build tree, 2026-09-21; this line said
+                       # "~15 min from scratch, ~3 min runtime-only" until 2026-09-25 -- the 3 min
+                       # had no measurement behind it)
+./build.sh test        # the Python suite first (unittest, verbose), then ps2x_tests and vu1_replay
+                       # (builds both, copies vu1_replay to dist/) and replays the VU1 fixtures against
+                       # their goldens, native path on and off, plus a --vram-diff equivalence check
+                       # (checked=15 skipped=0; a [vu1_replay] WARNING about a texture inside the
+                       # replay's blanked framebuffer/z region fails the suite). PS2X_TEST_REPEAT=N runs
+                       # the C++ unit suite N times (determinism check).
 python -m tools_py.parity.gate   # in-game gate: title / transition / mission, PASS or FAIL.
                        # Run `./build.sh runtime` first -- the gate launches dist/socom2.exe and
                        # `./build.sh test` does NOT rebuild it.
 PS2X_PC_SAMPLER=5 ./run.sh 40    # run 40 s; logs/latest.log; prints guest thread PCs every 5 s
 ```
+
+> Superseded 2026-09-25 (Sprint 13 R2): the block above said `./build.sh recomp` took "~10 s" (the same file measured
+> 352 s, and `docs/KNOWN.md` §1 273 s) and that `build.sh test` "runs NO Python tests: python -m unittest discover
+> ... (by hand, for now)". `build.sh`'s `test_step` runs `python -m unittest discover -s tools_py/tests -t . -v`
+> before the C++ suite, and has since Sprint 5 (`docs/KNOWN.md` §4, "`build.sh test` runs zero Python tests",
+> struck as fixed) — documents audit rows 3 and 7.
+
+`./run.sh` is a developer-mode launch (`PS2X_DEV=1` unless set): it runs `dist/socom2.exe` (or `$SOCOM_EXE`) on
+`game/disc/socom2_game.elf` (or `$SOCOM_GAME_ELF`) and writes `logs/run_<stamp>.log` (or `$PS2X_RUN_LOG`, which a
+driver sets to tail the game's own `[peek]` rows), with `logs/latest.log` pointing at it.
+
 ### From your own disc to a buildable ELF — one command (2026-09-21)
 
 ```
@@ -133,17 +435,17 @@ bash scripts/disc_to_elf.sh "/path/to/SOCOM II - U.S. Navy SEALs (USA).iso"
 `./build.sh recomp` reads `game/disc/SCUS_972.75`, `game/overlays/ftscore.bin` and `game/overlays/zsealetc.bin` and
 writes `game/overlays/socom2_game.elf`. None of them is in this repository -- they are the game's own bytes -- and the
 command above is how you produce all four from your own disc. About eight minutes and 4.2 GB the first time -- 473 of
-those 483 seconds are the third stage, where the game decrypts itself on an emulated R5900. It verifies
+those 483 seconds are the third stage, where the game decrypts itself on an emulated R5900 (2026-09-21). It verifies
 every step, and a second run is a no-op that still verifies: if it stops, or you stop it, type the same line again and
 it picks up where it left off. `python -m tools_py.disc_to_elf` is the same command with the same arguments; `--out
 <dir>` writes the tree and the overlays somewhere other than `game/`, `--check` says which stages are already done,
 `--force` redoes them, and `--stages extract,dnas,overlays,elf` runs a subset.
 
-**What you need:** Python 3; `pip install unicorn` (stages 2 and 3 run the game's own decryption code on an emulated
-R5900 -- 2.1.4 is the version this was measured with); 4.2 GB free; and your own NTSC r0001 image (SCUS-97275). No 7z
+**What you need:** Python 3 with `python -m pip install -r requirements.txt` (its `unicorn` row, 2.1.4, is what
+stages 2 and 3 need: they run the game's own decryption code on an emulated R5900); 4.2 GB free; and your own NTSC r0001 image (SCUS-97275). No 7z
 and no other extractor -- the ISO9660 reader is part of the command.
 
-| # | stage | what it does | here |
+| # | stage | what it does | measured 2026-09-21 |
 |---|---|---|---|
 | 1 | `extract` | the ISO's filesystem to `game/disc/` -- 349 files, 4173 MB. A plain ISO9660 reader (`tools_py/iso_lbn.py` still maps a file to its LBN when you need one by hand) | 8 s (4173 MB at 554 MB/s; minutes on a slower disk) |
 | 2 | `dnas` | `OVERLAY/REL/DNAS.BIN` -> `DNAS.dec.bin`: `tools_py/dnas_selfdecrypt.py` runs each of the DNAS overlay's 131 self-encrypting code blocks through its own cipher under Unicorn | 2s |
@@ -195,8 +497,10 @@ that never collide with r0001's: `game/overlays_<rev>/{ftscore,zsealetc}.bin` an
 when its product is already there (`--force` redoes it) — the recomp and the runtime build skip only on the
 `.complete` mark they write when they finish, so a tree left half-written by a failed run is redone rather than
 reported as done; both take the loop lock themselves. `--stop-after elf|toml|recomp` stops early (`elf` and `toml`
-take no lock at all; `toml` is the last step that does not, and it is how the tracked `recomp/socom2_<rev>.toml` is
-checked against the tree), `--check-against <elf>`
+take no lock at all; `toml` is the last step that does not, and it is how the tracked `recomp/socom2_r0004.toml` is
+checked against the tree -- every other revision's derived config is git-ignored; `test_build_products.py`
+regenerates r0004's from `game/r0004/match.json` and the two images with step 3's arguments and fails on a byte of
+drift, skipping where those git-ignored inputs are absent, `SOCOM_DATA_ROOT` naming a checkout that has them), `--check-against <elf>`
 compares the produced ELF's sha256 with a known one, `--out <dir>` puts every product under one directory,
 `--dry-run` prints the six steps with their paths. `<rev>` is `r` and four digits with an optional suffix that
 starts with a letter. The package must sit in its extracted disc tree, whose loader must be named `SCUS_972.75`
@@ -204,22 +508,23 @@ starts with a letter. The package must sit in its extracted disc tree, whose loa
 making `OVERLAY/REL/DNAS.dec.bin` when the tree lacks it). The revision's function map
 `recomp/socom2_ghidra_<rev>.csv` must already be there or be named with `--ghidra <csv>`: only an `r0001*` revision
 falls back to r0001's map silently, any other revision has to ask for it with `--ghidra-from-r0001` and is warned
-that the generated code will be wrong until Task 10's matcher writes that revision its own map. The **forced entry
-points** are a per-revision input for the same reason (`recomp/extra_functions.txt` is 1,619 addresses, 1,453 of them
-inside the overlays): step 0 takes `recomp/extra_functions_<rev>.txt` when it is there, or `--extra <file>`, else
-r0001's with a warning. `python tools_py/find_imm_targets.py <rev elf> <rev csv> recomp/extra_functions_<rev>.txt`
-writes a revision its own.
-**A build never writes its own inputs (Sprint 11 Task 19).** Step 0 folds those forced entry points into the map,
-cuts the non-contiguous ranges to size and applies `recomp/merge_ranges.txt`, and writes the result to
+that the generated code will be wrong until the matcher (`tools_py/address_matcher.py`) writes that revision its own
+map. The **forced entry points** are a per-revision input for the same reason (`recomp/extra_functions.txt` is 1,619
+addresses, 1,453 of them inside the overlays): step 0 takes `recomp/extra_functions_<rev>.txt` when it is there, or
+`--extra <file>`, else r0001's with a warning. `python tools_py/find_imm_targets.py <rev elf> <rev csv>
+recomp/extra_functions_<rev>.txt` writes a revision its own.
+**A build never writes its own inputs (since 2026-09-24, Sprint 11 Task 19).** Step 0 folds those forced entry points
+into the map, cuts the non-contiguous ranges to size and applies `recomp/merge_ranges.txt`, and writes the result to
 **`recomp/build/socom2_ghidra_<rev>.fixed.csv`** — a build product, under a git-ignored directory. Steps 2-5 all
 read that file: the merged ELF is repaired against exactly the rows the recompiler will compile, the config's
-`ghidra_output` names it, and `<elf>.repair.json` records its sha256. Until 2026-09-24 the fix ran at step 4 over
-`recomp/socom2_ghidra_<rev>.csv` **in place**, so every r0004 build split six rows of the tracked map, left
-`M recomp/socom2_ghidra_r0004.csv` in `git status` for the controller to restore by hand, and then — because the
-sidecar had hashed that map — declared the image stale on the next build and re-merged it to the same bytes.
-`build.sh`'s r0001 lane still rewrites `recomp/socom2_ghidra.csv` in place; that file is a fixed point of the fix
-(rewriting it changes no byte), so the habit is there but leaves nothing behind.
-**The executable knows which pressing it was recompiled from, and refuses another one (Sprint 11 Task 19).** Step 5 passes `-DPS2X_GAME_REVISION=<rev>` to the cmake configure (`build.sh` passes `r0001`, the default chain's), so `PS2X_GAME_REVISION` is a PUBLIC compile definition on `ps2_runtime` and the recompiled game carries the revision its generated code came from. At boot, right after `socom2_addresses::selectFromImage` has read the loaded image's own build banner, `runtime/socom2_revision_guard.h` compares the two. They agree, or the image names no revision at all (an image this table has no column for): the run carries on, the second case with the r0001 fallback and its existing warning, unchanged. They name **different** revisions and the run stops on one line -- `[socom2] REFUSED: this executable was recompiled from r0004 but the image at <path> is r0001 (banner "..."); pass the matching image (SOCOM_GAME_ELF) or the matching executable` -- and the process leaves with **73** (`revision-mismatch`, `ps2x/exit_codes.h`, distinct from the preflight's 66/67/68). A refusal rather than a warning because nothing past a mismatch is meaningful: every override address, every static-constructor table and every function body belongs to the other build. That is not hypothetical -- two parity gates on 2026-09-23 ran the r0004 executable on r0001's image (the launch scripts hard-coded `game/disc/socom2_game.elf`), booted, walked r0001's constructor table into r0004 bodies and hung at the loading screen on a `jalr` through a slot the constructors never filled, with nothing in the log to say so. A `<rev>` with a suffix compares as its base, so an `r0001check` build belongs on an r0001 image.
+`ghidra_output` names it, and `<elf>.repair.json` records its sha256. The tracked
+`recomp/socom2_ghidra_<rev>.csv` is read, never written. `build.sh`'s r0001 lane follows the same rule since Sprint 13
+Task C5: it writes `recomp/build/socom2_ghidra.fixed.csv`, which `recomp/socom2.toml`'s `ghidra_output` names, and
+`fix_ghidra_csv.py` refuses to run without `--out` or with `--out` naming its own input (until then the lane rewrote
+the tracked `recomp/socom2_ghidra.csv` in place -- a fixed point today, byte-identical, but issue #54's nested rows
+are what that habit left in a tracked file). `tools_py/tests/test_build_products.py` reads `build.sh`'s recomp step
+and holds every file it writes to an ignored, untracked path, so `git status` is empty after `./build.sh recomp`.
+**The executable knows which pressing it was recompiled from, and refuses another one (Sprint 11 Task 19).** Step 5 passes `-DPS2X_GAME_REVISION=<rev>` to the cmake configure (`build.sh` passes `r0001`, the default chain's), so `PS2X_GAME_REVISION` is a PUBLIC compile definition on `ps2_runtime` and the recompiled game carries the revision its generated code came from. At boot, right after `socom2_addresses::selectFromImage` has read the loaded image's own build banner, `runtime/socom2_revision_guard.h` compares the two. They agree, or the image names no revision at all (an image this table has no column for): the run carries on, the second case with the r0001 fallback and its existing warning, unchanged. They name **different** revisions and the run stops on one line -- `[socom2] REFUSED: this executable was recompiled from r0004 but the image at <path> is r0001 (banner "..."); pass the matching image (SOCOM_GAME_ELF) or the matching executable` -- and the process leaves with **73** (`revision-mismatch`, `ps2x/exit_codes.h`, distinct from the preflight's 66/67/68). A refusal rather than a warning because nothing past a mismatch is meaningful: every override address, every static-constructor table and every function body belongs to the other build -- run anyway, such a pairing boots, walks one build's constructor table into the other's bodies and hangs at the loading screen with nothing in the log to say so (the guard since 2026-09-24). A `<rev>` with a suffix compares as its base, so an `r0001check` build belongs on an r0001 image.
 **A revision's function map comes out of Ghidra with `bash scripts/ghidra_export_functions.sh <elf> <out.csv>`** —
 the recipe that made `recomp/socom2_ghidra.csv` (stock ELF loader → `r5900:LE:32:default:default` from the EE
 extension, `MakeFunctions.java` on the three entry points no flow reaches before analysis, then two
@@ -242,24 +547,70 @@ match report cannot place, this tool does not guess — the r0001 number stays, 
 address is listed in `[revision.unresolved]` with the role the config gave it, so the config states what it does not
 know. The `[revision]` table names the two files it was written from **relative to the repository root** — that file
 is tracked and step 3 rewrites it on every build, so one machine's absolute paths in it are a modification in every
-other clone. Without a report the step copies-and-renames as before, and warns. On r0004 (2026-09-23): of the config's
+other clone. Without a report the step copies-and-renames, and warns. On r0004 (2026-09-23): of the config's
 1,985 addresses, 1,357 are in the loader and do not move, **91 of the remaining 628 were translated and 537 were
 left as r0001's** (371 distinct addresses in `[revision.unresolved]`) — including all 24 overlay jump-table base
 addresses, none of which is a function start in r0001's map.
 **Proven on r0001 (2026-09-23):** `bash scripts/build_revision.sh r0001check game/disc/RUN/RAW/APACHE00.ZDB
 --check-against dist/socom2_game.elf` -- the ELF identical (sha256 `06b83684...8872`), `diff -rq --exclude=.complete` of the 14,882
-generated files against `recomp/output` empty (the mark is the script's own, since the review round), the exe built (236,856,320 B; not byte-identical to `dist/socom2.exe`,
+generated files against `recomp/output` empty, the exe built (236,856,320 B; not byte-identical to `dist/socom2.exe`,
 which embeds its own build's paths and source revision). Measured in that run (2026-09-23): DNAS 2 s, the decryption
-6.5 min, the ELF instant, the recomp seconds, the runtime build about twenty minutes from a cold build tree.
-
-Everything below this line works on a fresh clone with no disc at all.
+6.5 min, the ELF instant, the runtime build about twenty minutes from a cold build tree; the recomp's time was not
+recorded (the r0001 recomp's measured time is the build block's, 273 s and 352 s on 2026-09-21).
+> Superseded 2026-09-25 (Sprint 13 R2, fix round 1): this listed "the recomp seconds" -- the same claim the build
+> block's "~10 s" made, which two measured runs put at minutes (documents audit row 7).
 
 ### Build, run, verify — a newcomer's first hour
 
 **Without a disc (any fresh clone):** `bash scripts/bootstrap_windows.sh` puts the pinned llvm-mingw, CMake and Ninja
 under `tools/` (sha256-verified, ~245 MB once; `--check` says what is there), then `./build.sh runtime --no-runner`
 builds the runtime library and the launcher and `./build.sh test --no-runner` runs both suites and the VU1 fixture
-verify. That is what the `windows` and `linux` workflows do. **With a disc,** the five commands below.
+verify. That is what the `windows` and `linux` workflows do. Since Sprint 13 C1 their `build` / `build-windows` jobs
+also run `bash scripts/build_synthetic_runner.sh --build-dir <the job's tree>`: the runner (`ps2EntryRunner`) is
+configured against `tests/fixtures/synthetic_recomp/` -- three hand-written functions in the recompiler's shape (an
+entry, a leaf, a stub wrapper) with the function table and the two generated headers, nothing from the disc -- so the
+files only the runner compiles (`game_overrides_socom2.cpp`, `socom2_crypto.cpp`, the host input, libnetb and host
+socket files, `main.cpp`) compile and link on every code push, and the linked runner must refuse a missing ELF with
+68 (`elf-missing`). Before C1 nothing on CI compiled them (the 2026-09-25 audit, `code-runtime.md` F7): a syntax
+error in the overrides file reached `main` unbuilt. Run with no `--build-dir` locally it uses its own tree
+(`build-synthetic` / `build-linux-synthetic`), never `build-clang`, whose real generated set would be recompiled on the
+way back; `tools_py/tests/test_workflows.py` pins the step and the fixture's shape. The Python harness, the
+documentation checks and the leak check also need no disc. **Everything else needs your own r0001 disc:** the disc chain above, `./build.sh
+recomp`, a `./build.sh runtime` that builds the game, and the gate.
+
+**The dependencies are pinned to bytes** (Sprint 13 C6; `tools_py/tests/test_supply_chain_pins.py` fails on one that
+is not). Each CMake `FetchContent_Declare` names a full 40-hex commit in `GIT_TAG`, the tag's name in a comment
+beside it (resolve a new one with `git ls-remote <repo> <tag> '<tag>^{}'`; the `^{}` line is the commit of an
+annotated tag), and never with `GIT_SHALLOW TRUE` (a shallow clone cannot check out a bare commit). The Windows
+FFmpeg is `ffmpeg-7.1.5` of System233/ffmpeg-msvc-prebuilt with a `URL_HASH SHA256=` (a bump: `gh api
+repos/System233/ffmpeg-msvc-prebuilt/releases/tags/<tag>` gives the asset's `digest`; download the file and check
+`sha256sum` matches it). CI's `pip install` takes `==` pins (through the root `requirements.txt` once H7 lands it).
+`linux.yml`'s `apt-get install` is deliberately not version-pinned -- a -dev pin holds back a runtime package the
+runner image upgrades itself, which ends in a downgrade conflict -- so the step records the last green run's
+versions in a comment and prints the FFmpeg family's installed versions (`dpkg-query -W`) into every run's log; the
+Linux release tarball is built in the socom-linux VM, not on CI. A pin change moves `THIRD_PARTY_NOTICES.md` in the
+same commit (its test walks the release DLLs and the Linux tarball's `lib/`, both ways); an FFmpeg move is a
+runtime build, `./build.sh release` (so `dist-release/` drops DLLs the new closure no longer has) and the gate 3/3,
+the movies playing.
+
+> Superseded 2026-09-25 (Sprint 13 R2): a line here said "Everything below this line works on a fresh clone with no
+> disc at all", above a table whose rows 1, 2 and 5 (`./build.sh recomp`, the game build, the gate) need the disc
+> (stranger audit S36).
+
+**Reading a CI run** (Sprint 13 H1, pinned by `tools_py/tests/test_workflows.py`). GitHub calls a run `success` when
+any job in it passed and `skipped` only when every job was skipped, so the word alone never said whether anything
+was built. What each case now looks like: a push touching only `docs/` starts **no** `linux` or `windows` run --
+`gh run list --commit <sha>` shows `secrets` and `docs` (`python -m tools_py.docmaint` and the doc tests, which read
+the real `docs/` tree; not a required check), and the absence of `linux`/`windows` is the "not built" signal; any
+other push runs `changes` then `build` / `build-windows`, so its `success` means built and tested. A pull request
+always runs both build workflows (`build`, `build-windows` and `leakcheck` are `main`'s required checks and must
+report), and its `changes` job compares the pull request's `base.sha...head.sha` -- three dots, from the merge base,
+so the whole branch counts and `main`'s own movement since the fork does not -- and the step's first log line says
+`pull_request: comparing <base>...<head>`. A docs-only pull request is the one green run with nothing built: read the
+job list (`gh run view <id>`), where the build shows as skipped. A pull request's check list mixes its
+`pull_request` runs with the branch's `push` runs on the same commit; before H1 a docs-only last push put a `build
+skipping` row beside the pull request's real build (PR #50, runs 36110474156 and 36110478507) -- the `pull_request`
+row is the one that answers "was this branch built".
 
 **How long the whole thing takes, measured.** On 2026-09-21 the entire newcomer path was run from a genuine `git clone`
 of this repository into an empty directory on a 28-core Windows machine, nothing pre-existing, and every step passed:
@@ -267,249 +618,320 @@ clone 5 s (115 MB) · `install_hooks.sh` 1 s · `bootstrap_windows.sh` **16 s** 
 1126 MB of toolchain on disk) · `--check` 1 s · `build.sh runtime --no-runner` **392 s** · `build.sh test --no-runner`
 **339 s** (764/764) · the Python suite **280 s** · `disc_to_elf.sh` **415 s** · `build.sh recomp` **352 s** ·
 `build.sh runtime` **624 s** → `dist/socom2.exe`, 236,852,224 bytes. **42 minutes from `git clone` to the game**, and
-about 15 GB of disk for the clone, the toolchain, the disc tree, the generated code and the build trees.
+about 15 GB of disk for the clone, the toolchain, the disc tree, the generated code and the build trees. (That run
+timed `build.sh test` and the Python suite separately; `build.sh test` runs the Python suite itself, so on today's
+tree the one command costs both.)
 
-The Linux side, in the VM (`socom-linux`, 8 cores of the same host, llvmpipe), 2026-09-23: `scripts/build_linux.sh runtime` from **wiped** build trees **1261 s** → `dist-linux/socom2` and the launcher; the test step (both suites) **284 s** — and not green there yet: the Linux-only residue is `docs/KNOWN.md` §2's row of that date. The tree reaches the VM by `scripts/vm_sync.sh tree` (seconds; since 2026-09-23 it also prunes what the host removed).
+The Linux side, in the VM (`socom-linux`, 8 cores of the same host, llvmpipe), 2026-09-23: `scripts/build_linux.sh runtime` from **wiped** build trees **1261 s** → `dist-linux/socom2` and the launcher; the test step (both suites) **284 s** — and not green there yet: the Linux-only residue is `docs/KNOWN.md` §2's row of that date (issue #25). The tree reaches the VM by `scripts/vm_sync.sh tree` (seconds; since 2026-09-23 it also prunes what the host removed).
 
-Five commands, in this order, on a clean checkout with the tools under `tools/` on the PATH
+With a disc, five commands, in this order, on a clean checkout with the tools under `tools/` on the PATH
 (`export PATH="$PWD/tools/llvm-mingw/bin:$PWD/tools/cmake/bin:$PWD/tools/ninja:$PATH"`; `build.sh` does this itself) and the disc image at
 your own ISO (the command in the previous section puts the disc tree and the overlays where these expect them). The
-expected lines are the ones to look for; **every count below was measured on 2026-09-21 from a genuine `git clone` of
-this repository into an empty directory**, and the test counts only ever grow, so more than the number here is fine
-and fewer is a regression to report.
+expected lines are the ones to look for; each count carries the date and the tree it was read on, and the test counts
+only ever grow, so more than the number here is fine and fewer is a regression to report.
 
 | # | command | the line that says it worked |
 |---|---|---|
-| 1 | `./build.sh recomp` | `recomp: 14882 files, unhandled=114399, unmapped=<n>` — and `Recompilation completed successfully` at the end of `recomp/recomp_run.log`, which since Sprint 12 also carries `Loaded 1840 display names from socom2_names.csv` (2026-09-25; the number grows with the sidecar — its absence means the names were not applied and every function is still `FUN_`/`sub_`). **That second number is not a failure and `unhandled=0` (what this row claimed until 2026-09-21) has not been true for a long time:** it counts `unhandled-instruction` lines in the log, which the recompiler emits and carries on from, and the exe built from exactly this generated code is the one the gate passes 3/3 on. Measured twice on 2026-09-21, identically, in two working trees. What would be a failure is a non-zero exit (the last 20 log lines are printed then) or a file count that fell. `unmapped=` (added 2026-09-24) counts `unmapped-continuation` warnings: continuation pcs — a call's return, a syscall's return, a not-taken branch's fallthrough — that no recompiled row owns, each one a `[guest-branch:missing-target]` waiting for a thread to reach it. It is read, not gated, like `unhandled=`; r0001 printed `unmapped=0` on 2026-09-24 (chain 18), and a value that climbs after a map change is the map's holes, not the recompiler's. |
+| 1 | `./build.sh recomp` | `recomp: 14882 files, unhandled=114399, unmapped=<n>` — and `Recompilation completed successfully` at the end of `recomp/recomp_run.log`, which also carries `Loaded 1871 display names from socom2_names.csv` (2026-09-25, after Sprint 13 N1; r0004's reads `Loaded 1736`; the number grows with the sidecar — its absence means the names were not applied and every function is still `FUN_`/`sub_`). **`unhandled=` is not a failure**: it counts `unhandled-instruction` lines in the log, which the recompiler emits and carries on from, and the exe built from exactly this generated code is the one the gate passes 3/3 on (measured twice on 2026-09-21, identically, in two working trees). What would be a failure is a non-zero exit (the last 20 log lines are printed then) or a file count that fell. `unmapped=` (since 2026-09-24) counts `unmapped-continuation` warnings: continuation pcs — a call's return, a syscall's return, a not-taken branch's fallthrough — that no recompiled row owns, each one a `[guest-branch:missing-target]` waiting for a thread to reach it. It is read, not gated, like `unhandled=`; r0001 printed `unmapped=0` on 2026-09-24 (chain 18), and a value that climbs after a map change is the map's holes, not the recompiler's. |
 | 2 | `./build.sh runtime` | `built dist/socom2.exe` (the launcher lands beside it) |
-| 3 | `./build.sh test` | `Total Tests: 892` / `Passed: 892` / `Failed: 0` (892 on this machine 2026-09-25 on the renamed tree at `eb190a42`, Sprint 12's sidecar case included; 881 earlier that day at `0a01ba3`; 880 on the Linux runner, one platform-guarded case fewer — a runner printing 880 is not a regression; 876 on 2026-09-24, 764 from 2026-09-21), then `PASS: vram diff against 1.00% tolerance, checked=15 skipped=0` (this row said 500 until 2026-09-21, three sprints of cases after it stopped being true) |
-| 4 | `python -m unittest discover -s tools_py/tests -t .` | **`OK`, with no failures, is the bar** — match that, not a number. The count only ever grows: `Ran 2795 tests` on 2026-09-25 on the renamed tree at `eb190a42` (2795 on the Windows runner and 2797 on the Linux one at the same head; `Ran 2553 tests` earlier that day at Sprint 11's `0a01ba3`, 2556 on the Windows runner and 2558 on the Linux one; `Ran 1832 tests` on 2026-09-22, 1723 on 2026-09-21, 1104 before that). The **skip** count is not a constant and is not worth matching — 100 on that clone, 85 once a disc had been extracted into `game/`, 109 in a worktree with neither — because cases skip on what you have. `OK`, with no failures, is the bar. (This row said 1104 / `skipped=63` until 2026-09-21.) |
-| 5 | `python -m tools_py.parity.gate --stamp first_run` | `GATE PASS (3/3) -> logs\parity\gate\first_run` (about 15 min; the game window opens and closes three times; do not touch the keyboard) |
+| 3 | `./build.sh test` | First the Python suite's `OK` (row 4), then `Total Tests: 940` / `Passed: 940` / `Failed: 0` (2026-09-25 23:31Z, this machine, the tree at `2eca9389`, Sprint 13 V3's green run; the Linux runner runs one platform-guarded case fewer, so its count one below is not a regression), then `PASS: vram diff against 1.00% tolerance, checked=15 skipped=0` |
+| 4 | `python -m unittest discover -s tools_py/tests -t .` | The same suite `./build.sh test` runs first — run it alone when you changed only Python. **`OK`, with no failures, is the bar** — match that, not a number. The count only ever grows: 3164 tests, `OK` with 134 skipped (2026-09-25 23:31Z, this machine, the tree at `2eca9389`, Sprint 13 V3's green run). Before it: `Ran 2795 tests` (2026-09-25, the tree at `eb190a42`, this machine and the Windows runner; the Linux runner ran 2797 at the same head). The **skip** count is not a constant and is not worth matching, because cases skip on what you have (a disc extracted into `game/`, a worktree without one). |
+| 5 | `python -m tools_py.parity.gate --stamp first_run` | `GATE PASS (3/3) -> logs\parity\gate\first_run` (15 to 17 minutes: three gates on 2026-09-25 took about 15, 17 and 16 — `s12_names_gate`, `s11_close_gate`, `s12_names_r0004_gate`, from the first file each wrote under `logs/parity/gate/<stamp>/` to its `summary.txt`; the game window opens and closes three times; do not touch the keyboard) |
+
+> Superseded 2026-09-25 (Sprint 13 R2, fix round 1): rows 1, 3 and 4 carried every earlier count (881, 880, 876 and
+> 764 C++; 2553, 1832, 1723 and 1104 Python; three skip counts) and three "this row said ... until 2026-09-21" notes
+> (`unhandled=0`, the C++ 500, the Python 1104 / `skipped=63`). One dated count per row stays; the earlier ones are
+> in this file's git history (`git log -p -- docs/DEVELOPING.md`).
+>
+> Superseded 2026-09-25 (Sprint 13 R2): row 5 said "about 15 min", README said "about 15 minutes" and HANDOFF's
+> per-stage figures add to 17 (documents audit row 39); the three measured gates above are the reading.
+
+**The Python packages** are `requirements.txt` at the root, pinned: `python -m pip install -r requirements.txt` (numpy,
+pillow, zstandard, unicorn, capstone, PyYAML; on Windows also pycaw, comtypes, psutil and PyAudioWPatch for the audio
+tools). CI installs exactly that file on both runners; `tools_py/tests/test_requirements.py` fails on an import the
+file lacks, a row nothing imports, an unpinned row or a workflow that installs by hand. There is no pytest: the runner
+is unittest.
+
+**The fast subset** (Sprint 13 H7): `python -m tools_py.tests.fast` runs every test that needs no build product and no
+disc and is not in a module measured slow -- 2360 tests, `OK`, **84 s** wall on this machine (2026-09-25, the tree at
+H7's commits), against about eleven minutes for the whole suite. It is the check to run while somebody else holds the
+lock: its command line is not on `scripts/loop_lock.sh`'s busy list (a python whose command line says `unittest` or
+`tools_py.parity` is), and `tools_py/tests/test_fast_subset.py` pins that. What it leaves out is `EXCLUDED` in
+`tools_py/tests/fast.py`, each entry with its reason: the modules that took 10 s or more alone (the bash-, git- and
+process-driving ones) and the cases that need `dist/`, `dist-release/`, the launcher, the .NET server or `game/`. A new
+test file is in the subset until it is measured slow. `--list` prints the modules, `-v` the verbose runner. Row 4 (the
+whole suite) is still the bar before a commit that touches anything the subset leaves out.
+
+**The gate's fixtures** (`tests/fixtures/gate/`, what `tools_py/tests/test_gate.py` scores on a fresh clone) are 102
+files, 3.37 MB (2026-09-25, H7's review round; 106 files and 3.69 MB before identical captures were stored once --
+a fixture's `shared.txt` lists `<name> <kept name>` and `make_gate_fixtures.materialize` expands it). They are rebuilt
+from real runs by `python -m tools_py.parity.make_gate_fixtures [--only BUILDER ...] [--search DIR ...]`, which scores
+each fixture and refuses one that does not reach its source run's verdict.
 
 `python -m tools_py.docmaint` checks the documentation registry (`docs/DOC_MAINTENANCE.md`): every document
 classified, the ruling counter one past the highest in use, no undated suite count outside **this file**, every
-snapshot dated and every archive banded. It needs no build and the Python suite runs it; **this table is the single
-source for the suite counts, which is why no other document may state one without a date beside it.**
+snapshot dated and every archive banded, every ruling number defined once and every cited one defined. It needs no
+build and the Python suite runs it; **this table is the single source for the suite counts, which is why no other
+document may state one without a date beside it.**
 
 `python -m tools_py.parity.gate --baseline first_run` re-scores that saved run without launching, which is the
 fastest way to check a scoring change. A gate refuses to start under 4 GB free on C: (`RUN_MIN_FREE_GB`) and
 while another launch holds the loop lock (`scripts/loop_lock.sh status`). Anything else: `docs/STATUS.md` has the
 day-by-day, `docs/KNOWN.md` what is proven and what is believed, `docs/HUMAN_TASKS.md` the checks only a person can do.
 
-**Knobs, since Sprint 10 Q2 (2026-09-21):** `docs/KNOBS.md` is the complete, generated list, and it states its own count by
-class on its first lines -- read it there rather than here (`python -m tools_py.knobs write` regenerates it and
-`test_knobs_registry` fails when the source and the registry disagree in either direction). This paragraph said
-"151 names" and "the 20 Shipping names" until 2026-09-23, against the generated file's 150 and 18: a count repeated
-outside its one home, which is exactly what this document's own single-source rule forbids. The **Shipping** names
-are `config.json` settings the launcher sends. Everything else is a **Dev** knob
-and is ignored unless the run is in developer mode -- `--dev` on `socom2`'s command line or `PS2X_DEV=1`; `run.sh`, the
-gate and every script under `scripts/parity/` are developer-mode launches already. The game's first log line, `[knobs]
-dev=<0|1> set: ... | ignored without --dev: ...`, says what was honoured and what was not; the launcher passes the game
-none of its own inherited `PS2X_*` environment unless developer mode is on. Eight switches that used to turn ON when set
-to `0` are flags now (`X=1` on, anything else off); `PS2X_SOCOM2_PAD` is on by default. A Path knob's value must lie
-under the game folder for a stranger (R207). The prose below is what each knob did when it was added, kept as history;
-the registry is the truth.
+**The pinned references (Sprint 13 H3):** `scripts/parity/pins.json` (r0001; `pins_r0004.json` for r0004) is the gate's standard and the gate refuses on a drift; `scripts/parity/pins_refs.json` pins every OTHER reference PNG under `scripts/parity/` -- a tripwire, not a refusal: `test_gate_pins.EveryReferenceIsPinned` fails the suite when one changes and the file does not, so re-pin in the same commit.
 
-Knobs (the behaviour-changing ones documented in full below; this is not the complete list --
-other behaviour-changing knobs exist under `getenv("PS2X_` in `third_party/ps2recomp/ps2xRuntime/`
-without a full entry here, grouped roughly by area: GS (`PS2X_GS_NO_ZTEST`,
-`PS2X_GS_NO_DIRTY_REFRESH`, `PS2X_GS_RT_TEXTURE`, `PS2X_GS_TEX_FROM_CPU`), VU
-(`PS2X_VU1_XGKICK_CYCLE_EXACT`, `PS2X_VU1_XGKICK_IMMEDIATE`, `PS2X_VU0_FAST`,
-`PS2X_VU1_FMAC_CHECK`), EE/GIF/VIF (`PS2X_EE_ROUND`, `PS2X_GIF_PRIORITY_SORT`,
-`PS2X_VIF1_NO_IRQ_STALL`), build-time/IOP (`PS2X_ENABLE_DEBUG_UI`, `PS2X_IOP_ENABLE_PLUGINS`), and
-paths/networking (`PS2X_MC_DIR`, `PS2X_DEFAULT_BOOT_ELF`, `PS2X_SOCOM2_SERVER`,
-`PS2X_SOCOM2_HOSTS`, the `PS2X_SOCOM2_INPUT_*` family). Their exact effect is read at each knob's
-`getenv` use site, not written up here:
-`PS2X_VU1_HOST_DRAW=1` draws the native VU1 dispatcher's triangles through
-`GS::submitHostTriangle` in host space instead of building/kicking a GIF packet (default off, GIF
-path unchanged); `PS2X_VU1_NATIVE=0` reverts the dispatcher to the generated/interpreted VU1 path
-(it runs 162 of the corpus's 166 lists natively, bit-exact; the residual 4 are documented in
-`docs/research/15-vu1-fourth-family.md`); `PS2X_VU1_FAST=0` and `PS2X_VU1_GEN=0` drop to the exact
-interpreter, which with `--no-native` is how `vu1_replay` goldens are made;
-`PS2X_GS_BACKEND=cpu` picks the CPU rasteriser (anything else, including unset, is the GL backend;
-`build.sh test` and `vu1_replay` force `cpu`); setting `PS2X_SOCOM2_PAD` (to any value) enables the
-host input path the parity harness drives (keyboard: arrows/WASD/IJKL, Enter=START, Backspace=SELECT,
-ZXCV=Square/Cross/Circle/Triangle, QE=L1/R1, 13=L2/R2, 24=L3/R3; **gamepad 0 -- an Xbox/XInput or DirectInput pad --
-since 2026-09-16, OR-ed with the keyboard, sticks past a 15 % dead zone override the keyboard axes**; the start
-banner names the pad or says `gamepad none`; **`PS2X_HOST_GAMEPAD=0` disables every host gamepad read** -- the gate and the
-online launch scripts set it, because a plugged-in controller makes the game skip its controller-configuration screens
-at boot), ~~`PS2X_SOCOM2_MOUSE=1` adds mouse look~~ (removed with its code in Sprint 10 Q3, R210); `PS2X_TEST_REPEAT=N` (above) repeats the unit suite for a
-determinism check.
-`PS2X_VU1_NATIVE_TEST_CEILING=<n>` / `PS2X_VU1_NATIVE_TEST_CLIP_CEILING=<n>` lower the native
-dispatcher's per-handler vertex/triangle and clipped-vertex ceilings so `build.sh test` can reach
-the refusal path on the normal fixtures -- test-only, never set them for a real run. `vu1_replay
---vram-diff <outdir> [--vram-tol <pct>]` proves the host-draw and GIF paths render the same
-pixels offline; `vu1_replay --no-native` forces the interpreted path for comparison.
-`PS2X_PRESENT_FILTER=linear|integer|point` picks how the PS2 frame is stretched to the window:
-`linear` (default) is the single aspect-fit draw with the render target's own linear sampling,
-`point` samples it nearest straight to the window, and `integer` point-samples it into an
-off-screen stage at floor(fit scale) times its size first and then fits that stage with linear
-filtering. Presentation only -- it changes no rendering, and the title gate is green in all three.
-The desktop window opens at 640x448, the frame the menus present, so at the default size the fit
-scale is 1.0 and all three modes are the same 1:1 blit; the knob bites on a resized window (or the
-960x544 Vita build). `python -m tools_py.parity.resize_window <w> <h>` resizes a running instance
-for that comparison -- captures only, the title gate cannot score a pillarboxed window. See the
-2026-09-12 entry in `docs/STATUS.md`.
-`PS2X_GS_SCALE=1..4` (GL backend only, default 1) is the integer render-target scale: every
-render target's GL texture is allocated at that multiple of its native GS extent and every draw
-rasterises into it at that scale, so geometry is sharper while VRAM addressing, page/row
-bookkeeping and every byte the guest can read back stay native. Anything the guest can observe --
-the two VRAM downloads, a render target sampled as a texture, the display dump, the frame capture
--- goes through a native-sized mirror first, and `PS2X_GS_SCALE_FILTER=point|box` picks how that
-mirror is produced (`point`, the default, is a `GL_NEAREST` blit; `box` averages the SxS host
-texels behind each native pixel). Any value other than the exact string `box` (including a typo,
-or the variable unset) silently selects `point` -- there is no warning. Two consequences worth knowing: textures are still decoded at
-native resolution, so an RT sampled as a texture (the full-screen display copies) gains no detail
-from the scale; and an image upload into a render target only ever carries native pixels, so it
-destroys the sub-native detail in the rows it covers (the movie path re-uploads a full frame every
-frame). Memory cost is S^2 per colour and depth target. `PS2X_GS_SCALE_SELFTEST=1` checks, on
-every native-view read, that the mirror is not stale by a batch and that each native pixel lies
-inside its host block -- diagnostics only. The CPU backend (`PS2X_GS_BACKEND=cpu`, which
-`build.sh test` and `vu1_replay` force) ignores both knobs and always rasterises at 1x.
-The value is read once and clamped into 1..4, so anything out of range silently becomes the nearest
-end. `S=2` is verified on both draw paths (gate stamps `s3d_2x_host` for host-draw; `s3d_2x_gif`
-title + mission and `s3d_2x_gif_t2` transition for the GIF path) and sharpens geometry but **not**
-the HUD, menus or title, which are textured quads drawn at native texel density; `S=3` and `S=4`
-are admitted by the clamp and **untested** — at `S=4` a colour target is 67 MB and
-`getDepthTarget`'s zero-fill is a 67 MB one-off per ZBP. See the 2026-09-12 Sprint 3 and Task 5
-entries in `docs/STATUS.md`.
-**Online (two instances on the local Horizon server).** `python -m tools_py.parity.online_match_ours`
-drives instance A (host) and B (joiner) through login, lobby and a match; see
-`docs/research/18-online-round-start.md` §3.6 and §4.9 for full recipes. Runtime knobs:
-`PS2X_SOCOM2_NET_STATS` (default **on**) makes `sceInetInterfaceControl` code `0x200` return a real
-RX byte count; `0` restores the old constant and **reproduces the online movement defect** (the
-guest's ms-since-network-activity never resets, the multiplayer movement scale decays to 0 and the
-local player cannot move) -- an opt-out kept so the fix can be A/B'd on one binary.
-`PS2X_SOCOM2_NET_TRACE` (any value) enables the netcode trace, `PS2X_SOCOM2_NET_TRACE_PEERS=<n>`
-sets how many datagrams are hex-dumped per direction (default 16), and `PS2X_SOCOM2_NET_TRACE_ALL`
-(default off) hex-dumps **every** datagram rather than only ports below 10000 (the only way to
-content-inspect the DME aux-UDP traffic). `PS2X_SOCOM2_UDP_SHIFT=<n>` shifts an instance's peer UDP
-ports (instance B uses 2), and `PS2X_SOCOM2_RSA_KEY=b` gives an instance the second precomputed
-RSA key pair so two exes on one host do not publish the same public key. `PS2X_RUN_LOG=<path>`
-(read by `run.sh`) pins the log file, so a driver can tail the game's own `[peek]` rows. The
-drivers pass instance-B-only variants: `PS2X_SOCOM2_NET_STATS_B=0` turns the `0x200` fix off for
-B alone (one match carries both legs of an A/B), `PS2X_SOCOM2_RSA_KEY_B=b` gives B its own key.
-`online_match_ours.py` flags added in Sprint 4: `--converge` (both instances walk toward each
-other); `--until-kill` (implies `--converge`; runs until a kill or round end is observed, captures
-both screens and prints one `RESULT` line naming the signal -- **`RESULT PASS` is reserved for a
-kill**, a round that ends on its clock prints `ROUND-END (unattributed -- NOT a kill)` and exits
-non-zero, and expiry of `--kill-timeout` (default 420 s) is a clean FAIL); `--engage`/`--engage-dy`
-(true 3-D actor-to-actor range and height tolerance for contact), `--fight-seconds`, `--no-route`
-(ignore the mined Medley corridor); `--map <name>` (default **`frostfire`**, the owner's test map
-since 2026-09-13; the highlighted row is verified against a reference crop in
-`scripts/parity/refs/map_<name>.png` before CROSS is pressed, and a map with no reference aborts)
-and `--map-scan <n>` (with `--only A`: walk the map list n rows and capture each, which is how a new
-reference crop is made); `--health-offset <byte offset from the actor base>` with
-`--health-range lo:hi` arms the health watch -- unset, the health signal is off and the run says so,
-and an armed watch that reads nothing fails the run. `docs/research/19` sources health at
-`0x1044` (alive byte `0xF7A`). **Both are armed by default since Sprint 5 Task 2**
-(`--health-offset 0x1044` / `--alive-offset 0xF7A`; `'none'` disarms either) -- a health death
-counts only as a transition (the same actor address must read alive, `0 < v <= 1`, before a
-dead-range read), so a first read of `0.0` or of uninitialised heap is not a kill
-(`tools_py/tests/test_kill_watch.py`), and `PS2X_PEEK` must cover the offset or the run refuses to
-launch rather than failing later with `reads=0`. Map references are committed for Frostfire and
-Medley. **As of Sprint 5's close the acceptance test has PASSED**: a Frostfire ladder match ends in
-a kill scored by two independent readers (KillWatch on the actor fields above, `verdict_replay.py`
-on the round-state valves) -- see `docs/STATUS.md` and `docs/KNOWN.md`. Harness pieces:
-`drive.py` scripts gain an `ifburst` step (fire a capture burst only if the preceding `ifref`
-matched), and `python -m tools_py.parity.movie_blocks <dumpdir>` checks a `PS2X_GS_DUMP_DISPLAY`
-capture for 16x16 blocks black on the GL target but present in shadow VRAM (limits:
-`docs/research/16` §9.1.1; wired into no automation).
+## Knobs
 
-**Sprint 5 knobs and tools.**
-`PS2X_HLE_STATS=1` prints, per bound HLE stub (`recomp/socom2.toml`),
-its call count, distinct returns (saturating at 64) and first/last value, including zero-call stubs
--- a varying-but-wrong return still passes a distinct count, and tail-called stubs (a recompiled
-`J` straight to a C++ function) undercount because they skip the dispatch table.
-`PS2X_GS_DEPTH_LEGACY=1` restores the GL backend's pre-2026-09-15 depth mapping (`gl_Position.z =
-z/2^32 * 2 - 1` under the default clip range), which rounds window depth to multiples of 128 GS z
-units for every z below ~2^30 and so let a Z16S scene keep only ~512 distinct depths. The default
-now carries integer GS z exactly into the `GL_DEPTH_COMPONENT32F` test: `glClipControl(GL_ZERO_TO_ONE)`
-with z passed through when GL 4.5 / `ARB_clip_control` is available (logged as `[gs-gl] depth
-mapping: clip-control`), else `gl_FragDepth` from the interpolated z (exact, no early-z). The
-mapping is replicated on the CPU in `runtime/gs/gs_gl_depth.h` and pinned by the `GSGlDepth` unit
-suite. It is a precision fix, **not** the Seeding Chaos water fix (`docs/research/27`).
-`PS2X_GS_MAX_PENDING_FRAMES=<n>` (default **3**) bounds the GS command backlog: the EE waits at
-`VBlankStart` while more than `n` guest frames are recorded ahead of the GL replay thread; `0`
-restores unbounded back-pressure, the pre-fix backlog that let `m_pending` grow to gigabytes when the
-replay thread fell behind (fixed as a correctness bug, `8281254`/`7448601`/`92d30f0`), but **not** the
-pre-`R54` idle wait -- the idle-spin fix (`92d30f0`) stays in either way, so `0` is not a full A/B of
-the pre-fix runtime. `PS2X_CYCLE_CLOCK=guest` makes
-the idle wait account the remaining cycles itself instead of a host-clock deadline -- **this is not
-an A/B of the pre-`R54` scheduler path**; the idle-spin fix (`92d30f0`) landed on the host-clock
-path, and `guest` is an alternate accounting mode on top of it, untested as a toggle of the older
-behaviour.
-`PS2X_CLOCK_EXCLUDE=0` stops subtracting the host time VU1 runs and the render back-pressure wait report
-(`ps2GuestClockExcludedNs`) from the guest clock, so timer T0 -- the game's frame dt -- follows wall time;
-the default (1) is the 2026-09-08 behaviour, which ran an online round at two thirds speed (research/34
-section 6: 195 ms of VU1 and 290 ms of back-pressure per second excluded). `PS2X_CLOCK_CAP_MS=<ms>` still
-bounds a single gap (a stall must not become a 300 ms dt). `PS2X_CLOCK_TRACE=1` prints, once a second,
-`gap_ms` / `excluded_ms` / `lost_ms` beside the cycle clock.
-`PS2X_AUDIO_DUMP=<file.wav>` writes the 989snd mix (48 kHz stereo) as it is rendered -- bank sounds only until the
-VAG streams land (research/32 section 5); a run the harness kills leaves the WAV header's sizes at zero, so read
-the file by its length.
-`PS2X_AUDIO_PCM_DUMP=<file>` writes the first 256 KiB the EE DMAs into the 989snd PCM ring (the title music), each
-write as `{offset, bytes}` then the bytes, to check the ring's layout offline (research/32 section 7).
-`online_match_ours.py` flags from the Sprint 5 engagement ladder (Amendment A): `--rounds N`
-`PS2X_WINDOW_SIZE=<w>x<h>` opens the game window at that size and `PS2X_WINDOW_SIZE=fullscreen` borderless over
-the desktop; unset keeps the 640x448 default the gate depends on.
+**`docs/KNOBS.md` is the complete, generated list** (since Sprint 10 Q2, 2026-09-21), and it states its own count by
+class on its first lines -- read it there rather than here (`python -m tools_py.knobs write` regenerates it from
+`third_party/ps2recomp/ps2xShared/include/ps2x/knobs.h`, and `test_knobs_registry` fails when the source and the
+registry disagree in either direction: a `PS2X_*` name the source reads with no row, a raw `getenv` outside the one
+accessor `ps2x::knob`, or a row nothing reads). The **Shipping** names are `config.json` settings the launcher sends.
+Everything else is a **Dev** knob (or Test) and is ignored unless the run is in developer mode -- `--dev` on
+`socom2`'s command line or `PS2X_DEV=1`; `run.sh`, the gate and every script under `scripts/parity/` are
+developer-mode launches already. The game's first log line, `[knobs] dev=<0|1> set: ... | ignored without --dev:
+...`, says what was honoured and what was not; the launcher passes the game none of its own inherited `PS2X_*`
+environment unless developer mode is on. An on/off knob is a flag: `X=1` is on, anything else off (since
+2026-09-21). A Path knob's value must lie under the game folder unless developer mode is on (R207).
 
-**The launcher** (`dist/socom_unzipped_launcher.exe`, built by `./build.sh runtime` next to `socom2.exe`): one
-window that owns `config.json` beside it and starts `socom2.exe socom2_game.elf` with the `PS2X_*` environment,
-so nobody sets a variable by hand. Disc: the ISO path (Browse), verified by hashing `SCUS_972.75` out of the image
-against the r0001 digest -- Launch stays off until it matches. Video: Native / Sharp (2x) / Sharper (3x, untested)
-detail (`PS2X_GS_SCALE`), the presentation filter, 640x448 / 1280x896 / fullscreen. Controller: the pad raylib sees,
-sticks and buttons live (the same calls the game's input poll makes); mouse look and its sensitivity are gone since Sprint 10 Q3 (R210). Online: server
-address, profile (its own `cards/<profile>/`), and a second-instance checkbox (UDP shift 2, key b, `cards/<profile>_b`).
-Launch writes `logs/run_<stamp>.log`; Copy diagnostics puts the last log and `config.json` under `diagnostics/`.
-`--selftest` prints the verified disc and the environment and exits; `--launch-test [seconds]` starts the game the
-way the button does and reports whether it is still running after that long.
-(default 4) plays N rounds on one lobby success, re-finding the actor by vtable and re-arming the
-move-path disarm window after each round or kill, with one `LADDER round=<n> …` line per round and
-a `LADDER-SUMMARY`; `--route <file>` picks the waypoint route for `--endgame route`/`cooperative`
-(default `tools_py/parity/routes/frostfire_v2.json` for `--map frostfire`, derived from collision
-geometry in `docs/research/24`; the older 3c-derived `routes/frostfire.json` stays loadable); `--endgame
-route` (the Amendment A default) has the stander wait at spawn while the mover follows the route,
-closes into the contact band, aims with partial-`rx` pulses read from the actor matrix and fires,
-teleport-checked throughout; `--endgame cooperative` adds victim strafe-oscillation and shooter
-micro-strafing between bursts so each side keeps feeding the other's starvation counter;
-`--mover {A,B}` (default A, the host) picks which side walks and shoots; `--auto-swap` swaps
-`--mover` once on a `SWAP-MOVER` stop instead of ending the run; `--control-round` (implies
-`--converge`) runs the clock round-end negative control -- nobody fires, both sides alternate
-strafe legs until the round ends on its own clock, and `RESULT CONTROL-ROUND` requires
-`total_mp_kills`, `aiteam_*` and the health word to stay unchanged. `--health-offset`/
-`--alive-offset` default to `0x1044`/`0xF7A` as covered above.
-Loop lock: `LOOP_LOCK_PATH` overrides the lock's base path (tests use it to avoid touching the real
-lock). `tools_py/tests/test_loop_lock.py` runs by default as a smoke of 7 lock tests (claim, renew,
-release, one reap, one quiet-marker check, and -- Ruling R73 -- one reaper race of 4 takers x 2 rounds
-with 0-0.3 s of process-list latency plus one stale-mutex double-entry check), ~25 s measured under
-host load (the race alone ~8-9 s), plus a hygiene test that fails when `scripts/loop_lock.sh`'s git
-blob differs from `tools_py/tests/fixtures/loop_lock_slow_green.txt`, the blob of the last green
-`LOOP_LOCK_SLOW_TESTS=1` run. That variable runs the whole suite (~16 min: every race, interleaving,
-`run`/`run_detached` test and the real-scale `run -- sleep 130` renewal). `scripts/run_detached.sh`
-(launched with `--purpose launch*` for an online match) writes a quiet marker (`logs/.quiet`, keyed to
-the Windows pid) that tells other agents to stay off `build.sh test`, the gate, `unittest` and
-large-log parsing while a match runs; records a host CPU sampler into the run directory (nominally one
-row per 1 s, measured one row per ~3.1 s on ladder launches 1b and 2); refuses to start below 4 GB free
-on `C:`; and takes the loop lock for the job. `scripts/pin_harness.sh` archives `tools_py`/`scripts` at
-a given commit into `<out_dir>/harness` and records `HARNESS_COMMIT`/`EXE_BUILD`; it does not run or
-re-exec anything. The ladder template runs that snapshot with `PYTHONPATH=<snapshot>` plus
-**`PYTHONSAFEPATH=1`** from the repo root, so a pinned run cannot accidentally import the live tree
-instead (Python otherwise puts the current directory ahead of `PYTHONPATH`).
-`scripts/parity/ladder_frostfire.sh --pinned <outdir>` is the ladder launch template: it pins the
-harness, proves the snapshot imports, dry-runs first, then runs the pinned `online_match_ours.py
---rounds … --endgame route --route … --auto-swap` under `run_detached.sh` (which does the disk and
-lock checks) and returns; nothing polls -- the caller watches `logs/<name>.done`. Killing stale
-drivers (`scripts/kill_stale_drivers.ps1`), a running Horizon stack and persona B are preconditions the
-caller meets, not steps the template takes; its header carries the exit codes and knobs. `tools_py/parity/verdict_replay.py <run_A.log> <run_B.log> [--per-round]` is
-the second, independent kill scorer (primary signal: the round-state valves -- `total_mp_kills`,
-`aiteam_*`, the clock -- corroborated by the actor fields), test-driven against synthetic and real
-fixtures per spec §5.1.1, and importing nothing from `online_match_ours.py` or `verdict_core.py` by
-design, so a parser bug in one cannot hide behind agreement with the other. `tools_py/parity/
-verdict_core.py` holds the pure, IO-free scorers (`score-control`, `move-path`, `contact`,
-`starvation`) both the harness's own preconditions and Task 1's launch-1 scoring share, with a CLI
-for offline replay of any stored log pair.
-`socom2.exe` takes the ELF path as argv[1]; it finds the `.iso` next to the ELF or one level up
-(`game/`) or via `PS2X_CD_IMAGE`; memory cards live in `game/disc/mc0`.
+A few `PS2X_*` names are **not knobs**: `PS2X_ENABLE_DEBUG_UI` and `PS2X_IOP_ENABLE_PLUGINS` are CMake options,
+`PS2X_DEFAULT_BOOT_ELF` a CMake cache string and `PS2X_GAME_REVISION` a compile definition (above) — set at build
+time, never read from the environment. `PS2X_RUN_LOG` is read by `run.sh`, not by the game, and
+`PS2X_SOCOM2_RSA_KEY_B` by `tools_py/parity/online_login_ours.py`, which hands it to instance B as `PS2X_SOCOM2_RSA_KEY`.
+
+> Superseded 2026-09-25 (Sprint 13 R2): the knob paragraph here said the list below was "not the complete list --
+> other behaviour-changing knobs exist under `getenv("PS2X_`", named `PS2X_GS_TEX_FROM_CPU` (deleted in Sprint 10 Q2)
+> and `PS2X_VU1_XGKICK_IMMEDIATE` (read nowhere in the tree), and counted build options as knobs; `test_knobs_registry`
+> has refused a raw `getenv` since Q2 (documents audit row 6). It also said the prose below was "what each knob did
+> when it was added, kept as history"; the prose is now current, and the corrections are marked where they stand.
+
+What follows is what `docs/KNOBS.md`'s one line cannot hold. Defaults are the registry's.
+
+**Rendering.** `PS2X_GS_BACKEND=cpu` picks the CPU rasteriser (anything else, including unset, is the GL backend;
+`build.sh test` and `vu1_replay` force `cpu`; the GL probe falls back to it by itself and the game exits 65).
+`PS2X_VU1_NATIVE=0` reverts the native VU1 dispatcher to the generated/interpreted path (it runs 162 of the corpus's
+166 lists natively, bit-exact; the residual 4 are documented in `docs/research/15-vu1-fourth-family.md`);
+`PS2X_VU1_FAST=0` and `PS2X_VU1_GEN=0` drop to the exact interpreter, which with `--no-native` is how `vu1_replay`
+goldens are made; `PS2X_VU1_HOST_DRAW=1` draws the native dispatcher's triangles through `GS::submitHostTriangle`
+in host space instead of building/kicking a GIF packet (default off, GIF path unchanged).
+`PS2X_VU1_NATIVE_TEST_CEILING=<n>` / `PS2X_VU1_NATIVE_TEST_CLIP_CEILING=<n>` lower the native dispatcher's
+per-handler vertex/triangle and clipped-vertex ceilings so `build.sh test` can reach the refusal path on the normal
+fixtures -- test-only, never set them for a real run. `vu1_replay --vram-diff <outdir> [--vram-tol <pct>]` proves the
+host-draw and GIF paths render the same pixels offline; `vu1_replay --no-native` forces the interpreted path for
+comparison.
+
+**Presentation and scale.** `PS2X_PRESENT_FILTER=linear|integer|point` (Shipping) picks how the PS2 frame is
+stretched to the window: `linear` (default) is the single aspect-fit draw with the render target's own linear
+sampling, `point` samples it nearest straight to the window, and `integer` point-samples it into an off-screen stage
+at floor(fit scale) times its size first and then fits that stage with linear filtering. Presentation only -- it
+changes no rendering. `PS2X_WINDOW_SIZE=<w>x<h>` (Shipping) opens the window at that size, `fullscreen` borderless
+over the desktop; the default and the launcher's default are 640x448 (R236, 2026-09-22), the frame the menus present,
+so at the default the fit scale is 1.0 and the three filters are the same 1:1 blit; the filter bites on a larger or
+resized window. `python -m tools_py.parity.resize_window <w> <h>` resizes a running instance for that comparison --
+captures only, the title gate cannot score a pillarboxed window.
+`PS2X_GS_SCALE=1..4` (Shipping; GL backend only, default 1; the VIDEO page's DETAIL row) is the integer render-target
+scale: every render target's GL texture is allocated at that multiple of its native GS extent and every draw
+rasterises into it at that scale, so geometry is sharper while VRAM addressing, page/row bookkeeping and every byte
+the guest can read back stay native. Anything the guest can observe -- the two VRAM downloads, a render target sampled
+as a texture, the display dump, the frame capture -- goes through a native-sized mirror first, and
+`PS2X_GS_SCALE_FILTER=point|box` picks how that mirror is produced (`point`, the default, is a `GL_NEAREST` blit;
+`box` averages the SxS host texels behind each native pixel). Any value other than the exact string `box` silently
+selects `point`. Textures are still decoded at native resolution, so an RT sampled as a texture (the full-screen
+display copies) gains no detail from the scale, and an image upload into a render target only ever carries native
+pixels, so it destroys the sub-native detail in the rows it covers (the movie path re-uploads a full frame every
+frame). Memory cost is S^2 per colour and depth target. `PS2X_GS_SCALE_SELFTEST=1` checks, on every native-view
+read, that the mirror is not stale by a batch and that each native pixel lies inside its host block -- diagnostics
+only. The CPU backend ignores both knobs and always rasterises at 1x. The value is read once and clamped into 1..4.
+`S=2` is verified on both draw paths (gate stamps `s3d_2x_host` for host-draw; `s3d_2x_gif` title + mission and
+`s3d_2x_gif_t2` transition for the GIF path, 2026-09-12) and sharpens geometry but **not** the HUD, menus or title,
+which are textured quads drawn at native texel density; `S=3` and `S=4` are admitted by the clamp and have no gate
+stamp -- at `S=4` a colour target is 67 MB and `getDepthTarget`'s zero-fill is a 67 MB one-off per ZBP.
+`PS2X_GS_DEPTH_LEGACY=1` restores the GL backend's pre-2026-09-15 depth mapping, which rounded window depth to
+multiples of 128 GS z units for every z below ~2^30. The default carries integer GS z exactly into the
+`GL_DEPTH_COMPONENT32F` test: `glClipControl(GL_ZERO_TO_ONE)` with z passed through when GL 4.5 /
+`ARB_clip_control` is available (logged as `[gs-gl] depth mapping: clip-control`), else `gl_FragDepth` from the
+interpolated z (exact, no early-z). The mapping is replicated on the CPU in `runtime/gs/gs_gl_depth.h` and pinned by
+the `GSGlDepth` unit suite. It is a precision fix, **not** the Seeding Chaos water fix (`docs/research/27`).
+
+**The render backlog and the guest clock.** `PS2X_GS_MAX_PENDING_FRAMES=<n>` (default **3**) bounds the GS command
+backlog: the EE waits at `VBlankStart` while more than `n` guest frames are recorded ahead of the GL replay thread;
+`0` restores unbounded back-pressure, the pre-fix backlog that let `m_pending` grow to gigabytes
+(`8281254`/`7448601`/`92d30f0`), but **not** the pre-`R54` idle wait -- the idle-spin fix (`92d30f0`) stays in
+either way, so `0` is not a full A/B of the pre-fix runtime. `PS2X_CYCLE_CLOCK=guest` makes the idle wait account the
+remaining cycles itself instead of a host-clock deadline -- an alternate accounting mode on top of the idle-spin
+fix, **not** an A/B of the pre-`R54` scheduler path.
+**The guest clock follows wall time by default** (`PS2X_CLOCK_EXCLUDE` default 0): timer T0 -- the game's frame dt --
+is not reduced by the host time VU1 runs or the render back-pressure waits. `PS2X_CLOCK_EXCLUDE=1` restores the
+2026-09-08 behaviour for an A/B: it subtracts that time (`ps2GuestClockExcludedNs`) from the guest clock, which ran an
+online round at two thirds speed (research/34 section 6: 195 ms of VU1 and 290 ms of back-pressure per second
+excluded). `PS2X_CLOCK_CAP_MS=<ms>` (default 100) bounds a single gap (a stall must not become a 300 ms dt).
+`PS2X_CLOCK_TRACE=1` prints, once a second, `gap_ms` / `excluded_ms` / `lost_ms` beside the cycle clock.
+
+> Superseded 2026-09-25 (Sprint 13 R2): this paragraph said "`PS2X_CLOCK_EXCLUDE=0` stops subtracting ... the default
+> (1) is the 2026-09-08 behaviour" — backwards. `knobs.h` registers the default as 0 and its meaning as "1 restores
+> the 2026-09-08 exclusion ... (A/B)", and `docs/KNOWN.md` §2 says the scheduler counts wall time by default
+> (documents audit row 4).
+
+**Input.** `PS2X_SOCOM2_PAD` (Shipping, default on; `0` boots with no controller) is the libpad2 HLE and host input
+path. Gamepad 0 -- an Xbox/XInput or DirectInput pad (since 2026-09-16) -- is OR-ed with the keyboard, and sticks
+past the dead zone (`PS2X_PAD_DEADZONE`, default 0.15) override the keyboard axes; the start banner names the pad or
+says `gamepad none`. **`PS2X_HOST_GAMEPAD=0` disables every host gamepad read** -- the gate and the online launch
+scripts set it, because a plugged-in controller makes the game skip its controller-configuration screens at boot.
+The keyboard's **full** map (arrows/WASD/IJKL, Enter=START, Backspace=SELECT, ZXCV=Square/Cross/Circle/Triangle,
+QE=L1/R1, 13=L2/R2, 24=L3/R3) is honoured only in developer mode, which every harness launch is; a player's
+keyboard is menus and typing only -- the d-pad, Enter, Backspace and Z/X/C/V (R210, 2026-09-21). The input banner
+says which: `[socom2-input] keyboard full, developer mode (...)` or `[socom2-input] keyboard menus and typing only
+(...)` (`socom2_host_input.cpp`). The mouse and its two knobs are gone (Sprint 10 Q3, R210).
+
+> Superseded 2026-09-25 (Sprint 13 R2): the input sentence said "setting `PS2X_SOCOM2_PAD` (to any value) enables the
+> host input path" and listed the keyboard's gameplay keys with no mention of developer mode; the knob is on by
+> default and the gameplay keys have been developer-mode-only since R210.
+
+**Audio.** `PS2X_AUDIO_DUMP=<file.wav>` writes the host mix (48 kHz stereo, 16-bit) as it is rendered -- the mix
+before the device, so it cannot see what the device path loses (record the endpoint beside it:
+`tools_py/parity/loopback_record.py`). A run the harness kills leaves the WAV header's sizes at zero, so read the file
+by its length. `PS2X_AUDIO_PCM_DUMP=<file>` writes the first 16 MiB the EE DMAs into the 989snd PCM ring, raw with a
+wall-clock stamp per write (`tools_py/parity/pcm_dump.py` reads it). `PS2X_HLE_STATS=1` prints, per bound HLE stub
+(`recomp/socom2.toml`), its call count, distinct returns (saturating at 64) and first/last value, including zero-call
+stubs -- a varying-but-wrong return still passes a distinct count, and tail-called stubs (a recompiled `J` straight
+to a C++ function) undercount because they skip the dispatch table.
+
+> Superseded 2026-09-25 (Sprint 13 R2): the audio sentences said the dump held "bank sounds only until the VAG streams
+> land" (the streams landed long ago; the dump is the whole mix) and that the PCM dump holds "the first 256 KiB"
+> (`ps2_audio.cpp` and `knobs.h` say 16 MiB).
+
+**Online (two instances on one host, or on the hosted server).** `PS2X_SOCOM2_SERVER` (Shipping) is the address or
+name every Medius/DNAS host name resolves to; the launcher sends its preset's. `PS2X_SOCOM2_NET_STATS` (default
+**on**) makes `sceInetInterfaceControl` code `0x200` return a real RX byte count; `0` restores the old constant and
+**reproduces the online movement defect** (the guest's ms-since-network-activity never resets, the multiplayer
+movement scale decays to 0 and the local player cannot move) -- an opt-out kept so the fix can be A/B'd on one
+binary (`socom2_libnetb.cpp`, the `0x200` case). *(Corrected 2026-09-25, Sprint 13 C9, `5ece5e3e`: `docs/KNOBS.md`'s
+one-line meaning for this knob said "the periodic [net-stats] line"; it now names the `0x200` counter.)* `PS2X_SOCOM2_NET_TRACE` (any value) enables the netcode
+trace, `PS2X_SOCOM2_NET_TRACE_PEERS=<n>` sets how many datagrams are hex-dumped per direction (default 16), and
+`PS2X_SOCOM2_NET_TRACE_ALL` (default off) hex-dumps **every** datagram rather than only the peer ports (the only way
+to content-inspect the DME aux-UDP traffic). *(Reworded 2026-09-25, Sprint 13 R2: "only the peer ports" was "only
+ports below 10000".)* `PS2X_SOCOM2_UDP_SHIFT=<n>` shifts an instance's peer UDP ports
+(instance B uses 2), and `PS2X_SOCOM2_RSA_KEY=b` gives an instance the second precomputed RSA key pair so two exes on
+one host do not publish the same public key; the launcher's "Second instance" box sends both. The drivers give
+instance B its key through `PS2X_SOCOM2_RSA_KEY_B=b` (the launch scripts under `scripts/parity/` export it).
+
+> Superseded 2026-09-25 (Sprint 13 R2): this paragraph said the drivers also pass `PS2X_SOCOM2_NET_STATS_B=0` to turn
+> the `0x200` fix off for instance B alone; nothing in `tools_py/` or `scripts/` reads or sets that name.
+
+## The online harness
+
+`python -m tools_py.parity.online_match_ours` drives instance A (host) and B (joiner) through login, lobby and a
+match; `docs/research/18-online-round-start.md` §3.6 and §4.9 have the full recipes. Its flags:
+
+- `--converge` (both instances walk toward each other); `--until-kill` (implies `--converge`; runs until a kill or
+  round end is observed, captures both screens and prints one `RESULT` line naming the signal -- **`RESULT PASS` is
+  reserved for a kill**, a round that ends on its clock prints `ROUND-END (unattributed -- NOT a kill)` and exits
+  non-zero, and expiry of `--kill-timeout` (default 420 s) is a clean FAIL); `--engage`/`--engage-dy` (true 3-D
+  actor-to-actor range and height tolerance for contact), `--fight-seconds` (default 150), `--no-route` (ignore the
+  mined corridor and walk the straight line).
+- `--map <name>` (default **`frostfire`**, the owner's test map since 2026-09-13): the highlighted row is verified
+  against a reference crop `scripts/parity/refs/map_<name>.png` before CROSS is pressed, and a map with no reference
+  aborts. References are committed for the 24 maps under `scripts/parity/refs/map_*.png` (2026-09-25, `ls`) plus a
+  PCSX2 crop for Frostfire. `--map-scan <n>` (with `--only A`) walks the map list n rows and captures each, which is
+  how a new reference crop is made.
+- The health watch: `--health-offset` (default `0x1044`) and `--alive-offset` (default `0xF7A`), `'none'` disarms
+  either (armed by default since Sprint 5 Task 2; `docs/research/19` sources the offsets); `--health-range lo:hi`
+  (default `-1e9:0.0`). A health death counts only as a transition (the same actor address must read alive, `0 < v <=
+  1`, before a dead-range read), so a first read of `0.0` or of uninitialised heap is not a kill
+  (`tools_py/tests/test_kill_watch.py`), and `PS2X_PEEK` must cover the offset or the run refuses to launch rather
+  than failing later with `reads=0`.
+- The engagement ladder: `--rounds N` (default 4) plays N rounds on one lobby success,
+  re-finding the actor by vtable and re-arming the move-path disarm window after each round or kill, with one
+  `LADDER round=<n> …` line per round and a `LADDER-SUMMARY`; `--route <file>` picks the waypoint route for
+  `--endgame route`/`cooperative` (default `tools_py/parity/routes/frostfire_v2.json` for `--map frostfire`, derived
+  from collision geometry in `docs/research/24`, else `routes/<map>.json`; the older 3c-derived `routes/frostfire.json`
+  stays loadable); `--endgame route` (the default) has the stander wait at spawn while the mover follows the route,
+  closes into the contact band, aims with partial-`rx` pulses read from the actor matrix and fires, teleport-checked
+  throughout; `--endgame cooperative` adds victim strafe-oscillation and shooter micro-strafing between bursts so each
+  side keeps feeding the other's starvation counter; `--endgame converge` has both sides approach and sweep-fire;
+  `--mover {A,B}` (default A, the host) picks which side walks and shoots; `--auto-swap` swaps `--mover` once on a
+  `SWAP-MOVER` stop instead of ending the run; `--control-round` (implies `--converge`) runs the clock round-end
+  negative control -- nobody fires, both sides alternate strafe legs until the round ends on its own clock, and
+  `RESULT CONTROL-ROUND` requires `total_mp_kills`, `aiteam_*` and the health word to stay unchanged; `--dry-run`
+  validates the arguments, the route, the peek/trace spec and `PS2X_GS_STATS` and launches nothing.
+
+> Superseded 2026-09-25 (Sprint 13 R2): the `--rounds N` sentence was cut in two, with the window-size knob and the
+> whole launcher paragraph spliced into the middle of it (documents audit row 5); and the map sentence said
+> references were committed "for Frostfire and Medley" only.
+
+**Two independent kill scorers.** A ladder match's kill is scored twice: by KillWatch on the actor fields above,
+and by `verdict_replay.py` on the round-state valves (the acceptance test these two met, 2026-09-13, is
+`docs/KNOWN.md` §1's). `tools_py/parity/verdict_replay.py <run_A.log> <run_B.log> [--per-round]`
+is the second, independent kill scorer (primary signal: the round-state valves -- `total_mp_kills`, `aiteam_*`, the
+clock -- corroborated by the actor fields), test-driven against synthetic and real fixtures, and importing nothing from
+`online_match_ours.py` or `verdict_core.py` by design, so a parser bug in one cannot hide behind agreement with the
+other. `tools_py/parity/verdict_core.py` holds the pure, IO-free scorers (`score-control`, `move-path`, `contact`,
+`starvation`) the harness's own preconditions and the offline scoring share, with a CLI for offline replay of any
+stored log pair. Harness pieces: `drive.py` scripts have an `ifburst` step (fire a capture burst only if the preceding
+`ifref` matched), and `python -m tools_py.parity.movie_blocks <dumpdir>` checks a `PS2X_GS_DUMP_DISPLAY` capture for
+16x16 blocks black on the GL target but present in shadow VRAM (limits: `docs/research/16` §9.1.1; `build.sh test`
+runs it over the saved fixture `tests/fixtures/movie/` with its furniture baseline, issue #46 (closed)).
+> Superseded 2026-09-25 (Sprint 13 Task H4): this said the check was "wired into no automation"; it has run in
+> `build.sh test` through `tools_py/tests/test_movie_blocks_fixture.py` since `bd27443e` (2026-09-17).
+
+**The ladder launch.** `scripts/parity/ladder_frostfire.sh --pinned <outdir>` is the ladder launch template: it pins
+the harness, proves the snapshot imports, dry-runs first, then runs the pinned `online_match_ours.py --rounds …
+--endgame route --route … --auto-swap` under `run_detached.sh` (which does the disk and lock checks) and returns;
+nothing polls -- the caller watches `logs/<name>.done`. Killing stale drivers (`scripts/kill_stale_drivers.ps1`), a
+running Horizon stack and persona B are preconditions the caller meets, not steps the template takes; its header
+carries the exit codes and knobs. `scripts/pin_harness.sh` archives `tools_py`/`scripts` at a given commit into
+`<out_dir>/harness` and records `HARNESS_COMMIT`/`EXE_BUILD`; it does not run or re-exec anything. The template runs
+that snapshot with `PYTHONPATH=<snapshot>` plus **`PYTHONSAFEPATH=1`** from the repo root, so a pinned run cannot
+accidentally import the live tree instead (Python otherwise puts the current directory ahead of `PYTHONPATH`). The
+scheduled form is `scripts/ladder_job.sh`, whose runs `tools_py/parity/ladder_ledger.py` renders to `docs/LADDER.md`.
+
+## The loop lock
+
+`scripts/loop_lock.sh` serialises every build and every game run on the machine (its header is the reference, and
+`docs/LOOP_PROMPT.md`'s "Lock protocol" the rules). `LOOP_LOCK_PATH` overrides the lock's base path (tests use it to
+avoid touching the real lock). `tools_py/tests/test_loop_lock.py` runs a smoke subset by default and the whole lock
+suite with `LOOP_LOCK_SLOW_TESTS=1` (every race, interleaving, queue, `run`/`run_detached`/`ladder_job` test and the
+real-scale `run -- sleep 130` renewal; ~16 min before Sprint 13's queue tests, longer now, and much longer on a
+host whose process starts are slow -- stray `tail -f` watchers once made it fail the stale-mutex cases outright, so
+check `Get-Process tail` before trusting a red), plus a hygiene test that fails when `scripts/loop_lock.sh`'s git blob differs from
+`tools_py/tests/fixtures/loop_lock_slow_green.txt`, the blob of the last green slow run -- so an edit to the lock
+script needs a green slow run before its commit. `scripts/run_detached.sh` (launched with `--purpose launch*` for an
+online match) writes a quiet marker (the MAIN tree's `logs/.quiet`, found through git's common dir like the lock, keyed
+to the Windows pid) that tells other agents to stay off `build.sh test`, the gate, `unittest` and large-log parsing
+while a match runs (`build.sh test` refuses to start under it unless `FORCE_QUIET=1`). The marker is machine-wide:
+**in an agent worktree, `build.sh test` exits 3 while ANY launch runs, including one from the main tree** -- wait
+for it, do not force it; `run_detached.sh --wait <minutes>` queues for the lock (in arrival order) instead of
+refusing; records a host CPU sampler into the run directory; refuses to start below 4 GB free on
+`C:`; and takes the loop lock for the job.
+
+## The launcher
+
+`dist/socom_unzipped_launcher.exe` (`socom_unzipped_launcher` on Linux), built by `./build.sh runtime` next to
+`socom2.exe`: one window that owns `config.json` beside it and starts `socom2.exe socom2_game.elf` with the `PS2X_*`
+environment `launcher::environmentFor` writes (`ps2xShared/src/launcher_config.cpp`), so nobody sets a variable by
+hand. Its pages are on a rail -- PLAY, DISC, VIDEO, AUDIO, CONTROLLER, MICROPHONE, ONLINE, REPORT A BUG, ABOUT
+(`docs/INSTALL.md` walks them in a player's order and quotes their sentences). DISC: the ISO path (BROWSE...),
+verified by hashing `SCUS_972.75` out of the image against the r0001 digest -- LAUNCH stays off until it matches.
+VIDEO: DETAIL (`PS2X_GS_SCALE`: NATIVE, SHARP 2x, SHARPER 3x, SHARPEST 4x), FILTER (`PS2X_PRESENT_FILTER`), WINDOW
+(640x448, 1280x896, fullscreen, or MATCH the display) and the frame-rate OVERLAY. CONTROLLER: the pad the launcher
+sees, drawn live, the dead zone, and BUTTONS (per-profile rebinding, `PS2X_INPUT_MAPPING`, and the crouch shortcut).
+ONLINE: the server preset (`PS2X_SOCOM2_SERVER`), PROFILE (a name, not a path: `cards/<profile>/` becomes
+`PS2X_MC_DIR`), PLAYER NAME and PASSWORD (prefilled into the game's keyboards), GAME VERSION (which executable LAUNCH
+starts, r0001 or `socom2_r0004.exe` when it is beside the launcher), and under ADVANCED the second-instance box (UDP
+shift 2, key b, `cards/<profile>_b`). LAUNCH writes `logs/run_<stamp>.log`; SAVE DIAGNOSTICS writes a zip into
+`diagnostics/` (the last log clipped, the settings through an allowlist, the GL report, the crash record, the
+versions, the home directory scrubbed). `--diagnostics <out.zip>` writes the same zip with no window; `--selftest`
+prints the verified disc and the environment and exits; `--launch-test [seconds]` starts the game the way the button
+does and reports whether it is still running after that long.
+
+`socom2.exe` takes the ELF path as argv[1]; it mounts `PS2X_CD_IMAGE` when set, else the first `.iso` next to the
+ELF or one directory up (`configureCdImage`, `game_overrides_socom2.cpp`); the memory card is `PS2X_MC_DIR` when set (the launcher always sets it, to `cards/<profile>`), else
+`mc0` beside the ELF -- `game/disc/mc0` for `./run.sh`'s default ELF.
 PCSX2 reference: `tools/pcsx2/pcsx2-qt.exe -batch -nogui -fastboot -logfile <log> "<iso>"`.
 
+> Superseded 2026-09-25 (Sprint 13 R2): the launcher paragraph described the pre-redesign launcher -- a "Copy
+> diagnostics" button that copied the last log and `config.json` into `diagnostics/`, "Native / Sharp (2x) / Sharper
+> (3x, untested)", three window sizes, an online page with a plain checkbox -- and said "memory cards live in
+> `game/disc/mc0`" without saying that holds only when no `PS2X_MC_DIR` is set (documents audit row 8). The rail,
+> SAVE DIAGNOSTICS and `cards/<profile>` have been the launcher since Sprints 8 and 9.

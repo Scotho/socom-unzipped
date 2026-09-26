@@ -72,7 +72,7 @@ namespace ui
             text(ctx, mismatch.c_str(), Vec2{cell.x, cell.bottom() + 6.0f}, metrics::captionSize, theme::warn);
         }
 
-        const std::string blocked = launchBlockedReason(app.discOk, app.running, app.config.isoPath.empty());
+        const std::string blocked = launchBlockedReason(app.discOk, app.running, app.config.isoPath.empty(), app.discMessage);
         if (button(ctx, launch, app.running ? "RUNNING" : "LAUNCH", "play.launch", blocked.empty(), true))
             app.requestLaunch = true;
         if (!blocked.empty())

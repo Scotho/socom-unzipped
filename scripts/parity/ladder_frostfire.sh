@@ -32,7 +32,8 @@
 #
 # Before a launch (plan Task 5 Step 3): the local Horizon stack running (server/), persona B on game/disc/mc0_b
 # (--existing-b), no socom2.exe running, `powershell -File scripts/kill_stale_drivers.ps1`, no other heavy host work.
-# SOCOM_SERVER_IP (scripts/parity/env.sh) must be this machine's LAN address (192.168.2.10 is the owner's).
+# SOCOM_SERVER_IP (scripts/parity/env.sh) is the server: the hosted box by name unless set; for a Horizon
+# stack on this machine, set it to this machine's LAN address.
 #
 # Instruments: scripts/parity/online_match_frostfire.sh's (MoveScale + NetIdle at EVERY=10; the actor block, +0x420,
 # +0x174, the +0xF7A alive byte (inside the +0xF78 peek), +0x1044 health; CZNetGame + valves with name bytes; mission abort; the round clocks
@@ -47,6 +48,7 @@ set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 . "$(dirname "$0")/env.sh"
+. "$(dirname "$0")/write_env.sh"    # write_env_ps2x: the PS2X_* record beside a capture (issue #38)
 socom_require_python ladder_frostfire
 export PATH="/usr/bin:/bin:$PATH"
 
@@ -187,6 +189,9 @@ case "$MODE" in
     ;;
   child)
     mkdir -p "$OUT"
+    # Issue #38: the PS2X_* this launch is handed (env.sh's instruments and this script's own), beside its output,
+    # the moment before it starts; the driver adds only per-instance plumbing (screenshot path, card dir) on top.
+    write_env_ps2x "$OUT" "ladder_frostfire.sh --child rounds=$ROUNDS mover=$MOVER harness=${HARNESS:-live}"
     "${PY[@]}" "${ARGS[@]}" > "logs/parity/drive_${NAME}.txt" 2>&1
     rc=$?
     if [ "$PINNED" = 1 ]; then

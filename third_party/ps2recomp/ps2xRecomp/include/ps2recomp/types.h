@@ -99,6 +99,7 @@ namespace ps2recomp
         bool isStub = false;
         bool isSkipped = false;
         std::string displayName; // from [general] names: the output identifier only, never the name rules read
+        std::string displayNameSource; // the [general] names path displayName was read from (the header's Name source)
     };
 
     // Symbol information

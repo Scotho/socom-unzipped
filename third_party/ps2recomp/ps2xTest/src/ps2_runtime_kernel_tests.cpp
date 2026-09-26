@@ -1050,6 +1050,83 @@ void register_ps2_runtime_kernel_tests()
             runtime.registerFunction(kFloat, nullptr);
         });
 
+        tc.Run("PS2X_HLE_STATS counts a tail call (J) to a stub once, like a dispatched call (issue #40)", [](TestCase &t)
+        {
+            constexpr uint32_t kStub = 0x00300100u;
+            PS2Runtime runtime;
+            static int s_stubBodyRuns = 0;
+            s_stubBodyRuns = 0;
+            // The stub's generated wrapper: ctx->pc = $ra, then the handler.
+            const PS2Runtime::RecompiledFunction stubWrapper = [](uint8_t *, R5900Context *ctx, PS2Runtime *)
+            {
+                ctx->pc = ::getRegU32(ctx, 31);
+                ++s_stubBodyRuns;
+                ::setReturnU32(ctx, 0x1234u);
+            };
+            runtime.registerFunction(kStub, stubWrapper);
+
+            std::istringstream toml("[general]\nstubs = [\n  \"tail_target@0x00300100\",\n]\n");
+            t.Equals(ps2_hle_stats::install(runtime, ps2_hle_stats::parseTomlStubs(toml)), static_cast<size_t>(1),
+                     "the stub's table entry is wrapped");
+
+            // The generated shape of a function that ends in `j tail_target`: the delay slot, the pc,
+            // then the line ControlFlowEmitter::emitDirectFunctionJumpIfAvailable writes for a stub
+            // target (code_generator_tests' "a tail call (J) to an HLE stub" holds that text).
+            const PS2Runtime::RecompiledFunction tailCaller = [](uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+            {
+                ctx->pc = 0x00300100u;
+                runtime->lookupFunction(0x00300100u)(rdram, ctx, runtime); return;
+            };
+
+            std::vector<uint8_t> rdram(64, 0);
+            R5900Context ctx{};
+            setRegU32(ctx, 31, 0x00200040u);
+            tailCaller(rdram.data(), &ctx, &runtime);
+            t.Equals(s_stubBodyRuns, 1, "the stub ran once");
+            t.Equals(ctx.pc, 0x00200040u, "the stub returned to the tail caller's $ra");
+
+            // The row: "[hle-stats] <addr> <name> <calls> <rets> <distinct> <first> <last>".
+            struct Row
+            {
+                std::string text;
+                unsigned long long calls = 0u;
+                unsigned long long rets = 0u;
+            };
+            auto rowOf = [](const std::string &table) -> Row
+            {
+                std::istringstream in(table);
+                std::string line;
+                while (std::getline(in, line))
+                {
+                    if (line.find(" tail_target ") == std::string::npos)
+                        continue;
+                    Row r;
+                    r.text = line;
+                    std::istringstream fields(line);
+                    std::string tag, addr, name;
+                    fields >> tag >> addr >> name >> r.calls >> r.rets;
+                    return r;
+                }
+                return {};
+            };
+            Row row = rowOf(ps2_hle_stats::formatTable("tail"));
+            t.Equals(row.calls, 1ull, "the tail call is counted once: " + row.text);
+            t.Equals(row.rets, 1ull, "the tail call's return is recorded: " + row.text);
+            t.IsTrue(row.text.find("0x00001234") != std::string::npos, "the return value is the stub's: " + row.text);
+
+            // The dispatched call (a JAL's path) reaches the same counting entry.
+            setRegU32(ctx, 31, 0x00200080u);
+            ctx.pc = 0x00200078u;
+            (void)runtime.dispatchGuestBranch(rdram.data(), &ctx, kStub, 0x00200078u, 0x00200080u,
+                                              PS2Runtime::GuestBranchKind::DirectCall, "JAL");
+            t.Equals(s_stubBodyRuns, 2, "the dispatched call ran the stub");
+            row = rowOf(ps2_hle_stats::formatTable("tail+dispatch"));
+            t.Equals(row.calls, 2ull, "the tail call and the dispatched call count 2: " + row.text);
+
+            ps2_hle_stats::uninstall(runtime);
+            runtime.registerFunction(kStub, nullptr);
+        });
+
         tc.Run("PS2X_SCHED_TRACE: the stub line, its threshold and the timing wrapper (research/36 item 16)", [](TestCase &t)
         {
             // The threshold rule: at or above prints, below does not, 0 prints everything, negative never.
@@ -1805,15 +1882,56 @@ void register_ps2_runtime_kernel_tests()
             t.Equals(readGuestU32(env.rdram.data(), entry + 4u), argWords[1],
                      "and so does the second");
 
-            // A syscall the guest replaced still answers with the guest's own handler.
+            // A syscall the guest replaced still answers with the guest's own handler -- one the runtime
+            // can run (R256 finding 9: an unrunnable one is refused, the case after this one).
             constexpr uint32_t kOverriddenIndex = 0x5Au;
             constexpr uint32_t kHandler = 0x001ACCB8u;
+            const PS2Runtime::RecompiledFunction handlerBody = [](uint8_t *, R5900Context *c, PS2Runtime *) { c->pc = GPR_U32(c, 31); };
+            env.runtime.registerFunction(kHandler, handlerBody);
             env.runtime.setEeSyscallOverride(env.rdram.data(), kOverriddenIndex, kHandler);
             setRegU32(env.ctx, 4, kOverriddenIndex);
             t.IsTrue(callSyscall(0x5Bu, env.rdram.data(), &env.ctx, &env.runtime),
                      "GetEntryAddress should dispatch for an overridden entry");
             t.Equals(static_cast<uint32_t>(getRegS32(env.ctx, 2)), kHandler,
                      "an overridden syscall answers with the handler the guest installed");
+            env.runtime.registerFunction(kHandler, nullptr);   // the table is the process's: leave it as found
+        });
+
+        // R256 finding 9 (Sprint 13 Task C3). The dispatcher treats an override whose handler is in no
+        // function table as no override (the fall-through case further down); GetEntryAddress still
+        // handed that handler out, contradicting it. It refuses it now, answers the runtime's own
+        // entry, and says so. The once-per-pair set is process-wide (System.cpp), so this pair
+        // (0x57, 0x80075000) must be asked for by no other case in the binary.
+        tc.Run("GetEntryAddress refuses an unrunnable handler with a log line and answers the runtime's entry", [](TestCase &t)
+        {
+            TestEnv env;
+            initializeGuestKernelState(env.rdram.data(), &env.runtime);
+            constexpr uint32_t kSyscall = 0x57u;                 // PollEventFlag, one of the five
+            constexpr uint32_t kGuestCopiedHandler = 0x80075000u;
+            t.IsTrue(!env.runtime.hasFunction(kGuestCopiedHandler), "the guest-copied handler is in no function table");
+            env.runtime.setEeSyscallOverride(env.rdram.data(), kSyscall, kGuestCopiedHandler);
+
+            std::ostringstream err;
+            std::streambuf *const old = std::cerr.rdbuf(err.rdbuf());
+            setRegU32(env.ctx, 4, kSyscall);
+            const bool dispatched = callSyscall(0x5Bu, env.rdram.data(), &env.ctx, &env.runtime);
+            const uint32_t first = static_cast<uint32_t>(getRegS32(env.ctx, 2));
+            setRegU32(env.ctx, 4, kSyscall);
+            (void)callSyscall(0x5Bu, env.rdram.data(), &env.ctx, &env.runtime);
+            const uint32_t second = static_cast<uint32_t>(getRegS32(env.ctx, 2));
+            std::cerr.rdbuf(old);
+            const std::string log = err.str();
+
+            t.IsTrue(dispatched, "GetEntryAddress should dispatch");
+            t.IsTrue(first != kGuestCopiedHandler, "the unrunnable handler is not handed out");
+            t.IsTrue(first >= 0x00090000u && first < 0x00100000u, "the answer is the runtime's reserved entry for the syscall");
+            t.Equals(second, first, "and it is stable across calls");
+            const size_t at = log.find("[GetEntryAddress]");
+            t.IsTrue(at != std::string::npos, "the refusal prints a [GetEntryAddress] line");
+            t.IsTrue(log.find("0x80075000") != std::string::npos && log.find("no function table") != std::string::npos,
+                     "naming the handler and why it was refused");
+            t.IsTrue(at == std::string::npos || log.find("[GetEntryAddress]", at + 1) == std::string::npos,
+                     "once per (syscall, handler), not per call");
         });
 
         tc.Run("guest kernel syscall overrides and mirrors are isolated per runtime", [](TestCase &t)
@@ -2081,6 +2199,9 @@ void register_ps2_runtime_kernel_tests()
             constexpr uint32_t kSyscallIndex = 0x5Au;
             constexpr uint32_t kExpectedHandler = 0x00383548u;
             constexpr uint32_t kEntryPhysAddr = (kGuestSyscallTableGuestBase + (kSyscallIndex * 4u)) & 0x1FFFFFFFu;
+            // A handler the runtime can run (R256 finding 9: GetEntryAddress refuses one it cannot).
+            const PS2Runtime::RecompiledFunction handlerBody = [](uint8_t *, R5900Context *c, PS2Runtime *) { c->pc = GPR_U32(c, 31); };
+            env.runtime.registerFunction(kExpectedHandler, handlerBody);
 
             setRegU32(env.ctx, 4, kSyscallIndex);
             setRegU32(env.ctx, 5, kExpectedHandler);
@@ -2098,6 +2219,7 @@ void register_ps2_runtime_kernel_tests()
             t.Equals(static_cast<uint32_t>(getRegS32(env.ctx, 2)),
                      kExpectedHandler,
                      "GetEntryAddress should return the handler address the guest registered");
+            env.runtime.registerFunction(kExpectedHandler, nullptr);   // leave the process's table as found
         });
 
         // Sprint 11 Task 19. SOCOM II's crt0 is byte-identical in the two discs: it calls

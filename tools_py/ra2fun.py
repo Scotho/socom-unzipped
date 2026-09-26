@@ -2,7 +2,7 @@
 """Map guest addresses (e.g. the ra= of a PS2X_CALL_TRACE line) to the decomp function that
 contains them, using the `// ---- FUN_xxxxxxxx @ xxxxxxxx ----` headers of the decomp file.
 
-Usage: python tools_py/ra2fun.py 0x357028 0x356c9c ...
+Run: python -m tools_py.ra2fun 0x357028 0x356c9c ...
 """
 import bisect
 import re

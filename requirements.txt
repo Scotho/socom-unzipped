@@ -1,0 +1,35 @@
+# What the Python tooling imports beyond the standard library, pinned (Sprint 13 H7, harness audit #31).
+#   python -m pip install -r requirements.txt
+# CI installs exactly this (.github/workflows/linux.yml, windows.yml). The test runner is unittest; there is no
+# pytest here, and tools_py/tests/test_test_hygiene.py fails on a test that imports it.
+# tools_py/tests/test_requirements.py holds this file to the tree: every third-party import has a row, every row
+# is imported somewhere (or says whose dependency it is), every row is pinned.
+# The pins are the versions the last green CI runs installed (2026-09-25); each has a wheel for cp312 on ubuntu-24.04
+# (numpy and pillow need manylinux_2_28) and on windows (checked with `pip download --only-binary=:all:` that day).
+
+# The parity harness and most of tools_py: images and arrays.
+numpy==2.5.3
+pillow==12.3.0
+
+# tools_py/parity/p2s_extract.py: PCSX2 save states are zstd-compressed.
+zstandard==0.25.0
+
+# tools_py/ee_unicorn.py, decrypt_apache.py, dnas_selfdecrypt.py: the disc chain's two decryption stages run the
+# game's own R5900 code on an emulated EE (scripts/disc_to_elf.sh).
+unicorn==2.1.4
+# tools_py/dnas_selfdecrypt.py, tools_py/research/symbols/sase_probe.py: disassembly.
+capstone==5.0.9
+
+# tools_py/tests/test_workflows.py: the optional parsed layer over .github/workflows (the text-level checks run
+# without it).
+PyYAML==6.0.3
+
+# Windows only: the audio capture and routing tools (Core Audio and WASAPI loopback).
+# tools_py/parity/app_volume.py, endpoint_route.py
+pycaw==20251023; sys_platform == "win32"
+# tools_py/parity/endpoint_route.py (and pycaw's own dependency)
+comtypes==1.4.16; sys_platform == "win32"
+# pycaw's dependency, pinned so the install is the same everywhere; nothing here imports it.
+psutil==7.2.2; sys_platform == "win32"
+# tools_py/parity/loopback_record.py
+PyAudioWPatch==0.2.12.8; sys_platform == "win32"

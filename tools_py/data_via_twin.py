@@ -14,7 +14,7 @@ split vote is reported as a split vote and fills nothing.
 
     python -m tools_py.data_via_twin 0x416054 0x408c58            # per-address votes
     python -m tools_py.data_via_twin --control                    # cameraHolder, the reproduction
-    python -m tools_py.data_via_twin --column                     # the four guest_addresses values
+    python -m tools_py.data_via_twin --column                     # every guest_addresses r0004 value
     python -m tools_py.data_via_twin --vtable 0x6691a0            # a vtable, placed by its CONTENTS
 
 THE CONTROL. `cameraHolder 0x415ff0` is a DATA field the committed
@@ -238,7 +238,17 @@ COLUMN = (("camera_record", 0x00416054, 0x00442A14, "twin"),
           ("clock_string", 0x00408F10, 0x004358D0, "twin"),
           # ... and PS2X_CALL_TRACE's two FUNCTIONS, neither of which the twin scan can place.
           ("move_scale_setter", 0x00553DC0, 0x005590E0, "masked-body"),
-          ("net_idle", 0x0030CD80, 0x0032A2B0, "thunk"))
+          ("net_idle", 0x0030CD80, 0x0032A2B0, "thunk"),
+          # Sprint 13 Task H6: guest_addresses.INSTRUMENT_ADDRESSES' placed r0004 cells (the audio poll's
+          # statics and cam_poll's camera pointer). The cells it could NOT place are absent there, not here.
+          ("cue_route", 0x0049E150, 0x004A1510, "twin"),
+          ("cue_manager_ptr", 0x0049E158, 0x004A1518, "twin"),
+          ("music_globals", 0x0048E080, 0x00491440, "twin"),
+          ("music_off", 0x003E0080, 0x0040B250, "twin"),
+          ("music_tables", 0x0048E010, 0x004913D0, "twin"),
+          ("camera_ptr", 0x00488DE8, 0x0048C1B8, "twin"),
+          # Sprint 13 Task O2: R221's talk-slot table pointer (the loaded controller configuration).
+          ("talk_table_ptr", 0x004415A8, 0x0044DFC8, "twin"))
 
 
 # ---------------------------------------------------------------------------
@@ -354,7 +364,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="tools_py.data_via_twin", description=__doc__.split("\n")[0])
     ap.add_argument("addr", nargs="*", help="r0001 data addresses, hex")
     ap.add_argument("--control", action="store_true", help="reproduce socom2_addresses.h's cameraHolder")
-    ap.add_argument("--column", action="store_true", help="the four tools_py/parity/guest_addresses values")
+    ap.add_argument("--column", action="store_true", help="every r0004 value tools_py/parity/guest_addresses carries")
     ap.add_argument("--vtable", help="place a vtable by its contents instead of by its referrers")
     ap.add_argument("--a-elf", default=A_ELF)
     ap.add_argument("--b-elf", default=B_ELF)

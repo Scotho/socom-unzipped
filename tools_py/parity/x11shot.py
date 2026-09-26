@@ -64,6 +64,15 @@ def window_pid(hwnd):
     return int(out.strip()) if out and out.strip().isdigit() else 0
 
 
+def close_window(hwnd):
+    """winshot.close_window's twin: a WM_DELETE_WINDOW request, as the title bar's close does (`wmctrl -i -c`),
+    not xdotool's windowclose (which destroys the window under the client). False when wmctrl is absent."""
+    try:
+        return _run(["wmctrl", "-i", "-c", hex(int(hwnd))]).returncode == 0
+    except OSError:
+        return False
+
+
 def _ci_pattern(text):
     """A case-insensitive POSIX extended regex for a literal substring, letter by letter
     ("PS2-Recomp" -> "[Pp][Ss]2[-][Rr]..."). xdotool compiles its --name pattern with regcomp, which

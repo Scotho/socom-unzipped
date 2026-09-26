@@ -9,6 +9,7 @@ Usage: python -m tools_py.parity.online_login_ours [--existing] [--name socomc] 
        [--instance B]   (second exe instance: own window title, memory card dir and UDP ports)
        [--prefilled]    (Sprint 10 Goal 9: the name and password go to the game as PS2X_SOCOM2_LOGIN_NAME /
                          _PASS, its keyboards open already holding them, and the harness presses ENTER)
+       [--clean-exit]   (Sprint 13 V6: after the hold, close the window -- the runtime's own exit -- not the kill)
 """
 import argparse
 import contextlib
@@ -107,11 +108,12 @@ INSTANCES = {
 }
 
 
-def launch(seconds, instance=None, prefill=None, mc_dir=None):
+def launch(seconds, instance=None, prefill=None, mc_dir=None, stdout_path=None):
     """Start the exe; returns (proc, title substring to find its window). `prefill` (prefill_env's dict, --prefilled)
     goes into the game's environment; None adds nothing, the environment is what it was. `mc_dir` (--mc-dir, W10):
     the memory-card folder the game boots from (PS2X_MC_DIR, created empty when absent -- a virgin card); it
-    overrides the instance's own."""
+    overrides the instance's own. `stdout_path` (Sprint 13 V6): run.sh's own output goes there instead of nowhere --
+    its `exit=<rc> log=<path>` line is the game's exit code and the run log it wrote (run_sh_exit)."""
     env = dict(os.environ, PS2X_SOCOM2_PAD="1")
     title = keys.WINDOW_TITLES[T]
     latest = os.path.abspath(os.path.join("logs", "parity", f"latest_frame_{instance or 'A'}.png"))
@@ -126,10 +128,64 @@ def launch(seconds, instance=None, prefill=None, mc_dir=None):
     if mc_dir:
         env["PS2X_MC_DIR"] = os.path.abspath(mc_dir)
         os.makedirs(env["PS2X_MC_DIR"], exist_ok=True)
-    proc = subprocess.Popen(["bash", "./run.sh", str(seconds)], env=env,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    out = open(stdout_path, "w") if stdout_path else subprocess.DEVNULL
+    try:
+        proc = subprocess.Popen(["bash", "./run.sh", str(seconds)], env=env,
+                                stdout=out, stderr=subprocess.DEVNULL)
+    finally:
+        if stdout_path:
+            out.close()                                          # the child holds its own handle
     proc.latest_frame = latest
     return proc, title
+
+
+# Sprint 13 V6 (#27): the clean exit. SOCOM II on a PS2 has no quit of its own (the console is switched off), so the
+# port's clean exit is the window's close: the runtime reads WM_CLOSE as WindowShouldClose, stops the guest, joins its
+# thread and leaves through main's _Exit(ps2ProcessExitCode()) -- where the drive's `taskkill /F` ends it mid-frame.
+CLEAN_EXIT_WAIT_S = 60.0
+RUN_SH_EXIT = re.compile(r"^exit=(-?\d+) log=(\S+)", re.M)
+
+
+def run_sh_exit(path):
+    """(the game's exit code, its run log) off run.sh's `exit=<rc> log=<path> ...` line, or (None, None)."""
+    try:
+        with open(path, errors="replace") as f:
+            m = RUN_SH_EXIT.search(f.read())
+    except OSError:
+        return None, None
+    return (int(m.group(1)), m.group(2)) if m else (None, None)
+
+
+RUN_SH_TIMEOUT_RC = 124          # coreutils `timeout` in run.sh: the --seconds budget ended the game, not the close
+
+
+def clean_exit_verdict(rc):
+    """The drive log's CLEAN-EXIT line for clean_exit's answer: only a code the game itself returned is clean."""
+    if rc is False:
+        return "CLEAN-EXIT none (the game did not leave on the close; killed)"
+    if rc == RUN_SH_TIMEOUT_RC:
+        return f"CLEAN-EXIT none (rc={rc}: run.sh's timeout ended the game, not the close)"
+    return f"CLEAN-EXIT rc={rc}"
+
+
+def clean_exit(sh, proc, stdout_path=None, wait_s=CLEAN_EXIT_WAIT_S, clock=time.time):
+    """Close the game's window and wait for run.sh to return (--clean-exit). Returns the game's exit code as run.sh
+    printed it (None when it printed none), or False when the close could not be sent or the game was still running
+    `wait_s` later -- the caller's kill then ends it, and the log says which. (0 is a clean rc: test `is False`.)"""
+    close = getattr(winshot, "close_window", None)
+    t = clock()
+    if close is None or not close(sh.hwnd):
+        sh.log("[exit] clean: the close request could not be sent -> the kill")
+        return False
+    try:
+        proc.wait(timeout=wait_s)
+    except subprocess.TimeoutExpired:
+        sh.log(f"[exit] clean: the game is still running {wait_s:.0f}s after the window's close -> the kill")
+        return False
+    rc, log = run_sh_exit(stdout_path) if stdout_path else (None, None)
+    sh.log(f"[exit] clean: the window's close -> run.sh returned after {clock() - t:.1f}s, the game's rc={rc} "
+           f"(log {log})")
+    return rc
 
 
 # Pad-state injection (PS2X_SOCOM2_INPUT_FILE, socom2_host_input.cpp): the exe reads this file on
@@ -483,6 +539,7 @@ LOGIN_PASSWORD_VALUE = (136, 158, 172, 400)
 LOGIN_PASSWORD_INK_MIN = 100.0
 CLASS_SAVE_TICK = "login:save-password"        # + ":row" / ":tick": SAVE PASSWORD could not be set to YES
 CLASS_RELAUNCH_LOGIN = "login:saved-password"  # the relaunch: the card did not bring the persona or its password back
+SAVED_FORM_READS, SAVED_FORM_REREAD_S = 3, 1.0     # V6 review: the relaunch form, read up to 3 times 1 s apart
 # (the two names above are not *_PASSWORD: the release leak check reads `X_PASSWORD = "..."` as a secret assignment)
 
 # The main menu of the block-pointer exe: NEW GAME / ONLINE / LAN. The lit row's text pulses in size (ONLINE lit spans
@@ -1455,6 +1512,167 @@ def glyph_run_count(gray, box, ink_min=OSK_INK_MIN):
     return count
 
 
+# ---------------------------------------------------------------------------
+# Sprint 13 O2 (#26): the chat step.
+# ---------------------------------------------------------------------------
+# The chat box is opened by R1. Both rooms say so on screen: the BRIEFING ROOM's button bar reads "R1 TEXT CHAT"
+# (s11_chat_A/11_briefing_room.png) and the GAME LOBBY's chat panel "R1 Text chat.  L1 and L2 to scroll chat"
+# (s11_chat_A/17_game_lobby_ok.png) -- the disc's _518_TextChat_MSG and _343_TextChat_MSG. chain7's `type:hello`
+# (R246) waited for a keyboard nothing had opened, and its recovery pressed CROSS and TRIANGLE+CROSS, never R1.
+# R1 is a Full-scope key of the host keyboard (socom2_host_input.cpp, Q3): a PS2X_DEV launch -- every harness
+# launch -- posts it as 'E'.
+#
+# The keyboard R1 opens is the UI's GetTextInput with Purpose _361_EnterChatMessage_MSG ("Enter a Chat Message") on
+# the soft keyboard ChatSkb (the game lobby, s13_o2_chat round 1; the disc's UI scripts also name PlayerChatSkb --
+# research/66). Its layout is not the login keyboards' (CHAT_OSK_* below), so the login's screen references
+# (OSK_ACCENT_BOX, the text row) are not used on it: the open is read from the runtime's OSK wrap, which prints one
+# `[socom2] on-screen keyboard open: purpose="..." skb="..."` line per open once --prefilled has armed it, and the
+# close from the keyboard's key band.
+CHAT_PURPOSE = "_361_EnterChatMessage_MSG"
+CHAT_OPEN_BUTTON = "r1"
+CHAT_OPEN_TIMEOUT_S = 12.0
+CHAT_OPEN_PRESSES = 2
+OSK_OPEN_LINE_RE = re.compile(r'\[socom2\] on-screen keyboard open: purpose="([^"]*)" skb="([^"]*)"')
+# The chat receive wrap's line (game_overrides_socom2.cpp BoundWrapLog::note): the first call always prints, later
+# ones only when they changed a field -- so `seen=1` is the first forwarded line the client took, and a second
+# plain one prints nothing.
+CHAT_SEEN_RE = re.compile(r"\[socom2\] chat receive bound: seen=(\d+) fixed=(\d+) skipped=(\d+)")
+CHAT_SEEN_BYTES_RE = re.compile(CHAT_SEEN_RE.pattern.encode("ascii"))
+CHAT_ROOM_TITLES = ("game_lobby", "briefing_room")
+# The chat keyboard's layout, measured in round 1 (research/66 section 3): OSK_ROWS plus one row below (the accent
+# toggle, the space bar, MESSAGE, IGNORE, LEGEND), opening on that row's accent key -- (6, 0) in OSK_ROWS' terms.
+# RIGHT then UP lands on TEAM, (5, 1) in both grids; the walk is dead-reckoned from there.
+CHAT_OSK_ENTRY = ("right", "up")
+CHAT_OSK_ENTRY_KEY = (5, 1)
+CHAT_OSK_KEYS_BAND = (268, 290, 25, 465)      # the keyboard's top key row (~ ! @ ... BCKSPC), y0 y1 x0 x1
+CHAT_OSK_KEYS_STD_MIN = 20.0                  # up: 32.8-33.4; the game lobby 5.3, the briefing room 8.3
+
+
+def osk_opens(text):
+    """[(purpose, skb)] of every keyboard the OSK wrap reported opening in `text`, in order."""
+    return OSK_OPEN_LINE_RE.findall(text or "")
+
+
+def chat_seen_lines(text, base=0):
+    """[(byte offset, seen, fixed, skipped)] of the chat receive wrap's count lines in `text` (a log read from byte
+    `base` on; offsets are the log's, so a line can be placed before or after a mark)."""
+    raw = text if isinstance(text, bytes) else (text or "").encode("utf-8", errors="replace")
+    return [(base + m.start(), int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            for m in CHAT_SEEN_BYTES_RE.finditer(raw)]
+
+
+def log_size(path):
+    """Bytes in `path` now (0 when it does not exist yet): the mark a later read starts from."""
+    try:
+        return os.path.getsize(path) if path else 0
+    except OSError:
+        return 0
+
+
+def read_log_bytes(path, offset):
+    """The bytes of `path` from byte `offset` (b'' when unreadable)."""
+    try:
+        with open(path, "rb") as f:
+            f.seek(offset)
+            return f.read()
+    except (OSError, TypeError):
+        return b""
+
+
+def read_log_from(path, offset):
+    """The text of `path` from byte `offset` ('' when unreadable)."""
+    return read_log_bytes(path, offset).decode("utf-8", errors="replace")
+
+
+def chat_room_title(sh):
+    """Which chat room's title the frame shows ('game_lobby' / 'briefing_room'), or None. NOT a keyboard read: the
+    chat keyboard is a panel over the room's lower two thirds, and the title band stays visible above it (round 1,
+    research/66 section 3) -- chat_keyboard_up is the read."""
+    gray = lobby_gray(sh)
+    for name in CHAT_ROOM_TITLES:
+        if lobby_title_is(gray, name):
+            return name
+    return None
+
+
+def chat_keyboard_up_of(gray):
+    """The chat keyboard is on screen: its top key row (~ ! @ ... BCKSPC) is a band of light keys on dark gaps, a
+    column-to-column spread the rooms behind it never have. Measured on s13_o2_chat round 1: std 32.8-33.4 with the
+    keyboard up (four frames, both instances), 5.3 on the game lobby and 8.3 on the briefing room without it."""
+    y0, y1, x0, x1 = CHAT_OSK_KEYS_BAND
+    return float(np.asarray(gray, dtype=np.float32)[y0:y1, x0:x1].std()) > CHAT_OSK_KEYS_STD_MIN
+
+
+def chat_keyboard_up(sh):
+    return chat_keyboard_up_of(lobby_gray(sh))
+
+
+def chat_line(sh, text, run_log=None, open_timeout=CHAT_OPEN_TIMEOUT_S, presses=CHAT_OPEN_PRESSES):
+    """Open the chat box with R1 in the room on screen, type `text` on its keyboard and ENTER it.
+
+    Returns a dict: opened (bool), by ('log' | 'screen' | None), skb, room (the title before the press), closed (the
+    keyboard gone after ENTER, chat_keyboard_up), exited (the keyboard had to be left through EXIT: nothing sent),
+    mark (the run log's size before the press). Never raises for the chat itself -- a keyboard that does not open is
+    the finding, logged as `CHAT keyboard not opened`, and the round goes on to the peek.
+
+    The typing is the login's dead-reckoned pad walk at the slow pacing (two instances on one host), from the chat
+    keyboard's own opening key: it is the login grid (OSK_ROWS) with one more row below it (the accent toggle, the
+    space bar, MESSAGE, IGNORE, LEGEND) and it opens on that row's accent key, one row below the login's OSK_START
+    -- round 1 typed 'nd..l' for 'hello' and pressed SHIFT for ENTER, exactly the walk shifted one row down (and
+    wrapping right off EXIT). CHAT_OSK_ENTRY (RIGHT onto the space bar, UP onto TEAM) puts the cursor on a key both
+    grids share. ENTER not taking is re-pressed once; a keyboard still up after that is left through EXIT so the
+    round can go on to READY (round 1's keyboard stayed up and READY's cursor read failed behind it)."""
+    rec = {"text": text, "opened": False, "by": None, "skb": None, "closed": False, "exited": False,
+           "mark": log_size(run_log)}
+    rec["room"] = chat_room_title(sh)
+    sh.shot("chat_00_before")
+    sh.log(f"CHAT open: {CHAT_OPEN_BUTTON.upper()} in the {rec['room'] or 'unrecognised room'} "
+           f"(run log mark {rec['mark']})")
+    for attempt in range(1, presses + 1):
+        sh.press(CHAT_OPEN_BUTTON, 1.0)
+        t = time.time()
+        while time.time() - t < open_timeout:
+            chats = [o for o in osk_opens(read_log_from(run_log, rec["mark"])) if o[0] == CHAT_PURPOSE] if run_log else []
+            if chats:
+                rec.update(opened=True, by="log", skb=chats[-1][1])
+                break
+            if chat_keyboard_up(sh):
+                rec.update(opened=True, by="screen")
+                break
+            time.sleep(0.5)
+        if rec["opened"]:
+            break
+        sh.log(f"CHAT keyboard not up after {CHAT_OPEN_BUTTON.upper()} press {attempt} ({open_timeout:.0f}s)")
+    time.sleep(1.0)                                  # the panel's slide-in, before the first walk press
+    sh.shot("chat_01_open")
+    if not rec["opened"]:
+        sh.log(f"CHAT keyboard not opened after {presses} {CHAT_OPEN_BUTTON.upper()} presses "
+               f"(no {CHAT_PURPOSE} open line, keys band not up)")
+        return rec
+    sh.log(f"CHAT keyboard open by {rec['by']} (skb {rec['skb']})")
+    hold, wait, _ = sh.osk_pacing(True)
+    for m in CHAT_OSK_ENTRY:
+        sh.pad_press(m.upper(), wait, hold)
+    cur = sh.osk_type_pad(text, shots=sh.out, tag=f"{sh.tag}chat", cur=CHAT_OSK_ENTRY_KEY, enter=True, slow=True)
+    time.sleep(OSK_ENTER_SETTLE_S)
+    sh.shot("chat_02_entered")
+    rec["closed"] = not chat_keyboard_up(sh)
+    if not rec["closed"]:
+        sh.log("CHAT keyboard still up after ENTER -> one ENTER re-press")
+        cur = sh.osk_press_key(cur, "ENTER")
+        time.sleep(OSK_ENTER_SETTLE_S)
+        sh.shot("chat_03_reenter")
+        rec["closed"] = not chat_keyboard_up(sh)
+    if not rec["closed"]:
+        sh.log("CHAT keyboard still up after the re-press -> EXIT (nothing is sent), so the round can go on")
+        sh.osk_press_key(cur, "EXIT")
+        time.sleep(OSK_ENTER_SETTLE_S)
+        sh.shot("chat_04_exit")
+        rec["exited"] = not chat_keyboard_up(sh)
+    sh.log(f"CHAT typed {text!r}: keyboard {'closed' if rec['closed'] else 'left by EXIT' if rec['exited'] else 'STILL UP'}")
+    return rec
+
+
 def attach(proc, title, out, tag="", pad_file=None):
     """Find the instance's window (by title substring) and wait for its first frame."""
     t0 = time.time()
@@ -1565,20 +1783,42 @@ def login(sh, name, password, existing, prefilled=False, save_password=False, sa
     sh.shot("02_persona")
     mode, listed = persona_form_mode(sh, existing)
     if saved_password:
-        if mode == "create":
+        # Sprint 13 V6 (#27): the form is read AS IT ARRIVED, before any press. W10's relaunch (w10_virgin_b) arrived with the persona, "*****",
+        # YES ticked and the game's cursor ON CONNECT: the persona-list CROSS this path used to send first
+        # connected, and PASSWORD was then read off the CONNECTING screen -- 0 glyphs, login:saved-password:empty,
+        # a failure of the read and never of the card.
+        # persona_form_mode also answers "saved" off an open keyboard and off --existing with no form read, so
+        # the form is required here (a short bounded re-read) before its PASSWORD is believed: a frame that is not
+        # the form fails as its own class, never as :empty -- the misread #27 was.
+        for read in range(1, SAVED_FORM_READS + 1):
+            gray = lobby_gray(sh)
+            if login_form_up(gray):
+                break
+            sh.log(f"[login] saved password: the form is not on screen (read {read} of {SAVED_FORM_READS}, keyboard "
+                   f"{'up' if osk_open_of(gray) else 'down'})")
+            if read < SAVED_FORM_READS:
+                sh.stage_sleep(SAVED_FORM_REREAD_S)
+        else:
+            sh.shot("05_password")
+            raise lobby_fail(sh, f"{CLASS_RELAUNCH_LOGIN}:no-form",
+                             f"the CONNECT TO SOCOM II form was not on screen in {SAVED_FORM_READS} reads (keyboard "
+                             f"{'up' if osk_open_of(gray) else 'down'}): PASSWORD was not read, so nothing is known "
+                             f"about the saved password")
+        if login_persona_mode(gray) == "create":                 # off the form itself, never --existing's guess
             raise lobby_fail(sh, f"{CLASS_RELAUNCH_LOGIN}:no-persona",
                              "the relaunch's form has an empty PLAYER NAME: the card brought no persona back")
-        if not listed:
-            press_persona_list(sh)                               # the form with the saved persona, cursor on PASSWORD
-        gray = lobby_gray(sh)
-        n, state = login_password_glyphs(gray), login_save_password(gray)
-        sh.log(f"[login] saved password: PASSWORD reads {n} glyphs, SAVE PASSWORD reads {state}; typing nothing")
+        n, state, focus = login_password_glyphs(gray), login_save_password(gray), login_focus_row(gray)
+        sh.log(f"[login] saved password: PASSWORD reads {n} glyphs, SAVE PASSWORD reads {state}, "
+               f"focus {focus or 'unread'}; typing nothing")
         sh.shot("05_password")
         if n == 0:
             raise lobby_fail(sh, f"{CLASS_RELAUNCH_LOGIN}:empty",
                              f"the relaunch's PASSWORD field is empty (SAVE PASSWORD reads {state}): the saved "
                              f"password did not survive the restart")
-        press_connect(sh)
+        # The DOWNs from the lit row to CONNECT (0 when the game already put the cursor there); an unread focus
+        # keeps this path's old assumption, the cursor on PASSWORD, and press_connect's focus search reads the rest.
+        press_connect(sh, downs=(LOGIN_ROW_ORDER.index("connect") - LOGIN_ROW_ORDER.index(focus)) if focus
+                      else LOGIN_CONNECT_DOWNS)
         login_prompts(sh)
         login_to_lobby(sh)
         return
@@ -2453,7 +2693,8 @@ def main():
     ap.add_argument("--no-refresh", dest="refresh", action="store_false",
                     help="with --join: do NOT press REFRESH LIST before JOIN GAME (the pre-R240 path)")
     ap.add_argument("--instance", default="", help="A or B: window title, memory card dir and UDP ports of that instance")
-    ap.add_argument("--then", default="", help="extra presses after the lobby, e.g. cross:3,type:test")
+    ap.add_argument("--then", default="", help="extra presses after the lobby, e.g. cross:3,type:test; chat:<text> "
+                                               "opens the chat box with R1 and types <text> (Sprint 13 O2)")
     # Sprint 10 Goal 9: the name and password reach the game as the launcher's ONLINE fields would (PS2X_SOCOM2_LOGIN_NAME
     # / _PASS), its keyboards open already holding them, and the login presses ENTER on each instead of typing.
     ap.add_argument("--prefilled", action="store_true",
@@ -2466,6 +2707,10 @@ def main():
                     help="type nothing: the form must arrive with the persona and its password from the card "
                          "(the relaunch of the W10 proof; an empty field fails as login:saved-password)")
     ap.add_argument("--mc-dir", default="", help="memory-card folder (PS2X_MC_DIR), created empty when absent")
+    # Sprint 13 V6 (#27): end the run through the window's close (the runtime's own exit) instead of the kill.
+    ap.add_argument("--clean-exit", action="store_true",
+                    help="after the hold, close the game's window and wait for it to leave (CLEAN-EXIT rc=<n>); "
+                         "the kill runs only if it has not")
     a = ap.parse_args()
     if a.save_password and a.saved_password:
         ap.error("--save-password and --saved-password are the two launches of one proof, not one launch")
@@ -2479,7 +2724,9 @@ def main():
     if not a.instance and hostplatform.process_running("socom2"):
         raise SystemExit(f"{hostplatform.exe_name('socom2')} is already running; "
                          "refusing to start a second game instance")
-    proc, title = launch(a.seconds, a.instance or None, prefill, **({"mc_dir": a.mc_dir} if a.mc_dir else {}))
+    run_sh_out = os.path.join(a.out, "run_sh.txt")
+    proc, title = launch(a.seconds, a.instance or None, prefill, **({"mc_dir": a.mc_dir} if a.mc_dir else {}),
+                         **({"stdout_path": run_sh_out} if a.clean_exit else {}))
     sh = None
     try:
         sh = attach(proc, title, a.out)
@@ -2508,13 +2755,23 @@ def main():
                 sh.type(w)
                 sh.shot(f"20_then_{n:02d}_typed")
                 continue
+            if b == "chat":                                  # Sprint 13 O2: R1 opens the chat box, then type:<w>
+                chat_line(sh, w, run_log=os.environ.get("PS2X_RUN_LOG"))
+                continue
             sh.press(b, float(w))
             sh.shot(f"20_then_{n:02d}_{b}")
         for i in range(a.hold // 5):
             time.sleep(5)
             sh.shot(f"30_hold_{i:02d}")
         sh.shot("final")
+        if a.clean_exit:
+            rc = clean_exit(sh, proc, run_sh_out)
+            sh.log(clean_exit_verdict(rc))
     finally:
+        # V6 review: the kill says so, so a killed launch's log is self-describing beside a CLEAN-EXIT line
+        note = ("[exit] kill: run.sh had already returned, the kill below is a no-op" if proc.poll() is not None
+                else "[exit] kill: the game is ended by the harness (run.sh terminated, then the game's process)")
+        (sh.log if sh is not None else print)(note)
         proc.terminate()
         if a.instance:
             # 2026-09-22 (the hosted join, 14:53): with --instance another socom2.exe on this PC may be the

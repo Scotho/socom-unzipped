@@ -2163,7 +2163,7 @@ void register_socom2_audio_tests()
             t.Equals(mixer.pcmUnderruns(), static_cast<uint64_t>(0), "stop resets the count");
         });
 
-        // Sprint 8: the "blip at each menu stream's start" (KNOWN / HUMAN_TASKS: "the first ~10 s after a stream
+        // Sprint 8: the "blip at each menu stream's start" (KNOWN / docs/archive/HUMAN_TASKS-to-2026-09-25.md: "the first ~10 s after a stream
         // start fill a little short"). The game opens the ring, DMAs a whole ring of movie audio into it, and only
         // then starts it -- any run log: snd_PcmStreamOpen [0x6000] -> 0xa0000, snd_PcmStreamStop, the sceCdStRead
         // fills, snd_PcmStreamStart. A ring allocated and zeroed at Start threw that first fill away: one ring of

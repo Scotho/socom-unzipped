@@ -25,7 +25,7 @@ Sources:
   kill2 = `logs/run_[AB]_20260912_231341.log`;
 - `tools/reference/reCOM`.
 
-Background: `KNOWN.md` §2 top row, research/21 §6.4–6.5, research/17, research/20, and `STATUS.md`
+Background: `KNOWN.md`'s row "Frostfire's lost control is the online snap-back fed by a ground probe that never hits" (§2's top row when this was written; §1 since 2026-09-25), research/21 §6.4–6.5, research/17, research/20, and `STATUS.md`
 2026-09-08 13:30 and 16:15.
 
 Throughout, **A** = `*0x408c58`, the local player actor, and **W** = `*0x45c380`, the world.

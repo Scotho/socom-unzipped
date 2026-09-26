@@ -9,9 +9,22 @@ docs/DOC_MAINTENANCE.md section 7. This module is the part of both that can be m
     python -m tools_py.issues close 12 --artefact "gate s11_x_gate 3/3, 1a2b3c4"
     python -m tools_py.issues close 12 --not-planned --reason "R260: retracted, KNOWN section 3"
     python -m tools_py.issues audit [--stale-since 2026-09-23] [--json FILE]
+    python -m tools_py.issues backlog [--json FILE] [--out docs/BACKLOG.md] [--check [--offline]]
+    python -m tools_py.issues carry 25 --comment "not in Sprint 14's plan" [--milestone "Sprint 14"] [--dry-run]
+    python -m tools_py.issues milestone close "Sprint 13" --next "Sprint 14" [--dry-run]
+    python -m tools_py.issues tally --since 2026-09-25 [--json FILE]
+    python -m tools_py.issues labels                        # the label set, read from scripts/github_labels.sh
 
 `open` and `close` call `gh`; `audit` calls it once (`gh issue list --json`) unless `--json FILE` hands it a saved
-listing -- the offline path, and the one tools_py/tests/test_issues.py drives end to end. Nothing here deletes
+listing -- the offline path, and the one tools_py/tests/test_issues.py drives end to end. `backlog`, `tally` and
+`milestone close` read the same listing (`milestone close` also `--milestones-json`), and `carry` a saved
+`gh issue view --json` the same way.
+
+The carry (docs/DOC_MAINTENANCE.md section 7 steps 5 and 7, R267) is `carry` (the `carried` label, a comment that
+begins "Carried ", the milestone moved or removed -- refused once the issue has two carry comments, because an issue
+carried twice is the owner's question), `milestone close` (refused while an open issue is left in it), `tally` (the
+opened/closed/carried sentence) and `backlog`, which writes docs/BACKLOG.md from the open issues and the tracked
+list docs/backlog_ruled_out.txt; `backlog --check` exits 1 on a stale file. Nothing here deletes
 anything: an issue is closed with a comment that names its artefact, never deleted, because the row that cited it
 and the commit that closed it still point at it.
 
@@ -57,6 +70,17 @@ AREAS = ("audio", "render", "online", "launcher", "input", "linux", "packaging",
          "harness", "server", "build", "recomp")
 
 KNOWN = "docs/KNOWN.md"
+# R267: the carry's one home, generated, and the tracked list of rows ruled not to be issues that it renders.
+BACKLOG = "docs/BACKLOG.md"
+RULED_OUT_LIST = "docs/backlog_ruled_out.txt"
+RULED_OUT_HEADING = "## 2. Ruled not an issue"
+RULING_FIELD = re.compile(r"^(R\d+|no issue)$")
+# What a carry comment begins with -- `carry` writes "Carried from X to Y: ...", and the hand carries of the
+# Sprint 11 close and R266 were written "Carried at the Sprint 11 close ..." and "Carried once into Sprint 13 ...".
+CARRY_COMMENT = "Carried "
+# DOC_MAINTENANCE section 7 step 5: an issue carried twice is the owner's question, not a third carry.
+CARRY_LIMIT = 2
+DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 # `issue #12` is the citation form; `issue #12 (closed)` is what it becomes when the issue closes and the row is
 # kept as a record. A bare `#244` is not a citation -- it is how the tree names an upstream pull request.
@@ -72,7 +96,7 @@ CLOSING_COMMENT = "Closing bar met:"
 SECTIONS = ("## What happens", "## Evidence", "## Where it is written", "## Closing bar")
 BR_ID = re.compile(r"BR-\d{8}-[0-9a-z]{6}", re.I)
 BR_SENTENCE = re.compile(r"^Reported through the launcher as BR-\d{8}-[0-9a-z]{6}\.$", re.I | re.M)
-HOME_PATH = re.compile(r"(?:[A-Za-z]:\\Users\\|/home/[A-Za-z0-9_.-]+/|/Users/[A-Za-z0-9_.-]+/)")
+HOME_PATH = re.compile(r"(?:[A-Za-z]:\\Users\\|/home/[A-Za-z0-9_.-]+/|/Users/[A-Za-z0-9_.-]+/)", re.I)
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 PLACEHOLDER = re.compile(r"^\s*<[^>]*>\s*$")
 
@@ -254,9 +278,8 @@ def normalise(issue):
     milestone = issue.get("milestone")
     if isinstance(milestone, dict):
         milestone = milestone.get("title")
-    comments = issue.get("comments") or []
-    last = comments[-1] if comments else None
-    last_comment = (last.get("body") if isinstance(last, dict) else last) or ""
+    comments = [(c.get("createdAt") or "", c.get("body") or "") if isinstance(c, dict) else ("", c or "")
+                for c in (issue.get("comments") or [])]
     return {
         "number": int(issue["number"]),
         "state": str(issue.get("state", "")).upper(),
@@ -265,9 +288,121 @@ def normalise(issue):
         "labels": labels,
         "milestone": milestone,
         "updatedAt": issue.get("updatedAt", ""),
+        "createdAt": issue.get("createdAt") or "",
+        "closedAt": issue.get("closedAt") or "",
         "body": issue.get("body") or "",
-        "lastComment": last_comment,
+        "comments": comments,
+        "lastComment": comments[-1][1] if comments else "",
     }
+
+
+# ------------------------------------------------------------------------------------------------- the carry
+
+def carry_comments(issue):
+    """[(createdAt, body)] of the comments that record a carry: the tool's own and the hand-written ones of the
+    Sprint 11 close and R266 all begin with the word `Carried`."""
+    return [(when, body) for when, body in issue["comments"] if body.startswith(CARRY_COMMENT)]
+
+
+def carried_count(issue):
+    """How many sprint closes the issue has survived: its carry comments, or one when it bears the label with none
+    (a carry recorded by the label alone)."""
+    n = len(carry_comments(issue))
+    if n == 0 and CARRIED_LABEL in issue["labels"]:
+        return 1
+    return n
+
+
+def closing_bar_sentence(body):
+    """The closing bar's first sentence, on one line -- what the backlog shows beside the issue."""
+    text = " ".join(sections_of(body).get("## Closing bar", "").split())
+    if text.startswith("- "):
+        text = text[2:]
+    # A sentence ends at . ! or ? outside an inline code span, followed by the end or a space and then anything
+    # but a lower-case letter -- so `a ... b` in code, "sidecar... then" and "e. g." do not end it. Known edge: a
+    # double-backtick span (``a ` b``) is read as three toggles, so a sentence could end inside it; no issue body
+    # uses one, and the cost would only be a shorter first sentence.
+    in_code = False
+    for k, ch in enumerate(text):
+        if ch == "`":
+            in_code = not in_code
+        elif ch in ".!?" and not in_code:
+            rest = text[k + 1:]
+            if not rest:
+                return text
+            if rest[0] == " " and not rest.lstrip()[:1].islower():
+                return text[:k + 1]
+    return text
+
+
+def _cell(text):
+    return (text or "").replace("|", r"\|").strip()
+
+
+def ruled_out_rows(text=None):
+    """The rows of docs/backlog_ruled_out.txt as dicts; ValueError with the line number on a malformed row."""
+    if text is None:
+        text = _read(RULED_OUT_LIST)
+    rows, seen = [], set()
+    for i, line in enumerate(text.splitlines(), 1):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        parts = [p.strip() for p in line.split(" | ")]
+        if len(parts) != 4 or not all(parts):
+            raise ValueError("%s line %d: want `<slug> | <ruling> | <bar or reason> | <where written>`, four "
+                             "non-empty fields split by ' | '" % (RULED_OUT_LIST, i))
+        slug, ruling, bar, where = parts
+        if not RULING_FIELD.match(ruling):
+            raise ValueError("%s line %d: the ruling field is %r -- an R-number (R265) or 'no issue'"
+                             % (RULED_OUT_LIST, i, ruling))
+        if slug in seen:
+            raise ValueError("%s line %d: the slug %r is already a row" % (RULED_OUT_LIST, i, slug))
+        seen.add(slug)
+        rows.append({"slug": slug, "ruling": ruling, "bar": bar, "where": where})
+    return rows
+
+
+def render_head():
+    return ("# Backlog: the carry in one place\n\n"
+            "> **Generated -- do not edit.** Written by `python -m tools_py.issues backlog` from the open issues on "
+            "GitHub and the tracked list `%s` (ruling R267). Change the issue, or the list, and regenerate; "
+            "`python -m tools_py.issues backlog --check` exits 1 when this file is stale (`--offline` checks the "
+            "ruled-out half without the network). The conventions are `docs/GIT_STRATEGY.md` section 7; the carry "
+            "at a sprint close is `docs/DOC_MAINTENANCE.md` section 7 step 5, and an issue carried twice is the "
+            "owner's question.\n" % RULED_OUT_LIST)
+
+
+def render_issues(issues):
+    stack = sorted((normalise(i) for i in issues), key=lambda i: i["number"])
+    stack = [i for i in stack if i["state"] == "OPEN"]
+    lines = ["", "## 1. Open issues", "",
+             "%d open issues. *Carried* counts the sprint closes an issue has survived (its `Carried ...` comments, "
+             "or one for the `carried` label alone); at 2 the next close asks the owner." % len(stack), "",
+             "| Issue | Title | Area | Milestone | Carried | Closing bar (first sentence) |",
+             "|---|---|---|---|---|---|"]
+    for i in stack:
+        areas = [l for l in i["labels"] if l in AREAS]
+        lines.append("| #%d | %s | %s | %s | %d | %s |"
+                     % (i["number"], _cell(i["title"]), ", ".join(areas) or "--", _cell(i["milestone"] or "backlog"),
+                        carried_count(i), _cell(closing_bar_sentence(i["body"])) or "--"))
+    return "\n".join(lines) + "\n"
+
+
+def render_ruled_out(rows):
+    lines = ["", RULED_OUT_HEADING, "",
+             "%d rows. Each was ruled not to be an issue -- by a ruling, or `no issue` with its reason -- and keeps "
+             "its bar here so the next review does not re-ask. Edit `%s`, never this table." % (len(rows),
+                                                                                                 RULED_OUT_LIST), "",
+             "| Item | Ruling | Bar or reason | Where it is written |",
+             "|---|---|---|---|"]
+    for r in rows:
+        lines.append("| %s | %s | %s | %s |" % (_cell(r["slug"]), _cell(r["ruling"]), _cell(r["bar"]),
+                                               _cell(r["where"])))
+    return "\n".join(lines) + "\n"
+
+
+def render_backlog(issues, rows):
+    return render_head() + render_issues(issues) + render_ruled_out(rows)
 
 
 def audit(cited, issues, stale_since=None):
@@ -332,7 +467,8 @@ def _gh(cmd):
 
 def fetch_issues(repo=REPO):
     out = _gh(["issue", "list", "--repo", repo, "--state", "all", "--limit", "1000",
-               "--json", "number,state,stateReason,title,labels,milestone,updatedAt,body,comments"])
+               "--json", "number,state,stateReason,title,labels,milestone,updatedAt,createdAt,closedAt,body,"
+                         "comments"])
     if out.returncode != 0:
         raise SystemExit("gh issue list failed (exit %d): %s" % (out.returncode, out.stderr.strip()))
     return json.loads(out.stdout)
@@ -408,6 +544,199 @@ def cmd_close(args):
     return out.returncode
 
 
+def check_comment(text):
+    """Problems with a comment bound for a public issue: the body's line rules without its sections."""
+    problems = []
+    for i, line in enumerate(text.splitlines(), 1):
+        if HOME_PATH.search(line):
+            problems.append("line %d carries a home directory path -- scrub it to ~" % i)
+        if EMAIL.search(line):
+            problems.append("line %d carries an e-mail address -- nothing personal goes in a public issue" % i)
+    for rule, line in leak_hits(text):
+        problems.append("line %d trips the leak check's %r rule -- an issue comment is public and permanent"
+                        % (line, rule))
+    return problems
+
+
+def fetch_issue(number, repo=REPO):
+    out = _gh(["issue", "view", str(number), "--repo", repo, "--json",
+               "number,state,title,labels,milestone,comments"])
+    if out.returncode != 0:
+        raise SystemExit("gh issue view %d failed (exit %d): %s" % (number, out.returncode, out.stderr.strip()))
+    return json.loads(out.stdout)
+
+
+def _one_issue(args):
+    """The issue `carry` acts on: a saved `gh issue view --json` (or a listing holding it), else one gh call."""
+    if not args.json:
+        return normalise(fetch_issue(args.number, args.repo))
+    with open(args.json, encoding="utf-8") as f:
+        data = json.load(f)
+    for record in (data if isinstance(data, list) else [data]):
+        if int(record["number"]) == args.number:
+            return normalise(record)
+    raise SystemExit("carry: issue #%d is not in %s" % (args.number, args.json))
+
+
+def _run_all(cmds, dry_run):
+    """Run gh commands in order, stopping at the first failure; with dry_run, print them."""
+    for cmd in cmds:
+        if dry_run:
+            _print_cmd(["gh"] + cmd)
+            continue
+        out = _gh(cmd)
+        sys.stdout.write(out.stdout)
+        sys.stderr.write(out.stderr)
+        if out.returncode != 0:
+            return out.returncode
+    return 0
+
+
+def cmd_carry(args):
+    comment = (args.comment or "").strip()
+    if not comment:
+        print("carry: --comment is required -- one sentence saying why it did not close")
+        return 2
+    problems = check_comment(comment)
+    if problems:
+        for p in problems:
+            print("carry: " + p)
+        return 1
+    issue = _one_issue(args)
+    if issue["state"] != "OPEN":
+        print("carry: issue #%d is %s -- only an open issue is carried" % (args.number, issue["state"]))
+        return 1
+    if CARRIED_LABEL in issue["labels"] and not carry_comments(issue):
+        # The label alone counts as one carry (carried_count), but once this tool added its comment the count
+        # would read 1 again and a third carry could slip through. The earlier carry is written down first.
+        print("carry: issue #%d bears the '%s' label alone, with no comment starting %r -- that earlier carry is "
+              "recorded by the label alone and would be lost from the count. Write it down first (gh issue comment "
+              "%d --body \"Carried at the Sprint N close: <why>\"), then carry again."
+              % (args.number, CARRIED_LABEL, CARRY_COMMENT, args.number))
+        return 1
+    count = carried_count(issue)
+    if count >= CARRY_LIMIT:
+        print("carry: issue #%d has been carried twice already (%d carry comments) -- a third carry is not the "
+              "loop's to make: it is the owner's question (docs/DOC_MAINTENANCE.md section 7 step 5), keep it or "
+              "close it as not planned under a ruling. Put it in docs/HUMAN_TASKS.md." % (args.number, count))
+        return 1
+    source = issue["milestone"] or "the backlog"
+    target = args.milestone or "the backlog"
+    edit = ["issue", "edit", str(args.number), "--repo", args.repo, "--add-label", CARRIED_LABEL]
+    edit += ["--milestone", args.milestone] if args.milestone else ["--remove-milestone"]
+    body = "%sfrom %s to %s: %s" % (CARRY_COMMENT, source, target, comment)
+    note = ["issue", "comment", str(args.number), "--repo", args.repo, "--body", body]
+    # The comment first: if it fails, nothing is half-carried (no label and no moved milestone without a reason).
+    code = _run_all([note, edit], args.dry_run)
+    if code == 0 and not args.dry_run:
+        print("carry: issue #%d carried from %s to %s (carry %d of %d)"
+              % (args.number, source, target, count + 1, CARRY_LIMIT))
+    return code
+
+
+def fetch_milestones(repo=REPO):
+    out = _gh(["api", "repos/%s/milestones?state=all&per_page=100" % repo])
+    if out.returncode != 0:
+        raise SystemExit("gh api milestones failed (exit %d): %s" % (out.returncode, out.stderr.strip()))
+    return json.loads(out.stdout)
+
+
+def cmd_milestone_close(args):
+    if args.milestones_json:
+        with open(args.milestones_json, encoding="utf-8") as f:
+            milestones = json.load(f)
+    else:
+        milestones = fetch_milestones(args.repo)
+    by_title = {m["title"]: m for m in milestones}
+    closing = by_title.get(args.name)
+    if closing is None:
+        print("milestone: no milestone is titled %r on %s (there are: %s)"
+              % (args.name, args.repo, ", ".join(sorted(by_title)) or "none"))
+        return 1
+    left = sorted(i["number"] for i in (normalise(x) for x in _listing(args))
+                  if i["state"] == "OPEN" and i["milestone"] == args.name)
+    if left:
+        print("milestone: %r still holds %d open issue(s): %s -- carry each first (python -m tools_py.issues carry N "
+              "--comment ... [--milestone %r]) or close it; a milestone is closed empty"
+              % (args.name, len(left), ", ".join("#%d" % n for n in left), args.next))
+        return 1
+    cmds = []
+    if str(closing.get("state", "")).lower() == "closed":
+        print("milestone: %r is already closed" % args.name)
+    else:
+        cmds.append(["api", "-X", "PATCH", "repos/%s/milestones/%d" % (args.repo, closing["number"]),
+                     "-f", "state=closed"])
+    if args.next in by_title:
+        print("milestone: %r already exists (%s)" % (args.next, by_title[args.next].get("state")))
+    else:
+        cmds.append(["api", "-X", "POST", "repos/%s/milestones" % args.repo, "-f", "title=%s" % args.next])
+    code = _run_all(cmds, args.dry_run)
+    if code == 0 and cmds and not args.dry_run:
+        print("milestone: %r closed, %r open" % (args.name, args.next))
+    return code
+
+
+def tally(issues, since):
+    """{'opened': [n], 'closed': [n], 'carried': [n], 'highest': n} from `since` (YYYY-MM-DD) on. An issue carried
+    more than once in the window counts once."""
+    stack = [normalise(i) for i in issues]
+    return {
+        "opened": sorted(i["number"] for i in stack if i["createdAt"][:10] >= since),
+        "closed": sorted(i["number"] for i in stack if i["closedAt"] and i["closedAt"][:10] >= since),
+        "carried": sorted(i["number"] for i in stack
+                          if any(when[:10] >= since for when, _ in carry_comments(i))),
+        "highest": max([i["number"] for i in stack] or [0]),
+    }
+
+
+def cmd_tally(args):
+    if not DATE.match(args.since):
+        print("tally: --since wants a date, YYYY-MM-DD (the day the sprint opened)")
+        return 2
+    t = tally(_listing(args), args.since)
+    print("Since %s: opened %d, closed %d, carried %d; the highest issue number is #%d."
+          % (args.since, len(t["opened"]), len(t["closed"]), len(t["carried"]), t["highest"]))
+    for kind in ("opened", "closed", "carried"):
+        print("  %s: %s" % (kind, ", ".join("#%d" % n for n in t[kind]) or "none"))
+    return 0
+
+
+LABELS_SCRIPT = "scripts/github_labels.sh"
+LABELS_BLOCK = re.compile(r"^LABELS=\(\n(.*?)^\)$", re.S | re.M)
+# GitHub's own default labels, which exist on every repository and which the script deliberately does not create
+# (its header says why: their names carry spaces, and DOC_MAINTENANCE section 7 step 6 hands them out). They are
+# on real issues (#33 #39 #40 #46 #48), so a triager is shown them too.
+GITHUB_DEFAULT_LABELS = (
+    ("help wanted", "A contributor without a disc could take it."),
+    ("good first issue", "Only where the closing bar is a test a newcomer can run themselves."),
+)
+
+
+def script_labels():
+    """[(name, description)] in the order scripts/github_labels.sh creates them -- the repository's label set."""
+    block = LABELS_BLOCK.search(_read(LABELS_SCRIPT)).group(1)
+    out = []
+    for line in block.splitlines():
+        line = line.strip()
+        if line.startswith('"'):
+            name, _colour, description = line.strip('"').split("|", 2)
+            out.append((name, description))
+    return out
+
+
+def cmd_labels(_args):
+    labels = script_labels()
+    print("The repository's labels, as %s creates them (add one there and run it, never in the web page):"
+          % LABELS_SCRIPT)
+    print("areas, exactly one per issue: %s" % " ".join(n for n, _ in labels if n in AREAS))
+    for name, description in labels:
+        if name not in AREAS:
+            print("  %-16s %s" % (name, description))
+    for name, description in GITHUB_DEFAULT_LABELS:
+        print("  %-16s %s (GitHub default, not created here)" % (name, description))
+    return 0
+
+
 def cmd_audit(args):
     if args.json:
         with open(args.json, encoding="utf-8") as f:
@@ -433,6 +762,52 @@ def cmd_audit(args):
                 print("  - [section %s] %s" % (section, headline))
     print("audit: %s" % ("OK" if not problems else "%d problem(s)" % len(problems)))
     return 1 if problems else 0
+
+
+def _listing(args):
+    """The issue listing: a saved `gh issue list --json` file when --json names one, else one gh call."""
+    if args.json:
+        with open(args.json, encoding="utf-8") as f:
+            return json.load(f)
+    return fetch_issues(args.repo)
+
+
+def cmd_backlog(args):
+    out_path = os.path.join(ROOT, args.out)
+    try:
+        rows = ruled_out_rows()
+    except ValueError as e:
+        print("backlog: %s" % e)
+        return 2
+    if args.offline:
+        if not args.check:
+            print("backlog: --offline only checks (the issue table needs the listing)")
+            return 2
+        if not os.path.isfile(out_path):
+            print("backlog: %s does not exist -- python -m tools_py.issues backlog" % args.out)
+            return 1
+        with open(out_path, encoding="utf-8") as f:
+            current = f.read()
+        fresh = current.startswith(render_head()) and current.endswith(render_ruled_out(rows))
+        print("backlog: %s (offline: the head and the ruled-out table against %s)"
+              % ("OK" if fresh else "%s is stale -- python -m tools_py.issues backlog" % args.out, RULED_OUT_LIST))
+        return 0 if fresh else 1
+    text = render_backlog(_listing(args), rows)
+    if args.check:
+        current = None
+        if os.path.isfile(out_path):
+            with open(out_path, encoding="utf-8") as f:
+                current = f.read()
+        if current != text:
+            print("backlog: %s is stale -- python -m tools_py.issues backlog" % args.out)
+            return 1
+        print("backlog: OK (%s matches the listing and %s)" % (args.out, RULED_OUT_LIST))
+        return 0
+    with open(out_path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+    n_open = text.split(RULED_OUT_HEADING)[0].count("\n| #")
+    print("backlog: wrote %s -- %d open issues, %d ruled-out rows" % (args.out, n_open, len(rows)))
+    return 0
 
 
 def main(argv=None):
@@ -465,6 +840,33 @@ def main(argv=None):
     p.add_argument("--json")
     p.add_argument("--stale-since")
     p.set_defaults(fn=cmd_audit)
+    p = sub.add_parser("backlog")
+    p.add_argument("--json")
+    p.add_argument("--out", default=BACKLOG)
+    p.add_argument("--check", action="store_true")
+    p.add_argument("--offline", action="store_true")
+    p.set_defaults(fn=cmd_backlog)
+    p = sub.add_parser("carry")
+    p.add_argument("number", type=int)
+    p.add_argument("--comment", required=True)
+    p.add_argument("--milestone")
+    p.add_argument("--json")
+    p.add_argument("--dry-run", action="store_true")
+    p.set_defaults(fn=cmd_carry)
+    p = sub.add_parser("milestone")
+    msub = p.add_subparsers(dest="action", required=True)
+    p = msub.add_parser("close")
+    p.add_argument("name")
+    p.add_argument("--next", required=True)
+    p.add_argument("--json")
+    p.add_argument("--milestones-json")
+    p.add_argument("--dry-run", action="store_true")
+    p.set_defaults(fn=cmd_milestone_close)
+    p = sub.add_parser("tally")
+    p.add_argument("--since", required=True)
+    p.add_argument("--json")
+    p.set_defaults(fn=cmd_tally)
+    sub.add_parser("labels").set_defaults(fn=cmd_labels)
     args = ap.parse_args(argv)
     return args.fn(args)
 

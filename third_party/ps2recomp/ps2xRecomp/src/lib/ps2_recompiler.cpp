@@ -1118,12 +1118,17 @@ namespace ps2recomp
 
                 const auto displayIt = m_displayNames.find(function.start);
                 function.displayName = displayIt != m_displayNames.end() ? displayIt->second : std::string();
+                function.displayNameSource = displayIt != m_displayNames.end() ? m_config.namesPath : std::string();
                 m_functionRenames[function.start] = makeName(function);
             }
 
             if (m_codeGenerator)
             {
                 m_codeGenerator->setRenamedFunctions(m_functionRenames);
+
+                // Issue #40: a `J` to an HLE wrapper is emitted through the function table, unless the
+                // table slot at that address belongs to an owner's resume entry (TailCallStubTargets).
+                m_codeGenerator->setStubTargets(TailCallStubTargets(m_functions, m_resumeEntryTargetsByOwner));
             }
 
             if (m_bootstrapInfo.valid && m_codeGenerator)
@@ -2027,16 +2032,24 @@ namespace ps2recomp
     }
 
     // [general] names (research/57 §4(b)): the sidecar's first two columns, Address,Name. Later columns
-    // (Evidence) hold quoted commas, so only the first two fields are read. Absent key or file: today's names.
+    // (Evidence) hold quoted commas, so only the first two fields are read. Absent key: today's names, an info
+    // line. A key whose file does not open is a WARNING (#48): a build whose toml names a sidecar that is not
+    // there (build_revision --out used to write one) silently emitted FUN_/sub_ for every function, and an info
+    // line said so where nobody reads. build.sh and build_revision.sh print every `names` event of the log.
     void PS2Recompiler::loadDisplayNames()
     {
         m_displayNames.clear();
-        std::ifstream file(m_config.namesPath);
-        if (m_config.namesPath.empty() || !file.is_open())
+        if (m_config.namesPath.empty())
         {
-            m_reporter.info("names", "no names file" +
-                                         (m_config.namesPath.empty() ? std::string() : ": " + m_config.namesPath) +
-                                         "; output names come from the function map");
+            m_reporter.info("names", "no names file; output names come from the function map");
+            return;
+        }
+        std::ifstream file(m_config.namesPath);
+        if (!file.is_open())
+        {
+            m_reporter.warning("names", "names file does not resolve: " + m_config.namesPath +
+                                            " (relative to the directory ps2_recomp runs in); every function keeps "
+                                            "its function-map name (FUN_/sub_ placeholders)");
             return;
         }
         std::string line;
@@ -2296,5 +2309,27 @@ namespace ps2recomp
     std::string PS2Recompiler::ClampFilenameLength(const std::string& baseName, const std::string& extension, std::size_t maxLength)
     {
         return clampFilenameLength(baseName, extension, maxLength);
+    }
+
+    std::unordered_set<uint32_t> PS2Recompiler::TailCallStubTargets(
+        const std::vector<Function> &functions,
+        const std::unordered_map<uint32_t, std::vector<uint32_t>> &resumeEntryTargetsByOwner)
+    {
+        std::unordered_set<uint32_t> resumeTargets;
+        for (const auto &[owner, targets] : resumeEntryTargetsByOwner)
+        {
+            (void)owner;
+            resumeTargets.insert(targets.begin(), targets.end());
+        }
+
+        std::unordered_set<uint32_t> stubTargets;
+        for (const auto &function : functions)
+        {
+            if ((function.isStub || function.isSkipped) && resumeTargets.count(function.start) == 0u)
+            {
+                stubTargets.insert(function.start);
+            }
+        }
+        return stubTargets;
     }
 }

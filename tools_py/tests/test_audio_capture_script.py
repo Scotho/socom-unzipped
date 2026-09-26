@@ -133,7 +133,12 @@ class DumpCapTest(unittest.TestCase):
 
 
 class OwnerWrapperTest(unittest.TestCase):
-    """R8: HUMAN_TASKS sent the owner to a wrapper under an ignored logs/ inside a worktree the merge removes."""
+    """R8: HUMAN_TASKS sent the owner to a wrapper under an ignored logs/ inside a worktree the merge removes.
+
+    The owner's step itself is gone: the loop took the quiet capture on 2026-09-25 (Sprint 13 V5 Step 1) and the
+    step is archived verbatim with the old list (Sprint 13 R4), so no test reads it. What stays live: the wrapper
+    is tracked, and the owner's list never again names the ignored path.
+    """
 
     def test_the_wrapper_is_tracked_beside_the_other_parity_scripts(self):
         self.assertTrue(os.path.exists(WRAPPER), "scripts/parity/capture_audio_out.sh")
@@ -141,13 +146,12 @@ class OwnerWrapperTest(unittest.TestCase):
                            cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
         self.assertEqual(p.returncode, 0, "the wrapper must be tracked: %s" % p.stdout)
 
-    def test_human_tasks_points_at_the_tracked_wrapper(self):
+    def test_human_tasks_never_names_the_ignored_wrapper(self):
         with open(HUMAN_TASKS, encoding="utf-8") as fh:
             text = fh.read()
-        self.assertEqual(text.count("logs\\capture_audio_out.sh"), 0, "the ignored path is gone from the step")
-        # either separator: the step is a bash command line (forward slashes) on a Windows path (backslashes)
-        self.assertTrue("scripts\\parity\\capture_audio_out.sh" in text or "scripts/parity/capture_audio_out.sh" in text,
-                        "HUMAN_TASKS must name the tracked wrapper")
+        # either separator: a bash command line (forward slashes) or a Windows path (backslashes)
+        for bad in ("logs\\capture_audio_out.sh", "logs/capture_audio_out.sh"):
+            self.assertNotIn(bad, text, "the owner's list must not send anyone to the ignored %s" % bad)
 
 
 if __name__ == "__main__":

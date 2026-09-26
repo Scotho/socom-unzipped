@@ -1,0 +1,132 @@
+From 45a4456d4faf10eb2b8ad815e34d1848395db56a Mon Sep 17 00:00:00 2001
+From: Craig Smith <replace-me@example.com>
+Date: Fri, 25 Sep 2026 08:31:50 -0300
+Subject: [PATCH] iop: stdio printf/fdprintf render their conversions
+
+printf (stdio export 4) and fdprintf (9) logged the bare format string, so every number a module
+printed came out as '%d'. Render the common integer, character, string and pointer conversions
+(with flags, width and precision; length modifiers h/l are accepted and ignored) from the o32
+argument registers and the caller's stack. The return value becomes the rendered length.
+vfdprintf (14) is left as it was: its arguments arrive as a va_list pointer.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01LKrteqDzH6QRCDUFVMduSq
+---
+ ps2xIOP/src/emulator/imports/iop_stdio.cpp | 79 +++++++++++++++++++++-
+ 1 file changed, 77 insertions(+), 2 deletions(-)
+
+diff --git a/ps2xIOP/src/emulator/imports/iop_stdio.cpp b/ps2xIOP/src/emulator/imports/iop_stdio.cpp
+index eed2b61..96a7e37 100644
+--- a/ps2xIOP/src/emulator/imports/iop_stdio.cpp
++++ b/ps2xIOP/src/emulator/imports/iop_stdio.cpp
+@@ -4,6 +4,7 @@
+ #include "../core/iop_memory.h"
+ #include "ps2x/iop/iop_host.h"
+ 
++#include <cstdio>
+ #include <string>
+ 
+ namespace ps2x::iop::detail
+@@ -13,6 +14,74 @@ namespace ps2x::iop::detail
+     {
+     }
+ 
++    namespace
++    {
++        // Render the format string's %d/%i/%u/%o/%x/%X/%c/%s/%p conversions from the o32 argument
++        // registers ($a0-$a3) and the caller's outgoing-argument area on the stack, so a module's
++        // diagnostics carry their numbers. `first` is the index of the format string among the call's
++        // arguments (0 for printf, 1 for fdprintf).
++        std::string formatPrintf(const IopMemory &memory, const IopCpuState &cpu, uint32_t formatAddress, uint32_t first)
++        {
++            const std::string fmt = memory.readString(formatAddress, 2048u);
++            uint32_t next = first + 1u;
++            const auto arg = [&]() -> uint32_t
++            {
++                const uint32_t i = next++;
++                if (i < 4u)
++                    return cpu.gpr[4u + i];
++                return memory.read32(cpu.gpr[29] + 4u * i);
++            };
++            std::string out;
++            for (size_t i = 0; i < fmt.size(); ++i)
++            {
++                if (fmt[i] != '%')
++                {
++                    out += fmt[i];
++                    continue;
++                }
++                std::string spec = "%";
++                ++i;
++                while (i < fmt.size() && (fmt[i] == '-' || fmt[i] == '+' || fmt[i] == ' ' || fmt[i] == '#' || fmt[i] == '0' ||
++                                          fmt[i] == '.' || (fmt[i] >= '1' && fmt[i] <= '9')))
++                    spec += fmt[i++];
++                while (i < fmt.size() && (fmt[i] == 'l' || fmt[i] == 'h'))
++                    ++i;
++                if (i >= fmt.size())
++                    break;
++                const char conv = fmt[i];
++                char buf[64];
++                switch (conv)
++                {
++                case '%': out += '%'; break;
++                case 'd': case 'i':
++                    std::snprintf(buf, sizeof(buf), (spec + "d").c_str(), static_cast<int32_t>(arg()));
++                    out += buf;
++                    break;
++                case 'u': case 'x': case 'X': case 'o':
++                    std::snprintf(buf, sizeof(buf), (spec + conv).c_str(), arg());
++                    out += buf;
++                    break;
++                case 'p':
++                    std::snprintf(buf, sizeof(buf), "0x%08x", arg());
++                    out += buf;
++                    break;
++                case 'c': out += static_cast<char>(arg() & 0xFFu); break;
++                case 's':
++                {
++                    const uint32_t address = arg();
++                    out += address ? memory.readString(address, 1024u) : std::string("(null)");
++                    break;
++                }
++                default:
++                    out += spec;
++                    out += conv;
++                    break;
++                }
++            }
++            return out;
++        }
++    }
++
+     bool IopStdio::dispatchImport(uint16_t ordinal, IopCpuState &cpu)
+     {
+         const uint32_t a0 = cpu.gpr[4];
+@@ -27,11 +96,17 @@ namespace ps2x::iop::detail
+             m_host.log(LogLevel::Info, std::string(prefix) + text);
+             setV0(static_cast<uint32_t>(text.size()) + resultBias);
+         };
++        const auto logFormatted = [&](std::string_view prefix, uint32_t address, uint32_t first)
++        {
++            const std::string text = formatPrintf(m_memory, cpu, address, first);
++            m_host.log(LogLevel::Info, std::string(prefix) + text);
++            setV0(static_cast<uint32_t>(text.size()));
++        };
+ 
+         switch (ordinal)
+         {
+         case 4: // printf
+-            logString("[IOP printf] ", a0);
++            logFormatted("[IOP printf] ", a0, 0u);
+             return true;
+         case 5: // getchar
+         case 10:
+@@ -49,7 +124,7 @@ namespace ps2x::iop::detail
+             setV0(0u);
+             return true;
+         case 9: // fdprintf
+-            logString("[IOP fdprintf] ", a1);
++            logFormatted("[IOP fdprintf] ", a1, 1u);
+             return true;
+         case 11:
+             setV0(a0 & 0xFFu);

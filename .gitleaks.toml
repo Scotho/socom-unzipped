@@ -15,6 +15,9 @@ paths = [
   # the same, for the sixth leg: the fake siblings print an invented token so this end proves it masks it
   '''tools_py/tests/test_leakcheck_external\.py''',
   '''tools_py/release/leakrules\.py''',
+  # the gate's pin standards: sha256 digests of tracked reference images and scripts, keyed by their path (an
+  # image named map_enowapi.png put "api" before a 64-hex digest and generic-api-key fired, 2026-09-25)
+  '''scripts/parity/pins[A-Za-z0-9_]*\.json''',
 ]
 regexTarget = "line"
 regexes = [

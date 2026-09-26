@@ -25,7 +25,8 @@ This page is for players. Building it yourself is `DEVELOPING.md`; what is prove
   works, and the launcher will not start the game on one.
 - **A controller** — an Xbox pad, or any DirectInput pad Windows recognises. The keyboard walks the menus and types,
   but the launcher's own CONTROLLER page says it plainly: *"Playing needs a controller."*
-- **Optional: a microphone**, if you want voice. Voice is untested end to end (`KNOWN.md`).
+- **Optional: a microphone.** The game does not send your voice yet; the MICROPHONE page lets you pick the device and
+  watch its meter, so it is ready when voice lands (`KNOWN.md`'s voice row).
 
 Nothing else is installed and nothing is written outside the game's own folder.
 
@@ -77,8 +78,8 @@ sentence. These are the sentences, exactly as it prints them:
 | The verdict | What it means |
 |---|---|
 | `SOCOM II U.S. Navy SEALs NTSC r0001` | Green. This is the disc; you can play. |
-| `choose the SOCOM II ISO` | No image is set yet. |
-| `cannot open the file` | The path is wrong, or the file cannot be read. |
+| `choose your SOCOM II disc image first` | No image is set yet. |
+| `cannot open the file` | The path is wrong (the file was moved or renamed, or its drive is not there), or the file cannot be read. |
 | `not a SOCOM II disc image (no SCUS_972.75)` | The image opened, but it is not SOCOM II. |
 | `cannot read SCUS_972.75` | The file is on the disc but the image is damaged there. |
 | `not SOCOM II NTSC r0001 (SCUS_972.75 differs)` | A SOCOM II disc, but not the revision this build plays. |
@@ -93,8 +94,10 @@ The page has two sections.
 
 **SETUP** picks which pad the game reads and sets the stick **DEAD ZONE**. A drawing of a pad sits above:
 *"Press a button: what lights up above is what the game reads. The ring is the dead zone."* If no pad is found it
-says so instead. Under the dead zone, the launcher states what the keyboard is for: *"Menus and typing only: arrows,
-Enter, Backspace, Z/X/C/V."* and *"Playing needs a controller."*
+says so instead. Under the dead zone, the launcher states what the keyboard is for: *"Menus and typing: arrows, Enter, Esc, Backspace, Space, Z/X/C/V."*
+and *"Q/E/1/2/3/4: L1/R1/L2/L3/R2/R3. Playing needs a controller."* -- the second line is why the crouch shortcut
+below can move fire mode to the 2 key. *(Until 2026-09-25 the first line said "only" and the second named no keys,
+which the crouch hint contradicted; Sprint 13 V8.)*
 
 **BUTTONS** rebinds what each pad button and each key sends to the game. A mapping is saved **per profile**, so two
 people sharing one machine keep their own.
@@ -107,13 +110,22 @@ keyboard's 2 key."* **TOUCHPAD** and **L2** are the alternatives, and **OFF** tu
 ## 7. Play — the PLAY page
 
 The PLAY page is four rows — DISC, VIDEO, CONTROLLER, ONLINE — each showing what the game is about to do, each with
-a **CHANGE** button that jumps to the page that owns it. Then **LAUNCH**.
+a **CHANGE** button that jumps to the page that owns it. Under them is **GAME VERSION**, which says which build
+LAUNCH starts. Then **LAUNCH**.
 
-If LAUNCH is greyed out, the line above it says why, in one of these three:
+**GAME VERSION** has two cells: **r0001 (your disc)**, the one you play, and **r0004 (community update)**, the
+revision the community servers run. The download does not include an r0004 build, so that cell is drawn greyed with
+*"needs the r0004 game update -- planned"* beside it and cannot be picked: it is there so you know the version
+exists and why it is not on offer. The same row appears on the ONLINE page. If the version and the server you picked
+disagree, a warning line says so — *"the community server runs r0004; this is the r0001 build"* or *"the r0001
+servers run r0001; this is the r0004 build"*.
 
-- `choose your SOCOM II disc image first`
-- `that file is not SOCOM II (NTSC, r0001)`
-- `the game is running`
+*(Until 2026-09-25 this page did not mention the GAME VERSION row, so its greyed cell went unexplained.)*
+
+If LAUNCH is greyed out, the line above it says why: `the game is running`, or the DISC page's own sentence for the
+disc's state (the table in section 5) -- `choose your SOCOM II disc image first`, `cannot open the file`, and so on.
+*(Until 2026-09-25 every failed disc read `that file is not SOCOM II (NTSC, r0001)` here, a moved ISO included;
+Sprint 13 V8.)*
 
 After a run ends, a **LAST RUN** line appears between the rows and the button, carrying the sentence for however the
 game exited. Every one of those sentences has an entry in `FAQ.md`.
@@ -123,11 +135,15 @@ game exited. Every one of those sentences has an entry in `FAQ.md`.
 **SERVER.** The default is already the right one: **SOCOM Unzipped (project server)**, *"the project's hosted server
 (US East)"*, reached by name at `socom.scotho.com`. When the launcher can reach it, a status line from the server
 itself appears at the top right of the page; when you are offline the line is simply blank. **Custom** takes any
-address or hostname.
+address or hostname — your own Horizon server's, for instance. That server ships with no address of its own: its
+configs hold the documentation placeholder `192.0.2.1` and `server/start-servers.ps1` will not start until you give
+it this machine's address with `-PublicIp` (`server/README.md`, "Advertised address").
 
 The community preset, **SOCOM Community (public Horizon)**, is drawn at the top of the list but is not on offer, and the launcher says why:
 *"needs the r0004 game update -- planned"*. It cannot be selected, and pointing this client at a community server is
 not supported — see `FAQ.md`.
+
+**GAME VERSION** is the same row as on the PLAY page (§7).
 
 **PROFILE** is a name, not a path, and it picks your memory card: *"picks cards/&lt;profile&gt; for the memory card"*.
 

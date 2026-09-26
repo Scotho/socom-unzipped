@@ -131,7 +131,7 @@ the served `SHA256SUMS` carries (research/44 §1 names the demo's).
 | the SOCOM II Aug 18 demo ELF (stripped) | `game/demo_scus_973_68/SCUS_973.68` | 4,559,408 B |
 | the two demo disc images they came from | the same two directories, raw 2352-byte MODE2 `.bin` + `.cue` | 717,635,584 B and 565,035,008 B — **both tail-truncated downloads** (16,064 B and 64 B short of the archive's sizes, so their md5s differ from the archive's); the ELFs extracted whole |
 | the retail ISO | `game/` | 4.38 GB |
-| PSRewired's r0004 capsule and its decoding | `game/r0004/` | research/43 |
+| PSRewired's r0004 capsule and its decoding | `game/r0004/` | research/43a |
 
 A second copy of the four ELFs and their `SHA256SUMS` is served from a password-protected HTTPS location
 on the project's site, behind an unguessable path segment and HTTP basic auth, with no listing, no caching and a
