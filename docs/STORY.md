@@ -716,7 +716,7 @@ The owner asked for a second way to remap: hold any pad button on the CONTROLLER
 
 ## 2026-09-23 .. 2026-09-25 - A second edition, and names for the code
 
-*Three days, two sprints. The later edition of the game the community server runs is rebuilt from its own package, passes the same checks as the disc's edition and plays a round on our server. A sprint run in the cloud gives 1,771 of the program's nameless functions their real names, and the machine with the disc proves nothing else changed. Still: the later edition has never met a community player, and nobody outside this house has played.*
+*Three days, two sprints closed and a third opened on the last morning. The later edition of the game the community server runs is rebuilt from its own package, passes the same checks as the disc's edition and plays a round on our server. A sprint run in the cloud gives 1,771 of the program's nameless functions their real names, and the machine with the disc proves nothing else changed. The third sprint spends its one day on what the record said was owed. Still: the later edition has never met a community player, and nobody outside this house has played.*
 
 ### 2026-09-23 - The update the community server asks for, taken apart
 
@@ -785,6 +785,32 @@ The cloud has no disc, so its sprint ended with a request: build it here. The sa
 *But:* a name is not an understanding. The five biggest engine routines still have none; no lever reaches them, and they wait for the owner's own reading. And the refused run was the second time that accept switch had written a stray setting into a standard.
 
 `Cited:` `83e9696c` the local proof is green -- 1,840 display names loaded, 1,771 renamed with 0 extents moved; the r0001 gate s12_names_gate 3/3 with PINS MATCH · `3e5b5b78` the r0004 leg of the proof is green -- s12_names_r0004_gate 3/3 with PINS MATCH on the r0004 runtime built with its own 1,705-name sidecar · `7588fead` the r0004 pin standard's env restored -- a stray PS2X_AUDIO_VOLUME=0 · `32c06a0c` Sprint 12 CLOSED · `74fe2a9b` merge: Sprint 12 to main -- the readable image: 1,771 names with provenance from one sidecar, proven on both revisions; v0.12.0 · gate s12_names_gate · gate s12_names_r0004_gate · recomp/socom2_names_r0004.csv
+
+### 2026-09-25 - The client stops taking orders from the server
+
+**A game server can send the game on your machine a message that writes into its memory. Ours now refuses that message, every time, and both editions still pass the gate.**
+
+Sprint 13 opened the same morning the other two closed, on an audit of the whole project, six reports and 403 findings, under one rule: nothing gets carried twice. Its first job came from a private note written the day before, about what a server could do to a connected game through a record the game trusts. Before breakfast the client refused the record that writes, and an hour later the one that reads memory back. The same morning a file path the game asks for can no longer leave the disc's, the game's or the memory card's own folder, and no private address of the owner's is a tracked default anywhere in the repository. The refusal was relinked into the program and gated three of three, then proven again on both editions with the rest of the morning's merges. No picture for this entry: a refusal draws no frame.
+
+*How:* the record class and the check are written down in `docs/KNOWN.md`'s row and SECURITY's bullet by what they do, not how, on purpose; the network path's full inventory is a private backlog row.
+
+*But:* a refusal is as good as the list it covers, and this one covers two records. The community server was never the threat here; the model of a hostile one was.
+
+`Cited:` `6b30e42e` a server-to-client record that writes game memory is refused on the client, every time · `8df7c036` a server-to-client record that writes game memory, and one that reads it back, are refused on the client, every time · `4587afae` the client refuses a server record that writes or reads its game memory -- the KNOWN row and the SECURITY bullet, without mechanics · `4eb07b45` a translated PS2 path cannot leave its root · `eda61d3a` no private address as a tracked default · gate s13_u6_gate · gate s13_proof_gate · gate s13_proof_gate_r0004 · docs/audits/2026-09-25-project-audit.md · docs/KNOWN.md
+
+### 2026-09-25 - The debts, paid in one day
+
+**The saved password was never lost. A nightly match launched itself, first time, through a queue that did not exist that morning. And every check now prints how fast the mission ran.**
+
+The rest of the day went to what the record said was owed. The sprint file went from 189 KB to 59 KB with the closed sprints archived whole; the owner's to-do list went from 87 items to fifteen, each with the default the loop is on; the list of what is proven, believed and retracted was read end to end; and the backlog became a generated file. Two of the six carried issues turned out not to be defects at all: four "lost" menu frames were the idle attract sequence the scorer should never have counted, and a loading-screen defect had been fixed nine days earlier and never written down. The password: on the 23rd this page said a fresh card lost it. It never did. The driver pressed the connect button before reading the form, and read the password off the next screen. Read as it arrives, a card relaunched with nothing typed showed the name, five glyphs and SAVE PASSWORD ticked, and reached the lobby. The launcher's wording was fixed against a stranger's read of it, and a server name that does not resolve now says so instead of quietly meaning this machine. The machine's lock got a queue, and the scheduled match went through it on the first attempt: four rounds, two kills. The gate learned to print the mission's frame time, and three runs of it on one program spread by 30 %, so the number is recorded and has no bar yet. One copy of the game was paused for 28 seconds mid-round, and the other played on. And the music's first clean capture brought its dips from eleven-to-fourteen down to six in sixteen minutes, with the device's own thread never once late.
+
+![The relaunch, with nothing typed: the card had kept the name, the password and the SAVE PASSWORD answer, and the cursor was already on CONNECT. For two days the driver had been pressing that button and then reading the password off the screen after it.](docs/story/img/2026-09-25-the-relaunch-form-with-the-password-kept.png)
+
+*How:* FRAME mean 24.24 / 30.09 / 22.72 ms over the scripted walk on exe f90eeec0 (s13_v4_gate1..3, an informational pin, S13-R13); the ladder job waits on the lock's ticket queue (`scripts/ladder_job.sh`; #35, #36, #37 closed).
+
+*But:* this entry was written with the sprint still open: its close proof, the round against a real console and the menus' tile question were still in the queue. The six music dips have no owner yet, and the frame rate has a number and no bar.
+
+`Cited:` `ae84b1c6` the Sprint 9-11 record archived verbatim · `4adbf2bc` HUMAN_TASKS archived whole, every old item given a disposition · `33fa5940` docs/BACKLOG.md generated from the stack · `79aad10c` s19..s22 are the idle attract sequence, not lost menus · `413439d3` the premise was fixed on 2026-09-16 by 545b85a1 and never recorded · `65431302` the saved password was read off the CONNECTING screen, not lost · `6ff8229f` #27 was the login driver pressing before reading the relaunch form, not a lost password · `5565f2ca` the launcher's wording defects; a server name that does not resolve is a LAST RUN notice · `49d6fba2` the lock's ticket queue · `ef4b17fc` the ladder ran through the queue; #35, #36, #37 closed · `318fbd60` the mission stage's FRAME line and an informational frame-time pin · `c7fe15c3` V4 done -- three gates on one exe spread 30 % · `38761e2b` the game ran on through a 28 s peer pause · `b43e5325` V5 Step 1's clean capture (DEVICE 6 / 16 min, 0 late callbacks) · run v6_20260925_160634 · run ladder_20260925_194510 · gate s13_v4_gate3 · run s13_v7_paused_peer_20260925_193109 · run audio_out_20260925_074147 · docs/LADDER.md · docs/BACKLOG.md · docs/HUMAN_TASKS.md
 
 ---
 

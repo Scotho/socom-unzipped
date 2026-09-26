@@ -1,7 +1,7 @@
 {
  "schema": 1,
  "generated": "2026-09-25",
- "head": "d162a228",
+ "head": "3804d10b",
  "about": "Machine-readable form of docs/STORY.md. Built by reading the document; the citation test asserts the two agree.",
  "entries": [
   {
@@ -3307,6 +3307,221 @@
    "picture": {
     "path": "docs/story/img/2026-09-25-the-renamed-r0004-menu.png",
     "caption": "The renamed r0004 build's main menu during its gate run, the morning of the 25th. The bottom line is the game's own build stamp: SOCOM 2 r0004, built 3 November 2004, thirteen months after the disc's edition."
+   }
+  },
+  {
+   "id": "2026-09-25-the-client-stops-taking-orders-from-the-server",
+   "date": "2026-09-25",
+   "title": "The client stops taking orders from the server",
+   "era": "2026-09-23 .. 2026-09-25 - A second edition, and names for the code",
+   "hook": "A game server can send the game on your machine a message that writes into its memory. Ours now refuses that message, every time, and both editions still pass the gate.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "6b30e42e",
+     "sha": "6b30e42ecb99851859869b5a7c0cd1010a3438a6",
+     "date": "2026-09-25",
+     "subject": "fix(net): a server-to-client record that writes game memory is refused on the client, every time (Sprint 13 U6)"
+    },
+    {
+     "kind": "commit",
+     "ref": "8df7c036",
+     "sha": "8df7c036bfa964c1ea199bb7d2785c284847fad4",
+     "date": "2026-09-25",
+     "subject": "fix(net): a server-to-client record that writes game memory, and one that reads it back, are refused on the client, every time (Sprint 13 U6)"
+    },
+    {
+     "kind": "commit",
+     "ref": "4587afae",
+     "sha": "4587afae9888d713899c6ce1d832dfbe0340f2f7",
+     "date": "2026-09-25",
+     "subject": "docs(security): the client refuses a server record that writes or reads its game memory -- the KNOWN row and the SECURITY bullet, without mechanics (Sprint 13 U6 Step 4)"
+    },
+    {
+     "kind": "commit",
+     "ref": "4eb07b45",
+     "sha": "4eb07b453e8bf0064d0ed2b8b99552094440fa26",
+     "date": "2026-09-25",
+     "subject": "fix(fileio): a translated PS2 path cannot leave its root (.. and drive letters refused, symlinks resolved and checked) -- upstream #239's class, with tests (Sprint 13 U2)"
+    },
+    {
+     "kind": "commit",
+     "ref": "eda61d3a",
+     "sha": "eda61d3acaf827b7b5a51e085782da83f6f46332",
+     "date": "2026-09-25",
+     "subject": "fix(server,launcher): no private address as a tracked default -- required values or RFC 5737 examples; a test that greps the tree (Sprint 13 Task S6)"
+    },
+    {
+     "kind": "gate",
+     "ref": "s13_u6_gate",
+     "path": "logs/parity/gate/s13_u6_gate"
+    },
+    {
+     "kind": "gate",
+     "ref": "s13_proof_gate",
+     "path": "logs/parity/gate/s13_proof_gate"
+    },
+    {
+     "kind": "gate",
+     "ref": "s13_proof_gate_r0004",
+     "path": "logs/parity/gate/s13_proof_gate_r0004"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/audits/2026-09-25-project-audit.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/KNOWN.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-25-the-debts-paid-in-one-day",
+   "date": "2026-09-25",
+   "title": "The debts, paid in one day",
+   "era": "2026-09-23 .. 2026-09-25 - A second edition, and names for the code",
+   "hook": "The saved password was never lost. A nightly match launched itself, first time, through a queue that did not exist that morning. And every check now prints how fast the mission ran.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "ae84b1c6",
+     "sha": "ae84b1c6904634119db663070dee8881a6783a03",
+     "date": "2026-09-25",
+     "subject": "docs(sprint-file): the Sprint 9-11 record archived verbatim; the live file keeps the header, the two CLOSED blocks, the backlog and both ledgers"
+    },
+    {
+     "kind": "commit",
+     "ref": "4adbf2bc",
+     "sha": "4adbf2bccb6c8b606b33efaa986453c88421b13b",
+     "date": "2026-09-25",
+     "subject": "docs(record): HUMAN_TASKS archived whole, every old item given a disposition, its citations re-pointed (Sprint 13 Task R4, 1 of 2)"
+    },
+    {
+     "kind": "commit",
+     "ref": "33fa5940",
+     "sha": "33fa5940958018e78a39fd1da32675499b27fc8d",
+     "date": "2026-09-25",
+     "subject": "Merge agent/s13-r7 (Sprint 13 R7: one home for the carry -- issues backlog/carry/milestone/tally/labels, docs/BACKLOG.md generated from the stack plus the ruled-out list) into sprint-13"
+    },
+    {
+     "kind": "commit",
+     "ref": "79aad10c",
+     "sha": "79aad10ca3345e4046e345e4db27b665a1b71429",
+     "date": "2026-09-25",
+     "subject": "gate(title): the verdict is positional -- every menu-window capture s00..s18 must score >= 90; s19..s22 are the idle attract sequence, not lost menus (issue #30, research/64)"
+    },
+    {
+     "kind": "commit",
+     "ref": "413439d3",
+     "sha": "413439d30bba18d2e36e8cdfa73c186f188f8aa9",
+     "date": "2026-09-25",
+     "subject": "Merge agent/s13-v3 (Sprint 13 V3, #31: the premise was fixed on 2026-09-16 by 545b85a1 and never recorded; readGsImage no longer scans past the load packet into the caller's stack; two tests; 940/940; review PASS, merge as is; the gate and one loading-screen capture owed) into sprint-13"
+    },
+    {
+     "kind": "commit",
+     "ref": "65431302",
+     "sha": "6543130273beaf15409229a59379efda438268ce",
+     "date": "2026-09-25",
+     "subject": "parity(driver): the saved password was read off the CONNECTING screen, not lost; read the relaunch form as it arrives (#27) (Sprint 13 Task V6)"
+    },
+    {
+     "kind": "commit",
+     "ref": "6ff8229f",
+     "sha": "6ff8229fc161da5c79de719d953fb913cd55413c",
+     "date": "2026-09-25",
+     "subject": "Merge agent/s13-v6 (Sprint 13 V6: #27 was the login driver pressing before reading the relaunch form, not a lost password -- the form is read as it arrives, a clean-exit step, the kill logged; review PASS on the finding, findings fixed; the three confirming launches owed) into sprint-13"
+    },
+    {
+     "kind": "commit",
+     "ref": "5565f2ca",
+     "sha": "5565f2ca47ac32a3099b8ced4e9ab7a7a578ffe6",
+     "date": "2026-09-25",
+     "subject": "Merge agent/s13-v8 (Sprint 13 V8+S2: the launcher's wording defects (stranger rows 9-15, F53) with tests; a server name that does not resolve is a LAST RUN notice (S13-R9); review PASS WITH FINDINGS then the layout fixed and walked at both sizes) into sprint-13"
+    },
+    {
+     "kind": "commit",
+     "ref": "49d6fba2",
+     "sha": "49d6fba288ea0997b41a9fc8e5308d8157743026",
+     "date": "2026-09-25",
+     "subject": "Merge agent/s13-h2 (Sprint 13 H2: the lock's ticket queue (#36), --wait in minutes (#35), run_detached --wait, ladder_job waits for the lock (#37), the quiet marker at the main tree, orphaned waiters leave the queue, the waiter's own blob in its lines; two review rounds; the slow suite green on 36236f94 and stamped) into sprint-13"
+    },
+    {
+     "kind": "commit",
+     "ref": "ef4b17fc",
+     "sha": "ef4b17fc3dad3a649a238eedc088f4a1ea56736f",
+     "date": "2026-09-25",
+     "subject": "docs: the ladder ran through the queue (docs/LADDER.md re-rendered); H2 done; #35, #36, #37 closed on the evening's hand-offs and the first-time ladder launch"
+    },
+    {
+     "kind": "commit",
+     "ref": "318fbd60",
+     "sha": "318fbd6084176e4de02eb9d2d2d7346425e62a4d",
+     "date": "2026-09-25",
+     "subject": "parity(gate): the mission stage's FRAME line and an informational frame-time pin (S13-R3); the frame_time reader; README's cell dated (Sprint 13 Task V4)"
+    },
+    {
+     "kind": "commit",
+     "ref": "c7fe15c3",
+     "sha": "c7fe15c37aff9d05465bfec0f41ca32fef407572",
+     "date": "2026-09-25",
+     "subject": "docs(sprint-13): V4 done -- three gates on one exe spread 30 % (host not quiet); the frame-time pin stays informational, #59 carries with the measured reason (S13-R13)"
+    },
+    {
+     "kind": "commit",
+     "ref": "38761e2b",
+     "sha": "38761e2bcfe6947b77d52ea82d346c95822c55e2",
+     "date": "2026-09-25",
+     "subject": "docs(sprint-13): the paused-peer round -- the game ran on through a 28 s peer pause and no recv parked; #34 keeps its console-peer bar"
+    },
+    {
+     "kind": "commit",
+     "ref": "b43e5325",
+     "sha": "b43e5325cab80fcde33609708077d542c26dae31",
+     "date": "2026-09-25",
+     "subject": "docs(sprint-13): the Log at 09:30Z -- CI green on the merged tree, V5 Step 1's clean capture (DEVICE 6 / 16 min, 0 late callbacks), U1 merged, R2+S1 in review, C9 added"
+    },
+    {
+     "kind": "run",
+     "ref": "v6_20260925_160634",
+     "path": "logs/parity/v6_20260925_160634"
+    },
+    {
+     "kind": "run",
+     "ref": "ladder_20260925_194510",
+     "path": "logs/parity/ladder_20260925_194510"
+    },
+    {
+     "kind": "gate",
+     "ref": "s13_v4_gate3",
+     "path": "logs/parity/gate/s13_v4_gate3"
+    },
+    {
+     "kind": "run",
+     "ref": "s13_v7_paused_peer_20260925_193109",
+     "path": "logs/parity/s13_v7_paused_peer_20260925_193109"
+    },
+    {
+     "kind": "run",
+     "ref": "audio_out_20260925_074147",
+     "path": "logs/parity/audio_out_20260925_074147"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/LADDER.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/BACKLOG.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/HUMAN_TASKS.md"
+    }
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-25-the-relaunch-form-with-the-password-kept.png",
+    "caption": "The relaunch, with nothing typed: the card had kept the name, the password and the SAVE PASSWORD answer, and the cursor was already on CONNECT. For two days the driver had been pressing that button and then reading the password off the screen after it."
    }
   }
  ]

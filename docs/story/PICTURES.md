@@ -33,8 +33,9 @@ the owner's** (spec §9 Q1); `tools_py/story/cite.py` only keeps this list and t
 | `2026-09-24-r0004-round-on-our-server.png` | 2026-09-24 — The update plays, and cannot meet the original | 330,558 | `logs/parity/s11_r0004_round2c/A_hold02.png` | our program's window running the r0004 build in a round on the project's own server, run s11_r0004_round2c; frame inspected, carries the test persona only |
 | `2026-09-25-the-sprint-11-close-frame.png` | 2026-09-25 — Sprint 11 closes, and the borrowed fixes stay | 393,090 | `logs/parity/gate/s11_close_gate/mission/final.png` | our program's window, gate s11_close_gate (the close proof on exe b74a6132) |
 | `2026-09-25-the-renamed-r0004-menu.png` | 2026-09-25 — The names come home, and both editions still pass | 289,045 | `logs/parity/gate/s12_names_r0004_gate/title/s04_none.png` | our program's window running the renamed r0004 build, gate s12_names_r0004_gate |
+| `2026-09-25-the-relaunch-form-with-the-password-kept.png` | 2026-09-25 — The debts, paid in one day | 161,437 | `logs/parity/v6_20260925_160634/b/02_persona.png` | our program's window on the relaunch of run v6_20260925_160634 (launch b, nothing typed); frame inspected, carries the test persona only |
 
-Total: 23 pictures and 1 video with its poster, 16,045,341 bytes.
+Total: 24 pictures and 1 video with its poster, 16,206,778 bytes.
 
 *(2026-09-25: `2026-09-14-grey-hill-before.png` was an **orphan row** — a row for a picture `docs/STORY.md` no
 longer showed, which `tools_py/story/cite.py` cannot catch because it only checks the other direction. It is the
