@@ -2,16 +2,17 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.rulings` from the ruling records `tools_py/docmaint.py` reads for checks 9 and 10 (`ruling_records()`: the definitions in the plans, the sprint file and `docs/archive/`, the ledger rows and the vacancy notes), plus the sprint-local `S12-R<n>` and `S13-R<n>` definitions in the same documents. Change the source and regenerate; `python -m tools_py.rulings --check` exits 1 when this file is stale. The status rules are the module's docstring; the conventions are `docs/DOC_MAINTENANCE.md` section 4.
 
-312 rulings (273 global, 39 sprint-local): 306 active, 3 superseded, 1 retracted, 1 withdrawn, 1 vacant.
+313 rulings (274 global, 39 sprint-local): 307 active, 3 superseded, 1 retracted, 1 withdrawn, 1 vacant.
 
 *Home* is where the ruling is written: its definition, else its ledger row, else its vacancy note. *The line* is its first sentence, cut at 160 characters.
 
 ## Global (R<n>), newest first
 
-273 rulings.
+274 rulings.
 
 | Number | Date | Status | The line | Home |
 |---|---|---|---|---|
+| R279 | 2026-09-26 | active | the open plan's ceiling is one number in `CEILINGS` like the others: ratcheted at each close from the closing plan's size (before CURRENT_SPRINT's `plans:` lin… | `docs/superpowers/plans/2026-09-26-sprint-14.md` **R279** |
 | R278 | 2026-09-26 | active | while the lock is held or queued by other sessions' builders, lock-free tasks from Milestones D, S and M may run ahead of Milestone W; W's tasks start at the f… | `docs/superpowers/plans/2026-09-26-sprint-14.md` **R278** |
 | R277 | 2026-09-26 | active | the private location that served the owner's ELF dumps to cloud sessions has no consumer and is the owner's to retire or rotate (HUMAN_TASKS row O18); the fetc… | `docs/superpowers/plans/2026-09-26-sprint-14.md` **R277** |
 | R276 | 2026-09-26 | active | Sprint 15 is "borrowed confidence", opened from the confidence register at this sprint's close, its pair proposed beside this one (… | `docs/superpowers/plans/2026-09-26-sprint-14.md` **R276** |
@@ -106,7 +107,7 @@
 | R187 | -- | active | an operator's extra `PS2X_*` variable is a drift. | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q1b-gate-pins.md` **R187** |
 | R186 | -- | active | the harness is recorded, never compared. | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q1b-gate-pins.md` **R186** |
 | R185 | -- | active | any drift refuses, whatever `--only` asked for. | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q1b-gate-pins.md` **R185** |
-| R184 | -- | active | (after: No agent runs the game.) the mid-sprint merge to `main` -- the owner asked for the hardening and the developer setup on `main` as soon as possible (PR… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R184** |
+| R184 | -- | active | the mid-sprint merge to `main` -- the owner asked for the hardening and the developer setup on `main` as soon as possible (PR #5, `sprint-10` -> `main`, valida… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R184** |
 | R183 | -- | active | the leak check is the monitor's rules adapted for a SOURCE tree, not copied. *Decided 2026-09-20.* The monitor's set was built for a published snapshot, where… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R183** |
 | R182 | -- | active | rulesets on `main` and `sprint-*`, as GIT_STRATEGY §6 designed them, with one deviation: no CODEOWNERS review required and no bypass. *Decided 2026-09-20.*… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R182** |
 | R181 | -- | active | secret scanning, push protection and Dependabot alerts are ON, turned on by the controller under the owner's words. *Decided 2026-09-20.* HANDOFF §5 rule 13 ke… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R181** |
@@ -117,7 +118,7 @@
 | R176 | -- | active | ADVANCED is a per-page section, it holds one thing today, and it cannot hide a setting that is doing something. *Decided 2026-09-19 by the controller; the spec… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R176** |
 | R175 | -- | active | P6's persona measurement is not run, the launcher's default preset moves to `socom.scotho.com`, and the hosted server goes on advertising its IP literal. *Deci… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R175** |
 | R174 | -- | active | Goal 12 is split: the data path is Sprint 9, the UI is Sprint 10. *Decided 2026-09-19 by the controller under an explicit delegation from the owner* ("overseer… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R174** |
-| R173 | 2026-09-19 | active | (after: The foreground half needed no code: nothing in the launcher calls…) the CONTROLLER page's live pad DISPLAY stays alive while the game runs -- it moves… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R173** |
+| R173 | 2026-09-19 | active | the CONTROLLER page's live pad DISPLAY stays alive while the game runs -- it moves no focus, and a player who alt-tabs to check a pad should not find a dead pi… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R173** |
 | R172 | -- | active | PROPOSED, not taken: the concurrency cap and the clip. | `docs/archive/sprints-7-12/2026-09-19-sprint-9-a-strangers-first-run-design.md` **R172** |
 | R171 | -- | active | the stream decoder reads the VAG flags the bank decoder always read. | `docs/archive/sprints-7-12/2026-09-19-sprint-9-a-strangers-first-run-design.md` **R171** |
 | R170 | -- | active | a fade belongs to the cue, not to the handle. | `docs/archive/sprints-7-12/2026-09-19-sprint-9-a-strangers-first-run-design.md` **R170** |

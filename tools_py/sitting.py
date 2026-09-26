@@ -14,10 +14,20 @@ sections the owner answers by number, one line each:
   3. the open issues whose `Carried` column in `docs/BACKLOG.md` reads 2 or more: keep, or close as not planned.
   4. the build `docs/PLAYTEST.md` names: its build block's archive and hashes, or **NOT BUILT**.
 
-`since` defaults to the `last sitting: <date>` line under HUMAN_TASKS' header (`--since` overrides it). The page's
-date ("as of") is today when it is written; `--check` renders with the date and the `since` the page on disk
-carries, so the page goes stale when a source changes, not when the calendar does -- the days waited are as of the
-date the page says. The suite holds the page to its sources AT THE COMMIT THAT LAST WROTE IT (`render_at`,
+The history of sittings is ONE stamp line under HUMAN_TASKS' header (Sprint 14 D4; the file sits near its ceiling):
+`last sitting: 2026-09-17 (read by tools_py.sitting)` while there has been one, and from the second on
+`sittings: 2026-09-17, 2026-10-03 (read by tools_py.sitting)` -- the dates oldest first, the close appending the
+new one. Both forms are read. `since` defaults to the latest date on it (`--since` overrides it).
+
+The circuit breaker (R271): an open O row that has stood through two sittings -- two stamped dates on or after its
+first-asked date -- is marked in section 1 "closes by default at the next close (R271)". The tool only marks; the
+close strikes the row by hand in HUMAN_TASKS under a new ruling, with the date and the default that now stands, and
+the owner can reopen it by number (docs/DOC_MAINTENANCE.md section 7, step 8).
+
+The page's date ("as of") is today when it is written; `--check` renders with the date and the `since` the page on
+disk carries, so the page goes stale when a source changes, not when the calendar does -- the days waited are as of
+the date the page says. A bare `--check` also reports stale when that `since` is not the stamp's latest date (a new
+sitting stamped with no regenerate, or a page written with `--since`). The suite holds the page to its sources AT THE COMMIT THAT LAST WROTE IT (`render_at`,
 `page_rev`: tools_py.changelog's contract), so a later ruling or O row does not redden it; `--check` against the
 current sources is the close's step and the loop regenerates the page when an O row, a ruling or the backlog changes.
 """
@@ -41,7 +51,10 @@ BACKLOG = "docs/BACKLOG.md"
 PLAYTEST = "docs/PLAYTEST.md"
 MAX_CELL = 160
 
-STAMP = re.compile(r"^last sitting:\s*(20\d{2}-\d{2}-\d{2})\b", re.M)
+# The stamp line: `last sitting: <date>` (one sitting) or `sittings: <date>, <date>, ...` (the history, oldest first),
+# each with an optional "(read by tools_py.sitting)" after the dates.
+STAMP = re.compile(r"^(?:last sitting|sittings):[ \t]*([^\n(]*)", re.M)
+BREAKER = "closes by default at the next close (R271)"
 AS_OF = re.compile(r"\bas of (20\d{2}-\d{2}-\d{2})\b")
 O_ROW = re.compile(r"^\|\s*(O\d+)\s*\|")
 BOLD = re.compile(r"\*\*(.+?)\*\*")
@@ -70,9 +83,12 @@ def _esc(text):
 
 
 def stamps(human_tasks_md):
-    """Every `last sitting: <date>` stamp, oldest first. D4's circuit breaker counts the stamps a row has stood
-    through (the stamps on or after its first-asked date); today there is one."""
-    return sorted(STAMP.findall(human_tasks_md))
+    """Every sitting's date on the stamp line(s), oldest first, each once. The circuit breaker counts the sittings
+    a row has stood through (those on or after its first-asked date)."""
+    found = set()
+    for dates in STAMP.findall(human_tasks_md):
+        found.update(docmaint.DATE.findall(dates))
+    return sorted(found)
 
 
 def last_sitting(human_tasks_md):
@@ -81,8 +97,11 @@ def last_sitting(human_tasks_md):
 
 
 def o_rows(human_tasks_md, today=None):
-    """[{number, hand, default, first_asked, days, struck, answer}] in table order."""
+    """[{number, hand, default, first_asked, days, struck, answer, sittings, closes}] in table order. `sittings` is
+    how many stamped sittings fell on or after the row's first-asked date; `closes` is True for an open row that
+    has stood through two or more (R271: it closes by default at the next close)."""
     today = today or datetime.date.today()
+    held = stamps(human_tasks_md)
     out = []
     for line in human_tasks_md.split("\n"):
         if not O_ROW.match(line):
@@ -105,8 +124,10 @@ def o_rows(human_tasks_md, today=None):
         days = None
         if not struck and first_asked:
             days = (today - datetime.date.fromisoformat(first_asked)).days
+        sittings = len([s for s in held if first_asked and s >= first_asked])
         out.append({"number": number, "hand": hand, "default": _plain(default), "first_asked": first_asked,
-                    "days": days, "struck": struck, "answer": answer})
+                    "days": days, "struck": struck, "answer": answer, "sittings": sittings,
+                    "closes": not struck and sittings >= 2})
     return out
 
 
@@ -220,6 +241,7 @@ def build(human_tasks_md, rulings_rows, backlog_md, playtest_md, since, today=No
     rows = o_rows(human_tasks_md, today=today)
     open_rows = [r for r in rows if not r["struck"]]
     answered = [r for r in rows if r["struck"]]
+    closing = [r for r in open_rows if r["closes"]]
     listed, n_dated, n_placed, n_unplaceable = active_since(rulings_rows, since)
     carried = carried_twice(backlog_md)
     built, shown = build_state(playtest_md)
@@ -234,7 +256,7 @@ def build(human_tasks_md, rulings_rows, backlog_md, playtest_md, since, today=No
         "# The owner's sitting",
         "",
         "> **Generated -- do not edit.** Written by `python -m tools_py.sitting` from `%s` (the O rows and the "
-        "`last sitting:` stamp), the rulings `docs/RULINGS.md` shows (`tools_py.rulings.rows()`), `%s` (the "
+        "stamp of the sittings), the rulings `docs/RULINGS.md` shows (`tools_py.rulings.rows()`), `%s` (the "
         "`Carried` column) and `%s` (its build block). Change a source and regenerate; "
         "`python -m tools_py.sitting --check` exits 1 when this file is stale." % (HUMAN_TASKS, BACKLOG, PLAYTEST),
         "",
@@ -245,15 +267,19 @@ def build(human_tasks_md, rulings_rows, backlog_md, playtest_md, since, today=No
         "",
         "## 1. The O rows",
         "",
-        "%d open, %d answered or struck. Each stands on its default until you answer; days waited are to %s." % (
-            len(open_rows), len(answered), today.isoformat()),
+        "%d open, %d answered or struck. Each stands on its default until you answer; days waited are to %s.%s" % (
+            len(open_rows), len(answered), today.isoformat(),
+            (" A row that has stood through two sittings unanswered is struck at the next close with its default "
+             "standing, under a ruling, and reopened by number: %d %s." % (len(closing), BREAKER))
+            if closing else ""),
         "",
         "| O | the hand needed | the default the loop is on | first asked | days waited |",
         "|---|---|---|---|---|",
     ]
     for r in open_rows:
-        out.append("| %s | %s | %s | %s | %s |" % (
-            r["number"], _esc(_cut(r["hand"])), _esc(_cut(r["default"])), r["first_asked"] or "--",
+        out.append("| %s | %s | %s%s | %s | %s |" % (
+            r["number"], _esc(_cut(r["hand"])), _esc(_cut(r["default"])),
+            " -- **%s**" % BREAKER if r["closes"] else "", r["first_asked"] or "--",
             "--" if r["days"] is None else r["days"]))
     out += ["", "Answered or struck (the row stays in HUMAN_TASKS as the record):", ""]
     for r in answered:
@@ -307,7 +333,7 @@ def render_tree(root, since=None, today=None):
     human = _read(root, HUMAN_TASKS)
     since = since or last_sitting(human)
     if not since:
-        raise SystemExit("sitting: no `last sitting: <date>` line in %s and no --since" % HUMAN_TASKS)
+        raise SystemExit("sitting: no `last sitting:` or `sittings:` line in %s and no --since" % HUMAN_TASKS)
     return build(human, rulings.rows(root=root), _read(root, BACKLOG), _read(root, PLAYTEST), since, today=today)
 
 
@@ -372,6 +398,13 @@ def main(argv=None):
             print("sitting: %s is missing; run python -m tools_py.sitting" % PAGE)
             return 1
         as_of, page_since = page_stamps(current)
+        if not args.since:
+            stamp = last_sitting(_read(root, HUMAN_TASKS))
+            if stamp and page_since != stamp:
+                print("sitting: %s is for the sitting after %s; %s's latest sitting is %s" % (
+                    PAGE, page_since or "no date", HUMAN_TASKS, stamp))
+                print("sitting: %s is stale; run python -m tools_py.sitting" % PAGE)
+                return 1
         fresh = render_tree(root, since=args.since or page_since, today=as_of)
         if current == fresh:
             print("sitting: %s is current" % PAGE)

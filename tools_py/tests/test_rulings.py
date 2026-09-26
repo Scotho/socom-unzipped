@@ -4,7 +4,8 @@ The fixture tree under tools_py/tests/fixtures/rulings/ plants one ruling of eac
 active, superseded (a definition that says SUPERSEDED BY, a ledger row that says superseded by, an S12 name
 "amended by" another), retracted (a struck definition and one that says RETRACTED), withdrawn (a definition and
 a ledger-only row; an S13 name another ruling "retires"), vacant (a vacancy note and a ledger row that says deliberately vacant) -- plus the
-negative controls that must not become rows: a citation, a quoted first telling, a mid-line S12 label.
+negative controls that must not become rows: a citation, a quoted first telling, a mid-line S12 label. Two
+mid-paragraph labels: R27 opens with a pronoun (shown after its context), R28 does not (shown alone, S14 D4).
 """
 import os
 import shutil
@@ -25,6 +26,7 @@ EXPECTED = [
     # (number, date, status, home) in page order: global newest first, then S13, then S12. A home is the
     # path and a stable anchor (the ruling's label, or its ledger row, or its vacancy note), never a line
     # number: a line added above a ruling must not make the page stale.
+    ("R28", "2026-01-15", "active", PLAN1 + " **R28**"),         # mid-paragraph, but no pronoun: no context
     ("R27", "2026-01-14", "active", PLAN1 + " **R27**"),         # a label in mid-paragraph, after its context
     ("R26", "2026-01-13", "active", PLAN1 + " **R26**"),         # one label for two rulings: each its own text
     ("R25", "2026-01-13", "active", PLAN1 + " **R25**"),
@@ -105,6 +107,19 @@ class RowsTest(unittest.TestCase):
                          "(after: The names S1-R1 to S1-R9 stay in the plan, the one home for them.) "
                          "they keep those names -- the thirteenth decision.")
 
+    def test_a_mid_paragraph_label_without_a_pronoun_start_carries_no_context(self):
+        # Sprint 14 D4 (D3's review): the prefix is for words that need their antecedent (R264's "they keep those
+        # names"); R173's and R184's lower-case openings read on their own, and the prefix was noise there.
+        self.assertEqual(self.by["R28"]["line"], "the fourteenth decision stands on its own words.")
+
+    def test_which_first_words_need_their_antecedent(self):
+        for words in ("they keep", "them all", "their names", "it stands", "its words", "this rule", "that one",
+                      "these two", "those names", "the same rule", "both halves", "such a rule", "They keep"):
+            self.assertTrue(rulings.needs_antecedent(words), words)
+        for words in ("the mid-sprint merge", "the CONTROLLER page", "a rule", "theyre", "itself", "thus",
+                      "the sameness", "then"):
+            self.assertFalse(rulings.needs_antecedent(words), words)
+
     def test_a_date_after_the_label_is_not_the_rulings(self):
         self.assertIsNone(self.by["R23"]["date"])
 
@@ -134,8 +149,8 @@ class RenderTest(unittest.TestCase):
         self.assertIn("Generated", head)
         self.assertIn("do not edit", head)
         self.assertIn("python -m tools_py.rulings", head)
-        self.assertIn("20 rulings", self.page)
-        for count in ("11 active", "3 superseded", "2 retracted", "2 withdrawn", "2 vacant"):
+        self.assertIn("21 rulings", self.page)
+        for count in ("12 active", "3 superseded", "2 retracted", "2 withdrawn", "2 vacant"):
             self.assertIn(count, self.page)
 
     def test_groups_in_order_and_pipes_escaped(self):

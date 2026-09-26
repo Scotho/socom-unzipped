@@ -161,6 +161,46 @@ class ORowsTest(unittest.TestCase):
         self.assertIsNone(sitting.last_sitting("# no stamp\n"))
 
 
+# Sprint 14 D4 (R271): the stamp has grown to the history of sittings. O1 was asked before both (the mark); O2
+# before both but struck (answered: no mark); O3 between them (one sitting: no mark); O4 on the second sitting's
+# own date (it stood through that one only: no mark).
+HUMAN_TASKS_TWO = HUMAN_TASKS.replace(
+    "last sitting: 2026-01-05", "sittings: 2026-01-03, 2026-01-05 (read by tools_py.sitting)").replace(
+    "| O3 | **The crouch default**: the launcher writes `l3`. | the launcher's `l3` | audit A10 | 2026-01-04 |",
+    "| O3 | **The crouch default**: the launcher writes `l3`. | the launcher's `l3` | audit A10 | 2026-01-04 |\n"
+    "| O4 | **The pad map**, asked at the sitting. | the shipped map | audit A11 | 2026-01-05 |")
+BREAKER = "closes by default at the next close (R271)"
+
+
+class CircuitBreakerTest(unittest.TestCase):
+    def test_the_stamp_history_in_both_forms(self):
+        self.assertEqual(sitting.stamps(HUMAN_TASKS), ["2026-01-05"])
+        self.assertEqual(sitting.stamps(HUMAN_TASKS_TWO), ["2026-01-03", "2026-01-05"])
+        self.assertEqual(sitting.last_sitting(HUMAN_TASKS_TWO), "2026-01-05")
+        stamp = [l for l in HUMAN_TASKS_TWO.split("\n") if l.startswith("sittings:")][0]
+        self.assertLess(len(stamp.encode("utf-8")), 80)
+
+    def test_the_rows_that_stood_through_two_sittings(self):
+        rows = {r["number"]: r for r in sitting.o_rows(HUMAN_TASKS_TWO, today=TODAY)}
+        self.assertEqual({n: r["sittings"] for n, r in rows.items()}, {"O1": 2, "O2": 2, "O3": 1, "O4": 1})
+        self.assertEqual({n: r["closes"] for n, r in rows.items()},
+                         {"O1": True, "O2": False, "O3": False, "O4": False})
+
+    def test_the_mark_on_the_page(self):
+        s1 = section(sitting.build(HUMAN_TASKS_TWO, RULINGS, BACKLOG, PLAYTEST_BUILT, "2026-01-05", today=TODAY), 1)
+        by = {l.split("|")[1].strip(): l for l in s1.split("\n") if l.startswith("| O")}
+        self.assertIn(BREAKER, by["O1"])
+        for n in ("O3", "O4"):
+            self.assertNotIn(BREAKER, by[n])
+        self.assertNotIn("O2", by)   # struck: answered, listed apart
+        self.assertEqual(s1.count(BREAKER), 1 + 1, s1)   # the row and the section's count sentence
+        self.assertIn("1 closes by default at the next close", s1)
+
+    def test_one_sitting_marks_nothing(self):
+        self.assertNotIn(BREAKER, section(page(), 1))
+        self.assertFalse(any(r["closes"] for r in sitting.o_rows(HUMAN_TASKS, today=TODAY)))
+
+
 class RulingsSectionTest(unittest.TestCase):
     def lines(self, text):
         return [l for l in section(text, 2).split("\n") if l.startswith("- **")]
@@ -293,8 +333,27 @@ class CliTest(unittest.TestCase):
     def test_check_on_a_missing_file_exits_1(self):
         self.assertEqual(self.cli("--check").returncode, 1)
 
-    def test_a_page_written_with_since_passes_a_bare_check(self):
+    def test_a_page_written_with_since_passes_a_check_with_that_since(self):
         self.assertEqual(self.cli("--since", "2026-01-01").returncode, 0)
+        res = self.cli("--check", "--since", "2026-01-01")
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+
+    def test_a_bare_check_holds_the_page_to_the_stamp(self):
+        # D3's review (a): a page whose `since` is not HUMAN_TASKS' latest stamp is stale to a bare --check -- a
+        # page written with --since, or a new sitting stamped with no regenerate.
+        self.assertEqual(self.cli("--since", "2026-01-01").returncode, 0)
+        res = self.cli("--check")
+        self.assertEqual(res.returncode, 1, res.stdout + res.stderr)
+        self.assertIn("2026-01-05", res.stdout)
+        self.assertIn("stale", res.stdout)
+        self.assertEqual(self.cli().returncode, 0)
+        self.write("HUMAN_TASKS.md", HUMAN_TASKS.replace(
+            "last sitting: 2026-01-05", "sittings: 2026-01-05, 2026-01-10 (read by tools_py.sitting)"))
+        res = self.cli("--check")
+        self.assertEqual(res.returncode, 1, res.stdout + res.stderr)
+        self.assertIn("2026-01-10", res.stdout)
+        self.assertIn("stale", res.stdout)
+        self.assertEqual(self.cli().returncode, 0)
         res = self.cli("--check")
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
 

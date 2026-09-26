@@ -60,6 +60,11 @@ merge and the tag). The open plan's Task 99 adds the sprint's own close steps.
    closed, carried, highest number) for the close-out commit and STATUS's entry, with what the review changed.
    Then `python -m tools_py.sitting` regenerates `docs/SITTING.md`, the owner's page, from the carry and the
    rulings just settled, and `python -m tools_py.sitting --check` exits 0 (R271, Sprint 14 D3).
+8. The circuit breaker (R271, DOC_MAINTENANCE §7 step 8): an O row that has stood through two sittings without an
+   answer is closed by default under a ruling, struck with the date and the default that now stands; the owner can
+   reopen it by number. The page marks each such row "closes by default at the next close (R271)"; the tool only
+   marks -- strike every marked row by hand in `docs/HUMAN_TASKS.md` under a new ruling from HANDOFF's counter, then
+   `python -m tools_py.sitting` again and `--check` exits 0.
 
 ## The ratchet -- the last step before the close-out commit (DOC_MAINTENANCE check 7)
 
