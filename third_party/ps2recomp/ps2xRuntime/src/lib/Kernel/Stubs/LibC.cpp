@@ -752,15 +752,35 @@ namespace ps2_stubs
         uint32_t pathAddr = getRegU32(ctx, 4); // $a0
         uint32_t modeAddr = getRegU32(ctx, 5); // $a1
 
-        const char *hostPath = reinterpret_cast<const char *>(getConstMemPtr(rdram, pathAddr));
+        const char *guestPath = reinterpret_cast<const char *>(getConstMemPtr(rdram, pathAddr));
         const char *hostMode = reinterpret_cast<const char *>(getConstMemPtr(rdram, modeAddr));
         uint32_t file_handle = 0;
 
-        if (hostPath && hostMode)
+        if (guestPath && hostMode)
         {
-            // TODO: Add translation for PS2 paths like mc0:, host:, cdrom:, etc.
-            // treating as direct host path
-            RUNTIME_LOG("ps2_stub fopen: path='" << hostPath << "', mode='" << hostMode << "'");
+            // Issue #53 (Sprint 13 U2's class, upstream #239): the guest path goes through the same
+            // translation as the fio calls -- host0:/cdrom0:/mc0: pick hostRoot/cdRoot/mcRoot, a bare
+            // path is the CD's -- and so through resolvePs2PathUnderRoot's lexical walk (links resolved
+            // for the memory-card root only, ruling S13-R8). A '..' above the root, a drive letter or
+            // a Windows device name comes back empty and the guest gets NULL, as libc fopen reports
+            // for a path it cannot open. It used to go to the host fopen verbatim, relative to the
+            // process's working directory. SOCOM II binds nothing to this stub (its newlib _fopen_r
+            // reaches the host through the fio calls); any image whose ELF or analyzer names a
+            // function `fopen` binds here by name (ps2_call_list.h PS2_STUB_LIST).
+            const std::string hostPathStr = translatePs2Path(guestPath);
+            if (hostPathStr.empty())
+            {
+                static std::atomic<bool> warned{false};
+                if (!warned.exchange(true))
+                {
+                    std::cerr << "ps2_stub fopen: refused '" << sanitizeForLog(guestPath)
+                              << "': it does not stay under its root (logged once)" << std::endl;
+                }
+                setReturnU32(ctx, 0);
+                return;
+            }
+            const char *hostPath = hostPathStr.c_str();
+            RUNTIME_LOG("ps2_stub fopen: path='" << guestPath << "' -> '" << hostPath << "', mode='" << hostMode << "'");
             FILE *fp = ::fopen(hostPath, hostMode);
             if (fp)
             {
@@ -778,7 +798,7 @@ namespace ps2_stubs
         else
         {
             std::cerr << "fopen error: Invalid address provided for path or mode."
-                      << " Path: 0x" << std::hex << pathAddr << " (host ptr valid: " << (hostPath != nullptr) << ")"
+                      << " Path: 0x" << std::hex << pathAddr << " (host ptr valid: " << (guestPath != nullptr) << ")"
                       << ", Mode: 0x" << modeAddr << " (host ptr valid: " << (hostMode != nullptr) << ")" << std::dec
                       << std::endl;
         }

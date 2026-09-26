@@ -23,7 +23,7 @@ before it is pointed at.
   *(Superseded 2026-09-25, Sprint 13 R2: this cited `c81b17a`, a copy of the same commit (same subject and date) that no
   branch or tag contains; `f5809c84` is the one on `main` -- documents audit row 58, stranger audit S44.)*
 - The runner's translation of guest file paths into host files (`translatePs2Path`, which serves the EE fio calls,
-  SifLoadElf and the IOP host adapter): a path is contained to its host, disc or memory-card folder, and the
+  SifLoadElf, the IOP host adapter, and the `fopen` and `sceCdSearchFile` stubs an image binds by name): a path is contained to its host, disc or memory-card folder, and the
   memory-card folder is also resolved through links; this is tested, so a way out of those folders is in scope.
 - The network client: anything a hostile game server or peer can do to a player's machine.
 - The bug-report path: anything that makes the launcher send what the player was not shown.
