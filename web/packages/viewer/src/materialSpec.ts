@@ -10,7 +10,10 @@ export interface TextureFlags {
   transparent: boolean;
   /** The alpha is a ramp (a glow, a corona) rather than a switch (a leaf, a grating). */
   graded: boolean;
-  /** Every sampled texel is solid. Decides backface culling: a solid skin is closed, a sheet is not. */
+  /**
+   * Every sampled texel is solid. It used to decide backface culling, standing in for the visual's
+   * own flag; now it only says whether a texture has any alpha to blend or test at all.
+   */
   opaque: boolean;
   gs: GsState | null;
 }
@@ -31,7 +34,7 @@ export interface MaterialSpec {
   blend: Blend;
   /** 0 for none; otherwise the threshold in 0..1. The GS keeps a texel whose alpha is *greater*. */
   alphaTest: number;
-  /** Backface culling on: the texture is fully solid, so the surface is a closed skin (spec 2026-09-20 §9). */
+  /** Backface culling on: the visual's own flag on the disc (`VISUAL_FLAG_CULL` in `@s2u/scene`). */
   cull: boolean;
   wrapS: 'repeat' | 'clamp';
   wrapT: 'repeat' | 'clamp';
@@ -63,7 +66,7 @@ export interface MaterialSpec {
  * Wrap and filtering come off `CLAMP` and `TEX1`. A record with no state block (none in the corpus,
  * kept for a damaged one) falls back to the old pixel rules: a ramp clamps, everything else repeats.
  */
-export function materialSpec(flags: TextureFlags | undefined, fog: boolean, honourDisc: boolean): MaterialSpec {
+export function materialSpec(flags: TextureFlags | undefined, fog: boolean, honourDisc: boolean, cull: boolean): MaterialSpec {
   const gs = flags?.gs ?? null;
   const graded = flags?.graded ?? false;
   const hasAlpha = flags ? !flags.opaque : false;
@@ -71,7 +74,7 @@ export function materialSpec(flags: TextureFlags | undefined, fog: boolean, hono
     ? { wrapS: gs.wrapS, wrapT: gs.wrapT }
     : { wrapS: graded ? 'clamp' as const : 'repeat' as const, wrapT: graded ? 'clamp' as const : 'repeat' as const };
   const base = {
-    cull: flags?.opaque ?? false,
+    cull,
     ...wrap,
     bilinear: gs?.bilinear ?? flags?.bilinear ?? true,
     mipmaps: gs?.mipmaps ?? false,

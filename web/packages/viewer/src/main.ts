@@ -58,8 +58,6 @@ let mapList: MapInfo[] = [];
 let presentation: Presentation = 'native';
 /** `fit`, once `boot` has a renderer: the canvas's CSS box, or the PS2 frame, onto the camera. */
 let fit: (() => void) | null = null;
-/** The renderer's half of the colour-space switch, once `boot` has one. */
-let setLinearLight: ((on: boolean) => void) | null = null;
 
 /** The panel's lighting, accumulated as the sliders move and handed to the world as one set. */
 const lighting: Lighting = { ...DEFAULT_LIGHTING };
@@ -206,6 +204,8 @@ function applyToggle(name: ToggleName, on: boolean): void {
   else if (name === 'fog') { fog.enabled = on; refreshFog(); }
   else if (name === 'blendgraded') view?.setBlendGraded(on);
   else if (name === 'discorder') view?.setDiscOrder(on);
+  else if (name === 'shadows') view?.setShadows(on);
+  else if (name === 'alternate') view?.setAlternate(on);
   else if (name === 'linestrips') view?.setLineStrips(on);
   else if (name === 'billboards') view?.setBillboards(on);
   else if (name === 'untextured') view?.setUntexturedHighlight(on);
@@ -215,7 +215,6 @@ function applyToggle(name: ToggleName, on: boolean): void {
     document.body.classList.toggle('ps2-look', on);
     fit?.();
   }
-  else if (name === 'linearlight') { view?.setLinearLight(on); setLinearLight?.(on); }
 }
 
 boot().catch((e: unknown) => {
@@ -228,7 +227,6 @@ boot().catch((e: unknown) => {
 async function boot(): Promise<void> {
   const created = await createRenderer(canvas!);
   const { render, resize, backend: chosen } = created;
-  setLinearLight = created.setLinearLight;
   setClearColor = created.setClearColor;
   ui.onFogColour((rgb) => { fog.color = rgb; refreshFog(); });
   refreshFog();

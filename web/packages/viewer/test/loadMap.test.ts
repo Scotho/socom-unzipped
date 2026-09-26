@@ -44,6 +44,29 @@ describe.skipIf(absent)(`the draw order out of loadMap${absent ? ` (${FIXTURES_A
     }
   });
 
+  it.skipIf(absent)('every draw carries its cull flag and its state, the alternate states are the ones the game switches to', async () => {
+    const map = await load('RUN/MP72.ZDB');            // Crossroads: destructible crates, lamps with an unlit copy
+    const draws = [...map.world, ...map.props.flatMap((p) => p.parts)];
+    expect(draws.some((m) => m.cull)).toBe(true);
+    expect(draws.some((m) => !m.cull)).toBe(true);
+    const alternate = map.props.filter((p) => p.alternate);
+    expect(alternate.length).toBeGreaterThan(0);
+    expect(map.props.filter((p) => !p.alternate).length).toBeGreaterThan(alternate.length);
+  });
+
+  it.skipIf(absent)('the far LOD copies of the Frostfire railings and grates are alternate, the near ones are not', async () => {
+    const map = await load('RUN/MP2.ZDB');
+    // `railings_low` fades in at 100-120 units where `railings_high` fades out; the graph places both
+    // sets on the same rails (10 placements each). `grate_lowlod` is in the table but never placed.
+    const by = (name: string) => map.props.filter((p) => p.modelName === name);
+    expect(by('railstraitlo1').length).toBeGreaterThan(0);
+    expect(by('railstraitlo1').every((p) => p.alternate)).toBe(true);
+    expect(by('railstraithi1').length).toBe(by('railstraitlo1').length);
+    expect(by('railstraithi1').every((p) => !p.alternate)).toBe(true);
+    expect(by('tankrailbarslo').every((p) => p.alternate)).toBe(true);
+    expect(by('grate_midlod').every((p) => !p.alternate)).toBe(true);
+  });
+
   it.skipIf(absent)('the line strips come out grouped by texture and fog, with a uv per point and a place in the walk', async () => {
     const map = await load('RUN/MP6.ZDB');           // Desert Glory: power lines, lamp brackets, the cuffs
     expect(map.lines).not.toBeNull();

@@ -16,60 +16,65 @@ const flags = (over: Partial<TextureFlags> = {}): TextureFlags => ({
 });
 
 describe('materialSpec, honouring the disc', () => {
-  it('a solid wall is opaque, culled, repeating, bilinear, fogged', () => {
-    expect(materialSpec(flags(), true, true)).toEqual({
+  it('a solid wall is opaque, culled when its visual says so, repeating, bilinear, fogged', () => {
+    expect(materialSpec(flags(), true, true, true)).toEqual({
       blend: 'none', alphaTest: 0, cull: true,
       wrapS: 'repeat', wrapT: 'repeat', bilinear: true, mipmaps: false, fog: true,
     });
   });
 
   it('a packet whose FGE is clear is not fogged', () => {
-    expect(materialSpec(flags(), false, true).fog).toBe(false);
+    expect(materialSpec(flags(), false, true, true).fog).toBe(false);
+  });
+
+  it('the cull is the visual\'s flag, not the texture: a solid texture on a double-sided visual keeps both faces', () => {
+    expect(materialSpec(flags(), true, true, false).cull).toBe(false);
+    expect(materialSpec(flags({ transparent: true, opaque: false }), true, true, true).cull).toBe(true);
   });
 
   it('a cutout with the alpha test on the disc tests at the reference the disc gives', () => {
-    const spec = materialSpec(flags({ transparent: true, opaque: false, gs: gs({ blend: 'none', alphaTest: 0.5 }) }), true, true);
+    const spec = materialSpec(flags({ transparent: true, opaque: false, gs: gs({ blend: 'none', alphaTest: 0.5 }) }), true, true, false);
     expect(spec).toMatchObject({ blend: 'none', alphaTest: 0.5, cull: false });
   });
 
   it('a one-bit texture drawn with a blend and no test is still a cutout: blending a switch is a cutout', () => {
-    const spec = materialSpec(flags({ transparent: true, opaque: false }), true, true);
+    const spec = materialSpec(flags({ transparent: true, opaque: false }), true, true, false);
     expect(spec).toMatchObject({ blend: 'none', alphaTest: 0.5 });
   });
 
   it('a graded texture blends with the source-alpha equation', () => {
-    const spec = materialSpec(flags({ transparent: true, graded: true, opaque: false }), true, true);
+    const spec = materialSpec(flags({ transparent: true, graded: true, opaque: false }), true, true, false);
     expect(spec).toMatchObject({ blend: 'source', alphaTest: 0 });
   });
 
   it('a graded texture whose ALPHA is (Cs - 0) * As + Cd adds', () => {
-    const spec = materialSpec(flags({ transparent: true, graded: true, opaque: false, gs: gs({ blend: 'additive' }) }), true, true);
+    const spec = materialSpec(flags({ transparent: true, graded: true, opaque: false, gs: gs({ blend: 'additive' }) }), true, true, false);
     expect(spec).toMatchObject({ blend: 'additive' });
   });
 
   it('the destination brighten keeps its own equation; the EE-animated fixed factor is drawn additive', () => {
     const at = (blend: GsState['blend']): MaterialSpec =>
-      materialSpec(flags({ transparent: true, graded: true, opaque: false, gs: gs({ blend }) }), true, true);
+      materialSpec(flags({ transparent: true, graded: true, opaque: false, gs: gs({ blend }) }), true, true, false);
     expect(at('destination').blend).toBe('destination');
     expect(at('fixed').blend).toBe('additive');
   });
 
   it('takes the wrap modes and the mipmap request off the disc', () => {
-    const spec = materialSpec(flags({ gs: gs({ wrapS: 'clamp', wrapT: 'repeat', mipmaps: true, levels: 1 }) }), true, true);
+    const spec = materialSpec(flags({ gs: gs({ wrapS: 'clamp', wrapT: 'repeat', mipmaps: true, levels: 1 }) }), true, true, false);
     expect(spec).toMatchObject({ wrapS: 'clamp', wrapT: 'repeat', mipmaps: true });
   });
 
   it('falls back to the pixel heuristics when a record has no state block', () => {
-    const graded = materialSpec(flags({ transparent: true, graded: true, opaque: false, gs: null }), true, true);
+    const graded = materialSpec(flags({ transparent: true, graded: true, opaque: false, gs: null }), true, true, false);
     expect(graded).toMatchObject({ blend: 'source', wrapS: 'clamp', wrapT: 'clamp', mipmaps: false });
-    const wall = materialSpec(flags({ gs: null }), true, true);
+    const wall = materialSpec(flags({ gs: null }), true, true, false);
     expect(wall).toMatchObject({ blend: 'none', wrapS: 'repeat', wrapT: 'repeat' });
   });
 });
 
 describe('materialSpec with the disc blend switched off', () => {
   it('punches every texture with alpha out at half, as the viewer always did', () => {
-    const spec = materialSpec(flags({ transparent: true, graded: true, opaque: false, gs: gs({ blend: 'additive' }) }), true, false);
+    const spec = materialSpec(flags({ transparent: true, graded: true, opaque: false, gs: gs({ blend: 'additive' }) }), true, false, false);
     expect(spec).toMatchObject({ blend: 'none', alphaTest: 0.5 });
   });
 });

@@ -29,6 +29,8 @@ export const NODE_FLAG_DYNAMIC_MOTION = 1 << 1, NODE_FLAG_DYNAMIC_LIGHT = 1 << 2
   NODE_FLAG_PRELIGHT = 1 << 5, NODE_FLAG_FOG = 1 << 6;
 /** The two bits that ask for the light command, on the node or on the model it instances. */
 export const NODE_FLAGS_LIT = NODE_FLAG_DYNAMIC_MOTION | NODE_FLAG_DYNAMIC_LIGHT;
+/** `vparams` word 0, bit 3: the visual is drawn with VU1's backface cull (see `SceneNode.visualParams`). */
+export const VISUAL_FLAG_CULL = 1 << 3;
 
 /** 36 section 6 / `CDI::Read` (`zIntersect/int_main.cpp:52-67`): 12-byte params, then 16 B per point. */
 const DI_PARAMS_SIZE = 12, DI_POINT_SIZE = 16;
@@ -68,6 +70,14 @@ export interface SceneNode {
   regionmask: number;
   /** How many `visuals/vis` children the node has: one drawn chunk each (36 section 2). */
   visuals: number;
+  /**
+   * The first word of each visual's `vparams` (`tag_VIS_PARAMS`, `zVisual/zvis.h:85-96`), one per
+   * `visuals/vis` child in order. Bit 3 is the one a renderer needs: the EE emits VU1's backface-cull
+   * command for a visual only when it is set (`FUN_003b5f20`, `flags & 8`), and across the maps it is
+   * clear on exactly the things drawn from both sides -- ladders, grates, fan blades, foliage, grass,
+   * rugs, glow quads -- and set on solid objects. `VISUAL_FLAG_CULL` names it.
+   */
+  visualParams: number[];
   children: SceneNode[];
   collision: CollisionPoly[];
 }
@@ -150,6 +160,10 @@ function readNode(geo: Zar, key: ZarKey): SceneNode {
     bbox,
     regionmask: regionmaskKey && regionmaskKey.size >= 4 ? new Reader(geo.data(regionmaskKey)).u32(0) : 0,
     visuals: visuals ? visuals.children.length : 0,
+    visualParams: (visuals?.children ?? []).map((v) => {
+      const vp = geo.child(v, 'vparams');
+      return vp && vp.size >= 4 ? new Reader(geo.data(vp)).u32(0) : 0;
+    }),
     children: children ? children.children.map((c) => readNode(geo, c)) : [],
     collision: di ? di.children.map((d) => readPoly(geo, d, key.name)) : [],
   };

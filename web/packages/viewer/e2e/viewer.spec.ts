@@ -128,9 +128,11 @@ test('all three extracted maps render from the served archives', async ({ page }
     await setToggle(page, 'fog', true);
   }
 
-  // The line strips are on by default -- Desert Glory's power lines and Crossroads' guy ropes are in
-  // the two shots above -- and the disc's draw order is the default too.
-  expect(await page.evaluate(() => window.__viewer.toggles())).toMatchObject({ linestrips: true, discorder: true });
+  // The line strips and the shadows are on by default -- Desert Glory's power lines and Crossroads'
+  // guy ropes are in the two shots above -- and the alternate states and the experimental order are off.
+  expect(await page.evaluate(() => window.__viewer.toggles())).toMatchObject({
+    linestrips: true, shadows: true, alternate: false, discorder: false,
+  });
 
   // The wireframe, on and off again, from the spawn. It used to blank the frame on the second draw --
   // the check on `problems` at the end is what catches that, the screenshot is what shows it drew.

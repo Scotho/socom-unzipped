@@ -5,7 +5,7 @@ import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import {
   countInstances, expectedChunks, flattenScene, loadModelLibrary, multiply, parseSceneGraph,
   parseWorldRoot, placeCollision, placeInstances, toColumnMajor, transformPoint, visualNodes,
-  IDENTITY, NODE_GENERIC, NODE_INSTANCE, NODE_MODEL, type ModelLibrary, type PlacedModel, type SceneNode,
+  IDENTITY, NODE_GENERIC, NODE_INSTANCE, NODE_MODEL, type ModelLibrary, type PlacedModel, type SceneNode, VISUAL_FLAG_CULL,
 } from '../src/index';
 
 /** Frostfire's two measured spawns (36 section 6), in game units, feet on the floor. */
@@ -97,6 +97,30 @@ describe('Frostfire scene graph', () => {
     expect(world.shadowVector.map((v) => Number(v.toFixed(3)))).toEqual([-0.811, -0.2, 0.55]);
   });
 
+  it.skipIf(!MP2)('reads the params word of each visual, whose bit 3 is the cull the EE emits (vis_main, FUN_003b5f20 flags & 8)', () => {
+    const { models } = open('MP2');
+    let set = 0, clear = 0;
+    const clearOn: string[] = [];
+    const walk = (n: SceneNode, path: string): void => {
+      expect(n.visualParams.length).toBe(n.visuals);
+      for (const w of n.visualParams) { if (w & VISUAL_FLAG_CULL) set++; else { clear++; clearOn.push(path); } }
+      for (const c of n.children) walk(c, `${path}/${c.name}`);
+    };
+    for (const m of models) walk(m, m.name);
+    // 177 visuals on Frostfire (36 section 2): the cull is set on the solid things and clear on the 19
+    // drawn from both sides -- the ladders among them, whose rungs vanished from behind under the old
+    // rule that culled wherever the texture was solid.
+    expect(set + clear).toBe(177);
+    expect(clear).toBe(19);
+    for (const ladder of ['worldmodel/lad1', 'worldmodel/lad2', 'worldmodel/ldr', 'worldmodel/laddrilltower']) {
+      expect(clearOn, ladder).toContain(ladder);
+    }
+    // And the placements carry it per chunk, in chunk order.
+    const placed = placeInstances(models);
+    for (const p of placed) expect(p.cull.length).toBe(p.chunks.length);
+    expect(placed.some((p) => p.cull.includes(false))).toBe(true);
+  });
+
   it.skipIf(!MP2)('yields 46 prototypes, 206 instance nodes and 2,756 collision polygons (36 section 2)', () => {
     const { models } = open('MP2');
     expect(models.length).toBe(46);
@@ -145,7 +169,7 @@ describe('which placements the engine lights', () => {
   /** A bare node: no children, no collision, one visual. */
   const node = (name: string, flags: number, over: Partial<SceneNode> = {}): SceneNode => ({
     name, modelName: null, type: NODE_GENERIC, flags, matrix: Float32Array.from(IDENTITY),
-    bbox: new Float32Array(6), regionmask: 0, visuals: 1, children: [], collision: [], ...over,
+    bbox: new Float32Array(6), regionmask: 0, visuals: 1, visualParams: [0], children: [], collision: [], ...over,
   });
 
   it('a node with neither dynamic bit is drawn prelit: the VU light command is never emitted for it', () => {

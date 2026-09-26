@@ -255,6 +255,40 @@ The texture named is the chain's reloc-6 citation in force for the packet (SEMAN
 Glory's power lines that is `afghan2r_sky_top.tif`, which is what the disc says and has not been
 checked against a console capture.
 
+### The scene-graph order was not the engine's either; the cull flag, the states and the shadows are (2026-09-26, later)
+
+Live, the graph-order default drew a light square under every crate and a black box around every
+flare: a shadow quad or a glow drawn *before* the ground or wall behind it, with depth written, keeps
+that surface out and shows the clear colour through itself. `CPipe::RenderWorld` does not walk the
+graph: it walks the grid outward from the camera (`grid->StartTraversalOrdered`, ring by ring) and draws
+decals and shadows in passes of their own, so the graph order reproduces neither. It stays as an
+experimental toggle, off; the default is three's sort again. What the same session found on the disc:
+
+- **The cull flag.** `vparams` word 0 bit 3 (`VISUAL_FLAG_CULL`), surveyed over MP2/MP6/MP9/MP72:
+  clear on Frostfire's `lad1`, `lad2`, `ldr`, `laddrilltower`, `ladsnipe`, the grates, the fan blades,
+  Bitter Jungle's `fol_*` and `g*` foliage, Desert Glory's `mp6_dry_grass`, Crossroads' rugs and the
+  `light_bright/off/dim` quads; set on the solid objects, both sheets of the awning included. It is
+  the flag the decomp reads (`FUN_003b5f20`, `flags & 8`) and it replaces the texture rule. The ladder
+  rungs are visible from both sides.
+- **The states.** Every map's graph holds `healthy` beside `whats_left` and `parts/part1..15`,
+  `light02` beside `light02/nolight`, `hornlightbox_on` beside `hornlightbox_off`; `lod.rdr` pairs
+  `railings_high` (0..100-120) with `railings_low` (100-120..420-440) on the same rails. The engine
+  switches them by play and by `DrawLOD` range; the viewer hides the destroyed, unlit and far copies
+  (`ALTERNATE_STATE` in `loadMap.ts`, `farLodModels` in `scene`), shown by a toggle. `m_hasVisuals`
+  (bit 23 of the node flags) is clear on the debris, the shadows and the unlit copies but also on
+  Bitter Jungle's foliage clumps, so it is not the switch; `node_main.cpp` recomputes it at load.
+- **The shadows.** `shadow.tif`, `shadow_square.tif`, the `t_shadow*` patches: source-alpha on the
+  disc, drawn here as a decal pass -- transparent list, no depth write, polygon offset -- on by default.
+- **The panel's defaults.** A browser restores checkboxes across reloads, which is why the line strips
+  looked off by default after the build that turned them on; `Ui` now resets every control to the
+  markup's default at boot.
+- **Animated objects** (asked about the flames): Frostfire's graph has no flame node and its
+  `mp2.rdr`, `actions.rdr` and `dyntex.rdr` name none; `actions.rdr` holds the door animations
+  (`singleDoor_right`, `MOTION_S.ZAR`), `dyntex.rdr` only `boundaries [0.25 0.62]`, and the fire art
+  lives in `COMMON/EFFE_TXR` (`fire_hardedge.tif`, additive) beside the smoke sprites -- an effect
+  emitter the game code places, not map geometry. The map-side animation that *is* on the disc is
+  `m_scrolling_texture` (node flag bit 25) on `ocean_1..3` and `skyhorizon`: a uv scroll.
+
 ## 5. Verification
 
 - Unit: the new decoders (`GsState`, `fog` on `MeshData`) pinned on synthetic packets and on the

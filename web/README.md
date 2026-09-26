@@ -191,16 +191,27 @@ Settled on 2026-09-26 (the polish spec linked at the top):
 - **The camera is the map's**: a 49° vertical field (`m_vfov`, a half-angle of 24.5°), 46° on Rat's Nest.
 - **The PS2 picture** (`options`): the 640×448 frame the console drew, projected with the map's own
   half-angles and stretched onto a 4:3 box the way the television did.
-- **The draw order is the engine's** (`options`, "draw in the disc's order", on by default). reCOM's
-  `CPipe::RenderNode` walks the scene graph depth first and draws each visual as it reaches it, blended
-  or not, deferring only a node whose opacity is under 1 — it sorts nothing — and the live GS state is
-  `ZMSK = 0` on every draw (research 26 §2). So every draw carries its place in that walk
-  (`LoadedMesh.order`), goes out in it with depth written, and the merge that turns hundreds of world
-  packets into a few dozen draws is cut at every blended chunk so an opaque draw never straddles one
-  (`loadMap.ts`, pinned by `test/loadMap.test.ts`). A glow drawn before the wall behind it keeps the
-  wall out, as it did on the console. Off is three's order: blended draws sorted back to front by
-  object centre, no depth under them, which never punches a hole and is never quite where the game
-  drew it.
+- **Backface culling is the visual's own flag.** Bit 3 of each visual's `vparams` word is the cull
+  the EE emits (`FUN_003b5f20`, `flags & 8`; `VISUAL_FLAG_CULL` in `scene`). Across the maps it is
+  clear on exactly the things drawn from both sides -- Frostfire's ladders, whose rungs used to vanish
+  from behind, grates, fan blades, Bitter Jungle's foliage, Desert Glory's grass, rugs, the glow quads
+  -- and set on the solid objects. It replaces the old rule that culled wherever the texture was solid.
+- **One state per object.** A map's graph holds every state of a destructible (`healthy` beside
+  `whats_left` and the debris `parts`), a lamp beside its `nolight` copy, and both copies of every
+  LOD pair (`READERM.ZAR/lod.rdr`: `railings_high` fades out at 100-120 units where `railings_low`
+  fades in, on the same rails). The game switches them by play and by range; drawn together they
+  z-fight. The viewer draws the intact, lit, near ones and hides the rest (`LoadedMesh.alternate`,
+  "alternate states" in `options` shows them).
+- **Drop shadows are a decal pass** ("prop shadows" in `options`, on by default): every draw whose
+  texture is a `shadow*.tif`, blended source-over after the world with no depth written and a polygon
+  offset off its ground, whatever the draw-order mode.
+- **The draw order is three's, by choice.** reCOM's `CPipe::RenderWorld` walks the engine's *grid*
+  outward from the camera (`StartTraversalOrdered`), with decals and shadows in passes of their own,
+  and writes depth under every blend (`ZMSK = 0`, research 26 §2). The viewer records each draw's
+  place in the scene-graph walk (`LoadedMesh.order`, the merge cut at every blended chunk so no opaque
+  draw straddles one) and can draw in it -- "scene-graph draw order (experimental)" -- but that is not
+  the grid walk either, and a shadow quad or a flare drawn before the wall behind it shows the sky
+  through itself. So by default blended draws go to three's back-to-front sort with no depth written.
 - **The shading is the GS's modulate, in the GS's order** (`world.ts`): `(texel * vertex) >> 7`, the
   product clamped by `COLCLAMP` *before* the fog is mixed in, then the post-process's `1 + FIX/128` as a
   uniform on every material rather than a factor baked into the vertex — so an overbright vertex under
@@ -215,17 +226,13 @@ Settled on 2026-09-26 (the polish spec linked at the top):
 
 ## Known gaps
 
-- **Backface culling is inferred from the texture, not read.** The PS2 culls on VU1, and whether a
-  given object is culled is chosen by a command list the EE builds per draw — it is not on the disc.
-  The viewer culls where the texture is fully solid and keeps both faces where it is not, because a
-  solid two-sided surface is modelled as two coincident sheets (Crossroads' awning) while a cutout
-  sheet is modelled once (a leaf card). It is the right call on every map swept, but it is a rule
-  about textures standing in for a fact about draws. The cull command is emitted per visual from a
-  flag byte the decomp reads (`FUN_003b5f20`, `flags & 8`), most likely `vparams` word 0, which the
-  scene package does not yet parse.
-- **The engine's region culling is not modelled.** `CanSeeRegion` skips whole nodes per frame by the
-  camera's region mask; the viewer draws every node. That changes nothing about what is in front of
-  what, only what is drawn at all, and the region masks are parsed but not yet used.
+- **The engine's grid walk, region culling and LOD ranges are not modelled.** `RenderWorld` walks the
+  grid outward from the camera and `CanSeeRegion` skips whole nodes by region mask; `DrawLOD` fades a
+  copy in and out by range. The viewer draws every node, in three's order, with the near LOD copy only.
+- **Animated map objects are not drawn.** The scrolling textures (`m_scrolling_texture` on Frostfire's
+  `ocean_1..3` and `skyhorizon`), the door animations (`actions.rdr`, `MOTION_S.ZAR`), the destructible
+  states, and the particle effects (`COMMON/EFFE_*`: `fire_hardedge.tif` and the smoke sprites) are
+  all driven by game code the viewer does not run; the flames are effect emitters, not map geometry.
 - **The one EE-animated `FIX` glow** (`lightglow.tif` on MP61, `(Cs - 0) * FIX + Cd`) is drawn additive:
   its factor is game logic, and at rest it draws nothing.
 - **The auto-exposure is a slider.** `FIX` is computed per frame from a column of frame pixels; the

@@ -46,8 +46,10 @@
         <p><b>Not a port and not emulation.</b> No game code runs. The disc's own data &mdash; geometry,
           textures, scene graph, lighting, fog &mdash; is read and drawn again in TypeScript, so it is a
           reading of the game and a reading can be wrong.</p>
-        <p><b>Known to differ:</b> the frame brighten is a fixed value where the game meters it, the
-          engine's per-frame region culling is not modelled, and there is no game &mdash; just the world.</p>
+        <p><b>Known to differ:</b> blended surfaces are sorted by the browser where the engine walked its
+          grid outward from the camera, the frame brighten is a fixed value where the game meters it, the
+          alternate states a map holds (destroyed, unlit, far LOD) are hidden rather than switched by
+          play, and there is no game &mdash; just the world.</p>
         <p>A spin-off of <b>SOCOM Unzipped</b>, the actual port.
           <a href="https://s2u.scotho.com" target="_blank" rel="noopener noreferrer">s2u.scotho.com &rarr;</a></p>
       </details>
@@ -75,10 +77,11 @@
           <label title="Blends textures whose alpha is a ramp instead of punching them out at a threshold. Every texture's bind packet asks for source-alpha blending with the alpha test off, and a PS2 capture shows the lamp flares as soft radial blooms, which an alpha test cannot draw. Turn it off to see the cutout the viewer used to draw."><input type="checkbox" id="blendgraded" checked /> blend graded alpha</label>
         </div>
         <div class="row">
-          <label title="Draw every surface in the order the engine walked the scene graph, with depth written by every draw, blended or not -- the state the console ran with. A glow drawn before the wall behind it keeps the wall out, as it did on the hardware. Off sorts blended surfaces back to front by object and writes no depth under them, which never punches a hole and is never quite where the game drew it."><input type="checkbox" id="discorder" checked /> draw in the disc's order</label>
+          <label title="The drop shadows: the quads under props and the shadow patches baked onto the ground, every draw whose texture is a shadow*.tif, blended over what is under them after the world is drawn, as the engine's decal pass did."><input type="checkbox" id="shadows" checked /> prop shadows</label>
+          <label title="The states a map holds but does not open in: a destructible's remains and debris (whats_left, parts), a lamp's unlit copy (nolight), the pulsing objective ribbon (terrorist_pulse), the far level-of-detail copies named by lod.rdr. The game switches them by play and by range; drawn on top of the intact, lit, near ones they z-fight, so they are hidden unless you ask."><input type="checkbox" id="alternate" /> alternate states</label>
         </div>
         <div class="row">
-          <label title="off: the GS's own arithmetic, texel times vertex colour in 8-bit space. on: decode the texture to linear first, which brightens every shaded surface."><input type="checkbox" id="linearlight" /> linear light (off = the GS's own arithmetic)</label>
+          <label title="Experimental. Draw every surface in scene-graph order with depth written by every draw, blended or not. The engine really walked its grid outward from the camera, with decals and shadows in passes of their own, so this is not its order either -- a glow or a shadow drawn before the wall behind it shows the sky through itself. Off sorts blended surfaces back to front by object and writes no depth under them."><input type="checkbox" id="discorder" /> scene-graph draw order (experimental)</label>
         </div>
       <details id="sliders-box">
         <summary>lighting (unlit, as the engine draws it)</summary>

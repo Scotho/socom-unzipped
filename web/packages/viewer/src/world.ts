@@ -2,7 +2,7 @@ import {
   Box3, BufferAttribute, BufferGeometry, ClampToEdgeWrapping, CustomBlending, DataTexture, DoubleSide, DstColorFactor,
   FrontSide, Group, type Object3D, InstancedMesh, LinearFilter, LinearMipmapLinearFilter, LineSegments, Matrix4, Mesh,
   NearestFilter, NoBlending, NoColorSpace, OneFactor, OneMinusSrcAlphaFactor, RGBAFormat, RepeatWrapping, SrcAlphaFactor,
-  SRGBColorSpace, Texture, Vector3, ZeroFactor,
+  Texture, Vector3, ZeroFactor,
 } from 'three';
 import type { Camera } from 'three';
 import { LineBasicNodeMaterial, MeshBasicNodeMaterial, type Node } from 'three/webgpu';
@@ -46,30 +46,33 @@ export interface WorldView {
    */
   setUntexturedHighlight(on: boolean): void;
   /**
-   * Whether the texture is multiplied by the vertex colour in the GS's space or in a linear one.
-   *
-   * The PS2 has no notion of linear light: in MODULATE it computes `(texel * vertex) >> 7` on the stored
-   * 8-bit values and clamps, so a vertex written at half brightness halves the pixel you see. Treating
-   * the texture as sRGB decodes it to linear first, and re-encoding afterwards turns that same half into
-   * about 0.73 of the pixel -- every shaded surface renders far brighter than the artists set it, which
-   * reads as flat and washed out. Off, the texel is taken at face value and the product goes to the
-   * framebuffer unconverted, which is the hardware's own arithmetic.
-   *
-   * Defaults to **off**, the GS's own space.
-   */
-  setLinearLight(on: boolean): void;
-  /**
    * Whether a texture whose alpha is a *ramp* is blended with the equation its bind packet asks for
    * rather than punched out at a threshold (`./materialSpec`). On by default; off restores the cutout,
    * which sorts perfectly and looks wrong.
    */
   setBlendGraded(on: boolean): void;
   /**
-   * Whether every draw goes out in the order the engine walked the scene graph, writing depth as it
-   * goes -- the console's own state -- or blended draws are handed to three to sort back to front by
-   * object centre with no depth written under them (`drawState` in `./materialSpec`). On by default.
+   * Whether every draw goes out in scene-graph order writing depth as it goes, or blended draws are
+   * handed to three to sort back to front by object centre with no depth written under them
+   * (`drawState` in `./materialSpec`). **Off by default, and experimental**: the engine's real order
+   * is a walk of its grid outward from the camera (`CPipe::RenderWorld`, `StartTraversalOrdered`)
+   * with decals and shadows in passes of their own, which the graph order does not reproduce -- on,
+   * a shadow quad or a flare drawn before the wall behind it shows the clear colour through itself.
    */
   setDiscOrder(on: boolean): void;
+  /**
+   * The drop shadows: the quads under props and the baked shadow patches on the ground, every draw
+   * whose texture is a `shadow*.tif`. Drawn as the engine's decal pass draws them -- source alpha,
+   * no depth written, after the world, nudged off the ground by a polygon offset -- whatever the
+   * draw-order mode. On by default.
+   */
+  setShadows(on: boolean): void;
+  /**
+   * The alternate states (`LoadedMesh.alternate`): a destructible's remains and debris, a lamp's
+   * unlit copy, the far LOD copies. Hidden by default, because drawn over the state the map opens in
+   * they z-fight with it; on shows what else the graph holds.
+   */
+  setAlternate(on: boolean): void;
   /**
    * Whether the GS `LINE_STRIP` geometry is drawn (SEMANTICS section 12). On by default: a strip is
    * drawn one pixel wide with the packet's texture running along it, which is what the hardware did.
@@ -109,7 +112,22 @@ interface Built {
   flags: TextureFlags | undefined;
   fog: boolean;
   textured: boolean;
+  cull: boolean;
+  /** A `shadow*.tif`: drawn as a decal, see `setShadows`. */
+  shadow: boolean;
 }
+
+/** A drawn object with the facts its visibility and its place in the draw order depend on. */
+interface Drawn {
+  object: Object3D;
+  order: number;
+  alternate: boolean;
+  shadow: boolean;
+  line: boolean;
+}
+
+/** The textures that are drop shadows: `shadow.tif`, `shadow_square.tif`, `t_shadow*`, and their kin. */
+const SHADOW_TEXTURE = /shadow/i;
 
 const FACTOR = {
   zero: ZeroFactor, one: OneFactor, srcAlpha: SrcAlphaFactor, oneMinusSrcAlpha: OneMinusSrcAlphaFactor, dstColor: DstColorFactor,
@@ -129,7 +147,6 @@ export function buildWorld(map: LoadedMap): WorldView {
   group.position.set(map.origin[0], map.origin[1], map.origin[2]);
 
   const textures = new Map<string, Texture>();
-  let linearLight = false;
   // The map's own rig, from its `GlobalLighting` record; the panel's trims arrive with `setLighting`.
   let lighting: Lighting = { ...DEFAULT_LIGHTING, rig: map.lightRig };
   let lastRig = lighting.rig;
@@ -141,9 +158,17 @@ export function buildWorld(map: LoadedMap): WorldView {
   let discOrder = false;
   let highlight = false;
   let lineStripsOn = true;
+  let wireframeOn = false;
+  let shadowsOn = true;
+  let alternateOn = false;
   const built: Built[] = [];
-  /** Every drawn object beside its place in the scene walk, for `setDiscOrder`. */
-  const ordered: { object: Object3D; order: number }[] = [];
+  /** Every drawn object, for `setDiscOrder` and for the visibility switches. */
+  const drawn: Drawn[] = [];
+  const refreshVisibility = (): void => {
+    for (const d of drawn) {
+      d.object.visible = (!d.alternate || alternateOn) && (!d.shadow || shadowsOn) && (!d.line || (lineStripsOn && !wireframeOn));
+    }
+  };
   // Every drawn part beside the buffer its lit colours go into, so a rig change can rewrite them in place.
   const lit: { part: Lightable; attribute: BufferAttribute }[] = [];
   /** How many drawn objects have no texture: the number the status line reports. */
@@ -177,10 +202,17 @@ export function buildWorld(map: LoadedMap): WorldView {
 
   /** Puts a spec on a material: the shading graph, the blend, the test, the depth write, the cull and the fog. */
   const apply = (b: Built): void => {
-    const spec = materialSpec(b.flags, b.fog, blendGraded);
-    const state = drawState(spec, discOrder);
+    const spec = materialSpec(b.flags, b.fog, blendGraded, b.cull);
+    // A shadow is a decal: blended over whatever is under it, after the world, writing no depth, and
+    // never in the graph-order list where a quad drawn before its ground would show the sky through.
+    const state = b.shadow
+      ? { transparent: true, depthWrite: false, factors: { src: 'srcAlpha' as const, dst: 'oneMinusSrcAlpha' as const } }
+      : drawState(spec, discOrder);
     const { material } = b;
     const carrier = spec.blend === 'destination';
+    material.polygonOffset = b.shadow;                  // off the ground it lies on, so it cannot z-fight it
+    material.polygonOffsetFactor = b.shadow ? -1 : 0;
+    material.polygonOffsetUnits = b.shadow ? -1 : 0;
     material.colorNode = highlight && !b.textured ? MAGENTA
       : carrier ? (b.textured ? CARRIER : CARRIER_PLAIN)
       : (b.textured ? SHADED : SHADED_PLAIN);
@@ -208,41 +240,34 @@ export function buildWorld(map: LoadedMap): WorldView {
    * `PRIM.FGE` fog bit, so a sky texture drawn fogged in one chunk and clear in another gets two.
    */
   const materialCache = new Map<string, Basic>();
-  const materialFor = (name: string | null, fog: boolean, kind: 'mesh' | 'line'): Basic => {
-    const cacheKey = `${kind}|${name ?? ''}|${fog ? 1 : 0}`;
+  const materialFor = (name: string | null, fog: boolean, kind: 'mesh' | 'line', cull: boolean): Basic => {
+    const cacheKey = `${kind}|${name ?? ''}|${fog ? 1 : 0}|${cull ? 1 : 0}`;
     const cached = materialCache.get(cacheKey);
     if (cached) return cached;
     const rgba = name === null ? undefined : map.textures[name];
     const flags = name === null ? undefined : map.textureFlags[name];
-    const spec = materialSpec(flags, fog, blendGraded);
+    const spec = materialSpec(flags, fog, blendGraded, cull);
     let texture = name === null ? undefined : textures.get(name);
     if (!texture && name !== null && rgba) {
-      texture = makeTexture(rgba, spec, linearLight);
+      texture = makeTexture(rgba, spec);
       textures.set(name, texture);
     }
-    // Backface culling, and why it is not simply on or off.
+    // Backface culling is the visual's own flag on the disc (`VISUAL_FLAG_CULL`, `@s2u/scene`).
     //
     // SEMANTICS section 6: the right-handed cross product of a triangle's edges in index order *is*
     // the stored face normal, on all 8,764 non-degenerate Frostfire triangles, and VU1's cull handler
     // (`0x06`, research/13 section 4.2) keeps a triangle when the eye is on that side. So
     // counter-clockwise is front, which is three.js's default, and `FrontSide` is what the hardware
-    // does -- for the objects whose command list contains the cull. Which ones those are is not on the
-    // disc: the command list is built by the EE per draw, and a no-cull variant of the world-object
-    // program exists (research/12, program 11).
-    //
-    // The data settles it anyway. Crossroads' awning is *two coincident single-sided sheets* -- the
-    // same five quads twice, opposite normals, the top baked at mean colour 0.6 and the underside at
-    // 0.2 -- which is a thing an artist only draws when the hardware culls. Drawn double-sided the two
-    // sheets z-fight and the canvas comes out as a red-and-green plaid (spec section 9, 2026-09-20).
-    // Cutout sheets are the opposite case: one leaf card, one frond, one chain-link panel, meant to be
-    // seen from behind, and culling those empties the canopies of Bitter Jungle.
-    //
-    // So: cull where the texture is solid, keep both faces where it is not (`spec.cull`). That is the
-    // split the models themselves draw, and it is the one fact about a draw the state block does not hold.
+    // does -- for the visuals whose command list contains the cull, which the EE emits when bit 3 of
+    // the visual's `vparams` is set (`FUN_003b5f20`, `flags & 8`). The flag is clear on exactly the
+    // things drawn from both sides: Frostfire's ladders, whose rungs used to vanish from behind under
+    // the old rule (cull where the texture is solid), grates, fan blades, Bitter Jungle's foliage,
+    // Desert Glory's grass, rugs, the glow quads; and set on the solid objects, Crossroads' awning
+    // included -- two coincident single-sided sheets that plaid when drawn double-sided.
     const material: Basic = kind === 'mesh' ? new MeshBasicNodeMaterial() : new LineBasicNodeMaterial();
     material.map = texture ?? null;
     material.vertexColors = false;                     // the shading graph reads the attribute itself
-    const entry: Built = { material, flags, fog, textured: !!texture };
+    const entry: Built = { material, flags, fog, textured: !!texture, cull, shadow: name !== null && SHADOW_TEXTURE.test(name) };
     apply(entry);
     built.push(entry);
     materialCache.set(cacheKey, material);
@@ -260,20 +285,23 @@ export function buildWorld(map: LoadedMap): WorldView {
   const revealProps: (() => void)[] = [];
   const box = new Box3();
   /** Queues an object at its place in the walk, and grows the map's extent by it. */
-  const later = (queue: (() => void)[], object: Object3D, order: number): void => {
+  const later = (queue: (() => void)[], object: Object3D, order: number, alternate: boolean, texture: string | null, line = false): void => {
     object.updateWorldMatrix(false, false);
-    box.expandByObject(object);
-    ordered.push({ object, order });
+    // An alternate state is not part of the extent the camera frames: it sits where its twin sits.
+    if (!alternate) box.expandByObject(object);
+    const shadow = texture !== null && SHADOW_TEXTURE.test(texture);
+    drawn.push({ object, order, alternate, shadow, line });
     object.renderOrder = discOrder ? order : 0;
+    object.visible = (!alternate || alternateOn) && (!shadow || shadowsOn) && (!line || (lineStripsOn && !wireframeOn));
     queue.push(() => group.add(object));
   };
 
   for (const part of map.world) {
-    const mesh = new Mesh(geometryOf(part, lighting, lit), materialFor(part.textureName, part.fog, 'mesh'));
+    const mesh = new Mesh(geometryOf(part, lighting, lit), materialFor(part.textureName, part.fog, 'mesh', part.cull));
     mesh.name = part.textureName ?? 'untextured';
     if (!part.textureName) untexturedDraws++;
     mesh.frustumCulled = false;                           // one mesh spans the whole map; culling it hides it
-    later(revealWorld, mesh, part.order);
+    later(revealWorld, mesh, part.order, part.alternate, part.textureName);
     triangles += part.indices.length / 3;
   }
 
@@ -293,7 +321,7 @@ export function buildWorld(map: LoadedMap): WorldView {
         // where it was modelled it is edge-on from most of the map and a flat card from the rest. Each
         // placement becomes its own mesh, centred on the quad so a spin about that centre keeps it
         // where it belongs, and `faceCamera` turns them every frame.
-        const flareMaterial = materialFor(part.textureName, part.fog, 'mesh');
+        const flareMaterial = materialFor(part.textureName, part.fog, 'mesh', part.cull);
         if (!part.textureName) untexturedDraws += count;
         for (let i = 0; i < count; i++) {
           const m = new Matrix4().fromArray(prop.matrices, i * 16);
@@ -302,25 +330,25 @@ export function buildWorld(map: LoadedMap): WorldView {
           mesh.name = `${prop.modelName} (flare)`;
           mesh.position.copy(at.applyMatrix4(m));
           billboards.push(mesh);
-          later(revealProps, mesh, part.order);
+          later(revealProps, mesh, part.order, prop.alternate, part.textureName);
         }
         triangles += (part.indices.length / 3) * count;
         continue;
       }
       const geometry = geometryOf(rotateNormals(part, rotation), lighting, lit);
-      const material = materialFor(part.textureName, part.fog, 'mesh');
+      const material = materialFor(part.textureName, part.fog, 'mesh', part.cull);
       if (!part.textureName) untexturedDraws++;
       if (count === 1) {
         const mesh = new Mesh(geometry, material);
         mesh.name = prop.modelName;
         mesh.applyMatrix4(new Matrix4().fromArray(prop.matrices, 0));
-        later(revealProps, mesh, part.order);
+        later(revealProps, mesh, part.order, prop.alternate, part.textureName);
       } else {
         const mesh = new InstancedMesh(geometry, material, count);
         mesh.name = prop.modelName;
         for (let i = 0; i < count; i++) mesh.setMatrixAt(i, new Matrix4().fromArray(prop.matrices, i * 16));
         mesh.instanceMatrix.needsUpdate = true;
-        later(revealProps, mesh, part.order);
+        later(revealProps, mesh, part.order, prop.alternate, part.textureName);
       }
       triangles += (part.indices.length / 3) * count;
     }
@@ -341,12 +369,12 @@ export function buildWorld(map: LoadedMap): WorldView {
     const attribute = new BufferAttribute(colors, 4);
     geometry.setAttribute('color', attribute);
     lit.push({ part, attribute });
-    const segments = new LineSegments(geometry, materialFor(strip.textureName, strip.fog, 'line'));
+    const segments = new LineSegments(geometry, materialFor(strip.textureName, strip.fog, 'line', false));
     segments.name = `line strips (${strip.textureName ?? 'untextured'})`;
     segments.frustumCulled = false;
     if (!strip.textureName) untexturedDraws++;
     lineObjects.push(segments);
-    later(revealProps, segments, strip.order);
+    later(revealProps, segments, strip.order, false, null, true);
   }
 
   return {
@@ -365,7 +393,8 @@ export function buildWorld(map: LoadedMap): WorldView {
         if (material instanceof MeshBasicNodeMaterial) { material.wireframe = on; material.needsUpdate = true; }
       }
       // A line has no faces to show through, so it simply steps aside while the topology is on view.
-      for (const line of lineObjects) line.visible = !on && lineStripsOn;
+      wireframeOn = on;
+      refreshVisibility();
     },
     setUntexturedHighlight: (on) => {
       if (on === highlight) return;
@@ -397,10 +426,9 @@ export function buildWorld(map: LoadedMap): WorldView {
       billboardsOn = on;
       if (!on) for (const mesh of billboards) mesh.quaternion.identity();   // back to the pose on disc
     },
-    setLineStrips: (on) => {
-      lineStripsOn = on;
-      for (const line of lineObjects) line.visible = on;
-    },
+    setLineStrips: (on) => { lineStripsOn = on; refreshVisibility(); },
+    setShadows: (on) => { shadowsOn = on; refreshVisibility(); },
+    setAlternate: (on) => { alternateOn = on; refreshVisibility(); },
     setBlendGraded: (on) => {
       if (on === blendGraded) return;
       blendGraded = on;
@@ -410,16 +438,7 @@ export function buildWorld(map: LoadedMap): WorldView {
       if (on === discOrder) return;
       discOrder = on;
       for (const b of built) apply(b);
-      for (const { object, order } of ordered) object.renderOrder = on ? order : 0;
-    },
-    setLinearLight: (on) => {
-      if (on === linearLight) return;
-      linearLight = on;
-      for (const texture of textures.values()) {
-        texture.colorSpace = on ? SRGBColorSpace : NoColorSpace;
-        texture.needsUpdate = true;
-      }
-      for (const { material } of built) material.needsUpdate = true;
+      for (const { object, order } of drawn) object.renderOrder = on ? order : 0;
     },
     dispose: () => {
       for (const child of group.children) {
@@ -517,11 +536,14 @@ function geometryOf(
   return geometry;
 }
 
-function makeTexture(rgba: Rgba, spec: MaterialSpec, linearLight: boolean): DataTexture {
+function makeTexture(rgba: Rgba, spec: MaterialSpec): DataTexture {
   const texture = new DataTexture(new Uint8Array(rgba.data.buffer, rgba.data.byteOffset, rgba.data.length), rgba.width, rgba.height, RGBAFormat);
   texture.flipY = FLIP_Y;
-  // NoColorSpace is the GS's own reading: the stored byte *is* the value, and the modulate happens on it.
-  texture.colorSpace = linearLight ? SRGBColorSpace : NoColorSpace;
+  // NoColorSpace is the GS's own reading: the stored byte *is* the value, and the modulate happens on
+  // it -- `(texel * vertex) >> 7` on 8-bit values. Decoding the texel to linear first, as an sRGB
+  // texture would be, turned a vertex at half brightness into 0.73 of the pixel and washed every
+  // shaded surface out; the renderer's output is left unconverted to match.
+  texture.colorSpace = NoColorSpace;
   // `TEX1` off the disc: bilinear on every texture in the corpus, and a mipmap chain on the ground and
   // detail textures that ask for one (`MMIN = LINEAR_MIPMAP_LINEAR`). The hardware was given one or
   // two levels; three generates the whole chain, which is the same picture near and a calmer one far.

@@ -1,11 +1,12 @@
 import {
   parseRdr, parseZdb, rdrGet, Reader, Zar, zdbMember,
+  type RdrNode,
   type AssetSource, type ZarKey, type ZdbEntry,
 } from '@s2u/archive';
 import { decodeTexture, parseTextureRecord, PaletteTable, type Rgba } from '@s2u/gs';
 import { interpretChainParts, mergeMeshes, walkChain, type LineStrip, type MeshData } from '@s2u/mesh';
 import {
-  collisionLines, IDENTITY, loadModelLibrary, parseCameraParams, parseClutter, parseGlobalLighting,
+  collisionLines, farLodModels, IDENTITY, loadModelLibrary, parseCameraParams, parseClutter, parseGlobalLighting,
   parseSceneGraph, placeClutter,
   placeInstances, transformPoint, worldCollision,
   type CameraParams, type CollisionLines, type GlobalLighting, type ModelLibrary, type PlacedModel,
@@ -33,7 +34,19 @@ import type { TextureFlags } from './materialSpec';
  * draw that is one chunk. reCOM's `CPipe::RenderNode` draws each visual as the walk reaches it and
  * sorts nothing, so this is the order the hardware drew in, and `world.ts` draws in it.
  */
-export type LoadedMesh = MeshData & { lit: boolean; order: number; orderEnd: number };
+export type LoadedMesh = MeshData & {
+  lit: boolean;
+  order: number;
+  orderEnd: number;
+  /** Whether the engine culls this chunk's back faces (`PlacedModel.cull`, the disc's own flag). */
+  cull: boolean;
+  /**
+   * An alternate state the game shows only later, or only from afar: a destructible's `whats_left`
+   * and its debris `parts`, a lamp's `nolight`, a far LOD copy (`Placement.alternate`). Drawn over the
+   * state the map opens in, these z-fight with it; the viewer hides them unless asked.
+   */
+  alternate: boolean;
+};
 
 export interface LoadedMap {
   archive: string;
@@ -51,7 +64,7 @@ export interface LoadedMap {
    * One entry per prop model-node: its geometry once, a column-major 4x4 per placement, and the place
    * of its first placement in the scene walk (see `LoadedMesh.order`).
    */
-  props: { modelName: string; parts: LoadedMesh[]; matrices: Float32Array; order: number }[];
+  props: { modelName: string; parts: LoadedMesh[]; matrices: Float32Array; order: number; alternate: boolean }[];
   textures: Record<string, Rgba>;
   /**
    * Per texture: the record's flags, two facts read off the decoded pixels (`graded`, `opaque`), and the
@@ -163,9 +176,10 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   for (const p of placement.world) {
     step('geometry', chunk++, placement.world.length);
     const { meshes, lines } = chunksOf(p);
+    const alternate = placement.alternate(p);
     meshes.forEach((mesh, i) => {
       const order = orderOf(p, i);
-      parts.push({ ...placeMesh(mesh, p.rowMajor), lit: p.lit, order, orderEnd: order });
+      parts.push({ ...placeMesh(mesh, p.rowMajor), lit: p.lit, order, orderEnd: order, cull: mesh.cull, alternate });
     });
     for (const strip of lines) segments.add(strip, p.rowMajor, orderOf(p, 0));
   }
@@ -183,14 +197,15 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     for (const placementOf of group) {
       for (const strip of decoded.lines) segments.add(strip, placementOf.rowMajor, orderOf(placementOf, 0));
     }
+    const alternate = placement.alternate(first);
     const geometry: LoadedMesh[] = decoded.meshes.map((mesh, i) => ({
       ...mesh, textureName: mesh.textureName === null ? null : textureKey(mesh.textureName), lit: first.lit,
-      order: orderOf(first, i), orderEnd: orderOf(first, i),
+      order: orderOf(first, i), orderEnd: orderOf(first, i), cull: mesh.cull, alternate,
     }));
     if (geometry.length === 0) continue;
     const matrices = new Float32Array(group.length * 16);
     group.forEach((p, i) => matrices.set(p.world, i * 16));
-    props.push({ modelName: first.modelName, parts: geometry, matrices, order });
+    props.push({ modelName: first.modelName, parts: geometry, matrices, order, alternate });
   }
 
   // The textures those meshes name, and only those: a map's TXR holds every texture the mission uses.
@@ -252,7 +267,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     const blended = (flags?.graded ?? false) && !(flags?.opaque ?? true);
     // A lit part (`PlacedModel.lit`) keeps its own draw as well: the rig is applied per vertex, and a
     // merge cannot be half lit.
-    const group = `${key}|${part.fog ? 1 : 0}${part.lit ? 'L' : ''}|${blended ? `b${part.order}` : `r${run}`}`;
+    const group = `${key}|${part.fog ? 1 : 0}${part.lit ? 'L' : ''}${part.cull ? 'C' : ''}${part.alternate ? 'A' : ''}|${blended ? `b${part.order}` : `r${run}`}`;
     if (blended) run++;
     const list = byGroup.get(group);
     if (list) list.push(part);
@@ -265,6 +280,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     lit: list[0]!.lit,
     order: list[0]!.order,
     orderEnd: list[list.length - 1]!.order,
+    cull: list[0]!.cull,
+    alternate: list[0]!.alternate,
   })).sort((a, b) => a.order - b.order);
 
   return {
@@ -509,6 +526,18 @@ interface Placement {
    * placed from `CLUTTER.ZAR`), ranks after everything the graph places.
    */
   rank: (p: PlacedModel) => number;
+  /**
+   * Whether a placement is a state the map does not open in. Two sources, neither of which is a
+   * flag on the node -- the engine sets them from game logic and its LOD table:
+   *
+   * - **The destructibles and the lights.** A crate is `crates_weapons/healthy` beside
+   *   `crates_weapons/whats_left` and `crates_weapons/parts/part1..15`; a lamp is `light02` with a
+   *   `light02/nolight` child; an alarm has `hornlightbox_on` and `hornlightbox_off`. The graph
+   *   holds every state and the game switches them; the map opens on the intact, lit one. The
+   *   naming is the exporter's and is the same on every map (surveyed over all 22).
+   * - **The far LOD copies** (`farLodModels`): `railings_low` placed on top of `railings_high`.
+   */
+  alternate: (p: PlacedModel) => boolean;
   /** Zero once the graph has been read: the matrices are already in the positions. */
   origin: [number, number, number];
   /** The collision hull, already in world space and already cut into segments (36 section 6). */
@@ -521,6 +550,13 @@ interface Placement {
  * be detached by the first load that used them and unusable by the second.
  */
 const noCollision = (): CollisionLines => ({ positions: new Float32Array(0), colors: new Uint8Array(0), polygons: 0 });
+
+/**
+ * A node name that is a state the map opens without: the destroyed remains, the debris, the lamp off,
+ * and the `terrorist_pulse` ribbon round a demolition crate, which the game pulses and the graph
+ * holds at full brightness.
+ */
+const ALTERNATE_STATE = /^(vis_)?whats_left$|^parts$|^(beer|radio)_parts$|^nolight$|_off$|_pulse$/i;
 
 function place(library: ModelLibrary, bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes): Placement {
   try {
@@ -541,9 +577,13 @@ function place(library: ModelLibrary, bytes: Uint8Array, toc: ZdbEntry[], stem: 
       if (group) group.push(p);
       else groups.set(key, [p]);
     }
+    const far = farLods(bytes, toc, notes);
+    const alternate = (p: PlacedModel): boolean =>
+      far.has(p.modelName) || p.path.split(/[/=]/).some((segment) => ALTERNATE_STATE.test(segment));
     return {
       world, props: [...groups.values()], origin: [0, 0, 0], collision: hull(models, notes),
       rank: (p) => ranks.get(p) ?? 0,
+      alternate,
     };
   } catch (e) {
     notes.add(`scene graph: ${say(e)} -- falling back to the modal node translation, props omitted`);
@@ -551,9 +591,26 @@ function place(library: ModelLibrary, bytes: Uint8Array, toc: ZdbEntry[], stem: 
     const every: PlacedModel = {
       modelName: WORLD_MODEL, path: WORLD_MODEL, nodeIndex: -1, instanceIndex: null,
       chunks: entry ? entry.nodes.map((n) => n.name) : [],
+      cull: entry ? entry.nodes.map(() => true) : [],
       world: Float32Array.from(IDENTITY), rowMajor: Float32Array.from(IDENTITY), lit: false,
     };
-    return { world: [every], props: [], origin: worldOrigin(bytes, toc, stem, notes), collision: noCollision(), rank: () => 0 };
+    return {
+      world: [every], props: [], origin: worldOrigin(bytes, toc, stem, notes), collision: noCollision(),
+      rank: () => 0, alternate: () => false,
+    };
+  }
+}
+
+/** The far LOD copies named by `READERM.ZAR/lod.rdr`, or none when the record is missing or will not parse. */
+function farLods(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes): Set<string> {
+  try {
+    const readerm = Zar.parse(zdbMember(bytes, toc, 'READERM.ZAR'));
+    const lod = readerm.root.children.find((k) => k.name.toLowerCase() === 'lod.rdr');
+    if (!lod) return new Set();
+    return farLodModels(parseRdr(readerm.data(lod)) as RdrNode);
+  } catch (e) {
+    notes.add(`lod table: ${say(e)}`);
+    return new Set();
   }
 }
 
@@ -674,7 +731,7 @@ export interface LoadedLineGroup {
  * Decodes the chains one placement draws. A chunk that will not interpret becomes a diagnostic and the
  * rest of the map still draws, as it did before the scene graph existed.
  */
-function decoder(library: ModelLibrary, notes: Notes): (p: PlacedModel) => { meshes: MeshData[]; lines: LineStrip[] } {
+function decoder(library: ModelLibrary, notes: Notes): (p: PlacedModel) => { meshes: (MeshData & { cull: boolean })[]; lines: LineStrip[] } {
   const offsets = new Map<string, Map<string, number>>();
   return (p) => {
     const entry = library.get(p.modelName);
@@ -684,9 +741,9 @@ function decoder(library: ModelLibrary, notes: Notes): (p: PlacedModel) => { mes
     }
     let where = offsets.get(p.modelName);
     if (!where) offsets.set(p.modelName, where = new Map(entry.nodes.map((n) => [n.name, n.offset])));
-    const meshes: MeshData[] = [];
+    const meshes: (MeshData & { cull: boolean })[] = [];
     const lines: LineStrip[] = [];
-    for (const chunk of p.chunks) {
+    for (const [i, chunk] of p.chunks.entries()) {
       const at = where.get(chunk);
       if (at === undefined) {
         notes.add(`chunk ${p.modelName}/${chunk}: no such chain in the model buffer`);
@@ -694,7 +751,8 @@ function decoder(library: ModelLibrary, notes: Notes): (p: PlacedModel) => { mes
       }
       try {
         const parts = interpretChainParts(walkChain(entry.buffer, at, chunk));
-        meshes.push(...parts.meshes);
+        // The cull is per visual, and a chunk is one visual: every mesh out of it takes its flag.
+        meshes.push(...parts.meshes.map((mesh) => ({ ...mesh, cull: p.cull[i] ?? true })));
         lines.push(...parts.lines);
       } catch (e) {
         notes.add(`chunk ${p.modelName}/${chunk}: ${say(e)}`);

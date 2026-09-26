@@ -1,6 +1,7 @@
 import { chunkKey } from './modelLibrary';
 import {
-  IDENTITY, multiply, toColumnMajor, transformPoint, NODE_INSTANCE, type CollisionPoly, type SceneNode, NODE_FLAGS_LIT } from './sceneGraph';
+  IDENTITY, multiply, toColumnMajor, transformPoint, NODE_INSTANCE, type CollisionPoly, type SceneNode, NODE_FLAGS_LIT,
+  VISUAL_FLAG_CULL } from './sceneGraph';
 
 /**
  * Turning `MP*_GEO.ZED`'s prototype forest into placements: what gets drawn where, and which chain in
@@ -36,6 +37,8 @@ export interface PlacedModel {
   instanceIndex: number | null;
   /** The chain keys of `modelName`'s buffer this placement draws, one per visual. */
   chunks: string[];
+  /** Per chunk, in `chunks` order: whether the engine culls its back faces (`VISUAL_FLAG_CULL`). */
+  cull: boolean[];
   /** 16 floats, column-major: what three.js wants (the transpose of `rowMajor`). */
   world: Float32Array;
   /** 16 floats, row-major, as the engine computes it. */
@@ -165,6 +168,7 @@ export function placeInstances(models: SceneNode[], rootName = 'worldmodel'): Pl
       nodeIndex: f.nodeIndex,
       instanceIndex: f.instanceIndex,
       chunks: Array.from({ length: f.node.visuals }, (_, v) => chunkKey(f.nodeIndex, f.instanceIndex, v)),
+      cull: Array.from({ length: f.node.visuals }, (_, v) => ((f.node.visualParams[v] ?? VISUAL_FLAG_CULL) & VISUAL_FLAG_CULL) !== 0),
       world: toColumnMajor(f.world),
       rowMajor: f.world,
       lit: ((f.node.flags | (modelFlags.get(f.modelName) ?? 0)) & NODE_FLAGS_LIT) !== 0,

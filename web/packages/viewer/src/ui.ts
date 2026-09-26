@@ -4,7 +4,7 @@ import { wantsTouchControls } from './touch';
 
 /** The overlays a viewer can switch on, in the order the panel lists them. */
 export const TOGGLES = ['grid', 'collision', 'spawns', 'wireframe', 'untextured',
-  'linearlight', 'fog', 'blendgraded', 'discorder', 'linestrips', 'billboards', 'rigeverywhere', 'ps2look'] as const;
+  'fog', 'blendgraded', 'discorder', 'shadows', 'alternate', 'linestrips', 'billboards', 'rigeverywhere', 'ps2look'] as const;
 export type ToggleName = (typeof TOGGLES)[number];
 
 /** The continuous controls, in the order the panel lists them. */
@@ -43,15 +43,27 @@ export class Ui {
     spawns: find('spawns'),
     wireframe: find('wireframe'),
     untextured: find('untextured'),
-    linearlight: find('linearlight'),
     fog: find('fog'),
     blendgraded: find('blendgraded'),
     discorder: find('discorder'),
+    shadows: find('shadows'),
+    alternate: find('alternate'),
     linestrips: find('linestrips'),
     billboards: find('billboards'),
     rigeverywhere: find('rigeverywhere'),
     ps2look: find('ps2look'),
   };
+
+  /**
+   * The panel opens at the page's own defaults, every time. A browser restores form controls on a
+   * reload or a back-navigation to whatever they were, so a box unticked in an earlier build came back
+   * unticked after the build that ticked it -- the line strips looked off by default when they were
+   * not. What the markup says is what a fresh visit gets; the remembered things are elsewhere.
+   */
+  constructor() {
+    for (const box of Object.values(this.checks)) box.checked = box.defaultChecked;
+    for (const { input } of Object.values(this.sliders)) input.value = input.defaultValue;
+  }
 
   /** The map list, named from each archive's own `mission.rdr`. The value is the archive-relative path. */
   setMaps(maps: MapInfo[], selected: string | null): void {
