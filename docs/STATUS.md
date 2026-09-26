@@ -1,7 +1,7 @@
 # Project status — "Current state" below is kept current; everything under it is a dated log, newest first
 
 ## Current state (keep it short; update when it changes, dated entries below are the log)
-- **2026-09-26 04:17Z -- Sprint 13 ("nothing carried twice") is CLOSED on `sprint-13`; the PR to `main` and the tag `v0.13.0` follow the close-out commit.** The record is `docs/CURRENT_SPRINT.md` "Sprint 13 -- CLOSED" and the plan's Outcome. Next: Sprint 14 "guards, not sentences" (its pair is in `docs/superpowers/`, opened by its own controller off `main` after the merge), then Sprint 15. Carried to the owner: #25, #26, #42 (HUMAN_TASKS O16).
+- **2026-09-26 04:17Z -- Sprint 13 ("nothing carried twice") is CLOSED on `sprint-13`; PR #61 to `main` is open with every check green and waits on the owner's merge (HUMAN_TASKS O17: the ruleset's extra-approval rule, the gh token's missing `workflow` scope); the tag `v0.13.0` follows the merge.** The record is `docs/CURRENT_SPRINT.md` "Sprint 13 -- CLOSED" and the plan's Outcome. Next: Sprint 14 "guards, not sentences" (its pair is in `docs/superpowers/`, opened by its own controller off `main` after the merge), then Sprint 15. Carried to the owner: #25, #26, #42 (HUMAN_TASKS O16).
 - Older state bullets: the twenty below the one above (2026-09-19 to 2026-09-25 early) became dated
   entries of the log below on 2026-09-25, verbatim, one each (Sprint 13 Task R1, R268). This block has a byte
   ceiling (`tools_py/docmaint.py` `CEILINGS`): when the state changes, replace the bullet above and make the old

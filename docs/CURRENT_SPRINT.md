@@ -9,7 +9,9 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 repository another person can fork, build and contribute to.
 
 ```
-branch:       sprint-13 -- CLOSED 2026-09-26 04:17Z (the close-out commit; the PR sprint-13 -> main and the tag v0.13.0 follow it;
+branch:       sprint-13 -- CLOSED 2026-09-26 04:17Z (the close-out commit bbdd26b8; PR #61 sprint-13 -> main is OPEN and waits
+              on the owner's merge, HUMAN_TASKS O17 -- the ruleset's extra-approval rule and the gh token's missing
+              workflow scope stop the loop; the tag v0.13.0 goes on the merge commit after;
               Sprint 12 merged as v0.12.0 at 74fe2a9b, PR #50, Sprint 11 as v0.11.0 at 173608af, PR #49). The next
               sprint's controller opens sprint-14 off main after the merge; this machine's checkout stays on sprint-13
               until then. See "Sprint 13 -- CLOSED" below, then the two earlier CLOSED blocks.
@@ -58,7 +60,7 @@ long builds); "lock-free" can run at any time.
 
 ---
 
-## Sprint 13 — CLOSED 2026-09-26 (the close-out commit on `sprint-13`; the PR to `main` follows, and the tag `v0.13.0` is set once it merges; the record of the sprint is the block below)
+## Sprint 13 — CLOSED 2026-09-26 (the close-out commit on `sprint-13`; PR #61 to `main` is open and waits on the owner's merge (HUMAN_TASKS O17); the tag `v0.13.0` is set on the merge commit after; the record of the sprint is the block below)
 
 **Close-out (the PR body).** Opened 2026-09-25 08:40Z, closed 2026-09-26 04:17Z: 285 commits, 43 agent merges, every task
 reviewed by a fresh agent. Closed #27, #30, #31, #33, #35, #36, #37, #38, #39, #40, #45, #46, #48; opened #45–#48, #51–#60;
