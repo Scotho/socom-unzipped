@@ -1995,6 +1995,91 @@ void register_ps2_runtime_expansion_tests()
             t.Equals(lanes[3], 0x80000000u, "a value the x32768 scale carries past INT32_MIN clamps to INT_MIN");
         });
 
+        tc.Run("VU FTOI's NaN rule: a NaN pattern of either sign answers INT_MIN (issue #33)", [](TestCase &t)
+        {
+            // The rule chosen is the Cucumber fork's (78ce1a21): the x86 indefinite value for any NaN.
+            // PCSX2 reads exponent 255 as a large ordinary magnitude and saturates by the sign bit, so
+            // it answers INT_MAX for the positive patterns below; the negative ones agree. Not
+            // hardware-verified: a console trace of one FTOI on 0x7FC00000 would decide it.
+            auto fromBits = [](uint32_t bits)
+            {
+                float f = 0.0f;
+                std::memcpy(&f, &bits, sizeof(f));
+                return f;
+            };
+            const float quietPositive = fromBits(0x7FC00000u);
+            const float lowPositive = fromBits(0x7F800001u);
+            const float quietNegative = fromBits(0xFFC00000u);
+            const float highNegative = fromBits(0xFFFFFFFFu);
+            for (float scale : {1.0f, 16.0f, 4096.0f, 32768.0f})
+            {
+                t.Equals(static_cast<uint32_t>(Ps2VuFtoiScalar(quietPositive, scale)), 0x80000000u,
+                         "a positive quiet NaN answers INT_MIN (PCSX2: INT_MAX)");
+                t.Equals(static_cast<uint32_t>(Ps2VuFtoiScalar(lowPositive, scale)), 0x80000000u,
+                         "the lowest positive NaN pattern answers INT_MIN (PCSX2: INT_MAX)");
+                t.Equals(static_cast<uint32_t>(Ps2VuFtoiScalar(quietNegative, scale)), 0x80000000u,
+                         "a negative quiet NaN answers INT_MIN (PCSX2 agrees)");
+                t.Equals(static_cast<uint32_t>(Ps2VuFtoiScalar(highNegative, scale)), 0x80000000u,
+                         "the all-ones NaN pattern answers INT_MIN (PCSX2 agrees)");
+            }
+
+            // The scalar form is the vector helper's lane 0: the clamps are the same.
+            t.Equals(Ps2VuFtoiScalar(INFINITY, 1.0f), INT32_MAX, "+inf clamps to INT_MAX");
+            t.Equals(Ps2VuFtoiScalar(-INFINITY, 1.0f), INT32_MIN, "-inf clamps to INT_MIN");
+            t.Equals(Ps2VuFtoiScalar(3.0e9f, 1.0f), INT32_MAX, "past INT32_MAX clamps to INT_MAX");
+            t.Equals(Ps2VuFtoiScalar(-3.0e9f, 1.0f), INT32_MIN, "past INT32_MIN clamps to INT_MIN");
+            t.Equals(Ps2VuFtoiScalar(200000000.0f, 16.0f), INT32_MAX, "the x16 scale can carry a value past INT32_MAX");
+            t.Equals(Ps2VuFtoiScalar(-1234.5625f, 16.0f), -19753, "x16 then truncation toward zero");
+            t.Equals(Ps2VuFtoiScalar(-0.9f, 1.0f), 0, "a negative fraction truncates to zero");
+        });
+
+        tc.Run("PMULTW: words 0 and 2 signed, each product in its own lane and its own HI/LO half (D5)", [](TestCase &t)
+        {
+            // PCSX2's interpreter (MMI.cpp PMULTW): LO.UD[0] = (s32)p0, HI.UD[0] = (s32)(p0 >> 32),
+            // LO.UD[1] / HI.UD[1] the same for p2, rd = { p0, p2 }. This runtime keeps the upper halves
+            // of the 128-bit LO and HI in lo1 / hi1. The open-coded form the translator emitted before
+            // multiplied unsigned and summed every product into lo/hi and rd's low doubleword.
+            R5900Context ctx{};
+            uint64_t rd[2]{};
+            auto run = [&](int32_t s0, int32_t s1, int32_t s2, int32_t s3, int32_t t0, int32_t t1, int32_t t2, int32_t t3)
+            {
+                ctx.lo = 0x1111111111111111ull;
+                ctx.hi = 0x2222222222222222ull;
+                ctx.lo1 = 0x3333333333333333ull;
+                ctx.hi1 = 0x4444444444444444ull;
+                const __m128i result = Ps2Pmultw(&ctx, _mm_setr_epi32(s0, s1, s2, s3), _mm_setr_epi32(t0, t1, t2, t3));
+                std::memcpy(rd, &result, sizeof(rd));
+            };
+
+            // Lane 0 negative x positive, lane 2 positive with a product past 32 bits; words 1 and 3
+            // hold values that would change any sum that read them.
+            run(-3, 7, 0x40000000, 11, 5, 9, 8, 13);
+            t.Equals(rd[0], 0xFFFFFFFFFFFFFFF1ull, "lane 0: -3 x 5 = -15, multiplied signed");
+            t.Equals(rd[1], 0x0000000200000000ull, "lane 2: 0x40000000 x 8 in rd's upper doubleword, not summed into the lower");
+            t.Equals(ctx.lo, 0xFFFFFFFFFFFFFFF1ull, "LO: lane 0's low word, sign-extended");
+            t.Equals(ctx.hi, 0xFFFFFFFFFFFFFFFFull, "HI: lane 0's high word (all ones for a negative product), sign-extended");
+            t.Equals(ctx.lo1, 0x0000000000000000ull, "LO1: lane 2's low word");
+            t.Equals(ctx.hi1, 0x0000000000000002ull, "HI1: lane 2's high word");
+
+            // Lane 2 negative x negative; lane 0 a product whose low word has bit 31 set.
+            run(INT32_MIN, 0, INT32_MIN, 0, 1, 0, INT32_MIN, 0);
+            t.Equals(rd[0], 0xFFFFFFFF80000000ull, "lane 0: INT32_MIN x 1 stays negative");
+            t.Equals(rd[1], 0x4000000000000000ull, "lane 2: INT32_MIN x INT32_MIN = 2^62, positive");
+            t.Equals(ctx.lo, 0xFFFFFFFF80000000ull, "LO sign-extends a low word with bit 31 set");
+            t.Equals(ctx.hi, 0xFFFFFFFFFFFFFFFFull, "HI of INT32_MIN x 1");
+            t.Equals(ctx.lo1, 0x0000000000000000ull, "LO1 of 2^62");
+            t.Equals(ctx.hi1, 0x0000000040000000ull, "HI1 of 2^62, a positive high word");
+
+            // Unsigned would differ: 0xFFFFFFFF x 0xFFFFFFFF is 0xFFFFFFFE00000001; signed it is -1 x -1 = 1.
+            run(-1, -1, -1, -1, -1, -1, 2, -1);
+            t.Equals(rd[0], 0x0000000000000001ull, "lane 0: -1 x -1 = 1, not the unsigned 0xFFFFFFFE00000001");
+            t.Equals(rd[1], 0xFFFFFFFFFFFFFFFEull, "lane 2: -1 x 2 = -2");
+            t.Equals(ctx.lo, 0x0000000000000001ull, "LO replaced, not accumulated");
+            t.Equals(ctx.hi, 0x0000000000000000ull, "HI replaced, not accumulated");
+            t.Equals(ctx.lo1, 0xFFFFFFFFFFFFFFFEull, "LO1: lane 2's low word, sign-extended");
+            t.Equals(ctx.hi1, 0xFFFFFFFFFFFFFFFFull, "HI1: lane 2's high word, sign-extended");
+        });
+
         tc.Run("GS sprite draw applies XYOFFSET and fully-outside scissor should not render", [](TestCase &t)
         {
             std::vector<uint8_t> vram(PS2_GS_VRAM_SIZE, 0u);

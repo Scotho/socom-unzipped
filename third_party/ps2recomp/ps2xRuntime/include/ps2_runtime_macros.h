@@ -226,6 +226,14 @@ static inline void ps2_vu0_fmac_flags(R5900Context *ctx, __m128 res, unsigned de
 // INT_MIN into INT_MAX and leaves negative overflow and NaN at INT_MIN, which is what the
 // hardware gives. The VU1 interpreter already saturates (ps2_vu1_ops.h floatToInt); this is
 // the VU0 macro-mode path the recompiler emits.
+//
+// The NaN rule (issue #33): a NaN bit pattern of EITHER sign answers INT_MIN (0x80000000) -- the
+// Cucumber fork's answer (78ce1a21, research/41 section 8), not hardware-verified. PCSX2 differs:
+// the VU has no NaN (exponent 255 is an ordinary large magnitude), so it saturates such a pattern
+// by its sign bit, a positive "NaN" to INT_MAX. The two agree on every finite and infinite input;
+// they differ only on a positive NaN pattern. ps2_runtime_expansion_tests' "Ps2VuFtoi clamps"
+// case and ps2_vu_tests' FTOI cases hold the rule chosen; a console trace of one FTOI on
+// 0x7FC00000 decides it.
 static inline __m128i Ps2VuFtoi(__m128 value, float scale)
 {
     const __m128 scaled = _mm_mul_ps(value, _mm_set1_ps(scale));
@@ -233,6 +241,40 @@ static inline __m128i Ps2VuFtoi(__m128 value, float scale)
     const __m128 positiveOverflow = _mm_cmpgt_ps(scaled, largestInRange);
     const __m128i truncated = _mm_cvttps_epi32(scaled);
     return _mm_xor_si128(truncated, _mm_castps_si128(positiveOverflow));
+}
+
+// One lane of Ps2VuFtoi, for the HLE stubs that convert a float at a time (Kernel/Stubs/VU.cpp's
+// sceVu0FTOI0Vector, sceVu0FTOI4Vector and rotTransPersOne): the same clamps and the same NaN rule,
+// where a bare static_cast<int32_t> is undefined behaviour out of range.
+static inline int32_t Ps2VuFtoiScalar(float value, float scale)
+{
+    return _mm_cvtsi128_si32(Ps2VuFtoi(_mm_set_ss(value), scale));
+}
+
+// PMULTW (the R5900 MMI2 parallel multiply word): words 0 and 2 of rs and rt are multiplied as
+// SIGNED 32-bit values, each into its own 64-bit product. Product 0 goes to LO/HI (the low word
+// and the high word, each sign-extended to 64 bits) and to rd's doubleword 0; product 1 goes to
+// LO1/HI1 (this runtime's upper halves of the 128-bit LO and HI) and to rd's doubleword 1. Words 1
+// and 3 are not read. PCSX2's interpreter (MMI.cpp PMULTW) and the Cucumber fork's Ps2Pmultw.
+static inline __m128i Ps2Pmultw(R5900Context *ctx, __m128i lhs, __m128i rhs)
+{
+    int32_t lhsWords[4];
+    int32_t rhsWords[4];
+    std::memcpy(lhsWords, &lhs, sizeof(lhsWords));
+    std::memcpy(rhsWords, &rhs, sizeof(rhsWords));
+
+    const uint64_t product0 = static_cast<uint64_t>(static_cast<int64_t>(lhsWords[0]) * static_cast<int64_t>(rhsWords[0]));
+    const uint64_t product1 = static_cast<uint64_t>(static_cast<int64_t>(lhsWords[2]) * static_cast<int64_t>(rhsWords[2]));
+
+    ctx->lo = Ps2SignExt32ToU64(static_cast<uint32_t>(product0));
+    ctx->hi = Ps2SignExt32ToU64(static_cast<uint32_t>(product0 >> 32));
+    ctx->lo1 = Ps2SignExt32ToU64(static_cast<uint32_t>(product1));
+    ctx->hi1 = Ps2SignExt32ToU64(static_cast<uint32_t>(product1 >> 32));
+
+    const uint64_t doublewords[2] = {product0, product1};
+    __m128i result;
+    std::memcpy(&result, doublewords, sizeof(result));
+    return result;
 }
 
 // Memory access helpers - Hybrid Fast/Slow Path

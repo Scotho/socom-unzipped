@@ -1125,6 +1125,17 @@ namespace ps2recomp
             if (m_codeGenerator)
             {
                 m_codeGenerator->setRenamedFunctions(m_functionRenames);
+
+                // Issue #40: a `J` to an HLE wrapper is emitted through the function table.
+                std::unordered_set<uint32_t> stubTargets;
+                for (const auto &function : m_functions)
+                {
+                    if (function.isStub || function.isSkipped)
+                    {
+                        stubTargets.insert(function.start);
+                    }
+                }
+                m_codeGenerator->setStubTargets(stubTargets);
             }
 
             if (m_bootstrapInfo.valid && m_codeGenerator)

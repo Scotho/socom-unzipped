@@ -120,6 +120,11 @@ namespace ps2recomp
         m_relocationCallNames = callNames;
     }
 
+    void CodeGenerator::setStubTargets(const std::unordered_set<uint32_t> &stubTargets)
+    {
+        m_stubTargets = stubTargets;
+    }
+
     void CodeGenerator::setConfiguredJumpTables(const std::vector<JumpTable> &jumpTables)
     {
         m_configJumpTableTargetsByAddress.clear();

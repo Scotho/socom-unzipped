@@ -1034,6 +1034,79 @@ void register_code_generator_tests()
                  "jump to known function should emit direct call");
     });
 
+    tc.Run("a tail call (J) to an HLE stub goes through the function table (issue #40)", [](TestCase &t) {
+        // The generated shape of sub_00243298's `j malloc`: a J to a stub's wrapper. A direct call to
+        // the wrapper skipped the table entry that PS2X_HLE_STATS and PS2X_CALL_TRACE wrap, so a stub
+        // reached by a tail call was never counted. A J to an ordinary function keeps the direct call.
+        Function func;
+        func.name = "tail_caller";
+        func.start = 0x4000;
+        func.end = 0x4020;
+        func.isRecompiled = true;
+        func.isStub = false;
+
+        Symbol stubSym;
+        stubSym.name = "malloc";
+        stubSym.address = 0x5000;
+        stubSym.isFunction = true;
+
+        Symbol plainSym;
+        plainSym.name = "plain_func";
+        plainSym.address = 0x6000;
+        plainSym.isFunction = true;
+
+        auto makeJ = [](uint32_t address, uint32_t target)
+        {
+            Instruction j{};
+            j.address = address;
+            j.opcode = OPCODE_J;
+            j.target = (target >> 2) & 0x3FFFFFF;
+            j.hasDelaySlot = true;
+            j.raw = 0x08000000 | (j.target & 0x3FFFFFF);
+            return j;
+        };
+
+        // Two entries (0x4000 and 0x4010) reached by separate J's, so each is emitted.
+        std::vector<Instruction> instructions{makeJ(0x4000, stubSym.address), makeNop(0x4004), makeNop(0x4008),
+                                              makeNop(0x400C), makeJ(0x4010, plainSym.address), makeNop(0x4014),
+                                              makeNop(0x4018), makeNop(0x401C)};
+
+        CodeGenerator gen({stubSym, plainSym}, {});
+        gen.setStubTargets({stubSym.address});
+        std::string generated = gen.generateFunction(func, instructions, false);
+        printGeneratedCode("a tail call (J) to an HLE stub goes through the function table", generated);
+
+        t.IsTrue(generated.find("runtime->lookupFunction(0x5000u)(rdram, ctx, runtime); return;") != std::string::npos,
+                 "a J to a stub should call the function table's entry, which the stats and the call trace wrap");
+        t.IsTrue(generated.find("malloc(rdram, ctx, runtime); return;") == std::string::npos,
+                 "a J to a stub must not call the stub's wrapper directly, past the table");
+        t.IsTrue(generated.find("plain_func(rdram, ctx, runtime); return;") != std::string::npos,
+                 "a J to an ordinary recompiled function keeps the direct call");
+    });
+
+    tc.Run("PMULTW multiplies words 0 and 2 signed into their own lanes and HI/LO (D5)", [](TestCase &t) {
+        CodeGenerator gen({}, {});
+
+        Instruction pmultw{};
+        pmultw.opcode = OPCODE_MMI;
+        pmultw.isMMI = true;
+        pmultw.function = MMI_MMI2;
+        pmultw.sa = MMI2_PMULTW;
+        pmultw.rs = 2;
+        pmultw.rt = 3;
+        pmultw.rd = 4;
+
+        const std::string generated = gen.translateInstruction(pmultw);
+        t.IsTrue(generated.find("__m128i result = Ps2Pmultw(ctx, GPR_VEC(ctx, 2), GPR_VEC(ctx, 3));") != std::string::npos,
+                 "PMULTW should go through the signed two-product helper");
+        t.IsTrue(generated.find("SET_GPR_VEC(ctx, 4, result);") != std::string::npos,
+                 "PMULTW should write both 64-bit products to rd");
+        t.IsTrue(generated.find("_mm_mul_epu32") == std::string::npos,
+                 "PMULTW must not multiply unsigned");
+        t.IsTrue(generated.find("acc +=") == std::string::npos,
+                 "PMULTW must not sum the products into one 64-bit value");
+    });
+
     tc.Run("jump to unknown target sets pc", [](TestCase &t) {
             Function func;
             func.name = "jump_unknown";

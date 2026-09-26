@@ -333,16 +333,12 @@ namespace ps2recomp
 
     std::string CodeGenerator::translatePMULTW(const Instruction &inst)
     {
-        return fmt::format("{{ __m128i p01 = _mm_mul_epu32(GPR_VEC(ctx, {}), GPR_VEC(ctx, {})); \n"
-                           "   __m128i p23 = _mm_mul_epu32(_mm_srli_si128(GPR_VEC(ctx, {}), 8), _mm_srli_si128(GPR_VEC(ctx, {}), 8)); \n"
-                           "   uint64_t acc = 0; \n"
-                           "   acc += _mm_cvtsi128_si64(p01); \n"
-                           "   acc += _mm_cvtsi128_si64(_mm_srli_si128(p01, 8)); \n"
-                           "   acc += _mm_cvtsi128_si64(p23); \n"
-                           "   acc += _mm_cvtsi128_si64(_mm_srli_si128(p23, 8)); \n"
-                           "   ctx->lo = (uint32_t)acc; ctx->hi = (uint32_t)(acc >> 32); \n"
-                           "   SET_GPR_U64(ctx, {}, acc); }}",
-                           inst.rs, inst.rt, inst.rs, inst.rt, inst.rd);
+        // Words 0 and 2 multiplied signed, each product into its own doubleword of rd and its own
+        // half of HI/LO (Ps2Pmultw, ps2_runtime_macros.h). The open-coded form this replaces
+        // multiplied unsigned (_mm_mul_epu32) and summed the products into one 64-bit value.
+        return fmt::format("{{ __m128i result = Ps2Pmultw(ctx, GPR_VEC(ctx, {}), GPR_VEC(ctx, {})); "
+                           "SET_GPR_VEC(ctx, {}, result); }}",
+                           inst.rs, inst.rt, inst.rd);
     }
 
 
