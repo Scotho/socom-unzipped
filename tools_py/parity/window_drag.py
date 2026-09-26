@@ -25,18 +25,26 @@ The verdict, over the sampler rows inside the window (at least two):
     ADVANCING rate >= 75 % of baseline and still < 1.0 s
     SLOWED    anything between (the pre-#67 shape where the 2 s back-pressure cap fires and the guest crawls)
     NO-DATA   fewer than two sampler rows in the window
-The `[audio-trace]` counters (PS2X_AUDIO_TRACE=1) are read from the last line before the window and the first after
-it, by position in the game log: #67's bar wants cb_late, cb_dry and pcm_underruns unchanged through the drag.
+The `[audio-trace]` counters are read from the last line before the window and the first after it, by position in the
+game log: #67's bar wants cb_late, cb_dry and pcm_underruns unchanged through the drag. The line itself needs
+PS2X_AUDIO_TRACE=1 (one every 5 s, with pcm_underruns); its `cb_late=`/`cb_dry=` fields are printed only when the
+callback trace is on as well, PS2X_AUDIO_CB_TRACE=<csv path> (ps2_audio.cpp). A field that is not on both lines reads
+`absent`, never 0, and fails the readout: an absent counter is not an unchanged one.
 
     python -m tools_py.parity.window_drag readout <game log> [--stamps <file>]
-        one DRAG line per window; exit 0 when every window is ADVANCING, 1 when one is FROZEN or SLOWED, 2 when
-        there is no window or a window has no data
+        one DRAG line per window; exit 0 when every window is ADVANCING with its three audio counters present and
+        +0, 1 when one is FROZEN or SLOWED or an audio counter is absent or moved, 2 when there is no window or a
+        window has no data
     python -m tools_py.parity.window_drag drag --log <game log> [--seconds 10] [--dx 300] [--delay 0]
                                                [--stamps <file>] [--wait-window 120]
         Windows only: finds the game window, presses the left button on its caption (checked by WM_NCHITTEST),
         moves the cursor `dx` pixels out and back over `seconds` by SetCursorPos, releases, puts the window back,
-        and prints the two stamps. Exit 0 when the window moved, 1 when it did not (the drag never took), 3 when
-        the window or its caption was not found.
+        and prints the two stamps. Whether the drag TOOK (`drag_took`): the press landed on the caption, and then
+        the game log's `[window] move loop entered` line after the press when the exe prints them (it announces
+        `[window] move-loop hook installed`), else the window rectangle at the path's far point, off the start (the
+        rectangle does not follow the cursor when "show window contents while dragging" is off, so it is the
+        fallback, not the proof). Exit 0 when it took, 1 when it did not, 3 when the window or its caption was not
+        found.
 """
 import re
 import sys
@@ -47,7 +55,10 @@ SAMPLER_RE = re.compile(r"\[pc-sampler\].*?\bt=([0-9]+(?:\.[0-9]+)?) vsync=([0-9
 STAMP_RE = re.compile(r"\[window-drag\] (begin|end) t=([0-9]+(?:\.[0-9]+)?)\b")
 LOOP_ENTER_TAG = "[window] move loop entered"
 LOOP_LEAVE_TAG = "[window] move loop left"
-AUDIO_RE = re.compile(r"\[audio-trace\].*?\bpcm_underruns=(\d+)(?:.*?\bcb_late=(\d+) cb_dry=(\d+))?")
+AUDIO_TAG = "[audio-trace]"
+AUDIO_FIELD_RE = {k: re.compile(r"\b%s=(\d+)" % k) for k in ("cb_late", "cb_dry", "pcm_underruns")}
+ABSENT = "absent"
+HOOK_TAG = "[window] move-loop hook installed"
 
 NTSC_VBLANK_HZ = 59.94
 BASELINE_S = 10.0
@@ -56,7 +67,7 @@ ADVANCING_FROM = 0.75
 STILL_LIMIT_S = 1.0
 
 Readout = namedtuple("Readout", "verdict t0 t1 source rows vsync_delta rate_hz baseline_hz longest_still_s "
-                                "audio_before audio_after audio_delta")
+                                "audio_before audio_after audio_delta audio_problem")
 AUDIO_KEYS = ("cb_late", "cb_dry", "pcm_underruns")
 
 
@@ -98,12 +109,34 @@ def _runtime_windows(lines, rows):
 
 
 def _audio(line):
-    m = AUDIO_RE.search(line)
-    if not m:
+    """{field: int or None} from an `[audio-trace]` line (None = the field is not on it), or None for another line."""
+    if AUDIO_TAG not in line:
         return None
-    return {"pcm_underruns": int(m.group(1)),
-            "cb_late": int(m.group(2)) if m.group(2) is not None else 0,
-            "cb_dry": int(m.group(3)) if m.group(3) is not None else 0}
+    tail = line[line.index(AUDIO_TAG):]
+    out = {}
+    for k, rx in AUDIO_FIELD_RE.items():
+        m = rx.search(tail)
+        out[k] = int(m.group(1)) if m else None
+    return out
+
+
+def audio_delta(before, after):
+    """{field: after - before, or ABSENT when the field is not on both lines}, and the problem (None when all three
+    are present and +0)."""
+    if before is None or after is None:
+        return None, "audio trace absent: set PS2X_AUDIO_TRACE=1 (and PS2X_AUDIO_CB_TRACE=<csv> for cb_late/cb_dry)"
+    delta = {}
+    for k in AUDIO_KEYS:
+        delta[k] = ABSENT if before.get(k) is None or after.get(k) is None else after[k] - before[k]
+    missing = [k for k in AUDIO_KEYS if delta[k] == ABSENT]
+    if any(k.startswith("cb_") for k in missing):
+        return delta, "cb trace absent: set PS2X_AUDIO_CB_TRACE=<csv path>"
+    if missing:
+        return delta, "%s absent" % ", ".join(missing)
+    moved = [k for k in AUDIO_KEYS if delta[k] != 0]
+    if moved:
+        return delta, "audio counters moved through the drag: %s" % ", ".join(moved)
+    return delta, None
 
 
 def _audio_around(lines, first_idx, last_idx):
@@ -136,13 +169,13 @@ def _rate(rows):
 
 def _read_window(lines, rows, t0, t1, source):
     if t0 is None or t1 is None:
-        return Readout("NO-DATA", t0, t1, source, 0, 0, None, None, 0.0, None, None, None)
+        return Readout("NO-DATA", t0, t1, source, 0, 0, None, None, 0.0, None, None, None, None)
     inside = [r for r in rows if t0 - 1e-6 <= r[0] <= t1 + 1e-6]
     before = [r for r in rows if t0 - BASELINE_S - 1e-6 <= r[0] < t0 - 1e-6]
     baseline = _rate(before) or NTSC_VBLANK_HZ
     rate = _rate(inside)
     if rate is None:
-        return Readout("NO-DATA", t0, t1, source, len(inside), 0, None, baseline, 0.0, None, None, None)
+        return Readout("NO-DATA", t0, t1, source, len(inside), 0, None, baseline, 0.0, None, None, None, None)
     delta = inside[-1][1] - inside[0][1]
     still = _longest_still(inside)
     ratio = rate / baseline if baseline > 0 else 0.0
@@ -153,8 +186,9 @@ def _read_window(lines, rows, t0, t1, source):
     else:
         verdict = "SLOWED"
     a_before, a_after = _audio_around(lines, inside[0][2], inside[-1][2])
-    a_delta = ({k: a_after[k] - a_before[k] for k in AUDIO_KEYS} if a_before and a_after else None)
-    return Readout(verdict, t0, t1, source, len(inside), delta, rate, baseline, still, a_before, a_after, a_delta)
+    a_delta, a_problem = audio_delta(a_before, a_after)
+    return Readout(verdict, t0, t1, source, len(inside), delta, rate, baseline, still, a_before, a_after, a_delta,
+                   a_problem)
 
 
 def readouts(lines, stamp_lines=None):
@@ -177,10 +211,11 @@ def format_readout(r):
     pct = 100.0 * r.rate_hz / r.baseline_hz if r.baseline_hz else 0.0
     text = head + " -- vsync +%d over %d rows (%.1f/s against %.1f/s before, %.0f %%), longest still %.2f s" % (
         r.vsync_delta, r.rows, r.rate_hz, r.baseline_hz, pct, r.longest_still_s)
-    if r.audio_delta is None:
-        text += "; audio: no [audio-trace] line on both sides (PS2X_AUDIO_TRACE=1 prints one every 5 s)"
-    else:
-        text += "; audio " + " ".join("%s +%d" % (k, r.audio_delta[k]) for k in AUDIO_KEYS)
+    if r.audio_delta is not None:
+        text += "; audio " + " ".join(
+            "%s %s" % (k, ABSENT if r.audio_delta[k] == ABSENT else "+%d" % r.audio_delta[k]) for k in AUDIO_KEYS)
+    if r.audio_problem:
+        text += "; AUDIO FAIL: " + r.audio_problem
     return text
 
 
@@ -189,6 +224,8 @@ def exit_code(results):
         return 1
     if not results or any(r.verdict == "NO-DATA" for r in results):
         return 2
+    if any(r.audio_problem for r in results):
+        return 1
     return 0
 
 
@@ -221,6 +258,19 @@ def caption_point(window_rect, client_top):
     window's top edge and the client area's."""
     left, top, right, _ = window_rect
     return left + (right - left) // 3, top + (client_top - top) // 2
+
+
+def drag_took(log_since_press, log_has_hook, rect_start, rect_far):
+    """(took, how) for a press that already landed on the caption (WM_NCHITTEST = HTCAPTION, checked before).
+    `log_since_press` is the game log's text written after the mouse-down; `log_has_hook` says the exe announces
+    its move-loop lines; `rect_far` is the window rectangle at the path's far point."""
+    if "[window] move loop entered" in log_since_press:
+        return True, "move-loop line"
+    if log_has_hook:
+        return False, "the exe prints move-loop lines and none followed the press"
+    if rect_far != rect_start:
+        return True, "window rectangle moved"
+    return False, "no move-loop line (older exe) and the rectangle did not move (window contents while dragging off?)"
 
 
 def _stamp(text, stamps_path):
@@ -275,24 +325,35 @@ def drag(log_path, seconds=10.0, dx=300, delay=0.0, stamps_path=None, wait_windo
     user32.SetForegroundWindow(hwnd)
     user32.SetCursorPos(x, y)
     time.sleep(0.3)
-    moved = 0
+    import os
+    press_offset = os.path.getsize(log_path)
+    has_hook = HOOK_TAG in _tail(log_path, nbytes=press_offset or 1)
+    rect_far = start
     t_begin = last_sampler_t(_tail(log_path))
     user32.mouse_event(LEFTDOWN, 0, 0, 0, 0)
     _stamp("[window-drag] begin t=%s wall=%.3f x=%d y=%d seconds=%.1f dx=%d"
            % ("%.2f" % t_begin if t_begin is not None else "?", time.time(), x, y, seconds, dx), stamps_path)
     try:
-        for px, py in drag_path(x, y, dx, seconds, step_s)[1:]:
+        path = drag_path(x, y, dx, seconds, step_s)
+        far = len(path) // 2
+        for i, (px, py) in enumerate(path[1:], start=1):
             user32.SetCursorPos(px, py)
             time.sleep(step_s)
-            moved = max(moved, abs(rect()[0] - start[0]))
+            if i == far:
+                rect_far = rect()
     finally:
         user32.mouse_event(LEFTUP, 0, 0, 0, 0)
     t_end = last_sampler_t(_tail(log_path))
-    _stamp("[window-drag] end t=%s wall=%.3f moved_px=%d"
-           % ("%.2f" % t_end if t_end is not None else "?", time.time(), moved), stamps_path)
+    time.sleep(0.5)   # the runtime's "left" line and the last rows reach the file
+    with open(log_path, "rb") as fh:
+        fh.seek(press_offset)
+        since = fh.read().decode("utf-8", "replace")
+    took, how = drag_took(since, has_hook, start, rect_far)
+    _stamp("[window-drag] end t=%s wall=%.3f took=%s (%s)"
+           % ("%.2f" % t_end if t_end is not None else "?", time.time(), "yes" if took else "no", how), stamps_path)
     if rect() != start:
         user32.MoveWindow(hwnd, start[0], start[1], start[2] - start[0], start[3] - start[1], True)
-    return 0 if moved > 0 else 1
+    return 0 if took else 1
 
 
 def main(argv):
