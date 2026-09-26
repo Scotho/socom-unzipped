@@ -11,7 +11,10 @@ around it. Each rule is one small function over one simple command (the command 
 `&`, parentheses, brace groups and newlines, after heredoc bodies are dropped; wrappers such as `time`, `env`,
 `sudo` and `xargs` are stripped; a `bash -c`/`sh -c`/`eval` payload is judged as a command of its own) that
 returns None or (rule, sentence, home). `cd`/`pushd`/`popd` and `git -C` move the directory the worktree rules
-judge; a subshell's `cd` ends at its `)`.
+judge; a subshell's `cd` ends at its `)`. The same tracked directory decides the one merge exception: a `git commit`
+without a pathspec passes when that directory's repository has a MERGE_HEAD (git refuses a partial commit
+mid-merge), so `cd <worktree> && git commit --no-edit` concludes a merge there whatever the session's own cwd is
+(Sprint 14 G2b; the state is asked of git once per directory, and only for a commit).
 
 Known limits, each accepted (nobody writes these by accident, and the hook is a guard against slips, not a sandbox):
 - a quoted string that contains `<<WORD` (`echo "a <<EOF"`) is taken for a heredoc and hides the lines after it up
@@ -315,7 +318,8 @@ def _has_pathspec_after_dd(args):
 def rule_commit_names_paths(seg, wt, merge_in_progress=False, **ctx):
     """A commit without `-- <paths>` takes the whole index, and the main tree's index is shared between sessions.
 
-    Git's one exception: during a merge a partial commit is impossible, so a bare commit passes when MERGE_HEAD exists.
+    Git's one exception: during a merge a partial commit is impossible, so a bare commit passes when MERGE_HEAD exists
+    in the directory the commit works in (decide_bash asks merge_probe for it).
     """
     g = git_parts(seg)
     if not g or g[1] != "commit" or merge_in_progress or _has_pathspec_after_dd(g[2]):
@@ -513,7 +517,7 @@ def _resolve(path, cwd):
 
 
 def decide_bash(command, cwd, is_worktree, worktree_of=None, merge_in_progress=False, session_worktree=None,
-                depth=0, slow_tests_ran=False):
+                depth=0, slow_tests_ran=False, merge_probe=None):
     if session_worktree is None:
         session_worktree = is_worktree
     try:
@@ -533,7 +537,7 @@ def decide_bash(command, cwd, is_worktree, worktree_of=None, merge_in_progress=F
         seg = it[1]
         core = _strip_env(seg)
         if core and core[0] in ("cd", "pushd", "popd"):
-            if not worktree_of:
+            if not worktree_of and not merge_probe:
                 continue
             if core[0] == "popd":
                 if dirstack:
@@ -545,21 +549,26 @@ def decide_bash(command, cwd, is_worktree, worktree_of=None, merge_in_progress=F
                 if core[0] == "pushd":
                     dirstack.append(list(state))
                 new = _resolve(target, state[0])
-                state = [new, bool(worktree_of(new))]
+                state = [new, bool(worktree_of(new)) if worktree_of else state[1]]
             continue
         payload = shell_payload(seg)
         if payload is not None and depth < 1:
             code, why = decide_bash(payload, state[0], state[1], worktree_of, merge_in_progress, session_worktree,
-                                    depth + 1, slow_tests_ran)
+                                    depth + 1, slow_tests_ran, merge_probe)
             if code:
                 return code, why
             continue
         wt = state[1]
         g = git_parts(seg)
-        if worktree_of and g and _git_dash_c(g[0]):
-            wt = bool(worktree_of(_resolve(_git_dash_c(g[0]), state[0])))
+        dash_c = _git_dash_c(g[0]) if g else None
+        workdir = _resolve(dash_c, state[0]) if dash_c else state[0]   # the directory this git command works in
+        if worktree_of and dash_c:
+            wt = bool(worktree_of(workdir))
+        merging = merge_in_progress
+        if merge_probe and g and g[1] == "commit":        # asked only for a commit: the one rule that reads it
+            merging = bool(merge_probe(workdir))
         for rule in RULES:
-            hit = rule(seg, wt, merge_in_progress=merge_in_progress, session_worktree=session_worktree,
+            hit = rule(seg, wt, merge_in_progress=merging, session_worktree=session_worktree,
                        slow_tests_ran=slow_tests_ran)
             if hit:
                 name, sentence, home = hit
@@ -691,13 +700,14 @@ def slow_tests_green(root):
 
 
 def decide(tool_name, tool_input, cwd, is_worktree, worktree_of=None, merge_in_progress=False, lock_holder=None,
-           slow_tests_ran=False):
+           slow_tests_ran=False, merge_probe=None):
     """(0, "") to allow the call, (2, "<rule>: <sentence>; home: <file or script>") to refuse it.
 
     `is_worktree` is the session's cwd (the hook JSON's): a worktree session never pushes, wherever it `cd`s.
     `worktree_of(path) -> bool`, when given, re-answers is_worktree for `cd`/`pushd <dir>` and `git -C <dir>`.
     `merge_in_progress` (MERGE_HEAD exists in cwd) lets a commit without a pathspec through: git refuses a partial
-    commit during a merge.
+    commit during a merge. `merge_probe(path) -> bool`, when given, replaces it: it is asked, for each `git commit`,
+    about the directory that commit works in (after `cd`/`pushd`/`popd`, a subshell's scope, and `git -C`).
     For the editing tools (EDIT_TOOLS): `lock_holder` is what uses the loop lock (parse_holder; None when exactly
     FREE). For Bash: `slow_tests_ran` says the slow lock suite went green after scripts/loop_lock.sh was last
     changed (a commit naming the lock script needs it).
@@ -710,7 +720,7 @@ def decide(tool_name, tool_input, cwd, is_worktree, worktree_of=None, merge_in_p
             if not isinstance(command, str):
                 return 0, ""
             return decide_bash(command, cwd or ".", is_worktree, worktree_of, merge_in_progress,
-                               slow_tests_ran=slow_tests_ran)
+                               slow_tests_ran=slow_tests_ran, merge_probe=merge_probe)
         if tool_name in EDIT_TOOLS:
             return decide_edit(tool_name, tool_input, cwd, lock_holder)
         return 0, ""
@@ -742,6 +752,18 @@ def merge_in_progress_in(cwd):
         return False
 
 
+def cached_merge_probe():
+    """merge_in_progress_in with a per-directory cache: one git call per directory a command commits in."""
+    seen = {}
+
+    def probe(path):
+        key = os.path.normcase(os.path.normpath(path))
+        if key not in seen:
+            seen[key] = merge_in_progress_in(path)
+        return seen[key]
+    return probe
+
+
 def main():
     try:
         doc = json.loads(sys.stdin.read())
@@ -760,8 +782,7 @@ def main():
                 root = _toplevel(os.path.realpath(cwd))
                 slow = bool(root) and slow_tests_green(root)
             code, why = decide(tool_name, tool_input, cwd, is_worktree_dir(cwd),
-                               worktree_of=is_worktree_dir, merge_in_progress=merge_in_progress_in(cwd),
-                               slow_tests_ran=slow)
+                               worktree_of=is_worktree_dir, merge_probe=cached_merge_probe(), slow_tests_ran=slow)
         else:
             return 0
         if code == 2:

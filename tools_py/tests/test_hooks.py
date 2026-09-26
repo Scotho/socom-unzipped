@@ -123,6 +123,20 @@ class PretoolPlantedTest(unittest.TestCase):
         self.assertEqual(pretool.decide("Bash", {"command": "git commit -a --no-edit"}, ".", False,
                                         merge_in_progress=True)[0], 2)
 
+    def test_the_merge_state_is_judged_where_the_commit_runs(self):
+        # G2b: MERGE_HEAD belongs to the directory the command works in (cd, git -C), not the session's cwd
+        def probe(path):
+            return path.replace("\\", "/").rstrip("/").endswith("/projects/wt-x")
+
+        def judge(cmd):
+            return pretool.decide("Bash", {"command": cmd}, "C:/projects/socom_pc", False, merge_probe=probe)
+
+        self.assertEqual(judge("cd /c/projects/wt-x && git commit --no-edit"), (0, ""))
+        self.assertEqual(judge("git -C /c/projects/wt-x commit --no-edit"), (0, ""))
+        self.assertEqual(judge("git commit --no-edit")[0], 2)                      # the session dir: no merge
+        self.assertEqual(judge("cd /c/projects/wt-x && git commit -a -m x")[0], 2)  # -a is refused mid-merge too
+        self.assertEqual(judge("(cd /c/projects/wt-x); git commit --no-edit")[0], 2)  # the subshell's cd ends
+
     def test_review_round_one_cases(self):
         self.run_cases(REVIEW_CASES)
 
@@ -328,6 +342,30 @@ class PretoolWiringTest(unittest.TestCase):
             f.write(head + "\n")
         self.assertTrue(pretool.merge_in_progress_in(self.tmp.name))
         p = self.hook("git commit --no-edit")
+        self.assertEqual(p.returncode, 0, p.stderr)
+
+    def test_a_bare_commit_in_a_conflicted_worktree_passes_from_the_main_tree(self):
+        # G2b: the session's cwd is the main tree (no merge); the command cds into a linked worktree mid-merge
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C"]
+        with open(os.path.join(self.tmp.name, "f"), "w") as f:
+            f.write("base\n")
+        subprocess.run(git + [self.tmp.name, "add", "f"], check=True, capture_output=True)
+        subprocess.run(git + [self.tmp.name, "commit", "-q", "-m", "base"], check=True, capture_output=True)
+        linked = os.path.join(self.tmp.name, "linked")
+        subprocess.run(git + [self.tmp.name, "worktree", "add", "-q", "-b", "side", linked], check=True,
+                       capture_output=True)
+        for d, text in ((self.tmp.name, "main\n"), (linked, "side\n")):
+            with open(os.path.join(d, "f"), "w") as f:
+                f.write(text)
+            subprocess.run(git + [d, "commit", "-q", "-am", text.strip()], check=True, capture_output=True)
+        main_branch = subprocess.run(git + [self.tmp.name, "branch", "--show-current"], check=True,
+                                     capture_output=True, text=True).stdout.strip()
+        merged = subprocess.run(git + [linked, "merge", main_branch], capture_output=True, text=True)
+        self.assertNotEqual(merged.returncode, 0, "the merge should conflict")
+        self.assertTrue(pretool.merge_in_progress_in(linked))
+        self.assertFalse(pretool.merge_in_progress_in(self.tmp.name))
+        self.assertEqual(self.hook("git commit --no-edit").returncode, 2)     # the main tree: no merge there
+        p = self.hook("cd '%s' && git commit --no-edit" % linked.replace("\\", "/"))
         self.assertEqual(p.returncode, 0, p.stderr)
 
     def test_other_tool_passes(self):
