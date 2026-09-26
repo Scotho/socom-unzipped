@@ -74,6 +74,9 @@ class RenderTest(unittest.TestCase):
         self.assertIn("**NOT BUILT**", block)
         self.assertIn("bash scripts/make_portable.sh", block)
         self.assertIn("loop_lock.sh run", block)
+        # review finding 3: the playtest archive is the release one
+        self.assertIn("bash scripts/make_portable.sh --release", block)
+        self.assertIn("dist-release/manifest.json", block)
 
     def test_the_render_does_not_depend_on_the_day(self):
         # --check must not go stale overnight
@@ -206,6 +209,22 @@ class MakePortableManifestTest(unittest.TestCase):
             self.assertIn("manifest", r.stdout)
             self.assertIn("socom2-linux.tar.gz", playtest_block.render(m, "2026-09-26"))
 
+    def test_no_commit_means_no_manifest(self):
+        # review finding 2: a `git rev-parse HEAD` failing inside $(...) does not trip set -e; an empty commit
+        # must refuse the manifest, not write "commit": ""
+        from tools_py.tests.test_make_portable_linux import fake_ldist
+        with tempfile.TemporaryDirectory() as tmp:
+            ldist, ldd = fake_ldist(tmp)
+            env = {**os.environ, "MAKE_PORTABLE_SYSTEM": "Linux", "LDD": ldd, "PYTHON": sys.executable,
+                   "LDIST": ldist, "DIST": os.path.join(tmp, "nodist"), "GIT_DIR": os.path.join(tmp, "nogit")}
+            r = subprocess.run([BASH, SCRIPT, os.path.join(tmp, "out")], capture_output=True, text=True, cwd=ROOT,
+                               env=env)
+            self.assertNotEqual(r.returncode, 0, r.stderr + r.stdout)
+            self.assertIn("no commit", r.stderr)
+            self.assertTrue(os.path.isfile(os.path.join(tmp, "out", "socom2-linux.tar.gz")))
+            self.assertFalse(os.path.exists(os.path.join(ldist, "manifest.json")))
+            self.assertFalse(os.path.exists(os.path.join(ldist, "manifest.json.tmp")))
+
     def test_a_failed_packaging_leaves_no_manifest(self):
         from tools_py.tests.test_make_portable_linux import fake_ldist
         with tempfile.TemporaryDirectory() as tmp:
@@ -216,6 +235,70 @@ class MakePortableManifestTest(unittest.TestCase):
             r = self._run(tmp, ldist, ldd, os.path.join(tmp, "out"))
             self.assertEqual(r.returncode, 3, r.stderr + r.stdout)
             self.assertFalse(os.path.exists(stale), "a failed packaging left the previous build's manifest")
+
+
+STEP = os.path.join(ROOT, "scripts", "parity", "playtest_block.sh")
+
+
+@unittest.skipUnless(BASH, "bash only")
+class ChainStepTest(unittest.TestCase):
+    """scripts/parity/playtest_block.sh reads the manifest from the directory make_portable wrote it to: by
+    platform (MAKE_PORTABLE_SYSTEM, else uname) and --release, honouring the same DIST/LDIST overrides (review
+    finding 1). PLAYTEST_BLOCK_ROOT points the rewrite at a temp page instead of the repository's."""
+
+    def setUp(self):
+        from tools_py.tests.test_make_portable_linux import fake_ldist
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = self._tmp.name
+        self.page_root = os.path.join(self.tmp, "tree")
+        os.makedirs(os.path.join(self.page_root, "docs"))
+        self.page = os.path.join(self.page_root, "docs", "PLAYTEST.md")
+        with open(self.page, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(PAGE)
+        self.fake_ldist = fake_ldist
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def run_step(self, env_extra, *args):
+        env = {**os.environ, "PYTHON": sys.executable, "PLAYTEST_BLOCK_ROOT": self.page_root, **env_extra}
+        return subprocess.run([BASH, STEP] + list(args), capture_output=True, text=True, cwd=ROOT, env=env)
+
+    def page_text(self):
+        with open(self.page, encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_on_linux_the_step_reads_dist_linux(self):
+        ldist, ldd = self.fake_ldist(self.tmp)
+        # a stale Windows manifest in DIST must not be the one read
+        dist = os.path.join(self.tmp, "dist")
+        os.makedirs(dist)
+        with open(os.path.join(dist, "manifest.json"), "w") as fh:
+            json.dump(MANIFEST, fh)
+        r = self.run_step({"MAKE_PORTABLE_SYSTEM": "Linux", "LDD": ldd, "LDIST": ldist, "DIST": dist},
+                          os.path.join(self.tmp, "out"))
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        text = self.page_text()
+        self.assertIn("socom2-linux.tar.gz", text)
+        self.assertNotIn("socom2-portable.zip", text)
+        self.assertNotIn("NOT BUILT", text)
+
+    def test_the_manifest_dir_by_platform_and_release(self):
+        r = self.run_step({"MAKE_PORTABLE_SYSTEM": "Linux", "PLAYTEST_BLOCK_PRINT_DIR": "1"}, "--release")
+        self.assertEqual(r.stdout.strip().replace("\\", "/").rsplit("/", 1)[-1], "dist-linux-release", r.stderr)
+        r = self.run_step({"MAKE_PORTABLE_SYSTEM": "Linux", "PLAYTEST_BLOCK_PRINT_DIR": "1"})
+        self.assertEqual(r.stdout.strip().replace("\\", "/").rsplit("/", 1)[-1], "dist-linux", r.stderr)
+        r = self.run_step({"MAKE_PORTABLE_SYSTEM": "MINGW64_NT", "PLAYTEST_BLOCK_PRINT_DIR": "1"}, "--release")
+        self.assertEqual(r.stdout.strip().replace("\\", "/").rsplit("/", 1)[-1], "dist-release", r.stderr)
+        r = self.run_step({"MAKE_PORTABLE_SYSTEM": "MINGW64_NT", "PLAYTEST_BLOCK_PRINT_DIR": "1"})
+        self.assertEqual(r.stdout.strip().replace("\\", "/").rsplit("/", 1)[-1], "dist", r.stderr)
+
+    def test_a_failed_packaging_writes_not_built_and_fails_the_step(self):
+        ldist, ldd = self.fake_ldist(self.tmp, missing=("libvpx.so.9",))
+        r = self.run_step({"MAKE_PORTABLE_SYSTEM": "Linux", "LDD": ldd, "LDIST": ldist},
+                          os.path.join(self.tmp, "out"))
+        self.assertEqual(r.returncode, 3, r.stderr + r.stdout)
+        self.assertIn("**NOT BUILT**", self.page_text())
 
 
 if __name__ == "__main__":

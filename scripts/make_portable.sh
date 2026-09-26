@@ -33,6 +33,16 @@ write_manifest() {   # <archive> <runner exe> <manifest>
   [ -f "$archive" ] || { echo "make_portable: no archive at $archive -- no manifest written" >&2; return 1; }
   # forward slashes: an OUT given as C:\... would put backslashes (JSON escapes) into the file
   apath="${archive//\\//}"; case "$apath" in "$ROOT"/*) apath="${apath#"$ROOT"/}" ;; esac
+  # Captured first: a git failing inside the printf's $(...) would not trip set -e and would write "commit": "".
+  local commit branch dirty
+  commit="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)" || commit=""
+  branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null)" || branch=""
+  if [ -z "$commit" ] || [ -z "$branch" ]; then
+    echo "make_portable: no commit from git rev-parse HEAD in $ROOT -- no manifest written" >&2
+    return 1
+  fi
+  dirty="$(git -C "$ROOT" status --porcelain | wc -l | tr -d ' ')" \
+    || { echo "make_portable: git status failed in $ROOT -- no manifest written" >&2; return 1; }
   {
     printf '{\n'
     printf '  "archive": "%s",\n' "$(basename "$archive")"
@@ -40,10 +50,10 @@ write_manifest() {   # <archive> <runner exe> <manifest>
     printf '  "archive_sha256": "%s",\n' "$(sha256sum < "$archive" | cut -d' ' -f1)"
     printf '  "exe": "%s",\n' "$(basename "$exe")"
     printf '  "exe_sha256": "%s",\n' "$(sha256sum < "$exe" | cut -d' ' -f1)"
-    printf '  "commit": "%s",\n' "$(git -C "$ROOT" rev-parse HEAD)"
-    printf '  "branch": "%s",\n' "$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
+    printf '  "commit": "%s",\n' "$commit"
+    printf '  "branch": "%s",\n' "$branch"
     printf '  "built_at": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf '  "tree_dirty": %s\n' "$(git -C "$ROOT" status --porcelain | wc -l | tr -d ' ')"
+    printf '  "tree_dirty": %s\n' "$dirty"
     printf '}\n'
   } > "$manifest.tmp"
   mv -f "$manifest.tmp" "$manifest"

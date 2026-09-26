@@ -14,10 +14,10 @@ questions already answered.)*
 <!-- build:begin -->
 **NOT BUILT** -- no release archive has been packaged from this tree, so there is no build to play or to check
 against. The merged chain's last step (`scripts/parity/playtest_block.sh`) packages the build it made and writes
-this block. By hand, after a build in `dist/`: `bash scripts/make_portable.sh` under the lock
-(`bash scripts/loop_lock.sh run <name> --purpose "release archive" -- bash scripts/make_portable.sh`), then
-`python -m tools_py.playtest_block --manifest dist/manifest.json` writes this block from the manifest the
-packaging leaves in `dist/`.
+this block. By hand, after `./build.sh release`: `bash scripts/make_portable.sh --release` under the lock
+(`bash scripts/loop_lock.sh run <name> --purpose "release archive" -- bash scripts/make_portable.sh --release`),
+then `python -m tools_py.playtest_block --manifest dist-release/manifest.json` writes this block from the
+manifest the packaging leaves in `dist-release/`.
 <!-- build:end -->
 
 > Superseded 2026-09-25 (Sprint 13 S1) -- the block that stood here, kept as the record of the last sitting's build:
