@@ -1,8 +1,23 @@
 :root { color-scheme: dark; font-family: ui-monospace, "Cascadia Mono", Menlo, monospace; }
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; background: #14161a; color: #d8dde4; overflow: hidden; }
-#view { display: block; width: 100vw; height: 100vh; touch-action: none; cursor: grab; }
+/* `overscroll-behavior`: a stray vertical drag on a phone must not rubber-band or pull-to-refresh the page. */
+html, body { margin: 0; height: 100%; background: #14161a; color: #d8dde4; overflow: hidden; overscroll-behavior: none; }
+/*
+ * `100dvh` where the browser has it: on a phone `100vh` is the height *with the browser bar gone*, so a
+ * canvas that size is taller than what is visible and the picture's centre sits below the screen's.
+ */
+#view { display: block; width: 100vw; height: 100vh; height: 100dvh; touch-action: none; cursor: grab; }
 #view:active { cursor: grabbing; }
+/*
+ * The PS2 picture: the 640x448 frame on a 4:3 box, the biggest that fits, letterboxed in black. The
+ * browser's own bilinear upscale stands in for the television.
+ */
+body.ps2-look { background: #000; }
+body.ps2-look #view {
+  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(100vw, calc(100vh * 4 / 3)); height: min(100vh, calc(100vw * 3 / 4));
+  width: min(100vw, calc(100dvh * 4 / 3)); height: min(100dvh, calc(100vw * 3 / 4));
+}
 
 /*
  * Site navigation, so it keeps the top-left corner and the panel starts below it. It is not part of the
@@ -88,6 +103,16 @@ body.chrome-hidden #panel, body.chrome-hidden #fps { display: none; }
 #status { margin: 4px 0; color: #9fe6b0; white-space: pre-wrap; }
 #status.error { color: #ff8a80; }
 .hint { margin: 6px 0 0; color: #79828f; }
+
+/* Under the frame counter: the one control that lives outside the panel, because it is wanted most on a phone. */
+#fullscreen {
+  position: fixed; top: 44px; right: 12px; z-index: 5; width: 34px; height: 34px; padding: 0;
+  border: 1px solid #333a44; border-radius: 6px; background: rgba(20, 22, 26, 0.86); backdrop-filter: blur(4px);
+  color: #9aa4b1; font: inherit; font-size: 16px; line-height: 1; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+#fullscreen:hover, #fullscreen:focus-visible { color: #d8dde4; border-color: #4b5563; }
+body.chrome-hidden #fullscreen { display: none; }
 
 /* Top right, out of the panel's way, and never a pointer target: a click here is a click on the world. */
 #fps {
@@ -181,4 +206,12 @@ body.touch #touch { display: block; }
   /* The status line has to fit on one: a smaller face and a thinner separator, set in `main.ts`. */
   #status { font-size: 10px; }
   #fps { top: 8px; right: 8px; }
+  /*
+   * On a phone the top strip is the panel's, edge to edge, so the button joins the column of round
+   * controls in the bottom-right corner, above the two lift buttons (56px each, 10px apart).
+   */
+  #fullscreen {
+    top: auto; right: 12px; bottom: calc(16px + 2 * 66px + env(safe-area-inset-bottom, 0px));
+    width: 56px; height: 56px; border-radius: 50%; border-color: #39414d; font-size: 20px;
+  }
 }

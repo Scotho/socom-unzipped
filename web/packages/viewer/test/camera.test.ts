@@ -285,6 +285,61 @@ describe('FlyCamera', () => {
     box.remove();
   });
 
+  it('setFov sets the vertical field the map authored, and the boost widens from that', () => {
+    fly.setFov(49);
+    expect(fly.camera.fov).toBe(49);
+    press('KeyW'); release('KeyW'); press('KeyW');      // the sprint gesture
+    run(fly, 2, 120);
+    expect(fly.camera.fov).toBeGreaterThan(49);
+    expect(fly.camera.fov).toBeLessThan(49 * 1.3);
+    release('KeyW');
+    run(fly, 2, 120);
+    expect(fly.camera.fov).toBeCloseTo(49, 2);           // and eases back to the map's own, not to a constant
+  });
+
+  it('the arrow keys look, at a steady rate, for a keyboard without a mouse', () => {
+    press('ArrowLeft');
+    run(fly, 0.5, 30);
+    const half = fly.pose().yaw;
+    run(fly, 0.5, 30);
+    expect(half).toBeGreaterThan(5);                     // left is a positive yaw: the camera looks down -z
+    expect(fly.pose().yaw).toBeCloseTo(half * 2, 3);     // twice the time, twice the turn
+    release('ArrowLeft');
+    press('ArrowUp');
+    run(fly, 0.25, 15);
+    expect(fly.pose().pitch).toBeGreaterThan(0);
+    release('ArrowUp');
+  });
+
+  it('a touch drag turns further than a mouse drag of the same length: a thumb has less room', () => {
+    const turn = (pointerType: string): number => {
+      fly.setPose({ yaw: 0, pitch: 0 });
+      const c = fly['canvas'];
+      c.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 7, pointerType, clientX: 100, clientY: 100, bubbles: true }));
+      c.dispatchEvent(new PointerEvent('pointermove', { pointerId: 7, pointerType, clientX: 0, clientY: 100, bubbles: true }));
+      c.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, pointerType, clientX: 0, clientY: 100, bubbles: true }));
+      return fly.pose().yaw;
+    };
+    const mouse = turn('mouse');
+    const touch = turn('touch');
+    expect(mouse).toBeGreaterThan(0);
+    expect(touch / mouse).toBeCloseTo(2, 3);
+  });
+
+  it('the stick held at its rim boosts, the way a double-tapped W does', () => {
+    const distance = (boost: boolean): number => {
+      fly.setPose({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0 });
+      fly.setStick(0, 1);
+      fly.setStickBoost(boost);
+      run(fly, 2, 120);
+      fly.setStick(0, 0);
+      fly.setStickBoost(false);
+      return -fly.pose().z;
+    };
+    const plain = distance(false);
+    expect(distance(true)).toBeGreaterThan(plain * 3);
+  });
+
   it('lookFrom faces the target', () => {
     fly.lookFrom([0, 0, 0], [0, 0, -100]);
     expect(fly.pose().yaw).toBeCloseTo(0, 4);

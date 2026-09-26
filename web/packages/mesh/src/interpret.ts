@@ -73,6 +73,8 @@ export class MeshError extends Error {
  * (SEMANTICS §2 `TOP+0`). Its low three bits are the primitive type.
  */
 const PRIM_SHIFT = 15, PRIM_MASK = 0x7ff, PRIM_TYPE_MASK = 7;
+/** Inside `PRIM`: IIP bit 3, TME bit 4, **FGE bit 5**, ABE bit 6. */
+const PRIM_FGE = 1 << 5;
 /**
  * The GS primitive types map geometry names: prim type 5 `TRIANGLE_FAN` and 3 `TRIANGLE` in a mesh
  * packet's two templates (SEMANTICS §2), and 2 `LINE_STRIP` in both of a line packet's.
@@ -110,6 +112,13 @@ export interface LineStrip {
   normals: Float32Array;
   /** The texture in force for the packet, as the chain's reloc-6 citation named it. */
   textureName: string | null;
+  /** The `TOP+0` template's `FGE`, as for a mesh. */
+  fog: boolean;
+}
+
+/** Whether the `TOP+0` template asks the GS to fog the packet (`PRIM.FGE`). See `MeshData.fog`. */
+export function packetFogged(packet: VuPacket): boolean {
+  return (((packet.mem[Y]! >>> PRIM_SHIFT) & PRIM_MASK) & PRIM_FGE) !== 0;
 }
 
 /** The primitive type of one of a packet's GIFtag templates, or null when that quadword never unpacked. */
@@ -187,7 +196,7 @@ export function interpretLinePacket(packet: VuPacket): LineStrip {
     colors[k * 4 + Z] = mem[c + Z]! / PS2_UNITY;
     colors[k * 4 + W] = Math.min(mem[c + W]! / PS2_UNITY, 1);
   }
-  return { positions, uvs, colors, normals, textureName: packet.textureName };
+  return { positions, uvs, colors, normals, textureName: packet.textureName, fog: packetFogged(packet) };
 }
 
 /**
@@ -274,6 +283,7 @@ export function interpretPacket(packet: VuPacket): MeshData {
     faceNormals: kept === triangleCount ? faceNormals : faceNormals.slice(0, kept * 3),
     indices: kept === triangleCount ? indices : indices.slice(0, kept * 3),
     textureName: packet.textureName,
+    fog: packetFogged(packet),
   };
 }
 

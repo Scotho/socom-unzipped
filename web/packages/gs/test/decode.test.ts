@@ -14,6 +14,7 @@ function synthetic(over: Partial<TextureRecord> = {}): TextureRecord {
     transparent: false, palettized: true, isMipChild: false, bumpmap: false, bilinear: false,
     transp1bit: false, dynamic: false, context: false, pixels: new Uint8Array([0, 1, 2, 3]),
     tex0: { tbp0: 1, tbw: 1, psm: 0x13, tw: 1, th: 1, tcc: 0, tfx: 0, cbp: 5, cpsm: 0, csm: 0, csa: 0, cld: 0 },
+    gs: null,
     ...over,
   };
 }

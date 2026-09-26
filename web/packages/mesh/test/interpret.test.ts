@@ -45,12 +45,15 @@ function packet(o: {
   tris: { e0: [number, number, number, number]; fn: [number, number, number] }[];
   /** The counts the header states, when they are to differ from the blocks actually written. */
   counts?: [indexBase: number, vertices: number, triangles: number];
+  /** The `PRIM` field of the TOP+0 GIFtag template (SEMANTICS §3): `IIP|TME|FGE|ABE` on a fan is 125. */
+  prim0?: number;
 }): Uint8Array {
   const V = o.verts.length, P = o.tris.length, indexBase = 4 + 3 * V;
   const head = new ArrayBuffer(64);
   const hi = new Int32Array(head), hf = new Float32Array(head);
   const [statedBase, statedV, statedP] = o.counts ?? [indexBase, V, P];
   hi[2 * 4 + 0] = statedBase; hi[2 * 4 + 2] = statedV; hi[2 * 4 + 3] = statedP;   // TOP+2 .x .z .w (SEMANTICS §3)
+  hi[0 * 4 + 1] = (1 << 14) | ((o.prim0 ?? 0) << 15) | (3 << 28);                   // TOP+0 .y: PRE, PRIM, NREG
   hf[3 * 4 + 0] = o.bias[0]; hf[3 * 4 + 1] = o.bias[1]; hf[3 * 4 + 2] = o.bias[2];
   const ab = new Int16Array(o.verts.flatMap((v) => [...v.a, ...v.b]));
   const col = new Uint8Array(o.verts.flatMap((v) => v.c));
@@ -141,6 +144,15 @@ describe('interpretPacket', () => {
   });
 });
 
+describe('the FGE bit of the TOP+0 template', () => {
+  it('a packet whose template sets FGE is fogged', () => {
+    expect(only(packet({ ...QUAD, prim0: 125 })).fog).toBe(true);        // IIP|TME|FGE|ABE, fan
+  });
+  it('a packet whose template clears FGE is not: the sky, the water, the glows', () => {
+    expect(only(packet({ ...QUAD, prim0: 93 })).fog).toBe(false);         // the same with FGE off
+  });
+});
+
 describe('interpretChain', () => {
   it('returns one mesh per MSCNT packet, carrying the texture in force (ruling b)', () => {
     const meshes = interpretChain(chainOf(packet(QUAD), 'floor_oilgrime.tif'));
@@ -166,8 +178,8 @@ const PRIM_LINE_STRIP = 2;
  * `NREG` packed into lane y, and `REGS = 0x412` (ST, RGBAQ, XYZF2) in lane z. Desert Glory's real
  * templates read back as exactly `[0x8000 | nloop, 0x303d4000, 0x412, 0]` with `PRIM = 122`.
  */
-const giftag = (nloop: number, primType: number): number[] => {
-  const prim = (primType & 7) | (1 << 3) | (1 << 4) | (1 << 5) | (1 << 6);     // IIP|TME|FGE|ABE
+const giftag = (nloop: number, primType: number, fge = true): number[] => {
+  const prim = (primType & 7) | (1 << 3) | (1 << 4) | (fge ? 1 << 5 : 0) | (1 << 6);     // IIP|TME|FGE|ABE
   return [0x8000 | nloop, (1 << 14) | (prim << 15) | (3 << 28), 0x412, 0];
 };
 
@@ -182,10 +194,10 @@ interface StripPoint {
  * transfers under `NOP NOP` — two GIFtag templates at TOP+0, the float point pairs at TOP+2 CL=3 WL=2,
  * and the `MSCNT` that runs them.
  */
-function lineStripPayloads(points: StripPoint[], statedCount = points.length, primType = PRIM_LINE_STRIP) {
+function lineStripPayloads(points: StripPoint[], statedCount = points.length, primType = PRIM_LINE_STRIP, fge = true) {
   const P = points.length;
   const head = new ArrayBuffer(32);
-  new Int32Array(head).set([...giftag(0, primType), ...giftag(statedCount, primType)]);
+  new Int32Array(head).set([...giftag(0, primType, fge), ...giftag(statedCount, primType, fge)]);
   const ab = new Float32Array(points.flatMap((v) => [...v.p, v.n[0], ...v.uv, v.n[1], v.n[2]]));
   return {
     colours: bytes(new Uint8Array(points.flatMap((v) => v.c))),
@@ -226,8 +238,8 @@ function modelBuffer(tags: { id: number; reloc: number; codes?: [number, number]
 }
 
 /** The three-tag preamble every real chain of these opens with, then the colour/strip pair. */
-function lineChain(points: StripPoint[], statedCount?: number, primType?: number): Chain {
-  const { colours, colourCodes, strip } = lineStripPayloads(points, statedCount, primType);
+function lineChain(points: StripPoint[], statedCount?: number, primType?: number, fge?: boolean): Chain {
+  const { colours, colourCodes, strip } = lineStripPayloads(points, statedCount, primType, fge);
   const mscal = bytes(new Float32Array(8), words(MSCAL0, 0, 0, 0));   // the reloc-3 parameter packet
   const { buffer, headerOffset } = modelBuffer([
     { id: 1, reloc: 6, text: 'tent_top.tif' },                        // 36 §3: the texture citation
@@ -245,6 +257,11 @@ const STRIP: StripPoint[] = [
 ];
 
 describe('relocation type 1: the LINE_STRIP packet', () => {
+  it('carries the FGE bit of the template as `fog`', () => {
+    expect(interpretChainLines(lineChain(STRIP))[0]!.fog).toBe(true);
+    expect(interpretChainLines(lineChain(STRIP, undefined, undefined, false))[0]!.fog).toBe(false);
+  });
+
   it('walks the type-1 tag and finds a LINE_STRIP where a mesh packet would have a counts quadword', () => {
     const chain = lineChain(STRIP);
     expect(chain.tags.map((t) => t.reloc)).toEqual([6, 3, 4, 1]);
@@ -388,6 +405,13 @@ describe('mergeMeshes and bounds', () => {
     expect(mergeMeshes([a, { ...a, normals: null }]).normals).toBe(null);
   });
 
+  it('keeps fog off only when every part is unfogged', () => {
+    const fog = (on: boolean): MeshData => ({ ...a, fog: on });
+    expect(mergeMeshes([fog(false), fog(false)]).fog).toBe(false);
+    expect(mergeMeshes([fog(false), fog(true)]).fog).toBe(true);
+    expect(mergeMeshes([]).fog).toBe(true);
+  });
+
   it('measures the extent, and an empty mesh has none', () => {
     expect(bounds(a)).toEqual({ min: [100, 5, -20], max: [101, 5, -19] });
     expect(bounds(mergeMeshes([]))).toEqual({ min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] });
@@ -437,6 +461,14 @@ describe('Frostfire (MP2) worldmodel', () => {
     return walkModel(worl.data(world), modelNodes(worl, world));
   };
   const decoded = () => worldChains().flatMap(interpretChain);
+
+  it.skipIf(!mp2)('33 of the 416 packets clear FGE (§11.4): the water and half the sky, every one of them', () => {
+    const meshes = decoded();
+    const unfogged = meshes.filter((m) => !m.fog);
+    expect(unfogged.length).toBe(33);
+    expect(meshes.filter((m) => m.textureName === 'a_water.tif').every((m) => !m.fog)).toBe(true);
+    expect(meshes.filter((m) => m.textureName === 'a_floor.tif').every((m) => m.fog)).toBe(true);
+  });
 
   it.skipIf(!mp2)('decodes all 416 drawn packets: 15,071 vertices, 8,765 triangles less the one degenerate (§10)', () => {
     const chains = worldChains();

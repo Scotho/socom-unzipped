@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { Fog, Scene } from 'three';
-import { applyFog, fogCoefficient, fogForExtent, type FogSettings } from '../src/fog';
+import { Scene } from 'three';
+import {
+  altitudeFactor, applyFog, fogCoefficient, fogForExtent, fogParams, fogUniforms, type FogSettings,
+} from '../src/fog';
 
 /**
  * The coefficient is pinned against the game's own arithmetic: `scale = -255/(far-near)`,
@@ -48,39 +50,87 @@ describe('fogCoefficient', () => {
   });
 });
 
-describe('applyFog', () => {
-  const base: FogSettings = { enabled: true, near: 600, far: 875, color: [74, 74, 72] };
+/**
+ * The altitude term, `alt = clamp((y - bottom) / (top - bottom), 0, 1)`, multiplies F: below the band
+ * everything is fog colour, above it the distance fog alone applies. Blizzard's band is 50 down to 10.
+ */
+describe('altitudeFactor', () => {
+  it('is 1 at and above the top of the band', () => {
+    expect(altitudeFactor(50, 50, 10)).toBe(1);
+    expect(altitudeFactor(500, 50, 10)).toBe(1);
+  });
+  it('is 0 at and below the bottom', () => {
+    expect(altitudeFactor(10, 50, 10)).toBe(0);
+    expect(altitudeFactor(-300, 50, 10)).toBe(0);
+  });
+  it('is linear through the band', () => {
+    expect(altitudeFactor(30, 50, 10)).toBeCloseTo(0.5, 9);
+    expect(altitudeFactor(20, 50, 10)).toBeCloseTo(0.25, 9);
+  });
+});
 
-  it('puts a linear fog on the scene with the register colour undecoded', () => {
+describe('fogParams', () => {
+  const base: FogSettings = { enabled: true, near: 600, far: 875, color: [74, 74, 72], altitude: null };
+
+  it('is the EE scale and offset, with the altitude term parked as the engine parks it when off', () => {
+    const p = fogParams(base)!;
+    expect(p.scale).toBeCloseTo(-255 / 275, 9);
+    expect(p.offset).toBeCloseTo(255 + 600 * 255 / 275, 9);
+    // `sub_00293F90`: ref.y = -10000, scl.y = 0.001 -- the term is 1 for anything above y = -9000.
+    expect(p.bottom).toBe(-10000);
+    expect(p.invSpan).toBe(0.001);
+  });
+
+  it('carries a map\'s band as the bottom and the reciprocal span', () => {
+    const p = fogParams({ ...base, altitude: { top: 50, bottom: 10 } })!;
+    expect(p.bottom).toBe(10);
+    expect(p.invSpan).toBeCloseTo(1 / 40, 12);
+  });
+
+  it('treats an empty or inverted band as off', () => {
+    expect(fogParams({ ...base, altitude: { top: 10, bottom: 10 } })!.invSpan).toBe(0.001);
+    expect(fogParams({ ...base, altitude: { top: 5, bottom: 10 } })!.bottom).toBe(-10000);
+  });
+
+  it('is null when the fog is off or the span is degenerate', () => {
+    expect(fogParams({ ...base, enabled: false })).toBeNull();
+    expect(fogParams({ ...base, near: 900, far: 900 })).toBeNull();
+  });
+});
+
+describe('applyFog', () => {
+  const base: FogSettings = { enabled: true, near: 600, far: 875, color: [74, 74, 72], altitude: null };
+
+  it('puts the GS fog on the scene as a fog node with the register colour undecoded', () => {
     const scene = new Scene();
     applyFog(scene, base);
-    const fog = scene.fog as Fog;
-    expect(fog).toBeInstanceOf(Fog);
-    expect(fog.near).toBe(600);
-    expect(fog.far).toBe(875);
+    expect(scene.fogNode).not.toBeNull();
+    const u = fogUniforms(scene)!;
+    expect(u.scale.value).toBeCloseTo(-255 / 275, 9);
+    expect(u.offset.value).toBeCloseTo(255 + 600 * 255 / 275, 9);
     // FOGCOL is a raw register value: 74/255 must survive as 74/255, not be sRGB-decoded.
-    expect(fog.color.r).toBeCloseTo(74 / 255, 6);
-    expect(fog.color.b).toBeCloseTo(72 / 255, 6);
+    expect(u.color.value.r).toBeCloseTo(74 / 255, 6);
+    expect(u.color.value.b).toBeCloseTo(72 / 255, 6);
   });
 
   it('updates in place rather than replacing, so a slider does not churn the scene', () => {
     const scene = new Scene();
     applyFog(scene, base);
-    const first = scene.fog;
+    const first = scene.fogNode;
     applyFog(scene, { ...base, far: 1200 });
-    expect(scene.fog).toBe(first);
-    expect((scene.fog as Fog).far).toBe(1200);
+    expect(scene.fogNode).toBe(first);
+    expect(fogUniforms(scene)!.scale.value).toBeCloseTo(-255 / 600, 9);
   });
 
   it('clears the fog when it is switched off or the span is degenerate', () => {
     const scene = new Scene();
     applyFog(scene, base);
     applyFog(scene, { ...base, enabled: false });
-    expect(scene.fog).toBe(null);
+    expect(scene.fogNode).toBe(null);
 
     applyFog(scene, base);
     applyFog(scene, { ...base, near: 900, far: 900 });
-    expect(scene.fog).toBe(null);
+    expect(scene.fogNode).toBe(null);
   });
 });
 

@@ -18,6 +18,18 @@ const TYPE_AT = 88, FLAGS_AT = 92;
 /** `CNode::TYPE` (`zNode/znode.h:138-151`). An instance node is the one that names another model. */
 export const NODE_EMPTY = 0, NODE_GENERIC = 1, NODE_INSTANCE = 2, NODE_MODEL = 7, NODE_LIGHT = 8;
 
+/**
+ * `tag_NODE_PARAMS`'s flag word (`zNode/znode.h:73-105`), the bits a renderer reads. The EE emits the
+ * VU1 light command for a visual only when its node, or the model node it instances, sets
+ * `m_dynamic_motion` or `m_dynamic_light` (`FUN_003b6d10`, decomp 308333-308357); every other node is
+ * drawn from its baked vertex colours. `m_fog` is set on every drawn node of every map, and `m_landmark`
+ * marks the skies, moons and stars, which `TestLandmarkFOG` fogs on its own terms.
+ */
+export const NODE_FLAG_DYNAMIC_MOTION = 1 << 1, NODE_FLAG_DYNAMIC_LIGHT = 1 << 2, NODE_FLAG_LANDMARK = 1 << 3,
+  NODE_FLAG_PRELIGHT = 1 << 5, NODE_FLAG_FOG = 1 << 6;
+/** The two bits that ask for the light command, on the node or on the model it instances. */
+export const NODE_FLAGS_LIT = NODE_FLAG_DYNAMIC_MOTION | NODE_FLAG_DYNAMIC_LIGHT;
+
 /** 36 section 6 / `CDI::Read` (`zIntersect/int_main.cpp:52-67`): 12-byte params, then 16 B per point. */
 const DI_PARAMS_SIZE = 12, DI_POINT_SIZE = 16;
 const DI_REGION_AT = 0, DI_REFCOUNT_AT = 4, DI_PACKED_AT = 8;

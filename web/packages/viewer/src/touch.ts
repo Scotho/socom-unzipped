@@ -16,6 +16,18 @@ export const DEAD_ZONE = 0.15;
 
 /** The stick's travel in CSS pixels: past this it is fully pushed. */
 const RADIUS = 52;
+/** How far a push counts as the rim, and how long it has to stay there to mean a boost. */
+export const RIM = 0.97;
+export const RIM_HOLD_MS = 400;
+
+/**
+ * The boost gesture on a phone: the thumb pushed to the stick's rim and held there. A moment at the
+ * rim is ordinary steering; holding it is the ask. There is no second control for it, because a
+ * second control is the thing a thumb cannot reach while it is on the stick.
+ */
+export function boostFromRim(pushed: number, heldMs: number): boolean {
+  return pushed >= RIM && heldMs >= RIM_HOLD_MS;
+}
 
 /**
  * Where the stick is pushed, as an axis pair in the unit disc.
@@ -81,6 +93,13 @@ export function attachTouchControls(camera: FlyCamera): void {
   let held: number | null = null;
   let originX = 0;
   let originY = 0;
+  /** The timer that turns a held rim into a boost, or null while the stick is short of it. */
+  let rimTimer: ReturnType<typeof setTimeout> | null = null;
+  const leaveRim = (): void => {
+    if (rimTimer !== null) clearTimeout(rimTimer);
+    rimTimer = null;
+    camera.setStickBoost(false);
+  };
 
   zone.addEventListener('pointerdown', (e) => {
     if (held !== null) return;
@@ -103,6 +122,13 @@ export function attachTouchControls(camera: FlyCamera): void {
     const dy = e.clientY - originY;
     const v = stickVector(dx, dy);
     camera.setStick(v.x, v.y);
+    // A thumb held still at the rim sends no more events, so the hold is a timer rather than a poll.
+    const pushed = Math.min(Math.hypot(dx, dy) / RADIUS, 1);
+    if (boostFromRim(pushed, RIM_HOLD_MS)) {
+      if (rimTimer === null) rimTimer = setTimeout(() => camera.setStickBoost(true), RIM_HOLD_MS);
+    } else {
+      leaveRim();
+    }
     const at = knobOffset(dx, dy);
     knob.style.transform = `translate(calc(-50% + ${at.x}px), calc(-50% + ${at.y}px))`;
     e.preventDefault();
@@ -112,6 +138,7 @@ export function attachTouchControls(camera: FlyCamera): void {
     if (held !== e.pointerId) return;
     held = null;
     camera.setStick(0, 0);
+    leaveRim();
     base.hidden = true;
     if (zone.hasPointerCapture(e.pointerId)) zone.releasePointerCapture(e.pointerId);
   };

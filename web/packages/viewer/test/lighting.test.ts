@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyLighting, DEFAULT_LIGHTING, FALLBACK_RIG, LIT_SCALE, type Lightable, type Lighting } from '../src/lighting';
+import { applyLighting, brightenOf, DEFAULT_LIGHTING, FALLBACK_RIG, type Lightable, type Lighting } from '../src/lighting';
 import type { GlobalLighting } from '@s2u/scene';
 
 /**
@@ -18,12 +18,14 @@ const AXES: GlobalLighting = {
   colours: [[0.25, 0.25, 0.25], [1, 1, 1], [0.125, 0.125, 0.125]],
   ambient: [0.5, 0.5, 0.5],
 };
-const LIGHT: Lighting = { rig: AXES, ambient: 0, gain: 2 };
+/** FIX = 128 is a brighten of exactly 2x, so the numbers below can be read off by eye. */
+const LIGHT: Lighting = { rig: AXES, brighten: 128, rigEverywhere: false };
 
-/** One vertex: a material colour and a normal. */
-const one = (rgba: number[], n: number[] | null): Lightable => ({
+/** One vertex of a part the engine lights: a material colour and a normal. */
+const one = (rgba: number[], n: number[] | null, lit = true): Lightable => ({
   colors: Float32Array.from(rgba),
   normals: n ? Float32Array.from(n) : null,
+  lit,
 });
 
 const lit = (part: Lightable, light: Lighting = LIGHT): number[] => {
@@ -32,7 +34,27 @@ const lit = (part: Lightable, light: Lighting = LIGHT): number[] => {
   return [...out];
 };
 
-describe('applyLighting', () => {
+describe('applyLighting on a part the engine does not light', () => {
+  it('draws the baked material colour times the frame brighten and nothing else', () => {
+    // No rig term at all: the VU copies record2 into RGBAQ untouched, and the post-process lifts it.
+    expect(lit(one([0.5, 0.25, 1, 0.75], [0, 1, 0], false))).toEqual([1, 0.5, 2, 0.75]);
+  });
+
+  it('ignores the normals, which the light command alone would read', () => {
+    expect(lit(one([0.5, 0.5, 0.5, 1], [0, -1, 0], false))).toEqual(lit(one([0.5, 0.5, 0.5, 1], [0, 1, 0], false)));
+  });
+
+  it('is lit by the rig anyway when the panel asks for the rig everywhere', () => {
+    const everywhere: Lighting = { ...LIGHT, rigEverywhere: true };
+    expect(lit(one([0.5, 0.5, 0.5, 1], [0, 1, 0], false), everywhere)).toEqual([1.5, 1.5, 1.5, 1]);
+  });
+
+  it('a brighten of zero is the bare frame', () => {
+    expect(lit(one([0.5, 0.5, 0.5, 1], null, false), { ...LIGHT, brighten: 0 })).toEqual([0.5, 0.5, 0.5, 1]);
+  });
+});
+
+describe('applyLighting on a part the engine lights', () => {
   it('multiplies the material by ambient plus each light it faces, times the exposure', () => {
     // Straight up: ambient + the y light, doubled. 0.5 * (0.5 + 1) * 2 = 1.5.
     expect(lit(one([0.5, 0.5, 0.5, 1], [0, 1, 0]))).toEqual([1.5, 1.5, 1.5, 1]);
@@ -57,7 +79,7 @@ describe('applyLighting', () => {
   it('lights each channel by its own light colour, not by a single scalar', () => {
     const tinted: Lighting = {
       rig: { directions: [[0, 1, 0], [0, 0, 0], [0, 0, 0]], colours: [[1, 0.5, 0], [0, 0, 0], [0, 0, 0]], ambient: [0, 0, 0] },
-      ambient: 0, gain: 1,
+      brighten: 0, rigEverywhere: false,
     };
     expect(lit(one([1, 1, 1, 1], [0, 1, 0]), tinted)).toEqual([1, 0.5, 0, 1]);
   });
@@ -97,15 +119,9 @@ describe('applyLighting', () => {
     expect(lit(one([0.5, 0.5, 0.5, 1], [0, 0, 0]))).toEqual([0.5, 0.5, 0.5, 1]);
   });
 
-  it('the ambient slider is a trim added to the map\'s own ambient, not a replacement', () => {
-    const trimmed: Lighting = { rig: AXES, ambient: 0.25, gain: 1 };
-    // 0.5 * (0.5 + 0.25) with no light facing: the map's 0.5 plus the trim's 0.25.
-    expect(lit(one([0.5, 0.5, 0.5, 1], [0, -1, 0]), trimmed)).toEqual([0.375, 0.375, 0.375, 1]);
-  });
-
   it('lights with a stand-in rig, not with nothing, when a map has no GlobalLighting record', () => {
     // The bare model, not the shipped trims: this is about the rig standing in, not about the sliders.
-    const none: Lighting = { rig: null, ambient: 0, gain: 1 };
+    const none: Lighting = { rig: null, brighten: 0, rigEverywhere: false };
     const up = lit(one([0.5, 0.5, 0.5, 1], [0, 1, 0]), none)[0]!;
     const down = lit(one([0.5, 0.5, 0.5, 1], [0, -1, 0]), none)[0]!;
     expect(up).toBeCloseTo(0.5 * (FALLBACK_RIG.ambient[0] + FALLBACK_RIG.colours[0]![0]), 6);
@@ -113,11 +129,8 @@ describe('applyLighting', () => {
     expect(up).toBeGreaterThan(down);
   });
 
-  it('the shipped defaults are the owner picks, and the calibrated scale is still named', () => {
-    // Chosen by looking at the maps, not fitted: a lower exposure with some of it carried as ambient.
-    expect(DEFAULT_LIGHTING.ambient).toBe(0.1);
-    expect(DEFAULT_LIGHTING.gain).toBe(1.9);
-    // ... and what the Frostfire patches actually measured, which the slider can still be set to.
-    expect(LIT_SCALE).toBe(8);
+  it('the shipped default is the console-measured brighten, FIX 93, and no rig on unflagged parts', () => {
+    expect(DEFAULT_LIGHTING).toEqual({ rig: null, brighten: 93, rigEverywhere: false });
+    expect(brightenOf(DEFAULT_LIGHTING)).toBeCloseTo(1 + 93 / 128, 6);
   });
 });

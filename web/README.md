@@ -52,7 +52,13 @@ The camera flies like a creative-mode build camera: momentum, not teleporting.
 | double-tap `W`, held | boost, with the field of view widening to match. Nothing is bound to `Ctrl`: `Ctrl+W` closes the tab and no page can prevent it |
 | wheel | trims the fly speed between 0.1x and 16x; the panel shows the trim |
 | `Q`/`E` | down and up, kept from the earlier bindings |
+| arrow keys | look, at a steady rate, for a keyboard with no mouse to hand |
+| `F` | fullscreen, and back (also the button under the frame counter) |
 | `` ` `` | hides and shows the panel and the frame counter, for a clean look at the map |
+
+The mouse is captured with `unadjustedMovement` where the browser offers it, so the OS's pointer
+acceleration stays out of the look. `?map=MP7` opens a map by its archive, the picker writes the URL,
+and the last map picked is remembered for the next visit.
 
 Starts ramp and stops glide rather than snapping. The velocity is integrated in closed form, so the camera
 covers the same ground per second at 30 fps as at 240 — and `setCamera` from the debug hook clears the
@@ -86,7 +92,13 @@ same velocity model the keys drive, so the ramp, the glide and the frame-rate in
 that for free; `stickVector` in `viewer/src/touch.ts` is the only arithmetic, and it is unit-tested.
 
 They appear on a coarse pointer, or at the first touch event for a hybrid a media query gets wrong,
-and not at all on a mouse.
+and not at all on a mouse. A touch drag turns twice as far per pixel as a mouse drag, because a thumb
+has a phone's width to work with; the stick held at its rim for 400 ms is the boost, the one gesture a
+thumb can make without leaving the stick; and a round fullscreen button sits above the lift buttons,
+which on a phone also asks for a landscape lock. The canvas is `100dvh`, so the picture's centre is the
+screen's whether or not the browser bar is showing, and the pixel ratio starts at 1.5 on a coarse
+pointer and adapts (`main.ts`, `adapt`): frames over 24 ms step it down to 0.75, frames under 12 ms
+step it back up.
 
 Everything the viewer draws over the map goes in one strip along the top: the back link, then the
 panel's title bar beneath it. Beneath and not beside — the link is 147px and the header wants 244px,
@@ -96,7 +108,7 @@ opens folded on a coarse pointer (a remembered choice still wins), its body is c
 drops the draw and collision counts and abbreviates the rest so it fits on one row at 360px. The
 lift buttons clear the browser's own bottom bar with `env(safe-area-inset-bottom)`.
 
-Deliberately minimal: no sprint, no gestures, no tuning pass.
+Deliberately minimal: one gesture, and no tuning pass beyond the look rate.
 
 ## Loading a map without freezing the page
 
@@ -116,26 +128,47 @@ Meanwhile the overlay says what is happening: bytes fetched (the archive is read
 the bar has a real denominator), then the worker's own stages, then the scene build. The map picker is
 the only control taken away while a load runs.
 
+## What the picture is made of
+
+Settled on 2026-09-26 (`docs/superpowers/specs/2026-09-26-web-map-viewer-polish-design.md`):
+
+- **The world is drawn unlit, then the frame is brightened.** The EE emits the VU1 light command only
+  for a node flagged `m_dynamic_motion` or `m_dynamic_light`; on most maps that is nobody, and the
+  vertex colours the exporter baked go to the GS untouched (`viewer/src/lighting.ts`). The game's
+  post-process then multiplies every pixel, fog included, by `1 + FIX/128`, `FIX` being its
+  auto-exposure's reading (93 on the console dump). That is the "factor of eight" the earlier notes
+  could not place. The rig from `GlobalLighting` is exact and is applied to the flagged nodes only.
+- **The GS state is read off each texture's bind packet** (`gs/src/gsState.ts`, `viewer/src/materialSpec.ts`):
+  the blend equation (source alpha, additive on 212 glows, none on the cutouts), the alpha test and its
+  reference (`GREATER 64`, exactly half), the filtering and mipmap request, and the wrap mode per axis.
+  Nothing about a texture's alpha is guessed from its pixels any more, except whether it has any.
+- **Fog is the GS's linear ramp with the altitude band**, as a fog node of its own (`viewer/src/fog.ts`):
+  `F = clamp(w*scale + offset) * clamp((y - bottom)/(top - bottom))`, the second term read off the EE's
+  own setup and parked at the engine's off values (`-10000`, `0.001`) on the sixteen maps without it.
+  A packet whose GIFtag clears `FGE` -- every sky, moon, star, water plane and self-lit surface on every
+  map (`tools/dump-fge.ts`) -- takes no fog, which is what puts the horizon back.
+- **The camera is the map's**: a 49° vertical field (`m_vfov`, a half-angle of 24.5°), 46° on Rat's Nest.
+- **The PS2 picture** (`options`): the 640×448 frame the console drew, projected with the map's own
+  half-angles and stretched onto a 4:3 box the way the television did.
+
 ## Known gaps
 
-- **The lighting is the game's, except for one factor of eight.** The VU's model is emulated
-  (`viewer/src/lighting.ts`) with the map's own rig: `MP*.ZED/GlobalLighting` holds three light
-  directions, three colours and an ambient, and `-normalize(dir[k])` with the colours verbatim
-  reproduces the VU1 quadwords a live capture shows, bit for bit. What the disc does not explain is
-  the magnitude: the rig on its own renders about eight times darker than the PS2 capture. The
-  relation between surfaces is right — the capture's vertical wall is brighter than its ground, and so
-  is ours — and only the overall scale is a guess. The two sliders open at the owner's picks (ambient
-  trim +0.10, exposure 1.90×) rather than at the calibrated pair (0 and 8.00×).
-
-- **Altitude fog is not applied.** Six of the 22 maps enable it (`cameras/camera` flags bit 31). No VU1
-  dump exists from one, so the band's encoding is the only inferred part of the fog model and is left out
-  rather than guessed.
 - **Backface culling is inferred from the texture, not read.** The PS2 culls on VU1, and whether a
   given object is culled is chosen by a command list the EE builds per draw -- it is not on the disc.
   The viewer culls where the texture is fully solid and keeps both faces where it is not, because a
   solid two-sided surface is modelled as two coincident sheets (Crossroads' awning) while a cutout
   sheet is modelled once (a leaf card). It is the right call on every map swept, but it is a rule
-  about textures standing in for a fact about draws.
+  about textures standing in for a fact about draws. The cull command is emitted per visual from a
+  flag byte the decomp reads (`FUN_003b5f20`, `flags & 8`), most likely `vparams` word 0, which the
+  scene package does not yet parse.
+
+- **The blend order is three's.** The hardware sorted nothing: it walked the grid and deferred only
+  fading objects. three draws blended surfaces back to front by object, so the graded textures keep one
+  mesh per chunk and never write depth; a `(Cd - 0) * As + Cd` brighten and the one EE-animated `FIX`
+  glow are drawn additive, the nearest fixed-function blend.
+- **The auto-exposure is a slider.** `FIX` is computed per frame from a column of frame pixels; the
+  viewer opens at the one value measured (93) and leaves the readback unmodelled.
+- **The detail texture pass is not drawn** (SEMANTICS §11.6).
 
 - **Spawns are not on the disc.** `AIMAPS.MPS` is the file that would hold them and no reader for it exists;
   `scene/spawns.ts` carries the measured table instead, so a map that was never measured opens on its own

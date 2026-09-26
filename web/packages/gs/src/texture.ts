@@ -1,4 +1,5 @@
 import { Reader } from '@s2u/archive';
+import { decodeGsState, type GsState } from './gsState';
 import { decodeTex0, TEXTURE_PSM, type Tex0 } from './tex0';
 
 /** One `textures/<name>.tif/texdat` key, read exactly as `CTexture::Read` reads it (36 §5). */
@@ -13,6 +14,8 @@ export interface TextureRecord {
   bilinear: boolean; transp1bit: boolean; dynamic: boolean; context: boolean;
   pixels: Uint8Array;
   tex0: Tex0 | null;            // recovered from the record's own bind packet; null when it holds none
+  /** The blend, alpha test, filtering and wrap the same packet sets -- see `./gsState`. */
+  gs: GsState | null;
 }
 
 const HEADER = 16;              // 36 §5: TEXTURE_PARAMS is 16 bytes
@@ -57,6 +60,7 @@ export function parseTextureRecord(name: string, texdat: Uint8Array): TextureRec
     bilinear: bit(4), transp1bit: bit(5), dynamic: bit(6), context: bit(7),
     pixels: r.slice(HEADER + PIXEL_PREFIX, size),   // after the header and the 16-byte prefix
     tex0: findTex0(r, HEADER + PIXEL_PREFIX + size, gsaddr, width, height),
+    gs: findGsState(r, HEADER + PIXEL_PREFIX + size),
   };
 }
 
@@ -74,4 +78,18 @@ function findTex0(r: Reader, at: number, gsaddr: number, width: number, height: 
     if (TEXTURE_PSM.has(t.psm) && t.tbp0 === gsaddr && 1 << t.tw === width && 1 << t.th === height) return t;
   }
   return null;
+}
+
+/**
+ * The A+D block of the same packet, read quadword by quadword: the low u64 is the register value and
+ * the low byte of the high u64 is the register id. Words that are not one of the four wanted registers
+ * (the GIFtag itself, the VU1 parameters, `TEX0`) are simply not matched.
+ */
+function findGsState(r: Reader, at: number): GsState | null {
+  const end = Math.min(at + BIND_QWC * 16, r.length);
+  const quadwords: { value: bigint; register: number }[] = [];
+  for (let o = at; o + 16 <= end; o += 16) {
+    quadwords.push({ value: r.u64(o), register: Number(r.u64(o + 8) & 0xffn) });
+  }
+  return decodeGsState(quadwords);
 }

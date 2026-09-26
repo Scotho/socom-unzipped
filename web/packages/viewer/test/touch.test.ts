@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEAD_ZONE, knobOffset, stickVector } from '../src/touch';
+import { boostFromRim, DEAD_ZONE, knobOffset, stickVector } from '../src/touch';
 
 /**
  * The stick's one piece of arithmetic: a thumb's offset in CSS pixels turned into an axis pair the
@@ -72,5 +72,22 @@ describe('knobOffset', () => {
     expect(Math.hypot(at.x, at.y)).toBeCloseTo(R, 6);
     expect(at.x).toBeCloseTo(60, 6);
     expect(at.y).toBeCloseTo(-80, 6);
+  });
+});
+
+/**
+ * The boost gesture on a phone: the thumb pushed to the stick's rim and held there. A moment at the rim
+ * is ordinary steering; holding it is the ask.
+ */
+describe('boostFromRim', () => {
+  it('needs the stick at the rim and held there a while', () => {
+    expect(boostFromRim(1, 400)).toBe(true);
+    expect(boostFromRim(0.98, 1000)).toBe(true);
+  });
+  it('is not a boost short of the rim, however long', () => {
+    expect(boostFromRim(0.8, 5000)).toBe(false);
+  });
+  it('is not a boost at the rim for a moment', () => {
+    expect(boostFromRim(1, 100)).toBe(false);
   });
 });

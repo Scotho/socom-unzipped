@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-import { Clock, Scene } from 'three';
+import { Scene, Timer } from 'three';
 import type { MapInfo } from '@s2u/archive';
 import { sortByPopularity } from './mapOrder';
 import { spawnsFor, type Spawns } from '@s2u/scene';
@@ -7,13 +7,13 @@ import { FlyCamera, type Pose } from './camera';
 import type { ViewerHook } from './hook';
 import type { LoadedMap, LoadStage } from './loadMap';
 import { Overlays } from './overlays';
-import { createRenderer, type Backend } from './renderer';
+import { createRenderer, PS2_FRAME, type Backend, type Presentation } from './renderer';
 import { applyFog, ELF_DEFAULT_FOGCOL, fogForExtent, type FogSettings } from './fog';
-import { DEFAULT_LIGHTING, type Lighting } from './lighting';
+import { brightenOf, DEFAULT_LIGHTING, type Lighting } from './lighting';
 import { Ui, type SliderName, type ToggleName } from './ui';
 import { buildWorld, centre, type WorldView } from './world';
 import { spreadAcrossFrames, type Spread } from './scheduler';
-import { attachTouchControls } from './touch';
+import { attachTouchControls, wantsTouchControls } from './touch';
 import type { ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -21,6 +21,19 @@ import type { ViewerRequest, ViewerResponse } from './worker';
 const MAPS = `${import.meta.env.BASE_URL}maps`;
 /** The map the viewer opens on, and the one the screenshot test asks for by name. */
 const DEFAULT_ARCHIVE = 'MP2';
+/** Where the last map picked is remembered, so a return visit opens where it left off. */
+const LAST_MAP_KEY = 's2u.viewer.lastMap';
+/**
+ * The pixel ratio the native presentation may draw at: the device's, up to 2 on a desktop and 1.5 on a
+ * phone, whose GPU is filling a screen a hand's width away. `adapt` lowers it further when frames run
+ * long and raises it back when they do not.
+ */
+const RATIO_CAP = Math.min(globalThis.devicePixelRatio || 1, wantsTouchControls() ? 1.5 : 2);
+const RATIO_FLOOR = 0.75;
+/** Frame times that ask for a lower or a higher ratio, and how long to wait between changes. */
+const SLOW_MS = 24, FAST_MS = 12, ADAPT_EVERY_MS = 2000;
+/** The game's own projection, framebuffer-wide: `tan(hfov) / tan(vfov)` at the authored half-angles. */
+const PS2_ASPECT = Math.tan(0.6109) / Math.tan(0.4276);
 /** Eye height above a spawn's feet: a standing player, not a floating one. */
 const EYE = 20;
 
@@ -39,6 +52,12 @@ const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'modu
 let view: WorldView | null = null;
 let loaded: LoadedMap | null = null;
 let backend: Backend = 'webgl2';
+/** The maps the index listed, so a path can be turned back into its archive for the URL. */
+let mapList: MapInfo[] = [];
+/** The presentation the panel asks for; `fit` puts it into effect. */
+let presentation: Presentation = 'native';
+/** `fit`, once `boot` has a renderer: the canvas's CSS box, or the PS2 frame, onto the camera. */
+let fit: (() => void) | null = null;
 /** The renderer's half of the colour-space switch, once `boot` has one. */
 let setLinearLight: ((on: boolean) => void) | null = null;
 
@@ -47,7 +66,7 @@ const lighting: Lighting = { ...DEFAULT_LIGHTING };
 
 /** The panel's fog. Replaced wholesale when a map states its own, then nudged by the sliders. */
 const fog: FogSettings = {
-  enabled: true, ...fogForExtent(1200), color: [...ELF_DEFAULT_FOGCOL],
+  enabled: true, ...fogForExtent(1200), color: [...ELF_DEFAULT_FOGCOL], altitude: null,
 };
 /** The renderer's clear colour, once `boot` has one: the background follows the fog. */
 let setClearColor: ((rgb: [number, number, number]) => void) | null = null;
@@ -58,10 +77,16 @@ let setClearColor: ((rgb: [number, number, number]) => void) | null = null;
  */
 let fogIsMine = false;
 
-/** Puts the current fog on the scene and behind it. */
+/**
+ * Puts the current fog on the scene and behind it. The brighten pass multiplies the whole frame, the
+ * fog colour and the cleared background with it, so both are lifted by the same factor here.
+ */
 function refreshFog(): void {
-  applyFog(scene, fog);
-  setClearColor?.(fog.enabled ? fog.color : ELF_DEFAULT_FOGCOL);
+  const gain = brightenOf(lighting);
+  const lift = (rgb: [number, number, number]): [number, number, number] =>
+    [Math.min(255, rgb[0] * gain), Math.min(255, rgb[1] * gain), Math.min(255, rgb[2] * gain)];
+  applyFog(scene, { ...fog, color: lift(fog.color) });
+  setClearColor?.(lift(fog.enabled ? fog.color : ELF_DEFAULT_FOGCOL));
 }
 
 /**
@@ -89,6 +114,7 @@ let revealing: Spread | null = null;
 const load = (path: string): void => {
   askedAt = performance.now();
   wantedMap = ++requests;
+  rememberMap(path);
   revealing?.cancel();
   revealing = null;
   // The old map stays on screen and the camera stays live while this runs; what is taken away is the
@@ -127,8 +153,35 @@ ui.onMapChange((path) => {
 ui.onToggle(applyToggle);
 ui.apply(applyToggle);
 ui.onChromeToggle();
+ui.onFullscreen();
 attachTouchControls(fly);
 ui.onPanelToggle();
+
+/**
+ * The map a visitor asked for: `?map=MP7` in the URL first, then the one remembered from last time,
+ * then the default. Matched on the archive stem, case aside, so a hand-typed link works.
+ */
+function wantedArchive(): string {
+  try {
+    const asked = new URLSearchParams(location.search).get('map');
+    if (asked) return asked.toUpperCase();
+    const last = localStorage.getItem(LAST_MAP_KEY);
+    if (last) return last.toUpperCase();
+  } catch { /* no storage, or no URL to read */ }
+  return DEFAULT_ARCHIVE;
+}
+
+/** Writes the map into the URL and into storage, both best-effort: a viewer that cannot is still a viewer. */
+function rememberMap(path: string): void {
+  const archive = mapList.find((m) => m.path === path)?.archive;
+  if (!archive) return;
+  try {
+    const url = new URL(location.href);
+    url.searchParams.set('map', archive);
+    history.replaceState(null, '', url);
+  } catch { /* a page without a history, such as a file: URL */ }
+  try { localStorage.setItem(LAST_MAP_KEY, archive); } catch { /* the default next time */ }
+}
 ui.onSlider((name, value) => {
   if (name === 'fognear' || name === 'fogfar') fogIsMine = true;
   applySlider(name, value);
@@ -137,8 +190,7 @@ ui.applySliders(applySlider);
 
 /** One switch for all six overlays: the world's materials, and the things drawn beside the world. */
 function applySlider(name: SliderName, value: number): void {
-  if (name === 'ambient') lighting.ambient = value;
-  else if (name === 'lightgain') lighting.gain = value;
+  if (name === 'brighten') { lighting.brighten = value; refreshFog(); }
   // A slider only owns the fog once the player has moved it: `applySliders` is also called on every
   // map load, and the range input has snapped the decoded value to its step by then.
   else if (name === 'fognear') { if (fogIsMine) { fog.near = value; refreshFog(); } return; }
@@ -156,10 +208,20 @@ function applyToggle(name: ToggleName, on: boolean): void {
   else if (name === 'linestrips') view?.setLineStrips(on);
   else if (name === 'billboards') view?.setBillboards(on);
   else if (name === 'untextured') view?.setUntexturedHighlight(on);
+  else if (name === 'rigeverywhere') { lighting.rigEverywhere = on; view?.setLighting(lighting); }
+  else if (name === 'ps2look') {
+    presentation = on ? 'ps2' : 'native';
+    document.body.classList.toggle('ps2-look', on);
+    fit?.();
+  }
   else { view?.setLinearLight(on); setLinearLight?.(on); }
 }
 
-void boot();
+boot().catch((e: unknown) => {
+  // No WebGPU and no WebGL2: the page has nothing to draw with, and should say so rather than sit on
+  // "booting" for ever.
+  ui.setStatus(`this browser offers neither WebGPU nor WebGL2, so there is nothing to draw with: ${e instanceof Error ? e.message : String(e)}`, 'error');
+});
 
 /** Brings the renderer up, starts the frame loop, then asks the worker for the map list. */
 async function boot(): Promise<void> {
@@ -171,7 +233,15 @@ async function boot(): Promise<void> {
   refreshFog();
   backend = chosen;
 
-  const fit = (): void => {
+  fit = (): void => {
+    created.setPresentation(presentation);
+    if (presentation === 'ps2') {
+      // The console's frame: 640 by 448 pixels, and a projection built in those pixels from the map's
+      // own half-angles, which the page then stretches onto 4:3 exactly as the television did.
+      resize(PS2_FRAME.width, PS2_FRAME.height);
+      fly.setAspect(loaded?.camera ? Math.tan(loaded.camera.hfov) / Math.tan(loaded.camera.vfov) : PS2_ASPECT);
+      return;
+    }
     const width = Math.max(1, canvas!.clientWidth);
     const height = Math.max(1, canvas!.clientHeight);
     resize(width, height);
@@ -179,14 +249,34 @@ async function boot(): Promise<void> {
   };
   fit();
   globalThis.addEventListener('resize', fit);
+  // A phone's browser bar comes and goes without a window resize; the visual viewport says when.
+  globalThis.visualViewport?.addEventListener('resize', fit);
+  globalThis.addEventListener('orientationchange', fit);
 
-  const clock = new Clock();
+  const timer = new Timer();
   // A frame time smoothed over about half a second: the raw number flickers too much to read, and the
   // point of the counter is to notice a map that costs 30 ms, not to watch it jitter.
   let smoothedMs = 16.7;
   let lastShown = 0;
+  let lastAdapted = 0;
+  /**
+   * Trades pixels for frames. A phone that cannot hold Crossroads at 1.5x drops to 1.25x, then 1x,
+   * and climbs back when it can; a desktop that never runs long never moves. Not while a map is
+   * arriving, whose frames are long on purpose, and never in the PS2 presentation, whose size is the
+   * point.
+   */
+  const adapt = (now: number): void => {
+    if (presentation === 'ps2' || revealing || now - lastAdapted < ADAPT_EVERY_MS) return;
+    const ratio = created.pixelRatio();
+    if (smoothedMs > SLOW_MS && ratio > RATIO_FLOOR) created.setPixelRatio(Math.max(RATIO_FLOOR, ratio - 0.25));
+    else if (smoothedMs < FAST_MS && ratio < RATIO_CAP) created.setPixelRatio(Math.min(RATIO_CAP, ratio + 0.25));
+    else return;
+    lastAdapted = now;
+  };
+  created.setPixelRatio(RATIO_CAP);
   const frame = (): void => {
-    const dt = Math.min(clock.getDelta(), 0.1);     // a backgrounded tab must not teleport the camera
+    timer.update();
+    const dt = Math.min(timer.getDelta(), 0.1);     // a backgrounded tab must not teleport the camera
     fly.update(dt);
     view?.faceCamera(fly.camera);   // the flares turn before the frame is drawn, not after
     render(scene, fly.camera);
@@ -197,6 +287,7 @@ async function boot(): Promise<void> {
       if (now - lastShown > 200) {                  // redrawing text every frame is itself a cost
         lastShown = now;
         ui.setFps(1000 / smoothedMs, smoothedMs);
+        adapt(now);
       }
     }
     requestAnimationFrame(frame);
@@ -223,7 +314,10 @@ async function served(): Promise<boolean> {
 
 function showMaps(maps: MapInfo[]): void {
   const ordered = sortByPopularity(maps); // the owner's popularity ranking, most played first
-  const first = ordered.find((m) => m.archive === DEFAULT_ARCHIVE) ?? ordered[0];
+  mapList = ordered;
+  const wanted = wantedArchive();
+  const first = ordered.find((m) => m.archive.toUpperCase() === wanted)
+    ?? ordered.find((m) => m.archive === DEFAULT_ARCHIVE) ?? ordered[0];
   ui.setMaps(ordered, first?.path ?? null);
   if (!first) {
     ui.setStatus('the served index lists no MP archives', 'error');
@@ -260,6 +354,8 @@ function show(map: LoadedMap): void {
     fog.near = map.camera.fogNear;
     fog.far = map.camera.fogFar;
     fog.color = [...map.camera.fogColor];
+    // The altitude band, on the six maps that enable it: below its bottom everything is fog colour.
+    fog.altitude = map.camera.fogAltitude ? { top: map.camera.fogTop, bottom: map.camera.fogBottom } : null;
     fogIsMine = false;                          // the new map's own fog, until a slider says otherwise
     ui.setFog(fog.near, fog.far, fog.color);
     ui.setFogEnabled(fog.enabled);
@@ -273,6 +369,7 @@ function show(map: LoadedMap): void {
   // A map with no `cameras/camera` key takes a range off its own size rather than the last map's.
   if (!map.camera) {
     Object.assign(fog, fogForExtent(view.box.min.distanceTo(view.box.max)));
+    fog.altitude = null;
     fogIsMine = false;                          // the fallback is the map's too, until a slider moves
     ui.setFog(fog.near, fog.far, fog.color);
   }
@@ -289,6 +386,10 @@ function show(map: LoadedMap): void {
   ui.applySliders(applySlider);   // a freshly built world starts at the panel's settings, not the defaults
   refreshFog();
   fly.setScale(map.metersPerUnit);
+  // The map's own vertical field of view: `m_vfov` is a half-angle in radians, 24.5 degrees on all but
+  // one map, so the picture is the 49-degree one a player saw rather than a wide-angle survey.
+  if (map.camera) fly.setFov(2 * map.camera.vfov * 180 / Math.PI);
+  fit?.();                                        // the PS2 presentation's aspect is the map's own
 
   if (spawn) {
     fly.lookFrom([spawn.a[0], spawn.a[1] + EYE, spawn.a[2]], spawn.b);

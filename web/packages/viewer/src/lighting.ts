@@ -1,90 +1,66 @@
 import type { GlobalLighting } from '@s2u/scene';
 
-/** Everything the lighting needs: the material colours and, if they survived, the normals. */
+/** Everything the lighting needs: the material colours, the normals if they survived, and whether the engine lights it. */
 export interface Lightable {
   colors: Float32Array;
   normals: Float32Array | null;
+  /** `PlacedModel.lit`: the node asked for the VU1 light command. Most did not. */
+  lit: boolean;
 }
 
 /**
- * The VU1's own lighting, with the map's own numbers in it.
+ * How the PS2 lights a multiplayer map, which is mostly that it does not.
  *
- * `socom2_dispatch_0x1b50.cpp` (SEMANTICS calls it NAT) documents command `0x18` -> `0x1440` as:
+ * **The world is drawn unlit.** The EE builds each object's VU1 command list per frame
+ * (`FUN_003b5f20`, decomp 307800-308038) and emits the light command (`0x54`/`0x18`, or `0x56`/`0x1a`)
+ * only when the node, or the model node it instances, carries `m_dynamic_motion` or `m_dynamic_light`
+ * (`FUN_003b6d10`, decomp 308333-308357; `NODE_FLAGS_LIT` in `@s2u/scene`). Frostfire has no such node
+ * among its 448 drawn ones; Desert Glory and Crossroads none; a few maps flag a handful of ferns,
+ * palms and flares. For everything else command `0x08` copies the material colour (`record2`) into
+ * `RGBAQ` untouched, and what reaches the GS is the vertex colour the exporter baked -- the
+ * `prelight` the nodes are flagged with -- times the texel.
  *
- * ```
- *   light[0..2] = vf9/vf10/vf11 * params.y,  light[3] = vf12 * params.z
- *   normal      = max(vf5 * record0.w + vf6 * record1.z + vf7 * record1.w, 0) on xyz
- *   lit         = light[0]*normal.x + light[1]*normal.y + light[2]*normal.z + light[3]
- *   staging + 1 = record2 * lit
- * ```
+ * **Then the frame is brightened.** The game's post-process copies the frame at half size and draws it
+ * back with `ALPHA = (Cd - 0) * FIX + Cd`, `out = Cd * (1 + FIX / 128)` on every pixel, the fog colour
+ * included. `FIX` comes from the auto-exposure thread's readback of a column of frame pixels
+ * (`FUN_003b24c0`); the console dump measured 93, a lift of 1.73x (`docs/research/31` sections 12-13).
+ * The defaults cap it at 100.
  *
- * So the drawn vertex colour is the **material** colour on disc (`record2`, what `MeshData.colors`
- * carries) times a `lit` built from the vertex normal. `record0.w`, `record1.z` and `record1.w` are
- * the three lanes SEMANTICS section 4 calls the normal, which `mesh` decodes and `loadMap` rotates
- * into world space.
+ * That is the "factor of eight" the earlier spec could not place: the viewer lit every vertex with the
+ * rig (about 0.21 at a ground normal on Frostfire, so five times too dark) and then applied no
+ * brighten (1.73x more). The rig itself is exact -- it reproduces the captured VU1 quadwords bit for
+ * bit -- and is still applied where the engine applies it.
  *
- * **The matrix is not the identity, and the lights are not axis lights.** Read against a live VU1
- * capture, `vf5`-`vf7` hold three unit light directions as their *columns*, not their rows: the VU
- * computes `normal.x = vf5.x*n.x + vf6.x*n.y + vf7.x*n.z`, which is `dot(column0, n)`. So
+ * For a lit part the VU computes (`socom2_dispatch_0x1b50.cpp` command `0x18` -> `0x1440`):
  *
  * ```
  *   lit = C0*max(dot(D0,N),0) + C1*max(dot(D1,N),0) + C2*max(dot(D2,N),0) + ambient
+ *   staging + 1 = record2 * lit
  * ```
  *
- * -- three directional lights with arbitrary world directions plus an ambient. And the numbers are
- * **on the disc after all**: `MP*.ZED` carries a 112-byte `GlobalLighting` record on all 34 maps, and
- * `-normalize(dir[k])` with the colours verbatim reproduces the captured VU1 quadwords 16 to 23
- * bit-exactly, sign of zero included. `@s2u/scene`'s `parseGlobalLighting` reads it; see the spec,
- * "The lighting values are on the disc".
- *
- * `params.y`/`params.z` are only ever 0.0 or 1.0 across 900 captured dumps -- a lighting enable, not a
- * scale -- so there is no hardware gain. The two sliders that remain are trims for looking at a dark
- * map, and both are neutral by default.
+ * three directional lights and an ambient out of `MP*.ZED/GlobalLighting`, with the three directions
+ * in the *columns* of `vf5`-`vf7`. The `params.y`/`params.z` lanes are a per-node scale
+ * (`customGlobalLight / 127`, `vis_main.cpp:389-403`) that is 1.0 on every node of the corpus.
  */
 export interface Lighting {
-  /** The map's own rig, or null before a map is loaded (then only the trims light anything). */
+  /** The map's own rig, or null before a map is loaded. */
   rig: GlobalLighting | null;
-  /** A trim added to the map's ambient. 0 is the hardware. */
-  ambient: number;
-  /** An exposure on the whole result. 1 is the bare model; see `LIT_SCALE` for why the default is 8. */
-  gain: number;
+  /** The auto-exposure `FIX`, 0..255: the frame is multiplied by `1 + FIX / 128`. */
+  brighten: number;
+  /** Apply the rig to every part, flagged or not: the viewer's earlier reading, kept for comparison. */
+  rigEverywhere: boolean;
 }
 
-/**
- * **The one number here that is not measured: the exposure.**
- *
- * The rig is exact -- `-normalize(dir[k])` and the colours verbatim reproduce the captured VU1
- * quadwords bit for bit -- and its *shape* is confirmed against the PS2 capture of Frostfire. That
- * capture is what the old sliders were fitted to, and the fit could never make a vertical wall
- * brighter than the ground, which is what the capture shows (ground 67.8, right wall 95.9). The rig
- * does it on the first try: at the sweep pose, ours reads ground 7.0 and wall 12.1, a ratio of 1.73
- * against the capture's 1.41, where the fitted sliders gave 0.29.
- *
- * What it does not give is the magnitude. Everything is a factor of about 9 too dark. Rendered at
- * this exposure the same two patches read 54.9 and 96.7 against the capture's 67.8 and 95.9 -- the
- * wall within 1 percent, the ground 19 percent low -- and the two surfaces bracket the true figure
- * between 8 and 10. Eight is taken because it is a power of two, which is what a missing shift looks
- * like, and because it is the only candidate with a mechanical explanation rather than a fitted one.
- *
- * Where the shift might be is **not** established. The obvious suspect, the normal's `ITOF15`, is
- * ruled out: SEMANTICS section 4 cites it to the microcode and 15,054 of 15,071 Frostfire normals
- * come out unit length at `/32768`. Set the slider to 1.00 to see the model with nothing added.
- */
-export const LIT_SCALE = 8;
+/** The frame multiplier the brighten pass applies: `1 + FIX / 128`. */
+export const brightenOf = (light: Lighting): number => 1 + light.brighten / 128;
+
+/** What the viewer opens with: the console-measured `FIX` of 93, and the rig only where the engine puts it. */
+export const DEFAULT_LIGHTING: Lighting = { rig: null, brighten: 93, rigEverywhere: false };
 
 /**
- * What the viewer opens with: **the owner's picks**, chosen by looking at the maps rather than at the
- * capture. They are not `LIT_SCALE`: the exposure is well under the 8 the Frostfire patches ask for
- * and the ambient carries part of the difference, which trades some of the rig's contrast for a
- * picture that reads on the darker maps. Both are sliders; `ambient 0, gain LIT_SCALE` is the
- * calibrated pair, and `ambient 0, gain 1` is the bare model.
- */
-export const DEFAULT_LIGHTING: Lighting = { rig: null, ambient: 0.1, gain: 1.9 };
-
-/**
- * The rig a map with no `GlobalLighting` key falls back to: one white light from above and a little
- * ambient. Nothing on the disc reads this -- all 34 maps carry the key -- it exists so that a broken
- * archive draws something shaded rather than black.
+ * The rig a lit part falls back to when a map has no `GlobalLighting` key: one white light from above
+ * and a little ambient. Nothing on the disc reads this -- all 34 maps carry the key -- it exists so
+ * that a broken archive draws something shaded rather than black.
  */
 export const FALLBACK_RIG: GlobalLighting = {
   directions: [[0, 1, 0], [0, 0, 0], [0, 0, 0]],
@@ -93,33 +69,43 @@ export const FALLBACK_RIG: GlobalLighting = {
 };
 
 /**
- * `record2 * lit` for one part, into `out` (rgba, 4 floats a vertex).
+ * The drawn vertex colour for one part, into `out` (rgba, 4 floats a vertex): `record2 * brighten` for
+ * a part the engine does not light, `record2 * lit * brighten` for one it does.
  *
  * RGB is left unclamped: the GS clamps the product of texel and vertex, not the vertex, so a lit
  * colour above 1 legitimately overbrightens and the framebuffer is where it stops. Alpha is copied
- * through -- the VU takes the w lane from the staging quad rather than from `lit`, so lighting never
- * changes how transparent a surface is.
+ * through -- the VU takes the w lane from the staging quad rather than from `lit`, and the brighten
+ * pass does not touch it either.
  */
 export function applyLighting(part: Lightable, light: Lighting, out: Float32Array): void {
   const material = part.colors;
-  const normals = part.normals;
   const count = material.length / 4;
-  const rig = light.rig ?? FALLBACK_RIG;
-  const { gain } = light;
-  const ambient = light.ambient;
+  const gain = brightenOf(light);
 
+  if (!part.lit && !light.rigEverywhere) {
+    for (let i = 0; i < count; i++) {
+      out[i * 4] = material[i * 4]! * gain;
+      out[i * 4 + 1] = material[i * 4 + 1]! * gain;
+      out[i * 4 + 2] = material[i * 4 + 2]! * gain;
+      out[i * 4 + 3] = material[i * 4 + 3]!;
+    }
+    return;
+  }
+
+  const normals = part.normals;
+  const rig = light.rig ?? FALLBACK_RIG;
   // A merge can lose the normals (`mergeMeshes` drops them when a part has none). Without a normal
   // there is no direction to dot against, so the surface takes the ambient plus half of each light --
   // the mean of `max(dot(d, n), 0)` over a sphere is a half -- rather than a black hole.
-  const flatR = rig.ambient[0] + ambient + rig.colours.reduce((s, c) => s + c[0] / 2, 0);
-  const flatG = rig.ambient[1] + ambient + rig.colours.reduce((s, c) => s + c[1] / 2, 0);
-  const flatB = rig.ambient[2] + ambient + rig.colours.reduce((s, c) => s + c[2] / 2, 0);
+  const flatR = rig.ambient[0] + rig.colours.reduce((s, c) => s + c[0] / 2, 0);
+  const flatG = rig.ambient[1] + rig.colours.reduce((s, c) => s + c[1] / 2, 0);
+  const flatB = rig.ambient[2] + rig.colours.reduce((s, c) => s + c[2] / 2, 0);
 
   for (let i = 0; i < count; i++) {
     let r = flatR, g = flatG, b = flatB;
     if (normals) {
       const nx = normals[i * 3]!, ny = normals[i * 3 + 1]!, nz = normals[i * 3 + 2]!;
-      r = rig.ambient[0] + ambient; g = rig.ambient[1] + ambient; b = rig.ambient[2] + ambient;
+      r = rig.ambient[0]; g = rig.ambient[1]; b = rig.ambient[2];
       for (let k = 0; k < 3; k++) {
         const d = rig.directions[k]!;
         // `max(..., 0)`, exactly as the microcode clamps the transformed normal before it is used.

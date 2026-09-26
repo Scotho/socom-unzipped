@@ -5,11 +5,26 @@ import { WebGPURenderer } from 'three/webgpu';
 /** Which GPU API the pictures actually came out of, for the status line and the screenshot record. */
 export type Backend = 'webgpu' | 'webgl2';
 
+/**
+ * How the frame is put on the screen. `native` draws at the canvas's own size and pixel ratio. `ps2`
+ * draws the frame the console drew -- 640 by 448, the size `zVid_Init` sets and the NTSC field mode
+ * displays -- and lets the page stretch it onto a 4:3 box, which is what the television did (the
+ * DISPLAY register's 640 visible pixels on a 4:3 set are 0.93 wide each).
+ */
+export type Presentation = 'native' | 'ps2';
+export const PS2_FRAME = { width: 640, height: 448 } as const;
+
 export interface ViewerRenderer {
   renderer: WebGPURenderer;
   backend: Backend;
   render(scene: Scene, camera: Camera): void;
+  /** The canvas's CSS size; what the backing store becomes depends on the presentation and the pixel ratio. */
   resize(width: number, height: number): void;
+  /** The device pixels per CSS pixel the native presentation draws at; clamped to the device's own. */
+  setPixelRatio(ratio: number): void;
+  pixelRatio(): number;
+  setPresentation(mode: Presentation): void;
+  presentation(): Presentation;
   /**
    * Whether the frame is converted on the way out. The GS wrote its 8-bit result straight to the
    * framebuffer, so matching it means the shader's product goes out unconverted; a linear-light
@@ -39,7 +54,20 @@ const BACKGROUND = 0x14161a;
 export async function createRenderer(canvas: HTMLCanvasElement): Promise<ViewerRenderer> {
   const renderer = new WebGPURenderer({ canvas, antialias: true, forceWebGL: false });
   await renderer.init();
-  renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio, 2));
+  let ratio = Math.min(globalThis.devicePixelRatio, 2);
+  let mode: Presentation = 'native';
+  let cssWidth = 1;
+  let cssHeight = 1;
+  const apply = (): void => {
+    if (mode === 'ps2') {
+      renderer.setPixelRatio(1);
+      renderer.setSize(PS2_FRAME.width, PS2_FRAME.height, false);
+    } else {
+      renderer.setPixelRatio(ratio);
+      renderer.setSize(cssWidth, cssHeight, false);
+    }
+  };
+  renderer.setPixelRatio(ratio);
   renderer.outputColorSpace = LinearSRGBColorSpace;   // the GS space, matching the default in `world`
   renderer.setClearColor(BACKGROUND, 1);
   const backend: Backend = (renderer.backend as BackendFlags).isWebGPUBackend === true ? 'webgpu' : 'webgl2';
@@ -47,7 +75,16 @@ export async function createRenderer(canvas: HTMLCanvasElement): Promise<ViewerR
     renderer,
     backend,
     render: (scene, camera) => renderer.render(scene, camera),
-    resize: (width, height) => renderer.setSize(width, height, false),
+    resize: (width, height) => { cssWidth = width; cssHeight = height; apply(); },
+    setPixelRatio: (r) => {
+      const next = Math.max(0.25, Math.min(globalThis.devicePixelRatio || 1, r));
+      if (next === ratio) return;
+      ratio = next;
+      apply();
+    },
+    pixelRatio: () => ratio,
+    setPresentation: (m) => { if (m !== mode) { mode = m; apply(); } },
+    presentation: () => mode,
     setClearColor: ([r, g, b]) => {
       // setRGB on the working space, not setHex: FOGCOL is a raw register value and must not be decoded.
       renderer.setClearColor(new Color().setRGB(r / 255, g / 255, b / 255), 1);

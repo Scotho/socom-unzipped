@@ -1,17 +1,18 @@
 import {
-  Box3, BufferAttribute, BufferGeometry, ClampToEdgeWrapping, DataTexture, DoubleSide, FrontSide, Group,
+  AdditiveBlending, Box3, BufferAttribute, BufferGeometry, ClampToEdgeWrapping, DataTexture, DoubleSide, FrontSide, Group,
   type Object3D,
-  InstancedMesh, LinearFilter,
-  LineBasicMaterial, LineSegments, Matrix4, Mesh, MeshBasicMaterial, NearestFilter, NoColorSpace,
+  InstancedMesh, LinearFilter, LinearMipmapLinearFilter,
+  LineBasicMaterial, LineSegments, Matrix4, Mesh, MeshBasicMaterial, NearestFilter, NoColorSpace, NormalBlending,
   RGBAFormat, RepeatWrapping,
   SRGBColorSpace, Texture,
   Vector3,
 } from 'three';
+import { materialSpec, type MaterialSpec, type TextureFlags } from './materialSpec';
 import type { Rgba } from '@s2u/gs';
 import type { MeshData } from '@s2u/mesh';
 import { applyLighting, DEFAULT_LIGHTING, type Lightable, type Lighting } from './lighting';
 import type { Camera } from 'three';
-import type { LoadedMap } from './loadMap';
+import type { LoadedMap, LoadedMesh } from './loadMap';
 
 /**
  * `gs` decodes a texture's rows bottom-up, which is also what GL calls V = 0, so the data goes to the GPU
@@ -131,14 +132,14 @@ export function buildWorld(map: LoadedMap): WorldView {
   const billboards: Mesh[] = [];
   let billboardsOn = true;
   let blendGraded = false;
-  /** The materials whose texture alpha is a ramp: the only ones the switch moves. */
-  const graded: MeshBasicMaterial[] = [];
-  /** Their flags, so the switch can put the alpha test back exactly as it was. */
-  const gradedFlags = new Map<MeshBasicMaterial, { transparent: boolean; graded: boolean } | undefined>();
+  /** What each material was built from, so the blend switch can rebuild it from the disc's state. */
+  const specs = new Map<MeshBasicMaterial, { flags: TextureFlags | undefined; fog: boolean }>();
   // Every drawn part beside the buffer its lit colours go into, so a slider can rewrite them in place.
   const lit: { part: Lightable; attribute: BufferAttribute }[] = [];
   const materials: MeshBasicMaterial[] = [];
   const untextured: MeshBasicMaterial[] = [];
+  /** How many drawn objects have no texture: the number the status line reports. */
+  let untexturedDraws = 0;
   let triangles = 0;
   /**
    * Building an object is cheap; *drawing it the first time* is not, because that is when three uploads
@@ -156,54 +157,56 @@ export function buildWorld(map: LoadedMap): WorldView {
     box.expandByObject(object);
     queue.push(() => group.add(object));
   };
-  const materialFor = (name: string | null): MeshBasicMaterial => {
+  /**
+   * One material per (texture, fog) pair. The texture's own state block -- blend, alpha test, wrap,
+   * filtering (`./materialSpec`) -- is the same for every draw of it; what varies per packet is the
+   * `PRIM.FGE` fog bit, so a sky texture drawn fogged in one chunk and clear in another gets two.
+   */
+  const materialCache = new Map<string, MeshBasicMaterial>();
+  const materialFor = (name: string | null, fog: boolean): MeshBasicMaterial => {
+    const cacheKey = `${name ?? ''}|${fog ? 1 : 0}`;
+    const cached = materialCache.get(cacheKey);
+    if (cached) return cached;
     const rgba = name === null ? undefined : map.textures[name];
     const flags = name === null ? undefined : map.textureFlags[name];
+    const spec = materialSpec(flags, fog, blendGraded);
     let texture = name === null ? undefined : textures.get(name);
     if (!texture && name !== null && rgba) {
-      texture = makeTexture(rgba, map.textureFlags[name]?.bilinear ?? true, linearLight,
-        map.textureFlags[name]?.graded ?? false);
+      texture = makeTexture(rgba, spec, linearLight);
       textures.set(name, texture);
     }
-    // Every texture's GS bind packet asks for `ALPHA_1 = 0x44` -- `(Cs - Cd) * As + Cd`, source-alpha
-    // blending -- with the alpha test off. A texture whose alpha is a *ramp* (a corona, a glow) has to
-    // be blended or it draws as a flat disc on an opaque black square; one whose alpha is a *switch*
-    // (a cutout leaf, a grating) is punched through instead, which needs no depth sorting and is what
-    // the game's own draw order relied on.
-    const material = new MeshBasicMaterial({
-      map: texture ?? null,
-      vertexColors: true,
-      // Backface culling, and why it is not simply on or off.
-      //
-      // SEMANTICS section 6: the right-handed cross product of a triangle's edges in index order *is*
-      // the stored face normal, on all 8,764 non-degenerate Frostfire triangles, and VU1's cull handler
-      // (`0x06`, research/13 section 4.2) keeps a triangle when the eye is on that side. So
-      // counter-clockwise is front, which is three.js's default, and `FrontSide` is what the hardware
-      // does -- for the objects whose command list contains the cull. Which ones those are is not on the
-      // disc: the command list is built by the EE per draw, and a no-cull variant of the world-object
-      // program exists (research/12, program 11).
-      //
-      // The data settles it anyway. Crossroads' awning is *two coincident single-sided sheets* -- the
-      // same five quads twice, opposite normals, the top baked at mean colour 0.6 and the underside at
-      // 0.2 -- which is a thing an artist only draws when the hardware culls. Drawn double-sided the two
-      // sheets z-fight and the canvas comes out as a red-and-green plaid (spec section 9, 2026-09-20).
-      // Cutout sheets are the opposite case: one leaf card, one frond, one chain-link panel, meant to be
-      // seen from behind, and culling those empties the canopies of Bitter Jungle.
-      //
-      // So: cull where the texture is solid, keep both faces where it is not. That is the split the
-      // models themselves draw, and it is the one fact about a draw that is on the disc.
-      side: (flags?.opaque ?? false) ? FrontSide : DoubleSide,
-    });
-    if (flags?.graded) { graded.push(material); gradedFlags.set(material, flags); }
-    applyBlend(material, flags, blendGraded);
+    // Backface culling, and why it is not simply on or off.
+    //
+    // SEMANTICS section 6: the right-handed cross product of a triangle's edges in index order *is*
+    // the stored face normal, on all 8,764 non-degenerate Frostfire triangles, and VU1's cull handler
+    // (`0x06`, research/13 section 4.2) keeps a triangle when the eye is on that side. So
+    // counter-clockwise is front, which is three.js's default, and `FrontSide` is what the hardware
+    // does -- for the objects whose command list contains the cull. Which ones those are is not on the
+    // disc: the command list is built by the EE per draw, and a no-cull variant of the world-object
+    // program exists (research/12, program 11).
+    //
+    // The data settles it anyway. Crossroads' awning is *two coincident single-sided sheets* -- the
+    // same five quads twice, opposite normals, the top baked at mean colour 0.6 and the underside at
+    // 0.2 -- which is a thing an artist only draws when the hardware culls. Drawn double-sided the two
+    // sheets z-fight and the canvas comes out as a red-and-green plaid (spec section 9, 2026-09-20).
+    // Cutout sheets are the opposite case: one leaf card, one frond, one chain-link panel, meant to be
+    // seen from behind, and culling those empties the canopies of Bitter Jungle.
+    //
+    // So: cull where the texture is solid, keep both faces where it is not (`spec.cull`). That is the
+    // split the models themselves draw, and it is the one fact about a draw the state block does not hold.
+    const material = new MeshBasicMaterial({ map: texture ?? null, vertexColors: true });
+    applySpec(material, spec);
+    specs.set(material, { flags, fog });
     materials.push(material);
+    materialCache.set(cacheKey, material);
     if (!texture) untextured.push(material);
     return material;
   };
 
   for (const part of map.world) {
-    const mesh = new Mesh(geometryOf(part, lighting, lit), materialFor(part.textureName));
+    const mesh = new Mesh(geometryOf(part, lighting, lit), materialFor(part.textureName, part.fog));
     mesh.name = part.textureName ?? 'untextured';
+    if (!part.textureName) untexturedDraws++;
     mesh.frustumCulled = false;                           // one mesh spans the whole map; culling it hides it
     later(revealWorld, mesh);
     triangles += part.indices.length / 3;
@@ -225,7 +228,8 @@ export function buildWorld(map: LoadedMap): WorldView {
         // where it was modelled it is edge-on from most of the map and a flat card from the rest. Each
         // placement becomes its own mesh, centred on the quad so a spin about that centre keeps it
         // where it belongs, and `faceCamera` turns them every frame.
-        const flareMaterial = materialFor(part.textureName);
+        const flareMaterial = materialFor(part.textureName, part.fog);
+        if (!part.textureName) untexturedDraws += count;
         for (let i = 0; i < count; i++) {
           const m = new Matrix4().fromArray(prop.matrices, i * 16);
           const { geometry: flat, centre: at } = centredQuad(rotateNormals(part, m), lighting, lit);
@@ -239,7 +243,8 @@ export function buildWorld(map: LoadedMap): WorldView {
         continue;
       }
       const geometry = geometryOf(rotateNormals(part, rotation), lighting, lit);
-      const material = materialFor(part.textureName);
+      const material = materialFor(part.textureName, part.fog);
+      if (!part.textureName) untexturedDraws++;
       if (count === 1) {
         const mesh = new Mesh(geometry, material);
         mesh.name = prop.modelName;
@@ -263,10 +268,11 @@ export function buildWorld(map: LoadedMap): WorldView {
     const geometry = new BufferGeometry();
     geometry.setAttribute('position', new BufferAttribute(map.lines.positions, 3));
     const colors = new Float32Array(map.lines.colors.length);
-    applyLighting(map.lines, lighting, colors);
+    const strips: Lightable = { ...map.lines, lit: false };
+    applyLighting(strips, lighting, colors);
     const attribute = new BufferAttribute(colors, 4);
     geometry.setAttribute('color', attribute);
-    lit.push({ part: map.lines, attribute });
+    lit.push({ part: strips, attribute });
     const material = new LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false });
     lineMaterial = material;
     const segments = new LineSegments(geometry, material);
@@ -283,7 +289,7 @@ export function buildWorld(map: LoadedMap): WorldView {
     revealProps,
     triangles,
     box,
-    untextured: untextured.length,
+    untextured: untexturedDraws,
     setWireframe: (on) => {
       for (const material of materials) material.wireframe = on;
       // A line has no faces to show through, so it simply steps aside while the topology is on view.
@@ -317,11 +323,9 @@ export function buildWorld(map: LoadedMap): WorldView {
       if (lineSegments) lineSegments.visible = on;
     },
     setBlendGraded: (on) => {
+      if (on === blendGraded) return;
       blendGraded = on;
-      for (const material of graded) {
-        applyBlend(material, gradedFlags.get(material), on);
-        material.needsUpdate = true;
-      }
+      for (const [material, { flags, fog }] of specs) applySpec(material, materialSpec(flags, fog, on));
     },
     setLinearLight: (on) => {
       if (on === linearLight) return;
@@ -346,25 +350,15 @@ export function buildWorld(map: LoadedMap): WorldView {
   };
 }
 
-/**
- * How one material treats its texture's alpha. Blended when the alpha is a ramp *and* the switch is on;
- * otherwise punched through at the halfway point when the record calls the texture transparent, which
- * is what the viewer has always done and needs no sorting.
- *
- * The `graded` argument is what keeps a plain opaque wall out of the transparent queue: without it the
- * function would turn every material transparent whenever the switch went on, and only the order the
- * materials happen to be built in stops that today.
- */
-function applyBlend(
-  material: MeshBasicMaterial,
-  flags: { transparent: boolean; graded: boolean } | undefined,
-  blendGraded: boolean,
-): void {
-  const blend = blendGraded && (flags?.graded ?? false);
-  material.transparent = blend;
-  // A blended draw does not write depth, or the ones drawn first cut holes in the ones behind.
-  material.depthWrite = !blend;
-  material.alphaTest = blend ? 0.004 : (flags?.transparent ?? false) ? 0.5 : 0;
+/** Puts a spec on a material: the blend, the test, the depth write, the cull and the fog. */
+function applySpec(material: MeshBasicMaterial, spec: MaterialSpec): void {
+  material.transparent = spec.transparent;
+  material.blending = spec.blending === 'additive' ? AdditiveBlending : NormalBlending;
+  material.alphaTest = spec.alphaTest;
+  material.depthWrite = spec.depthWrite;
+  material.side = spec.cull ? FrontSide : DoubleSide;
+  material.fog = spec.fog;
+  material.needsUpdate = true;
 }
 
 /**
@@ -375,7 +369,7 @@ function applyBlend(
  * surface of that prop by the same factor, which reads as the prop being in shadow rather than smaller.
  * A zero normal (SEMANTICS section 4 allows them, 16 of Frostfire's are exactly zero) stays zero.
  */
-function rotateNormals(part: MeshData, m: Matrix4): MeshData {
+function rotateNormals(part: LoadedMesh, m: Matrix4): LoadedMesh {
   if (!part.normals) return part;
   const e = m.elements;                                 // column-major, as three stores it
   const out = new Float32Array(part.normals.length);
@@ -398,7 +392,7 @@ function rotateNormals(part: MeshData, m: Matrix4): MeshData {
  * switch. The three together separate a lamp's glow from a window or a ceiling panel, which are also
  * single quads but whose textures are not graded, and from a graded floor decal, which is not a quad.
  */
-function isBillboard(part: MeshData, flags: { graded: boolean } | undefined): boolean {
+function isBillboard(part: MeshData, flags: TextureFlags | undefined): boolean {
   return (flags?.graded ?? false)
     && part.positions.length === 4 * 3
     && part.indices.length === 2 * 3;
@@ -406,7 +400,7 @@ function isBillboard(part: MeshData, flags: { graded: boolean } | undefined): bo
 
 /** A quad moved so its centre is the origin, with that centre, so a mesh can be spun about it. */
 function centredQuad(
-  part: MeshData,
+  part: LoadedMesh,
   light: Lighting,
   lit: { part: Lightable; attribute: BufferAttribute }[],
 ): { geometry: BufferGeometry; centre: Vector3 } {
@@ -431,7 +425,7 @@ export function centre(box: Box3): [number, number, number] {
 }
 
 function geometryOf(
-  part: MeshData,
+  part: LoadedMesh,
   light: Lighting,
   lit: { part: Lightable; attribute: BufferAttribute }[],
 ): BufferGeometry {
@@ -451,20 +445,21 @@ function geometryOf(
   return geometry;
 }
 
-function makeTexture(rgba: Rgba, bilinear: boolean, linearLight: boolean, graded: boolean): DataTexture {
+function makeTexture(rgba: Rgba, spec: MaterialSpec, linearLight: boolean): DataTexture {
   const texture = new DataTexture(new Uint8Array(rgba.data.buffer, rgba.data.byteOffset, rgba.data.length), rgba.width, rgba.height, RGBAFormat);
   texture.flipY = FLIP_Y;
   // NoColorSpace is the GS's own reading: the stored byte *is* the value, and the modulate happens on it.
   texture.colorSpace = linearLight ? SRGBColorSpace : NoColorSpace;
-  texture.magFilter = bilinear ? LinearFilter : NearestFilter;
-  texture.minFilter = bilinear ? LinearFilter : NearestFilter;   // no mipmaps tonight: nothing generates them
-  // A graded texture is a decal on one quad -- a flare, a glow -- and its UVs stay inside 0..1, so it
-  // clamps. Repeating it makes the bilinear tap at u = 1 fetch u = 0, and a ray that runs to the edge
-  // of `lightrays.tif` (border alpha max 255, mean 9) then bleeds round and draws the quad's outline as
-  // a visible square. A tiling wall keeps the repeat it needs.
-  texture.wrapS = graded ? ClampToEdgeWrapping : RepeatWrapping;
-  texture.wrapT = graded ? ClampToEdgeWrapping : RepeatWrapping;
-  texture.generateMipmaps = false;
+  // `TEX1` off the disc: bilinear on every texture in the corpus, and a mipmap chain on the ground and
+  // detail textures that ask for one (`MMIN = LINEAR_MIPMAP_LINEAR`). The hardware was given one or
+  // two levels; three generates the whole chain, which is the same picture near and a calmer one far.
+  texture.magFilter = spec.bilinear ? LinearFilter : NearestFilter;
+  texture.minFilter = spec.mipmaps ? LinearMipmapLinearFilter : spec.bilinear ? LinearFilter : NearestFilter;
+  texture.generateMipmaps = spec.mipmaps;
+  // `CLAMP` off the disc, per axis. A glow's quad clamps so the bilinear tap at u = 1 cannot fetch
+  // u = 0 and draw the quad's outline; a tiling wall repeats.
+  texture.wrapS = spec.wrapS === 'clamp' ? ClampToEdgeWrapping : RepeatWrapping;
+  texture.wrapT = spec.wrapT === 'clamp' ? ClampToEdgeWrapping : RepeatWrapping;
   texture.needsUpdate = true;
   return texture;
 }

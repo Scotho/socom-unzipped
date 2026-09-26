@@ -33,6 +33,14 @@ export interface MeshData {
   indices: Uint32Array;
   /** The texture in force for the packet, as the chain's reloc-6 citation named it. */
   textureName: string | null;
+  /**
+   * Whether the GS fogs this packet: the `FGE` bit of the `TOP+0` GIFtag template's `PRIM` (SEMANTICS §3).
+   * It is clear on the skies, the moons and stars, the water, and every self-lit surface -- lamp glows,
+   * light bulbs, monitors -- on every map (`tools/dump-fge.ts`), which is what makes a horizon show
+   * through the fog. `TOP+1` keeps it set on every packet of every map; `TOP+0` is the template the
+   * partially-visible path fills, and a dome or a water plane is always partially visible.
+   */
+  fog: boolean;
 }
 
 /** The axis-aligned extent of a mesh's positions. An empty mesh has the empty extent, min > max. */
@@ -81,5 +89,7 @@ export function mergeMeshes(parts: MeshData[]): MeshData {
 
   const first = parts[0]?.textureName ?? null;
   const textureName = parts.length > 0 && parts.every((p) => p.textureName === first) ? first : null;
-  return { positions, uvs, colors, normals, faceNormals, indices, textureName };
+  // Off only when every part is off: one fogged part in a merge is a fogged merge, never a hole in the fog.
+  const fog = parts.length === 0 || parts.some((p) => p.fog);
+  return { positions, uvs, colors, normals, faceNormals, indices, textureName, fog };
 }

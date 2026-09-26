@@ -492,11 +492,16 @@ happens to preserve both probes is not formally excluded. **Test:** render Frost
 in §6 and compare the silhouette against `logs/`'s PCSX2 GS dump (research/31 §15 has the frame),
 or check that the AI-map briefing overlay in `AIMAPS.MPS` lines up.
 
-### 11.4 `TOP+0.PRIM`'s `FGE` bit
+### 11.4 `TOP+0.PRIM`'s `FGE` bit — settled 2026-09-26: a per-surface "no fog"
 33 of 416 packets clear `FGE` on the family-B template while the family-A template keeps it
-(water, sky, a ceiling and two monitors). Whether that is a deliberate per-surface "no fog" flag or
-exporter noise is not settled. **Test:** decode the same surfaces on two other maps and see whether
-the same material classes clear it. Harmless either way — a viewer without fog ignores it.
+(water, sky, a ceiling and two monitors). Run over all 22 maps (`web/tools/dump-fge.ts`), the packets
+that clear it are exactly the skies (`*sky*`, `skycap`, `clouds`, `moon`, `star`, `sunglow`), the
+self-lit surfaces (`lightrays`, `lightglow*`, `light_bulb`, `bomb_glow`, `monitor_*`,
+`tex_computer*`, `metallight`) and water, on every map that has them, plus a few interior surfaces.
+That is a deliberate flag, and `interpretPacket` carries it as `MeshData.fog`. The family-A template
+never clears it, and does not need to: a dome or a water plane is always partially visible, so it
+always takes the family-B path. The scene-graph node flag `m_fog` (bit 6) is set on every drawn node
+of every map and adds nothing.
 
 ### 11.5 The 17 zero vertex normals and the 1 zero face normal
 Two chunks contain them. Probably degenerate exporter output. **Test:** check whether the affected

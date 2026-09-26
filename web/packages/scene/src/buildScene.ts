@@ -1,7 +1,6 @@
 import { chunkKey } from './modelLibrary';
 import {
-  IDENTITY, multiply, toColumnMajor, transformPoint, NODE_INSTANCE, type CollisionPoly, type SceneNode,
-} from './sceneGraph';
+  IDENTITY, multiply, toColumnMajor, transformPoint, NODE_INSTANCE, type CollisionPoly, type SceneNode, NODE_FLAGS_LIT } from './sceneGraph';
 
 /**
  * Turning `MP*_GEO.ZED`'s prototype forest into placements: what gets drawn where, and which chain in
@@ -41,6 +40,12 @@ export interface PlacedModel {
   world: Float32Array;
   /** 16 floats, row-major, as the engine computes it. */
   rowMajor: Float32Array;
+  /**
+   * Whether the engine lights this placement on VU1 -- `NODE_FLAGS_LIT` on its node or on the model it
+   * instances. False on every node of most maps: the multiplayer world is drawn from the vertex colours
+   * the exporter baked, and only the odd fern, palm or flare is lit at run time.
+   */
+  lit: boolean;
 }
 
 /** One collision polygon, placed: its points carried into the world frame. */
@@ -151,6 +156,7 @@ export function flattenScene(models: SceneNode[], rootName = 'worldmodel'): Scen
 
 /** Every drawn placement of the scene: one per realised node that has visuals, with its chunk keys. */
 export function placeInstances(models: SceneNode[], rootName = 'worldmodel'): PlacedModel[] {
+  const modelFlags = new Map(models.map((m) => [m.name, m.flags]));
   return flattenScene(models, rootName)
     .filter((f) => f.node.visuals > 0)
     .map((f) => ({
@@ -161,6 +167,7 @@ export function placeInstances(models: SceneNode[], rootName = 'worldmodel'): Pl
       chunks: Array.from({ length: f.node.visuals }, (_, v) => chunkKey(f.nodeIndex, f.instanceIndex, v)),
       world: toColumnMajor(f.world),
       rowMajor: f.world,
+      lit: ((f.node.flags | (modelFlags.get(f.modelName) ?? 0)) & NODE_FLAGS_LIT) !== 0,
     }));
 }
 

@@ -14,6 +14,7 @@
     -->
     <a id="home" href="https://s2u.scotho.com/">&larr; Unzipped Project</a>
     <div id="fps" aria-live="off">-- fps</div>
+    <button id="fullscreen" type="button" title="fullscreen (F)" aria-label="fullscreen">&#x26F6;</button>
     <!--
       The loading overlay. Hidden until a load starts; `aria-live` so a screen reader hears the stage
       rather than watching a bar it cannot see.
@@ -45,8 +46,9 @@
         <p><b>Not a port and not emulation.</b> No game code runs. The disc's own data &mdash; geometry,
           textures, scene graph, lighting, fog &mdash; is read and drawn again in TypeScript, so it is a
           reading of the game and a reading can be wrong.</p>
-        <p><b>Known to differ:</b> lighting and fog are approximations, transparency can sort wrongly,
-          some skies and textures are missing, and there is no game &mdash; just the world.</p>
+        <p><b>Known to differ:</b> blended surfaces are sorted by the browser rather than drawn in the
+          game's order, the frame brighten is a fixed value where the game meters it, and there is no
+          game &mdash; just the world.</p>
         <p>A spin-off of <b>SOCOM Unzipped</b>, the actual port.
           <a href="https://s2u.scotho.com" target="_blank" rel="noopener noreferrer">s2u.scotho.com &rarr;</a></p>
       </details>
@@ -62,6 +64,9 @@
           <label><input type="checkbox" id="untextured" /> highlight untextured</label>
         </div>
         <div class="row">
+          <label title="Draw the frame the console drew: 640 by 448 pixels, the map's own 70-degree field, stretched onto a 4:3 picture the way the television did. Off draws at the screen's own size and shape."><input type="checkbox" id="ps2look" /> PS2 picture (640&times;448 on 4:3)</label>
+        </div>
+        <div class="row">
           <label title="A lamp flare on disc is a single quad on a single plane, so left where it was modelled it is edge-on from most of the map. The hardware turns them to face the camera. Off shows the pose the disc holds."><input type="checkbox" id="billboards" checked /> turn flares to face the camera</label>
         </div>
         <div class="row">
@@ -74,12 +79,16 @@
           <label title="off: the GS's own arithmetic, texel times vertex colour in 8-bit space. on: decode the texture to linear first, which brightens every shaded surface."><input type="checkbox" id="linearlight" /> linear light (off = the GS's own arithmetic)</label>
         </div>
       <details id="sliders-box">
-        <summary>lighting (the map's own rig, trimmed)</summary>
-        <p class="note">Three directional lights and an ambient, read from the map's own <code>GlobalLighting</code> record &mdash; the same numbers the game hands VU1. Both sliders are trims on top of it, and both open at the owner's picks. The rig on its own comes out about eight times too dark against the PS2 capture: 1.00&times; with no trim shows the bare model, and 8.00&times; with no trim is the calibrated pair.</p>
-        <label class="slider" title="Added to the map's own ambient. 0 is the hardware."><span>ambient trim</span>
-          <input type="range" id="ambient" min="0" max="1" step="0.01" value="0.10" /><output id="ambient-out"></output></label>
-        <label class="slider" title="An exposure on the whole lit result. 1.00x is the map's rig with nothing added, which comes out about eight times too dark against the PS2 capture; 8 is that unexplained factor. The EE's params.y/params.z are a lighting enable, never a scale."><span>exposure</span>
-          <input type="range" id="lightgain" min="0.25" max="12" step="0.05" value="1.9" /><output id="lightgain-out"></output></label>
+        <summary>lighting (unlit, as the engine draws it)</summary>
+        <p class="note">The PS2 draws a multiplayer map from the vertex colours the exporter baked: the VU1 light
+          command is only emitted for the odd node flagged dynamic (a fern, a palm, a flare), and those take the
+          map's own <code>GlobalLighting</code> rig. The game then brightens the whole frame by
+          <code>1 + FIX/128</code>, <code>FIX</code> coming from its auto-exposure; the console measured 93.</p>
+        <label class="slider" title="The auto-exposure FIX the post-process multiplies the frame by: out = in * (1 + FIX/128). 93 is the value read off the console; 0 is the bare frame; the game's own defaults cap it at 100."><span>brighten</span>
+          <input type="range" id="brighten" min="0" max="255" step="1" value="93" /><output id="brighten-out"></output></label>
+        <div class="row">
+          <label title="Light every node with the map's rig, whether or not the engine would. The viewer's earlier reading, kept for comparison: about five times too dark on Frostfire."><input type="checkbox" id="rigeverywhere" /> rig on every node (the old reading)</label>
+        </div>
       </details>
       <details id="fog-box">
         <summary>fog (GS FOGCOL + VU1 qwords 28/29)</summary>
@@ -102,7 +111,7 @@
         audio &mdash; are the property of <strong>Sony Interactive Entertainment</strong>, developed by
         Zipper Interactive. Not affiliated with, endorsed by, or connected to Sony Interactive
         Entertainment.</p>
-      <p class="hint" id="hint">click to look &middot; WASD fly &middot; space/shift up/down &middot; double-tap W to boost &middot; wheel speed 1.0&times; &middot; ` hides this</p>
+      <p class="hint" id="hint">click to look &middot; WASD fly &middot; space/shift up/down &middot; double-tap W to boost &middot; arrows look &middot; F fullscreen &middot; wheel speed 1.0&times; &middot; ` hides this</p>
       </div>
     </div>
     <!--

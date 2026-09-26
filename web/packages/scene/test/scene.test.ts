@@ -5,7 +5,7 @@ import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import {
   countInstances, expectedChunks, flattenScene, loadModelLibrary, multiply, parseSceneGraph,
   parseWorldRoot, placeCollision, placeInstances, toColumnMajor, transformPoint, visualNodes,
-  IDENTITY, NODE_INSTANCE, type ModelLibrary, type PlacedModel, type SceneNode,
+  IDENTITY, NODE_GENERIC, NODE_INSTANCE, NODE_MODEL, type ModelLibrary, type PlacedModel, type SceneNode,
 } from '../src/index';
 
 /** Frostfire's two measured spawns (36 section 6), in game units, feet on the floor. */
@@ -138,6 +138,38 @@ describe('Frostfire scene graph', () => {
     // SEMANTICS section 8: where the world nodes carry that translation they are pure translations.
     const pure = children.filter((c) => [...c.matrix.slice(12, 15)].join(',') === '960,0,800');
     expect(pure.every((c) => [...c.matrix.slice(0, 12)].join(',') === '1,0,0,0,0,1,0,0,0,0,1,0')).toBe(true);
+  });
+});
+
+describe('which placements the engine lights', () => {
+  /** A bare node: no children, no collision, one visual. */
+  const node = (name: string, flags: number, over: Partial<SceneNode> = {}): SceneNode => ({
+    name, modelName: null, type: NODE_GENERIC, flags, matrix: Float32Array.from(IDENTITY),
+    bbox: new Float32Array(6), regionmask: 0, visuals: 1, children: [], collision: [], ...over,
+  });
+
+  it('a node with neither dynamic bit is drawn prelit: the VU light command is never emitted for it', () => {
+    const root = node('worldmodel', 1 | (1 << 4) | (1 << 6), { type: NODE_MODEL });
+    expect(placeInstances([root]).map((p) => p.lit)).toEqual([false]);
+  });
+
+  it('bit 1 (dynamic motion) or bit 2 (dynamic light) on the node asks for the light command', () => {
+    for (const bit of [1, 2]) {
+      const root = node('worldmodel', 1 | (1 << 4), { type: NODE_MODEL, children: [node('lamp', 1 | (1 << bit))] });
+      expect(placeInstances([root]).map((p) => p.lit), `bit ${bit}`).toEqual([false, true]);
+    }
+  });
+
+  it('an instance of a model whose own node carries the bit is lit too', () => {
+    const fern = node('fern', 1 | (1 << 1), { type: NODE_MODEL });
+    const root = node('worldmodel', 1, { type: NODE_MODEL, children: [node('fern_1', 1, { type: NODE_INSTANCE, modelName: 'fern', visuals: 0 })] });
+    const placed = placeInstances([root, fern]);
+    expect(placed.map((p) => [p.modelName, p.lit])).toEqual([['worldmodel', false], ['fern', true]]);
+  });
+
+  it.skipIf(!MP2)('no Frostfire placement is lit: the whole map is drawn from its baked vertex colours', () => {
+    const { placed } = open('MP2');
+    expect(placed.some((p) => p.lit)).toBe(false);
   });
 });
 

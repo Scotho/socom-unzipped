@@ -4,11 +4,11 @@ import { wantsTouchControls } from './touch';
 
 /** The overlays a viewer can switch on, in the order the panel lists them. */
 export const TOGGLES = ['grid', 'collision', 'spawns', 'wireframe', 'untextured',
-  'linearlight', 'fog', 'blendgraded', 'linestrips', 'billboards'] as const;
+  'linearlight', 'fog', 'blendgraded', 'linestrips', 'billboards', 'rigeverywhere', 'ps2look'] as const;
 export type ToggleName = (typeof TOGGLES)[number];
 
 /** The continuous controls, in the order the panel lists them. */
-export const SLIDERS = ['ambient', 'lightgain', 'fognear', 'fogfar'] as const;
+export const SLIDERS = ['brighten', 'fognear', 'fogfar'] as const;
 export type SliderName = (typeof SLIDERS)[number];
 
 /** The page's controls, found once and typed, so the rest of the viewer never touches `getElementById`. */
@@ -29,8 +29,7 @@ export class Ui {
    * reason the checkboxes are: so the wiring cannot drift from what the page shows.
    */
   private readonly sliders: Record<SliderName, { input: HTMLInputElement; out: HTMLOutputElement; fmt: (v: number) => string }> = {
-    ambient: { input: find('ambient'), out: find('ambient-out'), fmt: (v) => `+${v.toFixed(2)}` },
-    lightgain: { input: find('lightgain'), out: find('lightgain-out'), fmt: (v) => `${v.toFixed(2)}×` },
+    brighten: { input: find('brighten'), out: find('brighten-out'), fmt: (v) => `${(1 + v / 128).toFixed(2)}× (FIX ${Math.round(v)})` },
     fognear: { input: find('fognear'), out: find('fognear-out'), fmt: (v) => String(Math.round(v)) },
     fogfar: { input: find('fogfar'), out: find('fogfar-out'), fmt: (v) => String(Math.round(v)) },
   };
@@ -49,6 +48,8 @@ export class Ui {
     blendgraded: find('blendgraded'),
     linestrips: find('linestrips'),
     billboards: find('billboards'),
+    rigeverywhere: find('rigeverywhere'),
+    ps2look: find('ps2look'),
   };
 
   /** The map list, named from each archive's own `mission.rdr`. The value is the archive-relative path. */
@@ -93,6 +94,41 @@ export class Ui {
       if (target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'SELECT')) return;
       e.preventDefault();
       document.body.classList.toggle('chrome-hidden');
+    });
+  }
+
+  /**
+   * Fullscreen, from the button beside the frame counter and from `F`. On a phone the browser's bars
+   * are a third of the screen, and fullscreen is also the one place a landscape lock is allowed, so
+   * one is asked for and the refusal (a desktop, an iPhone) is ignored.
+   */
+  onFullscreen(): void {
+    const button = find<HTMLButtonElement>('fullscreen');
+    const toggle = (): void => {
+      const doc = document as Document & { webkitExitFullscreen?: () => void };
+      const root = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void };
+      if (document.fullscreenElement) {
+        void document.exitFullscreen?.();
+        return;
+      }
+      const request = root.requestFullscreen ?? root.webkitRequestFullscreen ?? doc.webkitExitFullscreen;
+      try {
+        const r = request?.call(root) as unknown;
+        if (r instanceof Promise) r.catch(() => undefined);
+      } catch { /* not offered here */ }
+      const orientation = (screen as Screen & { orientation?: { lock?: (o: string) => Promise<void> } }).orientation;
+      try { orientation?.lock?.('landscape').catch(() => undefined); } catch { /* a desktop, or an iPhone */ }
+    };
+    button.addEventListener('click', toggle);
+    globalThis.addEventListener('keydown', (e) => {
+      if (e.code !== 'KeyF' || e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target;
+      if (target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'SELECT')) return;
+      e.preventDefault();
+      toggle();
+    });
+    document.addEventListener('fullscreenchange', () => {
+      button.title = document.fullscreenElement ? 'leave fullscreen (F)' : 'fullscreen (F)';
     });
   }
 
@@ -253,7 +289,7 @@ export class Ui {
     const speed = `wheel speed ${multiplier.toFixed(multiplier < 1 ? 2 : 1)}×`;
     // The backtick belongs to every version of this line: it used to be in the page's markup only,
     // so the first wheel notch or pointer lock rebuilt the hint without it and it vanished.
-    const rest = `WASD fly · space/shift up/down · double-tap W to boost · ${speed}`
+    const rest = `WASD fly · space/shift up/down · double-tap W to boost · arrows look · F fullscreen · ${speed}`
       + ' · ` hides this';
     this.hint.textContent = locked ? `esc to release · ${rest}` : `click to look · ${rest}`;
   }

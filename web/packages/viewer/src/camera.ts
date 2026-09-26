@@ -9,6 +9,10 @@ const METRES_PER_SECOND = 12;
 const SPRINT = 5;
 /** Radians of look per pixel of drag, and per unit of pointer-lock movement. */
 const LOOK = 0.0028;
+/** A thumb has a phone's width to work with, not a desk's: a touch drag turns this much further. */
+const TOUCH_LOOK = 2;
+/** Radians a second the arrow keys turn, for a keyboard with no mouse to hand. */
+const ARROW_LOOK = 1.6;
 /** Straight up and straight down are singular for a yaw/pitch camera, so stop just short. */
 const PITCH_LIMIT = MathUtils.degToRad(89.9);
 
@@ -21,8 +25,12 @@ const PITCH_LIMIT = MathUtils.degToRad(89.9);
 const ACCEL = 14;
 const BRAKE = 8;
 
-/** The field of view at rest, and how far Ctrl widens it. The kick is what sells the speed. */
-const FOV = 65;
+/**
+ * The vertical field of view at rest before a map states its own, and how far the boost widens it.
+ * Every map's `cameras/camera` authors `fov (0.6109 0.4276)` -- half-angles, 35 degrees by 24.5 --
+ * and `setFov` puts the map's on once it is read; 49 is what all but one of them come to.
+ */
+const FOV = 49;
 /**
  * The clip planes a map is opened with, before its own are known. 4 is the game's own near plane; the
  * far is a whole large map and then some, and `setClipPlanes` narrows it once the map's extent is read.
@@ -57,6 +65,7 @@ const approach = (a: number, b: number, k: number, dt: number): number =>
  */
 const OWNED = new Set([
   'keyw', 'keya', 'keys', 'keyd', 'keyq', 'keye', 'space', 'shiftleft', 'shiftright',
+  'arrowup', 'arrowdown', 'arrowleft', 'arrowright',
 ]);
 
 export interface FlyCameraOptions {
@@ -99,6 +108,8 @@ export class FlyCamera {
   private stickY = 0;
   /** The touch up/down buttons: 1, 0 or -1, the same lane space and shift drive. */
   private lift = 0;
+  /** The stick held at its rim: the phone's boost gesture (`./touch`). */
+  private stickBoost = false;
   private readonly keys = new Set<string>();
   private dragging: number | null = null;
   private lastX = 0;
@@ -109,6 +120,8 @@ export class FlyCamera {
   private speedMultiplier = 1;
   /** Current velocity in game units a second. Public movement state, zeroed by `setPose`. */
   private readonly velocity = new Vector3();
+  /** The vertical field of view at rest: the map's own once `setFov` has it. */
+  private restFov = FOV;
   /** The FOV actually applied, eased toward its target so the sprint kick is not a step. */
   private fov = FOV;
   private locked = false;
@@ -156,6 +169,15 @@ export class FlyCamera {
     this.camera.updateProjectionMatrix();
   }
 
+  /** The map's own vertical field of view, in degrees; the boost widens from it and eases back to it. */
+  setFov(degrees: number): void {
+    if (!(degrees > 1 && degrees < 179)) return;
+    this.restFov = degrees;
+    this.fov = degrees;
+    this.camera.fov = degrees;
+    this.camera.updateProjectionMatrix();
+  }
+
   setAspect(aspect: number): void {
     this.camera.aspect = aspect;
     this.camera.updateProjectionMatrix();
@@ -193,8 +215,8 @@ export class FlyCamera {
     this.yaw = MathUtils.degToRad(pose.yaw ?? now.yaw);
     this.pitch = MathUtils.clamp(MathUtils.degToRad(pose.pitch ?? now.pitch), -PITCH_LIMIT, PITCH_LIMIT);
     this.velocity.set(0, 0, 0);
-    this.fov = FOV;
-    this.camera.fov = FOV;
+    this.fov = this.restFov;
+    this.camera.fov = this.restFov;
     this.camera.updateProjectionMatrix();
     this.apply();
   }
@@ -211,6 +233,15 @@ export class FlyCamera {
    */
   update(dt: number): void {
     if (dt <= 0) return;
+
+    // The arrow keys turn at a steady rate; a frame's worth here, before the frame's forward is taken.
+    const turn = (this.keys.has('arrowleft') ? 1 : 0) - (this.keys.has('arrowright') ? 1 : 0);
+    const tilt = (this.keys.has('arrowup') ? 1 : 0) - (this.keys.has('arrowdown') ? 1 : 0);
+    if (turn !== 0 || tilt !== 0) {
+      this.yaw += turn * ARROW_LOOK * dt;
+      this.pitch = MathUtils.clamp(this.pitch + tilt * ARROW_LOOK * dt, -PITCH_LIMIT, PITCH_LIMIT);
+      this.apply();
+    }
 
     // Forward carries the pitch; right is taken from the yaw alone so strafing stays level.
     const forward = new Vector3(0, 0, -1).applyEuler(this.camera.rotation);
@@ -233,7 +264,7 @@ export class FlyCamera {
     if (this.down() || this.keys.has('keyq')) wish.y -= 1;
 
     const moving = wish.lengthSq() > 0;
-    const boosting = moving && this.sprinting();
+    const boosting = moving && (this.sprinting() || (this.stickBoost && (this.stickX !== 0 || this.stickY !== 0)));
     const cruise = this.speed * this.speedMultiplier * (boosting ? SPRINT : 1);
     // One key or three, the speed is the same: clamping stops diagonals being 1.7x faster. It *clamps*
     // rather than normalises so that a stick pushed half way moves at half speed -- with keys the
@@ -265,7 +296,7 @@ export class FlyCamera {
     // leaving the camera creeping forever and keeps `update` cheap when nothing is happening.
     if (!moving && this.velocity.lengthSq() < 1e-4) this.velocity.set(0, 0, 0);
 
-    const fovTarget = boosting ? FOV * SPRINT_FOV : FOV;
+    const fovTarget = boosting ? this.restFov * SPRINT_FOV : this.restFov;
     if (Math.abs(this.fov - fovTarget) > 1e-3) {
       this.fov = approach(this.fov, fovTarget, FOV_RATE, dt);
       this.camera.fov = this.fov;
@@ -285,6 +316,11 @@ export class FlyCamera {
   /** The touch up/down buttons: 1 up, -1 down, 0 released. */
   setLift(v: number): void {
     this.lift = v;
+  }
+
+  /** The stick held at its rim: boosts while the stick is pushed, the way a double-tapped W does. */
+  setStickBoost(on: boolean): void {
+    this.stickBoost = on;
   }
 
   /** Double-tapped forward, still held. Released, the sprint ends. */
@@ -321,11 +357,15 @@ export class FlyCamera {
     if (focused instanceof HTMLElement && focused !== this.canvas) focused.blur();
     if (this.locked) return;
     if (e.pointerType === 'mouse' && typeof this.canvas.requestPointerLock === 'function') {
+      // Raw mouse input where the browser offers it: the OS's pointer acceleration is for a cursor,
+      // not for a look, and Chrome lets a page ask for the unadjusted movement. A browser that does
+      // not know the option (or a Firefox that rejects it) gets the plain request instead.
       try {
-        const r = this.canvas.requestPointerLock() as unknown;
-        if (r instanceof Promise) r.catch(() => undefined);
+        const lock = this.canvas.requestPointerLock as (options?: { unadjustedMovement?: boolean }) => unknown;
+        const r = lock.call(this.canvas, { unadjustedMovement: true });
+        if (r instanceof Promise) r.catch(() => { try { this.canvas.requestPointerLock(); } catch { /* dragging */ } });
       } catch {
-        /* fall through to dragging */
+        try { this.canvas.requestPointerLock(); } catch { /* fall through to dragging */ }
       }
     }
     if (this.dragging !== null) return;
@@ -341,7 +381,8 @@ export class FlyCamera {
       return;
     }
     if (this.dragging !== e.pointerId) return;
-    this.look(e.clientX - this.lastX, e.clientY - this.lastY);
+    const k = e.pointerType === 'touch' ? TOUCH_LOOK : 1;
+    this.look((e.clientX - this.lastX) * k, (e.clientY - this.lastY) * k);
     this.lastX = e.clientX;
     this.lastY = e.clientY;
   };

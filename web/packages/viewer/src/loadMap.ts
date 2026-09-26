@@ -11,6 +11,7 @@ import {
   type CameraParams, type CollisionLines, type GlobalLighting, type ModelLibrary, type PlacedModel,
   type SceneNode,
 } from '@s2u/scene';
+import type { TextureFlags } from './materialSpec';
 
 /**
  * One map, decoded far enough to draw: the world's triangles grouped one mesh per texture, the textures
@@ -23,28 +24,27 @@ import {
  * The props stay in MODEL space (`mesh/SEMANTICS.md` section 4): one prop model is drawn in up to 26
  * places, so it is decoded once and each placement travels as a matrix for an `InstancedMesh`.
  */
+/** A decoded mesh plus the one fact about its node the lighting needs: whether the engine lights it. */
+export type LoadedMesh = MeshData & { lit: boolean };
+
 export interface LoadedMap {
   archive: string;
   /** `cameras/camera` out of `MP*.ZED`: the map's own fog, or null when the key is missing. */
   camera: CameraParams | null;
   path: string;
   name: string;
-  world: MeshData[];
+  world: LoadedMesh[];
   /** GS LINE_STRIP geometry in world space (SEMANTICS section 12), or null when the map drew none. */
   lines: LoadedLines | null;
   /** One entry per prop model-node: its geometry once, and a column-major 4x4 per placement. */
-  props: { modelName: string; parts: MeshData[]; matrices: Float32Array }[];
+  props: { modelName: string; parts: LoadedMesh[]; matrices: Float32Array }[];
   textures: Record<string, Rgba>;
   /**
-   * `bilinear` and `transparent` off the texture record, plus two facts read off the decoded pixels.
-   *
-   * `graded`: whether the alpha is a soft ramp rather than all-or-nothing. Every texture's own GS bind
-   * packet sets `ALPHA_1 = 0x44`, `(Cs - Cd) * As + Cd` -- plain source-alpha blending -- with the
-   * alpha *test* disabled in `TEST_1`, so a graded texture is meant to be blended, not punched out.
-   *
-   * `opaque`: no sampled pixel is anything but solid. It decides backface culling -- see `world.ts`.
+   * Per texture: the record's flags, two facts read off the decoded pixels (`graded`, `opaque`), and the
+   * GS state the record's bind packet sets -- blend equation, alpha test, filtering, wrap. See
+   * `./materialSpec` for how the three become a material.
    */
-  textureFlags: Record<string, { bilinear: boolean; transparent: boolean; graded: boolean; opaque: boolean }>;
+  textureFlags: Record<string, TextureFlags>;
   metersPerUnit: number;
   /** `MP*.ZED/GlobalLighting`: the map's own light rig, or null when the key is missing or short. */
   lightRig: GlobalLighting | null;
@@ -136,7 +136,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   const library = loadModelLibrary(mdlArchives(bytes, toc, stem, notes));
   const chunksOf = decoder(library, notes);
   const placement = place(library, bytes, toc, stem, notes);
-  const parts: MeshData[] = [];
+  /** The world's meshes with the chunk each came from, so a blended surface can keep its own draw. */
+  const parts: { mesh: LoadedMesh; chunk: number }[] = [];
   let chunk = 0;
   // Relocation-type-1 packets are GS LINE_STRIPs, not meshes (SEMANTICS section 12): Desert Glory's
   // power lines and lamp brackets, Crossroads' guy ropes and light filaments. They carry no index list,
@@ -145,7 +146,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   for (const p of placement.world) {
     step('geometry', chunk++, placement.world.length);
     const { meshes, lines } = chunksOf(p);
-    for (const mesh of meshes) parts.push(placeMesh(mesh, p.rowMajor));
+    for (const mesh of meshes) parts.push({ mesh: { ...placeMesh(mesh, p.rowMajor), lit: p.lit }, chunk });
     for (const strip of lines) segments.add(strip, p.rowMajor);
   }
 
@@ -161,8 +162,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     for (const placementOf of group) {
       for (const strip of decoded.lines) segments.add(strip, placementOf.rowMajor);
     }
-    const geometry = decoded.meshes.map((mesh) => ({
-      ...mesh, textureName: mesh.textureName === null ? null : textureKey(mesh.textureName),
+    const geometry: LoadedMesh[] = decoded.meshes.map((mesh) => ({
+      ...mesh, textureName: mesh.textureName === null ? null : textureKey(mesh.textureName), lit: first.lit,
     }));
     if (geometry.length === 0) continue;
     const matrices = new Float32Array(group.length * 16);
@@ -170,35 +171,19 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     props.push({ modelName: first.modelName, parts: geometry, matrices });
   }
 
-  // One draw call per texture: Frostfire's 416 packets cite 37 names, and merging by name turns 416 draws
-  // into 37 without touching a vertex.
-  const byTexture = new Map<string, MeshData[]>();
-  for (const part of parts) {
-    const key = part.textureName === null ? '' : textureKey(part.textureName);
-    const group = byTexture.get(key);
-    if (group) group.push(part);
-    else byTexture.set(key, [part]);
-  }
-  const world = [...byTexture.entries()].map(([key, group]) => ({
-    ...mergeMeshes(group),
-    // `mergeMeshes` drops the name when parts disagree; here they agree by construction, and the empty
-    // key means the packets cited no texture at all.
-    textureName: key === '' ? null : key,
-  }));
-
   // The textures those meshes name, and only those: a map's TXR holds every texture the mission uses.
   // A TXR or PAL member that will not parse at all costs one diagnostic and the untextured map, not the
   // load: vertex colours alone still show the geometry, which is what a diagnosing eye is here for.
   const textures: Record<string, Rgba> = {};
-  const textureFlags: Record<string, { bilinear: boolean; transparent: boolean; graded: boolean; opaque: boolean }> = {};
+  const textureFlags: Record<string, TextureFlags> = {};
   const texlib = textureLibrary(bytes, toc, stem, notes);
   if (texlib) {
     const { palettes, keys, libs } = texlib;
-    const wanted = [...world, ...props.flatMap((p) => p.parts)];
+    const wanted = [...parts.map((p) => p.mesh), ...props.flatMap((p) => p.parts)];
     let decoded = 0;
     for (const mesh of wanted) {
       step('textures', decoded++, wanted.length);
-      const name = mesh.textureName;
+      const name = mesh.textureName === null ? null : textureKey(mesh.textureName);
       if (name === null || name in textures) continue;
       const hit = keys.get(name);
       if (!hit) {
@@ -218,13 +203,42 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
         textures[name] = decoded.rgba;
         textureFlags[name] = {
           bilinear: record.bilinear, transparent: record.transparent, graded: isGraded(decoded.rgba),
-          opaque: isOpaque(decoded.rgba),
+          opaque: isOpaque(decoded.rgba), gs: record.gs,
         };
       } catch (e) {
         notes.add(`texture ${name}: ${say(e)}`);
       }
     }
   }
+
+  // One draw call per texture: Frostfire's 416 packets cite 37 names, and merging by name turns 416 draws
+  // into 37 without touching a vertex. Two things split a texture's draw:
+  //
+  // - **Fog.** A packet's `PRIM.FGE` (SEMANTICS §3, `MeshData.fog`) is per packet, and a texture can be
+  //   drawn both ways -- half of Frostfire's sky is fogged and half is not -- so the merge keys on it.
+  // - **A ramp of alpha.** A blended surface is sorted by three back to front *by object*, and a
+  //   map-wide mesh has one centre; a glow on the far side of the map would then be drawn in the same
+  //   place in the order as one under the camera. So the graded textures keep one mesh per chunk, which
+  //   is the granularity the hardware drew them at anyway.
+  const byGroup = new Map<string, LoadedMesh[]>();
+  for (const { mesh: part, chunk: at } of parts) {
+    const key = part.textureName === null ? '' : textureKey(part.textureName);
+    const flags = key === '' ? undefined : textureFlags[key];
+    const blended = (flags?.graded ?? false) && !(flags?.opaque ?? true);
+    // A lit part (`PlacedModel.lit`) keeps its own draw as well: the rig is applied per vertex, and a
+    // merge cannot be half lit.
+    const group = `${key}|${part.fog ? 1 : 0}${part.lit ? 'L' : ''}${blended ? `|${at}` : ''}`;
+    const list = byGroup.get(group);
+    if (list) list.push(part);
+    else byGroup.set(group, [part]);
+  }
+  const world: LoadedMesh[] = [...byGroup.entries()].map(([group, list]) => ({
+    ...mergeMeshes(list),
+    // `mergeMeshes` drops the name when parts disagree; here they agree by construction, and the empty
+    // key means the packets cited no texture at all.
+    textureName: group.split('|')[0] || null,
+    lit: list[0]!.lit,
+  }));
 
   return {
     archive: stem,
@@ -386,11 +400,6 @@ function cameraParams(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: N
   try {
     const params = parseCameraParams(Zar.parse(zdbMember(bytes, toc, `${stem}.ZED`)));
     if (!params) notes.add(`${stem}.ZED: no cameras/camera key, so no fog`);
-    // Six of the 22 maps set it. The band's encoding is the one inferred part of the fog model -- no
-    // VU1 dump exists from a map that enables it -- so it is parsed, reported, and not applied.
-    else if (params.fogAltitude) {
-      notes.add(`altitude fog is enabled (band ${params.fogTop} to ${params.fogBottom}) and not applied`);
-    }
     return params;
   } catch (e) {
     notes.add(`cameras/camera: ${say(e)}`);
@@ -503,7 +512,7 @@ function place(library: ModelLibrary, bytes: Uint8Array, toc: ZdbEntry[], stem: 
     const every: PlacedModel = {
       modelName: WORLD_MODEL, path: WORLD_MODEL, nodeIndex: -1, instanceIndex: null,
       chunks: entry ? entry.nodes.map((n) => n.name) : [],
-      world: Float32Array.from(IDENTITY), rowMajor: Float32Array.from(IDENTITY),
+      world: Float32Array.from(IDENTITY), rowMajor: Float32Array.from(IDENTITY), lit: false,
     };
     return { world: [every], props: [], origin: worldOrigin(bytes, toc, stem, notes), collision: noCollision() };
   }
