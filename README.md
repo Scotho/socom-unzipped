@@ -17,10 +17,11 @@ drafts whose stamp field is still blank.)*
 >
 > Online play is at your own risk. SOCOM II's network code is the game's own, recompiled as-is and **not audited**,
 > and it runs as a native program with your user's access: a successful exploit is code on your PC, not a crashed
-> console. The community servers patched the known holes on the console years ago; this project has closed two on the
-> PC side (a reported one on 2026-09-23, on both client and server; one found by its own read on 2026-09-25, refused
-> on the client every launch). Both are installed on every launch, the game log says so, and the mechanics of neither
-> are published (`SECURITY.md`). The rest is unaudited.
+> console. The community servers patched the known holes on the console years ago; on the PC side this project
+> has partly closed one reported hole (2026-09-23: one chat receive path bounded on the client, chat clamped on the
+> project's server; a 2026-09-26 test found that game-lobby chat takes another client path, not yet bounded) and closed
+> one it found by its own read (2026-09-25, refused on the client every launch). Both hardenings install on every launch,
+> the game log says so, and the mechanics of neither are published (`SECURITY.md`). The rest is unaudited.
 >
 > Play only with people you trust, on the project's server or one you run yourself, and never with a build you did
 > not compile or verify. Do not point this at any community server.

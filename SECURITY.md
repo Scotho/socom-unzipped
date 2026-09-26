@@ -34,19 +34,13 @@ before it is pointed at.
 The multiplayer code is SOCOM II's, recompiled as-is, and it has known vulnerabilities that the community console
 servers patched years ago (reported to the project by a community moderator, 2026-09-20):
 
-- **Reported; fixed 2026-09-23 on the client and the server; the moderator's confirmation pending.** A hostile
-  peer in the same room could reach code execution on the other clients in it through the chat path -- here, a
-  native process on the player's PC. The client now bounds the chat receive path (a hardening installed on every
-  launch, which the game log reports), and the project's server clamps the chat fields it forwards. Details are
-  deliberately not written up in this repository. What is and is not yet observed about the fix is in
-  `docs/KNOWN.md` (§1 and §2, 2026-09-23).
-- **Found 2026-09-25 by the project's own read of the network path; fixed the same day on the client.** A game server the
-  player joins could write to the client's game memory, and read it back, through two records of the game's own
-  protocol -- here, memory of a native process on the player's PC. The client now refuses both records every time, for
-  both revisions (a hardening installed on every launch, which the game log reports); the project's server never sends
-  them. Details are deliberately not written up in this repository. What is observed about the fix is in
-  `docs/KNOWN.md` (§1, 2026-09-25).
-- **Others are believed to exist**; nothing else in the recompiled network path has been audited for them.
+- **Reported; partly fixed 2026-09-23; the moderator's confirmation pending.** A hostile peer in the same room could
+  reach code execution on the other clients in it through the chat path -- here, a native process on the player's PC.
+  The client bounds one chat receive path on every launch (the game log reports it), and the project's server clamps
+  the chat fields its lobby server forwards. A test on 2026-09-26 showed that game-lobby chat lines reach the other
+  client by a different path, which is not yet bounded on the client, and whether they pass the server's clamp is
+  still being checked. Until that path is found and bounded, the fix is partial. Details are deliberately not written
+  up in this repository. What is and is not yet observed is in `docs/KNOWN.md` (sections 1 and 2; issue #26).
 
 The README tells players to play online only with people and servers they trust. The specifics of the fixed issue,
 another such path, or the game-side fix the community applied belong in a private report through the Reporting
