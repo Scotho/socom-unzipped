@@ -158,5 +158,38 @@ class AudioSurveyShortlistTest(unittest.TestCase):
             self.assertRegex(row[val_col], COMMAND, "%s: the validation's number names no backticked command" % label)
 
 
+# Sprint 15 Task T1: the LLE-oracle spike (docs/research/70-lle-oracle-spike.md). The spike's question, written
+# before the reading: the note says ADOPT AS ORACLE or NOT ADOPTED on a recommendation line, and gives N -- the
+# mission replay's disagreements on the oracle -- as "N = <number>" on a line that names its backticked command.
+SPIKE = os.path.join(ROOT, "docs", "research", "70-lle-oracle-spike.md")
+RECOMMENDATION = re.compile(r"(?im)^\W*recommendation\b[^\n]*\b(ADOPT AS ORACLE|NOT ADOPTED)\b")
+N_LINE = re.compile(r"(?m)^[^\n]*\bN = \d[\d,]*[^\n]*$")
+N_UNMEASURED = re.compile(r"(?m)^[^\n]*\bN = not measured\b[^\n]*$")
+
+
+class LleOracleSpikeTest(unittest.TestCase):
+    def setUp(self):
+        self.assertTrue(os.path.isfile(SPIKE), "the spike note is missing: %s" % SPIKE)
+        with open(SPIKE, encoding="utf-8") as f:
+            self.text = f.read()
+
+    def test_the_note_carries_a_recommendation_line(self):
+        self.assertRegex(self.text, RECOMMENDATION,
+                         "no line starting 'Recommendation' that says ADOPT AS ORACLE or NOT ADOPTED")
+
+    def test_the_note_gives_n_with_its_command(self):
+        # A spike stopped by its stop rule before the replay ran writes "N = not measured" -- only with NOT ADOPTED,
+        # and still naming the command that would measure it (amended after the reading: T1's build stopped it).
+        lines = N_LINE.findall(self.text)
+        stopped = N_UNMEASURED.findall(self.text)
+        verdict = RECOMMENDATION.search(self.text)
+        if not lines and stopped:
+            self.assertTrue(verdict and verdict.group(1) == "NOT ADOPTED",
+                            "'N = not measured' is allowed only under a NOT ADOPTED recommendation")
+            lines = stopped
+        self.assertTrue(lines, "no 'N = <number>' line in the spike note")
+        self.assertTrue(any(COMMAND.search(l) for l in lines), "no 'N = <number>' line names a backticked command")
+
+
 if __name__ == "__main__":
     unittest.main()
