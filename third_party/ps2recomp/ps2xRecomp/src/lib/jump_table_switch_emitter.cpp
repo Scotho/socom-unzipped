@@ -24,6 +24,7 @@ namespace ps2recomp
             std::string funcName = getFunctionName(target);
             if (!funcName.empty())
             {
+                m_directCallees.insert(funcName);   // the file declares it (issue #57)
                 ss << "        " << funcName << "(rdram, ctx, runtime);\n";
             }
             else

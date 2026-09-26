@@ -1089,6 +1089,95 @@ void register_ps2_recompiler_tests()
             std::filesystem::remove_all(tempRoot, removeError);
         });
 
+        tc.Run("a re-recomp into the same directory rewrites only changed files and removes stale ones (issue #57)", [](TestCase &t) {
+            // build.sh deleted the output directory before every recomp, so every file got a new timestamp
+            // and a build after a one-name change recompiled every object. The recompiler now leaves a file
+            // whose bytes would not change alone and removes what this run did not produce.
+            namespace fs = std::filesystem;
+            const std::string uniqueSuffix =
+                std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+            const fs::path tempRoot = fs::temp_directory_path() / ("ps2recomp-rerun-" + uniqueSuffix);
+            const fs::path elfPath = tempRoot / "rerun.elf";
+            const fs::path mapPath = tempRoot / "rerun_ghidra.csv";
+            const fs::path namesPath = tempRoot / "rerun_names.csv";
+            const fs::path outputPath = tempRoot / "output";
+            fs::create_directories(tempRoot);
+
+            const bool elfWritten = writeMinimalMipsElfWithLongJalTarget(elfPath);
+            std::ofstream mapFile(mapPath);
+            mapFile << "name,start,end,size\n";
+            mapFile << "FUN_00100000,0x00100000,0x00100010,0x10\n";
+            mapFile << "FUN_00100010,0x00100010,0x00100018,0x8\n";
+            mapFile.close();
+            std::ofstream namesFile(namesPath);
+            namesFile << "Address,Name,Mangled,Pass,Score,Evidence,Source,Date\n";
+            namesFile << "0x00100010,renamed_target,,test,1.00,synthetic,synthetic,2026-09-26\n";
+            namesFile.close();
+            t.IsTrue(elfWritten && static_cast<bool>(mapFile) && static_cast<bool>(namesFile),
+                     "re-recomp inputs should be generated");
+
+            auto runOnce = [&](bool withNames) {
+                const fs::path configPath = tempRoot / (withNames ? "with.toml" : "without.toml");
+                std::ofstream config(configPath);
+                config << "[general]\n";
+                config << "input = \"" << elfPath.generic_string() << "\"\n";
+                config << "ghidra_output = \"" << mapPath.generic_string() << "\"\n";
+                if (withNames)
+                    config << "names = \"" << namesPath.generic_string() << "\"\n";
+                config << "output = \"" << outputPath.generic_string() << "\"\n";
+                config << "stubs = []\nskip = []\n";
+                config.close();
+                PS2Recompiler recompiler(configPath.string());
+                const bool ok = recompiler.initialize() && recompiler.recompile();
+                if (ok)
+                    recompiler.generateOutput();
+                return ok;
+            };
+
+            t.IsTrue(runOnce(false), "the first run should recompile");
+            const fs::path unchanged = outputPath / "FUN_00100000_0x100000.cpp";
+            const fs::path oldName = outputPath / "sub_00100010_0x100010.cpp";
+            const fs::path stale = outputPath / "gone_0xdead0.cpp";
+            const fs::path foreign = outputPath / "notes.txt";
+            t.IsTrue(fs::exists(unchanged) && fs::exists(oldName), "the first run writes both functions");
+            t.IsTrue(readTextFile(unchanged).find("ps2_recompiled_functions.h") == std::string::npos,
+                     "a per-function file does not include the all-functions header");
+            t.IsTrue(readTextFile(outputPath / "register_functions.cpp").find("#include \"ps2_recompiled_functions.h\"") !=
+                         std::string::npos,
+                     "the function table's file still includes it");
+
+            // Backdate every file, plant a stale generated file and a file that is not the recompiler's.
+            const auto past = fs::last_write_time(unchanged) - std::chrono::hours(1);
+            for (const auto &entry : fs::directory_iterator(outputPath))
+                fs::last_write_time(entry.path(), past);
+            std::ofstream(stale) << "void gone_0xdead0() {}\n";
+            std::ofstream(foreign) << "kept\n";
+            fs::last_write_time(stale, past);
+            // Review round (#57): a config's `output` may be a folder holding other sources, so the prune removes
+            // only names this emitter writes, and never below the output folder.
+            const fs::path keep = outputPath / "keep.cpp";
+            const fs::path nested = outputPath / "sub" / "nested_0xbeef0.cpp";
+            std::ofstream(keep) << "int keep;\n";
+            fs::create_directories(nested.parent_path());
+            std::ofstream(nested) << "int nested;\n";
+
+            t.IsTrue(runOnce(true), "the second run, one display name changed, should recompile");
+            t.IsTrue(fs::last_write_time(unchanged) == past, "a file whose bytes did not change keeps its timestamp");
+            t.IsTrue(fs::exists(outputPath / "renamed_target_0x100010.cpp"), "the renamed function's file is written");
+            t.IsFalse(fs::exists(oldName), "the renamed function's old file is removed");
+            t.IsFalse(fs::exists(stale), "a generated file this run did not produce is removed");
+            t.IsTrue(fs::exists(foreign), "a file that is not .cpp or .h is left alone");
+            t.IsTrue(fs::exists(keep), "a .cpp without the emitter's _0x<address> name is left alone");
+            t.IsTrue(fs::exists(nested), "a file below the output folder is left alone, whatever its name");
+            t.IsTrue(fs::last_write_time(outputPath / "register_functions.cpp") != past,
+                     "the function table, which names the renamed function, is rewritten");
+            t.IsTrue(fs::last_write_time(outputPath / "ps2_recompiled_functions.h") != past,
+                     "the all-functions header is rewritten");
+
+            std::error_code removeError;
+            fs::remove_all(tempRoot, removeError);
+        });
+
         tc.Run("runtime call resolution includes Veronica compatibility aliases", [](TestCase &t) {
             t.Equals(ps2_runtime_calls::resolveSyscallName("ReleaseAlarm"), std::string_view{"ReleaseAlarm"},
                      "ReleaseAlarm should resolve as a syscall name");

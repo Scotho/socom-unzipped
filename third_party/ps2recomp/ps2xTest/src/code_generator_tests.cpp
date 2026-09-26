@@ -1158,6 +1158,92 @@ void register_code_generator_tests()
                  "the clean stub goes through the table");
     });
 
+    tc.Run("a generated file declares its direct callees, not the whole set (issue #57)", [](TestCase &t) {
+        // Upstream #253's shape. Every generated file included ps2_recompiled_functions.h (all 14,882
+        // declarations), so one rename touched a header every object read and rebuilt them all. A file
+        // names another function only in a direct tail call (J), so it declares those targets and no more;
+        // a J to an HLE stub goes through the function table (issue #40) and needs no declaration.
+        Function func;
+        func.name = "tail_caller";
+        func.start = 0x4000;
+        func.end = 0x4030;
+        func.isRecompiled = true;
+
+        auto symbolFor = [](const char *name, uint32_t address)
+        {
+            Symbol s;
+            s.name = name;
+            s.address = address;
+            s.isFunction = true;
+            return s;
+        };
+        auto makeJ = [](uint32_t address, uint32_t target)
+        {
+            Instruction j{};
+            j.address = address;
+            j.opcode = OPCODE_J;
+            j.target = (target >> 2) & 0x3FFFFFF;
+            j.hasDelaySlot = true;
+            j.raw = 0x08000000 | (j.target & 0x3FFFFFF);
+            return j;
+        };
+        // Three entries reached by separate J's: plain_func, the stub, and another_func.
+        std::vector<Instruction> instructions{makeJ(0x4000, 0x6000), makeNop(0x4004), makeNop(0x4008),
+                                              makeNop(0x400C), makeJ(0x4010, 0x5000), makeNop(0x4014),
+                                              makeNop(0x4018), makeNop(0x401C), makeJ(0x4020, 0x7000),
+                                              makeNop(0x4024), makeNop(0x4028), makeNop(0x402C)};
+
+        CodeGenerator gen({symbolFor("malloc", 0x5000), symbolFor("plain_func", 0x6000),
+                           symbolFor("another_func", 0x7000)}, {});
+        gen.setStubTargets({0x5000u});
+        const std::string generated = gen.generateFunction(func, instructions, true);
+        printGeneratedCode("a generated file declares its direct callees, not the whole set", generated);
+
+        t.IsTrue(generated.find("#include \"ps2_runtime.h\"") != std::string::npos,
+                 "a generated file still includes the runtime interface");
+        t.IsTrue(generated.find("ps2_recompiled_functions.h") == std::string::npos,
+                 "only the function table's file includes every generated declaration");
+        t.IsTrue(generated.find("ps2_recompiled_stubs.h") == std::string::npos,
+                 "a generated file reaches a stub through the function table, not by name");
+
+        const std::string plainDecl = "void plain_func(uint8_t*, R5900Context*, PS2Runtime*);\n";
+        const std::string anotherDecl = "void another_func(uint8_t*, R5900Context*, PS2Runtime*);\n";
+        const size_t plainAt = generated.find(plainDecl);
+        const size_t anotherAt = generated.find(anotherDecl);
+        // The caller has no symbol, so its identifier is the emitter's fallback; find the definition by its shape.
+        const size_t definitionAt = generated.find("(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtime) {");
+        t.IsTrue(plainAt != std::string::npos && anotherAt != std::string::npos,
+                 "each direct tail-call target is declared");
+        t.IsTrue(generated.find(plainDecl, plainAt + 1) == std::string::npos, "a target is declared once");
+        t.IsTrue(anotherAt < plainAt, "the declarations are sorted by name, so the file does not depend on hash order");
+        t.IsTrue(definitionAt != std::string::npos && plainAt < definitionAt && anotherAt < definitionAt,
+                 "the declarations precede the definition");
+        t.IsTrue(generated.find("void malloc(") == std::string::npos,
+                 "a stub reached through the table is not declared");
+        t.IsTrue(generated.find("plain_func(rdram, ctx, runtime); return;") != std::string::npos,
+                 "the call itself is unchanged");
+
+        const std::string combined = gen.generateFunction(func, instructions, false);
+        t.IsTrue(combined.find("PS2Runtime*);") == std::string::npos,
+                 "the single-file output keeps its one header and declares nothing per function");
+    });
+
+    tc.Run("a generated file with no direct callee declares nothing (issue #57)", [](TestCase &t) {
+        Function func;
+        func.name = "leaf_func";
+        func.start = 0x8000;
+        func.end = 0x8004;
+        func.isRecompiled = true;
+
+        CodeGenerator gen({}, {});
+        const std::string generated = gen.generateFunction(func, {makeNop(0x8000)}, true);
+        t.IsTrue(generated.find("PS2Runtime*);") == std::string::npos, "no callee, no declaration");
+        t.IsTrue(generated.find("ps2_recompiled_functions.h") == std::string::npos,
+                 "and no all-functions header");
+        t.IsTrue(generated.find("#include \"ps2_stubs.h\"") != std::string::npos,
+                 "the runtime's own stub and syscall headers stay");
+    });
+
     tc.Run("PMULTW multiplies words 0 and 2 signed into their own lanes and HI/LO (D5)", [](TestCase &t) {
         CodeGenerator gen({}, {});
 
