@@ -65,5 +65,6 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
   unanswered through two sittings after it was asked closes by default at the next close: nothing today; at a third
   sitting without answers all 16 open rows would close together (`docs/SITTING.md` marks them).
 - **Sprint 14, lock-free, in order:** W2's first commit to review and merge; X1 (filler, once no task waits on a reviewer).
-- **Lock-bound** (lock FREE, queue empty, one at a time): W2's slow lock run (36 min, the marker); at night: the first
+- **Lock-bound** (lock FREE, queue empty, one at a time): W2's slow lock run (36 min, the marker); at night, once the
+  main tree is clean (the story session's uncommitted `tools_py/story/site.py` makes the chain refuse): the first
   merged chain (W2 step 3, a batch gated as a batch), E2's twelve captures, then the Sprint 14 close chain.
