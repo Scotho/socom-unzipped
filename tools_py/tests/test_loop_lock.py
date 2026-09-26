@@ -47,6 +47,7 @@ SMOKE = {
     "test_smoke_racing_reapers_with_process_list_latency_one_wins",     # R73: one reaper race
     "test_smoke_stale_mutex_takers_never_double_enter",                 # R73: one mutex double-entry check
     "test_smoke_a_take_is_refused_behind_a_live_ticket_and_a_stale_ticket_is_dropped",  # S13 H2: the queue's grant
+    "test_memory_refusal_below_threshold_does_not_launch",              # S14 G5: the memory guard fires
 }
 
 
@@ -101,6 +102,9 @@ class LockTestBase(unittest.TestCase):
             env.pop(k, None)     # this suite may itself run under `loop_lock.sh run`
         env["LOOP_LOCK_PATH"] = fwd(self.lock)
         env["LOOP_LOCK_PS_CMD"] = "cat '%s'" % fwd(self.procs)
+        # run_detached's memory guard (Sprint 14 G5) reads the host's free RAM, which a busy host can drop below
+        # its 3 GB floor; the suite pins it unless a test sets it (the memory-guard tests do).
+        env["RUN_FREE_MEM_GB_OVERRIDE"] = "64"
         env.update({k: str(v) for k, v in extra.items()})
         return env
 
@@ -1251,6 +1255,51 @@ class TestRunDetached(LockTestBase):
         env = self.env(RUN_FREE_GB_CMD="echo 500", RUN_MIN_FREE_GB=4)
         p = subprocess.run([BASH, DETACHED_SH, fwd(job), fwd(marker)], capture_output=True, text=True,
                            env=env, timeout=30)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertEqual(self._wait_marker(marker).strip(), "exit=0")
+        self.assertTrue(os.path.exists(ran))
+
+    # -- Sprint 14 G5: the memory guard beside the disk guard ----------------------------------
+
+    def test_memory_refusal_below_threshold_does_not_launch(self):
+        job = os.path.join(self.tmp, "job.sh")
+        ran = os.path.join(self.tmp, "ran")
+        with open(job, "w", newline="\n") as f:
+            f.write("touch '%s'\nexit 0\n" % fwd(ran))
+        marker = os.path.join(self.tmp, "job.done")
+        env = self.env(RUN_FREE_GB_CMD="echo 500", RUN_FREE_MEM_GB_OVERRIDE=1, RUN_MIN_FREE_MEM_GB=3)
+        p = subprocess.run([BASH, DETACHED_SH, fwd(job), fwd(marker)], capture_output=True, text=True,
+                           env=env, timeout=30)
+        self.assertEqual(p.returncode, 3, p.stdout + p.stderr)
+        self.assertIn("REFUSED", p.stdout)
+        self.assertEqual(_read(marker).strip(), "exit=3 REFUSED: only 1 GB memory free (< RUN_MIN_FREE_MEM_GB=3)")
+        time.sleep(0.5)
+        self.assertFalse(os.path.exists(ran), "the job must not launch below the free-memory floor")
+        self.assertTrue(self.is_free(), "a refused run must never take the lock")
+
+    def test_memory_refusal_default_floor_is_three_gb(self):
+        job = os.path.join(self.tmp, "job.sh")
+        with open(job, "w", newline="\n") as f:
+            f.write("exit 0\n")
+        marker = os.path.join(self.tmp, "job.done")
+        env = self.env(RUN_FREE_GB_CMD="echo 500", RUN_FREE_MEM_GB_OVERRIDE="2.5")
+        env.pop("RUN_MIN_FREE_MEM_GB", None)
+        p = subprocess.run([BASH, DETACHED_SH, fwd(job), fwd(marker)], capture_output=True, text=True,
+                           env=env, timeout=30)
+        self.assertEqual(p.returncode, 3, p.stdout + p.stderr)
+        self.assertIn("RUN_MIN_FREE_MEM_GB=3", _read(marker))
+
+    def test_enough_free_memory_passes_the_guard(self):
+        job = os.path.join(self.tmp, "job.sh")
+        ran = os.path.join(self.tmp, "ran")
+        with open(job, "w", newline="\n") as f:
+            f.write("touch '%s'\nexit 0\n" % fwd(ran))
+        marker = os.path.join(self.tmp, "job.done")
+        env = self.env(RUN_FREE_GB_CMD="echo 500", RUN_FREE_MEM_GB_OVERRIDE=8, RUN_MIN_FREE_MEM_GB=3,
+                       RUN_CPU_SAMPLER=0)
+        p = subprocess.run([BASH, DETACHED_SH, fwd(job), fwd(marker)], capture_output=True, text=True,
+                           env=env, timeout=30)
+        self.assertNotIn("memory free", p.stdout + p.stderr)
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         self.assertEqual(self._wait_marker(marker).strip(), "exit=0")
         self.assertTrue(os.path.exists(ran))

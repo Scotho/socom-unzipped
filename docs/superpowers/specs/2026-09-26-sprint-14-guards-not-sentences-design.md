@@ -88,8 +88,10 @@ when the host is quiet. The private location that served the owner's ELF dumps t
 
 - **G1** A PreToolUse hook on Bash, `scripts/hooks/claude_pretool.sh` → `python -m tools_py.hooks.pretool`, reading
   the tool call from stdin and refusing (exit 2, one sentence on stderr): `git add` with no pathspec, `-A`,
-  `--all`, `.` or `-u`; `git commit -a`/`--all` (a plain commit of an explicitly staged index is allowed — the
-  loop's own practice; narrowed 2026-09-26 at dispatch, the plan's Log); `--no-verify` anywhere; `git push` when the cwd is a worktree; `git config`
+  `--all`, `.` or `-u`; `git commit` without a `--` pathspec or with `-a`/`--all` (HANDOFF §5 rule 1: the main
+  tree's index is shared, a bare commit takes what anyone staged; the one exception is a merge in progress, where
+  git itself refuses a partial commit — a narrowing of this rule on 2026-09-26 was reversed the same hour, the plan's
+  Log); `--no-verify` anywhere; `git push` when the cwd is a worktree; `git config`
   in a worktree without `--worktree` unless read-only; `git worktree remove` outside `scripts/agent_worktree.sh`;
   `loop_lock.sh take` or `release` called directly. Wired by a tracked `.claude/settings.json` so every worktree
   gets it. Bar: `tools_py/tests/test_hooks.py` feeds each planted command and asserts exit 2, and one allowed
