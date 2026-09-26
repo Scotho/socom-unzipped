@@ -65,6 +65,9 @@ CELL_LEADS = (
 # What is stripped between a ruling's number and its text: bold marks, the (date, task) note, a second
 # number of a shared label ("**R265**, **R266** (...)"), the separator.
 LABEL_TAIL = re.compile(r"^(?:\s+|\*+|\([^()\n]*\)|,\s*(?:and\s+)?\*\*R\d{2,3}\b|—|–|--?|:|,|\.)")
+# The first words that cannot be read without the sentence before them (R264's "they keep those names"): only these
+# earn a mid-paragraph label its "(after: ...)" context; R173's and R184's "the ..." read on their own (S14 D4).
+ANTECEDENT = re.compile(r"^(?:they|them|their|it|its|this|that|these|those|the same|both|such)\b", re.I)
 SENTENCE = re.compile(r"^(.+?[.!?])(?=\s+[A-Z(\"'`“]|\s*$)")
 
 
@@ -182,6 +185,11 @@ def _own_segment(rest, number):
     return None
 
 
+def needs_antecedent(words):
+    """True when `words` open with a pronoun or determiner that needs its antecedent (ANTECEDENT)."""
+    return bool(ANTECEDENT.match(_clean(words).lstrip("*_ ")))
+
+
 def _context(before):
     """The sentence just before a label that sits mid-paragraph ("**Rulings.** Sprint 12's rulings are ... **R264**
     (...): they keep those names"), cut at CONTEXT characters; "" when the label opens its paragraph."""
@@ -252,9 +260,9 @@ def _rows():
             d = docmaint.DATE.search(label)
             date = d.group(0) if d else None
             struck = rest.startswith("~~") or "~~" in label
-            # A label mid-paragraph whose words open in lower case ("they keep those names") reads only after the
-            # sentence before it, which is shown first.
-            ctx = _context(para[:begin]) if segment is None and rest[:1].islower() else ""
+            # A label mid-paragraph whose words open with a pronoun ("they keep those names") reads only after the
+            # sentence before it, which is shown first; any other opening reads on its own.
+            ctx = _context(para[:begin]) if segment is None and needs_antecedent(rest) else ""
             line = _first_sentence(("(after: %s) " % ctx if ctx else "") + _sentence(rest))
             status = _text_status(struck, own)       # the label's note can carry it: R122's
             if TEXT_AMENDED.search(own):

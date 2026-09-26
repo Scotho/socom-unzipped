@@ -1,6 +1,6 @@
 # The owner's sitting
 
-> **Generated -- do not edit.** Written by `python -m tools_py.sitting` from `docs/HUMAN_TASKS.md` (the O rows and the `last sitting:` stamp), the rulings `docs/RULINGS.md` shows (`tools_py.rulings.rows()`), `docs/BACKLOG.md` (the `Carried` column) and `docs/PLAYTEST.md` (its build block). Change a source and regenerate; `python -m tools_py.sitting --check` exits 1 when this file is stale.
+> **Generated -- do not edit.** Written by `python -m tools_py.sitting` from `docs/HUMAN_TASKS.md` (the O rows and the stamp of the sittings), the rulings `docs/RULINGS.md` shows (`tools_py.rulings.rows()`), `docs/BACKLOG.md` (the `Carried` column) and `docs/PLAYTEST.md` (its build block). Change a source and regenerate; `python -m tools_py.sitting --check` exits 1 when this file is stale.
 
 The page as of 2026-09-26, for the sitting after the one of 2026-09-17: 16 open O rows (2 answered or struck); 234 active rulings since 2026-09-17 (100 dated, 134 placed by number or home, 68 undated and unplaceable, not listed); 3 issues carried twice; the build: **NOT BUILT**.
 
@@ -130,7 +130,7 @@ Answered or struck (the row stays in HUMAN_TASKS as the record):
 - **R170** (placed by number) a fade belongs to the cue, not to the handle. -- overturn by number
 - **R171** (placed by number) the stream decoder reads the VAG flags the bank decoder always read. -- overturn by number
 - **R172** (placed by number) PROPOSED, not taken: the concurrency cap and the clip. -- overturn by number
-- **R173** (2026-09-19) (after: The foreground half needed no code: nothing in the launcher calls…) the CONTROLLER page's live pad DISPLAY stays alive while the game runs -- it moves… -- overturn by number
+- **R173** (2026-09-19) the CONTROLLER page's live pad DISPLAY stays alive while the game runs -- it moves no focus, and a player who alt-tabs to check a pad should not find a dead pi… -- overturn by number
 - **R174** (placed by number) Goal 12 is split: the data path is Sprint 9, the UI is Sprint 10. *Decided 2026-09-19 by the controller under an explicit delegation from the owner* ("overseer… -- overturn by number
 - **R175** (placed by number) P6's persona measurement is not run, the launcher's default preset moves to `socom.scotho.com`, and the hosted server goes on advertising its IP literal. *Deci… -- overturn by number
 - **R176** (placed by number) ADVANCED is a per-page section, it holds one thing today, and it cannot hide a setting that is doing something. *Decided 2026-09-19 by the controller; the spec… -- overturn by number
@@ -141,7 +141,7 @@ Answered or struck (the row stays in HUMAN_TASKS as the record):
 - **R181** (placed by number) secret scanning, push protection and Dependabot alerts are ON, turned on by the controller under the owner's words. *Decided 2026-09-20.* HANDOFF §5 rule 13 ke… -- overturn by number
 - **R182** (placed by number) rulesets on `main` and `sprint-*`, as GIT_STRATEGY §6 designed them, with one deviation: no CODEOWNERS review required and no bypass. *Decided 2026-09-20.*… -- overturn by number
 - **R183** (placed by number) the leak check is the monitor's rules adapted for a SOURCE tree, not copied. *Decided 2026-09-20.* The monitor's set was built for a published snapshot, where… -- overturn by number
-- **R184** (placed by number) (after: No agent runs the game.) the mid-sprint merge to `main` -- the owner asked for the hardening and the developer setup on `main` as soon as possible (PR… -- overturn by number
+- **R184** (placed by number) the mid-sprint merge to `main` -- the owner asked for the hardening and the developer setup on `main` as soon as possible (PR #5, `sprint-10` -> `main`, valida… -- overturn by number
 - **R185** (placed by number) any drift refuses, whatever `--only` asked for. -- overturn by number
 - **R186** (placed by number) the harness is recorded, never compared. -- overturn by number
 - **R187** (placed by number) an operator's extra `PS2X_*` variable is a drift. -- overturn by number

@@ -61,7 +61,9 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 6. What is owed
 
-- **The owner's rows:** `docs/HUMAN_TASKS.md` O1-O8, O10-O16 and O18 (O16: issues #25, #26 and #42).
+- **The owner's rows:** `docs/HUMAN_TASKS.md` O1-O8, O10-O16 and O18 (O16: issues #25, #26 and #42). Under R271 a row
+  unanswered through two sittings after it was asked closes by default at the next close: nothing today; at a third
+  sitting without answers all 16 open rows would close together (`docs/SITTING.md` marks them).
 - **Sprint 14, lock-free, in order:** the fix rounds of D3, D5, M1, S3 to merge; E3, W1 (code); then D4 (after D3),
   M2 (after M1), E1, X1 (filler).
 - **Lock-bound** (lock FREE, queue empty, one at a time): W1's slow lock run and rollout (the window is open now);
