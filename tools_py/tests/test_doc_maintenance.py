@@ -739,7 +739,8 @@ class OneHomeTest(unittest.TestCase):
     EXEMPT = {"docs/HAZARDS.md", "docs/STATUS.md", "docs/RULINGS.md"}
     ITEM = re.compile(r"(?<![\w./-])(?:(?:game|logs|vm|tools|research|ghidra_proj|recomp/output|dist\*?|build\*?)/"
                       r"|simulated\.db)")
-    NEVER_COMMIT = re.compile(r"never\s+commit", re.I)
+    NEVER_COMMIT = re.compile(r"never\s+commit|do\s+not\s+commit|must\s+not\s+be\s+committed", re.I)
+    COMMAND_LINE = re.compile(r"^\s*`?(?:bash|python|powershell|gh|git) ")
 
     def live_documents(self):
         out = []
@@ -754,14 +755,38 @@ class OneHomeTest(unittest.TestCase):
                 out.append(".claude/skills/%s/SKILL.md" % name)
         return out
 
-    @staticmethod
-    def sentences(text):
-        """Paragraphs and list items, whitespace joined across line breaks, split at sentence ends."""
+    ITEM_START = re.compile(r"^\s*(?:[-*] |\d+\. )")
+
+    @classmethod
+    def sentences(cls, text):
+        """Paragraphs and list items, whitespace joined across line breaks, split at sentence ends ("e.g." and
+        "i.e." do not end one). A lead-in line ending in ":" followed by list items is ONE unit, lead-in and
+        items together, never split -- a list under "Never commit:" is the list."""
         text = re.sub(r"(?m)^[ \t]*#+ ?", "", text)            # comment markers of a shell header
+        blocks, cur, leadin = [], [], False
+        for line in text.split("\n"):
+            if not line.strip():
+                blocks.append((cur, leadin))
+                cur, leadin = [], False
+                continue
+            if cls.ITEM_START.match(line) and cur and not leadin:
+                if cur[-1].rstrip().endswith(":"):
+                    leadin = True                                # this item continues a lead-in's list
+                else:
+                    blocks.append((cur, leadin))
+                    cur = []
+            cur.append(line)
+        blocks.append((cur, leadin))
         out = []
-        for block in re.split(r"\n\s*\n|\n\s*(?=[-*] |\d+\. )", text):
-            block = " ".join(block.split())
-            out.extend(re.split(r"(?<=[.!?])\s+(?=[A-Z*`(])", block))
+        for lines, whole in blocks:
+            block = " ".join(" ".join(lines).split())
+            if not block:
+                continue
+            if whole:
+                out.append(block)
+                continue
+            protected = re.sub(r"\b(e\.g|i\.e)\.", lambda m: m.group(1).replace(".", "\0") + "\0", block, flags=re.I)
+            out.extend(s.replace("\0", ".") for s in re.split(r"(?<=[.!?])\s+(?=[A-Z*`(])", protected))
         return out
 
     def never_commit_lists(self, text):
@@ -770,16 +795,43 @@ class OneHomeTest(unittest.TestCase):
 
     @staticmethod
     def lock_rules(text):
-        return [s for s in OneHomeTest.sentences(text)
-                if ("heartbeat" in s and "renew" in s) or ("--wait" in s and "minutes" in s)]
+        """Sentences stating the lock's rules; "renew" also matches "renewal", case never matters."""
+        out = []
+        for s in OneHomeTest.sentences(text):
+            low = s.lower()
+            if ("heartbeat" in low and "renew" in low) or ("--wait" in low and "minutes" in low):
+                out.append(s)
+        return out
+
+    @classmethod
+    def without_command_lines(cls, text):
+        """The run-gate skill carries the lock's COMMANDS: a line that starts (after blanks) with a command --
+        `bash `, `python `, `powershell `, `gh ` or `git `, bare or opening a backtick span -- is a command line
+        and is dropped. A bare leading backtick is not enough: wrapped prose often starts with a code span
+        (`<cmd>` did not run. `--wait` is ...), and that prose is rule text the test still holds."""
+        return "\n".join(line for line in text.split("\n") if not cls.COMMAND_LINE.match(line))
 
     def test_planted_sentences_are_detected(self):
         self.assertTrue(self.never_commit_lists("- Never commit `game/`, `logs/` or keys.\n"))
+        self.assertTrue(self.never_commit_lists("Never commit these:\n- `game/`\n- `logs/`\n"))
+        self.assertTrue(self.never_commit_lists("You DO NOT COMMIT `vm/` or `tools/`.\n"))
+        self.assertTrue(self.never_commit_lists("Paths that must not be committed:\n- `game/`\n- `simulated.db`\n"))
+        self.assertTrue(self.never_commit_lists("Never commit the disc, e.g. `game/`, or `logs/`.\n"))
         self.assertFalse(self.never_commit_lists("The never-commit list is GIT_STRATEGY's (`game/` too).\n"
                                                  "Never commit a file you were not given.\n"))
+        self.assertFalse(self.never_commit_lists("Never commit a stranger's file:\n\n- `game/`\n- `logs/`\n"))
         self.assertTrue(self.lock_rules("A waiter\nrenews its heartbeat.\n"))
+        self.assertTrue(self.lock_rules("The renewal keeps the HEARTBEAT fresh.\n"))
         self.assertTrue(self.lock_rules("# run --wait <minutes> -- <cmd>\n"))
+        self.assertTrue(self.lock_rules("`--wait` is wall-clock MINUTES and queues.\n"))
+        self.assertTrue(self.lock_rules("A --wait, e.g. a long one, counts minutes.\n"))
         self.assertFalse(self.lock_rules("The lock's rules are `scripts/loop_lock.sh`'s header.\n"))
+        self.assertFalse(self.lock_rules(self.without_command_lines(
+            "2. **Foreground**:\n   `bash scripts/loop_lock.sh run o [--wait <minutes>] -- cmd`\n")))
+        self.assertTrue(self.lock_rules(self.without_command_lines(
+            "   `bash scripts/loop_lock.sh check`\n   `--wait` is in minutes and queues.\n")))
+        self.assertTrue(self.lock_rules(self.without_command_lines(
+            "   `bash scripts/loop_lock.sh check`\n   The queue: --wait counts minutes.\n")))
 
     def test_the_never_commit_list_has_one_home(self):
         self.assertTrue(self.never_commit_lists(docmaint._read("docs/GIT_STRATEGY.md")),
@@ -791,8 +843,10 @@ class OneHomeTest(unittest.TestCase):
     def test_the_lock_rules_have_one_home(self):
         self.assertTrue(self.lock_rules(docmaint._read("scripts/loop_lock.sh")),
                         "scripts/loop_lock.sh's header no longer states the lock's rules")
-        hits = [(p, s[:90]) for p in self.live_documents() if p != ".claude/skills/run-gate/SKILL.md"
-                for s in self.lock_rules(docmaint._read(p))]
+        run_gate = ".claude/skills/run-gate/SKILL.md"
+        hits = [(p, s[:90]) for p in self.live_documents()
+                for s in self.lock_rules(self.without_command_lines(docmaint._read(p)) if p == run_gate
+                                         else docmaint._read(p))]
         self.assertEqual(hits, [], "the lock's rules are scripts/loop_lock.sh's header; point at it: %s" % hits)
 
 

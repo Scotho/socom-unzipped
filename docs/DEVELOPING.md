@@ -51,7 +51,8 @@ licences, with empty `cards/` and `logs/` — which is the folder INSTALL descri
 The repository is public. `python -m tools_py.release.leakcheck <mode>` is the gate (Sprint 10 hardening; the design is
 Sprint 11 Goal 9): `tree` every tracked file, `staged` the index (the pre-commit hook), `ignored` proves the paths that
 hold real secrets (`SENSITIVE_IGNORED` in `leakcheck.py`; the never-commit list is `docs/GIT_STRATEGY.md` section
-3's) are ignored, untracked and never committed, `metadata` the commit identities, `history [range]` every added line of every commit (the pre-push hook),
+3's) are ignored, untracked and never committed, `metadata` the commit identities, `history [range]` every added
+line of every commit (the pre-push hook),
 `artifact <dir>` an unpacked release, `external` the sibling repositories' own scanners (`../scotho`'s
 `scripts/check-secrets.mjs` and `../socom_monitor`'s `leakcheck.py`, folded into this report with their excerpts
 masked), `all` the four repository modes plus `external`. A sibling that is not beside this repository prints

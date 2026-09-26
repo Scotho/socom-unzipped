@@ -22,15 +22,10 @@ two-instance online runs only when the owner is away.
    marker (a launch is running: start nothing). `bash scripts/loop_lock.sh check` -- `FREE`, or `HELD` with the
    holder, purpose and heartbeat age, then any `QUEUED:` lines. If held, do lock-free work; never hold the lock
    across tool calls any other way than steps 2-3.
-   When a lock-script rollout is under way (a new `scripts/loop_lock.sh` landing; the procedure is `docs/HAZARDS.md`'s
-   lock area), this applies:
-   **Mixed versions:** a job started under an older `loop_lock.sh` (plain `logs/.loop_lock` file, or a
-   claim dir without the `logs/.loop_lock.mx` mutex) must finish before anything uses the current lock.
-2. **Foreground** (a build, the suites, a short gate):
-   `bash scripts/loop_lock.sh run <owner> --purpose "<what>" [--wait <minutes>] -- <cmd...>` -- takes the lock,
-   renews its heartbeat while `<cmd>` runs, releases on exit, returns `<cmd>`'s exit code; **exit 75** = busy and
-   `<cmd>` did not run. `--wait` is wall-clock MINUTES and queues (a ticket, served in arrival order); a take
-   without `--wait` is refused while anyone is queued. **A chain is ONE holding** -- wrap it whole:
+   During a lock-script rollout, mixed versions: the `scripts/loop_lock.sh` header ("Mixed fleet").
+2. **Foreground** (a build, the suites, a short gate); the queue, `--wait` and a chain's one holding are the header's:
+   `bash scripts/loop_lock.sh run <owner> --purpose "<what>" [--wait <minutes>] -- <cmd...>`
+   (exit 75: busy, `<cmd>` did not run). Wrap a chain whole:
    `bash scripts/loop_lock.sh run main --purpose "test+gate" -- bash -c './build.sh test && python -m tools_py.parity.gate'`
    (the gate's own take/release are NESTED no-ops inside a run).
 3. **Detached** (game runs, the gate, anything long):
