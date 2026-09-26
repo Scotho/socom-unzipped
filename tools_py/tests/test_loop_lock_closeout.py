@@ -90,7 +90,10 @@ class TestSmokeSelection(unittest.TestCase):
             "test_smoke_racing_reapers_with_process_list_latency_one_wins",
             "test_smoke_stale_mutex_takers_never_double_enter",
             # Sprint 13 H2 (issue #36): the queue's grant -- a take never barges past a live ticket -- stays always on
-            "test_smoke_a_take_is_refused_behind_a_live_ticket_and_a_stale_ticket_is_dropped"})
+            "test_smoke_a_take_is_refused_behind_a_live_ticket_and_a_stale_ticket_is_dropped",
+            # Sprint 14 G5: run_detached's memory guard refuses below RUN_MIN_FREE_MEM_GB -- the refusal stays always
+            # on (the reaper dropped queued jobs under memory pressure on 2026-09-25); the pass cases are slow-only
+            "test_memory_refusal_below_threshold_does_not_launch"})
         with open(TL.__file__) as f:
             src = f.read()
         self.assertIn('test.skipTest("slow lock suite: set LOOP_LOCK_SLOW_TESTS=1")', src)
