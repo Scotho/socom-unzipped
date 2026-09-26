@@ -13,24 +13,17 @@ draft release's checklist names the gate stamp its archive must pass before it c
 *(Superseded 2026-09-25, Sprint 13 S1: this said the gate's "stamps are in the release notes"; the only releases are unpublished
 drafts whose stamp field is still blank.)*
 
-> ## ⚠️ Multiplayer: two holes closed, the rest unaudited. Proceed at your own risk.
+> ## ⚠️ Multiplayer disclaimer
 >
-> SOCOM II's original network code has **known vulnerabilities**: a hostile player in the same room can attack the
-> other clients in it. The community servers patched these on the console years ago. This project has closed two:
+> Online play is at your own risk. SOCOM II's network code is the game's own, recompiled as-is and **not audited**,
+> and it runs as a native program with your user's access: a successful exploit is code on your PC, not a crashed
+> console. The community servers patched the known holes on the console years ago; this project has closed two on the
+> PC side (a reported one on 2026-09-23, on both client and server; one found by its own read on 2026-09-25, refused
+> on the client every launch). Both are installed on every launch, the game log says so, and the mechanics of neither
+> are published (`SECURITY.md`). The rest is unaudited.
 >
-> - **Reported, fixed 2026-09-23 on both sides:** the chat receive path is bounded on the client (installed on every
->   launch -- the game log says so) and clamped on the project's server. The reporter's confirmation is still pending.
-> - **Found by the project's own read, fixed 2026-09-25 on the client:** a game server you join could write to your
->   game's memory, and read it back, through two records of the game's own protocol. The client now refuses both,
->   every time (installed on every launch -- the game log says so); the project's server never sends them.
->
-> No mechanics are published for either (`SECURITY.md`).
->
-> Everything else in the network path is the game's own code, recompiled as-is and **not audited**, running as a
-> native program on your PC -- so a successful exploit is not a crashed console, it is code running on your machine
-> with your user's access. **Only play online with people you trust**, on the project's server or one you run
-> yourself, and never with a build you did not compile or verify. Do not point this at any community server. See
-> `SECURITY.md`.
+> Play only with people you trust, on the project's server or one you run yourself, and never with a build you did
+> not compile or verify. Do not point this at any community server.
 
 > **Early stage.** This is a working prototype, not a finished port. It boots, renders the menus and missions, and two
 > copies of the game, driven by the project's test harness on one machine, have finished online rounds against each
