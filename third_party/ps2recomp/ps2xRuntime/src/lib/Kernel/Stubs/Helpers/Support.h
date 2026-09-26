@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 
 // Sprint 11 Task 8b: the per-subsystem runtime state this header reaches. Support.h has no include
@@ -229,15 +230,18 @@ namespace
         return toLowerAscii(normalizeCdPathNoPrefix(ps2Path));
     }
 
+    // Issue #53 (Sprint 13 U2's class, upstream #239): the CD path goes through translatePs2Path's
+    // cdrom0: branch, which is resolvePs2PathUnderRoot(cdRoot, path, false): the lexical walk, with
+    // links under the disc root followed wherever they point (ruling S13-R8). A '..' above the root,
+    // a drive letter or a Windows device name comes back as an empty path, which registerCdFile
+    // refuses before any of its fallbacks look at the text. It used to be a plain join and
+    // lexically_normal, so "\..\x" named the file beside the root and "C:\x" replaced the root.
+    // SOCOM II binds nothing to sceCdSearchFile; an image whose ELF or analyzer (the SCE SDK
+    // signature database) names it binds here by name (ps2_call_list.h PS2_STUB_LIST).
     std::filesystem::path cdHostPath(const std::string &ps2Path)
     {
         const std::string normalized = normalizeCdPathNoPrefix(ps2Path);
-        std::filesystem::path resolved = getCdRootPath();
-        if (!normalized.empty())
-        {
-            resolved /= std::filesystem::path(normalized);
-        }
-        return resolved.lexically_normal();
+        return std::filesystem::path(translatePs2Path(("cdrom0:" + normalized).c_str()));
     }
 
     bool resolveCaseInsensitivePath(const std::filesystem::path &root,
@@ -335,6 +339,8 @@ namespace
         }
     }
 
+    std::string sanitizeForLog(const std::string &value); // defined below
+
     bool registerCdFile(const std::string &ps2Path, CdFileEntry &entryOut)
     {
         const std::string key = cdPathKey(ps2Path);
@@ -354,6 +360,17 @@ namespace
 
         const std::filesystem::path root = getCdRootPath();
         std::filesystem::path path = cdHostPath(ps2Path);
+        if (path.empty())
+        {
+            static std::atomic<bool> warned{false};
+            if (!warned.exchange(true))
+            {
+                std::cerr << "registerCdFile: refused '" << sanitizeForLog(ps2Path)
+                          << "': it does not stay under the CD root (logged once)" << std::endl;
+            }
+            g_lastCdError = -1;
+            return false;
+        }
         std::error_code ec;
         if (!std::filesystem::exists(path, ec) || ec || !std::filesystem::is_regular_file(path, ec))
         {
