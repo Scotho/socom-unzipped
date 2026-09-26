@@ -40,6 +40,7 @@ the toolchain THROUGH a surviving junction twice. The script makes both impossib
    chain is running on the files it changes:
    `git merge --no-ff agent/<name> -m "merge agent/<name>: <what> (Sprint N <task>)"`. A conflict is resolved in the
    main tree; the commit during a merge may omit `-- <paths>` (the hook allows it mid-merge).
+   Then `python -m tools_py.changelog`, and `docs/CHANGELOG.md` goes in the merge's follow-up commit (R272).
 5. **The suite on the merged tree** before the push: `python -m unittest discover -s tools_py/tests -t .` --
    `OK` with no failures is the bar (a long run goes under `nohup` to a `logs/` file; read its last line, never a
    `tail` that masks the exit code), plus the gate by the `run-gate` skill if the task touched the runtime,

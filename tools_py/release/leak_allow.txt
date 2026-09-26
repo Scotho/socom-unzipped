@@ -101,5 +101,5 @@ tracked-private-ip  docs/research/18-online-round-start.md                      
 tracked-private-ip  docs/research/21-frostfire-control-handover.md                                       # dated research note: the LAN sessions' run recipes, as run
 tracked-private-ip  docs/research/22-kill-readout.md                                                     # dated research note: the LAN session's setup line, as run
 tracked-private-ip  docs/story/timeline.json                                                             # commit subjects quoted verbatim from the history
-tracked-private-ip  docs/STATUS.md                                                                       # its dated sections record the LAN bring-up of 2026-09-08..09-15 as it happened
+tracked-private-ip  docs/archive/STATUS-log-to-2026-09-26.md                                             # STATUS's archived log, verbatim (Sprint 14 S1): its dated sections record the LAN bring-up of 2026-09-08..09-15 as it happened
 tracked-private-ip  third_party/ps2recomp/ps2xTest/src/diagnostics_tests.cpp  "server 3.143.65.100; lan"   # planted: the scrubber redacts every IPv4 but the hosted box's, and this LAN-range control stands for the category H6 found leaking -- it tests nothing more
