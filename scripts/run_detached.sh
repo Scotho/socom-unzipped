@@ -8,6 +8,9 @@
 #   - refuses to start (exit 3, before touching the lock) when C: has less than RUN_MIN_FREE_GB
 #     (default 4) GB free -- Sprint 5 R46/A5, the host was at ~9 GB. RUN_FREE_GB_CMD overrides the
 #     free-space query (a shell command whose last stdout line is the free GB figure) for tests;
+#   - refuses the same way (exit 3, "exit=3 REFUSED: only <n> GB memory free (< RUN_MIN_FREE_MEM_GB=<m>)" in
+#     <marker>, before touching the lock) when free physical memory is below RUN_MIN_FREE_MEM_GB (default 3)
+#     -- Sprint 14 G5. RUN_FREE_MEM_GB_OVERRIDE (a number) replaces the memory query for tests;
 #   - takes the loop lock as <owner> (default "detached"); if it is BUSY, writes "exit=75 BUSY ..." to
 #     <marker> and exits 75 without launching. With --wait (Sprint 13 H2) it QUEUES instead
 #     (`loop_lock.sh wait`: a ticket, served in arrival order) for up to that long, in the foreground --
@@ -49,7 +52,8 @@
 # Poll the marker (`test -f <marker>`), never the caller. Inside the script, `loop_lock.sh take/release`
 # (gate.py's own included) are NESTED no-ops: LOOP_LOCK_HELD is exported to the job.
 # A pre-existing <marker> is deleted before launch. Environment: as loop_lock.sh (LOOP_LOCK_PATH, ...),
-# plus RUN_MIN_FREE_GB, RUN_FREE_GB_CMD, RUN_QUIET_MARKER, RUN_CPU_SAMPLER above.
+# plus RUN_MIN_FREE_GB, RUN_FREE_GB_CMD, RUN_MIN_FREE_MEM_GB, RUN_FREE_MEM_GB_OVERRIDE, RUN_QUIET_MARKER,
+# RUN_CPU_SAMPLER above.
 #
 # KNOWN LIMITATIONS
 #   - A SIGKILL of the --_child wrapper itself (as opposed to TERM/HUP/INT, which the trap handles)
@@ -78,6 +82,21 @@ _free_gb() {
   else
     # Linux (Sprint 8): the same number from df, whole gigabytes.
     df -BG --output=avail "$ROOT" 2>/dev/null | tail -n1 | tr -d 'G '
+  fi
+}
+
+# Sprint 14 G5: free physical memory in GB. RUN_FREE_MEM_GB_OVERRIDE (a number) wins, for tests. Windows:
+# Win32_OperatingSystem.FreePhysicalMemory (KB; the same figure as the "Available MBytes" counter). Linux:
+# /proc/meminfo's MemAvailable (KB), else `free -g`'s available column.
+_free_mem_gb() {
+  if [ -n "${RUN_FREE_MEM_GB_OVERRIDE:-}" ]; then
+    echo "$RUN_FREE_MEM_GB_OVERRIDE"
+  elif command -v powershell.exe >/dev/null 2>&1; then
+    powershell.exe -NoProfile -Command "[math]::Round((Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1MB,2)" 2>/dev/null
+  elif [ -r /proc/meminfo ]; then
+    awk '/^MemAvailable:/ { printf "%.2f\n", $2 / 1048576 }' /proc/meminfo
+  else
+    free -g 2>/dev/null | awk '/^Mem:/ { print $7 }'
   fi
 }
 
@@ -236,6 +255,21 @@ if awk -v f="$free_gb" -v m="$min_free_gb" 'BEGIN{exit !(f<m)}'; then
   msg="run_detached: REFUSED -- only ${free_gb} GB free on C: (< RUN_MIN_FREE_GB=${min_free_gb}); refusing to start"
   echo "$msg"
   printf 'exit=3 REFUSED: only %s GB free on C: (< RUN_MIN_FREE_GB=%s)\n' "$free_gb" "$min_free_gb" > "$marker"
+  exit 3
+fi
+# The memory guard (Sprint 14 G5), the disk guard's twin: a launch or a build on a host with little RAM left
+# swaps and drags every other session with it.
+min_free_mem_gb="${RUN_MIN_FREE_MEM_GB:-3}"
+free_mem_gb="$(_free_mem_gb | tr -d '\r\n ')"
+if ! printf '%s' "$free_mem_gb" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then
+  echo "run_detached: cannot read free memory (got '$free_mem_gb'); refusing to start"
+  printf 'exit=3 REFUSED: cannot read free memory\n' > "$marker"
+  exit 3
+fi
+if awk -v f="$free_mem_gb" -v m="$min_free_mem_gb" 'BEGIN{exit !(f<m)}'; then
+  msg="run_detached: REFUSED -- only ${free_mem_gb} GB memory free (< RUN_MIN_FREE_MEM_GB=${min_free_mem_gb}); refusing to start"
+  echo "$msg"
+  printf 'exit=3 REFUSED: only %s GB memory free (< RUN_MIN_FREE_MEM_GB=%s)\n' "$free_mem_gb" "$min_free_mem_gb" > "$marker"
   exit 3
 fi
 
