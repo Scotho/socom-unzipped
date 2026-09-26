@@ -111,6 +111,8 @@ section. Class L (`docs/DOC_MAINTENANCE.md` §3): checked after every task that 
   reference for that spot was a PCSX2 slot-8 screenshot that nothing compared against. Fix planned in ROADMAP §6
   item 5: console-vs-ours image comparison at fixed gameplay moments, and a mission-failure screen fails the stage.
   Until then, **look at the frames against a console image** before calling a render or gameplay path correct.
+  *(From HANDOFF §6 trap 4, moved 2026-09-26: its audio half.)* The same blind spot hid the music: every audio measurement scored ONE cue or ONE stream;
+  nothing ever compared what the game asked for with what was mixed.
   > Superseded in part (marked 2026-09-25, Sprint 13 R5, the full read): both defects it names are fixed -- the water shards were VU1 chunk truncation plus the brighten/exposure HLEs (research/31 §15-17; `3d37abc`, `545b85a`, `c63729d`) and the turn teleport was the GS block pointer (`a81eb74`) -- and ROADMAP §6 item 5 landed in Sprint 6: a MISSION FAILURE screen on any hold capture fails the mission stage (`tools_py/parity/gate.py`, the pinned `mission_failure_banner.png`), the console-spawn comparison prints on every mission line (R78), and four guest-value probes are scored against the console (R80; `s13_v1_gate`: `PROBE ... PASS` on all four). What stands is the hazard "The gate proves regression only": a defect the console references do not cover still passes.
 
 - **The gate mission stage can land its holds on an in-game HELP pop-up** ("You must MEET WITH MALLARD… PRESS X TO
