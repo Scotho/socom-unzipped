@@ -136,8 +136,8 @@ a rename is accepted only when it prints `S12-R11 … OK` (no extent moved, no f
 ## The `tools_py/` map
 
 Every tracked module under `tools_py/` except the tests, one line each, grouped by what it is for — 165 on
-2026-09-25 after Sprint 13 Task H4, 177 on 2026-09-26 at the Sprint 14 close (`git ls-files 'tools_py/*.py'`, less `tools_py/tests/` and the four package
-`__init__.py` files). The one line is the module's own docstring, shortened; the docstring is the reference. Run a
+2026-09-25 after Sprint 13 Task H4, 177 on 2026-09-26 at the Sprint 14 close (`git ls-files 'tools_py/*.py'`, less `tools_py/tests/` and the five package
+`__init__.py` files: hooks, parity, r0004, release, story). The one line is the module's own docstring, shortened; the docstring is the reference. Run a
 module as `python -m tools_py.<name>` (or `tools_py.parity.<name>`, …) from the repository root unless its docstring
 says otherwise.
 
@@ -799,7 +799,9 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
   The project's only regression bar. Refuses under 4 GB free on C: (exit 3) and on an exe older than its sources
   (exit 5 unless `--stale-ok`). Results under `logs/parity/gate/<stamp>/`, each with its `TREE <head> dirty=<n>` line.
 - **The merged chain** (`scripts/parity/merged_chain.sh`, Sprint 14 W2) is the gate unit: recomp, runtime, the suites,
-  the gate on the exe it just built, a release build and PLAYTEST's build block (`python -m tools_py.playtest_block`),
+  the gate on the exe it just built, the fourth leg (its references, when present; named only in the gate), a release
+  build, then the release archive and PLAYTEST's block (`scripts/parity/playtest_block.sh --release`, over
+  `python -m tools_py.playtest_block`),
   run once per batch of merged branches, from a copy, under one holding of the lock (its header says how); a green
   end writes the commit it proved to `logs/merged_chain.last_green`. The four generated pages -- `docs/RULINGS.md`,
   `docs/CHANGELOG.md`, `docs/SITTING.md`, `docs/FLOW.md` -- are written by `python -m tools_py.rulings`, `changelog`,

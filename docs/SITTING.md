@@ -2,9 +2,9 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.sitting` from `docs/HUMAN_TASKS.md` (the O rows and the stamp of the sittings), the rulings `docs/RULINGS.md` shows (`tools_py.rulings.rows()`), `docs/BACKLOG.md` (the `Carried` column) and `docs/PLAYTEST.md` (its build block). Change a source and regenerate; `python -m tools_py.sitting --check` exits 1 when this file is stale.
 
-The page as of 2026-09-26, for the sitting after the one of 2026-09-17: 17 open O rows (2 answered or struck); 236 active rulings since 2026-09-17 (102 dated, 134 placed by number or home, 68 undated and unplaceable, not listed); 3 issues carried twice; the build: **NOT BUILT**.
+The page as of 2026-09-26, for the sitting after the one of 2026-09-17: 17 open O rows (2 answered or struck); 236 active rulings since 2026-09-17 (102 dated, 134 placed by number or home, 68 undated and unplaceable, not listed); 3 issues carried twice; the build: built.
 
-**How to answer.** One line per item, by number -- "O5: acceptable for v1", "R271: overturn", "#25: close" -- in the next session's prompt or as a note in `docs/STATUS.md`.
+**How to answer.** One line per item, by number -- "O5: acceptable for v1", "R271: overturn", "#25: close" -- in the next session's prompt or as a line in the open plan's Log.
 
 ## 1. The O rows
 
@@ -13,7 +13,7 @@ The page as of 2026-09-26, for the sitting after the one of 2026-09-17: 17 open 
 | O | the hand needed | the default the loop is on | first asked | days waited |
 |---|---|---|---|---|
 | O1 | The legal position on shipping `socom2.exe` and the decrypted `socom2_game.elf` | no public download; builds reach testers only by your hand | 2026-09-20 | 6 |
-| O2 | The release archives for `v0.10.0`, `v0.11.0` and `v0.12.0` | the drafts stay empty; the loop may build the archives short of the upload (a backlog row); publishing is always your click | 2026-09-20 | 6 |
+| O2 | The release archives for `v0.10.0`, `v0.11.0`, `v0.12.0` and `v0.13.0` (its draft 2026-09-26; `v0.14.0`'s at the Sprint 14 close) | the drafts stay empty; the loop may build the archives short of the upload (a backlog row); publishing is always your click | 2026-09-20 | 6 |
 | O3 | What the public tree holds and under which terms | nothing moves; GPL-3.0 for the whole tree; unsigned (the FAQ says what SmartScreen shows); the deploy is yours, its wording drafted in `docs/INSTALL.md` | 2026-09-20 | 6 |
 | O4 | The bug pipeline's words and the site | no reply is sent (G7: no); the triage routine never opens a public issue for a security report; the relays and the message unsent; no data page | 2026-09-20 | 6 |
 | O5 | PSRewired and the mixed revisions | the community preset stays `COMMUNITY_SERVER_ADDRESS_TBC`; nothing connects to a server that is not ours; Task 11b stays withdrawn; the HDD maps are out of v1… | 2026-09-17 | 9 |
@@ -30,7 +30,7 @@ The page as of 2026-09-26, for the sitting after the one of 2026-09-17: 17 open 
 | O18 | The private-inputs location | nothing changes; the fetch script stays; the loop touches nothing (R277) | 2026-09-26 | 0 |
 | O19 | `tools_py/story/site.py`, modified and uncommitted in the main tree | stashed around each night chain and restored (R281) | 2026-09-26 | 0 |
 
-Answered or struck (the row stays in HUMAN_TASKS as the record):
+Answered or struck since the last sitting (struck rows live in the archive, `docs/archive/HUMAN_TASKS-to-2026-09-25.md`, its "Struck rows moved from the live table" section; reopenable by number):
 
 - O9: The story's five missing days -- Answered by default (keep), 2026-09-25: S13 S4 wrote them (`d4a8f0ea`, merged `1dcaa57b`); the `../scotho` site copy is the controller's.
 - O17: Merge PR #61 (Sprint 13 -> main) -- Done 2026-09-26: you granted the scope; merged `6a82caaa`, tagged `v0.13.0`. The full row is in the archive.
@@ -286,4 +286,11 @@ Answered or struck (the row stays in HUMAN_TASKS as the record):
 
 ## 4. The build
 
-**NOT BUILT**: `docs/PLAYTEST.md` names no archive for the current tree; there is nothing to play yet.
+The build `docs/PLAYTEST.md` names, to play and to check against:
+
+```
+build:    2026-09-26T15:25:18Z   commit 56430d7cbc26 (sprint-14)
+archive:  socom2-portable.zip   (dist-release/portable/socom2-portable.zip)
+sha256: 76774b5d72522c614534e20fad0c5f3ea08aa07057c1ee27fd92547ec8066127
+exe:      socom2.exe sha256: 8be2ee0c8bc9aa059f79392f2150c199a46916f22abc1fc45f27083183f23568
+```

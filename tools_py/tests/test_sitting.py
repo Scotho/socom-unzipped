@@ -279,6 +279,67 @@ class BuildTest(unittest.TestCase):
         self.assertIn("**NOT BUILT**", section(page(playtest=PLAYTEST_NO_BLOCK), 4))
 
 
+# The HUMAN_TASKS archive's struck rows (docs/archive/HUMAN_TASKS-to-2026-09-25.md): a row struck in the live table
+# moves here and leaves the live table. O4 was answered inside the sitting window (2026-01-06 >= since 2026-01-05) and
+# stands twice, as the full unstruck row and as the struck stub -- only the stub is an answer. O5 was answered before
+# the window. O6 is struck and dated inside the window but stands in another table, above the section: not read.
+HUMAN_TASKS_ARCHIVE = """# HUMAN_TASKS.md -- archived
+
+| # | old item | kind |
+|---|---|---|
+| O6 | ~~**Not a struck row of the section.**~~ **Done 2026-01-07.** | ~~x~~ | here | 2026-01-01 |
+
+## Struck rows moved from the live table (R268's ceiling)
+
+| O | the decision or the hand | the default the loop is on | settles | first asked |
+|---|---|---|---|---|
+| O4 | **Merge the pull request**: the whole row as it stood. | the PR stays open | Task 99 | 2026-01-03 |
+
+| O | the decision or the hand | the default the loop is on | settles | first asked |
+|---|---|---|---|---|
+| O5 | ~~**The old question.**~~ **Answered 2026-01-02: kept.** | ~~keep~~ | carry C1 | 2026-01-01 |
+| O4 | ~~**Merge the pull request**~~ **Done 2026-01-06: merged, tagged.** | ~~the PR stays open~~ | Task 99 | 2026-01-03 |
+"""
+
+
+class ArchivedStruckRowsTest(unittest.TestCase):
+    """A struck row moved to the HUMAN_TASKS archive is still answered in the sitting it was answered in."""
+
+    def test_the_struck_stubs_answered_inside_the_window(self):
+        rows = sitting.archived_struck(HUMAN_TASKS_ARCHIVE, "2026-01-05")
+        self.assertEqual([r["number"] for r in rows], ["O4"])
+        self.assertEqual(rows[0]["hand"], "Merge the pull request")
+        self.assertEqual(rows[0]["answer"], "Done 2026-01-06: merged, tagged.")
+        self.assertEqual(sitting.archived_struck(HUMAN_TASKS_ARCHIVE, "2026-01-01")[0]["number"], "O5")
+        self.assertEqual(sitting.archived_struck("", "2026-01-05"), [])
+
+    def test_the_page_lists_them_as_answered_and_says_where_they_live(self):
+        text = sitting.build(HUMAN_TASKS, RULINGS, BACKLOG, PLAYTEST_BUILT, "2026-01-05", today=TODAY,
+                             archive_md=HUMAN_TASKS_ARCHIVE)
+        self.assertIn("2 open O rows (2 answered or struck)", text.split("\n## 1. ")[0])
+        s1 = section(text, 1)
+        self.assertIn("2 open, 2 answered or struck", s1)
+        _, _, answered_part = s1.partition("Answered or struck")
+        self.assertIn("- O2: ", answered_part)
+        self.assertIn("- O4: Merge the pull request -- Done 2026-01-06: merged, tagged.", answered_part)
+        self.assertNotIn("O5", answered_part)
+        self.assertNotIn("O6", answered_part)
+        self.assertIn("struck rows live in the archive", answered_part)
+        self.assertIn("reopenable by number", answered_part)
+        self.assertNotIn("the row stays in HUMAN_TASKS", s1)
+
+    def test_a_row_still_in_the_live_table_is_not_listed_twice(self):
+        live = HUMAN_TASKS.replace("| O3 |", "| O4 |")
+        text = sitting.build(live, RULINGS, BACKLOG, PLAYTEST_BUILT, "2026-01-05", today=TODAY,
+                             archive_md=HUMAN_TASKS_ARCHIVE)
+        self.assertEqual(section(text, 1).count("- O4: "), 0)
+
+    def test_how_to_answer_names_the_plans_log(self):
+        head = page().split("\n## 1. ")[0]
+        self.assertIn("as a line in the open plan's Log", head)
+        self.assertNotIn("docs/STATUS.md", head)
+
+
 class PageTest(unittest.TestCase):
     def test_header_says_generated_the_command_and_the_counts(self):
         head = page().split("\n## 1. ")[0]
@@ -322,6 +383,15 @@ class CliTest(unittest.TestCase):
     def test_write_then_check_is_clean(self):
         self.assertEqual(self.cli().returncode, 0)
         self.assertTrue(os.path.isfile(self.page))
+        res = self.cli("--check")
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+
+    def test_the_tree_reads_the_archives_struck_rows(self):
+        os.makedirs(os.path.join(self.root, "docs", "archive"), exist_ok=True)
+        self.write(os.path.join("archive", "HUMAN_TASKS-to-2026-09-25.md"), HUMAN_TASKS_ARCHIVE)
+        self.assertEqual(self.cli().returncode, 0)
+        with open(self.page, encoding="utf-8") as fh:
+            self.assertIn("- O4: Merge the pull request -- Done 2026-01-06", fh.read())
         res = self.cli("--check")
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
 

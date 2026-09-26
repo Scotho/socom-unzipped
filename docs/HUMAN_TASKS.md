@@ -42,5 +42,5 @@ numbers written before that day means the archive.
 O9 and O17, answered, are in the archive (`docs/archive/HUMAN_TASKS-to-2026-09-25.md`, struck rows); reopenable by number.
 
 **How to answer.** One line per decision — "O5: acceptable for v1", "O12: off" — in the next session's prompt or as a
-note in `docs/STATUS.md`. The loop strikes the row with the date and the ruling that records the answer, and moves
+line in the open plan's Log. The loop strikes the row with the date and the ruling that records the answer, and moves
 the work it opens into a task.
