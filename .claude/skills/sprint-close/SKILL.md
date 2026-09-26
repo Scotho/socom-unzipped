@@ -59,9 +59,11 @@ merge and the tag). The open plan's Task 99 adds the sprint's own close steps.
 2. **The PR** `sprint-N -> main`: `gh pr create --base main --head sprint-N --title "Sprint N: <its name>"`, body =
    the close-out block from `docs/CURRENT_SPRINT.md`. Wait for `build`, `build-windows` and `leakcheck`, then
    `gh pr merge --merge` -- a merge commit, never squash (the per-task commits are the record cited by hash).
-3. **The tag on the merge commit**, after verifying it has two parents:
-   `git fetch origin && git rev-list --parents -n 1 origin/main` prints three hashes (the commit, then two parents),
-   then `git tag -a v0.N.0 <merge> -m "Sprint N: <its name>"` and `git push origin v0.N.0`. Record the merge hash,
+3. **The tag on the PR's merge commit** -- not on `origin/main`'s tip: a slice or an outside PR can land between the
+   merge and the tag, and Sprint 13's own tag was briefly pushed on the wrong commit. After `git fetch origin`:
+   `sha=$(gh pr view <N> --json mergeCommit -q .mergeCommit.oid)`; `git rev-list --parents -n 1 $sha` must print
+   three hashes (the commit, then its two parents); then `git tag -a v0.N.0 $sha -m "Sprint N: <its name>"` and
+   `git push origin v0.N.0`. Record the merge hash,
    the PR number and the tag in the CLOSED block's heading (`merged to main as v0.N.0 at <hash>, PR #M`).
 4. **The next sprint named**: the CLOSED block and HANDOFF say what comes next -- a sprint the owner or the plan names
    (its spec agreed, its plan written against the tree, its milestone on GitHub, the sprint file's header rewritten --

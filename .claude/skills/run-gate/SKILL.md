@@ -22,6 +22,10 @@ two-instance online runs only when the owner is away.
    marker (a launch is running: start nothing). `bash scripts/loop_lock.sh check` -- `FREE`, or `HELD` with the
    holder, purpose and heartbeat age, then any `QUEUED:` lines. If held, do lock-free work; never hold the lock
    across tool calls any other way than steps 2-3.
+   When a lock-script rollout is under way (a new `scripts/loop_lock.sh` landing; the procedure is `docs/HAZARDS.md`'s
+   lock area), this applies:
+   **Mixed versions:** a job started under an older `loop_lock.sh` (plain `logs/.loop_lock` file, or a
+   claim dir without the `logs/.loop_lock.mx` mutex) must finish before anything uses the current lock.
 2. **Foreground** (a build, the suites, a short gate):
    `bash scripts/loop_lock.sh run <owner> --purpose "<what>" [--wait <minutes>] -- <cmd...>` -- takes the lock,
    renews its heartbeat while `<cmd>` runs, releases on exit, returns `<cmd>`'s exit code; **exit 75** = busy and

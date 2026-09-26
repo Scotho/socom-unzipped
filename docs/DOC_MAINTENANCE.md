@@ -148,7 +148,8 @@ Sprint 13 Task R3's, all added 2026-09-25):
 5. **Archives announce themselves** — every A file says "archived" or "superseded" in its first fifteen lines, in any
    case. *Catches an archive that reads as live.*
 6. **No dangling `docs/` path** — every backticked path starting `docs/` in a markdown file at the root or under
-   `docs/` must exist in the tree. *Catches the citation a move left pointing at nothing* — which is why the Sprint 1–6
+   `docs/`, and in the live procedures -- `.claude/skills/**/SKILL.md` and `.claude/agents/*.md` (Sprint 14 I2) --
+   must exist in the tree. *Catches the citation a move left pointing at nothing* — which is why the Sprint 1–6
    specs and plans sat under `docs/superpowers/` for a sprint after they were dead: nobody could move them without
    breaking citations nothing would catch. It found 44 on the tree the day it was written, in fifteen documents.
 7. **Ceilings on the appending documents (R268)** -- `docs/CURRENT_SPRINT.md`, the "## 2." section of

@@ -348,6 +348,19 @@ class PlantedDefectsTest(unittest.TestCase):
         self.write("README.md", "# r\n\nSee `docs/NOPE.md`.\n")
         self.assertTrue(any(h[0] == "README.md" for h in docmaint.report()["dangling_doc_links"]))
 
+    def test_a_skill_or_an_agent_definition_is_scanned_too(self):
+        """Sprint 14 I2: the live procedures are .claude/skills/**/SKILL.md and .claude/agents/*.md."""
+        self.write(".claude/skills/some-skill/SKILL.md", "---\nname: some-skill\n---\n\nRead `docs/GONE-SKILL.md`.\n")
+        self.write(".claude/agents/some-agent.md", "---\nname: some-agent\n---\n\nRead `docs/GONE-AGENT.md`.\n")
+        hits = docmaint.report()["dangling_doc_links"]
+        self.assertIn((".claude/skills/some-skill/SKILL.md", 5, "docs/GONE-SKILL.md"), hits)
+        self.assertIn((".claude/agents/some-agent.md", 5, "docs/GONE-AGENT.md"), hits)
+
+    def test_a_future_marked_path_in_a_skill_does_not_fire_check_6(self):
+        self.write(".claude/skills/some-skill/SKILL.md",
+                   "---\nname: some-skill\n---\n\nRead `docs/LATER.md`. <!-- docmaint: future -->\n")
+        self.assertEqual(docmaint.report()["dangling_doc_links"], [])
+
     def test_a_struck_through_path_is_a_retraction_and_does_not_fire_check_6(self):
         self.write("README.md", "# r\n\n~~`docs/research/19-old.md`~~ `docs/DEVELOPING.md` (renumbered).\n")
         self.assertEqual(docmaint.report()["dangling_doc_links"], [])

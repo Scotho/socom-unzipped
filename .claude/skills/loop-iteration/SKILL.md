@@ -23,7 +23,7 @@ suggestions, stop rules and the owner-only list are not.
    If the lock is held, or a `socom2*` / `pcsx2-qt` process is running, start no build and no run; **do not idle** --
    take lock-free work (step 3).
 2. **Read the aim.** The first open item in `docs/CURRENT_SPRINT.md`, in its order. `docs/KNOWN.md` §1–§3 before a
-   hypothesis, then `docs/HAZARDS.md` by the area -- it is the fastest way to avoid re-deriving a dead one. <!-- docmaint: future -->
+   hypothesis, then `docs/HAZARDS.md` by the area -- it is the fastest way to avoid re-deriving a dead one.
    The item's spec section and plan, if it has one, and its issue if it has one (`issue #N` in the row; `gh issue view N --comments`): the comment trail is where the
    last agent left it, and the Closing bar section is what you are trying to meet.
    A new item that needs more than an hour gets a plan first (`docs/superpowers/plans/`, the existing ones are the
@@ -98,6 +98,6 @@ Long term: the N64-recomp model -- game logic stays recompiled; renderer, audio,
 ## The lock
 
 The lock serializes every build and every game run; its rules -- `run` and `run_detached.sh`, the queue and
-`--wait` in minutes, a chain as one holding, the heartbeat and the reaper, mixed versions and the rollout of a new
-lock script -- are `scripts/loop_lock.sh`'s header, their one home. The commands a controller runs: the `run-gate`
-skill.
+`--wait` in minutes, a chain as one holding, the heartbeat and the reaper, mixed versions -- are `scripts/loop_lock.sh`'s header; the
+five-step rollout of a new lock script, which the header only sketches and defers, is the rollout hazard in
+`docs/HAZARDS.md`'s lock area. The commands a controller runs: the `run-gate` skill.
