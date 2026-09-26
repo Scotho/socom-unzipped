@@ -48,6 +48,7 @@ merge and the tag). The open plan's Task 99 adds the sprint's own close steps.
    `python -m tools_py.issues backlog` regenerates `docs/BACKLOG.md` and `python -m tools_py.issues backlog --check`
    exits 0, as does `python -m tools_py.rulings --check`; an item ruled not an issue goes into `docs/backlog_ruled_out.txt` with its ruling and bar.
    `python -m tools_py.changelog --check` exits 0 too (else regenerate `docs/CHANGELOG.md` and commit it, R272).
+   `python -m tools_py.flow` regenerates `docs/FLOW.md` (the flow snapshot, M1), then `python -m tools_py.flow --check` exits 0.
 6. Duplicates closed as not planned ("duplicate of #M"); `help wanted` / `good first issue` where they fit.
 7. The record: `python -m tools_py.issues tally --since <the day the sprint opened>` -- the one sentence (opened,
    closed, carried, highest number) for the close-out commit and STATUS's entry, with what the review changed.
