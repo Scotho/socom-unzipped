@@ -103,7 +103,3 @@ tracked-private-ip  docs/research/22-kill-readout.md                            
 tracked-private-ip  docs/story/timeline.json                                                             # commit subjects quoted verbatim from the history
 tracked-private-ip  docs/STATUS.md                                                                       # its dated sections record the LAN bring-up of 2026-09-08..09-15 as it happened
 tracked-private-ip  third_party/ps2recomp/ps2xTest/src/diagnostics_tests.cpp  "server 3.143.65.100; lan"   # planted: the scrubber redacts every IPv4 but the hosted box's, and this LAN-range control stands for the category H6 found leaking -- it tests nothing more
-
-# -- the Claude Code agent definitions (Sprint 14 G4) are tracked on purpose; the repo .gitignore does not ignore
-#    them, but an owner-machine global excludes file (`.claude/*`) does, and check-ignore --no-index sees it.
-forced-ignored-file  .claude/agents   # the role definitions, reviewed text; the ignore is a machine-global rule, not the repo's
