@@ -751,6 +751,22 @@ def _dynamic_reader(rel):
     return False
 
 
+def _directory_standards():
+    """`{name: sha256}` from every pins.json in a SUBDIRECTORY of scripts/parity/: a reference directory that carries
+    its own standard (the shape of pins.json, written by the tool that captured it) pins the images inside it, and
+    only those -- a name outside its own directory is returned under None so the test below reports it."""
+    out = {}
+    top = os.path.join(ROOT, "scripts", "parity")
+    for dirpath, dirnames, filenames in os.walk(top):
+        dirnames[:] = sorted(d for d in dirnames if d != "__pycache__")
+        if os.path.normcase(dirpath) == os.path.normcase(top) or pins.RECORD_NAME not in filenames:
+            continue
+        prefix = os.path.relpath(dirpath, ROOT).replace("\\", "/") + "/"
+        for name, sha in (pins.load_expected(os.path.join(dirpath, pins.RECORD_NAME)) or {}).items():
+            out[name] = sha if name.startswith(prefix) else None
+    return out
+
+
 class EveryReferenceIsPinned(unittest.TestCase):
     """Sprint 13 H3 (the audit's harness row 25 and its neighbours): the gate pinned 7 of the 58 PNGs under
     scripts/parity/ -- the ones its three stages read. The other 51 (the online login and lobby screens, the
@@ -769,9 +785,13 @@ class EveryReferenceIsPinned(unittest.TestCase):
         standard = dict(pins.load_expected(REAL_EXPECTED) or {})
         refs = pins.load_expected(REFS_EXPECTED)
         self.assertIsNotNone(refs, "scripts/parity/pins_refs.json is committed")
-        overlap = sorted(set(standard) & set(refs))
+        nested = _directory_standards()
+        self.assertEqual([n for n, sha in nested.items() if sha is None], [],
+                         "a directory's own pins.json names only files inside that directory")
+        overlap = sorted((set(standard) & set(refs)) | ((set(standard) | set(refs)) & set(nested)))
         self.assertEqual(overlap, [], "a reference is pinned in one standard, not two")
         standard.update(refs)
+        standard.update(nested)
         unpinned, drifted = [], []
         for rel in _harness_png_files():
             if rel not in standard:
