@@ -89,9 +89,18 @@ review is not closed.**
 - **Explicit pathspec, always:** `git commit -m "..." -- <paths>`. Never `git add -A`, never a bare `git commit` after
   `git add` (it takes the whole index, and other sessions' files with it -- it happened on 2026-09-13 and again in
   `6b7a2b3`). Never stage a file another session is editing.
-- **Never committed:** `server/config/simulated.db`, `ONBOARDING.md`, root `*.bin`/`*.wav`, `dist*/`, `build*/`,
-  anything under `game/`, `tools/`, `logs/`, `vm/`, any key, token, or address of a machine that is not the public
-  server's.
+- **Never committed** (this list's one home), each entry either git-ignored -- `server/config/simulated.db`, the
+  box env files in `server/ops/`, `ONBOARDING.md`, root `*.bin`/`*.wav`, root `build*/` and `dist*/` folders,
+  `*.iso`, `*.7z`, anything under `game/`, `tools/`, `logs/`, `vm/`, `research/`, `out/`, `recomp/output/`,
+  `ghidra_proj/`, `server/logs/`, `server/ops/pulled/`, `server/horizon-docker/`,
+  `server/horizon-server-database-middleware/`, `mc0/`, `mc1/`, `.claude/skills/s2u-bug-reports/`,
+  `tools_py/release/leak_extra.txt` -- or key-shaped by name: SSH private-key names,
+  `*.pem`/`*.ppk`/`*.key`/`*.p12`/`*.pfx`, dotenv files, credential files, `known_hosts`, ...
+  How the hooks refuse each: an ignored path staged anyway is `forced-ignored-file` in the pre-commit leak check
+  (`.gitignore` is the rule; `leakcheck ignored` proves sample paths from `SENSITIVE_IGNORED`,
+  `tools_py/release/leakcheck.py`); a key-shaped name is refused wherever it sits (`KEYNAME_PATH_RE`,
+  `tools_py/release/leakrules.py`). Beyond the list, the content rules refuse key material, tokens, and the
+  address of any machine that is not the public server's, in any file.
 - **Subject:** `type(scope): what changed and why it mattered` -- types `feat`, `fix`, `refactor`, `test`, `docs`,
   `build`, `ci`, `chore`. The subject (git's first paragraph) stays at or under 120 characters -- the `commit-msg` hook
   (`scripts/hooks/commit-msg`) refuses longer; the finding goes in the body (a default `Merge branch '...'` or

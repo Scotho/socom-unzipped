@@ -361,6 +361,22 @@ class GitModes(unittest.TestCase):
         self.assertIn(("vm/keys/thing.pem", "key-file-name"), got)
         self.assertIn(("vm/keys/thing.pem", "private-key-block"), got)
 
+    def test_the_real_gitignore_refuses_the_never_commit_shapes(self):
+        """Sprint 14 S4: docs/GIT_STRATEGY.md section 3's never-commit list says the leak hooks refuse every
+        entry; a forced add of each shape under this repository's own .gitignore must be forced-ignored."""
+        shutil.copyfile(os.path.join(L.ROOT, ".gitignore"), os.path.join(self.repo, ".gitignore"))
+        planted = ("out.wav", "out.bin", "build-clang/x", "build-linux/x", "dist-foo/x", "game.iso", "disc.7z",
+                   "out/x", "server/ops/pulled/x", "server/horizon-docker/x")
+        for rel in planted:
+            self.write(rel, "x\n")
+            _git(self.repo, "add", "-f", rel)
+        hits, _ = L.check_staged(self.repo, _rules(), allow=[])
+        forced = {h.path for h in hits if h.rule == "forced-ignored-file"}
+        self.assertEqual(sorted(set(planted) - forced), [], "staged over the .gitignore and not refused")
+        for rel in ("build.sh", "tests/fixtures/audio/a.bin", "scripts/parity/refs/a.wav"):
+            p = subprocess.run(["git", "check-ignore", "--no-index", "-q", "--", rel], cwd=self.repo)
+            self.assertNotEqual(p.returncode, 0, "%s is a tracked shape and must not be ignored" % rel)
+
     def test_ignored_proves_ignored_untracked_and_never_committed(self):
         hits, _ = L.check_ignored(self.repo, paths=("vm/", "logs/", "secrets/"), allow=[])
         self.assertEqual({(h.path, h.rule) for h in hits}, {("secrets/", "ignored-path-not-ignored")})
