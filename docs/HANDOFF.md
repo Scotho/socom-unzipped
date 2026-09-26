@@ -15,7 +15,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
   days: R1 the audio register, X1 the audio survey (#254's LLE IOP), T1 the audio trial, T2 #67 beside it, T3/T4 (#59,
   #32) if time allows; VU1 and the rest in `docs/LATER.md`. The plan `docs/superpowers/plans/2026-09-26-sprint-15.md`
   (its Log) is the live state; R282-R289 are its defaults. No cloud session from 2026-09-26.
-- **Next free ruling number: R290.**
+- **Next free ruling number: R290** (290-297 are the owner's sitting's, on a docs branch off `main`; allocate from 298; this line moves at that merge).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
 
