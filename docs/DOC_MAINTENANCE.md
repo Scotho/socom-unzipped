@@ -205,7 +205,7 @@ file that moved.
 Run it by hand with `python -m tools_py.docmaint`, which prints the registry size, the ruling numbers and every problem.
 
 **Each check is fired once against a planted defect** (`PlantedDefectsTest`: an unregistered document, a row whose file
-is gone, a colliding ruling number, two counter lines that disagree, an undated count, an undated snapshot, a silent
+is gone, a colliding ruling number, an undated count, an undated snapshot, a silent
 archive, a silent file in an archive subdirectory, a dangling `docs/` path in a `docs/` file and in a root file, a ruling
 defined twice, a cited ruling with no text — plus
 the negative controls that must *not* fire, and a clean-tree control for the controls). A gate
@@ -268,6 +268,12 @@ knows which documents to distrust.
   archived roadmap is readable *because* its wrong turns are still in it.
 - **If a claim cannot be checked, do not make it.** "The game runs well" ages badly; "43-45 fps in a mission,
   measured on <date>, against the console's 60" does not — it simply becomes a dated fact.
+- **A ruling is narrow, and it has one counter.** A ruling records a moved owner default, a moved acceptance bar or a
+  moved spec goal. A threshold, a skipped measurement, a naming choice or a tool's behaviour is not a ruling: it is a
+  KNOWN row with its artefact, a knob default in the registry, or a test. From Sprint 14 the global counter is the
+  only namespace (R273); a ruling is written in the sprint plan's Rulings section, numbered from `docs/HANDOFF.md`
+  section 2 (the one counter line, check 2), with the counter bumped and `docs/RULINGS.md` regenerated
+  (`python -m tools_py.rulings`) in the same commit. `docs/RULINGS.md` is the index, generated; nobody keeps one by hand.
 
 ## 7. The known-issue stack review — deep, at every sprint close
 
