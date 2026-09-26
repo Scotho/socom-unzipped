@@ -23,6 +23,7 @@
 #include "Kernel/Stubs/Helpers/GsRuntimeState.h"
 #include "Kernel/Stubs/Helpers/LibCRuntimeState.h"
 #include "Kernel/Stubs/Helpers/CdRuntimeState.h"     // issue #51
+#include "Kernel/Stubs/Helpers/IopHeapRuntimeState.h"
 #include "ps2_host_backend.h"
 #include "rlgl.h"
 #include "ps2_iop_host.h"
@@ -530,6 +531,7 @@ PS2Runtime::PS2Runtime()
     m_gsRuntimeState = std::make_unique<ps2_stubs::GsRuntimeState>();
     m_libcRuntimeState = std::make_unique<ps2_stubs::LibCRuntimeState>();
     m_cdRuntimeState = std::make_unique<ps2_stubs::CdRuntimeState>();   // issue #51
+    m_iopHeapRuntimeState = std::make_unique<ps2_stubs::IopHeapRuntimeState>();
 
     m_iopHost = std::make_unique<PS2IopHostAdapter>(*this);
     m_iopSubsystem = std::make_unique<ps2x::iop::IopSubsystem>(*m_iopHost);
@@ -3004,6 +3006,8 @@ ps2_stubs::LibCRuntimeState &PS2Runtime::libcRuntimeState() { return *m_libcRunt
 const ps2_stubs::LibCRuntimeState &PS2Runtime::libcRuntimeState() const { return *m_libcRuntimeState; }
 ps2_stubs::CdRuntimeState &PS2Runtime::cdRuntimeState() { return *m_cdRuntimeState; }
 const ps2_stubs::CdRuntimeState &PS2Runtime::cdRuntimeState() const { return *m_cdRuntimeState; }
+ps2_stubs::IopHeapRuntimeState &PS2Runtime::iopHeapRuntimeState() { return *m_iopHeapRuntimeState; }
+const ps2_stubs::IopHeapRuntimeState &PS2Runtime::iopHeapRuntimeState() const { return *m_iopHeapRuntimeState; }
 
 void PS2Runtime::resetStubRuntimeState()
 {
@@ -3012,6 +3016,7 @@ void PS2Runtime::resetStubRuntimeState()
     m_gsRuntimeState->reset();
     m_libcRuntimeState->reset();
     m_cdRuntimeState->reset();
+    m_iopHeapRuntimeState->reset();
 }
 
 namespace ps2_stubs
@@ -3044,5 +3049,11 @@ namespace ps2_stubs
     {
         static CdRuntimeState noRuntimeFallback;
         return runtime ? runtime->cdRuntimeState() : noRuntimeFallback;
+    }
+
+    IopHeapRuntimeState &iopHeapRuntimeStateFor(PS2Runtime *runtime)
+    {
+        static IopHeapRuntimeState noRuntimeFallback;
+        return runtime ? runtime->iopHeapRuntimeState() : noRuntimeFallback;
     }
 }

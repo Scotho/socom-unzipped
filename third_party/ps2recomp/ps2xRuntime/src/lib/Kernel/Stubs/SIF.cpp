@@ -130,12 +130,21 @@ namespace ps2_stubs
             return id;
         }
 
+        // Issue #51 RED: the IOP heap cursor the allocator below writes. At this commit it is still the
+        // one process-wide instance whatever runtime the stub was handed -- the ownership is in place
+        // and SIF.cpp does not use it yet. Written under g_sifHeapMutex.
+        IopHeapRuntimeState &iopHeapStateFor(PS2Runtime *runtime)
+        {
+            (void)runtime;
+            return iopHeapRuntimeStateFor(nullptr);
+        }
+
         uint32_t alignIopHeapSize(uint32_t size)
         {
             return (size + (kIopHeapAlign - 1u)) & ~(kIopHeapAlign - 1u);
         }
 
-        uint32_t allocateSifHeapBlock(uint32_t requestSize)
+        uint32_t allocateSifHeapBlock(PS2Runtime *runtime, uint32_t requestSize)
         {
             const uint32_t alignedSize = alignIopHeapSize(requestSize);
             if (alignedSize == 0u)
@@ -168,11 +177,11 @@ namespace ps2_stubs
             std::fill_n(g_sifHeapStorage.data() + (candidate - kIopHeapBase),
                         alignedSize,
                         uint8_t{0});
-            g_iopHeapNext = candidate + alignedSize;
+            iopHeapStateFor(runtime).next = candidate + alignedSize;
             return candidate;
         }
 
-        bool freeSifHeapBlock(uint32_t addr)
+        bool freeSifHeapBlock(PS2Runtime *runtime, uint32_t addr)
         {
             std::lock_guard<std::mutex> lock(g_sifHeapMutex);
             const auto it = g_sifHeapAllocations.find(addr);
@@ -184,17 +193,17 @@ namespace ps2_stubs
             g_sifHeapAllocations.erase(it);
             if (g_sifHeapAllocations.empty())
             {
-                g_iopHeapNext = kIopHeapBase;
+                iopHeapStateFor(runtime).next = kIopHeapBase;
             }
             return true;
         }
 
-        void resetSifHeapState()
+        void resetSifHeapState(PS2Runtime *runtime)
         {
             std::lock_guard<std::mutex> lock(g_sifHeapMutex);
             g_sifHeapAllocations.clear();
             g_sifHeapStorage.fill(0u);
-            g_iopHeapNext = kIopHeapBase;
+            iopHeapStateFor(runtime).next = kIopHeapBase;
         }
 
         bool isAllocatedSifHeapRangeLocked(uint32_t address, size_t size)
@@ -436,7 +445,7 @@ namespace ps2_stubs
     {
         std::lock_guard<std::mutex> lock(g_sifCmdStateMutex);
         seedDefaultSifRegsLocked();
-        resetSifHeapState();
+        resetSifHeapState(nullptr);   // issue #51: run() resets the runtime's cursor (resetStubRuntimeState)
     }
 
     void sceSifAddCmdHandler(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
@@ -451,19 +460,17 @@ namespace ps2_stubs
     void sceSifAllocIopHeap(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         (void)rdram;
-        (void)runtime;
 
         const uint32_t reqSize = getRegU32(ctx, 4);
-        setReturnU32(ctx, allocateSifHeapBlock(reqSize));
+        setReturnU32(ctx, allocateSifHeapBlock(runtime, reqSize));
     }
 
     void sceSifAllocSysMemory(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         (void)rdram;
-        (void)runtime;
 
         const uint32_t size = getRegU32(ctx, 5);
-        setReturnU32(ctx, allocateSifHeapBlock(size));
+        setReturnU32(ctx, allocateSifHeapBlock(runtime, size));
     }
 
     void sceSifBindRpc(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
@@ -506,19 +513,17 @@ namespace ps2_stubs
     void sceSifFreeIopHeap(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         (void)rdram;
-        (void)runtime;
 
         const uint32_t addr = getRegU32(ctx, 4);
-        setReturnS32(ctx, freeSifHeapBlock(addr) ? 0 : -1);
+        setReturnS32(ctx, freeSifHeapBlock(runtime, addr) ? 0 : -1);
     }
 
     void sceSifFreeSysMemory(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         (void)rdram;
-        (void)runtime;
 
         const uint32_t addr = getRegU32(ctx, 4);
-        setReturnS32(ctx, freeSifHeapBlock(addr) ? 0 : -1);
+        setReturnS32(ctx, freeSifHeapBlock(runtime, addr) ? 0 : -1);
     }
 
     void sceSifGetDataTable(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
@@ -671,7 +676,7 @@ namespace ps2_stubs
 
     void sceSifInitIopHeap(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
-        resetSifHeapState();
+        resetSifHeapState(runtime);
         setReturnS32(ctx, 0);
     }
 

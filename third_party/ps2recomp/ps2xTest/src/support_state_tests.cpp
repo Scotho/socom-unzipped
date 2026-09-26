@@ -19,6 +19,8 @@
 #include "Kernel/Stubs/Common.h"
 #include "Kernel/Stubs/CD.h"
 #include "Kernel/Stubs/Helpers/CdRuntimeState.h"
+#include "Kernel/Stubs/SIF.h"
+#include "Kernel/Stubs/Helpers/IopHeapRuntimeState.h"
 
 #include <chrono>
 #include <cstdint>
@@ -223,6 +225,37 @@ void register_support_state_tests()
             t.Equals(cd.streamingLbn, 0u, "the stream cursor at 0");
             t.Equals(cd.streamingEndLbn, 0xFFFFFFFFu, "with no end");
             t.IsFalse(cd.initialized, "and sceCdInit not yet called");
+        });
+
+        tc.Run("Stubs/SIF.cpp's sceSifAllocIopHeap moves the heap cursor of the runtime it was handed, and only that one", [](TestCase &t)
+        {
+            PS2Runtime first;
+            PS2Runtime second;
+
+            R5900Context ctx{};
+            setRegU32(ctx, 4, 0x100u);
+            ps2_stubs::sceSifAllocIopHeap(nullptr, &ctx, &first);
+            const uint32_t block = getRegU32(&ctx, 2);
+            t.IsTrue(block >= ps2_stubs::kIopHeapBase && block + 0x100u <= ps2_stubs::kIopHeapLimit,
+                     "sceSifAllocIopHeap should hand out a block inside the IOP heap window");
+
+            // g_iopHeapNext is written by Stubs/SIF.cpp and read by nobody there; this unit reads the
+            // runtime's copy, which is the only way it is observable at all.
+            t.Equals(first.iopHeapRuntimeState().next, block + 0x100u,
+                     "the heap cursor of the runtime the stub was called with should sit at the end of "
+                     "the block; the heap base means Stubs/SIF.cpp moved a cursor that is not this "
+                     "runtime's (docs/KNOWN.md section 1, issue #51)");
+            t.Equals(second.iopHeapRuntimeState().next, ps2_stubs::kIopHeapBase,
+                     "a second runtime in the same process must keep its own cursor at the heap base");
+
+            first.resetStubRuntimeState();
+            t.Equals(first.iopHeapRuntimeState().next, ps2_stubs::kIopHeapBase,
+                     "resetStubRuntimeState (run() calls it) puts the cursor back at the heap base");
+
+            setRegU32(ctx, 4, block);
+            ps2_stubs::sceSifFreeIopHeap(nullptr, &ctx, &first);
+            t.Equals(static_cast<int32_t>(getRegU32(&ctx, 2)), 0,
+                     "and the block frees (the block map is SIF.cpp's own and not this test's subject)");
         });
     });
 }

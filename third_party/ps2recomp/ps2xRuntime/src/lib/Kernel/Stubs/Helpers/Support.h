@@ -10,6 +10,7 @@
 #include "GsRuntimeState.h"
 #include "LibCRuntimeState.h"
 #include "CdRuntimeState.h"      // issue #51: the CD group
+#include "IopHeapRuntimeState.h" // issue #51: g_iopHeapNext
 
 namespace
 {
@@ -22,10 +23,11 @@ namespace
     using ps2_stubs::CdRuntimeState;
     using ps2_stubs::kCdPseudoLbnStart;
 
-    constexpr uint32_t kIopHeapBase = 0x04000000;
-    constexpr uint32_t kIopHeapLimit = 0x04500000;
-    constexpr uint32_t kIopHeapAlign = 64;
-    uint32_t g_iopHeapNext = kIopHeapBase;
+    // Issue #51: g_iopHeapNext is ps2_stubs::IopHeapRuntimeState::next (IopHeapRuntimeState.h), owned
+    // by the PS2Runtime; the heap window's constants moved with it.
+    using ps2_stubs::kIopHeapBase;
+    using ps2_stubs::kIopHeapLimit;
+    using ps2_stubs::kIopHeapAlign;
 
     std::string toLowerAscii(std::string value)
     {
