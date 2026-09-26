@@ -134,9 +134,9 @@ document gets a class, and an unclassified document is one nobody has decided th
 
 ## 4. What is enforced mechanically
 
-`tools_py/tests/test_doc_maintenance.py`, in the Python suite, so it runs in CI and needs no build. Ten checks, each
+`tools_py/tests/test_doc_maintenance.py`, in the Python suite, so it runs in CI and needs no build. Eleven checks, each
 aimed at a rot mechanism that actually bit this project (the seventh and eighth are R268's, the ninth and tenth
-Sprint 13 Task R3's, all added 2026-09-25):
+Sprint 13 Task R3's, all added 2026-09-25; the eleventh Sprint 14 I4's, 2026-09-26):
 
 1. **Registry completeness** — every covered file has exactly one row; every row points at a file that exists. *Catches
    a new document nobody classified, and a row left behind by a move.*
@@ -179,6 +179,16 @@ Sprint 13 Task R3's, all added 2026-09-25):
    up to the highest in use, has a definition, a ledger row, or a vacancy note `R<n> -- vacant: <reason>` in the plan
    or ledger that owns its range. *Catches a decision nobody can find to overturn:* R114, R116 and R124 were cited for
    a week with no findable text; the check also found R112, R113 and R139 in the same state.
+11. **The read-first budget (Sprint 14 I4)** -- what a new controller reads before acting sums to at most 160,000
+   bytes (`READ_FIRST_BUDGET` in `tools_py/docmaint.py`, LF-counted like the ceilings). The set: `docs/HANDOFF.md`
+   itself; the root or `docs/` `.md` paths backticked in the "Read ..." step of its §3 ("Your first hour"; a path
+   named in another step, such as KNOWN in "KNOWN wins", is not a member); the plan named on
+   `docs/CURRENT_SPRINT.md`'s `plans:` line (its first `docs/superpowers/plans/` path); and `docs/STATUS.md`'s
+   "## Current state" block only. The report prints each member's bytes and the sum. *Catches the review's F1:* on
+   2026-09-26 HANDOFF's "read first" list summed to 975 KB, a quarter-million tokens before the first action, with
+   the minimum useful subset at 268 KB. The day it landed the set was 152,922 bytes (the sprint file 61,190, the
+   plan 80,182). **When it fires, shrink or archive** -- a ceiling on the plan, its Log's older entries archived at
+   the close, the sprint file split -- never raise the number.
 
 **What counts as a definition (checks 9 and 10).** A line in a document where a ruling is *made* -- HANDOFF §4 rule 9:
 a plan's rulings, or `docs/CURRENT_SPRINT.md` when there is no plan, and what `docs/archive/` keeps of both -- in a
@@ -209,7 +219,7 @@ Run it by hand with `python -m tools_py.docmaint`, which prints the registry siz
 **Each check is fired once against a planted defect** (`PlantedDefectsTest`: an unregistered document, a row whose file
 is gone, a colliding ruling number, an undated count, an undated snapshot, a silent
 archive, a silent file in an archive subdirectory, a dangling `docs/` path in a `docs/` file and in a root file, a ruling
-defined twice, a cited ruling with no text — plus
+defined twice, a cited ruling with no text, a read-first set of 180 KB — plus
 the negative controls that must *not* fire, and a clean-tree control for the controls). A gate
 that has never failed is not known to work, and this one found two real defects and one bug in its own test on the day
 it was written.

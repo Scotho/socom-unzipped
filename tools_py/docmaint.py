@@ -6,7 +6,7 @@ ruling number as R179 while R241 was in use -- a collision that had already happ
 difference between the documents that stayed true and the ones that rotted was not care; it was
 whether anything could fail. This module is the thing that fails.
 
-It is deliberately small. Ten checks, each one aimed at a rot mechanism that actually bit this
+It is deliberately small. Eleven checks, each one aimed at a rot mechanism that actually bit this
 project. The sixth was added on 2026-09-23 for the opposite reason -- a rot mechanism that had not
 bitten yet only because nobody dared move anything: the Sprint 1-6 specs and plans were cited by
 path from a hundred places, and `docs/archive/README.md` recorded them as "not moved, on purpose".
@@ -539,6 +539,95 @@ def describe_ceiling(item):
     return "%s: {:,} bytes, ceiling {:,}".format(n, limit) % where
 
 
+# Check 11 (Sprint 14 I4): the read-first budget. The autonomy review of 2026-09-26 (F1) found HANDOFF's
+# "read first" list at 975 KB -- a quarter-million tokens a new controller read before acting -- and its minimum
+# useful subset at 268 KB. The set is what HANDOFF section 3 tells a new controller to read: HANDOFF itself, the
+# root or docs/ .md paths its "Read ..." step names, the plan named on CURRENT_SPRINT's `plans:` line, and
+# STATUS's "## Current state" block (the rest of STATUS is a log). LF-counted, like the ceilings. When it fires,
+# shrink or archive a member -- never raise the number.
+READ_FIRST_BUDGET = 160000
+_BACKTICKED = re.compile(r"`([^`\s]+)`")
+_PLAN_PATH = re.compile(r"docs/superpowers/plans/[^\s`()]+?\.md")
+
+
+def _handoff_read_step_paths():
+    """The backticked root or docs/ .md paths in HANDOFF section 3's list items that begin "Read"."""
+    if not os.path.isfile(os.path.join(ROOT, "docs/HANDOFF.md")):
+        return []
+    lines = _read("docs/HANDOFF.md").replace("\r\n", "\n").split("\n")
+    start = next((i for i, ln in enumerate(lines) if ln.startswith("## 3.")), None)
+    if start is None:
+        return []
+    items, cur = [], None
+    for ln in lines[start + 1:]:
+        if ln.startswith("## "):
+            break
+        m = re.match(r"^\s*(?:\d+\.|[-*+])\s+(.*)$", ln)
+        if m:
+            cur = [m.group(1)]
+            items.append(cur)
+        elif cur is not None and ln.strip():
+            cur.append(ln.strip())
+        else:
+            cur = None
+    out = []
+    for item in items:
+        text = " ".join(item)
+        if not re.match(r"read\b", text, re.I):
+            continue
+        for tok in _BACKTICKED.findall(text):
+            if tok.endswith(".md") and (tok.startswith("docs/") or "/" not in tok):
+                out.append(tok)
+    return out
+
+
+def _plans_line_path():
+    """The first docs/superpowers/plans/...md path on CURRENT_SPRINT's `plans:` header line, or None."""
+    if not os.path.isfile(os.path.join(ROOT, "docs/CURRENT_SPRINT.md")):
+        return None
+    for ln in _read("docs/CURRENT_SPRINT.md").split("\n"):
+        if re.match(r"^plans\s*:", ln):
+            m = _PLAN_PATH.search(ln)
+            return m.group(0) if m else None
+    return None
+
+
+def read_first_set():
+    """The read-first set, in reading order, without repeats (check 11)."""
+    names = ["docs/HANDOFF.md"] + _handoff_read_step_paths()
+    plan = _plans_line_path()
+    if plan:
+        names.append(plan)
+    names.append("docs/STATUS.md")
+    seen = []
+    for n in names:
+        if n not in seen:
+            seen.append(n)
+    return seen
+
+
+def read_first_bytes():
+    """[(path, bytes)] for each member that exists; STATUS by its "## Current state" block only."""
+    out = []
+    for path in read_first_set():
+        n = block_bytes(path, "## Current state" if path == "docs/STATUS.md" else None)
+        if n is not None:
+            out.append((path, n))
+    return out
+
+
+def read_first_over():
+    """[members] when the set's sum exceeds READ_FIRST_BUDGET, else [] (check 11)."""
+    members = read_first_bytes()
+    return [members] if sum(n for _, n in members) > READ_FIRST_BUDGET else []
+
+
+def describe_read_first(members):
+    total = sum(n for _, n in members)
+    return "%s = {:,} bytes, budget {:,}".format(total, READ_FIRST_BUDGET) % " + ".join(
+        "%s {:,}".format(n) % p for p, n in members)
+
+
 _TAGS = {}
 
 
@@ -607,6 +696,8 @@ def report():
         "unknown_tags": unknown_tags(tags) if tags is not None else [],
         "duplicate_rulings": duplicate_rulings(),
         "undefined_rulings": undefined_rulings(),
+        "read_first_bytes": read_first_bytes(),
+        "read_first_over": read_first_over(),
         "tags_on_origin": len(tags) if tags is not None else None,
         "tag_check_skipped": why,
     }
@@ -621,6 +712,8 @@ def main(argv=None):
         n = block_bytes(path, heading)
         if n is not None and n <= limit:
             print("ceiling: %s" % describe_ceiling((path, heading, n, limit)))
+    if not r["read_first_over"]:
+        print("read-first: %s" % describe_read_first(r["read_first_bytes"]))
     if r["tag_check_skipped"]:
         # Never pass silently: the run is OK only on what it could check, and says what it could not.
         print("tags: SKIPPED -- origin unreachable (%s); the 'merged to main as vX' check did not run"
@@ -640,6 +733,10 @@ def main(argv=None):
         print("over_ceiling (R268; archive the oldest blocks, do not raise the number):")
         for item in r["over_ceiling"]:
             print("   ", describe_ceiling(item))
+    if r["read_first_over"]:
+        bad += 1
+        print("read_first_over (check 11; shrink a member or archive its oldest blocks, never raise the number):")
+        print("    read-first: %s" % describe_read_first(r["read_first_over"][0]))
     if r["duplicate_rulings"]:
         bad += len(r["duplicate_rulings"])
         print("duplicate_rulings (one number, one ruling; record the second as R<n>b beside it, do not renumber):")
