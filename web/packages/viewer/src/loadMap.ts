@@ -24,8 +24,16 @@ import type { TextureFlags } from './materialSpec';
  * The props stay in MODEL space (`mesh/SEMANTICS.md` section 4): one prop model is drawn in up to 26
  * places, so it is decoded once and each placement travels as a matrix for an `InstancedMesh`.
  */
-/** A decoded mesh plus the one fact about its node the lighting needs: whether the engine lights it. */
-export type LoadedMesh = MeshData & { lit: boolean };
+/**
+ * A decoded mesh plus what the drawing needs to know about where it came from: whether the engine
+ * lights its node, and where in the engine's walk of the scene graph it was drawn.
+ *
+ * `order` is the place in that walk (`Placement.rank`, times 256, plus the chunk's index within its
+ * node), and `orderEnd` the place of the last chunk merged into this draw -- the same number for a
+ * draw that is one chunk. reCOM's `CPipe::RenderNode` draws each visual as the walk reaches it and
+ * sorts nothing, so this is the order the hardware drew in, and `world.ts` draws in it.
+ */
+export type LoadedMesh = MeshData & { lit: boolean; order: number; orderEnd: number };
 
 export interface LoadedMap {
   archive: string;
@@ -34,10 +42,16 @@ export interface LoadedMap {
   path: string;
   name: string;
   world: LoadedMesh[];
-  /** GS LINE_STRIP geometry in world space (SEMANTICS section 12), or null when the map drew none. */
-  lines: LoadedLines | null;
-  /** One entry per prop model-node: its geometry once, and a column-major 4x4 per placement. */
-  props: { modelName: string; parts: LoadedMesh[]; matrices: Float32Array }[];
+  /**
+   * GS LINE_STRIP geometry in world space (SEMANTICS section 12), one group per (texture, fog), or null
+   * when the map drew none.
+   */
+  lines: LoadedLineGroup[] | null;
+  /**
+   * One entry per prop model-node: its geometry once, a column-major 4x4 per placement, and the place
+   * of its first placement in the scene walk (see `LoadedMesh.order`).
+   */
+  props: { modelName: string; parts: LoadedMesh[]; matrices: Float32Array; order: number }[];
   textures: Record<string, Rgba>;
   /**
    * Per texture: the record's flags, two facts read off the decoded pixels (`graded`, `opaque`), and the
@@ -136,18 +150,24 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   const library = loadModelLibrary(mdlArchives(bytes, toc, stem, notes));
   const chunksOf = decoder(library, notes);
   const placement = place(library, bytes, toc, stem, notes);
-  /** The world's meshes with the chunk each came from, so a blended surface can keep its own draw. */
-  const parts: { mesh: LoadedMesh; chunk: number }[] = [];
+  /** The world's meshes, each with its place in the scene walk, so a blended surface keeps its own draw. */
+  const parts: LoadedMesh[] = [];
   let chunk = 0;
+  /** A chunk's place in the walk: its node's rank, then its index within the node (256 is a cap, not a count). */
+  const orderOf = (p: PlacedModel, i: number): number => placement.rank(p) * 256 + Math.min(i, 255);
   // Relocation-type-1 packets are GS LINE_STRIPs, not meshes (SEMANTICS section 12): Desert Glory's
   // power lines and lamp brackets, Crossroads' guy ropes and light filaments. They carry no index list,
-  // so a strip of n points is n-1 segments, flattened here into one world-space segment list.
+  // so a strip of n points is n-1 segments, flattened here into world-space segment lists, one per
+  // (texture, fog) -- a strip is textured, and the texture is what a line draw is keyed on.
   const segments = new Segments();
   for (const p of placement.world) {
     step('geometry', chunk++, placement.world.length);
     const { meshes, lines } = chunksOf(p);
-    for (const mesh of meshes) parts.push({ mesh: { ...placeMesh(mesh, p.rowMajor), lit: p.lit }, chunk });
-    for (const strip of lines) segments.add(strip, p.rowMajor);
+    meshes.forEach((mesh, i) => {
+      const order = orderOf(p, i);
+      parts.push({ ...placeMesh(mesh, p.rowMajor), lit: p.lit, order, orderEnd: order });
+    });
+    for (const strip of lines) segments.add(strip, p.rowMajor, orderOf(p, 0));
   }
 
   // The props: one entry per model-node, its geometry decoded once and a matrix per placement.
@@ -159,16 +179,18 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     const decoded = chunksOf(first);
     // A prop is drawn in up to 26 places; its strips are placed once per placement, which is cheap --
     // 877 segments across the three maps in total.
+    const order = orderOf(first, 0);
     for (const placementOf of group) {
-      for (const strip of decoded.lines) segments.add(strip, placementOf.rowMajor);
+      for (const strip of decoded.lines) segments.add(strip, placementOf.rowMajor, orderOf(placementOf, 0));
     }
-    const geometry: LoadedMesh[] = decoded.meshes.map((mesh) => ({
+    const geometry: LoadedMesh[] = decoded.meshes.map((mesh, i) => ({
       ...mesh, textureName: mesh.textureName === null ? null : textureKey(mesh.textureName), lit: first.lit,
+      order: orderOf(first, i), orderEnd: orderOf(first, i),
     }));
     if (geometry.length === 0) continue;
     const matrices = new Float32Array(group.length * 16);
     group.forEach((p, i) => matrices.set(p.world, i * 16));
-    props.push({ modelName: first.modelName, parts: geometry, matrices });
+    props.push({ modelName: first.modelName, parts: geometry, matrices, order });
   }
 
   // The textures those meshes name, and only those: a map's TXR holds every texture the mission uses.
@@ -179,7 +201,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   const texlib = textureLibrary(bytes, toc, stem, notes);
   if (texlib) {
     const { palettes, keys, libs } = texlib;
-    const wanted = [...parts.map((p) => p.mesh), ...props.flatMap((p) => p.parts)];
+    const wanted = [...parts, ...props.flatMap((p) => p.parts)];
     let decoded = 0;
     for (const mesh of wanted) {
       step('textures', decoded++, wanted.length);
@@ -216,29 +238,34 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   //
   // - **Fog.** A packet's `PRIM.FGE` (SEMANTICS §3, `MeshData.fog`) is per packet, and a texture can be
   //   drawn both ways -- half of Frostfire's sky is fogged and half is not -- so the merge keys on it.
-  // - **A ramp of alpha.** A blended surface is sorted by three back to front *by object*, and a
-  //   map-wide mesh has one centre; a glow on the far side of the map would then be drawn in the same
-  //   place in the order as one under the camera. So the graded textures keep one mesh per chunk, which
-  //   is the granularity the hardware drew them at anyway.
+  // - **A ramp of alpha.** A blended surface is drawn where the engine's walk reached it, and where
+  //   that is only means something if it is its own draw: the graded textures keep one mesh per chunk,
+  //   which is the granularity the hardware drew them at anyway. And the opaque draws around it must
+  //   not straddle it -- a wall merged across a glow would be drawn wholly before or wholly after it --
+  //   so the merge is cut at every blended chunk: a texture's draws are one per *run* of the walk
+  //   between blended chunks, and `order`/`orderEnd` say which run.
   const byGroup = new Map<string, LoadedMesh[]>();
-  for (const { mesh: part, chunk: at } of parts) {
+  let run = 0;
+  for (const part of parts) {
     const key = part.textureName === null ? '' : textureKey(part.textureName);
     const flags = key === '' ? undefined : textureFlags[key];
     const blended = (flags?.graded ?? false) && !(flags?.opaque ?? true);
     // A lit part (`PlacedModel.lit`) keeps its own draw as well: the rig is applied per vertex, and a
     // merge cannot be half lit.
-    const group = `${key}|${part.fog ? 1 : 0}${part.lit ? 'L' : ''}${blended ? `|${at}` : ''}`;
+    const group = `${key}|${part.fog ? 1 : 0}${part.lit ? 'L' : ''}|${blended ? `b${part.order}` : `r${run}`}`;
+    if (blended) run++;
     const list = byGroup.get(group);
     if (list) list.push(part);
     else byGroup.set(group, [part]);
   }
-  const world: LoadedMesh[] = [...byGroup.entries()].map(([group, list]) => ({
+  const world: LoadedMesh[] = [...byGroup.values()].map((list) => ({
     ...mergeMeshes(list),
-    // `mergeMeshes` drops the name when parts disagree; here they agree by construction, and the empty
-    // key means the packets cited no texture at all.
-    textureName: group.split('|')[0] || null,
+    // `mergeMeshes` drops the name when parts disagree; here they agree by construction.
+    textureName: list[0]!.textureName === null ? null : textureKey(list[0]!.textureName),
     lit: list[0]!.lit,
-  }));
+    order: list[0]!.order,
+    orderEnd: list[list.length - 1]!.order,
+  })).sort((a, b) => a.order - b.order);
 
   return {
     archive: stem,
@@ -270,7 +297,7 @@ export function transferables(map: LoadedMap): Transferable[] {
   }
   for (const prop of map.props) out.push(prop.matrices.buffer);
   out.push(map.collision.positions.buffer, map.collision.colors.buffer);
-  if (map.lines) out.push(map.lines.positions.buffer, map.lines.colors.buffer, map.lines.normals.buffer);
+  for (const g of map.lines ?? []) out.push(g.positions.buffer, g.uvs.buffer, g.colors.buffer, g.normals.buffer);
   for (const rgba of Object.values(map.textures)) out.push(rgba.data.buffer);
   return out;
 }
@@ -475,6 +502,13 @@ interface Placement {
   world: PlacedModel[];
   /** One group per (model, node); every member draws the same geometry at a different matrix. */
   props: PlacedModel[][];
+  /**
+   * A placement's position in the engine's walk of the graph: `flattenScene` recurses the tree depth
+   * first, children in order, prototypes realised in place, which is what reCOM's `CPipe::RenderNode`
+   * does, and `placeInstances` keeps that order. The clutter, which the walk never reaches (it is
+   * placed from `CLUTTER.ZAR`), ranks after everything the graph places.
+   */
+  rank: (p: PlacedModel) => number;
   /** Zero once the graph has been read: the matrices are already in the positions. */
   origin: [number, number, number];
   /** The collision hull, already in world space and already cut into segments (36 section 6). */
@@ -496,16 +530,21 @@ function place(library: ModelLibrary, bytes: Uint8Array, toc: ZdbEntry[], stem: 
     const world = placed.filter((p) => p.modelName === WORLD_MODEL);
     if (world.length === 0) throw new Error(`no ${WORLD_MODEL} node carries visuals`);
     const groups = new Map<string, PlacedModel[]>();
+    const ranks = new Map<PlacedModel, number>();
     // The clutter joins the props: `CLUTTER.ZAR` places models the graph holds as prototypes but never
     // instances from the root, so without this pass Desert Glory's ground is bare (36 section 2).
     for (const p of [...placed, ...clutter(models, bytes, toc, notes)]) {
+      ranks.set(p, ranks.size);
       if (p.modelName === WORLD_MODEL) continue;
       const key = `${p.modelName}#${p.nodeIndex}`;
       const group = groups.get(key);
       if (group) group.push(p);
       else groups.set(key, [p]);
     }
-    return { world, props: [...groups.values()], origin: [0, 0, 0], collision: hull(models, notes) };
+    return {
+      world, props: [...groups.values()], origin: [0, 0, 0], collision: hull(models, notes),
+      rank: (p) => ranks.get(p) ?? 0,
+    };
   } catch (e) {
     notes.add(`scene graph: ${say(e)} -- falling back to the modal node translation, props omitted`);
     const entry = library.get(WORLD_MODEL);
@@ -514,7 +553,7 @@ function place(library: ModelLibrary, bytes: Uint8Array, toc: ZdbEntry[], stem: 
       chunks: entry ? entry.nodes.map((n) => n.name) : [],
       world: Float32Array.from(IDENTITY), rowMajor: Float32Array.from(IDENTITY), lit: false,
     };
-    return { world: [every], props: [], origin: worldOrigin(bytes, toc, stem, notes), collision: noCollision() };
+    return { world: [every], props: [], origin: worldOrigin(bytes, toc, stem, notes), collision: noCollision(), rank: () => 0 };
   }
 }
 
@@ -563,13 +602,22 @@ function clutter(models: SceneNode[], bytes: Uint8Array, toc: ZdbEntry[], notes:
  * map's worth is under a thousand segments.
  */
 class Segments {
-  private readonly positions: number[] = [];
-  private readonly colors: number[] = [];
-  private readonly normals: number[] = [];
+  private readonly groups = new Map<string, {
+    textureName: string | null; fog: boolean; order: number;
+    positions: number[]; uvs: number[]; colors: number[]; normals: number[];
+  }>();
 
-  add(strip: LineStrip, rowMajor: Float32Array): void {
+  add(strip: LineStrip, rowMajor: Float32Array, order: number): void {
     const n = strip.positions.length / 3;
     if (n < 2) return;                                   // a single point draws nothing
+    const textureName = strip.textureName === null ? null : textureKey(strip.textureName);
+    const key = `${textureName ?? ''}|${strip.fog ? 1 : 0}`;
+    let g = this.groups.get(key);
+    if (!g) {
+      g = { textureName, fog: strip.fog, order, positions: [], uvs: [], colors: [], normals: [] };
+      this.groups.set(key, g);
+    }
+    g.order = Math.min(g.order, order);
     const m = rowMajor;
     const at = (k: number): [number, number, number] =>
       transformPoint(m, strip.positions[k * 3]!, strip.positions[k * 3 + 1]!, strip.positions[k * 3 + 2]!);
@@ -584,9 +632,10 @@ class Segments {
     };
     for (let k = 0; k + 1 < n; k++) {
       for (const end of [k, k + 1]) {
-        this.positions.push(...at(end));
-        this.normals.push(...rot(end));
-        this.colors.push(
+        g.positions.push(...at(end));
+        g.normals.push(...rot(end));
+        g.uvs.push(strip.uvs[end * 2]!, strip.uvs[end * 2 + 1]!);
+        g.colors.push(
           strip.colors[end * 4]!, strip.colors[end * 4 + 1]!,
           strip.colors[end * 4 + 2]!, strip.colors[end * 4 + 3]!,
         );
@@ -595,19 +644,28 @@ class Segments {
   }
 
   /** Null when the map drew no strips, so the viewer can skip the object entirely. */
-  result(): LoadedLines | null {
-    if (this.positions.length === 0) return null;
-    return {
-      positions: Float32Array.from(this.positions),
-      colors: Float32Array.from(this.colors),
-      normals: Float32Array.from(this.normals),
-    };
+  result(): LoadedLineGroup[] | null {
+    if (this.groups.size === 0) return null;
+    return [...this.groups.values()].map((g) => ({
+      textureName: g.textureName, fog: g.fog, order: g.order,
+      positions: Float32Array.from(g.positions),
+      uvs: Float32Array.from(g.uvs),
+      colors: Float32Array.from(g.colors),
+      normals: Float32Array.from(g.normals),
+    })).sort((a, b) => a.order - b.order);
   }
 }
 
-/** Line segments in world space: two points a segment, rgba and a normal per point. */
-export interface LoadedLines {
+/**
+ * Line segments in world space that share a texture and a fog bit: two points a segment, a uv, an rgba
+ * and a normal per point, and the earliest place in the scene walk any of them was drawn.
+ */
+export interface LoadedLineGroup {
+  textureName: string | null;
+  fog: boolean;
+  order: number;
   positions: Float32Array;
+  uvs: Float32Array;
   colors: Float32Array;
   normals: Float32Array;
 }

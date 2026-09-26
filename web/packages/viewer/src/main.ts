@@ -188,7 +188,7 @@ ui.onSlider((name, value) => {
 });
 ui.applySliders(applySlider);
 
-/** One switch for all six overlays: the world's materials, and the things drawn beside the world. */
+/** The sliders: the brighten is a uniform on every material, so moving it rewrites no vertex. */
 function applySlider(name: SliderName, value: number): void {
   if (name === 'brighten') { lighting.brighten = value; refreshFog(); }
   // A slider only owns the fog once the player has moved it: `applySliders` is also called on every
@@ -205,6 +205,7 @@ function applyToggle(name: ToggleName, on: boolean): void {
   else if (name === 'wireframe') view?.setWireframe(on);
   else if (name === 'fog') { fog.enabled = on; refreshFog(); }
   else if (name === 'blendgraded') view?.setBlendGraded(on);
+  else if (name === 'discorder') view?.setDiscOrder(on);
   else if (name === 'linestrips') view?.setLineStrips(on);
   else if (name === 'billboards') view?.setBillboards(on);
   else if (name === 'untextured') view?.setUntexturedHighlight(on);
@@ -214,7 +215,7 @@ function applyToggle(name: ToggleName, on: boolean): void {
     document.body.classList.toggle('ps2-look', on);
     fit?.();
   }
-  else { view?.setLinearLight(on); setLinearLight?.(on); }
+  else if (name === 'linearlight') { view?.setLinearLight(on); setLinearLight?.(on); }
 }
 
 boot().catch((e: unknown) => {
@@ -478,5 +479,6 @@ window.__viewer = {
   chromeHidden: () => ui.chromeHidden(),
   panelCollapsed: () => ui.panelCollapsed(),
   flares: () => view?.flarePositions() ?? [],
+  lines: () => view?.lineGroups() ?? [],
   sliders: () => ui.sliderValues(),
 } satisfies ViewerHook;

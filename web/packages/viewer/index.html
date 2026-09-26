@@ -46,9 +46,8 @@
         <p><b>Not a port and not emulation.</b> No game code runs. The disc's own data &mdash; geometry,
           textures, scene graph, lighting, fog &mdash; is read and drawn again in TypeScript, so it is a
           reading of the game and a reading can be wrong.</p>
-        <p><b>Known to differ:</b> blended surfaces are sorted by the browser rather than drawn in the
-          game's order, the frame brighten is a fixed value where the game meters it, and there is no
-          game &mdash; just the world.</p>
+        <p><b>Known to differ:</b> the frame brighten is a fixed value where the game meters it, the
+          engine's per-frame region culling is not modelled, and there is no game &mdash; just the world.</p>
         <p>A spin-off of <b>SOCOM Unzipped</b>, the actual port.
           <a href="https://s2u.scotho.com" target="_blank" rel="noopener noreferrer">s2u.scotho.com &rarr;</a></p>
       </details>
@@ -70,10 +69,13 @@
           <label title="A lamp flare on disc is a single quad on a single plane, so left where it was modelled it is edge-on from most of the map. The hardware turns them to face the camera. Off shows the pose the disc holds."><input type="checkbox" id="billboards" checked /> turn flares to face the camera</label>
         </div>
         <div class="row">
-          <label title="The GS LINE_STRIP geometry -- guy ropes, power lines, lamp brackets, light filaments. Decoded from the disc, but drawn flat white because a line carries a texture the viewer does not apply, so they read as artifacts. Off until they are textured."><input type="checkbox" id="linestrips" /> line strips (untextured)</label>
+          <label title="The GS LINE_STRIP geometry -- guy ropes, power lines, lamp brackets, light filaments -- drawn one pixel wide with the texture the packet names running along the strip, as the hardware drew them."><input type="checkbox" id="linestrips" checked /> line strips</label>
         </div>
         <div class="row">
           <label title="Blends textures whose alpha is a ramp instead of punching them out at a threshold. Every texture's bind packet asks for source-alpha blending with the alpha test off, and a PS2 capture shows the lamp flares as soft radial blooms, which an alpha test cannot draw. Turn it off to see the cutout the viewer used to draw."><input type="checkbox" id="blendgraded" checked /> blend graded alpha</label>
+        </div>
+        <div class="row">
+          <label title="Draw every surface in the order the engine walked the scene graph, with depth written by every draw, blended or not -- the state the console ran with. A glow drawn before the wall behind it keeps the wall out, as it did on the hardware. Off sorts blended surfaces back to front by object and writes no depth under them, which never punches a hole and is never quite where the game drew it."><input type="checkbox" id="discorder" checked /> draw in the disc's order</label>
         </div>
         <div class="row">
           <label title="off: the GS's own arithmetic, texel times vertex colour in 8-bit space. on: decode the texture to linear first, which brightens every shaded surface."><input type="checkbox" id="linearlight" /> linear light (off = the GS's own arithmetic)</label>

@@ -1,17 +1,16 @@
 import {
-  AdditiveBlending, Box3, BufferAttribute, BufferGeometry, ClampToEdgeWrapping, DataTexture, DoubleSide, FrontSide, Group,
-  type Object3D,
-  InstancedMesh, LinearFilter, LinearMipmapLinearFilter,
-  LineBasicMaterial, LineSegments, Matrix4, Mesh, MeshBasicMaterial, NearestFilter, NoColorSpace, NormalBlending,
-  RGBAFormat, RepeatWrapping,
-  SRGBColorSpace, Texture,
-  Vector3,
+  Box3, BufferAttribute, BufferGeometry, ClampToEdgeWrapping, CustomBlending, DataTexture, DoubleSide, DstColorFactor,
+  FrontSide, Group, type Object3D, InstancedMesh, LinearFilter, LinearMipmapLinearFilter, LineSegments, Matrix4, Mesh,
+  NearestFilter, NoBlending, NoColorSpace, OneFactor, OneMinusSrcAlphaFactor, RGBAFormat, RepeatWrapping, SrcAlphaFactor,
+  SRGBColorSpace, Texture, Vector3, ZeroFactor,
 } from 'three';
-import { materialSpec, type MaterialSpec, type TextureFlags } from './materialSpec';
+import type { Camera } from 'three';
+import { LineBasicNodeMaterial, MeshBasicNodeMaterial, type Node } from 'three/webgpu';
+import { materialReference, uniform, vec4, vertexColor } from 'three/tsl';
+import { drawState, materialSpec, type Factor, type MaterialSpec, type TextureFlags } from './materialSpec';
 import type { Rgba } from '@s2u/gs';
 import type { MeshData } from '@s2u/mesh';
-import { applyLighting, DEFAULT_LIGHTING, type Lightable, type Lighting } from './lighting';
-import type { Camera } from 'three';
+import { applyLighting, brightenOf, DEFAULT_LIGHTING, type Lightable, type Lighting } from './lighting';
 import type { LoadedMap, LoadedMesh } from './loadMap';
 
 /**
@@ -20,9 +19,6 @@ import type { LoadedMap, LoadedMesh } from './loadMap';
  * is here so the one thing to change, if a screenshot ever comes out mirrored top to bottom, is visible.
  */
 const FLIP_Y = false;
-
-/** The colour an untextured mesh takes when the highlight is on: nothing in the game is this. */
-const UNTEXTURED = 0xff00ff;
 
 /** A drawn map: the placed group, what it cost, and the extent the camera can frame. */
 export interface WorldView {
@@ -59,34 +55,24 @@ export interface WorldView {
    * reads as flat and washed out. Off, the texel is taken at face value and the product goes to the
    * framebuffer unconverted, which is the hardware's own arithmetic.
    *
-   * Defaults to **off**, the GS's own space, which is only safe now that the other half of the fix is in:
-   * `mesh` hands colour over unclamped, so the overbright that lifts the sky and the light pools survives
-   * to the fragment. With the vertex colour still clamped at full, as it was, this space crushed the
-   * picture -- Frostfire's sky went black and its snow went grey. The pair only works as a pair.
+   * Defaults to **off**, the GS's own space.
    */
   setLinearLight(on: boolean): void;
   /**
-   * Whether a texture whose alpha is a *ramp* is blended rather than punched out at a threshold.
-   *
-   * Every texture's own GS bind packet sets `ALPHA_1 = 0x44` -- `(Cs - Cd) * As + Cd`, source-alpha
-   * blending -- with the alpha test off in `TEST_1`, and a PS2 capture of Frostfire shows the lamp
-   * flares as soft radial blooms with streaks, which an alpha test cannot draw at any threshold. That
-   * is why it is **on** by default.
-   *
-   * What is still not known is the draw order the hardware relied on, which a browser has to work out
-   * for itself: three sorts blended draws back to front by object centre, and a blended surface can
-   * therefore disappear behind one drawn before it. Turning this off restores the cutout, which sorts
-   * correctly and looks wrong.
+   * Whether a texture whose alpha is a *ramp* is blended with the equation its bind packet asks for
+   * rather than punched out at a threshold (`./materialSpec`). On by default; off restores the cutout,
+   * which sorts perfectly and looks wrong.
    */
   setBlendGraded(on: boolean): void;
   /**
-   * Whether the GS `LINE_STRIP` geometry is drawn (SEMANTICS section 12).
-   *
-   * Off by default. The decode is well evidenced and the segments land where the chunks say, but a
-   * strip carries a texture and UVs that run well outside 0..1 -- the texture repeats along it -- and
-   * three's `LineBasicMaterial` cannot sample a texture at all. Drawn in vertex colour alone a rope
-   * comes out as a bright white line, which reads as an artifact rather than as a rope. Texturing them
-   * needs a shader of their own, or expanding each segment into a camera-facing ribbon.
+   * Whether every draw goes out in the order the engine walked the scene graph, writing depth as it
+   * goes -- the console's own state -- or blended draws are handed to three to sort back to front by
+   * object centre with no depth written under them (`drawState` in `./materialSpec`). On by default.
+   */
+  setDiscOrder(on: boolean): void;
+  /**
+   * Whether the GS `LINE_STRIP` geometry is drawn (SEMANTICS section 12). On by default: a strip is
+   * drawn one pixel wide with the packet's texture running along it, which is what the hardware did.
    */
   setLineStrips(on: boolean): void;
   /**
@@ -101,17 +87,36 @@ export interface WorldView {
   setBillboards(on: boolean): void;
   /** Where the flares are, in world space -- for aiming a camera at one. */
   flarePositions(): [number, number, number][];
+  /** Each line-strip group's texture and world-space extent -- for aiming a camera at a rope. */
+  lineGroups(): { texture: string | null; min: [number, number, number]; max: [number, number, number] }[];
   /**
-   * Re-runs the VU's lighting over every vertex: `record2 * lit`, the material colour on disc times a
-   * `lit` built from the vertex normal and four colours (see `./lighting`). Cheap enough to call from a
-   * slider -- it is one pass over the vertex arrays, about a millisecond on the largest map.
+   * The lighting. The brighten is a uniform on every material and costs nothing to move; a change of
+   * rig, or of whether the rig is applied everywhere, re-runs the VU's lighting over every vertex
+   * (`record2 * lit`, see `./lighting`), about a millisecond on the largest map.
    */
   setLighting(light: Lighting): void;
   dispose(): void;
 }
 
+/** The two material kinds the world is drawn with, which share every property this file sets. */
+type Basic = MeshBasicNodeMaterial | LineBasicNodeMaterial;
+/** A TSL node that yields a colour: what `colorNode` takes. */
+type ColorNode = NonNullable<MeshBasicNodeMaterial['colorNode']>;
+
+/** A material together with what it was built from, so a switch can rebuild it from the disc's state. */
+interface Built {
+  material: Basic;
+  flags: TextureFlags | undefined;
+  fog: boolean;
+  textured: boolean;
+}
+
+const FACTOR = {
+  zero: ZeroFactor, one: OneFactor, srcAlpha: SrcAlphaFactor, oneMinusSrcAlpha: OneMinusSrcAlphaFactor, dstColor: DstColorFactor,
+} as const satisfies Record<Factor, number>;
+
 /**
- * Builds the scene objects for one decoded map: one `Mesh` per texture for the world, whose vertices
+ * Builds the scene objects for one decoded map: one `Mesh` per texture run for the world, whose vertices
  * `loadMap` has already placed, and one `InstancedMesh` per prop model-node -- a prop model is drawn in
  * up to 26 places, so it is uploaded once and instanced by the matrices `scene` produced.
  *
@@ -127,44 +132,84 @@ export function buildWorld(map: LoadedMap): WorldView {
   let linearLight = false;
   // The map's own rig, from its `GlobalLighting` record; the panel's trims arrive with `setLighting`.
   let lighting: Lighting = { ...DEFAULT_LIGHTING, rig: map.lightRig };
-  let lineMaterial: LineBasicMaterial | null = null;
-  let lineSegments: LineSegments | null = null;
+  let lastRig = lighting.rig;
+  let lastEverywhere = lighting.rigEverywhere;
+  const lineObjects: LineSegments[] = [];
   const billboards: Mesh[] = [];
   let billboardsOn = true;
   let blendGraded = false;
-  /** What each material was built from, so the blend switch can rebuild it from the disc's state. */
-  const specs = new Map<MeshBasicMaterial, { flags: TextureFlags | undefined; fog: boolean }>();
-  // Every drawn part beside the buffer its lit colours go into, so a slider can rewrite them in place.
+  let discOrder = false;
+  let highlight = false;
+  let lineStripsOn = true;
+  const built: Built[] = [];
+  /** Every drawn object beside its place in the scene walk, for `setDiscOrder`. */
+  const ordered: { object: Object3D; order: number }[] = [];
+  // Every drawn part beside the buffer its lit colours go into, so a rig change can rewrite them in place.
   const lit: { part: Lightable; attribute: BufferAttribute }[] = [];
-  const materials: MeshBasicMaterial[] = [];
-  const untextured: MeshBasicMaterial[] = [];
   /** How many drawn objects have no texture: the number the status line reports. */
   let untexturedDraws = 0;
   let triangles = 0;
+
   /**
-   * Building an object is cheap; *drawing it the first time* is not, because that is when three uploads
-   * its texture and geometry and compiles its program. So nothing is added to the group here. Each
-   * object becomes a one-line task, and `main.ts` runs those across frames (`./scheduler`), which turns
-   * one 1,700 ms frame into a few dozen short ones. The world's tasks come first and are what the first
-   * paint waits for; the props follow behind it.
+   * The shading, as the GS does it, in four node graphs shared by every material (a shared graph is one
+   * compiled program, not one per texture):
+   *
+   * - **MODULATE, then clamp, then brighten.** `(texel * vertex) >> 7`, the product clamped to 255 by
+   *   `COLCLAMP` before the fog is mixed in -- so the clamp is here, ahead of the fog three applies to
+   *   the output, and the post-process's `1 + FIX/128` comes after it as a uniform. Alpha is the same
+   *   product, clamped, and is not brightened.
+   * - The untextured variant of the same: the vertex colour alone.
+   * - **The destination brighten**, `(Cd - 0) * As + Cd`: the source colour is never read, so the shader
+   *   emits `As` in every channel for the `Cs * Cd + Cd` blend to multiply with (`./materialSpec`).
+   * - **Magenta**, flat, for the untextured highlight.
    */
-  const revealWorld: (() => void)[] = [];
-  const revealProps: (() => void)[] = [];
-  const box = new Box3();
-  /** Queues an object and grows the map's extent by it, which `setFromObject` can no longer do. */
-  const later = (queue: (() => void)[], object: Object3D): void => {
-    object.updateWorldMatrix(false, false);
-    box.expandByObject(object);
-    queue.push(() => group.add(object));
+  const brighten = uniform(brightenOf(lighting));
+  // The typings do not know a material reference to a texture is a vec4, which is what the sampler yields.
+  const texel = materialReference('map', 'texture') as unknown as Node<'vec4'>;
+  const modulated = vec4(texel.mul(vertexColor())).clamp(0, 1);
+  const plain = vec4(vertexColor()).clamp(0, 1);
+  const SHADED: ColorNode = vec4(modulated.rgb.mul(brighten), modulated.a);
+  const SHADED_PLAIN: ColorNode = vec4(plain.rgb.mul(brighten), plain.a);
+  const CARRIER: ColorNode = vec4(modulated.a, modulated.a, modulated.a, modulated.a);
+  const CARRIER_PLAIN: ColorNode = vec4(plain.a, plain.a, plain.a, plain.a);
+  /** The colour an untextured mesh takes when the highlight is on: nothing in the game is this. */
+  const MAGENTA: ColorNode = vec4(1, 0, 1, 1);
+
+  /** Puts a spec on a material: the shading graph, the blend, the test, the depth write, the cull and the fog. */
+  const apply = (b: Built): void => {
+    const spec = materialSpec(b.flags, b.fog, blendGraded);
+    const state = drawState(spec, discOrder);
+    const { material } = b;
+    const carrier = spec.blend === 'destination';
+    material.colorNode = highlight && !b.textured ? MAGENTA
+      : carrier ? (b.textured ? CARRIER : CARRIER_PLAIN)
+      : (b.textured ? SHADED : SHADED_PLAIN);
+    material.transparent = state.transparent;
+    material.depthWrite = state.depthWrite;
+    if (state.factors) {
+      material.blending = CustomBlending;
+      material.blendSrc = FACTOR[state.factors.src];
+      material.blendDst = FACTOR[state.factors.dst];
+      material.blendSrcAlpha = null;
+      material.blendDstAlpha = null;
+    } else {
+      material.blending = NoBlending;
+    }
+    material.alphaTest = spec.alphaTest;
+    material.side = spec.cull ? FrontSide : DoubleSide;
+    // A destination brighten reads only `As`, which the GS does not fog; fogging the carrier would fog it.
+    material.fog = spec.fog && !carrier;
+    material.needsUpdate = true;
   };
+
   /**
-   * One material per (texture, fog) pair. The texture's own state block -- blend, alpha test, wrap,
+   * One material per (texture, fog, kind). The texture's own state block -- blend, alpha test, wrap,
    * filtering (`./materialSpec`) -- is the same for every draw of it; what varies per packet is the
    * `PRIM.FGE` fog bit, so a sky texture drawn fogged in one chunk and clear in another gets two.
    */
-  const materialCache = new Map<string, MeshBasicMaterial>();
-  const materialFor = (name: string | null, fog: boolean): MeshBasicMaterial => {
-    const cacheKey = `${name ?? ''}|${fog ? 1 : 0}`;
+  const materialCache = new Map<string, Basic>();
+  const materialFor = (name: string | null, fog: boolean, kind: 'mesh' | 'line'): Basic => {
+    const cacheKey = `${kind}|${name ?? ''}|${fog ? 1 : 0}`;
     const cached = materialCache.get(cacheKey);
     if (cached) return cached;
     const rgba = name === null ? undefined : map.textures[name];
@@ -194,21 +239,41 @@ export function buildWorld(map: LoadedMap): WorldView {
     //
     // So: cull where the texture is solid, keep both faces where it is not (`spec.cull`). That is the
     // split the models themselves draw, and it is the one fact about a draw the state block does not hold.
-    const material = new MeshBasicMaterial({ map: texture ?? null, vertexColors: true });
-    applySpec(material, spec);
-    specs.set(material, { flags, fog });
-    materials.push(material);
+    const material: Basic = kind === 'mesh' ? new MeshBasicNodeMaterial() : new LineBasicNodeMaterial();
+    material.map = texture ?? null;
+    material.vertexColors = false;                     // the shading graph reads the attribute itself
+    const entry: Built = { material, flags, fog, textured: !!texture };
+    apply(entry);
+    built.push(entry);
     materialCache.set(cacheKey, material);
-    if (!texture) untextured.push(material);
     return material;
   };
 
+  /**
+   * Building an object is cheap; *drawing it the first time* is not, because that is when three uploads
+   * its texture and geometry and compiles its program. So nothing is added to the group here. Each
+   * object becomes a one-line task, and `main.ts` runs those across frames (`./scheduler`), which turns
+   * one 1,700 ms frame into a few dozen short ones. The world's tasks come first and are what the first
+   * paint waits for; the props follow behind it.
+   */
+  const revealWorld: (() => void)[] = [];
+  const revealProps: (() => void)[] = [];
+  const box = new Box3();
+  /** Queues an object at its place in the walk, and grows the map's extent by it. */
+  const later = (queue: (() => void)[], object: Object3D, order: number): void => {
+    object.updateWorldMatrix(false, false);
+    box.expandByObject(object);
+    ordered.push({ object, order });
+    object.renderOrder = discOrder ? order : 0;
+    queue.push(() => group.add(object));
+  };
+
   for (const part of map.world) {
-    const mesh = new Mesh(geometryOf(part, lighting, lit), materialFor(part.textureName, part.fog));
+    const mesh = new Mesh(geometryOf(part, lighting, lit), materialFor(part.textureName, part.fog, 'mesh'));
     mesh.name = part.textureName ?? 'untextured';
     if (!part.textureName) untexturedDraws++;
     mesh.frustumCulled = false;                           // one mesh spans the whole map; culling it hides it
-    later(revealWorld, mesh);
+    later(revealWorld, mesh, part.order);
     triangles += part.indices.length / 3;
   }
 
@@ -228,7 +293,7 @@ export function buildWorld(map: LoadedMap): WorldView {
         // where it was modelled it is edge-on from most of the map and a flat card from the rest. Each
         // placement becomes its own mesh, centred on the quad so a spin about that centre keeps it
         // where it belongs, and `faceCamera` turns them every frame.
-        const flareMaterial = materialFor(part.textureName, part.fog);
+        const flareMaterial = materialFor(part.textureName, part.fog, 'mesh');
         if (!part.textureName) untexturedDraws += count;
         for (let i = 0; i < count; i++) {
           const m = new Matrix4().fromArray(prop.matrices, i * 16);
@@ -237,50 +302,51 @@ export function buildWorld(map: LoadedMap): WorldView {
           mesh.name = `${prop.modelName} (flare)`;
           mesh.position.copy(at.applyMatrix4(m));
           billboards.push(mesh);
-          later(revealProps, mesh);
+          later(revealProps, mesh, part.order);
         }
         triangles += (part.indices.length / 3) * count;
         continue;
       }
       const geometry = geometryOf(rotateNormals(part, rotation), lighting, lit);
-      const material = materialFor(part.textureName, part.fog);
+      const material = materialFor(part.textureName, part.fog, 'mesh');
       if (!part.textureName) untexturedDraws++;
       if (count === 1) {
         const mesh = new Mesh(geometry, material);
         mesh.name = prop.modelName;
         mesh.applyMatrix4(new Matrix4().fromArray(prop.matrices, 0));
-        later(revealProps, mesh);
+        later(revealProps, mesh, part.order);
       } else {
         const mesh = new InstancedMesh(geometry, material, count);
         mesh.name = prop.modelName;
         for (let i = 0; i < count; i++) mesh.setMatrixAt(i, new Matrix4().fromArray(prop.matrices, i * 16));
         mesh.instanceMatrix.needsUpdate = true;
-        later(revealProps, mesh);
+        later(revealProps, mesh, part.order);
       }
       triangles += (part.indices.length / 3) * count;
     }
   }
 
   // The GS LINE_STRIP geometry (SEMANTICS section 12): power lines, lamp brackets, guy ropes, light
-  // filaments. The hardware draws these one pixel wide at any distance, which is what a plain
-  // `LineSegments` does too, so no width has to be invented.
-  if (map.lines) {
+  // filaments. The hardware draws these one pixel wide at any distance, textured (`TME`) along the
+  // strip with uvs that run well outside 0..1, gouraud, fogged and blended -- `PRIM = IIP|TME|FGE|ABE`
+  // on all 194 packets. A `LineSegments` per (texture, fog) with the same shading graph the meshes use
+  // draws exactly that: the texture repeats along the rope, and the vertex colour shades it.
+  for (const strip of map.lines ?? []) {
     const geometry = new BufferGeometry();
-    geometry.setAttribute('position', new BufferAttribute(map.lines.positions, 3));
-    const colors = new Float32Array(map.lines.colors.length);
-    const strips: Lightable = { ...map.lines, lit: false };
-    applyLighting(strips, lighting, colors);
+    geometry.setAttribute('position', new BufferAttribute(strip.positions, 3));
+    geometry.setAttribute('uv', new BufferAttribute(strip.uvs, 2));
+    const colors = new Float32Array(strip.colors.length);
+    const part: Lightable = { colors: strip.colors, normals: strip.normals, lit: false };
+    applyLighting(part, lighting, colors);
     const attribute = new BufferAttribute(colors, 4);
     geometry.setAttribute('color', attribute);
-    lit.push({ part: strips, attribute });
-    const material = new LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false });
-    lineMaterial = material;
-    const segments = new LineSegments(geometry, material);
-    segments.name = 'line strips';
+    lit.push({ part, attribute });
+    const segments = new LineSegments(geometry, materialFor(strip.textureName, strip.fog, 'line'));
+    segments.name = `line strips (${strip.textureName ?? 'untextured'})`;
     segments.frustumCulled = false;
-    segments.visible = false;                           // see `setLineStrips`
-    lineSegments = segments;
-    later(revealProps, segments);
+    if (!strip.textureName) untexturedDraws++;
+    lineObjects.push(segments);
+    later(revealProps, segments, strip.order);
   }
 
   return {
@@ -295,20 +361,24 @@ export function buildWorld(map: LoadedMap): WorldView {
       // the first time a render object is refreshed in full, and a bare flag change is not a refresh.
       // Without it the index is never uploaded, every wireframe draw goes out with no index type, and
       // the frame is the clear colour and nothing else until the page is reloaded.
-      for (const material of materials) { material.wireframe = on; material.needsUpdate = true; }
+      for (const { material } of built) {
+        if (material instanceof MeshBasicNodeMaterial) { material.wireframe = on; material.needsUpdate = true; }
+      }
       // A line has no faces to show through, so it simply steps aside while the topology is on view.
-      if (lineMaterial) lineMaterial.visible = !on;
+      for (const line of lineObjects) line.visible = !on && lineStripsOn;
     },
     setUntexturedHighlight: (on) => {
-      for (const material of untextured) {
-        material.color.setHex(on ? UNTEXTURED : 0xffffff);
-        // Flat magenta, not magenta times the baked lighting: the point is to be unmistakable.
-        material.vertexColors = !on;
-        material.needsUpdate = true;
-      }
+      if (on === highlight) return;
+      highlight = on;
+      for (const b of built) if (!b.textured) apply(b);
     },
     setLighting: (next) => {
+      brighten.value = brightenOf(next);
+      const rigChanged = next.rig !== lastRig || next.rigEverywhere !== lastEverywhere;
       lighting = next;
+      lastRig = next.rig;
+      lastEverywhere = next.rigEverywhere;
+      if (!rigChanged) return;
       for (const { part, attribute } of lit) {
         applyLighting(part, lighting, attribute.array as Float32Array);
         attribute.needsUpdate = true;
@@ -319,17 +389,28 @@ export function buildWorld(map: LoadedMap): WorldView {
       for (const mesh of billboards) mesh.quaternion.copy(camera.quaternion);
     },
     flarePositions: () => billboards.map((m) => [m.position.x, m.position.y, m.position.z]),
+    lineGroups: () => lineObjects.map((line) => {
+      const b = new Box3().setFromBufferAttribute(line.geometry.getAttribute('position') as BufferAttribute);
+      return { texture: line.name, min: [b.min.x, b.min.y, b.min.z], max: [b.max.x, b.max.y, b.max.z] };
+    }),
     setBillboards: (on) => {
       billboardsOn = on;
       if (!on) for (const mesh of billboards) mesh.quaternion.identity();   // back to the pose on disc
     },
     setLineStrips: (on) => {
-      if (lineSegments) lineSegments.visible = on;
+      lineStripsOn = on;
+      for (const line of lineObjects) line.visible = on;
     },
     setBlendGraded: (on) => {
       if (on === blendGraded) return;
       blendGraded = on;
-      for (const [material, { flags, fog }] of specs) applySpec(material, materialSpec(flags, fog, on));
+      for (const b of built) apply(b);
+    },
+    setDiscOrder: (on) => {
+      if (on === discOrder) return;
+      discOrder = on;
+      for (const b of built) apply(b);
+      for (const { object, order } of ordered) object.renderOrder = on ? order : 0;
     },
     setLinearLight: (on) => {
       if (on === linearLight) return;
@@ -338,31 +419,18 @@ export function buildWorld(map: LoadedMap): WorldView {
         texture.colorSpace = on ? SRGBColorSpace : NoColorSpace;
         texture.needsUpdate = true;
       }
-      for (const material of materials) material.needsUpdate = true;
+      for (const { material } of built) material.needsUpdate = true;
     },
     dispose: () => {
       for (const child of group.children) {
-        if (!(child instanceof Mesh)) continue;               // an InstancedMesh is one too
+        if (!(child instanceof Mesh) && !(child instanceof LineSegments)) continue;   // an InstancedMesh is a Mesh too
         child.geometry.dispose();
-        const material = child.material;
-        if (!Array.isArray(material)) material.dispose();
         if (child instanceof InstancedMesh) child.dispose();
       }
+      for (const { material } of built) material.dispose();
       for (const texture of textures.values()) texture.dispose();
-      lineMaterial?.dispose();
     },
   };
-}
-
-/** Puts a spec on a material: the blend, the test, the depth write, the cull and the fog. */
-function applySpec(material: MeshBasicMaterial, spec: MaterialSpec): void {
-  material.transparent = spec.transparent;
-  material.blending = spec.blending === 'additive' ? AdditiveBlending : NormalBlending;
-  material.alphaTest = spec.alphaTest;
-  material.depthWrite = spec.depthWrite;
-  material.side = spec.cull ? FrontSide : DoubleSide;
-  material.fog = spec.fog;
-  material.needsUpdate = true;
 }
 
 /**
@@ -438,7 +506,7 @@ function geometryOf(
   geometry.setAttribute('uv', new BufferAttribute(part.uvs, 2));
   // The attribute is the *lit* colour, not the material colour on disc: `record2 * lit`, computed here
   // the way the VU computes it (see `./lighting`). Float rather than a normalised byte, because a lit
-  // colour goes above 1 and the GS clamps the product at the framebuffer, not the vertex.
+  // colour goes above 1 and the GS clamps the modulate, not the vertex.
   const colors = new Float32Array(part.colors.length);
   applyLighting(part, light, colors);
   const attribute = new BufferAttribute(colors, 4);

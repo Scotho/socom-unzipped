@@ -212,6 +212,49 @@ register shows 640 pixels on a 4:3 set. Every map authors `fov (0.6109 0.4276)` 
 the engine forces the horizontal one (`node_saveload.cpp:309`) -- so the projection is 70° by 49° in
 framebuffer pixels, anamorphic by 448/640 against 4:3. The PS2 picture mode reproduces exactly that.
 
+### The draw order is the scene walk, and the console wrote depth under every blend (2026-09-26)
+
+reCOM's `CPipe::RenderNode` (`recom/src/gamez/zRender/zrndr_pipe.cpp`) recurses the node tree depth
+first, children in order, and calls `visual->Render` for each visual as it reaches it; the only
+deferral is `m_alpha.Add` for a node whose opacity is under 0.99 (a fading object), and nothing is
+sorted. The live GS state is `zmsk=0` on the water (research 26 §2), so blended draws wrote depth. The
+viewer now does the same: `flattenScene` already walks in that order, `Placement.rank` records it,
+every draw carries `order`/`orderEnd`, the texture merge is cut at each blended chunk so no opaque draw
+straddles one (`loadMap.ts`, `test/loadMap.test.ts`), and every draw goes to three's opaque list with
+`renderOrder` set and depth written -- blends via `CustomBlending` so the list is one (`drawState`).
+Measured at the six spawn views of the three fixtures: zero pixels differ between the two orders, so
+the change is fidelity without a visible cost there; where a glow precedes the wall behind it the hole
+is now the console's. Region culling (`CanSeeRegion`) is still not modelled.
+
+### The wireframe blank-out (2026-09-26)
+
+`material.wireframe = on` alone: three's WebGPU renderer builds the wireframe index inside
+`Geometries.getIndex`, but only uploads it in `updateForRender`, which runs on a *full* refresh of the
+render object -- a material version bump. A bare flag change is not one, so `backend.draw` fetched an
+index with no GPU buffer and every wireframe draw went out as `glDrawElements(mode, count, undefined)`:
+250 `GL_INVALID_ENUM` warnings a frame, a frame that was the clear colour, and nothing drawn until a
+reload. The fix is `needsUpdate = true` beside the flag; the e2e now toggles the wireframe and fails
+on a `GL_INVALID` warning.
+
+### The modulate is clamped before the fog, and the brighten is a uniform (2026-09-26)
+
+The world is drawn with `MeshBasicNodeMaterial` and one shared shading graph: `clamp(texel * vertex)`
+-- the GS's `COLCLAMP` on the modulate, before the fog mix that three applies to the output -- times
+`1 + FIX/128` as a uniform. Baking the gain into the vertex, as before, let an overbright vertex under
+fog mix in above 1 where the hardware had clamped it first; and the slider now rewrites no vertex.
+The `(Cd - 0) * As + Cd` light maps get their own equation: the shader emits `As` and the blend is
+`Cs * Cd + Cd` (`src = DST_COLOR, dst = ONE`), the fix `gs_gl_backend.cpp` made for the game (§12 of
+research 31). The one `FIX`-factor glow stays additive.
+
+### The line strips are textured and on (2026-09-26)
+
+A `LineSegments` per (texture, fog) with the mesh shading graph, the packet's uvs (well outside 0..1,
+repeating along the rope) and its vertex colours, one pixel wide: `PRIM = IIP|TME|FGE|ABE`. Desert
+Glory's wires hang from their poles and Crossroads' tent ropes run to the ground in the close-ups.
+The texture named is the chain's reloc-6 citation in force for the packet (SEMANTICS §12) -- on Desert
+Glory's power lines that is `afghan2r_sky_top.tif`, which is what the disc says and has not been
+checked against a console capture.
+
 ## 5. Verification
 
 - Unit: the new decoders (`GsState`, `fog` on `MeshData`) pinned on synthetic packets and on the

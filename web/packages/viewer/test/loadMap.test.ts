@@ -1,0 +1,64 @@
+import { describe, expect, it } from 'vitest';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { FsAssetSource } from '@s2u/archive/node';
+import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
+import { loadMap, type LoadedMap } from '../src/loadMap';
+
+/**
+ * The draw order a map carries out of `loadMap`, which is the order the engine drew it in.
+ *
+ * reCOM's `CPipe::RenderNode` (`zRender/zrndr_pipe.cpp`) walks the scene graph depth first, draws each
+ * node's visuals as it reaches them, and defers only a node whose opacity is under 1 -- it sorts
+ * nothing. So every drawn part records where in that walk it fell (`order`), and the merge that turns
+ * hundreds of world packets into a few dozen draws must not let an opaque draw straddle a blended one,
+ * or the blended surface would be drawn before or after geometry the hardware drew on the other side.
+ */
+const FIXTURES = resolve(dirname(fileURLToPath(import.meta.url)), '../../../test-fixtures');
+const absent = fixture('RUN/MP6.ZDB') === null;
+
+const load = (path: string): Promise<LoadedMap> => loadMap(new FsAssetSource(FIXTURES), path);
+
+describe.skipIf(absent)(`the draw order out of loadMap${absent ? ` (${FIXTURES_ABSENT})` : ''}`, () => {
+  it.skipIf(absent)('every world draw and every prop carries a place in the scene walk, and the lists are in that order', async () => {
+    const map = await load('RUN/MP6.ZDB');
+    const orders = map.world.map((m) => m.order);
+    expect(orders.every((o) => Number.isFinite(o) && o >= 0)).toBe(true);
+    for (let i = 1; i < orders.length; i++) expect(orders[i]).toBeGreaterThan(orders[i - 1]!);
+    for (const m of map.world) expect(m.orderEnd).toBeGreaterThanOrEqual(m.order);
+    const props = map.props.map((p) => p.order);
+    for (let i = 1; i < props.length; i++) expect(props[i]).toBeGreaterThan(props[i - 1]!);
+  });
+
+  it.skipIf(absent)('a blended world part keeps its own draw, and no opaque draw straddles one', async () => {
+    const map = await load('RUN/MP72.ZDB');
+    const blended = map.world.filter((m) => {
+      const f = m.textureName === null ? undefined : map.textureFlags[m.textureName];
+      return (f?.graded ?? false) && !(f?.opaque ?? true);
+    });
+    expect(blended.length).toBeGreaterThan(0);
+    for (const b of blended) expect(b.orderEnd).toBe(b.order);
+    for (const a of map.world) {
+      if (a.orderEnd === a.order) continue;
+      for (const b of blended) expect(b.order > a.order && b.order < a.orderEnd, `${a.textureName} straddles ${b.textureName}`).toBe(false);
+    }
+  });
+
+  it.skipIf(absent)('the line strips come out grouped by texture and fog, with a uv per point and a place in the walk', async () => {
+    const map = await load('RUN/MP6.ZDB');           // Desert Glory: power lines, lamp brackets, the cuffs
+    expect(map.lines).not.toBeNull();
+    const groups = map.lines!;
+    expect(groups.length).toBeGreaterThan(1);
+    const keys = new Set(groups.map((g) => `${g.textureName}|${g.fog}`));
+    expect(keys.size).toBe(groups.length);
+    for (const g of groups) {
+      const points = g.positions.length / 3;
+      expect(points % 2).toBe(0);                       // two points a segment
+      expect(g.uvs.length).toBe(points * 2);
+      expect(g.colors.length).toBe(points * 4);
+      expect(g.normals.length).toBe(points * 3);
+      expect(Number.isFinite(g.order)).toBe(true);
+    }
+    expect(groups.some((g) => g.textureName !== null)).toBe(true);
+  });
+});

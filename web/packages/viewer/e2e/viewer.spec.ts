@@ -42,6 +42,19 @@ const openPanel = (page: Page): Promise<void> => page.evaluate(() => {
   for (const el of document.querySelectorAll('#panel details:not(#about)')) (el as HTMLDetailsElement).open = true;
 });
 
+/**
+ * Sets a checkbox the way the page reads it -- the property and a `change` event -- rather than by a
+ * click. The panel is taller than a 720px viewport once every section is open, and a control below
+ * the fold cannot be clicked; what the test is about is the picture that follows, not the click.
+ */
+const setToggle = (page: Page, id: string, on: boolean): Promise<void> =>
+  page.locator(`#${id}`).evaluate((el, checked) => {
+    const box = el as HTMLInputElement;
+    if (box.checked === checked) return;
+    box.checked = checked;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
+  }, on);
+
 /** Two frames with the new world in them before the canvas is worth photographing. */
 const settle = (page: Page): Promise<void> => page.evaluate(
   () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
@@ -51,7 +64,13 @@ test('all three extracted maps render from the served archives', async ({ page }
   mkdirSync(SCREENS, { recursive: true });
   const problems: string[] = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
-  page.on('console', (m) => { if (m.type() === 'error') problems.push(`console: ${m.text()}`); });
+  // A GL error reaches the console as a *warning*, not an error, and one per draw: the wireframe
+  // blank-out of 2026-09-26 was 250 `GL_INVALID_ENUM: glDrawElements` warnings and no error at all.
+  page.on('console', (m) => {
+    if (m.type() === 'error' || (m.type() === 'warning' && /GL_INVALID|WebGPU.*(error|fail)/i.test(m.text()))) {
+      problems.push(`console: ${m.text()}`);
+    }
+  });
 
   await page.goto('/');
   const maps = page.locator('#maps');
@@ -102,21 +121,37 @@ test('all three extracted maps render from the served archives', async ({ page }
     // The overhead shot stands further off than any map's fog far plane -- Frostfire's is 640 and
     // this is 800 up -- so with fog on it photographs the fog colour and nothing else. The point of
     // the shot is the placement underneath it, so fog comes off for it and goes back on after.
-    const fog = page.locator('#fog');
     await openPanel(page);
-    await fog.uncheck();
+    await setToggle(page, 'fog', false);
     await settle(page);
     await page.screenshot({ path: join(SCREENS, map.top) });
-    await fog.check();
+    await setToggle(page, 'fog', true);
   }
+
+  // The line strips are on by default -- Desert Glory's power lines and Crossroads' guy ropes are in
+  // the two shots above -- and the disc's draw order is the default too.
+  expect(await page.evaluate(() => window.__viewer.toggles())).toMatchObject({ linestrips: true, discorder: true });
+
+  // The wireframe, on and off again, from the spawn. It used to blank the frame on the second draw --
+  // the check on `problems` at the end is what catches that, the screenshot is what shows it drew.
+  await page.evaluate(() => {
+    const spawns = window.__viewer.stats().spawns!;
+    window.__viewer.setCamera({ x: spawns.a[0], y: spawns.a[1] + 20, z: spawns.a[2], yaw: 0, pitch: 0 });
+  });
+  await setToggle(page, 'wireframe', true);
+  await settle(page);
+  await settle(page);
+  await page.screenshot({ path: join(SCREENS, 'crossroads-wireframe.png') });
+  await setToggle(page, 'wireframe', false);
+  await settle(page);
 
   // Back to Frostfire with the two map-derived overlays on: the collision hull over the deck it guards,
   // and the two spawn markers. The same camera as `frostfire-top.png`, so the pair is a before and after.
   await maps.selectOption('RUN/MP2.ZDB');
   await expect(status).toContainText('FROSTFIRE (MP2)');
   await openPanel(page);
-  await page.locator('#collision').check();
-  await page.locator('#spawns').check();
+  await setToggle(page, 'collision', true);
+  await setToggle(page, 'spawns', true);
   expect(await page.evaluate(() => window.__viewer.toggles())).toMatchObject({ collision: true, spawns: true });
   await page.evaluate((high) => {
     const spawns = window.__viewer.stats().spawns!;

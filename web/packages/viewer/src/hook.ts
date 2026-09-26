@@ -22,6 +22,7 @@ export interface ViewerHook {
   chromeHidden(): boolean;
   panelCollapsed(): boolean;
   flares(): [number, number, number][];
+  lines(): { texture: string | null; min: [number, number, number]; max: [number, number, number] }[];
   sliders(): Record<SliderName, number>;
 }
 

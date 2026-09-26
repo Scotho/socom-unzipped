@@ -80,15 +80,9 @@ export const FALLBACK_RIG: GlobalLighting = {
 export function applyLighting(part: Lightable, light: Lighting, out: Float32Array): void {
   const material = part.colors;
   const count = material.length / 4;
-  const gain = brightenOf(light);
 
   if (!part.lit && !light.rigEverywhere) {
-    for (let i = 0; i < count; i++) {
-      out[i * 4] = material[i * 4]! * gain;
-      out[i * 4 + 1] = material[i * 4 + 1]! * gain;
-      out[i * 4 + 2] = material[i * 4 + 2]! * gain;
-      out[i * 4 + 3] = material[i * 4 + 3]!;
-    }
+    out.set(material);                                   // command 0x08: record2 into RGBAQ, untouched
     return;
   }
 
@@ -115,9 +109,9 @@ export function applyLighting(part: Lightable, light: Lighting, out: Float32Arra
         r += c[0] * t; g += c[1] * t; b += c[2] * t;
       }
     }
-    out[i * 4] = material[i * 4]! * r * gain;
-    out[i * 4 + 1] = material[i * 4 + 1]! * g * gain;
-    out[i * 4 + 2] = material[i * 4 + 2]! * b * gain;
+    out[i * 4] = material[i * 4]! * r;
+    out[i * 4 + 1] = material[i * 4 + 1]! * g;
+    out[i * 4 + 2] = material[i * 4 + 2]! * b;
     out[i * 4 + 3] = material[i * 4 + 3]!;            // alpha is not lit
   }
 }
