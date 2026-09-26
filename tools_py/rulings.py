@@ -7,16 +7,22 @@ the page and the checks can never disagree about what a ruling is. The sprint-lo
 `S13-R<n>` (R264, R273) have no parser in docmaint; they are read here from the same documents, in the same
 house shape, and listed in their own groups.
 
-Status, strongest first (a definition and its ledger row are both read; the stronger wins):
-  retracted   the definition line is struck (`~~`), its text says RETRACTED, or its ledger row's status cell
-              opens with "retracted"
-  withdrawn   the text says WITHDRAWN (or "withdrawn by"), or the row's cell opens with "withdrawn"
-  superseded  the text says "superseded by", "amended by", "overturned by" or "retired by" a ruling, or the
-              row's cell opens with one of those, or a later ruling's own words say it "overturns", "supersedes"
-              or "retires" this one (R92, S12-R10); "amends", "narrows" and "corrects" leave it standing
-  vacant      a vacancy note (`R<n> -- vacant: <reason>`), or a row whose cell opens with "(deliberately) vacant"
-  active      anything else; a row that opens with "stands" is active even when it goes on to say a part of
-              the ruling was amended (the ledger's own verdict comes first)
+Status, strongest first (a definition and its ledger row are both read; the stronger wins). "Its own words" are
+the ruling's label with its (date, task) note and its first sentence -- never the rest of the paragraph, where a
+ruling may name another's RETRACTED -- or its own ledger row's status cell:
+  retracted   the definition is struck (`~~`), its own words say RETRACTED, or its row's cell opens "retracted"
+  withdrawn   its own words say WITHDRAWN (or "withdrawn by"), or its row's cell opens "withdrawn"
+  superseded  its own words say "superseded by", "overturned by" or "retired by" a ruling, or its row's cell
+              opens with one of those, or a later ruling's words say it "overturns", "supersedes" or "retires"
+              this one (R92, S12-R10)
+  vacant      a vacancy note (`R<n> -- vacant: <reason>`), or a row whose cell opens "(deliberately) vacant"
+  active      anything else. An amendment leaves a ruling standing, as the ledger treats it: "amended by" in
+              its own words, a row that opens "stands" and goes on to say a part was amended or superseded, or
+              a later ruling that "amends", "narrows" or "corrects" it -- the row stays active and its line
+              ends "(amended: see the ledger)".
+
+Home is the path and a stable anchor -- the ruling's label, its ledger row or its vacancy note -- never a line
+number, so the page goes stale only when a ruling changes. Dates come only from the label and its note.
 """
 import argparse
 import difflib
@@ -39,12 +45,20 @@ BREAK = re.compile(r"^\s*(?:$|[-*+]\s|\d+\.\s|#|\||>)")
 REF = r"(?:S\d{1,2}-R\d{1,3}|R\d{2,3}b?)\b"
 TEXT_RETRACTED = re.compile(r"\bRETRACTED\b")
 TEXT_WITHDRAWN = re.compile(r"\bWITHDRAWN\b|\b[Ww]ithdrawn by\b")
-TEXT_SUPERSEDED = re.compile(r"\b(?:superseded|amended|overturned|retired) by\s+\**" + REF, re.I)
+TEXT_SUPERSEDED = re.compile(r"\b(?:superseded|overturned|retired) by\s+\**" + REF, re.I)
+# An amendment leaves a ruling standing (the ledger's "stands as amended by R262"): shown active, flagged.
+TEXT_AMENDED = re.compile(r"\b(?:superseded|amended|overturned|narrowed|corrected) by\s+\**" + REF, re.I)
+TEXT_AMENDS = re.compile(r"\b(?:amends|narrows|corrects)\s+\**(S\d{1,2}-R\d{1,3}|R\d{2,3}b?)\b")
+# A ledger cell that opens "stands" and goes on to say a part was changed: R257's "Amended there already",
+# R259's "as amended by R262", R248's "its second half ... is superseded by R250", R238's "as corrected in place".
+CELL_AMENDED = re.compile(r"\b(?:amended|superseded|overturned|narrowed)\b|\bas corrected\b|\bcorrected in place\b",
+                          re.I)
+AMENDED = " (amended: see the ledger)"
 TEXT_REPLACES = re.compile(r"\b(?:overturns|supersedes|retires)\s+\**(S\d{1,2}-R\d{1,3}|R\d{2,3}b?)\b")
 CELL_LEADS = (
     ("retracted", re.compile(r"retracted\b")),
     ("withdrawn", re.compile(r"withdrawn\b")),
-    ("superseded", re.compile(r"(?:superseded|amended|overturned|retired) by\b")),
+    ("superseded", re.compile(r"(?:superseded|overturned|retired) by\b")),
     ("vacant", re.compile(r"(?:deliberately\s+)?vacant\b")),
 )
 # What is stripped between a ruling's number and its text: bold marks, the (date, task) note, a second
@@ -84,11 +98,15 @@ def _clean(text):
     return re.sub(r"\s+", " ", text).strip()
 
 
-def _first_sentence(text):
+def _sentence(text):
+    """The first sentence of cleaned text, uncut."""
     text = _clean(text)
     m = SENTENCE.match(text)
-    if m:
-        text = m.group(1)
+    return m.group(1) if m else text
+
+
+def _first_sentence(text):
+    text = _sentence(text)
     if len(text) > MAX_LINE:
         text = text[:MAX_LINE - 1].rstrip() + "…"
     if text.count("`") % 2:
@@ -184,6 +202,7 @@ def _rows():
     defs, ledger, vacant = docmaint.ruling_records()
     local = _local_records()
     cache, out, said = {}, [], []   # said: (number, text) -- what each ruling's own words say of others
+    amended = set()
     for number in set(defs) | set(ledger) | set(vacant) | set(local):
         date, line, status, home = None, "", "active", None
         if number in defs or number in local:
@@ -194,13 +213,17 @@ def _rows():
                 start = LOCAL_DEF.match(text).end()
             else:
                 start = _label_end(para, number)
-            d = docmaint.DATE.search(text)
-            date = d.group(0) if d else None
             rest = _after_label(para, start)
-            struck = rest.startswith("~~") or "~~" in para[:start]
+            label = para[:len(para) - len(rest)]   # the label and its (date, task) note
+            own = label + " " + _sentence(rest)     # the only words whose status is this ruling's
+            d = docmaint.DATE.search(label)
+            date = d.group(0) if d else None
+            struck = rest.startswith("~~") or "~~" in label
             line = _first_sentence(rest)
-            status = _text_status(struck, para)   # the label's note can carry it: R122's
-            home = "%s:%d" % (path, i)
+            status = _text_status(struck, own)       # the label's note can carry it: R122's
+            if TEXT_AMENDED.search(own):
+                amended.add(number)
+            home = "%s **%s**" % (path, number)
             said.append((number, para))
         if number in vacant:
             path, i = vacant[number][0]
@@ -209,7 +232,7 @@ def _rows():
                 text = _lines(path, cache)[i - 1]
                 m = docmaint.RULING_VACANT.search(text)
                 line = _first_sentence(text[m.end():])
-                home = "%s:%d" % (path, i)
+                home = "%s vacancy note %s" % (path, number)
         if number in ledger:
             path, i = ledger[number][0]
             said.append((number, _lines(path, cache)[i - 1]))
@@ -217,19 +240,24 @@ def _rows():
             found = cell_status(cells[-1]) if len(cells) >= 2 else None
             if found:
                 status = _stronger(status, found)
+            if found == "active" and CELL_AMENDED.search(cells[-1]):
+                amended.add(number)   # "stands as amended by R262", "stands ... superseded by R250"
             if home is None:
                 said_cell = cells[1] if len(cells) > 1 else ""
                 if said_cell.strip("-– ") == "":   # R229's row has no decision; its status cell says why
                     said_cell = cells[-1]
                 line = _first_sentence(said_cell)
-                home = "%s:%d" % (path, i)
+                home = "%s ledger %s" % (path, number)
         out.append({"number": number, "date": date, "line": line, "status": status, "home": home})
-    # The active voice, said by the later ruling: "it overturns R92", "retires S12-R10". A partial change
-    # ("amends", "narrows", "corrects") leaves the earlier ruling standing and is not read here.
+    # The active voice, said by the later ruling: "it overturns R92" and "retires S12-R10" supersede;
+    # "amends", "narrows" and "corrects" leave the earlier ruling standing, flagged.
     replaced = {m.group(1) for number, text in said for m in TEXT_REPLACES.finditer(text) if m.group(1) != number}
+    amended |= {m.group(1) for number, text in said for m in TEXT_AMENDS.finditer(text) if m.group(1) != number}
     for r in out:
         if r["number"] in replaced:
             r["status"] = _stronger(r["status"], "superseded")
+        if r["status"] == "active" and r["number"] in amended:
+            r["line"] += AMENDED
     return sorted(out, key=lambda r: _sort_key(r["number"]))
 
 
@@ -298,8 +326,9 @@ def render(rows):
         out += ["", "## " + title, "", "%d rulings." % len(members), "",
                 "| Number | Date | Status | The line | Home |", "|---|---|---|---|---|"]
         for r in members:
-            out.append("| %s | %s | %s | %s | `%s` |" % (
-                r["number"], r["date"] or "--", r["status"], _esc(r["line"]) or "--", r["home"]))
+            path, anchor = r["home"].split(" ", 1)
+            out.append("| %s | %s | %s | %s | `%s` %s |" % (
+                r["number"], r["date"] or "--", r["status"], _esc(r["line"]) or "--", path, anchor))
     return "\n".join(out) + "\n"
 
 

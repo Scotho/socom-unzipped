@@ -22,22 +22,28 @@ PLAN2 = "docs/superpowers/plans/2026-01-02-sprint-2.md"
 LEDGER = "docs/CURRENT_SPRINT.md"
 
 EXPECTED = [
-    # (number, date, status, home) in page order: global newest first, then S13, then S12.
-    ("R20", None, "superseded", LEDGER + ":10"),
-    ("R19", None, "vacant", LEDGER + ":9"),
-    ("R17", None, "vacant", PLAN1 + ":17"),
-    ("R16", None, "withdrawn", LEDGER + ":8"),
-    ("R15", "2026-01-05", "retracted", PLAN1 + ":16"),
-    ("R14", "2026-01-04", "withdrawn", PLAN1 + ":15"),
-    ("R13", None, "active", PLAN1 + ":12"),
-    ("R12", None, "retracted", PLAN1 + ":11"),
-    ("R11", "2026-01-02", "superseded", PLAN1 + ":10"),
-    ("R10", "2026-01-01", "active", PLAN1 + ":9"),
-    ("S13-R2", "2026-01-09", "active", PLAN2 + ":10"),
-    ("S13-R1", "2026-01-08", "superseded", PLAN2 + ":9"),
-    ("S12-R2", "2026-01-07", "active", PLAN2 + ":8"),
-    ("S12-R1", "2026-01-06", "superseded", PLAN2 + ":7"),
+    # (number, date, status, home) in page order: global newest first, then S13, then S12. A home is the
+    # path and a stable anchor (the ruling's label, or its ledger row, or its vacancy note), never a line
+    # number: a line added above a ruling must not make the page stale.
+    ("R23", None, "active", PLAN1 + " **R23**"),                 # a date after the label is not its date
+    ("R22", None, "active", LEDGER + " ledger R22"),             # "stands as amended by": standing
+    ("R21", "2026-01-10", "active", PLAN1 + " **R21**"),         # names others' RETRACTED/WITHDRAWN/SUPERSEDED
+    ("R20", None, "superseded", LEDGER + " ledger R20"),
+    ("R19", None, "vacant", LEDGER + " ledger R19"),
+    ("R17", None, "vacant", PLAN1 + " vacancy note R17"),
+    ("R16", None, "withdrawn", LEDGER + " ledger R16"),
+    ("R15", "2026-01-05", "retracted", PLAN1 + " **R15**"),
+    ("R14", "2026-01-04", "withdrawn", PLAN1 + " **R14**"),      # said in the label's note
+    ("R13", None, "active", PLAN1 + " **R13**"),
+    ("R12", None, "retracted", PLAN1 + " **R12**"),
+    ("R11", "2026-01-02", "superseded", PLAN1 + " **R11**"),
+    ("R10", "2026-01-01", "active", PLAN1 + " **R10**"),
+    ("S13-R2", "2026-01-09", "active", PLAN2 + " **S13-R2**"),
+    ("S13-R1", "2026-01-08", "superseded", PLAN2 + " **S13-R1**"),
+    ("S12-R2", "2026-01-07", "active", PLAN2 + " **S12-R2**"),
+    ("S12-R1", "2026-01-06", "active", PLAN2 + " **S12-R1**"),  # "amended by" is not superseded
 ]
+AMENDED = " (amended: see the ledger)"
 
 
 class RowsTest(unittest.TestCase):
@@ -77,6 +83,23 @@ class RowsTest(unittest.TestCase):
             self.assertNotIn("<!--", r["line"], r["number"])
             self.assertEqual(r["line"].count("`") % 2, 0, r["number"])
 
+    def test_an_amended_ruling_stands_and_says_so(self):
+        self.assertEqual(self.by["S12-R1"]["line"], "the naming defaults stand (amended by S12-R2)." + AMENDED)
+        self.assertEqual(self.by["R22"]["line"], '"a ruling that stands amended"' + AMENDED)
+        for n in ("R10", "R21", "S12-R2"):
+            self.assertFalse(self.by[n]["line"].endswith(AMENDED), n)
+
+    def test_another_rulings_status_words_are_not_taken(self):
+        self.assertEqual(self.by["R21"]["status"], "active")
+        self.assertEqual(self.by["R21"]["line"], "the ninth decision stands.")
+
+    def test_a_date_after_the_label_is_not_the_rulings(self):
+        self.assertIsNone(self.by["R23"]["date"])
+
+    def test_a_fenced_definition_is_not_a_row(self):
+        self.assertNotIn("R24", self.by)
+        self.assertNotIn("S12-R9", self.by)
+
     def test_a_ledger_only_row_takes_its_text_cell(self):
         self.assertIn("a ruling that has only its row", self.by["R16"]["line"])
 
@@ -99,8 +122,8 @@ class RenderTest(unittest.TestCase):
         self.assertIn("Generated", head)
         self.assertIn("do not edit", head)
         self.assertIn("python -m tools_py.rulings", head)
-        self.assertIn("14 rulings", self.page)
-        for count in ("4 active", "4 superseded", "2 retracted", "2 withdrawn", "2 vacant"):
+        self.assertIn("17 rulings", self.page)
+        for count in ("8 active", "3 superseded", "2 retracted", "2 withdrawn", "2 vacant"):
             self.assertIn(count, self.page)
 
     def test_groups_in_order_and_pipes_escaped(self):
@@ -109,7 +132,7 @@ class RenderTest(unittest.TestCase):
         self.assertLess(s13, s12)
         self.assertLess(self.page.index("| R20 |"), self.page.index("| R10 |"))
         self.assertIn("pipe \\| inside", self.page)
-        self.assertIn("| R10 | 2026-01-01 | active | the first decision stands. | `%s:9` |" % PLAN1, self.page)
+        self.assertIn("| R10 | 2026-01-01 | active | the first decision stands. | `%s` **R10** |" % PLAN1, self.page)
 
 
 class CliTest(unittest.TestCase):
