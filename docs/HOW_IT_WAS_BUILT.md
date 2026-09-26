@@ -71,7 +71,7 @@ There is no scheduler and no framework. The loop is a controller session working
    could change what the game does.
 5. **Commit and push** with an explicit pathspec, never `git add -A`. Since 2026-09-21, a proven item goes to `main`
    the day it is proven, on its own pull request, rather than waiting for the sprint to close.
-6. **Write it down where it will be read** — the status log, the known/believed ledger, the plan's boxes, a numbered
+6. **Write it down where it will be read** — the plan's Log, the known/believed ledger, the plan's boxes, a numbered
    ruling for anything decided on the owner's behalf, the owner's queue for anything only they can check.
 7. **Then the next item.** Do not wait on the owner; do not do what is the owner's.
 

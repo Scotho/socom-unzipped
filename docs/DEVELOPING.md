@@ -136,8 +136,8 @@ a rename is accepted only when it prints `S12-R11 … OK` (no extent moved, no f
 ## The `tools_py/` map
 
 Every tracked module under `tools_py/` except the tests, one line each, grouped by what it is for — 165 on
-2026-09-25 after Sprint 13 Task H4 (`git ls-files 'tools_py/*.py'`, less `tools_py/tests/` and the four package
-`__init__.py` files). The one line is the module's own docstring, shortened; the docstring is the reference. Run a
+2026-09-25 after Sprint 13 Task H4, 177 on 2026-09-26 at the Sprint 14 close (`git ls-files 'tools_py/*.py'`, less `tools_py/tests/` and the five package
+`__init__.py` files: hooks, parity, r0004, release, story). The one line is the module's own docstring, shortened; the docstring is the reference. Run a
 module as `python -m tools_py.<name>` (or `tools_py.parity.<name>`, …) from the repository root unless its docstring
 says otherwise.
 
@@ -248,7 +248,7 @@ vendored runtime when run. `docs/archive/README.md` lists them with what each wa
 
 | Module | What it is for |
 |---|---|
-| `docmaint.py` | The document registry held to the tree (`docs/DOC_MAINTENANCE.md` §4's ten checks) |
+| `docmaint.py` | The document registry held to the tree (`docs/DOC_MAINTENANCE.md` §4's eleven checks) |
 | `issues.py` | The known-issue stack on GitHub, held to the live documents (`skeleton`, `open`, `close`, `audit`) |
 | `knobs.py` | The `PS2X_*` registry read out of `knobs.h`; `write` regenerates `docs/KNOBS.md` |
 | `exit_codes.py` | The game's exit codes read out of `exit_codes.h` |
@@ -257,6 +257,20 @@ vendored runtime when run. `docs/archive/README.md` lists them with what each wa
 | `release/leakrules.py` | The leak shapes, as one set of regular expressions |
 | `vm_prune.py` | What `scripts/vm_sync.sh tree` must delete in the VM |
 | `vm_restamp.py` | What `scripts/vm_sync.sh tree` must re-stamp in the VM so ninja rebuilds it |
+| `rulings.py` | Every ruling with its status and home, generated into `docs/RULINGS.md` (`--check`) |
+| `changelog.py` | Every merge commit grouped by release tag, generated from git into `docs/CHANGELOG.md` (`--check`) |
+| `sitting.py` | The owner's sitting page, generated into `docs/SITTING.md` (`--check`) |
+| `flow.py` | How work moves through this repository, measured from git into `docs/FLOW.md` (`--check`) |
+| `playtest_block.py` | `docs/PLAYTEST.md`'s build block, rendered from the manifest `scripts/make_portable.sh` writes (`--check`) |
+
+**The guards** ("Guards" below):
+
+| Module | What it is for |
+|---|---|
+| `hooks/pretool.py` | The PreToolUse guard: refuse a Bash call that breaks one of the repository's git or lock rules |
+| `hooks/reap.py` | The SessionEnd/Stop reaper: kill orphaned watcher processes, never a shell |
+| `hooks/commitmsg.py` | The commit-msg hook: a commit subject over 120 characters is refused |
+| `bashpath.py` | Where `bash` is, for Python that runs the repository's shell scripts (Git Bash before WSL's) |
 
 **The story** (`docs/STORY.md` and its checks):
 
@@ -334,6 +348,8 @@ vendored runtime when run. `docs/archive/README.md` lists them with what each wa
 | `sim_walk_to_b.py` | A closed-loop dry run of the approach loop against a simulated world |
 | `sp_death_probe.py` | One single-player run that confirms the kill readout |
 | `two_machine_readout.py` | The readout for the first two-machine match |
+| `control_round_readout.py` | The verdict lines of Sprint 13's two control rounds, read off the rounds' own logs |
+| `peer_pause.py` | Pause the peer of a running online round and record A through it (Sprint 13 V7's bar) |
 | `online_login.py` | Drive the PCSX2 client from savestate 9 through login |
 | `online_match.py` | Two PCSX2 clients on the local Horizon stack: host, join, READY |
 
@@ -720,8 +736,8 @@ before anything is written.
 template never passes it. Every summary and `pins.json` carries `TREE <head> dirty=<n>` (the short HEAD and the count
 of `git status --porcelain` lines outside `logs/` and `game/`), so a record says which tree it measured. The gate's
 exit codes: 0 PASS, 1 a stage FAILed, 2 the lock busy, 3 low disk, 4 a `--baseline` with nothing to score, **5 a
-stale exe**, 7 a pin drift, 8 an unknown revision. Anything else: `docs/STATUS.md` has the
-day-by-day, `docs/KNOWN.md` what is proven and what is believed, `docs/HUMAN_TASKS.md` the checks only a person can do.
+stale exe**, 7 a pin drift, 8 an unknown revision. Anything else: `docs/CHANGELOG.md` has what merged and
+the plan's Log why, `docs/KNOWN.md` what is proven and what is believed, `docs/HUMAN_TASKS.md` the checks only a person can do.
 
 **The pinned references (Sprint 13 H3):** `scripts/parity/pins.json` (r0001; `pins_r0004.json` for r0004) is the gate's standard and the gate refuses on a drift; `scripts/parity/pins_refs.json` pins every OTHER reference PNG under `scripts/parity/` -- a tripwire, not a refusal: `test_gate_pins.EveryReferenceIsPinned` fails the suite when one changes and the file does not, so re-pin in the same commit.
 
@@ -782,6 +798,14 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
   without a launch; `SOCOM_EXE` points it at another exe): title about 3 min, transition about 3, mission about 11.
   The project's only regression bar. Refuses under 4 GB free on C: (exit 3) and on an exe older than its sources
   (exit 5 unless `--stale-ok`). Results under `logs/parity/gate/<stamp>/`, each with its `TREE <head> dirty=<n>` line.
+- **The merged chain** (`scripts/parity/merged_chain.sh`, Sprint 14 W2) is the gate unit: recomp, runtime, the suites,
+  the gate on the exe it just built, the fourth leg (its references, when present; named only in the gate), a release
+  build, then the release archive and PLAYTEST's block (`scripts/parity/playtest_block.sh --release`, over
+  `python -m tools_py.playtest_block`),
+  run once per batch of merged branches, from a copy, under one holding of the lock (its header says how); a green
+  end writes the commit it proved to `logs/merged_chain.last_green`. The four generated pages -- `docs/RULINGS.md`,
+  `docs/CHANGELOG.md`, `docs/SITTING.md`, `docs/FLOW.md` -- are written by `python -m tools_py.rulings`, `changelog`,
+  `sitting` and `flow`, and each one's `--check` exits 1 when the page on disk differs from a fresh render.
 - **The ladder** (`scripts/parity/ladder_frostfire.sh`, pins HEAD's harness first) and **control rounds**
   (`scripts/parity/online_control_round.sh "<map>"`): two instances, online, against our server only.
   `scripts/parity/env.sh` sets the server address for the harness. `mixed_match.sh` (ours against PCSX2) **runs both ways on
@@ -1042,7 +1066,9 @@ while a match runs (`build.sh test` refuses to start under it unless `FORCE_QUIE
 for it, do not force it; `run_detached.sh` can queue for the lock instead of refusing (the lock's rules are
 `scripts/loop_lock.sh`'s header); records a host CPU sampler into the run directory; refuses to start below 4 GB free on
 `C:`; and takes the loop lock for the job. It also refuses (exit 3, before touching the lock) below 3 GB of free
-physical memory (`RUN_MIN_FREE_MEM_GB`).
+physical memory (`RUN_MIN_FREE_MEM_GB`). **The WIP cap** (Sprint 14 W1): at most `LOOP_LOCK_MAX_QUEUE` (default 2)
+build tickets queue at once; a third build waiter writes no ticket and exits 4 ("queue full: do lock-free work"),
+and every ticket carries a class, `build` or `run` (`--class` overrides).
 
 ## Guards
 

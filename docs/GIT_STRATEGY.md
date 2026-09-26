@@ -127,7 +127,7 @@ review is not closed.**
 - **Trailer:** the `Co-Authored-By` line your session is given -- not one copied from an older commit. Human
   contributors add none.
 - A runtime change is committed only after `./build.sh test` and the three-stage gate are green on the rebuilt exe;
-  the gate's stamp goes in the body or the STATUS entry.
+  the gate's stamp goes in the body or the plan's Log (and STATUS's Current state bullet).
 
 ## 4. Tags and versions
 
@@ -284,7 +284,8 @@ issue is what gets corrected.
   and the row is kept as a record, `issue #N (closed)`. A bare `#N` is not a citation: the tree uses that form for
   upstream pull requests. `docs/STATUS.md` is read whole by the audit although only its top block is live, so a
   dated log entry writes `issue #N (closed)` once the issue settles, or leaves the number out -- an old entry
-  saying `issue #N` would read as an open citation for ever.
+  saying `issue #N` would read as an open citation for ever. (True until 2026-09-26, when Sprint 14 S1 archived the
+  log to `docs/archive/STATUS-log-to-2026-09-26.md` (R272): STATUS is the Current state block and a pointer now.)
 - **Rulings:** a ruling that moves an issue's bar or drops it is cited by number in a comment on the issue, and the
   ruling names the issue. What is a ruling at all, and where its number comes from, is
   `docs/DOC_MAINTENANCE.md` section 6.

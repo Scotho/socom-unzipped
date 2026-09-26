@@ -36,7 +36,7 @@ Bash rules: the PreToolUse hook `scripts/hooks/claude_pretool.sh` -> `tools_py/h
 - Orphaned watchers (`tail`, `grep`, `sleep`) killed at every Stop and SessionEnd -- enforced by: the reaper
   `tools_py/hooks/reap.py`, test `tools_py/tests/test_reap.py`; home DEVELOPING "Guards", the Sprint 14 plan's G3.
 - `build.sh` refuses (exit 3) while another holder has the lock, unless run as its child; the `tools` step is exempt
-  -- enforced by: test `tools_py/tests/test_build_sh_lock.py`; home DEVELOPING "Guards", the Sprint 14 plan's G5.
+  -- enforced by: test `tools_py/tests/test_build_sh_lock.py`; home DEVELOPING "Build and run" (the `build.sh` refusal), the Sprint 14 plan's G5.
 
 ## Procedures, by name
 

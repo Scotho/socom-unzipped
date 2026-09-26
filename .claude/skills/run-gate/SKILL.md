@@ -45,5 +45,5 @@ two-instance online runs only when the owner is away.
 6. **The record** -- one Log line in the open plan, stamped from `date -u` (never estimated): the gate name, the
    verdict, the exe hash (from the summary's `EXE ... sha256=` line), the stamps, the commit it ran on, e.g.
    "gate `s14_x_gate` 3/3, PINS MATCH (13 compared), exe `d6deb35f…`, 22:16Z at `<hash>`"; the same stamp goes
-   in the commit body or STATUS entry (`docs/GIT_STRATEGY.md` §3). A red gate is fixed before
+   in the commit body or the plan's Log (and STATUS's Current state bullet) (`docs/GIT_STRATEGY.md` §3). A red gate is fixed before
    anything else.

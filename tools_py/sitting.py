@@ -6,7 +6,9 @@ sections the owner answers by number, one line each:
 
   1. the O rows of `docs/HUMAN_TASKS.md`: the hand needed (the bold lead of the row's second column), the default
      the loop is on, first asked, and the days waited to the page's date. A row whose default is struck (`~~`) is
-     answered: it is listed apart, never as open.
+     answered: it is listed apart, never as open. A struck row moved to the HUMAN_TASKS archive
+     (`docs/archive/HUMAN_TASKS-to-2026-09-25.md`, its "Struck rows moved from the live table" section) is listed
+     with them when its answer is dated on or after `since` (`archived_struck`).
   2. the active rulings on or after `since` -- `rulings.rows()`, the same records `docs/RULINGS.md` shows -- one
      line each ending "overturn by number": those dated on or after it, and those with no date in the label that
      the global counter places after it (numbered above the highest active ruling dated before it) or whose
@@ -50,6 +52,8 @@ PAGE = "docs/SITTING.md"
 HUMAN_TASKS = "docs/HUMAN_TASKS.md"
 BACKLOG = "docs/BACKLOG.md"
 PLAYTEST = "docs/PLAYTEST.md"
+HUMAN_TASKS_ARCHIVE = "docs/archive/HUMAN_TASKS-to-2026-09-25.md"
+ARCHIVE_SECTION = "## Struck rows moved from the live table"
 MAX_CELL = 160
 
 # The stamp line: `last sitting: <date>` (one sitting) or `sittings: <date>, <date>, ...` (the history, oldest first),
@@ -129,6 +133,29 @@ def o_rows(human_tasks_md, today=None):
         out.append({"number": number, "hand": hand, "default": _plain(default), "first_asked": first_asked,
                     "days": days, "struck": struck, "answer": answer, "sittings": sittings,
                     "closes": not struck and sittings >= 2})
+    return out
+
+
+def archived_struck(archive_md, since):
+    """The struck rows moved to the HUMAN_TASKS archive (its "Struck rows moved from the live table" section) whose
+    answer is dated on or after `since`: [{number, hand, answer, date}], in the section's order, each number once.
+    Only a row with a struck default is an answer -- the section also keeps full rows as they stood before they
+    were struck -- and only rows under that heading are read (the archive's other tables carry O numbers too)."""
+    start = archive_md.find("\n" + ARCHIVE_SECTION)
+    if start == -1:
+        return []
+    body = archive_md[start + 1:]
+    nxt = body.find("\n## ", 1)
+    body = body[:nxt] if nxt != -1 else body
+    out, seen = [], set()
+    for row in o_rows(body):
+        if not row["struck"] or row["number"] in seen:
+            continue
+        d = docmaint.DATE.search(row["answer"])
+        if not d or d.group(0) < since:
+            continue
+        seen.add(row["number"])
+        out.append({"number": row["number"], "hand": row["hand"], "answer": row["answer"], "date": d.group(0)})
     return out
 
 
@@ -236,12 +263,15 @@ def _plural(n, one, many=None):
     return "%d %s" % (n, one if n == 1 else (many or one + "s"))
 
 
-def build(human_tasks_md, rulings_rows, backlog_md, playtest_md, since, today=None):
-    """The page, as markdown."""
+def build(human_tasks_md, rulings_rows, backlog_md, playtest_md, since, today=None, archive_md=""):
+    """The page, as markdown. `archive_md` is the HUMAN_TASKS archive: its struck rows answered since `since`
+    are listed with the live table's struck rows."""
     today = today or datetime.date.today()
     rows = o_rows(human_tasks_md, today=today)
     open_rows = [r for r in rows if not r["struck"]]
     answered = [r for r in rows if r["struck"]]
+    live = {r["number"] for r in rows}
+    answered += [r for r in archived_struck(archive_md, since) if r["number"] not in live]
     closing = [r for r in open_rows if r["closes"]]
     listed, n_dated, n_placed, n_unplaceable = active_since(rulings_rows, since)
     carried = carried_twice(backlog_md)
@@ -264,7 +294,7 @@ def build(human_tasks_md, rulings_rows, backlog_md, playtest_md, since, today=No
         "The page as of %s, for the sitting after the one of %s: %s" % (today.isoformat(), since, counts),
         "",
         "**How to answer.** One line per item, by number -- \"O5: acceptable for v1\", \"R271: overturn\", "
-        "\"#25: close\" -- in the next session's prompt or as a note in `docs/STATUS.md`.",
+        "\"#25: close\" -- in the next session's prompt or as a line in the open plan's Log.",
         "",
         "## 1. The O rows",
         "",
@@ -284,7 +314,8 @@ def build(human_tasks_md, rulings_rows, backlog_md, playtest_md, since, today=No
             r["number"], _esc(_cut(r["hand"])), _esc(_cut(r["default"])),
             " -- **%s**" % BREAKER if r["closes"] else "", r["first_asked"] or "--",
             "--" if r["days"] is None else r["days"]))
-    out += ["", "Answered or struck (the row stays in HUMAN_TASKS as the record):", ""]
+    out += ["", "Answered or struck since the last sitting (struck rows live in the archive, `%s`, its \"%s\" "
+            "section; reopenable by number):" % (HUMAN_TASKS_ARCHIVE, ARCHIVE_SECTION[3:]), ""]
     for r in answered:
         out.append("- %s: %s -- %s" % (r["number"], _cut(r["hand"]), _cut(r["answer"]) or "struck"))
     if not answered:
@@ -337,7 +368,12 @@ def render_tree(root, since=None, today=None):
     since = since or last_sitting(human)
     if not since:
         raise SystemExit("sitting: no `last sitting:` or `sittings:` line in %s and no --since" % HUMAN_TASKS)
-    return build(human, rulings.rows(root=root), _read(root, BACKLOG), _read(root, PLAYTEST), since, today=today)
+    try:
+        archive = _read(root, HUMAN_TASKS_ARCHIVE)
+    except OSError:
+        archive = ""
+    return build(human, rulings.rows(root=root), _read(root, BACKLOG), _read(root, PLAYTEST), since, today=today,
+                 archive_md=archive)
 
 
 def page_stamps(page_md):

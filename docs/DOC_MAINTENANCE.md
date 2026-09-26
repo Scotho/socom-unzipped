@@ -89,7 +89,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 
 | Path | Class | Owner | Note |
 |---|---|---|---|
-| `README.md` | **L** | controller | The public front page. Its "Works / Not yet" table is a live claim and is the highest-stakes row here — a stranger reads it before anything else |
+| `README.md` | **L** | controller | The public front page. Its Status paragraph is a live claim (the "Works / Not yet" table it replaced was removed in `f55196a6`) and is the highest-stakes row here — a stranger reads it before anything else |
 | `CONTRIBUTING.md` | **C** | controller | |
 | `SECURITY.md` | **C** | controller | The "Known: the game's own network code" section is live in spirit; review it whenever the network path changes |
 | `THIRD_PARTY_NOTICES.md` | **G** | licence test | A test fails on a dependency, vendored directory or release DLL without a row |
@@ -133,6 +133,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/archive/STATUS-log-to-2026-09-26.md` | **A** | — | Cut 2026-09-26 (Sprint 14 Task S1, R272): everything under STATUS's "Current state" block, verbatim as it stood at `04d75f6f` (the dated log, 2026-09-05 to the Sprint 13 close), superseded by `docs/CHANGELOG.md` and the plans' Logs. Every STATUS entry cited by date before that day means this file; line N there is line N-5 here |
 | `docs/archive/KNOWN-section-4-to-2026-09-26.md` | **A** | — | Cut 2026-09-26 (Sprint 14 Task I5, R270): KNOWN's section 4, the 104 standing hazards, verbatim as they stood at the split. Every "KNOWN §4" written before that day resolves to `docs/HAZARDS.md` by headline, or to this file as it was |
 | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` | **A** | — | Cut 2026-09-25 (Sprint 13 Task R1, R268): the Sprint 9-11 records, verbatim. The ruling counter reads it (`max_ruling()` scans all of `docs/archive/`) |
+| `docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md` | **A** | — | Cut 2026-09-26 (the Sprint 14 close, §5 step 5): the Sprint 12 and Sprint 11 CLOSED blocks with Sprint 11's rulings ledger R245-R263 and the `S12-Rn` table, verbatim. The ruling counter and check 10 read it |
 | `docs/archive/HANDOFF-reference-to-2026-09-13.md` | **A** | — | |
 | `docs/archive/HANDOFF-2026-09-08.md` | **A** | — | Banded 2026-09-22 |
 | `docs/archive/HANDOFF-AUDIT-2026-09-14.md` | **A** | — | Banded 2026-09-22 |
@@ -282,7 +283,7 @@ the count half is check 3; the rest is a reading, and §5 is where it happens.
    `README.md`. For each, three questions: *is every claim still true; is anything the sprint closed still listed as
    open; is anything the sprint opened missing?*
 3. **`README.md` gets its own pass**, because it is the only one a stranger reads and the only one where being *behind*
-   is as damaging as being wrong. Walk the "Works / Not yet" table row by row against `KNOWN.md`.
+   is as damaging as being wrong. Walk README's Status paragraph, sentence by sentence against `KNOWN.md`.
 4. **Every N document, read for live state that has crept in.** A number, a task list, a "next", an instruction to go
    and edit another file: move it to its L document and leave a pointer.
 5. **Anything superseded this sprint moves to S or A** with a banner naming what replaced it. A document that is
@@ -363,7 +364,7 @@ acts on it.
 6. **Duplicates and contributor handles.** Merge duplicates (close as not planned, "duplicate of #M"; the survivor
    gets the evidence). Put `help wanted` on what a stranger without a disc could take, `good first issue` only where
    the bar is a test they can run themselves.
-7. **The record.** The close-out commit and `docs/STATUS.md`'s entry say, dated: opened, closed and carried this
+7. **The record.** The close-out commit and the plan's Log (and STATUS's Current state bullet) say, dated: opened, closed and carried this
    sprint, the highest issue number, and what the review changed. A review that changed nothing says so. The
    first half is `python -m tools_py.issues tally --since <the day the sprint opened>`, one sentence to paste.
 8. **The circuit breaker (R271).** An O row that has stood through two sittings without an answer is closed by

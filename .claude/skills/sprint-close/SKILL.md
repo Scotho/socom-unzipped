@@ -27,7 +27,7 @@ merge and the tag). The open plan's Task 99 adds the sprint's own close steps.
    `STATUS.md`'s Current state block, `DEVELOPING.md`, `README.md` -- is every claim still true; is anything the
    sprint closed still listed as open; is anything the sprint opened missing? A fresh read-only agent's table is the
    usual form; the controller acts on it.
-3. `README.md` its own pass: the "Works / Not yet" table row by row against `KNOWN.md`.
+3. `README.md` its own pass: README's Status paragraph, sentence by sentence against `KNOWN.md`.
 4. Every N document read for live state that has crept in; move it to its L document, leave a pointer.
 5. Anything superseded this sprint moves to S or A with a banner naming what replaced it (archive, never delete).
    The appending documents: two CLOSED blocks in the sprint file, the third to the archive; HANDOFF §2 one "now"
@@ -57,7 +57,7 @@ merge and the tag). The open plan's Task 99 adds the sprint's own close steps.
    regenerated changelog; then `python -m tools_py.flow --check` exits 0.
 6. Duplicates closed as not planned ("duplicate of #M"); `help wanted` / `good first issue` where they fit.
 7. The record: `python -m tools_py.issues tally --since <the day the sprint opened>` -- the one sentence (opened,
-   closed, carried, highest number) for the close-out commit and STATUS's entry, with what the review changed.
+   closed, carried, highest number) for the close-out commit and the plan's Log (and STATUS's Current state bullet), with what the review changed.
    Then `python -m tools_py.sitting` regenerates `docs/SITTING.md`, the owner's page, from the carry and the
    rulings just settled, and `python -m tools_py.sitting --check` exits 0 (R271, Sprint 14 D3).
 8. The circuit breaker (R271, DOC_MAINTENANCE §7 step 8): an O row that has stood through two sittings without an
@@ -84,7 +84,7 @@ plan's size, carried to the next plan, never raised; mid-sprint, `archive-log` o
 
 1. **The close-out commit** on the sprint branch, explicit pathspec: both reviews' results in one sentence each, the
    stamped "Last full review" line, `docs/BACKLOG.md`, the sprint file's **CLOSED block** (the sprint's record, the
-   Outcome), STATUS's entry, HANDOFF's line, the ratcheted `tools_py/docmaint.py`. `git push origin sprint-N`; `gh run list --commit <sha>` green.
+   Outcome), the plan's Log (and STATUS's Current state bullet), HANDOFF's line, the ratcheted `tools_py/docmaint.py`. `git push origin sprint-N`; `gh run list --commit <sha>` green.
 2. **The PR** `sprint-N -> main`: `gh pr create --base main --head sprint-N --title "Sprint N: <its name>"`, body =
    the close-out block from `docs/CURRENT_SPRINT.md`. Wait for `build`, `build-windows` and `leakcheck`, then
    `gh pr merge --merge` -- a merge commit, never squash (the per-task commits are the record cited by hash).
