@@ -289,6 +289,41 @@ class RecompilerReferenceJob(unittest.TestCase):
                          "diff -r the output against expected/")
         self.assertIn("set -euo pipefail", code)
 
+    def test_drift_fails_the_diff_step(self):
+        steps = [s for s in _steps(self._job()) if "diff -r" in s]
+        self.assertEqual(len(steps), 1, "one step runs the diff")
+        self.assertEqual(drift_step_problems(steps[0]), [])
+
+    def test_the_drift_check_rejects_planted_steps(self):
+        good = [s for s in _steps(self._job()) if "diff -r" in s][0]
+        plants = {
+            "no set -euo pipefail": good.replace("set -euo pipefail", "set -u"),
+            "`|| true` after the diff": good.replace('/expected"; then', '/expected" || true; then'),
+            "no `exit 1` in the `if !` branch": good.replace("exit 1", "exit 0"),
+            "diff not under `if !`": good.replace("if ! diff -r", "if diff -r"),
+        }
+        for what, step in plants.items():
+            self.assertNotEqual(step, good, f"the plant did not apply: {what}")
+            self.assertTrue(drift_step_problems(step), f"planted {what} passed")
+
+
+def drift_step_problems(step):
+    """What keeps a drift from failing the recomp-ref diff step: [] when `diff -r` failing fails the step."""
+    code = "\n".join(l for l in step.splitlines() if not l.lstrip().startswith("#"))
+    problems = []
+    if not re.search(r"(?m)^\s*set -euo pipefail\s*$", code):
+        problems.append("the step's script does not start with set -euo pipefail")
+    m = re.search(r"(?m)^(\s*)if ! diff -r [^\n]*/tests/fixtures/recomp_ref/expected\"?; then\s*$", code)
+    if not m:
+        problems.append("the diff is not the condition of `if ! diff -r ... expected; then` (or has `|| true`)")
+    else:
+        branch = code[m.end():].split("\n" + m.group(1) + "fi", 1)[0]
+        if not re.search(r"(?m)^\s*exit 1\s*$", branch):
+            problems.append("the `if !` branch does not `exit 1`")
+    if re.search(r"diff -r[^\n]*\|\|", code):
+        problems.append("`||` after the diff swallows its status")
+    return problems
+
 
 class RecompilerReferenceFixture(unittest.TestCase):
     """tests/fixtures/recomp_ref: synthetic inputs (its make_fixture.py) and the recompiler's output."""

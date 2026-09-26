@@ -749,9 +749,9 @@ tree (`./build.sh tools`; on Linux `scripts/build_linux.sh tools` and `build-lin
 ```bash
 RECOMP="$PWD/third_party/ps2recomp/build-tools/ps2xRecomp/ps2_recomp.exe"    # llvm-mingw's bin/ on PATH, as build.sh sets
 python tests/fixtures/recomp_ref/make_fixture.py                             # only when the inputs change
-rm -rf "$TMP/recomp_ref" && cp -r tests/fixtures/recomp_ref "$TMP/recomp_ref" && rm -rf "$TMP/recomp_ref/expected"
-(cd "$TMP/recomp_ref" && "$RECOMP" recomp_ref.toml)
-rm -rf tests/fixtures/recomp_ref/expected && cp -r "$TMP/recomp_ref/out" tests/fixtures/recomp_ref/expected
+WORK="$(mktemp -d)" && cp -r tests/fixtures/recomp_ref/. "$WORK" && rm -rf "$WORK/expected"
+(cd "$WORK" && "$RECOMP" recomp_ref.toml)
+rm -rf tests/fixtures/recomp_ref/expected && cp -r "$WORK/out" tests/fixtures/recomp_ref/expected
 git diff --stat -- tests/fixtures/recomp_ref/expected                       # the change you meant, and only it
 ```
 
