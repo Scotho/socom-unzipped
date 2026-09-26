@@ -82,7 +82,8 @@ holds: order by what the owner meets first, then by dependency, then by cost.
    Never `--no-verify`: the push hook and CI see the same thing and a hit in a pushed commit means a history rewrite.
    Owner-specific literals (personal literals, old account names) go in the git-ignored `tools_py/release/leak_extra.txt`.
 3. **End every commit message with the `Co-Authored-By` trailer your session is given** -- not one copied from an older
-   commit or document. Subjects are `type(scope): what and why`, long, and say the finding (`docs/GIT_STRATEGY.md`).
+   commit or document. Subjects are `type(scope): what and why`, at most 120 characters (the `commit-msg` hook
+   refuses longer); the finding goes in the body (`docs/GIT_STRATEGY.md` section 3).
 4. **Push to the OPEN sprint's branch on `origin` and check CI** (`gh run list --commit <sha>` for the commit you
    pushed; the branch is the `branch:` line of `docs/CURRENT_SPRINT.md`'s header block, and only there). Never
    hard-code a sprint number here: this rule said `sprint-9` for two sprints. CI must stay green. A `docs/**`-only

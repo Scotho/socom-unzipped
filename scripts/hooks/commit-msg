@@ -1,0 +1,14 @@
+#!/bin/sh
+# The subject cap: a commit whose subject (git's first paragraph) is over 120 characters is refused -- the subject says
+# what changed, the finding goes in the body (Sprint 14 S2; the rule's home is docs/GIT_STRATEGY.md section 3).
+# git passes the message file as $1. The policy and its exemptions (a default merge, revert or reapply subject with a body,
+# fixup!/squash! wrapping) are tools_py/hooks/commitmsg.py. Installed by scripts/install_hooks.sh
+# (git config core.hooksPath scripts/hooks).
+#
+# Like the pre-commit hook, a clone with no Python refuses the commit (socom_require_python exits 2); a failure
+# inside the Python itself lets the commit through with a sentence on stderr. Do not reach for --no-verify: shorten
+# the subject and move the rest into the body.
+cd "$(git rev-parse --show-toplevel)" || exit 2
+. scripts/python_env.sh            # $PYTHON, resolved once for every script
+socom_require_python commit-msg
+exec "$PYTHON" -m tools_py.hooks.commitmsg "$1"
