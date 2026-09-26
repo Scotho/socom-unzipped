@@ -536,7 +536,7 @@ class InstrumentStatics(unittest.TestCase):
         self.assertEqual(cam_poll.DEFAULT_SPEC, "*0x488de8+0x120:96")
 
     def test_cam_poll_refuses_the_r0004_default_the_window_offset_is_r0001s(self):
-        """The pointer is placed on r0004; the +0x120 window inside the object is not (KNOWN §4: a wrong
+        """The pointer is placed on r0004; the +0x120 window inside the object is not (docs/HAZARDS.md recompiler: a wrong
         struct offset answers with a number). The default refuses rather than render r0001's offset."""
         from tools_py.parity import cam_poll
         with self.assertRaises(ValueError) as e:

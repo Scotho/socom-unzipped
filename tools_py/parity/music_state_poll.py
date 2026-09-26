@@ -230,8 +230,8 @@ MUSIC_SAMPLER_S = "0.1"
 
 # The revisions whose STRUCT OFFSETS this module's chains use have been verified on: the manager's +0x34
 # entry / +0x20 queue / +0x30 slots, the entry's +0x4 def, the def's +0x20 name, the playlist's +0x8
-# entries, the store's +0x18 (the layouts in the docstring). They were all read on r0001's decomp. KNOWN.md
-# §4: a struct offset is per-revision data too (the actor gained a word at +0x1334 on r0004), and a wrong
+# entries, the store's +0x18 (the layouts in the docstring). They were all read on r0001's decomp. HAZARDS.md
+# recompiler: a struct offset is per-revision data too (the actor gained a word at +0x1334 on r0004), and a wrong
 # one answers with a number -- so placing the statics is not enough; the offsets must be measured before
 # another revision is added here.
 OFFSETS_VERIFIED = ("r0001",)

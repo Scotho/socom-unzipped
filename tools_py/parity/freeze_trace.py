@@ -1,7 +1,7 @@
 """Sprint 6 Task 3 Step 1 (lock-free) -- freeze_trace: where and for how long an instance's guest round clock stood
 still, with the main thread's sampled PC and the NetIdle idle-ms logged inside each stall.
 
-KNOWN.md section 4, "Online instances freeze for 3-17 s under host load" (launch 8c): the round clock stops, the main
+docs/HAZARDS.md network, "Online instances freeze for 3-17 s under host load" (launch 8c): the round clock stops, the main
 thread parks at 0x3b00a4, memory is flat; the OTHER side's NetIdle then alarms (peaks 8217 / 10338 ms). This module
 turns one run log into the list of those stalls so the reproduction is a number, not a recollection.
 

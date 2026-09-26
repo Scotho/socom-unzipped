@@ -177,7 +177,7 @@ rather than rule. At most two C++-building agents at once.
    with, and every later "gate 3/3" is a lie.** A gate AND an online control round must pass after the change.
 2. **A green CI is not a green game** (rule 4). Only the gate on the rebuilt exe says the game still works.
 3. **A freeze with a running HUD clock is the renderer, not the network.** A GL backlog stops the guest's clock; two
-   people read it as a round-start gate for an evening. First check: `PS2X_GS_STATS=1` (`docs/KNOWN.md` §4).
+   people read it as a round-start gate for an evening. First check: `PS2X_GS_STATS=1` (`docs/HAZARDS.md` renderer).
 4. **The parity pipeline cannot see a defect present in every run** -- it compares our runs to our earlier runs. The
    grey water was in every gate frame for three sprints. Look at frames against a console image before calling a
    render path correct. The same blind spot hid the music: every audio measurement scored ONE cue or ONE stream;
@@ -194,7 +194,7 @@ rather than rule. At most two C++-building agents at once.
    What IS a trap: the SERVER's own advertised endpoint (`server/config/muis.json`'s `Endpoint`) is a different
    string and IS guest-visible, so changing THAT is the one that could orphan personas -- and it is the
    hosted-server session's file, not ours. And a preset name that will not resolve silently becomes 127.0.0.1
-   (KNOWN §4): the one fallback is the player typing the raw address under Custom, because the by-address preset
+   (`docs/HAZARDS.md` network): the one fallback is the player typing the raw address under Custom, because the by-address preset
    was removed on 2026-09-20 at the owner's request (`launcher_config.h`, `kRetiredPresets` heals an old config
    naming it to the by-name preset).
    > Superseded 2026-09-25 (Sprint 13 R2): the sentence ended "which is why the raw address stays on offer as a

@@ -11,7 +11,7 @@
 # interpreter reads the environment exactly as the native game will (MSYS converts /c/... values for both).
 #
 # Call it the moment before the launch, after every export: it records what the game is handed, not what the
-# script had assembled so far. KNOWN section 4: "A capture that does not record its own environment cannot prove
+# script had assembled so far. docs/HAZARDS.md harness: "A capture that does not record its own environment cannot prove
 # the 'off' half of an A/B" -- the W6 A/B of 2026-09-23 is the unrun experiment this exists to stop.
 #
 # The tools come from the tree this file is in (a worktree run records with the worktree's writer); the exe is

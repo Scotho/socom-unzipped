@@ -1,7 +1,7 @@
 <#
   Sprint 7 Task 1b: hold the game window in the modal size-move loop, the way a player dragging the
   title bar does, so the back-pressure latch trips and the bounded command queue is measured under
-  the condition that used to balloon it (KNOWN section 4: ~15 GB working set after a drag).
+  the condition that used to balloon it (docs/KNOWN.md section 1, the GsPendingCap row: ~15 GB working set after a drag).
 
       powershell.exe -NoProfile -File scripts/parity/drag_window.ps1 -Title "PS2-Recomp" -Seconds 30
 

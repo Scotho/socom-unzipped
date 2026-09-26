@@ -14,7 +14,7 @@ questions already answered.)*
 ```
 build:    NOT BUILT. No archive exists for the current tree: the v0.12.0 draft release has no assets
           (gh release view v0.12.0, 2026-09-25). Whoever builds the next archive fills this block from
-          the run that built it -- not from the directory (KNOWN §4: a failed packaging leaves the
+          the run that built it -- not from the directory (`docs/HAZARDS.md` build: a failed packaging leaves the
           previous archive in place):
           commit, `git describe`, release optimisation, archive path, size and sha256, the gate stamp
           3/3 on the exe INSIDE the archive with that exe's size and sha256, and the release leak check.

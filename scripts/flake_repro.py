@@ -1,4 +1,4 @@
-"""Contention harness for the threaded simulation tests (KNOWN §4: a threaded Python simulation test can redden CI
+"""Contention harness for the threaded simulation tests (docs/HAZARDS.md harness: a threaded Python simulation test can redden CI
 on a push that did not touch Python; Sprint 10 closed it with the lockstep online_rows.Clock).
 
 Runs N subprocesses, `--parallel` at a time, each running the unittest `--targets` (default: the two threaded

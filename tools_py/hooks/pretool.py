@@ -598,7 +598,7 @@ EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 _PATH_KEYS = ("file_path", "notebook_path", "path", "filePath")
 LOCK_SCRIPT = "scripts/loop_lock.sh"
 SLOW_MARKER = "logs/.loop_lock_slow_green"
-RUNNING_CHAIN = "docs/KNOWN.md section 4 (the running-chain hazard)"
+RUNNING_CHAIN = "docs/HAZARDS.md lock (the running-chain hazard)"
 LOCK_ROLLOUT = "scripts/loop_lock.sh header (the rollout procedure)"
 
 

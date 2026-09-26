@@ -236,7 +236,7 @@ if [ "$SCORE" = 1 ]; then
       ${log:+--log "$log"} > "$OUT/dips.txt" 2>&1 || true
     tail -40 "$OUT/dips.txt"
     # The endpoint this run rendered to, beside its dips: a DEVICE count that does not name its device proves
-    # nothing (docs/KNOWN.md section 4, the endpoint hazard).
+    # nothing (docs/HAZARDS.md audio, the endpoint hazard).
     grep -m1 "mix stream open" "$log" 2>/dev/null | tee "$OUT/endpoint_device.txt" || echo "(no mix-stream-open line in $log)" | tee "$OUT/endpoint_device.txt"
     if [ -n "$MAX_DEVICE" ]; then
       worst=$(sed -n 's/^DEVICE total [0-9]* over [0-9]* minutes, max \([0-9]*\) in a minute.*/\1/p' "$OUT/dips.txt")

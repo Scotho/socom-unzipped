@@ -2,7 +2,7 @@
 console-replay fixture ps2x_tests' 'console GS dump replays ...' case reads: packets.bin ([u32 path][u32 size][bytes]
 for the transfers of the first N frames), vram_initial.bin (the 4 MiB of GS memory inside the state blob) and
 reference.ppm (PCSX2's own screenshot from the dump header). research/31 section 11 did this once by hand ("found in
-the state blob by its swizzled palettes at file offset 0x12c1df") and the result was lost (KNOWN section 4); this is
+the state blob by its swizzled palettes at file offset 0x12c1df") and the result was lost (docs/HAZARDS.md git); this is
 the same arithmetic as a script, against a synthetic dump built here, so the fixture can be regenerated from the
 captures under tools/pcsx2/snaps/ without a launch."""
 import os
