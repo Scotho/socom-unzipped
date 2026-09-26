@@ -141,7 +141,12 @@ class BuildRevisionPreconditionsTest(unittest.TestCase):
 
     Every case builds a synthetic disc tree in a temporary directory (empty files under the real names) and sends
     every product to --out, so nothing is written inside the repository and no disc byte is involved.
+
+    The revision is a throwaway `r0009precond`, never r0004: since #56 an --out build copies the tree's current
+    `game/overlays_<rev>/` instead of decrypting, so on a checkout that holds r0004's products an r0004 case skips
+    step 1 -- the refusal it is about -- and runs on through the recomp and the runtime under the loop lock.
     """
+    REV = "r0009precond"
 
     def test_a_package_that_is_not_the_trees_own_is_refused(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -150,7 +155,7 @@ class BuildRevisionPreconditionsTest(unittest.TestCase):
             touch(tree, "SCUS_972.75")
             touch(tree, "OVERLAY", "REL", "DNAS.dec.bin")
             stray = touch(tmp, "elsewhere", "APACHE00.ZDB")
-            p = run_bash(SCRIPT, "r0004", sh(stray), "--game", sh(tree), "--ghidra-from-r0001",
+            p = run_bash(SCRIPT, self.REV, sh(stray), "--game", sh(tree), "--ghidra-from-r0001",
                          "--out", sh(os.path.join(tmp, "out")))
             self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
             self.assertIn("must be the tree's own", p.stderr)
@@ -163,7 +168,7 @@ class BuildRevisionPreconditionsTest(unittest.TestCase):
             zdb = touch(tree, "RUN", "RAW", "APACHE00.ZDB")
             touch(tree, "SLES_512.34")
             touch(tree, "OVERLAY", "REL", "DNAS.dec.bin")
-            p = run_bash(SCRIPT, "r0004", sh(zdb), "--ghidra-from-r0001",
+            p = run_bash(SCRIPT, self.REV, sh(zdb), "--ghidra-from-r0001",
                          "--out", sh(os.path.join(tmp, "out")))
             self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
             self.assertIn("SCUS_972.75", p.stderr)
