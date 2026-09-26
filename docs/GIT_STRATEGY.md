@@ -70,6 +70,7 @@ shape, six times over in Sprint 10:
 
 **Never** let an implementation agent do this: it merges its own unreviewed work (it happened -- see `docs/HANDOFF.md`
 on handing out a worktree). The controller opens and merges every slice.
+The role definitions every brief dispatches by name are `.claude/agents/implementer.md` and `.claude/agents/reviewer.md`.
 
 **Merging a sprint (AT S9 CLOSE and after):** open a PR `sprint-N -> main`, title `Sprint N: <its name>`, body = the
 close-out block from `docs/CURRENT_SPRINT.md`; merge with a **merge commit** (not squash: the per-task commits are the
