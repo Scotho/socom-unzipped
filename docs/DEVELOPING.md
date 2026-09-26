@@ -905,6 +905,35 @@ for it, do not force it; `run_detached.sh --wait <minutes>` queues for the lock 
 refusing; records a host CPU sampler into the run directory; refuses to start below 4 GB free on
 `C:`; and takes the loop lock for the job.
 
+## Guards
+
+Claude Code runs `scripts/hooks/claude_pretool.sh` (-> `tools_py/hooks/pretool.py`) before every Bash tool call,
+wired by the tracked `.claude/settings.json` (Sprint 14 G1). It refuses with exit 2 and one sentence naming the rule's
+home; anything it cannot parse or judge is allowed. The command is split on `;`, `&&`, `||`, `|`, `&` and newlines
+(heredoc bodies and quoted strings are data), and a `cd <dir>` or `git -C <dir>` is followed for the worktree rules.
+Each rule is proved by a planted command in `tools_py/tests/test_hooks.py` (`PretoolPlantedTest`, the `CASES` and
+`MORE_CASES` tables); `PretoolWiringTest` drives the shell script with a hook JSON document on stdin. The
+repository's `.gitignore` owns `.claude/`: `settings.json`, `agents/` and `skills/` are tracked, the harness's local
+state is not (`ClaudeDirIgnoreTest`), whatever a global excludes file says.
+
+- **Bulk add** -- `git add` with no pathspec, `-A`/`--all`, `-u`/`--update`, or `.`; test `git add -A`, `.`, `-u`;
+  home `docs/GIT_STRATEGY.md` section 3.
+- **Commit everything** -- `git commit -a`/`--all` (and `-am`); test `git commit -a -m 'x'`; home
+  `docs/GIT_STRATEGY.md` section 3.
+- **Commit without paths** -- `git commit` (and `--amend`) with no `-- <paths>`, since a bare commit takes whatever
+  any session staged; allowed while `MERGE_HEAD` exists (git refuses a partial commit mid-merge); test
+  `git commit -m 'x'`, `git commit --no-edit`; home `docs/HANDOFF.md` section 5 rule 1.
+- **No-verify** -- `--no-verify` in any git command, and commit's `-n`; test `git commit --no-verify ...`,
+  `git push --no-verify`; home `docs/GIT_STRATEGY.md` section 3.
+- **Push from a worktree** -- `git push` when the cwd is a linked worktree (`--git-dir` differs from
+  `--git-common-dir`); test `git push origin sprint-14` with is_worktree; home `docs/GIT_STRATEGY.md` section 3.
+- **Config in a worktree** -- a writing `git config` in a worktree without `--worktree` (reads, `--global`,
+  `--system` and `--file` pass); test `git config remote.origin.pushurl x`; home `scripts/agent_worktree.sh`.
+- **Worktree lifecycle** -- `git worktree remove`/`prune`/`add` outside `scripts/agent_worktree.sh`; test
+  `git worktree remove --force ...`; home `scripts/agent_worktree.sh`.
+- **The lock by hand** -- `loop_lock.sh take` or `release` called directly (`check`, `run`, `wait`, `version` pass);
+  test `bash scripts/loop_lock.sh take`, `... release`; home `scripts/loop_lock.sh` (`run`, or `run_detached.sh`).
+
 ## The launcher
 
 `dist/socom_unzipped_launcher.exe` (`socom_unzipped_launcher` on Linux), built by `./build.sh runtime` next to
