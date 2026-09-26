@@ -957,6 +957,16 @@ tracked, the harness's local state is not (`ClaudeDirIgnoreTest`), whatever a gl
 - **The lock by hand** -- `loop_lock.sh take` or `release` called directly (`check`, `run`, `wait`, `version` pass);
   test `bash scripts/loop_lock.sh take`, `... release`; home `scripts/loop_lock.sh` (`run`, or `run_detached.sh`).
 
+The reaper (Sprint 14 G3): at `SessionEnd` and every `Stop`, `scripts/hooks/claude_session_end.sh` runs
+`python -m tools_py.hooks.reap`, which `kill -9`s every orphaned watcher -- an MSYS `tail`, `grep`, `sleep` or
+`inotifywait` whose ppid is not in `ps -W`, or is 1 without leading its own process group (a watcher started directly
+by a Windows program leads its group and is kept) -- and never a `bash`/`sh`/`python`/`git`, a native Windows
+process, pid 1 or itself. No live session's process is on the list: live Monitor watchers sit under a live bash, the
+lock renewer's `sleep 1` under a live subshell, run_detached's child is a `nohup bash`, and the parity scripts'
+background jobs are python/powershell. It prints one `reap: ...` line and always exits 0 (exit 2 on `Stop` would keep
+Claude going); test `tools_py/tests/test_reap.py` (the plan's twelve-row planted table, a captured `ps -W` sample);
+home the Sprint 14 plan, Task G3 (213 orphans on 2026-09-25; no `docs/KNOWN.md` row exists).
+
 ## The launcher
 
 `dist/socom_unzipped_launcher.exe` (`socom_unzipped_launcher` on Linux), built by `./build.sh runtime` next to
