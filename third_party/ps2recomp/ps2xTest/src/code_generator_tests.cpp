@@ -1084,6 +1084,80 @@ void register_code_generator_tests()
                  "a J to an ordinary recompiled function keeps the direct call");
     });
 
+    tc.Run("a stub whose start is an owner's resume target keeps the direct call (issue #40 review)", [](TestCase &t) {
+        // FunctionTableEmitter::emit registers resume-entry targets before stubs and keeps the first
+        // name at an address, so the table slot at a colliding stub start is the owner's resume entry
+        // (RSAGenerateKeyPair 0x62B168 -> sub_0062B090). A J there through the table would run the
+        // guest code, not the HLE: such a stub stays out of the tail-call set and keeps the direct call.
+        auto makeFunction = [](const char *name, uint32_t start, bool isStub, bool isSkipped)
+        {
+            Function f;
+            f.name = name;
+            f.start = start;
+            f.end = start + 0x10;
+            f.isRecompiled = !isStub && !isSkipped;
+            f.isStub = isStub;
+            f.isSkipped = isSkipped;
+            return f;
+        };
+        const std::vector<Function> functions{
+            makeFunction("owner_func", 0x4000, false, false),
+            makeFunction("colliding_stub", 0x5000, true, false),
+            makeFunction("clean_stub", 0x7000, true, false),
+            makeFunction("skipped_lib", 0x8000, false, true),
+            makeFunction("plain_func", 0x9000, false, false),
+        };
+        const std::unordered_map<uint32_t, std::vector<uint32_t>> resumeTargets{{0x4000u, {0x5000u, 0x4008u}}};
+
+        const std::unordered_set<uint32_t> targets = PS2Recompiler::TailCallStubTargets(functions, resumeTargets);
+        t.IsTrue(targets.count(0x5000u) == 0u, "a stub start that is a resume target is left out");
+        t.IsTrue(targets.count(0x7000u) == 1u, "a stub start that is no resume target is in");
+        t.IsTrue(targets.count(0x8000u) == 1u, "a skipped function's start is in");
+        t.IsTrue(targets.count(0x9000u) == 0u && targets.count(0x4000u) == 0u, "ordinary functions are not");
+        t.Equals(targets.size(), static_cast<size_t>(2), "exactly the two non-colliding HLE starts");
+
+        Function caller;
+        caller.name = "tail_caller";
+        caller.start = 0x2000;
+        caller.end = 0x2020;
+        caller.isRecompiled = true;
+        caller.isStub = false;
+
+        auto symbolFor = [](const char *name, uint32_t address)
+        {
+            Symbol s;
+            s.name = name;
+            s.address = address;
+            s.isFunction = true;
+            return s;
+        };
+        auto makeJ = [](uint32_t address, uint32_t target)
+        {
+            Instruction j{};
+            j.address = address;
+            j.opcode = OPCODE_J;
+            j.target = (target >> 2) & 0x3FFFFFF;
+            j.hasDelaySlot = true;
+            j.raw = 0x08000000 | (j.target & 0x3FFFFFF);
+            return j;
+        };
+        std::vector<Instruction> instructions{makeJ(0x2000, 0x5000), makeNop(0x2004), makeNop(0x2008),
+                                              makeNop(0x200C), makeJ(0x2010, 0x7000), makeNop(0x2014),
+                                              makeNop(0x2018), makeNop(0x201C)};
+
+        CodeGenerator gen({symbolFor("colliding_stub", 0x5000), symbolFor("clean_stub", 0x7000)}, {});
+        gen.setStubTargets(targets);
+        const std::string generated = gen.generateFunction(caller, instructions, false);
+        printGeneratedCode("a stub whose start is an owner's resume target keeps the direct call", generated);
+
+        t.IsTrue(generated.find("colliding_stub(rdram, ctx, runtime); return;") != std::string::npos,
+                 "the colliding stub keeps the direct call to its own wrapper");
+        t.IsTrue(generated.find("runtime->lookupFunction(0x5000u)") == std::string::npos,
+                 "the colliding stub must not go through the table slot the owner's resume entry holds");
+        t.IsTrue(generated.find("runtime->lookupFunction(0x7000u)(rdram, ctx, runtime); return;") != std::string::npos,
+                 "the clean stub goes through the table");
+    });
+
     tc.Run("PMULTW multiplies words 0 and 2 signed into their own lanes and HI/LO (D5)", [](TestCase &t) {
         CodeGenerator gen({}, {});
 

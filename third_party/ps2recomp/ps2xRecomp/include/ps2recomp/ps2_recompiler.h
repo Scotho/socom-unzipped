@@ -46,6 +46,15 @@ namespace ps2recomp
             std::vector<Function> &functions,
             std::unordered_map<uint32_t, std::vector<Instruction>> &decodedFunctions);
 
+        // Issue #40: the addresses whose `J` is emitted through the function table -- every stub or
+        // skipped function's start, EXCEPT a start that is also some owner's resume-entry target.
+        // FunctionTableEmitter::emit registers resume targets before stubs and keeps the first name at
+        // an address, so at such an address the table holds the owner's resume entry, not the stub's
+        // wrapper (RSAGenerateKeyPair 0x62B168 -> sub_0062B090); those keep today's direct call.
+        static std::unordered_set<uint32_t> TailCallStubTargets(
+            const std::vector<Function> &functions,
+            const std::unordered_map<uint32_t, std::vector<uint32_t>> &resumeEntryTargetsByOwner);
+
         static std::string ClampFilenameLength(const std::string& baseName, const std::string& extension, std::size_t maxLength);
 
     private:

@@ -1126,16 +1126,9 @@ namespace ps2recomp
             {
                 m_codeGenerator->setRenamedFunctions(m_functionRenames);
 
-                // Issue #40: a `J` to an HLE wrapper is emitted through the function table.
-                std::unordered_set<uint32_t> stubTargets;
-                for (const auto &function : m_functions)
-                {
-                    if (function.isStub || function.isSkipped)
-                    {
-                        stubTargets.insert(function.start);
-                    }
-                }
-                m_codeGenerator->setStubTargets(stubTargets);
+                // Issue #40: a `J` to an HLE wrapper is emitted through the function table, unless the
+                // table slot at that address belongs to an owner's resume entry (TailCallStubTargets).
+                m_codeGenerator->setStubTargets(TailCallStubTargets(m_functions, m_resumeEntryTargetsByOwner));
             }
 
             if (m_bootstrapInfo.valid && m_codeGenerator)
@@ -2316,5 +2309,27 @@ namespace ps2recomp
     std::string PS2Recompiler::ClampFilenameLength(const std::string& baseName, const std::string& extension, std::size_t maxLength)
     {
         return clampFilenameLength(baseName, extension, maxLength);
+    }
+
+    std::unordered_set<uint32_t> PS2Recompiler::TailCallStubTargets(
+        const std::vector<Function> &functions,
+        const std::unordered_map<uint32_t, std::vector<uint32_t>> &resumeEntryTargetsByOwner)
+    {
+        std::unordered_set<uint32_t> resumeTargets;
+        for (const auto &[owner, targets] : resumeEntryTargetsByOwner)
+        {
+            (void)owner;
+            resumeTargets.insert(targets.begin(), targets.end());
+        }
+
+        std::unordered_set<uint32_t> stubTargets;
+        for (const auto &function : functions)
+        {
+            if ((function.isStub || function.isSkipped) && resumeTargets.count(function.start) == 0u)
+            {
+                stubTargets.insert(function.start);
+            }
+        }
+        return stubTargets;
     }
 }
