@@ -291,7 +291,11 @@ export function buildWorld(map: LoadedMap): WorldView {
     box,
     untextured: untexturedDraws,
     setWireframe: (on) => {
-      for (const material of materials) material.wireframe = on;
+      // `needsUpdate` as well as the flag: three's WebGPU renderer builds a geometry's wireframe index
+      // the first time a render object is refreshed in full, and a bare flag change is not a refresh.
+      // Without it the index is never uploaded, every wireframe draw goes out with no index type, and
+      // the frame is the clear colour and nothing else until the page is reloaded.
+      for (const material of materials) { material.wireframe = on; material.needsUpdate = true; }
       // A line has no faces to show through, so it simply steps aside while the topology is on view.
       if (lineMaterial) lineMaterial.visible = !on;
     },
