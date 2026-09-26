@@ -175,16 +175,18 @@ class BuildRevisionPreconditionsTest(unittest.TestCase):
 class BuildRevisionFunctionMapTest(unittest.TestCase):
     """r0001's function map is a starting point only for the r0001 disc; any other revision must ask for it."""
 
+    # `r0009nomap`, not r0004: r0004's map is tracked in recomp/, and since #56 an --out build reads it from there.
+
     def test_a_foreign_revision_without_a_map_is_refused(self):
         with tempfile.TemporaryDirectory() as tmp:
-            p = run_bash(SCRIPT, "r0004", EMPTY_ZDB, "--out", sh(os.path.join(tmp, "out")))
+            p = run_bash(SCRIPT, "r0009nomap", EMPTY_ZDB, "--out", sh(os.path.join(tmp, "out")))
             self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
-            self.assertIn("socom2_ghidra_r0004.csv", p.stderr)
+            self.assertIn("socom2_ghidra_r0009nomap.csv", p.stderr)
             self.assertIn("--ghidra-from-r0001", p.stderr)
 
     def test_borrowing_r0001s_map_for_a_foreign_revision_warns_on_stderr(self):
         with tempfile.TemporaryDirectory() as tmp:
-            p = run_bash(SCRIPT, "r0004", EMPTY_ZDB, "--ghidra-from-r0001",
+            p = run_bash(SCRIPT, "r0009nomap", EMPTY_ZDB, "--ghidra-from-r0001",
                          "--out", sh(os.path.join(tmp, "out")))
             self.assertIn("WARNING", p.stderr)
             self.assertIn("Task 10", p.stderr)
@@ -615,6 +617,154 @@ class BuildRevisionNamesSidecarTest(unittest.TestCase):
         p = run_bash(SCRIPT, "r0001check", EMPTY_ZDB, "--dry-run")
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         self.assertIn("names recomp/socom2_names.csv", p.stdout)
+
+
+@unittest.skipUnless(BASH, "needs a bash that is not WSL's launcher")
+class BuildRevisionOutReadsTheTreeTest(unittest.TestCase):
+    """#56: under `--out <dir>` the out layout took two inputs from the out folder that belong to the tree.
+
+    The function map was looked for at `<dir>/recomp_<rev>/socom2_ghidra_<rev>.csv` -- a copy step 3 makes, so a
+    first out run refused the revision unless `--ghidra` named the tracked map. And step 1 decrypted the disc tree
+    it was given into `<dir>/overlays_<rev>/` even when the tree's own `game/overlays_<rev>/` already held current
+    products; on the machine where r0004's overlays come from the capsule and `game/disc_r0004/RUN` is a junction
+    into r0001's disc, that decrypted r0001's package and the merged ELF mismatched.
+
+    "Current" is what `<elf>.repair.json` records: the sha256 of every repair input (the capsule stack, the r0001
+    twin, both function maps, the three modules), held to this run's inputs by `tools_py.overlay_repair --check`
+    -- the same test step 2 skips on. The sidecar records no disc input (no package, no loader), so the disc tree
+    given is not part of the match; a package digest could not be one anyway, because the r0004 overlays this
+    machine builds from were never decrypted from a package.
+
+    Each case builds a disc tree whose loader is not `SCUS_972.75`, so a run that decides to decrypt stops at step 1's refusal
+    in a second instead of starting Unicorn -- which is also how a case sees that the decrypt was attempted.
+    Throwaway revision names; what is created under `recomp/` and `game/` (both removed again) nothing else reads.
+    """
+
+    def _tree(self, tmp):
+        tree = os.path.join(tmp, "tree")
+        zdb = touch(tree, "RUN", "RAW", "APACHE00.ZDB")
+        touch(tree, "SLES_512.34")      # a loader, but not the one step 1 can decrypt with
+        touch(tree, "OVERLAY", "REL", "DNAS.dec.bin")
+        extra = os.path.join(tmp, "extra.txt")
+        with open(extra, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("")
+        return tree, zdb, extra
+
+    @staticmethod
+    def _map(path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("Name,Start,End,Size\nFUN_00100000,0x00100000,0x00100028,40\n")
+        return path
+
+    @staticmethod
+    def _remove_file(path):
+        if os.path.isfile(path):
+            os.remove(path)
+
+    @staticmethod
+    def _remove_tree(path):
+        import shutil
+        shutil.rmtree(path, ignore_errors=True)
+
+    # ---- (a) the map --------------------------------------------------------------------------------------------
+
+    def test_out_without_ghidra_reads_the_trees_map(self):
+        rev = "r0009outmap"
+        tracked = self._map(os.path.join(ROOT, "recomp", f"socom2_ghidra_{rev}.csv"))
+        self.addCleanup(self._remove_file, tracked)
+        with tempfile.TemporaryDirectory() as tmp:
+            tree, zdb, extra = self._tree(tmp)
+            p = run_bash(SCRIPT, rev, sh(zdb), "--game", sh(tree), "--out", sh(os.path.join(tmp, "out")),
+                         "--extra", sh(extra), "--stop-after", "elf")
+        self.assertNotIn("has no function map of its own", p.stderr,
+                         "--out looked for the map in the out folder, not the tree (#56): " + p.stderr)
+        self.assertIn(f"map: recomp/socom2_ghidra_{rev}.csv", p.stdout, p.stdout + p.stderr)
+
+    def test_the_out_dry_run_says_the_map_comes_from_the_tree(self):
+        rev = "r0009outmap"
+        tracked = self._map(os.path.join(ROOT, "recomp", f"socom2_ghidra_{rev}.csv"))
+        self.addCleanup(self._remove_file, tracked)
+        with tempfile.TemporaryDirectory() as tmp:
+            p = run_bash(SCRIPT, rev, EMPTY_ZDB, "--out", sh(os.path.join(tmp, "out")), "--dry-run")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn(f"copied from recomp/socom2_ghidra_{rev}.csv", p.stdout, p.stdout)
+        self.assertNotIn("the run will refuse it", p.stdout, p.stdout)
+
+    def test_ghidra_still_overrides_the_trees_map(self):
+        rev = "r0009outmap"
+        tracked = self._map(os.path.join(ROOT, "recomp", f"socom2_ghidra_{rev}.csv"))
+        self.addCleanup(self._remove_file, tracked)
+        with tempfile.TemporaryDirectory() as tmp:
+            tree, zdb, extra = self._tree(tmp)
+            named = self._map(os.path.join(tmp, "named_map.csv"))
+            p = run_bash(SCRIPT, rev, sh(zdb), "--game", sh(tree), "--out", sh(os.path.join(tmp, "out")),
+                         "--extra", sh(extra), "--ghidra", sh(named), "--stop-after", "elf")
+        self.assertIn("named_map.csv + forced entry points", p.stdout, p.stdout + p.stderr)
+        self.assertNotIn(f"map: recomp/socom2_ghidra_{rev}.csv", p.stdout, p.stdout)
+
+    # ---- (b) the overlays ---------------------------------------------------------------------------------------
+
+    def _tree_overlays(self, rev, stale=False):
+        """game/<overlays_rev>/ as a finished in-tree build leaves it: both overlays, the merged ELF and its
+        sidecar. The revision has no capsule stack, so this run's repair inputs are the three modules alone."""
+        from tools_py import overlay_repair
+        import json
+        d = os.path.join(ROOT, "game", f"overlays_{rev}")
+        self.addCleanup(self._remove_tree, d)
+        os.makedirs(d, exist_ok=True)
+        blobs = {"ftscore.bin": b"FTS" * 100, "zsealetc.bin": b"ZSE" * 90,
+                 f"socom2_game_{rev}.elf": b"\x7fELF" + b"merged" * 50}
+        for name, data in blobs.items():
+            with open(os.path.join(d, name), "wb") as fh:
+                fh.write(data)
+        sources = overlay_repair.source_digests({})
+        if stale:
+            sources["make_overlay_elf.py"]["sha256"] = "0" * 64
+        with open(os.path.join(d, f"socom2_game_{rev}.elf.repair.json"), "w", encoding="utf-8") as fh:
+            json.dump({"image": f"socom2_game_{rev}.elf", "notes": [], "repairs": [], "sources": sources}, fh)
+        return d, blobs
+
+    def _run_out(self, tmp, rev, check=None):
+        tree, zdb, extra = self._tree(tmp)
+        named = self._map(os.path.join(tmp, "named_map.csv"))
+        out = os.path.join(tmp, "out")
+        args = [SCRIPT, rev, sh(zdb), "--game", sh(tree), "--out", sh(out), "--extra", sh(extra),
+                "--ghidra", sh(named), "--stop-after", "elf"]
+        if check:
+            args += ["--check-against", sh(check)]
+        return run_bash(*args), os.path.join(out, f"overlays_{rev}")
+
+    def test_out_reuses_the_trees_current_overlays_instead_of_decrypting(self):
+        rev = "r0009reuse"
+        d, blobs = self._tree_overlays(rev)
+        with tempfile.TemporaryDirectory() as tmp:
+            p, out_overlays = self._run_out(tmp, rev, check=os.path.join(d, f"socom2_game_{rev}.elf"))
+            self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+            self.assertNotIn("decrypt: running", p.stdout, p.stdout)
+            self.assertNotIn("SCUS_972.75", p.stderr, "step 1 decrypted again: " + p.stderr)
+            self.assertIn(f"overlays: game/overlays_{rev}/ is current", p.stdout, p.stdout)
+            for name, data in blobs.items():
+                self.assertEqual(read_bytes(os.path.join(out_overlays, name)), data, name)
+            self.assertIn("check-against: identical", p.stdout, p.stdout + p.stderr)
+
+    def test_out_decrypts_again_when_the_trees_sidecar_is_stale(self):
+        rev = "r0009stale"
+        self._tree_overlays(rev, stale=True)
+        with tempfile.TemporaryDirectory() as tmp:
+            p, out_overlays = self._run_out(tmp, rev)
+            self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+            self.assertIn(f"overlays: game/overlays_{rev}/ not reused", p.stdout, p.stdout)
+            self.assertIn("make_overlay_elf.py changed", p.stdout, p.stdout)
+            self.assertIn("SCUS_972.75", p.stderr, "the stale tree products were not decrypted again: " + p.stderr)
+            self.assertFalse(os.path.exists(os.path.join(out_overlays, "ftscore.bin")))
+
+    def test_out_decrypts_when_the_tree_holds_no_products(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p, out_overlays = self._run_out(tmp, "r0009none")
+            self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+            self.assertIn("SCUS_972.75", p.stderr, p.stdout + p.stderr)
+            self.assertFalse(os.path.exists(os.path.join(out_overlays, "ftscore.bin")))
 
 
 class RecompNamesLineIsSurfacedTest(unittest.TestCase):
