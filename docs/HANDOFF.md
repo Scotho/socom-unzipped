@@ -10,12 +10,12 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 2. Where it stands
 
-- **Where the loop is now (2026-09-26 10:00Z, LATEST) -- Sprint 14 ("guards, not sentences") is OPEN on `sprint-14`, off
-  `main` at `6a82caaa` (Sprint 13 merged as `v0.13.0`, PR #61); `main` since merged in five times, last `b3dae300` (PR #66).
-  Merged: G1-G5 (the guards, live), I1-I5, D1, D2, S1, S2, S4, E4. In fix or review rounds: D3, D5, M1, S3. In code: E3
-  (the recompiler rebuilt under the lock first), W1 (its commit waits for the slow run). The plan
-  `docs/superpowers/plans/2026-09-26-sprint-14.md` (its Log) is the live state; R278 lets D/S/M run ahead of W; the
-  lock is FREE with nothing queued since 09:53Z. No cloud session from 2026-09-26.
+- **Where the loop is now (2026-09-26 11:07Z, LATEST) -- Sprint 14 ("guards, not sentences") is OPEN on `sprint-14`, off
+  `main` at `6a82caaa` (Sprint 13 merged as `v0.13.0`, PR #61); `main` merged in five times, last `b3dae300` (PR #66).
+  Merged: G1-G5, I1-I5, D1-D5, S1-S4, E1 (observed), E3, E4, M1, M2, W1 (the WIP cap live: a third build waiter gets
+  exit 4). In flight: W2 (the merged chain; its lock-script commit waits for a slow run), E3's pushed red run on
+  `agent/e3probe`. Left: E2 (night), X1 (filler), the close. The plan `docs/superpowers/plans/2026-09-26-sprint-14.md`
+  (its Log) is the live state. No cloud session from 2026-09-26.
 - **Next free ruling number: R280.**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
@@ -52,7 +52,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 ## 5. Who else is in the tree (`git worktree list` is the truth)
 
 - **The Sprint 14 controller** in the main tree on `sprint-14`; its agents in `C:/projects/wt-s14-<task>`, one
-  branch each, made and removed by `scripts/agent_worktree.sh`: `wt-s14-d3`, `-d5`, `-e3`, `-m1`, `-s3`, `-w1`.
+  branch each, made and removed by `scripts/agent_worktree.sh`: `wt-s14-w2` (W2); `wt-e3probe` (E3's red run, deleted after).
 - **The Sprint 13 controller** is done with its fillers (#51 as PR #65 `123dd1c5`, #57 as PR #66 `b3dae300`, the row
   open for the r0004 leg); no worktree of its remains; it stands by for the owner's sitting.
 - **Durable:** `socom_pc_web` (the browser side project), `wt-cherry` and `wt-ci-fix` (both merged). `wt-issues` is
@@ -64,9 +64,6 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 - **The owner's rows:** `docs/HUMAN_TASKS.md` O1-O8, O10-O16 and O18 (O16: issues #25, #26 and #42). Under R271 a row
   unanswered through two sittings after it was asked closes by default at the next close: nothing today; at a third
   sitting without answers all 16 open rows would close together (`docs/SITTING.md` marks them).
-- **Sprint 14, lock-free, in order:** the fix rounds of D3, D5, M1, S3 to merge; E3, W1 (code); then D4 (after D3),
-  M2 (after M1), E1, X1 (filler).
-- **Lock-bound** (lock FREE, queue empty, one at a time): W1's slow lock run and rollout (the window is open now);
-  at night: W2's merged chain, E2's held-out captures, then the Sprint 14 close chain.
-- **Relays to the site session, unconfirmed:** drop the "keyboard/mouse support" claim; after a report is sent, say
-  contributors can also open a GitHub issue quoting the `BR-` id.
+- **Sprint 14, lock-free, in order:** W2's first commit to review and merge; X1 (filler, once no task waits on a reviewer).
+- **Lock-bound** (lock FREE, queue empty, one at a time): W2's slow lock run (36 min, the marker); at night: the first
+  merged chain (W2 step 3, a batch gated as a batch), E2's twelve captures, then the Sprint 14 close chain.
