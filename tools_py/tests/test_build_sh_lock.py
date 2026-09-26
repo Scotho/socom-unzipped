@@ -79,11 +79,31 @@ class TestBuildShLockConsult(unittest.TestCase):
         self.assertEqual(rc, 3, out)
         self.assertIn("lock held by", out)
 
+    def holder_id(self):
+        p = subprocess.run([BASH, LOCK_SH, "id"], capture_output=True, text=True, env=self.env(), timeout=60)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertTrue(p.stdout.startswith("other-holder "), p.stdout)
+        return p.stdout.strip()
+
     def test_the_holders_child_proceeds(self):
         self.hold()
-        rc, out = self.build("runtime", "--dry-run", env=self.env(LOOP_LOCK_HELD="test 1"))
+        rc, out = self.build("runtime", "--dry-run", env=self.env(LOOP_LOCK_HELD=self.holder_id()))
         self.assertEqual(rc, 0, out)
         self.assertNotIn("lock held by", out)
+        self.assertNotIn("stale", out)
+        self.assertIn("would run", out)
+
+    def test_a_stale_holder_value_is_refused(self):
+        self.hold()
+        live = self.holder_id()
+        rc, out = self.build("runtime", "--dry-run", env=self.env(LOOP_LOCK_HELD="bogus 1"))
+        self.assertEqual(rc, 3, out)
+        self.assertIn("LOOP_LOCK_HELD is stale: 'bogus 1' vs holder '%s'" % live, out)
+        self.assertNotIn("would run", out)
+
+    def test_a_set_holder_value_on_a_free_lock_proceeds(self):
+        rc, out = self.build("runtime", "--dry-run", env=self.env(LOOP_LOCK_HELD="bogus 1"))
+        self.assertEqual(rc, 0, out)
         self.assertIn("would run", out)
 
     def test_free_lock_proceeds_and_prints_the_plan(self):

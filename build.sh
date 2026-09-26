@@ -28,18 +28,32 @@ done
 STEP="${STEP:-all}"
 # Sprint 14 G5: the loop lock is machine-wide (scripts/loop_lock.sh), and a build beside another holder's build or
 # game run is the collision it exists to stop. Every step but `tools` refuses while ANOTHER holder has the lock,
-# unless this process is that holder's child (`loop_lock.sh run` and run_detached.sh export LOOP_LOCK_HELD). A
-# FREE lock, or a lock script that is absent or cannot answer (a CI runner), proceeds. Exit 3 is run_detached's
-# refusal code. The consult runs for --dry-run too, so tools_py/tests/test_build_sh_lock.py exercises it without
-# building anything.
-if [ "$STEP" != tools ] && [ -z "${LOOP_LOCK_HELD:-}" ] && [ -f "$ROOT/scripts/loop_lock.sh" ]; then
+# unless this process is that holder's child: `loop_lock.sh run` and run_detached.sh export LOOP_LOCK_HELD="<owner>
+# <take_id>", and it must EQUAL the live holder (`loop_lock.sh id`), as the lock script's own nested() demands. A
+# value that names another holding is stale -- the grandchild of a lost lock -- and is refused, naming both. A
+# FREE lock proceeds, LOOP_LOCK_HELD or not (nothing to collide with), and so does a lock script that is absent or
+# cannot answer (a CI runner). Exit 3 is run_detached's refusal code. The consult runs for --dry-run too, so
+# tools_py/tests/test_build_sh_lock.py exercises it without building anything.
+if [ "$STEP" != tools ] && [ -f "$ROOT/scripts/loop_lock.sh" ]; then
   lock_state="$(bash "$ROOT/scripts/loop_lock.sh" check 2>/dev/null | head -n1 || true)"
   case "$lock_state" in
     HELD:*)
       holder="$(bash "$ROOT/scripts/loop_lock.sh" id 2>/dev/null || true)"
-      [ -n "$holder" ] || holder="$(printf '%s\n' "$lock_state" | cut -d' ' -f2)"
-      echo "build.sh: lock held by $holder: build refused; run it under scripts/loop_lock.sh run <owner> --purpose \"...\" -- ./build.sh $STEP" >&2
-      exit 3 ;;
+      if [ -n "${LOOP_LOCK_HELD:-}" ] && [ "$LOOP_LOCK_HELD" != "$holder" ]; then
+        # re-read once on a miss, as nested() does: a reader can catch a record replace
+        sleep 0.2
+        holder="$(bash "$ROOT/scripts/loop_lock.sh" id 2>/dev/null || true)"
+      fi
+      if [ -n "${LOOP_LOCK_HELD:-}" ] && [ "$LOOP_LOCK_HELD" = "$holder" ]; then
+        :   # the holder's own child
+      elif [ -n "${LOOP_LOCK_HELD:-}" ]; then
+        echo "build.sh: LOOP_LOCK_HELD is stale: '$LOOP_LOCK_HELD' vs holder '${holder:-<unreadable>}': build refused; run it under scripts/loop_lock.sh run <owner> --purpose \"...\" -- ./build.sh $STEP" >&2
+        exit 3
+      else
+        [ -n "$holder" ] || holder="$(printf '%s\n' "$lock_state" | cut -d' ' -f2)"
+        echo "build.sh: lock held by $holder: build refused; run it under scripts/loop_lock.sh run <owner> --purpose \"...\" -- ./build.sh $STEP" >&2
+        exit 3
+      fi ;;
   esac
 fi
 # --dry-run prints the plan and builds nothing; it exits before the toolchain check, so it works on a machine with
