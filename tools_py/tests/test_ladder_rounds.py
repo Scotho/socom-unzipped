@@ -207,7 +207,7 @@ if __name__ == "__main__":
 class PostRoundsTail(unittest.TestCase):
     """s6_ladder8 (2026-09-15): the run stopped at the last round's kill, so verdict_replay read NO-DATA
     'rows-after-valve-window' for round 4 -- it needs VALVE_WINDOW_GUEST_S of rows after the death, and the guest
-    clock runs at ~0.57-0.91 guest s per host s (KNOWN §4). The ladder keeps the tails running that long after
+    clock runs at ~0.57-0.91 guest s per host s (docs/HAZARDS.md harness). The ladder keeps the tails running that long after
     run_ladder returns."""
 
     def test_tail_covers_the_valve_window_at_the_slowest_guest_clock(self):

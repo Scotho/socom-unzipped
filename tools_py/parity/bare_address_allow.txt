@@ -2,7 +2,7 @@
 #
 # tools_py/tests/test_no_bare_guest_addresses.py refuses every `0x` literal of six to eight hex digits in
 # the EE's address ranges, in tools_py/parity/*.py code and in the text files under scripts/parity/, that
-# is not in the per-revision table (KNOWN.md §4: an address is read from the table BY NAME, one column per
+# is not in the per-revision table (docs/HAZARDS.md recompiler: an address is read from the table BY NAME, one column per
 # revision). A survivor is listed here with the reason it is not a per-revision read of OUR exe's memory.
 #
 # Format: `<path> <literal> <reason>`, one per (file, value); the line a literal sits on is not part of the

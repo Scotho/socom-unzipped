@@ -288,7 +288,7 @@ vendored runtime when run. `docs/archive/README.md` lists them with what each wa
 | `scale_compare.py` | Is a 1280x896 frame the 640x448 frame, or a different render |
 | `scale_shot.py` | One screen captured at 640x448 and at 1280x896 from the runtime |
 | `resize_window.py` | Give the running game window a client area of a given size (captures to look at, not gate results). Run it as: `python -m tools_py.parity.resize_window <w> <h>` |
-| `frame_burst.py` | Capture the game window at a fixed rate for a while (KNOWN §4: check a burst on ours by its first frame). Run it as: `python -m tools_py.parity.frame_burst <pcsx2\|ours> <out_dir> <start_after_s> <count> <interval_s>` |
+| `frame_burst.py` | Capture the game window at a fixed rate for a while (`docs/HAZARDS.md` harness: check a burst on ours by its first frame). Run it as: `python -m tools_py.parity.frame_burst <pcsx2\|ours> <out_dir> <start_after_s> <count> <interval_s>` |
 | `movie_blocks.py` | Find 16x16 movie blocks the GL target lacks but shadow VRAM has; runs in `build.sh test` over the saved fixture `tests/fixtures/movie/` (`test_movie_blocks_fixture.py`), and by hand over a `PS2X_GS_DUMP_DISPLAY` capture |
 | `motion_pack_check.py` | Is the motion pack intact in an RDRAM image |
 | `object_diff.py` | Object-keyed uninitialised-field diff between our heap and the console's |
@@ -420,7 +420,7 @@ PS2X_PC_SAMPLER=5 ./run.sh 40    # run 40 s; logs/latest.log; prints guest threa
 > Superseded 2026-09-25 (Sprint 13 R2): the block above said `./build.sh recomp` took "~10 s" (the same file measured
 > 352 s, and `docs/KNOWN.md` §1 273 s) and that `build.sh test` "runs NO Python tests: python -m unittest discover
 > ... (by hand, for now)". `build.sh`'s `test_step` runs `python -m unittest discover -s tools_py/tests -t . -v`
-> before the C++ suite, and has since Sprint 5 (`docs/KNOWN.md` §4, "`build.sh test` runs zero Python tests",
+> before the C++ suite, and has since Sprint 5 (`docs/HAZARDS.md` build, "`build.sh test` runs zero Python tests",
 > struck as fixed) — documents audit rows 3 and 7.
 
 `./run.sh` is a developer-mode launch (`PS2X_DEV=1` unless set): it runs `dist/socom2.exe` (or `$SOCOM_EXE`) on
@@ -971,7 +971,7 @@ something is actually running. An edit through Bash (`sed -i`, a heredoc) is not
   edit point. A new file cannot be running, and a `QUEUED` waiter has not started its chain (`run_detached.sh
   --wait` launches it only after the grant), so neither refuses; test `decide("Edit", {"file_path":
   "logs/x.sh"}, ..., lock_holder="agent-x51")` with the file existing (2), new (0), and `lock_holder="queued:1"` (0);
-  home `docs/KNOWN.md` section 4 (the running-chain hazard).
+  home `docs/HAZARDS.md` lock (the running-chain hazard).
 - **The lock script in use** -- an edit of `scripts/loop_lock.sh` when a `QUEUED` line's `blob=<12 hex>` equals the
   file's `git hash-object` (that waiter is a live bash reading this exact copy by offset), or while the lock is
   `HELD` and the file is the MAIN tree's copy (`--git-dir` equals `--git-common-dir`: the loop's `run` wrappers and

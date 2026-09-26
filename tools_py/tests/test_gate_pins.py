@@ -593,7 +593,7 @@ class PerRevisionStandards(_LaunchCase):
     That is not a hazard in the abstract: on 2026-09-24 at 10:25 an unattended
     `gate --accept-pins --stamp s11_r0004_reg3` replaced scripts/parity/pins.json's r0001 env pin with the
     r0004 spec and dropped the mapping pin. One standard per revision, and neither gate can reach the
-    other's file. This is KNOWN §4's accept-pins hazard, closed."""
+    other's file. This is docs/HAZARDS.md harness's accept-pins hazard, closed."""
 
     def _r0004_elf(self):
         path = os.path.join(self.tmp, "r0004_stand_in.elf")

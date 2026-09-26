@@ -7,7 +7,7 @@
 #
 # What it does, in order, and undoes on ANY exit (the trap):
 #   1. tools_py/parity/endpoint_route.py set <device>: backs up the per-app routing key, removes our exes' entries
-#      (dist\socom2.exe is pinned to the JBL there, so the default alone moves nothing -- docs/KNOWN.md section 4),
+#      (dist\socom2.exe is pinned to the JBL there, so the default alone moves nothing -- docs/HAZARDS.md audio),
 #      and makes <device> the default for the console and multimedia roles (the loopback recorder follows the
 #      default; communications is left to whatever call may be up).
 #   2. scripts/parity/mission_music_long.sh with the same arguments as the Bluetooth run

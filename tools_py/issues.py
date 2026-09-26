@@ -38,7 +38,7 @@ What the audit holds the stack to (exit 1 on any of the first five):
   and reports, without failing: open issues with no milestone (the backlog), issues untouched since `--stale-since`,
   a close marked completed whose last comment is not the tool's own "Closing bar met" line (an owner's close, or a
   close by hand -- the review reads it, never reopens it unasked), and every docs/KNOWN.md section 2 row and every
-  live section 4 hazard (a headline saying HAZARD or Open:) that is neither cited nor settled nor annotated
+  live hazard in docs/HAZARDS.md (KNOWN's old section 4; a headline saying HAZARD or Open:) that is neither cited nor settled nor annotated
   `no issue: ...`, for the reviewer to rule on one by one.
 
 The live documents are docs/DOC_MAINTENANCE.md section 3's class-L rows, read through tools_py.docmaint -- never a
@@ -70,6 +70,9 @@ AREAS = ("audio", "render", "online", "launcher", "input", "linux", "packaging",
          "harness", "server", "build", "recomp")
 
 KNOWN = "docs/KNOWN.md"
+# R270 (Sprint 14 I5): KNOWN's section 4 moved here, one `## <area>` heading per area; every bullet under any
+# heading of this file is read as a section 4 bullet was.
+HAZARDS = "docs/HAZARDS.md"
 # R267: the carry's one home, generated, and the tracked list of rows ruled not to be issues that it renders.
 BACKLOG = "docs/BACKLOG.md"
 RULED_OUT_LIST = "docs/backlog_ruled_out.txt"
@@ -220,14 +223,17 @@ def _headline(line, opener):
     return rest.split("**", 1)[0].strip()
 
 
-def known_rows_without_issue(text):
+def known_rows_without_issue(text, hazards_file=False):
     """(section, headline) of every docs/KNOWN.md section 2 row and every live section 4 hazard (headline
     `HAZARD:` / `Open:`) that is neither citing an issue, nor settled -- in its headline or in a `> Superseded`
-    blockquote under it -- nor annotated `no issue: ...`. A nested `  - ` sub-bullet is an entry of its own."""
+    blockquote under it -- nor annotated `no issue: ...`. A nested `  - ` sub-bullet is an entry of its own.
+    With `hazards_file` the text is docs/HAZARDS.md: every `## <area>` heading is read as section 4 was, and a
+    row's first field is the area instead of the section number."""
     rows = []
     section = None
     entry_lines = None            # the lines of the entry being gathered (a table row is one line; a bullet wraps)
     entry_section = None
+    area = None
 
     def flush():
         if not entry_lines:
@@ -243,13 +249,16 @@ def known_rows_without_issue(text):
             return
         if entry_section == "4" and not LIVE_HAZARD.search(headline):
             return
-        rows.append((entry_section, headline[:110]))
+        rows.append((area if hazards_file else entry_section, headline[:110]))
 
     for line in text.splitlines():
         if line.startswith("## "):
             flush()
             entry_lines = None
-            section = line[3:].split(".", 1)[0].strip()
+            if hazards_file:
+                section, area = "4", line[3:].strip()
+            else:
+                section = line[3:].split(".", 1)[0].strip()
             continue
         if section == "2" and line.startswith("| **"):
             flush()
@@ -753,13 +762,17 @@ def cmd_audit(args):
         print("PROBLEM: " + p)
     for n in notes:
         print("note: " + n)
+    rows = []
     if os.path.isfile(os.path.join(ROOT, KNOWN)):
-        rows = known_rows_without_issue(_read(KNOWN))
-        if rows:
-            print("KNOWN rows neither cited, settled nor ruled out (%d) -- each is the review's to rule on:"
-                  % len(rows))
-            for section, headline in rows:
-                print("  - [section %s] %s" % (section, headline))
+        rows += [("section " + section, headline) for section, headline in known_rows_without_issue(_read(KNOWN))]
+    if os.path.isfile(os.path.join(ROOT, HAZARDS)):
+        rows += [("%s: %s" % (HAZARDS, area), headline)
+                 for area, headline in known_rows_without_issue(_read(HAZARDS), hazards_file=True)]
+    if rows:
+        print("KNOWN rows and hazards neither cited, settled nor ruled out (%d) -- each is the review's to rule on:"
+              % len(rows))
+        for where, headline in rows:
+            print("  - [%s] %s" % (where, headline))
     print("audit: %s" % ("OK" if not problems else "%d problem(s)" % len(problems)))
     return 1 if problems else 0
 

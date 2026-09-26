@@ -65,7 +65,7 @@ class TheSelection(unittest.TestCase):
 
     def test_only_the_entries_for_the_exes_the_harness_launches_are_chosen(self):
         # every device's entry for dist\socom2.exe and the runner's; not a worktree's copy, not the owner's
-        # Downloads copy, not PCSX2 (KNOWN section 4: the PCSX2 A entry was removed once already, and restored)
+        # Downloads copy, not PCSX2 (docs/HAZARDS.md audio: the PCSX2 A entry was removed once already, and restored)
         self.assertEqual(er.entries_for_our_exes(self.ENTRIES), ["2130659e_0", "40efcb24_0", "6aafc465_0"])
 
     def test_the_device_must_match_exactly_one_active_render_endpoint(self):

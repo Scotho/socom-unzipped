@@ -218,9 +218,9 @@ What is **not** on the stack, and where it goes instead:
   `Closes #N` in its commit;
 - a security vulnerability -> a private advisory (`SECURITY.md`), never an issue;
 - a bug report's content -> the inbox; only the `BR-` id crosses (the triage routine above);
-- a lesson, or a hazard with nothing left to fix (most of KNOWN §4) -> KNOWN §4 stays its home. A hazard with a fix
-  that could be made IS a defect and gets an issue -- and its §4 headline says `HAZARD:` or `Open:`, the two forms
-  KNOWN already uses for a live one, because those are the only §4 bullets the audit asks the review about;
+- a lesson, or a hazard with nothing left to fix (most of `docs/HAZARDS.md`) -> HAZARDS stays its home. A hazard with a fix
+  that could be made IS a defect and gets an issue -- and its HAZARDS headline says `HAZARD:` or `Open:`, the two forms
+  KNOWN already uses for a live one, because those are the only HAZARDS bullets the audit asks the review about;
 - a research question with no bar -> `docs/research/`.
 
 **The owner's reports, and the line between them.** What the owner hears or sees is a report, not yet a defect. It
@@ -265,7 +265,7 @@ issue is what gets corrected.
 
 Any agent may do all of these; the conventions are the boundary, not a person.
 
-- **Add**, in the same commit as the KNOWN row it belongs to -- a new §2 row, or a §4 hazard that turns out fixable:
+- **Add**, in the same commit as the KNOWN row it belongs to -- a new §2 row, or a `docs/HAZARDS.md` bullet that turns out fixable:
   ```
   python -m tools_py.issues skeleton > body.md         # fill it in, in your own words
   python -m tools_py.issues open --title "..." --body-file body.md --area harness [--milestone "Sprint 11"] [--label needs-repro]

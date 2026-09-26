@@ -2,7 +2,7 @@
 
 Fix wave A (2026-09-22): a ten-minute briefing capture on the Bluetooth JBL Flip 6 showed DEVICE dips (in the
 loopback, not in the mixer's dump). The experiment that settles whether they are the Bluetooth path's or ours is
-the same capture on a WIRED endpoint. Two things stand in the way, both in docs/KNOWN.md section 4:
+the same capture on a WIRED endpoint. Two things stand in the way, both in docs/HAZARDS.md audio:
 
   * Windows routes our executables per exe PATH (HKCU\\...\\Audio\\PolicyConfig\\PropertyStore, "App volume and
     device preferences"): dist\\socom2.exe is pinned to the JBL, so changing the default device moves nothing.
@@ -34,8 +34,8 @@ import sys
 from typing import Dict, List, Optional, Tuple
 
 POLICY_KEY = r"Software\Microsoft\Internet Explorer\LowRegistry\Audio\PolicyConfig\PropertyStore"
-# The exe paths whose routing entries are removed for the run: the two our harness launches (docs/KNOWN.md
-# section 4's table). Matched case-insensitively as substrings of the entry's value.
+# The exe paths whose routing entries are removed for the run: the two our harness launches (docs/HAZARDS.md
+# audio, the routing table). Matched case-insensitively as substrings of the entry's value.
 OUR_EXES = (r"\projects\socom_pc\dist\socom2.exe", r"\projects\socom_pc\third_party\ps2recomp\build-clang\ps2xruntime\ps2entryrunner.exe")
 ROLES = {"console": 0, "multimedia": 1, "communications": 2}
 SET_ROLES = ("console", "multimedia")

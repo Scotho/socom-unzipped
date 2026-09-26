@@ -102,7 +102,7 @@ emulator-as-golden-reference is the only outside opinion the project has about w
 
 **What the gate proves, and what it does not.** It proves the game still looks and behaves the way it did last time
 at those three points. It is a regression check, not a correctness check, and it has two structural blind spots that
-are written down in `docs/KNOWN.md` §4 rather than hidden:
+are written down in `docs/HAZARDS.md` (harness) rather than hidden:
 
 - **A defect present in every run looks exactly like the reference.** Title and mission scoring compare our runs to
   our own earlier runs.
@@ -207,7 +207,7 @@ life of the project every roll came up almost the lowest number it could — und
 **A ruling written in prose cannot fail.** A measured decision to build the release at a lower optimisation level was
 recorded in three documents and applied in none; the build script went on doing the opposite for six days, and it was
 found by asking why an archive was larger than the number those three documents quoted (`210cb78`, 2026-09-20). The
-generalisation in `docs/KNOWN.md` §4: a ruling that names a default, a threshold or a flag should get a test that
+generalisation in `docs/HAZARDS.md` (documents): a ruling that names a default, a threshold or a flag should get a test that
 reads the real artefact and asserts the ruled value.
 
 **An instrument may be opt-in; a failure may not.** When the owner's first save failed, the build they were playing

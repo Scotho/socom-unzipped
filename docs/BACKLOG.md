@@ -50,7 +50,7 @@
 | research20-hygiene | no issue | No closing bar written: `strcmp`/`strncmp` return the byte difference, and the `sceSifSendCmd` argument ABI. | audit D14 (its source range); carry C111; research/20 |
 | lto-os-release | no issue | Two candidates, cheapest first, each with a cap of T_compile + 1800 seconds (the release-build plan's Step 8). | audit D15; carry C107; KNOWN section 2 |
 | release-size-number | no issue | No closing bar written; the owner was promised the megabytes that compiling out the dump and trace families and imgui would save. | audit D15; carry C106; PLAYTEST's decisions |
-| audio-level-residuals | no issue | No closing bar written: the mission bed 7-12 dB under the console, the title ring -4 to -6.5 dB, and the movie audio about 18 dB low at the source. | audit G2; carry C62; KNOWN section 4 |
+| audio-level-residuals | no issue | No closing bar written: the mission bed 7-12 dB under the console, the title ring -4 to -6.5 dB, and the movie audio about 18 dB low at the source. | audit G2; carry C62; docs/HAZARDS.md audio |
 | cue4-held-silent | no issue | No closing bar written; why the console holds cue 4 in state 1 for 120 s or more with its audio silent is unexplained (a PCSX2 poll). | audit G2; carry C63 |
 | emitters-at-volume-zero | no issue | No closing bar written; whether the console also gives five positioned emitters volume 0 from the EE's attenuation is unmeasured. | audit G2; carry C64 |
 | concurrency-cap | R172 | Declined until Q1's instrument (built 2026-09-20) is read against it; the play call's `flags` word is still dropped in `ps2_audio.cpp`. | audit G2; carry C65 |

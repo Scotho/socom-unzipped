@@ -1572,7 +1572,7 @@ def aim_yaw(me, target_xz, tail, sh, clock=time.time, wait=time.sleep, fidget=No
             tol=None, max_iter=None):
     """Closed-loop yaw onto `target_xz` -> (err_before, err_after), degrees (None when no heading could be read).
 
-    Each iteration reads the heading from the ACTOR MATRIX (never the camera: KNOWN §4) -- `read="pulse"` (the
+    Each iteration reads the heading from the ACTOR MATRIX (never the camera: docs/HAZARDS.md harness) -- `read="pulse"` (the
     Amendment A default): AIM_PULSE_READ_S after each pulse and after the call starts (wait_pulse_heading);
     `read="rest"`: 2 unchanged rows after any rx (wait_rest_heading) -- computes the bearing from the actor's own x/z,
     and stops inside `tol` (default: spec §5.1's min(AIM_TOL_DEG, 0.8 atan(3.4 / d)) at the read's ground range d);
@@ -2301,7 +2301,7 @@ class MovePathWatch(threading.Thread):
     Refuses to START (raises MovePathWatchRefused at construction) unless MoveScale is traced at
     PS2X_CALL_TRACE_EVERY <= 20 and the disarm inputs are peeked. Blind: a stall under 10 s; a path
     that ticks but ignores the stick (assert_controllable's job); a tail call into MoveScale (the call
-    trace misses `J` tail calls -- KNOWN §4; its callers are `jal`, research/21 §6.2)."""
+    trace misses `J` tail calls -- docs/HAZARDS.md recompiler; its callers are `jal`, research/21 §6.2)."""
 
     def __init__(self, tails, log, env=None, clock=time.time, name=MOVE_SCALE_TRACE_NAME):
         super().__init__(daemon=True)
@@ -3720,7 +3720,7 @@ def close_to(me, other, clock=time.time, wait=time.sleep, log=None, stop=None, o
 
 def is_round_reset(hit, rows, spawn, round_steps):
     """A teleport `hit` (t, step) that lands within ROUND_RESET_SPAWN_UNITS of `spawn` (x, y, z) within
-    ROUND_RESET_STEP_S of an mp_round_count step is the round-end reset to spawn (KNOWN §4; 8c: at the clock restart,
+    ROUND_RESET_STEP_S of an mp_round_count step is the round-end reset to spawn (docs/HAZARDS.md harness; 8c: at the clock restart,
     5.5 s after the step) -- a round boundary, not a FAIL teleport."""
     if hit is None or spawn is None:
         return False
@@ -3862,7 +3862,7 @@ def victim_should_oscillate(d3):
     return d3 is not None and d3 <= ENDGAME_UNITS
 
 
-# --- Sprint 6 Task 4: the burst-to-burst correction (ladder launch 2 round 4, KNOWN §4) --------------------------
+# --- Sprint 6 Task 4: the burst-to-burst correction (ladder launch 2 round 4, HAZARDS harness) ------------------------
 # Round 4 read the same -4.1 deg aim error on all 111 cycles -- inside the tolerance, so aim_yaw never pulsed -- and
 # fired 111 bursts with no damage: a fixed offset between the actor-matrix heading and where the bullets go is invisible
 # to the aim loop. The correction closes the loop on the one signal that sees the bullets: the target's +0x1044 health
@@ -3997,7 +3997,7 @@ def join_in(thread, timeout, clock, wait):
     awaited through it too. A native join blocks OUTSIDE the clock -- live, that is only a poll made coarser; under
     the tests' lockstep Clock (tools_py/tests/online_rows.py) every thread on the clock has to be in a wait() before
     time moves, and a joiner standing outside it froze the side thread it was waiting for (Sprint 10, the CI flake
-    KNOWN §4 records). -> True when the thread ended."""
+    docs/HAZARDS.md harness records). -> True when the thread ended."""
     end = None if timeout is None else clock() + timeout
     while thread.is_alive() and (end is None or clock() < end):
         wait(SIDE_JOIN_POLL_S)

@@ -118,7 +118,7 @@ def ng_items(lagflag):
 
 
 class Net:
-    """The two-sided starvation model (KNOWN §4, research/21 §9.8): side X's idle ms is the time since the
+    """The two-sided starvation model (docs/HAZARDS.md network, research/21 §9.8): side X's idle ms is the time since the
     OTHER side's last traffic. Translation always counts; rotation iff `rotation_feeds`; firing iff
     `firing_feeds` -- both False until Task 5 Step 1 measures them. `enabled=False` holds every idle at 0 (a
     scripted pre-roll that is history, not the scenario)."""
@@ -178,7 +178,7 @@ class Net:
 
 
 class TwoFloorTerrain:
-    """Frostfire's shape in miniature (KNOWN §4: floors at y ~100 and ~142). The lower floor is everywhere; a
+    """Frostfire's shape in miniature (docs/HAZARDS.md harness: floors at y ~100 and ~142). The lower floor is everywhere; a
     LEDGE at y 142 covers x 600-800, z 600-780 and is reached only by a RAMP (x 670-750, z 480-600, y rising
     100 -> 142 northward). A lower-floor walker passes UNDER the ledge; the ramp is a solid wedge from its sides
     and from under the ledge; the ledge has railings (leaving it anywhere but down the ramp is blocked)."""
@@ -775,14 +775,14 @@ def run_endgame(label="endgame", rotation_feeds=False, firing_feeds=False, micro
 
 
 # ---------------------------------------------------------------------------------------------
-# Sprint 6 Task 4: the aim-bias world (ladder launch 2 round 4 -- research/22 "Ladder launch 2", KNOWN §4)
+# Sprint 6 Task 4: the aim-bias world (ladder launch 2 round 4 -- research/22 "Ladder launch 2", docs/HAZARDS.md harness)
 # ---------------------------------------------------------------------------------------------
 # A flat world, the shooter already in the band at AIM_BIAS_RANGE_UNITS from a stander whose body subtends
 # AIM_BIAS_SUBTENDED_DEG there. The shooter's matrix heading carries a FIXED bias (World.aim_err_bias), so the harness
 # reads its aim error AIM_BIAS_DEG degrees off the truth (a read of -4.1 at a true 0 is exactly round 4's line): with the
 # shooter parked at the loop's fixed point (read error 0, true error -AIM_BIAS_DEG = +4.1) aim_yaw reports in-tolerance,
 # never pulses, and every burst misses -- round 4's signature. A lead of L turns the shooter to L past the bearing it
-# reads, i.e. to a true error of -AIM_BIAS_DEG - L: the +3.0 entry lands it 1.1 deg off. The HIT MODEL (an assumption a live launch must confirm, KNOWN §4): a burst hits iff the shooter's TRUE aim
+# reads, i.e. to a true error of -AIM_BIAS_DEG - L: the +3.0 entry lands it 1.1 deg off. The HIT MODEL (an assumption a live launch must confirm, docs/HAZARDS.md harness): a burst hits iff the shooter's TRUE aim
 # error at the R1 press is inside half the subtended angle; a hit lowers the stander's actor+0x1044 word by
 # AIM_BIAS_HIT_DAMAGE, which the health watch on the stander's tail reads exactly as the live harness does.
 AIM_BIAS_DEG = -4.1

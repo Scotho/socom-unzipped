@@ -159,7 +159,7 @@ What to do: check that the machine is online, and if you typed a server under **
 launch again.
 
 *(Until 2026-09-25 an unresolvable name was silently replaced by this machine's own address, so the failure read as
-"the server is down" with nothing in LAST RUN; `KNOWN.md` §4 records the old hazard. For part of that day it was
+"the server is down" with nothing in LAST RUN; `docs/HAZARDS.md` (network) records the old hazard. For part of that day it was
 exit code 75; ruling S13-R9 made it a notice, so it no longer hides a 65 or a 72.)*
 
 ---

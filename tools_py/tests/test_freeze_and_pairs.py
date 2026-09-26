@@ -1,7 +1,7 @@
 """Sprint 5 Task 5 (a) -- the run's true closest approach and freeze tolerance:
 
   * `Duel`'s paired 3-D range (PairedRange): the TRUE run minimum and its dy, and the CURRENT paired distance for the
-    `near` gate -- launch 3c printed closest_3d=166.76 against a true 52.42 at dy 42 (KNOWN §4);
+    `near` gate -- launch 3c printed closest_3d=166.76 against a true 52.42 at dy 42 (docs/HAZARDS.md harness);
   * freezes: the round clock 0x4365c0 standing still while rows keep coming (launch 8c, research/21 §9.8) disarms
     the move-path watch -- replayed on launch 8c's own rows, where the live watch fired three 10-11 s "stalls" --
     and attributes the other side's starvation alarm to `freeze(side)` in the StarvationWatch, which asks the
