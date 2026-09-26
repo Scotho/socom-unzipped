@@ -36,6 +36,7 @@ PAGE = "docs/RULINGS.md"
 STATUSES = ("active", "superseded", "retracted", "withdrawn", "vacant")
 STRENGTH = {"active": 0, "vacant": 1, "superseded": 2, "withdrawn": 3, "retracted": 4}
 MAX_LINE = 160
+CONTEXT = 80   # the sentence shown before a mid-paragraph label's own words, cut here
 
 # A sprint-local definition, in the lead shape docmaint.RULING_DEF_LEAD accepts for R<n>.
 LOCAL_DEF = re.compile(
@@ -157,14 +158,43 @@ def _lines(path, cache):
     return cache[path]
 
 
-def _label_end(line, number):
-    """Where the label of `number` ends on its definition line (docmaint's shapes), or 0."""
+def _label_span(line, number):
+    """(start, end) of the label of `number` on its definition line (docmaint's shapes), or (0, 0)."""
     n = re.escape(number.rstrip("b")[1:])
     for pat in (r"\*\*(?:Ruling\s+)?R%s(?!\d)" % n, r"\bR%s(?!\d)" % n):
         m = re.search(pat, line)
         if m:
-            return m.end()
-    return 0
+            return m.start(), m.end()
+    return 0, 0
+
+
+def _own_segment(rest, number):
+    """One label for several rulings ("**R265**, **R266** (...): R265 the first; R266 the second"): the words
+    after `number` up to the next ruling's number, or None when `rest` is not a list of that shape."""
+    parts = re.split(r";\s*(?=R\d{2,3}b?\s)", _clean(rest))
+    if len(parts) < 2 or not re.match(r"R\d{2,3}b?\s", parts[0]):
+        return None
+    bare = number.rstrip("b")
+    for part in parts:
+        m = re.match(r"(R\d{2,3})b?\s+", part)
+        if m and m.group(1) == bare:
+            return part[m.end():]
+    return None
+
+
+def _context(before):
+    """The sentence just before a label that sits mid-paragraph ("**Rulings.** Sprint 12's rulings are ... **R264**
+    (...): they keep those names"), cut at CONTEXT characters; "" when the label opens its paragraph."""
+    text = _clean(re.sub(r"^\s*(?:[-*+]\s+|\d+\.\s+)", "", before))
+    if not text:
+        return ""
+    pieces = [p for p in re.split(r"(?<=[.!?])\s+(?=[A-Z(\"'`“])", text) if p]
+    ctx = pieces[-1] if pieces else text
+    if len(ctx) > CONTEXT:
+        ctx = ctx[:CONTEXT - 1].rstrip() + "…"
+        if ctx.count("`") % 2:
+            ctx = ctx[:ctx.rindex("`")].rstrip() + "…"
+    return ctx
 
 
 def _local_records():
@@ -210,16 +240,22 @@ def _rows():
             text = _lines(path, cache)[i - 1]
             para = _paragraph(_lines(path, cache), i)
             if number in local:
-                start = LOCAL_DEF.match(text).end()
+                begin, start = 0, LOCAL_DEF.match(text).end()
             else:
-                start = _label_end(para, number)
+                begin, start = _label_span(para, number)
             rest = _after_label(para, start)
             label = para[:len(para) - len(rest)]   # the label and its (date, task) note
+            segment = _own_segment(rest, number)
+            if segment is not None:
+                rest = segment                           # a shared label: this ruling's own words only
             own = label + " " + _sentence(rest)     # the only words whose status is this ruling's
             d = docmaint.DATE.search(label)
             date = d.group(0) if d else None
             struck = rest.startswith("~~") or "~~" in label
-            line = _first_sentence(rest)
+            # A label mid-paragraph whose words open in lower case ("they keep those names") reads only after the
+            # sentence before it, which is shown first.
+            ctx = _context(para[:begin]) if segment is None and rest[:1].islower() else ""
+            line = _first_sentence(("(after: %s) " % ctx if ctx else "") + _sentence(rest))
             status = _text_status(struck, own)       # the label's note can carry it: R122's
             if TEXT_AMENDED.search(own):
                 amended.add(number)

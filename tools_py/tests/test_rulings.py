@@ -25,6 +25,9 @@ EXPECTED = [
     # (number, date, status, home) in page order: global newest first, then S13, then S12. A home is the
     # path and a stable anchor (the ruling's label, or its ledger row, or its vacancy note), never a line
     # number: a line added above a ruling must not make the page stale.
+    ("R27", "2026-01-14", "active", PLAN1 + " **R27**"),         # a label in mid-paragraph, after its context
+    ("R26", "2026-01-13", "active", PLAN1 + " **R26**"),         # one label for two rulings: each its own text
+    ("R25", "2026-01-13", "active", PLAN1 + " **R25**"),
     ("R23", None, "active", PLAN1 + " **R23**"),                 # a date after the label is not its date
     ("R22", None, "active", LEDGER + " ledger R22"),             # "stands as amended by": standing
     ("R21", "2026-01-10", "active", PLAN1 + " **R21**"),         # names others' RETRACTED/WITHDRAWN/SUPERSEDED
@@ -93,6 +96,15 @@ class RowsTest(unittest.TestCase):
         self.assertEqual(self.by["R21"]["status"], "active")
         self.assertEqual(self.by["R21"]["line"], "the ninth decision stands.")
 
+    def test_a_shared_label_gives_each_ruling_its_own_text(self):
+        self.assertEqual(self.by["R25"]["line"], "the eleventh decision, its own words")
+        self.assertEqual(self.by["R26"]["line"], "the twelfth decision on a second line.")
+
+    def test_a_mid_paragraph_label_carries_the_sentence_before_it(self):
+        self.assertEqual(self.by["R27"]["line"],
+                         "(after: The names S1-R1 to S1-R9 stay in the plan, the one home for them.) "
+                         "they keep those names -- the thirteenth decision.")
+
     def test_a_date_after_the_label_is_not_the_rulings(self):
         self.assertIsNone(self.by["R23"]["date"])
 
@@ -122,8 +134,8 @@ class RenderTest(unittest.TestCase):
         self.assertIn("Generated", head)
         self.assertIn("do not edit", head)
         self.assertIn("python -m tools_py.rulings", head)
-        self.assertIn("17 rulings", self.page)
-        for count in ("8 active", "3 superseded", "2 retracted", "2 withdrawn", "2 vacant"):
+        self.assertIn("20 rulings", self.page)
+        for count in ("11 active", "3 superseded", "2 retracted", "2 withdrawn", "2 vacant"):
             self.assertIn(count, self.page)
 
     def test_groups_in_order_and_pipes_escaped(self):

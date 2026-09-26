@@ -22,11 +22,11 @@
 | R271 | 2026-09-26 | active | an owner row that has stood through two sittings without an answer is closed by default at the next close, under a ruling, struck with the date and the default… | `docs/superpowers/plans/2026-09-26-sprint-14.md` **R271** |
 | R270 | 2026-09-26 | active | KNOWN §4's standing hazards move to their own file (`docs/HAZARDS.md`, class L, headed by the area each bites), KNOWN keeping §1–§3. | `docs/superpowers/plans/2026-09-26-sprint-14.md` **R270** |
 | R269 | 2026-09-26 | active | an infrastructure sprint ahead of visible defects, in the order G, I, W, D, S, E, M. | `docs/superpowers/plans/2026-09-26-sprint-14.md` **R269** |
-| R268 | 2026-09-25 | active | R265 the four oldest backlog rows owned or declined; R266 the six issues Sprint 11 carried go once into Sprint 13's milestone; R267 one home for the carry (… | `docs/superpowers/plans/2026-09-24-sprint-12.md` **R268** |
-| R267 | 2026-09-25 | active | R265 the four oldest backlog rows owned or declined; R266 the six issues Sprint 11 carried go once into Sprint 13's milestone; R267 one home for the carry (… | `docs/superpowers/plans/2026-09-24-sprint-12.md` **R267** |
-| R266 | 2026-09-25 | active | R265 the four oldest backlog rows owned or declined; R266 the six issues Sprint 11 carried go once into Sprint 13's milestone; R267 one home for the carry (… | `docs/superpowers/plans/2026-09-24-sprint-12.md` **R266** |
-| R265 | 2026-09-25 | active | R265 the four oldest backlog rows owned or declined; R266 the six issues Sprint 11 carried go once into Sprint 13's milestone; R267 one home for the carry (… | `docs/superpowers/plans/2026-09-24-sprint-12.md` **R265** |
-| R264 | 2026-09-25 | active | they keep those names — renumbering twenty-five rulings cited across fifteen notes and the plan would buy nothing and risk a wrong citation; the global counter… | `docs/CURRENT_SPRINT.md` **R264** |
+| R268 | 2026-09-25 | active | byte ceilings on the appending documents and a tag check on "merged as vX" claims. | `docs/superpowers/plans/2026-09-24-sprint-12.md` **R268** |
+| R267 | 2026-09-25 | active | one home for the carry (`docs/BACKLOG.md`, generated, a Sprint 13 file) | `docs/superpowers/plans/2026-09-24-sprint-12.md` **R267** |
+| R266 | 2026-09-25 | active | the six issues Sprint 11 carried go once into Sprint 13's milestone | `docs/superpowers/plans/2026-09-24-sprint-12.md` **R266** |
+| R265 | 2026-09-25 | active | the four oldest backlog rows owned or declined | `docs/superpowers/plans/2026-09-24-sprint-12.md` **R265** |
+| R264 | 2026-09-25 | active | (after: Sprint 12's rulings are `S12-R1`–`S12-R25` in the plan's "Rulings made on the o…) they keep those names — renumbering twenty-five rulings cited across… | `docs/CURRENT_SPRINT.md` **R264** |
 | R263 | 2026-09-24 | active | the naming programme is Sprint 12, not Sprint 11. | `docs/superpowers/plans/2026-09-23-sprint-11.md` **R263** |
 | R262 | 2026-09-24 | active | declined, with the peer's reasons: a custom Ghidra Function ID database (it is `fingerprint.py` plus the callee-set pass re-implemented, and cannot cross the 7… (amended: see the ledger) | `docs/superpowers/plans/2026-09-23-sprint-11.md` **R262** |
 | R261 | 2026-09-24 | active | R257's rename commit also writes a tracked provenance sidecar beside `recomp/socom2_ghidra.csv` (address, name, source pass, score, evidence), carried by… (amended: see the ledger) | `docs/superpowers/plans/2026-09-23-sprint-11.md` **R261** |
@@ -106,7 +106,7 @@
 | R187 | -- | active | an operator's extra `PS2X_*` variable is a drift. | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q1b-gate-pins.md` **R187** |
 | R186 | -- | active | the harness is recorded, never compared. | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q1b-gate-pins.md` **R186** |
 | R185 | -- | active | any drift refuses, whatever `--only` asked for. | `docs/archive/sprints-7-12/2026-09-21-sprint-10-q1b-gate-pins.md` **R185** |
-| R184 | -- | active | the mid-sprint merge to `main` -- the owner asked for the hardening and the developer setup on `main` as soon as possible (PR #5, `sprint-10` -> `main`, valida… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R184** |
+| R184 | -- | active | (after: No agent runs the game.) the mid-sprint merge to `main` -- the owner asked for the hardening and the developer setup on `main` as soon as possible (PR… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R184** |
 | R183 | -- | active | the leak check is the monitor's rules adapted for a SOURCE tree, not copied. *Decided 2026-09-20.* The monitor's set was built for a published snapshot, where… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R183** |
 | R182 | -- | active | rulesets on `main` and `sprint-*`, as GIT_STRATEGY §6 designed them, with one deviation: no CODEOWNERS review required and no bypass. *Decided 2026-09-20.*… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R182** |
 | R181 | -- | active | secret scanning, push protection and Dependabot alerts are ON, turned on by the controller under the owner's words. *Decided 2026-09-20.* HANDOFF §5 rule 13 ke… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R181** |
@@ -117,7 +117,7 @@
 | R176 | -- | active | ADVANCED is a per-page section, it holds one thing today, and it cannot hide a setting that is doing something. *Decided 2026-09-19 by the controller; the spec… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R176** |
 | R175 | -- | active | P6's persona measurement is not run, the launcher's default preset moves to `socom.scotho.com`, and the hosted server goes on advertising its IP literal. *Deci… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R175** |
 | R174 | -- | active | Goal 12 is split: the data path is Sprint 9, the UI is Sprint 10. *Decided 2026-09-19 by the controller under an explicit delegation from the owner* ("overseer… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R174** |
-| R173 | 2026-09-19 | active | the CONTROLLER page's live pad DISPLAY stays alive while the game runs -- it moves no focus, and a player who alt-tabs to check a pad should not find a dead pi… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R173** |
+| R173 | 2026-09-19 | active | (after: The foreground half needed no code: nothing in the launcher calls…) the CONTROLLER page's live pad DISPLAY stays alive while the game runs -- it moves… | `docs/archive/CURRENT_SPRINT-sprints-9-to-11.md` **R173** |
 | R172 | -- | active | PROPOSED, not taken: the concurrency cap and the clip. | `docs/archive/sprints-7-12/2026-09-19-sprint-9-a-strangers-first-run-design.md` **R172** |
 | R171 | -- | active | the stream decoder reads the VAG flags the bank decoder always read. | `docs/archive/sprints-7-12/2026-09-19-sprint-9-a-strangers-first-run-design.md` **R171** |
 | R170 | -- | active | a fade belongs to the cue, not to the handle. | `docs/archive/sprints-7-12/2026-09-19-sprint-9-a-strangers-first-run-design.md` **R170** |
