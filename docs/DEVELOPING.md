@@ -997,7 +997,8 @@ scheduled form is `scripts/ladder_job.sh`, whose runs `tools_py/parity/ladder_le
 
 `scripts/loop_lock.sh` serialises every build and every game run on the machine (its header is the reference and the
 rules' one home; the commands a controller runs are the `run-gate` skill, `.claude/skills/run-gate/SKILL.md`). `LOOP_LOCK_PATH` overrides the lock's base path (tests use it to
-avoid touching the real lock). `tools_py/tests/test_loop_lock.py` runs a smoke subset by default and the whole lock
+avoid touching the real lock). `tools_py/tests/test_loop_lock.py` runs a smoke subset by default (plus the always-on
+`TestQueueClassFast`, Sprint 14 W1: the WIP cap's class rule and exit-4 refusal against planted tickets) and the whole lock
 suite with `LOOP_LOCK_SLOW_TESTS=1` (every race, interleaving, queue, `run`/`run_detached`/`ladder_job` test and the
 real-scale `run -- sleep 130` renewal; ~16 min before Sprint 13's queue tests, longer now, and much longer on a
 host whose process starts are slow -- stray `tail -f` watchers once made it fail the stale-mutex cases outright, so

@@ -14,6 +14,8 @@ LOOP_LOCK_SLOW_TESTS=1, which runs them all (~16 min).
 Sprint 13 H2 added the ticket queue (TestQueue: arrival order whatever the poll, issue #36; --wait in minutes, issue
 #35; a chain's single holding), run_detached --wait and the machine-wide quiet marker (TestRunDetached), ladder_job.sh
 through run_detached --wait (TestLadderJob, issue #37) and `version`; one queue case joins the smoke.
+Sprint 14 W1 added the queue's WIP cap (a third queued build ticket is refused, exit 4): two slow cases in TestQueue
+with real waiters, and TestQueueClassFast (FAST, always on, planted tickets: the class rule, --class, the refusal).
 R73's hygiene test (TestSlowSuiteStamp, always on outside the slow run) fails when scripts/loop_lock.sh's git blob
 differs from fixtures/loop_lock_slow_green.txt: an edit to the lock script needs a green slow run, and only then a
 new stamp (`git hash-object scripts/loop_lock.sh`).
@@ -52,7 +54,7 @@ SMOKE = {
 
 
 def smoke_or_slow(test):
-    if not SLOW and test._testMethodName not in SMOKE:
+    if not SLOW and test._testMethodName not in SMOKE and not getattr(test, "FAST", False):
         test.skipTest("slow lock suite: set LOOP_LOCK_SLOW_TESTS=1")
 
 IDLE = ["4|0||System|", "900|4||explorer.exe|C:\\Windows\\explorer.exe", "901|900||bash.exe|bash"]
@@ -1108,6 +1110,157 @@ class TestQueue(LockTestBase):
         open(os.path.join(self.lock + ".mx", "t.%d.999.1" % int(time.time())), "w").close()
         rc, out = self.sh("check", env=self.env(LOOP_LOCK_MUTEX_WAIT_SEC=1))
         self.assertIn("QUEUED: STALE", out, "with the mutex busy the stale ticket is at least marked")
+
+    # -- Sprint 14 W1: the queue's WIP cap (at most LOOP_LOCK_MAX_QUEUE queued tickets of class build) ---------
+    def test_a_third_build_waiter_is_refused_and_a_run_waiter_still_queues(self):
+        self.write_record("holder", 60, hb_age_s=0)
+        b1 = self.popen("wait", "b1", "3", "--class", "build", env=self.env(LOOP_LOCK_WAIT_SEC=60))
+        b2 = r1 = b3 = None
+        try:
+            self.assertEqual(len(self.wait_tickets(1, seconds=30)), 1, "the first build waiter never queued")
+            b2 = self.popen("wait", "b2", "3", "--class", "build", env=self.env(LOOP_LOCK_WAIT_SEC=60))
+            names = self.wait_tickets(2, seconds=30)
+            self.assertEqual(len(names), 2, "the second build waiter never queued")
+            for n in names:                                    # the ticket file records the class
+                self.assertEqual(_read(os.path.join(self.qdir, n)).split()[2], "class=build", n)
+            out = self.sh("check")[1]
+            queued = [l for l in out.splitlines() if l.startswith("QUEUED:")]
+            self.assertEqual(len(queued), 2, out)
+            self.assertTrue(all(" class=build" in l and "(blob=" in l for l in queued), out)
+            # A third build waiter is refused at once, exit 4, and writes no ticket.
+            t0 = time.time()
+            rc, out = self.sh("wait", "b3", "2", "--class", "build", env=self.env(LOOP_LOCK_WAIT_SEC=60))
+            self.assertEqual(rc, 4, out)
+            self.assertIn("queue full: do lock-free work", out)
+            self.assertLess(time.time() - t0, 30, "the refusal waited")
+            self.assertEqual(len(self.tickets()), 2, "the refused build waiter left a ticket")
+            # `run` takes the class from its command: ./build.sh is a build; it is refused and never runs.
+            ran = os.path.join(self.tmp, "ran")
+            with open(os.path.join(self.tmp, "build.sh"), "w", newline="\n") as f:
+                f.write("touch '%s'\n" % fwd(ran))
+            p = subprocess.run([BASH, LOCK_SH, "run", "b4", "--wait", "2", "--", "./build.sh", "runtime"],
+                               cwd=self.tmp, capture_output=True, text=True, env=self.env(LOOP_LOCK_WAIT_SEC=60),
+                               timeout=60)
+            self.assertEqual(p.returncode, 4, p.stdout + p.stderr)
+            self.assertIn("queue full: do lock-free work", p.stdout + p.stderr)
+            self.assertFalse(os.path.exists(ran))
+            # A run-class waiter still queues behind the two builds; check shows its class.
+            r1 = self.popen("wait", "r1", "3", env=self.env(LOOP_LOCK_WAIT_SEC=60))
+            names = self.wait_tickets(3, seconds=30)
+            self.assertEqual(len(names), 3, "the run-class waiter never queued")
+            self.assertIsNone(r1.poll())
+            mine = [n for n in names if ticket_owner_of(n) == "r1"]
+            self.assertEqual(len(mine), 1, names)
+            self.assertEqual(_read(os.path.join(self.qdir, mine[0])).split()[2], "class=run")
+            out = self.sh("check")[1]
+            self.assertIn(" class=run", [l for l in out.splitlines() if " r1 queued " in l][0], out)
+            # The cap counts QUEUED builds, not the holder: once b1 is granted, one build place is free again.
+            self.assertEqual(self.sh("release", "holder")[0], 0)
+            self.assertEqual(self.wait_holder(other_than="holder", seconds=45), "b1")
+            self.assertEqual(b1.communicate(timeout=60)[0].count("TAKEN"), 1)
+            b3 = self.popen("wait", "b3", "3", "--class", "build", env=self.env(LOOP_LOCK_WAIT_SEC=60))
+            deadline = time.time() + 30
+            while not any(ticket_owner_of(n) == "b3" for n in self.tickets()) and time.time() < deadline:
+                time.sleep(0.2)
+            self.assertTrue(any(ticket_owner_of(n) == "b3" for n in self.tickets()), "b3 was not queued")
+            self.assertIsNone(b3.poll())
+        finally:
+            self.reap_procs(b1, *[p for p in (b2, r1, b3) if p])
+
+    def test_the_cap_follows_loop_lock_max_queue_and_skips_stale_tickets(self):
+        self.write_record("holder", 60, hb_age_s=0)
+        b1 = self.popen("wait", "b1", "3", "--class", "build", env=self.env(LOOP_LOCK_WAIT_SEC=60))
+        b2 = None
+        try:
+            self.assertEqual(len(self.wait_tickets(1, seconds=30)), 1)
+            rc, out = self.sh("wait", "b2", "1", "--class", "build",
+                              env=self.env(LOOP_LOCK_WAIT_SEC=60, LOOP_LOCK_MAX_QUEUE=1))
+            self.assertEqual(rc, 4, out)
+            self.assertIn("queue full: do lock-free work", out)
+            # A stale build ticket (its waiter killed hard) is dropped, not counted: with the default cap of 2,
+            # live b1 plus a stale one would refuse b2 if the stale one counted.
+            dead = os.path.join(self.qdir, "%d000000-dead-1x1" % (int(time.time()) - 900))
+            with open(dead, "w", newline="\n") as f:
+                f.write("dead blob=deadbeef0a0b class=build planted\n")
+            old = time.time() - 600
+            os.utime(dead, (old, old))
+            b2 = self.popen("wait", "b2", "3", "--class", "build", env=self.env(LOOP_LOCK_WAIT_SEC=60))
+            deadline = time.time() + 30
+            while "b2" not in [ticket_owner_of(n) for n in self.tickets()] and time.time() < deadline:
+                if b2.poll() is not None:
+                    self.fail("b2 exited: %s" % b2.communicate()[0])
+                time.sleep(0.2)
+            owners = [ticket_owner_of(n) for n in self.tickets()]
+            self.assertEqual(sorted(owners), ["b1", "b2"], owners)
+            self.assertIn("TICKET-DROPPED", self.history())
+            self.assertIsNone(b2.poll())
+        finally:
+            self.reap_procs(b1, *([b2] if b2 else []))
+
+
+def ticket_owner_of(name):
+    """<arrival>-<owner>-<pid>x<rand> -> owner (as loop_lock.sh's ticket_owner)."""
+    return name.split("-", 1)[1].rsplit("-", 1)[0]
+
+
+class TestQueueClassFast(LockTestBase):
+    """Sprint 14 W1, the fast half (always on, a few seconds): the class rule, the --class flag, and the cap against
+    PLANTED tickets under a planted holder -- the refusal comes at the first enqueue, so nothing waits."""
+    FAST = True
+
+    def plant_build(self, owner, arrived_s_ago):
+        os.makedirs(self.qdir, exist_ok=True)
+        path = os.path.join(self.qdir, "%d000000-%s-1x1" % (int(time.time()) - arrived_s_ago, owner))
+        with open(path, "w", newline="\n") as f:
+            f.write("%s blob=0123456789ab class=build planted\n" % owner)
+        return path
+
+    def test_class_from_the_command(self):
+        cases = [
+            (["./build.sh", "runtime"], "build"), (["build.sh"], "build"), (["/c/x/build.sh", "test"], "build"),
+            (["scripts/build.sh"], "build"), (["CC=clang", "PS2X_X=1", "./build.sh", "test"], "build"),
+            (["bash", "./build.sh", "runtime"], "build"), (["bash", "-e", "build.sh"], "build"),
+            (["bash", "-c", "./build.sh runtime"], "run"), (["./build.sh.bak"], "run"), (["./rebuild.sh"], "run"),
+            (["python", "-m", "tools_py.parity.gate"], "run"), (["true", "./build.sh"], "run"),
+            (["bash", "scripts/parity/control_round_chat.sh"], "run"),
+        ]
+        # The script's own cmd_class, lifted out and run over every case in ONE bash (a script start costs ~1 s
+        # on this host, and this class is in the default suite); `_class` is driven once below for its wiring.
+        m = re.search(r"^cmd_class\(\) \{\n.*?^\}\n", _read(LOCK_SH), re.S | re.M)
+        self.assertIsNotNone(m, "cmd_class() not found in loop_lock.sh")
+        quote = lambda w: "'" + w.replace("'", "'\\''") + "'"
+        prog = m.group(0) + "".join("cmd_class %s\n" % " ".join(quote(w) for w in cmd) for cmd, _ in cases)
+        p = subprocess.run([BASH, "-c", prog], capture_output=True, text=True, timeout=60)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(list(zip([c for c, _ in cases], p.stdout.split())), [(c, w) for c, w in cases])
+        rc, out = self.sh("_class", "--", "CC=clang", "./build.sh", "runtime")
+        self.assertEqual((rc, out.strip()), (0, "build"))
+
+    def test_class_flag_is_build_or_run(self):
+        rc, out = self.sh("wait", "w", "1", "--class", "tests")
+        self.assertEqual(rc, 2, out)
+        self.assertIn("--class", out)
+        self.assertIn("--class build|run", self.sh("nonsense")[1], "the usage names the flag")
+
+    def test_a_third_build_is_refused_at_its_first_enqueue(self):
+        self.write_record("holder", 60, hb_age_s=0)
+        self.plant_build("b1", 20)
+        self.plant_build("b2", 10)
+        rc, out = self.sh("wait", "b3", "1", "--class", "build")
+        self.assertEqual(rc, 4, out)
+        self.assertIn("queue full: do lock-free work", out)
+        self.assertIn("b1", out)
+        self.assertRegex(out, r"\[loop_lock\.sh [0-9a-f]{12}\]")
+        self.assertEqual(len(self.tickets()), 2, "the refused waiter left a ticket")
+        ran = os.path.join(self.tmp, "ran")
+        with open(os.path.join(self.tmp, "build.sh"), "w", newline="\n") as f:
+            f.write("touch '%s'\n" % fwd(ran))
+        p = subprocess.run([BASH, LOCK_SH, "run", "b4", "--wait", "1", "--", "./build.sh", "runtime"], cwd=self.tmp,
+                           capture_output=True, text=True, env=self.env(), timeout=60)
+        self.assertEqual(p.returncode, 4, p.stdout + p.stderr)
+        self.assertIn("queue full: do lock-free work", p.stdout)
+        self.assertFalse(os.path.exists(ran))
+        self.assertEqual(len(self.tickets()), 2)
 
 
 class TestVersion(unittest.TestCase):
