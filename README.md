@@ -45,7 +45,8 @@ As of 2026-09-26 the game boots from your own disc to the title, through the men
 or the keyboard, and renders through OpenGL at up to four times the console's resolution. Online login, the lobby and
 full rounds work on the hosted server, so far only between copies of the game driven by the test harness on one
 machine; a build of the community's r0004 revision plays a round too. Not yet: a public download, the console's full
-frame rate in missions, a finished Linux client, and any disc other than the NTSC r0001 release.
+frame rate in missions, a finished Linux client, and any disc other than the NTSC r0001 release. The game does not
+send your voice yet.
 
 The audited version of this, with the evidence for each claim, is `docs/KNOWN.md`; `docs/STATUS.md` is the
 day-by-day, and `docs/CURRENT_SPRINT.md` says what is being worked on now.
