@@ -19,11 +19,16 @@ Nothing here fails on a calendar: a test that reddens because a week passed gets
 and then the check is worse than nothing. Cadence is the sprint-close review in
 `docs/DOC_MAINTENANCE.md`; this module only enforces what is mechanically true at any moment.
 """
+import argparse
+import datetime
 import os
 import re
 import subprocess
+import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# The file `ratchet --write` edits: this module's own CEILINGS (tests point it at a copy).
+MODULE_PATH = os.path.abspath(__file__)
 REGISTRY = "docs/DOC_MAINTENANCE.md"   # repo-relative, so tests can point ROOT at a planted tree
 
 CLASSES = {
@@ -93,12 +98,21 @@ ROW = re.compile(r"^\|\s*`([^`]+)`\s*\|\s*\*{0,2}([LGNSCA])\*{0,2}\s*\|")
 # match. Bytes are counted with LF line ends, so a Windows checkout (CRLF) and CI measure the same
 # document the same way. When one fires, archive the
 # oldest blocks (docs/archive/, a banner, a registry row) -- do not raise the number.
+# Sprint 14 S3: the numbers only go down. At each close `python -m tools_py.docmaint ratchet` proposes live
+# plus ten percent, rounded up to 100, never above the current number, and `ratchet --write` rewrites the
+# numbers below in place (only the numbers: keep each entry on one line, in this shape). OPEN_PLAN stands for
+# the plan CURRENT_SPRINT's `plans:` line names, resolved at run time by ceilings(); when it fires, its Log's
+# older entries go to the archive with `python -m tools_py.docmaint archive-log --plan <path>`.
+OPEN_PLAN = "<the open plan>"
 CEILINGS = (
     ("docs/CURRENT_SPRINT.md", None, 72000),       # 57,829 after the R1 split
     ("docs/HANDOFF.md", "## 2.", 3800),           # 3,022
     ("docs/HANDOFF.md", None, 6000),              # Sprint 14 I3: the whole file, transient (was 36,232)
     ("docs/STATUS.md", "## Current state", 2900),  # 2,309
     ("docs/HUMAN_TASKS.md", None, 12230),         # 9,786 after the R4 cut (was 104,000 over 82,968)
+    ("docs/LOOP_PROMPT.md", None, 2000),          # Sprint 14 S3: a pointer since I2 (995)
+    ("CLAUDE.md", None, 4900),                    # Sprint 14 S3: 4,453 plus ten percent (the sixty-line twin)
+    (OPEN_PLAN, None, 92000),                     # Sprint 14 S3: the Sprint 14 plan, 83,025 plus ten percent
 )
 
 # R268 too: "merged to `main` as `vX.Y.Z`" is a claim about origin. On 2026-09-25 four live documents
@@ -493,11 +507,12 @@ def dangling_doc_links():
     return bad
 
 
-def block_bytes(relpath, heading):
+def block_bytes(relpath, heading, to_end=False):
     """Bytes (LF line ends) of a whole file, or of the "## " block whose heading starts with `heading`.
 
-    The block runs from its heading line to the next level-2 heading or the end of the file. None when
-    the file or the heading is missing.
+    The block runs from its heading line to the next level-2 heading or the end of the file -- or, with
+    to_end, to the end of the file whatever follows (check 11's plan Log). None when the file or the
+    heading is missing.
     """
     full = os.path.join(ROOT, relpath)
     if not os.path.isfile(full):
@@ -511,8 +526,23 @@ def block_bytes(relpath, heading):
     start = next((i for i, ln in enumerate(lines) if ln.startswith(want)), None)
     if start is None:
         return None
+    if to_end:
+        return len(b"\n".join(lines[start:]))
     end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith(b"## ")), len(lines))
     return len(b"\n".join(lines[start:end]))
+
+
+def ceilings():
+    """CEILINGS with OPEN_PLAN resolved to the plan on CURRENT_SPRINT's `plans:` line (dropped when none)."""
+    plan = _plans_line_path()
+    out = []
+    for path, heading, limit in CEILINGS:
+        if path == OPEN_PLAN:
+            if not plan:
+                continue
+            path = plan
+        out.append((path, heading, limit))
+    return out
 
 
 def over_ceiling():
@@ -522,7 +552,7 @@ def over_ceiling():
     because renaming a heading must not quietly switch its ceiling off.
     """
     bad = []
-    for path, heading, limit in CEILINGS:
+    for path, heading, limit in ceilings():
         if not os.path.isfile(os.path.join(ROOT, path)):
             continue
         n = block_bytes(path, heading)
@@ -614,14 +644,15 @@ def read_first_set():
 def read_first_bytes():
     """[(path, bytes)] for each member that exists; STATUS by its "## Current state" block only, the open plan by
     its "## Log" block only (HANDOFF section 3 sends a controller to the Log; the task sections are read per
-    task) -- or whole when it has no "## Log" heading, so a renamed heading cannot shrink the set."""
+    task) -- or whole when it has no "## Log" heading, so a renamed heading cannot shrink the set. The Log counts
+    from its heading to the END of the file (S3, from I4's review), so a "## " heading after it cannot shrink it."""
     plan = _plans_line_path()
     out = []
     for path in read_first_set():
         if path == "docs/STATUS.md":
             n = block_bytes(path, "## Current state")
         elif path == plan:
-            n = block_bytes(path, "## Log")
+            n = block_bytes(path, "## Log", to_end=True)
             if n is None:
                 n = block_bytes(path, None)
         else:
@@ -650,7 +681,7 @@ def describe_plan_log():
     if not plan or not os.path.isfile(os.path.join(ROOT, plan)):
         return None
     whole = block_bytes(plan, None)
-    n = block_bytes(plan, "## Log")
+    n = block_bytes(plan, "## Log", to_end=True)
     if n is None:
         return "the open plan %s is {:,} bytes and has no '## Log' block: it counts whole".format(whole) % plan
     return "the open plan %s is {:,} bytes; its '## Log' block {:,} counts".format(whole, n) % plan
@@ -660,6 +691,223 @@ def describe_read_first(members):
     total = sum(n for _, n in members)
     return "%s = {:,} bytes, budget {:,}".format(total, READ_FIRST_BUDGET) % " + ".join(
         "%s {:,}".format(n) % p for p, n in members)
+
+
+def plan_log_is_last(relpath):
+    """True when `relpath` has a "## Log" heading and no "## " heading after it (check 11, archive-log)."""
+    lines = _read(relpath).replace("\r\n", "\n").split("\n")
+    start = next((i for i, ln in enumerate(lines) if ln.startswith("## Log")), None)
+    return start is not None and not any(ln.startswith("## ") for ln in lines[start + 1:])
+
+
+# Sprint 14 S3: the ratchet. A ceiling set with headroom and never lowered is only a ceiling on the day it was
+# set; at each close the numbers come down to what is live plus ten percent, and never go up.
+def propose(live, ceiling):
+    """The ratchet's number: live bytes plus ten percent, rounded up to 100, never above `ceiling`; the ceiling
+    itself when nothing was measured (a missing file or heading is check 1's or check 7's to report)."""
+    if live is None:
+        return ceiling
+    return min(ceiling, -(-live * 11 // 1000) * 100)
+
+
+def ratchet():
+    """[{index, entry, path, heading, live, ceiling, proposed}] for every CEILINGS entry, in order."""
+    plan = _plans_line_path()
+    rows = []
+    for index, (entry, heading, limit) in enumerate(CEILINGS):
+        path = plan if entry == OPEN_PLAN else entry
+        live = block_bytes(path, heading) if path else None
+        rows.append({"index": index, "entry": entry, "path": path, "heading": heading, "live": live,
+                     "ceiling": limit, "proposed": propose(live, limit)})
+    return rows
+
+
+_CEILING_LINE = re.compile(r'^(\s*\((?:"[^"]*"|OPEN_PLAN),\s*(?:"[^"]*"|None),\s*)(\d+)(\),.*)$')
+
+
+def ratchet_write(module_path, rows):
+    """Rewrite the numbers of the CEILINGS tuple in `module_path` to rows' proposals -- the numbers only, every
+    other byte kept. Refuses (ValueError, nothing written) a rise, or a tuple that does not match CEILINGS."""
+    for r in rows:
+        if r["proposed"] > r["ceiling"]:
+            raise ValueError("a ceiling never goes up: %s %r %d -> %d"
+                             % (r["entry"], r["heading"], r["ceiling"], r["proposed"]))
+    with open(module_path, "rb") as fh:
+        lines = fh.read().decode("utf-8").split("\n")
+    try:
+        start = [ln.rstrip("\r") for ln in lines].index("CEILINGS = (")
+    except ValueError:
+        raise ValueError("%s has no 'CEILINGS = (' line" % module_path)
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].rstrip("\r") == ")"), None)
+    entries = [i for i in range(start + 1, end or start) if lines[i].lstrip().startswith("(")]
+    if end is None or len(entries) != len(rows):
+        raise ValueError("%s: CEILINGS has %d one-line entries, the ratchet %d rows"
+                         % (module_path, len(entries), len(rows)))
+    out = list(lines)
+    changed = 0
+    for i, r in zip(entries, rows):
+        m = _CEILING_LINE.match(lines[i])
+        literal = "OPEN_PLAN" if r["entry"] == OPEN_PLAN else '"%s"' % r["entry"]
+        if not m or not m.group(1).lstrip().startswith("(" + literal) or int(m.group(2)) != r["ceiling"]:
+            raise ValueError("%s line %d does not match CEILINGS entry %d: %s"
+                             % (module_path, i + 1, r["index"], lines[i].strip()))
+        if r["proposed"] != r["ceiling"]:
+            out[i] = m.group(1) + str(r["proposed"]) + m.group(3)
+            changed += 1
+    if changed:
+        with open(module_path, "wb") as fh:
+            fh.write("\n".join(out).encode("utf-8"))
+    return changed
+
+
+def print_ratchet(rows):
+    cells = []
+    for r in rows:
+        if r["path"] is None:
+            where = "%s (no plans: line)" % r["entry"]
+        else:
+            where = "%s %r block" % (r["path"], r["heading"]) if r["heading"] else "%s (whole file)" % r["path"]
+        live = "{:,}".format(r["live"]) if r["live"] is not None else "-"
+        cells.append((where, live, "{:,}".format(r["ceiling"]), "{:,}".format(r["proposed"])))
+    width = max([len("file / block")] + [len(c[0]) for c in cells])
+    print("ratchet (check 7): live + 10 %, rounded up to 100, never above the current ceiling")
+    print("%-*s %9s %9s %9s" % (width, "file / block", "live", "ceiling", "proposed"))
+    for c in cells:
+        print("%-*s %9s %9s %9s" % ((width,) + c))
+
+
+# Sprint 14 S3: when the open plan's ceiling fires, the Log's entries older than the newest ten move verbatim to
+# docs/archive/<plan>-log-to-<date>.md (a banner, a class A registry row) and the Log keeps a one-line pointer
+# where they were. An entry is a line starting "- " at column 0 and its indented continuation; the pointer is an
+# entry too, recognised here so a second run neither counts it nor moves it.
+LOG_POINTER = re.compile(r"^- \*\d+ older entr(?:y|ies) moved verbatim to `")
+
+
+def archive_log(plan, keep=10, date=None):
+    """Move the plan's Log entries older than the newest `keep` to the archive; None when there are no more than
+    `keep`. Raises ValueError, writing nothing, when the Log is missing or is not the plan's last "## " heading,
+    or the archive file exists already. Returns {archive, moved, kept}."""
+    if keep < 1:
+        raise ValueError("--keep must be at least 1")
+    date = date or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+    full = os.path.join(ROOT, plan)
+    if not os.path.isfile(full):
+        raise ValueError("%s: no such plan" % plan)
+    with open(full, "rb") as fh:
+        text = fh.read().decode("utf-8")
+    lines = text.splitlines(keepends=True)
+    bare = [ln.rstrip("\r\n") for ln in lines]
+    start = next((i for i, ln in enumerate(bare) if ln.startswith("## Log")), None)
+    if start is None:
+        raise ValueError("%s has no '## Log' heading" % plan)
+    later = [i for i in range(start + 1, len(bare)) if bare[i].startswith("## ")]
+    if later:
+        raise ValueError("%s: its '## Log' is not the last '## ' heading (line %d: %s) -- move that section "
+                         "above the Log first" % (plan, later[0] + 1, bare[later[0]]))
+    nl = "\r\n" if lines[start].endswith("\r\n") else "\n"
+    first = next((i for i in range(start + 1, len(bare)) if bare[i].startswith("- ")), None)
+    if first is None:
+        return None
+    starts, tail = [], len(lines)
+    for i in range(first, len(lines)):
+        if bare[i].startswith("- "):
+            starts.append(i)
+        elif bare[i].strip() and not bare[i][0].isspace():
+            tail = i         # a paragraph or fence at column 0 ends the list; what follows is left alone
+            break
+    items = [(a, starts[k + 1] if k + 1 < len(starts) else tail) for k, a in enumerate(starts)]
+    real = [k for k, (a, _) in enumerate(items) if not LOG_POINTER.match(bare[a])]
+    if len(real) <= keep:
+        return None
+    last_kept = real[keep - 1]
+    cut = items[last_kept][1]
+    after = list(range(last_kept + 1, len(items)))
+    moved = [k for k in after if k in real]
+    pointers = [k for k in after if k not in real]
+    moved_text = "".join("".join(lines[a:b]) for a, b in (items[k] for k in moved))
+    base = os.path.splitext(os.path.basename(plan))[0]
+    archive = "docs/archive/%s-log-to-%s.md" % (base, date)
+    if os.path.exists(os.path.join(ROOT, archive)):
+        raise ValueError("%s exists already" % archive)
+    n = len(moved)
+    pointer = ("- *%d older entr%s moved verbatim to `%s` on %s (`python -m tools_py.docmaint archive-log`).*"
+               % (n, "y" if n == 1 else "ies", archive, date))
+    trailing = ""
+    if after and after[-1] in moved:
+        a, b = items[after[-1]]
+        blanks = 0
+        while b - blanks - 1 > a and not bare[b - blanks - 1].strip():
+            blanks += 1
+        trailing = "".join(lines[b - blanks:b])
+    new_plan = ("".join(lines[:cut]) + pointer + nl
+                + "".join("".join(lines[a:b]) for a, b in (items[k] for k in pointers))
+                + trailing + "".join(lines[tail:]))
+    banner = [
+        "> **ARCHIVED %s -- the oldest %d entr%s of the Log of `%s`,** moved verbatim by"
+        % (date, n, "y" if n == 1 else "ies", plan),
+        "> `python -m tools_py.docmaint archive-log` when the plan's ceiling fired (`%s` check 7). The newest"
+        % REGISTRY,
+        "> %d stay in the plan's Log, which points here. Nothing below is an instruction." % keep,
+        "",
+        "# %s -- the Log's entries to %s" % (base, date),
+        "",
+        "",
+    ]
+    reg_full = os.path.join(ROOT, REGISTRY)
+    with open(reg_full, "rb") as fh:
+        reg_lines = fh.read().decode("utf-8").splitlines(keepends=True)
+    rows = [i for i, ln in enumerate(reg_lines) if ROW.match(ln.strip())]
+    arch_rows = [i for i in rows if ROW.match(reg_lines[i].strip()).group(1).startswith("docs/archive/")]
+    if not rows:
+        raise ValueError("%s has no registry table" % REGISTRY)
+    at = (arch_rows or rows)[-1] + 1
+    reg_nl = "\r\n" if reg_lines[at - 1].endswith("\r\n") else "\n"
+    row = ("| `%s` | **A** | — | Cut %s (`python -m tools_py.docmaint archive-log`, check 7): the oldest %d "
+           "entr%s of `%s`'s Log, verbatim; the Log points here |" % (archive, date, n, "y" if n == 1 else "ies", plan))
+    reg_lines.insert(at, row + reg_nl)
+    os.makedirs(os.path.join(ROOT, "docs", "archive"), exist_ok=True)
+    with open(os.path.join(ROOT, archive), "wb") as fh:
+        fh.write((nl.join(banner) + moved_text).encode("utf-8"))
+    with open(reg_full, "wb") as fh:
+        fh.write("".join(reg_lines).encode("utf-8"))
+    with open(full, "wb") as fh:
+        fh.write(new_plan.encode("utf-8"))
+    return {"archive": archive, "moved": n, "kept": keep}
+
+
+def _main_ratchet(argv):
+    ap = argparse.ArgumentParser(prog="python -m tools_py.docmaint ratchet",
+                                 description="Propose (or, with --write, commit to CEILINGS) the check-7 ceilings: "
+                                             "live + 10 %, rounded up to 100, never above the current number.")
+    ap.add_argument("--write", action="store_true", help="rewrite the numbers in CEILINGS in place")
+    args = ap.parse_args(argv)
+    rows = ratchet()
+    print_ratchet(rows)
+    if args.write:
+        n = ratchet_write(MODULE_PATH, rows)
+        print("wrote %d number(s) to %s; commit it with the close" % (n, MODULE_PATH))
+    return 0
+
+
+def _main_archive_log(argv):
+    ap = argparse.ArgumentParser(prog="python -m tools_py.docmaint archive-log",
+                                 description="Move the plan's Log entries older than the newest --keep to "
+                                             "docs/archive/<plan>-log-to-<date>.md, verbatim, leaving a pointer.")
+    ap.add_argument("--plan", required=True, help="the plan, repo-relative")
+    ap.add_argument("--keep", type=int, default=10)
+    ap.add_argument("--date", default=None, help="YYYY-MM-DD, default today (UTC)")
+    args = ap.parse_args(argv)
+    try:
+        res = archive_log(args.plan.replace("\\", "/"), keep=args.keep, date=args.date)
+    except ValueError as exc:
+        print("archive-log refused: %s" % exc)
+        return 1
+    if res is None:
+        print("archive-log: %s's Log has no more than %d entries; nothing moved" % (args.plan, args.keep))
+    else:
+        print("archive-log: moved %d entr%s to %s (registry row added); the newest %d stay"
+              % (res["moved"], "y" if res["moved"] == 1 else "ies", res["archive"], res["kept"]))
+    return 0
 
 
 _TAGS = {}
@@ -739,11 +987,20 @@ def report():
 
 
 def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "ratchet":
+        return _main_ratchet(argv[1:])
+    if argv and argv[0] == "archive-log":
+        return _main_archive_log(argv[1:])
+    if argv:
+        print("usage: python -m tools_py.docmaint [ratchet [--write] | archive-log --plan <path> [--keep 10] "
+              "[--date YYYY-MM-DD]]", file=sys.stderr)
+        return 2
     r = report()
     print("doc registry: %d rows, %d files covered" % (r["rows"], len(covered_files())))
     print("rulings: highest in use R%d (%s); HANDOFF offers R%s"
           % (r["max_ruling"], r["max_ruling_in"], r["next_free_ruling"]))
-    for path, heading, limit in CEILINGS:
+    for path, heading, limit in ceilings():
         n = block_bytes(path, heading)
         if n is not None and n <= limit:
             print("ceiling: %s" % describe_ceiling((path, heading, n, limit)))
