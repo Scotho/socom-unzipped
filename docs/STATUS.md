@@ -1,7 +1,7 @@
 # Project status — "Current state" below is kept current; the dated log that stood under it is archived
 
 ## Current state (keep it short; update when it changes)
-- **2026-09-26 16:28Z -- Sprint 14 ("guards, not sentences") is CLOSED on `sprint-14`; the PR to `main` and the tag `v0.14.0` on its merge commit follow (the release waits on the owner).** Live state: the plan's Log (`docs/superpowers/plans/2026-09-26-sprint-14.md`) and its Outcome; the block: `docs/CURRENT_SPRINT.md` "Sprint 14 -- CLOSED". Next: Sprint 15 "borrowed confidence", re-cut to value (audio first). Owner rows: O1-O8, O10-O16, O18, O19 (`docs/SITTING.md`).
+- **2026-09-26 16:57Z -- Sprint 15 ("borrowed confidence", re-cut to value) is OPEN on `sprint-15` off `main` at `200f3287`, where Sprint 14 merged as `v0.14.0` (PR #68; the release waits on the owner).** Live state: the plan's Log (`docs/superpowers/plans/2026-09-26-sprint-15.md`); the block: `docs/CURRENT_SPRINT.md` "Sprint 15 -- OPEN". Four days: audio first, #67, then #59/#32 if time allows (R282-R289). Owner rows: O1-O8, O10-O16, O18, O19; the LATER dismissals to confirm.
 - Older state bullets: the twenty that stood under the one above (2026-09-19 to 2026-09-25 early) became dated
   entries of the log on 2026-09-25, verbatim (Sprint 13 Task R1, R268); that log is
   `docs/archive/STATUS-log-to-2026-09-26.md` since 2026-09-26 (R272). This block has a byte ceiling

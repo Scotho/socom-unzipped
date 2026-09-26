@@ -10,12 +10,12 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 2. Where it stands
 
-- **Where the loop is now (2026-09-26 16:28Z, LATEST) -- Sprint 14 ("guards, not sentences") is CLOSED on `sprint-14`, off
-  `main` at `6a82caaa`; the PR `sprint-14` -> `main` and the tag `v0.14.0` on its merge commit follow the close-out
-  commit (the release waits on the owner). Two merged chains ALL GREEN today, the fourth leg 12/12. Next: Sprint 15
-  "borrowed confidence", re-cut to value on the owner's word (audio first, #67, two measurements; the walk list in
-  `docs/LATER.md`); it opens on `sprint-15` off `main` at the Sprint 14 merge. No cloud session from 2026-09-26.
-- **Next free ruling number: R282.**
+- **Where the loop is now (2026-09-26 16:57Z, LATEST) -- Sprint 15 ("borrowed confidence", re-cut to value) is OPEN on
+  `sprint-15`, off `main` at `200f3287` (Sprint 14 merged as `v0.14.0`, PR #68; the release waits on the owner). Four
+  days: R1 the audio register, X1 the audio survey (#254's LLE IOP), T1 the audio trial, T2 #67 beside it, T3/T4 (#59,
+  #32) if time allows; VU1 and the rest in `docs/LATER.md`. The plan `docs/superpowers/plans/2026-09-26-sprint-15.md`
+  (its Log) is the live state; R282-R289 are its defaults. No cloud session from 2026-09-26.
+- **Next free ruling number: R290.**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
 
@@ -50,8 +50,8 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 5. Who else is in the tree (`git worktree list` is the truth)
 
-- **The Sprint 14 controller** in the main tree on `sprint-14`; no agent worktree open (all `wt-s14-*` removed, their
-  branches deleted); the next ones come from `scripts/agent_worktree.sh create`.
+- **The Sprint 15 controller** (the same session that ran Sprint 14) in the main tree on `sprint-15`; its agents in
+  `C:/projects/wt-s15-<task>`, one branch `agent/s15-<task>` each, made and removed by `scripts/agent_worktree.sh`.
 - **The Sprint 13 controller** is done with its fillers (#51 as PR #65 `123dd1c5`, #57 as PR #66 `b3dae300`, the row
   open for the r0004 leg); no worktree of its remains; it stands by for the owner's sitting.
 - **Durable:** `socom_pc_web` (the browser side project), `wt-cherry` and `wt-ci-fix` (both merged). `wt-issues` is
@@ -63,6 +63,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 - **The owner's rows:** `docs/HUMAN_TASKS.md` O1-O8, O10-O16, O18 and O19 (O16: issues #25, #26 and #42). Under R271 a row
   unanswered through two sittings after it was asked closes by default at the next close: nothing today; at a third
   sitting without answers all 17 open rows would close together (`docs/SITTING.md` marks them).
-- **Sprint 15's open** (the `loop-iteration` skill, its plan's Task 0): the branch, the milestone (open on GitHub already,
-  #5), the sprint file's header, the rulings for its defaults from the counter.
-- **Lock-bound:** nothing until Sprint 15's first trial; the WIP cap's two-night watch continues (every exit 4 to the Log).
+- **Sprint 15, lock-free, in order:** R1 (the audio register, half a day), X1 (the audio survey, a day), T0 (the
+  checkpoint), T2's code (#67) may start on day one beside them.
+- **Lock-bound:** T1's and T2's chains (the merged chain at a quiet window the owner names, or at night); the WIP
+  cap's two-night watch (every exit 4 to the Log).

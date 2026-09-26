@@ -2,16 +2,24 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.rulings` from the ruling records `tools_py/docmaint.py` reads for checks 9 and 10 (`ruling_records()`: the definitions in the plans, the sprint file and `docs/archive/`, the ledger rows and the vacancy notes), plus the sprint-local `S12-R<n>` and `S13-R<n>` definitions in the same documents. Change the source and regenerate; `python -m tools_py.rulings --check` exits 1 when this file is stale. The status rules are the module's docstring; the conventions are `docs/DOC_MAINTENANCE.md` section 4.
 
-315 rulings (276 global, 39 sprint-local): 309 active, 3 superseded, 1 retracted, 1 withdrawn, 1 vacant.
+323 rulings (284 global, 39 sprint-local): 317 active, 3 superseded, 1 retracted, 1 withdrawn, 1 vacant.
 
 *Home* is where the ruling is written: its definition, else its ledger row, else its vacancy note. *The line* is its first sentence, cut at 160 characters.
 
 ## Global (R<n>), newest first
 
-276 rulings.
+284 rulings.
 
 | Number | Date | Status | The line | Home |
 |---|---|---|---|---|
+| R289 | 2026-09-26 | active | the walk list's non-audio subsystems are deferred to `docs/LATER.md` and not registered this sprint; VU1 is deferred there with its experiment written. | `docs/superpowers/plans/2026-09-26-sprint-15.md` **R289** |
+| R288 | 2026-09-26 | active | the order of the work is audio first, then #67 the drag freeze beside it, then the measurements #59 and #32. | `docs/superpowers/plans/2026-09-26-sprint-15.md` **R288** |
+| R287 | 2026-09-26 | active | the "overwhelming case" bar for a large take stands: a TAKE over about five hundred lines needs a ruling of its own. | `docs/superpowers/plans/2026-09-26-sprint-15.md` **R287** |
+| R286 | 2026-09-26 | active | the time boxes are R half a day, X one day, T1 and T2 the second and third days, the close by the fourth; T3 and T4 only if time allows; a phase past its box h… | `docs/superpowers/plans/2026-09-26-sprint-15.md` **R286** |
+| R285 | 2026-09-26 | active | register rows that are Proven today are excluded from the survey unless a source contradicts the proof, and then the artefact it contradicts is named. | `docs/superpowers/plans/2026-09-26-sprint-15.md` **R285** |
+| R284 | 2026-09-26 | active | no upstream PR or issue is filed from this sprint; what we could give back is written into `docs/UPSTREAM.md` for row O10. | `docs/superpowers/plans/2026-09-26-sprint-15.md` **R284** |
+| R283 | 2026-09-26 | active | a candidate that changes the generated image's shape runs only with a full recomp, the re-derivation job green, `--accept-pins` after a green run, and a ruling. | `docs/superpowers/plans/2026-09-26-sprint-15.md` **R283** |
+| R282 | 2026-09-26 | active | the LLE IOP running the disc's own IRX is a candidate for the audio trial, with its bar argued both ways in X1; the owner decides whether it is tried. | `docs/superpowers/plans/2026-09-26-sprint-15.md` **R282** |
 | R281 | 2026-09-26 | active | an orphaned working-copy change in the main tree (a modified tracked file whose session is gone) is stashed by the controller around each lock-bound chain (… | `docs/superpowers/plans/2026-09-26-sprint-14.md` **R281** |
 | R280 | 2026-09-26 | active | the held-out leg's twelve stamps are chosen for stability across green runs: title s03, s09, s15; transition s06, s08; mission s06, s08, s10, s12, s16, s20, s2… | `docs/superpowers/plans/2026-09-26-sprint-14.md` **R280** |
 | R279 | 2026-09-26 | active | the open plan's ceiling is one number in `CEILINGS` like the others: ratcheted at each close from the closing plan's size (before CURRENT_SPRINT's `plans:` lin… | `docs/superpowers/plans/2026-09-26-sprint-14.md` **R279** |

@@ -9,7 +9,10 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 repository another person can fork, build and contribute to.
 
 ```
-branch:       sprint-14 -- CLOSED 2026-09-26 16:28Z (the PR to main and the tag v0.14.0 follow; opened 05:17Z off main at 6a82caaa (the Sprint 13 merge, PR #61, tagged v0.13.0;
+branch:       sprint-15 -- OPEN 2026-09-26 16:57Z off main at 200f3287 (the Sprint 14 merge, PR #68, tagged v0.14.0;
+              Sprint 13 merged as v0.13.0 at 6a82caaa, PR #61). This machine's checkout is on sprint-15 (the same
+              controller session); agents work in worktrees on agent/s15-* branches. See "Sprint 15 -- OPEN" below,
+              then the Sprint 14 CLOSED block. (The Sprint 14 line read: opened 05:17Z off main at 6a82caaa (the Sprint 13 merge, PR #61, tagged v0.13.0;
               Sprint 12 merged as v0.12.0 at 74fe2a9b, PR #50; Sprint 11 as v0.11.0 at 173608af, PR #49). This
               machine's checkout is on sprint-14 (the Sprint 14 controller session); agents work in worktrees on
               agent/s14-* branches and the controller merges them. See "Sprint 14 -- CLOSED" below, then the Sprint 13
@@ -50,7 +53,20 @@ long builds); "lock-free" can run at any time.
 
 ---
 
-## Sprint 14 — CLOSED 2026-09-26 (the PR `sprint-14` -> `main` and the tag `v0.14.0` on its merge commit follow this close-out; the release waits on the owner's word; the record of the sprint is the block below)
+## Sprint 15 — OPEN 2026-09-26 16:57Z (plan `docs/superpowers/plans/2026-09-26-sprint-15.md`, "borrowed confidence", re-cut to value)
+
+Opened by the Sprint 14 controller off `main` at `200f3287` (the Sprint 14 merge, `v0.14.0`) on the owner's word of
+2026-09-26: the first proposal ("a week of planned work") was cut to what a player runs into and what the owner named --
+**audio first** (the register and the survey for the audio rows only; the LLE IOP of upstream PR #254 answered as a candidate;
+one trial on #42/#28 with the dip count as its measurement and a stop rule), **#67 the drag freeze beside it** (the modal move
+loop on the presenting thread; the bar is the issue's), then **#59 a frame-rate bar and #32 the atlas re-upload if time
+allows**. VU1 and every other replaced subsystem wait in `docs/LATER.md` with a confidence and a trigger, or a dismissal the
+owner confirms. Four days (R286). The defaults D1-D8 are ruled R282-R289 in the plan; the bar is the spec's §4 as re-cut: the
+audio rows with numbers, #254 answered, T1 to a recorded outcome, T2 to its bar, no regression (the gate 3/3, the fourth leg
+green, audio parity not below 31/48, the dip count not above the register's number), LATER complete, the ceilings held. The
+plan's Log is the live state; this block gains its table at the close.
+
+## Sprint 14 — CLOSED 2026-09-26 (merged to `main` as `v0.14.0` at `200f3287`, PR #68, 16:55Z; the release waits on the owner's word; the record of the sprint is the block below)
 
 **Close-out (the PR body).** Opened 2026-09-26 05:17Z, closed 2026-09-26 16:28Z: 231 commits, 46 merges (26 agent branches, five
 of `main`, the close's three), every task reviewed by a fresh agent. No feature work (R269). Landed: the guards (a Bash and an

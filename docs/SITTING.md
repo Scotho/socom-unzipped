@@ -2,7 +2,7 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.sitting` from `docs/HUMAN_TASKS.md` (the O rows and the stamp of the sittings), the rulings `docs/RULINGS.md` shows (`tools_py.rulings.rows()`), `docs/BACKLOG.md` (the `Carried` column) and `docs/PLAYTEST.md` (its build block). Change a source and regenerate; `python -m tools_py.sitting --check` exits 1 when this file is stale.
 
-The page as of 2026-09-26, for the sitting after the one of 2026-09-17: 17 open O rows (2 answered or struck); 236 active rulings since 2026-09-17 (102 dated, 134 placed by number or home, 68 undated and unplaceable, not listed); 3 issues carried twice; the build: built.
+The page as of 2026-09-26, for the sitting after the one of 2026-09-17: 17 open O rows (2 answered or struck); 244 active rulings since 2026-09-17 (110 dated, 134 placed by number or home, 68 undated and unplaceable, not listed); 3 issues carried twice; the build: built.
 
 **How to answer.** One line per item, by number -- "O5: acceptable for v1", "R271: overturn", "#25: close" -- in the next session's prompt or as a line in the open plan's Log.
 
@@ -37,7 +37,7 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 
 ## 2. The rulings since the last sitting
 
-236 active rulings on or after 2026-09-17, in the counter's order (the sprint-local names last, by date): 102 dated on or after it, and 134 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-09-17 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 68 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
+244 active rulings on or after 2026-09-17, in the counter's order (the sprint-local names last, by date): 110 dated on or after it, and 134 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-09-17 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 68 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
 
 - **R81** (2026-09-17) the guest clock counts wall time by default; the 2026-09-08 exclusion of VU1 and render back-pressure time is now `PS2X_CLOCK_EXCLUDE=1` for an A/B. -- overturn by number
 - **R82** (2026-09-17) texture-cache CLUT ids are keyed on the palette's content (FNV-1a over the snapshot), not the CLUT serial. -- overturn by number
@@ -237,6 +237,14 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 - **R279** (2026-09-26) the open plan's ceiling is one number in `CEILINGS` like the others: ratcheted at each close from the closing plan's size (before CURRENT_SPRINT's `plans:` lin… -- overturn by number
 - **R280** (2026-09-26) the held-out leg's twelve stamps are chosen for stability across green runs: title s03, s09, s15; transition s06, s08; mission s06, s08, s10, s12, s16, s20, s2… -- overturn by number
 - **R281** (2026-09-26) an orphaned working-copy change in the main tree (a modified tracked file whose session is gone) is stashed by the controller around each lock-bound chain (… -- overturn by number
+- **R282** (2026-09-26) the LLE IOP running the disc's own IRX is a candidate for the audio trial, with its bar argued both ways in X1; the owner decides whether it is tried. -- overturn by number
+- **R283** (2026-09-26) a candidate that changes the generated image's shape runs only with a full recomp, the re-derivation job green, `--accept-pins` after a green run, and a ruling. -- overturn by number
+- **R284** (2026-09-26) no upstream PR or issue is filed from this sprint; what we could give back is written into `docs/UPSTREAM.md` for row O10. -- overturn by number
+- **R285** (2026-09-26) register rows that are Proven today are excluded from the survey unless a source contradicts the proof, and then the artefact it contradicts is named. -- overturn by number
+- **R286** (2026-09-26) the time boxes are R half a day, X one day, T1 and T2 the second and third days, the close by the fourth; T3 and T4 only if time allows; a phase past its box h… -- overturn by number
+- **R287** (2026-09-26) the "overwhelming case" bar for a large take stands: a TAKE over about five hundred lines needs a ruling of its own. -- overturn by number
+- **R288** (2026-09-26) the order of the work is audio first, then #67 the drag freeze beside it, then the measurements #59 and #32. -- overturn by number
+- **R289** (2026-09-26) the walk list's non-audio subsystems are deferred to `docs/LATER.md` and not registered this sprint; VU1 is deferred there with its experiment written. -- overturn by number
 - **S12-R1** (2026-09-24) the four naming defaults stand as the spec states them: `Class_Method` with an argument-list suffix only on collision (D1); no hand-named row is ever renamed b… -- overturn by number
 - **S12-R11** (2026-09-24) a rename that moves a decoded range is accepted only when the cloud's own recomp shows no new `unmapped` or `unhandled` continuation and no function dropped; a… -- overturn by number
 - **S12-R12** (2026-09-24) an `offset-multiset` pass is Task 13 at 0.75, and an independent body key is a valid second signal for a prologue pair (amends S12-R3). research/54: the multis… -- overturn by number
