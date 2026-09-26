@@ -68,6 +68,24 @@ shape, six times over in Sprint 10:
 5. `git merge origin/main` back into the sprint branch immediately, delete the slice branch. `main` and `sprint-N` are
    identical again; the next item starts from a clean diff.
 
+**What a slice carries is proved by the merged chain, and a red chain evicts (Sprint 14 W2).** An agent's branch is
+merged into the sprint branch at a clean review (DONE (code)); the proof is one chain per batch of merged branches --
+recomp, runtime, suites, the gate on the exe the chain built, the held-out leg, the release archive and PLAYTEST's
+block -- from the template `scripts/parity/merged_chain.sh`, launched once under one holding of the lock (its header).
+A green chain records the commit it proved; only proved commits go to `main` in a slice. A red step prints the merges
+since the last green chain, and the batch is bisected by branch: the chain is rerun with a suspect merge reverted
+until it is green. The culprit is **evicted**:
+
+1. `git revert -m 1 <merge>` on the sprint branch -- the merge's first parent is the sprint branch, so `-m 1` undoes
+   exactly what the branch brought in -- committed with its paths named and a subject that says why
+   (`revert(sprint-N): evict <branch> -- <the red step>`);
+2. the eviction is recorded in the plan's `## Log`: the merge, the red step and its stamp, the reason;
+3. the branch is re-queued for its author: its task goes back to open, and the fix lands on the same branch, which
+   is merged again (a merge after a revert re-applies nothing by itself: revert the revert first, then merge the
+   fix -- the git documentation's "revert a faulty merge").
+
+The other merges of the batch stay; nothing is force-pushed and no history is rewritten.
+
 **Never** let an implementation agent do this: it merges its own unreviewed work (it happened -- see `docs/archive/HANDOFF-to-2026-09-26.md`
 §5 on handing out a worktree, now the `agent-worktree` skill). The controller opens and merges every slice.
 The role definitions every brief dispatches by name are `.claude/agents/implementer.md` and `.claude/agents/reviewer.md`.

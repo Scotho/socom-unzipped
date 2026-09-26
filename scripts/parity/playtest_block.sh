@@ -14,7 +14,8 @@
 # The build dir is chosen the way make_portable.sh chooses it: by platform (MAKE_PORTABLE_SYSTEM, else uname -s)
 # and --release -- dist/, dist-release/, dist-linux/, dist-linux-release/ -- honouring the same DIST / LDIST
 # overrides. PLAYTEST_BLOCK_ROOT (default: this repository) is the tree whose docs/PLAYTEST.md is rewritten, and
-# PLAYTEST_BLOCK_PRINT_DIR=1 prints the chosen dir and exits; both are for tools_py/tests/test_playtest_block.py.
+# PLAYTEST_BLOCK_PRINT_DIR=1 prints the chosen dir and exits 3 (never 0: not a green step); both are for
+# tools_py/tests/test_playtest_block.py.
 #
 # A failed packaging leaves no manifest, so the block is still rewritten and says NOT BUILT (the truth), and the
 # step exits with make_portable's code so the chain is not green.
@@ -28,7 +29,9 @@ case "${MAKE_PORTABLE_SYSTEM:-$(uname -s)}" in
   Linux) BUILD_DIR="${LDIST:-$ROOT/dist-linux$SUFFIX}" ;;
   *)     BUILD_DIR="${DIST:-$ROOT/dist$SUFFIX}" ;;
 esac
-if [ "${PLAYTEST_BLOCK_PRINT_DIR:-}" = "1" ]; then echo "$BUILD_DIR"; exit 0; fi
+# The test switch exits 3 after printing (Sprint 14 W2 review): a switch leaked into a chain's environment must never
+# turn this step green without packaging anything.
+if [ "${PLAYTEST_BLOCK_PRINT_DIR:-}" = "1" ]; then echo "$BUILD_DIR"; exit 3; fi
 bash "$ROOT/scripts/make_portable.sh" "$@"
 rc=$?
 ( cd "$ROOT" && "$PYTHON" -m tools_py.playtest_block --root "${PLAYTEST_BLOCK_ROOT:-$ROOT}" \

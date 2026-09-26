@@ -38,12 +38,15 @@ suggestions, stop rules and the owner-only list are not.
    (`./build.sh runtime` first) for anything touching the runtime, `recomp/`, `tools_py/parity/`, `scripts/parity/` or
    `build.sh`. A red gate is fixed before anything else. Never regress: title labels clean, online reaches the lobby,
    a mission loads, the online local player moves.
-   **The merged chain is the gate unit (W2 lands the template):** an agent's task is DONE (code) at a clean review
-   of its branch; the gate runs on the sprint branch after the merges, as one chain -- recomp -> runtime -> suites ->
-   gate -> held-out leg -> release archive -> PLAYTEST block (`scripts/parity/merged_chain.sh`). <!-- docmaint: future -->
-   A red step names the merges since the last green chain; eviction is `git revert -m 1 <merge>` on the sprint
-   branch, recorded in the Log with the reason, the branch re-queued for its author. Until the template lands,
-   every merge is followed by the full Python suite on the sprint branch.
+   **The merged chain is the gate unit (Sprint 14 W2).** An agent's task is DONE (code) at a clean review of its
+   branch; the proof is one chain on the sprint branch per BATCH of merges, not one per merge: recomp -> runtime ->
+   suites -> gate (on the exe it built) -> held-out leg -> release build -> the release archive and PLAYTEST's block.
+   Copy the template `scripts/parity/merged_chain.sh` into `logs/` and launch the copy once through
+   `scripts/run_detached.sh --wait` (its header), so every step runs under that one holding; it refuses a tree with a
+   modified tracked file, so land the batch, then launch. A red step prints the merges since the last green chain
+   (`logs/merged_chain.last_green`) -- bisect by branch, evict the culprit by `docs/GIT_STRATEGY.md` "Slices" (a
+   recorded `git revert -m 1 <merge>`, the branch re-queued for its author). Between chains, every merge is followed
+   by the full Python suite on the sprint branch.
 5. **Commit and push** by `docs/HANDOFF.md` §4 rules 1-4 (explicit pathspec; the never-commit list; your session's own
    trailer; `git push origin <sprint branch>`; check CI -- `secrets` runs on every push, `linux` and `windows` when
    anything outside `docs/` moved). **The repository is public:** the hooks (`bash scripts/install_hooks.sh`, once
