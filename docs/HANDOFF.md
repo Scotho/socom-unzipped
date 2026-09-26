@@ -25,7 +25,8 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 1. An explicit pathspec on every commit (`git commit -m "..." -- <paths>`), never another session's file -- G1.
 2. Never commit `game/`, `logs/`, `vm/`, `tools/`, builds, keys or `simulated.db`; no `--no-verify` -- leak hooks, G1.
-3. End every commit with your session's own trailer; subject `type(scope): what and why` -- `docs/GIT_STRATEGY.md`.
+3. End every commit with your session's own trailer; subject `type(scope): what and why`, at most 120 characters
+   (the `commit-msg` hook refuses longer) -- `docs/GIT_STRATEGY.md`.
 4. Push to the open sprint's branch and read CI (`gh run list --commit`); green CI is not a green game -- DEVELOPING.
 5. A failing test first, unittest only; the gate green before a runtime or recompiler commit -- the `run-gate` skill.
 6. One build at a time through the lock -- `build.sh` refuses outside it; never edit a running chain script -- G2.

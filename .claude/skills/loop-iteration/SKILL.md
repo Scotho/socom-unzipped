@@ -67,7 +67,8 @@ suggestions, stop rules and the owner-only list are not.
    **A new document under `docs/` needs a row in `docs/DOC_MAINTENANCE.md` §3 giving it a class** (the suite fails
    without one), and its class decides what may be written in it -- a narrative file that holds live state is how
    `ROADMAP.md` went two sprints out of date. Take a ruling number from `docs/HANDOFF.md` and bump that line in the
-   same commit; it is checked.
+   same commit, and run `python -m tools_py.rulings`, committing `docs/RULINGS.md` in the same commit (also when a commit only edits a ledger row); both are
+   checked.
 7. **Then the next item.** Do not wait on the owner; do not perform what is the owner's (publish, make public,
    permissions, signing, money, the site's deploy, any server that is not ours).
 

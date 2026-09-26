@@ -93,8 +93,10 @@ review is not closed.**
   anything under `game/`, `tools/`, `logs/`, `vm/`, any key, token, or address of a machine that is not the public
   server's.
 - **Subject:** `type(scope): what changed and why it mattered` -- types `feat`, `fix`, `refactor`, `test`, `docs`,
-  `build`, `ci`, `chore`. The project's subjects are long and say the finding; keep that. Name the sprint goal/task
-  and any ruling (`R170`) in the subject or body.
+  `build`, `ci`, `chore`. The subject (git's first paragraph) stays at or under 120 characters -- the `commit-msg` hook
+  (`scripts/hooks/commit-msg`) refuses longer; the finding goes in the body (a default `Merge branch '...'` or
+  `Revert "..."` or `Reapply "..."` subject with a body is exempt). Name the sprint goal/task and any ruling (`R170`) in the subject or
+  body.
 - **Trailer:** the `Co-Authored-By` line your session is given -- not one copied from an older commit. Human
   contributors add none.
 - A runtime change is committed only after `./build.sh test` and the three-stage gate are green on the rebuilt exe;
@@ -257,7 +259,8 @@ issue is what gets corrected.
   dated log entry writes `issue #N (closed)` once the issue settles, or leaves the number out -- an old entry
   saying `issue #N` would read as an open citation for ever.
 - **Rulings:** a ruling that moves an issue's bar or drops it is cited by number in a comment on the issue, and the
-  ruling names the issue.
+  ruling names the issue. What is a ruling at all, and where its number comes from, is
+  `docs/DOC_MAINTENANCE.md` section 6.
 - **Nothing sensitive, ever.** An issue is public and permanent. No key, address, contact, path under a home
   directory, and nothing from a bug report but its id. The leak check does not read GitHub; the writer is the check.
 

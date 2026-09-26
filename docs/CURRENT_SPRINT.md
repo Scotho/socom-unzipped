@@ -30,21 +30,9 @@ next sprint:  Sprint 15 "borrowed confidence" (R276): docs/superpowers/specs/202
               (docs/superpowers/plans/2026-09-25-borrowed-confidence-cloud-handoff.md).
 human tasks:  docs/HUMAN_TASKS.md      playtest script: docs/PLAYTEST.md
 git strategy: docs/GIT_STRATEGY.md     contributing: CONTRIBUTING.md
-next ruling:  R279 (R278, 2026-09-26 08:17Z, the Sprint 14 plan's Log: while other sessions' builders hold or
-              queue the lock, lock-free tasks from D, S and M run ahead of W. R269-R277, 2026-09-26 05:17Z, the Sprint 14 open, one per owner default D1-D9 of the Sprint 14
-              spec: the infrastructure sprint and its order (R269); KNOWN §4 to a hazards file (R270); owner rows
-              closed by default after two sittings (R271); STATUS's log archived, the changelog generated (R272);
-              sprint-local ruling namespaces retired (R273); the held-out leg (R274); two building agents (R275);
-              Sprint 15 is "borrowed confidence" (R276); the private-inputs location is the owner's to retire (R277).
-              R265-R268, 2026-09-25 night, the project audit `docs/audits/2026-09-25-project-audit.md` §4: the four
-              oldest backlog rows owned or declined, the six carried issues into Sprint 13, one home for the carry,
-              ceilings on the appending documents. R264, 2026-09-25, the Sprint 12 close: Sprint 12's twenty-five rulings keep their S12-R<n>
-              names in the Sprint 12 plan, the one home; the global sequence continues from here -- the "Sprint 12
-              -- CLOSED" block. R263, 2026-09-24 night: the naming programme -- the rename pass R257/R261, Task 7c, BinDiff, ccc -- is Sprint 12, "the readable image"; Sprint 11 keeps Task 7 and 7b. R260-R262, 2026-09-24 night: Task 7c vtable slots through RTTI after 7b (R260); a provenance sidecar in the rename commit (R261); FID database and r0004-as-corpus declined, BinDiff replaces Version Tracking in the deferred item (R262). R257-R259, 2026-09-24 evening: the demo names apply in Class_Method form at a build window (R257); Task 7b, positional + the Aug 18 demo bridge (R258); Version Tracking and ccc deferred, the voice codecs recorded: SOCOM 1 LPC-10, SOCOM II SASE, GSM nowhere (R259). R253-R256, 2026-09-24: the closed security row retired from the public docs, history stays (R253); the r0004 reboot is an image defect, undone from the capsule's decoded stack (R254); the lock goes to the r0004 critical path first (R255); an unrunnable override is not an override (R256). R245-R252, 2026-09-23: the known-issue stack on GitHub (R252); r0004 is a real rebuild, its ELF built (R251); the package is behind the bypass, served by PSRewired (R250); r0004 is the DNAS bypass we already carry (R249); the r0004 patch is PSRewired's resident capsule (R248); option B not scheduled; the chat bound's install is the Milestone S proof, the traversal a filler row; the vendored baggage deleted -- the Sprint 11 plan's rulings section) -- nothing is renumbered. The sprint's sixty-four numbers R181-R244 are
-              reconciled row by row in ONE table below ("Sprint 10's rulings ledger, R181-R244"): the decision
-              in its own words, where it is written, and its status. R229 is deliberately vacant. This line used
-              to carry that index as a single 2,700-character paragraph, which no reader could use; the table is
-              its one home now, per docs/DOC_MAINTENANCE.md section 6.
+rulings:      indexed in docs/RULINGS.md (generated: every ruling with its status and home, Sprint 10's
+              R181-R244 ledger table below included) and numbered from the one counter line, docs/HANDOFF.md
+              section 2 (Sprint 14 D2).
 baselines:    the suite counts live in `docs/DEVELOPING.md` ("What a green run looks like") and nowhere else -- this
               line said C++ 686/686 and Python 1457 from 2026-09-20 to 2026-09-22, four sprints after they stopped
               being true, which is why `tools_py/tests/test_doc_maintenance.py` now refuses an undated count outside

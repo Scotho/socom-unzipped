@@ -108,6 +108,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/LADDER.md` | **G** | `ladder_ledger.py` | One row per scheduled ladder run, written from `logs/ladder/ledger.jsonl`, committed by a person |
 | `docs/BACKLOG.md` | **G** | `tools_py.issues backlog` | The carry's one home (R267): the open issues with their milestone, carried count and closing bar, then `docs/backlog_ruled_out.txt` as a second table. Regenerated and committed at every sprint close (§7 step 5) and whenever the list changes; `backlog --check` exits 1 on a stale file, and the docs test runs its `--offline` half |
 | `docs/backlog_ruled_out.txt` | **L** | controller | Not a markdown file, registered because it is the source `docs/BACKLOG.md` renders: one row per unfinished item ruled not to be an issue, with its ruling (an R-number or `no issue`) and its bar. A row leaves it when it becomes an issue or a task |
+| `docs/RULINGS.md` | **G** | `tools_py.rulings` | Every ruling with its status (active, superseded, retracted, withdrawn, vacant) and its home, global newest first, then the `S13-R<n>` and `S12-R<n>` namespaces; held to `docmaint.ruling_records()` by `rulings --check` (exit 1 on a stale file). Regenerate in the commit that makes or changes a ruling; `--check` in the close. Sprint 14 D1 |
 | `docs/ROADMAP.md` | **N** | controller | Narrative and pointers only. Rewritten 2026-09-22; its §0 is the audit of what it replaced |
 | `docs/STORY.md` | **N** | story | Every entry cited; `tools_py/story/cite.py` fails on a dead hash or an unwitnessed run |
 | `docs/HOW_IT_WAS_BUILT.md` | **N** | controller | How the project was made, for a stranger: the method, the owner's share and the agents', and the process failures worth keeping. Pointers only — the live documents own every current number. `README.md` links it |
@@ -206,7 +207,7 @@ file that moved.
 Run it by hand with `python -m tools_py.docmaint`, which prints the registry size, the ruling numbers and every problem.
 
 **Each check is fired once against a planted defect** (`PlantedDefectsTest`: an unregistered document, a row whose file
-is gone, a colliding ruling number, two counter lines that disagree, an undated count, an undated snapshot, a silent
+is gone, a colliding ruling number, an undated count, an undated snapshot, a silent
 archive, a silent file in an archive subdirectory, a dangling `docs/` path in a `docs/` file and in a root file, a ruling
 defined twice, a cited ruling with no text — plus
 the negative controls that must *not* fire, and a clean-tree control for the controls). A gate
@@ -269,6 +270,12 @@ knows which documents to distrust.
   archived roadmap is readable *because* its wrong turns are still in it.
 - **If a claim cannot be checked, do not make it.** "The game runs well" ages badly; "43-45 fps in a mission,
   measured on <date>, against the console's 60" does not — it simply becomes a dated fact.
+- **A ruling is narrow, and it has one counter.** A ruling records a moved owner default, a moved acceptance bar or a
+  moved spec goal. A threshold, a skipped measurement, a naming choice or a tool's behaviour is not a ruling: it is a
+  KNOWN row with its artefact, a knob default in the registry, or a test. From Sprint 14 the global counter is the
+  only namespace (R273); a ruling is written in the sprint plan's Rulings section, numbered from `docs/HANDOFF.md`
+  section 2 (the one counter line, check 2), with the counter bumped and `docs/RULINGS.md` regenerated
+  (`python -m tools_py.rulings`) in the same commit. `docs/RULINGS.md` is the index, generated; nobody keeps one by hand.
 
 ## 7. The known-issue stack review — deep, at every sprint close
 
