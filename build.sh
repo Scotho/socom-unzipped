@@ -56,7 +56,9 @@ recomp() {
   "$PYTHON" "$ROOT/tools_py/fix_ghidra_csv.py" "$ROOT/recomp/socom2_ghidra.csv" "$ROOT/recomp/extra_functions.txt" \
       --out "$ROOT/recomp/build/socom2_ghidra.fixed.csv"
   build_tools   # incremental; the recompiler embeds the runtime call list, keep it in sync
-  rm -rf "$GEN"
+  # The output directory is NOT deleted first (issue #57): ps2_recomp rewrites a file only when its bytes change
+  # and removes the .cpp/.h files an earlier run left that this one did not produce, so an unchanged file keeps
+  # its timestamp and the runtime build after a rename recompiles only what the rename touched.
   (cd "$ROOT/recomp" && "$TOOLBUILD/ps2xRecomp/ps2_recomp.exe" socom2.toml > recomp_run.log 2>&1) \
       || { tail -20 "$ROOT/recomp/recomp_run.log"; exit 1; }
   # unmapped= counts continuation pcs (a call's return, a syscall's return, a not-taken branch's

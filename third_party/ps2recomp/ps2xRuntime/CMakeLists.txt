@@ -357,6 +357,31 @@ if(PS2X_RUNNER_GENERATED_DIR)
     file(GLOB RUNNER_SRC_FILES CONFIGURE_DEPENDS
         "${PS2X_RUNNER_GENERATED_DIR}/*.cpp"
     )
+    # Issue #57: the unity build batches these files in list order, and GLOB orders them by name, so a rename
+    # (FUN_00123450 -> a real name) moved one file across the list and shifted every batch in between: a build
+    # after one rename recompiled hundreds of batches. Ordered by the guest address every generated file name
+    # ends in (`_0x<start>.cpp`, kept by clampFilenameLength), a rename leaves every other batch as it was.
+    # Files with no address (register_functions.cpp) go last, by name.
+    set(PS2X_RUNNER_KEYED_SOURCES "")
+    foreach(PS2X_RUNNER_SOURCE IN LISTS RUNNER_SRC_FILES)
+        get_filename_component(PS2X_RUNNER_SOURCE_NAME "${PS2X_RUNNER_SOURCE}" NAME_WE)
+        if(PS2X_RUNNER_SOURCE_NAME MATCHES "_0x([0-9a-f]+)$")
+            set(PS2X_RUNNER_SOURCE_ADDRESS "${CMAKE_MATCH_1}")
+            string(LENGTH "${PS2X_RUNNER_SOURCE_ADDRESS}" PS2X_RUNNER_SOURCE_ADDRESS_LENGTH)
+            if(PS2X_RUNNER_SOURCE_ADDRESS_LENGTH LESS 8)
+                math(EXPR PS2X_RUNNER_SOURCE_PAD "8 - ${PS2X_RUNNER_SOURCE_ADDRESS_LENGTH}")
+                string(REPEAT "0" ${PS2X_RUNNER_SOURCE_PAD} PS2X_RUNNER_SOURCE_ZEROS)
+                string(PREPEND PS2X_RUNNER_SOURCE_ADDRESS "${PS2X_RUNNER_SOURCE_ZEROS}")
+            endif()
+            set(PS2X_RUNNER_SOURCE_KEY "a${PS2X_RUNNER_SOURCE_ADDRESS}")
+        else()
+            set(PS2X_RUNNER_SOURCE_KEY "z${PS2X_RUNNER_SOURCE_NAME}")
+        endif()
+        list(APPEND PS2X_RUNNER_KEYED_SOURCES "${PS2X_RUNNER_SOURCE_KEY}|${PS2X_RUNNER_SOURCE}")
+    endforeach()
+    list(SORT PS2X_RUNNER_KEYED_SOURCES)
+    list(TRANSFORM PS2X_RUNNER_KEYED_SOURCES REPLACE "^[^|]*\\|" "")
+    set(RUNNER_SRC_FILES ${PS2X_RUNNER_KEYED_SOURCES})
     set(PS2X_GENERATED_INCLUDE_DIR "${PS2X_RUNNER_GENERATED_DIR}")
 else()
     file(GLOB RUNNER_SRC_FILES CONFIGURE_DEPENDS
@@ -445,18 +470,13 @@ if(PS2X_ENABLE_RUNNER_UNITY_BUILD)
 endif()
 
 if(PS2X_ENABLE_RUNNER_PCH)
+    # Issue #57: the generated headers (ps2_recompiled_functions.h, ps2_recompiled_stubs.h) are NOT in the
+    # precompiled header. They change with every rename, and a PCH every object reads would rebuild them all;
+    # a generated file declares the functions it calls itself, and only register_functions.cpp includes them.
     set(PS2X_RUNNER_PCH_HEADERS
         "${CMAKE_CURRENT_SOURCE_DIR}/include/ps2_runtime_macros.h"
         "${CMAKE_CURRENT_SOURCE_DIR}/include/ps2_runtime.h"
     )
-
-    foreach(PS2X_RUNNER_GENERATED_HEADER IN ITEMS
-        "${PS2X_GENERATED_INCLUDE_DIR}/ps2_recompiled_functions.h"
-        "${PS2X_GENERATED_INCLUDE_DIR}/ps2_recompiled_stubs.h")
-        if(EXISTS "${PS2X_RUNNER_GENERATED_HEADER}")
-            list(APPEND PS2X_RUNNER_PCH_HEADERS "${PS2X_RUNNER_GENERATED_HEADER}")
-        endif()
-    endforeach()
 
     list(APPEND PS2X_RUNNER_PCH_HEADERS
         "${CMAKE_CURRENT_SOURCE_DIR}/include/ps2_syscalls.h"
