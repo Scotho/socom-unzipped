@@ -16,8 +16,9 @@ command, counts and behaviour only.
 >   oracle disagreed on 12,643; on the menus' replay on 17 of 1,794 (19 on #244). Every bank load, stream start and
 >   sound play agrees (§9).
 > - **N = 832** of 13,044: `grep -m1 "Compared answers" C:/projects/scratch-s15-t1/oracle/results_lle_232655.md`,
->   after the replay of C10. 815 of the 832 are stream lifetimes (the poll and the parameter calls that follow it),
->   read on the replay's clock, not the game's (§9.2); 17 are the three classes research/40 §9.1 already named.
+>   after the replay of C10. 815 of the 832 are stream lifetimes read on the replay's clock, not the game's -- 706
+>   polls on 12 handles and 109 parameter calls on 12 other handles (§9.2); the review found at least 655 of the 699
+>   "the IRX stopped first" polls to be that clock, so they are not a #28 lead (§9.4). 17 are the menus' three classes.
 > - **The build:** build 1 (the slice as shipped) stopped on two missing `#include <cstdlib>` in the fork
 >   (`kernel.cpp:328` `std::strtol`, `spu2.cpp:73` `std::abs`); the controller amended the stop rule by one build;
 >   build 2 with the two lines added linked (`HARNESS EXIT 0`, last line `build end 2026-09-26T20:25:19Z`, C6).
@@ -55,7 +56,7 @@ decides D1 (R282): the sentence for the owner is in §7.
 | C8 | today's numbers: `grep -m1 "Compared answers" docs/research/assets/40-irx-differential/results_run_20260922_232655.md` (13,044 and 12,643) and the same on `results_run_20260922_150258.md` (1,794 and 19) |
 | C9 | the glue's size: `diff --strip-trailing-cr fork/ps2xIOP/src/lle/<f> oracle/lle/<f>` per patched file; `wc -l oracle/harness_lle.cpp oracle/CMakeLists.txt oracle/build.sh oracle/oracle-patch.diff`; `grep -c "^ " oracle/oracle-patch.diff` (92 context lines); `diff docs/research/assets/40-irx-differential/replay.py oracle/replay_lle.py \| grep -c "^[<>]"` (19) |
 | C10 | the replays, from the main tree: `python C:/projects/scratch-s15-t1/oracle/replay_lle.py --log logs/run_20260922_232655.log --harness C:/projects/scratch-s15-t1/oracle/build/harness_lle.exe --out C:/projects/scratch-s15-t1/oracle/results_lle_232655.md > C:/projects/scratch-s15-t1/oracle/replay_232655.out`; the same with `run_20260922_150258` (the menus); the same mission replay with `ORACLE_NO_PROVIDER=1` to `results_lle_232655_noprovider.md`; each `grep -m1 "Compared answers"` of its table |
-| C11 | the classes: `grep DISAGREE C:/projects/scratch-s15-t1/oracle/replay_232655.out \| awk '{print $2}' \| sort \| uniq -c`; the polls grouped by handle and by which side answered 0 first (a scratch one-liner over the same file); `grep -o "cause -\?[0-9]*" <out> \| sort \| uniq -c`; `grep -o "instr=[0-9]*" C:/projects/scratch-s15-t1/oracle/replay_232655_noprovider.out \| cut -d= -f2 \| sort -n \| tail -1` (586) |
+| C11 | the classes: `grep DISAGREE C:/projects/scratch-s15-t1/oracle/replay_232655.out \| awk '{print $2}' \| sort \| uniq -c`; the polls grouped by handle and by which side answered 0 first (a scratch one-liner over the same file); `grep -o "cause -\?[0-9]*" <out> \| sort \| uniq -c`; `grep "^#[0-9]" C:/projects/scratch-s15-t1/oracle/replay_232655_noprovider.out \| grep -o "instr=[0-9]*" \| cut -d= -f2 \| sort -n \| tail -1` (586: the per-call lines, which the driver prints for every disagreeing call; the unrestricted grep also meets the boot SNAP line's 22501) |
 
 ## 1. The question and the time box
 
@@ -93,15 +94,17 @@ Read from the disc's own IRX (C4), cross-read with the decomp's error strings (C
 ## 3. A correction to research/40 §9: the "callback form" is `sceSifSetDmaIntr`
 
 research/40 §9.1 attributed run 1's seven `snd_StreamSafeCdRead` disagreements and run 2's stream failures to "the safe-read
-path's cdvdman call (`FUN_0001a52c(&buf, 1, callback, &data)`, the callback form)", and §9.3 item 2 named "#244's
-cdvdman safe-read form" as one of the two gaps. The IRX's own import table (C4) places the stub at that address in the
-`sifman` import block, fourth of four, and ps2sdk's name for that import is `sceSifSetDmaIntr` (C3): a SIF DMA from IOP to
+path's cdvdman call (... the callback form)", and §9.3 item 2 named "#244's cdvdman safe-read form" as one of the two
+gaps. The IRX's own import table (C4) places the sifman stub research/40 §9 names in the `sifman` import block, fourth of four, and ps2sdk's name for that import is `sceSifSetDmaIntr` (C3): a SIF DMA from IOP to
 EE memory with a completion callback -- `(descriptors, 1, callback, data)` is exactly its signature. The cause the
 failure prints, 66, is "Error DMAing data to EE memory" (C5). #244's `sifman` answers 0 for every import but five,
 and this is not one of the five (C7). research/40's reading is left as written (the plan's rule: a disagreement is
 stated with its evidence, not by editing the note); research/69 §2's "for want of one `cdvdman` form (the callback
 read)" inherits the same slip. The minimal provider is therefore **cdvdman's seven imports plus `sifman`'s
 `sceSifSetDmaIntr`**; `ioman`'s four serve by-name loads, which neither replay reached (0 opens, C10's SNAP line).
+With that import served, research/40's seven `snd_StreamSafeCdRead` disagreements still stand, but no longer as a gap:
+the IRX answers `0x84000002` in 175-293 IOP instructions with no error cause, and ours answers 1 -- a **model
+difference** in what that call returns (§9.1), not the emulator's.
 
 ## 4. The provider, the patch and the harness (scratch, not in the tree)
 
@@ -142,8 +145,10 @@ As research/40's assets did for #244, the glue would enter under `docs/research/
 | the harness with the provider | 487 | ours |
 | CMake and the build script | 14 + 15 | ours |
 | the replay driver's change | 19 diff lines (or a `--harness`-agnostic option in research/40's `replay.py`) | ours |
+| **sum** | 487 + 14 + 15 + 126 + 19 = **661**; 687 with the patch's own lines (the review's count) | |
 
-**The answer:** the TAKE entering the tree is zero lines; what enters is about 650 lines of our own glue and 92 lines
+**The answer:** the TAKE entering the tree is zero lines; what enters is 661 lines of our own glue (C9; 687 with the
+patch's own lines) and 92 lines
 of the fork's GPL-3.0 code as diff context (the same licence as ours). R287's bar ("a TAKE over about five hundred
 lines needs a ruling") is not crossed by the take. If the controller counts the glue as part of the take, it is over
 five hundred and needs a ruling; this note reads R287 as written and does not ask for one.
@@ -152,14 +157,19 @@ five hundred and needs a ruling; this note reads R287 as written and does not as
 
 - **The register row** ("the IOP host's audio path", research/68) moves **Untested -> Believed** in this commit: the
   oracle ran two replays; the artefacts are `C:/projects/scratch-s15-t1/oracle/results_lle_232655.md` and
-  `results_lle_150258.md` (outside the tree). Believed, not Proven: the oracle is the disc's driver on an emulated IOP
+  `results_lle_150258.md` today, landing under `docs/research/assets/70-lle-oracle/` in T1c. Believed, not Proven: the oracle is the disc's driver on an emulated IOP
   with our provider's timing, not the console.
-- **The one line for the owner (D1, R282), for the controller to place:** "The spike recommends using #254's LLE IOP
-  as an out-of-tree oracle for the audio work -- the disc's own sound driver checks our model (832 disagreements in
-  13,044 answers, against 12,643 on the old oracle); about 650 lines of our own harness would enter
-  `docs/research/assets/`, none of #254's code, the game unchanged -- do you want it adopted (yes/no)?"
-- **The next experiment, if adopted:** research/68's own -- replay one mission trace with the EE frame stamped on each
-  call, so the oracle's clock is the game's, and compare the frame at which each stem's poll first answers 0 (§9.2).
+- **The one line for the owner (D1, R282), as sent:** "The spike recommends using #254's LLE IOP as an out-of-tree
+  oracle for the audio work -- the disc's own sound driver checks our model (832 disagreements in 13,044 answers,
+  against 12,643 on the old oracle); 661 lines of our own harness would enter `docs/research/assets/`, carrying 92
+  lines of #254's GPL-3.0 code as diff context and none of its files, the game unchanged -- do you want it adopted
+  (yes/no)?" **The owner's answer (2026-09-26 evening, via the controller): "yes, adopt it as an oracle if it has
+  proven value"**; the controller judges it has, on the review's re-run. The landing under
+  `docs/research/assets/70-lle-oracle/` is T1c, a separate task.
+- **The next experiment:** a frame-stamped replay. The run log already carries `[audio] 989snd stream <h> start|done
+  frame=N` lines and the harness's `tick` takes any cycle count, so the replay can advance the IOP by the game's own
+  frames between calls instead of one frame per call; then compare the frame at which each stem's poll first answers 0.
+  RPC latency and the tick's phase stay untested until then.
 
 ## 8. What this note does not do
 
@@ -173,8 +183,9 @@ replay tables quote the RPC arguments and answers research/40's tables already c
 
 ### 9.1 The menus: `run_20260922_150258`, 2,007 calls, **17 in 1,794**
 
-Every one of the 17 is a class research/40 §9.1 named on #244: `snd_StreamSafeCdRead` 7 (the IRX answers
-`0x84000002` where ours answers 1), `snd_CallExtension(0x12c4e67a, 6)` 6 (the IRX 0: nothing registered under that id
+Every one of the 17 is a class research/40 §9.1 named on #244, one of them re-read: `snd_StreamSafeCdRead` 7 (the
+IRX answers `0x84000002` where ours answers 1 -- with `sceSifSetDmaIntr` served and no error cause, a model
+difference, not research/40's emulator gap, §3), `snd_CallExtension(0x12c4e67a, 6)` 6 (the IRX 0: nothing registered under that id
 without a headset; ours invents 1), `snd_PcmStreamPosition` 4 (an SPU2 transfer position on the IRX, a clock on ours).
 The two that research/40 charged to the register bag -- the 5th and 6th `snd_BankLoadByLoc` -- now agree: #254's SPU2
 completes the DMA. All 6 bank loads, the stream start, 3 PCM opens and all 1,764 polls agree.
@@ -191,11 +202,12 @@ stream died at its first read. The 832:
 |---|---|---|
 | `snd_SoundIsStillPlaying`, the IRX answers 0 while ours still plays | 699, over 5 stream handles (569, 51, 49, 24, 6 polls) | the IRX's stream played out first on the oracle's clock |
 | `snd_SoundIsStillPlaying`, ours answers 0 one poll before the IRX | 7, over 7 handles (1 poll each) | a one-poll phase difference at the end of a stream |
-| `snd_SetSoundParams` on those handles | 109 | follows the polls |
+| `snd_SetSoundParams` | 109, on 12 other stream handles (36, 20, 15, 9, ... calls) -- none of the polled 12 | still stream lifetimes on the replay's clock: a handle ours keeps alive is already gone on the IRX (e.g. one set at call 5044 inside our life of calls 4912-5509) |
 | `snd_StreamSafeCdRead`, `snd_CallExtension`, `snd_PcmStreamPosition` | 7, 6, 4 | the menus' three classes (§9.1) |
 
 **The caveat on the 815.** The replay advances the IOP one NTSC frame per logged call (research/40's `--tick`), not
-per frame the game ran: the log carries no frame stamps, so the oracle's clock is the call sequence's. A stream's
+per frame the game ran: the calls carry no frame stamps (only the stream start and done lines do), so the oracle's
+clock is the call sequence's. A stream's
 life on the oracle is therefore not its life in the game, and the 699 are not yet a verdict on our streamer -- they
 are where it and the IRX part on this clock. Twelve handles end at a different
 poll; every other polled handle ends on the same one. The experiment that turns the class into a finding is §7's frame-stamped trace. The IRX logged no error on any
@@ -205,6 +217,16 @@ of the five long-disagreeing handles.
 
 With the provider off, every cdvdman call answers 0 as on #254's kernel as it stands. All 5 mission bank loads answer
 0 (ours `0xa00000`-class), each after cause 61 (7 in all) and cause 14 "snd_BankLoad: Done... ERROR reading file!" (5);
-streams start (29 of 29 `snd_PlayVAGStreamByLoc` agree) and then report stopped. The largest single RPC ran 586 IOP
-instructions and the whole replay 34 million, against 250 million with the provider: **no spin**, the clean failure of
+streams start (29 of 29 `snd_PlayVAGStreamByLoc` agree) and then report stopped. The largest disagreeing RPC (every other call
+agreed) ran 586 IOP instructions and the whole replay 34 million, against 250 million with the provider: **no spin**, the clean failure of
 §2 as read.
+
+### 9.4 The reviewer's reading of the 699 (T1 review, 2026-09-26)
+
+The review read the stream lives against the run log's own `[audio] 989snd stream <h> start|done frame=N` lines. The
+replay ticks one NTSC frame per logged call, while the game issued 76-161 calls a second during those lives, so the
+oracle's clock runs ahead of the game's. Measured in seconds each way, five of the six polled lives have the same
+length on both sides (46.0/46.0, 2.9/3.0, 9.1/9.3, 7.0/7.2 and 1.6/1.7 s); one, our handle `0x4010355`, lives 28.9 s
+in the game and 58.0 s on the oracle, unexplained. "Our streamer never reports a stream's end" is ruled out: every
+stream has a done line. **At least 655 of the 699 are the replay's clock**, so the 815 stream-lifetime disagreements
+are not a #28 lead as §9.2 first put it; the frame-stamped replay of §7 is what would make any remainder one.
