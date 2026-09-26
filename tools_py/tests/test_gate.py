@@ -1089,6 +1089,7 @@ class TestGateDiskRefusal(unittest.TestCase):
             os.environ["SOCOM_GAME_ELF"] = elf
             with mock.patch.object(gate, "free_gb", return_value=4.1), \
                  mock.patch.object(gate, "check_pins", return_value=([], {}, False)), \
+                 mock.patch.object(gate, "freshness_roots", return_value=[]), \
                  mock.patch.object(gate, "_lock", side_effect=self._busy_lock):
                 rc = gate.main(["--stamp", "diskrefusal_test"])
         # Got past the disk check into the real-run path, which then found the (mocked) lock busy.

@@ -683,7 +683,17 @@ document may state one without a date beside it.**
 
 `python -m tools_py.parity.gate --baseline first_run` re-scores that saved run without launching, which is the
 fastest way to check a scoring change. A gate refuses to start under 4 GB free on C: (`RUN_MIN_FREE_GB`) and
-while another launch holds the loop lock (`scripts/loop_lock.sh status`). Anything else: `docs/STATUS.md` has the
+while another launch holds the loop lock (`scripts/loop_lock.sh status`). **Freshness (Sprint 14 E4):** a launch also
+refuses when the exe (`dist/socom2.exe`, or `$SOCOM_EXE`) is older than the newest file it is built from --
+`third_party/ps2recomp/ps2xRuntime/src` and `include`, `recomp/output`, and the recompiler's tracked inputs in
+`recomp/` (both revisions' tomls, `socom2_ghidra*.csv`, `socom2_names*.csv`, `extra_functions*.txt`,
+`loader_text_end.txt`, `merge_ranges.txt`; `gate.FRESHNESS_DIRS`/`FRESHNESS_FILES`) -- printing `gate: exe older than
+source (<exe mtime> < <path> <mtime>): rebuild, or --stale-ok`, before the lock and before anything is written.
+`--stale-ok` launches anyway and the summary carries `gate: STALE exe accepted (--stale-ok)`; the merged-chain
+template never passes it. Every summary and `pins.json` carries `TREE <head> dirty=<n>` (the short HEAD and the count
+of `git status --porcelain` lines outside `logs/` and `game/`), so a record says which tree it measured. The gate's
+exit codes: 0 PASS, 1 a stage FAILed, 2 the lock busy, 3 low disk, 4 a `--baseline` with nothing to score, **5 a
+stale exe**, 7 a pin drift, 8 an unknown revision. Anything else: `docs/STATUS.md` has the
 day-by-day, `docs/KNOWN.md` what is proven and what is believed, `docs/HUMAN_TASKS.md` the checks only a person can do.
 
 **The pinned references (Sprint 13 H3):** `scripts/parity/pins.json` (r0001; `pins_r0004.json` for r0004) is the gate's standard and the gate refuses on a drift; `scripts/parity/pins_refs.json` pins every OTHER reference PNG under `scripts/parity/` -- a tripwire, not a refusal: `test_gate_pins.EveryReferenceIsPinned` fails the suite when one changes and the file does not, so re-pin in the same commit.
@@ -713,7 +723,8 @@ day-by-day, `docs/KNOWN.md` what is proven and what is believed, `docs/HUMAN_TAS
   [--release]`, `scripts/make_server_zip.sh`.
 - **The gate** (`python -m tools_py.parity.gate`, `--only <stage>`, `--stamp <name>`, `--baseline <stamp>` to re-score
   without a launch; `SOCOM_EXE` points it at another exe): title about 3 min, transition about 3, mission about 11.
-  The project's only regression bar. Refuses under 4 GB free on C:. Results under `logs/parity/gate/<stamp>/`.
+  The project's only regression bar. Refuses under 4 GB free on C: (exit 3) and on an exe older than its sources
+  (exit 5 unless `--stale-ok`). Results under `logs/parity/gate/<stamp>/`, each with its `TREE <head> dirty=<n>` line.
 - **The ladder** (`scripts/parity/ladder_frostfire.sh`, pins HEAD's harness first) and **control rounds**
   (`scripts/parity/online_control_round.sh "<map>"`): two instances, online, against our server only.
   `scripts/parity/env.sh` sets the server address for the harness. `mixed_match.sh` (ours against PCSX2) **runs both ways on

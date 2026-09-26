@@ -92,6 +92,8 @@ class AcceptPinsKeepsEveryPin(unittest.TestCase):
             mock.patch.object(gate, "free_gb", return_value=99.0),
             mock.patch.object(gate, "exe_line", return_value="EXE dist/socom2.exe bytes=1 sha256=" + "00" * 32),
             mock.patch.object(gate, "_lock", return_value=subprocess.CompletedProcess(["x"], 0, "", "")),
+            # the exe freshness refusal (S14 E4) is test_gate_fresh's; here no source is ever newer
+            mock.patch.object(gate, "freshness_roots", return_value=[]),
         ]
         for p in self.patches:
             p.start()
