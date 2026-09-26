@@ -39,6 +39,12 @@ BARE_PYTHON = re.compile(r"(?<![\w./$^])python(?![\w.-])")
 ROOT_SCRIPTS = ("build.sh", "run.sh")
 
 
+# The Claude Code hook scripts fail OPEN by design: Claude Code treats any exit but 2 as non-blocking, so
+# socom_require_python's exit 2 would block every tool call on a machine without Python. They skip on an empty
+# $PYTHON instead, and HookScriptsFailOpen asserts that property directly (exit 0, no "command not found").
+FAIL_OPEN_HOOKS = ("scripts/hooks/claude_pretool.sh", "scripts/hooks/claude_session_end.sh")
+
+
 def shell_scripts():
     """Every shell script the repository ships under scripts/ -- the hooks included, they run on Linux too -- and
     the root entry points (ROOT_SCRIPTS)."""
@@ -244,6 +250,8 @@ class EveryScriptUsesIt(unittest.TestCase):
             with open(path, encoding="utf-8") as fh:
                 body = strip_comments(fh.read())
             for n, line in enumerate(body.splitlines(), 1):
+                if rel in FAIL_OPEN_HOOKS:   # "reap: skipped: no python" is a sentence, not an invocation
+                    line = re.sub(r'echo\s+"[^"]*"', "echo", line)
                 if BARE_PYTHON.search(line):
                     offenders.append("%s:%d: %s" % (rel, n, line.strip()))
         self.assertEqual(offenders, [],
@@ -283,8 +291,8 @@ class EveryScriptUsesIt(unittest.TestCase):
         for rel, path in shell_scripts():
             with open(path, encoding="utf-8") as fh:
                 text = fh.read()
-            if not self._needs_an_interpreter(rel, text):
-                continue
+            if not self._needs_an_interpreter(rel, text) or rel in FAIL_OPEN_HOOKS:
+                continue          # FAIL_OPEN_HOOKS: they must never exit 2; HookScriptsFailOpen covers them
             if "socom_require_python" not in strip_comments(text):
                 offenders.append(rel)
         self.assertEqual(offenders, [],
@@ -331,6 +339,8 @@ class EveryScriptUsesIt(unittest.TestCase):
             with open(path, encoding="utf-8") as fh:
                 body = strip_comments(fh.read())
             for m in re.finditer(r'\$\{(PYTHON[0-9A-Z_]*)\s*:?-', body):
+                if rel in FAIL_OPEN_HOOKS and m.group(0) == "${PYTHON:-" and body[m.end():m.end() + 1] == "}":
+                    continue      # an empty `${PYTHON:-}` tests the helper's result; it resolves nothing
                 offenders.append("%s: ${%s:-...}" % (rel, m.group(1)))
         self.assertEqual(offenders, [], "an interpreter default belongs in scripts/python_env.sh only")
 
@@ -346,6 +356,30 @@ class EveryScriptUsesIt(unittest.TestCase):
         bad = [rel for rel, path in shell_scripts()
                if subprocess.run([BASH, "-n", path], capture_output=True).returncode != 0]
         self.assertEqual(bad, [])
+
+
+@unittest.skipUnless(BASH, "no Git Bash on this machine (tools_py/tests/shell.py)")
+class HookScriptsFailOpen(unittest.TestCase):
+    """FAIL_OPEN_HOOKS, driven on a PATH where every interpreter spelling is a blocker (PathShim with none asked:
+    shadowed rather than pruned, for the reason PathShim gives): each exits 0, and nothing says "command not
+    found" -- the property socom_require_python guarantees elsewhere, met by skipping instead of exiting 2."""
+
+    STDIN = {"scripts/hooks/claude_pretool.sh":            # a call that passes the fast path and needs Python
+             '{"tool_name": "Bash", "tool_input": {"command": "git add -A"}, "cwd": "."}',
+             "scripts/hooks/claude_session_end.sh": '{"hook_event_name": "Stop"}'}
+
+    def test_each_exempt_hook_exits_0_without_an_interpreter(self):
+        self.assertEqual(sorted(self.STDIN), sorted(FAIL_OPEN_HOOKS))
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        shim = PathShim(tmp.name, [])
+        env = shim.env()
+        for rel in FAIL_OPEN_HOOKS:
+            p = subprocess.run([BASH, os.path.join(ROOT, rel).replace("\\", "/")], input=self.STDIN[rel], cwd=tmp.name,
+                               env=env, capture_output=True, text=True, timeout=60)
+            self.assertEqual(p.returncode, 0, (rel, p.stdout, p.stderr))
+            self.assertNotIn("command not found", p.stdout + p.stderr, rel)
+        self.assertEqual(run('. scripts/python_env.sh; printf %s "$PYTHON"', env).stdout, "")  # truly none found
 
 
 @unittest.skipUnless(BASH, "no Git Bash on this machine (tools_py/tests/shell.py)")
