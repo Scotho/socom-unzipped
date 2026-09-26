@@ -4471,6 +4471,7 @@ def chat_exchange(sender, receiver, text, wait_s=CHAT_RECEIVE_WAIT_S, clock=time
         sleep(1.0)
     got = rec["receiver_seen"]
     sender.sh.log(f"CHAT {sender.tag}->{receiver.tag} opened={rec['opened']} by={rec['by']} closed={rec['closed']} "
+                  f"exited={rec.get('exited')} "
                   f"receiver_seen={'seen=%d at byte %d' % (got[1], got[0]) if got else 'none'}"
                   f"{' (the receiver had already printed seen=%d before the mark)' % pre[-1][1] if pre else ''}")
     receiver.sh.shot(f"chat_{sender.tag}_to_{receiver.tag}")

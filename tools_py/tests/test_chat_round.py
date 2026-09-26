@@ -10,6 +10,7 @@ from contextlib import redirect_stdout
 
 from tools_py.parity import control_round_readout as R
 from tools_py.parity import guest_addresses as ga
+from tools_py.parity import online_login as O
 from tools_py.parity import online_login_ours as L
 from tools_py.parity import online_match_ours as M
 
@@ -78,6 +79,57 @@ class ChatLogParsers(unittest.TestCase):
         self.assertIn("R1", keys.MAPS["ours"])
 
 
+# The chat keyboard as round 1 measured it (research/66 section 3): the login grid plus one row below it, the cursor
+# opening on that row's first key, clamped on a vertical move and wrapping on a horizontal one (round 1's walk went
+# right off EXIT onto SHIFT).
+CHAT_GRID = [list(r) for r in O.OSK_ROWS] + [["ACCENT", "SPACE", "MESSAGE", "IGNORE", "LEGEND"]]
+CHAT_OPENS_ON = (6, 0)
+
+
+def simulate(presses):
+    """[(key pressed with CROSS)] of a sequence of 'up'/'down'/'left'/'right'/'cross' on the chat keyboard."""
+    r, i = CHAT_OPENS_ON
+    typed = []
+    for p in presses:
+        if p in ("up", "down"):
+            r += -1 if p == "up" else 1
+            i = min(i, len(CHAT_GRID[r]) - 1)
+        elif p in ("left", "right"):
+            i = (i + (1 if p == "right" else -1)) % len(CHAT_GRID[r])
+        else:
+            typed.append(CHAT_GRID[r][i])
+    return typed
+
+
+def walk(text, cur, entry=()):
+    out = list(entry)
+    for ch in list(text) + ["ENTER"]:
+        dst = L.osk_pos(ch)
+        out += L.osk_moves(cur, dst) + ["cross"]
+        cur = dst
+    return out
+
+
+class ChatKeyboardWalk(unittest.TestCase):
+    def test_the_simulator_reproduces_round_1(self):
+        """The login's walk from OSK_START on the chat keyboard: 'nd..l' and SHIFT for ENTER, as round 1's captures
+        (A_chat_key0..4, A_chat_02_entered) show it."""
+        self.assertEqual(simulate(walk("hello", L.OSK_START)), ["n", "d", ".", ".", "l", "SHIFT"])
+
+    def test_the_entry_moves_put_the_walk_on_the_right_keys(self):
+        self.assertEqual(O.OSK_ROWS[L.CHAT_OSK_ENTRY_KEY[0]][L.CHAT_OSK_ENTRY_KEY[1]], "TEAM")
+        self.assertEqual(CHAT_GRID[5][1], "TEAM")
+        for text in ("hello", "test", "socom", "o2"):
+            got = simulate(walk(text, L.CHAT_OSK_ENTRY_KEY, L.CHAT_OSK_ENTRY))
+            self.assertEqual(got, list(text) + ["ENTER"], text)
+
+    def test_the_keys_band(self):
+        flat = [[20] * 640 for _ in range(448)]
+        self.assertFalse(L.chat_keyboard_up_of(flat))
+        keys = [[(200 if (x // 20) % 2 else 20) for x in range(640)] for _ in range(448)]
+        self.assertTrue(L.chat_keyboard_up_of(keys))
+
+
 class FakeShell:
     def __init__(self):
         self.lines, self.shots = [], []
@@ -108,7 +160,7 @@ class ChatExchange(unittest.TestCase):
                 with open(b_log, "ab") as f:
                     f.write(receiver_after)
                 return {"text": text, "opened": opened, "by": "log" if opened else None, "skb": "PlayerChatSkb",
-                        "closed": True, "mark": 5, "room": "game_lobby"}
+                        "closed": True, "exited": False, "mark": 5, "room": "game_lobby"}
 
             real, L.chat_line = L.chat_line, fake_chat_line
             try:
@@ -125,7 +177,7 @@ class ChatExchange(unittest.TestCase):
         self.assertEqual(rec["receiver_mark"], len(before))
         self.assertEqual(rec["receiver_seen"], (len(before), 1, 0, 0))
         self.assertEqual(rec["receiver_pre"], [])
-        self.assertIn("CHAT A->B opened=True by=log closed=True receiver_seen=seen=1", A.sh.lines[-1])
+        self.assertIn("CHAT A->B opened=True by=log closed=True exited=False receiver_seen=seen=1", A.sh.lines[-1])
 
     def test_a_seen_line_before_the_mark_is_reported_and_not_taken(self):
         before = (seen_line(1) + "\n").encode()

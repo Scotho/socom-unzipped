@@ -1523,10 +1523,11 @@ def glyph_run_count(gray, box, ink_min=OSK_INK_MIN):
 # launch -- posts it as 'E'.
 #
 # The keyboard R1 opens is the UI's GetTextInput with Purpose _361_EnterChatMessage_MSG ("Enter a Chat Message") on
-# PlayerChatSkb in the game lobby or ChatSkb in the briefing room (the disc's compiled UI scripts; research/66). Its
-# background is not the login keyboards' (SKB_English_Set*.tif), so the screen references the login measured
-# (OSK_ACCENT_BOX) are not trusted to see it: the step's read-back is the runtime's OSK wrap, which prints one
-# `[socom2] on-screen keyboard open: purpose="..." skb="..."` line per open once --prefilled has armed it.
+# the soft keyboard ChatSkb (the game lobby, s13_o2_chat round 1; the disc's UI scripts also name PlayerChatSkb --
+# research/66). Its layout is not the login keyboards' (CHAT_OSK_* below), so the login's screen references
+# (OSK_ACCENT_BOX, the text row) are not used on it: the open is read from the runtime's OSK wrap, which prints one
+# `[socom2] on-screen keyboard open: purpose="..." skb="..."` line per open once --prefilled has armed it, and the
+# close from the keyboard's key band.
 CHAT_PURPOSE = "_361_EnterChatMessage_MSG"
 CHAT_OPEN_BUTTON = "r1"
 CHAT_OPEN_TIMEOUT_S = 12.0
@@ -1538,6 +1539,13 @@ OSK_OPEN_LINE_RE = re.compile(r'\[socom2\] on-screen keyboard open: purpose="([^
 CHAT_SEEN_RE = re.compile(r"\[socom2\] chat receive bound: seen=(\d+) fixed=(\d+) skipped=(\d+)")
 CHAT_SEEN_BYTES_RE = re.compile(CHAT_SEEN_RE.pattern.encode("ascii"))
 CHAT_ROOM_TITLES = ("game_lobby", "briefing_room")
+# The chat keyboard's layout, measured in round 1 (research/66 section 3): OSK_ROWS plus one row below (the accent
+# toggle, the space bar, MESSAGE, IGNORE, LEGEND), opening on that row's accent key -- (6, 0) in OSK_ROWS' terms.
+# RIGHT then UP lands on TEAM, (5, 1) in both grids; the walk is dead-reckoned from there.
+CHAT_OSK_ENTRY = ("right", "up")
+CHAT_OSK_ENTRY_KEY = (5, 1)
+CHAT_OSK_KEYS_BAND = (268, 290, 25, 465)      # the keyboard's top key row (~ ! @ ... BCKSPC), y0 y1 x0 x1
+CHAT_OSK_KEYS_STD_MIN = 20.0                  # up: 32.8-33.4; the game lobby 5.3, the briefing room 8.3
 
 
 def osk_opens(text):
@@ -1577,7 +1585,9 @@ def read_log_from(path, offset):
 
 
 def chat_room_title(sh):
-    """Which chat room's title the frame shows ('game_lobby' / 'briefing_room'), or None -- the keyboard covers it."""
+    """Which chat room's title the frame shows ('game_lobby' / 'briefing_room'), or None. NOT a keyboard read: the
+    chat keyboard is a panel over the room's lower two thirds, and the title band stays visible above it (round 1,
+    research/66 section 3) -- chat_keyboard_up is the read."""
     gray = lobby_gray(sh)
     for name in CHAT_ROOM_TITLES:
         if lobby_title_is(gray, name):
@@ -1585,15 +1595,35 @@ def chat_room_title(sh):
     return None
 
 
+def chat_keyboard_up_of(gray):
+    """The chat keyboard is on screen: its top key row (~ ! @ ... BCKSPC) is a band of light keys on dark gaps, a
+    column-to-column spread the rooms behind it never have. Measured on s13_o2_chat round 1: std 32.8-33.4 with the
+    keyboard up (four frames, both instances), 5.3 on the game lobby and 8.3 on the briefing room without it."""
+    y0, y1, x0, x1 = CHAT_OSK_KEYS_BAND
+    return float(np.asarray(gray, dtype=np.float32)[y0:y1, x0:x1].std()) > CHAT_OSK_KEYS_STD_MIN
+
+
+def chat_keyboard_up(sh):
+    return chat_keyboard_up_of(lobby_gray(sh))
+
+
 def chat_line(sh, text, run_log=None, open_timeout=CHAT_OPEN_TIMEOUT_S, presses=CHAT_OPEN_PRESSES):
     """Open the chat box with R1 in the room on screen, type `text` on its keyboard and ENTER it.
 
     Returns a dict: opened (bool), by ('log' | 'screen' | None), skb, room (the title before the press), closed (the
-    room's title read back after ENTER), mark (the run log's size before the press). Never raises for the chat
-    itself -- a keyboard that does not open is the finding, logged as `CHAT keyboard not opened`, and the round goes
-    on to the peek. The typing is the login's dead-reckoned pad walk from OSK_START at the slow pacing (two instances
-    on one host), then one ENTER re-press if the room has not come back."""
-    rec = {"text": text, "opened": False, "by": None, "skb": None, "closed": False, "mark": log_size(run_log)}
+    keyboard gone after ENTER, chat_keyboard_up), exited (the keyboard had to be left through EXIT: nothing sent),
+    mark (the run log's size before the press). Never raises for the chat itself -- a keyboard that does not open is
+    the finding, logged as `CHAT keyboard not opened`, and the round goes on to the peek.
+
+    The typing is the login's dead-reckoned pad walk at the slow pacing (two instances on one host), from the chat
+    keyboard's own opening key: it is the login grid (OSK_ROWS) with one more row below it (the accent toggle, the
+    space bar, MESSAGE, IGNORE, LEGEND) and it opens on that row's accent key, one row below the login's OSK_START
+    -- round 1 typed 'nd..l' for 'hello' and pressed SHIFT for ENTER, exactly the walk shifted one row down (and
+    wrapping right off EXIT). CHAT_OSK_ENTRY (RIGHT onto the space bar, UP onto TEAM) puts the cursor on a key both
+    grids share. ENTER not taking is re-pressed once; a keyboard still up after that is left through EXIT so the
+    round can go on to READY (round 1's keyboard stayed up and READY's cursor read failed behind it)."""
+    rec = {"text": text, "opened": False, "by": None, "skb": None, "closed": False, "exited": False,
+           "mark": log_size(run_log)}
     rec["room"] = chat_room_title(sh)
     sh.shot("chat_00_before")
     sh.log(f"CHAT open: {CHAT_OPEN_BUTTON.upper()} in the {rec['room'] or 'unrecognised room'} "
@@ -1606,32 +1636,40 @@ def chat_line(sh, text, run_log=None, open_timeout=CHAT_OPEN_TIMEOUT_S, presses=
             if chats:
                 rec.update(opened=True, by="log", skb=chats[-1][1])
                 break
-            if sh.osk_open():
+            if chat_keyboard_up(sh):
                 rec.update(opened=True, by="screen")
                 break
             time.sleep(0.5)
         if rec["opened"]:
             break
         sh.log(f"CHAT keyboard not up after {CHAT_OPEN_BUTTON.upper()} press {attempt} ({open_timeout:.0f}s)")
+    time.sleep(1.0)                                  # the panel's slide-in, before the first walk press
     sh.shot("chat_01_open")
     if not rec["opened"]:
         sh.log(f"CHAT keyboard not opened after {presses} {CHAT_OPEN_BUTTON.upper()} presses "
-               f"(no {CHAT_PURPOSE} open line, accent-box distance {sh.osk_refs()})")
+               f"(no {CHAT_PURPOSE} open line, keys band not up)")
         return rec
-    sh.log(f"CHAT keyboard open by {rec['by']} (skb {rec['skb']}, accent-box distance {sh.osk_refs()})")
-    if sh.osk_open():
-        sh.osk_normal_mode()                         # the login's references see this keyboard: read its mode back
-    cur = sh.osk_type_pad(text, shots=sh.out, tag=f"{sh.tag}chat", enter=True, slow=True)
+    sh.log(f"CHAT keyboard open by {rec['by']} (skb {rec['skb']})")
+    hold, wait, _ = sh.osk_pacing(True)
+    for m in CHAT_OSK_ENTRY:
+        sh.pad_press(m.upper(), wait, hold)
+    cur = sh.osk_type_pad(text, shots=sh.out, tag=f"{sh.tag}chat", cur=CHAT_OSK_ENTRY_KEY, enter=True, slow=True)
     time.sleep(OSK_ENTER_SETTLE_S)
     sh.shot("chat_02_entered")
-    rec["closed"] = chat_room_title(sh) is not None
+    rec["closed"] = not chat_keyboard_up(sh)
     if not rec["closed"]:
-        sh.log("CHAT the room is not back after ENTER -> one ENTER re-press")
-        sh.osk_press_key(cur, "ENTER")
+        sh.log("CHAT keyboard still up after ENTER -> one ENTER re-press")
+        cur = sh.osk_press_key(cur, "ENTER")
         time.sleep(OSK_ENTER_SETTLE_S)
         sh.shot("chat_03_reenter")
-        rec["closed"] = chat_room_title(sh) is not None
-    sh.log(f"CHAT typed {text!r}: keyboard {'closed' if rec['closed'] else 'STILL UP'}")
+        rec["closed"] = not chat_keyboard_up(sh)
+    if not rec["closed"]:
+        sh.log("CHAT keyboard still up after the re-press -> EXIT (nothing is sent), so the round can go on")
+        sh.osk_press_key(cur, "EXIT")
+        time.sleep(OSK_ENTER_SETTLE_S)
+        sh.shot("chat_04_exit")
+        rec["exited"] = not chat_keyboard_up(sh)
+    sh.log(f"CHAT typed {text!r}: keyboard {'closed' if rec['closed'] else 'left by EXIT' if rec['exited'] else 'STILL UP'}")
     return rec
 
 

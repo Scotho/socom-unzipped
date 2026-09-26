@@ -572,8 +572,8 @@ def chat_keyboard_verdict(chat, sender_bytes):
     opens = [o for o in OSK_OPEN_RE.findall(tail) if o[0] == CHAT_PURPOSE]
     tag = "keyboard-%s" % chat.get("sender", "?")
     if opens:
-        return v(tag, PASS, 'purpose="%s" skb="%s" after byte %d; by=%s closed=%s'
-                 % (opens[0][0], opens[0][1], mark, chat.get("by"), chat.get("closed")))
+        return v(tag, PASS, 'purpose="%s" skb="%s" after byte %d; by=%s closed=%s exited=%s'
+                 % (opens[0][0], opens[0][1], mark, chat.get("by"), chat.get("closed"), chat.get("exited")))
     if sender_bytes is None:
         return v(tag, NO_DATA, "no sender log")
     return v(tag, FAIL, "no %s open line after byte %d (by=%s: %s)" % (CHAT_PURPOSE, mark, chat.get("by"),
