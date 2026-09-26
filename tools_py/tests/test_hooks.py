@@ -180,12 +180,29 @@ class EditWritePlantedTest(unittest.TestCase):
         self.assertIn("home: docs/KNOWN.md section 4", why)
         self.assertEqual(self.edit("Edit", "logs/s14_chain.sh", holder=None), (0, ""))
 
-    def test_the_lock_script_needs_a_green_slow_run(self):
-        code, why = self.edit("Write", "scripts/loop_lock.sh", slow=False)
-        self.assertEqual(code, 2, why)
-        self.assertIn("LOOP_LOCK_SLOW_TESTS=1", why)
-        self.assertIn("home: scripts/loop_lock.sh", why)
-        self.assertEqual(self.edit("Write", "scripts/loop_lock.sh", slow=True), (0, ""))
+    def test_the_lock_script_is_refused_while_held_or_queued(self):
+        # the ruling of 2026-09-26: the marker gates LANDING (the commit), not typing; waiters run it by offset
+        for busy in ("chain:s14", "queued:2"):
+            code, why = self.edit("Write", "scripts/loop_lock.sh", holder=busy)
+            self.assertEqual(code, 2, why)
+            self.assertIn(busy, why)
+            self.assertIn("home: scripts/loop_lock.sh header (the rollout procedure)", why)
+        self.assertEqual(self.edit("Write", "scripts/loop_lock.sh", holder=None, slow=False), (0, ""))
+        self.assertEqual(self.edit("Edit", "logs/s14_chain.sh", holder="queued:1")[0], 2)   # a waiter runs chains too
+
+    def test_a_commit_of_the_lock_script_needs_the_slow_marker(self):
+        def commit(cmd, slow):
+            return pretool.decide("Bash", {"command": cmd}, ROOT, False, slow_tests_ran=slow)
+        for cmd in ("git commit -m x -- scripts/loop_lock.sh", "git commit -m x -- docs/a.md scripts/loop_lock.sh",
+                    "git commit -m x -- ./scripts/loop_lock.sh", "cd scripts && git commit -m x -- loop_lock.sh"):
+            code, why = commit(cmd, False)
+            self.assertEqual(code, 2, (cmd, why))
+            self.assertIn("LOOP_LOCK_SLOW_TESTS=1", why)
+            self.assertIn("home: scripts/loop_lock.sh header (the rollout procedure)", why)
+            self.assertEqual(commit(cmd, True), (0, ""), cmd)
+        for cmd in ("git commit -m x -- scripts/other.sh", "git add -- scripts/loop_lock.sh",
+                    "bash scripts/loop_lock.sh check", "git commit -m 'loop_lock.sh notes' -- docs/a.md"):
+            self.assertEqual(commit(cmd, False), (0, ""), cmd)
 
     def test_neighbours_pass(self):
         self.assertEqual(self.edit("Edit", "logs/notes.md", holder="chain:s14"), (0, ""))
@@ -198,13 +215,13 @@ class EditWritePlantedTest(unittest.TestCase):
         self.assertEqual(code, 2, why)
         code, why = self.edit("Write", os.path.join(ROOT, "logs", "sub", "y.sh").replace("\\", "/"), holder="h")
         self.assertEqual(code, 2, why)
-        self.assertEqual(self.edit("Write", os.path.join(ROOT, "scripts", "loop_lock.sh"))[0], 2)
+        self.assertEqual(self.edit("Write", os.path.join(ROOT, "scripts", "loop_lock.sh"), holder="h")[0], 2)
 
     def test_every_editing_tool_and_path_key_is_judged_alike(self):
         for tool in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
             for key in ("file_path", "path", "filePath", "notebook_path"):
                 self.assertEqual(self.edit(tool, "logs/s14_chain.sh", holder="h", key=key)[0], 2, (tool, key))
-                self.assertEqual(self.edit(tool, "scripts/loop_lock.sh", key=key)[0], 2, (tool, key))
+                self.assertEqual(self.edit(tool, "scripts/loop_lock.sh", holder="h", key=key)[0], 2, (tool, key))
 
     def test_a_missing_path_and_other_tools_pass(self):
         self.assertEqual(pretool.decide("Edit", {}, ROOT, False, lock_holder="h"), (0, ""))
@@ -215,14 +232,18 @@ class EditWritePlantedTest(unittest.TestCase):
     def test_a_path_outside_any_lock_repository_passes(self):
         with tempfile.TemporaryDirectory(prefix="pretool_out_") as d:
             self.assertEqual(self.edit("Edit", os.path.join(d, "logs", "x.sh"), holder="h"), (0, ""))
-            self.assertEqual(self.edit("Edit", os.path.join(d, "scripts", "loop_lock.sh")), (0, ""))
+            self.assertEqual(self.edit("Edit", os.path.join(d, "scripts", "loop_lock.sh"), holder="h"), (0, ""))
 
     def test_the_holder_is_parsed_from_check(self):
         self.assertEqual(pretool.parse_holder("HELD: chain:s14 taken 3 min ago, heartbeat 0 min (12 s) old, "
                                               "purpose: s14 chain (reapable after 20 min ...)\nQUEUED x"), "chain:s14")
         self.assertIsNone(pretool.parse_holder("FREE"))
-        self.assertIsNone(pretool.parse_holder("FREE, but 2 waiter(s) queued: ..."))
         self.assertIsNone(pretool.parse_holder(""))
+        queued = ("FREE, but 2 waiter(s) queued: the next grant goes to the first QUEUED line\n"
+                  "QUEUED: w1 queued 30 s ago, heartbeat 2 s old (blob=abc p) [1]\n"
+                  "QUEUED: STALE (dropped at the next grant) w2 queued 900 s ago, heartbeat 400 s old () [2]")
+        self.assertEqual(pretool.parse_holder(queued), "queued:2")
+        self.assertEqual(pretool.parse_holder("FREE, but 3 waiter(s) queued: ..."), "queued:3")
 
     def test_the_slow_marker_counts_only_when_newer_than_the_script(self):
         with tempfile.TemporaryDirectory(prefix="pretool_mk_") as d:
@@ -334,7 +355,7 @@ class PretoolWiringTest(unittest.TestCase):
         """A stub scripts/loop_lock.sh in the temp repo whose `check` prints check_line."""
         os.makedirs(os.path.join(self.tmp.name, "scripts"), exist_ok=True)
         with open(os.path.join(self.tmp.name, "scripts", "loop_lock.sh"), "w", newline="\n") as f:
-            f.write("#!/usr/bin/env bash\n[ \"$1\" = check ] && echo '%s'\nexit 0\n" % check_line)
+            f.write("#!/usr/bin/env bash\n[ \"$1\" = check ] && cat <<'EOF'\n%s\nEOF\nexit 0\n" % check_line)
 
     def edit_hook(self, path, tool_name="Edit"):
         doc = {"session_id": "t", "cwd": self.tmp.name, "hook_event_name": "PreToolUse", "tool_name": tool_name,
@@ -353,16 +374,38 @@ class PretoolWiringTest(unittest.TestCase):
         p = self.edit_hook(chain)
         self.assertEqual(p.returncode, 0, p.stderr)
 
-    def test_an_edit_of_the_lock_script_waits_for_the_slow_marker(self):
+    def test_an_edit_of_the_lock_script_waits_for_exactly_free(self):
+        script = os.path.join(self.tmp.name, "scripts", "loop_lock.sh")
+        self.stub_lock("HELD: chain:s14 taken 3 min ago, heartbeat 0 min (5 s) old")
+        p = self.edit_hook(script)
+        self.assertEqual(p.returncode, 2, p.stderr)
+        self.assertIn("chain:s14", p.stderr)
+        self.stub_lock("FREE, but 1 waiter(s) queued: the next grant goes to the first QUEUED line\n"
+                       "QUEUED: w1 queued 30 s ago, heartbeat 2 s old (blob=abc p) [1]")
+        p = self.edit_hook(script)
+        self.assertEqual(p.returncode, 2, p.stderr)
+        self.assertIn("queued:1", p.stderr)
+        self.stub_lock("FREE")
+        p = self.edit_hook(script)
+        self.assertEqual(p.returncode, 0, p.stderr)
+
+    def test_a_commit_of_the_lock_script_waits_for_a_fresh_slow_marker(self):
         self.stub_lock("FREE")
         script = os.path.join(self.tmp.name, "scripts", "loop_lock.sh")
-        self.assertEqual(self.edit_hook(script).returncode, 2)
+        commit = "git commit -m x -- scripts/loop_lock.sh"
+        p = self.hook(commit)                                                  # no marker
+        self.assertEqual(p.returncode, 2, p.stderr)
+        self.assertIn("LOOP_LOCK_SLOW_TESTS=1", p.stderr)
         os.makedirs(os.path.join(self.tmp.name, "logs"), exist_ok=True)
         marker = os.path.join(self.tmp.name, "logs", ".loop_lock_slow_green")
         open(marker, "w").close()
         os.utime(script, (1000, 1000))
-        p = self.edit_hook(script)
+        os.utime(marker, (2000, 2000))
+        p = self.hook(commit)                                                  # a marker newer than the script
         self.assertEqual(p.returncode, 0, p.stderr)
+        os.utime(script, (3000, 3000))
+        p = self.hook(commit)                                                  # the script changed after it
+        self.assertEqual(p.returncode, 2, p.stderr)
 
     def test_an_ordinary_edit_skips_python(self):
         fake = os.path.join(self.tmp.name, "fakepy.sh")

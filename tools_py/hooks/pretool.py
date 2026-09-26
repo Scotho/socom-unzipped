@@ -27,10 +27,12 @@ Known limits, each accepted (nobody writes these by accident, and the hook is a 
   spelling that hides them (`gi''t`) never reaches Python.
 
 Sprint 14 G2 adds the editing tools (Edit, Write, MultiEdit, NotebookEdit; the path from `tool_input.file_path`,
-`notebook_path`, or defensively `path`/`filePath`): a `logs/**/*.sh` of a repository that has scripts/loop_lock.sh
-is refused while the lock is HELD (`bash scripts/loop_lock.sh check`, asked only for such a path), and
-scripts/loop_lock.sh itself until logs/.loop_lock_slow_green (written by a green slow lock suite) is newer than it.
-An edit through Bash (`sed -i`, a heredoc) is not seen by this half.
+`notebook_path`, or defensively `path`/`filePath`): a `logs/**/*.sh` of a repository that has scripts/loop_lock.sh,
+and scripts/loop_lock.sh itself, are refused while `bash scripts/loop_lock.sh check` (asked only for such a path)
+says HELD or lists a QUEUED waiter -- both run those scripts by offset. An edit through Bash (`sed -i`, a heredoc)
+is not seen by this half. Landing the lock script is the Bash half's rule: a `git commit -- ... loop_lock.sh` is
+refused until logs/.loop_lock_slow_green (written by a complete green slow lock suite) is newer than the script
+(the marker is looked at only when the command names loop_lock.sh).
 The rules, their homes and their tests: docs/DEVELOPING.md, "Guards".
 """
 import fnmatch
@@ -477,8 +479,25 @@ def rule_lock_direct(seg, wt, **ctx):
     return None
 
 
+def rule_lock_script_commit(seg, wt, slow_tests_ran=False, **ctx):
+    """Sprint 14 G2 (the 2026-09-26 ruling): landing scripts/loop_lock.sh needs a green slow lock suite since its
+    last change. Judged by a `--` pathspec whose last component is loop_lock.sh; a directory pathspec
+    (`-- scripts/`) or --pathspec-from-file is not looked into."""
+    g = git_parts(seg)
+    if not g or g[1] != "commit" or slow_tests_ran or "--" not in g[2]:
+        return None
+    after = g[2][g[2].index("--") + 1:]
+    if not any(p.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1].rsplit(")", 1)[-1].lower() == "loop_lock.sh"
+               for p in after):
+        return None
+    return ("the lock script lands only after LOOP_LOCK_SLOW_TESTS=1 python -m unittest tools_py.tests.test_loop_lock "
+            "is green (the marker)", "a green complete slow run writes %s, and it must be newer than the script"
+            % SLOW_MARKER, LOCK_ROLLOUT)
+
+
 RULES = [rule_bulk_add, rule_commit_all, rule_no_verify, rule_commit_names_paths, rule_push_from_worktree,
-         rule_force_push_shared, rule_config_in_worktree, rule_worktree_lifecycle, rule_lock_direct]
+         rule_force_push_shared, rule_config_in_worktree, rule_worktree_lifecycle, rule_lock_direct,
+         rule_lock_script_commit]
 
 
 # ---------------------------------------------------------------------------------------------- the policy
@@ -494,7 +513,7 @@ def _resolve(path, cwd):
 
 
 def decide_bash(command, cwd, is_worktree, worktree_of=None, merge_in_progress=False, session_worktree=None,
-                depth=0):
+                depth=0, slow_tests_ran=False):
     if session_worktree is None:
         session_worktree = is_worktree
     try:
@@ -531,7 +550,7 @@ def decide_bash(command, cwd, is_worktree, worktree_of=None, merge_in_progress=F
         payload = shell_payload(seg)
         if payload is not None and depth < 1:
             code, why = decide_bash(payload, state[0], state[1], worktree_of, merge_in_progress, session_worktree,
-                                    depth + 1)
+                                    depth + 1, slow_tests_ran)
             if code:
                 return code, why
             continue
@@ -540,7 +559,8 @@ def decide_bash(command, cwd, is_worktree, worktree_of=None, merge_in_progress=F
         if worktree_of and g and _git_dash_c(g[0]):
             wt = bool(worktree_of(_resolve(_git_dash_c(g[0]), state[0])))
         for rule in RULES:
-            hit = rule(seg, wt, merge_in_progress=merge_in_progress, session_worktree=session_worktree)
+            hit = rule(seg, wt, merge_in_progress=merge_in_progress, session_worktree=session_worktree,
+                       slow_tests_ran=slow_tests_ran)
             if hit:
                 name, sentence, home = hit
                 return 2, "%s: %s; home: %s" % (name, sentence, home)
@@ -614,32 +634,43 @@ def edit_target(tool_name, tool_input, cwd):
     return None
 
 
-def decide_edit(tool_name, tool_input, cwd, lock_holder=None, slow_tests_ran=False):
+def decide_edit(tool_name, tool_input, cwd, lock_holder=None):
+    """`lock_holder`: the lock's holder id, "queued:<n>" when FREE with waiters queued, None when exactly FREE.
+
+    The ruling of 2026-09-26: an edit of scripts/loop_lock.sh is the running-script hazard too (a holder's `run`
+    and every queued waiter execute it by offset); the slow-suite marker gates LANDING it, which is the commit rule
+    in the Bash half (rule_lock_script_commit), not typing into it.
+    """
     target = edit_target(tool_name, tool_input, cwd)
-    if target is None:
+    if target is None or lock_holder is None:
         return 0, ""
-    if target[0] == "chain" and lock_holder is not None:
+    if target[0] == "chain":
         return 2, ("a chain script is running under the lock (%s): never edit a running chain script -- bash reads "
                    "by offset; home: %s" % (lock_holder, RUNNING_CHAIN))
-    if target[0] == "lock" and not slow_tests_ran:
-        return 2, ("the lock script lands only after LOOP_LOCK_SLOW_TESTS=1 python -m unittest "
-                   "tools_py.tests.test_loop_lock is green (it writes %s); home: %s" % (SLOW_MARKER, LOCK_ROLLOUT))
-    return 0, ""
+    return 2, ("the lock script is in use (%s): never edit scripts/loop_lock.sh while the lock is HELD or a waiter "
+               "is QUEUED -- they run it by offset; edit it when `bash scripts/loop_lock.sh check` says exactly FREE "
+               "and `busy` is empty; home: %s" % (lock_holder, LOCK_ROLLOUT))
 
 
 def parse_holder(check_output):
-    """The holder id from `loop_lock.sh check` ("HELD: <owner> taken N min ago, ..."), None when FREE."""
-    for line in (check_output or "").splitlines():
+    """What `loop_lock.sh check` says is using the lock: the holder id ("HELD: <owner> taken N min ago, ..."),
+    "queued:<n>" when it is FREE but n waiters are QUEUED, None when exactly FREE."""
+    lines = (check_output or "").splitlines()
+    for line in lines:
         m = re.match(r"^HELD: (.+?) taken ", line)
         if m:
             return m.group(1)
-    return None
+    queued = sum(1 for line in lines if line.startswith("QUEUED:"))
+    if not queued:
+        m = re.match(r"^FREE, but (\d+) waiter", lines[0] if lines else "")
+        queued = int(m.group(1)) if m else 0
+    return "queued:%d" % queued if queued else None
 
 
 def lock_holder_in(root):
-    """Who holds the loop lock, asked of root's scripts/loop_lock.sh; None when FREE or on any error."""
+    """parse_holder of root's `scripts/loop_lock.sh check`; None when exactly FREE or on any error."""
     try:
-        from tools_py.tests.shell import find_bash        # Git Bash, never WSL's launcher (the house finder)
+        from tools_py.bashpath import find_bash           # Git Bash, never WSL's launcher (the house finder)
         bash = find_bash()
         if not bash:
             return None
@@ -667,8 +698,9 @@ def decide(tool_name, tool_input, cwd, is_worktree, worktree_of=None, merge_in_p
     `worktree_of(path) -> bool`, when given, re-answers is_worktree for `cd`/`pushd <dir>` and `git -C <dir>`.
     `merge_in_progress` (MERGE_HEAD exists in cwd) lets a commit without a pathspec through: git refuses a partial
     commit during a merge.
-    For the editing tools (EDIT_TOOLS): `lock_holder` is the loop lock's holder id (None when FREE), and
-    `slow_tests_ran` says the slow lock suite went green after scripts/loop_lock.sh was last changed.
+    For the editing tools (EDIT_TOOLS): `lock_holder` is what uses the loop lock (parse_holder; None when exactly
+    FREE). For Bash: `slow_tests_ran` says the slow lock suite went green after scripts/loop_lock.sh was last
+    changed (a commit naming the lock script needs it).
     """
     try:
         if not isinstance(tool_input, dict):
@@ -677,9 +709,10 @@ def decide(tool_name, tool_input, cwd, is_worktree, worktree_of=None, merge_in_p
             command = tool_input.get("command")
             if not isinstance(command, str):
                 return 0, ""
-            return decide_bash(command, cwd or ".", is_worktree, worktree_of, merge_in_progress)
+            return decide_bash(command, cwd or ".", is_worktree, worktree_of, merge_in_progress,
+                               slow_tests_ran=slow_tests_ran)
         if tool_name in EDIT_TOOLS:
-            return decide_edit(tool_name, tool_input, cwd, lock_holder, slow_tests_ran)
+            return decide_edit(tool_name, tool_input, cwd, lock_holder)
         return 0, ""
     except Exception:                                     # never break a tool call
         return 0, ""
@@ -719,13 +752,16 @@ def main():
             target = edit_target(tool_name, tool_input, cwd)
             if target is None:
                 return 0                                  # an ordinary edit: no lock check, no git beyond the root
-            kind, root = target
-            code, why = decide(tool_name, tool_input, cwd, False,
-                               lock_holder=lock_holder_in(root) if kind == "chain" else None,
-                               slow_tests_ran=slow_tests_green(root) if kind == "lock" else False)
+            code, why = decide(tool_name, tool_input, cwd, False, lock_holder=lock_holder_in(target[1]))
         elif tool_name == "Bash":
+            command = tool_input.get("command") if isinstance(tool_input, dict) else None
+            slow = False
+            if isinstance(command, str) and "loop_lock.sh" in command.lower():
+                root = _toplevel(os.path.realpath(cwd))
+                slow = bool(root) and slow_tests_green(root)
             code, why = decide(tool_name, tool_input, cwd, is_worktree_dir(cwd),
-                               worktree_of=is_worktree_dir, merge_in_progress=merge_in_progress_in(cwd))
+                               worktree_of=is_worktree_dir, merge_in_progress=merge_in_progress_in(cwd),
+                               slow_tests_ran=slow)
         else:
             return 0
         if code == 2:
