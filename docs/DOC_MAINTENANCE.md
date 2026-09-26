@@ -66,7 +66,7 @@ themselves, and why the checks below enforce exactly that and nothing else about
 
 The table in §3 must account for every `.md` file in these locations, one row each:
 
-- the repository root: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `THIRD_PARTY_NOTICES.md`
+- the repository root: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `THIRD_PARTY_NOTICES.md`, `CLAUDE.md`
 - `docs/*.md`, `docs/parity/*.md`, `docs/story/*.md`, `docs/archive/*.md`
 
 Everything else is classified **by location**, and needs no row:
@@ -93,6 +93,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `CONTRIBUTING.md` | **C** | controller | |
 | `SECURITY.md` | **C** | controller | The "Known: the game's own network code" section is live in spirit; review it whenever the network path changes |
 | `THIRD_PARTY_NOTICES.md` | **G** | licence test | A test fails on a dependency, vendored directory or release DLL without a row |
+| `CLAUDE.md` | **C** | controller | Loaded into every Claude Code session at start. A map, never state: at most 60 lines, no suite count, the live documents and the four skill names named (`ClaudeMdTest`). Sprint 14 I1 |
 | `docs/STATUS.md` | **L** | controller | **Only the "Current state" block is live.** Everything under it is a dated log, newest first, and is class S by paragraph — an entry keeps the numbers it was written with, on purpose. This is why STATUS is exempt from the single-source count rule |
 | `docs/KNOWN.md` | **L** | every task | Proven vs believed, with the artefact for each. **It wins on any disagreement.** The model this schema is generalised from |
 | `docs/HAZARDS.md` | **L** | every task | The standing hazards by the area each bites -- KNOWN's section 4 until 2026-09-26 (R270, Sprint 14 I5). A hazard is a trap, not a claim; retired in place, never deleted; KNOWN wins on any disagreement |
