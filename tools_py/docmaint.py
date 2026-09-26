@@ -40,7 +40,7 @@ CLASSES = {
 # server/horizon-server/** are vendored; fixture READMEs belong to their fixtures). The rule is in
 # docs/DOC_MAINTENANCE.md section 2.
 COVERED = (
-    ("", ("README.md", "CONTRIBUTING.md", "SECURITY.md", "THIRD_PARTY_NOTICES.md")),
+    ("", ("README.md", "CONTRIBUTING.md", "SECURITY.md", "THIRD_PARTY_NOTICES.md", "CLAUDE.md")),
     ("docs", None),
     ("docs/parity", None),
     ("docs/story", None),
