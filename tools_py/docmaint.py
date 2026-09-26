@@ -542,13 +542,14 @@ def describe_ceiling(item):
 # Check 11 (Sprint 14 I4): the read-first budget. The autonomy review of 2026-09-26 (F1) found HANDOFF's
 # "read first" list at 975 KB -- a quarter-million tokens a new controller read before acting -- and its minimum
 # useful subset at 268 KB. The set is what HANDOFF section 3 tells a new controller to read: HANDOFF itself, the
-# root or docs/ .md paths its "Read ..." step names, the plan named on CURRENT_SPRINT's `plans:` line, and
-# STATUS's "## Current state" block (the rest of STATUS is a log). LF-counted, like the ceilings. When it fires,
+# root or docs/ .md paths its "Read ..." step names, the "## Log" block of the plan named on CURRENT_SPRINT's
+# `plans:` line, and STATUS's "## Current state" block (the rest of STATUS is a log). LF-counted, like the ceilings. When it fires,
 # shrink or archive a member -- never raise the number.
 READ_FIRST_BUDGET = 160000
 # The pinned members, in reading order (the I4 review): HANDOFF itself, then what its section 3 "Read" step names.
 # ReadFirstBudgetTest holds that step to READ_FIRST[1:], so a rewording of section 3 fails loudly rather than
-# silently shrinking the set. The open plan and STATUS's block are added by read_first_set().
+# silently shrinking the set. read_first_set() adds the open plan, counted by its "## Log" block (section 3 says
+# "the open plan's Log"; whole when it has none), and STATUS, counted by its "## Current state" block.
 READ_FIRST = ("docs/HANDOFF.md", "CLAUDE.md", "docs/CURRENT_SPRINT.md")
 _BACKTICKED = re.compile(r"`([^`\s]+)`")
 _PLAN_PATH = re.compile(r"docs/superpowers/plans/[^\s`()]+?\.md")
@@ -611,10 +612,20 @@ def read_first_set():
 
 
 def read_first_bytes():
-    """[(path, bytes)] for each member that exists; STATUS by its "## Current state" block only."""
+    """[(path, bytes)] for each member that exists; STATUS by its "## Current state" block only, the open plan by
+    its "## Log" block only (HANDOFF section 3 sends a controller to the Log; the task sections are read per
+    task) -- or whole when it has no "## Log" heading, so a renamed heading cannot shrink the set."""
+    plan = _plans_line_path()
     out = []
     for path in read_first_set():
-        n = block_bytes(path, "## Current state" if path == "docs/STATUS.md" else None)
+        if path == "docs/STATUS.md":
+            n = block_bytes(path, "## Current state")
+        elif path == plan:
+            n = block_bytes(path, "## Log")
+            if n is None:
+                n = block_bytes(path, None)
+        else:
+            n = block_bytes(path, None)
         if n is not None:
             out.append((path, n))
     return out
@@ -634,14 +645,15 @@ def read_first_missing():
 
 
 def describe_plan_log():
-    """The open plan's "## Log" block, so the controller sees which part of the plan to archive; None without a plan."""
+    """The open plan's whole size beside its counted "## Log" block (information only); None without a plan."""
     plan = _plans_line_path()
     if not plan or not os.path.isfile(os.path.join(ROOT, plan)):
         return None
+    whole = block_bytes(plan, None)
     n = block_bytes(plan, "## Log")
     if n is None:
-        return "%s has no '## Log' block" % plan
-    return "%s '## Log' block {:,} bytes of {:,}".format(n, block_bytes(plan, None)) % plan
+        return "the open plan %s is {:,} bytes and has no '## Log' block: it counts whole".format(whole) % plan
+    return "the open plan %s is {:,} bytes; its '## Log' block {:,} counts".format(whole, n) % plan
 
 
 def describe_read_first(members):
@@ -739,7 +751,7 @@ def main(argv=None):
         print("read-first: %s" % describe_read_first(r["read_first_bytes"]))
     log = describe_plan_log()
     if log:
-        print("read-first: of which the open plan's %s" % log)
+        print("read-first: %s" % log)
     if r["tag_check_skipped"]:
         # Never pass silently: the run is OK only on what it could check, and says what it could not.
         print("tags: SKIPPED -- origin unreachable (%s); the 'merged to main as vX' check did not run"

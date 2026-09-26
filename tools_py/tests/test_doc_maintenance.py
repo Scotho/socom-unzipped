@@ -159,8 +159,8 @@ class ReadFirstBudgetTest(unittest.TestCase):
     """Check 11 (Sprint 14 I4): what a new controller reads before acting stays under 160,000 bytes.
 
     The review of 2026-09-26 (F1) found HANDOFF's read-first list at 975 KB, a quarter-million tokens before the
-    first action. The set is HANDOFF itself, the files its section 3 "Read" step names, the plan CURRENT_SPRINT's
-    `plans:` line names, and STATUS's "## Current state" block.
+    first action. The set is HANDOFF itself, the files its section 3 "Read" step names, the "## Log" block of the
+    plan CURRENT_SPRINT's `plans:` line names (whole if it has none), and STATUS's "## Current state" block.
     """
 
     def test_the_real_read_first_set_is_under_the_budget(self):
@@ -176,7 +176,8 @@ class ReadFirstBudgetTest(unittest.TestCase):
         self.assertTrue(any(p.startswith("docs/superpowers/plans/") for p in paths),
                         "CURRENT_SPRINT's plans: line named no plan the parser found: %s" % listing)
         self.assertLessEqual(total, docmaint.READ_FIRST_BUDGET,
-                             "over the read-first budget -- shrink or archive, never raise the number: %s" % listing)
+                             "over the read-first budget (the plan counts by its '## Log' block, STATUS by its "
+                             "'## Current state' block) -- shrink or archive, never raise the number: %s" % listing)
 
     def test_handoff_section_3_names_the_pinned_set(self):
         """The set is pinned in READ_FIRST, so a rewording of HANDOFF section 3 cannot silently shrink it: the
@@ -571,13 +572,17 @@ class PlantedDefectsTest(unittest.TestCase):
         self.assertIn("read_first_missing", out.getvalue())
         self.assertIn(typo, out.getvalue())
 
-    def test_the_report_prints_the_open_plans_log_block(self):
-        """So the controller sees which part of the plan to archive when check 11 nears the bar."""
+    def test_the_plan_counts_by_its_log_block_and_the_report_prints_both_sizes(self):
+        """HANDOFF section 3 sends a new controller to the open plan's Log; the task sections are consulted per
+        task, not read first. So the member is the "## Log" block, and the whole plan's size is printed beside it."""
         self.plant_read_first(1000)
-        self.write(self.PLAN, "# plan\n\n## Rulings made on the owner's behalf\n\n- **R99** (Task 1): the decision.\n\n"
+        self.write(self.PLAN, "# plan\n\n## Task 1: a task\n\n" + "t" * 40000 + "\n\n## Rulings made on the owner's "
+                              "behalf\n\n- **R99** (Task 1): the decision.\n\n"
                               "## Log (newest first)\n\n" + "- 2026-01-01 entry\n" * 100)
         log = docmaint.block_bytes(self.PLAN, "## Log")
+        whole = docmaint.block_bytes(self.PLAN, None)
         self.assertGreater(log, 1800)
+        self.assertEqual(dict(docmaint.read_first_bytes())[self.PLAN], log, "the task sections must not count")
         import contextlib
         import io
         out = io.StringIO()
@@ -587,6 +592,13 @@ class PlantedDefectsTest(unittest.TestCase):
         self.assertEqual(len(line), 1, out.getvalue())
         self.assertIn(self.PLAN, line[0])
         self.assertIn("{:,}".format(log), line[0])
+        self.assertIn("{:,}".format(whole), line[0])
+
+    def test_a_plan_with_no_log_heading_counts_whole(self):
+        """No "## Log" block to measure: the whole plan counts, so a renamed heading cannot shrink the set."""
+        self.plant_read_first(1000)
+        self.write(self.PLAN, "# plan\n\n## Task 1: a task\n\n" + "t" * 5000 + "\n")
+        self.assertEqual(dict(docmaint.read_first_bytes())[self.PLAN], docmaint.block_bytes(self.PLAN, None))
 
     # --- R268: "merged to main as vX" names a tag origin has ---------------------------------------------
 
