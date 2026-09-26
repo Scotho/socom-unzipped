@@ -424,6 +424,26 @@ def linked_docs():
     return sorted(set(out))
 
 
+def procedure_docs():
+    """The live procedures check 6 also reads (Sprint 14 I2): every `.claude/skills/**/SKILL.md` and every
+    `.claude/agents/*.md`. They are not registered documents (the registry covers docs/ and the root), but an
+    agent follows their citations as instructions, so a path they cite must exist like any other."""
+    out = []
+    skills = os.path.join(ROOT, ".claude", "skills")
+    if os.path.isdir(skills):
+        for dirpath, dirnames, filenames in os.walk(skills):
+            dirnames[:] = sorted(dirnames)
+            if "SKILL.md" in filenames:
+                rel = os.path.relpath(os.path.join(dirpath, "SKILL.md"), ROOT)
+                out.append(rel.replace(os.sep, "/"))
+    agents = os.path.join(ROOT, ".claude", "agents")
+    if os.path.isdir(agents):
+        for name in sorted(os.listdir(agents)):
+            if name.lower().endswith(".md") and os.path.isfile(os.path.join(agents, name)):
+                out.append(".claude/agents/%s" % name)
+    return sorted(set(out))
+
+
 def _cited_paths(line):
     """The docs/ FILES a line claims exist.
 
@@ -456,9 +476,10 @@ def _cited_paths(line):
 
 
 def dangling_doc_links():
-    """(file, line, target) for every backticked docs/ path that is not in the tree."""
+    """(file, line, target) for every backticked docs/ path that is not in the tree, in the root and docs/
+    markdown and in the live procedures (procedure_docs)."""
     bad = []
-    for rel in linked_docs():
+    for rel in linked_docs() + procedure_docs():
         for i, line in enumerate(_read(rel).split("\n"), 1):
             if FUTURE_MARK in line:
                 continue
