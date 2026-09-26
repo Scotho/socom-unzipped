@@ -9,34 +9,18 @@
 #include "DmaRuntimeState.h"
 #include "GsRuntimeState.h"
 #include "LibCRuntimeState.h"
+#include "CdRuntimeState.h"      // issue #51: the CD group
 
 namespace
 {
     constexpr uint32_t kCdSectorSize = 2048;
-    constexpr uint32_t kCdPseudoLbnStart = 0x00100000;
 
-    struct CdFileEntry
-    {
-        std::filesystem::path hostPath;
-        uint32_t sizeBytes = 0;
-        uint32_t baseLbn = 0;
-        uint32_t sectors = 0;
-    };
-
-    std::unordered_map<std::string, CdFileEntry> g_cdFilesByKey;
-    std::unordered_map<std::string, std::filesystem::path> g_cdLeafIndex;
-    std::unordered_map<std::string, std::filesystem::path> g_cdLoosePathIndex;
-    std::filesystem::path g_cdLeafIndexRoot;
-    bool g_cdLeafIndexBuilt = false;
-    uint32_t g_nextPseudoLbn = kCdPseudoLbnStart;
-    std::filesystem::path g_cdImageSizePath;
-    uint64_t g_cdImageSizeBytes = 0;
-    bool g_cdImageSizeValid = false;
-    int32_t g_lastCdError = 0;
-    uint32_t g_cdMode = 0;
-    uint32_t g_cdStreamingLbn = 0;
-    uint32_t g_cdStreamingEndLbn = 0xFFFFFFFFu;
-    bool g_cdInitialized = false;
+    // Issue #51: the CD group (fourteen variables, g_cdFilesByKey .. g_cdInitialized) is
+    // ps2_stubs::CdRuntimeState in CdRuntimeState.h, owned by the PS2Runtime; the helpers below take
+    // the instance they work on. It was defined here, one private copy per translation unit.
+    using ps2_stubs::CdFileEntry;
+    using ps2_stubs::CdRuntimeState;
+    using ps2_stubs::kCdPseudoLbnStart;
 
     constexpr uint32_t kIopHeapBase = 0x04000000;
     constexpr uint32_t kIopHeapLimit = 0x04500000;
@@ -195,7 +179,7 @@ namespace
         return PS2Runtime::getIoPaths().cdImage;
     }
 
-    bool tryGetCdImageTotalSectors(uint64_t &totalSectorsOut)
+    bool tryGetCdImageTotalSectors(CdRuntimeState &cd, uint64_t &totalSectorsOut)
     {
         const std::filesystem::path imagePath = getCdImagePath();
         if (imagePath.empty())
@@ -203,19 +187,19 @@ namespace
             return false;
         }
 
-        if (!g_cdImageSizeValid || g_cdImageSizePath != imagePath)
+        if (!cd.imageSizeValid || cd.imageSizePath != imagePath)
         {
             std::error_code ec;
-            g_cdImageSizeBytes = static_cast<uint64_t>(std::filesystem::file_size(imagePath, ec));
-            g_cdImageSizePath = imagePath;
-            g_cdImageSizeValid = !ec;
+            cd.imageSizeBytes = static_cast<uint64_t>(std::filesystem::file_size(imagePath, ec));
+            cd.imageSizePath = imagePath;
+            cd.imageSizeValid = !ec;
         }
-        if (!g_cdImageSizeValid)
+        if (!cd.imageSizeValid)
         {
             return false;
         }
 
-        totalSectorsOut = g_cdImageSizeBytes / static_cast<uint64_t>(kCdSectorSize);
+        totalSectorsOut = cd.imageSizeBytes / static_cast<uint64_t>(kCdSectorSize);
         return true;
     }
 
@@ -293,17 +277,17 @@ namespace
         return false;
     }
 
-    void ensureCdLeafIndex(const std::filesystem::path &root)
+    void ensureCdLeafIndex(CdRuntimeState &cd, const std::filesystem::path &root)
     {
-        if (g_cdLeafIndexBuilt && g_cdLeafIndexRoot == root)
+        if (cd.leafIndexBuilt && cd.leafIndexRoot == root)
         {
             return;
         }
 
-        g_cdLeafIndex.clear();
-        g_cdLoosePathIndex.clear();
-        g_cdLeafIndexRoot = root;
-        g_cdLeafIndexBuilt = true;
+        cd.leafIndex.clear();
+        cd.loosePathIndex.clear();
+        cd.leafIndexRoot = root;
+        cd.leafIndexBuilt = true;
 
         std::error_code ec;
         if (!std::filesystem::exists(root, ec) || ec)
@@ -324,7 +308,7 @@ namespace
             }
 
             const std::string leaf = toLowerAscii(entry.path().filename().string());
-            g_cdLeafIndex.emplace(leaf, entry.path());
+            cd.leafIndex.emplace(leaf, entry.path());
 
             std::error_code relEc;
             const std::filesystem::path relative = std::filesystem::relative(entry.path(), root, relEc);
@@ -333,7 +317,7 @@ namespace
                 const std::string looseKey = cdLoosePathKeyFromRelative(relative);
                 if (!looseKey.empty())
                 {
-                    g_cdLoosePathIndex.emplace(looseKey, entry.path());
+                    cd.loosePathIndex.emplace(looseKey, entry.path());
                 }
             }
         }
@@ -341,20 +325,20 @@ namespace
 
     std::string sanitizeForLog(const std::string &value); // defined below
 
-    bool registerCdFile(const std::string &ps2Path, CdFileEntry &entryOut)
+    bool registerCdFile(CdRuntimeState &cd, const std::string &ps2Path, CdFileEntry &entryOut)
     {
         const std::string key = cdPathKey(ps2Path);
         if (key.empty())
         {
-            g_lastCdError = -1;
+            cd.lastError = -1;
             return false;
         }
 
-        auto existing = g_cdFilesByKey.find(key);
-        if (existing != g_cdFilesByKey.end())
+        auto existing = cd.filesByKey.find(key);
+        if (existing != cd.filesByKey.end())
         {
             entryOut = existing->second;
-            g_lastCdError = 0;
+            cd.lastError = 0;
             return true;
         }
 
@@ -368,7 +352,7 @@ namespace
                 std::cerr << "registerCdFile: refused '" << sanitizeForLog(ps2Path)
                           << "': it does not stay under the CD root (logged once)" << std::endl;
             }
-            g_lastCdError = -1;
+            cd.lastError = -1;
             return false;
         }
         std::error_code ec;
@@ -383,10 +367,10 @@ namespace
             }
             else
             {
-                ensureCdLeafIndex(root);
+                ensureCdLeafIndex(cd, root);
                 const std::string leaf = toLowerAscii(relative.filename().string());
-                auto it = g_cdLeafIndex.find(leaf);
-                if (it != g_cdLeafIndex.end())
+                auto it = cd.leafIndex.find(leaf);
+                if (it != cd.leafIndex.end())
                 {
                     path = it->second;
                     ec.clear();
@@ -394,15 +378,15 @@ namespace
                 else
                 {
                     const std::string looseKey = cdLoosePathKey(ps2Path);
-                    auto looseIt = g_cdLoosePathIndex.find(looseKey);
-                    if (looseIt != g_cdLoosePathIndex.end())
+                    auto looseIt = cd.loosePathIndex.find(looseKey);
+                    if (looseIt != cd.loosePathIndex.end())
                     {
                         path = looseIt->second;
                         ec.clear();
                     }
                     else
                     {
-                        g_lastCdError = -1;
+                        cd.lastError = -1;
                         return false;
                     }
                 }
@@ -412,33 +396,33 @@ namespace
         const uint64_t sizeBytes = std::filesystem::file_size(path, ec);
         if (ec)
         {
-            g_lastCdError = -1;
+            cd.lastError = -1;
             return false;
         }
 
         CdFileEntry entry;
         entry.hostPath = path;
         entry.sizeBytes = static_cast<uint32_t>(std::min<uint64_t>(sizeBytes, 0xFFFFFFFFu));
-        entry.baseLbn = g_nextPseudoLbn;
+        entry.baseLbn = cd.nextPseudoLbn;
         entry.sectors = sectorsForBytes(sizeBytes);
 
-        g_nextPseudoLbn += entry.sectors + 1;
-        g_cdFilesByKey.emplace(key, entry);
+        cd.nextPseudoLbn += entry.sectors + 1;
+        cd.filesByKey.emplace(key, entry);
         entryOut = entry;
-        g_lastCdError = 0;
+        cd.lastError = 0;
         return true;
     }
 
-    bool readHostRange(const std::filesystem::path &path, uint64_t offsetBytes, uint8_t *dst, size_t byteCount)
+    bool readHostRange(CdRuntimeState &cd, const std::filesystem::path &path, uint64_t offsetBytes, uint8_t *dst, size_t byteCount)
     {
         if (!dst)
         {
-            g_lastCdError = -1;
+            cd.lastError = -1;
             return false;
         }
         if (byteCount == 0)
         {
-            g_lastCdError = 0;
+            cd.lastError = 0;
             return true;
         }
 
@@ -446,25 +430,25 @@ namespace
         std::ifstream file(path, std::ios::binary);
         if (!file.is_open())
         {
-            g_lastCdError = -1;
+            cd.lastError = -1;
             return false;
         }
 
         file.seekg(static_cast<std::streamoff>(offsetBytes), std::ios::beg);
         if (!file.good())
         {
-            g_lastCdError = -1;
+            cd.lastError = -1;
             return false;
         }
 
         file.read(reinterpret_cast<char *>(dst), static_cast<std::streamsize>(byteCount));
-        g_lastCdError = 0;
+        cd.lastError = 0;
         return true;
     }
 
-    bool readCdSectors(uint32_t lbn, uint32_t sectors, uint8_t *dst, size_t byteCount)
+    bool readCdSectors(CdRuntimeState &cd, uint32_t lbn, uint32_t sectors, uint8_t *dst, size_t byteCount)
     {
-        for (const auto &[key, entry] : g_cdFilesByKey)
+        for (const auto &[key, entry] : cd.filesByKey)
         {
             const uint32_t endLbn = entry.baseLbn + entry.sectors;
             if (lbn < entry.baseLbn || lbn >= endLbn)
@@ -474,38 +458,38 @@ namespace
 
             const uint64_t relativeLbn = static_cast<uint64_t>(lbn - entry.baseLbn);
             const uint64_t offset = relativeLbn * kCdSectorSize;
-            return readHostRange(entry.hostPath, offset, dst, byteCount);
+            return readHostRange(cd, entry.hostPath, offset, dst, byteCount);
         }
 
         const std::filesystem::path cdImage = getCdImagePath();
         if (!cdImage.empty())
         {
             uint64_t totalSectors = 0;
-            if (tryGetCdImageTotalSectors(totalSectors))
+            if (tryGetCdImageTotalSectors(cd, totalSectors))
             {
                 const uint64_t start = static_cast<uint64_t>(lbn);
                 const uint64_t end = start + static_cast<uint64_t>(sectors);
                 if (start >= totalSectors || end > totalSectors)
                 {
-                    g_lastCdError = -1;
+                    cd.lastError = -1;
                     return false;
                 }
             }
 
             const uint64_t offset = static_cast<uint64_t>(lbn) * kCdSectorSize;
-            return readHostRange(cdImage, offset, dst, byteCount);
+            return readHostRange(cd, cdImage, offset, dst, byteCount);
         }
 
         std::cerr << "sceCdRead unresolved LBN 0x" << std::hex << lbn
                   << " sectors=" << std::dec << sectors
                   << " (no mapped file and no configured CD image)" << std::endl;
-        g_lastCdError = -1;
+        cd.lastError = -1;
         return false;
     }
 
-    bool isResolvableCdLbn(uint32_t lbn)
+    bool isResolvableCdLbn(CdRuntimeState &cd, uint32_t lbn)
     {
-        for (const auto &[key, entry] : g_cdFilesByKey)
+        for (const auto &[key, entry] : cd.filesByKey)
         {
             const uint32_t endLbn = entry.baseLbn + entry.sectors;
             if (lbn >= entry.baseLbn && lbn < endLbn)
@@ -515,7 +499,7 @@ namespace
         }
 
         uint64_t totalSectors = 0;
-        if (tryGetCdImageTotalSectors(totalSectors))
+        if (tryGetCdImageTotalSectors(cd, totalSectors))
         {
             return static_cast<uint64_t>(lbn) < totalSectors;
         }
@@ -523,9 +507,9 @@ namespace
         return false;
     }
 
-    bool findRegisteredCdFileForLbn(uint32_t lbn, CdFileEntry &entryOut)
+    bool findRegisteredCdFileForLbn(CdRuntimeState &cd, uint32_t lbn, CdFileEntry &entryOut)
     {
-        for (const auto &[key, entry] : g_cdFilesByKey)
+        for (const auto &[key, entry] : cd.filesByKey)
         {
             const uint32_t endLbn = entry.baseLbn + entry.sectors;
             if (lbn >= entry.baseLbn && lbn < endLbn)
@@ -537,10 +521,10 @@ namespace
         return false;
     }
 
-    uint32_t cdStreamingEndLbnForStart(uint32_t lbn)
+    uint32_t cdStreamingEndLbnForStart(CdRuntimeState &cd, uint32_t lbn)
     {
         CdFileEntry entry{};
-        if (findRegisteredCdFileForLbn(lbn, entry))
+        if (findRegisteredCdFileForLbn(cd, lbn, entry))
         {
             return entry.baseLbn + entry.sectors;
         }

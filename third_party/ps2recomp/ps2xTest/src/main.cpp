@@ -43,6 +43,7 @@ void register_socom2_addresses_tests();   // Sprint 11 Task 10
 void register_socom2_revision_guard_tests();   // Sprint 11 Task 19
 void register_ps2_save_state_tests();   // Sprint 11 Task 8c
 void register_runtime_state_tests();      // Sprint 11 Task 8b
+void register_support_state_tests();      // issue #51
 void register_socom2_after_return_tests();   // Sprint 13 Task C3
 void register_socom2_peek_tests();           // Sprint 13 Task C3 (#39)
 void register_socom2_pad2_hle_tests();       // Sprint 13 Task C8 (audit F8)
@@ -130,6 +131,7 @@ int main()
     register_socom2_revision_guard_tests();
     register_ps2_save_state_tests();
     register_runtime_state_tests();
+    register_support_state_tests();
     register_socom2_after_return_tests();
     register_socom2_peek_tests();
     register_socom2_pad2_hle_tests();

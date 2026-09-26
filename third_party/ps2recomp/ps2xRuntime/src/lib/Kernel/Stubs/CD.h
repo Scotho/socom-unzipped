@@ -41,7 +41,9 @@ namespace ps2_stubs
         std::vector<CdDebugFileEntry> files;
     };
 
-    CdDebugSnapshot getCdDebugSnapshot();
+    // Issue #51: the CD state of `runtime` (the debug panel passes its own); a null runtime reads the
+    // process-wide fallback that a stub called with no runtime writes -- which is what the tests do.
+    CdDebugSnapshot getCdDebugSnapshot(PS2Runtime *runtime = nullptr);
     void sceCdRead(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void sceCdSync(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void sceCdGetError(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);

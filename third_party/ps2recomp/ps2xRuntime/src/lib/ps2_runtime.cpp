@@ -22,6 +22,7 @@
 #include "Kernel/Stubs/Helpers/DmaRuntimeState.h"
 #include "Kernel/Stubs/Helpers/GsRuntimeState.h"
 #include "Kernel/Stubs/Helpers/LibCRuntimeState.h"
+#include "Kernel/Stubs/Helpers/CdRuntimeState.h"     // issue #51
 #include "ps2_host_backend.h"
 #include "rlgl.h"
 #include "ps2_iop_host.h"
@@ -528,6 +529,7 @@ PS2Runtime::PS2Runtime()
     m_dmaRuntimeState = std::make_unique<ps2_stubs::DmaRuntimeState>();
     m_gsRuntimeState = std::make_unique<ps2_stubs::GsRuntimeState>();
     m_libcRuntimeState = std::make_unique<ps2_stubs::LibCRuntimeState>();
+    m_cdRuntimeState = std::make_unique<ps2_stubs::CdRuntimeState>();   // issue #51
 
     m_iopHost = std::make_unique<PS2IopHostAdapter>(*this);
     m_iopSubsystem = std::make_unique<ps2x::iop::IopSubsystem>(*m_iopHost);
@@ -3000,6 +3002,8 @@ ps2_stubs::GsRuntimeState &PS2Runtime::gsRuntimeState() { return *m_gsRuntimeSta
 const ps2_stubs::GsRuntimeState &PS2Runtime::gsRuntimeState() const { return *m_gsRuntimeState; }
 ps2_stubs::LibCRuntimeState &PS2Runtime::libcRuntimeState() { return *m_libcRuntimeState; }
 const ps2_stubs::LibCRuntimeState &PS2Runtime::libcRuntimeState() const { return *m_libcRuntimeState; }
+ps2_stubs::CdRuntimeState &PS2Runtime::cdRuntimeState() { return *m_cdRuntimeState; }
+const ps2_stubs::CdRuntimeState &PS2Runtime::cdRuntimeState() const { return *m_cdRuntimeState; }
 
 void PS2Runtime::resetStubRuntimeState()
 {
@@ -3007,6 +3011,7 @@ void PS2Runtime::resetStubRuntimeState()
     m_dmaRuntimeState->reset();
     m_gsRuntimeState->reset();
     m_libcRuntimeState->reset();
+    m_cdRuntimeState->reset();
 }
 
 namespace ps2_stubs
@@ -3033,5 +3038,11 @@ namespace ps2_stubs
     {
         static LibCRuntimeState noRuntimeFallback;
         return runtime ? runtime->libcRuntimeState() : noRuntimeFallback;
+    }
+
+    CdRuntimeState &cdRuntimeStateFor(PS2Runtime *runtime)
+    {
+        static CdRuntimeState noRuntimeFallback;
+        return runtime ? runtime->cdRuntimeState() : noRuntimeFallback;
     }
 }
