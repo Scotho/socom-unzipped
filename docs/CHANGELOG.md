@@ -2,12 +2,28 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.changelog` from `git log` (R272): every merge commit on the first-parent line of the history it was rendered from, and on the first-parent line of each branch those merges brought in, grouped by the oldest `v*` tag that contains it. `python -m tools_py.changelog --check` exits 1 when this file is stale; regenerate at every merge to a sprint branch (in the merge's follow-up commit) and at the close. The rules are the module's docstring. The reasoning behind a merge is its commit message and the sprint plan's Log; the hand-written log this page replaced is `docs/archive/STATUS-log-to-2026-09-26.md`.
 
-142 merges (39 on the first-parent line, 103 from the branches they merged) in 10 sections: 9 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
+158 merges (54 on the first-parent line, 104 from the branches they merged) in 10 sections: 9 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
 
 ## Since v0.13.0
 
-28 merges.
+44 merges.
 
+- 2026-09-26 `01650b22` merge(sprint-14): the upstream register docs/UPSTREAM.md (bugs in the vendors' main only); the close chain's block [branch not named]
+- 2026-09-26 `3bdf80e8` merge(sprint-14): E2 the fourth leg's tooling [branch not named]
+- 2026-09-26 `37ca3511` merge(sprint-14): W2 the merged chain as the gate unit [branch not named]
+- 2026-09-26 `f6858d24` merge(sprint-14): X1 the external sweep for Sprint 15 [branch not named]
+- 2026-09-26 `9617c69b` merge(sprint-14): E3 recompiler re-derivation in CI [branch not named]
+- 2026-09-26 `a3f84dba` merge(sprint-14): W1 the queue's WIP cap [branch not named]
+- 2026-09-26 `d13b9c34` merge(sprint-14): M2 token spend, local only [branch not named]
+- 2026-09-26 `c387f166` merge(sprint-14): D4 the circuit breaker [branch not named]
+- 2026-09-26 `e7cd70dd` merge(sprint-14): D3 the owner's sitting page [branch not named]
+- 2026-09-26 `d751bc7f` merge(sprint-14): M1 the flow page [branch not named]
+- 2026-09-26 `b99708e2` merge(sprint-14): D5 PLAYTEST's build block written by the chain [branch not named]
+- 2026-09-26 `c6e6b83f` merge(sprint-14): S3 the ceilings ratchet [branch not named]
+- 2026-09-26 `72889b31` merge(sprint-14): origin/main at b3dae300 (PR #66, #57 open for the r0004 leg); E4's row and #56's note [branch not named]
+  - 2026-09-26 `b3dae300` recomp: each generated file declares only its callees; the recomp rewrites only changed files (#66) [branch not named]
+- 2026-09-26 `018a7489` merge(sprint-14): E4 gate freshness [branch not named]
+- 2026-09-26 `6c3d9a58` one home each [agent/s14-s4]
 - 2026-09-26 `41ef8678` the generated changelog from merge commits and tags; STATUS's log archived (S14 S1, R272) [agent/s14-s1]
 - 2026-09-26 `edf2a0df` check 11, the read-first budget over HANDOFF, CLAUDE.md, CURRENT_SPRINT, the Log, STATUS (S14 I4) [agent/s14-i4]
 - 2026-09-26 `73f0f0f8` origin/main (123dd1c5, PR #65 the CD group and g_iopHeapNext runtime-owned, #51 closed) into sprint-14 [origin/main, main merged in]
