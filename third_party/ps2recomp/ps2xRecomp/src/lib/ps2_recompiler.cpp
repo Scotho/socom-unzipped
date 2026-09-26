@@ -99,6 +99,14 @@ namespace ps2recomp
             return 1;
         }
 
+        // The key PS2Recompiler::m_producedOutputPaths holds a path under (issue #57).
+        std::string producedOutputKey(const fs::path &path)
+        {
+            std::error_code ec;
+            fs::path absolute = fs::absolute(path, ec);
+            return (ec ? path : absolute).lexically_normal().generic_string();
+        }
+
         void writeCombinedOutputPreamble(std::ostream &output)
         {
             output << "#include <stdexcept>\n";
@@ -1082,6 +1090,7 @@ namespace ps2recomp
         try
         {
             m_functionRenames.clear();
+            m_producedOutputPaths.clear();
 
             auto makeName = [&](const Function &function) -> std::string
             {
@@ -1276,6 +1285,7 @@ namespace ps2recomp
             if (m_config.singleFileOutput)
             {
                 fs::path outputPath = fs::path(m_config.outputPath) / "ps2_recompiled_functions.cpp";
+                m_producedOutputPaths.insert(producedOutputKey(outputPath));
                 std::ofstream combinedOutput(outputPath);
                 if (!combinedOutput)
                 {
@@ -1687,6 +1697,8 @@ namespace ps2recomp
             {
                 throw std::runtime_error("Failed to generate stub header");
             }
+
+            pruneStaleOutput();
         }
         catch (const std::exception &e)
         {
@@ -2151,6 +2163,23 @@ namespace ps2recomp
 
     bool PS2Recompiler::writeToFile(const std::string &path, const std::string &content)
     {
+        m_producedOutputPaths.insert(producedOutputKey(path));
+
+        // Issue #57: a file whose bytes would not change is left alone, so it keeps its timestamp and a
+        // re-recomp followed by a build recompiles only the objects whose source changed. Read back in text
+        // mode, the mode it is written in, so the comparison sees the same line endings on every host.
+        {
+            std::ifstream existing(path);
+            if (existing)
+            {
+                std::string current((std::istreambuf_iterator<char>(existing)), std::istreambuf_iterator<char>());
+                if (!existing.bad() && current == content)
+                {
+                    return true;
+                }
+            }
+        }
+
         std::ofstream file(path);
         if (!file)
         {
@@ -2162,6 +2191,78 @@ namespace ps2recomp
         file.close();
 
         return true;
+    }
+
+    void PS2Recompiler::pruneStaleOutput()
+    {
+        // Issue #57: build.sh used to delete the whole output directory before a recomp, which gave every
+        // generated file a new timestamp and rebuilt every object. Now the files are rewritten only when their
+        // bytes change, and what a previous run wrote that this run did not (a renamed function's old file) is
+        // removed here. The tool never deleted anything before, and a config may point `output` at a folder
+        // that holds other sources (".", ".."), so the prune is bounded twice: the output folder itself, never
+        // below it, and only the names this emitter writes -- a function file `<name>_0x<hex>.cpp` or one of
+        // the four fixed files. Anything else (a `keep.cpp`, a README) is left alone.
+        const fs::path outputDir(m_config.outputPath);
+        std::error_code ec;
+        if (!fs::is_directory(outputDir, ec))
+        {
+            return;
+        }
+
+        auto isGeneratedName = [](const std::string &name) -> bool
+        {
+            if (name == "register_functions.cpp" || name == "ps2_recompiled_functions.cpp" ||
+                name == "ps2_recompiled_functions.h" || name == "ps2_recompiled_stubs.h")
+            {
+                return true;
+            }
+            const std::string ext = ".cpp";
+            if (name.size() <= ext.size() || name.compare(name.size() - ext.size(), ext.size(), ext) != 0)
+            {
+                return false;
+            }
+            const std::string stem = name.substr(0, name.size() - ext.size());
+            const size_t marker = stem.rfind("_0x");
+            if (marker == std::string::npos || marker + 3 >= stem.size())
+            {
+                return false;
+            }
+            return std::all_of(stem.begin() + static_cast<std::ptrdiff_t>(marker + 3), stem.end(), [](char c)
+                               { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); });
+        };
+
+        std::vector<fs::path> stale;
+        for (fs::directory_iterator it(outputDir, ec), end; !ec && it != end; it.increment(ec))
+        {
+            if (!it->is_regular_file(ec))
+            {
+                continue;
+            }
+            if (!isGeneratedName(it->path().filename().string()))
+            {
+                continue;
+            }
+            if (m_producedOutputPaths.count(producedOutputKey(it->path())) == 0u)
+            {
+                stale.push_back(it->path());
+            }
+        }
+
+        for (const fs::path &path : stale)
+        {
+            std::error_code removeEc;
+            if (!fs::remove(path, removeEc) && removeEc)
+            {
+                m_reporter.warning("output", "Failed to remove stale output file: " + path.string());
+            }
+        }
+
+        if (!stale.empty())
+        {
+            std::ostringstream msg;
+            msg << "removed " << stale.size() << " stale output file(s) from " << outputDir;
+            m_reporter.progress(msg.str());
+        }
     }
 
     std::filesystem::path PS2Recompiler::getOutputPath(const Function &function) const

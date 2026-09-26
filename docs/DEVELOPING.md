@@ -424,6 +424,20 @@ PS2X_PC_SAMPLER=5 ./run.sh 40    # run 40 s; logs/latest.log; prints guest threa
 > before the C++ suite, and has since Sprint 5 (`docs/HAZARDS.md` build, "`build.sh test` runs zero Python tests",
 > struck as fixed) — documents audit rows 3 and 7.
 
+**A re-recomp rebuilds only what changed (issue #57, 2026-09-26).** `./build.sh recomp` no longer deletes
+`recomp/output/`: `ps2_recomp` rewrites a file only when its bytes change and removes the `.cpp`/`.h` files an earlier
+run left that this one did not produce (`[recompiler] removed N stale output file(s)` in `recomp/recomp_run.log`). A
+generated function file includes the runtime headers and then declares only the functions it tail-calls by name, one
+`void NAME(uint8_t*, R5900Context*, PS2Runtime*);` line each, sorted; `ps2_recompiled_functions.h` and
+`ps2_recompiled_stubs.h` are included by `register_functions.cpp` alone and are not in the runner's precompiled
+header; the runner's unity batches (32 files) are ordered by the guest address each file name ends in, so a rename
+keeps its file in its batch. Measured on the worktree build: a recomp with nothing changed rebuilds 0 objects; one
+display name changed in `recomp/socom2_names.csv` rebuilds 2 (the function's batch and the table's) and relinks in
+27 s; a name 17 files tail-call rebuilds 10 in 44 s; the full build is 622 s. `scripts/build_revision.sh` still
+deletes its own `recomp/output_<rev>/` first. A clean rebuild of the generated code means deleting `recomp/output/` by hand; there is no
+flag. The prune touches only the output folder itself (not its subfolders) and only the names the emitter writes
+(`<name>_0x<hex>.cpp` and the four fixed files).
+
 `./run.sh` is a developer-mode launch (`PS2X_DEV=1` unless set): it runs `dist/socom2.exe` (or `$SOCOM_EXE`) on
 `game/disc/socom2_game.elf` (or `$SOCOM_GAME_ELF`) and writes `logs/run_<stamp>.log` (or `$PS2X_RUN_LOG`, which a
 driver sets to tail the game's own `[peek]` rows), with `logs/latest.log` pointing at it.

@@ -40,20 +40,7 @@ namespace ps2recomp
         CodeGenerator &cg = m_codeGenerator;
         std::stringstream ss;
         cg.m_currentFunctionName = function.name;
-
-        if (useHeaders)
-        {
-            ss << "#include <stdexcept>\n";
-            ss << "#include \"ps2_runtime_macros.h\"\n";
-            ss << "#include \"ps2_runtime.h\"\n";
-            ss << "#include \"ps2_recompiled_functions.h\"\n";
-            ss << "#include \"ps2_recompiled_stubs.h\"\n\n";
-            ss << "#include \"ps2_syscalls.h\"\n";
-            ss << "#include \"ps2_stubs.h\"\n\n";
-            ss << "#ifdef PS2_FUNCTION_LOG_TRACKER\n";
-            ss << "#include \"ps2_log.h\"\n";
-            ss << "#endif\n\n";
-        }
+        cg.m_directCallees.clear();
 
         CodeGenerator::AnalysisResult analysisResult = cg.collectInternalBranchTargets(function, instructions);
         std::vector<uint32_t> resumeTargets(analysisResult.resumeEntryPoints.begin(),
@@ -250,6 +237,36 @@ namespace ps2recomp
         }
 
         ss << "}\n";
-        return ss.str();
+
+        if (!useHeaders)
+        {
+            // The single-file output: writeCombinedOutputPreamble includes ps2_recompiled_functions.h once.
+            return ss.str();
+        }
+
+        // Issue #57 (upstream #253): the file declares only the functions its body names -- the direct tail
+        // calls the control-flow emitter recorded in m_directCallees -- instead of including
+        // ps2_recompiled_functions.h, which declares every generated function and so made one rename rebuild
+        // every object. A call into a stub goes through the function table (issue #40), never by name, so
+        // ps2_recompiled_stubs.h goes too. The set is ordered: the text does not depend on hash order.
+        std::stringstream file;
+        file << "#include <stdexcept>\n";
+        file << "#include \"ps2_runtime_macros.h\"\n";
+        file << "#include \"ps2_runtime.h\"\n\n";
+        file << "#include \"ps2_syscalls.h\"\n";
+        file << "#include \"ps2_stubs.h\"\n\n";
+        file << "#ifdef PS2_FUNCTION_LOG_TRACKER\n";
+        file << "#include \"ps2_log.h\"\n";
+        file << "#endif\n\n";
+        for (const std::string &callee : cg.m_directCallees)
+        {
+            file << "void " << callee << "(uint8_t*, R5900Context*, PS2Runtime*);\n";
+        }
+        if (!cg.m_directCallees.empty())
+        {
+            file << "\n";
+        }
+        file << ss.str();
+        return file.str();
     }
 }
