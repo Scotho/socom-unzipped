@@ -11,14 +11,14 @@ next sitting is for. *(Rewritten 2026-09-25, Sprint 13 S1, stranger audit S24 an
 still presented the 2026-09-21 build as "Ready" three days after it was played, and its decisions section asked
 questions already answered.)*
 
-```
-build:    NOT BUILT. No archive exists for the current tree: the v0.12.0 draft release has no assets
-          (gh release view v0.12.0, 2026-09-25). Whoever builds the next archive fills this block from
-          the run that built it -- not from the directory (`docs/HAZARDS.md` build: a failed packaging leaves the
-          previous archive in place):
-          commit, `git describe`, release optimisation, archive path, size and sha256, the gate stamp
-          3/3 on the exe INSIDE the archive with that exe's size and sha256, and the release leak check.
-```
+<!-- build:begin -->
+**NOT BUILT** -- no release archive has been packaged from this tree, so there is no build to play or to check
+against. The merged chain's last step (`scripts/parity/playtest_block.sh`) packages the build it made and writes
+this block. By hand, after a build in `dist/`: `bash scripts/make_portable.sh` under the lock
+(`bash scripts/loop_lock.sh run <name> --purpose "release archive" -- bash scripts/make_portable.sh`), then
+`python -m tools_py.playtest_block --manifest dist/manifest.json` writes this block from the manifest the
+packaging leaves in `dist/`.
+<!-- build:end -->
 
 > Superseded 2026-09-25 (Sprint 13 S1) -- the block that stood here, kept as the record of the last sitting's build:
 >

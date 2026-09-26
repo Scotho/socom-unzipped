@@ -23,6 +23,32 @@ SUFFIX=""
 if [ "${1:-}" = "--release" ]; then SUFFIX="-release"; shift; fi
 AUDIT="$ROOT/tools_py/portable_audit.py"
 PY="$PYTHON"
+# Sprint 14 D5: <build dir>/manifest.json (dist/manifest.json by default; dist-linux/ on Linux) describes the archive
+# this run made -- its name and sha256, the runner's sha256, the commit, branch and time, and how many paths of the
+# tree were uncommitted. tools_py/playtest_block.py writes docs/PLAYTEST.md's build block from it. A run removes the
+# previous manifest before it starts and writes the new one LAST, only once the archive exists, so a failed
+# packaging leaves no manifest and the block says NOT BUILT instead of naming the previous archive.
+write_manifest() {   # <archive> <runner exe> <manifest>
+  local archive="$1" exe="$2" manifest="$3" apath
+  [ -f "$archive" ] || { echo "make_portable: no archive at $archive -- no manifest written" >&2; return 1; }
+  # forward slashes: an OUT given as C:\... would put backslashes (JSON escapes) into the file
+  apath="${archive//\\//}"; case "$apath" in "$ROOT"/*) apath="${apath#"$ROOT"/}" ;; esac
+  {
+    printf '{\n'
+    printf '  "archive": "%s",\n' "$(basename "$archive")"
+    printf '  "archive_path": "%s",\n' "$apath"
+    printf '  "archive_sha256": "%s",\n' "$(sha256sum < "$archive" | cut -d' ' -f1)"
+    printf '  "exe": "%s",\n' "$(basename "$exe")"
+    printf '  "exe_sha256": "%s",\n' "$(sha256sum < "$exe" | cut -d' ' -f1)"
+    printf '  "commit": "%s",\n' "$(git -C "$ROOT" rev-parse HEAD)"
+    printf '  "branch": "%s",\n' "$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
+    printf '  "built_at": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '  "tree_dirty": %s\n' "$(git -C "$ROOT" status --porcelain | wc -l | tr -d ' ')"
+    printf '}\n'
+  } > "$manifest.tmp"
+  mv -f "$manifest.tmp" "$manifest"
+  echo "manifest: $manifest"
+}
 case "${MAKE_PORTABLE_SYSTEM:-$(uname -s)}" in
   Linux)
     LDD="${LDD:-ldd}"
@@ -32,7 +58,9 @@ case "${MAKE_PORTABLE_SYSTEM:-$(uname -s)}" in
     LDIST="${LDIST:-$ROOT/dist-linux$SUFFIX}"
     OUT="${1:-$LDIST/portable}"
     PKG="$OUT/socom2-linux"
+    MANIFEST="$LDIST/manifest.json"
     mkdir -p "$LDIST"
+    rm -f "$MANIFEST" "$MANIFEST.tmp"
     if [ ! -f "$LDIST/socom2_game.elf" ] && [ -f "$DIST/socom2_game.elf" ]; then
       cp "$DIST/socom2_game.elf" "$LDIST/socom2_game.elf"
     fi
@@ -96,12 +124,15 @@ RD
     ( cd "$OUT" && tar -czf socom2-linux.tar.gz socom2-linux )
     "$PY" "$AUDIT" sha256sums "$OUT" socom2-linux.tar.gz >/dev/null
     echo "portable folder: $PKG ($(ls "$PKG" | wc -l) entries, $NLIBS libraries in lib/), tarball: $OUT/socom2-linux.tar.gz ($(wc -c < "$OUT/socom2-linux.tar.gz") bytes), $OUT/SHA256SUMS"
+    write_manifest "$OUT/socom2-linux.tar.gz" "$LDIST/socom2" "$MANIFEST"
     ;;
   *)
 DIST="${DIST:-$ROOT/dist$SUFFIX}"
 OUT="${1:-$ROOT/dist$SUFFIX/portable}"
 PY="$PYTHON"
 PKG="$OUT/socom2"
+MANIFEST="$DIST/manifest.json"
+rm -f "$MANIFEST" "$MANIFEST.tmp"
 for f in socom2.exe socom2_game.elf socom_unzipped_launcher.exe; do
   [ -f "$DIST/$f" ] || { echo "make_portable: $DIST/$f missing -- run ./build.sh runtime first${SUFFIX:+ (or ./build.sh release)}" >&2; exit 2; }
 done
@@ -143,5 +174,6 @@ RD
 ( cd "$OUT" && rm -f socom2-portable.zip SHA256SUMS && powershell -NoProfile -Command "Compress-Archive -Path 'socom2' -DestinationPath 'socom2-portable.zip' -Force" )
 "$PY" "$AUDIT" sha256sums "$OUT" socom2-portable.zip >/dev/null
 echo "portable folder: $PKG ($(ls "$PKG" | wc -l) entries), zip: $OUT/socom2-portable.zip ($(wc -c < "$OUT/socom2-portable.zip") bytes), $OUT/SHA256SUMS"
+write_manifest "$OUT/socom2-portable.zip" "$DIST/socom2.exe" "$MANIFEST"
     ;;
 esac
