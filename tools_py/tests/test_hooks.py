@@ -166,6 +166,80 @@ class PretoolPlantedTest(unittest.TestCase):
         self.assertEqual(pretool.decide("Bash", {"command": None}, ".", True), (0, ""))
 
 
+class EditWritePlantedTest(unittest.TestCase):
+    """Sprint 14 G2: an Edit/Write/MultiEdit/NotebookEdit on a running chain script (logs/**/*.sh while the lock is
+    HELD) or on scripts/loop_lock.sh before a green slow lock suite is refused; everything else passes."""
+
+    def edit(self, tool, path, holder=None, slow=False, key="file_path"):
+        return pretool.decide(tool, {key: path}, ROOT, False, lock_holder=holder, slow_tests_ran=slow)
+
+    def test_a_chain_script_under_the_lock_is_refused(self):
+        code, why = self.edit("Edit", "logs/s14_chain.sh", holder="chain:s14")
+        self.assertEqual(code, 2, why)
+        self.assertIn("chain:s14", why)
+        self.assertIn("home: docs/KNOWN.md section 4", why)
+        self.assertEqual(self.edit("Edit", "logs/s14_chain.sh", holder=None), (0, ""))
+
+    def test_the_lock_script_needs_a_green_slow_run(self):
+        code, why = self.edit("Write", "scripts/loop_lock.sh", slow=False)
+        self.assertEqual(code, 2, why)
+        self.assertIn("LOOP_LOCK_SLOW_TESTS=1", why)
+        self.assertIn("home: scripts/loop_lock.sh", why)
+        self.assertEqual(self.edit("Write", "scripts/loop_lock.sh", slow=True), (0, ""))
+
+    def test_neighbours_pass(self):
+        self.assertEqual(self.edit("Edit", "logs/notes.md", holder="chain:s14"), (0, ""))
+        self.assertEqual(self.edit("Edit", "scripts/other.sh", holder="chain:s14"), (0, ""))
+        self.assertEqual(self.edit("Edit", "docs/logs/x.sh", holder="chain:s14"), (0, ""))   # not the root logs/
+        self.assertEqual(self.edit("Edit", "scripts/loop_lock.sh.bak"), (0, ""))
+
+    def test_an_absolute_path_and_a_deeper_chain_are_judged(self):
+        code, why = self.edit("Write", os.path.join(ROOT, "logs", "x.sh"), holder="chain:s14")
+        self.assertEqual(code, 2, why)
+        code, why = self.edit("Write", os.path.join(ROOT, "logs", "sub", "y.sh").replace("\\", "/"), holder="h")
+        self.assertEqual(code, 2, why)
+        self.assertEqual(self.edit("Write", os.path.join(ROOT, "scripts", "loop_lock.sh"))[0], 2)
+
+    def test_every_editing_tool_and_path_key_is_judged_alike(self):
+        for tool in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
+            for key in ("file_path", "path", "filePath", "notebook_path"):
+                self.assertEqual(self.edit(tool, "logs/s14_chain.sh", holder="h", key=key)[0], 2, (tool, key))
+                self.assertEqual(self.edit(tool, "scripts/loop_lock.sh", key=key)[0], 2, (tool, key))
+
+    def test_a_missing_path_and_other_tools_pass(self):
+        self.assertEqual(pretool.decide("Edit", {}, ROOT, False, lock_holder="h"), (0, ""))
+        self.assertEqual(pretool.decide("Edit", {"file_path": None}, ROOT, False, lock_holder="h"), (0, ""))
+        self.assertEqual(pretool.decide("Read", {"file_path": "logs/s14_chain.sh"}, ROOT, False, lock_holder="h"),
+                         (0, ""))
+
+    def test_a_path_outside_any_lock_repository_passes(self):
+        with tempfile.TemporaryDirectory(prefix="pretool_out_") as d:
+            self.assertEqual(self.edit("Edit", os.path.join(d, "logs", "x.sh"), holder="h"), (0, ""))
+            self.assertEqual(self.edit("Edit", os.path.join(d, "scripts", "loop_lock.sh")), (0, ""))
+
+    def test_the_holder_is_parsed_from_check(self):
+        self.assertEqual(pretool.parse_holder("HELD: chain:s14 taken 3 min ago, heartbeat 0 min (12 s) old, "
+                                              "purpose: s14 chain (reapable after 20 min ...)\nQUEUED x"), "chain:s14")
+        self.assertIsNone(pretool.parse_holder("FREE"))
+        self.assertIsNone(pretool.parse_holder("FREE, but 2 waiter(s) queued: ..."))
+        self.assertIsNone(pretool.parse_holder(""))
+
+    def test_the_slow_marker_counts_only_when_newer_than_the_script(self):
+        with tempfile.TemporaryDirectory(prefix="pretool_mk_") as d:
+            os.makedirs(os.path.join(d, "scripts"))
+            script = os.path.join(d, "scripts", "loop_lock.sh")
+            open(script, "w").close()
+            self.assertFalse(pretool.slow_tests_green(d))                    # no marker
+            os.makedirs(os.path.join(d, "logs"))
+            marker = os.path.join(d, "logs", ".loop_lock_slow_green")
+            open(marker, "w").close()
+            os.utime(script, (1000, 1000))
+            os.utime(marker, (2000, 2000))
+            self.assertTrue(pretool.slow_tests_green(d))
+            os.utime(script, (3000, 3000))                                   # edited after the green run
+            self.assertFalse(pretool.slow_tests_green(d))
+
+
 class ClaudeDirIgnoreTest(unittest.TestCase):
     """The repository's .gitignore owns .claude/: settings.json, agents/ and skills/ tracked, the harness's local state
     ignored -- even on a machine whose global excludes file ignores `.claude/*` (the owner's does)."""
@@ -255,6 +329,50 @@ class PretoolWiringTest(unittest.TestCase):
         self.assertFalse(os.path.exists(marker))
         self.assertEqual(run("GIT status").returncode, 2)
         self.assertTrue(os.path.exists(marker))
+
+    def stub_lock(self, check_line):
+        """A stub scripts/loop_lock.sh in the temp repo whose `check` prints check_line."""
+        os.makedirs(os.path.join(self.tmp.name, "scripts"), exist_ok=True)
+        with open(os.path.join(self.tmp.name, "scripts", "loop_lock.sh"), "w", newline="\n") as f:
+            f.write("#!/usr/bin/env bash\n[ \"$1\" = check ] && echo '%s'\nexit 0\n" % check_line)
+
+    def edit_hook(self, path, tool_name="Edit"):
+        doc = {"session_id": "t", "cwd": self.tmp.name, "hook_event_name": "PreToolUse", "tool_name": tool_name,
+               "tool_input": {"file_path": path, "old_string": "a", "new_string": "b"}, "tool_use_id": "toolu_t"}
+        return subprocess.run([BASH, HOOK_SH.replace("\\", "/")], input=json.dumps(doc), capture_output=True,
+                              text=True, cwd=self.tmp.name, timeout=60)
+
+    def test_an_edit_of_a_running_chain_script_is_refused(self):
+        chain = os.path.join(self.tmp.name, "logs", "s14_chain.sh")
+        self.stub_lock("HELD: chain:s14 taken 3 min ago, heartbeat 0 min (5 s) old, purpose: s14")
+        p = self.edit_hook(chain)
+        self.assertEqual(p.returncode, 2, p.stderr)
+        self.assertIn("chain:s14", p.stderr)
+        self.assertEqual(self.edit_hook(chain.replace("\\", "/"), tool_name="Write").returncode, 2)
+        self.stub_lock("FREE")
+        p = self.edit_hook(chain)
+        self.assertEqual(p.returncode, 0, p.stderr)
+
+    def test_an_edit_of_the_lock_script_waits_for_the_slow_marker(self):
+        self.stub_lock("FREE")
+        script = os.path.join(self.tmp.name, "scripts", "loop_lock.sh")
+        self.assertEqual(self.edit_hook(script).returncode, 2)
+        os.makedirs(os.path.join(self.tmp.name, "logs"), exist_ok=True)
+        marker = os.path.join(self.tmp.name, "logs", ".loop_lock_slow_green")
+        open(marker, "w").close()
+        os.utime(script, (1000, 1000))
+        p = self.edit_hook(script)
+        self.assertEqual(p.returncode, 0, p.stderr)
+
+    def test_an_ordinary_edit_skips_python(self):
+        fake = os.path.join(self.tmp.name, "fakepy.sh")
+        with open(fake, "w", newline="\n") as f:
+            f.write("#!/bin/sh\nexit 2\n")
+        os.chmod(fake, 0o755)
+        doc = {"tool_name": "Edit", "tool_input": {"file_path": "C:/x/docs/notes.md"}, "cwd": "."}
+        p = subprocess.run([BASH, HOOK_SH.replace("\\", "/")], input=json.dumps(doc), capture_output=True, text=True,
+                           cwd=self.tmp.name, env=dict(os.environ, PYTHON=fake.replace("\\", "/")), timeout=60)
+        self.assertEqual(p.returncode, 0)
 
     def test_garbage_on_stdin_passes(self):
         p = subprocess.run([BASH, HOOK_SH.replace("\\", "/")], input="not json", capture_output=True, text=True,

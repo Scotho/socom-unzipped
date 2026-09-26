@@ -23,8 +23,14 @@ Known limits, each accepted (nobody writes these by accident, and the hook is a 
   pathspec);
 - git configuration passed through the environment (`GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT`/`_KEY_n`) is not
   read, so a hooksPath set there is not seen;
-- the shell's fast path matches the substrings `git` and `loop_lock` in the JSON, so a spelling that hides them
-  (`gi''t`) never reaches Python.
+- the shell's fast path matches the substrings `git`, `loop_lock` and `logs/` (or `logs` and a backslash) in the JSON, so a
+  spelling that hides them (`gi''t`) never reaches Python.
+
+Sprint 14 G2 adds the editing tools (Edit, Write, MultiEdit, NotebookEdit; the path from `tool_input.file_path`,
+`notebook_path`, or defensively `path`/`filePath`): a `logs/**/*.sh` of a repository that has scripts/loop_lock.sh
+is refused while the lock is HELD (`bash scripts/loop_lock.sh check`, asked only for such a path), and
+scripts/loop_lock.sh itself until logs/.loop_lock_slow_green (written by a green slow lock suite) is newer than it.
+An edit through Bash (`sed -i`, a heredoc) is not seen by this half.
 The rules, their homes and their tests: docs/DEVELOPING.md, "Guards".
 """
 import fnmatch
@@ -541,13 +547,128 @@ def decide_bash(command, cwd, is_worktree, worktree_of=None, merge_in_progress=F
     return 0, ""
 
 
-def decide(tool_name, tool_input, cwd, is_worktree, worktree_of=None, merge_in_progress=False):
+# ---------------------------------------------------------------------------------------------- Edit/Write (G2)
+
+EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
+# Edit/Write/MultiEdit name the file `file_path`, NotebookEdit `notebook_path`; the other two are defensive
+_PATH_KEYS = ("file_path", "notebook_path", "path", "filePath")
+LOCK_SCRIPT = "scripts/loop_lock.sh"
+SLOW_MARKER = "logs/.loop_lock_slow_green"
+RUNNING_CHAIN = "docs/KNOWN.md section 4 (the running-chain hazard)"
+LOCK_ROLLOUT = "scripts/loop_lock.sh header (the rollout procedure)"
+
+
+def edit_path(tool_input):
+    """The path an editing tool's input names, or None."""
+    for key in _PATH_KEYS:
+        v = tool_input.get(key)
+        if isinstance(v, str) and v.strip():
+            return v
+    return None
+
+
+def _toplevel(path):
+    """`git rev-parse --show-toplevel` of the nearest existing directory at or above path, or None."""
+    d = path if os.path.isdir(path) else os.path.dirname(path)
+    while d and not os.path.isdir(d):
+        parent = os.path.dirname(d)
+        if parent == d:
+            return None
+        d = parent
+    try:
+        p = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=d, capture_output=True, text=True,
+                           timeout=10)
+        return os.path.normpath(p.stdout.strip()) if p.returncode == 0 and p.stdout.strip() else None
+    except Exception:
+        return None
+
+
+def edit_target(tool_name, tool_input, cwd):
+    """("chain" | "lock", repository root) when an editing tool's path is one of the two guarded kinds, else None.
+
+    The path is judged relative to the root of the repository that holds it (a main-tree session editing a
+    worktree's chain script is judged too), and only a repository that has scripts/loop_lock.sh counts: another
+    project's logs/*.sh is none of this guard's business. A cheap string test runs first, so an ordinary edit costs
+    no git call.
+    """
+    if tool_name not in EDIT_TOOLS or not isinstance(tool_input, dict):
+        return None
+    raw = edit_path(tool_input)
+    if raw is None:
+        return None
+    flat = raw.replace("\\", "/").lower()
+    if not (flat.endswith("/loop_lock.sh") or flat == "loop_lock.sh"
+            or (flat.endswith(".sh") and ("/logs/" in flat or flat.startswith("logs/")))):
+        return None
+    full = os.path.realpath(_resolve(raw, cwd or "."))   # realpath: an 8.3 short name (UTILIS~1) vs git's long one
+    root = _toplevel(full)
+    if not root or not os.path.isfile(os.path.join(root, *LOCK_SCRIPT.split("/"))):
+        return None
+    rel = os.path.relpath(full, os.path.realpath(root)).replace("\\", "/")
+    if sys.platform == "win32":
+        rel = rel.lower()
+    if rel == LOCK_SCRIPT:
+        return "lock", root
+    if rel.startswith("logs/") and rel.endswith(".sh"):
+        return "chain", root
+    return None
+
+
+def decide_edit(tool_name, tool_input, cwd, lock_holder=None, slow_tests_ran=False):
+    target = edit_target(tool_name, tool_input, cwd)
+    if target is None:
+        return 0, ""
+    if target[0] == "chain" and lock_holder is not None:
+        return 2, ("a chain script is running under the lock (%s): never edit a running chain script -- bash reads "
+                   "by offset; home: %s" % (lock_holder, RUNNING_CHAIN))
+    if target[0] == "lock" and not slow_tests_ran:
+        return 2, ("the lock script lands only after LOOP_LOCK_SLOW_TESTS=1 python -m unittest "
+                   "tools_py.tests.test_loop_lock is green (it writes %s); home: %s" % (SLOW_MARKER, LOCK_ROLLOUT))
+    return 0, ""
+
+
+def parse_holder(check_output):
+    """The holder id from `loop_lock.sh check` ("HELD: <owner> taken N min ago, ..."), None when FREE."""
+    for line in (check_output or "").splitlines():
+        m = re.match(r"^HELD: (.+?) taken ", line)
+        if m:
+            return m.group(1)
+    return None
+
+
+def lock_holder_in(root):
+    """Who holds the loop lock, asked of root's scripts/loop_lock.sh; None when FREE or on any error."""
+    try:
+        from tools_py.tests.shell import find_bash        # Git Bash, never WSL's launcher (the house finder)
+        bash = find_bash()
+        if not bash:
+            return None
+        p = subprocess.run([bash, LOCK_SCRIPT, "check"], cwd=root, capture_output=True, text=True, timeout=20)
+        return parse_holder(p.stdout) if p.returncode == 0 else None
+    except Exception:
+        return None
+
+
+def slow_tests_green(root):
+    """True when root's logs/.loop_lock_slow_green exists and is newer than its scripts/loop_lock.sh."""
+    try:
+        marker = os.path.join(root, *SLOW_MARKER.split("/"))
+        script = os.path.join(root, *LOCK_SCRIPT.split("/"))
+        return os.path.isfile(marker) and os.path.getmtime(marker) > os.path.getmtime(script)
+    except OSError:
+        return False
+
+
+def decide(tool_name, tool_input, cwd, is_worktree, worktree_of=None, merge_in_progress=False, lock_holder=None,
+           slow_tests_ran=False):
     """(0, "") to allow the call, (2, "<rule>: <sentence>; home: <file or script>") to refuse it.
 
     `is_worktree` is the session's cwd (the hook JSON's): a worktree session never pushes, wherever it `cd`s.
     `worktree_of(path) -> bool`, when given, re-answers is_worktree for `cd`/`pushd <dir>` and `git -C <dir>`.
     `merge_in_progress` (MERGE_HEAD exists in cwd) lets a commit without a pathspec through: git refuses a partial
     commit during a merge.
+    For the editing tools (EDIT_TOOLS): `lock_holder` is the loop lock's holder id (None when FREE), and
+    `slow_tests_ran` says the slow lock suite went green after scripts/loop_lock.sh was last changed.
     """
     try:
         if not isinstance(tool_input, dict):
@@ -557,8 +678,8 @@ def decide(tool_name, tool_input, cwd, is_worktree, worktree_of=None, merge_in_p
             if not isinstance(command, str):
                 return 0, ""
             return decide_bash(command, cwd or ".", is_worktree, worktree_of, merge_in_progress)
-        # Task G2's seam: Edit/Write/MultiEdit are judged here. The key for the path is unconfirmed by the hooks
-        # reference; read tool_input.get("file_path") and verify it against a live call when wiring G2.
+        if tool_name in EDIT_TOOLS:
+            return decide_edit(tool_name, tool_input, cwd, lock_holder, slow_tests_ran)
         return 0, ""
     except Exception:                                     # never break a tool call
         return 0, ""
@@ -593,10 +714,20 @@ def main():
         doc = json.loads(sys.stdin.read())
         cwd = doc.get("cwd") or os.getcwd()
         tool_name = doc.get("tool_name", "")
-        if tool_name != "Bash":
+        tool_input = doc.get("tool_input") or {}
+        if tool_name in EDIT_TOOLS:
+            target = edit_target(tool_name, tool_input, cwd)
+            if target is None:
+                return 0                                  # an ordinary edit: no lock check, no git beyond the root
+            kind, root = target
+            code, why = decide(tool_name, tool_input, cwd, False,
+                               lock_holder=lock_holder_in(root) if kind == "chain" else None,
+                               slow_tests_ran=slow_tests_green(root) if kind == "lock" else False)
+        elif tool_name == "Bash":
+            code, why = decide(tool_name, tool_input, cwd, is_worktree_dir(cwd),
+                               worktree_of=is_worktree_dir, merge_in_progress=merge_in_progress_in(cwd))
+        else:
             return 0
-        code, why = decide(tool_name, doc.get("tool_input") or {}, cwd, is_worktree_dir(cwd),
-                           worktree_of=is_worktree_dir, merge_in_progress=merge_in_progress_in(cwd))
         if code == 2:
             sys.stderr.write("refused by the PreToolUse guard (tools_py/hooks/pretool.py) -- %s\n" % why)
             return 2

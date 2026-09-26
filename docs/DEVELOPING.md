@@ -951,6 +951,23 @@ tracked, the harness's local state is not (`ClaudeDirIgnoreTest`), whatever a gl
 - **The lock by hand** -- `loop_lock.sh take` or `release` called directly (`check`, `run`, `wait`, `version` pass);
   test `bash scripts/loop_lock.sh take`, `... release`; home `scripts/loop_lock.sh` (`run`, or `run_detached.sh`).
 
+The same script also runs before every Edit, Write, MultiEdit and NotebookEdit call (a second PreToolUse entry,
+Sprint 14 G2; the path from `tool_input.file_path`, or `notebook_path`). It judges the path relative to the root of
+the repository that holds it, and only a repository with `scripts/loop_lock.sh`; the JSON reaches Python only when it
+names `logs/` or `loop_lock`, and `loop_lock.sh check` runs only for a script under `logs/`. An edit through Bash
+(`sed -i`, a heredoc) is not seen. `EditWritePlantedTest` holds the planted calls; `PretoolWiringTest` drives both
+through the shell script against a stub `scripts/loop_lock.sh` in a temp repo.
+
+- **A running chain script** -- an edit of any `logs/**/*.sh` while `bash scripts/loop_lock.sh check` says `HELD`
+  (the holder is named in the refusal): bash reads a running script by offset, so an edit breaks it at the edit
+  point; test `decide("Edit", {"file_path": "logs/s14_chain.sh"}, ..., lock_holder="chain:s14")`; home
+  `docs/KNOWN.md` section 4 (the running-chain hazard).
+- **The lock script before its slow run** -- an edit of `scripts/loop_lock.sh` unless `logs/.loop_lock_slow_green`
+  is newer than it; a complete green `LOOP_LOCK_SLOW_TESTS=1 python -m unittest tools_py.tests.test_loop_lock`
+  writes that marker (`SlowGreenSuite`; never a smoke, `-k` or single-class run); test
+  `decide("Write", {"file_path": "scripts/loop_lock.sh"}, ..., slow_tests_ran=False)`; home the
+  `scripts/loop_lock.sh` header (the rollout procedure).
+
 ## The launcher
 
 `dist/socom_unzipped_launcher.exe` (`socom_unzipped_launcher` on Linux), built by `./build.sh runtime` next to
