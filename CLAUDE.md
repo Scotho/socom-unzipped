@@ -8,7 +8,7 @@ This file is a map, not the state: nothing here changes weekly; each line points
 ## Where the state lives
 
 - `docs/CURRENT_SPRINT.md` -- what to do: the open sprint, its plan and the road to the next tag.
-- `docs/KNOWN.md` -- what is true (proven, believed, retracted) with its artefacts, and the standing hazards.
+- `docs/KNOWN.md` -- what is true (proven, believed, retracted) with its artefacts; hazards by area: `docs/HAZARDS.md`.
 - `docs/HANDOFF.md` -- where things are, the standing rules with their reasons, the traps, the ruling counter.
 - `docs/HUMAN_TASKS.md` -- the owner's rows: what only Craig can do.
 - `docs/DEVELOPING.md` -- the developer reference: build, run, tests, tools, the guards; it owns the suite counts.
@@ -28,7 +28,7 @@ Bash rules: the PreToolUse hook `scripts/hooks/claude_pretool.sh` -> `tools_py/h
 - `loop_lock.sh take`/`release` by hand; `git worktree add/remove/prune` (use `scripts/agent_worktree.sh`); in a
   worktree, a writing `git config` unless `--worktree`, `--global`, `--system` or `--file` -- enforced by: the Bash
   hook; home `scripts/loop_lock.sh`, `scripts/agent_worktree.sh`.
-- Edit/Write of an existing `logs/**/*.sh` while the lock is HELD (home `docs/KNOWN.md` section 4); of
+- Edit/Write of an existing `logs/**/*.sh` while the lock is HELD (home `docs/HAZARDS.md` lock); of
   `scripts/loop_lock.sh` when a QUEUED waiter's blob equals this copy's, or the lock is HELD and this is the main
   tree's copy -- enforced by: the hook's Edit/Write entry; home the `scripts/loop_lock.sh` header. Bash edits unseen.
 - A commit naming `loop_lock.sh` without a slow-suite marker newer than the script -- enforced by: the Bash entry

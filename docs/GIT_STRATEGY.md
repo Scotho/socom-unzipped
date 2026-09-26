@@ -265,7 +265,7 @@ issue is what gets corrected.
 
 Any agent may do all of these; the conventions are the boundary, not a person.
 
-- **Add**, in the same commit as the KNOWN row it belongs to -- a new §2 row, or a §4 hazard that turns out fixable:
+- **Add**, in the same commit as the KNOWN row it belongs to -- a new §2 row, or a `docs/HAZARDS.md` bullet that turns out fixable:
   ```
   python -m tools_py.issues skeleton > body.md         # fill it in, in your own words
   python -m tools_py.issues open --title "..." --body-file body.md --area harness [--milestone "Sprint 11"] [--label needs-repro]

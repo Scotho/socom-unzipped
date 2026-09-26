@@ -285,13 +285,14 @@ acts on it.
    artefact. *Is the bar still the right bar?* — the experiment may have been superseded: rewrite the Closing bar
    section and say why. *Is the evidence still where the body says?* — an archived log moved to `D:`: say where.
    *Is the area right?*
-3. **Every KNOWN §2 row and every live §4 hazard, the other way round.** Each either cites an open issue, cites a
-   closed one and reads as settled, or is ruled not to qualify — and the audit's "rows neither cited, settled nor
-   ruled out" list is exactly the set to rule on. A row ruled out says why in a few words at its end (*no issue: the
-   owner's ears*; *no issue: a lesson, nothing left to fix*), so the next review does not re-ask. In §4 the audit
-   lists only a bullet whose headline says `HAZARD` or `Open:` — the two forms KNOWN already uses for a hazard that
-   is still live — because most of §4 is lessons, which `docs/GIT_STRATEGY.md` §7.1 keeps out of the stack; a §4
-   entry that is a live defect is written in one of those two forms, or the audit will not ask about it.
+3. **Every KNOWN §2 row and every live hazard in `docs/HAZARDS.md` (by area), the other way round.** Each either
+   cites an open issue, cites a closed one and reads as settled, or is ruled not to qualify — and the audit's "rows
+   neither cited, settled nor ruled out" list is exactly the set to rule on. A row ruled out says why in a few words
+   at its end (*no issue: the owner's ears*; *no issue: a lesson, nothing left to fix*), so the next review does not
+   re-ask. In `docs/HAZARDS.md` the audit lists only a bullet whose headline says `HAZARD` or `Open:` — the two forms
+   KNOWN already uses for a hazard that is still live — because most of the hazards are lessons, which
+   `docs/GIT_STRATEGY.md` §7.1 keeps out of the stack; a hazard that is a live defect is written in one of those two
+   forms, or the audit will not ask about it.
 4. **Every issue closed this sprint** (`gh issue list --state closed --label known-issue --search "closed:>=<open
    date>"`): its closing comment names an artefact, and the KNOWN row says the same thing. A close with no artefact is
    reopened -- **unless the owner closed it.** An owner's close stands (`docs/HANDOFF.md` rule 13: the loop does not

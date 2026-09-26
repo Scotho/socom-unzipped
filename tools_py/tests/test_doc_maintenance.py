@@ -197,7 +197,7 @@ class GeneratedBacklogTest(unittest.TestCase):
 
 
 class PlantedDefectsTest(unittest.TestCase):
-    """A gate that has never failed is not known to work (KNOWN section 4).
+    """A gate that has never failed is not known to work (docs/HAZARDS.md harness).
 
     Each check is fired once against a tree built to break exactly it, so a future refactor that
     quietly turns a check into a no-op reddens here instead of passing forever.
