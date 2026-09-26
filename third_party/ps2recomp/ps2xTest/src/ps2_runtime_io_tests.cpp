@@ -1767,5 +1767,152 @@ void register_ps2_runtime_io_tests()
             fx.closeIfOpen(fd);
             t.IsTrue(fd >= 0, "and fioOpen through it succeeds");
         });
+
+        // Issue #53: the two stub translators U2 left alone. ps2_stubs::fopen handed the guest path
+        // to the host fopen verbatim (relative to the process's working directory); cdHostPath, behind
+        // sceCdSearchFile, joined it onto cdRoot with only lexically_normal. SOCOM II binds neither;
+        // any image that names `fopen` or `sceCdSearchFile` binds them by name. Both now go through
+        // translatePs2Path's roots and so through resolvePs2PathUnderRoot.
+        tc.Run("the fopen stub cannot leave its root: '..' above it, a drive letter (C:, \\\\?\\) and a device name (CON, NUL) get NULL", [](TestCase &t)
+        {
+            PathContainmentFixture fx;
+            constexpr uint32_t pathAddr = GUEST_STRING_AREA_START + 0xE00;
+            constexpr uint32_t modeAddr = GUEST_STRING_AREA_START + 0xF80;
+            auto stubFopen = [&fx](const std::string &guestPath, const char *mode) -> uint32_t
+            {
+                writeGuestString(fx.rdram.data(), pathAddr, guestPath);
+                writeGuestString(fx.rdram.data(), modeAddr, mode);
+                clearContext(fx.ctx);
+                setRegU32(fx.ctx, 4, pathAddr);
+                setRegU32(fx.ctx, 5, modeAddr);
+                ps2_stubs::fopen(fx.rdram.data(), &fx.ctx, nullptr);
+                const uint32_t handle = ::getRegU32(&fx.ctx, 2);
+                if (handle != 0)
+                {
+                    clearContext(fx.ctx);
+                    setRegU32(fx.ctx, 4, handle);
+                    ps2_stubs::fclose(fx.rdram.data(), &fx.ctx, nullptr);
+                }
+                return handle;
+            };
+
+            // The old stub resolved a bare path against the working directory; stand in cdRoot so a
+            // climb from there reaches the file beside it, as a climb from the game folder would.
+            struct CwdGuard
+            {
+                std::filesystem::path saved;
+                explicit CwdGuard(const std::filesystem::path &to) : saved(std::filesystem::current_path())
+                {
+                    std::filesystem::current_path(to);
+                }
+                ~CwdGuard()
+                {
+                    std::error_code ec;
+                    std::filesystem::current_path(saved, ec);
+                }
+            } cwd(fx.cdRoot);
+
+            for (const std::string &climb : {std::string("../outside/secret.txt"),
+                                             std::string("..\\outside\\secret.txt"),
+                                             std::string("sub/../../outside/secret.txt"),
+                                             std::string("./.. /outside/secret.txt")})
+            {
+                t.Equals(stubFopen(climb, "rb"), 0u, "fopen('" + climb + "') climbs above cdRoot and gets NULL");
+            }
+            for (const RootUnderTest &r : kRootsUnderTest)
+            {
+                const std::string guest = std::string(r.prefix) + "../outside/secret.txt";
+                t.Equals(stubFopen(guest, "rb"), 0u, "fopen('" + guest + "') climbs above its root and gets NULL");
+            }
+            t.Equals(stubFopen("../outside/created.txt", "wb"), 0u, "fopen('../outside/created.txt', \"wb\") gets NULL");
+            t.IsFalse(std::filesystem::exists(fx.outside / "created.txt"), "and creates nothing outside the root");
+
+            for (const std::string &drive : {fx.secret.string(),
+                                             std::string("\\\\?\\") + fx.secret.string(),
+                                             std::string("C:\\Windows\\win.ini"),
+                                             std::string("c:/Windows/win.ini")})
+            {
+                t.Equals(stubFopen(drive, "rb"), 0u, "fopen('" + drive + "') names a host drive and gets NULL");
+            }
+            for (const RootUnderTest &r : kRootsUnderTest)
+            {
+                const std::string guest = std::string(r.prefix) + "/" + fx.secret.generic_string();
+                t.Equals(stubFopen(guest, "rb"), 0u, "fopen('" + guest + "') gets NULL");
+            }
+            const std::string createAbsolute = (fx.outside / "created_abs.txt").string();
+            t.Equals(stubFopen(createAbsolute, "wb"), 0u, "fopen of a bare absolute host path for writing gets NULL");
+            t.IsFalse(std::filesystem::exists(fx.outside / "created_abs.txt"), "and creates nothing outside the roots");
+
+#ifdef _WIN32
+            for (const std::string &device : {std::string("CON"), std::string("NUL"), std::string("nul.txt"),
+                                              std::string("host0:NUL"), std::string("cdrom0:\\CON"),
+                                              std::string("mc0:/dir/NUL")})
+            {
+                t.Equals(stubFopen(device, "rb"), 0u, "fopen('" + device + "') names a device and gets NULL");
+            }
+            t.Equals(stubFopen("NUL", "wb"), 0u, "fopen('NUL', \"wb\") names a device and gets NULL");
+#endif
+
+            // Contained paths still open, under the root their prefix names.
+            std::filesystem::create_directories(fx.cdRoot / "DATA");
+            std::ofstream(fx.cdRoot / "DATA" / "X.BIN", std::ios::binary) << "disc";
+            std::ofstream(fx.hostRoot / "config.ini", std::ios::binary) << "host";
+            std::filesystem::create_directories(fx.mcRoot / "SAVEDATA");
+            std::ofstream(fx.mcRoot / "SAVEDATA" / "save.dat", std::ios::binary) << "card";
+            t.IsTrue(stubFopen("cdrom0:\\DATA\\X.BIN;1", "rb") != 0u, "fopen('cdrom0:\\DATA\\X.BIN;1') opens the file under cdRoot");
+            t.IsTrue(stubFopen("/DATA/SUB/../X.BIN", "rb") != 0u, "a bare path with an in-root '..' opens under cdRoot");
+            t.IsTrue(stubFopen("host0:config.ini", "rb") != 0u, "fopen('host0:config.ini') opens the file under hostRoot");
+            t.IsTrue(stubFopen("mc0:/SAVEDATA/save.dat", "rb") != 0u, "fopen('mc0:/SAVEDATA/save.dat') opens the file under mcRoot");
+            t.IsTrue(stubFopen("mc0:/SAVEDATA/new.dat", "wb") != 0u, "fopen('mc0:/SAVEDATA/new.dat', \"wb\") creates under mcRoot");
+            t.IsTrue(std::filesystem::exists(fx.mcRoot / "SAVEDATA" / "new.dat"), "and the new file is in the card folder");
+        });
+
+        tc.Run("sceCdSearchFile cannot leave cdRoot: '..' above it, a drive letter (C:, \\\\?\\) and a device name (CON, NUL) are not found", [](TestCase &t)
+        {
+            PathContainmentFixture fx;
+            constexpr uint32_t fileAddr = GUEST_BUFFER_AREA_START + 0x1A00;
+            constexpr uint32_t pathAddr = GUEST_STRING_AREA_START + 0xE00;
+            auto search = [&fx](const std::string &guestPath) -> int32_t
+            {
+                writeGuestString(fx.rdram.data(), pathAddr, guestPath);
+                clearContext(fx.ctx);
+                setRegU32(fx.ctx, 4, fileAddr);
+                setRegU32(fx.ctx, 5, pathAddr);
+                ps2_stubs::sceCdSearchFile(fx.rdram.data(), &fx.ctx, nullptr);
+                return getRegS32(&fx.ctx, 2);
+            };
+
+            for (const std::string &climb : {std::string("\\..\\outside\\secret.txt;1"),
+                                             std::string("cdrom0:\\..\\outside\\secret.txt;1"),
+                                             std::string("sub/../../outside/secret.txt"),
+                                             std::string("./.. /outside/secret.txt")})
+            {
+                t.Equals(search(climb), 0, "sceCdSearchFile('" + climb + "') climbs above cdRoot and is not found");
+            }
+
+            for (const std::string &drive : {std::string("cdrom0:") + fx.secret.string(),
+                                             std::string("\\\\?\\") + fx.secret.string(),
+                                             std::string("C:\\Windows\\win.ini"),
+                                             std::string("cdrom0:c:/Windows/win.ini")})
+            {
+                t.Equals(search(drive), 0, "sceCdSearchFile('" + drive + "') names a host drive and is not found");
+            }
+
+#ifdef _WIN32
+            // NUL stats as a character device, not a regular file, so the old join already answered
+            // 0 for it; this pins that the walk refuses the name before anything touches the host.
+            for (const std::string &device : {std::string("\\NUL"), std::string("cdrom0:\\CON"),
+                                              std::string("\\DATA\\NUL.txt;1"), std::string("\\COM1")})
+            {
+                t.Equals(search(device), 0, "sceCdSearchFile('" + device + "') names a device and is not found");
+            }
+#endif
+
+            std::filesystem::create_directories(fx.cdRoot / "DATA");
+            std::ofstream(fx.cdRoot / "DATA" / "X.BIN", std::ios::binary) << "disc";
+            t.Equals(search("cdrom0:\\DATA\\X.BIN;1"), 1, "a path under cdRoot is still found");
+            t.Equals(search("\\DATA\\SUB\\..\\X.BIN;1"), 1, "an in-root '..' is still found");
+            t.Equals(readGuestU32(fx.rdram.data(), fileAddr + 4), 4u, "and the host file size is reported");
+        });
     });
 }
