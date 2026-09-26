@@ -88,6 +88,15 @@ REVIEW_CASES = [  # the G1 review's bypass table (round one), each closed by a p
     ("git push origin +feat/y", False, 0), ("git push --force-with-lease=docs/z:abc origin docs/z", False, 0),
     ("git push -f origin spike/q", False, 0), ("git push origin main", False, 0),
     ("git push origin sprint-14 main", False, 0),
+    # round three: more wrappers; deleting or mirroring a shared branch
+    ("timeout 60 git add -A", False, 2), ("timeout 120 git push", True, 2), ("timeout -s KILL 5 git add .", False, 2),
+    ("timeout -k 5 --signal=TERM 60 git add -A", False, 2), ("nohup git add -A", False, 2),
+    ("stdbuf -o L git add -A", False, 2), ("stdbuf -oL git add -A", False, 2), ("ionice -c 3 git add -A", False, 2),
+    ("timeout 60 git status", False, 0), ("nohup ./build.sh runtime", False, 0),
+    ("git push --delete origin main", False, 2), ("git push -d origin sprint-14", False, 2),
+    ("git push origin :main", False, 2), ("git push origin :refs/heads/sprint-13", False, 2),
+    ("git push --mirror origin", False, 2), ("git push --mirror backup", False, 2),
+    ("git push --delete origin agent/s14-g1", False, 0), ("git push origin :fix/old", False, 0),
 ]
 
 

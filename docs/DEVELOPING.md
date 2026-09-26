@@ -912,7 +912,7 @@ wired by the tracked `.claude/settings.json` (Sprint 14 G1). It refuses with exi
 home; anything it cannot parse or judge is allowed. A call whose JSON names neither `git` nor `loop_lock` exits 0 in
 the shell before Python starts (about 0.1 s; a judged call costs about 1 s). The command is split on `;`, `&&`, `||`,
 `|`, `&`, parentheses, brace groups and newlines (heredoc bodies and quoted strings are data); the wrappers `time`,
-`nice`, `env`, `sudo`, `command`, `exec` and `xargs` are stripped; a `bash -c`, `sh -c` or `eval` string is judged
+`timeout`, `nice`, `nohup`, `stdbuf`, `ionice`, `env`, `sudo`, `command`, `exec` and `xargs` are stripped; a `bash -c`, `sh -c` or `eval` string is judged
 as a command; `cd`, `pushd`/`popd` and `git -C <dir>` are followed for the worktree rules, and a subshell's `cd` ends
 at its `)`. Each rule is proved by planted commands in `tools_py/tests/test_hooks.py` (`PretoolPlantedTest`: the
 `CASES`, `MORE_CASES` and `REVIEW_CASES` tables); `PretoolWiringTest` drives the shell script with a hook JSON
@@ -920,7 +920,8 @@ document on stdin. The repository's `.gitignore` owns `.claude/`: `settings.json
 tracked, the harness's local state is not (`ClaudeDirIgnoreTest`), whatever a global excludes file says.
 
 - **Bulk add** -- `git add` with no pathspec, a whole-tree pathspec (`.`, `:/`), or `-A`/`--all`/`-u`/`--update`
-  without a `-- <paths>` limiting it (`git add -A -- a` passes); test `git add -A`, `.`, `-u`; home
+  without a `-- <paths>` limiting it (`git add -A -- a` passes); `xargs git add` shows no pathspec, so a computed
+  list goes through `git add --pathspec-from-file=<list>`; test `git add -A`, `.`, `-u`; home
   `docs/GIT_STRATEGY.md` section 3.
 - **Commit everything** -- `git commit -a`/`--all` (and `-am`); test `git commit -a -m 'x'`; home
   `docs/GIT_STRATEGY.md` section 3.
@@ -933,10 +934,11 @@ tracked, the harness's local state is not (`ClaudeDirIgnoreTest`), whatever a gl
 - **Push from a worktree** -- `git push` when the session's cwd or the command's directory (after `cd`/`git -C`) is a
   linked worktree (`--git-dir` differs from `--git-common-dir`); a worktree session never pushes, even with
   `git -C <main tree>`; test `git push origin sprint-14` with is_worktree; home `docs/GIT_STRATEGY.md` section 3.
-- **Force-push of a shared branch** -- `git push` with `--force`, `-f`, `--force-with-lease`, `--force-if-includes`
-  or a `+refspec` whose target is `main`, `sprint-*` or not named (HEAD, no refspec); `agent/*`, `fix/*`, `feat/*`,
-  `docs/*`, `spike/*` pass; test `git push -f origin main`, `git push origin +HEAD:sprint-14`; home
-  `docs/GIT_STRATEGY.md` section 2.
+- **Rewriting a shared branch** -- `git push` with `--force`, `-f`, `--force-with-lease`, `--force-if-includes`
+  or a `+refspec` whose target is `main`, `sprint-*` or not named (HEAD, no refspec); a delete of `main` or
+  `sprint-*` (`--delete`/`-d`, or an empty-source refspec `:main`); `--mirror` to any remote; `agent/*`, `fix/*`,
+  `feat/*`, `docs/*`, `spike/*` pass; test `git push -f origin main`, `git push origin +HEAD:sprint-14`,
+  `git push origin :main`, `git push --mirror origin`; home `docs/GIT_STRATEGY.md` section 2.
 - **Config in a worktree** -- in a worktree, a `git config` that writes: a `key value` pair, `--unset`,
   `--unset-all`, `--add`, `--replace-all`, `--remove-section`, `--rename-section`, `-e`/`--edit`, or the `set`,
   `unset`, `edit`, `rename-section`, `remove-section` subcommands -- unless `--worktree`, `--global`, `--system` or

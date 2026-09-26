@@ -13,9 +13,19 @@ around it. Each rule is one small function over one simple command (the command 
 returns None or (rule, sentence, home). `cd`/`pushd`/`popd` and `git -C` move the directory the worktree rules
 judge; a subshell's `cd` ends at its `)`.
 
-Known limits: a quoted string that contains `<<WORD` (`echo "a <<EOF"`) is taken for a heredoc and hides the lines
-after it up to a WORD line; a `$(...)` inside double quotes is not looked into. The rules, their homes and their
-tests: docs/DEVELOPING.md, "Guards".
+Known limits, each accepted (nobody writes these by accident, and the hook is a guard against slips, not a sandbox):
+- a quoted string that contains `<<WORD` (`echo "a <<EOF"`) is taken for a heredoc and hides the lines after it up
+  to a WORD line;
+- a `$(...)` inside double quotes, and a backtick substitution (`` `git add -A` `` inside another command), are not
+  looked into;
+- `eval eval ...` and a `bash -c` inside a `bash -c` are judged one level deep only;
+- a file-descriptor number before a redirection is read as an argument (`git commit ... -- 2>&1` takes `2` for a
+  pathspec);
+- git configuration passed through the environment (`GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT`/`_KEY_n`) is not
+  read, so a hooksPath set there is not seen;
+- the shell's fast path matches the substrings `git` and `loop_lock` in the JSON, so a spelling that hides them
+  (`gi''t`) never reaches Python.
+The rules, their homes and their tests: docs/DEVELOPING.md, "Guards".
 """
 import fnmatch
 import json
@@ -44,7 +54,12 @@ _WRAPPERS = {
     "sudo": {"-u", "-g", "-h", "-p", "-C", "-D", "-r", "-t", "-U", "-T"},
     "xargs": {"-I", "-i", "-n", "-L", "-l", "-d", "-P", "-s", "-E", "-e", "-a", "--arg-file", "--delimiter",
               "--max-args", "--max-procs", "--max-lines", "--replace", "--max-chars", "--eof"},
+    "timeout": {"-s", "--signal", "-k", "--kill-after"}, "nohup": set(),
+    "stdbuf": {"-i", "-o", "-e", "--input", "--output", "--error"},
+    "ionice": {"-c", "-n", "-p", "-P", "-u", "--class", "--classdata", "--pid", "--pgid", "--uid"},
 }
+# wrappers that take positional words before the command: `timeout 60 git ...`
+_WRAPPER_POSITIONALS = {"timeout": 1}
 _SHELLS = {"bash", "sh", "dash", "zsh", "ksh"}
 
 _PROTECTED_BRANCHES = ("main", "sprint-*")
@@ -134,6 +149,7 @@ def _strip_env(seg):
                 i += 1
                 break
             i += 2 if seg[i] in with_value else 1         # `nice -5`, `sudo -E`: one word; `-n 5`, `-u x`: two
+        i += _WRAPPER_POSITIONALS.get(name, 0)
     return seg[i:]
 
 
@@ -234,7 +250,8 @@ def rule_bulk_add(seg, wt, **ctx):
 
 def _bulk(what):
     return ("bulk add", "`git add` with %s stages every change in the tree, other sessions' files with it; "
-            "name the paths: `git add -- <paths>`" % what, GIT_COMMITS)
+            "name the paths: `git add -- <paths>`, or for a computed list `git add --pathspec-from-file=<list>` "
+            "(`xargs git add` shows no pathspec)" % what, GIT_COMMITS)
 
 
 # commit's short options that take a value; the rest of a cluster after one of them is that value
@@ -350,7 +367,7 @@ def rule_force_push_shared(seg, wt, **ctx):
     g = git_parts(seg)
     if not g or g[1] != "push":
         return None
-    force, positional, skip = False, [], False
+    force, delete, mirror, positional, skip = False, False, False, [], False
     for a in g[2]:
         if skip:
             skip = False
@@ -361,16 +378,30 @@ def rule_force_push_shared(seg, wt, **ctx):
             name = a.split("=", 1)[0]
             if name.startswith("--force"):                # --force, --force-with-lease, --force-if-includes
                 force = True
+            elif name == "--delete":
+                delete = True
+            elif name == "--mirror":
+                mirror = True
             elif name in _PUSH_WITH_VALUE and "=" not in a:
                 skip = True
         elif a.startswith("-") and len(a) > 1:
             if "f" in a[1:]:
                 force = True
+            if "d" in a[1:]:
+                delete = True
             if a in _PUSH_WITH_VALUE:
                 skip = True
         else:
             positional.append(a)
     refspecs = positional[1:]                             # the first is the remote
+    if mirror:
+        return ("mirror push", "`git push --mirror` rewrites and deletes every branch on the remote, main with them; "
+                "never rewrite main", GIT_BRANCHES)
+    gone = [r for r in refspecs if (delete or r.lstrip("+").startswith(":")) and _protected(_push_target(r))
+            and _push_target(r) is not None]
+    if gone:
+        return ("delete of a shared branch", "a push that deletes %s (`--delete`, or an empty-source refspec) removes "
+                "a shared branch; never rewrite main or a sprint branch" % gone[0], GIT_BRANCHES)
     if force:
         hits = [r for r in refspecs if _protected(_push_target(r))] if refspecs else ["(the default refspec)"]
     else:
