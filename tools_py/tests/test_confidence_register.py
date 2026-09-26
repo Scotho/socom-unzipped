@@ -107,5 +107,56 @@ class AudioRegisterTest(unittest.TestCase):
         self.assertIn("`python -m tools_py.parity.audio_dips ", top, "the state block's dip count names no command")
 
 
+# Sprint 15 Task X1: the audio survey's shortlist (docs/research/69-audio-survey.md).
+SURVEY = os.path.join(ROOT, "docs", "research", "69-audio-survey.md")
+PATHS = ("TAKE", "REIMPLEMENT", "BORROW THE IDEA", "LEAVE")
+# A licence file named as a file: LICENSE, LICENCE, COPYING, with or without an extension or a suffix.
+LICENCE_FILE = re.compile(r"\b(LICEN[CS]E|COPYING)[\w.-]*")
+
+
+def shortlist_table(text):
+    """The first markdown table whose header names a register-row column and a path column: (header, rows)."""
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if not line.startswith("|"):
+            continue
+        head = [c.lower() for c in cells(line)]
+        if any("register row" in c for c in head) and any(c == "path" or c.startswith("path") for c in head):
+            rows = []
+            for row in lines[i + 2:]:
+                if not row.startswith("|"):
+                    break
+                rows.append(cells(row))
+            return head, rows
+    return None, []
+
+
+class AudioSurveyShortlistTest(unittest.TestCase):
+    def test_every_shortlist_entry_names_a_register_row_a_path_a_licence_file_and_a_validation(self):
+        self.assertTrue(os.path.isfile(SURVEY), "the survey is missing: %s" % SURVEY)
+        with open(SURVEY, encoding="utf-8") as f:
+            text = f.read()
+        head, rows = shortlist_table(text)
+        self.assertIsNotNone(head, "no shortlist table (a 'Register row' and a 'Path' column) in the survey")
+        self.assertTrue(1 <= len(rows) <= 3, "the shortlist has %d entries; one to three" % len(rows))
+        col = lambda word: next(i for i, c in enumerate(head) if word in c)
+        reg_col, path_col = col("register row"), col("path")
+        src_col, val_col = col("source"), col("validation")
+        _, register_rows = audio_table(read_note())
+        register = [row_name(r) for r in register_rows]
+        self.assertEqual(len(register), len(ROWS), "the register (research/68) does not carry its five rows")
+        for row in rows:
+            label = row[0][:40]
+            named = [n for n in register if n.lower() in row[reg_col].lower()]
+            self.assertEqual(len(named), 1, "%s: the register-row cell names %d rows of research/68, not one: %r"
+                             % (label, len(named), row[reg_col][:60]))
+            path = re.sub(r"[*_`]", "", row[path_col]).strip()
+            self.assertTrue(any(path.startswith(p) for p in PATHS),
+                            "%s: path %r is not one of %s" % (label, path[:30], PATHS))
+            self.assertRegex(row[src_col], LICENCE_FILE, "%s: the source names no licence file" % label)
+            self.assertRegex(row[val_col], r"\d", "%s: the validation carries no number" % label)
+            self.assertRegex(row[val_col], COMMAND, "%s: the validation's number names no backticked command" % label)
+
+
 if __name__ == "__main__":
     unittest.main()
