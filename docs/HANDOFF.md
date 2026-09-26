@@ -16,7 +16,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
   chain are live. In flight: E2's fix round under re-review (R280 stamps). Left, lock-bound at night once the main tree is
   clean: the first merged chain (W2 step 3), E2's twelve captures, the close chain; then Task 99. The plan
   `docs/superpowers/plans/2026-09-26-sprint-14.md` (its Log) is the live state. No cloud session from 2026-09-26.
-- **Next free ruling number: R281.**
+- **Next free ruling number: R282.**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
 
@@ -61,7 +61,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 6. What is owed
 
-- **The owner's rows:** `docs/HUMAN_TASKS.md` O1-O8, O10-O16 and O18 (O16: issues #25, #26 and #42). Under R271 a row
+- **The owner's rows:** `docs/HUMAN_TASKS.md` O1-O8, O10-O16, O18 and O19 (O16: issues #25, #26 and #42). Under R271 a row
   unanswered through two sittings after it was asked closes by default at the next close: nothing today; at a third
   sitting without answers all 16 open rows would close together (`docs/SITTING.md` marks them).
 - **Sprint 14, lock-free:** E2's fix round to re-review and merge; then nothing until the night.
