@@ -4,8 +4,11 @@
 
 These cases hold the script's argument handling, its preconditions, its dry run and the mark step 4 skips on,
 through tools_py/tests/shell.BASH (a bare `bash` resolves to WSL's on a GitHub Windows runner). They touch no
-disc, take no lock and run no Python stage: every case stops at a refusal, at the skip check, or at the dry run,
-all of them before the first minute of Unicorn and before the first cmake.
+disc and are meant to stop at a refusal, at a skip check, at `--stop-after elf` or at the dry run, before the first
+minute of Unicorn and before the first cmake. Since #56 that holds only for a revision with no products in the
+tree: a non-dry --out case on a revision whose `game/overlays_<rev>/` is current (r0004 on a working checkout)
+copies those overlays instead of decrypting, skips the step-1 refusal it meant to reach and runs on into the
+lock-bound recomp and runtime. So every non-dry case uses a throwaway revision name (r0009...).
 
 NOT covered here, because only a disc can cover it: that the pipeline reproduces r0001 byte for byte. That is the
 bar the controller runs from the main tree (`r0001check` against dist/socom2_game.elf and recomp/output); the
@@ -763,6 +766,66 @@ class BuildRevisionOutReadsTheTreeTest(unittest.TestCase):
             self.assertIn("make_overlay_elf.py changed", p.stdout, p.stdout)
             self.assertIn("SCUS_972.75", p.stderr, "the stale tree products were not decrypted again: " + p.stderr)
             self.assertFalse(os.path.exists(os.path.join(out_overlays, "ftscore.bin")))
+
+    def test_out_decrypts_again_when_the_map_under_the_image_changed(self):
+        """A revision WITH a capsule stack: the sidecar records the fixed map's sha256 among its inputs, and a map
+        that is not the one the image was repaired against makes the tree's products stale -- decrypt again."""
+        from tools_py import overlay_repair
+        import json
+        twin = os.path.join(ROOT, "game", "disc", "socom2_game.elf")
+        if not os.path.isfile(twin):
+            self.skipTest("needs the r0001 image game/disc/socom2_game.elf (step 2's repair inputs refuse without it)")
+        rev = "r0009remap"
+        stack = os.path.join(ROOT, "game", rev, "decoded", "stack.txt")
+        self.addCleanup(self._remove_tree, os.path.join(ROOT, "game", rev))
+        os.makedirs(os.path.dirname(stack), exist_ok=True)
+        with open(stack, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("w 80031250 002CC670\nw 80031254 03E00008\n")
+        d, _ = self._tree_overlays(rev)
+        sources = overlay_repair.source_digests({
+            "stub-writes": stack, "twin": twin, "twin-rows": os.path.join(ROOT, "recomp", "socom2_ghidra.csv"),
+            "rows": stack})      # any file: its digest is then overwritten with one no fixed map has
+        sources["rows"]["sha256"] = "f" * 64
+        sidecar = os.path.join(d, f"socom2_game_{rev}.elf.repair.json")
+        with open(sidecar, "w", encoding="utf-8") as fh:
+            json.dump({"image": f"socom2_game_{rev}.elf", "notes": [], "repairs": [], "sources": sources}, fh)
+        with tempfile.TemporaryDirectory() as tmp:
+            p, out_overlays = self._run_out(tmp, rev)
+            self.assertIn("repair inputs -- stack", p.stdout, p.stdout + p.stderr)
+            self.assertIn(f"overlays: game/overlays_{rev}/ not reused -- rows changed", p.stdout, p.stdout)
+            self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+            self.assertIn("SCUS_972.75", p.stderr, "the stale tree products were not decrypted again: " + p.stderr)
+            self.assertFalse(os.path.exists(os.path.join(out_overlays, "ftscore.bin")))
+
+    def test_out_that_already_holds_overlays_is_not_overwritten_and_says_so(self):
+        rev = "r0009held"
+        self._tree_overlays(rev)
+        with tempfile.TemporaryDirectory() as tmp:
+            out_overlays = os.path.join(tmp, "out", f"overlays_{rev}")
+            os.makedirs(out_overlays)
+            for name in ("ftscore.bin", "zsealetc.bin"):
+                with open(os.path.join(out_overlays, name), "wb") as fh:
+                    fh.write(b"already here")
+            p, _ = self._run_out(tmp, rev)
+            self.assertIn("already holds ftscore.bin and zsealetc.bin -- the tree's are not copied "
+                          "(delete them, or --force)", p.stdout, p.stdout + p.stderr)
+            self.assertEqual(read_bytes(os.path.join(out_overlays, "ftscore.bin")), b"already here")
+            self.assertFalse(os.path.exists(os.path.join(out_overlays, f"socom2_game_{rev}.elf.repair.json")))
+
+    def test_the_reuse_copy_is_staged_with_the_sidecar_last(self):
+        rev = "r0009stage"
+        self._tree_overlays(rev)
+        with tempfile.TemporaryDirectory() as tmp:
+            p, out_overlays = self._run_out(tmp, rev)
+            self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+            self.assertEqual([n for n in os.listdir(out_overlays) if n.startswith(".reuse.")], [],
+                             "the staging directory was left behind")
+        with open(os.path.join(ROOT, SCRIPT), encoding="utf-8") as fh:
+            text = fh.read()
+        block = text[text.index('STAGE="$OVERLAYS/.reuse.$$"'):text.index('rmdir "$STAGE"')]
+        self.assertLess(block.index('"$STAGE/socom2_game_$REV.elf" "$OVERLAYS/"'),
+                        block.index('mv "$STAGE/socom2_game_$REV.elf.repair.json"'),
+                        "the repair.json must arrive last: its presence marks the copy complete")
 
     def test_out_decrypts_when_the_tree_holds_no_products(self):
         with tempfile.TemporaryDirectory() as tmp:

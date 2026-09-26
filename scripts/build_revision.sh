@@ -321,21 +321,31 @@ if [ "$TAIL" = 0 ]; then
   # twin, both maps, the three modules) still has the recorded sha256. The sidecar records no disc input (no
   # package, no loader), so the tree given is not part of the match -- and on the machine where it mattered the
   # r0004 overlays were never decrypted from a package at all (they come from the capsule).
-  if [ "$TREE_OVERLAYS" != "$OVERLAYS" ] && [ "$FORCE" = 0 ] && [ -d "$TREE_OVERLAYS" ] \
-     && ! { [ -f "$OVERLAYS/ftscore.bin" ] && [ -f "$OVERLAYS/zsealetc.bin" ]; }; then
-    TREE_ELF="$TREE_OVERLAYS/socom2_game_$REV.elf"
-    REUSE_WHY=""
-    for f in ftscore.bin zsealetc.bin "socom2_game_$REV.elf" "socom2_game_$REV.elf.repair.json"; do
-      [ -f "$TREE_OVERLAYS/$f" ] || { REUSE_WHY="it holds no $f"; break; }
-    done
-    if [ -z "$REUSE_WHY" ]; then
-      if REUSE_WHY="$(cd "$ROOT" && "$py" -m tools_py.overlay_repair --check "$TREE_ELF.repair.json" ${REPAIR_ARGS[@]+"${REPAIR_ARGS[@]}"} 2>&1)"; then
-        cp -p "$TREE_OVERLAYS/ftscore.bin" "$TREE_OVERLAYS/zsealetc.bin" "$TREE_ELF" "$TREE_ELF.repair.json" "$OVERLAYS/"
-        say "overlays: $(rel "$TREE_OVERLAYS")/ is current (${REUSE_WHY#current: }) -- copied ftscore.bin, zsealetc.bin, socom2_game_$REV.elf and its repair.json into $(rel "$OVERLAYS")/; no decrypt"
-        REUSE_WHY=""
+  if [ "$TREE_OVERLAYS" != "$OVERLAYS" ] && [ "$FORCE" = 0 ] && [ -d "$TREE_OVERLAYS" ]; then
+    if [ -f "$OVERLAYS/ftscore.bin" ] && [ -f "$OVERLAYS/zsealetc.bin" ]; then
+      say "overlays: $(rel "$OVERLAYS") already holds ftscore.bin and zsealetc.bin -- the tree's are not copied (delete them, or --force)"
+    else
+      TREE_ELF="$TREE_OVERLAYS/socom2_game_$REV.elf"
+      REUSE_WHY=""
+      for f in ftscore.bin zsealetc.bin "socom2_game_$REV.elf" "socom2_game_$REV.elf.repair.json"; do
+        [ -f "$TREE_OVERLAYS/$f" ] || { REUSE_WHY="it holds no $f"; break; }
+      done
+      if [ -z "$REUSE_WHY" ]; then
+        if REUSE_WHY="$(cd "$ROOT" && "$py" -m tools_py.overlay_repair --check "$TREE_ELF.repair.json" ${REPAIR_ARGS[@]+"${REPAIR_ARGS[@]}"} 2>&1)"; then
+          # Staged: a copy that fails half-way (a full disk, a Ctrl-C) leaves nothing in $OVERLAYS for step 1 to
+          # skip on. The four arrive by rename, the repair.json LAST -- its presence marks the copy complete.
+          STAGE="$OVERLAYS/.reuse.$$"
+          rm -rf "$STAGE"; mkdir -p "$STAGE"
+          cp -p "$TREE_OVERLAYS/ftscore.bin" "$TREE_OVERLAYS/zsealetc.bin" "$TREE_ELF" "$TREE_ELF.repair.json" "$STAGE/"
+          mv "$STAGE/ftscore.bin" "$STAGE/zsealetc.bin" "$STAGE/socom2_game_$REV.elf" "$OVERLAYS/"
+          mv "$STAGE/socom2_game_$REV.elf.repair.json" "$OVERLAYS/"
+          rmdir "$STAGE"
+          say "overlays: $(rel "$TREE_OVERLAYS")/ is current (${REUSE_WHY#current: }) -- copied ftscore.bin, zsealetc.bin, socom2_game_$REV.elf and its repair.json into $(rel "$OVERLAYS")/; no decrypt"
+          REUSE_WHY=""
+        fi
       fi
+      [ -z "$REUSE_WHY" ] || say "overlays: $(rel "$TREE_OVERLAYS")/ not reused -- ${REUSE_WHY#stale: }; step 1 decrypts from the disc tree"
     fi
-    [ -z "$REUSE_WHY" ] || say "overlays: $(rel "$TREE_OVERLAYS")/ not reused -- ${REUSE_WHY#stale: }; step 1 decrypts from the disc tree"
   fi
   # 1 decrypt
   if [ "$FORCE" = 0 ] && [ -f "$OVERLAYS/ftscore.bin" ] && [ -f "$OVERLAYS/zsealetc.bin" ]; then
