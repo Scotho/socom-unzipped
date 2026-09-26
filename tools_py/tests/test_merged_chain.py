@@ -31,6 +31,7 @@ FAKE_BUILD = """#!/usr/bin/env bash
 echo "build $1" >> "$FAKE_LOG"
 case "$1" in runtime) mkdir -p dist dist-linux && echo exe > dist/socom2.exe && echo exe > dist-linux/socom2;; esac
 [ "${FAKE_DIRTY:-}" = "$1" ] && echo dirt >> tracked.txt
+[ "${FAKE_COMMIT:-}" = "$1" ] && git -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m moved
 [ "${FAKE_FAIL:-}" = "$1" ] && exit 7
 exit 0
 """
@@ -210,6 +211,37 @@ class TestMergedChainRuns(unittest.TestCase):
             self.assertEqual(fh.read().strip(), green, "a red chain moved the last-green record")
         with open(os.path.join(self.repo, "logs", "merged_chain.done")) as fh:
             self.assertEqual(fh.read().strip(), "done 6 gate")
+
+    def test_a_head_that_moves_during_the_chain_is_red_and_records_nothing(self):
+        # W2 review A2 (1): a commit landing mid-chain means the steps did not all build one commit.
+        head0 = self.git("rev-parse", "HEAD")
+        rc, out = self.run_chain(FAKE_COMMIT="runtime")
+        self.assertNotEqual(rc, 0, out)
+        self.assertEqual(self.steps_printed(out), STEPS[:2])
+        self.assertIn("HEAD moved from %s to " % head0, out)
+        self.assertIn("during runtime", out)
+        self.assertFalse(os.path.exists(self.last_green))
+        with open(os.path.join(self.repo, "logs", "merged_chain.done")) as fh:
+            self.assertTrue(fh.read().startswith("done 1 runtime"), "the done marker names the step")
+
+    def test_a_last_green_record_off_this_line_falls_back_to_main(self):
+        # W2 review A2 (2): a record that exists but is not an ancestor of HEAD (another branch's green) must not
+        # be the range's start; the merges since main are listed instead.
+        self.git("branch", "main")
+        self.git("checkout", "-q", "-b", "other")
+        self.git("commit", "-q", "--allow-empty", "-m", "elsewhere")
+        stray = self.git("rev-parse", "HEAD")
+        self.git("checkout", "-q", "sprint")
+        self.merge_branch("a")
+        self.merge_branch("b")
+        os.makedirs(os.path.dirname(self.last_green))
+        _write(self.last_green, stray + "\n")
+        rc, out = self.run_chain(FAKE_FAIL="test")
+        self.assertEqual(rc, 7, out)
+        self.assertIn("not on this line", out)
+        self.assertIn("since main", out)
+        self.assertIn("merge(sprint): a landed", out)
+        self.assertIn("merge(sprint): b landed", out)
 
     def test_a_step_that_dirties_a_tracked_file_is_red(self):
         rc, out = self.run_chain(FAKE_DIRTY="recomp")

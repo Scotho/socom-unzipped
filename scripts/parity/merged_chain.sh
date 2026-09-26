@@ -22,7 +22,8 @@
 # THE TREE: the chain refuses (exit 2) a tree with ANY modified tracked file -- it proves a commit, not a working
 # copy, and the controller stashes nothing on another session's behalf. After every step it looks again: a step that
 # changed a tracked file is red (the PLAYTEST step may change docs/PLAYTEST.md, which it exists to rewrite; the close
-# commits that block -- nothing is committed mid-chain).
+# commits that block -- nothing is committed mid-chain). HEAD is checked after every step too: a commit or checkout
+# mid-chain is red ("HEAD moved from <h0> to <h1> during <step>") and records nothing.
 #
 # RED: the first failing step ends the chain with its exit code and prints the merges since the last green chain
 # (`git log --merges --first-parent <last green>..HEAD`; the last green is the commit hash in
@@ -66,14 +67,24 @@ refuse() {   # why message...
 }
 
 merges_since() {
-  local from="" what
+  local from="" what="" why="no green chain recorded in $LAST_GREEN"
   [ -f "$LAST_GREEN" ] && read -r from < "$LAST_GREEN"
-  if [ -n "$from" ] && git cat-file -e "$from^{commit}" 2>/dev/null; then
-    what="since the last green chain ($from, $LAST_GREEN)"
+  # The record starts the range only if it is a commit HEAD descends from: a green on another line (a branch that
+  # was reset, a record copied from another tree) would list the wrong batch.
+  if [ -n "$from" ]; then
+    if git cat-file -e "$from^{commit}" 2>/dev/null && git merge-base --is-ancestor "$from" HEAD 2>/dev/null; then
+      what="since the last green chain ($from, $LAST_GREEN)"
+    else
+      why="the last-green record $from is not on this line (HEAD does not descend from it)"
+      echo "$why -- falling back to the merges since $BASE"
+      from=""
+    fi
+  fi
+  if [ -n "$what" ]; then :
   elif git rev-parse -q --verify "$BASE^{commit}" >/dev/null 2>&1; then
-    from="$BASE"; what="since $BASE (no green chain recorded in $LAST_GREEN)"
+    from="$BASE"; what="since $BASE ($why)"
   else
-    from=""; what="on this branch (no green chain recorded and no $BASE)"
+    from=""; what="on this branch ($why, and no $BASE)"
   fi
   echo "THE MERGES $what, newest first -- the batch this red belongs to:"
   if [ -n "$from" ]; then git log --merges --first-parent --format='  %h %s' "$from..HEAD"
@@ -95,7 +106,7 @@ EOF
 }
 
 step() {   # id title cmd...
-  local id="$1" title="$2" rc changed; shift 2
+  local id="$1" title="$2" rc changed head; shift 2
   N=$((N + 1))
   echo
   echo "=== step $N: $title === $(date -u +%FT%TZ)"
@@ -109,6 +120,12 @@ step() {   # id title cmd...
   if [ -n "$changed" ]; then
     echo "TRACKED FILES CHANGED by step $N ($title):"; printf '%s\n' "$changed"
     red 1 "$id-changed-tracked-files"
+  fi
+  # A commit landing mid-chain (a merge in this tree, a checkout) means the steps did not all build one commit.
+  head="$(git rev-parse HEAD)"
+  if [ "$head" != "$HEAD0" ]; then
+    echo "HEAD moved from $HEAD0 to $head during $id (step $N, $title) -- no commits mid-chain; nothing is recorded"
+    red 1 "$id-moved-head"
   fi
 }
 
@@ -163,10 +180,6 @@ if [ -n "$DRY" ]; then
 fi
 echo
 echo "git status after: $(git status --porcelain --untracked-files=no | tr '\n' ' ' | sed 's/ $//')"
-HEAD1="$(git rev-parse HEAD)"
-if [ "$HEAD1" != "$HEAD0" ]; then
-  echo "WARNING: HEAD moved during the chain ($HEAD0 -> $HEAD1) -- no commits mid-chain; the record names $HEAD0"
-fi
-echo "$HEAD0" > "$LAST_GREEN"
+echo "$HEAD0" > "$LAST_GREEN"          # every step checked HEAD against HEAD0: the chain built this one commit
 echo "done 0 all-green" > "$DONE"
 echo "=== ALL GREEN: $HEAD0 proved (stamp $STAMP); $LAST_GREEN updated === $(date -u +%FT%TZ)"
