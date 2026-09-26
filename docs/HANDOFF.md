@@ -30,7 +30,7 @@ reach a commit message. The product name is
   this line deliberately does not repeat them (they were `686/686` and `1457` here until 2026-09-22, four sprints after
   they stopped being true). The last gates are the open sprint's, named on `docs/CURRENT_SPRINT.md`'s
   `baselines:` line (the one home; Sprint 13's as of 2026-09-25).
-- **Next free ruling number: R278.** (It read **R179** from 2026-09-20 to 2026-09-22 while R240 was in use -- and a
+- **Next free ruling number: R279.** (It read **R179** from 2026-09-20 to 2026-09-22 while R240 was in use -- and a
   collision had already happened once, an agent numbering from R200 into taken ground. `tools_py/tests/test_doc_maintenance.py`
   now fails when this line is not `max(R<n>) + 1`, so take your number from here and update this line in the same commit.)
 - **Where the loop is now (2026-09-26 05:17Z, LATEST) -- Sprint 14 ("guards, not sentences") is OPEN on `sprint-14`, off `main` at `6a82caaa` (Sprint 13 merged as `v0.13.0` there, PR #61).** Read `docs/CURRENT_SPRINT.md`'s "Sprint 14 -- OPEN" block, then the plan `docs/superpowers/plans/2026-09-26-sprint-14.md` (its Log is the live state; Task G1 is first). No feature work this sprint; the rulings R269-R277 are the plan's. No cloud session runs from 2026-09-26. The owner's rows: #25, #26, #42 (HUMAN_TASKS O16) and the private-inputs location (O18).
