@@ -415,6 +415,7 @@ python -m tools_py.parity.gate   # in-game gate: title / transition / mission, P
                        # `./build.sh test` does NOT rebuild it.
 PS2X_PC_SAMPLER=5 ./run.sh 40    # run 40 s; logs/latest.log; prints guest thread PCs every 5 s
 ```
+`build.sh` refuses (exit 3) while another holder has the loop lock unless it runs as that holder's child; `--dry-run` prints the plan.
 
 > Superseded 2026-09-25 (Sprint 13 R2): the block above said `./build.sh recomp` took "~10 s" (the same file measured
 > 352 s, and `docs/KNOWN.md` §1 273 s) and that `build.sh test` "runs NO Python tests: python -m unittest discover
@@ -903,7 +904,8 @@ while a match runs (`build.sh test` refuses to start under it unless `FORCE_QUIE
 **in an agent worktree, `build.sh test` exits 3 while ANY launch runs, including one from the main tree** -- wait
 for it, do not force it; `run_detached.sh --wait <minutes>` queues for the lock (in arrival order) instead of
 refusing; records a host CPU sampler into the run directory; refuses to start below 4 GB free on
-`C:`; and takes the loop lock for the job.
+`C:`; and takes the loop lock for the job. It also refuses (exit 3, before touching the lock) below 3 GB of free
+physical memory (`RUN_MIN_FREE_MEM_GB`).
 
 ## The launcher
 

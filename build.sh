@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # End-to-end build: synthetic ELF -> recompiled C++ -> socom2 runner (clang / llvm-mingw).
-# Usage: ./build.sh [tools|recomp|runtime|release|test|all] [--no-runner]   (default all; release is never part of all)
+# Usage: ./build.sh [tools|recomp|runtime|release|test|all] [--no-runner] [--dry-run]   (default all; release is never part of all)
+#   --dry-run     print the steps this would run and exit 0, building nothing (no toolchain needed). Every step but
+#                 tools refuses (exit 3) while another holder has the loop lock, unless run as that holder's child.
 #   --no-runner   build with no generated code at all (PS2X_RUNNER_GENERATED_DIR=""): the runtime library, the
 #                 launcher and the test suite, but not the game. This is what a fresh clone can do on Windows
 #                 (Sprint 10 H3): `bash scripts/bootstrap_windows.sh`, then `./build.sh runtime --no-runner`
@@ -14,14 +16,66 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 export PATH="$ROOT/tools/llvm-mingw/bin:$ROOT/tools/cmake/bin:$ROOT/tools/ninja:$PATH"
 STEP=""
 NO_RUNNER=0
+DRY_RUN=0
 for arg in "$@"; do
   case "$arg" in
     --no-runner) NO_RUNNER=1 ;;
+    --dry-run) DRY_RUN=1 ;;
     tools|recomp|runtime|release|test|all) STEP="$arg" ;;
     *) echo "unknown argument $arg" >&2; exit 2 ;;
   esac
 done
 STEP="${STEP:-all}"
+# Sprint 14 G5: the loop lock is machine-wide (scripts/loop_lock.sh), and a build beside another holder's build or
+# game run is the collision it exists to stop. Every step but `tools` refuses while ANOTHER holder has the lock,
+# unless this process is that holder's child: `loop_lock.sh run` and run_detached.sh export LOOP_LOCK_HELD="<owner>
+# <take_id>", and it must EQUAL the live holder (`loop_lock.sh id`), as the lock script's own nested() demands. A
+# value that names another holding is stale -- the grandchild of a lost lock -- and is refused, naming both. A
+# FREE lock proceeds, LOOP_LOCK_HELD or not (nothing to collide with), and so does a lock script that is absent or
+# cannot answer (a CI runner). Exit 3 is run_detached's refusal code. The consult runs for --dry-run too, so
+# tools_py/tests/test_build_sh_lock.py exercises it without building anything.
+if [ "$STEP" != tools ] && [ -f "$ROOT/scripts/loop_lock.sh" ]; then
+  lock_state="$(bash "$ROOT/scripts/loop_lock.sh" check 2>/dev/null | head -n1 || true)"
+  case "$lock_state" in
+    HELD:*)
+      holder="$(bash "$ROOT/scripts/loop_lock.sh" id 2>/dev/null || true)"
+      if [ -n "${LOOP_LOCK_HELD:-}" ] && [ "$LOOP_LOCK_HELD" != "$holder" ]; then
+        # re-read once on a miss, as nested() does: a reader can catch a record replace
+        sleep 0.2
+        holder="$(bash "$ROOT/scripts/loop_lock.sh" id 2>/dev/null || true)"
+      fi
+      if [ -n "${LOOP_LOCK_HELD:-}" ] && [ "$LOOP_LOCK_HELD" = "$holder" ]; then
+        :   # the holder's own child
+      elif [ -n "${LOOP_LOCK_HELD:-}" ]; then
+        echo "build.sh: LOOP_LOCK_HELD is stale: '$LOOP_LOCK_HELD' vs holder '${holder:-<unreadable>}': build refused; run it under scripts/loop_lock.sh run <owner> --purpose \"...\" -- ./build.sh $STEP" >&2
+        exit 3
+      else
+        [ -n "$holder" ] || holder="$(printf '%s\n' "$lock_state" | cut -d' ' -f2)"
+        echo "build.sh: lock held by $holder: build refused; run it under scripts/loop_lock.sh run <owner> --purpose \"...\" -- ./build.sh $STEP" >&2
+        exit 3
+      fi ;;
+  esac
+fi
+# --dry-run prints the plan and builds nothing; it exits before the toolchain check, so it works on a machine with
+# no tools/.
+if [ "$DRY_RUN" = 1 ]; then
+  case "$STEP" in
+    all) plan="recomp runtime" ;;
+    test) plan="test_step" ;;
+    *) plan="$STEP" ;;
+  esac
+  echo "build.sh --dry-run: step=$STEP no_runner=$NO_RUNNER"
+  for s in $plan; do
+    case "$s" in
+      tools)     echo "  would run: tools -- ps2_recomp and ps2_analyzer in third_party/ps2recomp/build-tools" ;;
+      recomp)    echo "  would run: recomp -- overlay ELF, fixed function map, tools, ps2_recomp into recomp/output" ;;
+      runtime)   echo "  would run: runtime -- third_party/ps2recomp/build-clang: $([ "$NO_RUNNER" = 1 ] && echo "ps2_runtime (no generated code)" || echo ps2EntryRunner), the launcher, into dist/" ;;
+      release)   echo "  would run: release -- third_party/ps2recomp/build-release, stripped, into dist-release/" ;;
+      test_step) echo "  would run: test -- the quiet gate, the Python suite, the C++ tests" ;;
+    esac
+  done
+  exit 0
+fi
 if ! command -v clang >/dev/null 2>&1 || ! command -v cmake >/dev/null 2>&1 || ! command -v ninja >/dev/null 2>&1; then
   echo "build.sh: no toolchain under tools/ -- run: bash scripts/bootstrap_windows.sh" >&2
   exit 2
