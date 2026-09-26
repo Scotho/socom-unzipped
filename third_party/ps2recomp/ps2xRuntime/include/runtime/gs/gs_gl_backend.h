@@ -2,6 +2,7 @@
 
 #include "runtime/gs/gs_backend.h"
 #include "runtime/gs/gs_gl_upload_identity.h"
+#include "runtime/gs/gs_gl_upload_reasons.h"
 #include "runtime/gs/gs_cpu_backend.h"
 #include "runtime/gs/gs_frame_backpressure.h"
 #include "runtime/gs/gs_stall_coalescer.h"
@@ -291,6 +292,9 @@ private:
     void refreshDirtyRows(RenderTarget &rt);
     void noteGpuRows(RenderTarget &rt, uint32_t y0, uint32_t y1);
     void markShadowPages(uint32_t page, uint32_t pageCount);
+    // Sprint 13 V2 (#32): a render target has GPU-drawn rows since its last download over pages
+    // [pageLo, pageHi) -- the upload gate's same_gpu refusal.
+    bool uploadUnderGpuRows(uint32_t pageLo, uint32_t pageHi) const;
     // Sprint 8 Goal 2b R123: the hash of the source bytes a decode of this texture would read now.
     uint64_t textureSourceHash(const GSDrawState &state, uint32_t width, uint32_t height);
     void setupDrawState(const GSDrawState &state);
@@ -411,6 +415,11 @@ private:
     // Sprint 8 Goal 2b Task 1's identical= counter: the last packet written to each destination
     // rectangle. Diagnostic only, filled only with PS2X_GS_UPLOAD_TRACE set. Render thread only.
     GsGlUploadIdentity::LastUploads m_uploadIdentity;
+    // Sprint 13 V2 (#32): the per-reason upload and texture counters of the [gs-gl stats] reasons
+    // line, and the skip of an upload whose bytes are already everywhere (PS2X_GS_UPLOAD_SKIP=1).
+    // Fed only with PS2X_GS_STATS or the skip knob set. Render thread only.
+    GsGlUploadReasons::Gate m_uploadGate;
+    std::vector<uint32_t> m_uploadBlocks;
     std::string m_blendLog;
     std::string m_stateLog;
     uint64_t m_uploadExpectedBytes = 0;

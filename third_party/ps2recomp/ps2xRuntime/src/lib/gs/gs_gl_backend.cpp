@@ -249,6 +249,19 @@ namespace
         }
     }
 
+    // Sprint 13 V2 (#32): the upload gate (gs_gl_upload_reasons.h) runs with the stats line, whose
+    // reasons line it feeds, or with the skip. Off, the upload path is exactly what it was.
+    bool uploadGateSkip()
+    {
+        static const bool s_skip = ps2x::knobOn("PS2X_GS_UPLOAD_SKIP");
+        return s_skip;
+    }
+    bool uploadGateOn()
+    {
+        static const bool s_on = uploadGateSkip() || ps2x::knob("PS2X_GS_STATS") != nullptr;
+        return s_on;
+    }
+
     // Display register decoding (same as the CPU backend).
     void decodeDisplaySize(uint64_t display64, uint32_t &outWidth, uint32_t &outHeight)
     {
@@ -1771,6 +1784,15 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
             flushBatch();
             m_shadow->WriteVram(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3] & 0xFFFFu, cmd.args[3] >> 16, cmd.args[4]);
             markShadowPages(cmd.args[1] >> 5, 1u);
+            if (uploadGateOn())
+            {
+                // The page the pixel is really in (markShadowPages above stamps only the base page).
+                uint32_t block = 0u;
+                if (GsGlUploadReasons::blockOf(cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3] & 0xFFFFu, cmd.args[3] >> 16, block))
+                    m_uploadGate.noteForeignWrite(block >> 5, 1u);
+                else
+                    m_uploadGate.noteForeignWrite(cmd.args[1] >> 5, pageSpan(cmd.args[0], cmd.args[2], (cmd.args[3] >> 16) + 1u));
+            }
             break;
         case CmdType::Clear:
             flushBatch();
@@ -1835,6 +1857,7 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
             m_depthTargets.clear();
             m_shadow->Reset();
             m_uploadIdentity.clear();
+            m_uploadGate.reset();
             m_presentTexture = 0u;
             break;
         }
@@ -1877,6 +1900,8 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
                      (unsigned long long)m_pendingCap.hardWaits(),
                      (unsigned long long)m_pendingCap.absorptions(), (unsigned long long)m_pendingCap.absorbedCommands(),
                      (unsigned long long)m_pendingCap.absorbedBytes(), (unsigned long long)m_coalescer.reanchorBytes());
+        // Sprint 13 V2 (#32): why the uploads and texture resolves of this interval happened.
+        std::fprintf(stderr, "%s\n", GsGlUploadReasons::format(m_uploadGate.take(), uploadGateSkip()).c_str());
         if (s_uploadTrace)
         {
             g_uploadTrace.recordUs += g_recordUsGameThread.exchange(0.0);
@@ -1955,6 +1980,8 @@ void GSGlBackend::growRenderTarget(RenderTarget &rt, uint32_t nativeWidth, uint3
     rt.dirtyMask = bandMask(rt.nativeHeight);
     rt.dirtyRects.clear();
     scaleNoteHostWrite(rt.fbp);
+    if (uploadGateOn())
+        m_uploadGate.noteTargetsChanged();   // V2: the texture was respecified; no remembered upload stands
 }
 
 GSGlBackend::RenderTarget *GSGlBackend::getRenderTarget(uint32_t fbp, uint32_t fbw, uint32_t psm, bool create, uint32_t usedHeight)
@@ -1981,7 +2008,12 @@ GSGlBackend::RenderTarget *GSGlBackend::getRenderTarget(uint32_t fbp, uint32_t f
     for (RenderTarget &rt : m_renderTargets)
         if (rt.fbp == fbp)
         {
-            rt.fbw = std::max<uint32_t>(fbw, 1u);
+            // V2 review: a narrower re-address changes fbw without a grow, so the texture maps to
+            // other VRAM; no remembered upload may stand across it.
+            const uint32_t newFbw = std::max<uint32_t>(fbw, 1u);
+            if (newFbw != rt.fbw && uploadGateOn())
+                m_uploadGate.noteTargetsChanged();
+            rt.fbw = newFbw;
             // Sprint 7 Task 1c: the target was sized from the use known when it was created, and
             // the use can grow -- the same base page is re-addressed at a wider FBW (1024-wide at
             // boot, 640-wide in the shell) and a later draw's scissor reaches further down. Grow
@@ -2032,6 +2064,8 @@ GSGlBackend::RenderTarget *GSGlBackend::getRenderTarget(uint32_t fbp, uint32_t f
     ref.dirtyRowFirst = 0u;
     ref.dirtyRowLast = std::min<uint32_t>(448u, ref.nativeHeight);
     ref.dirtyMask = bandMask(ref.dirtyRowLast);   // bands 0..13 = rows 0..448, clipped to the extent
+    if (uploadGateOn())
+        m_uploadGate.noteTargetsChanged();   // V2: seeded from rows 0..448 of the shadow only
     return &ref;
 }
 
@@ -2083,6 +2117,24 @@ void GSGlBackend::markShadowPages(uint32_t page, uint32_t pageCount)
         m_shadowPageGeneration[p] = m_generation;
 }
 
+// Sprint 13 V2 (#32): the pages of each target's GPU-drawn row window (noteGpuRows' own page
+// arithmetic) against the upload's pages. A window is one [first, last) range per target, so a
+// draw above and one below an upload refuse it too: conservative, never wrong.
+bool GSGlBackend::uploadUnderGpuRows(uint32_t pageLo, uint32_t pageHi) const
+{
+    for (const RenderTarget &rt : m_renderTargets)
+    {
+        if (!rt.gpuRows)
+            continue;
+        const uint32_t ph = pageHeightForPsm(rt.psm), ppr = std::max<uint32_t>(1u, rt.fbw);
+        const uint32_t p0 = rt.fbp + (rt.gpuRowFirst / ph) * ppr;
+        const uint32_t p1 = rt.fbp + ((rt.gpuRowLast + ph - 1u) / ph) * ppr;
+        if (pageLo < p1 && p0 < pageHi)
+            return true;
+    }
+    return false;
+}
+
 void GSGlBackend::executeTransfer(const GSTransferCommand &command)
 {
     m_shadow->BeginTransfer(command);
@@ -2091,6 +2143,12 @@ void GSGlBackend::executeTransfer(const GSTransferCommand &command)
         const uint32_t page = command.bitbltbuf.dbp >> 5;
         const uint32_t span = pageSpan(command.bitbltbuf.dpsm, command.bitbltbuf.dbw, command.trxpos.dsay + command.trxreg.rrh);
         markShadowPages(page, span);
+        if (uploadGateOn())
+            // V2 review: pageSpan counts from the base page, so a dbp inside a page (dbp & 31)
+            // lets the last block row spill one page row past the span; stamp that row too.
+            // markShadowPages above has the same gap (pre-existing, default path, KNOWN section 4).
+            m_uploadGate.noteForeignWrite(page, GsGlUploadReasons::stampSpan(command.bitbltbuf.dbp, span,
+                                                                          pageSpan(command.bitbltbuf.dpsm, command.bitbltbuf.dbw, 1u)));
         if (tracePagesHit(page, span))
             std::fprintf(stderr, "[gs-pages] frame=%llu local-copy sbp=%05x -> dbp=%05x dbw=%u %ux%u pages %03x+%u\n",
                          (unsigned long long)m_frameCounter, command.bitbltbuf.sbp, command.bitbltbuf.dbp, command.bitbltbuf.dbw,
@@ -2129,6 +2187,34 @@ void GSGlBackend::executeUpload(const uint8_t *data, size_t size)
         identicalBytes = m_uploadIdentity.matches(identityKey, identityHash, size);
         if (wholeTransfer)
             m_uploadIdentity.store(identityKey, identityHash, size);
+    }
+    // Sprint 13 V2 (#32): why this upload happened (the [gs-gl stats] reasons line) and, with
+    // PS2X_GS_UPLOAD_SKIP=1, the one case that changes nothing: the same bytes as this rectangle's
+    // last upload, none of its blocks written since, and no render target drawn over it since its
+    // last download. Then the shadow already holds the bytes, every render-target texture over them
+    // does too (or has them pending from the shadow), and the cached textures are right as they are.
+    if (uploadGateOn())
+    {
+        const GsGlUploadIdentity::Key key{t.bitbltbuf.dbp, t.bitbltbuf.dbw, t.trxpos.dsax,
+                                          t.trxpos.dsay, t.trxreg.rrw, t.trxreg.rrh, t.bitbltbuf.dpsm};
+        GsGlUploadReasons::blocksOf(t.bitbltbuf.dpsm, t.bitbltbuf.dbp, t.bitbltbuf.dbw, t.trxpos.dsax, t.trxpos.dsay,
+                                    t.trxreg.rrw, t.trxreg.rrh, m_uploadBlocks);
+        bool underGpu = false;
+        if (wholeTransfer && !m_uploadBlocks.empty())
+            underGpu = uploadUnderGpuRows(m_uploadBlocks.front() >> 5, (m_uploadBlocks.back() >> 5) + 1u);
+        const GsGlUploadReasons::Gate::Decision decision =
+            m_uploadGate.decide(key, data, size, wholeTransfer, m_uploadBlocks, page, span,
+                                pageSpan(t.bitbltbuf.dpsm, t.bitbltbuf.dbw, 1u), underGpu, uploadGateSkip());
+        if (decision.skip)
+        {
+            // Leave the shadow's transfer where the write would have: complete, so a stray packet
+            // past the rectangle is dropped exactly as before.
+            m_shadow->CompleteImageTransfer();
+            m_uploadReceivedBytes = 0u;
+            if (s_uploadTrace)
+                GsGlUploadTrace::noteUploadShape(g_uploadTrace, wholeTransfer, identicalBytes);
+            return;
+        }
     }
     double traceShadowUs = 0.0, traceMarkUs = 0.0;
     const auto tShadow0 = s_uploadTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
@@ -2753,6 +2839,8 @@ void GSGlBackend::downloadRenderTargetToShadow(RenderTarget &rt)
             writeVramRaw(m_shadowMemory.data(), rt.psm, base, rt.fbw, x, y, p);
         }
     }
+    if (uploadGateOn())
+        m_uploadGate.noteForeignWrite(rt.fbp, pageSpan(rt.psm, rt.fbw, h));   // V2: the shadow took GPU pixels
     rt.shadowStale = false;
     rt.gpuRows = false;
     glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(prevFbo));
@@ -2801,6 +2889,8 @@ void GSGlBackend::downloadRenderTargetToCpu(RenderTarget &rt)
             writeVramRaw(m_shadowMemory.data(), rt.psm, base, rt.fbw, x, y, p);
         }
     }
+    if (uploadGateOn())
+        m_uploadGate.noteForeignWrite(rt.fbp, pageSpan(rt.psm, rt.fbw, h));   // V2: the shadow took GPU pixels
     rt.gpuDirty = false;
     rt.shadowStale = false;
     rt.gpuRows = false;
@@ -3485,6 +3575,8 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
                 if (tracePagesHit(pageStart, pageCount))
                     std::fprintf(stderr, "[gs-pages] frame=%llu texture tbp0=%05x sampled from rt fbp=%03x (%ux%u) directly\n",
                                  (unsigned long long)m_frameCounter, tex.tbp0, rt.fbp, rt.nativeWidth, rt.nativeHeight);
+                if (uploadGateOn())
+                    m_uploadGate.noteTex(GsGlUploadReasons::Tex::RtDirect);
                 return view;
             }
         }
@@ -3542,6 +3634,8 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
         {
             it->second.lastUse = m_frameCounter;
             touchClutSnapshot();
+            if (uploadGateOn())
+                m_uploadGate.noteTex(GsGlUploadReasons::Tex::Hit);
             return it->second.texture;
         }
         // Sprint 8 Goal 2b R123. This is the root Task 1 measured: markShadowPages (:1843-1848)
@@ -3563,6 +3657,8 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
                 if (s_uploadTraceResolve)
                     GsGlUploadTrace::noteRevalidate(g_uploadTrace,
                         std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - tRev0).count());
+                if (uploadGateOn())
+                    m_uploadGate.noteTex(GsGlUploadReasons::Tex::Revalidated);
                 return it->second.texture;
             }
             // A miss falls through to the decode below, which dominates its own re-hash; only
@@ -3589,6 +3685,8 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
     }
     if (s_uploadTraceResolve)
         GsGlUploadTrace::noteDecode(g_uploadTrace, wasInvalidation);
+    if (uploadGateOn())
+        m_uploadGate.noteTex(wasInvalidation ? GsGlUploadReasons::Tex::Redecoded : GsGlUploadReasons::Tex::New);
     return decodeTexture(state, key, width, height, pageStart, pageCount);
 }
 

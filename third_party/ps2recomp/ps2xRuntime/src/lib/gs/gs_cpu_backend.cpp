@@ -1457,6 +1457,17 @@ void GSCpuBackend::BeginTransfer(const GSTransferCommand &command)
         PerformLocalToHostTransfer();
 }
 
+void GSCpuBackend::CompleteImageTransfer()
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (m_transferState.direction != 0u)
+        return;
+    // UploadImage's advancePixel at the last pixel, exactly.
+    m_transferState.copiedPixels = m_transferState.totalPixels;
+    m_transferState.direction = 3u;
+    m_transferState.totalPixels = 0u;
+}
+
 void GSCpuBackend::UploadImage(const uint8_t *data, uint32_t sizeBytes)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
