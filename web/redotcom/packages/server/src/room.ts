@@ -110,7 +110,7 @@ const PENDING_MAX = 32, PENDING_TICKS = QUEUE_MAX;
 /**
  * The `loadout` requests a player may send (protocol 7; the review's guard, as the batches' and the rounds' are): a
  * burst of `LOADOUT_BURST`, then one each `LOADOUT_EVERY` ticks (a menu confirms once a press, one step a press); a
- * request past the budget is dropped unanswered.
+ * request past the budget changes nothing and is answered `rate` (the page pairs each answer with its request in order).
  */
 export const LOADOUT_BURST = 8, LOADOUT_EVERY = 6;
 /** A name's longest before the lobby's own cut (the lobby trims to the game's; this refuses a flood first). */
@@ -132,8 +132,13 @@ const BAKED_THROWN: ReadonlyMap<string, { record: ThrowableRecord; piercing: num
 ]);
 /** The flashbang (`Mark141`, 123): a blast of no damage whose reach whites the screen out (`resolveBlast`'s `flash`). */
 const FLASHBANG_ID = 123;
-/** The Detonator's `FireWait` (`zweapon.rdr` ID 193: 0.1 s), its rate on the server when the kit table has no record of it. */
-const DETONATOR_FIRE_WAIT = 0.1;
+/**
+ * The Detonator's rate when the disc's table is not in hand (a server started without `SOCOM_DISC`, the unit tests):
+ * the parser's `FireWait` default (`+0x50`, 0.1: research 84 §1), which is also the disc's value for ID 193. With the
+ * table, the record's own `FireWait` (`ArsenalItem.fireWait`).
+ */
+const DETONATOR_ID = 193;
+const FIRE_WAIT_DEFAULT = 0.1;
 /** The fastest a throw leaves the hand (`throwVelocity`'s range at the most power, with slack), units a second. */
 const THROW_SPEED_MAX = 400;
 /**
@@ -365,7 +370,11 @@ export class Room {
     // Protocol 7: the type's picks stay with the address (the character type is the seat's, `FUN_0023e5e0`), so a
     // reconnect seated alive may re-send them and have them land (`loadout`).
     const gone = this.players.get(id), address = this.addresses.get(id);
-    if (gone && address && gone.picks.length) this.kept.set(address, { team: gone.team, picks: gone.picks, next: gone.next });
+    // A player leaving with no picks clears what the address kept: an older list must not come back (the M10 review).
+    if (gone && address) {
+      if (gone.picks.length) this.kept.set(address, { team: gone.team, picks: gone.picks, next: gone.next });
+      else this.kept.delete(address);
+    }
     this.players.delete(id);
     this.addresses.delete(id);
     // A voter's votes go with it; a target's with it too.
@@ -713,9 +722,9 @@ export class Room {
   private loadout(id: number, raw: unknown): void {
     const p = this.players.get(id);
     if (!p) return;
-    if (p.loadoutCredit < 1) return;                             // past the budget: dropped, unanswered
-    p.loadoutCredit--;
     const held = (): number[] => [...(p.next ?? this.typeKit(p))];
+    if (p.loadoutCredit < 1) { this.send(id, { type: 'loadout', kit: held(), refused: { reason: 'rate', at: 0 } }); return; }
+    p.loadoutCredit--;
     const picks = picksOf(raw);
     if (!picks) { this.send(id, { type: 'loadout', kit: held(), refused: { reason: 'slot', at: 0 } }); return; }
     // The menu opens only dead or a ghost (`canOpen`, `FUN_001f7ff0` L56648-56661): a living player's request is refused
@@ -975,7 +984,7 @@ export class Room {
     if (!p || !p.alive || this.state.phase === 'over') return;
     // FUN_005c74e0: the Detonator is the kit's only with a claymore in it; its fire at its `FireWait` (0.1 s) at most.
     if (!EQUIPMENT_SLOTS.some((i) => p.loadout[i] === CLAYMORE.id) || p.ran < p.detonateAt) return;
-    p.detonateAt = p.ran + Math.round(DETONATOR_FIRE_WAIT * TICK_HZ);
+    p.detonateAt = p.ran + Math.round((this.kits?.table?.arsenal.items.get(DETONATOR_ID)?.fireWait ?? FIRE_WAIT_DEFAULT) * TICK_HZ);
     const s = p.sim.walker.state;
     for (const f of this.flying) {
       if (f.owner !== id || f.g.record.id !== CLAYMORE.id || f.g.state !== 'rest') continue;

@@ -43,9 +43,9 @@ const kit = (...ids: number[]): Loadout => ids as unknown as Loadout;
 
 describe('the arsenal over a hand-built zweapon.rdr', () => {
   it('classes an item by its id range (FUN_003d1a60) and puts it in its slot kind', () => {
-    expect([4, 30, 31, 51, 81, 91, 101, 121, 141, 145, 151, 171, 185, 190, 201, 205, 254, 255].map(itemClass)).toEqual([
+    expect([4, 30, 31, 51, 81, 91, 101, 121, 141, 145, 151, 171, 185, 190, 201, 205, 229, 230, 253, 254, 255].map(itemClass)).toEqual([
       'pistol', 'pistol', 'smg', 'rifle', 'shotgun', 'mg', 'sniper', 'grenade', 'grenadeLauncher', 'rocketLauncher',
-      'explosive', 'launcherRound', 'rocketRound', 'gear', 'armour', 'turret', 'internal', 'internal',
+      'explosive', 'launcherRound', 'rocketRound', 'gear', 'armour', 'turret', 'turret', 'turret2', 'turret2', 'internal', 'internal',
     ]);
     expect([54, 143, 15, 146, 145, 121, 195].map(slotKindOf)).toEqual(['primary', 'primary', 'secondary', 'equipment', 'equipment', 'equipment', 'equipment']);
   });
@@ -55,6 +55,7 @@ describe('the arsenal over a hand-built zweapon.rdr', () => {
     expect([m40.reloadAfterShot, m40.reloadDelayAfterShot]).toEqual([true, 0.5]);
     expect([r870.reloadAfterShot, r870.reloadDelayAfterShot, r870.projectiles]).toEqual([true, 0.01, 4]);  // R94.12, R94.10
     expect([m4.reloadAfterShot, m4.reloadDelay, m4.gravity, m4.timer1, m4.slotCost, m4.projectiles]).toEqual([false, 0.01, 98, 9999999, 1, 1]);
+    expect([m4.fireWait, m40.fireWait]).toEqual([0.1, 0.1]);                    // no FireWait key: the parser's 0.1
     expect(arsenal.items.get(ITEM.M203_FRAG)!.armingDistance).toBe(100);
     expect(arsenal.items.get(ITEM.RPG_ROUND)!).toMatchObject({ hasBackblast: true, acceleration: 980 });
     expect(arsenal.items.get(ITEM.RPG7)!).toMatchObject({ slotCost: 2, ammo: null, ammoId: null });

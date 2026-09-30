@@ -330,7 +330,7 @@ describe('walk mode\'s camera (W2.1)', () => {
     frames(STANCE_HOLD_S_PLACEHOLDER - 3 * TICK);
     key('keydown', { repeat: true });
     expect(mode.stance()).toBe('stand');
-    frames(4 * TICK);
+    frames(5 * TICK);                                  // the press's own frame counts nothing (`StanceButton`): one more
     expect(mode.stance()).toBe('prone');
     key('keyup'); frames(TICK);
     expect(mode.stance()).toBe('prone');

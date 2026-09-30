@@ -39,4 +39,11 @@ describe('the C key\'s stance rules', () => {
     expect(press(new StanceButton(), 'prone', 0.1)).toEqual(['stand']);
     expect(play.StanceButton).toBe(StanceButton);
   });
+
+  it('a press whose first frame is a long one is still a tap: the time before the press is not the hold\'s (web sprint 4)', () => {
+    // A frame of 0.5 s (a hitch) carries the key's press and the next one its release: 0 s held, a tap.
+    const b = new StanceButton(STANCE_HOLD_S_PLACEHOLDER, KEY_STANCE);
+    expect(b.update(true, 0.5, 'stand')).toBeNull();
+    expect(b.update(false, FRAME, 'stand')).toBe('crouch');
+  });
 });

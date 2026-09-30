@@ -242,6 +242,19 @@ describe('protocol 7: the loadout request, replayed by the room from the type\'s
     expect(s.room.player(3)!.loadout).toEqual([62, 15, 122, 151, 194]);
   });
 
+  it('a player who leaves with no picks clears what the address kept: an older list never comes back (M10 review)', () => {
+    const s = match();
+    s.loadout(2, [{ slot: 0, id: 62 }, { slot: 2, id: 122 }]);
+    s.room.leave(2);
+    const back = s.join(2);                                             // the same address: the list restored
+    s.loadout(2, []);                                                   // cleared while dead
+    expect(back.of('loadout').at(-1)).toMatchObject({ refused: null });
+    s.room.leave(2);
+    s.join(2);
+    nextRound(s);
+    expect(s.room.player(2)!.loadout[0]).not.toBe(62);
+  });
+
   it('a room without the arsenal refuses every pick as unknown and holds the baked kit', () => {
     const s = setup({}, null);
     const c = s.join(1);
@@ -295,13 +308,16 @@ describe('the loadout request\'s own guards: the menu\'s gate, the re-send, the 
     expect(other.of('loadout').at(-1)!.refused).toEqual({ reason: 'alive', at: 0 });
   });
 
-  it('holds a player to LOADOUT_BURST requests, then one each LOADOUT_EVERY ticks; the rest dropped unanswered', () => {
+  it('holds a player to LOADOUT_BURST requests, then one each LOADOUT_EVERY ticks; the rest answered `rate`, one to one', () => {
     const s = match();
     for (let i = 0; i < 30; i++) s.loadout(2, [{ slot: 0, id: 62 }]);
-    expect(s.seal.of('loadout')).toHaveLength(LOADOUT_BURST);
+    const answers = s.seal.of('loadout') as { refused: { reason: string } | null }[];
+    expect(answers).toHaveLength(30);                                    // every request answered: the page's pairing holds
+    expect(answers.filter((a) => a.refused?.reason === 'rate')).toHaveLength(30 - LOADOUT_BURST);
     for (let i = 0; i < LOADOUT_EVERY; i++) s.room.step();
     s.loadout(2, [{ slot: 0, id: 62 }]); s.loadout(2, [{ slot: 0, id: 62 }]);
-    expect(s.seal.of('loadout')).toHaveLength(LOADOUT_BURST + 1);
+    const later = (s.seal.of('loadout') as { refused: { reason: string } | null }[]).slice(30);
+    expect(later.map((a) => a.refused?.reason ?? null)).toEqual([null, 'rate']);
   });
 });
 

@@ -60,8 +60,9 @@ export class StanceButton {
   update(down: boolean, dt: number, stance: Stance): Stance | null {
     let go: Stance | null = null;
     if (down) {
-      if (!this.was) { this.held = 0; this.acted = false; }
-      this.held += dt;
+      // The press's own frame counts nothing: its `dt` is mostly time before the press, and a long one (a hitch) would
+      // turn a tap into a hold. The hold is timed from the frame after, as late as one frame against the threshold.
+      if (!this.was) { this.held = 0; this.acted = false; } else this.held += dt;
       if (!this.acted && this.held >= this.holdSeconds) { this.acted = true; go = this.rules.hold(stance); }
     } else if (this.was && !this.acted) {
       go = this.rules.tap(stance);

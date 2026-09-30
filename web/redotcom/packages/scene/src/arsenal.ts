@@ -69,13 +69,13 @@ const ROUND_VALVES = {
 
 export type ItemClass =
   | 'pistol' | 'smg' | 'rifle' | 'shotgun' | 'mg' | 'sniper' | 'grenade' | 'grenadeLauncher' | 'rocketLauncher'
-  | 'explosive' | 'launcherRound' | 'rocketRound' | 'gear' | 'armour' | 'turret' | 'internal';
+  | 'explosive' | 'launcherRound' | 'rocketRound' | 'gear' | 'armour' | 'turret' | 'turret2' | 'internal';
 
 /** `FUN_003d1a60` (L324331-324352): the id ranges, first id of each class to its last. */
 const CLASS_RANGES: readonly (readonly [number, number, ItemClass])[] = [
   [4, 30, 'pistol'], [31, 50, 'smg'], [51, 80, 'rifle'], [81, 90, 'shotgun'], [91, 100, 'mg'], [101, 120, 'sniper'],
   [121, 140, 'grenade'], [141, 144, 'grenadeLauncher'], [145, 150, 'rocketLauncher'], [151, 170, 'explosive'],
-  [171, 184, 'launcherRound'], [185, 189, 'rocketRound'], [190, 200, 'gear'], [201, 204, 'armour'], [205, 253, 'turret'],
+  [171, 184, 'launcherRound'], [185, 189, 'rocketRound'], [190, 200, 'gear'], [201, 204, 'armour'], [205, 229, 'turret'], [230, 253, 'turret2'],
 ];
 
 /** An item's class by its id range (`FUN_003d1a60`); anything else is internal (0xfe). */
@@ -130,6 +130,8 @@ export interface ArsenalItem {
   ammoId: number | null;
   magazine: number;
   mags: number;
+  /** `FireWait` (`+0x50`, default 0.1: research 84 §1's key table): the seconds between uses (the Detonator's 0.1). */
+  fireWait: number;
   /** `SlotCost` (`+0x27c`, default 1): 2 takes a second equipment slot (LAW, RPG-7, Satchel). */
   slotCost: number;
   /** `ReloadTime` (`+0x54`, default 0): the standing reload clip is stretched to it (`FUN_005a82e0`). */
@@ -218,7 +220,7 @@ export function arsenalOf(script: RdrNode): Arsenal {
       id, name, displayName: str(rdrGet(r, 'DisplayName')) ?? name, cls: itemClass(id), kind: slotKindOf(id),
       model: named(str(rdrGet(r, 'ModelName'))), icon: named(str(rdrGet(r, 'IconTextureName'))),
       ammo, ammoId: round === undefined ? null : num(round, 'ID', -1),
-      magazine: num(r, 'Ammo_Capacity', 0), mags: num(r, 'NumMags', 0),
+      magazine: num(r, 'Ammo_Capacity', 0), mags: num(r, 'NumMags', 0), fireWait: num(r, 'FireWait', 0.1),
       slotCost: num(r, 'SlotCost', 1), reloadTime: num(r, 'ReloadTime', 0), reloadDelay: num(r, 'ReloadDelay', 0.01),
       reloadAfterShot: flag(r, 'ReloadAfterShot'), reloadDelayAfterShot: num(r, 'ReloadDelayAfterShot', 0.01),
       armingDistance: num(r, 'ArmingDistance', 0) * UNITS_PER_METRE, hasBackblast: flag(r, 'HasBackblast'),
@@ -411,7 +413,7 @@ export function kitTableOf(zweapon: RdrNode): KitTable {
         const round = item.ammo === null ? undefined : ammo.get(item.ammo);
         rounds.set(item.id, {
           record: throwableRecord(zweapon, item.name), piercing: round === undefined ? 0 : num(round, 'Piercing', 0),
-          fireWait: num(nodes.get(item.name)!, 'FireWait', 0.1), reloadAfterShot: item.reloadAfterShot,
+          fireWait: item.fireWait, reloadAfterShot: item.reloadAfterShot,
           reloadDelayAfterShot: item.reloadDelayAfterShot, icon: item.icon?.toLowerCase() ?? null,
         });
       } catch { /* a round the projectile reader refuses: none */ }
