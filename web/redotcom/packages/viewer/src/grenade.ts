@@ -7,7 +7,7 @@ import type { Rgba } from '@s2u/gs';
 import {
   actorToWorldDir, actorToWorldPoint, AN_M8, CLAYMORE, CLAYMORE_RULES, claymoreCone, explosionDamage, flashLevel, GRENADE_BLAST, gridCast, heldPower, HE,
   launchGrenade, M67, MARK141, THROW_ARC, throwArc,
-  materialAnim, maxThrowDistance, PLACE_CLAYMORE_ANIM, releaseSeconds, stepGrenade, stepThrowPower, throwAnim, throwClipSeconds, THROW_ANIMS,
+  materialAnim, maxThrowDistance, PLACE_CLAYMORE_ANIM, proximityTripped, releaseSeconds, stepGrenade, stepThrowPower, throwAnim, throwClipSeconds, THROW_ANIMS,
   throwVelocity,
   type Grenade, type GrenadeEvent, type Grid, type HullCast, type ThrowAnim, type ThrowLaunch, type ThrowStance,
   type ThrowableRecord, type V3,
@@ -19,6 +19,7 @@ import { markGeometry, paintMark } from './fire';
 import type { SurfaceShade } from './surfaceShade';
 import { markClipGeometry, PERM_DECAL_TRIANGLES, squareInto, type MarkClipper, type MarkFrame } from './markClip';
 import type { PlaySnapshot, WalkView } from './walk';
+import { c4Plant, slotSelectable, type C4Target } from './equipment';
 
 /**
  * SOCOM II's frag grenade in walk mode (the grenades workstream; web/redotcom/docs/research/85). The physics is
@@ -77,13 +78,21 @@ export const EXPLOSION_READING = {
 
 export type GrenadePhase = 'holstered' | 'ready' | 'holding' | 'throwing';
 
-/** The throwables the viewer carries: `mp_seal1`'s kit (`character.rdr`: M4A1, Mark 23, M67, HE, Double Ammo Load). */
-export type GrenadeItem = 'M67' | 'HE' | 'AN-M8' | 'Mark141' | 'Claymore';
 /**
- * The throwables the viewer carries: `mp_seal1`'s M67 and HE, the AN-M8 smoke of `mp_seal2`/`mp_seal4`, and the
- * Mark141 flashbang, which no MP default kit carries (the loadout screen's to give).
+ * The throwables and charges the page's hand takes up, by `zweapon.rdr`'s `InternalName`: the hand grenades, the
+ * claymore, and (web sprint 4 M7, research 94 §C5) the PMN and C4, whose records come off the disc (`setRecords`).
  */
-export const THROWABLES: Readonly<Record<GrenadeItem, ThrowableRecord>> = { M67, HE, 'AN-M8': AN_M8, Mark141: MARK141, Claymore: CLAYMORE };
+export type GrenadeItem = 'M67' | 'HE' | 'AN-M8' | 'Mark141' | 'Claymore' | 'PMN Mine' | 'C4';
+const GRENADE_ITEMS: ReadonlySet<string> = new Set<GrenadeItem>(['M67', 'HE', 'AN-M8', 'Mark141', 'Claymore', 'PMN Mine', 'C4']);
+/** The items the page holds without the disc's tables: `@s2u/scene`'s transcriptions, each proven against the file. */
+export type BakedItem = 'M67' | 'HE' | 'AN-M8' | 'Mark141' | 'Claymore';
+/**
+ * The throwables the viewer carries without the disc: `mp_seal1`'s M67 and HE, the AN-M8 smoke of `mp_seal2`/`mp_seal4`,
+ * the Mark141 flashbang, which no MP default kit carries, and `mp_seal4`'s claymore.
+ */
+export const THROWABLES: Readonly<Record<BakedItem, ThrowableRecord>> = { M67, HE, 'AN-M8': AN_M8, Mark141: MARK141, Claymore: CLAYMORE };
+/** A set of the thrower's records, by item (the baked ones, and the disc's once `setRecords` has them). */
+export type ThrowableRecords = Readonly<Partial<Record<GrenadeItem, ThrowableRecord>>>;
 /** What the hand can hold besides the rifle: a throwable, or the claymore's Detonator (`CLAYMORE_RULES`). */
 export type HeldItem = GrenadeItem | 'Detonator';
 /** A kit slot: the rifle, a throwable, the Detonator. */
@@ -99,7 +108,7 @@ export const KIT_ITEMS: readonly KitItem[] = ['rifle', 'M67', 'HE', 'AN-M8', 'Ma
  * M67 and the HE first, `mp_seal1`'s two (`character.rdr`: M4A1, Mark 23, M67, HE). The PC's `3` and `4` take up the
  * first two (the owner, 2026-09-29); R2's inventory reaches every one.
  */
-export function equipmentSlots(records: Readonly<Record<GrenadeItem, ThrowableRecord>> = THROWABLES): GrenadeItem[] {
+export function equipmentSlots(records: ThrowableRecords = THROWABLES): GrenadeItem[] {
   return KIT_ITEMS.filter((k): k is GrenadeItem => k !== 'rifle' && k !== 'Detonator' && (records[k as GrenadeItem]?.capacity ?? 0) > 0);
 }
 
@@ -160,6 +169,11 @@ export interface GrenadeSource {
   view(): WalkView;
   /** A point in a posed part's frame in the world (`Play.partPoint`): the hand the grenade leaves; null before a pose. */
   handPoint?(part: 'rhand' | 'lhand', p: V3): V3 | null;
+  /**
+   * M7: every actor's origin (the page's SEAL and the others it draws) -- what an armed PMN tests (`proximityTripped`,
+   * `FUN_00543930`). Absent: the page's own SEAL's feet.
+   */
+  actors?(): readonly V3[];
   /** The held item's node under the right hand (`Play.heldNode`): the grenade rides it while it is up. */
   heldNode?(): Group | null;
   /** The peek (`DAT_004161c0`, -1 left .. 1 right; the traversal's): past half a side, the body is in state 3. */
@@ -244,8 +258,11 @@ export interface GrenadeEvents {
   equip: (equipped: boolean, item: HeldItem | null) => void;
   /** The throw's clip starts (`./throwPose` plays `anim.clip`); the hand lets go in `releaseIn` s. */
   throwStart: (info: { anim: ThrowAnim; power: number; releaseIn: number }) => void;
-  /** A charge set down (the claymore): where, facing which way, and its zAnim (`c4_start`: `.PLACE_CHARGE`). */
-  place: (info: { item: GrenadeItem; pos: V3; yaw: number; fireAnim: string }) => void;
+  /**
+   * A charge set down (the claymore, the PMN, C4): where, facing which way (`yaw`, and `facing` as a unit vector: the
+   * match's `throw` of it carries it as its velocity), and its zAnim (`c4_start`: `.PLACE_CHARGE`).
+   */
+  place: (info: { item: GrenadeItem; pos: V3; yaw: number; facing: V3; fireAnim: string }) => void;
   /** The grenade leaves the hand (audio: `.THROW_OBJECT`). */
   throw: (info: ThrowInfo) => void;
   /** A bounce (audio: the material's `grenade_hit_*` zAnim when `sound`). */
@@ -262,7 +279,9 @@ export interface GrenadeStats {
   equipped: boolean;
   /** The throwable up, or the one that would be taken (`KIT_ITEMS`); `leftByItem` its count and the other's. */
   item: GrenadeItem;
-  leftByItem: Record<GrenadeItem, number>;
+  leftByItem: Partial<Record<GrenadeItem, number>>;
+  /** M7: the three equipment slots' items as the loadout holds them (null: no kit given, the legacy pouch). */
+  kit: (string | null)[] | null;
   /** Its HUD icon (`IconTextureName`; the Detonator's while it is up). */
   icon: string;
   /** What is in the hand: a throwable, the Detonator, or null for the rifle. */
@@ -307,6 +326,8 @@ interface Live {
   g: Grenade; model: Group | null; spin: V3; trail: V3[]; line: Line | null; dots: Points | null; rest: string | null;
   /** A placed charge's facing (the SEAL's yaw when it was set down, degrees); undefined for a thrown grenade. */
   facing?: number;
+  /** Another player's (`launchRemote`): not the page's to count or set off. */
+  remote?: boolean;
 }
 interface Pending { anim: ThrowAnim; power: number; aimSin: number; stance: ThrowStance; left: number; total: number }
 
@@ -327,6 +348,14 @@ export class GrenadeThrower {
   private placing: { left: number; total: number } | null = null;
   private refusal: { text: string; left: number } | null = null;
   private item_: GrenadeItem = 'M67';
+  /** The thrower's records by item: the baked ones, and the disc's as `setRecords` hands them in (M7). */
+  private readonly records: Partial<Record<GrenadeItem, ThrowableRecord>>;
+  /** M7: the loadout's three equipment slots (`setKit`), their items by name; null: the legacy pouch (every record). */
+  private kit: (string | null)[] | null = null;
+  /** M7: where C4 may be planted (`./equipment` `c4Targets`). */
+  private c4Targets: readonly C4Target[] = [];
+  /** M7: a C4 plant's placing in progress (the kit goes back to the firearm after it, `FUN_005c4b10`). */
+  private plantingC4 = false;
   private textures = new Map<string, Texture>();
   private defaultMaterial = '';
   private cast: HullCast | null = null;
@@ -334,7 +363,7 @@ export class GrenadeThrower {
   private equipped_ = false;
   private phase_: GrenadePhase = 'holstered';
   private power = 0;
-  private left: Record<GrenadeItem, number>;
+  private left: Partial<Record<GrenadeItem, number>>;
   private thrown = 0;
   private pending: Pending | null = null;
   private recover = 0;
@@ -374,10 +403,11 @@ export class GrenadeThrower {
 
   constructor(
     private readonly source: GrenadeSource,
-    private readonly records: Readonly<Record<GrenadeItem, ThrowableRecord>> = THROWABLES,
+    records: ThrowableRecords = THROWABLES,
     private readonly random: () => number = Math.random,
   ) {
-    this.left = capacities(records);
+    this.records = { ...records };
+    this.left = this.capacities();
     this.object.add(this.hand);
     this.hand.visible = false;
     this.arcLine = arcStrip();
@@ -408,12 +438,71 @@ export class GrenadeThrower {
   }
 
   /** The current throwable's record. */
-  private get record(): ThrowableRecord { return this.records[this.item_]; }
+  private get record(): ThrowableRecord { return this.records[this.item_] ?? M67; }
+  /** An item's count left (0 for none). */
+  private leftOf(item: GrenadeItem): number { return this.left[item] ?? 0; }
+
+  /**
+   * M7: the disc's records (`KitTable.throwables`: the hand grenades, the claymore, the PMN, C4), each replacing the
+   * baked one of its name; items that are not the hand's (the Satchel, the Backblast) are passed over.
+   */
+  setRecords(records: Iterable<ThrowableRecord>): void {
+    for (const r of records) {
+      if (!GRENADE_ITEMS.has(r.name)) continue;
+      const item = r.name as GrenadeItem;
+      this.records[item] = r;
+      const t = this.modelTemplates?.[r.model];
+      if (t) this.templates[item] = t;
+      this.left[item] ??= 0;
+    }
+  }
+
+  /**
+   * M7 (spec W4.R5; research 94 §A6): the loadout's three equipment slots, in kit order, by their items' names (null
+   * or a name the hand does not take for an empty slot, a launcher, a round, 2X, the thermal scope). The pouch becomes
+   * the kit's (each slot its record's `Ammo_Capacity` x `NumMags`, `./equipment` `pouchOf`), R2 steps through the kit's
+   * own items, and `3`/`4`/`5` take its slots. Null goes back to the legacy pouch (every record).
+   */
+  setKit(slots: readonly (string | null)[] | null): void {
+    this.kit = slots ? [...slots] : null;
+    this.left = this.capacities();
+  }
+
+  /** M7: the map's C4 targets (`./equipment` `c4Targets`, `C4_TARGET_READING`). */
+  setC4Targets(targets: readonly C4Target[]): void {
+    this.c4Targets = targets;
+  }
+
+  /** The pouch full: the kit's slots' counts (M7), else every record at its capacity (the legacy pouch). */
+  private capacities(): Partial<Record<GrenadeItem, number>> {
+    const out: Partial<Record<GrenadeItem, number>> = {};
+    for (const [k, r] of Object.entries(this.records) as [GrenadeItem, ThrowableRecord][]) out[k] = this.kit ? 0 : r.capacity;
+    for (const name of this.kit ?? []) {
+      const r = name !== null && GRENADE_ITEMS.has(name) ? this.records[name as GrenadeItem] : undefined;
+      if (r) out[r.name as GrenadeItem] = (out[r.name as GrenadeItem] ?? 0) + r.capacity * Math.max(1, r.mags);
+    }
+    return out;
+  }
+
+  /** The inventory's steps: the legacy `KIT_ITEMS`, or the kit's own items in kit order and the Detonator with a claymore (M7). */
+  private kitItems(): readonly KitItem[] {
+    if (!this.kit) return KIT_ITEMS;
+    const items: KitItem[] = ['rifle'];
+    for (const name of this.kit) if (name !== null && this.records[name as GrenadeItem] && !items.includes(name as KitItem)) items.push(name as KitItem);
+    if (this.kit.includes('Claymore')) items.push('Detonator');   // FUN_005c74e0: the Detonator with a claymore in the kit
+    return items;
+  }
+
+  /** `FUN_005bdc30`'s gate for a throwable's slot (`./equipment` `slotSelectable`): C4 is the Action button's. */
+  private gate(item: GrenadeItem): boolean {
+    const r = this.records[item];
+    return !!r && slotSelectable(r.id, { chargesDown: this.placedCount(), roundsFor: () => 0 });
+  }
   private get template(): Group | null { return this.detonatorUp ? this.detonatorTemplate : this.templates[this.item_] ?? null; }
   /** What is in the hand. */
   held(): HeldItem | null { return !this.equipped_ ? null : this.detonatorUp ? 'Detonator' : this.item_; }
-  /** The SEAL's claymores down (`FUN_003cc1f0` over the placed list, by owner). */
-  placedCount(): number { return this.live.filter((l) => l.facing !== undefined && l.g.state === 'rest').length; }
+  /** The SEAL's charges down (`FUN_003cc1f0` over the placed list, by owner: its claymores, PMNs and C4). */
+  placedCount(): number { return this.live.filter((l) => l.facing !== undefined && !l.remote && l.g.state === 'rest').length; }
 
   /**
    * A new map: its throwables' models by model name (`WorldView.grenades`) and assets; the pouch refilled, the air and
@@ -424,7 +513,7 @@ export class GrenadeThrower {
     this.templates = {};
     this.modelTemplates = templates;
     for (const item of Object.keys(this.records) as GrenadeItem[]) {
-      const t = templates?.[this.records[item].model];
+      const t = templates?.[this.records[item]!.model];
       if (t) this.templates[item] = t;
     }
     this.detonatorTemplate = templates?.[CLAYMORE_RULES.detonator.model] ?? null;
@@ -451,7 +540,8 @@ export class GrenadeThrower {
    * back in the hand. What is in the air, the charges down and the scorches stay: they are the world's, not the kit's.
    */
   refill(): void {
-    this.left = capacities(this.records);
+    this.left = this.capacities();
+    this.plantingC4 = false;
     this.pending = null;
     this.power = 0;
     this.recover = 0;
@@ -479,7 +569,8 @@ export class GrenadeThrower {
     this.unshaded.clear();
     this.unclipped.clear();
     this.scorchShade = null;
-    this.left = capacities(this.records);
+    this.left = this.capacities();
+    this.plantingC4 = false;
     this.thrown = 0;
     this.pending = null;
     this.recover = 0;
@@ -491,7 +582,7 @@ export class GrenadeThrower {
     this.placing = null;
     this.refusal = null;
     if (this.detonatorUp) { this.detonatorUp = false; this.refreshHandModel(); }   // no charge down: no Detonator
-    if (this.phase_ !== 'holstered') this.phase_ = this.left[this.item_] > 0 ? 'ready' : 'holstered';
+    if (this.phase_ !== 'holstered') this.phase_ = this.leftOf(this.item_) > 0 ? 'ready' : 'holstered';
   }
 
   equipped(): boolean { return this.equipped_; }
@@ -507,7 +598,7 @@ export class GrenadeThrower {
    */
   equip(on: boolean = !this.equipped_, item: GrenadeItem = this.item_): boolean {
     if (this.phase_ === 'throwing' || this.phase_ === 'holding') return this.equipped_;
-    if (on && this.left[item] <= 0) return this.equipped_;
+    if (on && this.leftOf(item) <= 0) return this.equipped_;
     if (on === this.equipped_ && (!on || item === this.item_) && !this.detonatorUp) return this.equipped_;
     this.equipped_ = on;
     this.detonatorUp = false;
@@ -522,15 +613,16 @@ export class GrenadeThrower {
   /** Selects a kit item by name (the rifle, a throwable, the Detonator); false when it cannot be taken up. */
   select(item: KitItem): boolean {
     if (item === 'rifle') return !this.equip(false);
-    if (item === 'Detonator') return this.takeDetonator();
+    if (item === 'Detonator') return this.available('Detonator') && this.takeDetonator();
+    if (!this.gate(item)) return false;
     return this.equip(true, item) && this.item_ === item && !this.detonatorUp;
   }
 
   /** Whether a kit slot can be taken up now (`FUN_005bdc30`: the Detonator only with a charge down). */
   private available(item: KitItem): boolean {
     if (item === 'rifle') return true;
-    if (item === 'Detonator') return this.placedCount() > 0;
-    return this.left[item] > 0;
+    if (item === 'Detonator') return this.placedCount() > 0 && (!this.kit || this.kit.includes('Claymore'));
+    return this.leftOf(item) > 0 && this.gate(item);
   }
 
   /**
@@ -557,8 +649,9 @@ export class GrenadeThrower {
    */
   cycleInventory(): KitItem {
     const now = this.held() ?? 'rifle';
-    for (let k = 1; k <= KIT_ITEMS.length; k++) {
-      const next = KIT_ITEMS[(KIT_ITEMS.indexOf(now) + k) % KIT_ITEMS.length]!;
+    const items = this.kitItems();
+    for (let k = 1; k <= items.length; k++) {
+      const next = items[(Math.max(0, items.indexOf(now)) + k) % items.length]!;
       if (this.available(next)) { this.select(next); break; }
     }
     return this.held() ?? 'rifle';
@@ -566,7 +659,15 @@ export class GrenadeThrower {
 
   /** The throw's clip done: the next of the same in the hand, or none left and back to the rifle. */
   private finishThrow(): void {
-    if (this.detonatorUp || this.left[this.item_] > 0) { this.phase_ = 'ready'; return; }
+    if (this.plantingC4) {                        // M7: after the plant, back to the firearm (FUN_005c4b10, L475463)
+      this.plantingC4 = false;
+      this.phase_ = 'holstered';
+      this.equipped_ = false;
+      this.refreshHandModel();
+      this.emit('equip', false, null);
+      return;
+    }
+    if (this.detonatorUp || this.leftOf(this.item_) > 0) { this.phase_ = 'ready'; return; }
     this.phase_ = 'holstered';
     this.equipped_ = false;
     this.emit('equip', false, null);
@@ -591,7 +692,7 @@ export class GrenadeThrower {
   pull(): void {
     if (!this.equipped_ || this.phase_ !== 'ready' || !this.source.snapshot()) return;
     if (this.detonatorUp) { this.detonateCharges(); return; }
-    if (this.left[this.item_] <= 0) return;
+    if (this.leftOf(this.item_) <= 0) return;
     if (isPlaced(this.record)) { this.startPlacing(); return; }
     this.phase_ = 'holding';
     this.power = 0;
@@ -660,10 +761,10 @@ export class GrenadeThrower {
   stats(): GrenadeStats {
     const r = this.record;
     return {
-      equipped: this.equipped_, item: this.item_, leftByItem: { ...this.left }, icon: this.icon() ?? r.icon,
+      equipped: this.equipped_, item: this.item_, leftByItem: { ...this.left }, kit: this.kit && [...this.kit], icon: this.icon() ?? r.icon,
       held: this.held(), placed: this.placedCount(), placing: this.placing !== null, message: this.refusal?.text ?? null,
       inHand: this.heldModel !== null && this.heldModel.object.visible,
-      phase: this.phase_, power: this.power, left: this.left[this.item_], thrown: this.thrown,
+      phase: this.phase_, power: this.power, left: this.leftOf(this.item_), thrown: this.thrown,
       record: { name: r.name, fuse: r.fuse, removal: r.removal, gravity: r.gravity, explosionRadius: r.explosionRadius, explosionDamage: r.explosionDamage, capacity: r.capacity, model: r.model },
       live: this.live.map(({ g }) => ({ pos: [...g.pos], vel: [...g.vel], state: g.state, fuse: g.fuse, bounces: g.bounces, age: g.age })),
       lastThrow: this.lastThrow && { ...this.lastThrow },
@@ -705,8 +806,38 @@ export class GrenadeThrower {
    * `./kit`'s `hotkey`). `slot` 1 or 2; false when the slot is empty or its item cannot be taken up now (none left).
    */
   selectEquipment(slot: number): boolean {
+    if (this.kit) {
+      // M7 (W4.R5): the kit's slot `slot` of three, as the loadout holds it; a slot the hand does not take (a launcher,
+      // a round, 2X, the thermal scope, C4, an empty one) takes nothing up and leaves the hand as it was.
+      const name = this.kit[slot - 1];
+      return name !== undefined && name !== null && GRENADE_ITEMS.has(name) && this.select(name as GrenadeItem);
+    }
     const item = equipmentSlots(this.records)[slot - 1];
     return item !== undefined && this.select(item);
+  }
+
+  /**
+   * M7 (research 94 §C5.1): C4 is planted by the Action button, never taken up from its slot (`FUN_005bdc30` refuses
+   * 0x97): with C4 left in the kit, the SEAL still at a C4 target (`./equipment` `c4Plant`) and no throw in hand, the
+   * kit switches to C4 and fires it (`FUN_005c0020(1.0, 0.2, kit, 0x97)`, `FUN_00594cf0` L452025-452060) -- the placing
+   * (`C4_PLANT_TIME_READING`: the claymore's clip and 1.3 s), the charge down under the hand, its `Timer1` (6 s) running
+   * from there, and the firearm back. False when refused.
+   */
+  plantC4(): boolean {
+    const snap = this.source.snapshot();
+    if (!snap || !this.kit?.includes('C4') || this.leftOf('C4') <= 0 || !this.records.C4) return false;
+    if (this.phase_ === 'throwing' || this.phase_ === 'holding' || this.placing) return false;
+    if (!c4Plant(this.c4Targets, snap.feet, Math.hypot(snap.vx, snap.vz))) return false;
+    this.equipped_ = true;
+    this.detonatorUp = false;
+    this.item_ = 'C4';
+    this.refreshHandModel();
+    this.phase_ = 'ready';
+    this.power = 0;
+    this.emit('equip', true, 'C4');
+    this.plantingC4 = true;
+    if (!this.startPlacing()) { this.finishThrow(); return false; }
+    return true;
   }
 
   // ---- the placed charges ---------------------------------------------------------------------------------------
@@ -720,14 +851,15 @@ export class GrenadeThrower {
   private startPlacing(): boolean {
     const snap = this.source.snapshot();
     if (!snap || this.placing) return false;
-    if (this.placedCount() >= CLAYMORE_RULES.maxPlaced) {
+    // The claymore's and the PMN's fire (-0x67, -0x62): four down at most; C4's (-0x69) has no such count.
+    if (this.item_ !== 'C4' && this.placedCount() >= CLAYMORE_RULES.maxPlaced) {
       if (!this.refusal) {
         this.refusal = { text: CLAYMORE_RULES.maxPlacedMessage, left: CLAYMORE_RULES.refuseSeconds };
         this.emit('refuse', { item: this.item_, text: this.refusal.text, seconds: CLAYMORE_RULES.refuseSeconds });
       }
       return false;
     }
-    if (Math.hypot(snap.vx, snap.vz) > CLAYMORE_RULES.maxSpeed) return false;
+    if (this.item_ !== 'C4' && Math.hypot(snap.vx, snap.vz) > CLAYMORE_RULES.maxSpeed) return false;
     const anim = PLACE_CLAYMORE_ANIM;
     this.placing = { left: CLAYMORE_RULES.placeSeconds, total: throwClipSeconds(anim) };
     this.phase_ = 'throwing';
@@ -744,7 +876,7 @@ export class GrenadeThrower {
    */
   placeCharge(): V3 | null {
     const snap = this.source.snapshot();
-    if (!snap || !this.equipped_ || this.detonatorUp || !isPlaced(this.record) || this.left[this.item_] <= 0) return null;
+    if (!snap || !this.equipped_ || this.detonatorUp || !isPlaced(this.record) || this.leftOf(this.item_) <= 0) return null;
     const hand = this.source.handPoint?.('rhand', [0, 0, 0]) ?? actorToWorldPoint(snap.feet, snap.yaw, [2, 8, -8]);
     const cast = this.hull();
     const low = snap.feet[1] - CLAYMORE_RULES.placeDrop;
@@ -758,9 +890,10 @@ export class GrenadeThrower {
     const model = this.templates[this.item_]?.clone() ?? null;
     if (model) { model.position.set(...pos); model.rotation.set(0, (snap.yaw * Math.PI) / 180, 0); this.object.add(model); }
     this.live.push({ g, model, spin: [0, 0, 0], trail: [], line: null, dots: null, rest: ground.material.name, facing: snap.yaw });
-    this.left[this.item_]--;
-    this.emit('place', { item: this.item_, pos, yaw: snap.yaw, fireAnim: record.fireAnim });
-    this.takeDetonator(true);
+    this.left[this.item_] = this.leftOf(this.item_) - 1;
+    const yawR = (snap.yaw * Math.PI) / 180;
+    this.emit('place', { item: this.item_, pos, yaw: snap.yaw, facing: [-Math.sin(yawR), 0, -Math.cos(yawR)], fireAnim: record.fireAnim });
+    if (record.id === CLAYMORE.id) this.takeDetonator(true);    // FUN_005c8a20(0xc1): the claymore's only (L474128-474130)
     return pos;
   }
 
@@ -775,13 +908,14 @@ export class GrenadeThrower {
     if (!snap) return 0;
     let n = 0;
     for (const l of this.live) {
-      if (l.facing === undefined || l.g.state !== 'rest') continue;
+      // The SEAL's own claymores (`+0xc5`, the owner `+0xac`): never a PMN, C4 or another player's.
+      if (l.facing === undefined || l.remote || l.g.record.id !== CLAYMORE.id || l.g.state !== 'rest') continue;
       const d = Math.hypot(l.g.pos[0] - snap.feet[0], l.g.pos[1] - snap.feet[1], l.g.pos[2] - snap.feet[2]);
       if (d <= CLAYMORE_RULES.detonateRange) { l.g.trigger = true; n++; }   // `+0xc4` (FUN_003c5730): the fuse is held
     }
     this.emit('detonate', { count: n, from: [snap.feet[0], snap.feet[1], snap.feet[2]] });
     if (this.detonatorUp && this.phase_ === 'ready') {
-      if (this.left.Claymore > 0) this.equip(true, 'Claymore');
+      if (this.leftOf('Claymore') > 0) this.equip(true, 'Claymore');
       else this.equip(false);
     }
     return n;
@@ -833,7 +967,7 @@ export class GrenadeThrower {
     if (model) { model.position.set(...from); this.object.add(model); }
     const spin: V3 = [rand(-1, 1, this.random), rand(-1, 1, this.random), rand(-1, 1, this.random)];
     this.live.push({ g, model, spin, trail: [[...from]], line: null, dots: null, rest: null });
-    this.left[this.item_]--;
+    this.left[this.item_] = this.leftOf(this.item_) - 1;
     this.thrown++;
     this.recover = Math.max(0, p.total - releaseSeconds(p.anim));
     this.phase_ = 'throwing';
@@ -865,7 +999,7 @@ export class GrenadeThrower {
     this.arc = null;
     const mode = this.source.viewState?.() ?? 0;
     const show = !!snap && this.phase_ === 'holding' && this.equipped_ && !this.detonatorUp && !isPlaced(this.record) &&
-      this.left[this.item_] > 0 && mode < 4 && !(snap.peek && snap.stance === 'prone');
+      this.leftOf(this.item_) > 0 && mode < 4 && !(snap.peek && snap.stance === 'prone');
     if (!show || !snap) { this.arcLine.visible = false; return; }
     const aimSin = Math.sin((snap.pitch * Math.PI) / 180);
     const stance = this.stance(snap);
@@ -890,6 +1024,18 @@ export class GrenadeThrower {
     if (round) { this.launchRound(round, from, velocity); return; }
     const record = this.records[item as GrenadeItem];
     if (!record) return;
+    if (isPlaced(record)) {
+      // M7: another player's charge set down -- still where its throw says, facing its velocity (the room's `placeCharge`);
+      // its fuse (C4's) or its trip (the PMN's) runs here for its looks, the room deals its blast.
+      const g = launchGrenade(from, [0, 0, 0], record);
+      g.state = 'rest';
+      const yaw = (Math.atan2(-velocity[0], -velocity[2]) * 180) / Math.PI;
+      const t = this.templates[item as GrenadeItem];
+      const model = t ? t.clone() : null;
+      if (model) { model.position.set(...from); model.rotation.set(0, (yaw * Math.PI) / 180, 0); this.object.add(model); }
+      this.live.push({ g, model, spin: [0, 0, 0], trail: [], line: null, dots: null, rest: null, facing: yaw, remote: true });
+      return;
+    }
     const g = launchGrenade(from, velocity, record);
     const model = this.template ? this.template.clone() : null;
     if (model) { model.position.set(...from); this.object.add(model); }
@@ -940,6 +1086,12 @@ export class GrenadeThrower {
     this.accumulator += dt;
     while (this.accumulator >= FLIGHT_TICK) {
       this.accumulator -= FLIGHT_TICK;
+      // M7: an armed PMN tripped by any actor inside its ProximityDistance (`FUN_00543930`; PMN_FRIENDLY_READING).
+      if (this.live.some((l) => l.g.record.proximity !== undefined)) {
+        const snap = this.source.snapshot();
+        const actors = this.source.actors?.() ?? (snap ? [[snap.feet[0], snap.feet[1], snap.feet[2]] as V3] : []);
+        for (const l of this.live) if (l.g.record.proximity !== undefined) proximityTripped(l.g, actors);
+      }
       for (const l of this.live) {
         for (const e of stepGrenade(l.g, FLIGHT_TICK, cast)) this.handle(l, e);
         if (this.trail && l.g.state === 'flight') l.trail.push([...l.g.pos]);
@@ -1050,7 +1202,7 @@ export class GrenadeThrower {
   /** `GetDamage` (0x3c7600) at the SEAL's feet: a claymore's a 32nd outside its cone (`claymoreCone`). */
   private damageAt(distance: number, record: ThrowableRecord, l: Live, pos: V3, feet: readonly number[]): number {
     const d = explosionDamage(distance, record);
-    if (l.facing === undefined || record !== CLAYMORE) return d;
+    if (l.facing === undefined || record.id !== CLAYMORE.id) return d;
     const r = (l.facing * Math.PI) / 180;
     const inside = claymoreCone([feet[0]! - pos[0], feet[1]! + 10 - pos[1], feet[2]! - pos[2]], [-Math.sin(r), 0, -Math.cos(r)]);
     return inside ? d : d / 32;
@@ -1331,7 +1483,7 @@ export class GrenadeThrower {
   // ---- the hand -----------------------------------------------------------------------------------------------
 
   private placeHand(snap: PlaySnapshot | null): void {
-    const held = !!snap && this.equipped_ && (this.detonatorUp || this.left[this.item_] > 0) &&
+    const held = !!snap && this.equipped_ && (this.detonatorUp || this.leftOf(this.item_) > 0) &&
       (this.phase_ === 'ready' || this.phase_ === 'holding' || !!this.pending || !!this.placing);
     // On the body's held node (the rifle's `rifle` under `rhand`, which the throw clip moves): the grenade in the hand.
     const node = this.source.heldNode?.() ?? null;
@@ -1425,11 +1577,6 @@ function fillStrip(line: LineSegments, points: readonly V3[], alphas: readonly n
   pos.needsUpdate = true;
   col.needsUpdate = true;
   line.geometry.setDrawRange(0, n * 2);
-}
-
-/** Every throwable's pouch, full. */
-function capacities(records: Readonly<Record<GrenadeItem, ThrowableRecord>>): Record<GrenadeItem, number> {
-  return Object.fromEntries(Object.entries(records).map(([k, r]) => [k, r.capacity])) as Record<GrenadeItem, number>;
 }
 
 function textureOf(rgba: Rgba): DataTexture {

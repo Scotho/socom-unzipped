@@ -77,6 +77,8 @@ import { MarkClipper } from './markClip';
 import { WalkSounds } from './walkSounds';
 import { WEAPON_CLIPS } from './weaponPose';
 import { GrenadeThrower, type GrenadeItem } from './grenade';
+import { RocketLauncher } from './rocket';
+import { c4Targets, EQUIPMENT_SLOTS, equipmentKind, throwableOf } from './equipment';
 import { THROW_CLIPS, ThrowPose } from './throwPose';
 import { WhiteOut } from './flash';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
@@ -197,7 +199,8 @@ const doors = new DoorPage({
   move: (path, delta) => { view?.moveNode(path, delta); },
   net: () => (net && net.client.state === 'open' ? net.client : null),
 });
-walk.setActionFilter(() => doors.action());
+// M7 (research 94 §C5.1): after a door, the Action button plants C4 at a C4 target (`FUN_00594cf0` L452025-452060).
+walk.setActionFilter(() => doors.action() || grenade.plantC4());
 /** W2.4 (`./reticle`): the game's rifle reticle, a HUD pass over the world, in walk mode only. */
 const reticle = new Reticle();
 /** The in-game HUD (`./hud`, research 87): the ammo box, the compass, the prompts -- a pass after the reticle's, walking only. */
@@ -248,12 +251,30 @@ const grenade = new GrenadeThrower({
   handPoint: (part, p) => play.partPoint(part, p), heldNode: () => play.heldNode(),
   peek: () => traversal.stats()?.peek ?? 0,           // research 86's lean: the lean tosses
   viewState: () => zoom.state(),                      // the arc: none in the 9x view or a scope, pale in the night vision
+  // M7: the actors an armed PMN tests (`FUN_00543930`): the page's SEAL and the match's other living bodies.
+  actors: () => {
+    const own = walk.feet();
+    const others = (net?.client.bodies() ?? []).filter((b) => (b.flags & 64) !== 0).map((b) => [b.feet[0], b.feet[1], b.feet[2]] as [number, number, number]);
+    return own ? [[own[0], own[1], own[2]] as [number, number, number], ...others] : others;
+  },
 });
 scene.add(grenade.object);
+/**
+ * M7 (`./rocket`, research 94 §C4): the LAW and the RPG-7 -- equipment, raised from their slot by `3`/`4`/`5`, fired
+ * with the trigger: the rocket straight at the point under the reticle, the backblast behind.
+ */
+const rocket = new RocketLauncher({
+  snapshot: () => walk.snapshot(), grid: () => walk.grid(), aim: () => walk.fireAim(),
+  heldNode: () => play.heldNode(), carryNode: () => play.launcherNode(),
+  model: (name) => view?.held(name) ?? null, points: (name) => loaded?.weapons?.[name]?.points ?? [],
+});
+/** The firearm stowed while a throwable, a charge or a launcher is up. */
+const stowRifle = (): void => play.setRifleStowed(grenade.equipped() || rocket.up());
 /** The throw's clip over the locomotion, a pose layer as the reload is. */
 const throwPose = new ThrowPose(() => play.motionSource());
 grenade.on('equip', (on) => {
-  fire.release(); play.setRifleStowed(on);   // a slot change lets a held trigger go; the rifle away while the grenade is up
+  fire.release(); stowRifle();               // a slot change lets a held trigger go; the rifle away while the grenade is up
+  if (on) rocket.lower();                    // M7: one item in the hand
   if (!on) throwPose.stop();
   // Out of the scope with the rifle away [reading: the game's weapon switch, FUN_005c4b10, drops only the night vision
   // (to its first person, here third: owner, 2026-09-29); what a scoped grenade does was not traced -- research 84 section 7].
@@ -262,7 +283,25 @@ grenade.on('equip', (on) => {
 // The throw's clip (and the claymore's placing) holds the mover as the game's one-shot does: the ground state stops
 // until the stick may cut it past the clip's NoInterrupt (`Walker.hold`, `HOLD_CLIPS`' header; the owner, 2026-09-29).
 grenade.on('throwStart', ({ anim }) => { throwPose.start(anim); walk.hold(anim.clip); });
-grenade.on('place', (info) => { audio.onAnimCallback(info.fireAnim, info.pos); });   // `c4_start`: .PLACE_CHARGE
+// `c4_start`: .PLACE_CHARGE. M7: the match hears it as a throw of the charge, its facing as the velocity (room.ts `placeCharge`).
+grenade.on('place', (info) => { audio.onAnimCallback(info.fireAnim, info.pos); net?.throwEvent(info.item, info.pos, info.facing); });
+// M7: the Detonator's fire, a throw of it (room.ts `detonate`: the SEAL's claymores within 500 u).
+grenade.on('detonate', (info) => { net?.throwEvent('Detonator', info.from, [0, 0, 0]); });
+rocket.on('equip', (on) => {
+  fire.release(); stowRifle();
+  if (on && zoom.state() >= 4) setZoom(0);
+  showFireMode();                            // the round's icon in the fire-mode cell while the launcher is up (FUN_00237b40)
+});
+/**
+ * M7 (research 94 §C4.3): a rocket leaves -- flown here as a launcher's round (`GrenadeThrower.launchRound`: the
+ * acceleration, no fall, the arming dud, the impact), its trail zAnim heard (`law_trail`, `rpg_trail`), and sent to the
+ * match as a throw of the round (the room flies it and deals its blast and its backblast's).
+ */
+rocket.on('launch', (e) => {
+  grenade.launchRound(e.record, e.from, e.velocity);
+  audio.onAnimCallback(e.record.fireAnim, e.from);
+  net?.throwEvent(e.round.name, e.from, e.velocity);
+});
 // The claymore refused once four are down: the game's message line (0x65f880) [placeholder: the viewer's toast].
 grenade.on('refuse', (info) => { ui.toast(info.text); });
 // The throw's zAnim (`frag_start`, `HE_start`: `.THROW_OBJECT`); the bank's own name carries a trailing space.
@@ -323,6 +362,7 @@ const HUD_FIRE_MODE = { 1: 'single', 2: 'burst', 3: 'auto' } as const;
 function showFireMode(): void {
   const m = HUD_FIRE_MODE[fireMode as 1 | 2 | 3];
   if (m) hud.setFireMode(m);
+  if (rocket.up()) { hud.setFireModeIcon(rocket.roundIcon()); return; }   // M7: the launcher's round (firemode_AT4.tif)
   // M4: a round mode (> 3) redirects the fire to the round's slot (`FUN_005c6600`) and shows its icon (`FUN_00237b40`).
   const round = fireMode > 3 && kitItem === 'rifle' ? kitRounds.round(fireMode) : null;
   const ring = round ? kitRounds.ring(fireMode) : null;
@@ -331,7 +371,7 @@ function showFireMode(): void {
 }
 /** The fire-mode switch (`FUN_005c4600`; L3, `B`): not while scoped, nor while the grenade is up (it has one mode). */
 function switchFireMode(): string {
-  if (!grenade.equipped()) fireMode = nextFireMode(fire.weaponRecord(), fireMode, zoom.target() > 1.01, kitItem === 'rifle' ? kitRounds.held() : []);
+  if (!grenade.equipped() && !rocket.up()) fireMode = nextFireMode(fire.weaponRecord(), fireMode, zoom.target() > 1.01, kitItem === 'rifle' ? kitRounds.held() : []);
   showFireMode();
   return FIRE_MODE_NAMES[fireMode] ?? String(fireMode);
 }
@@ -391,6 +431,7 @@ const kit: Kit = new Kit({
 function selectFirearm(to: Firearm): boolean {
   if (walk.mode() !== 'walk') return false;
   if (grenade.equipped()) grenade.select('rifle');
+  rocket.lower();                                     // M7: the launcher away too
   return kit.select(to);
 }
 /**
@@ -427,6 +468,7 @@ function spawnKit(side: Side): void {
   kitRecs = loadouts.records();
   kitRounds = new KitRounds(loadouts.tables(), loadouts.loadout());   // M4: every round slot full (FUN_00599f00)
   grenade.setRounds([...(loadouts.tables()?.rounds.values() ?? [])].map((r) => r.record));
+  spawnEquipment();                                    // M7: the three equipment slots, as the loadout holds them
   if (kitRecs[0].id !== before[0].id || (fireModes.rifle > 3 && !kitRounds.ring(fireModes.rifle))) fireModes.rifle = defaultFireMode(kitRecs[0], kitRounds.held());
   if (kitRecs[1].id !== before[1].id) fireModes.pistol = defaultFireMode(kitRecs[1]);
   fireMode = fireModes[kitItem];
@@ -441,6 +483,31 @@ function spawnKit(side: Side): void {
   play.setItem('rifle');
   fire.refill();
   showFireMode();
+}
+/**
+ * M7 (spec W4.R5; research 94 §A6, §C4-§C5): the loadout's three equipment slots on the page -- the thrower's pouch and
+ * slots (`GrenadeThrower.setKit`, its records the disc's), the rocket launcher's (`RocketLauncher.setKit`, sharing the
+ * fire's round slots) -- at every spawn.
+ */
+function spawnEquipment(): void {
+  const table = loadouts.tables(), loadout = loadouts.loadout();
+  grenade.setRecords([...(table?.throwables?.values() ?? [])].map((t) => t.record));
+  grenade.setKit(EQUIPMENT_SLOTS.map((s) => table?.arsenal.items.get(loadout[s])?.name ?? throwableOf(null, loadout[s])?.name ?? null));
+  rocket.setKit(table, loadout, kitRounds);
+}
+/** M7 (research 94 §C9): the HUD weapon box's icon -- the launcher's, the throwable's or charge's, else the firearm's. */
+function equipmentIcon(): string {
+  return rocket.icon() ?? grenade.icon() ?? kitIcon(kit.item());
+}
+/** M7: the box's count while an item is up -- the launcher's rounds, the throwable's left -- or null for the firearm's magazine. */
+function equipmentMagazine(): { rounds: number; capacity: number; spare: number; reloading: boolean } | null {
+  if (rocket.up()) { const n = rocket.count(); return { rounds: n, capacity: n, spare: 0, reloading: false }; }
+  if (grenade.equipped()) { const n = grenade.stats().left; return { rounds: n, capacity: n, spare: 0, reloading: false }; }
+  return null;
+}
+/** The name of an equipment slot's item (the kit table's `InternalName`), null for none. */
+function equipmentName(id: number): string | null {
+  return loadouts.tables()?.arsenal.items.get(id)?.name ?? throwableOf(null, id)?.name ?? null;
 }
 /**
  * A pick (the weapon select's confirm, M8; the hook's `setLoadout`): written to the side's type, carried from its next
@@ -460,27 +527,38 @@ function sideLoadout(side: Side): Loadout {
  */
 function kitInventory(): string {
   if (walk.mode() !== 'walk') return kitItem;
+  // M7: the launcher is a kit slot too: from it, back to the firearm; the throwables' round ends on it when carried.
+  if (rocket.up()) { rocket.lower(); kit.select('rifle'); return 'rifle'; }
+  const launcherSlot = EQUIPMENT_SLOTS.findIndex((s) => equipmentKind(loadouts.loadout()[s]) === 'launcher');
+  const toLauncher = (): boolean => launcherSlot >= 0 && rocket.selectSlot(launcherSlot + 1);
   if (!grenade.equipped()) {
     const firearm = kit.state().swap?.to ?? kit.item();
     if (firearm === 'rifle') { kit.select('pistol'); return 'pistol'; }
     const next = grenade.cycleInventory();                // from the firearm to the pouch's first throwable
-    if (next === 'rifle') kit.select('rifle');
+    if (next === 'rifle') { if (toLauncher()) return equipmentName(rocket.held()!) ?? 'launcher'; kit.select('rifle'); }
     return next;
   }
   const next = grenade.cycleInventory();
-  if (next === 'rifle') { kit.select('rifle'); return 'rifle'; }
+  if (next === 'rifle') {
+    if (toLauncher()) { grenade.select('rifle'); return equipmentName(rocket.held()!) ?? 'launcher'; }
+    kit.select('rifle'); return 'rifle';
+  }
   return next;
 }
 /**
- * The kit's equipment slot `slot` (1 or 2) up (`GrenadeThrower.selectEquipment`): not mid-swap (the kit's own gate), not
- * while a throw is held or thrown; the firearm in the hand stays the kit's item under it, as R2's inventory leaves it.
+ * The kit's equipment slot `slot` (1-3, W4.R5) up: a rocket launcher (`RocketLauncher.selectSlot`) or a throwable or
+ * charge (`GrenadeThrower.selectEquipment`); a slot neither takes (2X, the thermal scope, C4, a round, an empty one:
+ * `FUN_005bdc30`) does nothing. Not mid-swap (the kit's own gate), not while a throw is held or thrown; the firearm in
+ * the hand stays the kit's item under it, as R2's inventory leaves it.
  */
-function selectEquipment(slot: 1 | 2): boolean {
+function selectEquipment(slot: 1 | 2 | 3): boolean {
   if (walk.mode() !== 'walk' || kit.swapping()) return false;
+  if (grenade.phase() === 'holding' || grenade.phase() === 'throwing') return false;
+  if (rocket.selectSlot(slot)) { if (grenade.equipped()) grenade.select('rifle'); return true; }
   return grenade.selectEquipment(slot);
 }
-// The PC's number keys (the owner, 2026-09-29; `./kit`'s `hotkey`): 1 the rifle, 2 the Mark 23, 3 and 4 the kit's
-// equipment slots 1 and 2 -- walking, no modifier, not on auto-repeat, not typed into the panel's fields.
+// The PC's number keys (the owner, 2026-09-29; `./kit`'s `hotkey`; W4.R5): 1 the rifle, 2 the Mark 23, 3, 4 and 5 the
+// kit's equipment slots 1-3 -- walking, no modifier, not on auto-repeat, not typed into the panel's fields.
 globalThis.addEventListener('keydown', (e: KeyboardEvent) => {
   const key = hotkey(e.code);
   if (!playOn || !key || e.ctrlKey || e.metaKey || e.altKey || e.repeat || walk.mode() !== 'walk') return;
@@ -498,6 +576,7 @@ globalThis.addEventListener('keydown', (e: KeyboardEvent) => {
 /** The trigger, pressed or let go: the grenade's while it is up, else the rifle's -- only while walking. */
 function trigger(down: boolean): void {
   if (down && walk.isDead()) return;                  // the dead fire nothing and pull no pin (`FUN_00592560`)
+  if (rocket.up()) { if (down) rocket.pull(); return; }   // M7: the launcher's trigger (a rocket a pull)
   if (grenade.equipped()) {
     if (down) grenade.pull();
     else grenade.release();
@@ -1397,6 +1476,7 @@ async function boot(): Promise<void> {
     audio.setListener(fly.camera.matrixWorld.elements);   // the game's listener is the camera (0x48dd40)
     walkSounds.frame([fly.camera.position.x, fly.camera.position.y, fly.camera.position.z]);   // the reverb, the beds
     grenade.update(dt);
+    rocket.update(dt);               // M7: the launcher's rate, its model in the hand or on spinehi
     whiteOut.update(dt);             // the held throw, the grenades in the air at 60 Hz, the explosions
     view?.frame(fly.camera, dt);   // the flares turn, the LODs pick, the oceans scroll -- before the draw
     if (rehearsal) {                 // #21: the walk's first draws, before this frame's render clears over them
@@ -1445,10 +1525,11 @@ async function boot(): Promise<void> {
     hud.setVisible(walking);
     traversal.hudFrame(hud);        // research 86: the ladder slide's icon on a ladder
     traversal.effectsFrame();       // research 86: the water's ripples (FUN_005b52b0)
-    hud.setWeaponIcon(grenade.icon() ?? kitIcon(kit.item()));   // WEAPON: the firearm's own icon; the throwable's HUDW icon while it is up
+    hud.setWeaponIcon(equipmentIcon());   // WEAPON: the firearm's own icon; the throwable's or launcher's HUDW icon while it is up
     hud.feed({
-      // With the grenade up the box counts the M67s left (the item and its count, research 85); else the rifle's magazine.
-      magazine: grenade.equipped() ? { rounds: grenade.stats().left, capacity: grenade.stats().left, spare: 0, reloading: false } : fire.state().magazine,
+      // With the grenade up the box counts the M67s left (the item and its count, research 85); M7: a launcher's, its
+      // rounds (research 94 §C9); else the rifle's magazine.
+      magazine: equipmentMagazine() ?? fire.state().magazine,
       yaw: fly.pose().yaw, stance: walk.posture(), climb: traversal.hudClimb(),
       range: walking ? rangeFinder.measure(walk.grid(), walk.fireAim(), performance.now() / 1000) : null,
       nearby: walking && doors.target() !== null ? 'door' : null,   // DOORS: the door under the reticle (FUN_005aa240)
@@ -1599,6 +1680,7 @@ function show(map: LoadedMap): void {
   view = built;
   worlds.begin(built);                            // a world still waiting from an interrupted switch goes now
   grenade.setMap(built.grenades, map.grenade);
+  grenade.setC4Targets(c4Targets(map.actions ?? []));   // M7: C4_TARGET_READING (`./equipment`)
   throwPose.stop();     // the M67's model, its effect bitmaps, the map's DefaultMaterial
   scene.add(built.group);
   // EFFECTS (research 89 §5, §13, the mark's colour): a mark, a footprint and a grenade's scorch take the drawn world's
@@ -1880,6 +1962,13 @@ window.__viewer = {
   throwClip: () => throwPose.stats(),
   whiteOut: () => whiteOut.state(),
   detonateCharges: () => grenade.detonateCharges(),
+  equipment: () => ({
+    slots: EQUIPMENT_SLOTS.map((sl) => ({ id: loadouts.loadout()[sl]!, name: equipmentName(loadouts.loadout()[sl]!) })),
+    held: rocket.up() ? equipmentName(rocket.held()!) : grenade.held(), rocket: rocket.stats(),
+    icon: equipmentIcon(), count: equipmentMagazine()?.rounds ?? fire.state().magazine.rounds, roundIcon: rocket.roundIcon(),
+  }),
+  selectEquipment: (slot) => selectEquipment(slot),
+  plantC4: () => grenade.plantC4(),
   effects: () => effects.stats(),
   playEffect: (name, at, kind = 'impact') => {
     // 30 units ahead of the camera unless told where; a muzzle effect with a node whose barrel runs across the view to
