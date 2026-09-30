@@ -15,7 +15,7 @@ import type { Mount } from './heldItem';
 import { handedAt, handOffOf, type Firearm } from './kit';
 
 /**
- * The other player's weapons by the replicated weapon (`BodyState.weapon`: 0 the rifle, 1 the Mark 23), where the
+ * The other player's weapons by the replicated weapon (`BodyState.weapon`: 0 the primary, 1 the secondary), where the
  * local kit leaves them once its swap has ended (`./kit`: `FUN_005a60d0(seal, 2, 0)` carries the rifle while the pistol
  * is in the hand; `FUN_005a75d0` holsters the pistol).
  */
@@ -62,17 +62,28 @@ export function remoteKitOf(snap: PlaySnapshot & { weapon: 0 | 1 }): ReturnType<
  * The other players, drawn 1:1 (web sprint 3, M5): each is the map's own character -- the first SEAL type for the
  * SEALs, the first Terrorist type for the Terrorists (`LoadedMap.terrorist`, research 91 section 14,
  * DEFAULT_CHARTYPE_PLACEHOLDER) -- in its own gear, with its own `Play` running the game's clips from the replicated
- * mover (`./net/body` `snapshotOf`), the rifle in its hand raised by the replicated aim and trigger. A body the
- * snapshots stop naming is taken away.
+ * mover (`./net/body` `snapshotOf`), its type's primary in its hand raised by the replicated aim and trigger and its
+ * secondary on its mount (`SideKit`). A body the snapshots stop naming is taken away.
  *
  * A death plays the clip the server chose from `damanim.rdr`'s lists (`./net/deaths`, research 91 section 3) and the
  * body goes when the game's fade would have taken it (0.1 a second: 10 s). BODY_FADE_PLACEHOLDER: the body is drawn
  * whole until then and hidden at once -- the skinned material has no opacity yet.
  */
 
+/** A held weapon to hang: the map's built model (`WorldView.held`, cloned for each body) and its named points. */
+export interface HeldRef { object: Object3D; points: readonly WeaponPoint[] }
+/**
+ * The two firearms a side's players carry (web sprint 4, M3): the loadout's primary and secondary models (`./loadout`).
+ * For now each side's first type's kit, as the local player spawns with (DEFAULT_CHARTYPE_PLACEHOLDER); M9 carries each
+ * player's own kit on the wire.
+ */
+export type SideKit = (team: Team) => { rifle: HeldRef | null; pistol: HeldRef | null };
+
 interface Remote {
   id: number; team: Team; view: BodyView; play: Play; weapon: Object3D | null; sidearm: Object3D | null; item: Firearm; snap: ReturnType<typeof snapshotOf> | null;
   deadFor: number; deathClip: string | null;
+  /** The weapons' named points (the muzzle's `firepoint`), rifle and pistol. */
+  points: { rifle: readonly WeaponPoint[]; pistol: readonly WeaponPoint[] };
 }
 
 /**
@@ -93,22 +104,17 @@ export class RemotePlayers {
   private map: LoadedMap | null = null;
   private lighting: Lighting | null = null;
   private clips: PlayClips | null = null;
-  private weapon: { object: Object3D; points: readonly WeaponPoint[] } | null = null;
-  private sidearm: { object: Object3D; points: readonly WeaponPoint[] } | null = null;
+  private kitOf: SideKit | null = null;
   private readonly teams = new Map<number, Team>();
 
   constructor(private readonly scene: Scene) {}
 
-  /** A new map (its bodies, textures, weapon and sidearm): every remote is rebuilt from it on its next snapshot. */
-  setMap(
-    map: LoadedMap | null, lighting: Lighting, weapon: { object: Object3D; points: readonly WeaponPoint[] } | null,
-    sidearm: { object: Object3D; points: readonly WeaponPoint[] } | null = null,
-  ): void {
+  /** A new map (its bodies, textures, and each side's two firearms): every remote is rebuilt from it on its next snapshot. */
+  setMap(map: LoadedMap | null, lighting: Lighting, kitOf: SideKit | null): void {
     this.clear();
     this.map = map;
     this.lighting = lighting;
-    this.weapon = weapon;
-    this.sidearm = sidearm;
+    this.kitOf = kitOf;
   }
 
   setClips(clips: PlayClips | null): void {
@@ -166,10 +172,10 @@ export class RemotePlayers {
   weaponFrame(id: number): { matrix: Matrix4; muzzle: [number, number, number] | null } | null {
     const r = this.remotes.get(id);
     const pistol = r?.item === 'pistol';
-    const object = pistol ? r?.sidearm : r?.weapon, source = pistol ? this.sidearm : this.weapon;
-    if (!r || !object || !r.view.group.visible || !source) return null;
+    const object = pistol ? r?.sidearm : r?.weapon;
+    if (!r || !object || !r.view.group.visible) return null;
     object.updateWorldMatrix(true, false);
-    const p = source.points.find((q) => q.name === 'firepoint' || q.name === 'firepont');
+    const p = r.points[pistol ? 'pistol' : 'rifle'].find((q) => q.name === 'firepoint' || q.name === 'firepont');
     return { matrix: object.matrixWorld.clone(), muzzle: p ? [p.at[0], p.at[1], p.at[2]] : null };
   }
 
@@ -195,11 +201,16 @@ export class RemotePlayers {
     play.setBody(view, loaded);
     play.setFlyToggle(true);
     play.setClips(this.clips);
-    const weapon = this.weapon ? this.weapon.object.clone(true) : null;
-    if (weapon && this.weapon) play.setWeapon(weapon, this.weapon.points);
-    const sidearm = this.sidearm ? this.sidearm.object.clone(true) : null;
-    if (sidearm && this.sidearm) play.setSidearm(sidearm, this.sidearm.points);
-    const r: Remote = { id, team, view, play, weapon, sidearm, item: 'rifle', snap: null, deadFor: 0, deathClip: this.pendingDeaths.get(id) ?? null };
+    // WEAPON (web sprint 4, M3): the side's two firearms, each its own model at its own grip, as the local kit hangs them.
+    const kit = this.kitOf?.(team) ?? { rifle: null, pistol: null };
+    const weapon = kit.rifle ? kit.rifle.object.clone(true) : null;
+    if (weapon && kit.rifle) play.setWeapon(weapon, kit.rifle.points);
+    const sidearm = kit.pistol ? kit.pistol.object.clone(true) : null;
+    if (sidearm && kit.pistol) play.setSidearm(sidearm, kit.pistol.points);
+    const r: Remote = {
+      id, team, view, play, weapon, sidearm, item: 'rifle', snap: null, deadFor: 0, deathClip: this.pendingDeaths.get(id) ?? null,
+      points: { rifle: kit.rifle?.points ?? [], pistol: kit.pistol?.points ?? [] },
+    };
     this.pendingDeaths.delete(id);
     play.setWeaponInput(() => ({ trigger: r.snap?.trigger ?? false, aiming: r.snap?.aiming ?? false }));
     this.remotes.set(id, r);

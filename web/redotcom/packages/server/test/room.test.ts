@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FsAssetSource } from '@s2u/archive/node';
-import { HELD_RIFLE, HELD_SIDEARM, type CollisionOwner, type EffectProgram, type GridParams, type MotionClip, type SpawnSlot, type WorldPoly } from '@s2u/scene';
+import {
+  arsenalOf, DEFAULT_RIFLE, HELD_RIFLE, HELD_SIDEARM, type CollisionOwner, type EffectProgram, type GridParams, type KitTable, type Loadout,
+  type MapArsenal, type MotionClip, type SpawnSlot, type WeaponRecord, type WorldPoly,
+} from '@s2u/scene';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import {
   bulletDamage, Button, cameraLook, centreClaim, decodeSnapshot, encodeCommands, EYE_HEIGHT, faceToward, fireInterval, groundGrid, groundPolygons,
   loadSimMap, MoverSim, packGround, PROBE_LIFT, PROTOCOL_VERSION, quantiseCommand, RELOAD_CLIPS, PISTOL_RELOAD_CLIPS, RELOAD_SECONDS_PLACEHOLDER,
-  TICK_HZ, Walker, type ClientEvent, type Command, type DoorSpec, type MotionEntry, type ServerEvent, type SimClips, type SimMap,
+  TICK_HZ, Walker, type ClientEvent, type Command, type DoorSpec, type MotionEntry, type ServerEvent, type SimClips, type SimKits, type SimMap,
 } from '../../viewer/src/sim';
 import { MAX_BATCH, Room, type Conn } from '../src/room';
 
@@ -91,10 +94,10 @@ class Client implements Conn {
   last() { return decodeSnapshot(this.frames[this.frames.length - 1]!); }
 }
 
-function setup(opts: ConstructorParameters<typeof Room>[2] = {}, map: SimMap = flatMap(), clips: SimClips | null = null) {
+function setup(opts: ConstructorParameters<typeof Room>[2] = {}, map: SimMap = flatMap(), clips: SimClips | null = null, kits: SimKits | null = null) {
   let now = 0;
   let seed = 1;
-  const room = new Room(map, clips, { now: () => now, random: () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }, ...opts });
+  const room = new Room(map, clips, { now: () => now, random: () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }, ...opts }, null, kits);
   const clients = new Map<number, Client>();
   const join = (id: number, name = ''): Client => {
     const c = new Client();
@@ -447,6 +450,68 @@ function reloadClips(lengths: Record<string, number>): SimClips {
   } as unknown as MotionEntry]));
   return { clips, table, roots: new Map() };
 }
+
+describe('the runtime kit (web sprint 4, M3/M4): each player\'s loadout, its type\'s at the spawn, the tables keyed by id', () => {
+  const kit = (...ids: number[]): Loadout => ids as unknown as Loadout;
+  // Two sides' kits over a hand-built table: the SEALs' M4A1 with 2X, the Terrorists' 552 (the M4A1's numbers) without.
+  const r552: WeaponRecord = { ...DEFAULT_RIFLE, name: '552', id: 57 };
+  const m9: WeaponRecord = { ...HELD_SIDEARM, name: 'M9', id: 5, magazine: 15 };
+  const table: KitTable = {
+    arsenal: arsenalOf(['ZAMMO', [], 'ZWEAPON', []]),
+    records: new Map([[54, DEFAULT_RIFLE], [15, HELD_SIDEARM], [57, r552], [5, m9], [62, HELD_RIFLE]]),
+  };
+  const map: MapArsenal = {
+    valves: new Map(), selectable: { seal: [], terrorist: [] },
+    kits: {
+      seal: [{ type: 'Seal1', character: 'mp99_seal1', loadout: kit(54, 15, 121, 126, 194) }],
+      terrorist: [{ type: 'Terrorist1', character: 'mp99_terror1', loadout: kit(57, 5, 121, 126, 255) }],
+    },
+  };
+  const kits: SimKits = { table, map };
+
+  it.each([
+    // [what, the player's side, its loadout, each slot's record and magazines x rounds]
+    ['a Terrorist: the 552 and the M9, NumMags as read', 1, 'terrorist', [57, 5, 121, 126, 255], [['552', 90], ['M9', 45]]],
+    ['a SEAL: the M4A1 and the Mark 23, 2X doubling both (FUN_005c75f0)', 2, 'seal', [54, 15, 121, 126, 194], [['M4A1', 180], ['Mark 23', 72]]],
+  ] as const)('%s', (_what, id, team, loadout, slots) => {
+    const s = setup({}, flatMap(), null, kits);
+    s.join(1); s.join(2);
+    const p = s.room.player(id)!;
+    expect(p.team).toBe(team);
+    expect(p.loadout).toEqual(loadout);
+    expect(p.records.map((r, i) => [r.name, p.mags[i]!.total()])).toEqual(slots);
+  });
+
+  it('without the tables every player carries the baked pair (the tests\' and a disc-less server\'s kit)', () => {
+    const s = setup();
+    s.join(1); s.join(2);
+    expect([1, 2].map((id) => s.room.player(id)!.records.map((r) => r.name))).toEqual([['M4A1 SD', 'Mark 23'], ['M4A1 SD', 'Mark 23']]);
+  });
+
+  it('the page\'s own room takes the page\'s developer kit (soloKit); a network room never asks', () => {
+    const solo = setup({ solo: true, soloKit: () => kit(62, 15, 121, 126, 255) }, flatMap(), null, kits);
+    solo.join(1);
+    expect(solo.room.player(1)!.records.map((r) => [r.name, r.mags])).toEqual([['M4A1 SD', 3], ['Mark 23', 3]]);
+    const net = setup({ soloKit: () => kit(62, 15, 121, 126, 255) }, flatMap(), null, kits);
+    net.join(1);
+    expect(net.room.player(1)!.records[0].name).toBe('552');
+  });
+
+  it('the kill line names the slot\'s record; the rate and the damage are that record\'s', () => {
+    const s = setup({}, flatMap(), null, kits);
+    const a = s.join(1), b = s.join(2);
+    s.room.step();
+    const pa = s.room.player(1)!, pb = s.room.player(2)!;
+    pa.sim.walker.place(0, 20, 0); pb.sim.walker.place(100, 20, 0);
+    const g = gunner(s, 1);
+    for (let i = 0; i < 20; i++) s.room.step();
+    g.face([100, 12, 0]);
+    g.shoot(); g.run(9); g.shoot(); g.run(9); g.shoot(); g.run(1);
+    expect(pb.alive).toBe(false);
+    expect(a.of('kill')[0]).toMatchObject({ killer: 1, victim: 2, how: 'weapon', weapon: '552' });
+    expect(b.of('hurt')[0]!.health).toBeDefined();
+  });
+});
 
 describe('MJ-1: the reload locks the weapon for its clip (motion.rdr playback, FUN_005a82e0), one table with the page', () => {
   // motion.rdr's playback: seal_reload 1.6, crouch 1.9, prone 1.7, moving 1.2 (reloadClip.ts; simMap.test.ts pins the disc).

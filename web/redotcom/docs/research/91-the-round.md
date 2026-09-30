@@ -560,7 +560,7 @@ holds the two lists in step).
 | `BODY_FADE_PLACEHOLDER` (`remotePlayers.ts`) | a dead body's fade (alpha 0.1 a second, `FUN_00552780`): the skinned material has no opacity yet | open (drawn whole, hidden at 10 s, when the fade would end) |
 | `RADIO_MENU_PLACEHOLDER` (`netPage.ts`) | the radio menu's own look (TEAMMATES > a player > "VOTE RETAIN:REMOVE", section 17) | deferred (sprint 3): K opens the page's list in the message window, with the game's words |
 | `CLAYMORE_PLACEHOLDER` (`room.ts` `THROWN`) | the claymore in a match (placed, not thrown) | deferred (sprint 3): not in the match yet |
-| `KIT_PLACEHOLDER` (`room.ts` `THROWN`) | the throwables a SEAL carries in a match: the viewer's kit at each record's `capacity`; per-map kits are deferred | open |
+| `KIT_PLACEHOLDER` (`room.ts` `THROWN`) | the throwables a SEAL carries in a match: the viewer's kit at each record's `capacity`; per-map kits are deferred | retired (web sprint 4, M3/M4): each player's kit is its character type's `default_weapons` (`viewer/src/loadout.ts`, research 94 R94.7), its firearms' records keyed by item id; the throwables' fixed pouch is `POUCH_PLACEHOLDER` (research 94) until M7 |
 | `STANCE_CHANGE_TICKS_PLACEHOLDER` (launch review, OWNER-3) | ticks after a posture change during which the posed root may be anywhere between the two stances' (60); the change clips' lengths are not read into the server | open |
 
 ## 17. The kicks: the vote to remove, and no idle kick (research 91c, 2026-09-29)
@@ -897,7 +897,8 @@ The `objectives` script was read again for this section from `MP51.ZDB:MZANIM.ZA
 - `HELP_GLYPH_LEAD_PLACEHOLDER`: the words before the pad glyph in 0x3e3350 and 0x3e3280. The strings dump cuts at the
   glyph. "Use the" is taken from the spectator's 0x3e30f0.
 - `OBJECTIVE_BY_MAP_PLACEHOLDER`: the non-SUPPRESSION maps' objectives. The rooms run SUPPRESSION's rules everywhere.
-- The standing placeholders `KIT_PLACEHOLDER`, `SPECTATOR_PAD_PLACEHOLDER` and `RESPAWN_BANNER_PLACEHOLDER` also apply.
+- The standing placeholders `SPECTATOR_PAD_PLACEHOLDER` and `RESPAWN_BANNER_PLACEHOLDER` also apply.
+- `KIT_PLACEHOLDER` was retired in web sprint 4 (M3/M4): the kit is the character type's (section 16's row).
 
 ## 20. The single-player match and the blast on the player (2026-09-29)
 

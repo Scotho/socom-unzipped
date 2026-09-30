@@ -9,7 +9,9 @@ import type {} from '../src/hook';
  * what was rendered and started, by name.
  */
 test('the walk sounds: the M4A1 SD, the reload, the jump, the landing, the steps', async ({ page }) => {
-  await page.goto('/?map=MP2&mode=play&fly&devmode');
+  // The kit these pins were measured on: the M4A1 SD, the Mark 23, the M67 and the HE, no 2X (W2.R4's), by the
+  // developer's `&kit=` (README; the default spawn is the map's type's kit since web sprint 4).
+  await page.goto('/?map=MP2&mode=play&fly&devmode&kit=62,15,121,126,255');
   await page.waitForFunction(() => window.__viewer?.stats().map === 'FROSTFIRE' && window.__viewer.audio().banks.length >= 3);
   const loaded = await page.evaluate(() => window.__viewer.audio());
   expect(loaded.banks.filter((b) => !b.borrowed).map((b) => b.name)).toEqual(['MP2_AM', 'MP2_FX', 'MP2_VC', 'HUDUI']);

@@ -3,8 +3,8 @@ import { createServer, type IncomingMessage, type Server as HttpServer, type Ser
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { AssetSource } from '@s2u/archive';
 import {
-  groundGrid, loadSimClips, loadSimMap, loadSimSkeleton, offeredRules, parseRules, RESPAWN_RULES_ENABLED, TICK_HZ,
-  type ClientEvent, type Rules, type SimClips, type SimMap, type SimSkeleton,
+  groundGrid, loadKitSource, loadSimClips, loadSimSkeleton, offeredRules, parseRules, RESPAWN_RULES_ENABLED, simKitsFromBytes, simMapFromBytes, TICK_HZ,
+  type ClientEvent, type KitSource, type Rules, type SimClips, type SimKits, type SimMap, type SimSkeleton,
 } from '../../viewer/src/sim';
 import { Room, type RoomOptions } from './room';
 
@@ -123,9 +123,11 @@ export function forkSimMap(map: SimMap): SimMap {
 export class MatchServer {
   private readonly rooms = new Map<string, Room>();
   private readonly loading = new Map<string, Promise<Room>>();
-  /** Each map's parse, kept pristine and shared by its rules rooms (`forkSimMap`). */
-  private readonly parsed = new Map<string, Promise<{ map: SimMap; skeleton: SimSkeleton | null }>>();
+  /** Each map's parse, kept pristine and shared by its rules rooms (`forkSimMap`); its kits are read only, shared too. */
+  private readonly parsed = new Map<string, Promise<{ map: SimMap; skeleton: SimSkeleton | null; kits: SimKits | null }>>();
   private clips: SimClips | null = null;
+  /** The arsenal (web sprint 4): `RUN/ZWEAPON.ZAR` and `READERC.ZAR`'s kits, read once at the start (`loadKitSource`). */
+  private kits: KitSource | null = null;
   private readonly http: HttpServer;
   private readonly wss: WebSocketServer;
   private timer: NodeJS.Timeout | null = null;
@@ -150,6 +152,8 @@ export class MatchServer {
     try { this.clips = await loadSimClips(this.opts.source); } catch (e) {
       this.opts.log({ level: 'warn', msg: 'no MOTION_P.ZAR: movers run without the clips\' root motion', error: String(e) });
     }
+    this.kits = await loadKitSource(this.opts.source);
+    if (!this.kits) this.opts.log({ level: 'warn', msg: 'no RUN/ZWEAPON.ZAR or READERC.ZAR: every player carries the baked M4A1 SD and Mark 23' });
     await new Promise<void>((resolve) => this.http.listen(this.opts.port, this.opts.host, resolve));
     this.loop();
     const address = this.http.address();
@@ -202,12 +206,12 @@ export class MatchServer {
     if (have) return Promise.resolve(have);
     const pending = this.loading.get(key);
     if (pending) return pending;
-    const load = this.parse(upper).then(({ map: parse, skeleton }) => {
+    const load = this.parse(upper).then(({ map: parse, skeleton, kits }) => {
       const map = forkSimMap(parse);
-      const room = new Room(map, this.clips, { ...this.opts.room, rules }, skeleton);
+      const room = new Room(map, this.clips, { ...this.opts.room, rules }, skeleton, kits);
       this.rooms.set(key, room);
       this.loading.delete(key);
-      this.opts.log({ level: 'info', msg: 'room loaded', map: upper, rules, name: map.name, hitVolumes: skeleton ? skeleton.model : 'placeholder', slots: map.slots.length, respawns: map.respawns.length, notes: map.notes });
+      this.opts.log({ level: 'info', msg: 'room loaded', map: upper, rules, name: map.name, hitVolumes: skeleton ? skeleton.model : 'placeholder', kits: kits?.map ? 'the types\' own' : 'baked', slots: map.slots.length, respawns: map.respawns.length, notes: map.notes });
       return room;
     });
     load.catch(() => this.loading.delete(key));
@@ -216,13 +220,17 @@ export class MatchServer {
   }
 
   /** A map's parse, read from the disc once for both its rules rooms (PL-10); a failed read is not kept. */
-  private parse(upper: string): Promise<{ map: SimMap; skeleton: SimSkeleton | null }> {
+  private parse(upper: string): Promise<{ map: SimMap; skeleton: SimSkeleton | null; kits: SimKits | null }> {
     const have = this.parsed.get(upper);
     if (have) return have;
     const path = `RUN/${upper}.ZDB`;
     // The SEAL skeleton for the hit volumes: without it the room keeps the placeholder capsules.
     const body = loadSimSkeleton(this.opts.source, path).catch(() => null);
-    const load = Promise.all([loadSimMap(this.opts.source, path), body]).then(([map, skeleton]) => ({ map, skeleton }));
+    // The map's hull and, off the same bytes, its kits (`READERM.ZAR` through the start's tables): each side's types.
+    const read = this.opts.source.read(path).then((bytes) => ({
+      map: simMapFromBytes(bytes, path), kits: this.kits ? simKitsFromBytes(this.kits, bytes) : null,
+    }));
+    const load = Promise.all([read, body]).then(([{ map, kits }, skeleton]) => ({ map, skeleton, kits }));
     load.catch(() => this.parsed.delete(upper));
     this.parsed.set(upper, load);
     return load;

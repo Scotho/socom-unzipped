@@ -23,7 +23,9 @@ test('the reticle blooms with the walk and a burst, climbs with the knock, and t
   mkdirSync(SCREENS, { recursive: true });
   const problems: string[] = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
-  await page.goto('/?mode=play&fly&devmode');
+  // The kit these pins were measured on: the M4A1 SD, the Mark 23, the M67 and the HE, no 2X (W2.R4's), by the
+  // developer's `&kit=` (README; the default spawn is the map's type's kit since web sprint 4).
+  await page.goto('/?mode=play&fly&devmode&kit=62,15,121,126,255');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').selectOption('RUN/MP2.ZDB');
@@ -102,7 +104,9 @@ test('a night map: the zoom steps third person -> night vision -> scope, the gog
   mkdirSync(SCREENS, { recursive: true });
   const problems: string[] = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
-  await page.goto('/?mode=play&fly&devmode');
+  // The kit these pins were measured on: the M4A1 SD, the Mark 23, the M67 and the HE, no 2X (W2.R4's), by the
+  // developer's `&kit=` (README; the default spawn is the map's type's kit since web sprint 4).
+  await page.goto('/?mode=play&fly&devmode&kit=62,15,121,126,255');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').selectOption('RUN/MP1.ZDB');          // NightMission 1 (research 84 section 11)

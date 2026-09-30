@@ -22,7 +22,9 @@ const hit = (a: Rect, b: Rect): boolean => a.x < b.x + b.width && a.x + a.width 
 
 async function phone(page: Page, size: { width: number; height: number }): Promise<void> {
   await page.setViewportSize(size);
-  await page.goto('/?mode=play&fly&devmode');
+  // The kit these pins were measured on: the M4A1 SD, the Mark 23, the M67 and the HE, no 2X (W2.R4's), by the
+  // developer's `&kit=` (README; the default spawn is the map's type's kit since web sprint 4).
+  await page.goto('/?mode=play&fly&devmode&kit=62,15,121,126,255');
   await expect(page.locator('#status')).toContainText(/triangles|tris/);
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   // The tip is a first visit's (`./mobileTip`); these specs are about the controls under it.
@@ -242,7 +244,9 @@ test.describe('the tip on a phone', () => {
 
   test('recommends a controller and landscape once a visit, and a dismissal is remembered', async ({ page }) => {
     await page.setViewportSize(LANDSCAPE);
-    await page.goto('/?mode=play&fly&devmode');
+    // The kit these pins were measured on: the M4A1 SD, the Mark 23, the M67 and the HE, no 2X (W2.R4's), by the
+    // developer's `&kit=` (README; the default spawn is the map's type's kit since web sprint 4).
+    await page.goto('/?mode=play&fly&devmode&kit=62,15,121,126,255');
     const tip = page.locator('#mobile-tip');
     await expect(tip).toBeVisible();
     await expect(tip).toContainText(/controller/i);
@@ -264,7 +268,9 @@ test.describe('the tip on a phone', () => {
   test('is not shown on a desktop', async ({ browser }) => {
     const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const page = await context.newPage();
-    await page.goto('/?mode=play&fly&devmode');
+    // The kit these pins were measured on: the M4A1 SD, the Mark 23, the M67 and the HE, no 2X (W2.R4's), by the
+    // developer's `&kit=` (README; the default spawn is the map's type's kit since web sprint 4).
+    await page.goto('/?mode=play&fly&devmode&kit=62,15,121,126,255');
     await expect(page.locator('#status')).toContainText(/triangles|tris/);
     await expect(page.locator('#mobile-tip')).toBeHidden();
     await context.close();

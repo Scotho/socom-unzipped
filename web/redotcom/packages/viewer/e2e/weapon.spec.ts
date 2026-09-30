@@ -26,7 +26,9 @@ test('the rifle in the hands, raised to fire, from the muzzle, kicked, reloaded;
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') problems.push(`console: ${m.text()}`); });
 
-  await page.goto('/?mode=play&fly&devmode');
+  // The kit these pins were measured on: the M4A1 SD, the Mark 23, the M67 and the HE, no 2X (W2.R4's), by the
+  // developer's `&kit=` (README; the default spawn is the map's type's kit since web sprint 4).
+  await page.goto('/?mode=play&fly&devmode&kit=62,15,121,126,255');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').selectOption('RUN/MP2.ZDB');
@@ -121,7 +123,9 @@ test('the owner\'s rulings of 2026-09-29: keys 1-4, no scope on the Mark 23, the
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error') problems.push(`console: ${m.text()}`); });
   await page.setViewportSize({ width: 1280, height: 720 });     // the modern presentation at 16:9
-  await page.goto('/?map=MP2&mode=play&fly&devmode');
+  // The kit these pins were measured on: the M4A1 SD, the Mark 23, the M67 and the HE, no 2X (W2.R4's), by the
+  // developer's `&kit=` (README; the default spawn is the map's type's kit since web sprint 4).
+  await page.goto('/?map=MP2&mode=play&fly&devmode&kit=62,15,121,126,255');
   const status = page.locator('#status');
   await expect(status).toContainText('FROSTFIRE (MP2)');
   await expect(status).toContainText('triangles');
@@ -166,5 +170,30 @@ test('the owner\'s rulings of 2026-09-29: keys 1-4, no scope on the Mark 23, the
   expect((await page.evaluate(() => window.__viewer.grenade())).equipped).toBe(false);
   await expect.poll(async () => (await page.evaluate(() => window.__viewer.kit())).swap).toBeNull();
   expect(await page.evaluate(() => window.__viewer.weapon())).toMatchObject({ item: 'rifle', mounts: { rifle: 'hand', pistol: 'holster' } });
+  expect(problems).toEqual([]);
+});
+
+test('web sprint 4: the default spawn carries the type\'s kit -- mp2_seal1\'s M4A1 and Mark 23 with 2X -- each its own model and icon', async ({ page }) => {
+  const problems: string[] = [];
+  page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
+  await page.goto('/?map=MP2&mode=play&fly&devmode');
+  const status = page.locator('#status');
+  await expect(status).toContainText('FROSTFIRE (MP2)');
+  await expect(status).toContainText('triangles');
+  expect((await page.evaluate(() => window.__viewer.stats())).diagnostics).toEqual([]);
+  // Research 91 §14 / 94 §A4: Frostfire's first SEAL type, `mp2_seal1`: M4A1, Mark 23, M67, HE, Double Ammo Load.
+  expect(await page.evaluate(() => window.__viewer.loadout())).toEqual({
+    loadout: [54, 15, 121, 126, 194], records: ['M4A1', 'Mark 23'], models: ['m4Acarbine', 'a_mark23'], pending: null,
+  });
+  expect(await page.evaluate(() => window.__viewer.setMode('walk'))).toBe(true);
+  await page.evaluate(([x, y, z, eye, pitch]) => window.__viewer.setCamera({ x, y: y + eye, z, yaw: 90, pitch }), [...SPAWN_A, EYE, REST_PITCH] as const);
+  await expect.poll(async () => (await page.evaluate(() => window.__viewer.stats())).anim?.clip ?? null).toBe('seal_stand');
+  // 2X doubles the M4A1's three magazines (research 94 §A7): 30 in the rifle, five more; its own HUD icon.
+  expect((await page.evaluate(() => window.__viewer.fire())).magazine).toMatchObject({ rounds: 30, capacity: 30, spare: 5 });
+  await expect.poll(() => page.evaluate(() => window.__viewer.hud().model.weaponIcon)).toBe('m4carbine_icon.tif');
+  expect(await page.evaluate(() => window.__viewer.weapon())).toMatchObject({ held: true, item: 'rifle' });
+  // A pick waits for the next spawn (R94.3): the 552 and the M9 pending, the body's kit unchanged.
+  expect(await page.evaluate(() => window.__viewer.setLoadout([57, 5, 121, 126, 255]))).toEqual([57, 5, 121, 126, 255]);
+  expect((await page.evaluate(() => window.__viewer.loadout())).records).toEqual(['M4A1', 'Mark 23']);
   expect(problems).toEqual([]);
 });

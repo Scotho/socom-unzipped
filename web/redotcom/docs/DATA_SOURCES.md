@@ -68,7 +68,8 @@ The research notes are in [`research/`](research/); `repo/NN` is a note of the P
 | Clip playback, speeds, gravity, jump factor | `READERC.ZAR/motion.rdr`, `animset.rdr`, `dynamics.rdr` | `scene/src/tuning.ts`, `viewer/src/motionTable.ts`, `physics.ts` | research 80, 88; `scene/test/tuning.test.ts`, `viewer/test/walk.test.ts`, `feelParity.test.ts` |
 | Weapon records | `RUN/ZWEAPON.ZAR/zweapon.rdr` | `scene/src/weapons.ts`, `weapon.ts` | research 84 §1, 85 §1, 91 §1.2; `scene/test/weapons.test.ts` |
 | Weapon models, the fire point | `WEAP_GEO.ZED`, `WEAP_MDL.ZED` | `scene/src/firePoint.ts`, `viewer/src/heldItem.ts` | research 79 §2-3 (59 weapons decode on all 22 maps) |
-| Kits and default loadouts | `character.rdr`, each map's `chartype.rdr` | `scene/src/character.ts`, `viewer/src/kit.ts` | research 91 §14; `viewer/test/kit.test.ts` |
+| Kits and default loadouts | `character.rdr`, each map's `chartype.rdr` | `scene/src/character.ts`, `arsenal.ts` (`mapKits`), `viewer/src/kit.ts` | research 91 §14, 94 §A4; `viewer/test/kit.test.ts`, `scene/test/arsenal.test.ts` |
+| The runtime kit: each slot's record, model and icon | `RUN/ZWEAPON.ZAR` (read at run time by the page, its own match and the server), `READERM.ZAR`, `READERC.ZAR`, `WEAP_GEO`/`WEAP_MDL.ZED`, `HUDW_TXR.ZED` | `scene/src/arsenal.ts` (`kitTableOf`), `viewer/src/loadout.ts`, `loadMap.ts` (`heldWeapons`), `hudAssets.ts`; `server/src/room.ts` | research 94 §A6, §A7, §C9; `viewer/test/loadout.test.ts`, `heldWeapon.test.ts`, `server/test/room.test.ts` |
 
 ### Sound
 

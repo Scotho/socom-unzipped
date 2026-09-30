@@ -1,5 +1,5 @@
 import { Zar, parseRdr, rdrGet, parseZdb, zdbMember, type RdrNode } from '@s2u/archive';
-import { UNITS_PER_METRE } from './weapons';
+import { UNITS_PER_METRE, weaponRecord, type WeaponRecord } from './weapons';
 
 /**
  * The arsenal (web sprint 4, M2; research 94 part 1): every item a multiplayer SEAL or Terrorist may carry, what each
@@ -336,6 +336,39 @@ function script(zar: Zar, where: string, name: string): RdrNode {
 /** `ZWEAPON.ZAR` -> the arsenal. */
 export function readArsenal(zweapon: Uint8Array): Arsenal {
   return arsenalOf(script(Zar.parse(zweapon), 'ZWEAPON.ZAR', 'zweapon.rdr'));
+}
+
+/**
+ * The kit's tables (web sprint 4, M3/M4): the arsenal and, by item id, the `WeaponRecord` of every firearm it holds --
+ * the primaries and the secondaries (`slotKindOf`), read by `weaponRecord` as the M4A1 SD's and the Mark 23's always
+ * were. One read of `ZWEAPON.ZAR` feeds the page, the page's own match (`net/loopback.ts`) and the match server, so a
+ * slot's rate, cone, magazines, damage and falloff are the same numbers on all three (W4.R2, W4.R6).
+ */
+export interface KitTable {
+  arsenal: Arsenal;
+  /** Every firearm's record by item id; an item with no readable firearm record (below) is absent. */
+  records: ReadonlyMap<number, WeaponRecord>;
+}
+
+/**
+ * `zweapon.rdr`, parsed -> the kit's tables. A primary or secondary whose record `weaponRecord` cannot read is left out:
+ * on the disc these are the three grenade launchers (141 M203, 142 MGL, 143 M79: `AMMO_TYPES` names no round -- they
+ * fire their rounds as fire modes of the carrier, R94.8, web sprint 4 M7) and the Designator (11, a pistol-class item
+ * with no round). The caller decides what such a slot holds (`viewer/src/loadout.ts`).
+ */
+export function kitTableOf(zweapon: RdrNode): KitTable {
+  const arsenal = arsenalOf(zweapon);
+  const records = new Map<number, WeaponRecord>();
+  for (const item of arsenal.items.values()) {
+    if (item.kind === 'equipment') continue;
+    try { records.set(item.id, weaponRecord(zweapon, item.name)); } catch { /* no firearm record: see above */ }
+  }
+  return { arsenal, records };
+}
+
+/** `ZWEAPON.ZAR` -> the kit's tables. */
+export function readKitTable(zweapon: Uint8Array): KitTable {
+  return kitTableOf(script(Zar.parse(zweapon), 'ZWEAPON.ZAR', 'zweapon.rdr'));
 }
 
 /** A map's `.ZDB` and `READERC.ZAR` -> its arsenal (`READERM.ZAR`'s `mission.rdr` and `chartype.rdr`). */

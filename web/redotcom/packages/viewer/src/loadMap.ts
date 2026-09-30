@@ -18,7 +18,8 @@ import { collisionOwners, type WorldPoly } from '@s2u/scene';
 import { groundGrid, packGround, type GroundData } from './mover';
 import { openingStand, type Stand } from './stand';
 import { bodyTextureNames, bodyTransferables, characterTableFor, loadBody, placeBody, type LoadedBody } from './body';
-import { DEFAULT_SIDEARM, DEFAULT_WEAPON, WEAPON_MEMBERS, weaponLibrary, type WeaponPoint } from '@s2u/scene';
+import { WEAPON_MEMBERS, weaponLibrary, type WeaponPoint } from '@s2u/scene';
+import { BAKED_LOADOUT, loadKitSource, simKitsFromBytes, slotModel, type SimKits } from './loadout';
 import { readEffectBitmap, readReticle, type ReticleBitmaps } from './hudBitmaps';
 import { readHud, type HudBitmaps } from './hudAssets';
 import { grenadeTransferables, loadGrenadeAssets, type GrenadeAssets } from './grenadeAssets';
@@ -179,17 +180,19 @@ export interface LoadedMap {
   /** Web sprint 3 M5: the map's first Terrorist type (`chartype.rdr`), for the other players. Unplaced (`at` null). */
   terrorist?: LoadedBody | null;
   /**
-   * The held weapon (W2.4, `./shot`): the M4A1 SD (W2.R4) out of `COMMON/WEAP_GEO.ZED` and `WEAP_MDL.ZED`, its high
-   * LOD's packets in the weapon's own frame (x along the barrel, y up; web/redotcom/docs/research/79 §2) and its named nodes --
-   * the muzzle `firepoint` among them. Its textures are in `textures` with the map's. Absent when the library will
-   * not read, with a diagnostic.
+   * The held weapons (W2.4; web sprint 4, M3), by `ModelName`: every firearm model the arsenal names that the map's
+   * `COMMON/WEAP_GEO.ZED` and `WEAP_MDL.ZED` hold (the library decoded once), each its high LOD's packets in the
+   * weapon's own frame -- the grip at the origin, x along the barrel, y up (web/redotcom/docs/research/79 §2) -- and
+   * its named nodes, the muzzle `firepoint` among them; the page builds the loadout's two on demand (`WorldView.held`).
+   * Their textures are in `textures` with the map's. Without the arsenal, the baked pair's two (`./loadout`). Absent
+   * when the library will not read, with a diagnostic.
    */
-  weapon?: { name: string; parts: LoadedMesh[]; points: WeaponPoint[] };
+  weapons?: Record<string, HeldWeapon>;
   /**
-   * WEAPON: the sidearm (`DEFAULT_SIDEARM`, the kit's Mark 23: `a_mark23`), decoded as the rifle is -- the grip at the
-   * origin, the barrel along +x -- with its `firepoint`. Absent when the library will not read.
+   * The kit tables (web sprint 4, `./loadout`): the source's `ZWEAPON.ZAR` read and this map's kits (`READERM.ZAR`
+   * through `READERC.ZAR`) -- what the page's kit and its own match (`./net/loopback`) read. Absent without them.
    */
-  sidearm?: { name: string; parts: LoadedMesh[]; points: WeaponPoint[] };
+  arsenal?: SimKits;
   /** W2.4: the rifle reticle's bitmaps off `HUD2_TXR.ZED` (`./hudBitmaps`), or null with a diagnostic. */
   reticle?: ReticleBitmaps | null;
   /** W2.5: the shot's mark, `BULLET_MARK`'s bitmap off `EFFE_TXR.ZED` (`./hudBitmaps`), or null with a diagnostic. */
@@ -213,6 +216,9 @@ export interface LoadedMap {
    */
   timings: { fetch: number; decode: number; postedAt: number };
 }
+
+/** One held weapon: its model's name, its packets and its named points (`LoadedMap.weapons`). */
+export interface HeldWeapon { name: string; parts: LoadedMesh[]; points: WeaponPoint[] }
 
 /**
  * The diagnostic sink: every distinct line once.
@@ -347,9 +353,13 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   const body = loadBody(bytes, toc, characterSource, (line) => notes.add(line));
   // Web sprint 3 M5: the map's first Terrorist, only once the SEAL loaded; a failure is a note.
   const terrorist = body ? loadBody(bytes, toc, characterSource, (line) => notes.add(line), 'terrorists') : null;
-  // W2.4: the held weapon, decoded here with the map so its textures come out of the same asset-library chain.
-  const weapon = heldWeapon(bytes, toc, notes, DEFAULT_WEAPON);
-  const sidearm = heldWeapon(bytes, toc, notes, DEFAULT_SIDEARM);
+  // Web sprint 4: the arsenal -- the source's ZWEAPON.ZAR once, this map's kits off its own READERM.ZAR.
+  const kitSource = await loadKitSource(source);
+  if (!kitSource) notes.add('arsenal: no RUN/ZWEAPON.ZAR or READERC.ZAR -- the baked M4A1 SD and Mark 23');
+  const arsenal = kitSource ? simKitsFromBytes(kitSource, bytes) : undefined;
+  if (arsenal && !arsenal.map) notes.add('arsenal: READERM.ZAR has no kits -- the baked M4A1 SD and Mark 23');
+  // W2.4, M3: the held weapons, decoded here with the map so their textures come out of the same asset-library chain.
+  const weapons = heldWeapons(bytes, toc, notes, arsenal);
   // The frag grenade (`./grenadeAssets`): its model's textures are decoded with the held weapon's below.
   const grenade = loadGrenadeAssets(bytes, toc, stem, textureKey, (line) => notes.add(line));
 
@@ -360,7 +370,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   const textureMips: Record<string, Rgba[]> = {};
   const textureFlags: Record<string, TextureFlags> = {};
   // The textures the world, the props, the held weapon (W2.4) and the player's body (W2.1) draw.
-  const drawn = [...parts, ...props.flatMap((p) => p.parts), ...(weapon?.parts ?? []), ...(sidearm?.parts ?? []), ...grenade.models.flatMap((m) => m.parts)]
+  const heldParts = Object.values(weapons ?? {}).flatMap((w) => w.parts);
+  const drawn = [...parts, ...props.flatMap((p) => p.parts), ...heldParts, ...grenade.models.flatMap((m) => m.parts)]
     .map((mesh) => (mesh.textureName === null ? null : textureKey(mesh.textureName)))
     .concat(body ? bodyTextureNames(body) : [])
     .concat(terrorist ? bodyTextureNames(terrorist) : []);
@@ -460,7 +471,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   for (const line of reticle.diagnostics) notes.add(line);
   const bulletMark = readEffectBitmap(bytes, toc, BULLET_MARK.texture);
   for (const line of bulletMark.diagnostics) notes.add(line);
-  const hud = readHud(bytes, toc);
+  // The HUD weapon box's icons (research 94 §C9): every firearm's `IconTextureName`, beside the HUD's own.
+  const hud = readHud(bytes, toc, arsenal ? firearmIcons(arsenal) : []);
   for (const line of hud.diagnostics) notes.add(line);
   const actions = readMapActions(bytes, toc, stem);
   for (const line of actions.diagnostics) notes.add(line);
@@ -493,8 +505,8 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
     ground: placement.ground,
     doors: placement.doors ?? [],
     ...(measured ? { stand: openingStand(measured.a, probe) } : {}),
-    ...(weapon ? { weapon } : {}),
-    ...(sidearm ? { sidearm } : {}),
+    ...(weapons ? { weapons } : {}),
+    ...(arsenal ? { arsenal } : {}),
     grenade,
     reticle: reticle.bitmaps,
     bulletMark: bulletMark.rgba,
@@ -510,7 +522,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
 /** Every typed array in a `LoadedMap`, for the worker's transfer list: no copies cross the boundary. */
 export function transferables(map: LoadedMap): Transferable[] {
   const out: Transferable[] = [];
-  for (const mesh of [...map.world, ...map.props.flatMap((p) => p.parts), ...(map.weapon?.parts ?? []), ...(map.sidearm?.parts ?? [])]) {
+  for (const mesh of [...map.world, ...map.props.flatMap((p) => p.parts), ...Object.values(map.weapons ?? {}).flatMap((w) => w.parts)]) {
     out.push(mesh.positions.buffer, mesh.uvs.buffer, mesh.colors.buffer, mesh.indices.buffer);
     if (mesh.normals) out.push(mesh.normals.buffer);
     if (mesh.faceNormals) out.push(mesh.faceNormals.buffer);
@@ -529,25 +541,62 @@ export function transferables(map: LoadedMap): Transferable[] {
   return out;
 }
 
+/** The firearms' HUD icons, lower case (the HUD's keys): every primary's and secondary's `IconTextureName`. */
+function firearmIcons(arsenal: SimKits): string[] {
+  const icons = new Set<string>();
+  for (const item of arsenal.table.arsenal.items.values()) if (item.kind !== 'equipment' && item.icon) icons.add(item.icon.toLowerCase());
+  return [...icons];
+}
+
 /**
- * W2.4: the held weapon (`LoadedMap.weapon`), the M4A1 SD's high LOD out of the map's own `WEAP_GEO`/`WEAP_MDL`
- * (`@s2u/scene`'s `weaponLibrary`, web/redotcom/docs/research/79 §2). A library that will not read costs one diagnostic and
- * the weapon, never the load; a chunk that will not decode costs its own line and nothing else.
+ * W2.4, web sprint 4 M3: the held weapons (`LoadedMap.weapons`) out of the map's own `WEAP_GEO`/`WEAP_MDL` (`@s2u/scene`'s
+ * `weaponLibrary`, web/redotcom/docs/research/79 §2), the library parsed once: every firearm model the arsenal names
+ * (the loadout may hold any, and a pick may change it at the next spawn), or the baked pair's two without the arsenal.
+ * A record's `ModelName` is looked up case aside -- the SA-80's `IW80A2` is every library's `iw80a2`, and the retail
+ * SA-80 draws (MODEL_NAME_CASE_READING: the game's compare was not traced) -- and kept under the record's spelling.
+ * A model the library lacks (a `placeholder`, `NULL`) is left out, and said only when a kit of the map holds it. A library that will not read costs one diagnostic and the weapons, never the load; a chunk that
+ * will not decode costs its own line and nothing else.
  */
-function heldWeapon(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes, model: string): LoadedMap['weapon'] {
+function heldWeapons(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes, arsenal: SimKits | undefined): Record<string, HeldWeapon> | undefined {
+  let library: ReturnType<typeof weaponLibrary>;
   try {
-    const library = weaponLibrary(Zar.parse(zdbMember(bytes, toc, WEAPON_MEMBERS.geo)), Zar.parse(zdbMember(bytes, toc, WEAPON_MEMBERS.mdl)));
-    const decoded = library.decode(model, 'high');
-    for (const d of decoded.diagnostics) notes.add(`weapon ${decoded.name}: ${d}`);
-    const parts: LoadedMesh[] = decoded.parts.flatMap((part) => part.meshes.map((mesh) => ({
-      ...mesh, textureName: mesh.textureName === null ? null : textureKey(mesh.textureName),
-      order: 0, orderEnd: 0, alternate: false, scroll: null,
-    })));
-    return { name: decoded.name, parts, points: decoded.points };
+    library = weaponLibrary(Zar.parse(zdbMember(bytes, toc, WEAPON_MEMBERS.geo)), Zar.parse(zdbMember(bytes, toc, WEAPON_MEMBERS.mdl)));
   } catch (e) {
-    notes.add(`weapon ${model}: ${say(e)}`);
+    notes.add(`weapons: ${say(e)}`);
     return undefined;
   }
+  // The models the map's kits hold at their spawns: a missing one of these is a diagnostic.
+  const kitModels = new Set<string>();
+  for (const k of arsenal?.map ? [...arsenal.map.kits.seal, ...arsenal.map.kits.terrorist] : []) {
+    for (const slot of [0, 1] as const) { const m = slotModel(arsenal!.table, k.loadout, slot); if (m) kitModels.add(m); }
+  }
+  const wanted = new Set<string>();
+  if (arsenal) {
+    for (const item of arsenal.table.arsenal.items.values()) if (item.kind !== 'equipment' && item.model) wanted.add(item.model);
+  } else {
+    for (const slot of [0, 1] as const) wanted.add(slotModel(null, BAKED_LOADOUT, slot)!);
+  }
+  const MODEL_NAME_CASE_READING = new Map(library.names().map((n) => [n.toLowerCase(), n] as const));
+  const out: Record<string, HeldWeapon> = {};
+  for (const model of wanted) {
+    const name = MODEL_NAME_CASE_READING.get(model.toLowerCase());
+    if (name === undefined) {
+      if (kitModels.has(model) || !arsenal) notes.add(`weapon ${model}: not in the map's weapon library`);
+      continue;
+    }
+    try {
+      const decoded = library.decode(name, 'high');
+      for (const d of decoded.diagnostics) notes.add(`weapon ${decoded.name}: ${d}`);
+      const parts: LoadedMesh[] = decoded.parts.flatMap((part) => part.meshes.map((mesh) => ({
+        ...mesh, textureName: mesh.textureName === null ? null : textureKey(mesh.textureName),
+        order: 0, orderEnd: 0, alternate: false, scroll: null,
+      })));
+      out[model] = { name: decoded.name, parts, points: decoded.points };
+    } catch (e) {
+      notes.add(`weapon ${model}: ${say(e)}`);
+    }
+  }
+  return out;
 }
 
 /**

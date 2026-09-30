@@ -30,7 +30,7 @@ function page(rules: Rules, solo = false) {
   const deps: NetPageDeps = {
     walk, remote, hud, clips: () => null, remoteGrenade: () => undefined, spectate: (p) => { poses.push(p); },
     respawned: () => { respawns.push(respawns.length + 1); },
-    roundEffects: () => undefined, weapons: [HELD_RIFLE, HELD_SIDEARM],
+    roundEffects: () => undefined, weapons: () => [HELD_RIFLE, HELD_SIDEARM],
     socket: () => {
       socket = { binaryType: '', readyState: 1, send: (d: string | Uint8Array) => { if (typeof d === 'string') sent.push(d); }, close: () => undefined } as unknown as WebSocketLike;
       return socket;
