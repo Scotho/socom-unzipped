@@ -3,10 +3,11 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { RdrNode } from '@s2u/archive';
 import {
-  EMPTY_ITEM, FULL_SLOT, ITEM, VALVE_OF_ITEM, applyPicks, arsenalOf, autoFill, characterWeapons, itemClass, mapArsenal,
-  menuValves, missionValves, pick, readArsenal, readMapArsenal, selectable, slotKindOf, slotLocked, valveAllows,
+  EMPTY_ITEM, FULL_SLOT, ITEM, VALVE_OF_ITEM, applyPicks, arsenalOf, autoFill, characterWeapons, itemClass, kitTableOf, mapArsenal,
+  menuValves, missionValves, pick, readArsenal, readKitTable, readMapArsenal, selectable, slotKindOf, slotLocked, valveAllows,
   type Arsenal, type Loadout,
 } from '../src/arsenal';
+import { DEFAULT_RIFLE, HELD_RIFLE, HELD_SIDEARM } from '../src/weapons';
 
 /**
  * The arsenal (web sprint 4, M2; research 94 part 1). The synthetic twin is `parseRdr`'s shape, spelled the way the
@@ -159,6 +160,22 @@ describe('the arsenal over a hand-built zweapon.rdr', () => {
     expect(map.kits.seal).toEqual([{ type: 'Assault', character: 'mp2_seal1', loadout: [54, 15, 121, 126, 194] }]);
     expect(map.selectable.terrorist).toEqual([58]);
   });
+
+  it('the kit table: a record for each firearm weaponRecord reads, none for equipment or a launcher with no round', () => {
+    // A firearm as `weaponRecord` needs it: the rate, the range, the mark, a stance; the rest defaults.
+    const firearm = (name: string, id: number): RdrNode[] => [...weapon(name, id), ...rec(
+      ['FireWait', '0.12'], ['Maximum_Range', '1000'], ['DecalSet', 'BULLET_MARK_SMALL'],
+      ['Reticule_Modifiers', rec(['STANCE_STAND', rec(['ReticuleKnock', '12'], ['ReticuleKnockReturn', '70'], ['ReticuleKnockMax', '45'])])],
+    )];
+    const script: RdrNode = ['ZAMMO', zweapon[1]!, 'ZWEAPON', [
+      firearm('M4A1', 54), firearm('Mark 23', 15), weapon('M67', 121),
+      rec(['InternalName', 'M203'], ['ID', '141'], ['AMMO_TYPES', []], ['ModelName', 'NONE']),
+    ]];
+    const table = kitTableOf(script);
+    expect([...table.records.keys()]).toEqual([54, 15]);
+    expect(table.records.get(54)).toMatchObject({ name: 'M4A1', id: 54, fireWait: 0.12, magazine: 30, mags: 3, ammoId: 8 });
+    expect(table.arsenal.items.size).toBe(4);
+  });
 });
 
 // The disc: the served copies (tools/extract-maps.ts), else SOCOM_DISC.
@@ -229,5 +246,23 @@ describe.skipIf(!ZWEAPON || !READERC || !MAPS.every((m) => onDisc(`MP${m}.ZDB`))
     const mp6 = readMapArsenal(disc!, bytes(onDisc('MP6.ZDB')!), readerc);
     expect(mp6.kits.seal[3]!.loadout[1]).toBe(6);
     expect(valveAllows(mp6.valves, 'seal', 6)).toBe(false);
+  });
+
+  it('the kit table: every firearm of every kit has its record; the baked three are the file\'s; the launchers have none', () => {
+    const table = readKitTable(bytes(ZWEAPON!));
+    // The pistols to the snipers, less the Designator (11): 10 pistols, 5 SMGs, 15 rifles, 3 shotguns, 3 MGs, 6 snipers
+    // -- and no grenade launcher (R94.8, M7).
+    expect(table.records.size).toBe(42);
+    expect([11, ITEM.M203, ITEM.MGL, ITEM.M79].some((id) => table.records.has(id))).toBe(false);
+    expect(table.records.get(62)).toEqual(HELD_RIFLE);
+    expect(table.records.get(15)).toEqual(HELD_SIDEARM);
+    expect(table.records.get(54)).toEqual(DEFAULT_RIFLE);
+    const readerc = bytes(READERC!);
+    for (const m of MAPS) {
+      const map = readMapArsenal(table.arsenal, bytes(onDisc(`MP${m}.ZDB`)!), readerc);
+      for (const k of [...map.kits.seal, ...map.kits.terrorist]) {
+        expect([m, k.type, table.records.has(k.loadout[0]), table.records.has(k.loadout[1])]).toEqual([m, k.type, true, true]);
+      }
+    }
   });
 });
