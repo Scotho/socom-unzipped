@@ -3,6 +3,7 @@ import {
   backblastLaunch, inCone, itemClass, type KitTable, type Loadout, type ThrowableRecord, type V3,
 } from '@s2u/scene';
 import type { MapAction } from './mapActions';
+import { ACTION_SECONDS } from './mover';
 
 /**
  * The equipment slots and what each item does in the match (web sprint 4, M7; spec W4.R5; research 94 §C4, §C5, §C7,
@@ -69,6 +70,14 @@ export function slotSelectable(id: number, ctx: SlotContext): boolean {
   if (id === ITEM.DETONATOR) return ctx.chargesDown > 0;
   return ![ITEM.M203, ITEM.C4, ITEM.THERMAL, ITEM.SATCHEL, 0x9a, ITEM.DOUBLE_AMMO].includes(id as never);
 }
+
+/**
+ * LAUNCHER_RAISE_READING: how long a rocket launcher takes to come up (or go back for the firearm) before the other may
+ * fire. The kit's switch (`FUN_005c4b10`) changes the category (`FUN_005c50b0`) and starts the swap through
+ * `FUN_005c1660` -> `FUN_005a64c0`, whose clip for a launcher was not traced; read as the firearms' standing swap
+ * (`Rifle -> Pistol`, `ACTION_SECONDS.swapStand`, the room's and the page's one sourced swap length).
+ */
+export const LAUNCHER_RAISE_READING = ACTION_SECONDS.swapStand;
 
 /** The launcher's round (`roundFits` for the rockets: the LAW its LAW HEAT, the RPG-7 its RPG), null for none. */
 export function rocketRoundOf(launcher: number): number | null {

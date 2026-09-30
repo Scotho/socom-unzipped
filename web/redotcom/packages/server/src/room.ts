@@ -11,7 +11,7 @@ import {
   EYE_HEIGHT, PROBE_LIFT, fireInterval, reloadLockSeconds, reloadMoving, reloadSeconds, ShotCone, targetHeight,
   BAKED_LOADOUT, kitRecords, typeLoadout, type SimKits,
   afterShotLock, isCarrier, KitRounds, pelletDamage, pelletsOf, reloadDelayOf, reloadFamily, roundFits, shotgunPellets,
-  backblastReaches, c4Plant, equipmentKind, EQUIPMENT_SLOTS, pouchOf, rocketRoundOf,
+  backblastReaches, c4Plant, equipmentKind, EQUIPMENT_SLOTS, LAUNCHER_RAISE_READING, pouchOf, rocketRoundOf,
   type BodyState, type ClientEvent, type Command, type ExtraSurface, type Health, type KillHow, type LobbyChange,
   type PlaySnapshot, type ScoreRow, type ServerEvent, type SimClips, type SimMap, type SimSkeleton, type Team,
 } from '../../viewer/src/sim';
@@ -132,6 +132,8 @@ const BAKED_THROWN: ReadonlyMap<string, { record: ThrowableRecord; piercing: num
 ]);
 /** The flashbang (`Mark141`, 123): a blast of no damage whose reach whites the screen out (`resolveBlast`'s `flash`). */
 const FLASHBANG_ID = 123;
+/** The Detonator's `FireWait` (`zweapon.rdr` ID 193: 0.1 s), its rate on the server when the kit table has no record of it. */
+const DETONATOR_FIRE_WAIT = 0.1;
 /** The fastest a throw leaves the hand (`throwVelocity`'s range at the most power, with slack), units a second. */
 const THROW_SPEED_MAX = 400;
 /**
@@ -232,6 +234,16 @@ class Player {
    * after-shot lock, `ReloadDelayAfterShot` 1 s, feeds the next round inside it: `FUN_005c3000`, research 94 §C1.1).
    */
   rocketWaitUntil = -1;
+  /**
+   * M7: the rocket launcher in the hand (its item id), null for the firearm -- the kit's current item (`kit+0x824`), set
+   * by the page's `throw` of the launcher (raise) or of the firearm (lower); the command count its raise is over at, and
+   * the one the firearm may fire again at after it went down (`LAUNCHER_RAISE_READING`).
+   */
+  held: number | null = null;
+  heldReadyAt = -1;
+  firearmReadyAt = -1;
+  /** M7: the command count the Detonator may fire again at (its record's `FireWait`, 0.1 s: `FUN_005c09f0`). */
+  detonateAt = -1;
   /**
    * M4 (`../../viewer/src/firearms`): the kit's launcher-round slots, each its own ring (the page's `KitRounds`); the
    * command count the last round left at, and the count the round's lock and its after-shot clip end at.
@@ -461,6 +473,8 @@ export class Room {
           else if (kind === 'placed' || kind === 'c4') this.placeCharge(id, e);
           else if (kind === 'detonator') this.detonate(id);
           else if (kind === 'round') this.launchRound(id, e);
+          else if (kind === 'launcher') this.raiseLauncher(id, ev.kind);
+          else this.lowerLauncher(id, ev.kind);
         }
         return;
       case 'door':
@@ -573,6 +587,7 @@ export class Room {
     const w = p.sim.weapon;
     if (w !== p.weapon) {
       p.weapon = w;
+      p.held = null;                                             // M7: a firearm swap puts the launcher away
       p.cone.setWeapon(p.records[w]);
       p.reloadUntil = [-1, -1];
       p.lockTimer = [-1, -1];
@@ -665,6 +680,7 @@ export class Room {
     p.grenades = pouchOf(p.loadout, this.kits?.table ?? null);        // M7: the loadout's pouch (POUCH_PLACEHOLDER retired)
     p.rounds = new KitRounds(this.kits?.table ?? null, p.loadout);   // M4: every round slot full
     p.rocketWaitUntil = -1;
+    p.held = null; p.heldReadyAt = -1; p.firearmReadyAt = -1; p.detonateAt = -1;
     p.roundWaitUntil = -1;
     p.lockTimer = [-1, -1];
     p.lockKind = [null, null];
@@ -755,6 +771,8 @@ export class Room {
     if (!p.alive || this.state.phase === 'over') return;
     const frame = p.cone.frame(ev.seq);
     if (!frame) return;                                        // not a command this body ran
+    // M7: no round from the firearm while a rocket launcher is the item in the hand, nor before it has come back up.
+    if (p.held !== null || frame.count < p.firearmReadyAt) return;
     const w = frame.weapon;
     const record = p.records[w];
     // BL-1: the rate is the weapon's fastest enabled mode -- `FUN_005c09f0` (476313-476335): `FireWait` in mode 1,
@@ -955,6 +973,9 @@ export class Room {
   private detonate(id: number): void {
     const p = this.players.get(id);
     if (!p || !p.alive || this.state.phase === 'over') return;
+    // FUN_005c74e0: the Detonator is the kit's only with a claymore in it; its fire at its `FireWait` (0.1 s) at most.
+    if (!EQUIPMENT_SLOTS.some((i) => p.loadout[i] === CLAYMORE.id) || p.ran < p.detonateAt) return;
+    p.detonateAt = p.ran + Math.round(DETONATOR_FIRE_WAIT * TICK_HZ);
     const s = p.sim.walker.state;
     for (const f of this.flying) {
       if (f.owner !== id || f.g.record.id !== CLAYMORE.id || f.g.state !== 'rest') continue;
@@ -976,6 +997,7 @@ export class Room {
     const p = this.players.get(id), item = this.kits?.table.arsenal.byName.get(ev.kind);
     if (item && itemClass(item.id) === 'rocketRound') { this.launchRocket(id, ev, item.id); return; }
     if (!p || !p.alive || !item || this.state.phase === 'over' || p.sim.weapon !== 0) return;
+    if (p.held !== null || p.ran < p.firearmReadyAt) return;     // M7: the carrier is not the item in the hand
     const carrier = p.loadout[0];
     if (!isCarrier(carrier) || !roundFits(carrier, item.id)) return;
     const round = p.rounds.round(item.id), ring = p.rounds.ring(item.id);
@@ -1018,6 +1040,8 @@ export class Room {
   private launchRocket(id: number, ev: Extract<ClientEvent, { type: 'throw' }>, roundId: number): void {
     const p = this.players.get(id);
     if (!p || !p.alive || this.state.phase === 'over') return;
+    // M7: only from the launcher in the hand, its raise over (the kit fires its current item only, `kit+0x824`).
+    if (p.held === null || rocketRoundOf(p.held) !== roundId || p.ran < p.heldReadyAt) return;
     if (!EQUIPMENT_SLOTS.some((i) => rocketRoundOf(p.loadout[i]!) === roundId)) return;
     const round = p.rounds.round(roundId), ring = p.rounds.ring(roundId);
     if (!round || !ring || ring.rounds() <= 0) return;
@@ -1040,6 +1064,29 @@ export class Room {
       const axis: V3 = [-dir[0], -dir[1], -dir[2]];
       this.flying.push({ owner: id, kind: back.name, g: launchGrenade([...ev.from], [0, 0, 0], back), facing: axis });
     }
+  }
+
+  /**
+   * M7: the page's `throw` of a rocket launcher -- it is taken up (`FUN_005c4b10`): the kit's own launcher, in an
+   * equipment slot, with a round it fires (`slotSelectable`, `FUN_005bdc30`); ready to fire after its raise
+   * (`LAUNCHER_RAISE_READING`, on the player's command clock). The others draw it (the body's item).
+   */
+  private raiseLauncher(id: number, name: string): void {
+    const p = this.players.get(id), item = this.itemByName(name);
+    if (!p || !p.alive || !item || p.held === item.id) return;
+    if (!EQUIPMENT_SLOTS.some((i) => p.loadout[i] === item.id)) return;
+    const round = rocketRoundOf(item.id), ring = round === null ? null : p.rounds.ring(round);
+    if (!ring || ring.rounds() <= 0) return;
+    p.held = item.id;
+    p.heldReadyAt = p.ran + Math.round(LAUNCHER_RAISE_READING * TICK_HZ);
+  }
+
+  /** M7: the page's `throw` of the firearm in its slot while a launcher is up: the launcher away, the firearm's raise. */
+  private lowerLauncher(id: number, name: string): void {
+    const p = this.players.get(id);
+    if (!p || p.held === null || (name !== p.records[0].name && name !== p.records[1].name)) return;
+    p.held = null;
+    p.firearmReadyAt = p.ran + Math.round(LAUNCHER_RAISE_READING * TICK_HZ);
   }
 
   /** The `Backblast` record (159) of the kit table, null without it. */
@@ -1123,10 +1170,12 @@ export class Room {
     if (!(dmg0 > 0) || !q || !q.alive || (f.struck ??= new Set()).has(q.id)) return;
     f.struck.add(q.id);
     if (thrower && q !== thrower && q.team === thrower.team) return;
-    const IMPACT_HIT_READING = { impactDamage: dmg0, effectiveRange: r.effectiveRange / UNITS_PER_METRE, maximumRange: r.maximumRange / UNITS_PER_METRE };
+    // GetDamage's bullet branch (L318741-318759), `bulletDamage`: ImpactDamage + the weapon's Damage_Modifier, the range
+    // falloff; at the floor (the character's hit passes 0, L459241) or under it nothing, else x14.
+    const IMPACT_HIT_READING = { impactDamage: dmg0, damageModifier: r.damageModifier ?? 0, effectiveRange: r.effectiveRange / UNITS_PER_METRE, maximumRange: r.maximumRange / UNITS_PER_METRE };
     const distance = Math.hypot(body.point[0] - f.g.launch[0], body.point[1] - f.g.launch[1], body.point[2] - f.g.launch[2]);
     const dmg = bulletDamage(IMPACT_HIT_READING, distance);
-    if (dmg === null) return;
+    if (dmg === null || !(dmg > 0)) return;
     const piercing = this.thrown(f.kind)?.piercing ?? 0;
     const died = applyHit(q.health, body.part, dmg, piercing);
     this.send(q.id, { type: 'hurt', health: [...q.health.hp], from: [...f.g.launch], part: body.part });
@@ -1455,7 +1504,7 @@ export class Room {
     // Protocol 7: the item in the hand by id -- the slot's item on the body's kit (the character message's current item,
     // `FUN_005c89d0`, research 94 §A6), so the others draw, fire and hear what this body carries.
     const slot = p.sim.weapon;
-    return bodyOf(p.id, s, { alive: p.alive, weapon: slot, item: p.loadout[slot], aiming: p.aiming, trigger: p.trigger, boost: p.boost });
+    return bodyOf(p.id, s, { alive: p.alive, weapon: slot, item: p.held ?? p.loadout[slot], aiming: p.aiming, trigger: p.trigger, boost: p.boost });
   }
 
   private send(id: number, ev: ServerEvent): void {

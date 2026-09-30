@@ -4,7 +4,7 @@ import {
   type ThrowableRecord, type WorldPoly,
 } from '@s2u/scene';
 import {
-  encodeCommands, EYE_HEIGHT, groundGrid, packGround, PROTOCOL_VERSION, TICK_HZ, type Command, type ServerEvent, type SimKits, type SimMap,
+  centreClaim, encodeCommands, EYE_HEIGHT, LAUNCHER_RAISE_READING, groundGrid, packGround, PROTOCOL_VERSION, TICK_HZ, type Command, type ServerEvent, type SimKits, type SimMap,
 } from '../../viewer/src/sim';
 import { Room, type Conn } from '../src/room';
 
@@ -42,6 +42,9 @@ const kit = (...ids: number[]): Loadout => ids as unknown as Loadout;
 const round = (over: Partial<ThrowableRecord>): ThrowableRecord => ({ ...M67, ...over });
 const HEAT = round({ name: 'LAW HEAT', id: 185, muzzleVelocity: 200, acceleration: 980, armingDistance: 100, impact: true, hasBackblast: true, fuse: 20, removal: 20.1, capacity: 1, explosionDamage: 20, explosionRadius: 150, impactDamage: 20, effectiveRange: 3500, maximumRange: 100000 });
 const RPG = round({ ...HEAT, name: 'RPG', id: 186, muzzleVelocity: 400 });
+/** The LAW HEAT's `Damage_Modifier` (the disc's is absent: 0), set by a test. */
+const HEAT_MOD = { value: 0 };
+Object.defineProperty(HEAT, 'damageModifier', { get: () => HEAT_MOD.value, enumerable: true });
 const BACKBLAST = round({ name: 'Backblast', id: 159, muzzleVelocity: 0, fuse: 0, removal: 0.1, capacity: 1, explosionDamage: 6, explosionRadius: 70 });
 const PMN = round({ ...CLAYMORE, name: 'PMN Mine', id: 158, fuse: 8, removal: 10, explosionDamage: 6.5, explosionRadius: 40, proximity: 10 });
 const C4 = round({ ...CLAYMORE, name: 'C4', id: 151, fuse: 6, removal: 0.1, explosionDamage: 18, explosionRadius: 50 });
@@ -103,7 +106,15 @@ function setup(terrorist: Loadout, seal: Loadout, t: V3, s: V3) {
       room.step();
     }
   };
-  return { room, a, b, eye, feet, send, run, drive };
+  /** The page's `fire` of the firearm in hand at the last command run, down the cone's centre (as room.test's `gunner`). */
+  const shoot = (id: number): void => {
+    const p = room.player(id)!, seq = p.sim.seq, f = p.cone.frame(seq)!;
+    const c = centreClaim(f, [f.feet[0], f.feet[1] + EYE_HEIGHT, f.feet[2]], 200);
+    room.text(id, { type: 'fire', seq, from: c.from, dir: c.dir, eye: c.eye, aim: c.aim, weapon: 0, viewTick: room.tick });
+  };
+  /** The launcher raised (`true`) or the firearm back (`false`): the page's `throw` of the item now in the hand. */
+  const hold = (id: number, name: string): void => send(id, name, eye(id), [0, 0, 0]);
+  return { room, a, b, eye, feet, send, run, drive, shoot, hold };
 }
 
 describe('the rockets on the server (research 94 §C4, R94.6/R94.9)', () => {
@@ -111,6 +122,7 @@ describe('the rockets on the server (research 94 §C4, R94.6/R94.9)', () => {
 
   it('the LAW\'s rocket: taken as a throw of its round, flown straight at 980 u/s^2 with no fall, gone off at the wall, one shot', () => {
     const s = setup(kit(62, 15, 121, 126, 255), LAW_KIT, [560, 0, 0], [0, 0, 0]);
+    s.hold(2, 'LAW'); s.drive(2, LAUNCHER_RAISE_READING + 0.05);
     const from = s.eye(2);
     s.send(2, 'LAW HEAT', from, [200, 0, 0]);
     expect(s.a.of('grenade')).toEqual([expect.objectContaining({ id: 2, kind: 'LAW HEAT' })]);
@@ -130,6 +142,7 @@ describe('the rockets on the server (research 94 §C4, R94.6/R94.9)', () => {
     // Player 1 six metres east: inside the arming distance, so no blast (FUN_003c8920 L319439-319462) -- yet the struck
     // body's hit (the node's `+0x94` handler, L319416-319418, before the arming test) takes 20 x 14 = 280: a kill.
     const s = setup(kit(62, 15, 121, 126, 255), kit(62, 15, 145, 185, 255), [60, 0, 0], [0, 0, 0]);
+    s.hold(2, 'LAW'); s.drive(2, LAUNCHER_RAISE_READING + 0.05);
     const from = s.eye(2), at = s.feet(1);
     const d: V3 = [at[0] - from[0], at[1] + 10 - from[1], at[2] - from[2]], l = Math.hypot(...d);
     s.send(2, 'LAW HEAT', from, [d[0] / l * 200, d[1] / l * 200, d[2] / l * 200]);
@@ -140,18 +153,65 @@ describe('the rockets on the server (research 94 §C4, R94.6/R94.9)', () => {
     expect(s.a.of('kill')[0]).toMatchObject({ victim: 1, weapon: 'LAW HEAT' });
   });
 
+  it('the rocket only from the launcher raised and past its raise; the rifle not while it is up, nor before it is down', () => {
+    const s = setup(kit(62, 15, 121, 126, 255), LAW_KIT, [0, 0, 500], [0, 0, 0]);
+    const fireRocket = (): void => s.send(2, 'LAW HEAT', s.eye(2), [200, 0, 0]);
+    s.drive(2, 0.5);
+    fireRocket();                                                           // the rifle in the hand: refused
+    expect(s.a.of('grenade')).toHaveLength(0);
+    s.hold(2, 'LAW');
+    expect((s.room as unknown as { body(p: unknown): { weapon: number } }).body(s.room.player(2)).weapon).toBe(145);                               // the others draw the launcher
+    s.drive(2, LAUNCHER_RAISE_READING - 0.1);
+    fireRocket();                                                           // mid-raise: refused
+    expect(s.a.of('grenade')).toHaveLength(0);
+    s.shoot(2); s.drive(2, 0.1);                                            // the rifle while the launcher is up: refused
+    expect(s.a.of('shot')).toHaveLength(0);
+    s.hold(2, 'M4A1 SD');                                                   // the firearm back ...
+    s.shoot(2); s.drive(2, 0.05);                                           // ... not before its raise is over
+    expect(s.a.of('shot')).toHaveLength(0);
+    s.drive(2, LAUNCHER_RAISE_READING);
+    s.shoot(2); s.drive(2, 0.05);
+    expect(s.a.of('shot')).toHaveLength(1);
+    s.drive(2, 0.5);
+    fireRocket();                                                           // the launcher down again: refused
+    expect(s.a.of('grenade')).toHaveLength(0);
+  });
+
+  it('refuses raising a launcher the kit does not hold', () => {
+    const s = setup(kit(62, 15, 121, 126, 255), kit(62, 15, 121, 185, 255), [0, 0, 500], [0, 0, 0]);
+    s.hold(2, 'LAW');
+    expect((s.room as unknown as { body(p: unknown): { weapon: number } }).body(s.room.player(2)).weapon).not.toBe(145);
+  });
+
+  it('a direct hit adds the round weapon\'s Damage_Modifier (L318741-318759), and nothing at or under the floor 0', () => {
+    const s = setup(kit(62, 15, 121, 126, 255), kit(62, 15, 145, 185, 255), [60, 0, 0], [0, 0, 0]);
+    HEAT_MOD.value = -20;                                                   // ImpactDamage 20 - 20 = 0: under the floor
+    try {
+      s.hold(2, 'LAW'); s.drive(2, LAUNCHER_RAISE_READING + 0.05);
+      const from = s.eye(2), at = s.feet(1);
+      const d: V3 = [at[0] - from[0], at[1] + 10 - from[1], at[2] - from[2]], l = Math.hypot(...d);
+      s.send(2, 'LAW HEAT', from, [d[0] / l * 200, d[1] / l * 200, d[2] / l * 200]);
+      s.run(1);
+      expect(s.a.of('grenade')).toHaveLength(1);
+      expect(s.a.of('hurt')).toHaveLength(0);
+      expect(s.room.player(1)!.alive).toBe(true);
+    } finally { HEAT_MOD.value = 0; }
+  });
+
   it.each([
     ['a kit with no LAW', kit(62, 15, 121, 185, 255), 'LAW HEAT', 200],
     ['the RPG\'s round from a LAW', LAW_KIT, 'RPG', 400],
     ['a rocket leaving faster than its Muzzle_Velocity', LAW_KIT, 'LAW HEAT', 400],
   ] as const)('refuses %s', (_what, loadout, kind, speed) => {
     const s = setup(kit(62, 15, 121, 126, 255), loadout, [560, 0, 0], [0, 0, 0]);
+    s.hold(2, 'LAW'); s.drive(2, LAUNCHER_RAISE_READING + 0.05);
     s.send(2, kind, s.eye(2), [speed, 0, 0]);
     expect(s.a.of('grenade')).toHaveLength(0);
   });
 
   it('the RPG-7 is fed one round at a time: FireWait 3 s between rockets (two RPG slots, two rockets)', () => {
     const s = setup(kit(62, 15, 121, 126, 255), kit(62, 15, 146, 186, 186), [0, 0, 500], [0, 0, 0]);
+    s.hold(2, 'RPG LAUNCHER'); s.drive(2, LAUNCHER_RAISE_READING + 0.05);
     s.send(2, 'RPG', s.eye(2), [400, 0, 0]);                                // east, at the wall: away from everyone
     s.drive(2, 1);
     s.send(2, 'RPG', s.eye(2), [400, 0, 0]);
@@ -168,6 +228,7 @@ describe('the rockets on the server (research 94 §C4, R94.6/R94.9)', () => {
     ['behind, 8 m: past its radius', [-80, 0, 0], false],
   ] as const)('%s', (_what, at, hurt) => {
     const s = setup(kit(62, 15, 121, 126, 255), LAW_KIT, at as unknown as V3, [0, 0, 0]);
+    s.hold(2, 'LAW'); s.drive(2, LAUNCHER_RAISE_READING + 0.05);
     s.send(2, 'LAW HEAT', s.eye(2), [200 * Math.cos(0.3), 200 * Math.sin(0.3), 0]);
     s.run(0.2);
     expect(s.a.of('blast').length > 0).toBe(hurt);
@@ -191,6 +252,27 @@ describe('the placed charges on the server (research 94 §C5, research 85 §9.7)
     s.run(0.1);
     expect(s.a.of('blast')).toHaveLength(1);
     expect(s.a.of('hurt').length).toBeGreaterThan(0);                       // 16 in 25 m, player 1 in its cone
+  });
+
+  it('the Detonator only with a claymore in the kit (FUN_005c74e0), at its FireWait (0.1 s) of commands at most', () => {
+    const s = setup(kit(62, 15, 153, 158, 255), kit(62, 15, 121, 158, 255), [300, 0, 0], [0, 0, 0]);
+    s.send(2, 'Detonator', s.eye(2), [0, 0, 0]);                             // no claymore in the SEAL's kit
+    expect(s.a.of('grenade')).toHaveLength(0);
+    s.send(1, 'Detonator', s.eye(1), [0, 0, 0]);
+    s.send(1, 'Detonator', s.eye(1), [0, 0, 0]);                             // at once again: dropped
+    expect(s.b.of('grenade').filter((g) => g.kind === 'Detonator')).toHaveLength(1);
+    s.drive(1, 0.15);
+    s.send(1, 'Detonator', s.eye(1), [0, 0, 0]);
+    expect(s.b.of('grenade').filter((g) => g.kind === 'Detonator')).toHaveLength(2);
+  });
+
+  it('a fifth charge down is refused (FUN_003cc1f0 < 4): claymores and PMNs count together', () => {
+    const s = setup(kit(62, 15, 121, 126, 255), kit(62, 15, 153, 153, 158), [300, 0, 300], [0, 0, 0]);
+    for (const [i, kind] of (['Claymore', 'Claymore', 'PMN Mine', 'Claymore', 'Claymore'] as const).entries()) {
+      s.send(2, kind, [8, 0.1, i * 2], [1, 0, 0]);
+    }
+    expect(s.a.of('grenade')).toHaveLength(4);
+    expect(s.room.player(2)!.grenades).toEqual({ Claymore: 5, 'PMN Mine': 3 });
   });
 
   it('the Detonator sets off only the SEAL\'s own claymores, within 500 u, never a PMN', () => {

@@ -196,6 +196,9 @@ describe('the LAW (AT-4) and the RPG-7 on the page (research 94 §C4.1-§C4.4, R
     expect(r.roundIcon()).toBe('firemode_at4.tif');
     expect(r.count()).toBe(1);
     r.pull();
+    expect(launches).toHaveLength(0);                               // mid-raise (LAUNCHER_RAISE_READING)
+    run(r, 1.5);
+    r.pull();
     expect(launches).toHaveLength(1);
     expect(launches[0]!.round).toBe('LAW HEAT');
     expect(launches[0]!.from).toEqual([102, 64, 195]);
@@ -216,6 +219,7 @@ describe('the LAW (AT-4) and the RPG-7 on the page (research 94 §C4.1-§C4.4, R
     const { r, launches } = launcher(kit(54, 15, 146, 186, 186));
     expect(r.selectSlot(1)).toBe(true);
     expect(r.count()).toBe(2);
+    run(r, 1.5);
     r.pull();
     run(r, 2.9);
     r.pull();

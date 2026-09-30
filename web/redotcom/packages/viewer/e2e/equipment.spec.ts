@@ -56,6 +56,9 @@ test('the LAW: raised from its slot, the rocket flies straight and goes off down
   expect(up).toMatchObject({ held: 'LAW', icon: 'at4_icon.tif', count: 1, roundIcon: 'firemode_at4.tif' });
   expect((await page.evaluate(() => window.__viewer.hud())).model).toMatchObject({ weaponIcon: 'at4_icon.tif', fireModeIcon: 'firemode_at4.tif', rounds: 1 });
 
+  await pull(page);                                          // mid-raise (LAUNCHER_RAISE_READING): nothing yet
+  expect((await page.evaluate(() => window.__viewer.equipment())).rocket.launched).toBe(0);
+  await expect.poll(() => page.evaluate(() => window.__viewer.equipment().rocket.wait)).toBe(0);
   await pull(page);
   await expect.poll(() => page.evaluate(() => window.__viewer.equipment().rocket.launched)).toBe(1);
   const fired = (await page.evaluate(() => window.__viewer.equipment())).rocket;

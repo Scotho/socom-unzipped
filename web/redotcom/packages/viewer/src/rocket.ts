@@ -1,7 +1,7 @@
 import { Group, Vector3 } from 'three';
 import { segmentHit, type Grid, type KitRound, type KitTable, type Loadout, type V3, type WeaponPoint } from '@s2u/scene';
 import { muzzlePoint } from './heldItem';
-import { EQUIPMENT_SLOTS, equipmentKind, rocketLaunch, rocketRoundOf, slotSelectable } from './equipment';
+import { EQUIPMENT_SLOTS, equipmentKind, LAUNCHER_RAISE_READING, rocketLaunch, rocketRoundOf, slotSelectable } from './equipment';
 import type { KitRounds } from './firearms';
 import type { PlaySnapshot } from './walk';
 
@@ -141,6 +141,7 @@ export class RocketLauncher {
     if (!slotSelectable(id, { chargesDown: 0, roundsFor: (l) => this.roundsFor(l) })) return false;
     if (this.held_ === id) return true;
     this.held_ = id;
+    this.wait = LAUNCHER_RAISE_READING;             // up before the first rocket (the room holds it to the same)
     this.emit('equip', true, id);
     return true;
   }

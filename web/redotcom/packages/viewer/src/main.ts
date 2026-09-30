@@ -82,7 +82,7 @@ import { WalkSounds } from './walkSounds';
 import { WEAPON_CLIPS } from './weaponPose';
 import { GrenadeThrower, type GrenadeItem } from './grenade';
 import { RocketLauncher } from './rocket';
-import { c4Targets, EQUIPMENT_SLOTS, equipmentKind, throwableOf } from './equipment';
+import { c4Targets, EQUIPMENT_SLOTS, equipmentKind, LAUNCHER_RAISE_READING, throwableOf } from './equipment';
 import { THROW_CLIPS, ThrowPose } from './throwPose';
 import { WhiteOut } from './flash';
 import type { SourceRequest, ViewerRequest, ViewerResponse } from './worker';
@@ -342,8 +342,14 @@ grenade.on('throwStart', ({ anim }) => { throwPose.start(anim); walk.hold(anim.c
 grenade.on('place', (info) => { audio.onAnimCallback(info.fireAnim, info.pos); net?.throwEvent(info.item, info.pos, info.facing); });
 // M7: the Detonator's fire, a throw of it (room.ts `detonate`: the SEAL's claymores within 500 u).
 grenade.on('detonate', (info) => { net?.throwEvent('Detonator', info.from, [0, 0, 0]); });
-rocket.on('equip', (on) => {
+/** M7: the firearm may fire again only once the launcher is down (`LAUNCHER_RAISE_READING`; the room holds it so too). */
+let firearmReadyAt = 0;
+rocket.on('equip', (on, id) => {
   fire.release(); stowRifle();
+  // The match hears the item now in the hand: the launcher (raised), or the firearm back (room.ts `raiseLauncher`).
+  const eye = walk.fireAim()?.eye ?? [0, 0, 0];
+  net?.throwEvent(on && id !== null ? equipmentName(id) ?? '' : kitRecord(kitItem).name, eye, [0, 0, 0]);
+  if (!on) firearmReadyAt = performance.now() + LAUNCHER_RAISE_READING * 1000;
   if (on && zoom.state() >= 4) setZoom(0);
   showFireMode();                            // the round's icon in the fire-mode cell while the launcher is up (FUN_00237b40)
 });
@@ -649,6 +655,7 @@ globalThis.addEventListener('keydown', (e: KeyboardEvent) => {
 function trigger(down: boolean): void {
   if (down && walk.isDead()) return;                  // the dead fire nothing and pull no pin (`FUN_00592560`)
   if (rocket.up()) { if (down) rocket.pull(); return; }   // M7: the launcher's trigger (a rocket a pull)
+  if (down && performance.now() < firearmReadyAt) return;   // M7: the firearm still coming back up
   if (grenade.equipped()) {
     if (down) grenade.pull();
     else grenade.release();
