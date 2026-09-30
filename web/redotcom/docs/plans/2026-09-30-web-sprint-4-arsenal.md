@@ -1,8 +1,9 @@
 # Web sprint 4 — "the arsenal" — implementation plan
 
 > Spec: `../specs/2026-09-30-web-sprint-4-arsenal-design.md` (§3 the rulings W4.R1-R8, §4 the bar, §5 the batch, §8
-> the owner's rows). Written 2026-09-30 against `claude/web-viewer-playtest-fixes` at 5c88ed5c (redotcom vitest 2004
-> passed / 4 skipped at the last green, e2e 49+ at the last full run). Branch **`web-sprint-4-arsenal`**. Executed by
+> the owner's rows). Written 2026-09-30 against `claude/web-viewer-playtest-fixes` at e5406330 (redotcom vitest 2004
+> passed / 4 skipped at 5c88ed5c's last green, plus 1b1ae687's `test/multiplayer.test.ts` -- M0 records the count; e2e
+> 49+ at the last full run). The site's build ships multiplayer off (`VITE_S2U_MULTIPLAYER=off`; spec §1). Branch **`web-sprint-4-arsenal`**. Executed by
 > one long-running cloud agent with a **$250 budget**. The Log at the foot is the live state, newest first.
 
 **Goal:** every weapon and item a multiplayer SEAL or Terrorist may carry, each side's own arsenal per map, built to
@@ -47,6 +48,16 @@ otherwise). Price per MTok, input/output: Opus 5.5 $4 / $20.
 | M10 | polish, the derive-from-source review, README, PR | Opus main + 1 Opus reviewer | $12 |
 | Reserve | debugging, the owner's feedback | — | $13 |
 | **Total** | | | **$250** |
+
+**Meter the spend, per milestone.** The split above rests on the work's shape alone: sprint 3's Log could record its
+spend only as "not metered", so no line here is calibrated. This sprint meters it: at every milestone's end the Log
+records the main agent's and each subagent's tokens in/out and the dollars they come to (from the session's usage or
+cost report where the harness gives one; otherwise from the token counts at the prices above, marked *estimated*),
+the milestone's total against its line, and the running total against $250. Two lines are the tightest -- **M4** ($30
+for ~41 firearms' fire, ballistics, magazines, HUD box and server tables) and **M8** ($30 for a 56-method class read
+from the decomp with no console frame of it): check the meter after M4's first weapon class and after M8's state
+machine, and re-plan then rather than at the 30% stop. The cuts below free only ~$40, since the never-cut list holds
+the bulk; an early overrun is met by trimming a class's pass to its shared behaviour, not by dropping a never-cut item.
 
 **Cost discipline:** keep the main agent's context stable (append-only notes; the plan's Log and the spec's §7 are the
 memory); read the 15 MB decomp and the recompilation's `.cpp` only by `grep -n` and line ranges — never paste them
@@ -148,7 +159,8 @@ M203/M79/MGL rounds (arming distance), the RPG-7, the LAW (backblast). Server-si
 
 ### M8 — The in-game select menu, 1:1
 `packages/viewer/src/weaponSelect.ts` + a pure `weaponSelectState.ts`: every state of research 94's table, opened when
-the game opens it (the prompt with the right glyph; the PC key and the pad button mapped per the controller config),
+the game opens it (the prompt with the right glyph; the pad button per the controller config; the PC key and the touch
+control are `WEAPON_SELECT_KEY_READING` / `WEAPON_SELECT_TOUCH_READING` in research 94's ledger, spec W4.R3),
 drawn on the HUD path (`newweapnbkrnd.tif`, the icons, the font) at the 640x448 frame, driven by keys, pad and touch,
 confirming into a `loadout` request that applies at the spawn the game applies it. Unit tests per state; e2e: die in
 the offline match, open, pick, confirm, next round with the pick; the other side lists its own.
@@ -157,7 +169,11 @@ the offline match, open, pick, confirm, next round with the pick; the other side
 Protocol 7: `loadout` request/answer (validated per W4.R2/R6), the body's weapon as an item id (the codec's bytes
 re-measured), the kill line's `DisplayName`; the room stores each player's kit and applies it at the spawn; remote
 players draw each other's weapon, clips, sounds, muzzle. Tests: refusals, a pick surviving a reconnect, two pages of
-opposite sides; `tools/mp-bots.ts` 16 + 8 still at 60 Hz with mixed kits.
+opposite sides; `tools/mp-bots.ts` 16 + 8 still at 60 Hz with mixed kits. **Behind the multiplayer switch** (spec §1):
+the site's build (`VITE_S2U_MULTIPLAYER=off`) keeps the menu and the `loadout` through the loopback `Room` only -- no
+Online control, no `/rooms`, no socket; `test/multiplayer.test.ts` stays green and gains a case that the off build's
+loadout opens no connection. The README's protocol lines say the site's page stays single player until the owner flips
+the deploy flag (O-S4-4).
 
 ### M10 — Polish and the close
 A derive-from-source review: an Opus reviewer (Fable-style brief: every new number traced to its cited source,
@@ -169,6 +185,10 @@ close entry with the spend, the PR to `main` (the owner merges; the server redep
 
 *(newest first)*
 
+- **2026-09-30 — revised after the Fable review** (the local controller): the prep rebased onto the integration head
+  e5406330 (1b1ae687's `VITE_S2U_MULTIPLAYER` switch; the site's build ships multiplayer off, spec §1, and M9's network
+  side sits behind it); the menu's PC key and touch control are readings in the ledger (W4.R3); the spend is metered
+  per milestone (above); the handoff's research 44/50/55 path named.
 - **2026-09-30 — opened** by the local controller: spec and plan written on `agent/web-s4prep` (to be cut as
   `web-sprint-4-arsenal` from the integration head); the inventory's headline in the spec's §2 and §7; the handoff zip
   built (see its `HANDOFF.md`).

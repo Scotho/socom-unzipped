@@ -1,7 +1,8 @@
 # Web sprint 4 — "the arsenal": every weapon, each team's own, and the in-game weapon select (design)
 
 > Written 2026-09-30 by the local controller for a long-running cloud agent. Base: `claude/web-viewer-playtest-fixes`
-> at 5c88ed5c (the walk, the classic match on and offline, web sprint 3's server, the launch fixes; the tree is
+> at e5406330 (the walk, the classic match on and offline, web sprint 3's server, the launch fixes, and 1b1ae687's
+> `VITE_S2U_MULTIPLAYER` build switch -- the site's build ships multiplayer off, §1; the tree is
 > `web/redotcom` + `web/landing` + `web/shared`). The sprint branch is **`web-sprint-4-arsenal`**, cut from it. The plan
 > is `../plans/2026-09-30-web-sprint-4-arsenal.md`; its `## Log` is the live state. What the agent needs and cannot get
 > from git is in the handoff zip (`HANDOFF.md` inside it says how to lay it out).
@@ -36,6 +37,17 @@ research 77-93):
   source (research 84 §10 lists the call sites).
 - **"1:1 as the original"** covers the menu's opening conditions, its prompt, its screens and every state, its input,
   its art, its sounds, and when a pick takes effect.
+
+**The site's build ships multiplayer off** (owner, 2026-09-30, 1b1ae687; `packages/viewer/src/multiplayer.ts`, the
+README's **Multiplayer off**). `VITE_S2U_MULTIPLAYER=off`, which `web/shared/deploy/site/deploy.sh` passes for the
+site's release build, removes the settings' Online section, the PLAYERS ONLINE count and the `/rooms` poll, ignores and
+strips `online=`/`mp`/`server=`, and never joins a match server; the offline match (the `Room` run in the page,
+`net/loopback.ts`) stays. `npm run dev` and a plain build keep multiplayer on. So in this sprint: the arsenal, the menu
+(M8) and the `loadout` request work in **both** builds through the loopback `Room` -- on the site they are single
+player; everything that reaches a network server -- protocol 7 on the wire, remote players' kits, the server's refusals
+over a socket (M9) -- sits behind the same switch the Online section does (`multiplayerEnabled`, the `MULTIPLAYER` gate
+in `main.ts`). Nothing new may bring back an Online control, a `/rooms` request or a server connection in the off build;
+`test/multiplayer.test.ts` stays green, and M9 adds a case that the off build's loadout path opens no socket.
 
 ## 2. Where it stands (the inventory; the full one is research 94's first task)
 
@@ -92,13 +104,20 @@ research 77-93):
   `Room` and the server.
 - **W4.R3 — the in-game select menu, 1:1.** `CInGameWeaponSel` as the game has it: **when** it may open (read it:
   dead in classic, as a ghost, before the round starts, at a spawn?), **how** (the prompt's `%c` button per controller
-  config, and the PC key the viewer maps to it), **every screen and state** (the slot list, the per-slot item list,
+  config, read from the decomp; the pad keeps that button), **every screen and state** (the slot list, the per-slot item list,
   locked/unavailable items, the highlight, the item's name/icon/description/stats if drawn, confirm, cancel, the
   default-kit choice, what the rest of the HUD does meanwhile), its art (`newweapnbkrnd.tif`, the icons, the font), its
   sounds (`UIVOICE`/`HUDUI` names the decomp calls), and **when a pick applies** (research 91 §4.3: at the next spawn;
   in classic, the next round). The menu is drawn with the viewer's HUD bitmap and font path (`hudBitmaps.ts`,
   `hudFont.ts`) on the game's 640x448 frame, the same as the scoreboard. If the in-game menu also offers the character
   type, it is built; if it does not, the type stays the server's (`DEFAULT_CHARTYPE_PLACEHOLDER`).
+  **The PC key and the touch control that open it are not the game's** (the game draws a pad glyph; the owner has named
+  no key). Each is a reading: `WEAPON_SELECT_KEY_READING` (one key, free of every key `controlsList.ts` already binds --
+  `1`-`5`, `B`, `X`, `Q`, `E`, `Tab`, `M`, `F`, `G` and the rest listed there) and `WEAPON_SELECT_TOUCH_READING` (an
+  on-screen button shown only while the prompt is), each listed in research 94's Placeholders section with the
+  reason, shown in the prompt in place of the pad glyph when the keyboard or touch is the input, in both Controls
+  lists and the README, and named in the close PR so the owner confirms or overturns them (O-S4-3). The agent does not
+  pick one silently.
 - **W4.R4 — every weapon's behaviour is its record's.** Rate (`FireWait`), fire modes (`MaxFireMode`, `AutoMode`,
   `SingleMode`, the mode switch), damage (`ImpactDamage` of its round + `Damage_Modifier`, x14, the falloff past
   `Effective_Range` to `Maximum_Range`), penetration (`Piercing`), pellets for the shotguns (read how the 12 gauge
@@ -180,7 +199,7 @@ refusing any pick the game would refuse.
   RPG, the thermal scope; the claymore into the match.
 - **M8 — The select menu, 1:1:** `CInGameWeaponSel` drawn and driven, its prompt, every state, keys/pad/touch.
 - **M9 — Multiplayer kits and server authority:** protocol 7, loadout validation, the spawn's kit, remote players'
-  weapons, the kill lines' names, load test unchanged.
+  weapons, the kill lines' names, load test unchanged; the network side behind the `VITE_S2U_MULTIPLAYER` switch (§1).
 - **M10 — Polish and the close:** a derive-from-source review of every new value (a Fable-style self-review pass run
   by Opus against research 94), the README, the Log, the PR.
 
@@ -208,6 +227,10 @@ turrets, single-player missions, new game modes.
   weapon box with each firearm, a Terrorist's menu, and the front-end ARMORY for reference; drop them in a folder the
   agent is told about (or a second zip). Without them the menu is built from the decomp alone and the note says so.
 - **O-S4-3 — play test and rule.** At the close: play a side on two maps, open the menu, try each class; overturn any
-  W4 ruling by number (e.g. W4.R5's key 5).
-- **O-S4-4 — merge and deploy.** Review the PR to `main`; the Lightsail server needs a redeploy for protocol 7 (the
-  page and the server must move together; the existing deploy's `deploy.sh`).
+  W4 ruling by number (e.g. W4.R5's key 5); confirm or replace the menu's PC key and touch control
+  (`WEAPON_SELECT_KEY_READING`, `WEAPON_SELECT_TOUCH_READING`, W4.R3).
+- **O-S4-4 — merge and deploy.** Review the PR to `main`. The server redeploy carries protocol 7 (a protocol-6 page and
+  a protocol-7 server refuse each other, so a page with multiplayer on and the server move together; the existing
+  deploy's `deploy.sh`). The served page's multiplayer stays **off** (`VITE_S2U_MULTIPLAYER=off` in the site's
+  `deploy.sh`, §1): on the site the arsenal and the menu play in the offline match only, unless the owner flips that
+  deploy flag.
