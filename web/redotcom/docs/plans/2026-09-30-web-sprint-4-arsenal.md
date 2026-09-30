@@ -185,6 +185,20 @@ close entry with the spend, the PR to `main` (the owner merges; the server redep
 
 *(newest first)*
 
+- **2026-09-30 — M2, the data layer** (the cloud agent). `packages/scene/src/arsenal.ts`: every `ZWEAPON` record as an
+  `ArsenalItem` (class by id range, slot kind, model, icon, round, and the rare keys with the parser's defaults:
+  `SlotCost`, `ReloadTime`, `ReloadDelay`, the bolt/pump lock, `ArmingDistance`, `HasBackblast`, gravity, muzzle
+  velocity, `Timer1/2`, pellets, the rockets' acceleration); `FUN_003cf1f0`'s id-to-valve map; each map's valves,
+  per-side selectable list and 4+4 character kits (`readMapArsenal`); the menu's rules -- `selectable`
+  (`FUN_0023c390`), `slotLocked` (`FUN_0023e910`), `menuValves` (the launcher-round rewrite), `pick` with the
+  dependants and the refill (`FUN_0023fef0`/`FUN_0023eca0`/`FUN_0023b9b0`, the refill from the player's own side:
+  `INGAME_AUTOFILL_SIDE_READING` now in code) -- and **`applyPicks`, the server's authority: the menu's picks replayed
+  through the same rules**, so the kit is computed by the room, never taken from the page (W4.R6; this replaces the
+  plan's `validateLoadout(side, map, type, pick)` shape). Tests (`scene/test/arsenal.test.ts`, 15): a synthetic twin of
+  every rule, and off the disc all 22 maps' per-side lists equal to research 94 §A4's table (read from the note), the
+  BREACH SEALs' locked C4, MP6's SEAL 226. The page, `net/loopback.ts` and the server take it up in M4/M8/M9, where
+  their kit code changes. Suite: redotcom 2140 passed / 2 skipped.
+
 - **2026-09-30 — M1 closed: research 94** (the cloud agent). Three Opus readers (the arsenal; the menu; per-class
   behaviour) wrote parts 1-3, merged as `docs/research/94-the-arsenal.md` with a §0 of rulings R94.1-R94.17 the later
   tasks build on. Headline: **`CInGameWeaponSel` is dead code** -- the dead player's menu is the HUD's "WEAPON

@@ -20,6 +20,7 @@ export * from './weapon';
 export * from './tuning';
 export * from './segment';
 export * from './weapons';
+export * from './arsenal';
 export * from './projectile';
 export * from './throwArc';
 export * from './ladder';
