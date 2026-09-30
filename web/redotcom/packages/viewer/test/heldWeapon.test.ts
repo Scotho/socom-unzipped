@@ -40,7 +40,8 @@ describe('loadMap: the held weapon', () => {
     // Research 94 §A4: Frostfire's four SEAL and four Terrorist kits' primaries and secondaries.
     for (const m of ['m4Acarbine', 'remington870', 'mp5', 'stoner_sr25', 'a_mark23', 'sig_commando', 'spas12', 'fnp90', 'barretm82A1',
       'baretta_m9', 'desert_eagle', 'fiveseven', 'glock18']) expect(models).toContain(m);
-    expect(models).not.toContain('IW80A2');                              // the SA-80's model is in no map's library
+    // The SA-80's `ModelName IW80A2` is the library's `iw80a2`: found by the name, case aside (MODEL_NAME_CASE_READING).
+    expect(map.weapons!['IW80A2']!.parts.length).toBeGreaterThan(0);
     for (const m of models) for (const p of map.weapons![m]!.parts) if (p.textureName) expect(map.textures[p.textureName]).toBeDefined();
     expect(map.arsenal!.map!.kits.seal[0]!.loadout).toEqual([54, 15, 121, 126, 194]);
     for (const icon of ['m4carbine_icon.tif', 'sigcommando_icon.tif', 'gun_baretta_9mm_icon.tif', 'barrettm82a.tif']) expect(map.hud![icon]).toBeDefined();

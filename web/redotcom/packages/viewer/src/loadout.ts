@@ -139,9 +139,13 @@ export class PlayerLoadout {
     return this.picks[side] ?? this.devKit;
   }
 
-  /** The rebuild at a spawn: the loadout the body now carries. */
-  spawn(side: Side): Loadout {
-    this.current = this.pending(side) ?? typeLoadout(this.map, side) ?? BAKED_LOADOUT;
+  /**
+   * The rebuild at a spawn: the loadout the body now carries. `network`: the match is a network server's, which gives
+   * the type's kit and hears no pick yet (M9's `loadout` request): the pick waits, so the page carries what the room does.
+   */
+  spawn(side: Side, opts: { network?: boolean } = {}): Loadout {
+    const pick = opts.network ? null : this.pending(side);
+    this.current = pick ?? typeLoadout(this.map, side) ?? BAKED_LOADOUT;
     return this.current;
   }
 

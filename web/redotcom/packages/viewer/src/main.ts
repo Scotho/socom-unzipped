@@ -407,7 +407,8 @@ function hangKit(force = false): void {
 function spawnKit(side: Side): void {
   fireModes[kitItem] = fireMode;                       // the mode in the hand kept with its firearm
   const before = kitRecs;
-  loadouts.spawn(side);
+  // A network server gives the type's kit (room.ts); only the page's own room (or no match) takes the page's pick.
+  loadouts.spawn(side, { network: !!NET.url });
   kitRecs = loadouts.records();
   if (kitRecs[0].id !== before[0].id) fireModes.rifle = defaultFireMode(kitRecs[0]);
   if (kitRecs[1].id !== before[1].id) fireModes.pistol = defaultFireMode(kitRecs[1]);
@@ -1581,7 +1582,7 @@ function show(map: LoadedMap): void {
   // WEAPON (web sprint 4): the map's kits, and the page's player spawned with its side's -- a SEAL until the match says
   // (`respawned`): the primary in the right hand at its grip, the secondary on the hips until drawn (`./kit`).
   loadouts.setMap(map.arsenal?.table ?? null, map.arsenal?.map ?? null);
-  loadouts.spawn('seal');
+  loadouts.spawn('seal', { network: !!NET.url });
   hangKit(true);                                       // a new body: the kit is hung on it afresh
   spawnKit('seal');
   warmedAt = {};

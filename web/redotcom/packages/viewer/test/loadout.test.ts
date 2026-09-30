@@ -119,6 +119,17 @@ describe('the spawn kit: the character type\'s default_weapons, a pick at the ne
     expect(l.spawn('seal')).toEqual([62, 15, 121, 126, 255]);
   });
 
+  it('against a network server the pick waits: the type\'s kit, as the room gives it, until M9 carries a request', () => {
+    const l = new PlayerLoadout();
+    l.setDevKit(kit(62, 15, 121, 126, 255));
+    l.setMap(table, map);
+    l.setLoadout(kit(38, 15, 121, 126, 255), 'seal');
+    expect(l.spawn('seal', { network: true })).toEqual([54, 15, 121, 126, 194]);
+    expect(l.spawn('terrorist', { network: true })).toEqual([57, 5, 121, 126, 194]);
+    expect(l.pending('seal')).toEqual([38, 15, 121, 126, 255]);          // kept for the page's own match
+    expect(l.spawn('seal')).toEqual([38, 15, 121, 126, 255]);
+  });
+
   it.each([
     ['?kit=62,15,121,126,255', [62, 15, 121, 126, 255]],
     ['?map=MP2&kit=62,15&devmode', [62, 15, EMPTY_ITEM, EMPTY_ITEM, EMPTY_ITEM]],

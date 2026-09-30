@@ -552,8 +552,9 @@ function firearmIcons(arsenal: SimKits): string[] {
  * W2.4, web sprint 4 M3: the held weapons (`LoadedMap.weapons`) out of the map's own `WEAP_GEO`/`WEAP_MDL` (`@s2u/scene`'s
  * `weaponLibrary`, web/redotcom/docs/research/79 §2), the library parsed once: every firearm model the arsenal names
  * (the loadout may hold any, and a pick may change it at the next spawn), or the baked pair's two without the arsenal.
- * A model the library lacks is left out -- the SA-80's `IW80A2` is in no map's library -- and said only when a kit of
- * the map holds it. A library that will not read costs one diagnostic and the weapons, never the load; a chunk that
+ * A record's `ModelName` is looked up case aside -- the SA-80's `IW80A2` is every library's `iw80a2`, and the retail
+ * SA-80 draws (MODEL_NAME_CASE_READING: the game's compare was not traced) -- and kept under the record's spelling.
+ * A model the library lacks (a `placeholder`, `NULL`) is left out, and said only when a kit of the map holds it. A library that will not read costs one diagnostic and the weapons, never the load; a chunk that
  * will not decode costs its own line and nothing else.
  */
 function heldWeapons(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes, arsenal: SimKits | undefined): Record<string, HeldWeapon> | undefined {
@@ -575,15 +576,16 @@ function heldWeapons(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes, arsenal: 
   } else {
     for (const slot of [0, 1] as const) wanted.add(slotModel(null, BAKED_LOADOUT, slot)!);
   }
-  const held = new Set(library.names());
+  const MODEL_NAME_CASE_READING = new Map(library.names().map((n) => [n.toLowerCase(), n] as const));
   const out: Record<string, HeldWeapon> = {};
   for (const model of wanted) {
-    if (!held.has(model)) {
+    const name = MODEL_NAME_CASE_READING.get(model.toLowerCase());
+    if (name === undefined) {
       if (kitModels.has(model) || !arsenal) notes.add(`weapon ${model}: not in the map's weapon library`);
       continue;
     }
     try {
-      const decoded = library.decode(model, 'high');
+      const decoded = library.decode(name, 'high');
       for (const d of decoded.diagnostics) notes.add(`weapon ${decoded.name}: ${d}`);
       const parts: LoadedMesh[] = decoded.parts.flatMap((part) => part.meshes.map((mesh) => ({
         ...mesh, textureName: mesh.textureName === null ? null : textureKey(mesh.textureName),
