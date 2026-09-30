@@ -149,7 +149,10 @@ const HEAD_OVER: Readonly<Record<'stand' | 'crouch' | 'prone', number>> = { stan
  * A projectile the room flies: its owner, its kind (the record's name on the wire) and its state; `facing` is a placed
  * claymore's front (its cone's axis, `claymoreCone`) or a backblast's axis (backwards from the launcher).
  */
-interface Flying { owner: number; kind: string; g: Grenade; facing?: V3 }
+interface Flying { owner: number; kind: string; g: Grenade; facing?: V3; struck?: Set<number> }
+
+/** A body a round met along a tick's segment (`bodyCast`): whose, which part, where. */
+interface BodyHit { id: number; part: number; point: V3 }
 
 interface Past { tick: number; feet: V3; yaw: number; posture: 'stand' | 'crouch' | 'prone'; alive: boolean }
 
@@ -1065,8 +1068,14 @@ export class Room {
     const origins = [...this.players.values()].filter((q) => q.alive).map((q) => { const w = q.sim.walker.state; return [w.x, w.y, w.z] as const; });
     for (const f of this.flying) {
       if (f.g.record.proximity !== undefined) proximityTripped(f.g, origins);
-      const cast = f.g.record.impact && f.g.state === 'flight' ? this.bodyCast(this.cast, f.owner) : this.cast;
-      for (const e of stepGrenade(f.g, 1 / TICK_HZ, cast)) if (e.kind === 'explode') this.blast(f, e.point);
+      const bodies: BodyHit[] = [];
+      const cast = f.g.record.impact && f.g.state === 'flight' ? this.bodyCast(this.cast, f.owner, bodies) : this.cast;
+      const events = stepGrenade(f.g, 1 / TICK_HZ, cast);
+      // The body the round met this tick -- where it went off, or bounced as a dud -- takes its direct hit first.
+      const met = events.find((e) => e.kind === 'explode' || e.kind === 'dud' || e.kind === 'bounce');
+      const body = met && 'point' in met ? bodies.find((b) => b.point.every((v, i) => Math.abs(v - met.point[i]!) < 1e-6)) : undefined;
+      if (body) this.directHit(f, body);
+      for (const e of events) if (e.kind === 'explode') this.blast(f, e.point);
     }
     for (let i = this.flying.length - 1; i >= 0; i--) if (this.flying[i]!.g.state === 'removed') this.flying.splice(i, 1);
   }
@@ -1078,7 +1087,7 @@ export class Room {
    * keep the hull (their bounce off a body, `DAT_003e14f8`, is not modelled here). The owner's own body is passed
    * over, as a bullet leaves its shooter's (`fire`: `q === p` skipped).
    */
-  private bodyCast(hull: HullCast, owner: number): HullCast {
+  private bodyCast(hull: HullCast, owner: number, met: BodyHit[]): HullCast {
     const person = SOILS.find((m) => m.name === 'PERSON')!;
     return (a, b) => {
       const hits: HullHit[] = hull(a, b);
@@ -1090,10 +1099,38 @@ export class Room {
         const w = q.sim.walker.state, feet: V3 = [w.x, w.y, w.z];
         if (!nearRay(a, dir, reach, feet)) continue;
         const hit = rayBody(a, dir, reach, bodyVolumes(feet, w.yaw, q.sim.walker.posture, this.volumes));
-        if (hit) hits.push({ point: [a[0] + dir[0] * hit.t, a[1] + dir[1] * hit.t, a[2] + dir[2] * hit.t], normal: [-dir[0], -dir[1], -dir[2]], material: person, t: hit.t / reach });
+        if (!hit) continue;
+        const point: V3 = [a[0] + dir[0] * hit.t, a[1] + dir[1] * hit.t, a[2] + dir[2] * hit.t];
+        hits.push({ point, normal: [-dir[0], -dir[1], -dir[2]], material: person, t: hit.t / reach });
+        met.push({ id: q.id, part: hit.part, point });
       }
       return hits.sort((x, y) => x.t - y.t);
     };
+  }
+
+  /**
+   * M7: a launched round striking a body (`HandleImpact` 0x3c8920 L319416-319418: the struck node's `+0x94` handler,
+   * vtable `+8`, called before the arming test -- so a dud inside 10 m strikes too): the part takes the round's
+   * `GetDamage` by its non-explosive branch (0x3c7600 L318730-318750: `ImpactDamage` + the weapon's `Damage_Modifier`, full
+   * to `Effective_Range`, to 0 at `Maximum_Range`) at the bullet's x14 (`bulletDamage`, research 91 §1.1), the round's
+   * piercing, once a body a round. IMPACT_HIT_READING: that the character's handler applies this damage as a bullet's hit
+   * (on the part the capsule names) is read from the shared `GetDamage`, the handler itself not traced. Friendly fire off
+   * spares the thrower's team, as the blast does.
+   */
+  private directHit(f: Flying, body: BodyHit): void {
+    const r = f.g.record, dmg0 = r.impactDamage ?? 0;
+    const q = this.players.get(body.id), thrower = this.players.get(f.owner) ?? null;
+    if (!(dmg0 > 0) || !q || !q.alive || (f.struck ??= new Set()).has(q.id)) return;
+    f.struck.add(q.id);
+    if (thrower && q !== thrower && q.team === thrower.team) return;
+    const IMPACT_HIT_READING = { impactDamage: dmg0, effectiveRange: r.effectiveRange / UNITS_PER_METRE, maximumRange: r.maximumRange / UNITS_PER_METRE };
+    const distance = Math.hypot(body.point[0] - f.g.launch[0], body.point[1] - f.g.launch[1], body.point[2] - f.g.launch[2]);
+    const dmg = bulletDamage(IMPACT_HIT_READING, distance);
+    if (dmg === null) return;
+    const piercing = this.thrown(f.kind)?.piercing ?? 0;
+    const died = applyHit(q.health, body.part, dmg, piercing);
+    this.send(q.id, { type: 'hurt', health: [...q.health.hp], from: [...f.g.launch], part: body.part });
+    if (died) this.kill(q, thrower, r.name, q === thrower ? 'suicide' : 'weapon', deathClip('bullet', body.part, q.sim.walker.posture, this.opts.random));
   }
 
   /**

@@ -43,8 +43,8 @@ const ROWS: Row[] = [
   ['Claymore', { id: 153, fuse: 9999999, removal: 10, explosionDamage: 16, explosionRadius: 250, muzzleVelocity: 0, capacity: 4, impact: false }],
   ['PMN Mine', { id: 158, fuse: 8, removal: 10, explosionDamage: 6.5, explosionRadius: 40, proximity: 10, muzzleVelocity: 0, capacity: 4, impact: false }],
   ['C4', { id: 151, fuse: 6, removal: 0.1, explosionDamage: 18, explosionRadius: 50, muzzleVelocity: 0, capacity: 4, impact: false }],
-  ['LAW HEAT', { id: 185, fuse: 20, removal: 20.1, explosionDamage: 20, explosionRadius: 150, armingDistance: 100, acceleration: 980, hasBackblast: true, muzzleVelocity: 200, capacity: 1, impact: true }],
-  ['RPG', { id: 186, fuse: 20, removal: 20.1, explosionDamage: 20, explosionRadius: 150, armingDistance: 100, acceleration: 980, hasBackblast: true, muzzleVelocity: 400, capacity: 1, impact: true }],
+  ['LAW HEAT', { id: 185, fuse: 20, removal: 20.1, explosionDamage: 20, explosionRadius: 150, armingDistance: 100, acceleration: 980, hasBackblast: true, muzzleVelocity: 200, capacity: 1, impact: true, impactDamage: 20 }],
+  ['RPG', { id: 186, fuse: 20, removal: 20.1, explosionDamage: 20, explosionRadius: 150, armingDistance: 100, acceleration: 980, hasBackblast: true, muzzleVelocity: 400, capacity: 1, impact: true, impactDamage: 20 }],
   ['Backblast', { id: 159, fuse: 0, removal: 0.1, explosionDamage: 6, explosionRadius: 70, muzzleVelocity: 0 }],
 ];
 

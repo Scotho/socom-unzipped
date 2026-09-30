@@ -40,7 +40,7 @@ function map(): SimMap {
 const kit = (...ids: number[]): Loadout => ids as unknown as Loadout;
 /** The records as `kitTableOf` reads them off the disc (research 94 §C11); the room reads them by id. */
 const round = (over: Partial<ThrowableRecord>): ThrowableRecord => ({ ...M67, ...over });
-const HEAT = round({ name: 'LAW HEAT', id: 185, muzzleVelocity: 200, acceleration: 980, armingDistance: 100, impact: true, hasBackblast: true, fuse: 20, removal: 20.1, capacity: 1, explosionDamage: 20, explosionRadius: 150 });
+const HEAT = round({ name: 'LAW HEAT', id: 185, muzzleVelocity: 200, acceleration: 980, armingDistance: 100, impact: true, hasBackblast: true, fuse: 20, removal: 20.1, capacity: 1, explosionDamage: 20, explosionRadius: 150, impactDamage: 20, effectiveRange: 3500, maximumRange: 100000 });
 const RPG = round({ ...HEAT, name: 'RPG', id: 186, muzzleVelocity: 400 });
 const BACKBLAST = round({ name: 'Backblast', id: 159, muzzleVelocity: 0, fuse: 0, removal: 0.1, capacity: 1, explosionDamage: 6, explosionRadius: 70 });
 const PMN = round({ ...CLAYMORE, name: 'PMN Mine', id: 158, fuse: 8, removal: 10, explosionDamage: 6.5, explosionRadius: 40, proximity: 10 });
@@ -124,6 +124,20 @@ describe('the rockets on the server (research 94 §C4, R94.6/R94.9)', () => {
     expect(s.a.of('hurt').length).toBeGreaterThan(0);                       // 20 in 15 m at the wall, player 1 40 off it
     s.send(2, 'LAW HEAT', s.eye(2), [200, 0, 0]);
     expect(s.a.of('grenade')).toHaveLength(1);                              // none left
+  });
+
+  it('a direct hit: the body the rocket strikes takes its ImpactDamage x14 (GetDamage 0x3c7600, the bullet branch) -- a dud inside 10 m too', () => {
+    // Player 1 six metres east: inside the arming distance, so no blast (FUN_003c8920 L319439-319462) -- yet the struck
+    // body's hit (the node's `+0x94` handler, L319416-319418, before the arming test) takes 20 x 14 = 280: a kill.
+    const s = setup(kit(62, 15, 121, 126, 255), kit(62, 15, 145, 185, 255), [60, 0, 0], [0, 0, 0]);
+    const from = s.eye(2), at = s.feet(1);
+    const d: V3 = [at[0] - from[0], at[1] + 10 - from[1], at[2] - from[2]], l = Math.hypot(...d);
+    s.send(2, 'LAW HEAT', from, [d[0] / l * 200, d[1] / l * 200, d[2] / l * 200]);
+    s.run(1);
+    expect(s.a.of('blast')).toHaveLength(0);                                // a dud: no blast
+    expect(s.a.of('hurt').length).toBeGreaterThan(0);
+    expect(s.room.player(1)!.alive).toBe(false);
+    expect(s.a.of('kill')[0]).toMatchObject({ victim: 1, weapon: 'LAW HEAT' });
   });
 
   it.each([

@@ -96,6 +96,11 @@ export interface ThrowableRecord {
    * Absent on everything else.
    */
   proximity?: number;
+  /**
+   * An impact round's `ImpactDamage` (`ZAMMO`, `FUN_003d4530`), when over 0 (the rockets' 20): what a body the round strikes
+   * takes by `GetDamage`'s non-explosive branch (0x3c7600, the bullet's: x14, the range falloff; research 91 §1.1).
+   */
+  impactDamage?: number;
 }
 
 /** `zweapon.rdr`'s M67 (the frag) and its `M67 Ammo`, transcribed; `test/projectile.test.ts` proves it equals the file. */
@@ -288,6 +293,8 @@ export function throwableRecord(script: RdrNode, name = 'M67'): ThrowableRecord 
     ...(rdrGet(round, 'AccelerationFactor') !== undefined ? { acceleration: n('AccelerationFactor', WORLD_SCALE, round, at) } : {}),
     ...(rdrGet(record, 'HasBackblast') !== undefined ? { hasBackblast: true } : {}),
     ...(rdrGet(round, 'ProximityDistance') !== undefined ? { proximity: n('ProximityDistance', WORLD_SCALE, round, at) } : {}),
+    // The impact rounds only (the launched ones, `HandleImpact`): a hand grenade's (the M67's 0.2) strikes nothing here.
+    ...(!bouncesByType(n('ID')) && rdrGet(round, 'ImpactDamage') !== undefined && n('ImpactDamage', 1, round, at) > 0 ? { impactDamage: n('ImpactDamage', 1, round, at) } : {}),
   };
 }
 
