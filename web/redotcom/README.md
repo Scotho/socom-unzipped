@@ -135,6 +135,11 @@ the disc page and makes no request under `maps/`. Add `?devmode` (its presence i
 extracted tree from `public/maps/` as it always did, falling back to the disc page when `maps/index.json` does not
 answer (`packages/viewer/src/source.ts`). The e2e specs and the measuring tools under `tools/` add it to their URLs; do
 the same by hand, e.g. `http://localhost:5173/?map=MP2&mode=play&devmode`. It is not shown anywhere in the page.
+With it, `&kit=<id>,<id>,...` (up to five `zweapon.rdr` item ids, slot order primary, secondary, equipment 1-3; the
+rest empty) is the kit the player spawns with on every map and side instead of its character type's -- what a spec
+that pins a weapon asks for: `&kit=62,15,121,126,255` is the M4A1 SD, the Mark 23, the M67 and the HE without 2X, the
+kit the sprint 2-3 specs were measured on (`packages/viewer/src/loadout.ts` `kitParam`; the page's own match carries it
+too). The hook's `loadout()` reads the kit on the body, `setLoadout([...])` makes a pick for the next spawn.
 | `npm run dump-textures -- RUN/MP2.ZDB` | every texture to PNG, both pixel orders and both CLUT orders, plus contact sheets |
 | `npm run dump-sounds -- MP2 [dir] [.STEP_STONE ...]` | a map's 989snd sounds rendered to WAV, with each one's length, peak and RMS (`docs/research/81-sounds.md` §11) |
 | `npm run export-gltf -- RUN/MP2.ZDB` | one map's world mesh to a `.glb`, for Blender or a glTF validator |
@@ -264,7 +269,7 @@ change (`history.replaceState`: no reload, no history entries), so copying the a
 or `rules=classic`. On load the
 address beats what the browser remembers; a setting the address leaves out takes the remembered choice, which is then
 written in. A value the page does not know is ignored. `devmode`, `mp`, `server=`, `lag=` and `loss=` work as before
-and pass through untouched (never added), and so does `fly` with `devmode` (without it `fly` is ignored and taken out);
+and pass through untouched (never added), and so do `fly` and `kit=` with `devmode` (without it they are ignored);
 `server=` (or `mp`) beats `online=` and implies it. The retired `redotcom` and `rules=` have no effect and are taken out.
 A link with `online=shared` drops the friend into the same map's match -- as a player with `mode=play`, watching with
 `mode=explore`.
@@ -611,8 +616,21 @@ rounds a minute), 30 rounds and three magazines -- the console's "30/30 · 2 MAG
 every polygon of the hull (`viewer/src/fire.ts`); where it lands goes `decals.rdr`'s `bullet_mark_stone.tif` off
 `EFFE_TXR.ZED`, 1 to 1.8 units wide.
 
-**The gunplay is the game's** ([research 84](docs/research/84-accuracy-and-recoil.md)): the SEAL's M4A1 SD
-(`HELD_RIFLE`) fires to `Maximum_Range` x 10 units; its reticle opens with the walk, the look and each round and closes
+**The kit is the character type's** (web sprint 4, M3/M4; [research 94](docs/research/94-the-arsenal.md)): the page
+reads `RUN/ZWEAPON.ZAR` beside `READERC.ZAR` (the served tree with `?devmode`, or the disc image) and the map's own
+`READERM.ZAR`, and the player spawns with its side's first type's `default_weapons` -- on Frostfire `mp2_seal1`'s
+M4A1, Mark 23, M67, HE and Double Ammo Load; the Terrorists' `mp2_terror1` the 552 and the M9 -- a `Loadout` of five
+item ids (`packages/viewer/src/loadout.ts`). L1 and L2 take up its primary and secondary, each with its own record
+(rate, modes, magazines, zoom, reticle set, cone, kick, muzzle animation, sounds), its own model at its own grip (every
+firearm model of the map's weapon library, decoded once with the map, built on first use) and its own HUD icon
+(`IconTextureName`); 2X doubles the firearms' magazines, at most ten (`FUN_005c75f0`, research 94 §A7). A pick
+(`setLoadout`; the weapon select to come) waits for the next spawn -- in classic, the next round. The match's room keys
+its rate, reload lock, cone, damage and falloff by the player's own slot records, the arsenal read from `SOCOM_DISC` at
+the server's start; the others are drawn with their side's type's kit. Without `ZWEAPON.ZAR` the kit is the baked M4A1
+SD and Mark 23 of before. The equipment slots still hold the fixed pouch (`POUCH_PLACEHOLDER`, until the equipment task).
+
+**The gunplay is the game's** ([research 84](docs/research/84-accuracy-and-recoil.md)): the SEAL's rifle -- the M4A1 SD
+(`HELD_RIFLE`) the specs pin by `&kit=` -- fires to `Maximum_Range` x 10 units; its reticle opens with the walk, the look and each round and closes
 at the weapon's own per-stance rates (`viewer/src/accuracy.ts`), halved in third person; a round climbs the whole
 reticle up the screen (the recoil you see unscoped -- the camera does not kick there) and goes inside it by the
 game's cone; semi, burst and automatic (`B`, L3; burst at spawn); the right button steps the view third person -> the 3x
