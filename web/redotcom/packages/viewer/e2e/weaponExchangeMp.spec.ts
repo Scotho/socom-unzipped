@@ -80,9 +80,9 @@ test('two pages: a Terrorist\'s pick is the room\'s next-round kit, and the SEAL
   const pick = (await menu(a)).item;
   expect(pick).not.toBe(57);
   await a.keyboard.press('Enter');
-  // The room answered: the kit it will spawn the Terrorist with.
-  await expect.poll(async () => (await menu(a)).loadout[0], { timeout: 10_000 }).toBe(pick);
-  expect(await a.evaluate(() => window.__viewer.loadout().pending?.[0] ?? null)).toBe(pick);
+  // The room answered: the kit it will spawn the Terrorist with (the page's pending kit is the answer's).
+  await expect.poll(async () => a.evaluate(() => window.__viewer.loadout().pending?.[0] ?? null), { timeout: 10_000 }).toBe(pick);
+  expect((await menu(a)).loadout[0]).toBe(pick);
   await a.keyboard.press('KeyI');
 
   // The Terrorists eliminated, the next round: the room's spawn carries the pick, and the SEAL's page draws it.

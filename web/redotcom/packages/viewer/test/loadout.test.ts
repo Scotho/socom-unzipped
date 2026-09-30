@@ -196,4 +196,16 @@ describe('protocol 7: the side\'s confirmed picks, the list the room replays (M9
     l.answer('seal', [1, 2]);                                             // not a kit: nothing changes
     expect(l.pending('seal')).toEqual([38, 15, 121, 126, 194]);
   });
+
+  it('a refusal drops the refused pick and those after it, so the next request is not refused again', () => {
+    const l = new PlayerLoadout();
+    l.setMap(table, map);
+    l.confirm('seal', { slot: 0, id: 38 });
+    l.confirm('seal', { slot: 1, id: 5 });
+    l.confirm('seal', { slot: 2, id: 126 });
+    l.refused('seal', 1);
+    expect(l.picks('seal')).toEqual([{ slot: 0, id: 38 }]);
+    l.refused('seal', 5);                                                 // past the list: nothing to drop
+    expect(l.picks('seal')).toEqual([{ slot: 0, id: 38 }]);
+  });
 });

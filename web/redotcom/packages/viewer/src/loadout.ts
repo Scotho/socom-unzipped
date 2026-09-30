@@ -179,6 +179,14 @@ export class PlayerLoadout {
     return this.confirmed[side];
   }
 
+  /**
+   * The room refused the side's list at pick `at` (its answer's `refused.at`): that pick and the ones after it are
+   * dropped, so the list the page sends next is the one the room holds, not one it will refuse again.
+   */
+  refused(side: Side, at: number): void {
+    if (Number.isInteger(at) && at >= 0 && at < this.confirmed[side].length) this.confirmed[side] = this.confirmed[side].slice(0, at);
+  }
+
   /** The room's answer to a `loadout` request: the kit it holds for the side's next round (five ids; anything else is ignored). */
   answer(side: Side, kit: readonly number[]): void {
     const l = wireLoadout(kit);

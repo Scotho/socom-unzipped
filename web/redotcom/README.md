@@ -233,7 +233,7 @@ order a player reaches for them -- **Mode** first, since it decides which sectio
 line of plain help. A choice of a few options is always a segmented switch, an on / off always a switch, an amount always
 a slider with its value beside it; each switch's tooltip says which option is the default. On a touch screen every
 control is at least 44 px tall. The **Controls** popover's two lists are grouped (Move, Combat, Stance & action,
-Weapons, General; the fly lists are Move and General). In a build with multiplayer off (`VITE_S2U_MULTIPLAYER=off`, the
+Weapons, Weapon select, General; the fly lists are Move and General). In a build with multiplayer off (`VITE_S2U_MULTIPLAYER=off`, the
 site's; **Multiplayer off** under **Deploying**) there is no **Online** section, and both lists' General group ends with
 "Multiplayer · off in this build".
 

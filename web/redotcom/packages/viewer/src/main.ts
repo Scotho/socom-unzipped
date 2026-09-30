@@ -1570,7 +1570,8 @@ function connectNet(map: LoadedMap): void {
     // Protocol 7: a shot's item by id; the side's picks for a (re)seat; the room's answer to a request (M9).
     recordOf: (id) => loaded?.arsenal?.table.records.get(id) ?? null,
     picks: (team) => loadouts.picks(team),
-    loadoutAnswer: (kit) => {
+    loadoutAnswer: (kit, refused) => {
+      if (refused) loadouts.refused(matchSide(), refused.at);   // the list the room holds, not one it refuses again
       loadouts.answer(matchSide(), kit);
       const l = wireLoadout(kit);
       if (l) exchange.answer(l);                     // the menu shows the kit the room will spawn the player with
