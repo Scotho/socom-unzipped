@@ -168,6 +168,11 @@ export interface ViewerHook {
   /** The fire mode (SEMI, BURST, AUTO), and `B`'s switch (not while scoped): the new mode. */
   fireMode(): string;
   switchFireMode(): string;
+  /**
+   * M4 (research 94 §C4.2, R94.16): the fire mode's launcher round -- its item id, name, arming distance (units) and
+   * HUD icon -- or null for a firearm mode; the reticle's grey is `./firearms` `insideArming` of it.
+   */
+  fireRound(): { id: number; name: string; armingDistance: number; icon: string | null } | null;
   /** Research 84 (`./accuracy`): the reticle's size, target, knock, sway, the pull's rounds, and the cone (tangents). */
   accuracy(): AccuracyState & { cone: Cone };
   /** The walk's stance (W2.2b, `./walk`): what `C` and the touch C button change (tap: stand/crouch, hold: prone). */

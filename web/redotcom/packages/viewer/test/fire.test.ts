@@ -3,11 +3,12 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Mesh, Vector3 } from 'three';
 import { FsAssetSource } from '@s2u/archive/node';
-import { buildGrid, DEFAULT_RIFLE, UNITS_PER_METRE, type CollisionOwner, type Grid, type GridParams, type WorldPoly } from '@s2u/scene';
+import { buildGrid, DEFAULT_RIFLE, M67, UNITS_PER_METRE, type CollisionOwner, type Grid, type GridParams, type KitRound, type WeaponRecord, type WorldPoly } from '@s2u/scene';
+import { MagazineRing } from '../src/magazines';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import { FlyCamera } from '../src/camera';
 import { loadMap } from '../src/loadMap';
-import { ammoText, DECAL_OFFSET, Fire, MAX_DECALS, RELOAD_DELAY, RELOAD_SECONDS, type FireAim, type FireEvent, type FireSource } from '../src/fire';
+import { ammoText, DECAL_OFFSET, Fire, MAX_DECALS, RELOAD_DELAY, RELOAD_SECONDS, type FireAim, type FireEvent, type FireGun, type FireSource } from '../src/fire';
 import { packGround, WalkMode } from '../src/walk';
 import { INIT_AIM_PITCH } from '../src/playerCamera';
 
@@ -529,5 +530,185 @@ describe('WEAPON: the round leaves the rifle\'s muzzle, the events, the reload\'
     for (let i = 0; i < 120; i++) fire.update(1 / 60);
     expect(pitch).toBeCloseTo(0, 9);                                                // and back to the rest
     expect(fire.state().kick.state).toBe(0);
+  });
+});
+
+// ---- web sprint 4, M4: each firearm class's own behaviour (research 94 §C1-§C4) -------------------------------------
+
+describe('M4: each class\'s lock, reload, pellets and launched rounds on the page (research 94 part 3)', () => {
+  const rec = (over: Partial<WeaponRecord>): WeaponRecord => ({ ...DEFAULT_RIFLE, fireModes: [1], maxFireMode: 1, ...over });
+  const m40 = rec({ name: 'M40A1', id: 102, fireWait: 0.5, magazine: 25, mags: 1, reloadAfterShot: true, reloadDelayAfterShot: 0.5 });
+  const r870 = rec({ name: '870', id: 84, fireWait: 0.75, magazine: 8, mags: 5, reloadAfterShot: true, reloadDelay: 1, afterShotSound: '.SHOTGUN_COCK', pellets: 4 });
+  const spas = rec({ name: 'Spas 12', id: 81, fireWait: 0.45, magazine: 12, mags: 3, reloadTime: 2, reloadDelay: 0.5, pellets: 4 });
+  const m60 = rec({ name: 'M60E3', id: 91, fireWait: 0.14, magazine: 100, mags: 2, reloadTime: 3, fireModes: [3], maxFireMode: 3 });
+  const m4203 = rec({ name: 'M4A1-M203', id: 61, fireModes: [1, 2, 3], maxFireMode: 3 });
+  const mgl = rec({ name: 'MGL', id: 142, fireWait: 0.25, magazine: 6, mags: 2, fireModes: [], maxFireMode: 0, ammo: '', ammoId: -1 });
+  /** `zweapon.rdr`'s M203 FRAG as the kit table reads it (research 94 §C4.1): MV 27 (270 u/s), arming 10 m, FireWait 1, RAS + 0.5. */
+  const frag: KitRound = {
+    record: { ...M67, name: 'M203 FRAG', id: 175, muzzleVelocity: 270, armingDistance: 100, impact: true, fuse: 10, removal: 10.1 },
+    piercing: 0, fireWait: 1, reloadAfterShot: true, reloadDelayAfterShot: 0.5, icon: 'firemode_203_frag.tif',
+  };
+
+  /** The clip seconds a family plays (the page's `Play.reloadSeconds`): `ReloadTime` when set, the stand-ins below else. */
+  const CLIP: Record<string, number> = { rifle: 1.6, pistol: 1.4, shotgun: 2.2, pump: 0.8, m203: 1.9 };
+  const rig = (record: WeaponRecord, extra: Partial<FireSource> = {}, gun?: FireGun) => {
+    const events: FireEvent[] = [];
+    const asked: [string | undefined, number | undefined][] = [];
+    const fire = new Fire({
+      grid: () => world([wallAt(-600)]), aim: () => ({ eye: [0, 20, 0], far: [0, 20, -1000] }), muzzle: () => [3, 15, -8],
+      reloadSeconds: (family, reloadTime) => { asked.push([family, reloadTime]); return reloadTime && reloadTime > 0 ? reloadTime : CLIP[family ?? 'rifle']!; },
+      ...extra,
+    }, record, undefined, () => 0.5);
+    if (gun) fire.setGun(gun);
+    fire.subscribe((e) => events.push(e));
+    return { fire, events, asked };
+  };
+
+  it.each([
+    // name, record, the lock after a round, the after-shot's family, its sound, the clip's seconds
+    ['M40A1', m40, 0.5, 'shotgun', null, 2.2],         // the bolt: 0.5 s, then the shotgun reload clip (FUN_005a82e0's bVar5)
+    ['870', r870, 0.01, 'pump', '.SHOTGUN_COCK', 0.8],  // the pump: the misspelt key's 0.01 (R94.12), the pump clip, the cock
+    ['Spas 12', spas, null, null, null, 0],              // no ReloadAfterShot
+    ['M4A1', DEFAULT_RIFLE, null, null, null, 0],
+  ] as const)('%s: the lock after a round, then the after-shot clip and sound (FUN_005c5340, FUN_005c3000)', (_name, record, lock, family, sound, clip) => {
+    const { fire, events } = rig(record);
+    expect(fire.shoot()).not.toBeNull();
+    if (lock === null) {
+      expect(fire.state().afterShot).toBe(false);
+      fire.update(record.fireWait + 1e-6);
+      expect(fire.shoot()).not.toBeNull();
+      expect(events.some((e) => e.type === 'afterShot')).toBe(false);
+      return;
+    }
+    expect(fire.state().afterShot).toBe(true);
+    fire.update(lock - 0.001);
+    expect(events.filter((e) => e.type === 'afterShot')).toHaveLength(0);
+    fire.update(0.002);                                    // the lock ends: the after-shot clip and the sound
+    expect(events.at(-1)).toMatchObject({ type: 'afterShot', family, sound, seconds: clip });
+    fire.update(Math.max(0, record.fireWait - lock));      // the rate's wait over, the clip still holds the fire (FUN_005a7ab0)
+    expect(fire.shoot()).toBeNull();
+    fire.update(clip);
+    expect(fire.state().afterShot).toBe(false);
+    expect(fire.shoot()).not.toBeNull();
+  });
+
+  it('a reload asked in the bolt\'s lock replaces it (FUN_005c32b0); in its after-shot clip it is refused -- the room\'s twin', () => {
+    const { fire, events } = rig({ ...m40, mags: 2 });
+    fire.shoot();
+    fire.update(0.17);
+    expect(fire.reload()).toBe(true);                     // the timer rewritten: no after-shot, the reload lands
+    fire.update(0.011);
+    expect(events.at(-1)).toMatchObject({ type: 'reloadStart', family: 'shotgun' });
+    expect(events.some((e) => e.type === 'afterShot')).toBe(false);
+    const late = rig({ ...m40, mags: 2 });
+    late.fire.shoot();
+    late.fire.update(0.5); late.fire.update(0.17);          // the after-shot clip plays
+    expect(late.fire.reload()).toBe(false);
+  });
+
+  it('a reload pending its ReloadDelay lands on the slot the mode redirects to when it lands (FUN_005c2a90 L477408-477440)', () => {
+    const ring = new MagazineRing(6, 2);
+    ring.fire();
+    const { fire } = rig({ ...m4203, reloadDelay: 0.5 });
+    fire.shoot();
+    expect(fire.reload()).toBe(true);                     // the rifle's reload asked ...
+    fire.setRound({ id: 175, round: frag, ring });          // ... and the mode switched to the round before it lands
+    fire.update(0.6);
+    expect(ring.state().current).toBe(1);                   // the round slot's ring turned, as the game's walk does
+    expect(fire.state().magazine).toMatchObject({ rounds: 6, capacity: 6 });
+  });
+
+  it('the last round arms no after-shot lock: the reload (ReloadDelay) instead', () => {
+    const { fire, events } = rig({ ...m40, magazine: 1, mags: 2 });
+    fire.shoot();
+    expect(fire.state().afterShot).toBe(false);
+    fire.update(0.011);
+    expect(events.at(-1)).toMatchObject({ type: 'reloadStart', family: 'shotgun' });
+  });
+
+  it.each([
+    // name, record, ReloadDelay before it lands, the clip family asked, the reload's seconds
+    ['Spas 12', spas, 0.5, 'rifle', 2],               // ReloadTime 2 stretches the Rifle reload (FUN_005a82e0 L462940-462945)
+    ['M60E3', m60, 0.01, 'rifle', 3],                 // ReloadTime 3
+    ['870', r870, 1, 'shotgun', 2.2],                 // the 870's Shotgun reload, its ReloadDelay 1
+    ['M4A1', DEFAULT_RIFLE, 0.01, 'rifle', 1.6],
+  ] as const)('%s: the reload waits the record\'s ReloadDelay, then plays its class\'s clip', (_name, record, delay, family, seconds) => {
+    const { fire, events, asked } = rig(record);
+    fire.shoot();
+    fire.update(5);                                         // past any lock ...
+    fire.update(5);                                         // ... and the after-shot clip it started
+    events.length = 0;
+    expect(fire.reload()).toBe(true);
+    fire.update(delay - 0.002);
+    expect(events).toHaveLength(0);
+    fire.update(0.004);
+    expect(events[0]).toMatchObject({ type: 'reloadStart', seconds, family });
+    expect(asked.at(-1)).toEqual([family, record.reloadTime ?? 0]);
+  });
+
+  it('a shotgun pull: 4 rays, each its own cone draw, one shell off the magazine (FUN_005be9a0 L475580-475677)', () => {
+    let draws = 0;
+    const gun: FireGun = { trigger: () => {}, roundsPerPull: () => 1, interval: (w) => w, round: (d) => { draws++; return [d[0] + draws * 0.001, d[1], d[2]]; } };
+    const { fire, events } = rig(spas, {}, gun);
+    const shot = fire.shoot()!;
+    expect(draws).toBe(4);
+    const rounds = events.filter((e) => e.type === 'round');
+    expect(rounds.map((e) => (e as { pellet?: number }).pellet)).toEqual([0, 1, 2, 3]);
+    expect(rounds.every((e) => (e as { rounds: number }).rounds === 11)).toBe(true);
+    expect(shot.volley).toHaveLength(4);
+    expect(fire.state()).toMatchObject({ shots: 1, decals: 4, magazine: { rounds: 11 } });
+    // One pull, one shell: the next pull waits the FireWait.
+    expect(fire.shoot()).toBeNull();
+    fire.update(0.45 + 1e-6);
+    expect(fire.shoot()).not.toBeNull();
+    expect(fire.state().magazine.rounds).toBe(10);
+  });
+
+  it('a round mode launches the round lofted onto the aimed point from firepoint_203, one off its slot (research 94 §C4.2)', () => {
+    const ring = new MagazineRing(6, 1);
+    const { fire, events } = rig(m4203, { launchPoint: () => [2, 16, -6] });
+    fire.setRound({ id: 175, round: frag, ring });
+    expect(fire.roundMode()).toMatchObject({ id: 175, name: 'M203 FRAG', armingDistance: 100 });
+    expect(fire.state().magazine).toMatchObject({ rounds: 6, capacity: 6, spare: 0 });     // the redirected slot's
+    const shot = fire.shoot()!;
+    const launch = events.find((e) => e.type === 'launch') as Extract<FireEvent, { type: 'launch' }>;
+    expect(launch).toMatchObject({ type: 'launch', round: { id: 175, name: 'M203 FRAG' }, from: [2, 16, -6], rounds: 5 });
+    expect(shot.from).toEqual([2, 16, -6]);
+    // Lofted: above the flat line to the wall's point, at the round's speed.
+    const flat = Math.atan2(20 - 16, 600 - 6);
+    expect(Math.asin(launch.dir[1])).toBeGreaterThan(flat);
+    expect(Math.hypot(...launch.velocity)).toBeCloseTo(270, 6);
+    expect(events.some((e) => e.type === 'round')).toBe(false);      // no bullet, no marks
+    expect(ring.rounds()).toBe(5);
+    expect(fire.state().magazine.rounds).toBe(5);
+    // The round's FireWait (1 s) and its lock (0.5 s), then `Rifle m203 reload` (DAT_003debf8).
+    fire.update(0.501);
+    expect(events.at(-1)).toMatchObject({ type: 'afterShot', family: 'm203', seconds: 1.9 });
+    fire.update(0.5);
+    expect(fire.shoot()).toBeNull();
+    fire.update(1.9);
+    expect(fire.shoot()).not.toBeNull();
+    fire.setRound(null);
+    expect(fire.roundMode()).toBeNull();
+    expect(fire.state().magazine).toMatchObject({ rounds: 30, capacity: 30 });                // the rifle's own again
+  });
+
+  it('the MGL fires its round with no lock after it (L479325), from the fire point without a firepoint_203', () => {
+    const { fire, events } = rig(mgl);
+    fire.setRound({ id: 175, round: frag, ring: new MagazineRing(6, 1) });
+    expect(fire.shoot()!.from).toEqual([3, 15, -8]);       // FIREPOINT_203_READING: the model's firepoint
+    expect(fire.state().afterShot).toBe(false);
+    fire.update(1 + 1e-6);
+    expect(fire.shoot()).not.toBeNull();
+    expect(events.filter((e) => e.type === 'launch')).toHaveLength(2);
+  });
+
+  it('an empty round slot fires nothing and clicks', () => {
+    const ring = new MagazineRing(6, 1);
+    for (let i = 0; i < 6; i++) ring.fire();
+    const { fire, events } = rig(m4203);
+    fire.setRound({ id: 175, round: frag, ring });
+    expect(fire.pull()).toBeNull();
+    expect(events.at(-1)).toMatchObject({ type: 'dry' });
   });
 });

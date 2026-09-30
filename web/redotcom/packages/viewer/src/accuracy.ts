@@ -1,4 +1,5 @@
 import type { WeaponRecord, WeaponStance, WeaponStanceName } from '@s2u/scene';
+import { isCarrier, roundFits, type HeldRound } from './firearms';
 
 /**
  * The gunplay of SOCOM II's rifle, ported (research 84): the reticle's size (the bloom), its climb (the knock), where a
@@ -175,16 +176,62 @@ export function fireInterval(fireWait: number, mode: number): number {
 }
 
 /**
- * The fire-mode switch (`FUN_005c4600`, L3 on the pad): the next mode up, past `maxFireMode` back to single, skipping a
- * mode the weapon does not enable. Refused while scoped (the switch reads the zoom and acts only at 1.01 or less):
- * the caller passes `scoped`.
+ * `FUN_003d2a60` (L325357-325371): whether mode `m` is one the weapon stops on -- a round mode (5 and up) always, the
+ * others by their flag (`+0xd0 + m`, set 0..`MaxFireMode` by `FUN_003d2a80`, and by the mode keys).
  */
-export function nextFireMode(weapon: WeaponRecord, mode: number, scoped = false): number {
-  if (scoped || weapon.fireModes.length === 0) return mode;
+function modeEnabled(weapon: WeaponRecord, m: number): boolean {
+  return m >= 5 || m === 0 || weapon.fireModes.includes(m);
+}
+
+/**
+ * `FUN_005c4480` -> `FUN_005c3ee0` (L478297-478530): past the carrier's last firearm mode, the next round type the kit
+ * holds -- walking the kit's slots after the current round's slot (after slot 0 from a firearm mode), each a round the
+ * carrier fires (`./firearms` `roundFits`) with rounds in its ring and not the current round; none left: 1 when the
+ * carrier has a firearm mode, else 0.
+ */
+function nextRound(weapon: WeaponRecord, mode: number, rounds: readonly HeldRound[]): number {
+  let from = 0;
+  if (mode > 3) {
+    // FUN_005c4480 L478520-478545: the slot of the current round, the first of them with rounds if any.
+    from = -1;
+    for (const r of rounds) {
+      if (r.id !== mode) continue;
+      from = r.slot;
+      if (r.rounds > 0) break;
+    }
+  }
+  for (const r of rounds) {
+    if (r.slot > from && roundFits(weapon.id, r.id) && r.rounds > 0 && r.id !== (mode > 3 ? mode : -1)) return r.id;
+  }
+  return weapon.maxFireMode !== 0 ? 1 : 0;
+}
+
+/**
+ * The fire-mode switch (`FUN_005c4600` L478555-478650, L3 on the pad): the next mode up, past `maxFireMode` back to
+ * single -- or, on a carrier (`./firearms` `isCarrier`: the M203 rifles, the MGL, the M79), on into each round type the
+ * kit holds (`rounds`, the kit's slots in order: `KitRounds.held`), a mode > 3 being that round's item id (R94.8); a
+ * carrier with no firearm mode (the MGL, the M79) cycles among its rounds. A mode the weapon does not enable is
+ * skipped (`FUN_003d2a60`). Refused while scoped (the switch reads the zoom and acts only at 1.01 or less, L478570-
+ * 478575): the caller passes `scoped`.
+ */
+export function nextFireMode(weapon: WeaponRecord, mode: number, scoped = false, rounds: readonly HeldRound[] = []): number {
+  if (scoped) return mode;
+  const carrier = isCarrier(weapon.id);
+  if (!carrier && weapon.fireModes.length === 0) return mode;
   let m = mode;
-  for (let i = 0; i < 4; i++) {
-    m = m + 1 > weapon.maxFireMode ? 1 : m + 1;
-    if (weapon.fireModes.includes(m)) return m;
+  for (let i = 0; i < 16; i++) {
+    let next = m + 1;
+    if (next > weapon.maxFireMode) {
+      if (!carrier) next = 1;
+      else {
+        next = nextRound(weapon, m, rounds);
+        // FUN_005c45c0: back at 0 with a round held, the switch runs again from 0 (to the first round).
+        if (next === 0 && nextRound(weapon, 0, rounds) > 3) next = nextRound(weapon, 0, rounds);
+      }
+    }
+    if (modeEnabled(weapon, next) && next !== 0) return next;
+    if (next === 0) return 0;
+    m = next;
   }
   return mode;
 }
@@ -192,12 +239,14 @@ export function nextFireMode(weapon: WeaponRecord, mode: number, scoped = false)
 /**
  * The mode a weapon comes up in: the kit's set-up at spawn puts the primary slot on **burst** when the weapon enables
  * it (`FUN_005c0250`, decomp 476217-476223: `FUN_003d2a60(slot 1, 2)` -> mode 2) -- the console frame at spawn shows
- * the three rounds of mode 2 (research 87) -- and a mode still 0 is cycled up to `MaxFireMode` (`FUN_005c0fd0`
- * 476658-476668). Online the game then restores the player's last mode per weapon (`DAT_0066b580`), not modelled.
+ * the three rounds of mode 2 (research 87) -- and a mode still 0 is cycled up (`FUN_005c0fd0` 476658-476668): so a
+ * carrier with no firearm mode (the MGL, the M79) comes up on its first round (research 94 §C4.2). Online the game then
+ * restores the player's last mode per weapon (`DAT_0066b580`), not modelled.
  */
-export function defaultFireMode(weapon: WeaponRecord): number {
+export function defaultFireMode(weapon: WeaponRecord, rounds: readonly HeldRound[] = []): number {
   if (weapon.fireModes.includes(2)) return 2;
-  return weapon.fireModes.includes(weapon.maxFireMode) ? weapon.maxFireMode : (weapon.fireModes[0] ?? 0);
+  const m = weapon.fireModes.includes(weapon.maxFireMode) ? weapon.maxFireMode : (weapon.fireModes[0] ?? 0);
+  return m === 0 && isCarrier(weapon.id) ? nextFireMode(weapon, 0, false, rounds) : m;
 }
 
 export const FIRE_MODE_NAMES: Record<number, string> = { 0: 'SAFE', 1: 'SEMI', 2: 'BURST', 3: 'AUTO' };

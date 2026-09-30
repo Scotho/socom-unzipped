@@ -2,7 +2,7 @@ import { sampleClip, type MotionClip, type PartPose } from '@s2u/scene';
 import { slerp, type LayerContext, type PoseLayer } from './animator';
 import { entryOf } from './locomotion';
 import type { MotionEntry, MotionTable } from './motionTable';
-import { PISTOL_RELOAD_CLIPS, RELOAD_CLIPS, reloadClip, reloadSeconds, type ReloadStance } from './reloadClip';
+import { ALL_RELOAD_CLIPS, PISTOL_RELOAD_CLIPS, RELOAD_CLIPS, reloadClip, reloadSeconds, type ReloadItem, type ReloadStance } from './reloadClip';
 
 /**
  * The rifle's poses over the clips (the WEAPON workstream): the **Fire** set the game blends in while the rifle is up
@@ -85,6 +85,8 @@ export { PISTOL_RELOAD_CLIPS, RELOAD_CLIPS, RELOAD_STILL_SPEED, reloadLength, ty
 export const WEAPON_CLIPS: readonly string[] = [...new Set([
   ...Object.values(FIRE_VERSIONS), ...Object.values(RELOAD_CLIPS),
   ...Object.values(PISTOL_FIRE_VERSIONS), ...Object.values(PISTOL_RELOAD_CLIPS),
+  // Web sprint 4 M4: the shotgun reload, the pump and `Rifle m203 reload` (`./reloadClip`'s families).
+  ...ALL_RELOAD_CLIPS,
 ])];
 
 /** The clips the picker plays standing still in each stance (kept for the hook's readers; the reload reads the speed). */
@@ -138,7 +140,7 @@ export class WeaponPose {
   moving = false;
   private fireClock = 0;
   private fireClip: string | null = null;
-  private reload: { stance: ReloadStance; elapsed: number; length: number } | null = null;
+  private reload: { stance: ReloadStance; elapsed: number; length: number; family: ReloadItem | null } | null = null;
   private readonly now: WeaponPoseStats = { fire: null, fireWeight: 0, reload: null, reloadWeight: 0 };
 
   /** The Fire version of the clip playing, at the raise weight. */
@@ -157,9 +159,12 @@ export class WeaponPose {
     }
   }
 
-  /** A reload starts: its clip by the stance (and, frame by frame, whether the SEAL moves); `length` seconds. */
-  startReload(stance: ReloadStance, length: number): void {
-    this.reload = length > 0 ? { stance, elapsed: 0, length } : null;
+  /**
+   * A reload starts: its clip by the stance (and, frame by frame, whether the SEAL moves); `length` seconds. `family`:
+   * the clip family (`./reloadClip` `reloadFamily`: the shotgun reload, the pump, `Rifle m203 reload`), else the item's.
+   */
+  startReload(stance: ReloadStance, length: number, family: ReloadItem | null = null): void {
+    this.reload = length > 0 ? { stance, elapsed: 0, length, family } : null;
   }
 
   /** The reload stops early (a new map, leaving the walk). */
@@ -172,14 +177,17 @@ export class WeaponPose {
     return this.reload !== null;
   }
 
-  /** The reload's length in a stance, moving or not: the clip's `playback` (null without the clip). */
-  reloadSeconds(stance: ReloadStance, moving: boolean): number | null {
-    return reloadSeconds(this.clips, this.table, stance, moving, this.item);
+  /**
+   * The reload's length in a stance, moving or not: the clip's `playback` (null without the clip) -- of `family`, else
+   * the item's -- or the record's `ReloadTime` when still (`./reloadClip` `reloadSeconds`).
+   */
+  reloadSeconds(stance: ReloadStance, moving: boolean, family: ReloadItem | null = null, reloadTime = 0): number | null {
+    return reloadSeconds(this.clips, this.table, stance, moving, family ?? this.item, reloadTime);
   }
 
-  /** `FUN_005a82e0`'s choice: prone the prone reload; else moving the overlay, still the stance's; the item's set. */
-  reloadClip(stance: ReloadStance, moving: boolean): string {
-    return reloadClip(stance, moving, this.item);
+  /** `FUN_005a82e0`'s choice: prone the prone reload; else moving the overlay, still the stance's; the family's set. */
+  reloadClip(stance: ReloadStance, moving: boolean, family: ReloadItem | null = null): string {
+    return reloadClip(stance, moving, family ?? this.item);
   }
 
   stats(): WeaponPoseStats {
@@ -230,7 +238,7 @@ export class WeaponPose {
     this.now.reloadWeight = 0;
     const r = this.reload;
     if (!r) return null;
-    const name = this.reloadClip(r.stance, this.moving);
+    const name = this.reloadClip(r.stance, this.moving, r.family);
     const clip = this.clips.get(name);
     if (!clip) return null;
     const fraction = Math.min(1, r.elapsed / r.length);

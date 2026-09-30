@@ -79,7 +79,7 @@ describe('the single-player match (./loopback)', () => {
   it('carries the page\'s kit tables: the SEAL\'s type\'s kit, or the page\'s developer kit (web sprint 4)', async () => {
     const kit = (...ids: number[]): Loadout => ids as unknown as Loadout;
     const kits: SimKits = {
-      table: { arsenal: arsenalOf(['ZAMMO', [], 'ZWEAPON', []]), records: new Map([[54, DEFAULT_RIFLE], [15, HELD_SIDEARM], [62, HELD_RIFLE]]) },
+      table: { arsenal: arsenalOf(['ZAMMO', [], 'ZWEAPON', []]), records: new Map([[54, DEFAULT_RIFLE], [15, HELD_SIDEARM], [62, HELD_RIFLE]]), rounds: new Map() },
       map: { valves: new Map(), selectable: { seal: [], terrorist: [] }, kits: { seal: [{ type: 'Seal1', character: 'mp99_seal1', loadout: kit(54, 15, 121, 126, 194) }], terrorist: [] } },
     };
     for (const [soloKit, want] of [[null, [['M4A1', 6], ['Mark 23', 6]]], [kit(62, 15, 121, 126, 255), [['M4A1 SD', 3], ['Mark 23', 3]]]] as const) {

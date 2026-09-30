@@ -6,13 +6,13 @@ import type { BodyView } from './bodyView';
 import type { Pose } from './camera';
 import type { FireEvent } from './fire';
 import { pressedSince, releasedSince, type Input } from './gamepad';
-import { HELD_ITEM, heldSkeleton, MountEase, mountMatrix, muzzlePoint, PISTOL_ITEM, type Carries, type Mount } from './heldItem';
+import { HELD_ITEM, heldSkeleton, launchPoint, MountEase, mountMatrix, muzzlePoint, PISTOL_ITEM, type Carries, type Mount } from './heldItem';
 import type { Firearm } from './kit';
 import type { MotionEntry, MotionTable } from './motionTable';
 import { ACTION_CLIPS, actionRoots, type MoverActionName, type Stance, type WalkMode } from './walk';
 export { actionRoots };
 import { SEAL_ANIMS } from './locomotion';
-import { reloadMoving } from './reloadClip';
+import { reloadMoving, type ReloadItem } from './reloadClip';
 import { WeaponPose, type WeaponPoseStats } from './weaponPose';
 import { WeaponRaise, type RaiseStats } from './weaponRaise';
 
@@ -152,6 +152,8 @@ export class Play {
   private hand: Group | null = null;
   private weapon: Object3D | null = null;
   private muzzleAt: Pnt3D | null = null;
+  /** M4: the primary model's `firepoint_203` (a launcher round mode's fire point, `./heldItem` `launchPoint`), or null. */
+  private launchAt: Pnt3D | null = null;
   /** WEAPON: the sidearm's model and muzzle, the firearm in use, and where each weapon rides (`./kit`). */
   private sidearm: Object3D | null = null;
   private sidearmMuzzle: Pnt3D | null = null;
@@ -193,6 +195,7 @@ export class Play {
     this.weapon?.removeFromParent();
     this.weapon = object;
     this.muzzleAt = object ? muzzlePoint(points) : null;
+    this.launchAt = object ? launchPoint(points) : null;
     this.hangHeld(object);
   }
 
@@ -254,16 +257,31 @@ export class Play {
 
   /** WEAPON: a round or a reload from `Fire` (`Fire.subscribe`): a reload plays the stance's reload clip. */
   weaponEvent(e: FireEvent): void {
-    if (e.type === 'reloadStart') this.weaponPose?.startReload(this.stance, e.seconds);
+    if (e.type === 'reloadStart') this.weaponPose?.startReload(this.stance, e.seconds, e.family ?? null);
+    // M4: the bolt's or the pump's after-shot clip plays on the reload's layer (`FUN_005a82e0(body, 1)`).
+    else if (e.type === 'afterShot') this.weaponPose?.startReload(this.stance, e.seconds, e.family);
     else if (e.type === 'reloadEnd') this.weaponPose?.stopReload();
   }
 
   /**
    * WEAPON: the reload's length for the stance the SEAL is in and whether it moves -- the reload clip's `playback`
-   * (`./weaponPose`) -- or null without the clips (`Fire` keeps its own estimate then).
+   * (`./weaponPose`) of the clip `family` (M4: the class's, `./reloadClip`), or the record's `ReloadTime` still -- or
+   * null without the clips (`Fire` keeps its own estimate then).
    */
-  reloadSeconds(): number | null {
-    return this.weaponPose?.reloadSeconds(this.stance, this.movingForReload()) ?? null;
+  reloadSeconds(family: ReloadItem | null = null, reloadTime = 0): number | null {
+    return this.weaponPose?.reloadSeconds(this.stance, this.movingForReload(), family, reloadTime) ?? null;
+  }
+
+  /**
+   * M4: the posed primary's `firepoint_203` in the world, as `muzzle` poses the `firepoint` -- null when the model names
+   * none (`./fire` `FIREPOINT_203_READING`), with the pistol in hand, or before a pose.
+   */
+  launchPoint(): [number, number, number] | null {
+    const last = this.last, skeleton = this.skeleton, at = this.launchAt, object = this.weapon;
+    if (this.item === 'pistol' || !last || !skeleton || !at || !object || !this.animator || this.mounts.rifle !== 'hand') return null;
+    if (skeleton.indexOf('rifle') < 0 || !this.ease.placed('rifle')) return null;
+    const p = transformPoint(Float32Array.from(object.matrix.elements), at[0], at[1], at[2]);
+    return p ? actorToWorld(last.feet, last.yaw, p) : null;
   }
 
   /**

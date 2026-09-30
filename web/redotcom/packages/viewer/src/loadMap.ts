@@ -546,10 +546,16 @@ export function transferables(map: LoadedMap): Transferable[] {
   return out;
 }
 
-/** The firearms' HUD icons, lower case (the HUD's keys): every primary's and secondary's `IconTextureName`. */
+/**
+ * The firearms' HUD icons, lower case (the HUD's keys): every primary's and secondary's `IconTextureName`, and every
+ * launcher round's -- a round mode's fire-mode cell (`firemode_203_frag.tif` ...; web sprint 4 M4, research 94 §C9).
+ */
 function firearmIcons(arsenal: SimKits): string[] {
   const icons = new Set<string>();
-  for (const item of arsenal.table.arsenal.items.values()) if (item.kind !== 'equipment' && item.icon) icons.add(item.icon.toLowerCase());
+  for (const item of arsenal.table.arsenal.items.values()) {
+    const round = item.cls === 'launcherRound' || item.cls === 'rocketRound';
+    if ((item.kind !== 'equipment' || round) && item.icon) icons.add(item.icon.toLowerCase());
+  }
   return [...icons];
 }
 
