@@ -175,6 +175,36 @@ describe('the arsenal over a hand-built zweapon.rdr', () => {
     expect([...table.records.keys()]).toEqual([54, 15]);
     expect(table.records.get(54)).toMatchObject({ name: 'M4A1', id: 54, fireWait: 0.12, magazine: 30, mags: 3, ammoId: 8 });
     expect(table.arsenal.items.size).toBe(4);
+    expect(table.rounds.size).toBe(0);
+  });
+
+  it('the kit table (M4): a grenade launcher carrier has its record, no round; each launched round its projectile record', () => {
+    const firearm = (name: string, id: number, ammo = '5.56 x 45mm', extra: [string, RdrNode][] = []): RdrNode[] => [...weapon(name, id, extra, ammo), ...rec(
+      ['FireWait', '0.25'], ['Maximum_Range', '1200'], ['DecalSet', 'BULLET_MARK_SMALL'],
+      ['Reticule_Modifiers', rec(['STANCE_STAND', rec(['ReticuleKnock', '13'], ['ReticuleKnockReturn', '60'], ['ReticuleKnockMax', '70'])])],
+    )];
+    // A launched round as `throwableRecord` reads it (zweapon.rdr's M203 FRAG: MV 27, Arming 10, `M203 FRAG Ammo`).
+    const round = (name: string, id: number, ammo: string, arming: boolean): RdrNode[] => [...weapon(name, id, [
+      ['FireWait', '1'], ['Muzzle_Velocity', '27'], ['ImpactRadius', '40'], ['Effective_Range', '350'], ['Maximum_Range', '10000'],
+      ['Sound_Radius', '200'], ['FireAnimName', 'm203he_start'], ['HitAnimName', 'NONE'], ['DefaultSpecialAnimName', 'frag_grenade'],
+      ['SpecialMaterialAnimName', 'frag_grenade'], ['DecalSet', 'BULLET_MARK_SMALL'], ['Timer1', '10'], ['Timer2', '10.1'],
+      ['ReloadAfterShot', []], ['ReloadDelayAfterShot', '0.5'], ...(arming ? [['ArmingDistance', '10'] as [string, RdrNode]] : []),
+    ], ammo)];
+    const script: RdrNode = [
+      'ZAMMO', [...(zweapon[1] as RdrNode[]),
+        rec(['InternalName', 'M203 FRAG Ammo'], ['ID', '28'], ['Piercing', '0'], ['Explosion_Damage', '10'], ['Explosion_Radius', '15']),
+        rec(['InternalName', 'M203 HE Ammo'], ['ID', '20'], ['Piercing', '2'], ['Explosion_Damage', '10'], ['Explosion_Radius', '10'])],
+      'ZWEAPON', [
+        firearm('M4A1-M203', 61), firearm('MGL', 142, '', [['MaxFireMode', '0']]),
+        rec(['InternalName', 'M203'], ['ID', '141'], ['AMMO_TYPES', []], ['ModelName', 'NONE']),
+        round('M203 FRAG', 175, 'M203 FRAG Ammo', true), round('M203 HE', 171, 'M203 HE Ammo', true),
+      ]];
+    const table = kitTableOf(script);
+    expect([...table.records.keys()]).toEqual([61, 142]);            // the MGL a carrier, the M203 (141) none
+    expect(table.records.get(142)).toMatchObject({ id: 142, ammo: '', ammoId: -1, magazine: 30, mags: 3, fireModes: [], maxFireMode: 0 });
+    expect([...table.rounds.keys()]).toEqual([175, 171]);
+    expect(table.rounds.get(175)).toMatchObject({ piercing: 0, record: { name: 'M203 FRAG', id: 175, muzzleVelocity: 270, armingDistance: 100, impact: true, fuse: 10 } });
+    expect(table.rounds.get(171)!.piercing).toBe(2);
   });
 });
 
@@ -251,9 +281,15 @@ describe.skipIf(!ZWEAPON || !READERC || !MAPS.every((m) => onDisc(`MP${m}.ZDB`))
   it('the kit table: every firearm of every kit has its record; the baked three are the file\'s; the launchers have none', () => {
     const table = readKitTable(bytes(ZWEAPON!));
     // The pistols to the snipers, less the Designator (11): 10 pistols, 5 SMGs, 15 rifles, 3 shotguns, 3 MGs, 6 snipers
-    // -- and no grenade launcher (R94.8, M7).
-    expect(table.records.size).toBe(42);
-    expect([11, ITEM.M203, ITEM.MGL, ITEM.M79].some((id) => table.records.has(id))).toBe(false);
+    // -- and the two grenade launcher carriers read as such (M4: the MGL, the M79; R94.8), never the M203 item.
+    expect(table.records.size).toBe(44);
+    expect([11, ITEM.M203].some((id) => table.records.has(id))).toBe(false);
+    expect(table.records.get(ITEM.MGL)).toMatchObject({ ammoId: -1, magazine: 6, mags: 2, fireModes: [] });
+    expect(table.records.get(ITEM.M79)).toMatchObject({ ammoId: -1, magazine: 8, mags: 1, fireModes: [] });
+    // The launched rounds (research 94 §C4.1): M203 rounds at 27 m/s, GL rounds at 40, each armed at 10 m but the smoke.
+    for (const [id, mv, arming] of [[171, 270, 100], [175, 270, 100], [173, 270, undefined], [176, 400, 100], [179, 400, 100], [178, 400, undefined]] as const) {
+      expect([id, table.rounds.get(id)?.record.muzzleVelocity, table.rounds.get(id)?.record.armingDistance]).toEqual([id, mv, arming]);
+    }
     expect(table.records.get(62)).toEqual(HELD_RIFLE);
     expect(table.records.get(15)).toEqual(HELD_SIDEARM);
     expect(table.records.get(54)).toEqual(DEFAULT_RIFLE);

@@ -1,5 +1,6 @@
 import { Zar, parseRdr, rdrGet, parseZdb, zdbMember, type RdrNode } from '@s2u/archive';
 import { UNITS_PER_METRE, weaponRecord, type WeaponRecord } from './weapons';
+import { throwableRecord, type ThrowableRecord } from './projectile';
 
 /**
  * The arsenal (web sprint 4, M2; research 94 part 1): every item a multiplayer SEAL or Terrorist may carry, what each
@@ -348,22 +349,62 @@ export interface KitTable {
   arsenal: Arsenal;
   /** Every firearm's record by item id; an item with no readable firearm record (below) is absent. */
   records: ReadonlyMap<number, WeaponRecord>;
+  /**
+   * Every launched round's projectile by item id (web sprint 4 M4; research 94 §C4): the grenade launchers' rounds
+   * (171-184) and the rockets (185-189), each `throwableRecord`'s read of it and its round's `Piercing` (the blast's
+   * armour bypass, research 91 §5). A round the reader refuses is absent.
+   */
+  rounds: ReadonlyMap<number, KitRound>;
 }
 
 /**
+ * A launched round: its projectile record (the flight, the arming, the blast), its ammo's `Piercing` (`ZAMMO` `+0x14`),
+ * and what the carrier's fire takes from the round's own record in a round mode (`FUN_005c3780`, the redirected
+ * record): its `FireWait` (`FUN_005c09f0` L476313-476340; reCOM's default 0.1, `zwep_weapon.cpp:53`), its bolt-like
+ * lock (`ReloadAfterShot` + `ReloadDelayAfterShot`, research 94 §C1.1) and its `IconTextureName` -- the HUD's fire-mode
+ * cell in that mode (`firemode_203_frag.tif`, `FUN_00237b40` L85254-85300, §C9).
+ */
+export interface KitRound {
+  record: ThrowableRecord; piercing: number; fireWait: number; reloadAfterShot: boolean; reloadDelayAfterShot: number; icon: string | null;
+}
+
+/**
+ * The carriers (`FUN_003c5cd0` L317260-317275: 0x34, 0x3d, 0x3f, 0x8e, 0x8f): the M16A2-M203, the M4A1-M203, the F2000,
+ * the MGL and the M79 -- a primary whose fire modes run on into the rounds the kit holds (R94.8, research 94 §C4.2).
+ */
+export const GRENADE_CARRIERS: ReadonlySet<number> = new Set([ITEM.M16_203, ITEM.M4_203, ITEM.F2000, ITEM.MGL, ITEM.M79]);
+
+/**
  * `zweapon.rdr`, parsed -> the kit's tables. A primary or secondary whose record `weaponRecord` cannot read is left out:
- * on the disc these are the three grenade launchers (141 M203, 142 MGL, 143 M79: `AMMO_TYPES` names no round -- they
- * fire their rounds as fire modes of the carrier, R94.8, web sprint 4 M7) and the Designator (11, a pistol-class item
- * with no round). The caller decides what such a slot holds (`viewer/src/loadout.ts`).
+ * on the disc the M203 item (141: `AMMO_TYPES` empty; the select forces it into an equipment slot) and the Designator
+ * (11, a pistol-class item with no round). The MGL and the M79, whose `AMMO_TYPES` is empty too, are carriers
+ * (`GRENADE_CARRIERS`): read as such (`weaponRecord`'s `carrier`), since they fire their rounds as fire modes (R94.8).
+ * The caller decides what a slot without a record holds (`viewer/src/loadout.ts`).
  */
 export function kitTableOf(zweapon: RdrNode): KitTable {
   const arsenal = arsenalOf(zweapon);
   const records = new Map<number, WeaponRecord>();
+  const rounds = new Map<number, KitRound>();
+  const ammo = new Map(list(zweapon, 'ZAMMO').map((r) => [str(rdrGet(r, 'InternalName')) ?? '', r] as const));
+  const nodes = new Map(list(zweapon, 'ZWEAPON').map((r) => [str(rdrGet(r, 'InternalName')) ?? '', r] as const));
   for (const item of arsenal.items.values()) {
+    if (item.cls === 'launcherRound' || item.cls === 'rocketRound') {
+      try {
+        const round = item.ammo === null ? undefined : ammo.get(item.ammo);
+        rounds.set(item.id, {
+          record: throwableRecord(zweapon, item.name), piercing: round === undefined ? 0 : num(round, 'Piercing', 0),
+          fireWait: num(nodes.get(item.name)!, 'FireWait', 0.1), reloadAfterShot: item.reloadAfterShot,
+          reloadDelayAfterShot: item.reloadDelayAfterShot, icon: item.icon?.toLowerCase() ?? null,
+        });
+      } catch { /* a round the projectile reader refuses: none */ }
+      continue;
+    }
     if (item.kind === 'equipment') continue;
-    try { records.set(item.id, weaponRecord(zweapon, item.name)); } catch { /* no firearm record: see above */ }
+    try {
+      records.set(item.id, weaponRecord(zweapon, item.name, { carrier: GRENADE_CARRIERS.has(item.id) }));
+    } catch { /* no firearm record: see above */ }
   }
-  return { arsenal, records };
+  return { arsenal, records, rounds };
 }
 
 /** `ZWEAPON.ZAR` -> the kit's tables. */

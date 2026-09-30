@@ -32,7 +32,7 @@ const arsenal = arsenalOf(['ZAMMO', [], 'ZWEAPON', [
 const mp5k: WeaponRecord = { ...DEFAULT_RIFLE, name: 'MP5K', id: 38, mags: 6 };
 const m9: WeaponRecord = { ...HELD_SIDEARM, name: 'M9', id: 5 };
 const r552: WeaponRecord = { ...DEFAULT_RIFLE, name: '552', id: 57 };
-const table: KitTable = { arsenal, records: new Map([[54, DEFAULT_RIFLE], [62, HELD_RIFLE], [15, HELD_SIDEARM], [38, mp5k], [5, m9], [57, r552]]) };
+const table: KitTable = { arsenal, records: new Map([[54, DEFAULT_RIFLE], [62, HELD_RIFLE], [15, HELD_SIDEARM], [38, mp5k], [5, m9], [57, r552]]), rounds: new Map() };
 const kit = (...ids: number[]): Loadout => ids as unknown as Loadout;
 const map: MapArsenal = {
   valves: new Map(), selectable: { seal: [], terrorist: [] },

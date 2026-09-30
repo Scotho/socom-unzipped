@@ -209,10 +209,11 @@ describe('the reload\'s one table, the page\'s and the room\'s (MJ-1; FUN_005a82
   const list = ALL_RELOAD_CLIPS.map((n) => clip(n, 30, [{ name: 'lbicep', t: [[-2, 6, 0]], q: [qx(0)] }]));
   const byName = new Map(list.map((c) => [c.name, c]));
 
-  it('is the weapon layer\'s own table: the same clip names, eight of them', () => {
+  it('is the weapon layer\'s own table: the same clip names, the rifle\'s and pistol\'s eight and M4\'s nine more', () => {
     expect(RELOAD_CLIPS).toBe(SHARED_RELOAD_CLIPS);
-    expect(ALL_RELOAD_CLIPS).toEqual([...Object.values(RELOAD_CLIPS), ...Object.values(PISTOL_RELOAD_CLIPS)]);
-    expect(new Set(ALL_RELOAD_CLIPS).size).toBe(8);
+    expect(ALL_RELOAD_CLIPS.slice(0, 8)).toEqual([...Object.values(RELOAD_CLIPS), ...Object.values(PISTOL_RELOAD_CLIPS)]);
+    // Web sprint 4 M4 (research 94 §C1.2): the shotgun reload's four, the pump's four and `seal_reload_m203`.
+    expect(new Set(ALL_RELOAD_CLIPS).size).toBe(17);
     for (const name of ALL_RELOAD_CLIPS) expect(WEAPON_CLIPS).toContain(name);
   });
 
@@ -228,7 +229,7 @@ describe('the reload\'s one table, the page\'s and the room\'s (MJ-1; FUN_005a82
 
   it('WeaponPose.reloadSeconds equals the room\'s lock for every stance, speed and item, from a map or the sim\'s list', () => {
     const pose = new WeaponPose(byName, table);
-    for (const item of ['rifle', 'pistol'] as ReloadItem[]) {
+    for (const item of ['rifle', 'pistol'] as const satisfies readonly ReloadItem[]) {
       pose.item = item;
       for (const stance of ['stand', 'crouch', 'prone'] as ReloadStance[]) {
         for (const moving of [false, true]) {

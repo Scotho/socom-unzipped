@@ -12,6 +12,8 @@
  * - the magazines (`./magazines`): the game's ring, one a weapon, the page's `Fire` and the room counting alike;
  * - the runtime kit (`./loadout`, web sprint 4): the loadout's two firearm slots, their records (2X applied), the spawn
  *   kit of each side's character type, the kit tables read once from `ZWEAPON.ZAR`;
+ * - each firearm class's rules (`./firearms`, web sprint 4 M4): the reload's delay, the bolt and pump lock, the pellets,
+ *   the launchers' rounds as fire modes and the kit's round slots;
  * - grenades live headless in `@s2u/scene` already (`projectile.ts`: launch, step, the blast's damage);
  * - the reload's clip and length (`./reloadClip`): the page's reload and the room's lock, one table (MJ-1);
  * - the camera's geometry (`./cameraRig`) and the server's accuracy cone over it (`./net/shotCone`, OWNER-3): the room
@@ -25,6 +27,7 @@ export { shortTurn, wrapYaw } from './yaw';
 export * from './round';
 export * from './magazines';
 export * from './loadout';
+export * from './firearms';
 export * as accuracy from './accuracy';
 export { penetrate, fireInterval } from './accuracy';
 export { PROBE_LIFT } from '@s2u/scene';

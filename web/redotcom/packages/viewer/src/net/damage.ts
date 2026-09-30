@@ -134,6 +134,38 @@ export function fragmentDamage(explosionDamage: number, radius: number, distance
 export const FRAGMENT_ROLLS: readonly number[] = [0.3, 0.6, 0.7, 0.8, 0.9, 1.0];
 export const FRAGMENT_PARTS: readonly number[] = [PART.HEAD, PART.BODY, PART.LARM, PART.RARM, PART.LLEG, PART.RLEG];
 
+/**
+ * The 12 gauge on the victim (`FUN_005a1620` L459317-459389; research 94 §C2.1, R94.10), the multiplayer branch
+ * (`DAT_0045a0c1` set): a base of 8 pellets inside `d^2 < 6400` (`DAT_006508c0`: 80 units), else 4 inside 22500
+ * (`DAT_006508c8`: 150 units), else none; plus 1/2/4/5/6/7 at 5/10/35/35/10/5 % (the fragments' roll); past the
+ * 8-pellet radius the count is thinned by `6400 / d^2` and rounded up when a second draw is at most the fraction. The
+ * three squares read from the ELF's `.data` (research 91 section 20).
+ */
+export const SHOTGUN_PELLET_RANGE_SQ = { base: 6400, half: 22500 } as const;
+export function shotgunPellets(distance: number, random: () => number): number {
+  const d2 = distance * distance, r2 = SHOTGUN_PELLET_RANGE_SQ.base;
+  let n = d2 < r2 ? 8 : d2 < SHOTGUN_PELLET_RANGE_SQ.half ? 4 : 0;
+  const roll = random();
+  n += roll < 0.05 ? 1 : roll < 0.15 ? 2 : roll < 0.5 ? 4 : roll < 0.85 ? 5 : roll < 0.95 ? 6 : 7;
+  if (n !== 0 && r2 < d2) {
+    const scaled = n * (r2 / d2);
+    n = Math.floor(scaled) + (random() <= scaled - Math.floor(scaled) ? 1 : 0);
+  }
+  return n;
+}
+
+/**
+ * SHOTGUN_MP_PELLET_DAMAGE_SCALE_READING (research 94 §C2.1): each pellet's damage. The online receiver
+ * (`FUN_005a1b80` L459540-459570) takes `FUN_003d4530` (the ammo's raw `ImpactDamage`) per pellet; the offline path
+ * `FUN_003c7600` (the falloff and x 14). Whether the raw one is scaled on the way is not traced; the reading is
+ * research 91 §1.1's -- **each pellet a full round's damage, falloff and x 14** (`bulletDamage`): the raw 2.5 would
+ * never pass the armour (25 at piercing 6 takes 10 a hit), and the shotguns would do nothing online.
+ */
+export const SHOTGUN_MP_PELLET_DAMAGE_SCALE_READING: 'scaled' | 'raw' = 'scaled';
+export function pelletDamage(w: Parameters<typeof bulletDamage>[0], distance: number): number | null {
+  return SHOTGUN_MP_PELLET_DAMAGE_SCALE_READING === 'scaled' ? bulletDamage(w, distance) : (w.impactDamage ?? 0);
+}
+
 export function fragmentPart(random: () => number): number {
   const roll = random();
   for (let i = 0; i < FRAGMENT_ROLLS.length; i++) if (roll < FRAGMENT_ROLLS[i]!) return FRAGMENT_PARTS[i]!;

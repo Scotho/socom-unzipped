@@ -23,8 +23,12 @@ import type { MotionTable } from './motionTable';
 
 /** The stance the reload picks its clip by (`Walker.posture`: the body in use). */
 export type ReloadStance = 'stand' | 'crouch' | 'prone';
-/** The firearm in use (`m_item`). */
-export type ReloadItem = 'rifle' | 'pistol';
+/**
+ * The clip family a reload plays (web sprint 4 M4: `FUN_005a82e0`'s choice, research 94 §C1.2): the firearm in use
+ * (`m_item`: `rifle` or `pistol`), the shotgun reload, the pump (the shotgun class's after-shot), and the launcher's
+ * round mode's `Rifle m203 reload`.
+ */
+export type ReloadItem = 'rifle' | 'pistol' | 'shotgun' | 'pump' | 'm203';
 
 /** The rifle's reload clips by stance, and the moving one (animset.rdr's "Rifle reload" family). */
 export const RELOAD_CLIPS = {
@@ -36,8 +40,51 @@ export const PISTOL_RELOAD_CLIPS = {
   stand: 'seal_p_reload', crouch: 'seal_p_crouch_reload', prone: 'seal_p_prone_reload', moving: 'seal_p_mv_reload',
 } as const;
 
-/** The eight reload clips: what the sim's clip set (`./simMap` `SIM_CLIPS`) carries so the server can time a reload. */
-export const ALL_RELOAD_CLIPS: readonly string[] = Object.freeze([...Object.values(RELOAD_CLIPS), ...Object.values(PISTOL_RELOAD_CLIPS)]);
+/**
+ * The shotgun reload (animset.rdr "Shotgun reload", "Shotgun crouch reload", "Shotgun prone reload", "Moving shotgun
+ * reload": `DAT_003df098`/`0a0`/`0a8`/`0b0`, named at L495399-495402 from 0x6623b0-0x662400): the 870 (84) and the
+ * M82A1A, M40A1, M87ELR (101-103; `FUN_005a82e0`'s `bVar5`, class 0x65 with `id - 0x68 > 2`).
+ */
+export const SHOTGUN_RELOAD_CLIPS = {
+  stand: 'seal_reload_shotgun', crouch: 'seal_crouch_reload_shotgun', prone: 'seal_prone_reload_shotgun', moving: 'seal_mv_reload_shotgun',
+} as const;
+
+/**
+ * The pump (animset.rdr "Shotgun pump", "Shotgun crouch pump", "Shotgun prone pump", "Moving shotgun pump":
+ * `DAT_003df0b8`/`0c0`/`0c8`/`0d0`, L495403-495406): the after-shot clip (`param_2` 1) of the shotgun class (0x51).
+ */
+export const PUMP_CLIPS = {
+  stand: 'seal_pump_shotgun', crouch: 'seal_crouch_pump_shotgun', prone: 'seal_prone_pump_shotgun', moving: 'seal_mv_pump_shotgun',
+} as const;
+
+/**
+ * A launcher round mode's reload (`bVar4`: `FUN_005bda00` or `FUN_005bd6d0`, the kit firing a carrier's round): still,
+ * in every stance, "Rifle m203 reload" (`DAT_003debf8`, named at L495238 from 0x661840); moving, "Moving rifle reload"
+ * (`DAT_003deb70`, 0x6616a0) -- `FUN_005a82e0` L462836-462846.
+ */
+export const M203_RELOAD_CLIPS = {
+  stand: 'seal_reload_m203', crouch: 'seal_reload_m203', prone: 'seal_reload_m203', moving: 'seal_mv_reload',
+} as const;
+
+const FAMILIES: Readonly<Record<ReloadItem, { stand: string; crouch: string; prone: string; moving: string }>> = {
+  rifle: RELOAD_CLIPS, pistol: PISTOL_RELOAD_CLIPS, shotgun: SHOTGUN_RELOAD_CLIPS, pump: PUMP_CLIPS, m203: M203_RELOAD_CLIPS,
+};
+
+/** Every reload and after-shot clip: what the sim's clip set (`./simMap` `SIM_CLIPS`) carries so the server can time them. */
+export const ALL_RELOAD_CLIPS: readonly string[] = Object.freeze([...new Set(Object.values(FAMILIES).flatMap((f) => Object.values(f)))]);
+
+/**
+ * `FUN_005a82e0`'s family (L462812-462900): a round mode `m203`; the pistol in hand (`+0xf79 != 1`) `pistol`; the
+ * after-shot (`param_2` 1) of the shotgun class (81-90) `pump`; the 870 (84) and the bolt-class snipers 101-103
+ * `shotgun`; everything else `rifle` (the Spas 12 and the JACKHAMMER among them).
+ */
+export function reloadFamily(how: { item: 'rifle' | 'pistol'; id: number; afterShot?: boolean; roundMode?: boolean }): ReloadItem {
+  if (how.roundMode) return 'm203';
+  if (how.item === 'pistol') return 'pistol';
+  if (how.afterShot && how.id >= 81 && how.id <= 90) return 'pump';
+  if (how.id === 84 || (how.id >= 101 && how.id <= 103)) return 'shotgun';
+  return 'rifle';
+}
 
 /**
  * `FUN_005a82e0`'s still test for the reload (decomp 462821-462823): the mover's speed squared at most 400.0 (20 units
@@ -55,7 +102,7 @@ export function reloadMoving(vx: number, vy: number, vz: number): boolean {
 
 /** `FUN_005a82e0`'s choice: prone the prone reload; else moving the overlay, still the stance's; the item's set. */
 export function reloadClip(stance: ReloadStance, moving: boolean, item: ReloadItem = 'rifle'): string {
-  const set = item === 'pistol' ? PISTOL_RELOAD_CLIPS : RELOAD_CLIPS;
+  const set = FAMILIES[item];
   return stance === 'prone' ? set.prone : moving ? set.moving : set[stance];
 }
 
@@ -72,14 +119,24 @@ export type ReloadClipSource = ReadonlyMap<string, MotionClip> | readonly Motion
 const clipNamed = (clips: ReloadClipSource, name: string): MotionClip | undefined =>
   Array.isArray(clips) ? (clips as readonly MotionClip[]).find((c) => c.name === name) : (clips as ReadonlyMap<string, MotionClip>).get(name);
 
-/** The reload's length in a stance, moving or not, for an item: the chosen clip's (`reloadLength`), null without it. */
+/**
+ * The reload's length in a stance, moving or not, for a family: the record's `ReloadTime` when the body is still and it
+ * has one -- `FUN_005a82e0` L462940-462945 sets the clip's rate to its length / `ReloadTime` when `bVar3` (the speed
+ * squared at most 400, any stance), so the clip lasts `ReloadTime` (Spas 12 and JACKHAMMER 2, M60E3 3, M63A 2.5) --
+ * else the chosen clip's (`reloadLength`), null without it.
+ */
 export function reloadSeconds(clips: ReloadClipSource, table: MotionTable | null, stance: ReloadStance, moving: boolean,
-  item: ReloadItem = 'rifle'): number | null {
+  item: ReloadItem = 'rifle', reloadTime = 0): number | null {
+  if (!moving && reloadTime > 0) return reloadTime;
   return reloadLength(clipNamed(clips, reloadClip(stance, moving, item)), table);
 }
 
-/** The weapon's lock for a reload: `reloadSeconds`, else `RELOAD_SECONDS_PLACEHOLDER` (what the room holds a weapon for). */
+/**
+ * The weapon's lock for a reload or an after-shot clip: `reloadSeconds` (the record's `ReloadTime`, still, needs no
+ * clip), else `RELOAD_SECONDS_PLACEHOLDER` -- only a source without the clips (a server started without `MOTION_P.ZAR`).
+ */
 export function reloadLockSeconds(clips: ReloadClipSource | null, table: MotionTable | null, stance: ReloadStance, moving: boolean,
-  item: ReloadItem = 'rifle'): number {
+  item: ReloadItem = 'rifle', reloadTime = 0): number {
+  if (!moving && reloadTime > 0) return reloadTime;
   return (clips ? reloadSeconds(clips, table, stance, moving, item) : null) ?? RELOAD_SECONDS_PLACEHOLDER;
 }

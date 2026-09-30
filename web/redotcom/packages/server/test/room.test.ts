@@ -459,6 +459,7 @@ describe('the runtime kit (web sprint 4, M3/M4): each player\'s loadout, its typ
   const table: KitTable = {
     arsenal: arsenalOf(['ZAMMO', [], 'ZWEAPON', []]),
     records: new Map([[54, DEFAULT_RIFLE], [15, HELD_SIDEARM], [57, r552], [5, m9], [62, HELD_RIFLE]]),
+    rounds: new Map(),
   };
   const map: MapArsenal = {
     valves: new Map(), selectable: { seal: [], terrorist: [] },

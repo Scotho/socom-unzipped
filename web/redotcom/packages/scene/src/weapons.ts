@@ -149,7 +149,34 @@ export interface WeaponRecord {
   fireAnim: string | null;
   /** WEAPON: `FireSoundClose`, `FireSoundMed`, `FireSoundFar`, `ReloadSound`: the sound bank's names, or null. */
   sounds: { close: string | null; med: string | null; far: string | null; reload: string | null };
+  /*
+   * Web sprint 4, M4 -- each firearm class's own keys (research 94 §C1.1, §C1.2, §C2.1), present **only when the record
+   * has the key**: an absent one takes the parser's default where it is read (`viewer/src/firearms.ts`), so a record
+   * with none of them (the M4A1, the M4A1 SD, the Mark 23: `DEFAULT_RIFLE` ...) stays the file's, deep-equal.
+   */
+  /** `ReloadTime` (`+0x54`): the still reload clip is played over it (`FUN_005a82e0` L462940-462945); default 0, none. */
+  reloadTime?: number;
+  /** `ReloadDelay` (`+0x5c`, `FUN_003d2c40`): the kit's lock before a reload lands (`FUN_005c32b0`); default 0.01. */
+  reloadDelay?: number;
+  /** `ReloadAfterShot` (`+0x58`, a presence flag): the bolt or the pump -- a lock after each round (`FUN_005c5340` L479329). */
+  reloadAfterShot?: boolean;
+  /**
+   * `ReloadDelayAfterShot` (`+0x60`, `FUN_003d2c20`): that lock; default 0.01. The 870 spells it `ReloadAfterShotDelay`,
+   * which no string in the ELF names, so its lock is the default (R94.12).
+   */
+  reloadDelayAfterShot?: number;
+  /** `ReloadAfterShotSound` (`+0xa4` -> the handle `+0xa0`, `FUN_003c4700` L316283): played as the lock ends (`.SHOTGUN_COCK`). */
+  afterShotSound?: string;
+  /** The round's `NumProjectilesFired` (ammo `+0x20`, `FUN_003d44e0`; default 1): the 12 gauge's 4 rays a pull (R94.10). */
+  pellets?: number;
 }
+
+/**
+ * How `weaponRecord` reads a record. `carrier`: a grenade launcher (the MGL, the M79: `AMMO_TYPES` names no round,
+ * `MaxFireMode 0`) is read for its magazine, its rate and its reticle all the same -- it fires its rounds as fire
+ * modes (R94.8, research 94 §C4.2) -- with no round (`ammo` '', `ammoId` -1, no damage).
+ */
+export interface WeaponReadOptions { carrier?: boolean }
 
 /** One row of a `decals.rdr` set: the bitmap and the size range for one material. */
 export interface DecalEntry { set: string; material: string; texture: string; minSize: number; maxSize: number }
@@ -215,7 +242,7 @@ export function weaponStances(modifiers: RdrNode | undefined, where: string): Re
 }
 
 /** `zweapon.rdr`, decoded: the `ZWEAPON` record named `name`, its round looked up in `ZAMMO`. */
-export function weaponRecord(script: RdrNode, name: string): WeaponRecord {
+export function weaponRecord(script: RdrNode, name: string, options: WeaponReadOptions = {}): WeaponRecord {
   const record = records(script, 'ZWEAPON').find((r) => rdrGet(r, 'InternalName') === name);
   if (!record) throw new Error(`zweapon.rdr has no weapon ${name}`);
   const where = `zweapon.rdr ${name}`;
@@ -223,9 +250,11 @@ export function weaponRecord(script: RdrNode, name: string): WeaponRecord {
   const opt = (key: string, fallback: number): number => optReal(record, key, where) ?? fallback;
   const ammoTypes = rdrGet(record, 'AMMO_TYPES');
   if (ammoTypes === undefined) throw new Error(`${where} has no AMMO_TYPES`);
-  const ammo = text(ammoTypes, 'NAME', `${where} AMMO_TYPES`);
-  const round = records(script, 'ZAMMO').find((r) => rdrGet(r, 'InternalName') === ammo);
-  if (!round) throw new Error(`zweapon.rdr ZAMMO has no ${ammo}`);
+  // A carrier with no round of its own (the MGL, the M79): an empty `AMMO_TYPES`, read as no round (`WeaponReadOptions`).
+  const roundless = options.carrier === true && Array.isArray(ammoTypes) && ammoTypes.length === 0;
+  const ammo = roundless ? '' : text(ammoTypes, 'NAME', `${where} AMMO_TYPES`);
+  const round: RdrNode[] = roundless ? [] : records(script, 'ZAMMO').find((r) => rdrGet(r, 'InternalName') === ammo) ?? [];
+  if (!roundless && !round.length) throw new Error(`zweapon.rdr ZAMMO has no ${ammo}`);
   const modifiers = rdrGet(record, 'Reticule_Modifiers');
   const standNode = modifiers === undefined ? undefined : rdrGet(modifiers, 'STANCE_STAND');
   if (standNode === undefined) throw new Error(`${where} has no Reticule_Modifiers STANCE_STAND`);
@@ -253,10 +282,21 @@ export function weaponRecord(script: RdrNode, name: string): WeaponRecord {
     const v = rdrGet(record, key);
     return typeof v === 'string' ? v : null;
   };
+  // The class keys (research 94 §C1.1, §C1.2, §C2.1), each only when the record has it (see `WeaponRecord`).
+  const has = (key: string, node: RdrNode = record): boolean => rdrGet(node, key) !== undefined;
+  const afterShotSound = optional('ReloadAfterShotSound');
+  const classKeys: Partial<WeaponRecord> = {
+    ...(has('ReloadTime') ? { reloadTime: n('ReloadTime') } : {}),
+    ...(has('ReloadDelay') ? { reloadDelay: n('ReloadDelay') } : {}),
+    ...(has('ReloadAfterShot') ? { reloadAfterShot: true } : {}),
+    ...(has('ReloadDelayAfterShot') ? { reloadDelayAfterShot: n('ReloadDelayAfterShot') } : {}),
+    ...(afterShotSound !== null ? { afterShotSound } : {}),
+    ...(round.length && has('NumProjectilesFired', round) ? { pellets: n('NumProjectilesFired', round, `zweapon.rdr ZAMMO ${ammo}`) } : {}),
+  };
   return {
     name, id: n('ID'), fireWait, roundsPerMinute: Math.round(60 / fireWait),
     magazine: n('Ammo_Capacity'), mags: n('NumMags'),
-    ammo, ammoId: n('ID', round, `zweapon.rdr ZAMMO ${ammo}`), piercing: optReal(round, 'Piercing', `zweapon.rdr ZAMMO ${ammo}`) ?? 0,
+    ammo, ammoId: roundless ? -1 : n('ID', round, `zweapon.rdr ZAMMO ${ammo}`), piercing: optReal(round, 'Piercing', `zweapon.rdr ZAMMO ${ammo}`) ?? 0,
     impactDamage: optReal(round, 'ImpactDamage', `zweapon.rdr ZAMMO ${ammo}`) ?? 0, damageModifier: optReal(record, 'Damage_Modifier', where) ?? 0,
     maximumRange: n('Maximum_Range'), effectiveRange: opt('Effective_Range', 0), decalSet: text(record, 'DecalSet', where),
     knock: { knock: n('ReticuleKnock', standNode, knockAt), knockReturn: n('ReticuleKnockReturn', standNode, knockAt), knockMax: n('ReticuleKnockMax', standNode, knockAt) },
@@ -270,6 +310,7 @@ export function weaponRecord(script: RdrNode, name: string): WeaponRecord {
     rifleKick: { stand: kick('stand'), crouch: kick('crouch'), prone: kick('prone') },
     fireAnim: optional('FireAnimName'),
     sounds: { close: optional('FireSoundClose'), med: optional('FireSoundMed'), far: optional('FireSoundFar'), reload: optional('ReloadSound') },
+    ...classKeys,
   };
 }
 
