@@ -212,6 +212,13 @@ export interface ViewerHook {
   weapon(): WeaponStats;
   /** WEAPON (`./kit`): the firearm in use, where each weapon rides, and the swap playing. */
   kit(): KitState;
+  /**
+   * The runtime kit (web sprint 4, `./loadout`): the loadout on the body (five item ids), its two firearm slots'
+   * records' names and held models, and the pick waiting for the next spawn (the developer's `&kit=` or `setLoadout`).
+   */
+  loadout(): { loadout: number[]; records: string[]; models: (string | null)[]; pending: readonly number[] | null };
+  /** A pick for the page's side, carried from its next spawn (R94.3); the pick now waiting. The menu's path (M8). */
+  setLoadout(ids: readonly number[]): readonly number[] | null;
   /** WEAPON: L1 / L2 -- takes the rifle or the Mark 23 up (the swap's clip); false when refused or already in the hand. */
   selectWeapon(item: 'rifle' | 'pistol'): boolean;
   /** WEAPON: R2 -- the inventory's next slot (the rifle, the Mark 23, the throwables); the item selected. */

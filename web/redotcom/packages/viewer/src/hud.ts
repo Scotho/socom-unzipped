@@ -6,7 +6,7 @@ import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { texture as textureNode, uv, vec4, vertexColor } from 'three/tsl';
 import type { Rgba } from '@s2u/gs';
 import { segmentHit, type Grid } from '@s2u/scene';
-import type { HudBitmaps } from './hudAssets';
+import { NOT_ICONS, type HudBitmaps } from './hudAssets';
 import { FONT_TEXT_01, layoutText, textWidth } from './hudFont';
 import type { HudRenderer, Rect } from './reticle';
 import { DEFAULT_PLAYER, MODERN_SCOREBOARD_LIFT, SCORE_TOP, scoreboardLayout, type ScoreRowInfo } from './scoreboard';
@@ -729,7 +729,7 @@ export class Hud {
     // The draw order: the panels, what sits on them, the compass, the prompt, the text last.
     const names = Object.keys(bitmaps);
     const order = [
-      'newweapnbkrnd.tif', WHITE, ...names.filter((n) => n.endsWith('_icon.tif')), 'firemode.tif', 'compass_lo.tif',
+      'newweapnbkrnd.tif', WHITE, ...names.filter((n) => !NOT_ICONS.has(n)), 'firemode.tif', 'compass_lo.tif',
       ...names.filter((n) => n.startsWith('action_')), FONT_TEXT_01.texture,
     ];
     const all: Record<string, Rgba> = { ...bitmaps, [WHITE]: { width: 1, height: 1, data: new Uint8ClampedArray([255, 255, 255, 255]) } };

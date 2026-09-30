@@ -37,6 +37,9 @@ export const HUD_LIBRARIES = {
 
 export type HudBitmaps = Record<string, Rgba>;
 
+/** The HUD's bitmaps that are no weapon icon (the others -- `HUDW_TXR`'s `*_icon.tif`, `m60e.tif` ... -- are icons). */
+export const NOT_ICONS: ReadonlySet<string> = new Set([...HUD_LIBRARIES.HUD, ...HUD_LIBRARIES.HUD2, ...HUD_LIBRARIES.FONT, 'firemode.tif']);
+
 /** A bitmap turned top row first (research 87 §2): the rows reversed, nothing else touched. */
 export function flipRows(rgba: Rgba): Rgba {
   const { width, height } = rgba;
@@ -46,13 +49,16 @@ export function flipRows(rgba: Rgba): Rgba {
 }
 
 /**
- * The HUD's bitmaps out of a map archive, keyed by their lower-case file name, top row first. A library that will
- * not read costs its bitmaps and a diagnostic line, never the map; the HUD draws what it has.
+ * The HUD's bitmaps out of a map archive, keyed by their lower-case file name, top row first. `weaponIcons` are more
+ * of `HUDW_TXR`'s (web sprint 4: every firearm's `IconTextureName`, research 94 §C9 -- the weapon box's icon is the
+ * held item's, `FUN_005be050` L85226-85230). A library that will not read costs its bitmaps and a diagnostic line,
+ * never the map; the HUD draws what it has.
  */
-export function readHud(bytes: Uint8Array, toc: ZdbEntry[]): { bitmaps: HudBitmaps; diagnostics: string[] } {
+export function readHud(bytes: Uint8Array, toc: ZdbEntry[], weaponIcons: readonly string[] = []): { bitmaps: HudBitmaps; diagnostics: string[] } {
   const bitmaps: HudBitmaps = {};
   const diagnostics: string[] = [];
-  for (const [lib, names] of Object.entries(HUD_LIBRARIES)) {
+  const libraries: Record<string, readonly string[]> = { ...HUD_LIBRARIES, HUDW: [...new Set([...HUD_LIBRARIES.HUDW, ...weaponIcons])] };
+  for (const [lib, names] of Object.entries(libraries)) {
     let txr: Zar, pal: Zar;
     try {
       txr = Zar.parse(zdbMember(bytes, toc, `${lib}_TXR.ZED`));

@@ -46,8 +46,11 @@ export interface NetPageDeps {
    * in the hand, the pouch refilled.
    */
   respawned(): void;
-  /** The weapon the others carry (KIT_PLACEHOLDER: the held M4A1 SD) and the sidearm. */
-  weapons: readonly [WeaponRecord, WeaponRecord];
+  /**
+   * The two firearm slots' records (web sprint 4, `./loadout`): the page's own kit without a team; with one, the kit a
+   * player of that side carries -- its first type's (DEFAULT_CHARTYPE_PLACEHOLDER), until M9 carries each player's own.
+   */
+  weapons(team?: Team): readonly [WeaponRecord, WeaponRecord];
   /** A socket for the tests (`NetClient`'s); the page's own `WebSocket` by default -- or the single-player room's. */
   socket?: (url: string) => WebSocketLike;
   /** The offline match (`./net/loopback`): the panel reads "offline match", no reconnecting. */
@@ -281,7 +284,7 @@ export class NetPage {
       const eye = e.eye ?? e.from, aim = e.aim ?? [d[0]! / l, d[1]! / l, d[2]! / l];
       this.client.send({
         type: 'fire', seq: this.client.lastSeq(), from: [...e.from], dir: [d[0]! / l, d[1]! / l, d[2]! / l],
-        weapon: e.weapon.id === this.deps.weapons[1].id ? 1 : 0, viewTick: this.client.viewTick(),
+        weapon: e.weapon.id === this.deps.weapons()[1].id ? 1 : 0, viewTick: this.client.viewTick(),
         eye: [eye[0], eye[1], eye[2]], aim: [aim[0]!, aim[1]!, aim[2]!],
       });
     } else if (e.type === 'reloadStart') this.client.send({ type: 'reload', seq: this.client.lastSeq() });
@@ -451,7 +454,7 @@ export class NetPage {
       case 'hurt': hud.setHealth(overall({ hp: ev.health, armour: [] })); break;
       case 'blast': if (ev.ring) this.deps.ring?.(ev.ring.seconds, ev.ring.volume); break;   // the knock: `NetClient`
       case 'shot': {
-        const w = this.deps.weapons[ev.weapon ? 1 : 0];
+        const w = this.deps.weapons(this.teams.get(ev.id) ?? 'seal')[ev.weapon ? 1 : 0];
         this.deps.roundEffects({
           type: 'round', weapon: fireWeaponOf(w), from: ev.from, to: ev.to, hit: ev.normal !== null, rounds: 0,
           normal: ev.normal, material: ev.material,

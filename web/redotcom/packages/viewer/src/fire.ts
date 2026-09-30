@@ -516,10 +516,11 @@ export class Fire {
   /**
    * WEAPON: the weapon in the hand changes (the kit's L1/L2: `./kit`). The one put away keeps its magazine and spares;
    * the one taken up has its own (full the first time); a reload in progress stops without its magazine
-   * (`reloadEnd`, not completed), and the rate's wait, the pull and the kick start again.
+   * (`reloadEnd`, not completed), and the rate's wait, the pull and the kick start again. The same weapon changes
+   * nothing but its record (a new spawn's kit: 2X's magazines, `./loadout`), which the next `refill` fills by.
    */
   setWeapon(record: WeaponRecord): void {
-    if (record.name === this.rifle.name) return;
+    if (record.name === this.rifle.name) { this.rifle = record; return; }
     this.cancelReload();
     this.stowedMags.set(this.rifle.name, this.mags);
     this.rifle = record;

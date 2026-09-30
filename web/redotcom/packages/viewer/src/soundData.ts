@@ -18,7 +18,8 @@ import {
  *   for names the map's lack (`borrowMissing`) -- sent as their bytes; the page parses and decodes them (`./audio`);
  * - **the script**: `RUN/SOUNDRDR.ZAR/sounds.rdr`, each of those banks' sounds' `RANGE` and flags, by name;
  * - **the materials**: `READERC.ZAR/materials.rdr`, the step, stealth, crawl and landing sound of every surface;
- * - **the weapons**: `ZWEAPON.ZAR/zweapon.rdr`'s fire and reload sounds for `SOUND_WEAPONS`, and its `WEAPON_GLOBAL`
+ * - **the weapons**: `ZWEAPON.ZAR/zweapon.rdr`'s fire and reload sounds of every record (`weaponNames`: the loadout may
+ *   hold any, web sprint 4), and its `WEAPON_GLOBAL`
  *   distances that pick a remote round's close, medium or far sound (`fireDistances`);
  * - **the callbacks**: the map's own `CZANIM.ZAR` and `MZANIM.ZAR`, which zAnim a `zanim_callback` name plays which
  *   sounds, through the animations it starts;
@@ -54,8 +55,12 @@ export const SOUND_BANK_KINDS = ['am', 'fx', 'vc'] as const;
  * `FUN_00344bf0`); the viewer looks it up after the map's.
  */
 export const SOUND_GLOBAL_BANKS: readonly string[] = ['HUDUI.bnk'];
-/** The weapons whose sounds are read: the SEAL's rifle as held (W2.R4) and as the fire table reads it (W2.5). */
-export const SOUND_WEAPONS: readonly string[] = ['M4A1 SD', 'M4A1', 'Mark 23'];
+/** Every `ZWEAPON` record's `InternalName`, file order: whose sounds are read (a loadout may hold any record). */
+export function weaponNames(zweapon: RdrNode): string[] {
+  const list = rdrGet(zweapon, 'ZWEAPON');
+  if (!Array.isArray(list)) return [];
+  return list.flatMap((r) => { const n = Array.isArray(r) ? rdrGet(r, 'InternalName') : undefined; return typeof n === 'string' ? [n] : []; });
+}
 
 export interface SoundData {
   /** The map's archive id, `MP2`. */
@@ -189,7 +194,7 @@ export async function soundFromDisc(source: AssetSource, mapPath: string, archiv
   if (zweapon) {
     try {
       const table = parseRdr(zweapon);
-      for (const name of SOUND_WEAPONS) { const w = weaponSounds(table, name); if (w) weapons.push(w); }
+      for (const name of weaponNames(table)) { const w = weaponSounds(table, name); if (w) weapons.push(w); }
       // `FUN_003cd810`: metres x `DAT_003dfe10` (1 / MetersPerUnit, 10 on every map: `UNITS_PER_METRE`).
       const g = weaponGlobals(table);
       fireDistances = { close: g.soundDistanceClose * UNITS_PER_METRE, med: g.soundDistanceMed * UNITS_PER_METRE, far: g.soundDistanceFar * UNITS_PER_METRE };

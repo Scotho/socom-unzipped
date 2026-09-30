@@ -3,8 +3,8 @@ import { Matrix4, Scene, Timer, Vector3, type Object3D } from 'three';
 import type { MapInfo } from '@s2u/archive';
 import { sortByPopularity } from './mapOrder';
 import {
-  HELD_RIFLE, HELD_SIDEARM, materialTable, polygonNormal, PROBE_LIFT, probeFloor, probeGround, SEAL_TUNING, selectFloor, spawnsFor, tracerRound,
-  type Spawns,
+  materialTable, polygonNormal, PROBE_LIFT, probeFloor, probeGround, SEAL_TUNING, selectFloor, spawnsFor, tracerRound,
+  type Loadout, type Side, type Spawns,
 } from '@s2u/scene';
 import { FlyCamera, type Pose } from './camera';
 import type { ViewerHook } from './hook';
@@ -53,7 +53,9 @@ import { Play, playActions, StanceButton } from './play';
 import { PlayUi, readPlayChoice, writePlayChoice } from './features';
 import { FLY_PARAM, flyAccess, mayEnter } from './flyAccess';
 import { onlineChoiceAddress, readShare, updateAddress } from './shareUrl';
-import { startSource } from './source';
+import { devMode, startSource } from './source';
+import { BAKED_LOADOUT, kitParam, kitRecords, PlayerLoadout, slotModel, typeLoadout, type FirearmSlot } from './loadout';
+import type { HeldRef } from './remotePlayers';
 import { onlineLine, pageIsLocal, readOnline, resolveOnline, writeOnline, type OnlineChoice, type OnlineTarget } from './online';
 import { readRules, resolveRules } from './rules';
 import { roomsUrl } from './playersOnline';
@@ -208,8 +210,19 @@ scoreboardKeys.bindKey();
 const feetXZ = (): [number, number] | null => { const f = walk.feet(); return f ? [f[0], f[2]] : null; };
 hud.setOverlay((frame, sizes) => tacMap.layout(frame, loaded?.tac ?? null, feetXZ() ?? [0, 0], fly.pose().yaw, sizes));
 /**
- * W2.5 (`./fire`): the M4A1's hitscan round from the walk's eye along its aim, onto the hull the mover stands on, a
- * mark where it lands; the trigger is a left click while the mouse is captured, or the touch fire button; `R` reloads.
+ * The runtime kit (web sprint 4, M3/M4; `./loadout`): the `Loadout` on the body -- the character type's
+ * `default_weapons` at each spawn (the map's first `navyseals` type offline; the match's side online), a pick
+ * (`setLoadout`, the menu's path) at the next -- and the two firearm slots' records, models and icons that follow it.
+ * The developer's `&kit=<ids>` (with `?devmode`) is every spawn's pick: what a test that pins a weapon asks for.
+ */
+const loadouts = new PlayerLoadout();
+loadouts.setDevKit(devMode(SEARCH) ? kitParam(SEARCH) : null);
+/** The two firearm slots' records on the body, 2X applied: `rifle` slot 0 (L1), `pistol` slot 1 (L2). */
+let kitRecs = loadouts.records();
+/**
+ * W2.5 (`./fire`): the hitscan round of the firearm in the hand from the walk's eye along its aim, onto the hull the
+ * mover stands on, a mark where it lands; the trigger is a left click while the mouse is captured, or the touch fire
+ * button; `R` reloads.
  */
 const fire: Fire = new Fire({
   grid: () => walk.grid(), aim: () => walk.fireAim(),
@@ -219,7 +232,7 @@ const fire: Fire = new Fire({
   ready: (): boolean => !kit.swapping(),                                     // WEAPON: no round mid-swap (`./kit`)
   airborne: (): boolean => walk.mover()?.airborne ?? false,                  // WEAPON: no reload begins in the air
   attachToNode: (path, mark) => view?.attachToNode(path, mark) ?? null,      // EFFECTS: a mark rides a door's leaf
-}, HELD_RIFLE);                   // the M4A1 SD the SEAL holds: its rate, its muzzle effect, its suppressed sound
+}, kitRecs[0]);                   // the primary the kit holds: its rate, its muzzle effect, its sounds
 scene.add(fire.object);
 /**
  * The throwables (`./grenade`, web/redotcom/docs/research/85): `3` and `4` the kit's equipment slots 1 and 2 (the M67, the HE),
@@ -235,8 +248,6 @@ const grenade = new GrenadeThrower({
 scene.add(grenade.object);
 /** The throw's clip over the locomotion, a pose layer as the reload is. */
 const throwPose = new ThrowPose(() => play.motionSource());
-/** The HUD's icon for the rifle (the HUD's own default): the grenades put theirs in its place while up. */
-const RIFLE_ICON = 'm4carbine_icon.tif';
 grenade.on('equip', (on) => {
   fire.release(); play.setRifleStowed(on);   // a slot change lets a held trigger go; the rifle away while the grenade is up
   if (!on) throwPose.stop();
@@ -277,13 +288,13 @@ grenade.on('explode', (info) => {
   if (info.distanceToPlayer !== null) { const s = explosionShake(info.distanceToPlayer); if (s) fly.shakeScreen(s); }
 });
 /**
- * Research 84 (`./accuracy`, `./zoom`): the M4A1 SD's gunplay -- the SEAL's rifle (the player spec's W2.R4) -- its
- * reticle's bloom and climb, where each round goes inside it, its fire modes (`B`; L3 on the pad, the UI's lane), and
- * the view states the scope steps through (the right button; d-pad Up / Down on the pad, the UI's `zoom` lane).
+ * Research 84 (`./accuracy`, `./zoom`): the gunplay of the firearm in the hand -- its reticle's bloom and climb, where
+ * each round goes inside it, its fire modes (`B`; L3 on the pad, the UI's lane), and the view states the scope steps
+ * through (the right button; d-pad Up / Down on the pad, the UI's `zoom` lane) -- each the record's own.
  */
-const accuracy = new Accuracy(HELD_RIFLE);
-const zoom = new Zoom(HELD_RIFLE);
-let fireMode = defaultFireMode(HELD_RIFLE);
+const accuracy = new Accuracy(kitRecs[0]);
+const zoom = new Zoom(kitRecs[0]);
+let fireMode = defaultFireMode(kitRecs[0]);
 /** The map camera's vertical FOV in degrees; the zoom divides its tangent. */
 let baseFov = 49;
 fire.setGun({
@@ -334,16 +345,17 @@ function stepZoom(how: 'in' | 'out' | 'cycle'): number {
   return zoom.state();
 }
 /**
- * WEAPON (`./kit`): the kit's two firearms -- the M4A1 SD (W2.R4) and `mp_seal1`'s Mark 23 -- and the swap between them.
- * L1 (`swap1`, `1`) takes the rifle, L2 (`swap2`, `2`) the sidearm -- the controller's slots 0.0 and 1.0
+ * WEAPON (`./kit`): the kit's two firearms -- the loadout's primary and secondary (`./loadout`) -- and the swap between
+ * them. L1 (`swap1`, `1`) takes the primary, L2 (`swap2`, `2`) the secondary -- the controller's slots 0.0 and 1.0
  * (`FUN_00598280`) -- R2 (`inventory`) steps through every slot, the grenades among them. `m_item` drives the record the
  * rounds, the bloom, the zoom and the fire mode use, the anim set, the reticle set and the HUD's icon.
  */
-const KIT_RECORDS = { rifle: HELD_RIFLE, pistol: HELD_SIDEARM } as const;
-/** The HUD's icon per firearm (`IconTextureName`: the Mark 23's `mark23_icon.tif`; the rifle's the HUD's own). */
-const KIT_ICONS: Record<Firearm, string> = { rifle: RIFLE_ICON, pistol: 'mark23_icon.tif' };
-/** Each firearm's fire mode, kept while the other is in the hand (the rifle comes up on burst: research 84 §6). */
-const fireModes: Record<Firearm, number> = { rifle: defaultFireMode(HELD_RIFLE), pistol: defaultFireMode(HELD_SIDEARM) };
+const SLOT_OF: Readonly<Record<Firearm, FirearmSlot>> = { rifle: 0, pistol: 1 };
+const kitRecord = (item: Firearm) => kitRecs[SLOT_OF[item]];
+/** The HUD weapon box's icon for the firearm in the hand: its record's `IconTextureName` (research 94 §C9). */
+const kitIcon = (item: Firearm): string => loadouts.icon(SLOT_OF[item]) ?? '';
+/** Each firearm's fire mode, kept while the other is in the hand (a rifle comes up on burst: research 84 §6). */
+const fireModes: Record<Firearm, number> = { rifle: defaultFireMode(kitRecs[0]), pistol: defaultFireMode(kitRecs[1]) };
 let kitItem: Firearm = 'rifle';
 const kit: Kit = new Kit({
   swapClip: (to) => walk.swapWeapon(to),
@@ -353,7 +365,7 @@ const kit: Kit = new Kit({
   item: (item) => {
     fireModes[kitItem] = fireMode;
     kitItem = item;
-    const record = KIT_RECORDS[item];
+    const record = kitRecord(item);
     fire.setWeapon(record);
     accuracy.setWeapon(record);
     zoom.setWeapon(record);
@@ -369,6 +381,60 @@ function selectFirearm(to: Firearm): boolean {
   if (walk.mode() !== 'walk') return false;
   if (grenade.equipped()) grenade.select('rifle');
   return kit.select(to);
+}
+/**
+ * The loadout's two firearms on the body (web sprint 4, M3): each slot's `ModelName` built on demand from the map's
+ * weapons (`WorldView.held`, one object a model) and hung at its own grip, as the M4A1 SD and the Mark 23 were; a slot
+ * with no model (an empty one; a pick's M203 or thermal scope) holds nothing.
+ */
+let heldKit: { rifle: HeldRef | null; pistol: HeldRef | null } = { rifle: null, pistol: null };
+function heldRef(model: string | null): HeldRef | null {
+  const object = model ? view?.held(model) ?? null : null;
+  return object && model ? { object, points: loaded?.weapons?.[model]?.points ?? [] } : null;
+}
+function hangKit(force = false): void {
+  const was = heldKit;
+  heldKit = { rifle: heldRef(loadouts.model(0)), pistol: heldRef(loadouts.model(1)) };
+  // The same model on the same body stays where it hangs (a respawn with an unchanged kit).
+  if (force || heldKit.rifle?.object !== was.rifle?.object) play.setWeapon(heldKit.rifle?.object ?? null, heldKit.rifle?.points ?? []);
+  if (force || heldKit.pistol?.object !== was.pistol?.object) play.setSidearm(heldKit.pistol?.object ?? null, heldKit.pistol?.points ?? []);
+}
+/**
+ * A spawn's kit (`FUN_00599b60` -> `FUN_00599f00`, research 91 §4.3, R94.3): the side's pick or its type's
+ * `default_weapons` on the body, the primary in the hand, every magazine full; a slot whose record changed comes up
+ * in its own default fire mode. `side`: the match's for the page's player (`NetClient.team`), a SEAL offline.
+ */
+function spawnKit(side: Side): void {
+  fireModes[kitItem] = fireMode;                       // the mode in the hand kept with its firearm
+  const before = kitRecs;
+  loadouts.spawn(side);
+  kitRecs = loadouts.records();
+  if (kitRecs[0].id !== before[0].id) fireModes.rifle = defaultFireMode(kitRecs[0]);
+  if (kitRecs[1].id !== before[1].id) fireModes.pistol = defaultFireMode(kitRecs[1]);
+  fireMode = fireModes[kitItem];
+  if (view) hangKit();
+  kit.reset();                                         // the primary in the hand (its `item` callback on a pistol)
+  kitItem = 'rifle';
+  const record = kitRecord('rifle');
+  fire.setWeapon(record);
+  accuracy.setWeapon(record);
+  zoom.setWeapon(record);
+  fireMode = fireModes.rifle;
+  play.setItem('rifle');
+  fire.refill();
+  showFireMode();
+}
+/**
+ * A pick (the weapon select's confirm, M8; the hook's `setLoadout`): written to the side's type, carried from its next
+ * spawn -- in classic, the next round (R94.3).
+ */
+function setLoadout(loadout: Loadout, side: Side = net?.client.team ?? 'seal'): Loadout | null {
+  loadouts.setLoadout(loadout, side);
+  return loadouts.pending(side);
+}
+/** The side's first type's kit on the map on screen (the others' kits, until M9 carries each player's). */
+function sideLoadout(side: Side): Loadout {
+  return typeLoadout(loaded?.arsenal?.map ?? null, side) ?? BAKED_LOADOUT;
 }
 /**
  * R2, the Inventory (`FUN_0021bda0`'s menu over the kit's slots, one press a step here): the rifle, the Mark 23, then
@@ -472,15 +538,15 @@ function warmEffects(): void {
 }
 // The `LIGHT` passes re-draw the lit world, the held weapons and the SEAL's body (`./effectLights`: the game's second
 // pass, research 89 §10).
-effects.setLightReceivers(() => [view?.group, view?.weapon, view?.sidearm, body?.group].filter((o): o is NonNullable<typeof o> => !!o));
+effects.setLightReceivers(() => [view?.group, heldKit.rifle?.object, heldKit.pistol?.object, body?.group].filter((o): o is NonNullable<typeof o> => !!o));
 /**
  * The held weapon's node in the world and its `firepoint`'s place in it, for a round's effects (`FUN_005c5340` hands the
  * muzzle animation the weapon's node and `firepoint+0x30`: research 89 §4).
  */
 function weaponFrame(): { matrix: Matrix4; muzzle: [number, number, number] | null } | null {
-  const pistol = kit.item() === 'pistol';
-  const object = pistol ? view?.sidearm : view?.weapon;
-  const points = (pistol ? loaded?.sidearm?.points : loaded?.weapon?.points) ?? [];
+  const held = kit.item() === 'pistol' ? heldKit.pistol : heldKit.rifle;
+  const object = held?.object;
+  const points = held?.points ?? [];
   if (!object || !play.weaponStats().held) return null;
   object.updateWorldMatrix(true, false);
   const at = (name: string): [number, number, number] | null => {
@@ -1320,7 +1386,7 @@ async function boot(): Promise<void> {
     hud.setVisible(walking);
     traversal.hudFrame(hud);        // research 86: the ladder slide's icon on a ladder
     traversal.effectsFrame();       // research 86: the water's ripples (FUN_005b52b0)
-    hud.setWeaponIcon(grenade.icon() ?? KIT_ICONS[kit.item()]);   // WEAPON: the firearm's own icon   // the throwable's HUDW icon while it is up
+    hud.setWeaponIcon(grenade.icon() ?? kitIcon(kit.item()));   // WEAPON: the firearm's own icon; the throwable's HUDW icon while it is up
     hud.feed({
       // With the grenade up the box counts the M67s left (the item and its count, research 85); else the rifle's magazine.
       magazine: grenade.equipped() ? { rounds: grenade.stats().left, capacity: grenade.stats().left, spare: 0, reloading: false } : fire.state().magazine,
@@ -1395,14 +1461,16 @@ function connectNet(map: LoadedMap): void {
   solo = null;
   ears.stop();
   const deps: NetPageDeps = {
-    walk, remote, hud, weapons: [HELD_RIFLE, HELD_SIDEARM], clips: () => playClips,
+    walk, remote, hud, clips: () => playClips,
+    weapons: (team) => (team ? kitRecords(loaded?.arsenal?.table ?? null, sideLoadout(team)) : kitRecs),
     spectate: (pose) => { if (pose) fly.setPose(pose); },
     remoteGrenade: (kind, from, velocity) => grenade.launchRemote(kind as GrenadeItem, from, velocity),
     roundEffects: (e, id) => { effects.onRound(e, remote.weaponFrame(id), false); audio.onFire(e.weapon.name, e.from); },
     ring: (seconds, volume) => ears.start(seconds, volume),
-    // The server's fresh kit at this spawn (room.ts, FUN_00599f00): the rifle in the hand, every magazine full, the
-    // pouch too -- the page's spent rings and a pistol in the hand do not outlive a death or a round.
-    respawned: () => { kit.reset(); fire.refill(); grenade.refill(); showFireMode(); },
+    // The server's fresh kit at this spawn (room.ts, FUN_00599f00): the side's type's kit or its pick, the primary in
+    // the hand, every magazine full, the pouch too -- the page's spent rings and a pistol in the hand do not outlive a
+    // death or a round.
+    respawned: () => { spawnKit(net?.client.team ?? 'seal'); grenade.refill(); },
   };
   const stem = map.path.replace(/^.*\//, '').replace(/\.ZDB$/i, '').toUpperCase();
   if (NET.url) {
@@ -1415,7 +1483,9 @@ function connectNet(map: LoadedMap): void {
     }
   } else if (playOn && SOLO_MATCH && map.ground) {
     // Offline in reCOM mode: the match server's own room, in the page (`./net/loopback`; owner, 2026-09-29).
-    solo = new LoopbackMatch(simMapOfLoaded(map), simClipsOfPlay(playClips), { rules: RULES });
+    solo = new LoopbackMatch(simMapOfLoaded(map), simClipsOfPlay(playClips), {
+      rules: RULES, kits: map.arsenal ?? null, soloKit: () => loadouts.pending('seal'),   // the page's player is the host's SEAL
+    });
     net = new NetPage({ ...deps, socket: solo.socket, solo: true }, 'loopback:', stem, playerName(), undefined, false, RULES);
   }
   showOnline();
@@ -1508,17 +1578,22 @@ function show(map: LoadedMap): void {
   charShadow.setVector(map.shadowVector ?? null);
   if (body) scene.add(body.group);
   play.setBody(body, map.body ?? null);            // W2.2b: the play mode's body and skeleton
-  play.setWeapon(built.weapon, map.weapon?.points ?? []);   // WEAPON: the M4A1 SD in the right hand, at its grip
-  play.setSidearm(built.sidearm, map.sidearm?.points ?? []); // WEAPON: the Mark 23, on the hips until drawn (`./kit`)
-  kit.reset();
+  // WEAPON (web sprint 4): the map's kits, and the page's player spawned with its side's -- a SEAL until the match says
+  // (`respawned`): the primary in the right hand at its grip, the secondary on the hips until drawn (`./kit`).
+  loadouts.setMap(map.arsenal?.table ?? null, map.arsenal?.map ?? null);
+  loadouts.spawn('seal');
+  hangKit(true);                                       // a new body: the kit is hung on it afresh
+  spawnKit('seal');
   warmedAt = {};
   void warmWalk?.().catch(() => {}).then(() => {   // what entering the walk draws first, compiled now
     warmedAt['walk'] = performance.now();
     startInWalk(map.name);
   });
   // MULTIPLAYER: the others are this map's SEAL and Terrorist; a new map is a new match (each map its own, W3.R11).
-  remote.setMap(map, lighting, built.weapon ? { object: built.weapon, points: map.weapon?.points ?? [] } : null,
-    built.sidearm ? { object: built.sidearm, points: map.sidearm?.points ?? [] } : null);
+  remote.setMap(map, lighting, (team) => {
+    const l = sideLoadout(team), table = map.arsenal?.table ?? null;
+    return { rifle: heldRef(slotModel(table, l, 0)), pistol: heldRef(slotModel(table, l, 1)) };
+  });
   connectNet(map);
   // A new world starts in whatever state the panel is showing, not in the state it was built in.
   ui.apply(applyToggle);
@@ -1723,6 +1798,11 @@ window.__viewer = {
   },
   weapon: () => play.weaponStats(),
   kit: () => kit.state(),
+  loadout: () => ({
+    loadout: [...loadouts.loadout()], records: kitRecs.map((r) => r.name), models: [loadouts.model(0), loadouts.model(1)],
+    pending: loadouts.pending(net?.client.team ?? 'seal'),
+  }),
+  setLoadout: (ids) => { const l = kitParam(`kit=${ids.join(',')}`); return l ? setLoadout(l) : null; },
   selectWeapon: (item) => selectFirearm(item),
   inventory: () => kitInventory(),
   trigger: (down) => trigger(down),

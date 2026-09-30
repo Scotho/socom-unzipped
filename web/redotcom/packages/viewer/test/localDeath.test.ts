@@ -115,7 +115,7 @@ async function offlinePage() {
   const respawned: number[] = [];
   const net = new NetPage({
     walk: rig.walk, remote, hud, clips: () => null, remoteGrenade: () => undefined, spectate: () => undefined,
-    respawned: () => { respawned.push(clock); }, roundEffects: () => undefined, weapons: [HELD_RIFLE, HELD_SIDEARM],
+    respawned: () => { respawned.push(clock); }, roundEffects: () => undefined, weapons: () => [HELD_RIFLE, HELD_SIDEARM],
     socket: match.socket, solo: true,
   }, 'loopback:', 'MP99', 'Solo', undefined, false, 'classic');
   const events: ServerEvent[] = [];

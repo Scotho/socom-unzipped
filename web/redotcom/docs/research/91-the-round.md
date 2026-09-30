@@ -897,7 +897,8 @@ The `objectives` script was read again for this section from `MP51.ZDB:MZANIM.ZA
 - `HELP_GLYPH_LEAD_PLACEHOLDER`: the words before the pad glyph in 0x3e3350 and 0x3e3280. The strings dump cuts at the
   glyph. "Use the" is taken from the spectator's 0x3e30f0.
 - `OBJECTIVE_BY_MAP_PLACEHOLDER`: the non-SUPPRESSION maps' objectives. The rooms run SUPPRESSION's rules everywhere.
-- The standing placeholders `KIT_PLACEHOLDER`, `SPECTATOR_PAD_PLACEHOLDER` and `RESPAWN_BANNER_PLACEHOLDER` also apply.
+- The standing placeholders `SPECTATOR_PAD_PLACEHOLDER` and `RESPAWN_BANNER_PLACEHOLDER` also apply.
+- `KIT_PLACEHOLDER` was retired in web sprint 4 (M3/M4): the kit is the character type's (section 16's row).
 
 ## 20. The single-player match and the blast on the player (2026-09-29)
 
