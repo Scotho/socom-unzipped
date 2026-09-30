@@ -10,7 +10,9 @@
  * - **What is carried** (`FUN_005ba3d0`, decomp 472706-472775; `FUN_005ba5b0` 472779-472830): the first `NumMags`
  *   slots, each topped up to `Ammo_Capacity`, the rest 0; `NumMags` doubled for a firearm when the kit holds the
  *   Double Ammo Load (item id 0xC2), never more than 10. A kit slot set up (`FUN_005bc5d0` 473877-473904) starts with
- *   `m_currentmag` 0. [Reading: the page and the server pass no Double Ammo Load -- research 84 §18.]
+ *   `m_currentmag` 0. The spawn's doubling is `FUN_005c75f0` (research 94 §A7, traced since research 84 §18 left it
+ *   open): the page and the server double through the kit (`./loadout` `withDoubleAmmo`), so a record reaches the
+ *   ring with its `NumMags` already the kit's.
  * - **A round** (`FUN_005c1970`, 477039-477042; `FUN_005bc730` 474123-474126) takes one from
  *   `m_reloads[slot][m_currentmag[slot]]`, the magazine in the weapon, and from nothing else.
  * - **A reload** (`FUN_005c2a90`, 477460-477484) walks the ring from the slot after `m_currentmag` round to the one
@@ -40,13 +42,10 @@ export function magazinesCarried(numMags: number, doubleAmmo = false): number {
 }
 
 /**
- * Whether the viewer's kit counts the Double Ammo Load: no [reading, research 84 §18 -- `mp_seal1` lists it, but the
- * console frame of a live spawn shows the M4A1's three magazines, "2 MAGS"]. The page and the server both read this.
+ * A weapon's ring at a spawn: its `Ammo_Capacity` and `NumMags` (the record's `magazine` and `mags`; the kit's record,
+ * 2X already applied by `./loadout`, so `doubleAmmo` is for a bare record).
  */
-export const KIT_DOUBLE_AMMO = false;
-
-/** A weapon's ring at a spawn: its `Ammo_Capacity` and `NumMags` (the record's `magazine` and `mags`). */
-export function ringFor(record: { readonly magazine: number; readonly mags: number }, doubleAmmo = KIT_DOUBLE_AMMO): MagazineRing {
+export function ringFor(record: { readonly magazine: number; readonly mags: number }, doubleAmmo = false): MagazineRing {
   return new MagazineRing(record.magazine, Math.max(1, magazinesCarried(record.mags, doubleAmmo)));
 }
 
