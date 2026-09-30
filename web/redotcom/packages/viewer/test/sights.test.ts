@@ -12,7 +12,8 @@ import { LENS_ANIMS, lensRow, scaleColorRows, ZANIM_SCALE_COLOR } from '../src/l
 import { lensColour, lensColours, nightVisionRow, setLensRows, setNightVision } from '../src/nightVision';
 import { armingColour, reticleGameColour, reticleType } from '../src/reticle';
 import {
-  scopeBitmaps, scopeLens, scopeLevels, scopeNodeVisible, showScopeNodes, thermalFitted, THERMAL_LENS, THERMAL_SCOPE_NODE,
+  cloneHeld, lensStep, scopeBitmaps, scopeLens, scopeLevels, scopeNodeVisible, showScopeNodes, shownScopeNode, thermalFitted,
+  THERMAL_LENS, THERMAL_SCOPE_NODE, viewLens,
 } from '../src/sights';
 import { soundFromDisc } from '../src/soundData';
 import { Zoom } from '../src/zoom';
@@ -124,6 +125,42 @@ describe('the thermal scope (R94.15, research 94 section C7)', () => {
       [5, false, true, 'to_starlight_scope_lens_fx'], [5, false, false, 'to_scope_lens_fx'],
     ];
     for (const [state, thermal, night, want] of rows) expect([state, thermal, night, scopeLens(state, thermal, night)]).toEqual([state, thermal, night, want]);
+  });
+
+  it('one lens a view: a night map\'s 0 -> 3 -> 5 goes goggles then thermal, applied whole, never undone (viewLens, lensStep)', () => {
+    // [view state, thermal, night, walking with the rifle, the lens]
+    const rows: [number, boolean, boolean, boolean, string | null][] = [
+      [3, true, true, true, 'goggles'], [3, false, true, false, 'goggles'],            // the goggles, grenade up or not
+      [5, true, true, true, THERMAL_LENS], [5, true, true, false, null], [0, true, true, true, null],
+    ];
+    for (const [s, t, n, w, want] of rows) expect([s, t, n, w, viewLens(s, t, n, w)]).toEqual([s, t, n, w, want]);
+    // The page's frames on a night map with the thermal scope, stepping 0 -> 3 -> 5 -> 3 -> 0.
+    let on: ReturnType<typeof viewLens> = null;
+    const applied: (string | null)[] = [], sounds: boolean[] = [];
+    for (const s of [0, 3, 3, 5, 5, 3, 0]) {
+      const step = lensStep(on, viewLens(s, true, true, true));
+      if (!step) continue;
+      on = step.apply;
+      applied.push(step.apply);
+      sounds.push(step.goggles);
+    }
+    expect(applied).toEqual(['goggles', THERMAL_LENS, 'goggles', null]);
+    expect(sounds).toEqual([true, true, true, true]);                   // goggles on, off (to the scope), on, off
+    expect(lensStep(THERMAL_LENS, THERMAL_LENS)).toBeNull();
+    expect(lensStep('to_scope_lens_fx', THERMAL_LENS)).toEqual({ apply: THERMAL_LENS, goggles: false });
+  });
+
+  it('a remote body\'s copy of a held model takes its own kit\'s scope node, and leaves the page\'s shared one alone', () => {
+    const shared = new Group();
+    for (const node of ['m82a1_high', 'scope', THERMAL_SCOPE_NODE]) { const m = new Mesh(); m.userData.node = node; shared.add(m); }
+    showScopeNodes(shared, kit(101, 15, 195), 101);                     // the page's own kit: thermal
+    expect(shownScopeNode(shared)).toBe(THERMAL_SCOPE_NODE);
+    const remote = cloneHeld(shared, kit(101, 15, 121), 101);           // a remote's side kit: no thermal scope
+    expect(shownScopeNode(remote)).toBe('scope');
+    expect(remote.children.map((m) => m.visible)).toEqual([true, true, false]);
+    expect(shownScopeNode(shared)).toBe(THERMAL_SCOPE_NODE);            // the shared object untouched
+    expect(shownScopeNode(cloneHeld(shared, kit(101, 15, 195), 101))).toBe(THERMAL_SCOPE_NODE);
+    expect(shownScopeNode(cloneHeld(shared, null, null))).toBe('scope');   // no kit known: the plain scope
   });
 
   it('SCALE_COLOR (zAnim command 35, FUN_00264580): a colour per flagged row, flag 0x10 all four; FUN_003b76b0 scales it', () => {

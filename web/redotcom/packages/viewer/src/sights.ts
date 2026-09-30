@@ -61,6 +61,16 @@ export function showScopeNodes(object: Object3D, loadout: readonly number[], wea
   });
 }
 
+/**
+ * A copy of a held model for another body, its scope nodes set from that body's own kit (`FUN_005b82e0` runs per kit):
+ * the page's own `view.held(model)` is shared and `showScopeNodes`-ed for the page's kit, which a remote must not take.
+ */
+export function cloneHeld(object: Object3D, loadout: readonly number[] | null, weaponId: number | null): Object3D {
+  const copy = object.clone(true);
+  showScopeNodes(copy, loadout ?? [], weaponId ?? -1);
+  return copy;
+}
+
 /** The scope node a held model shows (`scope` or `thermal_scope`), or null when it has neither (the page's stats). */
 export function shownScopeNode(object: Object3D | null): string | null {
   let shown: string | null = null;
@@ -84,4 +94,25 @@ export function scopeLens(zoomState: number, thermal: boolean, night: boolean): 
   if (zoomState < 5 || zoomState > 12) return null;
   if (thermal) return THERMAL_LENS;
   return night ? 'to_starlight_scope_lens_fx' : 'to_scope_lens_fx';
+}
+
+/** What the lit colours carry in a view: the goggles' rows (state 3, `FUN_005c1800`), a scope's lens, or nothing. */
+export type ViewLens = 'goggles' | ScopeLens | null;
+
+/**
+ * The one lens of a view state -- the goggles and a scope's lens share the lit-colour rows, so one owner decides:
+ * state 3 the goggles; 5-12 `scopeLens` when `scoped` (walking, no grenade up); else none.
+ */
+export function viewLens(zoomState: number, thermal: boolean, night: boolean, scoped = true): ViewLens {
+  if (zoomState === 3) return 'goggles';
+  return scoped ? scopeLens(zoomState, thermal, night) : null;
+}
+
+/**
+ * A frame's change of lens: null when `want` is what is on; else the lens to apply and whether the goggles went on or
+ * off with it (their sound, the fog's colour). Applied once, whole, so no later write undoes it (a night map's 3 -> 5).
+ */
+export function lensStep(on: ViewLens, want: ViewLens): { apply: ViewLens; goggles: boolean } | null {
+  if (on === want) return null;
+  return { apply: want, goggles: (on === 'goggles') !== (want === 'goggles') };
 }

@@ -45,7 +45,7 @@ import { rankOf } from './mapOrder';
 import { buildBody, type BodyView } from './bodyView';
 import { CharacterShadow } from './charShadow';
 import { lensColours, nightVisionRow, setLensRows, setNightVision } from './nightVision';
-import { scopeBitmaps, scopeLens, showScopeNodes, shownScopeNode, thermalFitted, type ScopeLens } from './sights';
+import { lensStep, scopeBitmaps, showScopeNodes, shownScopeNode, thermalFitted, viewLens, type ViewLens } from './sights';
 import type { LensRows } from './lensFx';
 import { Fire } from './fire';
 import { Accuracy, defaultFireMode, fireInterval, FIRE_MODE_NAMES, kickStarts, kickTicks, nextFireMode, perturb, roundsPerPull } from './accuracy';
@@ -824,7 +824,9 @@ let nightLens: [number, number, number, number] | null = null;
 let nightOn = false;
 /** The scope's lens zAnims' rows off the map's effect data (`./effectData` `lenses`), and the lens in play. */
 let lensRows = new Map<string, LensRows>();
-let lensOn: ScopeLens | null = null;
+let lensOn: ViewLens = null;
+/** The weapon id whose scope bitmaps the reticle holds (`scopeBitmaps`), -1 for none yet. */
+let scopeBitmapsOf = -1;
 /**
  * The fired round's `ArmingDistance`, units (null: none) -- the grey reticle's test (R94.16, `armingColour`). The
  * fire workstream's round-mode getter takes this over; until then no firearm's round has one.
@@ -876,23 +878,23 @@ function gunFrame(dt: number, walking: boolean): void {
   // The look's divisor (FUN_005966a0, `FUN_005be660`): the LOOK workstream's law takes the magnification and mode 4.
   fly.setZoom(1 / zoom.lookScale() / (zoom.state() === 4 ? 5 : 1), zoom.state() === 4);
   hud.setZoom(zoom.magnification());
-  // The scope's lens (FUN_001f0750 L53084-53160, research 94 section C7): the thermal scope's `to_thermal_lens_fx` in every
-  // scoped view while the kit holds item 195, else the scope's own -- their SCALE_COLOR rows on the lit colours
-  // (`./lensFx`, `./nightVision`: the plain scope's are neutral, so off). Before the goggles', which set theirs after.
-  const lens = walking && !grenade.equipped() ? scopeLens(zoom.state(), thermalFitted(loadouts.loadout()), !!loaded?.night?.mission) : null;
-  if (lens !== lensOn) {
-    lensOn = lens;
-    setLensRows(lens ? lensRows.get(lens)?.rows ?? null : null);
-  }
-  // The night vision (view state 3): the goggles on the reticle's layer, the lens's green colour matrix on the frame,
-  // the goggles' sound in and out (DAT_0044ce30/38: .NV_GOGGLES_ON / _OFF).
-  const night = zoom.view() === 'nightvision';
-  reticle.setNight(night);
-  if (night !== nightOn) {
-    nightOn = night;
-    setNightVision(night ? nightLens : null);   // the lit colours through VU1 command 0x5c (`./nightVision`)
-    refreshFog();                               // and the fog's colour times the lens's (`cam+0xd0`)
-    if (walking) audio.play(night ? '.NV_GOGGLES_ON' : '.NV_GOGGLES_OFF', null);   // without a place: vtable+0xc (decomp 410944)
+  // The lit colours' one lens (`./sights` `viewLens`, `lensStep`): the night vision's goggles in view state 3 (the
+  // goggles on the reticle's layer, the green matrix, their sound DAT_0044ce30/38 .NV_GOGGLES_ON / _OFF), or a scoped
+  // view's lens (FUN_001f0750 L53084-53160, research 94 section C7): `to_thermal_lens_fx` while the kit holds item 195,
+  // else the scope's own -- their SCALE_COLOR rows (`./lensFx`; the plain scope's are neutral, so off). One owner, one
+  // write a change: a night map's 3 -> 5 goes from the goggles straight to the thermal rows.
+  reticle.setNight(zoom.view() === 'nightvision');
+  const want = viewLens(zoom.state(), thermalFitted(loadouts.loadout()), !!loaded?.night?.mission, walking && !grenade.equipped());
+  const step = lensStep(lensOn, want);
+  if (step) {
+    lensOn = step.apply;
+    if (step.apply === 'goggles') setNightVision(nightLens);   // the lit colours through VU1 command 0x5c (`./nightVision`)
+    else setLensRows(step.apply ? lensRows.get(step.apply)?.rows ?? null : null);
+    if (step.goggles) {
+      nightOn = step.apply === 'goggles';
+      refreshFog();                               // and the fog's colour times the lens's (`cam+0xd0`)
+      if (walking) audio.play(nightOn ? '.NV_GOGGLES_ON' : '.NV_GOGGLES_OFF', null);   // without a place: vtable+0xc (decomp 410944)
+    }
   }
 }
 
@@ -961,8 +963,8 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
     if (message.id !== wantedEffects) return;
     effects.setData(message.data);
     lensRows = new Map(message.data.lenses ?? []);   // research 94 section C7: the scope lenses' SCALE_COLOR rows
-    if (lensOn) setLensRows(null);                   // a scope's lens is exclusive of the goggles: only it goes
-    lensOn = null;                                   // applied afresh on the next frame
+    // A scope's lens re-applied from the new rows on the next frame (the goggles' rows are the map's, not this data's).
+    if (lensOn && lensOn !== 'goggles') { setLensRows(null); lensOn = null; }
     warmEffects();                                   // research 90 item 16: compile the effects before the first shot
     fire.setMarks(effects.marks());                 // decals.rdr's row per surface material, or the one mark
     // ACCURACY (research 84 section 13): the round goes through what the game lets it -- the material byte's name
@@ -1395,7 +1397,7 @@ async function boot(): Promise<void> {
       // the rifle's for the M4A1 SD, the sidearm's for a pistol, the shotgun's; its scope's bitmaps (`./sights`).
       const held = fire.weaponRecord().id;
       reticle.setSet(reticleType(held, zoom.state(), zoom.target(), fireMode));
-      reticle.setScopeBitmaps(scopeBitmaps(held));
+      if (held !== scopeBitmapsOf) { scopeBitmapsOf = held; reticle.setScopeBitmaps(scopeBitmaps(held)); }   // on a change only
       // Grey while the aimed point is inside the fired round's arming distance (R94.16; the range finder's metres x 10).
       const arming = roundArming();
       const aimed = arming === null ? null : rangeFinder.measure(walk.grid(), walk.fireAim(), performance.now() / 1000);
@@ -1625,7 +1627,8 @@ function show(map: LoadedMap): void {
   // MULTIPLAYER: the others are this map's SEAL and Terrorist; a new map is a new match (each map its own, W3.R11).
   remote.setMap(map, lighting, (team) => {
     const l = sideLoadout(team), table = map.arsenal?.table ?? null;
-    return { rifle: heldRef(slotModel(table, l, 0)), pistol: heldRef(slotModel(table, l, 1)) };
+    const recs = kitRecords(table, l);             // the side's own kit sets the copies' scope nodes (`cloneHeld`)
+    return { rifle: heldRef(slotModel(table, l, 0)), pistol: heldRef(slotModel(table, l, 1)), loadout: l, ids: [recs[0].id, recs[1].id] as const };
   });
   connectNet(map);
   // A new world starts in whatever state the panel is showing, not in the state it was built in.

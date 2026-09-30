@@ -450,6 +450,7 @@ export class Reticle {
 
   /** The arms' colour: at rest, on a teammate, on an enemy, out of range (`FUN_00215c10`). */
   setColour(colour: ReticleColour): void {
+    if (colour === this.colour) return;            // called every frame: the tint only on a change
     this.colour = colour;
     this.armMaterial?.color.setRGB(...reticleTint(colour));
   }
