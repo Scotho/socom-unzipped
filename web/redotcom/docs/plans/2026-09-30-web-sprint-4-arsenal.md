@@ -185,6 +185,29 @@ close entry with the spend, the PR to `main` (the owner merges; the server redep
 
 *(newest first)*
 
+- **2026-09-30 — the runtime kit merged (M3/M4 core), WEAPON EXCHANGE drawn (M8), launched rounds (M7 physics)**
+  (the cloud agent). Two Opus implementers in worktrees, each reviewed by a fresh Opus reviewer before the merge
+  (PASS WITH FINDINGS both; the kit's one medium finding -- a devmode pick applied online while the server ruled the
+  type's kit -- fixed in a round). The kit is data now: the page, its loopback room and the server read `ZWEAPON.ZAR`
+  at run time; every player spawns with the character type's `default_weapons` (so Frostfire's SEAL 1 holds the
+  M4A1, not W2.R4's M4A1 SD: `&kit=62,15,121,126,255` in devmode pins the SD for the specs that test it); records,
+  held models (any of the library's, case-insensitive: the SA-80's `IW80A2`, `MODEL_NAME_CASE_READING`), icons,
+  2X and the server's per-weapon tables all follow the `Loadout`; `KIT_PLACEHOLDER` retired. **2X and the frames:**
+  the kit now shows 5 MAGS for the M4A1 with 2X (`NumMags` 3 doubled, research 94 §A7); `s4_pcsx2/A_60_select.png`
+  (an M4A1 in a live Vigilance round) shows 27/30 5 MAGS -- six magazines, so the doubling is the console's;
+  research 84 §18's `console_spawn_slot8.png` (2 MAGS) is a spawn of an unknown kit. The menu's layout, prompt lines
+  and key/pad maps (`weaponSelect.ts`, 20 tests) follow §B5; the prompt's colour is the code's (100,100,20)/100
+  (research 94 §B4 corrected); the pad glyphs are drawn as words (`PAD_GLYPH_PLACEHOLDER`: the HUD font has none).
+  Launched rounds in `projectile.ts`: rockets accelerate without a fall, a hit inside `ArmingDistance` is a dud, the
+  loft onto the aimed point (`LOFT_TOLERANCE_READING` resolved from `.data`), the backblast. Suite: redotcom 2213
+  passed / 2 skipped; build green. Wave 2 dispatched: (A) the classes' fire behaviour and the 40 mm rounds as fire
+  modes, (B) sights/thermal/reticles/sounds/effects, (C) the menu in the match and protocol 7.
+  **Spend check (after M4's first work, as the plan asks)** -- *estimated*, the harness reports tokens per subagent
+  but no dollars: subagents so far 1.97M tokens (M1 readers 1.08M, the kit 0.51M, the menu's drawing 0.20M, two
+  reviews 0.19M) ~ $11 at the plan's prices with a 90/10 input/output split; the main agent's own turns are not
+  metered by the harness and are estimated at ~ $20 with prompt caching. Running total ~ $42 of $250 against M0-M3's
+  $88 of lines plus part of M4 and M8: under the line; no re-plan.
+
 - **2026-09-30 — M2, the data layer** (the cloud agent). `packages/scene/src/arsenal.ts`: every `ZWEAPON` record as an
   `ArsenalItem` (class by id range, slot kind, model, icon, round, and the rare keys with the parser's defaults:
   `SlotCost`, `ReloadTime`, `ReloadDelay`, the bolt/pump lock, `ArmingDistance`, `HasBackblast`, gravity, muzzle

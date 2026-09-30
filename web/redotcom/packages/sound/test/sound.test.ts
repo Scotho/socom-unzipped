@@ -411,7 +411,8 @@ describe.skipIf(!soundrdr)('sounds.rdr (81 §3)', () => {
 describe.skipIf(!zweapon)('zweapon.rdr sounds (81 §5)', () => {
   it('names the M4A1 SD\'s round and reload, and the M4A1\'s three distances', () => {
     const script = weaponScriptFromArchive(zweapon!);
-    expect(weaponSounds(script, 'M4A1 SD')).toEqual({ name: 'M4A1 SD', fireClose: '.M4A1_SIL', fireMed: null, fireFar: null, reload: '.M4A1_SIL_RLD' });
+    expect(weaponSounds(script, 'M4A1 SD')).toEqual({ name: 'M4A1 SD', fireClose: '.M4A1_SIL', fireMed: null, fireFar: null, reload: '.M4A1_SIL_RLD', afterShot: null });
+    expect(weaponSounds(script, '870')).toMatchObject({ afterShot: '.SHOTGUN_COCK' });           // FUN_005c3000's pump
     expect(weaponSounds(script, 'M4A1')).toMatchObject({ fireClose: '.M4A1', fireMed: '.M4A1_M', fireFar: '.M4A1_F', reload: '.M4A1_RLD' });
     expect(weaponSounds(script, 'NOPE')).toBeNull();
   });

@@ -11,6 +11,7 @@ import type { PlaySnapshot, SwapProgress } from './mover';
 import { SEAL_ANIMS } from './locomotion';
 import type { BodyState, Team } from './net/protocol';
 import { Play, type PlayClips } from './play';
+import { cloneHeld } from './sights';
 import type { Mount } from './heldItem';
 import { handedAt, handOffOf, type Firearm } from './kit';
 
@@ -77,7 +78,11 @@ export interface HeldRef { object: Object3D; points: readonly WeaponPoint[] }
  * For now each side's first type's kit, as the local player spawns with (DEFAULT_CHARTYPE_PLACEHOLDER); M9 carries each
  * player's own kit on the wire.
  */
-export type SideKit = (team: Team) => { rifle: HeldRef | null; pistol: HeldRef | null };
+export type SideKit = (team: Team) => {
+  rifle: HeldRef | null; pistol: HeldRef | null;
+  /** The side's loadout and its two firearms' ids: the copies' scope nodes follow them (`./sights` `cloneHeld`). */
+  loadout?: readonly number[]; ids?: readonly [number, number];
+};
 
 interface Remote {
   id: number; team: Team; view: BodyView; play: Play; weapon: Object3D | null; sidearm: Object3D | null; item: Firearm; snap: ReturnType<typeof snapshotOf> | null;
@@ -202,10 +207,11 @@ export class RemotePlayers {
     play.setFlyToggle(true);
     play.setClips(this.clips);
     // WEAPON (web sprint 4, M3): the side's two firearms, each its own model at its own grip, as the local kit hangs them.
+    // Each copy's scope node from the body's own kit, not the page's (the thermal scope's swap, `./sights`).
     const kit = this.kitOf?.(team) ?? { rifle: null, pistol: null };
-    const weapon = kit.rifle ? kit.rifle.object.clone(true) : null;
+    const weapon = kit.rifle ? cloneHeld(kit.rifle.object, kit.loadout ?? null, kit.ids?.[0] ?? null) : null;
     if (weapon && kit.rifle) play.setWeapon(weapon, kit.rifle.points);
-    const sidearm = kit.pistol ? kit.pistol.object.clone(true) : null;
+    const sidearm = kit.pistol ? cloneHeld(kit.pistol.object, kit.loadout ?? null, kit.ids?.[1] ?? null) : null;
     if (sidearm && kit.pistol) play.setSidearm(sidearm, kit.pistol.points);
     const r: Remote = {
       id, team, view, play, weapon, sidearm, item: 'rifle', snap: null, deadFor: 0, deathClip: this.pendingDeaths.get(id) ?? null,

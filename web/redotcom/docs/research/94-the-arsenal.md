@@ -1348,6 +1348,16 @@ research 84 §9. The thermal scope changes no bitmap, only the lens effect (C7).
   archives (`to_thermal_lens_fx` found in MP2, MP6, MP9, MP11, MP52, MP53, MP61, MP71, MP73, MP81 `.ZDB` by byte
   search). **Zoom unchanged** (the magnification is still the weapon's `ZoomMode`). `THERMAL_LENS_FX_READING`: what the
   zAnim does (colour matrix / render mode) -- not decoded here; research 89's command set would read it.
+  **Read in M5 (2026-09-30):** its own sequence is two stops, four `SCALE_COLOR` (command 35, `FUN_00264580`), a
+  `VALVE`, an `IRIS_EFFECT` (34) and a `CAMERA` (28) (the names: `FUN_0025bc20`'s registrations L106891-106900, strings
+  0x3eceb0-0x3ecf30). `SCALE_COLOR` sets rows of the lit-colour matrix the night vision uses (`FUN_003b76b0`: `0.33
+  rgb, 3.03 a`); a draw takes the row of its node's `+0x5a & 3` (`FUN_003b6870` L308209-308249) -- the world 0, a
+  character's model and gear 2 (`FUN_00313240(model, 2)` L406210/406227), the kit's weapons 2 (L480099). The thermal
+  rows: 0 (0.1, 0.33, 0.7, 0) a cold blue at the lit brightness, 1 black, 2 (0.5, 0.3, 0, 128) a bright orange, 3
+  (0.9, 0.65, 0, 50) (no retail setter). The plain scope's `to_scope_lens_fx` sets the neutral (1, 1, 1, 0) on all
+  four, which `FUN_003b7170` treats as off; the starlight's has no `SCALE_COLOR`. `viewer/src/lensFx.ts` and
+  `nightVision.ts` port the rows; the two other commands stay the reading. The `scope`/`thermal_scope` nodes are on the
+  M82A1A, M40A1, M87ELR and both SR-25s (`stoner_sr25`), not on the Dragunov (`test/sights.test.ts`, MP2).
 - **2X** (194): C0 row 24. `magazinesCarried` in the viewer already models it (research 84 §18).
 
 ### C8. Holsters: where the carried weapons hang
@@ -1502,7 +1512,7 @@ IgnoreExplosionDI; `LAW HEAT Ammo` and `RPG Ammo` AccelerationFactor 98 (default
 | `IGNORE_EXPLOSION_DI_READING` (*note only*) | what projectile `+5 & 2` (C4's IgnoreExplosionDI) changes in the blast | set L320755-320756; readers not traced |
 | `VOLATILE_READING` (*note only*) | what `Volitile` (claymore, PMN) does -- set off by another blast? | `FUN_003d4400` read at L320625 only |
 | `PMN_FRIENDLY_READING` (*note only*) | whether a teammate/owner sets off a PMN | `FUN_00543930` L410270-410310 shows no team test |
-| `THERMAL_LENS_FX_READING` (*note only*) | what `to_thermal_lens_fx` (a zAnim in the map ZDBs) does to the picture | strings 0x3e28b0; `FUN_001f0750` L53084-53160; the zAnim not decoded (research 89 has the command set) |
+| `THERMAL_LENS_FX_READING` (`viewer/src/lensFx.ts`; narrowed 2026-09-30, M5) | what the rest of `to_thermal_lens_fx` does: its `IRIS_EFFECT` (34, `FUN_00264610`) and `CAMERA` (28, `FUN_00265f20`/`FUN_00266320`) commands and its `restore_lensfx` sequence (`CAMERA_PARAMS`, `BLUR3D`, `TRUE_COLOR_SCALE`); and the held weapon's row (the game gives the kit's weapon models row 2, L480099; the viewer's held weapon keeps the world's materials, row 0). **Ported:** its four `SCALE_COLOR` (35, `FUN_00264580`) rows, read from the map's `MZANIM.ZAR` at run time -- Frostfire's (0.1, 0.33, 0.7, 0), (0, 0, 0, 0), (0.5, 0.3, 0, 128), (0.9, 0.65, 0, 50) -- on the lit colours by each draw's `+0x5a & 3` row (`FUN_003b6870`): the world row 0, the characters row 2 (L406210/406227) | strings 0x3e28b0; `FUN_001f0750` L53084-53160; the command names `FUN_0025bc20` L106891-106900 with strings 0x3eceb0-0x3ecf30 read from the ELF; the two commands' payloads dumped (`IRIS_EFFECT` flags 0x10008fff, `CAMERA` flags 0x1008000), their effect on the frame not read |
 | `SLOT_OF_LAUNCHER_READING` (*note only*) | in which kit slot MGL/M79/LAW/RPG sit when picked (primary vs equipment) | `FUN_0023fef0` handles them via SlotCost/pairing; no default kit carries one (research 91 §14); menu reader (b) owns the list build |
 | `NO_FIREARM_RECORD_PLACEHOLDER` (`viewer/src/loadout.ts`) | what a firearm slot fires when its item has no firearm record: the grenade launchers 141-143 (`AMMO_TYPES` names no round; their rounds are fire modes of the carrier, C4.2), the Designator (11, a pistol-class item with no round, absent from the kit table) or an empty slot; the slot's model and HUD icon stay its own record's (`ModelName`, `IconTextureName`) | `kitTableOf` reads every primary and secondary through `weaponRecord`; no default kit holds such a slot (A4) -- the slot keeps the baked record of its kind (M4A1 SD / Mark 23) | retired for the MGL (142) and the M79 (143) in M4 (read as carriers, `weaponRecord`'s `carrier`; they fire their rounds, C4.2); open for the Designator, the M203 item and an empty slot |
 | `MODEL_NAME_CASE_READING` (`viewer/src/loadMap.ts` `heldWeapons`) | whether the game finds a weapon's `ModelName` in `WEAP_GEO` case aside: the SA-80 A2 (64) names `IW80A2`, every MP map's library holds `iw80a2` (all 22 probed, 2026-09-30), and the retail SA-80 draws | the model-by-name lookup's compare was not traced in the decomp; reading: case-insensitive (the other names match exactly, so only the SA-80 depends on it) |

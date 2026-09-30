@@ -89,6 +89,12 @@ export interface ViewerHook {
      * `3.03 x .a`, VU1 command 0x5c on every lit colour), null with them off.
      */
     nightVision: [number, number, number, number] | null;
+    /**
+     * The scope's lens (`./sights` `scopeLens`, research 94 §C7): the zAnim a scoped view plays (`to_thermal_lens_fx`
+     * with the thermal scope in the kit), and the four row colours its `SCALE_COLOR`s put on the lit colours (null: off);
+     * the scope node the held primary shows (`scope`, `thermal_scope`; null: its model has neither).
+     */
+    lens: { effect: string | null; rows: [number, number, number, number][] | null; node: string | null };
   };
   toggles(): Record<ToggleName, boolean>;
   chromeHidden(): boolean;
