@@ -55,6 +55,7 @@ import { FLY_PARAM, flyAccess, mayEnter } from './flyAccess';
 import { onlineChoiceAddress, readShare, updateAddress } from './shareUrl';
 import { devMode, startSource } from './source';
 import { BAKED_LOADOUT, kitParam, kitRecords, PlayerLoadout, slotModel, typeLoadout, type FirearmSlot } from './loadout';
+import { KitRounds } from './firearms';
 import type { HeldRef } from './remotePlayers';
 import { onlineLine, pageIsLocal, readOnline, resolveOnline, writeOnline, type OnlineChoice, type OnlineTarget } from './online';
 import { readRules, resolveRules } from './rules';
@@ -226,7 +227,8 @@ let kitRecs = loadouts.records();
  */
 const fire: Fire = new Fire({
   grid: () => walk.grid(), aim: () => walk.fireAim(),
-  muzzle: () => play.muzzle(), reloadSeconds: () => play.reloadSeconds(),   // WEAPON: the rifle in hand (`./play`)
+  muzzle: () => play.muzzle(), reloadSeconds: (family, reloadTime) => play.reloadSeconds(family ?? null, reloadTime ?? 0),   // WEAPON: the rifle in hand (`./play`)
+  launchPoint: () => play.launchPoint(),                                    // M4: a round mode's `firepoint_203`
   look: () => (walk.mode() === 'walk' ? { pitch: (fly.pose().pitch * Math.PI) / 180, stance: walk.posture() } : null),
   kickPitch: (radians) => fly.addPitch(radians),                             // WEAPON: the kick (`./rifleKick`)
   ready: (): boolean => !kit.swapping(),                                     // WEAPON: no round mid-swap (`./kit`)
@@ -294,7 +296,9 @@ grenade.on('explode', (info) => {
  */
 const accuracy = new Accuracy(kitRecs[0]);
 const zoom = new Zoom(kitRecs[0]);
-let fireMode = defaultFireMode(kitRecs[0]);
+/** M4 (`./firearms`): the kit's launcher-round slots and their counts; a carrier's modes run on into them (R94.8). */
+let kitRounds = new KitRounds(loadouts.tables(), loadouts.loadout());
+let fireMode = defaultFireMode(kitRecs[0], kitRounds.held());
 /** The map camera's vertical FOV in degrees; the zoom divides its tangent. */
 let baseFov = 49;
 fire.setGun({
@@ -317,11 +321,15 @@ const HUD_FIRE_MODE = { 1: 'single', 2: 'burst', 3: 'auto' } as const;
 function showFireMode(): void {
   const m = HUD_FIRE_MODE[fireMode as 1 | 2 | 3];
   if (m) hud.setFireMode(m);
+  // M4: a round mode (> 3) redirects the fire to the round's slot (`FUN_005c6600`) and shows its icon (`FUN_00237b40`).
+  const round = fireMode > 3 && kitItem === 'rifle' ? kitRounds.round(fireMode) : null;
+  const ring = round ? kitRounds.ring(fireMode) : null;
+  fire.setRound(round && ring ? { id: fireMode, round, ring } : null);
+  hud.setFireModeIcon(round && ring ? round.icon : null);
 }
-showFireMode();
 /** The fire-mode switch (`FUN_005c4600`; L3, `B`): not while scoped, nor while the grenade is up (it has one mode). */
 function switchFireMode(): string {
-  if (!grenade.equipped()) fireMode = nextFireMode(fire.weaponRecord(), fireMode, zoom.target() > 1.01);
+  if (!grenade.equipped()) fireMode = nextFireMode(fire.weaponRecord(), fireMode, zoom.target() > 1.01, kitItem === 'rifle' ? kitRounds.held() : []);
   showFireMode();
   return FIRE_MODE_NAMES[fireMode] ?? String(fireMode);
 }
@@ -355,8 +363,9 @@ const kitRecord = (item: Firearm) => kitRecs[SLOT_OF[item]];
 /** The HUD weapon box's icon for the firearm in the hand: its record's `IconTextureName` (research 94 §C9). */
 const kitIcon = (item: Firearm): string => loadouts.icon(SLOT_OF[item]) ?? '';
 /** Each firearm's fire mode, kept while the other is in the hand (a rifle comes up on burst: research 84 §6). */
-const fireModes: Record<Firearm, number> = { rifle: defaultFireMode(kitRecs[0]), pistol: defaultFireMode(kitRecs[1]) };
+const fireModes: Record<Firearm, number> = { rifle: defaultFireMode(kitRecs[0], kitRounds.held()), pistol: defaultFireMode(kitRecs[1]) };
 let kitItem: Firearm = 'rifle';
+showFireMode();
 const kit: Kit = new Kit({
   swapClip: (to) => walk.swapWeapon(to),
   swapProgress: () => walk.swapProgress(),            // the walk's clock: the mounts change on the clip's frame
@@ -410,7 +419,9 @@ function spawnKit(side: Side): void {
   // A network server gives the type's kit (room.ts); only the page's own room (or no match) takes the page's pick.
   loadouts.spawn(side, { network: !!NET.url });
   kitRecs = loadouts.records();
-  if (kitRecs[0].id !== before[0].id) fireModes.rifle = defaultFireMode(kitRecs[0]);
+  kitRounds = new KitRounds(loadouts.tables(), loadouts.loadout());   // M4: every round slot full (FUN_00599f00)
+  grenade.setRounds([...(loadouts.tables()?.rounds.values() ?? [])].map((r) => r.record));
+  if (kitRecs[0].id !== before[0].id || (fireModes.rifle > 3 && !kitRounds.ring(fireModes.rifle))) fireModes.rifle = defaultFireMode(kitRecs[0], kitRounds.held());
   if (kitRecs[1].id !== before[1].id) fireModes.pistol = defaultFireMode(kitRecs[1]);
   fireMode = fireModes[kitItem];
   if (view) hangKit();
@@ -737,7 +748,20 @@ play.addPoseLayer(throwPose.layer);   // the grenade's throw clip over the locom
 play.setWeaponInput(() => ({ trigger: fire.triggerHeld(), aiming: walk.view() === 'scope' }));
 fire.subscribe((e) => { play.weaponEvent(e); walkSounds.fireEvent(e); net?.fireEvent(e); });   // the pose and the sound, per round and reload
 // A reload started still crouched, or prone, holds the mover to its clip's NoInterrupt (`FUN_005a82e0`; `reloadHold`).
-fire.subscribe((e) => { if (e.type === 'reloadStart') walk.holdReload(); });
+fire.subscribe((e) => { if (e.type === 'reloadStart' || e.type === 'afterShot') walk.holdReload(); });
+/**
+ * M4 (research 94 §C4): a round mode's round leaves -- flown here as a grenade is (`GrenadeThrower.launchRound`: the
+ * round's gravity, arming distance, impact, blast), its launch zAnim heard (`m203he_start`), and sent to the match as
+ * a throw of that round (the room flies the same projectile and deals the blast).
+ */
+fire.subscribe((e) => {
+  if (e.type !== 'launch') return;
+  const round = kitRounds.round(e.round.id);
+  if (!round) return;
+  grenade.launchRound(round.record, e.from, e.velocity);
+  audio.onAnimCallback(round.record.fireAnim, e.from);
+  net?.throwEvent(round.record.name, e.from, e.velocity);
+});
 play.onEvent((e) => walkSounds.playEvent(e));   // the body's footfalls, clip callbacks and landings, heard
 // The message window's lines a lone SEAL can cause (research 87 §14): a landing of the death class is the game's fall
 // to death, "%s falls to their death" (0x65c440, `FUN_00547860`) -- the viewer's SEAL walks on.
@@ -1773,6 +1797,7 @@ window.__viewer = {
   cycleZoom: () => stepZoom('cycle'),
   fireMode: () => FIRE_MODE_NAMES[fireMode] ?? String(fireMode),
   switchFireMode: () => switchFireMode(),
+  fireRound: () => fire.roundMode(),
   accuracy: () => ({ ...accuracy.state(), cone: accuracy.cone(zoom.state(), zoom.magnification()) }),
   reticle: () => reticle.state(),
   stance: () => walk.stance(),

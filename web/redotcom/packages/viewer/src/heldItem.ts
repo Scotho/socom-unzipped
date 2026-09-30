@@ -160,6 +160,17 @@ export function muzzlePoint(points: readonly WeaponPoint[]): Pnt3D | null {
   return p ? [p.at[0], p.at[1], p.at[2]] : null;
 }
 
+/**
+ * A launcher round mode's fire point (web sprint 4 M4; research 94 §C4.2): the model's `firepoint_203` (0x65f8b8, the
+ * node `FUN_005bd6d0` L475528-475531 looks up), in its own frame, or null when the model names none -- the fire then
+ * leaves `firepoint` (`./fire` `FIREPOINT_203_READING`).
+ */
+export const LAUNCH_NODE = 'firepoint_203';
+export function launchPoint(points: readonly WeaponPoint[]): Pnt3D | null {
+  const p = points.find((q) => q.name === LAUNCH_NODE);
+  return p ? [p.at[0], p.at[1], p.at[2]] : null;
+}
+
 /** The muzzle in the model's frame through the posed skeleton: the node's world matrix carries the weapon's point. */
 export function muzzleOf(skeleton: Skeleton, muzzle: Pnt3D, item: 'rifle' | 'pistol' = 'rifle'): Pnt3D | null {
   const i = skeleton.indexOf(item);

@@ -422,6 +422,7 @@ export class GrenadeThrower {
   setMap(templates: Readonly<Record<string, Group>> | null, assets: GrenadeAssets | null | undefined): void {
     this.reset();
     this.templates = {};
+    this.modelTemplates = templates;
     for (const item of Object.keys(this.records) as GrenadeItem[]) {
       const t = templates?.[this.records[item].model];
       if (t) this.templates[item] = t;
@@ -884,14 +885,44 @@ export class GrenadeThrower {
    * MULTIPLAYER (web sprint 3): another player's throw, flown here with the same physics for its looks, bounces and
    * blast (the server deals the damage): no count spent, no hand, no throw clip.
    */
-  launchRemote(item: GrenadeItem, from: V3, velocity: V3): void {
-    const record = this.records[item];
+  launchRemote(item: GrenadeItem | string, from: V3, velocity: V3): void {
+    const round = this.rounds.get(item);
+    if (round) { this.launchRound(round, from, velocity); return; }
+    const record = this.records[item as GrenadeItem];
     if (!record) return;
     const g = launchGrenade(from, velocity, record);
     const model = this.template ? this.template.clone() : null;
     if (model) { model.position.set(...from); this.object.add(model); }
     const spin: V3 = [rand(-1, 1, this.random), rand(-1, 1, this.random), rand(-1, 1, this.random)];
     this.live.push({ g, model, spin, trail: [[...from]], line: null, dots: null, rest: null });
+  }
+
+  /** M4: the launched rounds by `InternalName` (`@s2u/scene` `KitTable.rounds`), for the page's and the others' rounds. */
+  private readonly rounds = new Map<string, ThrowableRecord>();
+  /** Every model the map's grenade templates hold, by model name (a round's `ModelName`, when the map has it). */
+  private modelTemplates: Readonly<Record<string, Group>> | null = null;
+
+  /** M4: the kit tables' launched rounds (`KitTable.rounds`' records): what `launchRemote` knows by name. */
+  setRounds(records: Iterable<ThrowableRecord>): void {
+    this.rounds.clear();
+    for (const r of records) this.rounds.set(r.name, r);
+  }
+
+  /**
+   * M4 (research 94 §C4.2-§C4.3): a launcher's round in flight -- the page's own (`Fire`'s `launch`) or another player's
+   * -- from `from` at `velocity` (world units a second: the round's `Muzzle_Velocity` along the lofted aim): the same
+   * projectile as a grenade (`@s2u/scene` `launchGrenade`/`stepGrenade`), with the round's gravity (98 u/s^2), its
+   * arming distance (a dud inside it), its impact and its `Timer1`; the blast, the effects and the scorch as a frag's.
+   * No count is spent here: the round's slot is the page's `Fire`'s.
+   */
+  launchRound(record: ThrowableRecord, from: V3, velocity: V3): void {
+    const s = record.muzzleVelocity || 1;
+    // `launchGrenade` scales the given velocity by `Muzzle_Velocity` (`SetProjectile`: `MV x dir`): hand it the direction.
+    const g = launchGrenade(from, [velocity[0] / s, velocity[1] / s, velocity[2] / s], record);
+    const template = this.modelTemplates?.[record.model] ?? null;
+    const model = template ? template.clone() : null;
+    if (model) { model.position.set(...from); this.object.add(model); }
+    this.live.push({ g, model, spin: [0, 0, 0], trail: [[...from]], line: null, dots: null, rest: null });
   }
 
   // ---- the flight ---------------------------------------------------------------------------------------------

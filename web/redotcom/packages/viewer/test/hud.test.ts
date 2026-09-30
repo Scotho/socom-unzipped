@@ -49,6 +49,15 @@ describe('the ammo box', () => {
     }
   });
 
+  it('a launcher\'s round mode: the four rounds hidden, the round\'s icon in the first cell (FUN_00237b40; research 94 §C9)', () => {
+    const sizes = { ...SIZES, 'firemode_203_frag.tif': { width: 32, height: 16 } };
+    const { quads, rects } = hudLayout(PS2, model({ fireMode: 'auto', fireModeIcon: 'firemode_203_frag.tif' }), sizes);
+    const cells = quads.filter((q) => q.element === 'firemode');
+    expect(cells).toHaveLength(1);
+    expect(cells[0]!.texture).toBe('firemode_203_frag.tif');
+    expect(rects.firemode).toEqual({ x: 10, y: 422, width: 32, height: 16 });
+  });
+
   it('draws the two lines at scale 0.9 from pens 15 and 95 on the baseline 382', () => {
     const { rects } = hudLayout(PS2, model(), SIZES);
     expect(rects.rounds!.x).toBeCloseTo(15 + PEN_NUDGE, 9);                // the first glyph's quad (the shadow falls right)

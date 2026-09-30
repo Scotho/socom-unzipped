@@ -76,7 +76,8 @@ export class WalkSounds {
    * where it starts -- the record's sounds by its `InternalName` (`.M4A1_SIL`, `.M4A1_SIL_RLD` for the M4A1 SD).
    */
   fireEvent(e: FireEvent): void {
-    if (e.type === 'round') { this.audio.onFire(e.weapon.name, e.from); this.counts.rounds++; }
+    // A shotgun's pull is one shell and one report, its pellets beside it (M4, research 94 §C2.1): the first ray's.
+    if (e.type === 'round' && !(e.pellet! > 0)) { this.audio.onFire(e.weapon.name, e.from); this.counts.rounds++; }
     else if (e.type === 'reloadStart') { this.audio.onReload(e.weapon.name, this.walk.feet()); this.counts.reloads++; }
   }
 }

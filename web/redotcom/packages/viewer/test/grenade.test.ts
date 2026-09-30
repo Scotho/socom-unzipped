@@ -374,3 +374,46 @@ describe('the yellow arc while the throw is held (FUN_005970b0, research 85 §11
     expect(line.visible).toBe(false);
   });
 });
+
+describe('M4: a launcher\'s round in flight on the page (research 94 §C4.3)', () => {
+  /** A floor at y 50 and a wall across z at `wallZ`, x -2000..2000. */
+  const range = (wallZ: number): Grid => {
+    const poly = (points: number[], i: number): WorldPoly => ({ modelName: 'worldmodel', path: `worldmodel/p${i}`, region: 0, ditype: 3, material: 7, ptcount: 4, cameratype: 0, points: Float32Array.from(points) });
+    const polys = [poly([-2000, 50, -2000, 2000, 50, -2000, 2000, 50, 2000, -2000, 50, 2000], 0), poly([-2000, 0, wallZ, 2000, 0, wallZ, 2000, 400, wallZ, -2000, 400, wallZ], 1)];
+    const params: GridParams = { atomCount: 8192, posts: 16, cellDim: 500, cellsX: 8, cellsZ: 8, originX: -2000, originZ: -2000 };
+    return buildGrid(params, [], [], polys, polys.map((p, i) => ({ modelName: 'worldmodel', path: `${p.path}${i}`, first: i, count: 1 })));
+  };
+  /** `zweapon.rdr`'s M203 FRAG as `throwableRecord` reads it: 270 u/s, arming 100 u, impact, a 10 s self-destruct. */
+  const frag = { ...M67, name: 'M203 FRAG', id: 175, muzzleVelocity: 270, armingDistance: 100, impact: true, fuse: 10, removal: 10.1, explosionRadius: 150 };
+
+  it.each([
+    // the wall's z, whether it goes off on the wall, a dud first
+    [-300, true, false],      // past the arming distance: it goes off where it hits (FUN_003c8920)
+    [-60, false, true],       // inside 100 u: a dud -- half speed, the fuse at 9999999, a bounce (L319439-319462)
+  ] as const)('fired at a wall %i units off: explodes on it %s, a dud %s', (wallZ, onWall, dud) => {
+    const grid = range(wallZ);
+    const { g } = thrower({ grid: () => grid });
+    const booms: { pos: V3; item: string }[] = [];
+    g.on('explode', (e) => booms.push({ pos: e.pos, item: e.item }));
+    g.launchRound(frag, [0, 150, 0], [0, 0, -270]);
+    expect(g.stats().live).toHaveLength(1);
+    for (let i = 0; i < 120; i++) g.update(1 / 60);
+    if (onWall) {
+      expect(booms).toHaveLength(1);
+      expect(booms[0]!.item).toBe('M203 FRAG');
+      expect(booms[0]!.pos[2]).toBeCloseTo(wallZ, 3);
+    } else expect(booms).toHaveLength(0);
+    // A dud's fuse is 9999999: it lies there and never goes off by impact.
+    expect(g.stats().live[0]!.fuse > 1000).toBe(dud);
+  });
+
+  it('another player\'s round is flown by its name, once the kit tables\' rounds are known', () => {
+    const { g } = thrower({ grid: () => range(-300) });
+    g.launchRemote('M203 FRAG', [0, 70, 0], [0, 0, -270]);
+    expect(g.stats().live).toHaveLength(0);
+    g.setRounds([frag]);
+    g.launchRemote('M203 FRAG', [0, 70, 0], [0, 0, -270]);
+    expect(g.stats().live).toHaveLength(1);
+    expect(g.stats().live[0]!.vel).toEqual([0, 0, -270]);
+  });
+});

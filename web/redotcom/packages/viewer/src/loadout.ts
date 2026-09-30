@@ -21,9 +21,9 @@ import { magazinesCarried } from './magazines';
  *   new map, a new match, starts from the types' own kits (`PlayerLoadout`).
  * - **The two firearm slots** are the game's own: slot 0 the primary, which L1 takes up (`FUN_00594cf0`, the
  *   controller's `+0x224` = 0.0), and slot 1 the secondary, L2's (`+0x228` = 1.0; `./kit`'s `rifle` and `pistol`). The
- *   record behind each is the loadout's item's (`KitTable.records`); a slot whose item has no firearm record -- none on
- *   the disc's kits; a grenade launcher (fired through its rounds, R94.8) or an empty slot in a later pick -- keeps the
- *   baked record of that slot (`NO_FIREARM_RECORD_PLACEHOLDER`) until the launchers' task (M7) gives it its own.
+ *   record behind each is the loadout's item's (`KitTable.records`; the MGL's and the M79's as carriers, M4); a slot
+ *   whose item has no firearm record -- none on the disc's kits; the Designator or an empty slot in a later pick --
+ *   keeps the baked record of that slot (`NO_FIREARM_RECORD_PLACEHOLDER`).
  * - **2X** (Double Ammo Load, id 194) anywhere in the kit doubles `NumMags` of every pistol, SMG, rifle, shotgun, MG and
  *   sniper it holds, at most the ring's ten, the extra magazines full (`FUN_005c75f0` L480207-480270, called by the
  *   kit's finaliser at every spawn; research 94 §A7, R94.13); `Ammo_Capacity` is unchanged. The ring (`./magazines`)
@@ -40,9 +40,10 @@ export type FirearmSlot = 0 | 1;
 export const BAKED_LOADOUT: Loadout = [HELD_RIFLE.id, HELD_SIDEARM.id, M67.id, HE.id, EMPTY_ITEM];
 const BAKED_RECORDS: readonly [WeaponRecord, WeaponRecord] = [HELD_RIFLE, HELD_SIDEARM];
 /**
- * NO_FIREARM_RECORD_PLACEHOLDER: what a firearm slot fires when its item has no firearm record -- a grenade launcher
- * (141-143: its rounds are fire modes of the carrier, R94.8, web sprint 4 M7) or an empty slot a later pick leaves --
- * the baked record of that slot. No default kit on the disc holds such a slot (research 94 §A4).
+ * NO_FIREARM_RECORD_PLACEHOLDER: what a firearm slot fires when its item has no firearm record -- the Designator (11),
+ * the M203 item (141) or an empty slot a later pick leaves -- the baked record of that slot. No default kit on the disc
+ * holds such a slot (research 94 §A4). Web sprint 4 M4 retired it for the MGL and the M79: the kit table reads them as
+ * carriers (`@s2u/scene` `kitTableOf`), which fire their rounds as fire modes (R94.8, `./firearms`).
  */
 const NO_FIREARM_RECORD_PLACEHOLDER = BAKED_RECORDS;
 /** The baked pair's held models (`@s2u/scene` `weapon.ts`: the M4A1 SD's `m4Acarbine_sd`, the Mark 23's `a_mark23`). */

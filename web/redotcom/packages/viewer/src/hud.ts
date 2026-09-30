@@ -285,6 +285,12 @@ export interface HudTri { layer: number; p: [number, number, number, number, num
 export interface HudModel {
   rounds: number; capacity: number; spare: number; reloading: boolean;
   fireMode: FireMode;
+  /**
+   * A launcher's round mode (web sprint 4 M4, research 94 §C9): the round's own icon (`firemode_203_frag.tif` ...), drawn
+   * in the first fire-mode cell with the four `firemode.tif` rounds hidden (`FUN_00237b40` L85254-85300: a mode > 3 hides
+   * the four and shows the first with `FUN_005c6530`'s icon). Absent or null: the rounds of `fireMode`.
+   */
+  fireModeIcon?: string | null;
   /** The weapon's HUDW icon, e.g. `m4carbine_icon.tif`. */
   weaponIcon: string;
   /** The camera's heading in degrees (`fly.pose().yaw`): the ring turns by it, clockwise (research 87 §1.2). */
@@ -393,7 +399,11 @@ export function hudLayout(
   const icon = sizes[model.weaponIcon];
   if (icon) bitmap('icon', model.weaponIcon, L(A.icon.x), Y(A.icon.y), icon.width * s, icon.height * s, alpha(HUD_COLOURS.icon, fade));
   const fm = sizes['firemode.tif'];
-  if (fm) {
+  const roundIcon = model.fireModeIcon ? sizes[model.fireModeIcon] : undefined;
+  if (model.fireModeIcon) {
+    // A round mode (`FUN_00237b40`): the four cells hidden, the first shows the round's icon at its own size.
+    if (roundIcon) bitmap('firemode', model.fireModeIcon, L(A.rounds4.xs[0]!), Y(A.rounds4.y), roundIcon.width * s, roundIcon.height * s, alpha(HUD_COLOURS.icon, fade));
+  } else if (fm) {
     for (const x of A.rounds4.xs.slice(0, FIRE_MODE_ROUNDS[model.fireMode])) {
       bitmap('firemode', 'firemode.tif', L(x), Y(A.rounds4.y), fm.width * s, fm.height * s, alpha(HUD_COLOURS.icon, fade));
     }
@@ -780,7 +790,9 @@ export class Hud {
   setAmmo(rounds: number, capacity: number, spare: number, reloading = false): void {
     Object.assign(this.model, { rounds, capacity, spare, reloading });
   }
-  setFireMode(mode: FireMode): void { this.model.fireMode = mode; }
+  setFireMode(mode: FireMode): void { this.model.fireMode = mode; this.model.fireModeIcon = null; }
+  /** M4: a launcher's round mode -- the round's icon in the first fire-mode cell (`HudModel.fireModeIcon`); null clears it. */
+  setFireModeIcon(icon: string | null): void { this.model.fireModeIcon = icon ? icon.toLowerCase() : null; }
   /** The weapon's HUDW icon by file name (`m4carbine_icon.tif` for the M4A1). */
   setWeaponIcon(icon: string): void { this.model.weaponIcon = icon.toLowerCase(); }
   /** The camera's heading, degrees (`fly.pose().yaw`). */
