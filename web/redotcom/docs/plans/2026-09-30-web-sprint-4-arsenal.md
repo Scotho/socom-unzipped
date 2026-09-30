@@ -185,6 +185,33 @@ close entry with the spend, the PR to `main` (the owner merges; the server redep
 
 *(newest first)*
 
+- **2026-09-30 — M1 closed: research 94** (the cloud agent). Three Opus readers (the arsenal; the menu; per-class
+  behaviour) wrote parts 1-3, merged as `docs/research/94-the-arsenal.md` with a §0 of rulings R94.1-R94.17 the later
+  tasks build on. Headline: **`CInGameWeaponSel` is dead code** -- the dead player's menu is the HUD's "WEAPON
+  EXCHANGE" (`CHUD+0x38e0`), online only, opened on `Inventory` while dead, silent, applied at the next round; the side
+  filter is `FUN_0023c390` (1 SEAL / 8 Terrorist), 16/32 lock C4 on the BREACH maps; a class is its id range; launcher
+  rounds are fire modes of their carrier; bullets are rays that ignore `Muzzle_Velocity`; C4 is timed, not remote;
+  `SendWeaponPUMessage` is the dropped-weapon pick-up. 63 of 86 records in scope; the 176 kits equal research 91 §14.
+  Research 84 §9's grey reticle corrected (R94.16). The placeholder ledger is green (research-only readings marked
+  *note only* until code names them). **One ruling for the owner:** the game's launcher-ammo refill tests the side
+  inverted (`INGAME_AUTOFILL_SIDE_READING`); the build refills from the player's own side (W4.R2).
+  **Spend, M1** (*estimated*: the harness gives no cost report inside the session; tokens are the subagents' reported
+  totals, split 90/10 input/output as an assumption, at $4/$20 per MTok, before any cache discount): readers a 338k,
+  b 376k, c 364k tokens = 1.08M ~ $6.1; the main agent's merge and review ~ $3 (not metered: estimated from its context
+  size). **M1 ~ $9 of $35.**
+- **2026-09-30 — M0 closed: bring-up and baseline** (the cloud agent). The handoff (a tar, 1.2 GB) laid out outside the
+  repository; `MANIFEST.sha256` verified (every file OK); both recompilation archives unpacked; `extract-maps` indexed
+  all 22 maps. Baseline on `web-sprint-4-arsenal` at 4b1349ed: `npm run typecheck` clean; `npm test` redotcom **2123
+  passed / 4 skipped** (175 files), landing 262, shared 219; `npm run build` and `VITE_S2U_MULTIPLAYER=off npm run build
+  -w @s2u/redotcom` both exit 0 (the landing's sfx step logs a missing `ffmpeg` on this host and carries on). Feel parity
+  headless: 61 rows, 59 within tolerance, 0 divergent in the mover/camera. e2e (Playwright 1.63 needs
+  `PW_CHROMIUM=/opt/pw-browsers/chromium` on this host -- its own headless shell is not installed): **84 passed, 9
+  failed**, each for a host cause: doors (the leaf's timing), effects (the frag light's sample), flyLock (a 180 s click
+  timeout), grenade (the fuse's timing), hud (`scripts/parity/refs/console_spawn_slot8.png` is not in the checkout),
+  presentation x2 (WebGPU on SwiftShader: the world coverage 0.07-0.08 under its bar), settingsPanel (the focus ring
+  under headless), viewer fonts (the woff2 content type). Held from here: the same green, nothing new red.
+  **Spend, M0** *estimated* ~ $2 of $8 (the main agent only).
+
 - **2026-09-30 — revised after the Fable review** (the local controller): the prep rebased onto the integration head
   e5406330 (1b1ae687's `VITE_S2U_MULTIPLAYER` switch; the site's build ships multiplayer off, spec §1, and M9's network
   side sits behind it); the menu's PC key and touch control are readings in the ledger (W4.R3); the spend is metered

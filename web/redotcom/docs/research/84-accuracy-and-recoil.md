@@ -250,7 +250,7 @@ vision 1.01 (with its effect callbacks); **4** the 9× view (9.0, the `zoom_cont
   (`ret_rifle_01`) are drawn at the centre, which the knock moves.
 - **The colours** (`FUN_00215c10` 69906-70294, `FUN_003590e0` on the four arms): (200, 200, 24) at rest
   (`DAT_003dc5a0/a8/b0`; the frame's measured (204, 204, 31)); (24, 200, 44) on a teammate within 320 units (500
-  scoped); (200, 24, 44) on an identified enemy; (130, 130, 130) past a launcher's range. `reticleTint`; the viewer has
+  scoped); (200, 24, 44) on an identified enemy; (130, 130, 130) past a launcher's range [corrected by research 94 §C1.5 / R94.16: the grey marks an aimed point *inside* the launcher round's arming distance, 10 m, not past its range]. `reticleTint`; the viewer has
   no targets, so it stays at rest.
 - **The scope** (`ChangeReticule` type 5, 69434-69510; `Init` 70870-70940): no ring, no arms; `ret_scope_01` and
   `ret_scope_02` each as four 320 × 320 quads over (0, −96)-(640, 544) with mirrored UVs (0.01-0.99), centred on the

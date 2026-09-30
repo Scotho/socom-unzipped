@@ -216,6 +216,14 @@ turrets, single-player missions, new game modes.
 - **2026-09-30 — the prep's inventory** (the local controller): each MP map's `Valves` carry a per-side mask (1/8/9/0,
   16 on `c4`); 60 valve names are enabled on some MP map, 7 on none; all 22 MP and 12 single-player maps hold the same
   59 weapon models; r0004's function addresses equal retail's only below ~0x269000 (the zip's tsv maps them).
+- **2026-09-30 -- M1, research 94** (the cloud agent; `docs/research/94-the-arsenal.md` §0 R94.1-R94.17):
+  `CInGameWeaponSel` is dead code in SOCOM II -- the dead player's menu is the HUD's "WEAPON EXCHANGE" block
+  (`CHUD+0x38e0`, `FUN_00240e60`/`FUN_00240600`), online only, opened while dead on `Inventory` (R2), silent, applied at
+  the next round's rebuild; W4.R3's "`CInGameWeaponSel` 1:1" is read as this menu. The side filter is `FUN_0023c390`
+  (mask 1 SEAL / 8 Terrorist); 16/32 lock C4 in a SEAL's/Terrorist's kit (the BREACH maps). A class is its id range;
+  the LAW and RPG-7 are equipment. Launcher rounds are fire modes of their carrier; bullets are rays that ignore
+  `Muzzle_Velocity`; the shotguns fire 4 rays a pull; C4 is a timed charge on a target (the detonator is the
+  claymore's); `SendWeaponPUMessage` is the dropped-weapon pick-up, not the loadout. 63 of 86 records in scope.
 
 ## 8. What the owner does (HUMAN_TASKS-style rows)
 
