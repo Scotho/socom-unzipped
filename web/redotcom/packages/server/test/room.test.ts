@@ -583,7 +583,7 @@ describe('M4: each class on the server -- the lock after a round, the reload\'s 
   const kit = (...ids: number[]): Loadout => ids as unknown as Loadout;
   const rec = (over: Partial<WeaponRecord>): WeaponRecord => ({ ...DEFAULT_RIFLE, fireModes: [1], maxFireMode: 1, ...over });
   const records: WeaponRecord[] = [
-    rec({ name: 'M40A1', id: 102, fireWait: 0.5, magazine: 25, mags: 1, reloadAfterShot: true, reloadDelayAfterShot: 0.5 }),
+    rec({ name: 'M40A1', id: 102, fireWait: 0.5, magazine: 25, mags: 2, reloadAfterShot: true, reloadDelayAfterShot: 0.5 }),
     rec({ name: '870', id: 84, fireWait: 0.75, magazine: 8, mags: 5, reloadAfterShot: true, reloadDelay: 1, pellets: 4, impactDamage: 2.5, damageModifier: 0, effectiveRange: 41, maximumRange: 84, piercing: 6 }),
     rec({ name: 'Spas 12', id: 81, fireWait: 0.45, magazine: 12, mags: 3, reloadTime: 2, reloadDelay: 0.5, pellets: 4 }),
     rec({ name: 'M4A1-M203', id: 61, fireModes: [1, 2, 3], maxFireMode: 3 }),
@@ -711,6 +711,46 @@ describe('M4: each class on the server -- the lock after a round, the reload\'s 
     const s = seals(loadout);
     launch(s, [300, 10, 0], kind, speed);
     expect(s.a.of('grenade')).toHaveLength(0);
+  });
+
+  it('a reload asked in the bolt\'s lock replaces it (FUN_005c32b0 rewrites kit+0x820), as the page does; in its clip it is refused', () => {
+    // Asked 0.17 s after the round (the lock is 0.5 s): taken -- the magazine turns now, the reload's lock follows
+    // (the page's `Fire.reload` clears its after-shot timer the same way: fire.test's twin).
+    const r = range(kit(102, 15, 255, 255, 255));
+    r.g.face([100, 60, 400]);
+    r.g.shoot(); r.g.run(10);
+    r.room.text(1, { type: 'reload', seq: r.pa.sim.seq }); r.g.run(1);
+    expect(r.pa.mags[0].state().current).toBe(1);
+    expect(r.pa.lockKind[0]).toBe('reload');
+    // Asked once the after-shot clip plays (0.5 s + 10 ticks): refused on both sides (FUN_005a7ab0).
+    const q = range(kit(102, 15, 255, 255, 255));
+    q.g.face([100, 60, 400]);
+    q.g.shoot(); q.g.run(40);
+    q.room.text(1, { type: 'reload', seq: q.pa.sim.seq }); q.g.run(1);
+    expect(q.pa.mags[0].state().current).toBe(0);
+  });
+
+  it('one lock and one rate timer for the carrier and its rounds (kit+0x820, kit+0x8b8): a round then a rifle shot, a reload then a round', () => {
+    const s = seals(kit(61, 15, 141, 175, 194));
+    const g = gunner(s as unknown as Setup, 2);
+    g.face([0, 60, 400]);                                               // away from player 1
+    launch(s, [0, 60, 400]);
+    expect(s.a.of('grenade')).toHaveLength(1);
+    g.shoot(); g.run(1);                                                // the round's lock and FireWait hold the rifle
+    expect(s.a.of('shot')).toHaveLength(0);
+    g.run(Math.round((0.5 + 1.9) * TICK_HZ) + 2);                      // past the lock and `Rifle m203 reload`
+    g.shoot(); g.run(1);
+    expect(s.a.of('shot')).toHaveLength(1);
+    // A rifle shot then at once a round: the rate timer holds the round; a rifle reload holds it too.
+    launch(s, [0, 60, 400]);
+    expect(s.a.of('grenade')).toHaveLength(1);
+    g.run(30);
+    s.room.text(2, { type: 'reload', seq: s.room.player(2)!.sim.seq }); g.run(1);
+    launch(s, [0, 60, 400]);
+    expect(s.a.of('grenade')).toHaveLength(1);
+    g.run(Math.round(1.6 * TICK_HZ) + 2);                               // the rifle reload's clip over
+    launch(s, [0, 60, 400]);
+    expect(s.a.of('grenade')).toHaveLength(2);
   });
 
   it('a round landing inside its arming distance is a dud: no blast (FUN_003c8920 L319439-319462)', () => {

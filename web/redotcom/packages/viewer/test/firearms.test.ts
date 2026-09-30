@@ -4,8 +4,10 @@ import { resolve } from 'node:path';
 import type { RdrNode } from '@s2u/archive';
 import { DEFAULT_RIFLE, EMPTY_ITEM, HELD_SIDEARM, ITEM, kitTableOf, readKitTable, type KitTable, type Loadout, type WeaponRecord } from '@s2u/scene';
 import {
-  AFTER_SHOT_DEFAULT, afterShotLock, insideArming, KitRounds, pelletsOf, RELOAD_DELAY_DEFAULT, reloadDelayOf, roundFits,
+  AFTER_SHOT_DEFAULT, afterShotLock, insideArming, KitRounds, pelletsOf, RELOAD_DELAY_DEFAULT, reloadDelayOf, roundArmingOf, roundFits,
 } from '../src/firearms';
+import { WalkSounds } from '../src/walkSounds';
+import type { GameAudio } from '../src/audio';
 import { defaultFireMode, nextFireMode, roundsPerPull } from '../src/accuracy';
 import { reloadClip, reloadFamily, reloadLockSeconds, reloadSeconds } from '../src/reloadClip';
 import { fragmentPart, shotgunPellets } from '../src/net/damage';
@@ -176,6 +178,26 @@ describe('the 12 gauge\'s pellets on the victim (FUN_005a1620 L459317-459389, MP
 
   it('each pellet strikes a part by the receiver\'s table (DAT_00650900 / DAT_006508f8: the fragments\' own)', () => {
     expect([0.1, 0.5, 0.65, 0.75, 0.85, 0.95].map((r) => fragmentPart(() => r))).toEqual([0, 3, 2, 1, 5, 4]);
+  });
+});
+
+describe('the wiring to the sights and the sounds (M5/M6 hooks)', () => {
+  it('the reticle\'s arming distance is the round mode\'s (R94.16), none without a round or for a smoke round', () => {
+    expect([roundArmingOf({ armingDistance: 100 }), roundArmingOf({ armingDistance: 0 }), roundArmingOf(null)]).toEqual([100, null, null]);
+  });
+
+  it('the after-shot event plays the weapon\'s ReloadAfterShotSound; a volley\'s later pellets are no second report', () => {
+    const calls: string[] = [];
+    const audio = {
+      onFire: (w: string) => { calls.push(`fire ${w}`); return null; },
+      onReload: (w: string) => { calls.push(`reload ${w}`); return null; },
+      onReloadAfterShot: (w: string, at: unknown) => { calls.push(`afterShot ${w} ${JSON.stringify(at)}`); return null; },
+    } as unknown as GameAudio;
+    const sounds = new WalkSounds(audio, { walking: () => true, feet: () => [1, 2, 3], stance: () => 'stand', wish: () => ({ forward: 0, right: 0 }), grid: () => null } as never);
+    const weapon = { name: '870', id: 84, fireAnim: null, sounds: { close: null, med: null, far: null, reload: null } };
+    for (let i = 0; i < 4; i++) sounds.fireEvent({ type: 'round', weapon, from: [0, 0, 0], to: [0, 0, -1], hit: false, rounds: 7, pellet: i, pellets: 4 });
+    sounds.fireEvent({ type: 'afterShot', weapon, sound: '.SHOTGUN_COCK', family: 'pump', seconds: 0.8 });
+    expect(calls).toEqual(['fire 870', 'afterShot 870 [1,2,3]']);
   });
 });
 

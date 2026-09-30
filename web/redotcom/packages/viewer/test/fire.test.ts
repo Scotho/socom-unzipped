@@ -592,6 +592,32 @@ describe('M4: each class\'s lock, reload, pellets and launched rounds on the pag
     expect(fire.shoot()).not.toBeNull();
   });
 
+  it('a reload asked in the bolt\'s lock replaces it (FUN_005c32b0); in its after-shot clip it is refused -- the room\'s twin', () => {
+    const { fire, events } = rig({ ...m40, mags: 2 });
+    fire.shoot();
+    fire.update(0.17);
+    expect(fire.reload()).toBe(true);                     // the timer rewritten: no after-shot, the reload lands
+    fire.update(0.011);
+    expect(events.at(-1)).toMatchObject({ type: 'reloadStart', family: 'shotgun' });
+    expect(events.some((e) => e.type === 'afterShot')).toBe(false);
+    const late = rig({ ...m40, mags: 2 });
+    late.fire.shoot();
+    late.fire.update(0.5); late.fire.update(0.17);          // the after-shot clip plays
+    expect(late.fire.reload()).toBe(false);
+  });
+
+  it('a reload pending its ReloadDelay lands on the slot the mode redirects to when it lands (FUN_005c2a90 L477408-477440)', () => {
+    const ring = new MagazineRing(6, 2);
+    ring.fire();
+    const { fire } = rig({ ...m4203, reloadDelay: 0.5 });
+    fire.shoot();
+    expect(fire.reload()).toBe(true);                     // the rifle's reload asked ...
+    fire.setRound({ id: 175, round: frag, ring });          // ... and the mode switched to the round before it lands
+    fire.update(0.6);
+    expect(ring.state().current).toBe(1);                   // the round slot's ring turned, as the game's walk does
+    expect(fire.state().magazine).toMatchObject({ rounds: 6, capacity: 6 });
+  });
+
   it('the last round arms no after-shot lock: the reload (ReloadDelay) instead', () => {
     const { fire, events } = rig({ ...m40, magazine: 1, mags: 2 });
     fire.shoot();

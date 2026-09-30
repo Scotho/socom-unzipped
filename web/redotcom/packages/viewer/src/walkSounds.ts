@@ -79,5 +79,7 @@ export class WalkSounds {
     // A shotgun's pull is one shell and one report, its pellets beside it (M4, research 94 §C2.1): the first ray's.
     if (e.type === 'round' && !(e.pellet! > 0)) { this.audio.onFire(e.weapon.name, e.from); this.counts.rounds++; }
     else if (e.type === 'reloadStart') { this.audio.onReload(e.weapon.name, this.walk.feet()); this.counts.reloads++; }
+    // M4: the bolt's or pump's lock ran out -- its `ReloadAfterShotSound` at the body (`FUN_005c3000`: `.SHOTGUN_COCK`).
+    else if (e.type === 'afterShot') this.audio.onReloadAfterShot(e.weapon.name, this.walk.feet());
   }
 }

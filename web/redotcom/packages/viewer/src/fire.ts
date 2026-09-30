@@ -709,6 +709,8 @@ export class Fire {
     // FUN_005c2a90's gates (477392-477397): refused in the air (body +0x105e bit 5) or while an action holds the weapon
     // (FUN_005a7ab0); the timer is spent either way (FUN_005c0fd0 476557-476559 clears it), so the ask is dropped.
     if (this.source.airborne?.() || (this.source.ready && !this.source.ready())) return;
+    // The ring is the one the mode redirects to when the reload *lands*: `FUN_005c2a90` (L477408-477440) looks up the
+    // slot's mode (`kit+0x6fc`) and the round slot then, not when it was asked -- a mode switched meanwhile takes it.
     if (!this.ring.reload()) return;
     // M4: the class's clip (`FUN_005a82e0`: the shotgun reload for the 870 and the bolts, `Rifle m203 reload` in a
     // round mode), over the record's `ReloadTime` when still (the round's in a round mode: none has one).

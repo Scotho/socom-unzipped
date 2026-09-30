@@ -180,8 +180,16 @@ class Player {
    */
   mags: [MagazineRing, MagazineRing] = [ringFor(SEATED_RECORDS[0]), ringFor(SEATED_RECORDS[1])];
   lastFire: [number, number] = [-1e9, -1e9];
-  /** Per weapon, the command count its reload's clip ends at (`reloadLockSeconds`; MJ-1); cleared by a swap. */
+  /**
+   * Per weapon, the command count its lock ends at (MJ-1; cleared by a swap) -- M4: the kit's **one** timer
+   * (`kit+0x820`, `FUN_005c32b0` L477653-477680: a reload's `ReloadDelay` or the bolt's/pump's after-shot lock, one
+   * flag between them) and then the clip it starts (a reload action: `FUN_005a7ab0` holds the fire while it plays).
+   * `lockTimer` is where the timer part ends (the clip begins), `lockKind` which kind set it: a reload asked during an
+   * after-shot timer replaces it (`FUN_005c32b0` rewrites `kit+0x820`), as the page's `Fire.reload` does.
+   */
   reloadUntil: [number, number] = [-1, -1];
+  lockTimer: [number, number] = [-1, -1];
+  lockKind: [LockKind, LockKind] = [null, null];
   /** The weapon in hand as last seen (a change is a swap: the lock goes, the cone takes the record). */
   weapon: 0 | 1 = 0;
   /** The accuracy cone, run from the commands (OWNER-3, `ShotCone`). */
@@ -198,8 +206,11 @@ class Player {
    * command count the last round left at, and the count the round's lock and its after-shot clip end at.
    */
   rounds = new KitRounds(null, BAKED_LOADOUT);
-  lastRound = -1e9;
-  roundUntil = -1;
+  /**
+   * M4: the command count the primary's rate lets the next shot go after a launched round -- the kit's one rate timer
+   * (`kit+0x8b8`, `FUN_005c09f0` with the redirected round's `FireWait`), shared by the carrier's rifle and its rounds.
+   */
+  roundWaitUntil = -1;
   /** M4: the shotgun's pull in progress (its weapon, command count, rays so far, and the victims it has hit once). */
   volley: { w: 0 | 1; count: number; rays: number; hit: Set<number> } | null = null;
 
@@ -515,6 +526,8 @@ export class Room {
       p.weapon = w;
       p.cone.setWeapon(p.records[w]);
       p.reloadUntil = [-1, -1];
+      p.lockTimer = [-1, -1];
+      p.lockKind = [null, null];
     }
     const walker = p.sim.walker, s = walker.state, moves = p.sim.moves;
     p.cone.tick(cmd, {
@@ -601,8 +614,9 @@ export class Room {
     p.lastLanding = null;
     p.grenades = freshGrenades();
     p.rounds = new KitRounds(this.kits?.table ?? null, p.loadout);   // M4: every round slot full
-    p.lastRound = -1e9;
-    p.roundUntil = -1;
+    p.roundWaitUntil = -1;
+    p.lockTimer = [-1, -1];
+    p.lockKind = [null, null];
     p.volley = null;
     p.history.length = 0;
     const s = sim.walker.state;
@@ -644,6 +658,7 @@ export class Room {
     if (!ofVolley) {
       if (frame.count - p.lastFire[w] < fastest * TICK_HZ - 1) return;
       if (frame.count < p.reloadUntil[w] || p.mags[w].rounds() <= 0) return;
+      if (w === 0 && frame.count < p.roundWaitUntil) return;       // M4: a launched round's FireWait, the same timer
     }
     const from = ev.from;
     const [fx, fy, fz] = frame.feet;
@@ -667,7 +682,7 @@ export class Room {
       if (lock !== null) {
         const family = reloadFamily({ item: w ? 'pistol' : 'rifle', id: record.id, afterShot: true });
         const clip = this.clips ? reloadSeconds(this.clips.clips, this.clips.table, frame.posture, reloadMoving(...frame.velocity), family, record.reloadTime ?? 0) ?? 0 : 0;
-        p.reloadUntil[w] = frame.count + lockTicks(lock, clip);
+        setLock(p, w, frame.count, lock, clip, 'afterShot');
       }
     }
     p.cone.round(ev.seq);
@@ -790,14 +805,18 @@ export class Room {
     const mv = round.record.muzzleVelocity, speed = Math.hypot(...ev.velocity);
     if (!(mv > 0) || !(Math.abs(speed - mv) <= mv * ROUND_SPEED_SLACK_PLACEHOLDER)) return;
     const count = p.ran;
-    if (count - p.lastRound < round.fireWait * TICK_HZ - 1 || count < p.roundUntil) return;
+    // M4: the kit's one lock (`kit+0x820`: a rifle reload, a round's after-shot) and its one rate timer (`kit+0x8b8`: the
+    // rifle's last round at its fastest mode's wait, as `fire` rates it), shared with the carrier's rifle.
+    const rifle = p.records[0];
+    const fastest = Math.min(...rifle.fireModes.filter((m) => m > 0).map((m) => fireInterval(rifle.fireWait, m)), rifle.fireWait);
+    if (count < p.reloadUntil[0] || count < p.roundWaitUntil || count - p.lastFire[0] < fastest * TICK_HZ - 1) return;
     ring.fire();
-    p.lastRound = count;
+    p.roundWaitUntil = count + Math.round(round.fireWait * TICK_HZ) - 1;
     const lock = afterShotLock(carrier, round, ring.rounds(), carrier);
     if (lock !== null) {
       const v = [s.vx, s.vy, s.vz] as const;
       const clip = this.clips ? reloadSeconds(this.clips.clips, this.clips.table, p.sim.walker.posture, reloadMoving(...v), reloadFamily({ item: 'rifle', id: carrier, afterShot: true, roundMode: true })) ?? 0 : 0;
-      p.roundUntil = count + lockTicks(lock, clip);
+      setLock(p, 0, count, lock, clip, 'afterShot');
     }
     const dir: V3 = [ev.velocity[0] / mv, ev.velocity[1] / mv, ev.velocity[2] / mv];   // `launchGrenade` scales by MV
     this.flying.push({ owner: id, kind: ev.kind, g: launchGrenade([...ev.from], dir, round.record) });
@@ -866,7 +885,10 @@ export class Room {
     const frame = p.cone.frame(seq);
     const w = frame?.weapon ?? p.sim.weapon;
     const count = frame?.count ?? p.ran;
-    if (count < p.reloadUntil[w]) return;
+    // M4: refused while a reload's timer or clip, or an after-shot clip, holds the weapon (`FUN_005a7ab0`, 477398); a
+    // bolt's or pump's lock still in its timer is replaced by the reload's (`FUN_005c32b0`), as the page does.
+    const replacing = p.lockKind[w] === 'afterShot' && count < p.lockTimer[w];
+    if (count < p.reloadUntil[w] && !replacing) return;
     if (!p.mags[w].reload()) return;
     const posture = frame?.posture ?? p.sim.walker.posture;
     const v = frame?.velocity ?? [p.sim.walker.state.vx, p.sim.walker.state.vy, p.sim.walker.state.vz];
@@ -875,7 +897,7 @@ export class Room {
     const record = p.records[w];
     const family = reloadFamily({ item: w ? 'pistol' : 'rifle', id: record.id });
     const seconds = reloadLockSeconds(this.clips?.clips ?? null, this.clips?.table ?? null, posture, reloadMoving(v[0], v[1], v[2]), family, record.reloadTime ?? 0);
-    p.reloadUntil[w] = count + lockTicks(reloadDelayOf(record), seconds);
+    setLock(p, w, count, reloadDelayOf(record), seconds, 'reload');
   }
 
   private past(q: Player, tick: number): Past | null {
@@ -1151,6 +1173,7 @@ export class Room {
   player(id: number): {
     sim: MoverSim; alive: boolean; health: Health; team: Team; score: number; kills: number; deaths: number;
     readonly mags: readonly [MagazineRing, MagazineRing]; readonly cone: ShotCone; readonly reloadUntil: readonly [number, number];
+    readonly lockKind: readonly [LockKind, LockKind];
     readonly loadout: Loadout; readonly records: readonly [WeaponRecord, WeaponRecord];
     readonly queue: readonly Command[]; readonly queued: ReadonlySet<number>; readonly grenades: Readonly<Record<string, number>>;
     readonly ran: number; readonly pending: readonly unknown[];
@@ -1185,6 +1208,16 @@ function sightFrom(point: V3, head: V3): V3 {
  */
 function lockTicks(timer: number, clip: number): number {
   return Math.floor(timer * TICK_HZ + 1e-9) + Math.round(clip * TICK_HZ) - 1;
+}
+
+/** Which kind set a weapon's lock (the kit timer's flag bit, `kit+2 & 2`: after-shot or reload). */
+type LockKind = 'reload' | 'afterShot' | null;
+
+/** Sets a weapon's one lock (`kit+0x820` then its clip): its timer part and its end, on the command clock. */
+function setLock(p: Player, w: 0 | 1, count: number, timer: number, clip: number, kind: Exclude<LockKind, null>): void {
+  p.lockTimer[w] = count + Math.floor(timer * TICK_HZ + 1e-9);
+  p.reloadUntil[w] = count + lockTicks(timer, clip);
+  p.lockKind[w] = kind;
 }
 
 /** A whole number (a command number, a tick, an id). */

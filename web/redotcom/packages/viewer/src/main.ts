@@ -57,7 +57,7 @@ import { FLY_PARAM, flyAccess, mayEnter } from './flyAccess';
 import { onlineChoiceAddress, readShare, updateAddress } from './shareUrl';
 import { devMode, startSource } from './source';
 import { BAKED_LOADOUT, kitParam, kitRecords, PlayerLoadout, slotModel, typeLoadout, type FirearmSlot } from './loadout';
-import { KitRounds } from './firearms';
+import { KitRounds, roundArmingOf } from './firearms';
 import type { HeldRef } from './remotePlayers';
 import { onlineLine, pageIsLocal, readOnline, resolveOnline, writeOnline, type OnlineChoice, type OnlineTarget } from './online';
 import { readRules, resolveRules } from './rules';
@@ -852,10 +852,10 @@ let lensOn: ViewLens = null;
 /** The weapon id whose scope bitmaps the reticle holds (`scopeBitmaps`), -1 for none yet. */
 let scopeBitmapsOf = -1;
 /**
- * The fired round's `ArmingDistance`, units (null: none) -- the grey reticle's test (R94.16, `armingColour`). The
- * fire workstream's round-mode getter takes this over; until then no firearm's round has one.
+ * The fired round's `ArmingDistance`, units (null: none) -- the grey reticle's test (R94.16, `armingColour`): the
+ * round mode's round (`Fire.roundMode`, M4), none for a firearm mode or a round without one (the smoke rounds).
  */
-const roundArming = (): number | null => null;
+const roundArming = (): number | null => roundArmingOf(fire.roundMode());
 /** The look a frame ago, degrees (the turn and pitch rates the bloom reads), or null to start again. */
 let lastLook: { yaw: number; pitch: number } | null = null;
 let lastFov = -1;

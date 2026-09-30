@@ -134,6 +134,12 @@ export class KitRounds {
  * the aimed point is **inside** the fired round's `ArmingDistance` of the launch point -- a round landing there is a
  * dud. False for a round with none (the smoke rounds) or no round mode. For the reticle's drawing (`./reticle`).
  */
+/** The reticle's arming distance of a round mode (`Fire.roundMode`), units, or null for none (`reticle.ts` `armingColour`). */
+export function roundArmingOf(round: { armingDistance?: number } | null): number | null {
+  const d = round?.armingDistance ?? 0;
+  return d > 0 ? d : null;
+}
+
 export function insideArming(round: { armingDistance?: number } | null, from: readonly number[], aimed: readonly number[]): boolean {
   const d = round?.armingDistance ?? 0;
   if (!(d > 0)) return false;
