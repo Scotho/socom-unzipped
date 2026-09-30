@@ -812,6 +812,7 @@ export function buildWorld(map: LoadedMap): WorldView {
       for (const part of data.parts) {
         const mesh = new Mesh(geometryOf(part, lighting, lit), materialFor(part.textureName, part.fog, 'mesh', part.cull, null, false));
         mesh.name = `${data.name} (${part.textureName ?? 'untextured'})`;
+        if (part.node) mesh.userData.node = part.node;   // the kit's scope swap finds it (`./sights` `showScopeNodes`)
         g.add(mesh);
       }
     }
