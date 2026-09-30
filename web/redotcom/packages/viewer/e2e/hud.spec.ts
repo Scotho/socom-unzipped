@@ -108,7 +108,9 @@ test('walk mode on Frostfire draws the console\'s HUD at the console frame\'s pi
     }
   });
 
-  await page.goto('/?mode=play&fly&devmode');   // walk mode is behind the play flag (`./features`)
+  // The console frame's kit: the M4A1 and the Mark 23 with three magazines ("2 MAGS"), by the developer's `&kit=`
+  // (README; research 84 section 18: the frame's kit is not known to be `mp_seal1`'s, whose 2X would show 5).
+  await page.goto('/?mode=play&fly&devmode&kit=54,15,121,126,255');   // walk mode is behind the play flag (`./features`)
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   // The panel is folded away by default: the select is set as a change from it would be.
@@ -250,7 +252,9 @@ test('walk mode on Frostfire draws the console\'s HUD at the console frame\'s pi
 });
 
 test('the compass on Vigilance pins Charlie where the console round-start frame does, from spawn A facing north', async ({ page }) => {
-  await page.goto('/?mode=play&fly&devmode');
+  // The kit these pins were measured on: the M4A1 SD, the Mark 23, the M67 and the HE, no 2X (W2.R4's), by the
+  // developer's `&kit=` (README; the default spawn is the map's type's kit since web sprint 4).
+  await page.goto('/?mode=play&fly&devmode&kit=62,15,121,126,255');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').evaluate((el, v) => { (el as HTMLSelectElement).value = v; el.dispatchEvent(new Event('change', { bubbles: true })); }, 'RUN/MP51.ZDB');

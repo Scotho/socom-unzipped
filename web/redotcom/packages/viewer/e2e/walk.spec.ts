@@ -77,7 +77,9 @@ test('walks Frostfire from A\'s spawn to B\'s floor, and the door leaf stops it'
     }
   });
 
-  await page.goto('/?mode=play&fly&devmode');
+  // The kit these pins were measured on: the M4A1 SD, the Mark 23, the M67 and the HE, no 2X (W2.R4's), by the
+  // developer's `&kit=` (README; the default spawn is the map's type's kit since web sprint 4).
+  await page.goto('/?mode=play&fly&devmode&kit=62,15,121,126,255');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').selectOption('RUN/MP2.ZDB');
@@ -204,7 +206,9 @@ test('the game\'s camera at Frostfire\'s spawn A, in the PS2 presentation, besid
       problems.push(`console: ${m.text()}`);
     }
   });
-  await page.goto('/?mode=play&fly&devmode');
+  // The kit these pins were measured on: the M4A1 SD, the Mark 23, the M67 and the HE, no 2X (W2.R4's), by the
+  // developer's `&kit=` (README; the default spawn is the map's type's kit since web sprint 4).
+  await page.goto('/?mode=play&fly&devmode&kit=62,15,121,126,255');
   const status = page.locator('#status');
   await expect(status).toContainText('triangles');
   await page.locator('#maps').selectOption('RUN/MP2.ZDB');

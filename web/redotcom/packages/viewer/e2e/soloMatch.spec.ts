@@ -19,7 +19,9 @@ test('offline: the page plays its own match, and a grenade at the feet hurts the
   const problems: string[] = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
 
-  await page.goto('/?map=MP2&mode=play&devmode');
+  // The kit these pins were measured on: the M4A1 SD, the Mark 23, the M67 and the HE, no 2X (W2.R4's), by the
+  // developer's `&kit=` (README; the default spawn is the map's type's kit since web sprint 4).
+  await page.goto('/?map=MP2&mode=play&devmode&kit=62,15,121,126,255');
   await expect(page.locator('#status')).toContainText('FROSTFIRE (MP2)', { timeout: 60_000 });
   await expect.poll(async () => page.evaluate(() => window.__viewer.net?.()?.state ?? null), { timeout: 30_000 }).toBe('open');
   const net = await page.evaluate(() => window.__viewer.net!()!);
