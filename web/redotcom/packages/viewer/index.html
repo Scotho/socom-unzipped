@@ -347,6 +347,11 @@
           <button id="tw-zoom-out" class="s2u-tab" type="button" data-lane="zoomOut" aria-label="zoom out">&minus;</button>
           <button id="tw-zoom-in" class="s2u-tab" type="button" data-lane="zoom" aria-label="zoom in">+</button>
         </div>
+        <!--
+          WEAPON EXCHANGE's touch control (web sprint 4, M8; WEAPON_SELECT_TOUCH_READING, for the owner): shown only while
+          the dead's prompt is up or the menu open (`./src/main.ts` `showWeaponsButton`); a press is the game's Inventory.
+        -->
+        <button id="tw-weapons" class="s2u-tab" type="button" hidden aria-label="select new weapons">INV</button>
       </div>
       <p id="rotate-hint" class="s2u-status s2u-status--pill" data-play aria-live="off">Turn your phone sideways to play</p>
     </div>

@@ -459,8 +459,8 @@ describe('the page: the toast and the layout table', () => {
 
     it('lists only the walking controls in walk mode: fire, reload on R3, the stance, the zoom, the action, the peek and the slots', () => {
       ui.setWalk(true);
-      expect(groups()).toEqual(['Move', 'Combat', 'Stance & action', 'Weapons', 'General']);
-      expect(table().map((r) => r[0])).toEqual(['Left stick', 'Right stick', 'Square', 'R1', 'D-pad Up / Down', 'R3', 'L3', 'Triangle', 'Cross', 'D-pad Left / Right', 'L1', 'L2', 'R2', 'Select (hold)', 'Start']);
+      expect(groups()).toEqual(['Move', 'Combat', 'Stance & action', 'Weapons', 'Weapon select', 'General']);
+      expect(table().map((r) => r[0])).toEqual(['Left stick', 'Right stick', 'Square', 'R1', 'D-pad Up / Down', 'R3', 'L3', 'Triangle', 'Cross', 'D-pad Left / Right', 'L1', 'L2', 'R2', 'R2 (when dead)', 'D-pad Up / Down', 'D-pad Left / Right', 'Cross', 'Triangle', 'R2', 'Select (hold)', 'Start']);
       expect(table().find((r) => r[0] === 'R3')![1]).toBe('reload');
       expect(table().find((r) => r[0] === 'R1')![1]).toBe('fire');
       expect(table().flat().join(' ')).not.toMatch(/boost/);
@@ -514,7 +514,7 @@ describe('the page: the toast and the layout table', () => {
       expect(keys()).not.toMatch(/jump|stance|fire|reload|peek/i);
       ui.setWalk(true);
       expect(hint.textContent).toBe('click to look');
-      expect(heads()).toEqual(['Move', 'Combat', 'Stance & action', 'Weapons', 'General']);
+      expect(heads()).toEqual(['Move', 'Combat', 'Stance & action', 'Weapons', 'Weapon select', 'General']);
       for (const want of [/W A S Dmove/, /Spacejump/, /Right clickzoom/, /Left clickfire/, /Rreload/, /Bfire mode/, /Ccrouch/, /Xaction/, /Q \/ Epeek left \/ right/, /1main weapon/, /2sidearm/, /3 \/ 4grenades and equipment/, /Gfly camera/, /Ffullscreen/]) {
         expect(keys()).toMatch(want);
       }

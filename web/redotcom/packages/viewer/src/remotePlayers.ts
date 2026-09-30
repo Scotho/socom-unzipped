@@ -74,18 +74,32 @@ export function remoteKitOf(snap: PlaySnapshot & { weapon: 0 | 1 }): ReturnType<
 /** A held weapon to hang: the map's built model (`WorldView.held`, cloned for each body) and its named points. */
 export interface HeldRef { object: Object3D; points: readonly WeaponPoint[] }
 /**
- * The two firearms a side's players carry (web sprint 4, M3): the loadout's primary and secondary models (`./loadout`).
- * For now each side's first type's kit, as the local player spawns with (DEFAULT_CHARTYPE_PLACEHOLDER); M9 carries each
- * player's own kit on the wire.
+ * The two firearms a player carries (web sprint 4, M3/M9): the loadout's primary and secondary models (`./loadout`) --
+ * the player's own kit when the room has named it (`kit`, protocol 7), else its side's first type's
+ * (DEFAULT_CHARTYPE_PLACEHOLDER), as the local player spawns with.
  */
-export type SideKit = (team: Team) => {
+export type SideKit = (team: Team, kit: readonly number[] | null) => {
   rifle: HeldRef | null; pistol: HeldRef | null;
-  /** The side's loadout and its two firearms' ids: the copies' scope nodes follow them (`./sights` `cloneHeld`). */
+  /** The kit drawn and its two firearms' ids: the copies' scope nodes follow them (`./sights` `cloneHeld`). */
   loadout?: readonly number[]; ids?: readonly [number, number];
 };
 
+/** No item (`EMPTY_ITEM`): a body whose kit is not known says so in `BodyState.weapon`. */
+const NO_ITEM = 255;
+
+/**
+ * REMOTE_KIT_APPLY_PLACEHOLDER: when another console's body takes up a received kit (`FUN_0053ec60` L407354-407378,
+ * called at L455079 and L455445) is not traced (research 94 §A6). The page takes a player's kit at its `spawn` (protocol
+ * 7: the room names it, the rebuild's moment, `FUN_00599f00`) and the welcome's list, and hangs the item a snapshot
+ * says is in the hand (`BodyState.weapon`, by id) at once when it differs -- the room owns the kit (W4.R6), so the two
+ * never disagree but across a join.
+ */
+export const REMOTE_KIT_APPLY_PLACEHOLDER = 'spawn' as const;
+
 interface Remote {
   id: number; team: Team; view: BodyView; play: Play; weapon: Object3D | null; sidearm: Object3D | null; item: Firearm; snap: ReturnType<typeof snapshotOf> | null;
+  /** The kit the weapons were hung from (five item ids), or null for the side's type's. */
+  kit: number[] | null;
   deadFor: number; deathClip: string | null;
   /** The weapons' named points (the muzzle's `firepoint`), rifle and pistol. */
   points: { rifle: readonly WeaponPoint[]; pistol: readonly WeaponPoint[] };
@@ -111,12 +125,20 @@ export class RemotePlayers {
   private clips: PlayClips | null = null;
   private kitOf: SideKit | null = null;
   private readonly teams = new Map<number, Team>();
+  /** Protocol 7: each player's kit as the room named it (a `spawn`, the welcome's players). */
+  private readonly kits = new Map<number, number[]>();
+  private typeKit: ((team: Team) => readonly number[]) | null = null;
 
   constructor(private readonly scene: Scene) {}
 
-  /** A new map (its bodies, textures, and each side's two firearms): every remote is rebuilt from it on its next snapshot. */
-  setMap(map: LoadedMap | null, lighting: Lighting, kitOf: SideKit | null): void {
+  /**
+   * A new map (its bodies, textures, and each side's two firearms): every remote is rebuilt from it on its next snapshot.
+   * `typeKit`: each side's type's kit by id (`./loadout` `typeLoadout`), the kit a body is drawn with until its own is named.
+   */
+  setMap(map: LoadedMap | null, lighting: Lighting, kitOf: SideKit | null, typeKit: ((team: Team) => readonly number[]) | null = null): void {
     this.clear();
+    this.kits.clear();
+    this.typeKit = typeKit;
     this.map = map;
     this.lighting = lighting;
     this.kitOf = kitOf;
@@ -136,7 +158,24 @@ export class RemotePlayers {
 
   forget(id: number): void {
     this.teams.delete(id);
+    this.kits.delete(id);
     this.remove(id);
+  }
+
+  /**
+   * A player's kit (protocol 7: its `spawn`, the welcome's players): five item ids; a drawn body whose kit changed has
+   * its two firearms hung again (REMOTE_KIT_APPLY_PLACEHOLDER).
+   */
+  setKit(id: number, kit: readonly number[]): void {
+    if (kit.length !== 5) return;
+    this.kits.set(id, [...kit]);
+    const r = this.remotes.get(id);
+    if (r && !sameKit(r.kit, kit)) this.hang(r, [...kit]);
+  }
+
+  /** A player's kit as the page knows it, or null (its side's type's then). */
+  playerKit(id: number): readonly number[] | null {
+    return this.kits.get(id) ?? null;
   }
 
   /** One frame: every body at its interpolated state, in its clip. */
@@ -152,7 +191,15 @@ export class RemotePlayers {
       r.view.group.visible = shown;
       if (!shown) continue;
       if (!r.snap.alive && r.deathClip) r.snap.traversal = deathPose(r.deathClip, r.deadFor, this.clips);
-      const kit = remoteKitOf(r.snap);                     // WEAPON: the replicated rifle or Mark 23 in the hand
+      // Protocol 7: the item in the hand by id; one the kit does not hold in that slot is hung at once.
+      const held = r.snap.item, known = r.kit ?? this.typeKit?.(r.team) ?? null;
+      if (held !== NO_ITEM && known?.[r.snap.weapon] !== held) {
+        const next = [...(known ?? [NO_ITEM, NO_ITEM, NO_ITEM, NO_ITEM, NO_ITEM])];
+        next[r.snap.weapon] = held;
+        this.kits.set(r.id, next);
+        this.hang(r, next);
+      }
+      const kit = remoteKitOf(r.snap);                     // WEAPON: the replicated primary or sidearm in the hand
       if (kit.item !== r.item) { r.item = kit.item; r.play.setItem(kit.item); }
       r.play.setMounts(kit.mounts);
       r.play.frame(dt, { snapshot: () => r.snap, view: () => 'third' }, camera);
@@ -206,21 +253,30 @@ export class RemotePlayers {
     play.setBody(view, loaded);
     play.setFlyToggle(true);
     play.setClips(this.clips);
-    // WEAPON (web sprint 4, M3): the side's two firearms, each its own model at its own grip, as the local kit hangs them.
-    // Each copy's scope node from the body's own kit, not the page's (the thermal scope's swap, `./sights`).
-    const kit = this.kitOf?.(team) ?? { rifle: null, pistol: null };
-    const weapon = kit.rifle ? cloneHeld(kit.rifle.object, kit.loadout ?? null, kit.ids?.[0] ?? null) : null;
-    if (weapon && kit.rifle) play.setWeapon(weapon, kit.rifle.points);
-    const sidearm = kit.pistol ? cloneHeld(kit.pistol.object, kit.loadout ?? null, kit.ids?.[1] ?? null) : null;
-    if (sidearm && kit.pistol) play.setSidearm(sidearm, kit.pistol.points);
     const r: Remote = {
-      id, team, view, play, weapon, sidearm, item: 'rifle', snap: null, deadFor: 0, deathClip: this.pendingDeaths.get(id) ?? null,
-      points: { rifle: kit.rifle?.points ?? [], pistol: kit.pistol?.points ?? [] },
+      id, team, view, play, weapon: null, sidearm: null, item: 'rifle', snap: null, deadFor: 0, deathClip: this.pendingDeaths.get(id) ?? null,
+      points: { rifle: [], pistol: [] }, kit: null,
     };
+    // WEAPON (web sprint 4, M3/M9): the player's two firearms -- its own kit when named, else its side's type's -- each its
+    // own model at its own grip, as the local kit hangs them.
+    this.hang(r, this.kits.get(id) ?? null);
     this.pendingDeaths.delete(id);
     play.setWeaponInput(() => ({ trigger: r.snap?.trigger ?? false, aiming: r.snap?.aiming ?? false }));
     this.remotes.set(id, r);
     return r;
+  }
+
+  /** A body's two firearms hung from a kit (null: its side's type's): the old models off, clones of the kit's on. */
+  private hang(r: Remote, kit: number[] | null): void {
+    const refs = this.kitOf?.(r.team, kit) ?? { rifle: null, pistol: null };
+    r.play.setWeapon(null, []);
+    r.play.setSidearm(null, []);
+    r.weapon = refs.rifle ? cloneHeld(refs.rifle.object, refs.loadout ?? null, refs.ids?.[0] ?? null) : null;
+    if (r.weapon && refs.rifle) r.play.setWeapon(r.weapon, refs.rifle.points);
+    r.sidearm = refs.pistol ? cloneHeld(refs.pistol.object, refs.loadout ?? null, refs.ids?.[1] ?? null) : null;
+    if (r.sidearm && refs.pistol) r.play.setSidearm(r.sidearm, refs.pistol.points);
+    r.points = { rifle: refs.rifle?.points ?? [], pistol: refs.pistol?.points ?? [] };
+    r.kit = kit;
   }
 
   private remove(id: number): void {
@@ -236,4 +292,8 @@ export class RemotePlayers {
   clear(): void {
     for (const id of [...this.remotes.keys()]) this.remove(id);
   }
+}
+
+function sameKit(a: readonly number[] | null, b: readonly number[]): boolean {
+  return a !== null && a.length === b.length && a.every((v, i) => v === b[i]);
 }

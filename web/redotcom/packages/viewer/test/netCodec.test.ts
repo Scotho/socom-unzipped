@@ -30,7 +30,8 @@ function body(id: number): BodyState {
     action: Math.floor(rand() * 16), actionSerial: Math.floor(rand() * 256), actionT: between(0, 3), actionSeconds: rand() < 0.3 ? -1 : between(0, 3),
     overlay: Math.floor(rand() * 256), overlayT: between(0, 1), overlaySeconds: between(0, 1), turnRate: between(-10, 10),
     trav: Math.floor(rand() * (TRAVERSAL_CLIPS.length + 1)), travFrame: between(0, 60), travRootY: rand() < 0.5 ? Number.NaN : between(0, 20),
-    travBlend: Math.floor(rand() * 4), travBlendWeight: rand(), peek: Math.floor(rand() * 3) - 1, weapon: Math.floor(rand() * 2),
+    travBlend: Math.floor(rand() * 4), travBlendWeight: rand(), peek: Math.floor(rand() * 3) - 1,
+    weapon: Math.floor(rand() * 256), slot: Math.floor(rand() * 2),
   };
 }
 
@@ -65,12 +66,12 @@ describe('the command frame (M3)', () => {
 });
 
 describe('the snapshot frame (M3)', () => {
-  it('round-trips the own state exactly (float32) and every body to its steps, 55 bytes a body', () => {
+  it('round-trips the own state exactly (float32) and every body to its steps, 56 bytes a body (protocol 7)', () => {
     for (let trial = 0; trial < 50; trial++) {
       const bodies = Array.from({ length: 15 }, (_, i) => body(i + 1));
       const own = { ack: trial * 7, x: between(-4000, 4000), y: between(0, 500), z: between(-4000, 4000), vx: 1.5, vy: -3.25, vz: 0 };
       const bytes = encodeSnapshot({ tick: 1000 + trial, own, bodies });
-      expect(bytes.byteLength).toBe(1 + 4 + 1 + 28 + 1 + 55 * 15 + 1);   // protocol 2: the door count, 0 here
+      expect(bytes.byteLength).toBe(1 + 4 + 1 + 28 + 1 + 56 * 15 + 1);   // protocol 2: the door count, 0 here; 7: the item's byte
       const back = decodeSnapshot(bytes);
       expect(back.tick).toBe(1000 + trial);
       expect(back.own!.ack).toBe(own.ack);
@@ -80,13 +81,27 @@ describe('the snapshot frame (M3)', () => {
         expect(b.feet).toEqual(a.feet.map(Math.fround));
         expect(angle(b.yaw, a.yaw)).toBeLessThanOrEqual(360 / 65536);
         expect(Math.abs(b.vy - a.vy)).toBeLessThanOrEqual(1 / 128 + 1e-9);
-        expect([b.flags, b.stance, b.landing, b.ground, b.jumps, b.action, b.actionSerial, b.overlay, b.trav, b.travBlend, b.peek, b.weapon, b.groundCls])
-          .toEqual([a.flags, a.stance, a.landing, a.ground, a.jumps, a.action, a.actionSerial, a.overlay, a.trav, a.travBlend, a.peek, a.weapon, a.groundCls]);
+        expect([b.flags, b.stance, b.landing, b.ground, b.jumps, b.action, b.actionSerial, b.overlay, b.trav, b.travBlend, b.peek, b.weapon, b.slot, b.groundCls])
+          .toEqual([a.flags, a.stance, a.landing, a.ground, a.jumps, a.action, a.actionSerial, a.overlay, a.trav, a.travBlend, a.peek, a.weapon, a.slot, a.groundCls]);
         expect(Math.abs(b.actionT - a.actionT)).toBeLessThanOrEqual(0.0005 + 1e-9);
         if (a.actionSeconds < 0) expect(b.actionSeconds).toBe(-1);
         expect(Number.isNaN(b.travRootY)).toBe(Number.isNaN(a.travRootY));
       });
     }
+  });
+
+  it('protocol 7: a body carries the held item\'s id and its slot, the budget re-measured (15 bodies, Frostfire\'s three doors)', () => {
+    const bodies = Array.from({ length: 15 }, (_, i) => ({ ...body(i + 1), weapon: [54, 15, 62, 57, 255][i % 5]!, slot: i % 2 }));
+    const own = { ack: 1, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 };
+    const doors = [{ valve: 0, phase: 255 }, { valve: 1, phase: 0 }, { valve: 0, phase: 9 }];
+    expect(encodeSnapshot({ tick: 1, own, bodies }).byteLength).toBe(876);
+    expect(encodeSnapshot({ tick: 1, own, bodies, doors }).byteLength).toBe(882);
+    const back = decodeSnapshot(encodeSnapshot({ tick: 1, own, bodies }));
+    expect(back.bodies.map((b) => [b.weapon, b.slot])).toEqual(bodies.map((b) => [b.weapon, b.slot]));
+    // bodyOf / snapshotOf: the server's held item and slot to the wire and back to the animator's extras.
+    const sim = snapshotOf(back.bodies[2]!);
+    expect([sim.weapon, sim.item]).toEqual([0, 62]);
+    expect(PROTOCOL_VERSION).toBe(7);
   });
 
   it('a spectator\'s snapshot has no own state', () => {
