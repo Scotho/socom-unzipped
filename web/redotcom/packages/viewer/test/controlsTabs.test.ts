@@ -31,7 +31,7 @@ describe('the lists', () => {
 
   it('Mouse & Keyboard, walking: weapons 1 to 4, reload on R, the action on X', () => {
     const all = rows(controlGroups('walk', true)).join(' | ');
-    for (const want of ['W A S D = move', 'Space = jump', 'R = reload', 'C', 'X', 'Q / E', '1 = ', '2 = ', '3 / 4 = ', 'Tab']) expect(all, want).toContain(want);
+    for (const want of ['W A S D = move', 'Space = jump', 'R = reload', 'C', 'X', 'Q / E', '1 = ', '2 = ', '3 / 4 / 5 = ', 'Tab']) expect(all, want).toContain(want);
     expect(all).toMatch(/fire/);
     expect(all).toMatch(/zoom/);
     expect(all).toMatch(/grenade/);

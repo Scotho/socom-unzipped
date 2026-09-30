@@ -1061,7 +1061,7 @@ describe('BL-2: a malformed event is dropped, never thrown (one frame took the m
     for (const c of [a, b]) for (const t of ['shot', 'grenade', 'renamed', 'pong', 'votes'] as const) expect(c.of(t), t).toHaveLength(0);
     expect(p.mags[0].state()).toEqual(before.mags);
     expect(p.grenades).toEqual(before.grenades);
-    expect(Object.keys(p.grenades)).toEqual(['M67', 'HE', 'AN-M8', 'Mark141']);
+    expect(Object.keys(p.grenades)).toEqual(['M67', 'HE']);   // M7: the baked loadout's pouch (pouchOf), no longer every throwable
     expect(p.pending).toHaveLength(0);
     // A well-formed name and ping still go through.
     room.text(1, { type: 'name', name: 'Bravo' });

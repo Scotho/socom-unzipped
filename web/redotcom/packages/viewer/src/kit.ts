@@ -35,12 +35,14 @@ export type KitItem = Firearm | 'M67' | 'HE';
 export const KIT_SLOTS: readonly KitItem[] = ['rifle', 'pistol', 'M67', 'HE'];
 
 /**
- * The PC's number keys (the owner, 2026-09-29): `1` the main weapon, `2` the sidearm (L1's and L2's slots), `3` and
- * `4` the kit's equipment slots 1 and 2 (`./grenade`'s `equipmentSlots`, whatever the kit holds there in order).
+ * The PC's number keys (the owner, 2026-09-29; spec W4.R5): `1` the main weapon, `2` the sidearm (L1's and L2's slots),
+ * `3`, `4` and `5` the kit's three equipment slots in kit order (`./equipment`'s `EQUIPMENT_SLOTS`, whatever the kit
+ * holds there). `5` is the sprint's own ruling for the third slot (W4.R5, the owner may overturn it); the pad keeps the
+ * game's ways -- R2's Inventory and L1/L2 on the slots it assigns (research 85 §9.1).
  */
-export type Hotkey = { firearm: Firearm } | { equipment: 1 | 2 };
+export type Hotkey = { firearm: Firearm } | { equipment: 1 | 2 | 3 };
 const HOTKEYS: Readonly<Record<string, Hotkey>> = {
-  Digit1: { firearm: 'rifle' }, Digit2: { firearm: 'pistol' }, Digit3: { equipment: 1 }, Digit4: { equipment: 2 },
+  Digit1: { firearm: 'rifle' }, Digit2: { firearm: 'pistol' }, Digit3: { equipment: 1 }, Digit4: { equipment: 2 }, Digit5: { equipment: 3 },
 };
 
 /** A key's `code` to what it takes up, or null for a key that is none of the four (`Numpad1` .. are not bound). */

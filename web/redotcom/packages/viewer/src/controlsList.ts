@@ -111,7 +111,7 @@ function keyGroups(mode: ControlMode, toggle: boolean): ControlGroup[] {
       rows: [
         { keys: '1', does: 'main weapon' },
         { keys: '2', does: 'sidearm' },
-        { keys: '3 / 4', does: 'grenades and equipment' },
+        { keys: '3 / 4 / 5', does: 'grenades and equipment' },   // the three equipment slots in kit order (W4.R5)
         { keys: 'I (when dead)', does: 'weapon select: the next round\'s kit' },
       ],
     },

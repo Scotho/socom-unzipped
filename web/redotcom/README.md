@@ -321,7 +321,8 @@ into the address as `online=off`).
 | `X` | the action, the pad's Cross: opens or shuts the door under the reticle (the door icon shows it; [research 92](docs/research/92-doors.md)), climbs the crate, container or fence the climb icon offers (in the air too: jump, then `X`), and slides down a ladder |
 | `Q` / `E` held | peeks left / right, standing still, as the game's d-pad does |
 | `1` / `2` | the main weapon (the rifle) / the sidearm (the Mark 23), as L1 / L2: the game's swap clip plays |
-| `3` / `4` | the kit's equipment slots 1 and 2, in the kit's order (`mp_seal1`: the M67, the HE); R2 on the pad steps through every item |
+| `3` / `4` / `5` | the kit's three equipment slots, in the kit's order (`mp_seal1`: the M67, the HE, 2X); `5` is web sprint 4's ruling (W4.R5) for the owner to confirm. A slot the game never takes up (2X, the thermal scope, C4, a launcher's round) does nothing; R2 on the pad steps through the kit's items |
+| `X` at a C4 target | plants C4 (the Action button, as the game does: research 94 §C5.1), after any door in reach |
 | `I` (dead, in a match) | **WEAPON EXCHANGE**, the dead player's weapon select (below): opens it, and closes its slot list (`WEAPON_SELECT_KEY_READING`, the game's `Inventory`: a reading for the owner, O-S4-3) |
 | `Tab` (held) | the round's scoreboard, as SELECT held on the console ([`docs/research/87-hud.md`](docs/research/87-hud.md) §12); the pad's Select too |
 | `M` | the tactical map, and back (SELECT on the console; SOCOM II's single-player map over the map's `AIMAPS.MPS`, heading-up, drawn over the world with the HUD hidden: [`docs/research/87-hud.md`](docs/research/87-hud.md) §9); `-` / `=` held zoom it out and in |
@@ -655,7 +656,12 @@ EXCHANGE, above; the hook's `setLoadout`) waits for the next spawn -- in classic
 the kit (W4.R6): it replays the picks, holds the kit, keys its rate, reload lock, cone, damage and falloff by the player's
 own slot records -- never the page's claim -- the arsenal read from `SOCOM_DISC` at the server's start; the others are
 drawn with the kit their spawn named and the item their body holds. Without `ZWEAPON.ZAR` the kit is the baked M4A1
-SD and Mark 23 of before. The equipment slots still hold the fixed pouch (`POUCH_PLACEHOLDER`, until the equipment task).
+SD and Mark 23 of before. **The equipment follows the loadout** (web sprint 4 M7, research 94 §C4-§C5): the pouch is the
+three equipment slots' (`viewer/src/equipment.ts`); the LAW and the RPG-7 are raised from their slot and fire their
+rocket straight at the reticle's point (980 u/s^2, no fall, a dud inside 10 m, 20 in 15 m) with the backblast behind
+(6 in 7 m, its 45-degree cone); the claymore is placed and set off by its Detonator, the PMN arms after 8 s and trips
+within 1 m, C4 is planted at a C4 target by the Action button and goes off 6 s later -- and the room flies, places and
+detonates each of them, all through the `throw` message by the item's name (no new wire message).
 
 **The gunplay is the game's** ([research 84](docs/research/84-accuracy-and-recoil.md)): the SEAL's rifle -- the M4A1 SD
 (`HELD_RIFLE`) the specs pin by `&kit=` -- fires to `Maximum_Range` x 10 units; its reticle opens with the walk, the look and each round and closes

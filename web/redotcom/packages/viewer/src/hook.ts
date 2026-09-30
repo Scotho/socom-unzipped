@@ -20,6 +20,21 @@ import type { ViewStats, WeaponStats } from './play';
 import type { KitState } from './kit';
 import type { AudioStats } from './audio';
 import type { GrenadeStats, KitItem, ThrowInfo } from './grenade';
+import type { RocketStats } from './rocket';
+
+/** M7: the equipment as the hook shows it (`ViewerHook.equipment`). */
+export interface EquipmentStats {
+  /** The three equipment slots' item ids and names, kit order. */
+  slots: { id: number; name: string | null }[];
+  /** What is in the hand: a throwable or charge, the Detonator, a launcher's name, or null for the firearm. */
+  held: string | null;
+  rocket: RocketStats;
+  /** The HUD weapon box's icon and count as drawn this frame. */
+  icon: string;
+  count: number;
+  /** The fire-mode cell's round icon (a launcher's), or null. */
+  roundIcon: string | null;
+}
 import type { ThrowPoseStats } from './throwPose';
 import type { WhiteOutState } from './flash';
 import type { TraversalStats } from './traversalPage';
@@ -283,6 +298,15 @@ export interface ViewerHook {
   whiteOut(): WhiteOutState;
   /** Sets off the placed claymores (the `9` key; the claymore's own trigger is not ported); the count set off. */
   detonateCharges(): number;
+  /**
+   * M7 (web sprint 4; spec W4.R5): the equipment -- the three slots' items in kit order, what is in the hand, the
+   * rocket launcher's state (the rounds, the last launch and backblast) and the HUD box's icon and count.
+   */
+  equipment(): EquipmentStats;
+  /** M7: the kit's equipment slot `slot` (1-3) taken up, as the keys 3, 4 and 5 do; false when it cannot be. */
+  selectEquipment(slot: 1 | 2 | 3): boolean;
+  /** M7: the Action button's C4 plant at a C4 target (research 94 §C5.1); false when refused. */
+  plantC4(): boolean;
   /**
    * EFFECTS (`./effects`, web/redotcom/docs/research/89): the map's effect data loaded or not, the animations played by name,
    * the runs live, the casings in the air and the last one's place, the bounces, the particles, the sounds.

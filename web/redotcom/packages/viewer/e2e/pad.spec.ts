@@ -146,7 +146,7 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   await expect(page.locator('#keys-list')).toContainText('Left clickfire');
 
   // L2 is the game's SwapWeapon2 -- the controller's slot 1.0, the kit's Mark 23 (WEAPON: `./kit`) -- and a second press
-  // does nothing (no toggle back); R2 its Inventory, one slot a press (the rifle, the Mark 23, the throwables); L1 its
+  // does nothing (no toggle back); R2 its Inventory, one slot a press (the rifle, the Mark 23, the kit's throwables); L1 its
   // SwapWeapon1, the rifle.
   const item = (): Promise<string> => page.evaluate(() => (window.__viewer.grenade().equipped
     ? window.__viewer.grenade().item : window.__viewer.kit().swap?.to ?? window.__viewer.kit().item));
@@ -172,7 +172,9 @@ test('a pad on the PS2 layout: the toast, the layout, the walk and the fly camer
   await expect.poll(item).toBe('M67');
   await tap(7, 'inventory');
   await expect.poll(item).toBe('HE');
-  for (const next of ['AN-M8', 'Mark141', 'Claymore', 'rifle']) {      // the smoke, the flashbang, the claymore, round
+  // Web sprint 4 M7 (W4.R5): the Inventory steps through the kit's own slots -- this kit's M67 and HE, its third slot
+  // empty -- and round to the rifle.
+  for (const next of ['rifle']) {
     await tap(7, 'inventory');
     await expect.poll(item).toBe(next);
   }

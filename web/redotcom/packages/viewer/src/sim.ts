@@ -14,6 +14,8 @@
  *   kit of each side's character type, the kit tables read once from `ZWEAPON.ZAR`;
  * - each firearm class's rules (`./firearms`, web sprint 4 M4): the reload's delay, the bolt and pump lock, the pellets,
  *   the launchers' rounds as fire modes and the kit's round slots;
+ * - the equipment's rules (`./equipment`, web sprint 4 M7): the three slots and their gate, the pouch the loadout
+ *   carries, C4's targets and plant, the rockets' launch and the backblast's cone;
  * - grenades live headless in `@s2u/scene` already (`projectile.ts`: launch, step, the blast's damage);
  * - the reload's clip and length (`./reloadClip`): the page's reload and the room's lock, one table (MJ-1);
  * - the camera's geometry (`./cameraRig`) and the server's accuracy cone over it (`./net/shotCone`, OWNER-3): the room
@@ -28,6 +30,7 @@ export * from './round';
 export * from './magazines';
 export * from './loadout';
 export * from './firearms';
+export * from './equipment';
 export * as accuracy from './accuracy';
 export { penetrate, fireInterval } from './accuracy';
 export { PROBE_LIFT } from '@s2u/scene';

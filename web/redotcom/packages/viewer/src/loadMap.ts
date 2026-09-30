@@ -18,7 +18,8 @@ import { collisionOwners, type WorldPoly } from '@s2u/scene';
 import { groundGrid, packGround, type GroundData } from './mover';
 import { openingStand, type Stand } from './stand';
 import { bodyTextureNames, bodyTransferables, characterTableFor, loadBody, placeBody, type LoadedBody } from './body';
-import { WEAPON_MEMBERS, weaponLibrary, type WeaponPoint } from '@s2u/scene';
+import { ITEM, WEAPON_MEMBERS, weaponLibrary, type WeaponPoint } from '@s2u/scene';
+import { equipmentKind } from './equipment';
 import { BAKED_LOADOUT, loadKitSource, simKitsFromBytes, slotModel, type SimKits } from './loadout';
 import { readEffectBitmap, readReticle, type ReticleBitmaps } from './hudBitmaps';
 import { readHud, type HudBitmaps } from './hudAssets';
@@ -366,7 +367,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   // W2.4, M3: the held weapons, decoded here with the map so their textures come out of the same asset-library chain.
   const weapons = heldWeapons(bytes, toc, notes, arsenal);
   // The frag grenade (`./grenadeAssets`): its model's textures are decoded with the held weapon's below.
-  const grenade = loadGrenadeAssets(bytes, toc, stem, textureKey, (line) => notes.add(line));
+  const grenade = loadGrenadeAssets(bytes, toc, stem, textureKey, (line) => notes.add(line), arsenal ? equipmentModels(arsenal) : []);
 
   // The textures those meshes name, and only those: a map's TXR holds every texture the mission uses.
   // A TXR or PAL member that will not parse at all costs one diagnostic and the untextured map, not the
@@ -558,10 +559,28 @@ function arsenalIcons(arsenal: SimKits): string[] {
   const icons = new Set<string>();
   for (const item of arsenal.table.arsenal.items.values()) {
     const round = item.cls === 'launcherRound' || item.cls === 'rocketRound';
-    if (!item.icon || !/\.tif$/i.test(item.icon) || (item.kind === 'equipment' && !round && !VALVE_OF_ITEM.has(item.id))) continue;
+    // M7 (research 94 §C9): the equipment the box shows too -- `AT4_icon.tif`, `RPG_icon.tif`, `c4.tif`,
+    // `PMN_mine_icon.tif`, `detonator_icon.tif` (the Detonator has no valve) -- not the Binoculars' or the internal rows'.
+    const kind = equipmentKind(item.id);
+    const equipment = kind === 'throwable' || kind === 'placed' || kind === 'c4' || kind === 'launcher' || kind === 'detonator';
+    if (!item.icon || !/\.tif$/i.test(item.icon) || (item.kind === 'equipment' && !round && !equipment && !VALVE_OF_ITEM.has(item.id))) continue;
     icons.add(item.icon.toLowerCase());
   }
   return [...icons];
+}
+
+/**
+ * M7: the equipment's models the thrower and the flight draw beside the baked throwables' (`./grenadeAssets`): every
+ * grenade's, placed charge's and launched round's `ModelName` (the PMN's `PMN_mine`, C4's `c4`, the rockets' `AT4_Heat`
+ * and `RPGrenade`, the 40 mm rounds'), read off the arsenal.
+ */
+function equipmentModels(arsenal: SimKits): string[] {
+  const out = new Set<string>();
+  for (const item of arsenal.table.arsenal.items.values()) {
+    const c = item.cls;
+    if ((c === 'grenade' || c === 'explosive' || c === 'launcherRound' || c === 'rocketRound') && item.model) out.add(item.model);
+  }
+  return [...out];
 }
 
 /**
@@ -588,7 +607,8 @@ function heldWeapons(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes, arsenal: 
   }
   const wanted = new Set<string>();
   if (arsenal) {
-    for (const item of arsenal.table.arsenal.items.values()) if (item.kind !== 'equipment' && item.model) wanted.add(item.model);
+    // M7: the rocket launchers too (the LAW's `AT4`, the RPG-7's `RPG7`): raised in the hand, their `firepoint` the rocket's.
+    for (const item of arsenal.table.arsenal.items.values()) if ((item.kind !== 'equipment' || item.cls === 'rocketLauncher') && item.model) wanted.add(item.model);
   } else {
     for (const slot of [0, 1] as const) wanted.add(slotModel(null, BAKED_LOADOUT, slot)!);
   }

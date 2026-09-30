@@ -251,10 +251,10 @@ describe('the Controls popover list (round 2; simplified 2026-09-29)', () => {
   });
   it('names every key the page binds on foot', () => {
     const keys = controlGroups('walk', true).flatMap((g) => g.rows.map((r) => r.keys)).join(' ');
-    for (const k of ['W A S D', 'Space', 'Left click', 'Right click', 'R', 'B', 'C', 'X', 'Q / E', '1', '2', '3 / 4', 'Tab', 'M', 'G', 'F']) expect(keys, k).toContain(k);
-    // The number keys (the owner, 2026-09-29): 1 main, 2 sidearm, 3 and 4 the equipment slots -- no per-grenade keys.
+    for (const k of ['W A S D', 'Space', 'Left click', 'Right click', 'R', 'B', 'C', 'X', 'Q / E', '1', '2', '3 / 4 / 5', 'Tab', 'M', 'G', 'F']) expect(keys, k).toContain(k);
+    // The number keys (the owner, 2026-09-29; W4.R5): 1 main, 2 sidearm, 3, 4 and 5 the equipment slots -- no per-grenade keys.
     const weapons = controlGroups('walk', true).find((g) => g.name === 'Weapons')!.rows;
-    expect(weapons.map((r) => r.keys)).toEqual(['1', '2', '3 / 4', 'I (when dead)']);
+    expect(weapons.map((r) => r.keys)).toEqual(['1', '2', '3 / 4 / 5', 'I (when dead)']);
     expect(weapons.map((r) => r.does)).toEqual(['main weapon', 'sidearm', 'grenades and equipment', 'weapon select: the next round\'s kit']);
   });
   it('lists no first-person key, and C as a tap and a hold (owner, 2026-09-29)', () => {

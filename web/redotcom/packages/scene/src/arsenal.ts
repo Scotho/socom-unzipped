@@ -33,7 +33,7 @@ export const EMPTY_ITEM = 255;
 export const FULL_SLOT = 254;
 /** The items the rules name by id (research 94 §A1). */
 export const ITEM = {
-  M203: 141, MGL: 142, M79: 143, LAW: 145, RPG7: 146, C4: 151, SATCHEL: 152, CLAYMORE: 153, PMN: 158,
+  M203: 141, MGL: 142, M79: 143, LAW: 145, RPG7: 146, C4: 151, SATCHEL: 152, CLAYMORE: 153, PMN: 158, BACKBLAST: 159,
   M203_FRAG: 175, GL_FRAG: 179, F2000_FRAG: 183, LAW_HEAT: 185, RPG_ROUND: 186,
   DETONATOR: 193, DOUBLE_AMMO: 194, THERMAL: 195, M16_203: 52, M4_203: 61, F2000: 63,
 } as const;
@@ -355,7 +355,17 @@ export interface KitTable {
    * armour bypass, research 91 §5). A round the reader refuses is absent.
    */
   rounds: ReadonlyMap<number, KitRound>;
+  /**
+   * Web sprint 4 M7 (research 94 §C5, research 85): every hand grenade (121-140) and placed charge (151-170, the
+   * `Backblast` 159 among them) by item id -- `throwableRecord`'s read of it (the timers, the radius, the damage, the
+   * PMN's proximity) and its round's `Piercing` -- so the page's pouch and the room's blasts take the disc's numbers.
+   * Optional: a hand-built table (a test) may leave it out; a record the reader refuses is absent.
+   */
+  throwables?: ReadonlyMap<number, KitThrowable>;
 }
+
+/** A throwable or a charge as the kit table holds it: its projectile record and its round's `Piercing` (`ZAMMO` `+0x14`). */
+export interface KitThrowable { record: ThrowableRecord; piercing: number }
 
 /**
  * A launched round: its projectile record (the flight, the arming, the blast), its ammo's `Piercing` (`ZAMMO` `+0x14`),
@@ -385,9 +395,17 @@ export function kitTableOf(zweapon: RdrNode): KitTable {
   const arsenal = arsenalOf(zweapon);
   const records = new Map<number, WeaponRecord>();
   const rounds = new Map<number, KitRound>();
+  const throwables = new Map<number, KitThrowable>();
   const ammo = new Map(list(zweapon, 'ZAMMO').map((r) => [str(rdrGet(r, 'InternalName')) ?? '', r] as const));
   const nodes = new Map(list(zweapon, 'ZWEAPON').map((r) => [str(rdrGet(r, 'InternalName')) ?? '', r] as const));
   for (const item of arsenal.items.values()) {
+    if (item.cls === 'grenade' || item.cls === 'explosive') {
+      try {
+        const round = item.ammo === null ? undefined : ammo.get(item.ammo);
+        throwables.set(item.id, { record: throwableRecord(zweapon, item.name), piercing: round === undefined ? 0 : num(round, 'Piercing', 0) });
+      } catch { /* no projectile record (the Satchel's round-less twin, a key missing): none */ }
+      continue;
+    }
     if (item.cls === 'launcherRound' || item.cls === 'rocketRound') {
       try {
         const round = item.ammo === null ? undefined : ammo.get(item.ammo);
@@ -404,7 +422,7 @@ export function kitTableOf(zweapon: RdrNode): KitTable {
       records.set(item.id, weaponRecord(zweapon, item.name, { carrier: GRENADE_CARRIERS.has(item.id) }));
     } catch { /* no firearm record: see above */ }
   }
-  return { arsenal, records, rounds };
+  return { arsenal, records, rounds, throwables };
 }
 
 /** `ZWEAPON.ZAR` -> the kit's tables. */

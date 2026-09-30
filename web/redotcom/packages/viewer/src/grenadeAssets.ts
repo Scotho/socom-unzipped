@@ -56,16 +56,23 @@ function library(bytes: Uint8Array, toc: ZdbEntry[], txrName: string, palName: s
 /** The grenade's model, bitmaps and the map's default material; null parts never fail the map. */
 export function loadGrenadeAssets(
   bytes: Uint8Array, toc: ZdbEntry[], stem: string, textureKey: (name: string) => string, note: (line: string) => void,
+  extra: readonly string[] = [],
 ): GrenadeAssets {
   const models: GrenadeAssets['models'] = [];
   try {
     const lib = weaponLibrary(Zar.parse(zdbMember(bytes, toc, WEAPON_MEMBERS.geo)), Zar.parse(zdbMember(bytes, toc, WEAPON_MEMBERS.mdl)));
-    for (const name of [M67.model, HE.model, AN_M8.model, MARK141.model, CLAYMORE.model, CLAYMORE_RULES.detonator.model]) {
+    // M7: `extra` -- the equipment's models off the arsenal (the PMN, C4, the rounds in flight); a name the library lacks
+    // (`NULL`, the Backblast's) costs nothing but its line.
+    const names = [...new Set([M67.model, HE.model, AN_M8.model, MARK141.model, CLAYMORE.model, CLAYMORE_RULES.detonator.model, ...extra])];
+    const known = new Map(lib.names().map((n) => [n.toLowerCase(), n] as const));
+    for (const wanted of names) {
+      const name = known.get(wanted.toLowerCase());
+      if (name === undefined) { if (!extra.includes(wanted)) note(`grenade ${wanted}: not in the weapon library`); continue; }
       try {
         const decoded = lib.decode(name, 'all');
         for (const d of decoded.diagnostics) note(`grenade ${decoded.name}: ${d}`);
         models.push({
-          name, parts: decoded.parts.flatMap((part) => part.meshes.map((mesh) => ({
+          name: wanted, parts: decoded.parts.flatMap((part) => part.meshes.map((mesh) => ({
             ...mesh, textureName: mesh.textureName === null ? null : textureKey(mesh.textureName),
             order: 0, orderEnd: 0, alternate: false, scroll: null,
           }))),

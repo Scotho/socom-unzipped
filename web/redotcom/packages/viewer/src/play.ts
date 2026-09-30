@@ -178,6 +178,7 @@ export class Play {
     this.loaded = view ? body : null;
     this.skeleton = view && body ? heldSkeleton(bodySkeleton(body)) : null;
     this.hand = view && this.skeleton && this.skeleton.indexOf(HELD_ITEM.name) >= 0 ? view.addProp(HELD_ITEM.name, HELD_ITEM.parent) : null;
+    this.launcher = null;                             // M7: the new body's `launcher` node, made on first ask
     if (view && this.skeleton && this.skeleton.indexOf(PISTOL_ITEM.name) >= 0) view.addProp(PISTOL_ITEM.name, PISTOL_ITEM.parent);
     // The weapons ride the body's own frame: their matrices are set from their mounts each frame (`mountMatrix`).
     for (const o of [this.weapon, this.sidearm]) if (o && view) view.group.add(o);
@@ -383,6 +384,17 @@ export class Play {
   heldNode(): Group | null {
     return this.hand;
   }
+
+  /**
+   * M7 (research 94 §C8): the `launcher` node the body's set-up hangs on `spinehi` (`CZSealBody_AddWeapon`'s caller,
+   * L419672-419687), where a carried LAW or RPG-7 rides (`./rocket`). Made on first ask, one a body; the clips' own
+   * `launcher` track is not played on it (`HOLSTER_TRACK_READING`): it sits at the bone's origin.
+   */
+  launcherNode(): Group | null {
+    if (!this.launcher && this.body && this.skeleton) this.launcher = this.body.addProp('launcher', 'spinehi');
+    return this.launcher;
+  }
+  private launcher: Group | null = null;
 
   /**
    * GRENADES: a point in a posed part's own frame (`rhand`, `lhand`, the held item's node), in the world -- null with no

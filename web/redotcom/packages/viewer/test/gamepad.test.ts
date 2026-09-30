@@ -515,7 +515,7 @@ describe('the page: the toast and the layout table', () => {
       ui.setWalk(true);
       expect(hint.textContent).toBe('click to look');
       expect(heads()).toEqual(['Move', 'Combat', 'Stance & action', 'Weapons', 'Weapon select', 'General']);
-      for (const want of [/W A S Dmove/, /Spacejump/, /Right clickzoom/, /Left clickfire/, /Rreload/, /Bfire mode/, /Ccrouch/, /Xaction/, /Q \/ Epeek left \/ right/, /1main weapon/, /2sidearm/, /3 \/ 4grenades and equipment/, /Gfly camera/, /Ffullscreen/]) {
+      for (const want of [/W A S Dmove/, /Spacejump/, /Right clickzoom/, /Left clickfire/, /Rreload/, /Bfire mode/, /Ccrouch/, /Xaction/, /Q \/ Epeek left \/ right/, /1main weapon/, /2sidearm/, /3 \/ 4 \/ 5grenades and equipment/, /Gfly camera/, /Ffullscreen/]) {
         expect(keys()).toMatch(want);
       }
       expect(keys()).not.toMatch(/boost|Wheel|arrows|W A S Dfly/);

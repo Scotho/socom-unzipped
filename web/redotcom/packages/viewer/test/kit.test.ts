@@ -99,12 +99,13 @@ describe('the kit\'s slots and the rifle <-> pistol swap', () => {
 });
 
 describe('the PC number keys (the owner, 2026-09-29)', () => {
-  it('1 the main weapon, 2 the sidearm, 3 and 4 the equipment slots 1 and 2; nothing else', () => {
+  it('1 the main weapon, 2 the sidearm, 3, 4 and 5 the equipment slots 1-3 in kit order (W4.R5); nothing else', () => {
     expect(hotkey('Digit1')).toEqual({ firearm: 'rifle' });
     expect(hotkey('Digit2')).toEqual({ firearm: 'pistol' });
     expect(hotkey('Digit3')).toEqual({ equipment: 1 });
     expect(hotkey('Digit4')).toEqual({ equipment: 2 });
-    for (const code of ['Digit0', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Numpad1', 'KeyQ']) expect(hotkey(code), code).toBeNull();
+    expect(hotkey('Digit5')).toEqual({ equipment: 3 });           // W4.R5: the third slot's key, the sprint's ruling
+    for (const code of ['Digit0', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Numpad1', 'KeyQ']) expect(hotkey(code), code).toBeNull();
   });
 });
 

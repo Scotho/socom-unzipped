@@ -18,7 +18,7 @@ export interface MapAction {
 }
 
 /** The actions of a map archive whose nodes are placed; a map without the script has none. Never throws. */
-export function readMapActions(bytes: Uint8Array, toc: ZdbEntry[], stem: string): { actions: MapAction[]; diagnostics: string[] } {
+export function readMapActions(bytes: Uint8Array, toc: ZdbEntry[], stem: string, graph?: ReturnType<typeof parseSceneGraph>): { actions: MapAction[]; diagnostics: string[] } {
   let script: RdrNode;
   try {
     const readerm = Zar.parse(zdbMember(bytes, toc, 'READERM.ZAR'));
@@ -38,7 +38,7 @@ export function readMapActions(bytes: Uint8Array, toc: ZdbEntry[], stem: string)
   };
   let where: Map<string, [number, number, number]>;
   try {
-    const models = parseSceneGraph(Zar.parse(zdbMember(bytes, toc, `${stem}_GEO.ZED`)));
+    const models = graph ?? parseSceneGraph(Zar.parse(zdbMember(bytes, toc, `${stem}_GEO.ZED`)));   // the caller's, when it has it
     where = new Map();
     for (const f of flattenScene(models, 'worldmodel')) {
       const name = f.node.name.toLowerCase();

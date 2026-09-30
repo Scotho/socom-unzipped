@@ -164,7 +164,8 @@ test('the owner\'s rulings of 2026-09-29: keys 1-4, no scope on the Mark 23, the
   expect(await page.evaluate(() => window.__viewer.grenade())).toMatchObject({ equipped: true, item: 'M67' });
   await page.keyboard.press('Digit4');
   expect(await page.evaluate(() => window.__viewer.grenade())).toMatchObject({ equipped: true, item: 'HE' });
-  for (const code of ['Digit5', 'Digit6', 'Digit9']) await page.keyboard.press(code);   // no per-type keys any more
+  // 5 the third equipment slot (W4.R5), empty in this kit: nothing taken up; no per-type keys any more.
+  for (const code of ['Digit5', 'Digit6', 'Digit9']) await page.keyboard.press(code);
   expect(await page.evaluate(() => window.__viewer.grenade())).toMatchObject({ equipped: true, item: 'HE' });
   await page.keyboard.press('Digit1');
   expect((await page.evaluate(() => window.__viewer.grenade())).equipped).toBe(false);

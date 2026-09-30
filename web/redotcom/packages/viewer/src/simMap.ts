@@ -10,6 +10,8 @@ import { clipsFromPack, motionTableFromArchive, MOTION_PACK_PATH, type MotionEnt
 import { TRAVERSAL_CLIPS } from './traversal';
 import { ALL_RELOAD_CLIPS } from './reloadClip';
 import { readDoors, type DoorSpec } from './doors';
+import { c4Targets, type C4Target } from './equipment';
+import { readMapActions } from './mapActions';
 
 /**
  * A map as the shared sim needs it (web sprint 3, M2; spec W3.R6: the server loads only the hulls, the tuning and the
@@ -35,6 +37,11 @@ export interface SimMap {
    * (`sweep`) so the server's movers read them as they swing. Absent on a map built by hand without them.
    */
   doors?: DoorSpec[];
+  /**
+   * M7 (`./equipment` `c4Targets`, `C4_TARGET_READING`): where C4 may be planted -- `actions.rdr`'s type-less actions on
+   * their placed nodes. Absent on a map built by hand without them (no target: C4 is refused everywhere).
+   */
+  c4Targets?: C4Target[];
   /** What went wrong on the way (a missing member costs a line, never the load, except the hull's). */
   notes: string[];
 }
@@ -71,7 +78,10 @@ export function simMapFromBytes(bytes: Uint8Array, path: string): SimMap {
   } catch (e) {
     notes.push(`spawn slots: ${say(e)}`);
   }
-  return { stem, name, ground, grid, spawns, slots, respawns, doors, notes };
+  const actions = readMapActions(bytes, toc, stem, models);
+  notes.push(...actions.diagnostics);
+  const c4 = c4Targets(actions.actions);
+  return { stem, name, ground, grid, spawns, slots, respawns, doors, notes, ...(c4.length ? { c4Targets: c4 } : {}) };
 }
 
 export async function loadSimMap(source: AssetSource, path: string): Promise<SimMap> {
