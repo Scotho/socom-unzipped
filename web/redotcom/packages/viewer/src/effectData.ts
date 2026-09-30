@@ -5,6 +5,7 @@ import {
   type DecalEntry, type EffectMesh, type EffectProgram,
 } from '@s2u/scene';
 import { parseSoils } from '@s2u/sound';
+import { LENS_ANIMS, scaleColorRows, type LensRows } from './lensFx';
 
 /**
  * The gunplay's effects, read off the disc in the worker for one map (web/redotcom/docs/research/89), as the sound is
@@ -15,7 +16,9 @@ import { parseSoils } from '@s2u/sound';
  *   decoded (`@s2u/scene`'s `decodeEffectProgram`); the engine looks a name up in every set (`FUN_0026a250`), the
  *   common set first;
  * - **the models**: `COMMON/EFFE_GEO.ZED` + `EFFE_MDL.ZED`'s (`effectLibrary`: the casings, the flashes, the chunks);
- * - **the weapons**: `ZWEAPON.ZAR/zweapon.rdr`'s `HitAnimName` of each held weapon (`bullet_hit` for every gun);
+ * - **the weapons**: `ZWEAPON.ZAR/zweapon.rdr`'s `HitAnimName` of every record (`bullet_hit` for every gun; the kit may
+ *   hold any since web sprint 4, and a remote player's round plays its own weapon's);
+ * - **the lenses**: the scope's lens zAnims' `SCALE_COLOR` rows (`./lensFx`: `to_thermal_lens_fx` and the other two);
  * - **the textures**: the models', the particle sources', and the marks', out of `COMMON/EFFE_TXR.ZED` and
  *   `COMMON/ALPH_TXR.ZED`, each against its own `_PAL` (a library cites its own palette ids, `./hudBitmaps`), with the
  *   GS state its bind packet sets (the blend: `cloudpuff01.tif` source alpha, `effect_muzzle01.tif` additive);
@@ -27,8 +30,6 @@ import { parseSoils } from '@s2u/sound';
 
 /** The zAnim archives of a map, in the order a name is looked up. */
 export const EFFECT_ARCHIVES: readonly string[] = ['CZANIM.ZAR', 'MZANIM.ZAR'];
-/** The weapons whose `HitAnimName` is read: the SEAL's rifle as held and the plain M4A1. */
-export const EFFECT_WEAPONS: readonly string[] = ['M4A1 SD', 'M4A1'];
 /** The two texture libraries the effects draw from (a map archive's `RUN\COMMON\*`). */
 export const EFFECT_TEXTURE_LIBS: readonly string[] = ['EFFE', 'ALPH'];
 /** The rifle's `DecalSet` (`zweapon.rdr`: the M4A1 and the M4A1 SD both mark with it). */
@@ -66,6 +67,8 @@ export interface EffectData {
   sceneNodes: [string, number[]][];
   /** `zweapon.rdr`'s `HitAnimName` by weapon (`InternalName`). */
   hitAnims: [string, string][];
+  /** The lens zAnims' `SCALE_COLOR` rows by name (`./lensFx` `LENS_ANIMS`; research 94 §C7). */
+  lenses?: [string, LensRows][];
   missing: string[];
 }
 
@@ -86,19 +89,27 @@ export async function effectsFromDisc(source: AssetSource, mapPath: string, arch
   };
 
   const programs: EffectProgram[] = [];
+  const lenses: [string, LensRows][] = [];
   const seen = new Set<string>();
   const autoStart: string[] = [];
   for (const archiveName of EFFECT_ARCHIVES) {
     const bytes = await member(archiveName);
     if (!bytes) continue;
     try {
-      for (const set of parseAnimSets(Zar.parse(bytes)).sets) {
+      const zar = Zar.parse(bytes);
+      for (const set of parseAnimSets(zar).sets) {
         for (const a of set.anims) {
           const key = a.name.toLowerCase();
           if (seen.has(key)) continue;
           seen.add(key);
           programs.push(decodeEffectProgram(a));
           if (archiveName === 'MZANIM.ZAR' && (a.params.flags & 3) === 1) autoStart.push(a.name);
+          if (LENS_ANIMS.includes(a.name)) {
+            // The command's bytes out of the animation's `Seq_Data` (the ambience's walk reads its commands the same way).
+            const seq = zar.find(`Anim_Sets/${set.name}/Animation_List/${a.name}/Seq_Data`);
+            const data = seq ? zar.data(seq) : null;
+            lenses.push([a.name, scaleColorRows(a.sequences, (at, n) => (data && at + n <= data.length ? data.subarray(at, at + n) : null))]);
+          }
         }
       }
     } catch (e) { missing.push(`${archiveName}: ${why(e)}`); }
@@ -165,7 +176,7 @@ export async function effectsFromDisc(source: AssetSource, mapPath: string, arch
       for (const r of Array.isArray(list) ? list : []) {
         if (!Array.isArray(r)) continue;
         const name = rdrGet(r, 'InternalName'), hit = rdrGet(r, 'HitAnimName');
-        if (typeof name === 'string' && typeof hit === 'string' && EFFECT_WEAPONS.includes(name)) hitAnims.push([name, hit]);
+        if (typeof name === 'string' && typeof hit === 'string') hitAnims.push([name, hit]);
       }
     } else missing.push('ZWEAPON.ZAR: no zweapon.rdr');
   } catch (e) { missing.push(`ZWEAPON.ZAR: ${why(e)}`); }
@@ -225,7 +236,7 @@ export async function effectsFromDisc(source: AssetSource, mapPath: string, arch
       } catch (e) { missing.push(`${archive}_GEO.ZED: ${why(e)}`); }
     }
   }
-  return { archive, programs, models, textures, absent, materials, defaultMaterial, marks, footprints, ambient, sceneNodes, hitAnims, missing };
+  return { archive, programs, models, textures, absent, materials, defaultMaterial, marks, footprints, ambient, sceneNodes, hitAnims, lenses, missing };
 }
 
 /** The buffers the data can hand over rather than copy. */

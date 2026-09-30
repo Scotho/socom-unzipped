@@ -35,7 +35,7 @@ import { mergeInput, noInput, PadWatch, padInput, pressedSince, type Input, type
 import type { TouchTarget } from './touch';
 import { MobileTip, storeOf, tipText } from './mobileTip';
 import { openingStand } from './stand';
-import { Reticle, reticleType } from './reticle';
+import { armingColour, Reticle, reticleType } from './reticle';
 import { Hud, RangeFinder } from './hud';
 import { DoorPage } from './doorPage';
 import { TacMap } from './tacMap';
@@ -44,7 +44,9 @@ import { DEFAULT_PLAYER } from './scoreboard';
 import { rankOf } from './mapOrder';
 import { buildBody, type BodyView } from './bodyView';
 import { CharacterShadow } from './charShadow';
-import { nightVisionRow, setNightVision } from './nightVision';
+import { lensColours, nightVisionRow, setLensRows, setNightVision } from './nightVision';
+import { scopeBitmaps, scopeLens, showScopeNodes, shownScopeNode, thermalFitted, type ScopeLens } from './sights';
+import type { LensRows } from './lensFx';
 import { Fire } from './fire';
 import { Accuracy, defaultFireMode, fireInterval, FIRE_MODE_NAMES, kickStarts, kickTicks, nextFireMode, perturb, roundsPerPull } from './accuracy';
 import { Zoom } from './zoom';
@@ -398,6 +400,10 @@ function hangKit(force = false): void {
   // The same model on the same body stays where it hangs (a respawn with an unchanged kit).
   if (force || heldKit.rifle?.object !== was.rifle?.object) play.setWeapon(heldKit.rifle?.object ?? null, heldKit.rifle?.points ?? []);
   if (force || heldKit.pistol?.object !== was.pistol?.object) play.setSidearm(heldKit.pistol?.object ?? null, heldKit.pistol?.points ?? []);
+  // The thermal scope (item 195) in the kit: a sniper's `scope` node hidden, `thermal_scope` shown (FUN_005b82e0, `./sights`).
+  const recs = loadouts.records();
+  if (heldKit.rifle) showScopeNodes(heldKit.rifle.object, loadouts.loadout(), recs[0].id);
+  if (heldKit.pistol) showScopeNodes(heldKit.pistol.object, loadouts.loadout(), recs[1].id);
 }
 /**
  * A spawn's kit (`FUN_00599b60` -> `FUN_00599f00`, research 91 §4.3, R94.3): the side's pick or its type's
@@ -816,6 +822,14 @@ function playLanes(before: Input, after: Input, dt: number): void {
 /** The map's `LensFX_NVG` colour, and whether the night vision is on. */
 let nightLens: [number, number, number, number] | null = null;
 let nightOn = false;
+/** The scope's lens zAnims' rows off the map's effect data (`./effectData` `lenses`), and the lens in play. */
+let lensRows = new Map<string, LensRows>();
+let lensOn: ScopeLens | null = null;
+/**
+ * The fired round's `ArmingDistance`, units (null: none) -- the grey reticle's test (R94.16, `armingColour`). The
+ * fire workstream's round-mode getter takes this over; until then no firearm's round has one.
+ */
+const roundArming = (): number | null => null;
 /** The look a frame ago, degrees (the turn and pitch rates the bloom reads), or null to start again. */
 let lastLook: { yaw: number; pitch: number } | null = null;
 let lastFov = -1;
@@ -862,6 +876,14 @@ function gunFrame(dt: number, walking: boolean): void {
   // The look's divisor (FUN_005966a0, `FUN_005be660`): the LOOK workstream's law takes the magnification and mode 4.
   fly.setZoom(1 / zoom.lookScale() / (zoom.state() === 4 ? 5 : 1), zoom.state() === 4);
   hud.setZoom(zoom.magnification());
+  // The scope's lens (FUN_001f0750 L53084-53160, research 94 section C7): the thermal scope's `to_thermal_lens_fx` in every
+  // scoped view while the kit holds item 195, else the scope's own -- their SCALE_COLOR rows on the lit colours
+  // (`./lensFx`, `./nightVision`: the plain scope's are neutral, so off). Before the goggles', which set theirs after.
+  const lens = walking && !grenade.equipped() ? scopeLens(zoom.state(), thermalFitted(loadouts.loadout()), !!loaded?.night?.mission) : null;
+  if (lens !== lensOn) {
+    lensOn = lens;
+    setLensRows(lens ? lensRows.get(lens)?.rows ?? null : null);
+  }
   // The night vision (view state 3): the goggles on the reticle's layer, the lens's green colour matrix on the frame,
   // the goggles' sound in and out (DAT_0044ce30/38: .NV_GOGGLES_ON / _OFF).
   const night = zoom.view() === 'nightvision';
@@ -938,6 +960,9 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
   if (message.kind === 'effects') {
     if (message.id !== wantedEffects) return;
     effects.setData(message.data);
+    lensRows = new Map(message.data.lenses ?? []);   // research 94 section C7: the scope lenses' SCALE_COLOR rows
+    if (lensOn) setLensRows(null);                   // a scope's lens is exclusive of the goggles: only it goes
+    lensOn = null;                                   // applied afresh on the next frame
     warmEffects();                                   // research 90 item 16: compile the effects before the first shot
     fire.setMarks(effects.marks());                 // decals.rdr's row per surface material, or the one mark
     // ACCURACY (research 84 section 13): the round goes through what the game lets it -- the material byte's name
@@ -1366,8 +1391,15 @@ async function boot(): Promise<void> {
       const r = accuracy.reticle(zoom.state());
       reticle.setSize(r.size, r.offset);
       reticle.setMode(zoom.view() === 'scope' && !grenade.equipped() ? 'scope' : 'reticle');
-      // The weapon's reticle set (FUN_005be300: by its ID and the view): the rifle's for the M4A1 SD, the sidearm's for a pistol.
-      reticle.setSet(reticleType(fire.weaponRecord().id, zoom.state(), zoom.target()));
+      // The weapon's reticle set (FUN_005be300: by its ID, the view and the slot's fire mode -- a launcher round's 3):
+      // the rifle's for the M4A1 SD, the sidearm's for a pistol, the shotgun's; its scope's bitmaps (`./sights`).
+      const held = fire.weaponRecord().id;
+      reticle.setSet(reticleType(held, zoom.state(), zoom.target(), fireMode));
+      reticle.setScopeBitmaps(scopeBitmaps(held));
+      // Grey while the aimed point is inside the fired round's arming distance (R94.16; the range finder's metres x 10).
+      const arming = roundArming();
+      const aimed = arming === null ? null : rangeFinder.measure(walk.grid(), walk.fireAim(), performance.now() / 1000);
+      reticle.setColour(armingColour('rest', aimed === null ? null : aimed * 10, arming));
       // WEAPON: the accuracy pip (FUN_005aa6e0 / FUN_00215250): where the raised muzzle's ray is blocked short of the aim.
       const block = play.weaponStats().raise.weight > 0 && zoom.view() !== 'scope' && !grenade.equipped() ? fire.blockedMuzzle() : null;
       let pip: [number, number] | null = null;
@@ -1737,6 +1769,7 @@ window.__viewer = {
     anim: play.animStats(),
     view: play.viewStats(),
     nightVision: nightVisionRow(),
+    lens: { effect: lensOn, rows: lensColours(), node: shownScopeNode(heldKit.rifle?.object ?? null) },
   }),
   toggles: () => ui.toggles(),
   chromeHidden: () => ui.chromeHidden(),

@@ -42,7 +42,8 @@ import type { ReticleBitmaps } from './hudBitmaps';
  * is drawn at the aim point plus the knock's offset (`FUN_00216770`: (320, 224) + `kit+0x18/+0x20`, `+0x1c/+0x24`).
  * There is no `m_minsize`/`m_maxsize` in SOCOM II's HUD: the range is the weapon's, per stance (`TargetMin`/`TargetMax`).
  * - **The colour** (`FUN_00215c10`, `FUN_003590e0` on the four arms): (200, 200, 24) at rest -- the measured (204, 204,
- *   31) -- (24, 200, 44) on a teammate, (200, 24, 44) on an identified enemy, (130, 130, 130) out of a launcher's range.
+ *   31) -- (24, 200, 44) on a teammate, (200, 24, 44) on an identified enemy, (130, 130, 130) while the aimed point is
+ *   inside the fired round's arming distance (R94.16, research 94 §C1.5; `armingColour`).
  * - **The scope** (view state 5+, `ChangeReticule` 0x213e20 type 5): no ring and no arms; `ret_scope_01` and
  *   `ret_scope_02` each drawn as four mirrored 320x320 quads over (0, -96)-(640, 544), centred on the frame (not the
  *   aim point), as decoded: `ret_scope_01` the black tube (radius 81 of its 128 texels, 202 pixels on the frame),
@@ -107,7 +108,10 @@ const SCOPE_QUAD = 320;
 /** The arms' colour (measured, above), as 0..1 in the working space: the frame goes out unconverted (`./renderer`). */
 export const ARM_TINT: [number, number, number] = [204 / 255, 204 / 255, 31 / 255];
 
-/** The arms' colours (`FUN_00215c10`'s vertex colours, scaled so the rest one is the measured `ARM_TINT`). */
+/**
+ * The arms' colours (`FUN_00215c10`'s vertex colours, scaled so the rest one is the measured `ARM_TINT`); `range` is the
+ * grey (130, 130, 130) of an aimed point inside the round's arming distance (`armingColour`; R94.16).
+ */
 export type ReticleColour = 'rest' | 'friendly' | 'hostile' | 'range';
 const GAME_COLOUR: Record<ReticleColour, [number, number, number]> = {
   rest: [200, 200, 24], friendly: [24, 200, 44], hostile: [200, 24, 44], range: [130, 130, 130],
@@ -117,16 +121,43 @@ export function reticleTint(colour: ReticleColour): [number, number, number] {
   return [0, 1, 2].map((i) => Math.min(1, (g[i]! / r[i]!) * ARM_TINT[i]!)) as [number, number, number];
 }
 
+/** A colour as the game's vertex colour, 0..255 (`DAT_003dc5a0/a8/b0` the rest, `DAT_003dc588/90/98` the grey 130). */
+export function reticleGameColour(colour: ReticleColour): [number, number, number] {
+  return [...GAME_COLOUR[colour]];
+}
+
 /**
- * The reticle set a weapon draws (`FUN_005be300`, the kit's `+0x54`): by the view first -- the 9x view 7
- * (`ret_binocs`), a magnification over 1.01 5 (the scope) -- then by the weapon's `ID` (`EQUIP_ITEM`): 11 (the
- * designator) 9; 4-30 0 (sidearm); 31-80 1 (rifle); 81-90 2 (shotgun); 91-120 1; 121-140 and 151-189 4 (grenade);
- * 190-253 0; 151/152 none. A weapon with a launcher fitted is 3 (rocket). -1 draws nothing.
+ * The arms' colour with the round's arming test (`FUN_00215c10` L70229-70259, research 94 §C1.5, R94.16): when the
+ * fired round has an `ArmingDistance` (`FUN_003d2030`: 10 m, 100 units, on the M203, GL, LAW and RPG rounds) and the
+ * aimed point lies inside it -- `arming^2 > d^2` -- the grey (130, 130, 130), over whatever colour the target gave;
+ * else `base`. `aimDistance` and `armingDistance` in the same units (null: no aimed point / no round with one).
  */
-export function reticleType(weaponId: number, zoomState: number, magnification: number): number {
+export function armingColour(base: ReticleColour, aimDistance: number | null, armingDistance: number | null): ReticleColour {
+  if (aimDistance === null || armingDistance === null || armingDistance <= 0) return base;
+  return armingDistance * armingDistance <= aimDistance * aimDistance ? base : 'range';
+}
+
+/**
+ * The launcher carriers (`FUN_003c5d80` L317279-317300): the M16A2-M203 (52), the M4A1-M203 (61), the MGL (142), the
+ * M79 (143), the F2000 (63), and the rocket launchers' class (145-150, `FUN_003d1e10`).
+ */
+function carrier(id: number): boolean {
+  return id === 0x34 || id === 0x3d || id === 0x8e || id === 0x8f || id === 0x3f || (id >= 145 && id <= 150);
+}
+
+/**
+ * The reticle set a weapon draws (`FUN_005be300` L474894-474950, the kit's `+0x54`): by the view first -- the 9x view
+ * 7 (`ret_binocs`), a magnification over 1.01 5 (the scope) -- then a launcher carrier 3 (`ret_rocket`), but an M203
+ * rifle (`FUN_003c5e40`: 52, 61) or the F2000 (63) whose slot's fire mode is under 5 -- a rifle mode, not a round's
+ * item id (R94.8) -- 1; then by the weapon's `ID` (`EQUIP_ITEM`): 11 (the designator) 9; 4-30 0 (sidearm); 31-80 1
+ * (rifle); 81-90 2 (shotgun); 91-120 1; 121-140 and 151-189 4 (grenade); 190-253 0; 151/152 none. -1 draws nothing.
+ * `fireMode` is the slot's mode (`kit+0x6fc + 4 x slot`; the rifle modes 1-3, a round's id above).
+ */
+export function reticleType(weaponId: number, zoomState: number, magnification: number, fireMode = 1): number {
   if (zoomState === 4) return 7;
   if (magnification > 1.01) return 5;
   const id = weaponId & 0xff;
+  if (carrier(id)) return (id === 0x34 || id === 0x3d || id === 0x3f) && fireMode < 5 ? 1 : 3;
   if (id === 0x98 || id === 0x97) return -1;
   if (id === 0x0b) return 9;
   if (id >= 4 && id <= 0x1e) return 0;
@@ -280,6 +311,7 @@ export class Reticle {
   private drawSize = 0;
   private offset: [number, number] = [0, 0];
   private mode: 'reticle' | 'scope' = 'reticle';
+  private scopeNames: string[] = ['ret_scope_01.tif', 'ret_scope_02.tif'];
   private night = false;
   private nightMeshes: Mesh[] = [];
   private colour: ReticleColour = 'rest';
@@ -324,11 +356,15 @@ export class Reticle {
     this.add('fixed', fixed);
     for (let i = 0; i < 4; i++) this.add('floating', floating);
     // The scope (type 5): the tube's mask, then its soft inner ring, four mirrored quads each; black bars beside.
-    const scope01 = bitmaps.sets?.['ret_scope_01.tif'], scope02 = bitmaps.sets?.['ret_scope_02.tif'];
-    for (const rgba of [scope01 ?? null, scope02 ?? null]) {
+    for (const name of ['ret_scope_01.tif', 'ret_scope_02.tif']) {
+      const rgba = bitmaps.sets?.[name];
       if (!rgba) continue;
       const material = make(rgba, null);
-      for (let i = 0; i < 4; i++) this.scopeMeshes.push(this.addMesh(material, 2));
+      for (let i = 0; i < 4; i++) {
+        const mesh = this.addMesh(material, 2);
+        mesh.userData.bitmap = name;                 // the weapon's scope takes it or not (`setScopeBitmaps`)
+        this.scopeMeshes.push(mesh);
+      }
     }
     // The night vision's goggles (`nvg_part.tif`), under the reticle.
     const nvg = bitmaps.sets?.['nvg_part.tif'];
@@ -409,6 +445,9 @@ export class Reticle {
   /** The rifle's reticle, or the scope's overlay (view state 5 and up). */
   setMode(mode: 'reticle' | 'scope'): void { this.mode = mode; }
 
+  /** The weapon's scope bitmaps (`./sights` `scopeBitmaps`: both, the F2000's tube alone). */
+  setScopeBitmaps(names: readonly string[]): void { this.scopeNames = [...names]; }
+
   /** The arms' colour: at rest, on a teammate, on an enemy, out of range (`FUN_00215c10`). */
   setColour(colour: ReticleColour): void {
     this.colour = colour;
@@ -467,7 +506,7 @@ export class Reticle {
     const scope = scopeLayout(this.frame);
     this.scopeMeshes.forEach((mesh, i) => {
       const q = scope.quads[i % 4]!;
-      mesh.visible = scoped;
+      mesh.visible = scoped && this.scopeNames.includes(mesh.userData.bitmap as string);
       mesh.position.set(q.x, q.y, 0);
       mesh.scale.set(q.flipX ? -q.size : q.size, q.flipY ? -q.size : q.size, 1);
     });

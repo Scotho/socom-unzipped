@@ -77,6 +77,11 @@ export type LoadedMesh = MeshData & {
    * prop's are per placement, on its entry (`LoadedMap.props[].cells`). Absent on a draw built by hand.
    */
   cells?: number[];
+  /**
+   * A held weapon's part: the model's node it came from (`scope`, `thermal_scope`, `m82a1_high` ...), which the kit
+   * shows or hides (`./sights` `showScopeNodes`: the thermal scope's swap, `FUN_005b82e0`). Absent on the world's.
+   */
+  node?: string;
 };
 
 export interface LoadedMap {
@@ -589,7 +594,7 @@ function heldWeapons(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes, arsenal: 
       for (const d of decoded.diagnostics) notes.add(`weapon ${decoded.name}: ${d}`);
       const parts: LoadedMesh[] = decoded.parts.flatMap((part) => part.meshes.map((mesh) => ({
         ...mesh, textureName: mesh.textureName === null ? null : textureKey(mesh.textureName),
-        order: 0, orderEnd: 0, alternate: false, scroll: null,
+        order: 0, orderEnd: 0, alternate: false, scroll: null, node: part.node,
       })));
       out[model] = { name: decoded.name, parts, points: decoded.points };
     } catch (e) {
