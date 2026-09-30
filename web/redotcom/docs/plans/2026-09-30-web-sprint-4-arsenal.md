@@ -185,6 +185,35 @@ close entry with the spend, the PR to `main` (the owner merges; the server redep
 
 *(newest first)*
 
+- **2026-09-30 — M10, the close** (the cloud agent). All of M2-M9 merged, each implementer's branch reviewed by a fresh
+  Opus reviewer before its merge (every FAIL or medium finding fixed and re-reviewed first): M4 the classes' fire
+  (the bolt/pump lock, reload timing, 4 pellets a pull, the 40 mm rounds as fire modes; `firearms.ts`, page and server
+  sharing it), M5/M6 sights (zoom per record, the scope set, the thermal scope's node and the map's own lens rows),
+  reticle sets, the arming grey, per-weapon sounds and effects, M7 the equipment (keys 3/4/5; the LAW/RPG rockets and
+  backblast; C4 timed on a target; the claymore and its detonator; the PMN; the pouch retired: every use checked
+  against the server's kit), M8/M9 WEAPON EXCHANGE in the match (I / R2 / INV while dead), the `loadout` request
+  replayed by the room (`applyPicks`: a living player refused, rate-limited, next round), protocol 7 (the body's item
+  id, kits on spawn and welcome, `DisplayName` kill lines; the off build opens no socket). The derive-from-source
+  review (an Opus reviewer over the whole diff, 40 citations checked against the decomp and `.data`): PASS WITH
+  FINDINGS -- the Detonator's `FireWait` was typed in the room (now read per item), the turrets' two id classes, three
+  ledger rows; fixed with two leftover lows of the protocol review (an address's stale picks, the answers' pairing
+  after a dropped request) and the stance button's press-frame bug that the full e2e surfaced (walk.spec:70).
+  **Counts:** `npm run typecheck` clean; `npm test` redotcom **2494 passed / 2 skipped** (188 files; baseline 2123 /
+  4), landing 262, shared 219; `npm run build` and the `VITE_S2U_MULTIPLAYER=off` build exit 0; feel parity 61 rows,
+  59 within tolerance, 0 divergent. e2e on a quiet host before the last fixes: **92 passed, 10 failed** -- the
+  baseline's nine host failures and walk.spec:70 (fixed after: walk, touch, pad, weaponExchange, weaponExchangeMp and
+  equipment then 20/20); the new specs (launcher, sights, equipment, weaponExchange, weaponExchangeMp) pass. `mp-bots`
+  16 + 8 with kits: 60.0 ticks/s, 30 Hz snapshots, 0 corrections.
+  **Spend, metered by tokens** (the harness reports each subagent's tokens, no dollars; the main agent's own turns are
+  not reported): subagents **4.94M tokens** -- M1 readers 1.08M; the runtime kit 0.56M + its review 0.11M; the menu's
+  drawing 0.20M + 0.08M; M5/M6 0.44M + 0.10M; M4 0.65M + 0.12M; M8/M9 0.58M + 0.10M; M7 0.70M + 0.10M; the M10 audit
+  0.14M -- ~ $28 *estimated* at the plan's prices with a 90/10 input/output split and no cache discount; the main
+  agent ~ $35 *estimated*. **Total ~ $63 of $250** (every line under its budget: M4 and M8, the two tightest, took
+  0.77M ~ $4 and 0.96M ~ $5 of subagent tokens). No cut from the cut order was needed: every item of §5 was built. For the owner:
+  O-S4-3 (the key I, the INV touch button, the in-menu keys, key 5, the refill side `INGAME_AUTOFILL_SIDE_READING`),
+  O-S4-4 (the server redeploy for protocol 7; the site stays single player until the deploy flag flips), O-S4-2 (the
+  frames still wanted: WEAPON EXCHANGE, each scope, a Terrorist's menu).
+
 - **2026-09-30 — the runtime kit merged (M3/M4 core), WEAPON EXCHANGE drawn (M8), launched rounds (M7 physics)**
   (the cloud agent). Two Opus implementers in worktrees, each reviewed by a fresh Opus reviewer before the merge
   (PASS WITH FINDINGS both; the kit's one medium finding -- a devmode pick applied online while the server ruled the

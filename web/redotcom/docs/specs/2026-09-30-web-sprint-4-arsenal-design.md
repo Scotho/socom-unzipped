@@ -225,6 +225,16 @@ turrets, single-player missions, new game modes.
   `Muzzle_Velocity`; the shotguns fire 4 rays a pull; C4 is a timed charge on a target (the detonator is the
   claymore's); `SendWeaponPUMessage` is the dropped-weapon pick-up, not the loadout. 63 of 86 records in scope.
 
+- **2026-09-30 -- M2-M10, the build** (the cloud agent; the plan's Log has each milestone): the kit is data -- every
+  player spawns with the character type's `default_weapons`, read at run time by the page, its own match and the server
+  (Frostfire's SEAL 1 now holds the M4A1: W2.R4's M4A1 SD is the specs' `&kit=` devmode pin). 2X is confirmed by a
+  frame (`s4_pcsx2/A_60_select.png`: 27/30, 5 MAGS). Findings made while building: `firepoint_203` is on no decoded
+  launcher model (`FIREPOINT_203_READING`); the backblast hurts only in a 45 deg cone behind the tube (L318823; §C4.4
+  corrected); C4's targets are read as `actions.rdr`'s untyped entries (`C4_TARGET_READING`); the thermal lens is the
+  map's own `to_thermal_lens_fx` colour rows; the Dragunov has no `scope`/`thermal_scope` node; a rocket's direct hit
+  applies before its arming test (L319416-319418); the stance button counted its press frame's time (a hitch turned a
+  tap into prone -- fixed).
+
 ## 8. What the owner does (HUMAN_TASKS-style rows)
 
 - **O-S4-1 — hand over the zip.** `C:/Projects/handoff/socom-web-sprint-4-arsenal.zip` (a tar despite the name) to the
