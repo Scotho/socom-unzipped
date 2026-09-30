@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { CollisionOwner, GridParams, SpawnSlot, WorldPoly } from '@s2u/scene';
+import { arsenalOf, DEFAULT_RIFLE, HELD_RIFLE, HELD_SIDEARM, type CollisionOwner, type GridParams, type Loadout, type SpawnSlot, type WorldPoly } from '@s2u/scene';
 import { NetClient, type NetWalk } from '../src/net/client';
 import { LoopbackMatch, simMapOfLoaded } from '../src/net/loopback';
-import { Button, groundGrid, packGround, RESPAWN_RULES_ENABLED, TICK_HZ, type Command, type Knock, type ServerEvent } from '../src/sim';
+import { Button, groundGrid, packGround, RESPAWN_RULES_ENABLED, TICK_HZ, type Command, type Knock, type ServerEvent, type SimKits } from '../src/sim';
 
 /**
  * The page's single-player match (owner, 2026-09-29: "let's make offline tick rounds etc too"): the server's own `Room`
@@ -74,6 +74,20 @@ describe('the single-player match (./loopback)', () => {
     expect(m.ground.points).toEqual(l.ground.points);
     expect(m.respawns).toHaveLength(1);
     expect(groundGrid(m.ground)).toBeTruthy();
+  });
+
+  it('carries the page\'s kit tables: the SEAL\'s type\'s kit, or the page\'s developer kit (web sprint 4)', async () => {
+    const kit = (...ids: number[]): Loadout => ids as unknown as Loadout;
+    const kits: SimKits = {
+      table: { arsenal: arsenalOf(['ZAMMO', [], 'ZWEAPON', []]), records: new Map([[54, DEFAULT_RIFLE], [15, HELD_SIDEARM], [62, HELD_RIFLE]]) },
+      map: { valves: new Map(), selectable: { seal: [], terrorist: [] }, kits: { seal: [{ type: 'Seal1', character: 'mp99_seal1', loadout: kit(54, 15, 121, 126, 194) }], terrorist: [] } },
+    };
+    for (const [soloKit, want] of [[null, [['M4A1', 6], ['Mark 23', 6]]], [kit(62, 15, 121, 126, 255), [['M4A1 SD', 3], ['Mark 23', 3]]]] as const) {
+      const match = new LoopbackMatch(simMapOfLoaded(loaded()), null, { auto: false, kits, soloKit: () => soloKit });
+      const client = new NetClient({ url: 'loopback:', map: 'MP99', name: 'Solo', socket: match.socket }, new Walk());
+      await flush();
+      expect(match.room.player(client.id!)!.records.map((r) => [r.name, r.mags])).toEqual(want);
+    }
   });
 
   it('joins through the same client as a match: welcomed as the host\'s SEAL, stood at a slot, the round on', async () => {

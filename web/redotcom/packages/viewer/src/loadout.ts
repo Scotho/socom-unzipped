@@ -23,7 +23,7 @@ import { magazinesCarried } from './magazines';
  *   controller's `+0x224` = 0.0), and slot 1 the secondary, L2's (`+0x228` = 1.0; `./kit`'s `rifle` and `pistol`). The
  *   record behind each is the loadout's item's (`KitTable.records`); a slot whose item has no firearm record -- none on
  *   the disc's kits; a grenade launcher (fired through its rounds, R94.8) or an empty slot in a later pick -- keeps the
- *   baked record of that slot (`HELD_RIFLE`, `HELD_SIDEARM`) until the launchers' task (M7) gives it its own.
+ *   baked record of that slot (`NO_FIREARM_RECORD_PLACEHOLDER`) until the launchers' task (M7) gives it its own.
  * - **2X** (Double Ammo Load, id 194) anywhere in the kit doubles `NumMags` of every pistol, SMG, rifle, shotgun, MG and
  *   sniper it holds, at most the ring's ten, the extra magazines full (`FUN_005c75f0` L480207-480270, called by the
  *   kit's finaliser at every spawn; research 94 §A7, R94.13); `Ammo_Capacity` is unchanged. The ring (`./magazines`)
@@ -39,6 +39,12 @@ export type FirearmSlot = 0 | 1;
 /** The kit without the disc's tables: the baked M4A1 SD and Mark 23, the M67 and the HE (the viewer's kit to web sprint 3). */
 export const BAKED_LOADOUT: Loadout = [HELD_RIFLE.id, HELD_SIDEARM.id, M67.id, HE.id, EMPTY_ITEM];
 const BAKED_RECORDS: readonly [WeaponRecord, WeaponRecord] = [HELD_RIFLE, HELD_SIDEARM];
+/**
+ * NO_FIREARM_RECORD_PLACEHOLDER: what a firearm slot fires when its item has no firearm record -- a grenade launcher
+ * (141-143: its rounds are fire modes of the carrier, R94.8, web sprint 4 M7) or an empty slot a later pick leaves --
+ * the baked record of that slot. No default kit on the disc holds such a slot (research 94 §A4).
+ */
+const NO_FIREARM_RECORD_PLACEHOLDER = BAKED_RECORDS;
 /** The baked pair's held models (`@s2u/scene` `weapon.ts`: the M4A1 SD's `m4Acarbine_sd`, the Mark 23's `a_mark23`). */
 const BAKED_MODELS: readonly [string, string] = [DEFAULT_WEAPON, DEFAULT_SIDEARM];
 /**
@@ -60,7 +66,7 @@ export function withDoubleAmmo(record: WeaponRecord, loadout: Loadout): WeaponRe
 
 /** The record a firearm slot holds: the loadout item's (2X applied), else the baked record of that slot. */
 export function slotRecord(table: KitTable | null, loadout: Loadout, slot: FirearmSlot): WeaponRecord {
-  return withDoubleAmmo(table?.records.get(loadout[slot]) ?? BAKED_RECORDS[slot], loadout);
+  return withDoubleAmmo(table?.records.get(loadout[slot]) ?? NO_FIREARM_RECORD_PLACEHOLDER[slot], loadout);
 }
 
 /** Both firearm slots' records, slot order (the room's and the page's `[rifle, pistol]`). */

@@ -132,6 +132,29 @@ describe.skipIf(!MP2)(`the match server as shipped: classic rooms only${MP2 ? ''
     for (const p of asks) p.ws.close();
   });
 
+  it('reads the arsenal off the disc at its start: each player spawns with its side\'s type\'s kit, 2X doubling it', async () => {
+    // Its own server: this describe's room has a round in play, where a joiner is a ghost until the next (no spawn yet).
+    const other = new MatchServer({ source: new FsAssetSource(FIXTURES), port: 0, host: '127.0.0.1', maps: [], room: {}, log: () => undefined });
+    const at = await other.start();
+    try {
+      const two = [await connect(at, 'Kit1', 'MP2', 'classic'), await connect(at, 'Kit2', 'MP2', 'classic')];
+      await until(() => two.every((p) => p.events.some((e) => e.type === 'welcome')));
+      const room = other.loadedRoom('MP2/classic')!;
+      // Frostfire's first types (research 91 §14): mp2_seal1's M4A1 and Mark 23, mp2_terror1's 552 and M9, each with 2X.
+      const want = { seal: [['M4A1', 6], ['Mark 23', 6]], terrorist: [['552', 6], ['M9', 6]] };
+      const teams: string[] = [];
+      for (const p of two) {
+        const w = p.events.find((e) => e.type === 'welcome') as Extract<ServerEvent, { type: 'welcome' }>;
+        teams.push(w.team!);
+        expect(room.player(w.id)!.records.map((r) => [r.name, r.mags])).toEqual(want[w.team!]);
+      }
+      expect(teams.sort()).toEqual(['seal', 'terrorist']);
+      for (const p of two) p.ws.close();
+    } finally {
+      await other.stop();
+    }
+  });
+
   it('a RULES=respawn default is served classic too', async () => {
     const other = new MatchServer({ source: new FsAssetSource(FIXTURES), port: 0, host: '127.0.0.1', maps: [], room: {}, log: () => undefined, rules: 'respawn' });
     const at = await other.start();

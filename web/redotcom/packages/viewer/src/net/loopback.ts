@@ -5,6 +5,7 @@ import type { MotionClip } from '@s2u/scene';
 import type { MotionEntry } from '../motionTable';
 import type { DoorSpec } from '../doors';
 import { stemOf, type SimClips, type SimMap } from '../simMap';
+import type { SimKits } from '../loadout';
 import { offeredRules, RESPAWN_RULES_ENABLED, TICK_HZ, type ClientEvent } from './protocol';
 import type { WebSocketLike } from './client';
 
@@ -65,6 +66,11 @@ export interface LoopbackOptions extends Partial<RoomOptions> {
    * 2026-09-29): off, the match is classic whatever `rules` asks. The respawn room's tests turn it on.
    */
   respawnRules?: boolean;
+  /**
+   * The kit tables (web sprint 4): the page's own `ZWEAPON.ZAR` read and the map's kits (`LoadedMap.arsenal`), so the
+   * room's players carry their types' kits as the server's do; absent, the baked pair.
+   */
+  kits?: SimKits | null;
 }
 
 /** The id the page's player takes in its own room. */
@@ -78,9 +84,9 @@ export class LoopbackMatch {
   private stopped = false;
 
   constructor(map: SimMap, clips: SimClips | null, opts: LoopbackOptions = {}) {
-    const { auto = true, respawnRules = RESPAWN_RULES_ENABLED, ...room } = opts;
+    const { auto = true, respawnRules = RESPAWN_RULES_ENABLED, kits = null, ...room } = opts;
     this.clips = clips !== null;
-    this.room = new Room(map, clips, { now: () => performance.now(), ...room, rules: offeredRules(room.rules, respawnRules), solo: true });
+    this.room = new Room(map, clips, { now: () => performance.now(), ...room, rules: offeredRules(room.rules, respawnRules), solo: true }, null, kits);
     if (auto) this.loop();
   }
 

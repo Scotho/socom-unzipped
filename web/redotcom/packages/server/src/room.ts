@@ -1,6 +1,6 @@
 import {
-  AN_M8, gridCast, HE, HELD_RIFLE, HELD_SIDEARM, launchGrenade, M67, MARK141, segmentHit, stepGrenade, UNITS_PER_METRE,
-  type Grenade, type HullCast, type SpawnSlot, type ThrowableRecord, type WeaponRecord,
+  AN_M8, gridCast, HE, launchGrenade, M67, MARK141, segmentHit, stepGrenade, UNITS_PER_METRE,
+  type Grenade, type HullCast, type Loadout, type SpawnSlot, type ThrowableRecord, type WeaponRecord,
 } from '@s2u/scene';
 import {
   applyFall, applyHit, bodyOf, bulletDamage, fragmentCount, fragmentDamage, fragmentPart, decodeCommands, encodeSnapshot, freshHealth, groundPolygons, isDead, Lobby,
@@ -8,6 +8,7 @@ import {
   Button, MAX_REWIND_MS, PROTOCOL_VERSION, SNAPSHOT_HZ, TICK_HZ,
   ELIMINATED_HOLD_S, eliminationWinner, isMatchOver, MAX_ROUNDS, ROUND_WATCH_S, type Rules,
   EYE_HEIGHT, PROBE_LIFT, fireInterval, reloadLockSeconds, reloadMoving, ShotCone, targetHeight,
+  BAKED_LOADOUT, kitRecords, typeLoadout, type SimKits,
   type BodyState, type ClientEvent, type Command, type ExtraSurface, type Health, type KillHow, type LobbyChange,
   type PlaySnapshot, type ScoreRow, type ServerEvent, type SimClips, type SimMap, type SimSkeleton, type Team,
 } from '../../viewer/src/sim';
@@ -46,6 +47,12 @@ export interface RoomOptions {
    * `FUN_002c3cf0` L165325-165352, so it has no one-player round of its own).
    */
   solo?: boolean;
+  /**
+   * The page's own room only (`solo`): the kit the page's player spawns with when the developer asked for one (`&kit=`,
+   * `../../viewer/src/loadout` `PlayerLoadout.pending`), else null for the type's own. A network room never reads it:
+   * its kits are its own (W4.R6; the request and its validation are M9's `loadout`).
+   */
+  soloKit?: () => Loadout | null;
 }
 
 export const DEFAULT_OPTIONS: RoomOptions = {
@@ -100,11 +107,12 @@ const PENDING_MAX = 32, PENDING_TICKS = QUEUE_MAX;
 /** A name's longest before the lobby's own cut (the lobby trims to the game's; this refuses a flood first). */
 const NAME_MAX = 256;
 
-/** KIT_PLACEHOLDER: every player carries the viewer's held pair (the M4A1 SD and the Mark 23) until M5 wires the maps' kits (research 91 section 14). */
-const KIT: readonly [WeaponRecord, WeaponRecord] = [HELD_RIFLE, HELD_SIDEARM];
+/** The kit a player is seated with, before its first spawn gives it its type's (a ghost's: it fires nothing). */
+const SEATED_RECORDS = kitRecords(null, BAKED_LOADOUT);
 
 /**
- * The throwables a SEAL carries (research 85; KIT_PLACEHOLDER: the viewer's kit, each at its record's `capacity`) and
+ * The throwables a SEAL carries (research 85; POUCH_PLACEHOLDER: the viewer's pouch, each at its record's `capacity`,
+ * whatever the loadout's equipment slots hold -- the equipment follows the loadout in web sprint 4's M7) and
  * their rounds' `Piercing` (research 91 section 5, zweapon.rdr: the M67 4, the HE 1; the smoke and the flash do no
  * fragment damage). The claymore is placed, not thrown: CLAYMORE_PLACEHOLDER, not in the match yet.
  */
@@ -153,17 +161,24 @@ class Player {
   viewTick = 0;
   ping = 0;
   /**
+   * The kit on the body (web sprint 4, M3/M4; `../../viewer/src/loadout`): five item ids, the character type's
+   * `default_weapons` at each spawn (R94.7) -- and the records its two firearm slots hold, 2X applied, which every
+   * per-weapon table below is read from: the rate, the reload's lock, the cone, the damage and its falloff.
+   */
+  loadout: Loadout = BAKED_LOADOUT;
+  records: readonly [WeaponRecord, WeaponRecord] = SEATED_RECORDS;
+  /**
    * The magazines, per weapon: the game's ring (`magazines.ts`, research 84 §18) -- the page's `Fire` counts with the
    * same, so a reload here takes the magazine the page's did; the command count each last fired at (`ran`).
    */
-  readonly mags: [MagazineRing, MagazineRing] = [ringFor(KIT[0]), ringFor(KIT[1])];
+  mags: [MagazineRing, MagazineRing] = [ringFor(SEATED_RECORDS[0]), ringFor(SEATED_RECORDS[1])];
   lastFire: [number, number] = [-1e9, -1e9];
   /** Per weapon, the command count its reload's clip ends at (`reloadLockSeconds`; MJ-1); cleared by a swap. */
   reloadUntil: [number, number] = [-1, -1];
   /** The weapon in hand as last seen (a change is a swap: the lock goes, the cone takes the record). */
   weapon: 0 | 1 = 0;
   /** The accuracy cone, run from the commands (OWNER-3, `ShotCone`). */
-  cone = new ShotCone(KIT[0]);
+  cone = new ShotCone(SEATED_RECORDS[0]);
   /** Rounds and reloads waiting for their command. */
   readonly pending: Timed[] = [];
   trigger = false; aiming = false; boost = false;
@@ -218,7 +233,12 @@ export class Room {
    */
   readonly doors: DoorSet;
 
-  constructor(readonly map: SimMap, readonly clips: SimClips | null, opts: Partial<RoomOptions> = {}, body: SimSkeleton | null = null) {
+  /**
+   * The kit tables (web sprint 4; `../../viewer/src/loadout` `SimKits`): the disc's `ZWEAPON.ZAR` read at the server's
+   * start and the map's kits; null (a test, a disc without them) seats everyone with the baked pair (`BAKED_LOADOUT`).
+   */
+  constructor(readonly map: SimMap, readonly clips: SimClips | null, opts: Partial<RoomOptions> = {}, body: SimSkeleton | null = null,
+    private readonly kits: SimKits | null = null) {
     this.volumes = body ? stanceVolumes(body) : null;
     this.doors = new DoorSet(map.doors ?? [], map.ground);
     this.opts = { ...DEFAULT_OPTIONS, ...opts };
@@ -476,7 +496,7 @@ export class Room {
     const w = p.sim.weapon;
     if (w !== p.weapon) {
       p.weapon = w;
-      p.cone.setWeapon(KIT[w]);
+      p.cone.setWeapon(p.records[w]);
       p.reloadUntil = [-1, -1];
     }
     const walker = p.sim.walker, s = walker.state, moves = p.sim.moves;
@@ -551,13 +571,16 @@ export class Room {
     p.health = freshHealth();
     // A full kit at every spawn, a round's start included: `FUN_00598b90(p, 0)` (the round's reload, `FUN_00223680`
     // L75931) rebuilds the actor through `FUN_00599b60` (L455158), whose `FUN_00599f00` (L455674) gives the type's
-    // `default_weapons` at `Ammo_Capacity` x `NumMags` (research 91 section 4.3). KIT_PLACEHOLDER: the kit itself.
-    p.mags[0].fill(); p.mags[1].fill();
+    // `default_weapons` at `Ammo_Capacity` x `NumMags` (research 91 section 4.3): the type's kit (R94.7; the side's
+    // first type, DEFAULT_CHARTYPE_PLACEHOLDER), or in the page's own room the page's developer kit.
+    p.loadout = (this.opts.solo ? this.opts.soloKit?.() : null) ?? typeLoadout(this.kits?.map ?? null, p.team) ?? BAKED_LOADOUT;
+    p.records = kitRecords(this.kits?.table ?? null, p.loadout);
+    p.mags = [ringFor(p.records[0]), ringFor(p.records[1])];
     // The new body's kit is at rest: no reload playing, the rifle in hand, the cone at its floor (`Accuracy.reset`).
     p.reloadUntil = [-1, -1];
     p.lastFire = [-1e9, -1e9];
     p.weapon = 0;
-    p.cone = new ShotCone(KIT[0]);
+    p.cone = new ShotCone(p.records[0]);
     p.lastLanding = null;
     p.grenades = freshGrenades();
     p.history.length = 0;
@@ -587,7 +610,7 @@ export class Room {
     const frame = p.cone.frame(ev.seq);
     if (!frame) return;                                        // not a command this body ran
     const w = frame.weapon;
-    const record = KIT[w];
+    const record = p.records[w];
     // BL-1: the rate is the weapon's fastest enabled mode -- `FUN_005c09f0` (476313-476335): `FireWait` in mode 1,
     // `FireWait` x 0.8 in burst and automatic (research 84 s6) -- less a tick for the page's frame-quantised clock. The
     // server does not know the page's mode; a slower mode only fires slower.
@@ -1014,6 +1037,7 @@ export class Room {
   player(id: number): {
     sim: MoverSim; alive: boolean; health: Health; team: Team; score: number; kills: number; deaths: number;
     readonly mags: readonly [MagazineRing, MagazineRing]; readonly cone: ShotCone; readonly reloadUntil: readonly [number, number];
+    readonly loadout: Loadout; readonly records: readonly [WeaponRecord, WeaponRecord];
     readonly queue: readonly Command[]; readonly queued: ReadonlySet<number>; readonly grenades: Readonly<Record<string, number>>;
     readonly ran: number; readonly pending: readonly unknown[];
   } | undefined {
