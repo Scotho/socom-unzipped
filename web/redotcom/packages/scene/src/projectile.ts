@@ -90,6 +90,12 @@ export interface ThrowableRecord {
   acceleration?: number;
   /** `HasBackblast` (`+0xd5`): each shot also fires the `Backblast` record backwards (`FUN_003d2d70`; §C4.4). */
   hasBackblast?: boolean;
+  /**
+   * The round's `ProximityDistance` x10 (ammo `+0x3c` as its square, `FUN_003d4440`; only `PMN Ammo`'s 1 m -> 10 u): an
+   * actor whose origin comes inside it sets the armed charge off (`FUN_00543930` L410270-410310; research 94 §C5.3).
+   * Absent on everything else.
+   */
+  proximity?: number;
 }
 
 /** `zweapon.rdr`'s M67 (the frag) and its `M67 Ammo`, transcribed; `test/projectile.test.ts` proves it equals the file. */
@@ -196,12 +202,32 @@ export const CLAYMORE_CONE = 1.47261;
  * divides the damage by 32 outside it.
  */
 export function claymoreCone(rel: V3, forward: V3, radius = CLAYMORE.explosionRadius): boolean {
-  const along = rel[0] * forward[0] + rel[1] * forward[1] + rel[2] * forward[2];
+  return inCone(rel, forward, CLAYMORE_CONE, radius);
+}
+
+/**
+ * `FUN_003c7280(halfAngle, projectile, point, origin, axis)` (L318523-318560): `rel` (the point less the cone's origin)
+ * ahead along the unit `axis` by more than 0 and no more than `radius` (the round's `Explosion_Radius`), and within
+ * `along x tan(halfAngle)` of the axis -- the test `GetDamage` (0x3c7600) makes for the claymore (0x3fbc7edd, a 32nd
+ * outside) and, online, for the `Backblast` (0x3f490fdb, nothing outside: `BACKBLAST_CONE`).
+ */
+export function inCone(rel: V3, axis: V3, halfAngle: number, radius: number): boolean {
+  const along = rel[0] * axis[0] + rel[1] * axis[1] + rel[2] * axis[2];
   if (along <= 0 || along > radius) return false;
   const off2 = rel[0] * rel[0] + rel[1] * rel[1] + rel[2] * rel[2] - along * along;
-  const r = along * Math.tan(CLAYMORE_CONE);
+  const r = along * Math.tan(halfAngle);
   return off2 <= r * r;
 }
+
+/**
+ * The backblast's cone half-angle (`0x3f490fdb` = pi/4, `GetDamage` 0x3c7600 L318783-318826 for weapon 0x9f, the
+ * `Backblast` record): online (`DAT_0045a0c1`) its damage reaches only inside this cone about its own flight's axis
+ * -- the launcher's aim reversed (`FUN_003d2d70` fires it along `-dir`) -- and none outside; offline it deals none.
+ * `BACKBLAST_CONE_AXIS_READING`: the cone's axis is the projectile's frame's z row turned through its matrix
+ * (`FUN_003083c0` with `DAT_003f64c0`); read as the backblast's flight, backwards from the launcher.
+ */
+export const BACKBLAST_CONE = 0.785398;
+export const BACKBLAST_CONE_AXIS_READING = 'backwards' as const;
 
 /**
  * `FUN_003d1a60` (called through `FUN_003d1e10` with the weapon's `+0x7c` ID): an ID's category, the first ID of its
@@ -261,6 +287,7 @@ export function throwableRecord(script: RdrNode, name = 'M67'): ThrowableRecord 
     ...(rdrGet(record, 'ArmingDistance') !== undefined ? { armingDistance: n('ArmingDistance', WORLD_SCALE) } : {}),
     ...(rdrGet(round, 'AccelerationFactor') !== undefined ? { acceleration: n('AccelerationFactor', WORLD_SCALE, round, at) } : {}),
     ...(rdrGet(record, 'HasBackblast') !== undefined ? { hasBackblast: true } : {}),
+    ...(rdrGet(round, 'ProximityDistance') !== undefined ? { proximity: n('ProximityDistance', WORLD_SCALE, round, at) } : {}),
   };
 }
 
@@ -609,6 +636,38 @@ export interface Grenade {
   launch: V3;
   /** A launched round that hit inside its arming distance: it bounces as a dud and never goes off by impact. */
   dud: boolean;
+  /**
+   * `+0xc4`, "go off" (`FUN_003c5730`): set by a Detonator (`CZKit_DetonateRemoteExplosives` 0x5c0130) or a proximity
+   * trip (`FUN_00543930`); the next tick detonates it (`FUN_003c8740`) whatever its fuse holds.
+   */
+  trigger?: boolean;
+}
+
+/**
+ * Whether a charge's `Timer1` is held (the placed-explosive tick 0x3c5310, L316893-316905: at `+0x8c` <= 0 it sets `+0xc4`
+ * only when neither `+0xc5` nor `+0xc6` is up): `+0xc5` is the claymore's (`FUN_005bc730`: type == 0x99), `+0xc6` "has a
+ * proximity" (the PMN's `ProximityDistance`). The claymore waits for its Detonator; the PMN's `Timer1` (8 s) is its
+ * arming, after which an actor trips it (`proximityTripped`). Everything else -- a grenade, C4 -- goes off at `Timer1`.
+ */
+export const REMOTE_CHARGE_ID = 0x99;
+export function holdsFuse(record: Pick<ThrowableRecord, 'id' | 'proximity'>): boolean {
+  return record.id === REMOTE_CHARGE_ID || (record.proximity ?? 0) > 0;
+}
+
+/**
+ * The actor tick's mine test (`FUN_00543930` L410270-410310, over the proximity list 0x4b5238 `FUN_005bc730` fills with
+ * type 0x9e): a mine whose `+0x8c` (`Timer1`) has run to 0 or less, with an actor's origin inside its
+ * `ProximityDistance` (squared: `d^2 < r^2`), is set off (`FUN_003c5730`: `trigger`). Any actor -- the owner and his
+ * team included: no team test is in that loop (`PMN_FRIENDLY_READING`, research 94 §C5.3). True when it trips (and
+ * marks it); false while unarmed, gone off, or clear.
+ */
+export const PMN_FRIENDLY_READING = true;
+export function proximityTripped(g: Grenade, origins: readonly (readonly number[])[]): boolean {
+  const r = g.record.proximity ?? 0;
+  if (!(r > 0) || g.state !== 'rest' || g.trigger || g.fuse > 0) return false;
+  const hit = origins.some((o) => (o[0]! - g.pos[0]) ** 2 + (o[1]! - g.pos[1]) ** 2 + (o[2]! - g.pos[2]) ** 2 < r * r);
+  if (hit) g.trigger = true;
+  return hit;
 }
 
 /** What the hull answered along a segment: the crossing, the polygon's normal (either side) and its material. */
@@ -746,7 +805,7 @@ export function stepGrenade(g: Grenade, dt: number, cast: HullCast, record: Thro
   }
   g.fuse -= dt;
   g.removal -= dt;
-  if (g.state !== 'detonated' && g.fuse <= 0) {
+  if (g.state !== 'detonated' && (g.trigger || (g.fuse <= 0 && !holdsFuse(record)))) {
     g.state = 'detonated';
     g.vel = [0, 0, 0];
     events.push({ kind: 'explode', point: [...g.pos] });

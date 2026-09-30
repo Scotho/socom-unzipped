@@ -1,6 +1,7 @@
 import {
-  AN_M8, BOUNCE_LIFT, gridCast, HE, launchGrenade, M67, MARK141, segmentHit, stepGrenade, UNITS_PER_METRE,
-  type Grenade, type HullCast, type Loadout, type SpawnSlot, type ThrowableRecord, type WeaponRecord,
+  AN_M8, BOUNCE_LIFT, CLAYMORE, CLAYMORE_RULES, claymoreCone, gridCast, HE, ITEM, itemClass, launchGrenade, M67, MARK141, proximityTripped,
+  segmentHit, SOILS, stepGrenade, UNITS_PER_METRE,
+  type Grenade, type HullCast, type HullHit, type KitTable, type Loadout, type SpawnSlot, type ThrowableRecord, type WeaponRecord,
 } from '@s2u/scene';
 import {
   applyFall, applyHit, bodyOf, bulletDamage, fragmentCount, fragmentDamage, fragmentPart, decodeCommands, encodeSnapshot, freshHealth, groundPolygons, isDead, Lobby,
@@ -10,6 +11,7 @@ import {
   EYE_HEIGHT, PROBE_LIFT, fireInterval, reloadLockSeconds, reloadMoving, reloadSeconds, ShotCone, targetHeight,
   BAKED_LOADOUT, kitRecords, typeLoadout, type SimKits,
   afterShotLock, isCarrier, KitRounds, pelletDamage, pelletsOf, reloadDelayOf, reloadFamily, roundFits, shotgunPellets,
+  backblastReaches, c4Plant, equipmentKind, EQUIPMENT_SLOTS, pouchOf, rocketRoundOf,
   type BodyState, type ClientEvent, type Command, type ExtraSurface, type Health, type KillHow, type LobbyChange,
   type PlaySnapshot, type ScoreRow, type ServerEvent, type SimClips, type SimMap, type SimSkeleton, type Team,
 } from '../../viewer/src/sim';
@@ -112,17 +114,18 @@ const NAME_MAX = 256;
 const SEATED_RECORDS = kitRecords(null, BAKED_LOADOUT);
 
 /**
- * The throwables a SEAL carries (research 85; POUCH_PLACEHOLDER: the viewer's pouch, each at its record's `capacity`,
- * whatever the loadout's equipment slots hold -- the equipment follows the loadout in web sprint 4's M7) and
- * their rounds' `Piercing` (research 91 section 5, zweapon.rdr: the M67 4, the HE 1; the smoke and the flash do no
- * fragment damage). The claymore is placed, not thrown: CLAYMORE_PLACEHOLDER, not in the match yet.
+ * The throwables and charges without the disc's kit table (a test, a disc without `ZWEAPON.ZAR`): `@s2u/scene`'s
+ * transcriptions and their rounds' `Piercing` (research 91 section 5, zweapon.rdr: the M67 4, the HE 1; the smoke,
+ * the flash and the claymore 0). With the table, every record is the disc's (`KitTable.throwables`). What a player
+ * carries of them is its loadout's pouch (`pouchOf`, web sprint 4 M7: POUCH_PLACEHOLDER and CLAYMORE_PLACEHOLDER
+ * retired -- the claymore is in the match, placed by a `throw` of it and set off by its Detonator's).
  */
-const THROWN: Readonly<Record<string, { record: ThrowableRecord; piercing: number; fragments: boolean }>> = {
-  M67: { record: M67, piercing: 4, fragments: true },
-  HE: { record: HE, piercing: 1, fragments: true },
-  'AN-M8': { record: AN_M8, piercing: 0, fragments: false },
-  Mark141: { record: MARK141, piercing: 0, fragments: false },
-};
+const BAKED_THROWN: ReadonlyMap<string, { record: ThrowableRecord; piercing: number }> = new Map([
+  ['M67', { record: M67, piercing: 4 }], ['HE', { record: HE, piercing: 1 }], ['AN-M8', { record: AN_M8, piercing: 0 }],
+  ['Mark141', { record: MARK141, piercing: 0 }], ['Claymore', { record: CLAYMORE, piercing: 0 }],
+]);
+/** The flashbang (`Mark141`, 123): a blast of no damage whose reach whites the screen out (`resolveBlast`'s `flash`). */
+const FLASHBANG_ID = 123;
 /** The fastest a throw leaves the hand (`throwVelocity`'s range at the most power, with slack), units a second. */
 const THROW_SPEED_MAX = 400;
 /**
@@ -136,7 +139,11 @@ const DEAD_STICK = { forward: 0, right: 0, boost: false } as const;
 /** The head over the feet by posture, for the blast's line of sight to the head node (research 91 section 5). */
 const HEAD_OVER: Readonly<Record<'stand' | 'crouch' | 'prone', number>> = { stand: 18.3, crouch: 11.1, prone: 1.7 };
 
-interface Flying { owner: number; kind: string; g: Grenade }
+/**
+ * A projectile the room flies: its owner, its kind (the record's name on the wire) and its state; `facing` is a placed
+ * claymore's front (its cone's axis, `claymoreCone`) or a backblast's axis (backwards from the launcher).
+ */
+interface Flying { owner: number; kind: string; g: Grenade; facing?: V3 }
 
 interface Past { tick: number; feet: V3; yaw: number; posture: 'stand' | 'crouch' | 'prone'; alive: boolean }
 
@@ -199,8 +206,13 @@ class Player {
   trigger = false; aiming = false; boost = false;
   lastYaw = 0; lastPitch = 0;
   lastLanding: unknown = null;
-  /** The throwables left, by kind (reset at a spawn). */
-  grenades: Record<string, number> = freshGrenades();
+  /** The pouch: the throwables and charges left, by name -- the loadout's (`pouchOf`), reset at a spawn. */
+  grenades: Record<string, number> = pouchOf(BAKED_LOADOUT, null);
+  /**
+   * M7: the command count the kit's rate lets the next rocket go (`kit+0x8b8` with the round's `FireWait`, 3 s; the RPG's
+   * after-shot lock, `ReloadDelayAfterShot` 1 s, feeds the next round inside it: `FUN_005c3000`, research 94 §C1.1).
+   */
+  rocketWaitUntil = -1;
   /**
    * M4 (`../../viewer/src/firearms`): the kit's launcher-round slots, each its own ring (the page's `KitRounds`); the
    * command count the last round left at, and the count the round's lock and its after-shot clip end at.
@@ -412,8 +424,15 @@ export class Room {
         return;
       case 'throw':
         if (typeof ev.kind === 'string' && isInt(ev.seq) && isV3(ev.from) && isV3(ev.velocity)) {
-          if (Object.hasOwn(THROWN, ev.kind)) this.throwGrenade(id, raw as Extract<ClientEvent, { type: 'throw' }>);
-          else this.launchRound(id, raw as Extract<ClientEvent, { type: 'throw' }>);   // M4: a launcher's round, by name
+          // M7: the throw message carries every equipment use, by the item's name (no new wire message: protocol.ts is
+          // untouched) -- a throwable's throw, a charge set down (`velocity` its facing), the Detonator's fire, a
+          // launcher's round or a rocket (`velocity` its launch).
+          const e = raw as Extract<ClientEvent, { type: 'throw' }>;
+          const kind = this.kindOf(ev.kind);
+          if (kind === 'throwable') this.throwGrenade(id, e);
+          else if (kind === 'placed' || kind === 'c4') this.placeCharge(id, e);
+          else if (kind === 'detonator') this.detonate(id);
+          else if (kind === 'round') this.launchRound(id, e);
         }
         return;
       case 'door':
@@ -612,8 +631,9 @@ export class Room {
     p.weapon = 0;
     p.cone = new ShotCone(p.records[0]);
     p.lastLanding = null;
-    p.grenades = freshGrenades();
+    p.grenades = pouchOf(p.loadout, this.kits?.table ?? null);        // M7: the loadout's pouch (POUCH_PLACEHOLDER retired)
     p.rounds = new KitRounds(this.kits?.table ?? null, p.loadout);   // M4: every round slot full
+    p.rocketWaitUntil = -1;
     p.roundWaitUntil = -1;
     p.lockTimer = [-1, -1];
     p.lockKind = [null, null];
@@ -763,14 +783,35 @@ export class Room {
     this.doors.use(door, [s.x, s.y, s.z]);
   }
 
-  // ---- grenades (research 85, 91 section 5) ----
+  // ---- grenades (research 85, 91 section 5) and the equipment (web sprint 4 M7, research 94 §C4-§C5) ----
 
   private readonly flying: Flying[] = [];
   private cast: HullCast | null = null;
 
+  /** An item's record by its name: the kit table's, else the baked transcriptions' (`BAKED_THROWN`); null for none. */
+  private itemByName(name: string): { id: number } | null {
+    const item = this.kits?.table.arsenal.byName.get(name);
+    if (item) return item;
+    const baked = BAKED_THROWN.get(name);
+    return baked ? { id: baked.record.id } : name === 'Detonator' ? { id: ITEM.DETONATOR } : null;
+  }
+
+  /** What a `throw` of `name` is (`../../viewer/src/equipment` `equipmentKind`), 'none' for a name no record has. */
+  private kindOf(name: string): ReturnType<typeof equipmentKind> {
+    const item = this.itemByName(name);
+    return item ? equipmentKind(item.id) : 'none';
+  }
+
+  /** A throwable's or a charge's record and piercing by name: the disc's (`KitTable.throwables`), else the baked. */
+  private throwable(name: string): { record: ThrowableRecord; piercing: number } | null {
+    const item = this.kits?.table.arsenal.byName.get(name);
+    const t = item ? this.kits?.table.throwables?.get(item.id) : undefined;
+    return t ?? BAKED_THROWN.get(name) ?? null;
+  }
+
   private throwGrenade(id: number, ev: Extract<ClientEvent, { type: 'throw' }>): void {
-    const p = this.players.get(id), t = Object.hasOwn(THROWN, ev.kind) ? THROWN[ev.kind] : undefined;
-    if (!p || !p.alive || !t || this.state.phase === 'over' || !Object.hasOwn(p.grenades, ev.kind) || p.grenades[ev.kind]! <= 0) return;
+    const p = this.players.get(id), t = this.throwable(ev.kind);
+    if (!p || !p.alive || !t || this.state.phase === 'over' || !((p.grenades[ev.kind] ?? 0) > 0)) return;
     const s = p.sim.walker.state;
     if (Math.hypot(ev.from[0] - s.x, ev.from[1] - (s.y + EYE_HEIGHT), ev.from[2] - s.z) > MUZZLE_SLACK) return;
     // BL-3: the hand is on the body's side of the walls, as the muzzle is.
@@ -782,6 +823,53 @@ export class Room {
     this.broadcast({ type: 'grenade', id, kind: ev.kind, from: [...ev.from], velocity: [...ev.velocity] }, id);
   }
 
+  /** The charges a player has down (`FUN_003cc1f0` over the placed list 0x4b5220, by owner). */
+  private chargesDown(id: number): number {
+    return this.flying.filter((f) => f.owner === id && f.facing !== undefined && f.g.state === 'rest' && f.kind !== 'Backblast').length;
+  }
+
+  /**
+   * M7 (research 94 §C5, research 85 §9.7): a charge set down -- the page's `throw` of the claymore, the PMN or C4 at the
+   * point its placing found (`FUN_005c2430`), `velocity` the SEAL's facing (a unit vector: the claymore's cone). From a
+   * living player whose pouch holds one, at its hand's reach (`MUZZLE_SLACK` of the eye) on the body's side of the walls,
+   * not moving (`CLAYMORE_RULES.maxSpeed`, `FUN_005be9a0` L475306-475337); the claymore and the PMN refused once
+   * `maxPlaced` are down, C4 only at a C4 target, still (`c4Plant`: `C4_TARGET_READING`, `C4_STILL_READING`). Laid at
+   * rest: C4's `Timer1` (6 s) runs from here; the claymore's and the PMN's are held (`holdsFuse`).
+   */
+  private placeCharge(id: number, ev: Extract<ClientEvent, { type: 'throw' }>): void {
+    const p = this.players.get(id), t = this.throwable(ev.kind);
+    if (!p || !p.alive || !t || this.state.phase === 'over' || !((p.grenades[ev.kind] ?? 0) > 0)) return;
+    const facing = ev.velocity, l = Math.hypot(...facing);
+    if (!(Math.abs(l - 1) <= 0.01)) return;
+    const s = p.sim.walker.state, speed = Math.hypot(s.vx, s.vz);
+    if (Math.hypot(ev.from[0] - s.x, ev.from[1] - (s.y + EYE_HEIGHT), ev.from[2] - s.z) > MUZZLE_SLACK) return;
+    const look = targetHeight(p.sim.walker.posture, p.sim.moves?.rootY() ?? null);
+    if (segmentHit(this.map.grid, [s.x, s.y + look, s.z], ev.from)) return;
+    if (t.record.id === ITEM.C4) {
+      if (!c4Plant(this.map.c4Targets ?? [], [s.x, s.y, s.z], speed)) return;
+    } else if (speed > CLAYMORE_RULES.maxSpeed || this.chargesDown(id) >= CLAYMORE_RULES.maxPlaced) return;
+    p.grenades[ev.kind]!--;
+    const g = launchGrenade([...ev.from], [0, 0, 0], t.record);
+    g.state = 'rest';
+    this.flying.push({ owner: id, kind: ev.kind, g, facing: [facing[0] / l, facing[1] / l, facing[2] / l] });
+    this.broadcast({ type: 'grenade', id, kind: ev.kind, from: [...ev.from], velocity: [...ev.velocity] }, id);
+  }
+
+  /**
+   * M7 (research 85 §9.7.1): the Detonator's fire -- `CZKit_DetonateRemoteExplosives` (0x5c0130) sets off every claymore
+   * of this player's (`+0xc5`: never a PMN or C4) within `CLAYMORE_RULES.detonateRange` of the player (`+0x1c`), the
+   * next tick (`trigger`, `+0xc4`).
+   */
+  private detonate(id: number): void {
+    const p = this.players.get(id);
+    if (!p || !p.alive || this.state.phase === 'over') return;
+    const s = p.sim.walker.state;
+    for (const f of this.flying) {
+      if (f.owner !== id || f.g.record.id !== CLAYMORE.id || f.g.state !== 'rest') continue;
+      if (Math.hypot(f.g.pos[0] - s.x, f.g.pos[1] - s.y, f.g.pos[2] - s.z) <= CLAYMORE_RULES.detonateRange) f.g.trigger = true;
+    }
+  }
+
   /**
    * M4 (research 94 §C4.2-§C4.3, R94.8): a launcher's round, the page's `throw` of it by name -- taken from a living
    * player whose primary is a carrier (`isCarrier`) in hand, the round one it fires (`roundFits`) with rounds left in a
@@ -789,10 +877,11 @@ export class Room {
    * `Muzzle_Velocity` (the page lofts the direction, not the speed); the round's `FireWait` apart and past its lock and
    * after-shot clip (`afterShotLock`: the M203 rounds' 0.5 s then `Rifle m203 reload`; none on the MGL). One off its
    * slot; flown here as the grenades are (`launchGrenade`/`stepGrenade`: the fall, the arming dud, the impact) and its
-   * blast dealt as theirs (`blast`).
+   * blast dealt as theirs (`blast`). M7: a rocket's round goes to `launchRocket`.
    */
   private launchRound(id: number, ev: Extract<ClientEvent, { type: 'throw' }>): void {
     const p = this.players.get(id), item = this.kits?.table.arsenal.byName.get(ev.kind);
+    if (item && itemClass(item.id) === 'rocketRound') { this.launchRocket(id, ev, item.id); return; }
     if (!p || !p.alive || !item || this.state.phase === 'over' || p.sim.weapon !== 0) return;
     const carrier = p.loadout[0];
     if (!isCarrier(carrier) || !roundFits(carrier, item.id)) return;
@@ -823,22 +912,98 @@ export class Room {
     this.broadcast({ type: 'grenade', id, kind: ev.kind, from: [...ev.from], velocity: [...ev.velocity] }, id);
   }
 
-  /** What a flying `kind` goes off as: a pouch throwable (`THROWN`), or a launcher round of the kit tables (M4). */
+  /**
+   * M7 (research 94 §C4, R94.6/R94.9): a rocket -- the page's `throw` of the LAW HEAT or the RPG round. Taken from a
+   * living player whose kit holds the launcher that fires it in an equipment slot (`rocketRoundOf`: the rockets are
+   * equipment, SlotCost 2, the paired slot its round) with a round left (`KitRounds`: the LAW HEAT's one; the RPG's
+   * slots fed one at a time, `FUN_005c3000`), from the eye's reach on the body's side of the walls, at the round's
+   * `Muzzle_Velocity` (`ROCKET_LAUNCH_SPEED_READING`); the round's `FireWait` (3 s, `kit+0x8b8`) apart, which covers its
+   * after-shot feed (`ReloadDelayAfterShot` 1 s). Flown here -- `AccelerationFactor` along the flight, no fall, the arming
+   * dud inside 100 u, the impact blast (20 in 15 m) -- and its backblast fired at once from the muzzle backwards
+   * (`FUN_003d2d70`: the `Backblast` record, 6 in 7 m, reaching only inside its cone: `blast`).
+   */
+  private launchRocket(id: number, ev: Extract<ClientEvent, { type: 'throw' }>, roundId: number): void {
+    const p = this.players.get(id);
+    if (!p || !p.alive || this.state.phase === 'over') return;
+    if (!EQUIPMENT_SLOTS.some((i) => rocketRoundOf(p.loadout[i]!) === roundId)) return;
+    const round = p.rounds.round(roundId), ring = p.rounds.ring(roundId);
+    if (!round || !ring || ring.rounds() <= 0) return;
+    const s = p.sim.walker.state;
+    if (Math.hypot(ev.from[0] - s.x, ev.from[1] - (s.y + EYE_HEIGHT), ev.from[2] - s.z) > MUZZLE_SLACK) return;
+    const look = targetHeight(p.sim.walker.posture, p.sim.moves?.rootY() ?? null);
+    if (segmentHit(this.map.grid, [s.x, s.y + look, s.z], ev.from)) return;
+    const mv = round.record.muzzleVelocity, speed = Math.hypot(...ev.velocity);
+    if (!(mv > 0) || !(Math.abs(speed - mv) <= mv * ROUND_SPEED_SLACK_PLACEHOLDER)) return;
+    if (p.ran < p.rocketWaitUntil) return;
+    ring.fire();
+    p.rocketWaitUntil = p.ran + Math.round(Math.max(round.fireWait, round.reloadAfterShot ? round.reloadDelayAfterShot : 0) * TICK_HZ) - 1;
+    const dir: V3 = [ev.velocity[0] / mv, ev.velocity[1] / mv, ev.velocity[2] / mv];
+    this.flying.push({ owner: id, kind: ev.kind, g: launchGrenade([...ev.from], dir, round.record) });
+    this.broadcast({ type: 'grenade', id, kind: ev.kind, from: [...ev.from], velocity: [...ev.velocity] }, id);
+    const back = round.record.hasBackblast ? this.backblastRecord() : null;
+    if (back) {
+      // BACKBLAST_ORIGIN_READING (`backblastLaunch`): the muzzle, backwards; MV 0 and Timer1 0 -- it goes off where it
+      // leaves, on the next tick.
+      const axis: V3 = [-dir[0], -dir[1], -dir[2]];
+      this.flying.push({ owner: id, kind: back.name, g: launchGrenade([...ev.from], [0, 0, 0], back), facing: axis });
+    }
+  }
+
+  /** The `Backblast` record (159) of the kit table, null without it. */
+  private backblastRecord(): ThrowableRecord | null {
+    return this.kits?.table.throwables?.get(ITEM.BACKBLAST)?.record ?? null;
+  }
+
+  /** What a flying `kind` goes off as: a throwable or charge (the kit table's, else baked), or a launcher round or rocket. */
   private thrown(kind: string): { record: ThrowableRecord; piercing: number; fragments: boolean } | null {
-    if (Object.hasOwn(THROWN, kind)) return THROWN[kind]!;
+    const t = this.throwable(kind);
+    if (t) return { ...t, fragments: t.record.explosionDamage > 0 };
     const item = this.kits?.table.arsenal.byName.get(kind);
     const round = item ? this.kits?.table.rounds.get(item.id) : undefined;
     return round ? { record: round.record, piercing: round.piercing, fragments: round.record.explosionDamage > 0 } : null;
   }
 
-  /** Every grenade in the air one tick on (the page's own `FLIGHT_TICK` is the game's 60 Hz too); a blast's damage. */
+  /**
+   * Every grenade in the air one tick on (the page's own `FLIGHT_TICK` is the game's 60 Hz too); a blast's damage. M7:
+   * an armed PMN is tripped by any living actor inside its `ProximityDistance` first (`proximityTripped`,
+   * `FUN_00543930`; `PMN_FRIENDLY_READING`: its owner and his team too), and a round that goes off on impact meets the
+   * bodies as well as the hull (`bodyCast`).
+   */
   private flyGrenades(): void {
     if (!this.flying.length) return;
     this.cast ??= gridCast(this.map.grid);
+    const origins = [...this.players.values()].filter((q) => q.alive).map((q) => { const w = q.sim.walker.state; return [w.x, w.y, w.z] as const; });
     for (const f of this.flying) {
-      for (const e of stepGrenade(f.g, 1 / TICK_HZ, this.cast)) if (e.kind === 'explode') this.blast(f, e.point);
+      if (f.g.record.proximity !== undefined) proximityTripped(f.g, origins);
+      const cast = f.g.record.impact && f.g.state === 'flight' ? this.bodyCast(this.cast, f.owner) : this.cast;
+      for (const e of stepGrenade(f.g, 1 / TICK_HZ, cast)) if (e.kind === 'explode') this.blast(f, e.point);
     }
     for (let i = this.flying.length - 1; i >= 0; i--) if (this.flying[i]!.g.state === 'removed') this.flying.splice(i, 1);
+  }
+
+  /**
+   * M7: the hull and the living bodies along a segment, nearest first -- a body met as the `PERSON` material (SOILS:
+   * PENETRATION 0.97, a hit `HandleImpact` 0x3c8920 sets an explosive round off at, research 85 §5), through the same
+   * capsules a round meets (`bodyVolumes`, `rayBody`). Only a round that goes off on impact asks it: the hand grenades
+   * keep the hull (their bounce off a body, `DAT_003e14f8`, is not modelled here). The owner's own body is passed
+   * over, as a bullet leaves its shooter's (`fire`: `q === p` skipped).
+   */
+  private bodyCast(hull: HullCast, owner: number): HullCast {
+    const person = SOILS.find((m) => m.name === 'PERSON')!;
+    return (a, b) => {
+      const hits: HullHit[] = hull(a, b);
+      const d: V3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], reach = Math.hypot(...d);
+      if (!(reach > 0)) return hits;
+      const dir: V3 = [d[0] / reach, d[1] / reach, d[2] / reach];
+      for (const q of this.players.values()) {
+        if (!q.alive || q.id === owner) continue;
+        const w = q.sim.walker.state, feet: V3 = [w.x, w.y, w.z];
+        if (!nearRay(a, dir, reach, feet)) continue;
+        const hit = rayBody(a, dir, reach, bodyVolumes(feet, w.yaw, q.sim.walker.posture, this.volumes));
+        if (hit) hits.push({ point: [a[0] + dir[0] * hit.t, a[1] + dir[1] * hit.t, a[2] + dir[2] * hit.t], normal: [-dir[0], -dir[1], -dir[2]], material: person, t: hit.t / reach });
+      }
+      return hits.sort((x, y) => x.t - y.t);
+    };
   }
 
   /**
@@ -848,20 +1013,28 @@ export class Room {
    * throws the dead (`FUN_0057e770` L440981, state 8 at L441001; `blastKnock` with `died`): the knock is laid and sent
    * before the `kill`, so the page's own prediction lays it while still alive and then holds the landing down (`Walker.
    * dead`); prone, the corpse plays the BODY list's prone clip instead (L441013-441015, `deathClip('blast', ...)`).
+   * M7 (`GetDamage` 0x3c7600 L318770-318826): a claymore's damage is a 32nd outside its cone (`claymoreCone` about its
+   * facing); a backblast's is none outside its cone (`backblastReaches`, online).
    */
   private blast(f: Flying, at: readonly number[]): void {
     const t = this.thrown(f.kind);
     if (!t) return;
     const thrower = this.players.get(f.owner) ?? null;
     const point: V3 = [at[0]!, at[1]!, at[2]!];
-    const kind = { record: t.record, piercing: t.piercing, fragments: t.fragments, flash: t.record === MARK141 };
     for (const q of [...this.players.values()]) {
       if (!q.alive) continue;
       if (thrower && q !== thrower && q.team === thrower.team) continue;
       const s = q.sim.walker.state, posture = q.sim.walker.posture;
+      const feet: V3 = [s.x, s.y, s.z];
+      let record = t.record;
+      if (f.facing && record.id === ITEM.BACKBLAST && !backblastReaches(point, f.facing, feet, record.explosionRadius)) continue;
+      if (f.facing && record.id === CLAYMORE.id && !claymoreCone([feet[0] - point[0], feet[1] - point[1], feet[2] - point[2]], f.facing, record.explosionRadius)) {
+        record = { ...record, explosionDamage: record.explosionDamage / 32 };
+      }
+      const kind = { record, piercing: t.piercing, fragments: t.fragments, flash: record.id === FLASHBANG_ID };
       const head: V3 = [s.x, s.y + HEAD_OVER[posture], s.z];
       const seen = !segmentHit(this.map.grid, sightFrom(point, head), head);        // the line to the head (FUN_005ac070)
-      const out = resolveBlast(q.health, { feet: [s.x, s.y, s.z], posture, yaw: s.yaw }, point, kind, this.opts.random, seen);
+      const out = resolveBlast(q.health, { feet, posture, yaw: s.yaw }, point, kind, this.opts.random, seen);
       if (!out) continue;
       const k = out.knock && applyKnock(q.sim.walker, q.sim.moves, out.knock) ? out.knock : null;
       this.send(q.id, {
@@ -1176,7 +1349,7 @@ export class Room {
     readonly lockKind: readonly [LockKind, LockKind];
     readonly loadout: Loadout; readonly records: readonly [WeaponRecord, WeaponRecord];
     readonly queue: readonly Command[]; readonly queued: ReadonlySet<number>; readonly grenades: Readonly<Record<string, number>>;
-    readonly ran: number; readonly pending: readonly unknown[];
+    readonly ran: number; readonly pending: readonly unknown[]; readonly rounds: KitRounds;
   } | undefined {
     return this.players.get(id);
   }
@@ -1228,10 +1401,6 @@ function isInt(v: unknown): v is number {
 /** Three finite numbers: a point or a direction off the wire. */
 function isV3(v: unknown): v is V3 {
   return Array.isArray(v) && v.length === 3 && v.every(isNum);
-}
-
-function freshGrenades(): Record<string, number> {
-  return Object.fromEntries(Object.entries(THROWN).map(([k, t]) => [k, t.record.capacity]));
 }
 
 /** Whether a ray passes within `BODY_REACH` of the vertical line over `feet` (a cheap cull before the capsules). */

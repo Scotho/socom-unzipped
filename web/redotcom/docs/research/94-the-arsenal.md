@@ -581,7 +581,7 @@ code; M2/M9 take the names as they are.
 | `REMOTE_KIT_APPLY_PLACEHOLDER` (*note only*) | which object a received kit (`FUN_0053ec60`) rebuilds and when the remote body picks it up | callers L455079 (inside `FUN_00598b90`'s range) and L455445; not traced further | open; the viewer's server owns the kit (W4.R6), so it is only needed for 1:1 remote timing |
 | `NET_PICKUP_MSG_TYPE_PLACEHOLDER` (*note only*) | `DAT_00440e48` (message type) and `DAT_0045a1b4` passed to `FUN_0030cef0` by `SendWeaponPUMessage` | both `.bss` in the retail ELF (`elfread.py word` -> bss), set at run time | open; dropped-weapon pick-ups are not in this sprint's scope |
 | `SPAS_SP_VALVE_PLACEHOLDER` (*note only*) | the prep's `Spas 12` valve spelling | all 22 MP maps say `Enable_spas`; single-player `M61.ZDB` is not in the archive | not needed for MP |
-| `POUCH_PLACEHOLDER` (`room.ts` `THROWN`) | the throwables a player carries in a match: the viewer's pouch (M67, HE, AN-M8, Mark141, each at its record's `capacity`) whatever the loadout's equipment slots hold; replaces research 91's `KIT_PLACEHOLDER` for the throwables once the firearms follow the loadout (M3/M4) | the kit's equipment slots are read (`Loadout` slots 2-4, research 91 §14); the grenade code (`viewer/src/grenade.ts`, research 85) is not yet driven by them | open -- web sprint 4 M7 (the equipment) |
+| `POUCH_PLACEHOLDER` (retired in M7: the pouch is the loadout's, `viewer/src/equipment.ts` `pouchOf`, on the page and the room) | the throwables a player carries in a match: the viewer's pouch (M67, HE, AN-M8, Mark141, each at its record's `capacity`) whatever the loadout's equipment slots hold; replaces research 91's `KIT_PLACEHOLDER` for the throwables once the firearms follow the loadout (M3/M4) | the kit's equipment slots are read (`Loadout` slots 2-4, research 91 §14); the grenade code (`viewer/src/grenade.ts`, research 85) is not yet driven by them | retired (web sprint 4 M7) |
 
 Settled here that earlier notes left open: the id-to-valve map (all 68 arms, A2); bit 16 (C4 locked in a SEAL kit,
 32 the Terrorist twin, A3); lookup case-sensitive (A2); `SlotCost` (A5.4); 2X (A7); research 91 section 14's kits
@@ -1277,7 +1277,10 @@ aimed at the reticle's target, not flat**. `LOFT_TOLERANCE_READING`: `FUN_0052eb
 muzzle, gets record 0x9f (`Backblast`, 159) and fires it with the muzzle position, `-dir`, `-vel`
 (`BACKBLAST_ORIGIN_READING`: the 9-u point is computed but the call passes the muzzle). `Backblast`: MV 0, Timer1 0,
 Timer2 0.1, ammo `Backblast Ammo` 6 damage in 7 m (70 u), Sound_Radius 800. So standing behind (or beside) a firing
-LAW/RPG within 7 m is hurt.
+LAW/RPG within 7 m is hurt. **Corrected in M7:** `GetDamage` (0x3c7600, L318783-318826) gives weapon 0x9f nothing
+offline (`DAT_0045a0c1` clear) and, online, nothing outside a **45-degree cone** (`FUN_003c7280(0x3f490fdb, ...)`,
+the claymore's own cone test at pi/4) about the projectile's frame's z axis -- read as its flight, backwards
+(`BACKBLAST_CONE_AXIS_READING`): behind the launcher within 7 m is hurt, beside it is not.
 
 ### C5. Explosives
 
@@ -1297,6 +1300,21 @@ LAW/RPG within 7 m is hurt.
   `FUN_003c51b0`) within 500 u. C4 has neither `+0xc5` nor a proximity, so its `Timer1` **6 s** fuse runs from placing
   (C1.13). Blast: `C4 Ammo` 18 in 5 m (50 u), `IgnoreExplosionDI` (ammo `+0x28 & 2` -> projectile `+5 & 2`,
   L320755-320756; `IGNORE_EXPLOSION_DI_READING`: its effect), Timer2 0.1, Sound_Radius 600.
+- **Read in M7 (2026-09-30).** C4 is **never taken up from its slot**: the slot gate `FUN_005bdc30` (L474604-474660)
+  refuses 0x97 (with 0x8d, 0xff, 0xfe, 0xc3 the thermal scope, 0x98, 0x9a, 0xc2 2X and every id from 0xca; the
+  launcher and rocket rounds by class, `FUN_003c5d20`; a rocket launcher only with a round it fires, `FUN_005c45c0`;
+  the Detonator only with a charge down). It is planted by the **Action** button (the controller's bit 0x40000,
+  `FUN_00594cf0` L452025-452060): the kit holds C4 (`FUN_005c8640(kit, 0x97)`), `body+0x208 < 396`, the kit still
+  (`FUN_005be990(kit) == 0`), and the body's action object answers `vtable+0x10(Explosion_Damage)` -> then
+  `FUN_005c0020(1.0, 0.2, kit, 0x97)` switches to C4 and fires it. **The target:** `actions.rdr`'s own actions
+  (`FUN_002b49f0`, vtable 0x406390) answer 0 there (`FUN_00216760`); the answering object is the zAnim destructible
+  `FUN_002740e0` hangs on a node (vtable 0x406090, `+0x10` = `FUN_002739b0`: hit points `+0x1c` > 0 and its threshold
+  `+0x10` <= the damage), made from a zAnim's damage block of kind 3 (`FUN_002713f0` L119312-119335), not decoded.
+  The map data's mark of them: `actions.rdr` entries with **no `type`** (the parser's default 8, "UNKNOWN",
+  L157331-157365) and a `destroy_*` anim -- `access_action1..` (`set_access1`, `points 2`) on MP6, MP11, MP51, MP61,
+  MP62, MP71, MP73, MP82, MP83; MP73's `rtower_action` and access actions under `action_place_c4.tif`; their reach the
+  default 32 u (`FUN_002b49f0`: `+0x1c` = 0x42000000). The build plants on those (`C4_TARGET_READING`,
+  `viewer/src/equipment.ts` `c4Targets`).
 
 #### C5.2 Claymore (153) and the Detonator (193)
 
@@ -1311,6 +1329,9 @@ the proximity list 0x4b5238 (research 85 §9.7.1). **Arming:** the actor tick `F
 only when its `+0x8c` (Timer1, **8 s**) has run to <= 0; then an actor whose origin is within `ProximityDistance` (1 m ->
 square 100 u^2, 10 u) sets it off (`FUN_003c5730`). Any actor -- the owner and teammates included
 (`PMN_FRIENDLY_READING`: no team test seen in that loop). Timer2 10; `PMN Ammo` 6.5 in 4 m, `Volitile`; Sound_Radius 800.
+**Read in M7:** its fire branch (-0x62, `FUN_005be9a0` L475338-475368) is the claymore's twin -- four charges of the
+SEAL's down at most (`FUN_003cc1f0`, the same message 0x65f880), not while moving, the `Place claymore` action and
+its 1.3 s -- but no Detonator is selected after it (`FUN_005c8a20(0xc1)` only for 0x99, L474128-474130).
 
 ### C6. The reticle and the scope overlay per weapon
 
@@ -1359,6 +1380,9 @@ research 84 §9. The thermal scope changes no bitmap, only the lens effect (C7).
   `nightVision.ts` port the rows; the two other commands stay the reading. The `scope`/`thermal_scope` nodes are on the
   M82A1A, M40A1, M87ELR and both SR-25s (`stoner_sr25`), not on the Dragunov (`test/sights.test.ts`, MP2).
 - **2X** (194): C0 row 24. `magazinesCarried` in the viewer already models it (research 84 §18).
+- **Their slots are never taken up** (read in M7): the slot gate `FUN_005bdc30` (L474604-474660) refuses 0xc3 and 0xc2,
+  so neither the number keys, R2 nor L1/L2 put either in the hand; both act from the kit (the node swap, the lens, the
+  magazines).
 
 ### C8. Holsters: where the carried weapons hang
 
@@ -1505,14 +1529,17 @@ IgnoreExplosionDI; `LAW HEAT Ammo` and `RPG Ammo` AccelerationFactor 98 (default
 | `ROCKET_LAUNCH_SPEED_READING` (in code: M2/M7) | whether the player's LAW/RPG round starts at `MV x dir` (200 / 400 u/s) or 0 and only accelerates | `FUN_003cb1a0` L320723-320730: the `+4` bits 2/4 and `param_2` of that call |
 | `EXPLODE_ON_IMPACT_READING` (*note only*) | the branch after the arming test in `FUN_003c8920` (impact detonation of rounds past 10 m) read line by line | L319462-319560 skimmed only |
 | `BACKBLAST_ORIGIN_READING` (in code: M2/M7) | whether the backblast spawns at the muzzle or the 9-u point `FUN_003d2d70` computes | L325560-325575 (the computed point is not in the call's arguments as decompiled) |
-| `C4_TARGET_READING` | which map objects are C4 targets (`body+0x3dc` with a `+0x94` interface accepting the kit) | L475379-475388; the `c4` valve value 16 (INVENTORY) not resolved; writers of `+0x3dc` not traced |
+| `C4_TARGET_READING` (in code, M7: `viewer/src/equipment.ts` `c4Targets`; reading: `actions.rdr`'s type-less actions, at their `range` or the default 32 u -- see §C5.1's M7 note) | which map objects are C4 targets (`body+0x3dc` with a `+0x94` interface accepting the kit) | L475379-475388; M7: the accepting object is `FUN_002740e0`'s zAnim destructible (vtable 0x406090, `FUN_002739b0`), its zAnim damage block (kind 3, `FUN_002713f0`) not decoded; `actions.rdr` on all 22 maps (probe) |
 | `C4_REACH_READING` (*note only*) | what `body+0x208 < 396` measures in the C4 plant test | L475402-475404 |
-| `C4_PLANT_TIME_READING` (*note only*) | how long the plant takes (`kit+0x87c` = 99.0 driven by the action callback `LAB_005bfe40`, rate 0.45) | L475440-475452; `LAB_005bfe40` not read; the action 0x3e's clip not probed |
+| `C4_PLANT_TIME_READING` (in code, M7: `viewer/src/equipment.ts`; reading: the claymore's `placeSeconds`, 1.3 s) | how long the plant takes (`kit+0x87c` = 99.0 driven by the action callback `LAB_005bfe40`, rate 0.45) | L475440-475452; `LAB_005bfe40` not read; the action 0x3e's clip not probed |
 | `C4_SURFACE_READING` (*note only*) | the sense of `FUN_00198f18(material, "INVISIBLE_DI")` in the C4 set-down (refuse on, or require) | L476946-476950 |
 | `IGNORE_EXPLOSION_DI_READING` (*note only*) | what projectile `+5 & 2` (C4's IgnoreExplosionDI) changes in the blast | set L320755-320756; readers not traced |
 | `VOLATILE_READING` (*note only*) | what `Volitile` (claymore, PMN) does -- set off by another blast? | `FUN_003d4400` read at L320625 only |
-| `PMN_FRIENDLY_READING` (*note only*) | whether a teammate/owner sets off a PMN | `FUN_00543930` L410270-410310 shows no team test |
+| `PMN_FRIENDLY_READING` (in code, M7: `scene/src/projectile.ts` `proximityTripped`; reading: any actor, its owner and his team included) | whether a teammate/owner sets off a PMN | `FUN_00543930` L410270-410310 shows no team test |
 | `THERMAL_LENS_FX_READING` (`viewer/src/lensFx.ts`; narrowed 2026-09-30, M5) | what the rest of `to_thermal_lens_fx` does: its `IRIS_EFFECT` (34, `FUN_00264610`) and `CAMERA` (28, `FUN_00265f20`/`FUN_00266320`) commands and its `restore_lensfx` sequence (`CAMERA_PARAMS`, `BLUR3D`, `TRUE_COLOR_SCALE`); and the held weapon's row (the game gives the kit's weapon models row 2, L480099; the viewer's held weapon keeps the world's materials, row 0). **Ported:** its four `SCALE_COLOR` (35, `FUN_00264580`) rows, read from the map's `MZANIM.ZAR` at run time -- Frostfire's (0.1, 0.33, 0.7, 0), (0, 0, 0, 0), (0.5, 0.3, 0, 128), (0.9, 0.65, 0, 50) -- on the lit colours by each draw's `+0x5a & 3` row (`FUN_003b6870`): the world row 0, the characters row 2 (L406210/406227) | strings 0x3e28b0; `FUN_001f0750` L53084-53160; the command names `FUN_0025bc20` L106891-106900 with strings 0x3eceb0-0x3ecf30 read from the ELF; the two commands' payloads dumped (`IRIS_EFFECT` flags 0x10008fff, `CAMERA` flags 0x1008000), their effect on the frame not read |
+| `C4_STILL_READING` (M7, `viewer/src/equipment.ts`) | how still the SEAL must be to plant C4 (`FUN_005be990(kit) == 0`, `+0xe84 == 0`) | `FUN_005be990` not read; reading: the claymore's "not moving" speed, `CLAYMORE_RULES.maxSpeed` 3.2 u/s (`+0xf88`, the kit's one sourced threshold) |
+| `LAUNCHER_BODY_READING` (M7, `viewer/src/equipment.ts` `slotSelectable`) | `FUN_005857e0(body)`, the slot gate's second test for a rocket launcher (`FUN_005bdc30`) | not read; reading: true (the launcher is taken up whenever it holds a round) |
+| `BACKBLAST_CONE_AXIS_READING` (M7, `scene/src/projectile.ts`) | the backblast cone's axis: the projectile's frame's z row through its matrix (`FUN_003156a0`, `FUN_003083c0` with `DAT_003f64c0`, L318793-318824) | reading: its flight, backwards from the launcher (the `-dir` `FUN_003d2d70` fires it along) |
 | `SLOT_OF_LAUNCHER_READING` (*note only*) | in which kit slot MGL/M79/LAW/RPG sit when picked (primary vs equipment) | `FUN_0023fef0` handles them via SlotCost/pairing; no default kit carries one (research 91 §14); menu reader (b) owns the list build |
 | `NO_FIREARM_RECORD_PLACEHOLDER` (`viewer/src/loadout.ts`) | what a firearm slot fires when its item has no firearm record: the grenade launchers 141-143 (`AMMO_TYPES` names no round; their rounds are fire modes of the carrier, C4.2), the Designator (11, a pistol-class item with no round, absent from the kit table) or an empty slot; the slot's model and HUD icon stay its own record's (`ModelName`, `IconTextureName`) | `kitTableOf` reads every primary and secondary through `weaponRecord`; no default kit holds such a slot (A4) -- the slot keeps the baked record of its kind (M4A1 SD / Mark 23) | retired for the MGL (142) and the M79 (143) in M4 (read as carriers, `weaponRecord`'s `carrier`; they fire their rounds, C4.2); open for the Designator, the M203 item and an empty slot |
 | `MODEL_NAME_CASE_READING` (`viewer/src/loadMap.ts` `heldWeapons`) | whether the game finds a weapon's `ModelName` in `WEAP_GEO` case aside: the SA-80 A2 (64) names `IW80A2`, every MP map's library holds `iw80a2` (all 22 probed, 2026-09-30), and the retail SA-80 draws | the model-by-name lookup's compare was not traced in the decomp; reading: case-insensitive (the other names match exactly, so only the SA-80 depends on it) |

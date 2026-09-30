@@ -559,7 +559,7 @@ holds the two lists in step).
 | `QUEUE_TEXT_PLACEHOLDER` (`netPage.ts` `queueLine`) | the words for a spectator's place in line: the game has no queue (its 17th joiner is refused, section 7) | open (the viewer's words, in the game's message style) |
 | `BODY_FADE_PLACEHOLDER` (`remotePlayers.ts`) | a dead body's fade (alpha 0.1 a second, `FUN_00552780`): the skinned material has no opacity yet | open (drawn whole, hidden at 10 s, when the fade would end) |
 | `RADIO_MENU_PLACEHOLDER` (`netPage.ts`) | the radio menu's own look (TEAMMATES > a player > "VOTE RETAIN:REMOVE", section 17) | deferred (sprint 3): K opens the page's list in the message window, with the game's words |
-| `CLAYMORE_PLACEHOLDER` (`room.ts` `THROWN`) | the claymore in a match (placed, not thrown) | deferred (sprint 3): not in the match yet |
+| `CLAYMORE_PLACEHOLDER` (retired in web sprint 4 M7: the room sets the claymore down on a `throw` of it and off by its Detonator's, `room.ts` `placeCharge`/`detonate`) | the claymore in a match (placed, not thrown) | was deferred (sprint 3) |
 | `KIT_PLACEHOLDER` (`room.ts` `THROWN`) | the throwables a SEAL carries in a match: the viewer's kit at each record's `capacity`; per-map kits are deferred | retired (web sprint 4, M3/M4): each player's kit is its character type's `default_weapons` (`viewer/src/loadout.ts`, research 94 R94.7), its firearms' records keyed by item id; the throwables' fixed pouch is `POUCH_PLACEHOLDER` (research 94) until M7 |
 | `STANCE_CHANGE_TICKS_PLACEHOLDER` (launch review, OWNER-3) | ticks after a posture change during which the posed root may be anywhere between the two stances' (60); the change clips' lengths are not read into the server | open |
 

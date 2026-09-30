@@ -777,7 +777,7 @@ export class GrenadeThrower {
     for (const l of this.live) {
       if (l.facing === undefined || l.g.state !== 'rest') continue;
       const d = Math.hypot(l.g.pos[0] - snap.feet[0], l.g.pos[1] - snap.feet[1], l.g.pos[2] - snap.feet[2]);
-      if (d <= CLAYMORE_RULES.detonateRange) { l.g.fuse = 0; n++; }
+      if (d <= CLAYMORE_RULES.detonateRange) { l.g.trigger = true; n++; }   // `+0xc4` (FUN_003c5730): the fuse is held
     }
     this.emit('detonate', { count: n, from: [snap.feet[0], snap.feet[1], snap.feet[2]] });
     if (this.detonatorUp && this.phase_ === 'ready') {
