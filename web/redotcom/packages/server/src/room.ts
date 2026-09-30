@@ -858,7 +858,8 @@ export class Room {
   /**
    * M7 (research 85 §9.7.1): the Detonator's fire -- `CZKit_DetonateRemoteExplosives` (0x5c0130) sets off every claymore
    * of this player's (`+0xc5`: never a PMN or C4) within `CLAYMORE_RULES.detonateRange` of the player (`+0x1c`), the
-   * next tick (`trigger`, `+0xc4`).
+   * next tick (`trigger`, `+0xc4`). The others are told (a `grenade` of the Detonator from the player's feet), so their
+   * pages set off their copies of his claymores within the same reach (`GrenadeThrower.launchRemote`).
    */
   private detonate(id: number): void {
     const p = this.players.get(id);
@@ -868,6 +869,7 @@ export class Room {
       if (f.owner !== id || f.g.record.id !== CLAYMORE.id || f.g.state !== 'rest') continue;
       if (Math.hypot(f.g.pos[0] - s.x, f.g.pos[1] - s.y, f.g.pos[2] - s.z) <= CLAYMORE_RULES.detonateRange) f.g.trigger = true;
     }
+    this.broadcast({ type: 'grenade', id, kind: 'Detonator', from: [s.x, s.y, s.z], velocity: [0, 0, 0] }, id);
   }
 
   /**

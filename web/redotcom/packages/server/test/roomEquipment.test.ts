@@ -172,6 +172,8 @@ describe('the placed charges on the server (research 94 §C5, research 85 §9.7)
     s.room.player(2)!.sim.walker.place(-100, 20, 0);                        // back off behind it, then fire the Detonator
     s.run(0.5);
     s.send(2, 'Detonator', s.eye(2), [0, 0, 0]);
+    // The others hear the Detonator's fire (a `grenade` of it, from the SEAL's feet): their copies of the claymore go too.
+    expect(s.a.of('grenade').at(-1)).toMatchObject({ id: 2, kind: 'Detonator', velocity: [0, 0, 0] });
     s.run(0.1);
     expect(s.a.of('blast')).toHaveLength(1);
     expect(s.a.of('hurt').length).toBeGreaterThan(0);                       // 16 in 25 m, player 1 in its cone

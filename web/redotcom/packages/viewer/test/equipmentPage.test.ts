@@ -108,6 +108,23 @@ describe('the PMN on the page (research 94 §C5.3)', () => {
   });
 });
 
+describe('the others\' charges on the page (the room\'s `grenade` events)', () => {
+  it('a claymore set down by another stays at rest facing its way, and goes off at his Detonator\'s fire within 500 u', () => {
+    const { g, events } = thrower();
+    g.launchRemote('Claymore', [300, 50.1, 200], [1, 0, 0]);
+    run(g, 5);
+    expect(g.stats().live[0]).toMatchObject({ state: 'rest', pos: [300, 50.1, 200] });
+    expect(g.stats().placed).toBe(0);                               // not the page's own
+    expect(g.detonateCharges()).toBe(0);                            // nor its Detonator's
+    g.launchRemote('Detonator', [1000, 50, 200], [0, 0, 0]);        // 700 u off: out of reach
+    run(g, 0.2);
+    expect(events.filter((e) => e.startsWith('explode'))).toEqual([]);
+    g.launchRemote('Detonator', [350, 50, 200], [0, 0, 0]);
+    run(g, 0.2);
+    expect(events.filter((e) => e.startsWith('explode'))).toEqual(['explode Claymore']);
+  });
+});
+
 describe('C4 on the page (research 94 §C5.1): the Action button at a C4 target, still', () => {
   const targets = [{ node: 'access_action1', at: [100, 50, 190] as V3, range: 32 }];
 

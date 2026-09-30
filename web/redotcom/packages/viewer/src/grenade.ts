@@ -1020,6 +1020,15 @@ export class GrenadeThrower {
    * blast (the server deals the damage): no count spent, no hand, no throw clip.
    */
   launchRemote(item: GrenadeItem | string, from: V3, velocity: V3): void {
+    if (item === 'Detonator') {
+      // M7: another player's Detonator fired (the room's `detonate`, from his feet): the others' claymores within its
+      // reach go off here for their looks, as the room sets his off (the wire names no owner: every remote one in reach).
+      for (const l of this.live) {
+        if (!l.remote || l.g.record.id !== CLAYMORE.id || l.g.state !== 'rest') continue;
+        if (Math.hypot(l.g.pos[0] - from[0], l.g.pos[1] - from[1], l.g.pos[2] - from[2]) <= CLAYMORE_RULES.detonateRange) l.g.trigger = true;
+      }
+      return;
+    }
     const round = this.rounds.get(item);
     if (round) { this.launchRound(round, from, velocity); return; }
     const record = this.records[item as GrenadeItem];
