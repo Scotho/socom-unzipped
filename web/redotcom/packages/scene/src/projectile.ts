@@ -78,6 +78,18 @@ export interface ThrowableRecord {
   explosionDamage: number;
   /** `Explosion_Radius` x10 (the ammo's `+0x1c`): the damage sphere's radius, units. */
   explosionRadius: number;
+  /**
+   * `ArmingDistance` x10 (`+0x68`; the launcher rounds' 10 m): a hit nearer the launch point than this is a dud
+   * (`FUN_003c8920` L319439-319462; research 94 §C1.5). Absent on the hand grenades.
+   */
+  armingDistance?: number;
+  /**
+   * The round's `AccelerationFactor` x10 (the rockets' 98 -> 980 u/s^2): added along the velocity each tick, and the
+   * round does not fall (`FUN_003ca5a0` L320303-320346; research 94 §C4.3). Absent on everything else.
+   */
+  acceleration?: number;
+  /** `HasBackblast` (`+0xd5`): each shot also fires the `Backblast` record backwards (`FUN_003d2d70`; §C4.4). */
+  hasBackblast?: boolean;
 }
 
 /** `zweapon.rdr`'s M67 (the frag) and its `M67 Ammo`, transcribed; `test/projectile.test.ts` proves it equals the file. */
@@ -246,6 +258,9 @@ export function throwableRecord(script: RdrNode, name = 'M67'): ThrowableRecord 
     decalSet: text(record, 'DecalSet', where), icon: text(record, 'IconTextureName', where).toLowerCase(),
     impact: !bouncesByType(n('ID')), ammo, ammoId: n('ID', 1, round, at),
     explosionDamage: n('Explosion_Damage', 1, round, at), explosionRadius: n('Explosion_Radius', WORLD_SCALE, round, at),
+    ...(rdrGet(record, 'ArmingDistance') !== undefined ? { armingDistance: n('ArmingDistance', WORLD_SCALE) } : {}),
+    ...(rdrGet(round, 'AccelerationFactor') !== undefined ? { acceleration: n('AccelerationFactor', WORLD_SCALE, round, at) } : {}),
+    ...(rdrGet(record, 'HasBackblast') !== undefined ? { hasBackblast: true } : {}),
   };
 }
 
@@ -590,6 +605,10 @@ export interface Grenade {
   age: number;
   /** Its weapon record: the fuse, the gravity, bounce or impact. */
   record: ThrowableRecord;
+  /** `+0x3c`: where it was launched from (the arming distance is measured from it). */
+  launch: V3;
+  /** A launched round that hit inside its arming distance: it bounces as a dud and never goes off by impact. */
+  dud: boolean;
 }
 
 /** What the hull answered along a segment: the crossing, the polygon's normal (either side) and its material. */
@@ -613,6 +632,7 @@ export type GrenadeEvent =
   | { kind: 'pass'; point: V3; material: string }
   | { kind: 'rest'; point: V3; material: string }
   | { kind: 'explode'; point: V3 }
+  | { kind: 'dud'; point: V3 }
   | { kind: 'remove' };
 
 /** A grenade leaving the hand at `pos` with `vel` (world), its timers the record's (`SetProjectile` 0x3cb1a0). */
@@ -620,7 +640,7 @@ export function launchGrenade(pos: V3, vel: V3, record: ThrowableRecord = M67): 
   const s = record.muzzleVelocity;
   return {
     pos: [...pos], vel: [vel[0] * s, vel[1] * s, vel[2] * s], state: 'flight',
-    fuse: record.fuse, removal: record.removal, firstBounce: true, bounces: 0, age: 0, record,
+    fuse: record.fuse, removal: record.removal, firstBounce: true, bounces: 0, age: 0, record, launch: [...pos], dud: false,
   };
 }
 
@@ -680,13 +700,30 @@ export function stepGrenade(g: Grenade, dt: number, cast: HullCast, record: Thro
   if (g.state === 'removed') return events;
   g.age += dt;
   if (g.state === 'flight') {
-    g.vel = [g.vel[0], g.vel[1] - record.gravity * dt, g.vel[2]];
+    if (record.acceleration !== undefined && !g.dud) {
+      // A rocket (`FUN_003ca5a0` L320303-320346): its AccelerationFactor along the normalised velocity; no fall.
+      const l = len(g.vel) || 1, a = record.acceleration * dt / l;
+      g.vel = [g.vel[0] + g.vel[0] * a, g.vel[1] + g.vel[1] * a, g.vel[2] + g.vel[2] * a];
+    } else g.vel = [g.vel[0], g.vel[1] - record.gravity * dt, g.vel[2]];
     const start: V3 = [...g.pos];
     const end: V3 = [start[0] + g.vel[0] * dt, start[1] + g.vel[1] * dt, start[2] + g.vel[2] * dt];
     let moved = false;
     for (const hit of cast(start, end)) {
       if (ignoredBy(hit.material)) continue;
-      if (record.impact && !hit.material.liquid) {
+      if (record.impact && !hit.material.liquid && !g.dud && (record.armingDistance ?? 0) > 0) {
+        // The arming distance (`FUN_003c8920` L319439-319462): nearer the launch point than it, the round is a dud --
+        // its velocity x `DAT_003e1510` 0.5, the fuse 9999999 -- and it bounces (`FUN_003c8f50`).
+        const d: V3 = [hit.point[0] - g.launch[0], hit.point[1] - g.launch[1], hit.point[2] - g.launch[2]];
+        if (len(d) < record.armingDistance!) {
+          g.dud = true;
+          g.vel = [g.vel[0] * DUD_SPEED, g.vel[1] * DUD_SPEED, g.vel[2] * DUD_SPEED];
+          g.fuse = 9999999;
+          events.push({ kind: 'dud', point: [...hit.point] }, ...bounce(g, hit));
+          moved = true;
+          break;
+        }
+      }
+      if (record.impact && !hit.material.liquid && !g.dud) {
         // `HandleImpact` (0x3c8920): an explosive round is set to detonate where it hit (state 3, grenade state 2).
         g.pos = [...hit.point];
         g.vel = [0, 0, 0];
@@ -720,6 +757,55 @@ export function stepGrenade(g: Grenade, dt: number, cast: HullCast, record: Thro
   }
   return events;
 }
+
+/** `DAT_003e1510`: a dud's velocity factor (`FUN_003c8920` L319452; research 94 §C4.3). */
+export const DUD_SPEED = 0.5;
+
+/**
+ * The grenade launcher's aim for the player (`FUN_005bf8a0` L475686-475740, called at L475566-475575 with the round's
+ * `Muzzle_Velocity`): the unit direction `dir` is raised by `DAT_00650968` 0.025 in y (renormalised) up to
+ * `DAT_00650960` 12 times, stopping as soon as a round at `speed` under `DAT_00650958` 98 u/s^2 would pass the aimed
+ * point `target` at or above it -- `t v y - g t^2 / 2 - dy > 0`, `t` the horizontal distance over the horizontal
+ * speed -- or within `FUN_0052eb60`'s band of it, |that - 0| <= 5 (`.data` 0x650970 = 0.0, 0x650978 = 5.0). The first
+ * step is always taken. So the round is aimed at the reticle's target, not flat (research 94 §C4.2).
+ */
+export const LOFT = { step: 0.025, steps: 12, gravity: 98, band: 5 } as const;
+export function loftAim(dir: V3, speed: number, muzzle: V3, target: V3): V3 {
+  const dx = target[0] - muzzle[0], dy = target[1] - muzzle[1], dz = target[2] - muzzle[2];
+  const horizontal = Math.hypot(dx, dz);
+  let [x, y, z] = dir;
+  for (let i = 0; i < LOFT.steps; i++) {
+    const ny = y + LOFT.step;
+    if (ny > 1) break;
+    const h2 = x * x + z * z;
+    const k = Math.sqrt((1 - ny * ny) / h2);
+    x *= k; z *= k; y = ny;
+    const hs = Math.sqrt(h2 * k * k) * speed;
+    if (hs <= 0) break;
+    const t = horizontal / hs;
+    const over = t * speed * y - LOFT.gravity * 0.5 * t * t - dy;
+    if (over > 0 || Math.abs(over) <= LOFT.band) break;
+  }
+  return [x, y, z];
+}
+
+/**
+ * The backblast (`FUN_003d2d70` L325541-325560): a `HasBackblast` round fires the `Backblast` record (id 159: MV 0,
+ * `Timer1` 0, `Backblast Ammo` 6 in 7 m) from the muzzle, backwards. `BACKBLAST_ORIGIN_READING`: the code builds a point
+ * 9 u along the aim but passes the muzzle; the muzzle is taken.
+ */
+export function backblastLaunch(muzzle: V3, dir: V3): { pos: V3; dir: V3 } {
+  const BACKBLAST_ORIGIN_READING = muzzle;
+  return { pos: [...BACKBLAST_ORIGIN_READING], dir: [-dir[0], -dir[1], -dir[2]] };
+}
+
+/**
+ * How fast a rocket leaves the tube (`FUN_003cb1a0` L320723-320730): with the owner flags clear the code starts it at
+ * rest (`v = 0 x dir`), else at `Muzzle_Velocity x dir` -- which branch the player's LAW/RPG takes is not traced:
+ * `ROCKET_LAUNCH_SPEED_READING`, the muzzle velocity (the LAW HEAT's 200 u/s, the RPG's 400), so a rocket fired
+ * point-blank is not a stationary charge.
+ */
+export const ROCKET_LAUNCH_SPEED_READING: 'muzzle' | 'rest' = 'muzzle';
 
 // ---- the explosion ------------------------------------------------------------------------------------------------
 
