@@ -427,11 +427,8 @@ export function weaponSelectLayout(state: MenuState, ctx: MenuContext, t: number
 // ---------------------------------------------------------------------------------------------------------------------
 // The draw.
 
-/**
- * The quads' element: `hud.ts`'s `HudElement` has no weapon-select member yet (the wiring task adds one); the overlay's
- * quads are not filtered by element, so the scoreboard's layer-1 name stands in.
- */
-export const WEAPON_SELECT_ELEMENT: HudElement = 'scoreboard';
+/** The quads' element: the HUD's own name for the menu and the prompt (`./hud` `HudElement`), drawn on the overlay's layer 1. */
+export const WEAPON_SELECT_ELEMENT: HudElement = 'weaponSelect';
 
 type Rgba4 = [number, number, number, number];
 

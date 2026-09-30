@@ -54,7 +54,11 @@ import { PlayUi, readPlayChoice, writePlayChoice } from './features';
 import { FLY_PARAM, flyAccess, mayEnter } from './flyAccess';
 import { onlineChoiceAddress, readShare, updateAddress } from './shareUrl';
 import { devMode, startSource } from './source';
-import { BAKED_LOADOUT, kitParam, kitRecords, PlayerLoadout, slotModel, typeLoadout, type FirearmSlot } from './loadout';
+import { BAKED_LOADOUT, kitParam, kitRecords, PlayerLoadout, slotModel, typeLoadout, wireLoadout, type FirearmSlot } from './loadout';
+import { compactPicks, frameOfPoint, padButtonsDown, WeaponExchange, type MatchGate } from './weaponExchange';
+import type { InputDevice, PromptInfo } from './weaponSelect';
+import type { MenuContext } from './weaponSelectState';
+import type { PadButton } from './gamepad';
 import type { HeldRef } from './remotePlayers';
 import { onlineLine, pageIsLocal, readOnline, resolveOnline, writeOnline, type OnlineChoice, type OnlineTarget } from './online';
 import { readRules, resolveRules } from './rules';
@@ -208,7 +212,13 @@ tacMap.onToggle = (open) => hud.setTacMapOpen(open);
 const scoreboardKeys = new ScoreboardKeys(() => walk.mode() === 'walk');
 scoreboardKeys.bindKey();
 const feetXZ = (): [number, number] | null => { const f = walk.feet(); return f ? [f[0], f[2]] : null; };
-hud.setOverlay((frame, sizes) => tacMap.layout(frame, loaded?.tac ?? null, feetXZ() ?? [0, 0], fly.pose().yaw, sizes));
+hud.setOverlay((frame, sizes) => {
+  const tac = tacMap.layout(frame, loaded?.tac ?? null, feetXZ() ?? [0, 0], fly.pose().yaw, sizes);
+  // WEAPON EXCHANGE and the dead's prompt (web sprint 4, M8; `./weaponExchange`), over the in-round HUD on layer 1.
+  const ws = exchange.draw(frame, sizes, promptInfo());
+  if (!ws.quads.length) return tac;
+  return { quads: [...(tac?.quads ?? []), ...ws.quads], tris: [...(tac?.tris ?? []), ...ws.tris] };
+});
 /**
  * The runtime kit (web sprint 4, M3/M4; `./loadout`): the `Loadout` on the body -- the character type's
  * `default_weapons` at each spawn (the map's first `navyseals` type offline; the match's side online), a pick
@@ -217,6 +227,49 @@ hud.setOverlay((frame, sizes) => tacMap.layout(frame, loaded?.tac ?? null, feetX
  */
 const loadouts = new PlayerLoadout();
 loadouts.setDevKit(devMode(SEARCH) ? kitParam(SEARCH) : null);
+/** The page's side in the match (`NetClient.team`), a SEAL offline and before the welcome. */
+const matchSide = (): Side => net?.client.team ?? 'seal';
+/**
+ * WEAPON EXCHANGE in the match (web sprint 4, M8/M9; research 94 part 2, `./weaponExchange`): opened dead in the match
+ * by the pad's R2, the key `I` or the touch button; each confirm adds the pick to the side's list (`PlayerLoadout.
+ * confirm`) and sends the list as the `loadout` request -- through the page's own room offline, the server's socket
+ * online (protocol 7) -- whose answer is the kit shown and spawned with at the next round (R94.3).
+ */
+const exchange = new WeaponExchange({
+  clock: () => performance.now() / 1000,
+  opensOn: () => loadouts.pending(matchSide()) ?? loadouts.base(matchSide()),
+  confirm: (pick) => {
+    const side = matchSide(), ctx = exchange.context();
+    const list = loadouts.confirm(side, pick, (l) => (ctx ? compactPicks(ctx, loadouts.base(side), l) : [...l]));
+    net?.requestLoadout(list);
+  },
+});
+/** The menu's world: the map's arsenal and valves, the page's side; none without the kit tables or a match. */
+function exchangeContext(): MenuContext | null {
+  const a = loaded?.arsenal;
+  return a && net ? { arsenal: a.table.arsenal, valves: a.map?.valves ?? new Map(), side: matchSide() } : null;
+}
+let exchangeKey: unknown[] = [];
+/** The context kept current (a new map, a match joined or left, a side changed). */
+function refreshExchange(): void {
+  const key = [loaded, net, matchSide()];
+  if (key.every((k, i) => k === exchangeKey[i])) return;
+  exchangeKey = key;
+  exchange.setContext(exchangeContext());
+}
+/** WEAPON EXCHANGE's gate (`NetPage.gate`): no match, no menu. */
+function exchangeGate(): MatchGate {
+  return net ? net.gate() : { inMatch: false, alive: true, cameraOnSelf: true, spectator: false };
+}
+/** The device the prompt's `%c` is drawn for: a pad's R2 when one is connected, the touch label on a touch screen, else the key. */
+function promptDevice(): InputDevice {
+  return pads.count() > 0 ? 'pad' : wantsTouchControls() ? 'touch' : 'keyboard';
+}
+/** The dead's prompt (S1 / S1g) for the overlay, or null. */
+function promptInfo(): PromptInfo | null {
+  const p = playOn && walk.mode() === 'walk' ? net?.prompt() ?? null : null;
+  return p ? { ghost: p.ghost, device: promptDevice(), sinceDeath: p.sinceDeath } : null;
+}
 /** The two firearm slots' records on the body, 2X applied: `rifle` slot 0 (L1), `pistol` slot 1 (L2). */
 let kitRecs = loadouts.records();
 /**
@@ -404,11 +457,12 @@ function hangKit(force = false): void {
  * `default_weapons` on the body, the primary in the hand, every magazine full; a slot whose record changed comes up
  * in its own default fire mode. `side`: the match's for the page's player (`NetClient.team`), a SEAL offline.
  */
-function spawnKit(side: Side): void {
+function spawnKit(side: Side, given: readonly number[] | null = null): void {
   fireModes[kitItem] = fireMode;                       // the mode in the hand kept with its firearm
   const before = kitRecs;
-  // A network server gives the type's kit (room.ts); only the page's own room (or no match) takes the page's pick.
-  loadouts.spawn(side, { network: !!NET.url });
+  // In a match the room's spawn names the kit (protocol 7: its pick, R94.3); without one a network server's is the
+  // type's own, and only no match takes the page's pick.
+  loadouts.spawn(side, { network: !!NET.url, kit: given });
   kitRecs = loadouts.records();
   if (kitRecs[0].id !== before[0].id) fireModes.rifle = defaultFireMode(kitRecs[0]);
   if (kitRecs[1].id !== before[1].id) fireModes.pistol = defaultFireMode(kitRecs[1]);
@@ -430,6 +484,8 @@ function spawnKit(side: Side): void {
  * spawn -- in classic, the next round (R94.3).
  */
 function setLoadout(loadout: Loadout, side: Side = net?.client.team ?? 'seal'): Loadout | null {
+  // The developer's kit too, so the page's own room (which replays and spawns from it, `RoomOptions.soloKit`) takes it.
+  loadouts.setDevKit(loadout);
   loadouts.setLoadout(loadout, side);
   return loadouts.pending(side);
 }
@@ -462,6 +518,20 @@ function selectEquipment(slot: 1 | 2): boolean {
   if (walk.mode() !== 'walk' || kit.swapping()) return false;
   return grenade.selectEquipment(slot);
 }
+// WEAPON EXCHANGE's keys (`./weaponExchange`): closed, `I` opens it when the gate lets it (WEAPON_SELECT_KEY_READING);
+// open, every key but Esc (the mouse's release) is the menu's -- the game's keys do nothing (HUD mode 1). Captured on the
+// window, ahead of every other listener.
+globalThis.addEventListener('keydown', (e: KeyboardEvent) => {
+  if (!playOn || e.ctrlKey || e.metaKey || e.altKey || e.code === 'Escape') return;
+  const target = e.target;
+  if (typeof HTMLElement !== 'undefined' && target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'SELECT')) return;
+  refreshExchange();
+  const open = exchange.isOpen();
+  const taken = e.repeat ? open : exchange.key(e.code, exchangeGate());
+  if (!taken) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+}, { capture: true });
 // The PC's number keys (the owner, 2026-09-29; `./kit`'s `hotkey`): 1 the rifle, 2 the Mark 23, 3 and 4 the kit's
 // equipment slots 1 and 2 -- walking, no modifier, not on auto-repeat, not typed into the panel's fields.
 globalThis.addEventListener('keydown', (e: KeyboardEvent) => {
@@ -1013,6 +1083,8 @@ pads.attach(globalThis);
 /** The pad's own input last frame, for its edges; and what the camera and the mover were fed, for the hook. */
 let padLast: Input = noInput();
 let padMerged: Input = noInput();
+/** The pad's buttons down last frame, by name (WEAPON EXCHANGE's edges: `menuInputOfPad`). */
+let padButtonsLast = new Set<PadButton>();
 /**
  * One frame of the controller, before the camera's: the pad read through the layout (`padInput`), merged with the
  * touch stick (the larger push on each axis, the buttons OR-ed; `mergeInput`) and fed to the camera's lanes -- which
@@ -1022,8 +1094,16 @@ let padMerged: Input = noInput();
  * (docs/PLAYTEST.md step 8; `releasedSince`); the stance button's tap and hold are `StanceButton`'s. Start toggles walk and fly on its press, as `G` does on its keydown.
  */
 function padFrame(dt: number): void {
-  const pad = padInput(pads.poll(navigator));
+  const polled = pads.poll(navigator);
+  const pad = padInput(polled);
   const input = mergeInput(touchInput, pad);
+  // WEAPON EXCHANGE (`./weaponExchange`): closed, R2 opens it when the gate lets it; open, the d-pad, Cross, Triangle,
+  // Start and R2 step it, and the game's own lanes below take nothing (HUD mode 1).
+  const down = padButtonsDown(polled);
+  const edges = new Set([...down].filter((b) => !padButtonsLast.has(b)));
+  padButtonsLast = down;
+  refreshExchange();
+  const menu = playOn && (edges.size ? exchange.pad(edges, exchangeGate()) : exchange.isOpen());
   fly.setStick(input.moveX, input.moveY);
   fly.setLift((input.jump ? 1 : 0) - (input.crouch || input.stance ? 1 : 0));
   fly.setStickBoost(input.boost);
@@ -1033,10 +1113,10 @@ function padFrame(dt: number): void {
   // edges, so a released R1 never lets go of a mouse button or the touch button still held.
   // The merged lane, so the touch fire button (`touchInput.fire`) is the trigger the same way; a released R1 still never
   // lets go of a button the other source holds.
-  if (playOn && input.fire !== padMerged.fire) trigger(input.fire);
+  if (playOn && !menu && input.fire !== padMerged.fire) trigger(input.fire);
   // Research 84: d-pad Up and Down step the zoom in and out, L3 the fire mode (walking, the rifle up). The edges are of
-  // the merged lanes: a touch button and a pad's are the same press.
-  const pressed = pressedSince(padMerged, input);
+  // the merged lanes: a touch button and a pad's are the same press. None while WEAPON EXCHANGE has the pad.
+  const pressed = menu ? [] : pressedSince(padMerged, input);
   if (pressed.includes('zoom')) stepZoom('in');
   if (pressed.includes('zoomOut')) stepZoom('out');
   if (pressed.includes('fireMode') && walk.mode() === 'walk') switchFireMode();
@@ -1048,14 +1128,35 @@ function padFrame(dt: number): void {
     if (pressed.includes('swap2')) selectFirearm('pistol');
     if (pressed.includes('inventory')) kitInventory();
   }
-  playLanes(padMerged, input, dt);  // W2.6: jump, crouch, stance and aim on foot
-  traversal.padLanes(padMerged, input);   // research 86: Cross the action, the d-pad's sides the peek
+  if (!menu) {
+    playLanes(padMerged, input, dt);  // W2.6: jump, crouch, stance and aim on foot
+    traversal.padLanes(padMerged, input);   // research 86: Cross the action, the d-pad's sides the peek
+  }
   padLast = pad;
   padMerged = input;
   for (const lane of touchReleased) touchInput[lane] = false;   // read this frame; let go for the next
   touchReleased.clear();
 }
 touchControls = attachTouchControls(touchLane, (event) => walk.stanceTouch(event), trigger);   // the touch C: the PC's C rule (`WalkMode.stanceTouch`)
+/**
+ * WEAPON EXCHANGE's touch control (WEAPON_SELECT_TOUCH_READING, `index.html` `#tw-weapons`): shown only while the dead's
+ * prompt is (or the menu is open, to close it); a press is `Inventory`. Open, a tap or a click on the canvas is read on
+ * the 640x448 frame as the menu's presses (`menuTap`: the rows and the cards).
+ */
+const weaponsButton = document.getElementById('tw-weapons') as HTMLButtonElement | null;
+weaponsButton?.addEventListener('pointerdown', (e) => { e.preventDefault(); refreshExchange(); exchange.touchButton(exchangeGate()); });
+canvas.addEventListener('pointerdown', (e) => {
+  if (!exchange.isOpen()) return;
+  const r = canvas.getBoundingClientRect();
+  const [fx, fy] = frameOfPoint(e.clientX - r.left, e.clientY - r.top, { width: r.width, height: r.height });
+  if (exchange.tap(fx, fy, exchangeGate())) { e.preventDefault(); e.stopImmediatePropagation(); }
+}, { capture: true });
+/** The touch button shown while the prompt is up or the menu open. */
+function showWeaponsButton(): void {
+  if (!weaponsButton) return;
+  const show = exchange.isOpen() || promptInfo() !== null;
+  if (weaponsButton.hidden === show) weaponsButton.hidden = !show;
+}
 attachWalkTouch(holdTouch, () => { if (walk.mode() === 'walk' && !walk.isDead()) fire.reload(); });
 ui.onWalkSwitch((on) => { if (!walk.setMode(on ? 'walk' : 'fly')) ui.setWalk(false); });
 ui.onPanelToggle();
@@ -1330,6 +1431,8 @@ async function boot(): Promise<void> {
     // DEAD: the dead's controller (`FUN_00592560` L451642-451730) takes the respawn press alone -- a held trigger lets go.
     if (walk.isDead() && fire.triggerHeld()) fire.release();
     net?.frame(dt, fly.camera, fire.triggerHeld());   // MULTIPLAYER: the others at the view tick, the clock
+    refreshExchange();
+    showWeaponsButton();            // WEAPON EXCHANGE's touch button, with the dead's prompt
     doors.frame(dt);                // DOORS: the swings (the server's, in a match)
     if (!walking) fire.release();  // leaving the walk lets a held trigger go
     fire.update(dt);                // W2.5: the reload, the rate, a held trigger's rounds, the tracer's one frame
@@ -1464,6 +1567,15 @@ function connectNet(map: LoadedMap): void {
   const deps: NetPageDeps = {
     walk, remote, hud, clips: () => playClips,
     weapons: (team) => (team ? kitRecords(loaded?.arsenal?.table ?? null, sideLoadout(team)) : kitRecs),
+    // Protocol 7: a shot's item by id; the side's picks for a (re)seat; the room's answer to a request (M9).
+    recordOf: (id) => loaded?.arsenal?.table.records.get(id) ?? null,
+    picks: (team) => loadouts.picks(team),
+    loadoutAnswer: (kit) => {
+      loadouts.answer(matchSide(), kit);
+      const l = wireLoadout(kit);
+      if (l) exchange.answer(l);                     // the menu shows the kit the room will spawn the player with
+    },
+    menuOpen: () => exchange.isOpen(),
     spectate: (pose) => { if (pose) fly.setPose(pose); },
     remoteGrenade: (kind, from, velocity) => grenade.launchRemote(kind as GrenadeItem, from, velocity),
     roundEffects: (e, id) => { effects.onRound(e, remote.weaponFrame(id), false); audio.onFire(e.weapon.name, e.from); },
@@ -1471,7 +1583,8 @@ function connectNet(map: LoadedMap): void {
     // The server's fresh kit at this spawn (room.ts, FUN_00599f00): the side's type's kit or its pick, the primary in
     // the hand, every magazine full, the pouch too -- the page's spent rings and a pistol in the hand do not outlive a
     // death or a round.
-    respawned: () => { spawnKit(net?.client.team ?? 'seal'); grenade.refill(); },
+    // The round's reset closes WEAPON EXCHANGE over the kit the spawn took (S8).
+    respawned: (kit) => { spawnKit(matchSide(), kit ?? null); grenade.refill(); exchange.reset(loadouts.loadout()); },
   };
   const stem = map.path.replace(/^.*\//, '').replace(/\.ZDB$/i, '').toUpperCase();
   if (NET.url) {
@@ -1485,10 +1598,13 @@ function connectNet(map: LoadedMap): void {
   } else if (playOn && SOLO_MATCH && map.ground) {
     // Offline in reCOM mode: the match server's own room, in the page (`./net/loopback`; owner, 2026-09-29).
     solo = new LoopbackMatch(simMapOfLoaded(map), simClipsOfPlay(playClips), {
-      rules: RULES, kits: map.arsenal ?? null, soloKit: () => loadouts.pending('seal'),   // the page's player is the host's SEAL
+      // The page's player is the host's SEAL; its type's record is the developer's kit when one was asked for.
+      rules: RULES, kits: map.arsenal ?? null, soloKit: () => loadouts.devKit(),
     });
     net = new NetPage({ ...deps, socket: solo.socket, solo: true }, 'loopback:', stem, playerName(), undefined, false, RULES);
   }
+  exchange.reset(loadouts.loadout());                 // a new match: the menu closed
+  refreshExchange();
   showOnline();
 }
 
@@ -1591,10 +1707,11 @@ function show(map: LoadedMap): void {
     startInWalk(map.name);
   });
   // MULTIPLAYER: the others are this map's SEAL and Terrorist; a new map is a new match (each map its own, W3.R11).
-  remote.setMap(map, lighting, (team) => {
-    const l = sideLoadout(team), table = map.arsenal?.table ?? null;
+  remote.setMap(map, lighting, (team, kit) => {
+    // Protocol 7: the player's own kit when the room named it, else its side's type's.
+    const l = wireLoadout(kit) ?? sideLoadout(team), table = map.arsenal?.table ?? null;
     return { rifle: heldRef(slotModel(table, l, 0)), pistol: heldRef(slotModel(table, l, 1)) };
-  });
+  }, (team) => sideLoadout(team));
   connectNet(map);
   // A new world starts in whatever state the panel is showing, not in the state it was built in.
   ui.apply(applyToggle);
@@ -1804,6 +1921,17 @@ window.__viewer = {
     pending: loadouts.pending(net?.client.team ?? 'seal'),
   }),
   setLoadout: (ids) => { const l = kitParam(`kit=${ids.join(',')}`); return l ? setLoadout(l) : null; },
+  weaponSelect: () => {
+    const st = exchange.state();
+    const prompt = promptInfo();
+    return {
+      screen: st.screen, slot: st.slot, category: st.category, item: st.item, loadout: [...st.loadout], picks: st.picks.map((p) => ({ ...p })),
+      sent: loadouts.picks(matchSide()).map((p) => ({ ...p })), gate: exchangeGate(),
+      prompt: prompt ? exchange.layout(prompt).items.filter((i) => i.part === 'prompt').map((i) => (i.kind === 'text' ? i.text : '')) : null,
+      touchButton: weaponsButton ? !weaponsButton.hidden : null,
+    };
+  },
+  weaponSelectKey: (code) => { refreshExchange(); return exchange.key(code, exchangeGate()); },
   selectWeapon: (item) => selectFirearm(item),
   inventory: () => kitInventory(),
   trigger: (down) => trigger(down),

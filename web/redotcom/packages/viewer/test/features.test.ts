@@ -246,7 +246,7 @@ describe('the Mouse look section (round 2): the law, the sensitivity, the pitch,
 
 describe('the Controls popover list (round 2; simplified 2026-09-29)', () => {
   it('groups the walk keys as move, combat, stance and action, weapons, general; the fly keys as move and general', () => {
-    expect(controlGroups('walk', true).map((g) => g.name)).toEqual(['Move', 'Combat', 'Stance & action', 'Weapons', 'General']);
+    expect(controlGroups('walk', true).map((g) => g.name)).toEqual(['Move', 'Combat', 'Stance & action', 'Weapons', 'Weapon select', 'General']);
     expect(controlGroups('fly', true).map((g) => g.name)).toEqual(['Move', 'General']);
   });
   it('names every key the page binds on foot', () => {
@@ -254,8 +254,8 @@ describe('the Controls popover list (round 2; simplified 2026-09-29)', () => {
     for (const k of ['W A S D', 'Space', 'Left click', 'Right click', 'R', 'B', 'C', 'X', 'Q / E', '1', '2', '3 / 4', 'Tab', 'M', 'G', 'F']) expect(keys, k).toContain(k);
     // The number keys (the owner, 2026-09-29): 1 main, 2 sidearm, 3 and 4 the equipment slots -- no per-grenade keys.
     const weapons = controlGroups('walk', true).find((g) => g.name === 'Weapons')!.rows;
-    expect(weapons.map((r) => r.keys)).toEqual(['1', '2', '3 / 4']);
-    expect(weapons.map((r) => r.does)).toEqual(['main weapon', 'sidearm', 'grenades and equipment']);
+    expect(weapons.map((r) => r.keys)).toEqual(['1', '2', '3 / 4', 'I (when dead)']);
+    expect(weapons.map((r) => r.does)).toEqual(['main weapon', 'sidearm', 'grenades and equipment', 'weapon select: the next round\'s kit']);
   });
   it('lists no first-person key, and C as a tap and a hold (owner, 2026-09-29)', () => {
     const rows = controlGroups('walk', true).flatMap((g) => g.rows);

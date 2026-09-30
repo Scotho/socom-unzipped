@@ -6,7 +6,7 @@ import { NetClient, type WebSocketLike } from '../src/net/client';
 import { LoopbackMatch, simMapOfLoaded } from '../src/net/loopback';
 import { blastKnock, deathClip, PART, RESPAWN_RULES_ENABLED, TICK_HZ, type ServerEvent } from '../src/sim';
 import { ELIMINATED_HOLD_S, eliminationLines, MAX_ROUNDS, roundBanner, ROUND_WATCH_S } from '../src/net/rules';
-import { DEAD_LINES, NetPage } from '../src/netPage';
+import { NetPage } from '../src/netPage';
 import { Hud } from '../src/hud';
 import { roundScreenLayout } from '../src/roundScreens';
 import type { RemotePlayers } from '../src/remotePlayers';
@@ -228,7 +228,8 @@ describe('the page\'s own death by a blast, offline (the loopback room)', () => 
     expect(ctx.walk.isLocked()).toBe(true);
     expect(['landDeath', 'landBackwards']).toContain(ctx.walk.snapshot()!.action!.name);
     expect(ctx.walk.cameraState()!.mode).toBe('third');
-    expect([...ctx.posted]).toContain(DEAD_LINES.join('/'));
+    expect(ctx.net.prompt()).toMatchObject({ ghost: false });         // WEAPON EXCHANGE's prompt (promptLines), drawn, not posted
+    expect([...ctx.posted].some((l) => l.includes('You have died'))).toBe(false);
     // Past the fade (10 s, where the respawn room takes the press) the press stands nobody up (`FUN_002a7560`: respawn
     // needs the option) -- and it is still before the elimination is watched.
     await ctx.run(10.2 * TICK_HZ - (ctx.tick() - deadAt));

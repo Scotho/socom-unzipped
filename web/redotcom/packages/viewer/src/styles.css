@@ -353,6 +353,13 @@ body.touch.is-walking #touch-lift, body.touch.is-walking #touch-stance, body.tou
 /* Under the compass, on the right: a row of pills, reload at the edge. */
 #tw-scope { position: fixed; z-index: 5; display: flex; flex-direction: row-reverse; gap: var(--s2u-space-2); top: 124px; right: calc(8px + var(--tw-right)); }
 #tw-scope button { position: static; height: var(--tw-small); min-width: var(--tw-small); padding: 0 var(--s2u-space-3); border-radius: var(--s2u-radius-pill); }
+/*
+ * WEAPON EXCHANGE's touch control (`index.html` `#tw-weapons`, WEAPON_SELECT_TOUCH_READING): a pill at the top centre,
+ * clear of the menu (the frame's left half), the prompt (bottom centre) and the right thumb's cluster; hidden but while
+ * the dead's prompt is up or the menu open.
+ */
+#tw-weapons { position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); height: var(--tw-btn); min-width: 72px; padding: 0 var(--s2u-space-3); border-radius: var(--s2u-radius-pill); }
+#touch-walk #tw-weapons[hidden] { display: none; }
 /* The fullscreen button, while walking: the HUD owns the bottom right (the range strip), so it stands at the left edge. */
 body.is-walking #fullscreen { right: auto; bottom: auto; left: calc(8px + env(safe-area-inset-left, 0px)); top: 96px; width: 44px; height: 44px; }
 /* Held upright the layout has no room beside the HUD's tall bottom strip: it is asked to turn, and lifts the cluster. */

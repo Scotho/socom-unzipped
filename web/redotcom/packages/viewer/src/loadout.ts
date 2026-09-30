@@ -1,7 +1,7 @@
 import type { AssetSource } from '@s2u/archive';
 import {
   DEFAULT_SIDEARM, DEFAULT_WEAPON, DOUBLED_CLASSES, EMPTY_ITEM, HE, HELD_RIFLE, HELD_SIDEARM, ITEM, itemClass, M67, readKitTable,
-  readMapArsenal, type KitTable, type Loadout, type MapArsenal, type Side, type WeaponRecord,
+  readMapArsenal, type KitTable, type Loadout, type MapArsenal, type Pick, type Side, type WeaponRecord,
 } from '@s2u/scene';
 import { magazinesCarried } from './magazines';
 
@@ -106,45 +106,92 @@ export function kitParam(search: string): Loadout | null {
   return ids as unknown as Loadout;
 }
 
+/** Five item ids 0-255 off the wire (a `spawn`'s or a `loadout` answer's `kit`) as a loadout, or null. */
+export function wireLoadout(ids: readonly unknown[] | null | undefined): Loadout | null {
+  if (!Array.isArray(ids) || ids.length !== 5 || !ids.every((v) => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 255)) return null;
+  return [...ids] as unknown as Loadout;
+}
+
 /**
  * The player's kit on the page: the loadout on the body, each side's pick waiting on its type, and the developer's
  * `&kit=`. `spawn` is the rebuild (`FUN_00599f00`): the side's pick, else the type's own kit, else the baked one.
+ *
+ * Protocol 7 (web sprint 4, M9): in a match the room owns the kit (W4.R6). Each confirm of the weapon select is kept
+ * here, per side, in order since the map's match began (`confirm`, `picks`): the list the page sends as its `loadout`
+ * request and the room replays from the type's own kit (`base`) -- the whole list each time, so a reconnect's new seat
+ * is sent it again and lands on the same kit. The room's answer is the side's next kit (`answer` -> `pending`), and a
+ * match's spawn carries the kit the room gave the body (`spawn`'s `kit`), which the page takes as it is.
  */
 export class PlayerLoadout {
   private table: KitTable | null = null;
   private map: MapArsenal | null = null;
   private current: Loadout = BAKED_LOADOUT;
-  private readonly picks: Record<Side, Loadout | null> = { seal: null, terrorist: null };
-  private devKit: Loadout | null = null;
+  private readonly next: Record<Side, Loadout | null> = { seal: null, terrorist: null };
+  private readonly confirmed: Record<Side, Pick[]> = { seal: [], terrorist: [] };
+  private dev: Loadout | null = null;
 
   /** A new map (a new match): its tables, and the types' own kits -- the picks of the last map's types go. */
   setMap(table: KitTable | null, map: MapArsenal | null): void {
     this.table = table;
     this.map = map;
-    this.picks.seal = this.picks.terrorist = null;
+    this.next.seal = this.next.terrorist = null;
+    this.confirmed.seal = [];
+    this.confirmed.terrorist = [];
   }
 
   /** The developer's `&kit=`: each side's pick on every map, until a pick replaces it. */
   setDevKit(loadout: Loadout | null): void {
-    this.devKit = loadout;
+    this.dev = loadout;
   }
 
-  /** A pick (the menu's confirm, M8): written to the side's type, applied at its next spawn. */
+  /** The developer's kit, or null: in the page's own room it stands in for the type's own (`RoomOptions.soloKit`). */
+  devKit(): Loadout | null {
+    return this.dev;
+  }
+
+  /** A pick written to the side's type as it is (the hook's `setLoadout`, a developer's), applied at its next spawn. */
   setLoadout(loadout: Loadout, side: Side): void {
-    this.picks[side] = [...loadout] as unknown as Loadout;
+    this.next[side] = [...loadout] as unknown as Loadout;
   }
 
   /** What the side's next spawn will take if nothing changes: its pick, or the developer's kit; null for the type's own. */
   pending(side: Side): Loadout | null {
-    return this.picks[side] ?? this.devKit;
+    return this.next[side] ?? this.dev;
+  }
+
+  /** The kit the side's picks are replayed from: the developer's kit, else the type's own, else the baked one. */
+  base(side: Side): Loadout {
+    return this.dev ?? typeLoadout(this.map, side) ?? BAKED_LOADOUT;
+  }
+
+  /** The side's confirmed picks since the map's match began, in order: the `loadout` request's list. */
+  picks(side: Side): readonly Pick[] {
+    return this.confirmed[side];
   }
 
   /**
-   * The rebuild at a spawn: the loadout the body now carries. `network`: the match is a network server's, which gives
-   * the type's kit and hears no pick yet (M9's `loadout` request): the pick waits, so the page carries what the room does.
+   * A confirm of the weapon select (`FUN_0023e5e0`: the kit written to the type): the pick added to the side's list;
+   * the list to send. `compact`, when given, may replace the list with a shorter one that reaches the same kit.
    */
-  spawn(side: Side, opts: { network?: boolean } = {}): Loadout {
-    const pick = opts.network ? null : this.pending(side);
+  confirm(side: Side, pick: Pick, compact?: (picks: readonly Pick[]) => Pick[]): readonly Pick[] {
+    const list = [...this.confirmed[side], { slot: pick.slot, id: pick.id }];
+    this.confirmed[side] = compact ? compact(list) : list;
+    return this.confirmed[side];
+  }
+
+  /** The room's answer to a `loadout` request: the kit it holds for the side's next round (five ids; anything else is ignored). */
+  answer(side: Side, kit: readonly number[]): void {
+    const l = wireLoadout(kit);
+    if (l) this.next[side] = l;
+  }
+
+  /**
+   * The rebuild at a spawn: the loadout the body now carries. `kit`: a match's spawn names the kit the room gave the
+   * body (protocol 7), which is taken as it is. `network` without a kit: the type's kit, as a network room gives it.
+   */
+  spawn(side: Side, opts: { network?: boolean; kit?: readonly number[] | null } = {}): Loadout {
+    const given = wireLoadout(opts.kit);
+    const pick = given ?? (opts.network ? null : this.pending(side));
     this.current = pick ?? typeLoadout(this.map, side) ?? BAKED_LOADOUT;
     return this.current;
   }

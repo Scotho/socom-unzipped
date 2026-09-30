@@ -68,8 +68,8 @@ describe('the dead cycle through living teammates (FUN_001f97b0, research 91 sec
 });
 
 describe('the rules on the wire and on the page', () => {
-  it('protocol 4 carries the rules (5: the cone eye and aim; 6: the blast event and knock codes); anything else is not rules', () => {
-    expect(PROTOCOL_VERSION).toBe(6);
+  it('protocol 4 carries the rules (5: the cone eye and aim; 6: the blast event and knock codes; 7: the loadout request, the item id of a body); anything else is not rules', () => {
+    expect(PROTOCOL_VERSION).toBe(7);
     expect(parseRules('classic')).toBe('classic');
     expect(parseRules('respawn')).toBe('respawn');
     for (const v of [undefined, null, '', 'CLASSIC', 'deathmatch', 3]) expect(parseRules(v), String(v)).toBeNull();

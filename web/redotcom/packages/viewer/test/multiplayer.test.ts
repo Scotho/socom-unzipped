@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import type { CollisionOwner, GridParams, SpawnSlot, WorldPoly } from '@s2u/scene';
+import type { RdrNode } from '@s2u/archive';
+import { arsenalOf, type CollisionOwner, type GridParams, type SpawnSlot, type WorldPoly } from '@s2u/scene';
 import {
   multiplayerEnabled, MULTIPLAYER_PARAMS, NO_SERVER, onlineTarget, playersPoller, SINGLE_PLAYER_KICKER, singlePlayerAddress,
   stripMultiplayerUi,
@@ -13,7 +14,7 @@ import { updateAddress, writeShare } from '../src/shareUrl';
 import { controlGroups, GROUP_GENERAL, MULTIPLAYER_OFF_ROW, padControlGroups } from '../src/controlsList';
 import { NetClient, type NetWalk } from '../src/net/client';
 import { LoopbackMatch, simMapOfLoaded } from '../src/net/loopback';
-import { packGround, type Command, type ServerEvent } from '../src/sim';
+import { packGround, type Command, type ServerEvent, type SimKits } from '../src/sim';
 import { Ui } from '../src/ui';
 
 /**
@@ -182,6 +183,30 @@ describe('multiplayer off: no request to any host, and the offline match still p
     await flush();
     expect(events.some((e) => e.type === 'score')).toBe(true);
     expect(match.room.player(client.id)!.sim.seq).toBeGreaterThanOrEqual(29);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(socketSpy).not.toHaveBeenCalled();
+  });
+
+  it('the weapon select\'s loadout request goes to the page\'s own room and is answered -- no socket, no /rooms (M9)', async () => {
+    const rec = (...pairs: [string, RdrNode][]): RdrNode[] => pairs.flatMap(([k, v]) => [k, Array.isArray(v) ? v : [v]]);
+    const item = (name: string, id: number): RdrNode[] => rec(['InternalName', name], ['DisplayName', name], ['ID', String(id)], ['AMMO_TYPES', []]);
+    const arsenal = arsenalOf(['ZAMMO', [], 'ZWEAPON', [item('M4A1', 54), item('M4A1 SD', 62), item('Mark 23', 15), item('M67', 121), item('HE', 126)]] as RdrNode);
+    const kits: SimKits = {
+      table: { arsenal, records: new Map() },
+      map: {
+        valves: new Map([['Enable_m4Acarbine', 1], ['Enable_M4A1_SD', 1], ['Enable_Mark23', 1], ['Enable_frag', 9], ['Enable_HEgren', 9]]),
+        selectable: { seal: [], terrorist: [] },
+        kits: { seal: [{ type: 'Seal1', character: 'mp99_seal1', loadout: [54, 15, 121, 126, 255] }], terrorist: [] },
+      },
+    };
+    const match = new LoopbackMatch(simMapOfLoaded(loaded()), null, { auto: false, kits });
+    const events: ServerEvent[] = [];
+    const client = new NetClient({ url: 'loopback:', map: 'MP99', name: 'Solo', socket: match.socket }, new Walk());
+    client.on((ev) => events.push(ev));
+    await flush();
+    client.send({ type: 'loadout', picks: [{ slot: 0, id: 62 }] });
+    await flush();
+    expect(events.filter((e) => e.type === 'loadout')).toEqual([{ type: 'loadout', kit: [62, 15, 121, 126, 255], refused: null }]);
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(socketSpy).not.toHaveBeenCalled();
   });

@@ -1,8 +1,8 @@
 import type { PerspectiveCamera } from 'three';
-import type { WeaponRecord } from '@s2u/scene';
+import type { Pick, WeaponRecord } from '@s2u/scene';
 import type { FireEvent, FireWeapon } from './fire';
 import { NetClient, type Simulate, type WebSocketLike } from './net/client';
-import type { Rules, ScoreRow, ServerEvent, Team } from './net/protocol';
+import type { LoadoutRefusal, Rules, ScoreRow, ServerEvent, Team } from './net/protocol';
 import { eliminationLines, MAX_ROUNDS, nextFollow, objectiveOf } from './net/rules';
 import { deathPose, type RemotePlayers } from './remotePlayers';
 import { overall } from './net/damage';
@@ -13,6 +13,7 @@ import type { RoundScreen } from './roundScreens';
 import type { WalkMode } from './walk';
 import type { OnlineStatus } from './online';
 import type { RoundInfo } from './hud';
+import type { MatchGate } from './weaponExchange';
 
 /**
  * The page in a match (web sprint 3, M4-M8): the net client on the walk, the other players drawn (`./remotePlayers`),
@@ -43,14 +44,25 @@ export interface NetPageDeps {
   /**
    * The page's own mover placed by the server (a respawn, and every round's start in classic): the kit fresh as the
    * server's (`FUN_00598b90` -> `FUN_00599b60` -> `FUN_00599f00`, research 91 §4.3) -- every magazine full, the rifle
-   * in the hand, the pouch refilled.
+   * in the hand, the pouch refilled. Protocol 7: `kit`, the five item ids the room gave the body (its pick, R94.3).
    */
-  respawned(): void;
+  respawned(kit?: readonly number[] | null): void;
   /**
    * The two firearm slots' records (web sprint 4, `./loadout`): the page's own kit without a team; with one, the kit a
    * player of that side carries -- its first type's (DEFAULT_CHARTYPE_PLACEHOLDER), until M9 carries each player's own.
    */
   weapons(team?: Team): readonly [WeaponRecord, WeaponRecord];
+  /** Protocol 7: a firearm's record by item id (the kit table's), for another player's shot; null when the page has none. */
+  recordOf?(id: number): WeaponRecord | null;
+  /** Protocol 7: the side's confirmed weapon-select picks (`./loadout` `PlayerLoadout.picks`), sent again at each seat. */
+  picks?(team: Team): readonly Pick[];
+  /** Protocol 7: the room's answer to a `loadout` request -- the kit held for the next round, and the refusal if any. */
+  loadoutAnswer?(kit: readonly number[], refused: { reason: LoadoutRefusal; at: number } | null): void;
+  /**
+   * WEAPON EXCHANGE open (`./weaponExchange`): the controller's HUD mode 1 (`FUN_00597740(ctrl, 1, 0)` L88370) -- the
+   * page's keys for the dead's teammate cycle and the spectator's camera do nothing (DEAD_CYCLE_WHILE_MENU_READING).
+   */
+  menuOpen?(): boolean;
   /** A socket for the tests (`NetClient`'s); the page's own `WebSocket` by default -- or the single-player room's. */
   socket?: (url: string) => WebSocketLike;
   /** The offline match (`./net/loopback`): the panel reads "offline match", no reconnecting. */
@@ -60,30 +72,13 @@ export interface NetPageDeps {
 }
 
 /**
- * The inventory button's glyph in the help lines (`%c` = 0xbd / 0xbe, the Inventory button: R2 in the Default
- * configuration; research 91 section 12, HudCLOC 60488).
+ * DEAD_CYCLE_WHILE_MENU_READING: whether the dead's teammate cycle runs while WEAPON EXCHANGE is open. The menu sets the
+ * controller's HUD mode 1 (`FUN_00597740(ctrl, 1, 0)` L88370), and mode != 0 blocks the respawn press (`FUN_00592560`
+ * L451673-451675) and the spectator camera's buttons (`FUN_00295260` L139475); the cycle itself under mode 1 was not
+ * traced (`FUN_005979a0` L454440-454500 reads no input) -- taken as blocked too [inferred] (research 94 §B3). The dead's
+ * lines themselves are WEAPON EXCHANGE's prompt (`./weaponSelect` `promptLines`), drawn by the page's HUD overlay.
  */
-const INVENTORY_GLYPH = 'R2';
-/**
- * HELP_GLYPH_LEAD_PLACEHOLDER: the help lines 0x3e3350 and 0x3e3280 begin with a pad glyph the strings dump cuts at,
- * so their leading words are unrecovered (their tails: " directional buttons", " directional"); "Use the" is the
- * spectator's own line's wording (0x3e30f0 "You are a spectator.  Use the directional"), inferred, not read.
- */
-const HELP_LEAD = 'Use the';
-/**
- * The dead's help lines with respawn off (`FUN_001f97b0` L57000-57007: 0x3e32e0 "You have died.  %c Select new
- * weapons.", 0x3e3350, 0x3e3380 "to cycle through living teammates"); the page posts them to the message window.
- */
-export const DEAD_LINES: readonly string[] = [
-  `You have died.  ${INVENTORY_GLYPH} Select new weapons.`, `${HELP_LEAD} directional buttons`, 'to cycle through living teammates',
-];
-/**
- * A ghost's with respawn off (L57047-57062: 0x3e31c0, 0x3e31f0 with the inventory glyph, 0x3e3280, 0x3e32b0).
- */
-export const GHOST_LINES: readonly string[] = [
-  'You are a ghost.  You will play the next', `round as a real player.  ${INVENTORY_GLYPH} Select new`,
-  `weapons.  ${HELP_LEAD} directional`, 'buttons to cycle through living teammates.',
-];
+export const DEAD_CYCLE_WHILE_MENU_READING = 'blocked' as const;
 
 /** `?mp` turns the match on; `?server=wss://host/ws` names the server (the page's own host at `/ws` by default). */
 export function netSettings(search: string, location: { protocol: string; host: string }): { url: string; simulate?: Simulate } | null {
@@ -135,6 +130,11 @@ export class NetPage {
   /** The page's own death: when (ms), and whether the respawn prompt has been posted. */
   private dead: { at: number; prompted: boolean } | null = null;
   /**
+   * A late joiner's seat in a classic round in play ("You are a ghost.", research 91 section 12): since when (ms), or
+   * null. The ghost is not alive; WEAPON EXCHANGE opens for it as for the dead (§B2), with the ghost's prompt.
+   */
+  private ghostSince: number | null = null;
+  /**
    * The spectator's view (research 91 section 12: `FUN_00295260`'s modes 0 follow a player, 1 free, 2 the map's scenic
    * views). SPECTATOR_PAD_PLACEHOLDER: the game's buttons for them are not traced; here Space follows the next living
    * player and V switches between following and the free (fly) camera. The scenic views are not drawn.
@@ -168,6 +168,7 @@ export class NetPage {
   private readonly onKey = (e: KeyboardEvent): void => {
     const target = e.target;
     if (typeof HTMLElement !== 'undefined' && target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'SELECT')) return;
+    if (DEAD_CYCLE_WHILE_MENU_READING === 'blocked' && this.deps.menuOpen?.()) return;   // HUD mode 1: the menu's keys alone
     if (this.client.role === 'player' && !e.repeat) {
       if (e.code === 'KeyK') { this.voteMenu = !this.voteMenu; if (this.voteMenu) this.showVoteMenu(); return; }
       if (this.voteMenu && e.code === 'Escape') { this.voteMenu = false; return; }
@@ -290,6 +291,47 @@ export class NetPage {
     } else if (e.type === 'reloadStart') this.client.send({ type: 'reload', seq: this.client.lastSeq() });
   }
 
+  /**
+   * Protocol 7: the weapon select's picks, the side's whole list (`./loadout` `PlayerLoadout.confirm`), as the
+   * `loadout` request -- a player's only (a spectator has no kit), on an open socket; the room answers (`loadout`).
+   */
+  requestLoadout(picks: readonly Pick[]): void {
+    if (this.client.state !== 'open' || this.client.role !== 'player') return;
+    this.client.send({ type: 'loadout', picks: picks.map((p) => ({ slot: p.slot, id: p.id })) });
+  }
+
+  /** A seat taken (a join, a rejoin after a drop, a promotion): the side's picks sent again, so the new seat holds them. */
+  private resendPicks(team: Team | null): void {
+    const picks = team ? this.deps.picks?.(team) ?? [] : [];
+    if (picks.length) this.requestLoadout(picks);
+  }
+
+  /**
+   * WEAPON EXCHANGE's gate (`./weaponSelectState` `canOpen`; research 94 §B2): in the match, dead or a ghost, the camera
+   * on oneself (not following a teammate), not a spectator.
+   */
+  gate(): MatchGate {
+    const player = this.client.role === 'player';
+    return {
+      inMatch: this.client.state === 'open', alive: player && !this.dead && this.ghostSince === null,
+      cameraOnSelf: this.watching === null, spectator: !player,
+    };
+  }
+
+  /**
+   * The dead player's prompt (S1 / S1g, `FUN_001f97b0` L56978; drawn by `./weaponSelect` `promptLines` through the
+   * page's overlay): classic's dead or ghost lines, and the seconds since the death edge (the lines hold 10 s and fade).
+   * Null when there is none: alive, following a teammate (S6: the lines are `FUN_001f9f20`'s then), a spectator (S7),
+   * or the respawn rules (S1r, not wired: W4.R7).
+   */
+  prompt(): { ghost: boolean; sinceDeath: number } | null {
+    if (this.client.role !== 'player' || this.rules !== 'classic' || this.watching !== null) return null;
+    const now = performance.now();
+    if (this.ghostSince !== null) return { ghost: true, sinceDeath: (now - this.ghostSince) / 1000 };
+    if (this.dead) return { ghost: false, sinceDeath: (now - this.dead.at) / 1000 };
+    return null;
+  }
+
   /** The page's own throw, to the server (`GrenadeThrower.on('throw')`). */
   throwEvent(kind: string, from: readonly number[], velocity: readonly number[]): void {
     if (this.client.state !== 'open') return;
@@ -395,6 +437,12 @@ export class NetPage {
     this.watching = null;
   }
 
+  /** Seated as a ghost (a classic round in play): benched until the next round, WEAPON EXCHANGE's ghost prompt up. */
+  private seatGhost(): void {
+    this.benched = true;
+    this.ghostSince = performance.now();
+  }
+
   nameOf(id: number): string {
     return this.names.get(id) ?? `Player${id}`;
   }
@@ -412,15 +460,21 @@ export class NetPage {
         this.reached = true;
         this.names.set(ev.id, ev.name);
         if (ev.role === 'spectator') this.spectatorWelcome(ev.queue);
-        for (const p of ev.players) { this.names.set(p.id, p.name); this.teams.set(p.id, p.team); remote.setTeam(p.id, p.team); }
+        for (const p of ev.players) {
+          this.names.set(p.id, p.name); this.teams.set(p.id, p.team); remote.setTeam(p.id, p.team);
+          if (p.kit) remote.setKit(p.id, p.kit);                     // protocol 7: each body's kit, for its holsters
+        }
         if (ev.team) this.teams.set(ev.id, ev.team);
         this.rules = ev.rules ?? this.rules;
         this.rounds = ev.rounds ?? MAX_ROUNDS;
         this.unbench();
-        if (ev.role === 'player' && ev.ghost) {
-          this.benched = true;
-          hud.postMessage(GHOST_LINES.map((text) => ({ text, scale: 0.8 })));
-        } else if (ev.role === 'player') this.roundBanner(ev.round ?? 1);
+        this.dead = null;
+        this.ghostSince = null;
+        // The ghost's lines are WEAPON EXCHANGE's prompt (S1g, `./weaponSelect` `promptLines`), drawn by the overlay.
+        if (ev.role === 'player' && ev.ghost) this.seatGhost();
+        else if (ev.role === 'player') this.roundBanner(ev.round ?? 1);
+        // Protocol 7: a (re)join seats a new player; the side's picks go again (a pick survives a reconnect).
+        if (ev.role === 'player') this.resendPicks(ev.team);
         break;
       case 'joined': this.names.set(ev.id, ev.name); this.teams.set(ev.id, ev.team); remote.setTeam(ev.id, ev.team); break;
       case 'renamed': this.names.set(ev.id, ev.name); break;
@@ -430,10 +484,8 @@ export class NetPage {
         if (ev.victim === this.client.id) {
           const at = performance.now(), clip = ev.clip;
           this.dead = { at, prompted: false };
-          if (this.rules === 'classic') {
-            this.benched = true;
-            hud.postMessage(DEAD_LINES.map((text) => ({ text, scale: 0.8 })));
-          }
+          // Classic: benched; the dead's lines are WEAPON EXCHANGE's prompt (S1, `promptLines`), drawn by the overlay.
+          if (this.rules === 'classic') this.benched = true;
           hud.setHealth(0);
           this.deps.walk.setDeathPose(clip ? () => deathPose(clip, (performance.now() - at) / 1000, this.deps.clips()) : null);
           // The death camera (`./deathCamera`): toward the killer (mode 3), or turning on its own for a death by no
@@ -447,14 +499,16 @@ export class NetPage {
         break;
       case 'spawn':
         if (ev.id === this.client.id) {
-          this.dead = null; this.unbench(); hud.setHealth(1); this.deps.walk.setDeathPose(null);
-          this.deps.respawned();                        // the server refilled its kit at this spawn (room.ts)
-        }
+          this.dead = null; this.ghostSince = null; this.unbench(); hud.setHealth(1); this.deps.walk.setDeathPose(null);
+          this.deps.respawned(ev.kit ?? null);          // the server's kit at this spawn (room.ts; protocol 7 names it)
+        } else if (ev.kit) remote.setKit(ev.id, ev.kit);
         break;
       case 'hurt': hud.setHealth(overall({ hp: ev.health, armour: [] })); break;
       case 'blast': if (ev.ring) this.deps.ring?.(ev.ring.seconds, ev.ring.volume); break;   // the knock: `NetClient`
       case 'shot': {
-        const w = this.deps.weapons(this.teams.get(ev.id) ?? 'seal')[ev.weapon ? 1 : 0];
+        // Protocol 7: the item that fired, by id -- its record (the kit table's), else the side's slot that holds it.
+        const side = this.deps.weapons(this.teams.get(ev.id) ?? 'seal');
+        const w = this.deps.recordOf?.(ev.weapon) ?? side.find((r) => r.id === ev.weapon) ?? side[0];
         this.deps.roundEffects({
           type: 'round', weapon: fireWeaponOf(w), from: ev.from, to: ev.to, hit: ev.normal !== null, rounds: 0,
           normal: ev.normal, material: ev.material,
@@ -467,6 +521,7 @@ export class NetPage {
         this.endsAt = performance.now() + ev.seconds * 1000; this.screens = null;
         this.rounds = ev.rounds ?? this.rounds;
         this.unbench();
+        this.ghostSince = null;
         if (this.client.role === 'player') this.roundBanner(ev.round);
         break;
       case 'eliminated': hud.postMessage(eliminationLines(ev.winner)); break;
@@ -484,13 +539,15 @@ export class NetPage {
         this.deps.spectate(null);
         this.unbench();
         // Protocol 5 (PL-8): seated in a classic round in play, a ghost until the next -- the welcome's lines.
-        if (ev.ghost) { this.benched = true; hud.postMessage(GHOST_LINES.map((text) => ({ text, scale: 0.8 }))); }
+        if (ev.ghost) this.seatGhost();
         else hud.postMessage('YOU ARE IN: A PLACE IS FREE');
+        this.resendPicks(ev.team);                      // protocol 7: the new seat holds the side's picks
         break;
       // Protocol 5 (PL-8): moved out for idling (W3.R13) -- a spectator's view and the queue's line.
       case 'demoted': this.spectatorWelcome(ev.position); break;
       case 'refused': this.reconnect.stopped = true; this.refusal = ev.reason; hud.postMessage(ev.reason); break;
       case 'votes': hud.postMessage(` Voting: You have ${ev.count} votes against you.`); break;
+      case 'loadout': this.deps.loadoutAnswer?.(ev.kit, ev.refused); break;
       case 'kicked': this.reconnect.stopped = true; this.refusal = ev.reason === 'vote' ? 'kicked by a vote' : 'kicked for inactivity';
         hud.postMessage(ev.reason === 'vote' ? 'YOU HAVE BEEN KICKED FROM THIS GAME' : 'Kicked for inactivity.'); break;
       default: break;

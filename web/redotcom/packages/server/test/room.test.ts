@@ -304,7 +304,7 @@ describe('fire, damage and death (W3.R4, research 91 sections 1-4)', () => {
     forged.g.shoot((e) => ({ ...e, weapon: 1 })); forged.g.run(1);
     expect(forged.b.of('hurt')).toHaveLength(1);
     expect(forged.b.of('hurt')[0]!.health).toEqual(honest.b.of('hurt')[0]!.health);   // the rifle's damage
-    expect(forged.b.of('shot')[0]!.weapon).toBe(0);
+    expect(forged.b.of('shot')[0]!.weapon).toBe(HELD_RIFLE.id);          // protocol 7: the item fired, by id
     expect(forged.pa.mags[0].rounds()).toBe(29);
     expect(forged.pa.mags[1].total()).toBe(36);                   // the Mark 23's ring untouched
     // Alternating the index does not reach a second weapon's rate: one round of the two.
@@ -573,7 +573,7 @@ describe('MJ-1: the reload locks the weapon for its clip (motion.rdr playback, F
     g.run(2);
     g.shoot(); g.run(1);
     expect(b.of('shot')).toHaveLength(1);
-    expect(b.of('shot')[0]!.weapon).toBe(1);
+    expect(b.of('shot')[0]!.weapon).toBe(HELD_SIDEARM.id);                // protocol 7: the Mark 23, by id
     expect(p.mags[1].rounds()).toBe(11);
   });
 });

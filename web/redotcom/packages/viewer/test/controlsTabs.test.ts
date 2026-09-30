@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { chooseTab, CONTROLS_TAB_KEY, controlGroups, padControlGroups } from '../src/controlsList';
+import { chooseTab, CONTROLS_TAB_KEY, controlGroups, GROUP_WEAPON_SELECT, padControlGroups } from '../src/controlsList';
 import { Ui } from '../src/ui';
 
 /**
@@ -35,6 +35,18 @@ describe('the lists', () => {
     expect(all).toMatch(/fire/);
     expect(all).toMatch(/zoom/);
     expect(all).toMatch(/grenade/);
+  });
+
+  it('both tabs, walking: WEAPON EXCHANGE -- I or R2 when dead, the touch button, the keys and buttons inside it (M8)', () => {
+    const keys = rows(controlGroups('walk', true)).join(' | ');
+    for (const want of ['I (when dead) = weapon select', 'W / S or Up / Down = slot, item', 'A / D or Left / Right = category', 'X / Enter = choose', 'Backspace = back', 'I = close', 'INV (touch)']) {
+      expect(keys, want).toContain(want);
+    }
+    const pad = rows(padControlGroups('walk', true)).join(' | ');
+    for (const want of ['R2 (when dead) = weapon select', 'D-pad Up / Down = slot, item', 'D-pad Left / Right = category', 'Cross = choose', 'Triangle = back', 'R2 = close']) {
+      expect(pad, want).toContain(want);
+    }
+    for (const make of [controlGroups, padControlGroups]) expect(make('fly', true).some((g) => g.name === GROUP_WEAPON_SELECT)).toBe(false);
   });
 
   it('carries no developer notes, no sources and no debug keys, in any mode', () => {

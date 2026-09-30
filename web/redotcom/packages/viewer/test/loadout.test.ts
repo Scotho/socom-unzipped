@@ -130,6 +130,15 @@ describe('the spawn kit: the character type\'s default_weapons, a pick at the ne
     expect(l.spawn('seal')).toEqual([38, 15, 121, 126, 255]);
   });
 
+  it('protocol 7: a match\'s spawn carries the room\'s kit, which the page takes whatever it holds', () => {
+    const l = new PlayerLoadout();
+    l.setMap(table, map);
+    l.setLoadout(kit(38, 15, 121, 126, 255), 'seal');
+    expect(l.spawn('seal', { network: true, kit: [62, 5, 121, 126, 194] })).toEqual([62, 5, 121, 126, 194]);
+    expect(l.records().map((r) => [r.name, r.mags])).toEqual([['M4A1 SD', 6], ['M9', 6]]);
+    expect(l.spawn('seal', { network: true, kit: [1, 2, 3] })).toEqual([54, 15, 121, 126, 194]);   // not five ids: the type's own
+  });
+
   it.each([
     ['?kit=62,15,121,126,255', [62, 15, 121, 126, 255]],
     ['?map=MP2&kit=62,15&devmode', [62, 15, EMPTY_ITEM, EMPTY_ITEM, EMPTY_ITEM]],
@@ -159,5 +168,32 @@ describe.skipIf(!root)('the runtime kit off the disc: Frostfire', () => {
     expect(kitRecords(sim.table, terrorist).map((r) => [r.name, r.mags])).toEqual([['552', 6], ['M9', 6]]);
     expect([slotModel(sim.table, seal, 0), slotIcon(sim.table, seal, 0)]).toEqual(['m4Acarbine', 'm4carbine_icon.tif']);
     expect([slotModel(sim.table, terrorist, 1), slotIcon(sim.table, terrorist, 1)]).toEqual(['baretta_m9', 'gun_baretta_9mm_icon.tif']);
+  });
+});
+
+describe('protocol 7: the side\'s confirmed picks, the list the room replays (M9)', () => {
+  it('keeps each side\'s picks since the map, in order, from the type\'s kit (or the developer\'s); a new map clears them', () => {
+    const l = new PlayerLoadout();
+    l.setMap(table, map);
+    expect(l.base('seal')).toEqual([54, 15, 121, 126, 194]);
+    expect(l.picks('seal')).toEqual([]);
+    expect(l.confirm('seal', { slot: 0, id: 38 })).toEqual([{ slot: 0, id: 38 }]);
+    expect(l.confirm('seal', { slot: 1, id: 5 })).toEqual([{ slot: 0, id: 38 }, { slot: 1, id: 5 }]);
+    expect(l.picks('terrorist')).toEqual([]);
+    l.setDevKit(kit(62, 15, 121, 126, 255));
+    expect(l.base('terrorist')).toEqual([62, 15, 121, 126, 255]);
+    expect(l.devKit()).toEqual([62, 15, 121, 126, 255]);
+    l.setMap(table, map);
+    expect(l.picks('seal')).toEqual([]);
+  });
+
+  it('the room\'s answer is the side\'s next kit (pending), shown by the menu, taken at the next spawn', () => {
+    const l = new PlayerLoadout();
+    l.setMap(table, map);
+    l.answer('seal', [38, 15, 121, 126, 194]);
+    expect(l.pending('seal')).toEqual([38, 15, 121, 126, 194]);
+    expect(l.spawn('seal')).toEqual([38, 15, 121, 126, 194]);
+    l.answer('seal', [1, 2]);                                             // not a kit: nothing changes
+    expect(l.pending('seal')).toEqual([38, 15, 121, 126, 194]);
   });
 });

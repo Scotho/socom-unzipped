@@ -12,7 +12,7 @@ import {
   type CameraParams, type CollisionLines, type GlobalLighting, type Grid, type GridParams, type ModelLibrary,
   type PlacedModel, type SceneNode,
 } from '@s2u/scene';
-import { BULLET_MARK, parseAiMaps, placeSpawnSlots, spawnsFor, type SpawnSlot, type Spawns } from '@s2u/scene';
+import { BULLET_MARK, parseAiMaps, VALVE_OF_ITEM, placeSpawnSlots, spawnsFor, type SpawnSlot, type Spawns } from '@s2u/scene';
 import type { TextureFlags } from './materialSpec';
 import { collisionOwners, type WorldPoly } from '@s2u/scene';
 import { groundGrid, packGround, type GroundData } from './mover';
@@ -472,7 +472,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   const bulletMark = readEffectBitmap(bytes, toc, BULLET_MARK.texture);
   for (const line of bulletMark.diagnostics) notes.add(line);
   // The HUD weapon box's icons (research 94 §C9): every firearm's `IconTextureName`, beside the HUD's own.
-  const hud = readHud(bytes, toc, arsenal ? firearmIcons(arsenal) : []);
+  const hud = readHud(bytes, toc, arsenal ? arsenalIcons(arsenal) : []);
   for (const line of hud.diagnostics) notes.add(line);
   const actions = readMapActions(bytes, toc, stem);
   for (const line of actions.diagnostics) notes.add(line);
@@ -541,10 +541,19 @@ export function transferables(map: LoadedMap): Transferable[] {
   return out;
 }
 
-/** The firearms' HUD icons, lower case (the HUD's keys): every primary's and secondary's `IconTextureName`. */
-function firearmIcons(arsenal: SimKits): string[] {
+/**
+ * The arsenal's HUD icons, lower case (the HUD's keys): every item's `IconTextureName` -- the firearms' for the weapon
+ * box, and every card WEAPON EXCHANGE may draw (research 94 §B5: the icon of each listed item, equipment included, all
+ * in `COMMON/HUDW_TXR.ZED`; `./weaponSelect` `weaponSelectTextures`). Only what a card can show: a firearm, or an item
+ * a valve can enable (`VALVE_OF_ITEM`: the menu lists nothing else, `FUN_0023c390`) -- the records outside the arsenal
+ * (the binoculars, a `(null)` icon) name bitmaps no library holds.
+ */
+function arsenalIcons(arsenal: SimKits): string[] {
   const icons = new Set<string>();
-  for (const item of arsenal.table.arsenal.items.values()) if (item.kind !== 'equipment' && item.icon) icons.add(item.icon.toLowerCase());
+  for (const item of arsenal.table.arsenal.items.values()) {
+    if (!item.icon || !/\.tif$/i.test(item.icon) || (item.kind === 'equipment' && !VALVE_OF_ITEM.has(item.id))) continue;
+    icons.add(item.icon.toLowerCase());
+  }
   return [...icons];
 }
 

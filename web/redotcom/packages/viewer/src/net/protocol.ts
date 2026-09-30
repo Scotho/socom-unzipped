@@ -26,8 +26,12 @@ import { HOLD_CODES, type HoldClip } from '../mover';
  * `demoted` (its role is a spectator's from then).
  * 6 (2026-09-29, grenade harm): the snapshot's action codes take the blast's knock (`fallForward`, `fallBackwards`,
  * `landBackwards`, `getUpBackwards`, `./blast`), and the server sends a `blast` event (the ringing ears and the knock).
+ * 7 (2026-09-30, web sprint 4 M9, the arsenal): the `loadout` request and its answer (the weapon select's picks, replayed
+ * by the room: `@s2u/scene` `applyPicks`, W4.R6); a body's weapon is the held item's id (`BodyState.weapon`, one byte more
+ * a body) beside its slot; a `spawn` and the welcome's players carry the kit the body spawned with; a `shot` names the
+ * item that fired it; a `kill` names the weapon by its record's `DisplayName` (research 91 §10).
  */
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 
 /** The game's tick (`CGame::Tick`): the mover's `TICK`, the server's loop. */
 export const TICK_HZ = 60;
@@ -167,8 +171,13 @@ export interface BodyState {
   trav: number; travFrame: number; travRootY: number; travBlend: number; travBlendWeight: number;
   /** The peek: -1, 0, 1. */
   peek: number;
-  /** The weapon in hand: 0 the rifle, 1 the sidearm. */
+  /**
+   * Protocol 7: the item in hand, its id (`ZWEAPON` `ID`, the kit's slot's item -- the game's current item,
+   * `FUN_005c89d0`, in the character message, research 94 §A6): what the others draw, fire and hear. 255 none.
+   */
   weapon: number;
+  /** The firearm slot in hand: 0 the primary (the rifle's mounts), 1 the secondary (the sidearm's). */
+  slot: number;
   /** `PlaySnapshot.stickSnaps`' low bit (the packed byte's spare bit 7): a flip starts the snap's 0.2 s cross-fade. */
   stickSnaps?: number;
 }
@@ -291,7 +300,14 @@ export type ClientEvent =
    * DOORS: the action button on the door under the reticle (`FUN_005aa240`'s pick), by its index in `actions.rdr`; the
    * command number it was pressed on. The server checks the reach and runs it (`DoorSet.use`).
    */
-  | { type: 'door'; seq: number; door: number };
+  | { type: 'door'; seq: number; door: number }
+  /**
+   * Protocol 7 (web sprint 4 M9; `PICK_WIRE_READING`): the weapon select's confirmed picks (`@s2u/scene` `Pick`: a slot
+   * 0-4 and an item id), every one since the map's match began for the page's side, in order -- the room replays them
+   * from the character type's own kit (`applyPicks`, W4.R6) and keeps the result as the next round's (R94.3). The
+   * whole list each time, so a request lost, repeated or sent again after a reconnect lands on the same kit.
+   */
+  | { type: 'loadout'; picks: { slot: number; id: number }[] };
 
 /** A row of the scoreboard (research 87 section 12, 91). */
 export interface ScoreRow { id: number; name: string; team: Team; kills: number; deaths: number; score: number; alive: boolean; ping: number }
@@ -300,7 +316,9 @@ export interface ScoreRow { id: number; name: string; team: Team; kills: number;
 export type ServerEvent =
   | {
     type: 'welcome'; id: number; version: number; map: string; tick: number; role: Role; team: Team | null;
-    queue: number; name: string; players: { id: number; name: string; team: Team }[];
+    queue: number; name: string;
+    /** Protocol 7: each player's kit as its body carries it (`kit`, five item ids, slot order), for the others' holsters. */
+    players: { id: number; name: string; team: Team; kit?: number[] }[];
     /**
      * Protocol 4: the room's rules, the round in play (`mp_round_count` + 1) and the game's round count (`mp_max_rounds`,
      * the create-game default 11: the round-start banner's second number, `FUN_001fb420`); `ghost` for a player who
@@ -329,10 +347,21 @@ export type ServerEvent =
    * A mover placed (a spawn or a respawn): the recipient's own when `id` is its own, the commands after `after` run on
    * the new mover (the client rewinds and replays them).
    */
-  | { type: 'spawn'; id: number; at: [number, number, number]; yaw: number; after: number }
+  | {
+    type: 'spawn'; id: number; at: [number, number, number]; yaw: number; after: number;
+    /**
+     * Protocol 7: the kit the body spawned with (`FUN_00599f00`, R94.3: the type's pick, else its own), five item ids --
+     * the page's own kit when `id` is its own, and every page's picture of the others' weapons. The room always sends
+     * it; a page given none (a hand-made event) keeps the kit it has.
+     */
+    kit?: number[];
+  }
   /** A throw by another player (research 85): the page flies the same grenade for its looks, sounds and blast. */
   | { type: 'grenade'; id: number; kind: string; from: [number, number, number]; velocity: [number, number, number] }
-  /** A round fired by another player, for its muzzle, tracer and sound (the hit's decal where it struck the world). */
+  /**
+   * A round fired by another player, for its muzzle, tracer and sound (the hit's decal where it struck the world).
+   * Protocol 7: `weapon` is the firing item's id (the record the page draws and hears it by), no longer a slot.
+   */
   | { type: 'shot'; id: number; weapon: number; from: [number, number, number]; to: [number, number, number]; normal: [number, number, number] | null; material: number | null }
   /** The recipient was hit: health left per part, and where from (research 91a section 7). */
   | { type: 'hurt'; health: number[]; from: [number, number, number]; part: number }
@@ -369,7 +398,19 @@ export type ServerEvent =
    * Classic: a side has no living player (the maps' `objectives` script, sequence `start`): the winner, whose lines the
    * page posts (`./rules` `eliminationLines`); the round's result follows 23 s later.
    */
-  | { type: 'eliminated'; winner: Team };
+  | { type: 'eliminated'; winner: Team }
+  /**
+   * Protocol 7: the answer to a `loadout` request -- the kit the room holds for the recipient's next round (`kit`, five
+   * item ids: what it will spawn with), and when the picks were refused, why and at which (`@s2u/scene`
+   * `PickRefusal`: `slot` a slot past 0-4 or a malformed list, `unknown` an id with no record, `locked` a locked slot,
+   * `refused` an item the side or the slot does not take); refused, the kit is the one held before.
+   */
+  | { type: 'loadout'; kit: number[]; refused: { reason: LoadoutRefusal; at: number } | null };
+
+/** Why a `loadout` request was refused (`@s2u/scene` `PickRefusal`). */
+export type LoadoutRefusal = 'slot' | 'unknown' | 'locked' | 'refused';
+/** The most picks a `loadout` request may carry (the server's guard: the page compacts its list, `../loadout`). */
+export const MAX_LOADOUT_PICKS = 64;
 
 /** Which of the game's kill lines (research 91b section 3). */
 export type KillHow = 'weapon' | 'grenade' | 'suicide' | 'fall' | 'teamkill';

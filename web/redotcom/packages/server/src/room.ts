@@ -1,11 +1,11 @@
 import {
-  AN_M8, gridCast, HE, launchGrenade, M67, MARK141, segmentHit, stepGrenade, UNITS_PER_METRE,
-  type Grenade, type HullCast, type Loadout, type SpawnSlot, type ThrowableRecord, type WeaponRecord,
+  AN_M8, applyPicks, gridCast, HE, launchGrenade, M67, MARK141, segmentHit, stepGrenade, UNITS_PER_METRE,
+  type Grenade, type HullCast, type Loadout, type Pick, type SpawnSlot, type ThrowableRecord, type WeaponRecord,
 } from '@s2u/scene';
 import {
   applyFall, applyHit, bodyOf, bulletDamage, fragmentCount, fragmentDamage, fragmentPart, decodeCommands, encodeSnapshot, freshHealth, groundPolygons, isDead, Lobby,
   DoorSet, doorInReach, MoverSim, overall, ringFor, roundPath, shortTurn, Traversal, Walker, wrapYaw, type MagazineRing,
-  Button, MAX_REWIND_MS, PROTOCOL_VERSION, SNAPSHOT_HZ, TICK_HZ,
+  Button, MAX_LOADOUT_PICKS, MAX_REWIND_MS, PROTOCOL_VERSION, SNAPSHOT_HZ, TICK_HZ,
   ELIMINATED_HOLD_S, eliminationWinner, isMatchOver, MAX_ROUNDS, ROUND_WATCH_S, type Rules,
   EYE_HEIGHT, PROBE_LIFT, fireInterval, reloadLockSeconds, reloadMoving, ShotCone, targetHeight,
   BAKED_LOADOUT, kitRecords, typeLoadout, type SimKits,
@@ -48,9 +48,9 @@ export interface RoomOptions {
    */
   solo?: boolean;
   /**
-   * The page's own room only (`solo`): the kit the page's player spawns with when the developer asked for one (`&kit=`,
-   * `../../viewer/src/loadout` `PlayerLoadout.pending`), else null for the type's own. A network room never reads it:
-   * its kits are its own (W4.R6; the request and its validation are M9's `loadout`).
+   * The page's own room only (`solo`): the developer's kit (`&kit=`, `../../viewer/src/loadout` `PlayerLoadout.devKit`)
+   * standing in for the page's player's character type's own, else null for the type's -- what the player spawns with
+   * and what its `loadout` picks are replayed from. A network room never reads it: its kits are its own (W4.R6).
    */
   soloKit?: () => Loadout | null;
 }
@@ -168,6 +168,12 @@ class Player {
   loadout: Loadout = BAKED_LOADOUT;
   records: readonly [WeaponRecord, WeaponRecord] = SEATED_RECORDS;
   /**
+   * Protocol 7 (web sprint 4, M9): the kit the player's character type holds for its next rebuild -- the weapon select's
+   * picks as the room replayed them (`Room.loadout`; `FUN_0023e5e0` writes the type's kit on confirm, research 94 §B6),
+   * null for the type's own. Applied at the next spawn (classic: the next round, R94.3), and every spawn after.
+   */
+  next: Loadout | null = null;
+  /**
    * The magazines, per weapon: the game's ring (`magazines.ts`, research 84 §18) -- the page's `Fire` counts with the
    * same, so a reload here takes the magazine the page's did; the command count each last fired at (`ran`).
    */
@@ -272,7 +278,10 @@ export class Room {
     this.send(id, {
       type: 'welcome', id, version: PROTOCOL_VERSION, map: this.map.stem, tick: this.tick, role: m.role, team: m.team,
       queue: this.lobby.queuePosition(id), name: m.name,
-      players: this.lobby.players().filter((p) => p.id !== id).map((p) => ({ id: p.id, name: p.name, team: p.team! })),
+      players: this.lobby.players().filter((p) => p.id !== id).map((p) => {
+        const kit = this.players.get(p.id)?.loadout;
+        return { id: p.id, name: p.name, team: p.team!, ...(kit ? { kit: [...kit] } : {}) };
+      }),
       rules: this.opts.rules, round: this.round, rounds: this.opts.maxRounds, ghost: m.role === 'player' && this.seatsGhosts(),
     });
     if (m.role === 'player') this.addPlayer(id, m.team!);
@@ -391,6 +400,7 @@ export class Room {
       case 'door':
         if (isInt(ev.door)) this.useDoor(id, ev.door);
         return;
+      case 'loadout': this.loadout(id, ev.picks); return;
       default: return;
     }
   }
@@ -573,7 +583,8 @@ export class Room {
     // L75931) rebuilds the actor through `FUN_00599b60` (L455158), whose `FUN_00599f00` (L455674) gives the type's
     // `default_weapons` at `Ammo_Capacity` x `NumMags` (research 91 section 4.3): the type's kit (R94.7; the side's
     // first type, DEFAULT_CHARTYPE_PLACEHOLDER), or in the page's own room the page's developer kit.
-    p.loadout = (this.opts.solo ? this.opts.soloKit?.() : null) ?? typeLoadout(this.kits?.map ?? null, p.team) ?? BAKED_LOADOUT;
+    // Protocol 7: the type's kit as the weapon select last wrote it (`p.next`, `FUN_0023e5e0`), else its own.
+    p.loadout = p.next ?? this.typeKit(p);
     p.records = kitRecords(this.kits?.table ?? null, p.loadout);
     p.mags = [ringFor(p.records[0]), ringFor(p.records[1])];
     // The new body's kit is at rest: no reload playing, the rifle in hand, the cone at its floor (`Accuracy.reset`).
@@ -585,7 +596,54 @@ export class Room {
     p.grenades = freshGrenades();
     p.history.length = 0;
     const s = sim.walker.state;
-    this.broadcast({ type: 'spawn', id: p.id, at: [s.x, s.y, s.z], yaw, after });
+    this.broadcast({ type: 'spawn', id: p.id, at: [s.x, s.y, s.z], yaw, after, kit: [...p.loadout] });
+  }
+
+  /**
+   * The character type's own kit for a player (R94.7; the side's first type, DEFAULT_CHARTYPE_PLACEHOLDER) -- in the
+   * page's own room the page's developer kit when it asked for one (`soloKit`) -- the kit a spawn gives when no pick is
+   * held, and the one the weapon select's picks are replayed from.
+   */
+  private typeKit(p: Player): Loadout {
+    return (this.opts.solo ? this.opts.soloKit?.() : null) ?? typeLoadout(this.kits?.map ?? null, p.team) ?? BAKED_LOADOUT;
+  }
+
+  // ---- the weapon select's picks (protocol 7; web sprint 4 M9, W4.R6) ----
+
+  /**
+   * A `loadout` request: the page's confirmed picks, every one since its match began, replayed in order from the type's
+   * own kit through the menu's rules (`applyPicks`: the slot, the id, `slotLocked`, `selectable` for the player's side
+   * under the map's valves, `pick` with its dependants) -- the kit is computed here, never taken from the page. Kept as
+   * the type's next kit (`next`: the next round's rebuild takes it, R94.3) and answered with the kit held; a refused list
+   * changes nothing and is answered with why and where. A malformed list (not an array, a pick without a whole slot and
+   * id, more than `MAX_LOADOUT_PICKS`) is refused as `slot` (BL-2: never thrown). Without the arsenal (a test, a disc
+   * without `ZWEAPON.ZAR`) every item is `unknown`, and the kit is the baked one.
+   */
+  private loadout(id: number, raw: unknown): void {
+    const p = this.players.get(id);
+    if (!p) return;
+    const held = (): number[] => [...(p.next ?? this.typeKit(p))];
+    const picks = picksOf(raw);
+    if (!picks) { this.send(id, { type: 'loadout', kit: held(), refused: { reason: 'slot', at: 0 } }); return; }
+    if (!this.kits) {
+      if (picks.length) { this.send(id, { type: 'loadout', kit: held(), refused: { reason: 'unknown', at: 0 } }); return; }
+      p.next = null;
+      this.send(id, { type: 'loadout', kit: held(), refused: null });
+      return;
+    }
+    const valves = this.kits.map?.valves ?? new Map<string, number>();
+    const out = applyPicks(this.kits.table.arsenal, valves, p.team, this.typeKit(p), picks);
+    if ('refused' in out) { this.send(id, { type: 'loadout', kit: held(), refused: { reason: out.refused, at: out.at } }); return; }
+    p.next = picks.length ? out.loadout : null;
+    this.send(id, { type: 'loadout', kit: held(), refused: null });
+  }
+
+  /**
+   * The name a kill line gives a weapon (research 91 §10: `FUN_003d19a0` L324284, the record whose `+0x7c` id matches,
+   * its `DisplayName` at `+8`): the arsenal's item by id; without the arsenal's item, the record's own name.
+   */
+  private weaponName(itemId: number, fallback: string): string {
+    return this.kits?.table.arsenal.items.get(itemId)?.displayName ?? fallback;
   }
 
   private respawnReady(p: Player): boolean {
@@ -652,7 +710,7 @@ export class Room {
     const struck = path.struck.find((s2) => s2.tag !== undefined);
     const end = path.hit ? path.hit.point : path.end;
     this.broadcast({
-      type: 'shot', id, weapon: w, from: [...from], to: [...end],
+      type: 'shot', id, weapon: record.id, from: [...from], to: [...end],
       normal: path.hit && path.hit.tag === undefined ? path.hit.normal : null, material: path.hit?.material ?? null,
     }, id);
     if (!struck) return;
@@ -664,7 +722,7 @@ export class Room {
     if (dmg === null) return;
     const died = applyHit(victim.health, part, dmg, record.piercing);
     this.send(victimId, { type: 'hurt', health: [...victim.health.hp], from: [...from], part });
-    if (died) this.kill(victim, p, record.name, 'weapon', deathClip('bullet', part, victim.sim.walker.posture, this.opts.random));
+    if (died) this.kill(victim, p, this.weaponName(record.id, record.name), 'weapon', deathClip('bullet', part, victim.sim.walker.posture, this.opts.random));
     void overall;
   }
 
@@ -740,7 +798,7 @@ export class Room {
         knock: k ? { velocity: [k.velocity[0], k.velocity[1], k.velocity[2]], fall: k.fall } : null, after: q.sim.seq,
       });
       if (out.fragments > 0) this.send(q.id, { type: 'hurt', health: [...q.health.hp], from: point, part: out.part });
-      if (out.died) this.kill(q, thrower, t.record.name, q === thrower ? 'suicide' : 'weapon', deathClip('blast', out.part, posture, this.opts.random));
+      if (out.died) this.kill(q, thrower, this.weaponName(t.record.id, t.record.name), q === thrower ? 'suicide' : 'weapon', deathClip('blast', out.part, posture, this.opts.random));
     }
   }
 
@@ -1016,7 +1074,10 @@ export class Room {
 
   private body(p: Player): BodyState {
     const s: PlaySnapshot = p.sim.body();
-    return bodyOf(p.id, s, { alive: p.alive, weapon: p.sim.weapon, aiming: p.aiming, trigger: p.trigger, boost: p.boost });
+    // Protocol 7: the item in the hand by id -- the slot's item on the body's kit (the character message's current item,
+    // `FUN_005c89d0`, research 94 §A6), so the others draw, fire and hear what this body carries.
+    const slot = p.sim.weapon;
+    return bodyOf(p.id, s, { alive: p.alive, weapon: slot, item: p.loadout[slot], aiming: p.aiming, trigger: p.trigger, boost: p.boost });
   }
 
   private send(id: number, ev: ServerEvent): void {
@@ -1058,6 +1119,18 @@ function isInt(v: unknown): v is number {
 /** Three finite numbers: a point or a direction off the wire. */
 function isV3(v: unknown): v is V3 {
   return Array.isArray(v) && v.length === 3 && v.every(isNum);
+}
+
+/** A `loadout` request's picks off the wire: a list of at most `MAX_LOADOUT_PICKS` whole slots and ids, or null. */
+function picksOf(raw: unknown): Pick[] | null {
+  if (!Array.isArray(raw) || raw.length > MAX_LOADOUT_PICKS) return null;
+  const out: Pick[] = [];
+  for (const v of raw) {
+    const o = v as Record<string, unknown> | null;
+    if (!o || typeof o !== 'object' || !isInt(o.slot) || !isInt(o.id)) return null;
+    out.push({ slot: o.slot, id: o.id });
+  }
+  return out;
 }
 
 function freshGrenades(): Record<string, number> {
