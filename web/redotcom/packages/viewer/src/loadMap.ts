@@ -12,7 +12,7 @@ import {
   type CameraParams, type CollisionLines, type GlobalLighting, type Grid, type GridParams, type ModelLibrary,
   type PlacedModel, type SceneNode,
 } from '@s2u/scene';
-import { BULLET_MARK, parseAiMaps, placeSpawnSlots, spawnsFor, type SpawnSlot, type Spawns } from '@s2u/scene';
+import { BULLET_MARK, parseAiMaps, VALVE_OF_ITEM, placeSpawnSlots, spawnsFor, type SpawnSlot, type Spawns } from '@s2u/scene';
 import type { TextureFlags } from './materialSpec';
 import { collisionOwners, type WorldPoly } from '@s2u/scene';
 import { groundGrid, packGround, type GroundData } from './mover';
@@ -478,7 +478,7 @@ export async function loadMap(source: AssetSource, path: string, onStage?: OnSta
   const bulletMark = readEffectBitmap(bytes, toc, BULLET_MARK.texture);
   for (const line of bulletMark.diagnostics) notes.add(line);
   // The HUD weapon box's icons (research 94 §C9): every firearm's `IconTextureName`, beside the HUD's own.
-  const hud = readHud(bytes, toc, arsenal ? firearmIcons(arsenal) : []);
+  const hud = readHud(bytes, toc, arsenal ? arsenalIcons(arsenal) : []);
   for (const line of hud.diagnostics) notes.add(line);
   const actions = readMapActions(bytes, toc, stem);
   for (const line of actions.diagnostics) notes.add(line);
@@ -548,18 +548,23 @@ export function transferables(map: LoadedMap): Transferable[] {
 }
 
 /**
- * The firearms' HUD icons, lower case (the HUD's keys): every primary's and secondary's `IconTextureName`, and every
- * launcher round's -- a round mode's fire-mode cell (`firemode_203_frag.tif` ...; web sprint 4 M4, research 94 §C9).
+ * The arsenal's HUD icons, lower case (the HUD's keys): every item's `IconTextureName` -- the firearms' for the weapon
+ * box, every launcher round's (a round mode's fire-mode cell, `firemode_203_frag.tif` ...; web sprint 4 M4, research 94
+ * §C9), and every card WEAPON EXCHANGE may draw (research 94 §B5: the icon of each listed item, equipment included, all
+ * in `COMMON/HUDW_TXR.ZED`; `./weaponSelect` `weaponSelectTextures`). Only what a card can show: a firearm, a round, or
+ * an item a valve can enable (`VALVE_OF_ITEM`: the menu lists nothing else, `FUN_0023c390`) -- the records outside the
+ * arsenal (the binoculars, a `(null)` icon) name bitmaps no library holds.
  */
-function firearmIcons(arsenal: SimKits): string[] {
+function arsenalIcons(arsenal: SimKits): string[] {
   const icons = new Set<string>();
   for (const item of arsenal.table.arsenal.items.values()) {
     const round = item.cls === 'launcherRound' || item.cls === 'rocketRound';
     // M7 (research 94 §C9): the equipment the box shows too -- `AT4_icon.tif`, `RPG_icon.tif`, `c4.tif`,
-    // `PMN_mine_icon.tif`, `thermal_icon.tif`, `double_ammo_icon.tif` (not the Binoculars' or the internal rows').
+    // `PMN_mine_icon.tif`, `detonator_icon.tif` (the Detonator has no valve) -- not the Binoculars' or the internal rows'.
     const kind = equipmentKind(item.id);
-    const equipment = kind === 'throwable' || kind === 'placed' || kind === 'c4' || kind === 'launcher' || kind === 'detonator' || item.id === ITEM.THERMAL || item.id === ITEM.DOUBLE_AMMO;
-    if ((item.kind !== 'equipment' || round || equipment) && item.icon && !/^\(null\)$/i.test(item.icon)) icons.add(item.icon.toLowerCase());
+    const equipment = kind === 'throwable' || kind === 'placed' || kind === 'c4' || kind === 'launcher' || kind === 'detonator';
+    if (!item.icon || !/\.tif$/i.test(item.icon) || (item.kind === 'equipment' && !round && !equipment && !VALVE_OF_ITEM.has(item.id))) continue;
+    icons.add(item.icon.toLowerCase());
   }
   return [...icons];
 }

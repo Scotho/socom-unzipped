@@ -6,9 +6,9 @@ import { wrapYaw } from '../yaw';
  * game's own precision allows (`./protocol` names the steps). Positions stay float32: a map is a few thousand units
  * across, so float32 keeps a thousandth of a unit, and the mover's own state is float64 only in the sim.
  *
- * Sizes: a command is 15 bytes, a batch of 3 is 51; a body is 55 bytes and a door 2, so a snapshot of 15 bodies and one's
- * own is 861 bytes on a map without doors and 867 on Frostfire (three) -- 26 KB/s at 30 Hz per client, before the
- * WebSocket's framing.
+ * Sizes: a command is 15 bytes, a batch of 3 is 51; a body is 56 bytes (protocol 7: the held item's id, one byte more)
+ * and a door 2, so a snapshot of 15 bodies and one's own is 876 bytes on a map without doors and 882 on Frostfire
+ * (three) -- 26.5 KB/s at 30 Hz per client, before the WebSocket's framing.
  */
 
 class Writer {
@@ -125,7 +125,8 @@ function writeBody(w: Writer, b: BodyState): void {
   w.u16(qYaw(b.yaw)); w.i16(qPitch(b.pitch));
   w.i16(qSpeed(b.vx)); w.i16(qSpeed(b.vy)); w.i16(qSpeed(b.vz));
   w.u16(b.flags);
-  w.u8((b.stance & 3) | ((b.landing & 3) << 2) | ((b.ground & 3) << 4) | ((b.weapon & 1) << 6) | (((b.stickSnaps ?? 0) & 1) << 7));
+  w.u8((b.stance & 3) | ((b.landing & 3) << 2) | ((b.ground & 3) << 4) | ((b.slot & 1) << 6) | (((b.stickSnaps ?? 0) & 1) << 7));
+  w.u8(b.weapon & 0xff);                                   // protocol 7: the item in hand, by id
   w.u8(b.jumps & 0xff);
   w.i8(qStick(b.groundForward)); w.i8(qStick(b.groundRight)); w.i8(b.groundCls);
   w.u8(b.action); w.u8(b.actionSerial & 0xff); w.u16(qSeconds(b.actionT)); w.u16(qSeconds(b.actionSeconds < 0 ? null : b.actionSeconds));
@@ -142,6 +143,7 @@ function readBody(r: Reader): BodyState {
   const vx = dqSpeed(r.i16()), vy = dqSpeed(r.i16()), vz = dqSpeed(r.i16());
   const flags = r.u16();
   const packed = r.u8();
+  const weapon = r.u8();
   const jumps = r.u8();
   const groundForward = dqStick(r.i8()), groundRight = dqStick(r.i8()), groundCls = r.i8();
   const action = r.u8(), actionSerial = r.u8(), actionT = dqSeconds(r.u16()), actionSeconds = dqSeconds(r.u16());
@@ -151,7 +153,7 @@ function readBody(r: Reader): BodyState {
   const peek = r.i8();
   return {
     id, feet, yaw, pitch, vx, vy, vz, flags,
-    stance: packed & 3, landing: (packed >> 2) & 3, ground: (packed >> 4) & 3, weapon: (packed >> 6) & 1, stickSnaps: (packed >> 7) & 1,
+    stance: packed & 3, landing: (packed >> 2) & 3, ground: (packed >> 4) & 3, weapon, slot: (packed >> 6) & 1, stickSnaps: (packed >> 7) & 1,
     jumps, groundForward, groundRight, groundCls, action, actionSerial, actionT, actionSeconds, overlay, overlayT, overlaySeconds,
     turnRate, trav, travFrame, travRootY, travBlend, travBlendWeight, peek,
   };

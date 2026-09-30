@@ -6,7 +6,7 @@
  *
  * The keys are the ones the page binds: `WASD` and the fly keys (`./camera`), `G`, `C`, `Space` (`./walk`), `R`
  * (`./fire`), `B` (`./main`), `X`, `Q`, `E` (`./traversalPage`), `1` to `4` (`./main`, `./kit`), `Tab`, `M`, `F` and the
- * backtick (`./ui`, `./main`); the mouse's click fires and the right click steps the zoom (`./main`, `./fire`). The pad
+ * backtick (`./ui`, `./main`), `I` and the keys inside WEAPON EXCHANGE (`./weaponExchange`); the mouse's click fires and the right click steps the zoom (`./main`, `./fire`). The pad
  * rows follow `PAD_LAYOUT`, with reload on R3 (the motion workstream's binding, 2026-09-29).
  */
 
@@ -24,6 +24,13 @@ export const GROUP_MOVE = 'Move';
 export const GROUP_COMBAT = 'Combat';
 export const GROUP_STANCE = 'Stance & action';
 export const GROUP_WEAPONS = 'Weapons';
+/**
+ * WEAPON EXCHANGE, the dead player's weapon select (web sprint 4, M8; research 94 §B3): the keys and buttons inside it.
+ * The PC key `I`, the touch button and the keys inside are the viewer's choice (the game has only its pad):
+ * `WEAPON_SELECT_KEY_READING`, `WEAPON_SELECT_TOUCH_READING`, `WEAPON_SELECT_MENU_KEYS_READING` (`./weaponSelect`), for
+ * the owner (O-S4-3) -- the lists say only what a player needs.
+ */
+export const GROUP_WEAPON_SELECT = 'Weapon select';
 export const GROUP_GENERAL = 'General';
 
 /**
@@ -105,6 +112,18 @@ function keyGroups(mode: ControlMode, toggle: boolean): ControlGroup[] {
         { keys: '1', does: 'main weapon' },
         { keys: '2', does: 'sidearm' },
         { keys: '3 / 4 / 5', does: 'grenades and equipment' },   // the three equipment slots in kit order (W4.R5)
+        { keys: 'I (when dead)', does: 'weapon select: the next round\'s kit' },
+      ],
+    },
+    {
+      name: GROUP_WEAPON_SELECT,
+      rows: [
+        { keys: 'W / S or Up / Down', does: 'slot, item' },
+        { keys: 'A / D or Left / Right', does: 'category' },
+        { keys: 'X / Enter', does: 'choose' },
+        { keys: 'Backspace', does: 'back' },
+        { keys: 'I', does: 'close' },
+        { keys: 'INV (touch)', does: 'open, close; tap a row or a card' },
       ],
     },
     {
@@ -176,6 +195,17 @@ function padGroups(mode: ControlMode, toggle: boolean): ControlGroup[] {
         { keys: 'L1', does: 'main weapon' },
         { keys: 'L2', does: 'sidearm' },
         { keys: 'R2', does: 'next item: grenades and equipment' },
+        { keys: 'R2 (when dead)', does: 'weapon select: the next round\'s kit' },
+      ],
+    },
+    {
+      name: GROUP_WEAPON_SELECT,
+      rows: [
+        { keys: 'D-pad Up / Down', does: 'slot, item' },
+        { keys: 'D-pad Left / Right', does: 'category' },
+        { keys: 'Cross', does: 'choose' },
+        { keys: 'Triangle', does: 'back' },
+        { keys: 'R2', does: 'close' },
       ],
     },
     {

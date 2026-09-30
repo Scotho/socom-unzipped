@@ -55,7 +55,8 @@ export interface ViewerHook {
    */
   net?(): {
     state: string; id: number; role: string; team: string | null; queue: number; remotes: number;
-    bodies: { id: number; feet: number[]; alive: boolean }[];
+    /** Each other body: its feet, alive, and (protocol 7) the id of the item in its hand and the slot it is in. */
+    bodies: { id: number; feet: number[]; alive: boolean; weapon: number; slot: number }[];
     corrections: { small: number; snapped: number; largest: number }; rtt: number; snapshotRate: number; feet: number[] | null;
   } | null;
   setCamera(pose: Partial<Pose>): void;
@@ -245,6 +246,19 @@ export interface ViewerHook {
   loadout(): { loadout: number[]; records: string[]; models: (string | null)[]; pending: readonly number[] | null };
   /** A pick for the page's side, carried from its next spawn (R94.3); the pick now waiting. The menu's path (M8). */
   setLoadout(ids: readonly number[]): readonly number[] | null;
+  /**
+   * WEAPON EXCHANGE (web sprint 4, M8/M9; `./weaponExchange`): the menu's screen, cursor, picker and kit (the room's
+   * answer once one came), the picks since it opened, the side's list sent as the `loadout` request, the gate, the
+   * dead's prompt lines as drawn (null: none), and whether the touch button shows (null: not on the page).
+   */
+  weaponSelect(): {
+    screen: 'closed' | 'list' | 'picker'; slot: number; category: string; item: number; loadout: number[];
+    picks: { slot: number; id: number }[]; sent: { slot: number; id: number }[];
+    gate: { inMatch: boolean; alive: boolean; cameraOnSelf: boolean; spectator: boolean };
+    prompt: string[] | null; touchButton: boolean | null;
+  };
+  /** A key as the page's keydown gives it to WEAPON EXCHANGE (`KeyboardEvent.code`); whether the menu took it. */
+  weaponSelectKey(code: string): boolean;
   /** WEAPON: L1 / L2 -- takes the rifle or the Mark 23 up (the swap's clip); false when refused or already in the hand. */
   selectWeapon(item: 'rifle' | 'pistol'): boolean;
   /** WEAPON: R2 -- the inventory's next slot (the rifle, the Mark 23, the throwables); the item selected. */

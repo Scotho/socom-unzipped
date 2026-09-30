@@ -168,7 +168,11 @@ state with multiplayer disabled"; `packages/viewer/src/multiplayer.ts`). One bui
 ONLINE count; the `/rooms` poll never starts, so the page asks nothing of `mp.socomunzipped.com` or of a local server;
 `online=`, `mp` and `server=` in the address are ignored and taken out of it; no match server is ever joined; and both
 Controls lists end with "Multiplayer · off in this build". The **offline match** (reCOM mode against yourself, the match
-server's room run in the page, `packages/viewer/src/net/loopback.ts`) stays: it is single player and needs no network.
+server's room run in the page, `packages/viewer/src/net/loopback.ts`) stays: it is single player and needs no network --
+WEAPON EXCHANGE and its `loadout` request included, which go to that room and never to a socket
+(`test/multiplayer.test.ts`). **The site's page stays single player until the owner flips the deploy flag** (spec §8
+O-S4-4): protocol 7 (web sprint 4, below) is served by a redeployed match server, and the site's build keeps
+`VITE_S2U_MULTIPLAYER=off` until then.
 
 **Deploy the viewer before the maps.** Since web sprint 2 `index.json` is `{ maps, common }` -- the map list and
 the shared archives -- rather than a bare array. The new viewer reads both forms; an old viewer fails on the new
@@ -229,7 +233,7 @@ order a player reaches for them -- **Mode** first, since it decides which sectio
 line of plain help. A choice of a few options is always a segmented switch, an on / off always a switch, an amount always
 a slider with its value beside it; each switch's tooltip says which option is the default. On a touch screen every
 control is at least 44 px tall. The **Controls** popover's two lists are grouped (Move, Combat, Stance & action,
-Weapons, General; the fly lists are Move and General). In a build with multiplayer off (`VITE_S2U_MULTIPLAYER=off`, the
+Weapons, Weapon select, General; the fly lists are Move and General). In a build with multiplayer off (`VITE_S2U_MULTIPLAYER=off`, the
 site's; **Multiplayer off** under **Deploying**) there is no **Online** section, and both lists' General group ends with
 "Multiplayer · off in this build".
 
@@ -319,8 +323,31 @@ into the address as `online=off`).
 | `1` / `2` | the main weapon (the rifle) / the sidearm (the Mark 23), as L1 / L2: the game's swap clip plays |
 | `3` / `4` / `5` | the kit's three equipment slots, in the kit's order (`mp_seal1`: the M67, the HE, 2X); `5` is web sprint 4's ruling (W4.R5) for the owner to confirm. A slot the game never takes up (2X, the thermal scope, C4, a launcher's round) does nothing; R2 on the pad steps through the kit's items |
 | `X` at a C4 target | plants C4 (the Action button, as the game does: research 94 §C5.1), after any door in reach |
+| `I` (dead, in a match) | **WEAPON EXCHANGE**, the dead player's weapon select (below): opens it, and closes its slot list (`WEAPON_SELECT_KEY_READING`, the game's `Inventory`: a reading for the owner, O-S4-3) |
 | `Tab` (held) | the round's scoreboard, as SELECT held on the console ([`docs/research/87-hud.md`](docs/research/87-hud.md) §12); the pad's Select too |
 | `M` | the tactical map, and back (SELECT on the console; SOCOM II's single-player map over the map's `AIMAPS.MPS`, heading-up, drawn over the world with the HUD hidden: [`docs/research/87-hud.md`](docs/research/87-hud.md) §9); `-` / `=` held zoom it out and in |
+
+### WEAPON EXCHANGE: the weapon select (web sprint 4, M8/M9)
+
+SOCOM II's dead player's menu ([research 94](docs/research/94-the-arsenal.md) part 2; `packages/viewer/src/weaponExchange.ts`,
+`weaponSelect.ts`, `weaponSelectState.ts`): in a match -- the offline match or a server's, never `&nomatch`'s free walk --
+dead (or a ghost), the camera on yourself and not a spectator, the prompt "You have died.  [I] Select new weapons." (the
+pad's R2, the touch button's `[INV]`) is drawn over the HUD and the menu opens. Five rows (primary, sidearm, equipment
+1-3; a locked slot dimmed and skipped), a picker per slot with the side's own items only, silent, as the game's. Each
+confirm sends the side's picks to the room (the `loadout` request, protocol 7), which replays them through the game's
+rules and answers with the kit you will spawn with at the next round -- what the menu then shows. While it is open the
+game's keys and buttons do nothing (the HUD's mode 1). The PC key, the touch control and the keys inside are the
+viewer's choice, readings for the owner (O-S4-3): `WEAPON_SELECT_KEY_READING`, `WEAPON_SELECT_TOUCH_READING`,
+`WEAPON_SELECT_MENU_KEYS_READING`.
+
+| input | inside the menu |
+|---|---|
+| `W` / `S`, Up / Down arrows (pad: d-pad Up / Down) | the previous / next slot; in the picker, the previous / next item |
+| `A` / `D`, Left / Right arrows (pad: d-pad Left / Right) | the picker's previous / next category |
+| `X` or `Enter` (pad: Cross) | opens the picker on the slot; in the picker, confirms the item |
+| `Backspace` (pad: Triangle or Start) | back: the picker to the list, the list closed |
+| `I` (pad: R2) | closes the slot list |
+| **INV** (touch, shown with the prompt) | opens and closes it; a tap on a row opens its picker, on the middle card confirms, on the others or the arrows steps |
 
 ### The controller
 
@@ -624,10 +651,11 @@ M4A1, Mark 23, M67, HE and Double Ammo Load; the Terrorists' `mp2_terror1` the 5
 item ids (`packages/viewer/src/loadout.ts`). L1 and L2 take up its primary and secondary, each with its own record
 (rate, modes, magazines, zoom, reticle set, cone, kick, muzzle animation, sounds), its own model at its own grip (every
 firearm model of the map's weapon library, decoded once with the map, built on first use) and its own HUD icon
-(`IconTextureName`); 2X doubles the firearms' magazines, at most ten (`FUN_005c75f0`, research 94 §A7). A pick
-(`setLoadout`; the weapon select to come) waits for the next spawn -- in classic, the next round. The match's room keys
-its rate, reload lock, cone, damage and falloff by the player's own slot records, the arsenal read from `SOCOM_DISC` at
-the server's start; the others are drawn with their side's type's kit. Without `ZWEAPON.ZAR` the kit is the baked M4A1
+(`IconTextureName`); 2X doubles the firearms' magazines, at most ten (`FUN_005c75f0`, research 94 §A7). A pick (WEAPON
+EXCHANGE, above; the hook's `setLoadout`) waits for the next spawn -- in classic, the next round. The match's room owns
+the kit (W4.R6): it replays the picks, holds the kit, keys its rate, reload lock, cone, damage and falloff by the player's
+own slot records -- never the page's claim -- the arsenal read from `SOCOM_DISC` at the server's start; the others are
+drawn with the kit their spawn named and the item their body holds. Without `ZWEAPON.ZAR` the kit is the baked M4A1
 SD and Mark 23 of before. **The equipment follows the loadout** (web sprint 4 M7, research 94 §C4-§C5): the pouch is the
 three equipment slots' (`viewer/src/equipment.ts`); the LAW and the RPG-7 are raised from their slot and fire their
 rocket straight at the reticle's point (980 u/s^2, no fall, a dud inside 10 m, 20 in 15 m) with the backblast behind
@@ -791,14 +819,15 @@ server at this page's host, `/ws`) or `?mode=play&mp&server=wss://host/ws`, on t
 | K, then 1-9 | the vote to remove a teammate (TEAMMATES, VOTE RETAIN / REMOVE; passes on more than half the team, at the round's end) |
 | Space / V | spectating: the next living player / the free camera |
 | Space (classic, dead) | the next living teammate to watch until the next round |
+| `I` / R2 / **INV** (dead) | WEAPON EXCHANGE: the kit for the next round (see **WEAPON EXCHANGE** under **Controls**) |
 | Settings > Online > name | your name, 30 characters at most; blank is the game's `Player####` |
 
 A match is **classic** (respawn off, the game's create-game default), online and in the offline match alike; there is
 no Rules choice, and an old link's `rules=` is ignored and taken out of the address. The match starts once both sides
 have a player: 11 rounds, first to 6. A round
 ends when a side has no living player (tested from 15 s in; "ALL TERRORISTS ELIMINATED" / "SEALS VICTORIOUS!", 23 s
-more, then ROUND COMPLETE) or at 00:00 as a draw. There is no respawn. The dead see "You have died." and watch their
-living teammates (Space) until the next round. A player who joins mid-round is a ghost until then. Level after round
+more, then ROUND COMPLETE) or at 00:00 as a draw. There is no respawn. The dead see "You have died.  [I] Select new
+weapons.", may pick the next round's kit in WEAPON EXCHANGE, and watch their living teammates (Space) until the next round. A player who joins mid-round is a ghost until then. Level after round
 11 plays a tiebreaker ("PLAYING TIEBREAKER ROUND"), and another while it is drawn. Every round starts everyone at the
 side's start slots with a full kit. Scoring: +2 a kill, +1 alive at the end, +5 each on the winning side. The rules and their sources are in research 91 section 19.
 
@@ -812,6 +841,15 @@ implementation. The player is the host's side, the SEALs; nobody is kicked for i
 with the one player and runs to its clock (`SOLO_ROUND_PLACEHOLDER`: the game launches only with both sides seated).
 `&nomatch` keeps the free walk of before, and so does `&fly` (the tests' and the tools' opening). The rules and their
 sources: [research 91](docs/research/91-the-round.md) section 20.
+
+**Protocol 7** (web sprint 4, M9; `packages/viewer/src/net/protocol.ts`): a page and a server of another version refuse
+each other at the hello (a protocol-6 page is told `protocol 6, this server speaks 7`). New in 7: the `loadout` request
+-- the side's weapon-select picks since the match began, in order, the whole list each time (so a rejoin sends it again
+and lands on the same kit) -- and its answer, the kit the room holds for the next round or the refusal (`slot`,
+`unknown`, `locked`, `refused`: the other side's item, a second primary, a locked slot); a body carries the id of the
+item in its hand (56 bytes a body, 882 bytes a snapshot of 15 on Frostfire); a `spawn` and the welcome's players carry
+the kit; a `shot` names its item; a kill line names the weapon by its `DisplayName` ("12 GAUGE PUMP", "2X AMMO"; research
+91 §10). The site's page stays single player until the owner flips the deploy flag (O-S4-4).
 
 `?lag=100&loss=2` runs the page's latency and
 loss injector (ms each way, % of frames). `npx tsx tools/mp-bots.ts --spawn-server --disc test-fixtures` measures a

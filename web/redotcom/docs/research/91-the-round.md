@@ -878,7 +878,7 @@ The `objectives` script was read again for this section from `MP51.ZDB:MZANIM.ZA
 | elimination's result | the winner's round win counted at once; "ALL TERRORISTS ELIMINATED" (0.7) / "SEALS VICTORIOUS!" (0.9), or "ALL SEALS ELIMINATED" / "TERRORISTS WIN!"; the result 23 s later; then the engine's 3 s and ROUND COMPLETE's 5 s | seq `start` (`mp_score0x` += 1, `mp_winner`, two MESSAGEs, WAIT 2); `success` / `failure` (WAIT 20, `round_count` += 1, `game_over`, WAIT 1); `mp51LOC` 5103-5106; `FUN_002a9b30` L150612-150672 |
 | time-out | at 00:00, and not before 15 s, the round is a draw: no message, no hold, nobody gets the win | seq `mission_timer` (WAIT 15, WHILE `mp_timer` != 0) -> `abort` (`round_count` += 1, `mp_winner` = 99, `game_over`, `mission_timeout` = 1) |
 | no respawn | the Action press does nothing while a classic round is on | `FUN_002a7560` L149405-149431 (respawn needs the option) |
-| the dead | "You have died.  R2 Select new weapons." and the "cycle through living teammates" lines are posted to the message window; Space follows each living teammate in turn (the page's fly camera behind the body, as the spectator's) | `FUN_001f97b0` L57000-57007 (0x3e32e0, 0x3e3350, 0x3e3380); `FUN_005979a0` L454484-454489; key: `SPECTATOR_PAD_PLACEHOLDER`; the leading words: `HELP_GLYPH_LEAD_PLACEHOLDER` |
+| the dead | "You have died.  R2 Select new weapons." and the "cycle through living teammates" lines -- since web sprint 4 (M8) WEAPON EXCHANGE's prompt, drawn on the HUD as research 94 §B4 S1 reads it (`weaponSelect.ts` `promptLines`), no longer posted to the message window; Space follows each living teammate in turn (the page's fly camera behind the body, as the spectator's) | `FUN_001f97b0` L57000-57007 (0x3e32e0, 0x3e3350, 0x3e3380); `FUN_005979a0` L454484-454489; key: `SPECTATOR_PAD_PLACEHOLDER` |
 | late joiners | a player seated mid-round is a ghost: not alive, not counted, placed at the next round; the page posts the ghost lines | UIMnLOC 352-353; `FUN_001f97b0` L57047-57062 (0x3e31c0, 0x3e31f0, 0x3e3280, 0x3e32b0) |
 | between rounds | everyone, the ghosts too, is placed at a round-start slot of the side with a full kit; the team scores reset | `FUN_00223680` L75913-75931 (`FUN_00598b90(p,0)` for every non-ghost player; `FUN_002a7d40`) |
 | start slot | the player slot's own record, not a random one | L158760-158787; the player slot is stood in for by the player's place among its side's ids: `START_SLOT_LINK_PLACEHOLDER` |
@@ -894,8 +894,8 @@ The `objectives` script was read again for this section from `MP51.ZDB:MZANIM.ZA
 - `CLASSIC_WAITING_PLACEHOLDER`: the room before both sides are seated, and after a side empties. The original never
   plays that state: it stays in its lobby, or abandons the game (`FUN_002bc530` L161130-161140).
 - `START_SLOT_LINK_PLACEHOLDER`: the link from the player slot `+0xfc8` to the lobby (section 4.2, open).
-- `HELP_GLYPH_LEAD_PLACEHOLDER`: the words before the pad glyph in 0x3e3350 and 0x3e3280. The strings dump cuts at the
-  glyph. "Use the" is taken from the spectator's 0x3e30f0.
+- `HELP_GLYPH_LEAD_PLACEHOLDER` was retired in web sprint 4 (M8): the lines are research 94 §B4's (`promptLines`, the
+  d-pad glyphs 0xa3 / 0xaf in place, `GLYPH_READING` / `PAD_GLYPH_PLACEHOLDER`), no longer the page's own words.
 - `OBJECTIVE_BY_MAP_PLACEHOLDER`: the non-SUPPRESSION maps' objectives. The rooms run SUPPRESSION's rules everywhere.
 - The standing placeholders `SPECTATOR_PAD_PLACEHOLDER` and `RESPAWN_BANNER_PLACEHOLDER` also apply.
 - `KIT_PLACEHOLDER` was retired in web sprint 4 (M3/M4): the kit is the character type's (section 16's row).

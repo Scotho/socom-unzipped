@@ -11,8 +11,14 @@ import { ACTION_CODES, BodyFlag, LANDING_CODES, STANCE_CODES, type BodyState } f
  * way: every field the animator reads is carried, quantised (`./codec`).
  */
 
-/** What a body carries beside its mover: alive, the weapon, the aim and the trigger, the sprint. */
-export interface BodyExtras { alive: boolean; weapon: 0 | 1; aiming: boolean; trigger: boolean; boost: boolean }
+/**
+ * What a body carries beside its mover: alive, the firearm slot in hand (`weapon`, the mover's 0 / 1), the aim and the
+ * trigger, the sprint -- and (protocol 7) `item`, the id of the item in that slot (255, none, when not given).
+ */
+export interface BodyExtras { alive: boolean; weapon: 0 | 1; item?: number; aiming: boolean; trigger: boolean; boost: boolean }
+
+/** No item (`EMPTY_ITEM`, `EQUIP_NONE`): a body's `weapon` when its kit is not known. */
+const NO_ITEM = 255;
 
 const stanceCode = (s: Stance): number => Math.max(0, STANCE_CODES.indexOf(s));
 const actionCode = (name: MoverActionName): number => ACTION_CODES.indexOf(name) + 1;
@@ -45,12 +51,15 @@ export function bodyOf(id: number, s: PlaySnapshot, extras: BodyExtras): BodySta
     turnRate: s.turnRate,
     trav: t ? travCode(t.clip) : 0, travFrame: t?.frame ?? 0, travRootY: t?.rootY ?? Number.NaN,
     travBlend: t?.blend ? travCode(t.blend.clip) : 0, travBlendWeight: t?.blend?.weight ?? 0,
-    peek: s.peek ?? 0, weapon: extras.weapon,
+    peek: s.peek ?? 0, weapon: extras.item ?? NO_ITEM, slot: extras.weapon,
   };
 }
 
-/** The wire's `BodyState` back as the `PlaySnapshot` a remote body's animator takes. */
-export function snapshotOf(b: BodyState): PlaySnapshot & { alive: boolean; weapon: 0 | 1; aiming: boolean; trigger: boolean; boost: boolean } {
+/**
+ * The wire's `BodyState` back as the `PlaySnapshot` a remote body's animator takes; `weapon` is the slot in hand (the
+ * mounts follow it, `../remotePlayers`) and `item` the id of what is in it (the model, the muzzle, the sounds).
+ */
+export function snapshotOf(b: BodyState): PlaySnapshot & { alive: boolean; weapon: 0 | 1; item: number; aiming: boolean; trigger: boolean; boost: boolean } {
   const stance = STANCE_CODES[b.stance] ?? 'stand';
   const groundState: GroundMotion['state'] = b.ground === 0 ? 'idle' : (STANCE_CODES[b.ground - 1] ?? 'stand');
   const actionName = b.action ? ACTION_CODES[b.action - 1] : undefined;
@@ -80,7 +89,7 @@ export function snapshotOf(b: BodyState): PlaySnapshot & { alive: boolean; weapo
       }
       : null,
     peek: (b.peek < 0 ? -1 : b.peek > 0 ? 1 : 0),
-    alive: (b.flags & BodyFlag.Alive) !== 0, weapon: (b.weapon ? 1 : 0), aiming: (b.flags & BodyFlag.Aiming) !== 0,
+    alive: (b.flags & BodyFlag.Alive) !== 0, weapon: (b.slot ? 1 : 0), item: b.weapon, aiming: (b.flags & BodyFlag.Aiming) !== 0,
     trigger: (b.flags & BodyFlag.Trigger) !== 0, boost: (b.flags & BodyFlag.Boost) !== 0,
   };
 }

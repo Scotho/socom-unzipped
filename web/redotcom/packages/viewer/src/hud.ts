@@ -260,7 +260,9 @@ export const WHITE = 'white';
 export type HudElement =
   | 'panel' | 'rounds' | 'mags' | 'icon' | 'firemode' | 'compass' | 'bar' | 'name' | 'box' | 'timer' | 'range'
   | 'stance' | 'action' | 'banner' | 'message' | 'fader' | 'marks' | 'tacmap' | 'zoom' | 'scopeRange' | 'scoreboard'
-  | 'roundScreen';
+  | 'roundScreen'
+  /** WEAPON EXCHANGE and the dead's prompt (`./weaponSelect`, `./weaponExchange`; research 94 part 2), the overlay's layer 1. */
+  | 'weaponSelect';
 
 /** One textured quad in frame pixels (y down): its centre, size, turn (radians, clockwise), texels, colour. */
 export interface HudQuad {
