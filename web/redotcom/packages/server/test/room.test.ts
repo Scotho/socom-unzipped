@@ -3,7 +3,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FsAssetSource } from '@s2u/archive/node';
 import {
-  arsenalOf, DEFAULT_RIFLE, HELD_RIFLE, HELD_SIDEARM, type CollisionOwner, type EffectProgram, type GridParams, type KitTable, type Loadout,
+  arsenalOf, DEFAULT_RIFLE, HELD_RIFLE, HELD_SIDEARM, M67, type CollisionOwner, type EffectProgram, type GridParams, type KitTable, type Loadout,
   type MapArsenal, type MotionClip, type SpawnSlot, type WeaponRecord, type WorldPoly,
 } from '@s2u/scene';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
@@ -576,6 +576,152 @@ describe('MJ-1: the reload locks the weapon for its clip (motion.rdr playback, F
     expect(b.of('shot')).toHaveLength(1);
     expect(b.of('shot')[0]!.weapon).toBe(1);
     expect(p.mags[1].rounds()).toBe(11);
+  });
+});
+
+describe('M4: each class on the server -- the lock after a round, the reload\'s delay and time, the volley, the rounds (research 94 part 3)', () => {
+  const kit = (...ids: number[]): Loadout => ids as unknown as Loadout;
+  const rec = (over: Partial<WeaponRecord>): WeaponRecord => ({ ...DEFAULT_RIFLE, fireModes: [1], maxFireMode: 1, ...over });
+  const records: WeaponRecord[] = [
+    rec({ name: 'M40A1', id: 102, fireWait: 0.5, magazine: 25, mags: 1, reloadAfterShot: true, reloadDelayAfterShot: 0.5 }),
+    rec({ name: '870', id: 84, fireWait: 0.75, magazine: 8, mags: 5, reloadAfterShot: true, reloadDelay: 1, pellets: 4, impactDamage: 2.5, damageModifier: 0, effectiveRange: 41, maximumRange: 84, piercing: 6 }),
+    rec({ name: 'Spas 12', id: 81, fireWait: 0.45, magazine: 12, mags: 3, reloadTime: 2, reloadDelay: 0.5, pellets: 4 }),
+    rec({ name: 'M4A1-M203', id: 61, fireModes: [1, 2, 3], maxFireMode: 3 }),
+    rec({ name: 'MGL', id: 142, fireWait: 0.25, magazine: 6, mags: 2, fireModes: [], maxFireMode: 0, ammo: '', ammoId: -1 }),
+    HELD_SIDEARM,
+  ];
+  /** The M203 FRAG round (research 94 §C4.1): 270 u/s, armed at 100 u, an impact round; its blast 10 x 14 inside 150 u. */
+  const frag = { ...M67, name: 'M203 FRAG', id: 175, muzzleVelocity: 270, armingDistance: 100, impact: true, fuse: 10, removal: 10.1, explosionRadius: 150 };
+  const arsenal = arsenalOf(['ZAMMO', [], 'ZWEAPON', [
+    ['InternalName', ['M203 FRAG'], 'ID', ['175'], 'Ammo_Capacity', ['6'], 'NumMags', ['1'], 'AMMO_TYPES', [[]]],
+    // A second record: `parseRdr`'s shape of a one-record list is the record itself.
+    ['InternalName', ['M203 HE'], 'ID', ['171'], 'Ammo_Capacity', ['6'], 'NumMags', ['1'], 'AMMO_TYPES', [[]]],
+  ]]);
+  const kitsFor = (terrorist: Loadout, seal: Loadout = kit(62, 15, 121, 126, 255)): SimKits => ({
+    table: {
+      arsenal, records: new Map(records.map((r) => [r.id, r])),
+      rounds: new Map([[175, { record: frag, piercing: 0, fireWait: 1, reloadAfterShot: true, reloadDelayAfterShot: 0.5, icon: 'firemode_203_frag.tif' }]]),
+    },
+    map: {
+      valves: new Map(), selectable: { seal: [], terrorist: [] },
+      kits: { seal: [{ type: 'S', character: 's', loadout: seal }], terrorist: [{ type: 'T', character: 't', loadout: terrorist }] },
+    },
+  });
+  /** The clips' lengths the room times the after-shot by (`seal_pump_shotgun` ...; a stand-in table). */
+  const CLIPS = reloadClips({
+    seal_reload: 1.6, seal_reload_shotgun: 2.2, seal_pump_shotgun: 0.8, seal_reload_m203: 1.9, seal_mv_reload: 1.2,
+  });
+
+  /** Player 1 (the Terrorists' kit) at the origin, player 2 100 units east; 1 looks at 2's chest. */
+  function range(terrorist: Loadout, clips: SimClips | null = CLIPS) {
+    const s = setup({}, flatMap(), clips, kitsFor(terrorist));
+    const a = s.join(1), b = s.join(2);
+    s.room.step();
+    const pa = s.room.player(1)!, pb = s.room.player(2)!;
+    pa.sim.walker.place(0, 20, 0); pb.sim.walker.place(100, 20, 0);
+    const g = gunner(s, 1);
+    for (let i = 0; i < 20; i++) s.room.step();
+    g.face([100, 12, 0]);
+    return { ...s, a, b, pa, pb, g };
+  }
+
+  it.each([
+    // what, the kit, commands after the round a second is refused at, and taken at
+    ['the M40A1\'s bolt: 0.5 s, then its shotgun reload clip (2.2 s)', kit(102, 15, 255, 255, 255), Math.round((0.5 + 2.2) * TICK_HZ) - 2, Math.round((0.5 + 2.2) * TICK_HZ)],
+    // (0.01 s is within the page's first frame: the lock's whole ticks, then the clip's.)
+    ['the 870\'s pump: 0.01 s (R94.12), then the pump clip (0.8 s)', kit(84, 15, 255, 255, 255), Math.round(0.8 * TICK_HZ) - 2, Math.round(0.8 * TICK_HZ)],
+    ['the Spas 12: no lock -- its FireWait (0.45 s)', kit(81, 15, 255, 255, 255), Math.round(0.45 * TICK_HZ) - 2, Math.round(0.45 * TICK_HZ)],
+  ] as const)('%s', (_what, loadout, refused, taken) => {
+    const r1 = range(loadout);
+    r1.g.face([100, 60, 400]);
+    r1.g.shoot(); r1.g.run(refused);
+    r1.g.shoot(); r1.g.run(1);
+    expect(r1.b.of('shot').filter((s) => s.id === 1).length).toBe(1);        // one ray a pull sent here
+    const r2 = range(loadout);
+    r2.g.face([100, 60, 400]);
+    r2.g.shoot(); r2.g.run(taken);
+    r2.g.shoot(); r2.g.run(1);
+    expect(r2.b.of('shot').filter((s) => s.id === 1).length).toBe(2);
+  });
+
+  it.each([
+    // what, the kit, the reload's lock in seconds: ReloadDelay + (ReloadTime still, else the clip)
+    ['the Spas 12: 0.5 + ReloadTime 2 (FUN_005a82e0 L462940-462945; no clip needed)', kit(81, 15, 255, 255, 255), 0.5 + 2, null],
+    ['the 870: its ReloadDelay 1 + the shotgun reload clip 2.2', kit(84, 15, 255, 255, 255), 1 + 2.2, CLIPS],
+  ] as const)('%s', (_what, loadout, seconds, clips) => {
+    for (const [after, shots] of [[Math.round(seconds * TICK_HZ) - 2, 0], [Math.round(seconds * TICK_HZ) + 1, 1]] as const) {
+      const r = range(loadout, clips);
+      r.g.face([100, 60, 400]);
+      r.g.run(60);
+      r.room.text(1, { type: 'reload', seq: r.pa.sim.seq });
+      r.g.run(after);
+      r.g.shoot(); r.g.run(1);
+      expect([after, r.b.of('shot').filter((s) => s.id === 1).length > 0 ? 1 : 0]).toEqual([after, shots]);
+    }
+  });
+
+  it('the 870\'s volley: four rays one shell, the victim hurt once by the pellets its range gives (FUN_005abbc0, FUN_005a1620)', () => {
+    const { b, pa, pb, g } = range(kit(84, 15, 255, 255, 255));
+    const ev = g.claim();
+    for (let i = 0; i < 4; i++) g.shoot(() => ev);
+    g.run(1);
+    expect(b.of('shot').filter((s) => s.id === 1)).toHaveLength(4);
+    expect(pa.mags[0].rounds()).toBe(7);                                    // one shell (FUN_005be9a0 L475608)
+    expect(b.of('hurt')).toHaveLength(1);                                   // once a volley (the +0x1048 guard)
+    expect(pb.health.hp.reduce((x, y) => x + y, 0)).toBeLessThan(8 + 30 + 30 + 50 + 30 + 30);
+    // A fifth ray at the same command is no ray of that volley: refused (and no second shell).
+    g.shoot(() => ev); g.run(1);
+    expect(b.of('shot').filter((s) => s.id === 1)).toHaveLength(4);
+    expect(pa.mags[0].rounds()).toBe(7);
+  });
+
+  /** Player 2 (the SEALs' kit) throws its round at `target` from its eye (the page's `launch` -> `throw`). */
+  const launch = (s: ReturnType<typeof range>, target: V3, kind = 'M203 FRAG', speed = 270): void => {
+    const st = s.room.player(2)!.sim.walker.state, from: V3 = [st.x, st.y + EYE_HEIGHT, st.z];
+    const d: V3 = [target[0] - from[0], target[1] - from[1], target[2] - from[2]], l = Math.hypot(...d);
+    s.room.text(2, { type: 'throw', seq: s.room.player(2)!.sim.seq, kind, from, velocity: [d[0] / l * speed, d[1] / l * speed, d[2] / l * speed] });
+  };
+  function seals(seal: Loadout) {
+    const s = setup({}, flatMap(), CLIPS, kitsFor(kit(62, 15, 121, 126, 255), seal));
+    const a = s.join(1), b = s.join(2);
+    s.room.step();
+    s.room.player(1)!.sim.walker.place(300, 20, 0); s.room.player(2)!.sim.walker.place(0, 20, 0);
+    for (let i = 0; i < 20; i++) s.room.step();
+    return { ...s, a, b, pa: s.room.player(1)!, pb: s.room.player(2)! } as unknown as ReturnType<typeof range>;
+  }
+
+  it('the M4A1-M203\'s FRAG: launched as a throw of the round, one off its slot, flown and gone off at the target (C4.3)', () => {
+    const s = seals(kit(61, 15, 141, 175, 194));
+    const r = s.room.player(2)!;
+    launch(s, [300, 60, 0]);                                             // lobbed a little: it falls to the feet
+    expect(s.a.of('grenade')).toEqual([expect.objectContaining({ id: 2, kind: 'M203 FRAG' })]);
+    for (let i = 0; i < 3 * TICK_HZ; i++) s.room.step();
+    expect(s.a.of('hurt').length).toBeGreaterThan(0);                     // the blast reached player 1
+    expect(r.grenades).not.toHaveProperty('M203 FRAG');                 // not a pouch throwable
+    // Its FireWait (1 s) and lock (0.5 s + `Rifle m203 reload` 1.9 s) before the next; five left of six.
+    launch(s, [300, 60, 0]);                                             // lobbed a little: it falls to the feet
+    expect(s.a.of('grenade')).toHaveLength(1);
+  });
+
+  it.each([
+    ['a round the kit does not hold', kit(61, 15, 141, 175, 194), 'M203 HE', 270],
+    ['a rifle with no launcher', kit(54, 15, 175, 255, 255), 'M203 FRAG', 270],
+    ['a round flying faster than its Muzzle_Velocity', kit(61, 15, 141, 175, 194), 'M203 FRAG', 400],
+  ] as const)('refuses %s', (_what, loadout, kind, speed) => {
+    const s = seals(loadout);
+    launch(s, [300, 10, 0], kind, speed);
+    expect(s.a.of('grenade')).toHaveLength(0);
+  });
+
+  it('a round landing inside its arming distance is a dud: no blast (FUN_003c8920 L319439-319462)', () => {
+    const s = seals(kit(61, 15, 141, 175, 194));
+    s.room.player(1)!.sim.walker.place(60, 20, 0);
+    for (let i = 0; i < 10; i++) s.room.step();
+    launch(s, [60, 0, 0]);                                               // the floor 60 units off, under player 1
+    for (let i = 0; i < 4 * TICK_HZ; i++) s.room.step();
+    expect(s.a.of('grenade')).toHaveLength(1);
+    expect(s.a.of('hurt')).toHaveLength(0);
+    expect(s.a.of('blast')).toHaveLength(0);
   });
 });
 
