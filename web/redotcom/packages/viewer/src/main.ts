@@ -1901,7 +1901,7 @@ window.__viewer = {
   traversal: () => traversal.stats(),
   net: () => net && {
     state: net.client.state, id: net.client.id, role: net.client.role, team: net.client.team, queue: net.client.queue,
-    remotes: remote.count(), bodies: net.client.bodies().map((b) => ({ id: b.id, feet: [...b.feet], alive: (b.flags & 64) !== 0 })),
+    remotes: remote.count(), bodies: net.client.bodies().map((b) => ({ id: b.id, feet: [...b.feet], alive: (b.flags & 64) !== 0, weapon: b.weapon, slot: b.slot })),
     corrections: { ...net.client.corrections }, rtt: net.client.rtt, snapshotRate: net.client.snapshotRate(), feet: walk.feet(),
   },
   action: () => traversal.action(),

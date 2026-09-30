@@ -40,7 +40,8 @@ export interface ViewerHook {
    */
   net?(): {
     state: string; id: number; role: string; team: string | null; queue: number; remotes: number;
-    bodies: { id: number; feet: number[]; alive: boolean }[];
+    /** Each other body: its feet, alive, and (protocol 7) the id of the item in its hand and the slot it is in. */
+    bodies: { id: number; feet: number[]; alive: boolean; weapon: number; slot: number }[];
     corrections: { small: number; snapped: number; largest: number }; rtt: number; snapshotRate: number; feet: number[] | null;
   } | null;
   setCamera(pose: Partial<Pose>): void;

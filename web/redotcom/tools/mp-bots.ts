@@ -2,7 +2,7 @@
  * Headless bots and a load/soak test for the multiplayer server (web sprint 3, M9).
  *
  *   npx tsx tools/mp-bots.ts [--url ws://127.0.0.1:8787/ws] [--map MP2] [--players 16] [--spectators 8] [--seconds 60]
- *                            [--lag 0] [--loss 0] [--json out.json] [--spawn-server --disc <dir>]
+ *                            [--lag 0] [--loss 0] [--json out.json] [--spawn-server --disc <dir>] [--kits]
  *
  * Each bot is the page's `NetClient` over a real `ws` socket, with a headless mover driven at 60 Hz as `WalkMode` drives
  * it networked (the `PageWalk` of `packages/server/test/netcode.test.ts`) and a seeded, scripted behaviour: a random walk
@@ -10,6 +10,11 @@
  * It measures the server's step time, its tick rate (60 Hz holding), the bytes out per client, the bots' snapshot
  * rates, the corrections, the kills, and (in-process) the process's CPU and RSS. `runBots` is the harness; the CLI
  * runs only when this file is executed directly.
+ *
+ * `--kits` (web sprint 4, M9; protocol 7): mixed kits -- each player bot, once seated, sends a `loadout` request with a
+ * seeded primary and sidearm of its side's own list on the map (`MapArsenal.selectable`, read from the disc as the
+ * server reads it), which the room replays and applies at the next round's spawn; the report counts the requests, the
+ * refusals and the distinct primaries the spawns carried.
  */
 import { existsSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -21,6 +26,8 @@ import {
   BodyFlag, Button, centreClaim, groundPolygons, loadSimClips, loadSimMap, MoverSim, quantiseCommand, TICK_HZ, Traversal, Walker,
   type Command, type ServerEvent, type SimClips, type SimMap, type Role,
 } from '../packages/viewer/src/sim';
+import { slotKindOf, type MapArsenal, type Pick } from '@s2u/scene';
+import { loadKitSource, simKitsFromBytes } from '../packages/viewer/src/loadout';
 import { NetClient, type NetWalk, type WebSocketLike } from '../packages/viewer/src/net/client';
 import { wrapYaw } from '../packages/viewer/src/yaw';
 import { MatchServer } from '../packages/server/src/server';
@@ -45,6 +52,8 @@ export interface BotOptions {
   seed?: number;
   /** A line of progress per second (the CLI). */
   progress?: (line: string) => void;
+  /** Protocol 7: each player bot asks for a seeded kit of its side's own items (`--kits`). */
+  kits?: boolean;
 }
 
 export interface SecondSample {
@@ -75,6 +84,8 @@ export interface Report {
     corrections: { small: number; snapped: number; largest: number };
     kills: number;
     cpuPercent: number | null; rssMb: number | null;
+    /** `--kits`: the loadout requests sent, the refusals, and the distinct primaries the bots' spawns carried. */
+    kits: { requests: number; refused: number; primaries: number[] } | null;
   };
 }
 
@@ -141,8 +152,11 @@ class Bot {
   private forward = 1; private right = 0; private turn = 0; private yaw: number;
   private changeAt = 0; private jumpAt: number; private stanceAt: number; private fireAt: number;
   private stance = 0; private rounds = 0;
+  /** `--kits`: the requests sent and refused, and the kit of the last spawn the room gave this bot. */
+  requests = 0; refused = 0; spawnKit: number[] | null = null;
 
-  constructor(readonly index: number, readonly name: string, opts: BotOptions, map: SimMap, polys: ReturnType<typeof groundPolygons>, clips: SimClips | null) {
+  constructor(readonly index: number, readonly name: string, opts: BotOptions, map: SimMap, polys: ReturnType<typeof groundPolygons>, clips: SimClips | null,
+    arsenal: MapArsenal | null = null) {
     this.rand = rng((opts.seed ?? 1) * 7919 + index * 104729);
     this.yaw = this.rand() * 360;
     this.jumpAt = 120 + this.rand() * 360;
@@ -155,7 +169,17 @@ class Bot {
     }, this.walk);
     this.client.on((ev: ServerEvent) => {
       if (ev.type === 'kill') { this.kills++; if (ev.victim === this.client.id) this.dead = true; }
-      else if (ev.type === 'spawn' && ev.id === this.client.id) this.dead = false;
+      else if (ev.type === 'spawn' && ev.id === this.client.id) { this.dead = false; this.spawnKit = ev.kit ?? null; }
+      else if (ev.type === 'loadout' && ev.refused) this.refused++;
+      // Protocol 7, `--kits`: seated as a player, a seeded primary and sidearm of the side's own list.
+      else if (arsenal && (ev.type === 'welcome' || ev.type === 'promoted') && (ev.type === 'promoted' || ev.role === 'player') && ev.team) {
+        const own = arsenal.selectable[ev.team];
+        const primaries = own.filter((id) => slotKindOf(id) === 'primary'), sidearms = own.filter((id) => slotKindOf(id) === 'secondary');
+        const picks: Pick[] = [];
+        if (primaries.length) picks.push({ slot: 0, id: primaries[Math.floor(this.rand() * primaries.length)]! });
+        if (sidearms.length) picks.push({ slot: 1, id: sidearms[Math.floor(this.rand() * sidearms.length)]! });
+        if (picks.length) { this.client.send({ type: 'loadout', picks }); this.requests++; }
+      }
     });
   }
 
@@ -243,12 +267,19 @@ export async function runBots(opts: BotOptions): Promise<Report> {
   let clips: SimClips | null = null;
   try { clips = await loadSimClips(opts.source); } catch { clips = null; }
   const polys = groundPolygons(map.ground);
+  // `--kits`: the map's arsenal off the same disc the server reads (`ZWEAPON.ZAR`, `READERC.ZAR`, the map's `READERM.ZAR`).
+  let arsenal: MapArsenal | null = null;
+  if (opts.kits) {
+    const kitSource = await loadKitSource(opts.source);
+    if (kitSource) arsenal = simKitsFromBytes(kitSource, await opts.source.read(`RUN/${opts.map.toUpperCase()}.ZDB`)).map;
+    if (!arsenal) throw new Error('--kits: no ZWEAPON.ZAR / READERC.ZAR / READERM.ZAR kits on the disc');
+  }
   const total = opts.players + opts.spectators;
   const bots: Bot[] = [];
   try {
     // Joined one at a time, each welcomed before the next: the queue's order is the join order.
     for (let i = 0; i < total; i++) {
-      const bot = new Bot(i, `${i < opts.players ? 'BOT' : 'SPEC'}${i}`, opts, map, polys, clips);
+      const bot = new Bot(i, `${i < opts.players ? 'BOT' : 'SPEC'}${i}`, opts, map, polys, clips, arsenal);
       bots.push(bot);
       await until(() => bot.client.id !== 0 || bot.client.state === 'refused' || bot.client.state === 'closed', 15_000, `welcome of bot ${i}`);
     }
@@ -326,6 +357,10 @@ export async function runBots(opts: BotOptions): Promise<Report> {
         corrections: corr, kills: Math.max(0, ...summaries.map((b) => b.kills)),
         cpuPercent: opts.server ? ((cpu.user + cpu.system) / 1000 / (wall * 1000)) * 100 : null,
         rssMb: opts.server ? process.memoryUsage().rss / (1024 * 1024) : null,
+        kits: opts.kits ? {
+          requests: bots.reduce((a, b) => a + b.requests, 0), refused: bots.reduce((a, b) => a + b.refused, 0),
+          primaries: [...new Set(bots.map((b) => b.spawnKit?.[0]).filter((x): x is number => x !== undefined))].sort((x, y) => x - y),
+        } : null,
       },
     };
     return report;
@@ -349,6 +384,7 @@ export function markdown(r: Report): string {
     ['kills seen', `${s.kills}`],
     ['process CPU (server + bots, % of one core)', s.cpuPercent === null ? 'n/a (remote)' : f(s.cpuPercent, 1)],
     ['process RSS (MB)', s.rssMb === null ? 'n/a (remote)' : f(s.rssMb, 0)],
+    ...(s.kits ? [['kits: requests / refused / primaries spawned', `${s.kits.requests} / ${s.kits.refused} / ${s.kits.primaries.join(', ') || 'none'}`] as [string, string]] : []),
   ];
   return ['| measure | value |', '| --- | --- |', ...rows.map(([k, v]) => `| ${k} | ${v} |`)].join('\n');
 }
@@ -375,7 +411,7 @@ async function main(): Promise<void> {
   try {
     const report = await runBots({
       url, map: (val('map') ?? 'MP2').toUpperCase(), players: num('players', 16), spectators: num('spectators', 8), seconds: num('seconds', 60),
-      lag: num('lag', 0), loss: num('loss', 0), source, server, seed: num('seed', 1), progress: (l) => console.log(l),
+      lag: num('lag', 0), loss: num('loss', 0), source, server, seed: num('seed', 1), progress: (l) => console.log(l), kits: flag('kits'),
     });
     console.log(`\n${markdown(report)}`);
     const json = val('json');
