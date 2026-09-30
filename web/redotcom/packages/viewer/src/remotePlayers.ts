@@ -11,6 +11,7 @@ import type { PlaySnapshot, SwapProgress } from './mover';
 import { SEAL_ANIMS } from './locomotion';
 import type { BodyState, Team } from './net/protocol';
 import { Play, type PlayClips } from './play';
+import { cloneHeld } from './sights';
 import type { Mount } from './heldItem';
 import { handedAt, handOffOf, type Firearm } from './kit';
 
@@ -77,7 +78,11 @@ export interface HeldRef { object: Object3D; points: readonly WeaponPoint[] }
  * the player's own kit when the room has named it (`kit`, protocol 7), else its side's first type's
  * (DEFAULT_CHARTYPE_PLACEHOLDER), as the local player spawns with.
  */
-export type SideKit = (team: Team, kit: readonly number[] | null) => { rifle: HeldRef | null; pistol: HeldRef | null };
+export type SideKit = (team: Team, kit: readonly number[] | null) => {
+  rifle: HeldRef | null; pistol: HeldRef | null;
+  /** The kit drawn and its two firearms' ids: the copies' scope nodes follow them (`./sights` `cloneHeld`). */
+  loadout?: readonly number[]; ids?: readonly [number, number];
+};
 
 /** No item (`EMPTY_ITEM`): a body whose kit is not known says so in `BodyState.weapon`. */
 const NO_ITEM = 255;
@@ -266,9 +271,9 @@ export class RemotePlayers {
     const refs = this.kitOf?.(r.team, kit) ?? { rifle: null, pistol: null };
     r.play.setWeapon(null, []);
     r.play.setSidearm(null, []);
-    r.weapon = refs.rifle ? refs.rifle.object.clone(true) : null;
+    r.weapon = refs.rifle ? cloneHeld(refs.rifle.object, refs.loadout ?? null, refs.ids?.[0] ?? null) : null;
     if (r.weapon && refs.rifle) r.play.setWeapon(r.weapon, refs.rifle.points);
-    r.sidearm = refs.pistol ? refs.pistol.object.clone(true) : null;
+    r.sidearm = refs.pistol ? cloneHeld(refs.pistol.object, refs.loadout ?? null, refs.ids?.[1] ?? null) : null;
     if (r.sidearm && refs.pistol) r.play.setSidearm(r.sidearm, refs.pistol.points);
     r.points = { rifle: refs.rifle?.points ?? [], pistol: refs.pistol?.points ?? [] };
     r.kit = kit;

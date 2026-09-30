@@ -77,6 +77,11 @@ export type LoadedMesh = MeshData & {
    * prop's are per placement, on its entry (`LoadedMap.props[].cells`). Absent on a draw built by hand.
    */
   cells?: number[];
+  /**
+   * A held weapon's part: the model's node it came from (`scope`, `thermal_scope`, `m82a1_high` ...), which the kit
+   * shows or hides (`./sights` `showScopeNodes`: the thermal scope's swap, `FUN_005b82e0`). Absent on the world's.
+   */
+  node?: string;
 };
 
 export interface LoadedMap {
@@ -543,15 +548,17 @@ export function transferables(map: LoadedMap): Transferable[] {
 
 /**
  * The arsenal's HUD icons, lower case (the HUD's keys): every item's `IconTextureName` -- the firearms' for the weapon
- * box, and every card WEAPON EXCHANGE may draw (research 94 §B5: the icon of each listed item, equipment included, all
- * in `COMMON/HUDW_TXR.ZED`; `./weaponSelect` `weaponSelectTextures`). Only what a card can show: a firearm, or an item
- * a valve can enable (`VALVE_OF_ITEM`: the menu lists nothing else, `FUN_0023c390`) -- the records outside the arsenal
- * (the binoculars, a `(null)` icon) name bitmaps no library holds.
+ * box, every launcher round's (a round mode's fire-mode cell, `firemode_203_frag.tif` ...; web sprint 4 M4, research 94
+ * §C9), and every card WEAPON EXCHANGE may draw (research 94 §B5: the icon of each listed item, equipment included, all
+ * in `COMMON/HUDW_TXR.ZED`; `./weaponSelect` `weaponSelectTextures`). Only what a card can show: a firearm, a round, or
+ * an item a valve can enable (`VALVE_OF_ITEM`: the menu lists nothing else, `FUN_0023c390`) -- the records outside the
+ * arsenal (the binoculars, a `(null)` icon) name bitmaps no library holds.
  */
 function arsenalIcons(arsenal: SimKits): string[] {
   const icons = new Set<string>();
   for (const item of arsenal.table.arsenal.items.values()) {
-    if (!item.icon || !/\.tif$/i.test(item.icon) || (item.kind === 'equipment' && !VALVE_OF_ITEM.has(item.id))) continue;
+    const round = item.cls === 'launcherRound' || item.cls === 'rocketRound';
+    if (!item.icon || !/\.tif$/i.test(item.icon) || (item.kind === 'equipment' && !round && !VALVE_OF_ITEM.has(item.id))) continue;
     icons.add(item.icon.toLowerCase());
   }
   return [...icons];
@@ -598,7 +605,7 @@ function heldWeapons(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes, arsenal: 
       for (const d of decoded.diagnostics) notes.add(`weapon ${decoded.name}: ${d}`);
       const parts: LoadedMesh[] = decoded.parts.flatMap((part) => part.meshes.map((mesh) => ({
         ...mesh, textureName: mesh.textureName === null ? null : textureKey(mesh.textureName),
-        order: 0, orderEnd: 0, alternate: false, scroll: null,
+        order: 0, orderEnd: 0, alternate: false, scroll: null, node: part.node,
       })));
       out[model] = { name: decoded.name, parts, points: decoded.points };
     } catch (e) {

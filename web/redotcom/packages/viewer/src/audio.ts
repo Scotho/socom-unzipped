@@ -760,6 +760,17 @@ export class GameAudio {
     return name && this.play(name, position, 'reload') ? name : null;
   }
 
+  /**
+   * The end of `weapon`'s after-shot lock (the bolt, the pump): its `ReloadAfterShotSound` at the body -- `FUN_005c3000`
+   * (L477551-477650) plays the weapon's `+0xa0` handle with the after-shot clip (research 94 §C1.1: the 870's
+   * `.SHOTGUN_COCK`; no other record names one, so the bolt snipers' lock ends silent). The fire workstream emits it.
+   */
+  onReloadAfterShot(weapon: string, position: Vec3 | null = null): string | null {
+    this.events.reload++;
+    const name = this.weapons.get(weapon)?.afterShot;
+    return name && this.play(name, position, 'reload') ? name : null;
+  }
+
   /** The jump: the `seal_jump` clip's `jump_whoosh` callback (`motion.rdr`, time 0.4), played now. */
   onJump(position: Vec3 | null = null): string | null {
     this.events.jump++;

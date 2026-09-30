@@ -101,7 +101,8 @@ export function buildBody(body: LoadedBody, map: Pick<LoadedMap, 'textures' | 't
   // from the posed normal (`./rigShading`).
   const rig = rigShading(lighting.rig);
   // Then the night vision's command 0x5c while the goggles are on (`./nightVision`): the characters' packets carry it too.
-  const litColour = nightLit(vec4(vertexColor().rgb.mul(rig.lit), vertexColor().a));
+  // A character's draws take the lens's row 2 (`FUN_00313240(model, 2)`, L406210: hot under the thermal scope).
+  const litColour = nightLit(vec4(vertexColor().rgb.mul(rig.lit), vertexColor().a), 2);
   const texel = materialReference('map', 'texture') as unknown as Node<'vec4'>;
   const modulated = vec4(texel.mul(litColour)).clamp(0, 1);
   const shaded = vec4(modulated.rgb.mul(brighten), modulated.a);

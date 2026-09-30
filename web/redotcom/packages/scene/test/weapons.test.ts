@@ -202,3 +202,75 @@ describe.skipIf(!ZWEAPON || !READERC)('the default rifle off the game\'s ZWEAPON
     expect(m23.stances.prone).toMatchObject({ knock: 20, targetMin: 14, targetMax: 34, dilateMoveMult: 60 });
   });
 });
+
+// ---- web sprint 4, M4: each firearm class's own keys (research 94 §C1.1, §C1.2, §C2.1, §C4) ---------------------------
+
+/** A firearm record with the class keys a test adds (the parser's names: `FUN_003cda30` L322538-322556). */
+const classRecord = (name: string, id: number, extra: [string, RdrNode][] = [], ammo = '5.56 x 45mm'): RdrNode[] => rec(
+  ['InternalName', name], ['FireWait', '0.5'], ['ID', String(id)], ['NumMags', '3'], ['Ammo_Capacity', '8'], ['Maximum_Range', '84'],
+  ['DecalSet', 'BULLET_MARK_SMALL'], ['AMMO_TYPES', ammo ? [rec(['NAME', ammo])] : []], ['Reticule_Modifiers', rec(['STANCE_STAND', stance])],
+  ...extra,
+);
+const classes: RdrNode = [
+  'ZAMMO', [rec(['InternalName', '5.56 x 45mm'], ['ID', '8']), rec(['InternalName', '12 Gauge'], ['ID', '27'], ['NumProjectilesFired', '4'])],
+  'ZWEAPON', [
+    classRecord('M40A1', 102, [['ReloadAfterShot', []], ['ReloadDelayAfterShot', '0.5']]),
+    // The 870's own spelling: `ReloadAfterShotDelay`, a key the parser has no string for (R94.12).
+    classRecord('870', 84, [['ReloadAfterShot', []], ['ReloadAfterShotDelay', '0.8'], ['ReloadDelay', '1'], ['ReloadAfterShotSound', '.SHOTGUN_COCK']], '12 Gauge'),
+    classRecord('Spas 12', 81, [['ReloadTime', '2'], ['ReloadDelay', '0.5']], '12 Gauge'),
+    classRecord('M60E3', 91, [['ReloadTime', '3'], ['AutoMode', []]]),
+    classRecord('MGL', 142, [['MaxFireMode', '0']], ''),
+    m4,
+  ],
+];
+
+describe('the class keys a firearm record carries (web sprint 4 M4; research 94 §C1, §C2.1)', () => {
+  it.each([
+    // name, ReloadTime, ReloadDelay, ReloadAfterShot, ReloadDelayAfterShot, the after-shot sound, pellets
+    ['M40A1', undefined, undefined, true, 0.5, undefined, undefined],
+    ['870', undefined, 1, true, undefined, '.SHOTGUN_COCK', 4],
+    ['Spas 12', 2, 0.5, undefined, undefined, undefined, 4],
+    ['M60E3', 3, undefined, undefined, undefined, undefined, undefined],
+    ['M4A1', undefined, undefined, undefined, undefined, undefined, undefined],
+  ] as const)('%s: ReloadTime %s, ReloadDelay %s, the bolt/pump %s after %s, sound %s, pellets %s -- only the keys it has',
+    (name, reloadTime, reloadDelay, reloadAfterShot, reloadDelayAfterShot, afterShotSound, pellets) => {
+      const r = weaponRecord(classes, name);
+      expect([r.reloadTime, r.reloadDelay, r.reloadAfterShot, r.reloadDelayAfterShot, r.afterShotSound, r.pellets])
+        .toEqual([reloadTime, reloadDelay, reloadAfterShot, reloadDelayAfterShot, afterShotSound, pellets]);
+      // An absent key is absent, not a default: the baked records (DEFAULT_RIFLE ...) stay the file's, deep-equal.
+      for (const k of ['reloadTime', 'reloadDelay', 'reloadAfterShot', 'reloadDelayAfterShot', 'afterShotSound', 'pellets'] as const) {
+        if (r[k] === undefined) expect(Object.hasOwn(r, k), `${name} ${k}`).toBe(false);
+      }
+    });
+
+  it('a grenade launcher (no AMMO_TYPES round) is read only when asked for as a carrier: no round, no firearm mode', () => {
+    expect(() => weaponRecord(classes, 'MGL')).toThrow('AMMO_TYPES');
+    const mgl = weaponRecord(classes, 'MGL', { carrier: true });
+    expect(mgl).toMatchObject({ name: 'MGL', id: 142, ammo: '', ammoId: -1, magazine: 8, mags: 3, maxFireMode: 0, fireModes: [] });
+  });
+});
+
+describe.skipIf(!ZWEAPON)('the class keys off the disc (research 94 §C11)', () => {
+  it.each([
+    ['M40A1', { reloadAfterShot: true, reloadDelayAfterShot: 0.5 }],
+    ['M87ELR', { reloadAfterShot: true, reloadDelayAfterShot: 0.5 }],
+    ['870', { reloadAfterShot: true, reloadDelay: 1, afterShotSound: '.SHOTGUN_COCK', pellets: 4 }],
+    ['Spas 12', { reloadTime: 2, reloadDelay: 0.5, pellets: 4 }],
+    ['JACKHAMMER', { reloadTime: 2, reloadDelay: 0.5, pellets: 4 }],
+    ['M60E3', { reloadTime: 3 }],
+    ['M63A', { reloadTime: 2.5 }],
+  ] as const)('%s reads %o', (name, keys) => {
+    expect(readWeapon(bytes(ZWEAPON!), name)).toMatchObject(keys);
+  });
+
+  it('the 870 keeps the parser\'s after-shot default: its ReloadAfterShotDelay is no key the game reads (R94.12)', () => {
+    expect(readWeapon(bytes(ZWEAPON!), '870').reloadDelayAfterShot).toBeUndefined();
+  });
+
+  it('the MGL and the M79 read as carriers: the record\'s magazine, no firearm mode', () => {
+    const zar = Zar.parse(bytes(ZWEAPON!));
+    const script = parseRdr(zar.data(zar.root.children[0]!));
+    expect(weaponRecord(script, 'MGL', { carrier: true })).toMatchObject({ id: 142, magazine: 6, mags: 2, fireWait: 0.25, fireModes: [] });
+    expect(weaponRecord(script, 'M79', { carrier: true })).toMatchObject({ id: 143, magazine: 8, mags: 1, fireWait: 1.5, fireModes: [] });
+  });
+});

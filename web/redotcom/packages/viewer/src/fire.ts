@@ -4,9 +4,13 @@ import {
 } from 'three';
 import type { Material, Object3D } from 'three';
 import type { Rgba } from '@s2u/gs';
-import { BULLET_MARK, DEFAULT_RIFLE, UNITS_PER_METRE, segmentHit, segmentHits, type DecalEntry, type Grid, type WeaponRecord } from '@s2u/scene';
+import {
+  BULLET_MARK, DEFAULT_RIFLE, UNITS_PER_METRE, itemClass, loftAim, segmentHit, segmentHits, type DecalEntry, type Grid, type KitRound, type WeaponRecord,
+} from '@s2u/scene';
 import { roundPath } from './round';
 import { ringFor, type MagazineRing } from './magazines';
+import { afterShotLock, pelletsOf, reloadDelayOf, RELOAD_DELAY_DEFAULT } from './firearms';
+import { reloadFamily, type ReloadItem } from './reloadClip';
 import { RifleKick, type KickStance, type KickStats } from './rifleKick';
 import type { SurfaceShade } from './surfaceShade';
 import { markClipGeometry, markFrame, squareInto, TEMP_DECAL_TRIANGLES, type MarkClipper, type MarkFrame } from './markClip';
@@ -63,6 +67,12 @@ import { markClipGeometry, markFrame, squareInto, TEMP_DECAL_TRIANGLES, type Mar
  * - **The events** (`subscribe`, for the audio and the body): `round` each time a round leaves, with the weapon's
  *   name and id, the fire point in the world, the aim's end and whether it met the hull; `reloadStart` with the
  *   reload's length; `reloadEnd` when the fresh magazine is in (`completed`), or when a reset cut it short.
+ * - **Each class** (web sprint 4 M4, research 94 part 3; the rules are `./firearms`'): the reload waits the record's
+ *   `ReloadDelay` and plays its class's clip, over `ReloadTime` still (`FUN_005a82e0`); a bolt or a pump
+ *   (`ReloadAfterShot`) locks the fire after each round with another left, then plays its after-shot clip and sound
+ *   (`afterShot`, for the body and the audio) and holds the fire while it plays; a shotgun's pull fires its pellets,
+ *   each its own ray and cone draw, one shell; and a launcher carrier's round mode (`setRound`) launches the round
+ *   instead of a bullet (`launch`, for the flight: `./grenade`, the server's `throw`).
  */
 
 type Vec3 = [number, number, number];
@@ -77,11 +87,27 @@ export const MAX_DECALS = 150;
 /** A reload's length in seconds [estimate: the header]. */
 export const RELOAD_SECONDS = 2;
 /**
- * WEAPON: the reload's delay, seconds (`ReloadDelay`, the weapon spec's `+0x5c`, default 0.01 -- no record sets it):
- * every reload starts through `FUN_005c2a90` this long after it is asked for, by the button or by the magazine running
- * dry (`FUN_005c5340` 479297-479320: the automatic reload, not for grenades).
+ * WEAPON: the reload's delay's default, seconds (`ReloadDelay`, the weapon spec's `+0x5c`, default 0.01): every reload
+ * starts through `FUN_005c2a90` this long after it is asked for, by the button or by the magazine running dry
+ * (`FUN_005c5340` 479297-479320: the automatic reload, not for grenades). Web sprint 4 M4: the record's own
+ * `ReloadDelay` where it has one (the Spas 12's and JACKHAMMER's 0.5, the 870's 1: `./firearms` `reloadDelayOf`).
  */
-export const RELOAD_DELAY = 0.01;
+export const RELOAD_DELAY = RELOAD_DELAY_DEFAULT;
+/**
+ * FIREPOINT_203_READING (research 94 §C4.2): a round mode fires from the model's `firepoint_203` node (0x65f8b8,
+ * `FUN_005bd6d0` L475528-475531); the held models the page decodes (`m4Acarbine_203`, `m16_M203`, `mglmk1`, `m79` on
+ * Frostfire's `WEAP_GEO`, 2026-09-30) name no such point among theirs -- `firepoint`, `firepoint_shell`, `aimpoint`,
+ * `Gun_box` -- so where the source has none the round leaves the model's `firepoint` (the bullet's muzzle).
+ */
+export const FIREPOINT_203_READING = 'firepoint';
+
+/**
+ * A carrier's round mode (`setRound`; research 94 §C4.2): the round's item id (the mode), its record and fire keys
+ * (`@s2u/scene` `KitRound`), and the ring of the kit slot the fire is redirected to (`./firearms` `KitRounds.ring`).
+ */
+export interface FireRound { id: number; round: KitRound; ring: MagazineRing }
+/** What the reticle asks of a round mode (R94.16: the grey inside the arming distance): `Fire.roundMode`. */
+export interface RoundModeInfo { id: number; name: string; armingDistance: number; icon: string | null }
 /** The tracer's start from the eye, in the view's own axes (right, up, ahead), units [estimate: a muzzle stand-in]. */
 const MUZZLE: Vec3 = [1.2, -1.5, 3];
 /** `FUN_005aa6e0`'s tolerance on a hit against the aim, units a coordinate (decomp 464340-464350): 0.008. */
@@ -115,7 +141,13 @@ export interface FireSource {
   grid(): Grid | null;
   aim(): FireAim | null;
   muzzle?(): Vec3 | null;
-  reloadSeconds?(): number | null;
+  /**
+   * The reload's (or the after-shot's) clip seconds (`Play.reloadSeconds`): the clip `family` for the stance and the
+   * speed (`./reloadClip`), or the record's `ReloadTime` when still; null without the clips.
+   */
+  reloadSeconds?(family?: ReloadItem, reloadTime?: number): number | null;
+  /** The held model's `firepoint_203` in the world (a round mode's launch point), null without one (`FIREPOINT_203_READING`). */
+  launchPoint?(): Vec3 | null;
   /** WEAPON: the aim's pitch (radians, up positive) and the stance, for the kick (`./rifleKick`); null when not walking. */
   look?(): { pitch: number; stance: KickStance } | null;
   /** WEAPON: turns the aim's pitch by `radians` (the kick). */
@@ -169,11 +201,26 @@ export type FireEvent =
      * server checks them against its own run of the cone (protocol 5, `./net/shotCone`).
      */
     eye?: Vec3; aim?: Vec3;
+    /** M4: a shotgun's pull -- this ray's index and the pull's rays (`NumProjectilesFired`); one shell, one sound. */
+    pellet?: number; pellets?: number;
   }
-  | { type: 'reloadStart'; weapon: FireWeapon; seconds: number }
+  /** `family`: the clip family the reload plays (`./reloadClip`). */
+  | { type: 'reloadStart'; weapon: FireWeapon; seconds: number; family?: ReloadItem }
   /** WEAPON: the trigger pulled on an empty magazine (the game's empty click; a reload follows when there is a magazine). */
   | { type: 'dry'; weapon: FireWeapon }
-  | { type: 'reloadEnd'; weapon: FireWeapon; completed: boolean };
+  | { type: 'reloadEnd'; weapon: FireWeapon; completed: boolean }
+  /**
+   * M4 (`FUN_005c3000` L477551-477650): the bolt's or the pump's lock ran out -- the after-shot clip plays (`family`,
+   * `seconds`; the fire held meanwhile) and the held weapon's `ReloadAfterShotSound` (`sound`: `.SHOTGUN_COCK` on the
+   * 870, null for none) at the body -- the audio's cue. Not a reload: no magazine moves, no `reload` goes to the server.
+   */
+  | { type: 'afterShot'; weapon: FireWeapon; sound: string | null; family: ReloadItem; seconds: number }
+  /**
+   * M4 (research 94 §C4.2-§C4.3): a round mode's round leaves `from` (`firepoint_203`, `FIREPOINT_203_READING`) along
+   * `dir` -- lofted onto the aimed point (`loftAim`) -- at `velocity` (the round's `Muzzle_Velocity` x `dir`); `rounds`
+   * left in its slot. The page flies it (`./grenade` `launchRound`) and tells the server (`throw`).
+   */
+  | { type: 'launch'; weapon: FireWeapon; round: { id: number; name: string }; from: Vec3; dir: Vec3; velocity: Vec3; to: Vec3; rounds: number };
 export type FireListener = (event: FireEvent) => void;
 export interface ShotHit {
   point: Vec3; normal: Vec3; distance: number;
@@ -196,10 +243,16 @@ export interface MarkTable {
  * One round: the segment tested and what it met -- `hit` where it stopped (null: it stopped in the air), `through` the
  * surfaces it went through on the way (marked and struck, research 84 section 13).
  */
-export interface Shot { from: Vec3; to: Vec3; hit: ShotHit | null; through?: ShotHit[] }
+export interface Shot {
+  from: Vec3; to: Vec3; hit: ShotHit | null; through?: ShotHit[];
+  /** M4: a shotgun's pull, every ray of it (this shot is the first). */
+  volley?: Shot[];
+}
 export interface MagazineState { rounds: number; capacity: number; spare: number; reloading: boolean }
 export interface FireState {
   shots: number; magazine: MagazineState; lastHit: ShotHit | null; decals: number; kick: KickStats;
+  /** M4: the bolt's or the pump's lock, or its after-shot clip, holds the fire (`FUN_005c5340`, `FUN_005a7ab0`). */
+  afterShot: boolean;
   /** EFFECTS: the colour the last mark was modulated by (the world's under it, research 89 §5); null: unity. */
   lastShade: [number, number, number, number] | null;
 }
@@ -293,9 +346,15 @@ export class Fire {
    * reload takes the next one with rounds and the old keeps what it had) and the one in the weapon.
    */
   private mags!: MagazineRing;
-  /** A reload asked for and not yet begun (`RELOAD_DELAY`), seconds left; -1 none. */
+  /** A reload asked for and not yet begun (the record's `ReloadDelay`), seconds left; -1 none. */
   private reloadPending = -1;
   private reloadLeft = 0;
+  /** M4: the kit's lock after a bolt's or a pump's round (`kit+0x820` with the after-shot flag), seconds left; -1 none. */
+  private afterShotPending = -1;
+  /** M4: the after-shot clip playing (a reload action: `FUN_005a7ab0` holds the fire), seconds left. */
+  private afterShotLeft = 0;
+  /** M4: the carrier's round mode (`setRound`), or null for its own rounds. */
+  private roundMode_: FireRound | null = null;
   /** Seconds until the next round may go; at most 0 is ready. */
   private wait = 0;
   private held = false;
@@ -446,10 +505,16 @@ export class Fire {
     return m;
   }
 
+  /**
+   * The ring the fire, the reload and the box go through: the weapon's own, or in a round mode the round slot's
+   * (`FUN_005c6600`'s redirect, research 94 §C4.2; HUD_ROUND_MODE_COUNT_READING: the box's `%d/%d` and MAGS read through
+   * the same redirect, `FUN_00237760` via `FUN_005c3890` -- the round slot's count, as the fire takes it).
+   */
+  private get ring(): MagazineRing { return this.roundMode_?.ring ?? this.mags; }
   /** The rounds in the weapon's magazine (the ring's current slot). */
-  private get rounds(): number { return this.mags.rounds(); }
+  private get rounds(): number { return this.ring.rounds(); }
   /** The ammo box's MAGS (`FUN_00237760`): the magazines with rounds, the one in the weapon among them, less one. */
-  private get spare(): number { return this.mags.shownMags(); }
+  private get spare(): number { return this.ring.shownMags(); }
   /** `NumMags` full magazines, the first in the weapon. */
   private fillMags(): void {
     this.mags = ringFor(this.rifle);
@@ -468,10 +533,38 @@ export class Fire {
     // WEAPON: a dry trigger clicks, then reloads when there is a magazine to take (`FUN_005c5340`).
     if (edge && this.rounds <= 0 && this.reloadLeft <= 0 && this.reloadPending < 0 && this.source.aim()) {
       this.emit({ type: 'dry', weapon: this.weapon() });
-      if (this.mags.canReload()) this.reloadPending = RELOAD_DELAY;
+      if (this.ring.canReload()) this.reloadPending = this.reloadDelay();
       return null;
     }
     return this.pullRound();
+  }
+
+  /**
+   * The lock before a reload lands (`FUN_005c32b0(-1.0, kit, 0)`: the fired record's `ReloadDelay`, `FUN_005c3780`'s
+   * -- the round's in a round mode, which none sets): `./firearms` `reloadDelayOf`.
+   */
+  private reloadDelay(): number {
+    return this.roundMode_ ? RELOAD_DELAY : reloadDelayOf(this.rifle);
+  }
+
+  /** `FUN_005a82e0`'s clip family for the record in the hand (`./reloadClip` `reloadFamily`). */
+  private family(afterShot: boolean): ReloadItem {
+    return reloadFamily({ item: itemClass(this.rifle.id) === 'pistol' ? 'pistol' : 'rifle', id: this.rifle.id, afterShot, roundMode: this.roundMode_ !== null });
+  }
+
+  /**
+   * M4: a carrier's round mode (`FUN_005c6600`'s redirect, research 94 §C4.2): the fire, the reload and the box go to
+   * the round's slot and a pull launches the round (`launch`); null back to the carrier's own rounds. The rate's wait
+   * carries over (a mode change does not reset `kit+0x8b8`).
+   */
+  setRound(round: FireRound | null): void {
+    this.roundMode_ = round;
+  }
+
+  /** M4: the round mode's round, for the reticle's grey (R94.16, `./firearms` `insideArming`) and the HUD's cell; null for none. */
+  roundMode(): RoundModeInfo | null {
+    const r = this.roundMode_;
+    return r ? { id: r.id, name: r.round.record.name, armingDistance: r.round.record.armingDistance ?? 0, icon: r.round.icon } : null;
   }
 
   release(): void {
@@ -525,6 +618,7 @@ export class Fire {
     this.stowedMags.set(this.rifle.name, this.mags);
     this.rifle = record;
     this.reloadPending = -1;
+    this.roundMode_ = null;                        // the other weapon's mode (`main.ts` sets its own after)
     const kept = this.stowedMags.get(record.name);
     if (kept) this.mags = kept; else this.fillMags();
     this.wait = 0;
@@ -540,6 +634,8 @@ export class Fire {
   /** WEAPON: a reload in progress stops, the magazine unchanged (`reloadEnd`, not completed); false when none ran. */
   cancelReload(): boolean {
     this.reloadPending = -1;
+    this.afterShotPending = -1;                    // the kit's one timer (`kit+0x820`), either flag
+    this.afterShotLeft = 0;
     if (this.reloadLeft <= 0) return false;
     this.reloadLeft = 0;
     this.emit({ type: 'reloadEnd', weapon: this.weapon(), completed: false });
@@ -577,12 +673,14 @@ export class Fire {
    * The game's chain reads no fullness anywhere (`FUN_00594cf0` 453459-453463 -> `FUN_005c32b0` 477655-477679 ->
    * `FUN_005c0fd0` 476549-476561 -> `FUN_005c2a90`; its walk from `m_currentmag + 1`, 477462-477483, is the only gate on
    * the magazines): a full magazine reloads whenever another slot holds rounds. The request itself is refused only
-   * while `FUN_005a7ab0` answers (453461: the swap/action lock -- `ready`).
+   * while `FUN_005a7ab0` answers (453461: the swap/action lock -- `ready`; M4: an after-shot clip playing is such an
+   * action). Asked during a bolt's or a pump's lock, `FUN_005c32b0` rewrites the kit's one timer: the reload replaces it.
    */
   reload(): boolean {
-    if (this.reloadLeft > 0 || this.reloadPending >= 0 || !this.mags.canReload()) return false;
+    if (this.reloadLeft > 0 || this.reloadPending >= 0 || this.afterShotLeft > 0 || !this.ring.canReload()) return false;
     if (this.source.ready && !this.source.ready()) return false;
-    this.reloadPending = RELOAD_DELAY;
+    this.afterShotPending = -1;
+    this.reloadPending = this.reloadDelay();
     return true;
   }
 
@@ -611,10 +709,29 @@ export class Fire {
     // FUN_005c2a90's gates (477392-477397): refused in the air (body +0x105e bit 5) or while an action holds the weapon
     // (FUN_005a7ab0); the timer is spent either way (FUN_005c0fd0 476557-476559 clears it), so the ask is dropped.
     if (this.source.airborne?.() || (this.source.ready && !this.source.ready())) return;
-    if (!this.mags.reload()) return;
-    const clip = this.source.reloadSeconds?.() ?? null;
+    // The ring is the one the mode redirects to when the reload *lands*: `FUN_005c2a90` (L477408-477440) looks up the
+    // slot's mode (`kit+0x6fc`) and the round slot then, not when it was asked -- a mode switched meanwhile takes it.
+    if (!this.ring.reload()) return;
+    // M4: the class's clip (`FUN_005a82e0`: the shotgun reload for the 870 and the bolts, `Rifle m203 reload` in a
+    // round mode), over the record's `ReloadTime` when still (the round's in a round mode: none has one).
+    const family = this.family(false);
+    const clip = this.source.reloadSeconds?.(family, this.roundMode_ ? 0 : this.rifle.reloadTime ?? 0) ?? null;
     this.reloadLeft = clip !== null && clip > 0 ? clip : RELOAD_SECONDS;
-    this.emit({ type: 'reloadStart', weapon: this.weapon(), seconds: this.reloadLeft });
+    this.emit({ type: 'reloadStart', weapon: this.weapon(), seconds: this.reloadLeft, family });
+  }
+
+  /**
+   * `FUN_005c3000` (L477551-477650), the bolt's or the pump's lock run out: the after-shot clip (`FUN_005a82e0(body, 1)`:
+   * the pump on the shotgun class, the shotgun reload on a bolt, `Rifle m203 reload` in a round mode) and the held
+   * weapon's `ReloadAfterShotSound` (`+0xa0`, the kit's selected slot's record). The clip is a reload action: the fire
+   * waits it out (`FUN_005a7ab0` L462527-462540 -- `PUMP_BLOCKS_FIRE_READING`, `./firearms`). Without the clips, no hold.
+   */
+  private beginAfterShot(): void {
+    this.afterShotPending = -1;
+    const family = this.family(true);
+    const clip = this.source.reloadSeconds?.(family, this.roundMode_ ? 0 : this.rifle.reloadTime ?? 0) ?? null;
+    this.afterShotLeft = clip !== null && clip > 0 ? clip : 0;
+    this.emit({ type: 'afterShot', weapon: this.weapon(), sound: this.rifle.afterShotSound ?? null, family, seconds: this.afterShotLeft });
   }
 
   /**
@@ -632,6 +749,15 @@ export class Fire {
         this.reloadLeft = 0;
         this.emit({ type: 'reloadEnd', weapon: this.weapon(), completed: true });
       }
+    }
+    // M4: the bolt's or the pump's lock (`FUN_005c0fd0` L476549-476561 runs the kit's timer down), then its clip.
+    if (this.afterShotLeft > 0) {
+      this.afterShotLeft -= dt;
+      if (this.afterShotLeft <= 1e-9) this.afterShotLeft = 0;
+    }
+    if (this.afterShotPending >= 0) {
+      this.afterShotPending -= dt;
+      if (this.afterShotPending <= 1e-9) this.beginAfterShot();
     }
     if (this.tracerFrames > 0) this.tracerFrames--;
     else this.tracer.visible = false;
@@ -735,11 +861,12 @@ export class Fire {
   state(): FireState {
     return {
       shots: this.shots,
-      magazine: { rounds: this.rounds, capacity: this.rifle.magazine, spare: this.spare, reloading: this.reloadLeft > 0 || this.reloadPending >= 0 },
+      magazine: { rounds: this.rounds, capacity: this.ring.capacity, spare: this.spare, reloading: this.reloadLeft > 0 || this.reloadPending >= 0 },
       lastHit: this.lastHit ? { ...this.lastHit, point: [...this.lastHit.point], normal: [...this.lastHit.normal] } : null,
       decals: this.decals.filter((d) => d.visible).length,
       lastShade: this.lastShade ? [...this.lastShade] : null,
       kick: this.kick.stats(),
+      afterShot: this.afterShotPending >= 0 || this.afterShotLeft > 0,
     };
   }
 
@@ -756,6 +883,8 @@ export class Fire {
     this.fillMags();
     this.reloadPending = -1;
     this.reloadLeft = 0;
+    this.afterShotPending = -1;
+    this.afterShotLeft = 0;
     this.wait = 0;
     this.held = false;
     this.lastHit = null;
@@ -788,9 +917,85 @@ export class Fire {
 
   private tryFire(): Shot | null {
     if (this.wait > 1e-9 || this.reloadLeft > 0 || this.reloadPending >= 0 || this.rounds <= 0) return null;
+    // M4: the kit's lock after a bolt's or a pump's round (`FUN_005c1970` is not called while `kit+0x820` runs) and
+    // the after-shot clip it plays (`FUN_005a7de0` via `FUN_005a7ab0`).
+    if (this.afterShotPending >= 0 || this.afterShotLeft > 0) return null;
     if (this.source.ready && !this.source.ready()) return null;          // WEAPON: no round mid-swap (`./kit`)
     const aim = this.source.aim(), grid = this.source.grid();
     if (!aim || !grid) return null;
+    if (this.roundMode_) return this.launch(aim, grid, this.roundMode_);
+    // M4: a pull's rays (`FUN_005be9a0` L475580-475677): the round's `NumProjectilesFired` -- the 12 gauge's 4, each
+    // its own cone draw (the controller's `+0x74` per pellet) and path -- then one shell off the magazine (L475608).
+    const n = pelletsOf(this.rifle);
+    const volley: ReturnType<Fire['ray']>[] = [];
+    for (let i = 0; i < n; i++) volley.push(this.ray(aim, grid));
+    this.ring.fire();
+    const left = this.rounds;
+    if (left <= 0) {
+      // The automatic reload (`FUN_005c5340` 479297-479320): the magazine ran dry and another has rounds.
+      if (this.ring.canReload()) this.reloadPending = this.reloadDelay();
+    } else {
+      // M4: the bolt's or the pump's lock (`FUN_005c5340` L479321-479343, `./firearms` `afterShotLock`).
+      const lock = afterShotLock(this.rifle.id, this.rifle, left, this.rifle.id);
+      if (lock !== null) this.afterShotPending = lock;
+    }
+    this.shots++;
+    this.wait += this.gun ? this.gun.interval(this.rifle.fireWait) : this.rifle.fireWait;
+    const first = volley[0]!;
+    // The surface it stopped on, or -- went through everything and was spent in the air -- the last it struck.
+    this.lastHit = first.shot.hit ?? first.through[first.through.length - 1] ?? null;
+    // EFFECTS: the game's rule, when one is set (`setTracerRule`): the M4A1 SD draws none (research 89 §6).
+    if (!this.tracerRule || this.tracerRule(this.rifle.id, this.shots)) this.drawTracer(first.shot.from, first.dir, first.shot.to, first.fromMuzzle);
+    const aimNow = this.source.look?.() ?? null;
+    if (aimNow && (!this.gun?.kickStarts || this.gun.kickStarts())) this.kick.round(aimNow.pitch, aimNow.stance);
+    volley.forEach(({ shot, ray, through }, i) => {
+      const hit = shot.hit;
+      this.emit({
+        type: 'round', weapon: this.weapon(), from: [...shot.from], to: [...shot.to], hit: hit !== null, rounds: left,
+        eye: [...aim.eye], aim: [...ray],
+        normal: hit ? [...hit.normal] : null, material: hit?.material ?? null,
+        ...(through.length ? { through: through.map((t) => ({ point: [...t.point] as Vec3, normal: [...t.normal] as Vec3, material: t.material ?? null })) } : {}),
+        ...(n > 1 ? { pellet: i, pellets: n } : {}),
+      });
+    });
+    return n > 1 ? { ...first.shot, volley: volley.map((v) => v.shot) } : first.shot;
+  }
+
+  /**
+   * M4 (research 94 §C4.2): a round mode's pull -- the eye's ray through the cone (the pellet loop's draw, `FUN_005be9a0`
+   * L475598, one for a round) finds the aimed point; the round leaves `firepoint_203` (`FIREPOINT_203_READING`) along
+   * the direction lofted onto it at the round's `Muzzle_Velocity` (`FUN_005bf8a0` L475688-475740, the player's own
+   * controller: `loftAim`); one round off the round's slot; the round record's `FireWait` (`FUN_005c09f0` with the
+   * redirected record); its lock after (`afterShotLock`: the M203 rounds' 0.5, none on the MGL).
+   */
+  private launch(aim: FireAim, grid: Grid, mode: FireRound): Shot {
+    const look = unit(sub(aim.far, aim.eye));
+    const ray = this.gun ? unit(this.gun.round(look)) : look;
+    const reach = this.rifle.maximumRange * UNITS_PER_METRE;
+    const eyeEnd: Vec3 = [aim.eye[0] + ray[0] * reach, aim.eye[1] + ray[1] * reach, aim.eye[2] + ray[2] * reach];
+    const pen = this.penetrationOf;
+    const seen = segmentHit(grid, aim.eye, eyeEnd, pen ? (p) => pen(p.material) !== 1 : undefined);
+    const target: Vec3 = seen ? [...seen.point] : eyeEnd;
+    const FIREPOINT = FIREPOINT_203_READING === 'firepoint' ? this.source.muzzle?.() ?? null : null;
+    const from: Vec3 = [...(this.source.launchPoint?.() ?? FIREPOINT ?? aim.eye)];
+    const speed = mode.round.record.muzzleVelocity;
+    const dir = loftAim(unit(sub(target, from)), speed, from, target);
+    mode.ring.fire();
+    const left = mode.ring.rounds();
+    this.shots++;
+    this.wait += this.gun ? this.gun.interval(mode.round.fireWait) : mode.round.fireWait;
+    const lock = afterShotLock(this.rifle.id, mode.round, left, this.rifle.id);
+    if (lock !== null) this.afterShotPending = lock;
+    this.lastHit = null;
+    this.emit({
+      type: 'launch', weapon: this.weapon(), round: { id: mode.id, name: mode.round.record.name }, from: [...from], dir: [...dir],
+      velocity: [dir[0] * speed, dir[1] * speed, dir[2] * speed], to: [...target], rounds: left,
+    });
+    return { from, to: target, hit: null };
+  }
+
+  /** One ray of a pull: the cone's draw, the eye's aim point, the muzzle's path to it, the marks it leaves. */
+  private ray(aim: FireAim, grid: Grid): { shot: Shot; ray: Vec3; through: ShotHit[]; dir: Vec3; fromMuzzle: boolean } {
     const look = unit(sub(aim.far, aim.eye));
     // Research 84: the eye's ray leaves by the reticle's cone and knock (without a gun, straight down the view).
     const ray = this.gun ? unit(this.gun.round(look)) : look;
@@ -836,25 +1041,8 @@ export class Fire {
       const h = segmentHit(grid, from, end);
       if (h) { hit = face(h, span); this.place(hit, dir); }
     }
-    this.mags.fire();
-    // The automatic reload (`FUN_005c5340` 479297-479320): the magazine ran dry and another has rounds.
-    if (this.rounds <= 0 && this.mags.canReload()) this.reloadPending = RELOAD_DELAY;
-    this.shots++;
-    this.wait += this.gun ? this.gun.interval(this.rifle.fireWait) : this.rifle.fireWait;
-    // The surface it stopped on, or -- went through everything and was spent in the air -- the last it struck.
-    this.lastHit = hit ?? through[through.length - 1] ?? null;
-    // EFFECTS: the game's rule, when one is set (`setTracerRule`): the M4A1 SD draws none (research 89 §6).
-    if (!this.tracerRule || this.tracerRule(this.rifle.id, this.shots)) this.drawTracer(from, dir, hit ? hit.point : end, fromMuzzle);
     const shot: Shot = { from, to: hit ? [...hit.point] : end, hit, ...(through.length ? { through } : {}) };
-    const aimNow = this.source.look?.() ?? null;
-    if (aimNow && (!this.gun?.kickStarts || this.gun.kickStarts())) this.kick.round(aimNow.pitch, aimNow.stance);
-    this.emit({
-      type: 'round', weapon: this.weapon(), from: [...shot.from], to: [...shot.to], hit: hit !== null, rounds: this.rounds,
-      eye: [...aim.eye], aim: [...ray],
-      normal: hit ? [...hit.normal] : null, material: hit?.material ?? null,
-      ...(through.length ? { through: through.map((t) => ({ point: [...t.point] as Vec3, normal: [...t.normal] as Vec3, material: t.material ?? null })) } : {}),
-    });
-    return shot;
+    return { shot, ray, through, dir, fromMuzzle };
   }
 
   private place(hit: ShotHit, dir: Vec3): void {

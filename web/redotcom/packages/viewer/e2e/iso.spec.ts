@@ -11,21 +11,23 @@ import { buildIso } from '../../archive/test/isoImage';
  * W1.7, milestone M5: the player's own disc image, opened from the panel's file input, lists its maps and
  * draws one exactly as the served tree does.
  *
- * No disc image exists in the repository, so the test makes one: Frostfire's extracted archive alone,
- * packed as `RUN/MP2.ZDB` into an ISO9660 image. That image is game bytes, so it is written under the
+ * No disc image exists in the repository, so the test makes one: Frostfire's extracted archive, packed as
+ * `RUN/MP2.ZDB` into an ISO9660 image beside the two tables every map reads off the disc as the served tree does --
+ * `RUN/READERC.ZAR` (the characters) and `RUN/ZWEAPON.ZAR` (the arsenal, web sprint 4: without it the kit is the baked
+ * one and the load says so). That image is game bytes, so it is written under the
  * git-ignored `test-fixtures/`, as the screenshots are, and the test is skipped where the fixture is absent.
  */
 const FIXTURES = fileURLToPath(new URL('../../../test-fixtures', import.meta.url));
-const MP2 = join(FIXTURES, 'RUN', 'MP2.ZDB');
 const ISO = join(FIXTURES, 'iso', 'frostfire-only.iso');
 /** Frostfire's triangles as the served source draws them (the e2e's own count, W1 plan). */
 const FROSTFIRE_TRIANGLES = 16931;
 
-test.skip(!existsSync(MP2), 'fixtures absent: run npm run extract-maps');
+test.skip(!['MP2.ZDB', 'READERC.ZAR', 'ZWEAPON.ZAR'].every((f) => existsSync(join(FIXTURES, 'RUN', f))), 'fixtures absent: run npm run extract-maps');
 
 test.beforeAll(() => {
   mkdirSync(dirname(ISO), { recursive: true });
-  writeFileSync(ISO, buildIso([{ path: 'RUN/MP2.ZDB', bytes: new Uint8Array(readFileSync(MP2)) }], 'SCUS_97275'));
+  const files = ['MP2.ZDB', 'READERC.ZAR', 'ZWEAPON.ZAR'].map((f) => ({ path: `RUN/${f}`, bytes: new Uint8Array(readFileSync(join(FIXTURES, 'RUN', f))) }));
+  writeFileSync(ISO, buildIso(files, 'SCUS_97275'));
 });
 
 /**

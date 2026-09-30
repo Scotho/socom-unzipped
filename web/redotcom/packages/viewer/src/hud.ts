@@ -6,7 +6,7 @@ import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { texture as textureNode, uv, vec4, vertexColor } from 'three/tsl';
 import type { Rgba } from '@s2u/gs';
 import { segmentHit, type Grid } from '@s2u/scene';
-import { NOT_ICONS, type HudBitmaps } from './hudAssets';
+import { HUD_LIBRARIES, NOT_ICONS, type HudBitmaps } from './hudAssets';
 import { FONT_TEXT_01, layoutText, textWidth } from './hudFont';
 import type { HudRenderer, Rect } from './reticle';
 import { DEFAULT_PLAYER, MODERN_SCOREBOARD_LIFT, SCORE_TOP, scoreboardLayout, type ScoreRowInfo } from './scoreboard';
@@ -287,6 +287,12 @@ export interface HudTri { layer: number; p: [number, number, number, number, num
 export interface HudModel {
   rounds: number; capacity: number; spare: number; reloading: boolean;
   fireMode: FireMode;
+  /**
+   * A launcher's round mode (web sprint 4 M4, research 94 §C9): the round's own icon (`firemode_203_frag.tif` ...), drawn
+   * in the first fire-mode cell with the four `firemode.tif` rounds hidden (`FUN_00237b40` L85254-85300: a mode > 3 hides
+   * the four and shows the first with `FUN_005c6530`'s icon). Absent or null: the rounds of `fireMode`.
+   */
+  fireModeIcon?: string | null;
   /** The weapon's HUDW icon, e.g. `m4carbine_icon.tif`. */
   weaponIcon: string;
   /** The camera's heading in degrees (`fly.pose().yaw`): the ring turns by it, clockwise (research 87 §1.2). */
@@ -395,7 +401,11 @@ export function hudLayout(
   const icon = sizes[model.weaponIcon];
   if (icon) bitmap('icon', model.weaponIcon, L(A.icon.x), Y(A.icon.y), icon.width * s, icon.height * s, alpha(HUD_COLOURS.icon, fade));
   const fm = sizes['firemode.tif'];
-  if (fm) {
+  const roundIcon = model.fireModeIcon ? sizes[model.fireModeIcon] : undefined;
+  if (model.fireModeIcon) {
+    // A round mode (`FUN_00237b40`): the four cells hidden, the first shows the round's icon at its own size.
+    if (roundIcon) bitmap('firemode', model.fireModeIcon, L(A.rounds4.xs[0]!), Y(A.rounds4.y), roundIcon.width * s, roundIcon.height * s, alpha(HUD_COLOURS.icon, fade));
+  } else if (fm) {
     for (const x of A.rounds4.xs.slice(0, FIRE_MODE_ROUNDS[model.fireMode])) {
       bitmap('firemode', 'firemode.tif', L(x), Y(A.rounds4.y), fm.width * s, fm.height * s, alpha(HUD_COLOURS.icon, fade));
     }
@@ -704,7 +714,8 @@ export class Hud {
   private on = false;
   private frame = { width: 0, height: 0 };
   private readonly size = new Vector2();
-  private order = 0;
+  /** The arsenal's icons' batches not made yet, by `layer:name`, each with its place in the draw order. */
+  private readonly later = new Map<string, { layer: number; name: string; order: number }>();
   /** Seconds since the HUD came on (the spawn fade), since the last stance change, of the prompt's pulse. */
   private sinceOn = 0;
   private stanceAlpha = 0;
@@ -741,10 +752,18 @@ export class Hud {
       this.textures.push(texture);
       this.maps.set(name, { texture, size: { width: all[name]!.width, height: all[name]!.height } });
     }
-    // Each layer: its shapes, then one batch per bitmap in the draw order above.
+    // Each layer: its shapes, then one batch per bitmap in the draw order above. The arsenal's weapon icons beyond the
+    // HUD's own (`readHud`'s `weaponIcons`, some forty a map, web sprint 4) get theirs when first drawn (`render`), in
+    // their place of the order: a material each is a batch to fill every frame and a program for the walk's warm-up.
+    const own = new Set<string>([...HUD_LIBRARIES.HUDW]);
+    const stride = drawn.length + 1;
     for (let layer = 0; layer < HUD_LAYERS; layer++) {
-      this.addShapes();
-      for (const name of drawn) this.addBatch(layer, name);
+      this.addShapes(layer * stride);
+      drawn.forEach((name, i) => {
+        const order = layer * stride + 1 + i;
+        if (NOT_ICONS.has(name) || own.has(name) || !name.endsWith('.tif')) this.addBatch(layer, name, order);
+        else this.later.set(`${layer}:${name}`, { layer, name, order });
+      });
     }
   }
 
@@ -782,7 +801,9 @@ export class Hud {
   setAmmo(rounds: number, capacity: number, spare: number, reloading = false): void {
     Object.assign(this.model, { rounds, capacity, spare, reloading });
   }
-  setFireMode(mode: FireMode): void { this.model.fireMode = mode; }
+  setFireMode(mode: FireMode): void { this.model.fireMode = mode; this.model.fireModeIcon = null; }
+  /** M4: a launcher's round mode -- the round's icon in the first fire-mode cell (`HudModel.fireModeIcon`); null clears it. */
+  setFireModeIcon(icon: string | null): void { this.model.fireModeIcon = icon ? icon.toLowerCase() : null; }
   /** The weapon's HUDW icon by file name (`m4carbine_icon.tif` for the M4A1). */
   setWeaponIcon(icon: string): void { this.model.weaponIcon = icon.toLowerCase(); }
   /** The camera's heading, degrees (`fly.pose().yaw`). */
@@ -967,6 +988,10 @@ export class Hud {
       if (list) list.push(q); else byKey.set(key, [q]);
     }
     const half = GS_SAMPLE_OFFSET * (height / PS2_H);
+    for (const key of byKey.keys()) {
+      const later = this.later.get(key);
+      if (later) { this.later.delete(key); this.addBatch(later.layer, later.name, later.order); }
+    }
     for (const [key, batch] of this.batches) this.fill(batch, byKey.get(key) ?? [], half);
     this.shapes.forEach((shapes, layer) => this.fillShapes(shapes, tris.filter((t) => t.layer === layer)));
     const autoClear = renderer.autoClear;
@@ -1006,7 +1031,7 @@ export class Hud {
     shapes.mesh.visible = tris.length > 0;
   }
 
-  private addShapes(): void {
+  private addShapes(order: number): void {
     const material = new MeshBasicNodeMaterial();
     material.name = 'hud shapes';
     material.vertexColors = false;
@@ -1022,7 +1047,7 @@ export class Hud {
     const geometry = triGeometry(capacity);
     const mesh = new Mesh(geometry, material);
     mesh.frustumCulled = false;
-    mesh.renderOrder = this.order++;
+    mesh.renderOrder = order;
     mesh.visible = false;
     this.scene.add(mesh);
     this.shapes.push({ mesh, geometry, capacity });
@@ -1064,7 +1089,7 @@ export class Hud {
     batch.capacity = capacity;
   }
 
-  private addBatch(layer: number, name: string): void {
+  private addBatch(layer: number, name: string, order: number): void {
     const { texture: map, size } = this.maps.get(name)!;
     const material = new MeshBasicNodeMaterial();
     material.name = `hud ${layer} ${name}`;
@@ -1083,7 +1108,7 @@ export class Hud {
     const geometry = quadGeometry(capacity);
     const mesh = new Mesh(geometry, material);
     mesh.frustumCulled = false;
-    mesh.renderOrder = this.order++;
+    mesh.renderOrder = order;
     mesh.visible = false;
     this.scene.add(mesh);
     this.batches.set(`${layer}:${name}`, { mesh, geometry, capacity, size });
@@ -1093,8 +1118,8 @@ export class Hud {
     for (const b of [...this.batches.values(), ...this.shapes]) { this.scene.remove(b.mesh); b.geometry.dispose(); }
     for (const m of this.materials) m.dispose();
     for (const t of this.textures) t.dispose();
-    this.batches.clear(); this.shapes = []; this.maps.clear();
-    this.materials = []; this.textures = []; this.order = 0;
+    this.batches.clear(); this.later.clear(); this.shapes = []; this.maps.clear();
+    this.materials = []; this.textures = [];
   }
 }
 

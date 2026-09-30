@@ -54,6 +54,7 @@ const rifle = (name: string, id: number): WeaponRecord => ({ ...DEFAULT_RIFLE, n
 const table: KitTable = {
   arsenal: arsenalOf(zweapon),
   records: new Map([[54, rifle('M4A1', 54)], [62, HELD_RIFLE], [57, rifle('552', 57)], [58, rifle('AK-47', 58)], [15, HELD_SIDEARM], [5, { ...HELD_SIDEARM, name: 'M9', id: 5 }]]),
+  rounds: new Map(),
 };
 const kit = (...ids: number[]): Loadout => ids as unknown as Loadout;
 /** The valves: the M4s and the Mark 23 the SEALs', the 552, the AK and the M9 the Terrorists', the throwables both; C4 locked in a SEAL's kit (16). */

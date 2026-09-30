@@ -13,8 +13,15 @@ import { parseRdr, rdrGet, Zar, type RdrNode } from '@s2u/archive';
  * `sounds.rdr` are not read by the game (`FUN_003435c0` has no such key). The M4A1 SD's are `.M4A1_SIL` and
  * `.M4A1_SIL_RLD`, with no medium or far variant: its slots 1 and 2 are empty, so past the medium distance a
  * suppressed round plays nothing.
+ *
+ * `ReloadAfterShotSound` (0x3fcb60, `+0xa4`, resolved to a handle at `+0xa0` by `FUN_003c4700` L316283-316290) is the
+ * bolt's or pump's sound, played at the body when the after-shot lock ends (`FUN_005c3000` L477551-477650; research 94
+ * §C1.1): on the disc only the 870's `.SHOTGUN_COCK`.
  */
-export interface WeaponSounds { name: string; fireClose: string | null; fireMed: string | null; fireFar: string | null; reload: string | null }
+export interface WeaponSounds {
+  name: string; fireClose: string | null; fireMed: string | null; fireFar: string | null; reload: string | null;
+  afterShot: string | null;
+}
 
 const sound = (record: RdrNode, key: string): string | null => {
   const v = rdrGet(record, key);
@@ -29,7 +36,7 @@ export function weaponSounds(script: RdrNode, name: string): WeaponSounds | null
   if (!record) return null;
   return {
     name, fireClose: sound(record, 'FireSoundClose'), fireMed: sound(record, 'FireSoundMed'),
-    fireFar: sound(record, 'FireSoundFar'), reload: sound(record, 'ReloadSound'),
+    fireFar: sound(record, 'FireSoundFar'), reload: sound(record, 'ReloadSound'), afterShot: sound(record, 'ReloadAfterShotSound'),
   };
 }
 

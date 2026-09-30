@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Mesh, Vector2 } from 'three';
 import { parseZdb } from '@s2u/archive';
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import {
@@ -47,6 +48,15 @@ describe('the ammo box', () => {
       const { quads } = hudLayout(PS2, model({ fireMode: mode as HudModel['fireMode'] }), SIZES);
       expect(quads.filter((q) => q.element === 'firemode')).toHaveLength(n);
     }
+  });
+
+  it('a launcher\'s round mode: the four rounds hidden, the round\'s icon in the first cell (FUN_00237b40; research 94 §C9)', () => {
+    const sizes = { ...SIZES, 'firemode_203_frag.tif': { width: 32, height: 16 } };
+    const { quads, rects } = hudLayout(PS2, model({ fireMode: 'auto', fireModeIcon: 'firemode_203_frag.tif' }), sizes);
+    const cells = quads.filter((q) => q.element === 'firemode');
+    expect(cells).toHaveLength(1);
+    expect(cells[0]!.texture).toBe('firemode_203_frag.tif');
+    expect(rects.firemode).toEqual({ x: 10, y: 422, width: 32, height: 16 });
   });
 
   it('draws the two lines at scale 0.9 from pens 15 and 95 on the baseline 382', () => {
@@ -284,5 +294,33 @@ describe.skipIf(bytes === null)(`the HUD's bitmaps off Frostfire${bytes === null
   it('flipRows reverses the rows and nothing else', () => {
     const rgba = { width: 1, height: 3, data: new Uint8ClampedArray([1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3]) };
     expect(Array.from(flipRows(rgba).data)).toEqual([3, 3, 3, 3, 2, 2, 2, 2, 1, 1, 1, 1]);
+  });
+});
+
+describe('Hud: the arsenal\'s weapon icons (web sprint 4)', () => {
+  const px = (): { width: number; height: number; data: Uint8ClampedArray } => ({ width: 2, height: 2, data: new Uint8ClampedArray(16).fill(255) });
+  const bitmaps = {
+    'newweapnbkrnd.tif': px(), 'm4carbine_icon.tif': px(), 'mark23_icon.tif': px(), 'firemode.tif': px(),
+    // Two of the arsenal's other icons (`readHud`'s `weaponIcons`): some forty on a map.
+    'sigcommando_icon.tif': px(), 'm60e.tif': px(),
+  };
+  const names = (hud: Hud): string[] => hud.warmTarget().scene.children
+    .filter((c): c is Mesh => c instanceof Mesh).map((m) => (m.material as { name: string }).name);
+  const orderOf = (hud: Hud, name: string): number => hud.warmTarget().scene.children
+    .find((c) => c instanceof Mesh && (c.material as { name: string }).name === name)!.renderOrder;
+  const frame = { autoClear: true, getDrawingBufferSize: (v: Vector2) => v.set(640, 448), render: () => {} };
+
+  it('builds an arsenal icon\'s batch only when it is first drawn, in the icons\' place of the draw order', () => {
+    const hud = new Hud();
+    hud.setBitmaps(bitmaps);
+    // The HUD's own bitmaps as before; none of the arsenal's extra icons yet (each a material more to warm and fill).
+    expect(names(hud).filter((n) => /sigcommando|m60e/.test(n))).toEqual([]);
+    hud.setVisible(true);
+    hud.setWeaponIcon('sigcommando_icon.tif');
+    hud.step(2);                                         // faded in
+    hud.render(frame);
+    expect(orderOf(hud, 'hud 0 sigcommando_icon.tif')).toBeGreaterThan(orderOf(hud, 'hud 0 mark23_icon.tif'));
+    expect(orderOf(hud, 'hud 0 sigcommando_icon.tif')).toBeLessThan(orderOf(hud, 'hud 0 firemode.tif'));
+    expect(names(hud).filter((n) => /m60e/.test(n))).toEqual([]);
   });
 });

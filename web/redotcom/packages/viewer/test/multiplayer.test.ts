@@ -192,7 +192,7 @@ describe('multiplayer off: no request to any host, and the offline match still p
     const item = (name: string, id: number): RdrNode[] => rec(['InternalName', name], ['DisplayName', name], ['ID', String(id)], ['AMMO_TYPES', []]);
     const arsenal = arsenalOf(['ZAMMO', [], 'ZWEAPON', [item('M4A1', 54), item('M4A1 SD', 62), item('Mark 23', 15), item('M67', 121), item('HE', 126)]] as RdrNode);
     const kits: SimKits = {
-      table: { arsenal, records: new Map() },
+      table: { arsenal, records: new Map(), rounds: new Map() },
       map: {
         valves: new Map([['Enable_m4Acarbine', 1], ['Enable_M4A1_SD', 1], ['Enable_Mark23', 1], ['Enable_frag', 9], ['Enable_HEgren', 9]]),
         selectable: { seal: [], terrorist: [] },

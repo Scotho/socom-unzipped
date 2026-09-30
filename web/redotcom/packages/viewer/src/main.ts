@@ -35,7 +35,7 @@ import { mergeInput, noInput, PadWatch, padInput, pressedSince, type Input, type
 import type { TouchTarget } from './touch';
 import { MobileTip, storeOf, tipText } from './mobileTip';
 import { openingStand } from './stand';
-import { Reticle, reticleType } from './reticle';
+import { armingColour, Reticle, reticleType } from './reticle';
 import { Hud, RangeFinder } from './hud';
 import { DoorPage } from './doorPage';
 import { TacMap } from './tacMap';
@@ -44,7 +44,9 @@ import { DEFAULT_PLAYER } from './scoreboard';
 import { rankOf } from './mapOrder';
 import { buildBody, type BodyView } from './bodyView';
 import { CharacterShadow } from './charShadow';
-import { nightVisionRow, setNightVision } from './nightVision';
+import { lensColours, nightVisionRow, setLensRows, setNightVision } from './nightVision';
+import { lensStep, scopeBitmaps, showScopeNodes, shownScopeNode, thermalFitted, viewLens, type ViewLens } from './sights';
+import type { LensRows } from './lensFx';
 import { Fire } from './fire';
 import { Accuracy, defaultFireMode, fireInterval, FIRE_MODE_NAMES, kickStarts, kickTicks, nextFireMode, perturb, roundsPerPull } from './accuracy';
 import { Zoom } from './zoom';
@@ -59,6 +61,7 @@ import { compactPicks, frameOfPoint, padButtonsDown, WeaponExchange, type MatchG
 import type { InputDevice, PromptInfo } from './weaponSelect';
 import type { MenuContext } from './weaponSelectState';
 import type { PadButton } from './gamepad';
+import { KitRounds, roundArmingOf } from './firearms';
 import type { HeldRef } from './remotePlayers';
 import { onlineLine, pageIsLocal, readOnline, resolveOnline, writeOnline, type OnlineChoice, type OnlineTarget } from './online';
 import { readRules, resolveRules } from './rules';
@@ -279,7 +282,8 @@ let kitRecs = loadouts.records();
  */
 const fire: Fire = new Fire({
   grid: () => walk.grid(), aim: () => walk.fireAim(),
-  muzzle: () => play.muzzle(), reloadSeconds: () => play.reloadSeconds(),   // WEAPON: the rifle in hand (`./play`)
+  muzzle: () => play.muzzle(), reloadSeconds: (family, reloadTime) => play.reloadSeconds(family ?? null, reloadTime ?? 0),   // WEAPON: the rifle in hand (`./play`)
+  launchPoint: () => play.launchPoint(),                                    // M4: a round mode's `firepoint_203`
   look: () => (walk.mode() === 'walk' ? { pitch: (fly.pose().pitch * Math.PI) / 180, stance: walk.posture() } : null),
   kickPitch: (radians) => fly.addPitch(radians),                             // WEAPON: the kick (`./rifleKick`)
   ready: (): boolean => !kit.swapping(),                                     // WEAPON: no round mid-swap (`./kit`)
@@ -347,7 +351,9 @@ grenade.on('explode', (info) => {
  */
 const accuracy = new Accuracy(kitRecs[0]);
 const zoom = new Zoom(kitRecs[0]);
-let fireMode = defaultFireMode(kitRecs[0]);
+/** M4 (`./firearms`): the kit's launcher-round slots and their counts; a carrier's modes run on into them (R94.8). */
+let kitRounds = new KitRounds(loadouts.tables(), loadouts.loadout());
+let fireMode = defaultFireMode(kitRecs[0], kitRounds.held());
 /** The map camera's vertical FOV in degrees; the zoom divides its tangent. */
 let baseFov = 49;
 fire.setGun({
@@ -370,11 +376,15 @@ const HUD_FIRE_MODE = { 1: 'single', 2: 'burst', 3: 'auto' } as const;
 function showFireMode(): void {
   const m = HUD_FIRE_MODE[fireMode as 1 | 2 | 3];
   if (m) hud.setFireMode(m);
+  // M4: a round mode (> 3) redirects the fire to the round's slot (`FUN_005c6600`) and shows its icon (`FUN_00237b40`).
+  const round = fireMode > 3 && kitItem === 'rifle' ? kitRounds.round(fireMode) : null;
+  const ring = round ? kitRounds.ring(fireMode) : null;
+  fire.setRound(round && ring ? { id: fireMode, round, ring } : null);
+  hud.setFireModeIcon(round && ring ? round.icon : null);
 }
-showFireMode();
 /** The fire-mode switch (`FUN_005c4600`; L3, `B`): not while scoped, nor while the grenade is up (it has one mode). */
 function switchFireMode(): string {
-  if (!grenade.equipped()) fireMode = nextFireMode(fire.weaponRecord(), fireMode, zoom.target() > 1.01);
+  if (!grenade.equipped()) fireMode = nextFireMode(fire.weaponRecord(), fireMode, zoom.target() > 1.01, kitItem === 'rifle' ? kitRounds.held() : []);
   showFireMode();
   return FIRE_MODE_NAMES[fireMode] ?? String(fireMode);
 }
@@ -408,8 +418,9 @@ const kitRecord = (item: Firearm) => kitRecs[SLOT_OF[item]];
 /** The HUD weapon box's icon for the firearm in the hand: its record's `IconTextureName` (research 94 §C9). */
 const kitIcon = (item: Firearm): string => loadouts.icon(SLOT_OF[item]) ?? '';
 /** Each firearm's fire mode, kept while the other is in the hand (a rifle comes up on burst: research 84 §6). */
-const fireModes: Record<Firearm, number> = { rifle: defaultFireMode(kitRecs[0]), pistol: defaultFireMode(kitRecs[1]) };
+const fireModes: Record<Firearm, number> = { rifle: defaultFireMode(kitRecs[0], kitRounds.held()), pistol: defaultFireMode(kitRecs[1]) };
 let kitItem: Firearm = 'rifle';
+showFireMode();
 const kit: Kit = new Kit({
   swapClip: (to) => walk.swapWeapon(to),
   swapProgress: () => walk.swapProgress(),            // the walk's clock: the mounts change on the clip's frame
@@ -451,6 +462,10 @@ function hangKit(force = false): void {
   // The same model on the same body stays where it hangs (a respawn with an unchanged kit).
   if (force || heldKit.rifle?.object !== was.rifle?.object) play.setWeapon(heldKit.rifle?.object ?? null, heldKit.rifle?.points ?? []);
   if (force || heldKit.pistol?.object !== was.pistol?.object) play.setSidearm(heldKit.pistol?.object ?? null, heldKit.pistol?.points ?? []);
+  // The thermal scope (item 195) in the kit: a sniper's `scope` node hidden, `thermal_scope` shown (FUN_005b82e0, `./sights`).
+  const recs = loadouts.records();
+  if (heldKit.rifle) showScopeNodes(heldKit.rifle.object, loadouts.loadout(), recs[0].id);
+  if (heldKit.pistol) showScopeNodes(heldKit.pistol.object, loadouts.loadout(), recs[1].id);
 }
 /**
  * A spawn's kit (`FUN_00599b60` -> `FUN_00599f00`, research 91 §4.3, R94.3): the side's pick or its type's
@@ -464,7 +479,9 @@ function spawnKit(side: Side, given: readonly number[] | null = null): void {
   // type's own, and only no match takes the page's pick.
   loadouts.spawn(side, { network: !!NET.url, kit: given });
   kitRecs = loadouts.records();
-  if (kitRecs[0].id !== before[0].id) fireModes.rifle = defaultFireMode(kitRecs[0]);
+  kitRounds = new KitRounds(loadouts.tables(), loadouts.loadout());   // M4: every round slot full (FUN_00599f00)
+  grenade.setRounds([...(loadouts.tables()?.rounds.values() ?? [])].map((r) => r.record));
+  if (kitRecs[0].id !== before[0].id || (fireModes.rifle > 3 && !kitRounds.ring(fireModes.rifle))) fireModes.rifle = defaultFireMode(kitRecs[0], kitRounds.held());
   if (kitRecs[1].id !== before[1].id) fireModes.pistol = defaultFireMode(kitRecs[1]);
   fireMode = fireModes[kitItem];
   if (view) hangKit();
@@ -807,7 +824,20 @@ play.addPoseLayer(throwPose.layer);   // the grenade's throw clip over the locom
 play.setWeaponInput(() => ({ trigger: fire.triggerHeld(), aiming: walk.view() === 'scope' }));
 fire.subscribe((e) => { play.weaponEvent(e); walkSounds.fireEvent(e); net?.fireEvent(e); });   // the pose and the sound, per round and reload
 // A reload started still crouched, or prone, holds the mover to its clip's NoInterrupt (`FUN_005a82e0`; `reloadHold`).
-fire.subscribe((e) => { if (e.type === 'reloadStart') walk.holdReload(); });
+fire.subscribe((e) => { if (e.type === 'reloadStart' || e.type === 'afterShot') walk.holdReload(); });
+/**
+ * M4 (research 94 §C4): a round mode's round leaves -- flown here as a grenade is (`GrenadeThrower.launchRound`: the
+ * round's gravity, arming distance, impact, blast), its launch zAnim heard (`m203he_start`), and sent to the match as
+ * a throw of that round (the room flies the same projectile and deals the blast).
+ */
+fire.subscribe((e) => {
+  if (e.type !== 'launch') return;
+  const round = kitRounds.round(e.round.id);
+  if (!round) return;
+  grenade.launchRound(round.record, e.from, e.velocity);
+  audio.onAnimCallback(round.record.fireAnim, e.from);
+  net?.throwEvent(round.record.name, e.from, e.velocity);
+});
 play.onEvent((e) => walkSounds.playEvent(e));   // the body's footfalls, clip callbacks and landings, heard
 // The message window's lines a lone SEAL can cause (research 87 §14): a landing of the death class is the game's fall
 // to death, "%s falls to their death" (0x65c440, `FUN_00547860`) -- the viewer's SEAL walks on.
@@ -886,6 +916,16 @@ function playLanes(before: Input, after: Input, dt: number): void {
 /** The map's `LensFX_NVG` colour, and whether the night vision is on. */
 let nightLens: [number, number, number, number] | null = null;
 let nightOn = false;
+/** The scope's lens zAnims' rows off the map's effect data (`./effectData` `lenses`), and the lens in play. */
+let lensRows = new Map<string, LensRows>();
+let lensOn: ViewLens = null;
+/** The weapon id whose scope bitmaps the reticle holds (`scopeBitmaps`), -1 for none yet. */
+let scopeBitmapsOf = -1;
+/**
+ * The fired round's `ArmingDistance`, units (null: none) -- the grey reticle's test (R94.16, `armingColour`): the
+ * round mode's round (`Fire.roundMode`, M4), none for a firearm mode or a round without one (the smoke rounds).
+ */
+const roundArming = (): number | null => roundArmingOf(fire.roundMode());
 /** The look a frame ago, degrees (the turn and pitch rates the bloom reads), or null to start again. */
 let lastLook: { yaw: number; pitch: number } | null = null;
 let lastFov = -1;
@@ -932,15 +972,23 @@ function gunFrame(dt: number, walking: boolean): void {
   // The look's divisor (FUN_005966a0, `FUN_005be660`): the LOOK workstream's law takes the magnification and mode 4.
   fly.setZoom(1 / zoom.lookScale() / (zoom.state() === 4 ? 5 : 1), zoom.state() === 4);
   hud.setZoom(zoom.magnification());
-  // The night vision (view state 3): the goggles on the reticle's layer, the lens's green colour matrix on the frame,
-  // the goggles' sound in and out (DAT_0044ce30/38: .NV_GOGGLES_ON / _OFF).
-  const night = zoom.view() === 'nightvision';
-  reticle.setNight(night);
-  if (night !== nightOn) {
-    nightOn = night;
-    setNightVision(night ? nightLens : null);   // the lit colours through VU1 command 0x5c (`./nightVision`)
-    refreshFog();                               // and the fog's colour times the lens's (`cam+0xd0`)
-    if (walking) audio.play(night ? '.NV_GOGGLES_ON' : '.NV_GOGGLES_OFF', null);   // without a place: vtable+0xc (decomp 410944)
+  // The lit colours' one lens (`./sights` `viewLens`, `lensStep`): the night vision's goggles in view state 3 (the
+  // goggles on the reticle's layer, the green matrix, their sound DAT_0044ce30/38 .NV_GOGGLES_ON / _OFF), or a scoped
+  // view's lens (FUN_001f0750 L53084-53160, research 94 section C7): `to_thermal_lens_fx` while the kit holds item 195,
+  // else the scope's own -- their SCALE_COLOR rows (`./lensFx`; the plain scope's are neutral, so off). One owner, one
+  // write a change: a night map's 3 -> 5 goes from the goggles straight to the thermal rows.
+  reticle.setNight(zoom.view() === 'nightvision');
+  const want = viewLens(zoom.state(), thermalFitted(loadouts.loadout()), !!loaded?.night?.mission, walking && !grenade.equipped());
+  const step = lensStep(lensOn, want);
+  if (step) {
+    lensOn = step.apply;
+    if (step.apply === 'goggles') setNightVision(nightLens);   // the lit colours through VU1 command 0x5c (`./nightVision`)
+    else setLensRows(step.apply ? lensRows.get(step.apply)?.rows ?? null : null);
+    if (step.goggles) {
+      nightOn = step.apply === 'goggles';
+      refreshFog();                               // and the fog's colour times the lens's (`cam+0xd0`)
+      if (walking) audio.play(nightOn ? '.NV_GOGGLES_ON' : '.NV_GOGGLES_OFF', null);   // without a place: vtable+0xc (decomp 410944)
+    }
   }
 }
 
@@ -1008,6 +1056,9 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
   if (message.kind === 'effects') {
     if (message.id !== wantedEffects) return;
     effects.setData(message.data);
+    lensRows = new Map(message.data.lenses ?? []);   // research 94 section C7: the scope lenses' SCALE_COLOR rows
+    // A scope's lens re-applied from the new rows on the next frame (the goggles' rows are the map's, not this data's).
+    if (lensOn && lensOn !== 'goggles') { setLensRows(null); lensOn = null; }
     warmEffects();                                   // research 90 item 16: compile the effects before the first shot
     fire.setMarks(effects.marks());                 // decals.rdr's row per surface material, or the one mark
     // ACCURACY (research 84 section 13): the round goes through what the game lets it -- the material byte's name
@@ -1469,8 +1520,15 @@ async function boot(): Promise<void> {
       const r = accuracy.reticle(zoom.state());
       reticle.setSize(r.size, r.offset);
       reticle.setMode(zoom.view() === 'scope' && !grenade.equipped() ? 'scope' : 'reticle');
-      // The weapon's reticle set (FUN_005be300: by its ID and the view): the rifle's for the M4A1 SD, the sidearm's for a pistol.
-      reticle.setSet(reticleType(fire.weaponRecord().id, zoom.state(), zoom.target()));
+      // The weapon's reticle set (FUN_005be300: by its ID, the view and the slot's fire mode -- a launcher round's 3):
+      // the rifle's for the M4A1 SD, the sidearm's for a pistol, the shotgun's; its scope's bitmaps (`./sights`).
+      const held = fire.weaponRecord().id;
+      reticle.setSet(reticleType(held, zoom.state(), zoom.target(), fireMode));
+      if (held !== scopeBitmapsOf) { scopeBitmapsOf = held; reticle.setScopeBitmaps(scopeBitmaps(held)); }   // on a change only
+      // Grey while the aimed point is inside the fired round's arming distance (R94.16; the range finder's metres x 10).
+      const arming = roundArming();
+      const aimed = arming === null ? null : rangeFinder.measure(walk.grid(), walk.fireAim(), performance.now() / 1000);
+      reticle.setColour(armingColour('rest', aimed === null ? null : aimed * 10, arming));
       // WEAPON: the accuracy pip (FUN_005aa6e0 / FUN_00215250): where the raised muzzle's ray is blocked short of the aim.
       const block = play.weaponStats().raise.weight > 0 && zoom.view() !== 'scope' && !grenade.equipped() ? fire.blockedMuzzle() : null;
       let pip: [number, number] | null = null;
@@ -1709,9 +1767,11 @@ function show(map: LoadedMap): void {
   });
   // MULTIPLAYER: the others are this map's SEAL and Terrorist; a new map is a new match (each map its own, W3.R11).
   remote.setMap(map, lighting, (team, kit) => {
-    // Protocol 7: the player's own kit when the room named it, else its side's type's.
+    // Protocol 7: the player's own kit when the room named it, else its side's type's; its copies' scope nodes follow
+    // that kit (`cloneHeld`), not the page's.
     const l = wireLoadout(kit) ?? sideLoadout(team), table = map.arsenal?.table ?? null;
-    return { rifle: heldRef(slotModel(table, l, 0)), pistol: heldRef(slotModel(table, l, 1)) };
+    const recs = kitRecords(table, l);
+    return { rifle: heldRef(slotModel(table, l, 0)), pistol: heldRef(slotModel(table, l, 1)), loadout: l, ids: [recs[0].id, recs[1].id] as const };
   }, (team) => sideLoadout(team));
   connectNet(map);
   // A new world starts in whatever state the panel is showing, not in the state it was built in.
@@ -1855,6 +1915,7 @@ window.__viewer = {
     anim: play.animStats(),
     view: play.viewStats(),
     nightVision: nightVisionRow(),
+    lens: { effect: lensOn, rows: lensColours(), node: shownScopeNode(heldKit.rifle?.object ?? null) },
   }),
   toggles: () => ui.toggles(),
   chromeHidden: () => ui.chromeHidden(),
@@ -1891,6 +1952,7 @@ window.__viewer = {
   cycleZoom: () => stepZoom('cycle'),
   fireMode: () => FIRE_MODE_NAMES[fireMode] ?? String(fireMode),
   switchFireMode: () => switchFireMode(),
+  fireRound: () => fire.roundMode(),
   accuracy: () => ({ ...accuracy.state(), cone: accuracy.cone(zoom.state(), zoom.magnification()) }),
   reticle: () => reticle.state(),
   stance: () => walk.stance(),
