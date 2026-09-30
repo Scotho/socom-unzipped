@@ -153,7 +153,7 @@ describe('protocol 7 on the page: the loadout request, its answer, the kits the 
     const picks = [{ slot: 0, id: 62 }];
     const answers: unknown[] = [];
     const { net, server, welcome, requests } = page('classic', false, {
-      picks: () => picks, loadoutAnswer: (kit, refused) => { answers.push({ kit, refused }); },
+      picks: () => picks, loadoutAnswer: (kit, refused, list) => { answers.push({ kit, refused, list }); },
     });
     welcome();                                                  // a (re)join as a player: the list is sent again
     expect(requests()).toEqual([{ type: 'loadout', picks }]);
@@ -161,7 +161,11 @@ describe('protocol 7 on the page: the loadout request, its answer, the kits the 
     expect(requests().at(-1)).toEqual({ type: 'loadout', picks: [...picks, { slot: 2, id: 122 }] });
     server({ type: 'loadout', kit: [62, 15, 122, 126, 194], refused: null });
     server({ type: 'loadout', kit: [62, 15, 122, 126, 194], refused: { reason: 'refused', at: 1 } });
-    expect(answers).toEqual([{ kit: [62, 15, 122, 126, 194], refused: null }, { kit: [62, 15, 122, 126, 194], refused: { reason: 'refused', at: 1 } }]);
+    // Each answer is handed the list it answers (in order): the welcome's re-send, then the confirm's.
+    expect(answers).toEqual([
+      { kit: [62, 15, 122, 126, 194], refused: null, list: picks },
+      { kit: [62, 15, 122, 126, 194], refused: { reason: 'refused', at: 1 }, list: [...picks, { slot: 2, id: 122 }] },
+    ]);
     net.close();
   });
 

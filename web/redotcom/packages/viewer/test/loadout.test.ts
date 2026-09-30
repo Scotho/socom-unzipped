@@ -11,6 +11,7 @@ import {
   BAKED_ICONS, BAKED_LOADOUT, kitParam, kitRecords, loadKitSource, PlayerLoadout, simKitsFromBytes, slotIcon, slotModel, slotRecord,
   typeLoadout,
 } from '../src/loadout';
+import { MAX_LOADOUT_PICKS } from '../src/net/protocol';
 
 /**
  * The runtime kit (web sprint 4, M3/M4): a `Loadout` of five ids is the kit's state; the two firearm slots' records,
@@ -197,15 +198,23 @@ describe('protocol 7: the side\'s confirmed picks, the list the room replays (M9
     expect(l.pending('seal')).toEqual([38, 15, 121, 126, 194]);
   });
 
-  it('a refusal drops the refused pick and those after it, so the next request is not refused again', () => {
+  it('a refusal restores the last list the room accepted, not an empty one (a reconnect re-sends that)', () => {
     const l = new PlayerLoadout();
     l.setMap(table, map);
-    l.confirm('seal', { slot: 0, id: 38 });
+    l.accepted('seal', l.confirm('seal', { slot: 0, id: 38 })!);
     l.confirm('seal', { slot: 1, id: 5 });
     l.confirm('seal', { slot: 2, id: 126 });
-    l.refused('seal', 1);
+    l.refusedList('seal');
     expect(l.picks('seal')).toEqual([{ slot: 0, id: 38 }]);
-    l.refused('seal', 5);                                                 // past the list: nothing to drop
-    expect(l.picks('seal')).toEqual([{ slot: 0, id: 38 }]);
+    l.refusedList('terrorist');                                           // nothing accepted: the type's own
+    expect(l.picks('terrorist')).toEqual([]);
+  });
+
+  it('the list never grows past MAX_LOADOUT_PICKS: a confirm that would is not taken', () => {
+    const l = new PlayerLoadout();
+    l.setMap(table, map);
+    for (let i = 0; i < MAX_LOADOUT_PICKS; i++) expect(l.confirm('seal', { slot: 0, id: i % 2 ? 38 : 54 }, (x) => [...x])).not.toBeNull();
+    expect(l.confirm('seal', { slot: 0, id: 38 }, (x) => [...x])).toBeNull();
+    expect(l.picks('seal')).toHaveLength(MAX_LOADOUT_PICKS);
   });
 });

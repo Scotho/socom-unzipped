@@ -105,6 +105,12 @@ const QUEUE_MAX = 600;
  * the command after it has run too (the page's look runs up to a tick ahead of the command it names).
  */
 const PENDING_MAX = 32, PENDING_TICKS = QUEUE_MAX;
+/**
+ * The `loadout` requests a player may send (protocol 7; the review's guard, as the batches' and the rounds' are): a
+ * burst of `LOADOUT_BURST`, then one each `LOADOUT_EVERY` ticks (a menu confirms once a press, one step a press); a
+ * request past the budget is dropped unanswered.
+ */
+export const LOADOUT_BURST = 8, LOADOUT_EVERY = 6;
 /** A name's longest before the lobby's own cut (the lobby trims to the game's; this refuses a flood first). */
 const NAME_MAX = 256;
 
@@ -180,6 +186,10 @@ class Player {
    * null for the type's own. Applied at the next spawn (classic: the next round, R94.3), and every spawn after.
    */
   next: Loadout | null = null;
+  /** The picks `next` was replayed from (the list a reconnect re-sends), empty for the type's own kit. */
+  picks: Pick[] = [];
+  /** The `loadout` requests left in the budget (`LOADOUT_BURST`, one back each `LOADOUT_EVERY` ticks). */
+  loadoutCredit = LOADOUT_BURST;
   /**
    * The magazines, per weapon: the game's ring (`magazines.ts`, research 84 §18) -- the page's `Fire` counts with the
    * same, so a reload here takes the magazine the page's did; the command count each last fired at (`ran`).
@@ -325,6 +335,10 @@ export class Room {
   /** A client gone: its slot to the queue's head. */
   leave(id: number): void {
     if (!this.conns.delete(id)) return;
+    // Protocol 7: the type's picks stay with the address (the character type is the seat's, `FUN_0023e5e0`), so a
+    // reconnect seated alive may re-send them and have them land (`loadout`).
+    const gone = this.players.get(id), address = this.addresses.get(id);
+    if (gone && address && gone.picks.length) this.kept.set(address, { team: gone.team, picks: gone.picks, next: gone.next });
     this.players.delete(id);
     this.addresses.delete(id);
     // A voter's votes go with it; a target's with it too.
@@ -335,6 +349,8 @@ export class Room {
 
   private addPlayer(id: number, team: Team): void {
     const p = new Player(id, team, this.newSim(), this.opts.now());
+    const address = this.addresses.get(id), kept = address ? this.kept.get(address) : undefined;
+    if (kept && kept.team === team) { p.picks = kept.picks; p.next = kept.next; }
     this.players.set(id, p);
     if (this.seatsGhosts()) { this.scoreDirty = true; return; }   // a ghost until the next round
     this.spawn(p, 'start');
@@ -469,6 +485,7 @@ export class Room {
     this.creditStep = this.lastStepAt === null ? 1 : Math.max(1, ((now - this.lastStepAt) / 1000) * TICK_HZ);
     this.lastStepAt = now;
     for (const p of this.players.values()) this.run(p, now);
+    if (this.tick % LOADOUT_EVERY === 0) for (const p of this.players.values()) p.loadoutCredit = Math.min(LOADOUT_BURST, p.loadoutCredit + 1);
     for (const p of this.players.values()) this.corpse(p);
     for (const p of this.players.values()) this.remember(p);
     this.doors.step(1 / TICK_HZ);
@@ -657,9 +674,18 @@ export class Room {
   private loadout(id: number, raw: unknown): void {
     const p = this.players.get(id);
     if (!p) return;
+    if (p.loadoutCredit < 1) return;                             // past the budget: dropped, unanswered
+    p.loadoutCredit--;
     const held = (): number[] => [...(p.next ?? this.typeKit(p))];
     const picks = picksOf(raw);
     if (!picks) { this.send(id, { type: 'loadout', kit: held(), refused: { reason: 'slot', at: 0 } }); return; }
+    // The menu opens only dead or a ghost (`canOpen`, `FUN_001f7ff0` L56648-56661): a living player's request is refused
+    // -- but for the list the type already holds (a reconnect's re-send, seated alive), answered as held.
+    if (p.alive) {
+      const same = picks.length === p.picks.length && picks.every((q, i) => q.slot === p.picks[i]!.slot && q.id === p.picks[i]!.id);
+      this.send(id, { type: 'loadout', kit: held(), refused: same ? null : { reason: 'alive', at: 0 } });
+      return;
+    }
     if (!this.kits) {
       if (picks.length) { this.send(id, { type: 'loadout', kit: held(), refused: { reason: 'unknown', at: 0 } }); return; }
       p.next = null;
@@ -670,8 +696,12 @@ export class Room {
     const out = applyPicks(this.kits.table.arsenal, valves, p.team, this.typeKit(p), picks);
     if ('refused' in out) { this.send(id, { type: 'loadout', kit: held(), refused: { reason: out.refused, at: out.at } }); return; }
     p.next = picks.length ? out.loadout : null;
+    p.picks = picks;
     this.send(id, { type: 'loadout', kit: held(), refused: null });
   }
+
+  /** Protocol 7: each address's type picks when its player left (`leave` -> `addPlayer`, a reconnect). */
+  private readonly kept = new Map<string, { team: Team; picks: Pick[]; next: Loadout | null }>();
 
   /**
    * The name a kill line gives a weapon (research 91 §10: `FUN_003d19a0` L324284, the record whose `+0x7c` id matches,

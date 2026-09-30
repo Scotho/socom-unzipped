@@ -4,6 +4,7 @@ import {
   readMapArsenal, type KitTable, type Loadout, type MapArsenal, type Pick, type Side, type WeaponRecord,
 } from '@s2u/scene';
 import { magazinesCarried } from './magazines';
+import { MAX_LOADOUT_PICKS } from './net/protocol';
 
 /**
  * The runtime kit (web sprint 4, M3/M4; spec §4's goal, W4.R2, W4.R6): what a SEAL or a Terrorist carries is a
@@ -129,6 +130,8 @@ export class PlayerLoadout {
   private current: Loadout = BAKED_LOADOUT;
   private readonly next: Record<Side, Loadout | null> = { seal: null, terrorist: null };
   private readonly confirmed: Record<Side, Pick[]> = { seal: [], terrorist: [] };
+  /** The last list the room accepted, per side: what a refusal returns to (and a reconnect re-sends). */
+  private readonly accepts: Record<Side, Pick[]> = { seal: [], terrorist: [] };
   private dev: Loadout | null = null;
 
   /** A new map (a new match): its tables, and the types' own kits -- the picks of the last map's types go. */
@@ -138,6 +141,8 @@ export class PlayerLoadout {
     this.next.seal = this.next.terrorist = null;
     this.confirmed.seal = [];
     this.confirmed.terrorist = [];
+    this.accepts.seal = [];
+    this.accepts.terrorist = [];
   }
 
   /** The developer's `&kit=`: each side's pick on every map, until a pick replaces it. */
@@ -172,20 +177,28 @@ export class PlayerLoadout {
 
   /**
    * A confirm of the weapon select (`FUN_0023e5e0`: the kit written to the type): the pick added to the side's list;
-   * the list to send. `compact`, when given, may replace the list with a shorter one that reaches the same kit.
+   * the list to send. `compact`, when given, may replace the list with a shorter one that reaches the same kit. A list
+   * that would still pass `MAX_LOADOUT_PICKS` (the room refuses it as malformed) is not taken: null, the list unchanged.
    */
-  confirm(side: Side, pick: Pick, compact?: (picks: readonly Pick[]) => Pick[]): readonly Pick[] {
+  confirm(side: Side, pick: Pick, compact?: (picks: readonly Pick[]) => Pick[]): readonly Pick[] | null {
     const list = [...this.confirmed[side], { slot: pick.slot, id: pick.id }];
-    this.confirmed[side] = compact ? compact(list) : list;
+    const next = compact ? compact(list) : list;
+    if (next.length > MAX_LOADOUT_PICKS) return null;
+    this.confirmed[side] = next;
     return this.confirmed[side];
   }
 
+  /** The room accepted `list` for the side (its answer, unrefused): the list a refusal returns to. */
+  accepted(side: Side, list: readonly Pick[]): void {
+    this.accepts[side] = list.map((p) => ({ ...p }));
+  }
+
   /**
-   * The room refused the side's list at pick `at` (its answer's `refused.at`): that pick and the ones after it are
-   * dropped, so the list the page sends next is the one the room holds, not one it will refuse again.
+   * The room refused the side's latest list: the side's list is the last one it accepted again (the kit it holds), so
+   * the next request -- or a reconnect's re-send -- is one it takes, and the refused pick alone is lost.
    */
-  refused(side: Side, at: number): void {
-    if (Number.isInteger(at) && at >= 0 && at < this.confirmed[side].length) this.confirmed[side] = this.confirmed[side].slice(0, at);
+  refusedList(side: Side): void {
+    this.confirmed[side] = this.accepts[side].map((p) => ({ ...p }));
   }
 
   /** The room's answer to a `loadout` request: the kit it holds for the side's next round (five ids; anything else is ignored). */

@@ -403,12 +403,15 @@ export type ServerEvent =
    * Protocol 7: the answer to a `loadout` request -- the kit the room holds for the recipient's next round (`kit`, five
    * item ids: what it will spawn with), and when the picks were refused, why and at which (`@s2u/scene`
    * `PickRefusal`: `slot` a slot past 0-4 or a malformed list, `unknown` an id with no record, `locked` a locked slot,
-   * `refused` an item the side or the slot does not take); refused, the kit is the one held before.
+   * `refused` an item the side or the slot does not take, `alive` a living player's -- the menu opens only dead); refused,
+   * the kit is the one held before.
    */
   | { type: 'loadout'; kit: number[]; refused: { reason: LoadoutRefusal; at: number } | null };
 
 /** Why a `loadout` request was refused (`@s2u/scene` `PickRefusal`). */
-export type LoadoutRefusal = 'slot' | 'unknown' | 'locked' | 'refused';
+export type LoadoutRefusal = 'slot' | 'unknown' | 'locked' | 'refused'
+  /** The player is alive: the menu opens only dead or a ghost (`canOpen`, research 94 §B2). */
+  | 'alive';
 /** The most picks a `loadout` request may carry (the server's guard: the page compacts its list, `../loadout`). */
 export const MAX_LOADOUT_PICKS = 64;
 

@@ -57,7 +57,7 @@ export interface NetPageDeps {
   /** Protocol 7: the side's confirmed weapon-select picks (`./loadout` `PlayerLoadout.picks`), sent again at each seat. */
   picks?(team: Team): readonly Pick[];
   /** Protocol 7: the room's answer to a `loadout` request -- the kit held for the next round, and the refusal if any. */
-  loadoutAnswer?(kit: readonly number[], refused: { reason: LoadoutRefusal; at: number } | null): void;
+  loadoutAnswer?(kit: readonly number[], refused: { reason: LoadoutRefusal; at: number } | null, list: readonly Pick[] | null): void;
   /**
    * WEAPON EXCHANGE open (`./weaponExchange`): the controller's HUD mode 1 (`FUN_00597740(ctrl, 1, 0)` L88370) -- the
    * page's keys for the dead's teammate cycle and the spectator's camera do nothing (DEAD_CYCLE_WHILE_MENU_READING).
@@ -247,6 +247,7 @@ export class NetPage {
     this.reconnect.at = 0;
     this.unsubscribe();
     this.deps.remote.clear();
+    this.inFlight = [];                               // a new socket: the old one's answers will not come
     this.client = this.open();
     this.unsubscribe = this.client.on((ev) => this.event(ev));
   }
@@ -297,8 +298,12 @@ export class NetPage {
    */
   requestLoadout(picks: readonly Pick[]): void {
     if (this.client.state !== 'open' || this.client.role !== 'player') return;
-    this.client.send({ type: 'loadout', picks: picks.map((p) => ({ slot: p.slot, id: p.id })) });
+    const list = picks.map((p) => ({ slot: p.slot, id: p.id }));
+    this.inFlight.push(list);
+    this.client.send({ type: 'loadout', picks: list });
   }
+  /** The `loadout` lists sent and not yet answered, oldest first (the answers come back in order on one socket). */
+  private inFlight: Pick[][] = [];
 
   /** A seat taken (a join, a rejoin after a drop, a promotion): the side's picks sent again, so the new seat holds them. */
   private resendPicks(team: Team | null): void {
@@ -547,7 +552,7 @@ export class NetPage {
       case 'demoted': this.spectatorWelcome(ev.position); break;
       case 'refused': this.reconnect.stopped = true; this.refusal = ev.reason; hud.postMessage(ev.reason); break;
       case 'votes': hud.postMessage(` Voting: You have ${ev.count} votes against you.`); break;
-      case 'loadout': this.deps.loadoutAnswer?.(ev.kit, ev.refused); break;
+      case 'loadout': this.deps.loadoutAnswer?.(ev.kit, ev.refused, this.inFlight.shift() ?? null); break;
       case 'kicked': this.reconnect.stopped = true; this.refusal = ev.reason === 'vote' ? 'kicked by a vote' : 'kicked for inactivity';
         hud.postMessage(ev.reason === 'vote' ? 'YOU HAVE BEEN KICKED FROM THIS GAME' : 'Kicked for inactivity.'); break;
       default: break;

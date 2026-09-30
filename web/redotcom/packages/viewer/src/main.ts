@@ -244,6 +244,8 @@ const exchange = new WeaponExchange({
   confirm: (pick) => {
     const side = matchSide(), ctx = exchange.context();
     const list = loadouts.confirm(side, pick, (l) => (ctx ? compactPicks(ctx, loadouts.base(side), l) : [...l]));
+    // A list past MAX_LOADOUT_PICKS is not taken: the menu shows the kit held again.
+    if (!list) { exchange.answer(loadouts.pending(side) ?? loadouts.base(side)); return; }
     net?.requestLoadout(list);
   },
 });
@@ -1628,8 +1630,9 @@ function connectNet(map: LoadedMap): void {
     // Protocol 7: a shot's item by id; the side's picks for a (re)seat; the room's answer to a request (M9).
     recordOf: (id) => loaded?.arsenal?.table.records.get(id) ?? null,
     picks: (team) => loadouts.picks(team),
-    loadoutAnswer: (kit, refused) => {
-      if (refused) loadouts.refused(matchSide(), refused.at);   // the list the room holds, not one it refuses again
+    loadoutAnswer: (kit, refused, list) => {
+      // Refused: back to the last list the room accepted (the kit it holds); taken: that list is the one it holds.
+      if (refused) loadouts.refusedList(matchSide()); else if (list) loadouts.accepted(matchSide(), list);
       loadouts.answer(matchSide(), kit);
       const l = wireLoadout(kit);
       if (l) exchange.answer(l);                     // the menu shows the kit the room will spawn the player with

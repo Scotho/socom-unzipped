@@ -204,6 +204,7 @@ describe('multiplayer off: no request to any host, and the offline match still p
     const client = new NetClient({ url: 'loopback:', map: 'MP99', name: 'Solo', socket: match.socket }, new Walk());
     client.on((ev) => events.push(ev));
     await flush();
+    (match.room.player(client.id) as unknown as { alive: boolean }).alive = false;   // the menu opens dead only
     client.send({ type: 'loadout', picks: [{ slot: 0, id: 62 }] });
     await flush();
     expect(events.filter((e) => e.type === 'loadout')).toEqual([{ type: 'loadout', kit: [62, 15, 121, 126, 255], refused: null }]);

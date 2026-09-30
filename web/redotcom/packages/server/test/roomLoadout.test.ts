@@ -8,7 +8,7 @@ import {
   cameraLook, centreClaim, decodeSnapshot, encodeCommands, EYE_HEIGHT, faceToward, groundGrid, packGround, PROTOCOL_VERSION,
   type ClientEvent, type Command, type ServerEvent, type SimKits, type SimMap,
 } from '../../viewer/src/sim';
-import { Room, type Conn } from '../src/room';
+import { LOADOUT_BURST, LOADOUT_EVERY, Room, type Conn } from '../src/room';
 
 /**
  * Protocol 7 (web sprint 4, M9; W4.R6): the weapon select's `loadout` request. The room replays the page's picks from
@@ -105,7 +105,17 @@ function setup(opts: ConstructorParameters<typeof Room>[2] = {}, withKits: SimKi
     return { seq, forward: 0, right: 0, yaw: p.sim.walker.state.yaw, pitch: 0, turn: 0, buttons: 0, stance: 0, weapon: 0, ...over };
   };
   const send = (id: number, commands: Command[]): void => room.binary(id, encodeCommands({ viewTick: room.tick, commands }));
-  const loadout = (id: number, picks: unknown): void => room.text(id, { type: 'loadout', picks } as unknown as ClientEvent);
+  /**
+   * A `loadout` request, sent as the menu sends it: while the player is dead (`canOpen`), unless `alive` -- the body is
+   * marked dead for the request alone, so the round's state is untouched.
+   */
+  const loadout = (id: number, picks: unknown, alive = false): void => {
+    const p = room.player(id) as { alive: boolean } | undefined;
+    const was = p?.alive ?? false;
+    if (p && !alive) p.alive = false;
+    room.text(id, { type: 'loadout', picks } as unknown as ClientEvent);
+    if (p) p.alive = was;
+  };
   return { room, join, cmd, send, loadout, forget: (id: number) => seqs.delete(id) };
 }
 type Setup = ReturnType<typeof setup>;
@@ -255,6 +265,43 @@ describe('protocol 7: the loadout request, replayed by the room from the type\'s
     const seen = new Map(late.of('welcome')[0]!.players.map((p) => [p.id, p.kit]));
     expect(seen.get(1)).toEqual([...TERRORIST_KIT]);
     expect(seen.get(2)).toEqual([...SEAL_KIT]);
+  });
+});
+
+describe('the loadout request\'s own guards: the menu\'s gate, the re-send, the budget', () => {
+  it('refuses a living player\'s request (the menu opens only dead or a ghost, FUN_001f7ff0 L56648-56661), the kit kept', () => {
+    const s = match();
+    s.loadout(2, [{ slot: 2, id: 126 }]);                                  // dead: taken
+    s.loadout(2, [{ slot: 0, id: 62 }], true);                             // alive: refused
+    expect(s.seal.of('loadout').at(-1)).toEqual({ type: 'loadout', kit: [54, 15, 126, 151, 194], refused: { reason: 'alive', at: 0 } });
+    s.loadout(2, [{ slot: 2, id: 126 }], true);                            // alive, the list it holds again: answered as held
+    expect(s.seal.of('loadout').at(-1)).toEqual({ type: 'loadout', kit: [54, 15, 126, 151, 194], refused: null });
+  });
+
+  it('a reconnect seated alive (a respawn room seats at once) re-sends its accepted picks and they land; new ones do not', () => {
+    const s = setup({ rules: 'respawn' });
+    s.join(1); s.join(2);
+    const picks = [{ slot: 0, id: 62 }, { slot: 2, id: 122 }];
+    s.loadout(2, picks);
+    s.room.leave(2);
+    const again = s.join(2);                                              // the same address: its type's picks kept
+    expect(s.room.player(2)!.alive).toBe(true);
+    s.loadout(2, picks, true);
+    expect(again.of('loadout').at(-1)).toEqual({ type: 'loadout', kit: [62, 15, 122, 151, 194], refused: null });
+    s.loadout(2, [...picks, { slot: 2, id: 126 }], true);
+    expect(again.of('loadout').at(-1)!.refused).toEqual({ reason: 'alive', at: 0 });
+    const other = s.join(3);                                               // another address holds nothing of it
+    s.loadout(3, picks, true);
+    expect(other.of('loadout').at(-1)!.refused).toEqual({ reason: 'alive', at: 0 });
+  });
+
+  it('holds a player to LOADOUT_BURST requests, then one each LOADOUT_EVERY ticks; the rest dropped unanswered', () => {
+    const s = match();
+    for (let i = 0; i < 30; i++) s.loadout(2, [{ slot: 0, id: 62 }]);
+    expect(s.seal.of('loadout')).toHaveLength(LOADOUT_BURST);
+    for (let i = 0; i < LOADOUT_EVERY; i++) s.room.step();
+    s.loadout(2, [{ slot: 0, id: 62 }]); s.loadout(2, [{ slot: 0, id: 62 }]);
+    expect(s.seal.of('loadout')).toHaveLength(LOADOUT_BURST + 1);
   });
 });
 

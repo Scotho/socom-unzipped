@@ -190,5 +190,12 @@ describe('the pad\'s buttons, and the list the room replays', () => {
     const reach = (p: readonly Pick[]) => applyPicks(arsenal, valves, 'seal', base, p);
     expect(reach(short)).toEqual(reach(long));
     expect(compactPicks(seal, base, [{ slot: 0, id: 62 }])).toEqual([{ slot: 0, id: 62 }]);
+    // A list whose whole can't be replayed slot by slot (the C4 row is locked) still shortens by its prefix: 60 swaps
+    // of the primary, then the list's own tail.
+    const churn: Pick[] = Array.from({ length: 60 }, (_, i) => ({ slot: 0, id: i % 2 ? 54 : 62 }));
+    const tail: Pick[] = [{ slot: 2, id: 122 }];
+    const short2 = compactPicks(seal, base, [...churn, ...tail]);
+    expect(short2.length).toBeLessThanOrEqual(3);
+    expect(reach(short2)).toEqual(reach([...churn, ...tail]));
   });
 });
