@@ -362,26 +362,34 @@ entries.
 **(a) against (c): the kick path is GS work.** A kick run costs 1,600 ns. Its VU work is 37 pairs (38.0 cycles
 measured) × 5 ns = 185 ns, and §6's harness timed the whole kick run without the GS (head, generated call, tail) at
 130 ns. About 1.47 µs a run, 92 %, is neither the program nor run()'s head: it is the two XGKICKs §2.1 places inside the
-row's clock (the direct submit, `processGIFPacket`'s mutex, the A+D writes, `TEX0_1`'s CLUT check). The load does not
-explain it: list and fade run 15-20 % over the harness's 121 and 104 ns, not twelve times over. So (c) holds for
-63.8 % of entry 0's host time. **[measured]** the rows; **[inferred]** the attribution to the GS (the row cannot split
-the two kicks or the GS steps).
+row's clock (the direct submit, `processGIFPacket`'s recursive mutex, the A+D writes, `TEX0_1`'s CLUT check). So (c)
+holds for 63.8 % of entry 0's host time. But the host carried a ~40 % foreign load, and the kick's excess sits in a
+submit that takes a mutex: preemption while waiting for or holding it inflates exactly this row. List and fade (14-20 %
+over the harness's 121 and 104 ns) never touch the GS, so their small excess does not rule load out for the kick. This
+data cannot separate intrinsic GS cost from load-inflated mutex waits: the 92 % and the GS side's ms/s below are
+**loaded-host ceilings** until a quiet-host reading confirms them. **[measured]** the rows; **[inferred]** the
+attribution to the GS (the row cannot split the two kicks or the GS steps).
 
 **The matrix path is VU work plus something that is not GS.** 44 FMACs in 83 cycles: 83 × 5 ns = 415 ns, and the
 harness timed the warm run at 492-495 ns. The row reads 1,114 ns, about 0.5-0.6 µs over even after 20 % for the load.
 The path has no XGKICK. The reading that fits is warmth: matrix is the first MSCAL 0 of an object's set (§1.3), after
 the previous object's `0x1b50` list and the EE code that built the chunk, so it pays the cold lines (resident qwords
-4-23, the 82-pair code) that fade, list and kick then find warm. **[inferred]**: nothing in this reading counts misses.
+4-23, the 82-pair code) that fade, list and kick then find warm. Cold lines are also what another lane's vitest
+thrashing the shared cache inflates, so this data cannot separate cold lines from load either. **[inferred]**: nothing
+in this reading counts misses.
 
-**List and fade are at their floor**: 145 and 119 ns are the harness's figures plus the load. **[measured]**
+**List and fade are at their floor**: 145 and 119 ns are the harness's figures plus the load. **[inferred]**
 
 **What changes in §3.3 and §6.** A native pc 0 replaces the generated call only: the kick's 59 ns of 1,600, the
 matrix's 405 ns floor, list and fade's 35-50 ns (their 121 and 104 ns less §6's 71 ns of head and tail). At 25-75 % of
 the call (9-17 % on the matrix's FMAC code, research/82) and the walk's rates (4,755 kick, 3,014 matrix and 6,933
 list/fade runs a second): 0.07-0.21 + 0.11-0.21 + 0.06-0.26, **about 0.25-0.7 ms/s**; scaled to §2.2's 25,000 entry-0
 runs a second, 0.4-1.2 ms/s, against §3.3's 1.5-5. **[estimate]** **The NO-GO on a native pc 0 stands**, now on
-numbers: 92 % of the kick run and the matrix run's excess are outside what a native program replaces. A pc-0 lever, if
-any, is the kick's GS side: 7.6 ms/s at the walk's rate. §3.4's empty `423` kick is its first candidate. This reading
-does not split the two kicks, so §3.4's "under 1 ms/s" is a floor: if the two packets cost alike, skipping the empty
-one is up to 0.7 µs × 4,755 = 3.3 ms/s at the walk's rate. **[estimate]**; its GS-side safety is still unproved (§3.4).
+numbers: the generated call is 59 of the kick run's 1,600 ns and 405 of the matrix run's 1,114, so even a several-fold
+load inflation of the rest leaves both dominated by work a native program does not replace. It survives either way.
+A pc-0 lever, if any, is the kick's GS side: 1.47 µs × 4,755 = about 7.0 ms/s at the walk's rate, a loaded-host ceiling.
+§3.4's empty `423` kick is its first candidate. The row lumps both kicks, so §3.4's "under 1 ms/s" is no longer
+established, and the data gives only a ceiling, and only if the empty packet costs no more than the full one: half
+the excess, 0.735 µs × 4,755 = **about 3.5 ms/s** at the walk's rate. **[estimate]**; its GS-side safety is still
+unproved (§3.4).
 The larger rows stay `0x52` (13.7 ms/s) and `skin_pass` (11.7 ms/s); `0x3e`'s 38.8 µs per list agrees with §4.2's 39.6.
