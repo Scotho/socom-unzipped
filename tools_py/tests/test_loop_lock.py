@@ -620,6 +620,38 @@ class TestInterleavings(LockTestBase):
         self.assertFalse(os.path.exists(mx))
         self.assertEqual(self.strays(), [])
 
+    def test_a_taker_whose_wait_ran_out_during_its_break_still_tries_the_mutex_it_freed(self):
+        # 2026-10-02: with ~5 s process starts (70 bash.exe on the host) breaking a stale mutex outlasted the whole
+        # 10 s LOOP_LOCK_MUTEX_WAIT_SEC; the breaker then read its deadline and gave up BUSY without the mkdir its own
+        # break had freed, so all three smoke takers left BUSY with the mutex gone and nobody holding (history: one
+        # MUTEX-BROKEN, no REAPED). A wait of 0 s runs out in every iteration, so the break always outlasts it.
+        mx = self.make_mutex(token_age_s=60)
+        rc, out = self.sh("take", "bob", env=self.env(LOOP_LOCK_MUTEX_WAIT_SEC=0))
+        self.assertEqual(rc, 0, out)
+        self.assertTrue(out.startswith("TAKEN by bob"), out)
+        self.assertEqual(self.history().count("MUTEX-BROKEN"), 1, self.history())
+        self.assertFalse(os.path.exists(mx))
+        self.assertEqual(self.strays(), [])
+
+    def test_a_reaper_whose_wait_ran_out_during_its_break_still_reaps(self):
+        # The same on the reap path (the smoke's shape: a stale ghost behind a stale mutex).
+        self.write_record("ghost", 3600, hb_age_s=50 * 60)
+        self.make_mutex(token_age_s=60)
+        rc, out = self.sh("take", "bob", env=self.env(LOOP_LOCK_MUTEX_WAIT_SEC=0), timeout=180)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("REAPED ghost", out)
+        self.assertEqual((self.history().count("MUTEX-BROKEN"), self.history().count("REAPED")), (1, 1), self.history())
+        self.assertEqual(self.strays(), [])
+
+    def test_a_fresh_mutex_still_ends_a_zero_wait_busy(self):
+        # The retry after a break is not a way past the deadline: nothing stale, nothing broken, BUSY at once.
+        mx = self.make_mutex(token_age_s=0)
+        rc, out = self.sh("take", "bob", env=self.env(LOOP_LOCK_MUTEX_WAIT_SEC=0))
+        self.assertEqual(rc, 1, out)
+        self.assertIn("mutex", out)
+        self.assertTrue(os.path.exists(mx))
+        self.assertEqual(self.history(), "")
+
     def test_stale_token_named_mutex_is_broken_exactly_once_by_three_takers(self):
         self.make_mutex(token_age_s=60)
         procs = [self.popen("take", "t%d" % i, env=self.env()) for i in range(3)]
