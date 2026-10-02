@@ -103,6 +103,43 @@ void register_pcsx2_files_tests()
                      "an empty file is just the section");
         });
 
+        tc.Run("pcsx2_files: the merge -- a key twice, no spaces, mixed endings, no final newline (review)", [](TestCase &t)
+        {
+            auto count = [](const std::string &s, const std::string &needle)
+            {
+                size_t n = 0;
+                for (size_t at = s.find(needle); at != std::string::npos; at = s.find(needle, at + 1)) ++n;
+                return n;
+            };
+            const std::string twice = pf::mergeIniSection("[DEV9/Eth]\nEthEnable = false\nEthApi = PCAP\nEthEnable = false\n",
+                                                          "DEV9/Eth", {{"EthEnable", "true"}});
+            t.IsTrue(count(twice, "EthEnable = true\n") == 2, "a key present twice: both lines replaced");
+            t.IsTrue(twice.find("false") == std::string::npos, "and no false left");
+            t.IsTrue(pf::mergeIniSection("[DEV9/Eth]\nEthEnable=false\n", "DEV9/Eth", {{"EthEnable", "true"}})
+                         == "[DEV9/Eth]\nEthEnable = true\n", "key=value with no spaces is matched and rewritten");
+            t.IsTrue(pf::mergeIniSection("[UI]\r\nX = 1\n[DEV9/Eth]\nEthEnable = false\nEthApi = PCAP\r\n", "DEV9/Eth",
+                                         {{"EthEnable", "true"}, {"DNS1", "1.2.3.4"}})
+                         == "[UI]\r\nX = 1\n[DEV9/Eth]\nEthEnable = true\nEthApi = PCAP\r\nDNS1 = 1.2.3.4\r\n",
+                     "mixed endings: a replaced line keeps its own, an added line takes the file's (CRLF)");
+            t.IsTrue(pf::mergeIniSection("[UI]\nX = 1\n\n[DEV9/Eth]\nEthEnable = false", "DEV9/Eth",
+                                         {{"EthEnable", "true"}, {"DNS1", "1.2.3.4"}})
+                         == "[UI]\nX = 1\n\n[DEV9/Eth]\nEthEnable = true\nDNS1 = 1.2.3.4\n",
+                     "our section last with no final newline: the added key is not glued on");
+        });
+
+        tc.Run("pcsx2_files: sections and keys match case-insensitively, the name trimmed in its brackets (review)", [](TestCase &t)
+        {
+            const std::string lower = pf::mergeIniSection("[UI]\r\nX = 1\r\n\r\n[dev9/eth]\r\nethenable = false\r\n", "DEV9/Eth",
+                                                          {{"EthEnable", "true"}});
+            t.IsTrue(lower == "[UI]\r\nX = 1\r\n\r\n[dev9/eth]\r\nEthEnable = true\r\n",
+                     "[dev9/eth] and ethenable are ours: replaced in place with our spelling, no second section or key");
+            const std::string spaced = pf::mergeIniSection("[ DEV9/Eth ]\nEthApi = PCAP\n", "DEV9/Eth", {{"EthApi", "Sockets"}});
+            t.IsTrue(spaced == "[ DEV9/Eth ]\nEthApi = Sockets\n", "[ DEV9/Eth ] is the same section");
+            t.IsTrue(pf::mergeIniSection("[DEV9/Ethernet]\nEthApi = PCAP\n", "DEV9/Eth", {{"EthApi", "Sockets"}})
+                         == "[DEV9/Ethernet]\nEthApi = PCAP\n\n[DEV9/Eth]\nEthApi = Sockets\n",
+                     "a longer name is another section");
+        });
+
         tc.Run("pcsx2_files: the embedded pnach is the master, byte for byte", [](TestCase &t)
         {
             const std::string master = readFile(PS2X_PNACH_MASTER_PATH);

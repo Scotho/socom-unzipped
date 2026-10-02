@@ -50,6 +50,29 @@ namespace launcher::pcsx2files {
             return trim(b);
         }
 
+        // PCSX2 reads its ini case-insensitively (review of 61d7c91c): a hand-edited [dev9/eth] or ethenable is ours.
+        bool iequals(const std::string &a, const std::string &b)
+        {
+            if (a.size() != b.size())
+                return false;
+            for (size_t i = 0; i < a.size(); ++i)
+            {
+                unsigned char x = static_cast<unsigned char>(a[i]), y = static_cast<unsigned char>(b[i]);
+                if (x >= 'A' && x <= 'Z') x = static_cast<unsigned char>(x - 'A' + 'a');
+                if (y >= 'A' && y <= 'Z') y = static_cast<unsigned char>(y - 'A' + 'a');
+                if (x != y)
+                    return false;
+            }
+            return true;
+        }
+
+        // A trimmed body is the header of `section` when it is "[name]" and name, trimmed, equals it in any case.
+        bool isHeaderOf(const std::string &body, const std::string &section)
+        {
+            return body.size() >= 2 && body.front() == '[' && body.back() == ']'
+                && iequals(trim(body.substr(1, body.size() - 2)), section);
+        }
+
         bool plausibleHostName(const std::string &s)
         {
             if (s.empty() || s.front() == '.' || s.back() == '.' || s.front() == '-' || s.find("..") != std::string::npos)
@@ -104,7 +127,7 @@ namespace launcher::pcsx2files {
 
         size_t head = lines.size();
         for (size_t i = 0; i < lines.size(); ++i)
-            if (bodyOf(lines, i) == header) { head = i; break; }
+            if (isHeaderOf(bodyOf(lines, i), section)) { head = i; break; }
 
         if (head == lines.size())
         {
@@ -140,7 +163,7 @@ namespace launcher::pcsx2files {
                 continue;
             const std::string key = trim(b.substr(0, eq));
             for (size_t k = 0; k < keys.size(); ++k)
-                if (keys[k].first == key)
+                if (iequals(keys[k].first, key))   // the line is rewritten with our spelling
                 {
                     lines[i].body = keys[k].first + " = " + keys[k].second;
                     seen[k] = true;
