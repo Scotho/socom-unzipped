@@ -327,3 +327,61 @@ Differentials, unchanged against the base, with packets compared and `PS2X_VU1_F
 - `0 of 25 differ, 3 taken natively`, `skin_pass` n=22 (the `vu1dump3` `0x33c8` dumps);
 - `0 of 51 differ, 51 taken natively` (`vu1dump5/lastbone.txt`);
 - `0 of 2000 differ, 2000 taken natively` (`vu1refused1`).
+
+## 7. The split reading (2026-10-02): which entry-0 path carries the host time
+
+The walk §6 named as the next reading, and §5's "per-path split, not taken", now taken.
+`logs/s17_controller/entry0_reading.sh` ran
+`logs/s17_controller/f1_stats_walk_ab.sh entry0split refusals PS2X_VU1_NATIVE_REFUSALS=1` on the batch-6 exe
+(`a84b920d…`, N1c on by default), 2026-10-02 21:34-21:43Z, then `python -m tools_py.parity.vu1_refusals --stamp
+logs/parity/ab/entry0split/refusals --by key`: window 259.6-327.1 s, 65 one-second rows, no `overflow=` line. Its output
+is `logs/s17_controller/entry0_reading.detached.log`. **The host was not quiet:** another lane's vitest held the CPU at
+about 35-45 %. The walk's FRAME 24.16 ms and SYNCV 15.6/s are load-spoiled and are not a pick metric, and its rates are
+below §2.2's (14,701 entry-0 runs a second, not 25,000). This reading is for the shares and the cost per run. The tool's
+columns are entries, share of entries, cycles, share of cycles and `host_ms`, the SUM of the interval lines' `host_us`
+(`tools_py/parity/vu1_refusals.py`, `table()`), not a per-run figure. Below, ns/run and cycles/run are divided by
+entries.
+
+| key | entries | cycles/run | host ms | share of entry 0's host | ns/run | ms/s |
+|---|---|---|---|---|---|---|
+| entry 0 `kick` | 320,992 | 38.0 | 513.7 | **63.8 %** | **1,600** | 7.61 |
+| entry 0 `matrix` | 203,414 | 83.0 | 226.6 | 28.2 % | 1,114 | 3.36 |
+| entry 0 `list` | 243,205 | 61.8 | 35.2 | 4.4 % | 145 | 0.52 |
+| entry 0 `fade` | 208,491 | 35.0 | 24.9 | 3.1 % | 119 | 0.37 |
+| entry 0 `fade+list` | 16,240 | 54.1 | 4.4 | 0.5 % | 268 | 0.06 |
+| entry 0, all | 992,342 | 52.7 | 804.8 | 100 % | 811 | 11.92 |
+| `0x33c8 skin_pass` | 409,708 | 388.7 | 789.0 | — | 1,926 (4.95 ns/cycle) | 11.69 |
+| `0x1b50` cmd `0x52` | 182,045 | 756.9 | 926.3 | — | 5,088 (6.72 ns/cycle) | 13.72 |
+| `0x1b50` cmd `0x3e` | 10,105 | 10,444 | 392.4 | — | 38,829 | 5.81 |
+| `0x1b50` cmd `0x3c` | 817 | 7,249 | 27.3 | — | 33,392 | 0.40 |
+| `0x1b50` cmd `0x36` | 59 | 41,760 | 8.6 | — | 144,932 | 0.13 |
+
+**[measured]**; ms/s is host ms over the 67.5 s window. Entry 0 is 62 % of the refusal rows' entries and 27 % of their
+2,948.3 ms; `0x52` alone is 31 %. Kick is 32 % of entry-0 runs here (30 % in `vu1dump5`, §1.2).
+
+**(a) against (c): the kick path is GS work.** A kick run costs 1,600 ns. Its VU work is 37 pairs (38.0 cycles
+measured) × 5 ns = 185 ns, and §6's harness timed the whole kick run without the GS (head, generated call, tail) at
+130 ns. About 1.47 µs a run, 92 %, is neither the program nor run()'s head: it is the two XGKICKs §2.1 places inside the
+row's clock (the direct submit, `processGIFPacket`'s mutex, the A+D writes, `TEX0_1`'s CLUT check). The load does not
+explain it: list and fade run 15-20 % over the harness's 121 and 104 ns, not twelve times over. So (c) holds for
+63.8 % of entry 0's host time. **[measured]** the rows; **[inferred]** the attribution to the GS (the row cannot split
+the two kicks or the GS steps).
+
+**The matrix path is VU work plus something that is not GS.** 44 FMACs in 83 cycles: 83 × 5 ns = 415 ns, and the
+harness timed the warm run at 492-495 ns. The row reads 1,114 ns, about 0.5-0.6 µs over even after 20 % for the load.
+The path has no XGKICK. The reading that fits is warmth: matrix is the first MSCAL 0 of an object's set (§1.3), after
+the previous object's `0x1b50` list and the EE code that built the chunk, so it pays the cold lines (resident qwords
+4-23, the 82-pair code) that fade, list and kick then find warm. **[inferred]**: nothing in this reading counts misses.
+
+**List and fade are at their floor**: 145 and 119 ns are the harness's figures plus the load. **[measured]**
+
+**What changes in §3.3 and §6.** A native pc 0 replaces the generated call only: the kick's 59 ns of 1,600, the
+matrix's 405 ns floor, list and fade's 35-50 ns (their 121 and 104 ns less §6's 71 ns of head and tail). At 25-75 % of
+the call (9-17 % on the matrix's FMAC code, research/82) and the walk's rates (4,755 kick, 3,014 matrix and 6,933
+list/fade runs a second): 0.07-0.21 + 0.11-0.21 + 0.06-0.26, **about 0.25-0.7 ms/s**; scaled to §2.2's 25,000 entry-0
+runs a second, 0.4-1.2 ms/s, against §3.3's 1.5-5. **[estimate]** **The NO-GO on a native pc 0 stands**, now on
+numbers: 92 % of the kick run and the matrix run's excess are outside what a native program replaces. A pc-0 lever, if
+any, is the kick's GS side: 7.6 ms/s at the walk's rate. §3.4's empty `423` kick is its first candidate. This reading
+does not split the two kicks, so §3.4's "under 1 ms/s" is a floor: if the two packets cost alike, skipping the empty
+one is up to 0.7 µs × 4,755 = 3.3 ms/s at the walk's rate. **[estimate]**; its GS-side safety is still unproved (§3.4).
+The larger rows stay `0x52` (13.7 ms/s) and `skin_pass` (11.7 ms/s); `0x3e`'s 38.8 µs per list agrees with §4.2's 39.6.
