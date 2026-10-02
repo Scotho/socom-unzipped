@@ -81,6 +81,7 @@ add_library(ps2_test_lib STATIC
     src/bug_report_tests.cpp
     src/patch_fetch_tests.cpp   # Sprint 16 R2a (#71)
     src/pcsx2_config_tests.cpp   # Sprint 18 T2: the client mode and config.pcsx2.json
+    src/pcsx2_files_tests.cpp    # Sprint 18 T3: the ini merge, the embedded pnach, the data root, the DNS pick
     src/mapping_tests.cpp
     src/socom2_osk_prefill_tests.cpp
     src/knobs_tests.cpp
@@ -137,6 +138,9 @@ endif()
 target_compile_definitions(ps2_test_lib PRIVATE PS2X_LAUNCHER_FONTS_DIR="${CMAKE_SOURCE_DIR}/ps2xLauncher/assets/fonts")
 # The persona-card plan Task 1: card_save_tests.cpp reads the fixture cards under ps2xTest/fixtures/cards/, never a real card.
 target_compile_definitions(ps2_test_lib PRIVATE PS2X_TEST_FIXTURES_DIR="${CMAKE_SOURCE_DIR}/ps2xTest/fixtures")
+# Sprint 18 T3: pcsx2_files_tests.cpp holds the embedded pnach to the tracked master (the suite runs from the build dir).
+get_filename_component(PS2X_TEST_PNACH_MASTER "${CMAKE_SOURCE_DIR}/../../scripts/parity/pcsx2/0F6FC6CF.pnach" ABSOLUTE)
+target_compile_definitions(ps2_test_lib PRIVATE PS2X_PNACH_MASTER_PATH="${PS2X_TEST_PNACH_MASTER}")
 
 if(TARGET ps2_iop_fake_plugin)
     target_compile_definitions(ps2_test_lib PRIVATE
