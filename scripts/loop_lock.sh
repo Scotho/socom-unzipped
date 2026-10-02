@@ -103,7 +103,8 @@
 # holding a token file t.<epoch>.<pid>.<rand>: acquire (bounded LOOP_LOCK_MUTEX_WAIT_SEC, 10 s; release
 # waits LOOP_LOCK_RELEASE_WAIT_SEC, 45 s), re-read the record, decide, act, release. A mutex whose token
 # NAME is older than LOOP_LOCK_MUTEX_STALE_SEC (30 s) is broken (one breaker at a time, via
-# "$LOCK.mx.break"), with a history line; the holder re-checks its token before every destructive step
+# "$LOCK.mx.break"), with a history line, and the breaker tries the mkdir at once even when the break
+# outlasted its wait (2026-10-02, the smoke's three BUSY takers); the holder re-checks its token before every destructive step
 # and aborts if it was broken while it stalled. Readers (check, id, the first read of a take) take no mutex: the claim dir is renamed
 # into place already holding its record and renamed away whole, so a reader sees a whole lock or none.
 #
@@ -208,12 +209,14 @@ mx_token_epoch() {   # token-name -> its epoch (older token names without one: t
 }
 mx_stale() { [ -n "$1" ] && [ $(( $(now) - $1 )) -gt "$MX_STALE_SEC" ]; }
 
-mx_try_break() {   # token-name-or-empty, as judged stale by the caller
-  local tok="$1" cur e m1 m2 bm
+mx_try_break() {   # token-name-or-empty, as judged stale by the caller; 0 = it removed a stale mutex or break lock
+  local tok="$1" cur e m1 m2 bm rc=1
   if ! mkdir "$MX.break" 2>/dev/null; then
     bm=$(stat -c %Y "$MX.break" 2>/dev/null)
-    if mx_stale "$bm" && rmdir "$MX.break" 2>/dev/null; then mx_log "MUTEX-BREAK-LOCK-BROKEN (mtime $(( $(now) - bm )) s old)"; fi
-    return
+    if mx_stale "$bm" && rmdir "$MX.break" 2>/dev/null; then
+      mx_log "MUTEX-BREAK-LOCK-BROKEN (mtime $(( $(now) - bm )) s old)"; return 0
+    fi
+    return 1
   fi
   cur=$(ls -A "$MX" 2>/dev/null | grep -v '^\.' | head -n 1)
   if [ -n "$tok" ]; then
@@ -221,7 +224,7 @@ mx_try_break() {   # token-name-or-empty, as judged stale by the caller
       e=$(mx_token_epoch "$tok")
       if mx_stale "$e" && rm "$MX/$tok" 2>/dev/null; then
         rmdir "$MX" 2>/dev/null
-        mx_log "MUTEX-BROKEN $tok (token $(( $(now) - e )) s old)"
+        mx_log "MUTEX-BROKEN $tok (token $(( $(now) - e )) s old)"; rc=0
       fi
     fi
   elif [ -d "$MX" ] && [ -z "$cur" ]; then
@@ -230,11 +233,12 @@ mx_try_break() {   # token-name-or-empty, as judged stale by the caller
       sleep 1
       cur=$(ls -A "$MX" 2>/dev/null | head -n 1); m2=$(stat -c %Y "$MX" 2>/dev/null)
       if [ -z "$cur" ] && [ "$m1" = "$m2" ] && mx_stale "$m2" && rmdir "$MX" 2>/dev/null; then
-        mx_log "MUTEX-BROKEN <no token> (dir $(( $(now) - m2 )) s old, two readings)"
+        mx_log "MUTEX-BROKEN <no token> (dir $(( $(now) - m2 )) s old, two readings)"; rc=0
       fi
     fi
   fi
   rmdir "$MX.break" 2>/dev/null
+  return $rc
 }
 
 mx_acquire() {   # [wait_seconds]
@@ -256,12 +260,16 @@ mx_acquire() {   # [wait_seconds]
       MX_TOKEN=""                                # our dir vanished under a breaker, or was shared: start again
     else
       tok=$(ls -A "$MX" 2>/dev/null | head -n 1)
+      # A break that removed something is followed by an attempt at once, past the deadline if need be: with
+      # ~5 s process starts (2026-10-02, ~70 bash.exe) the break alone outlasted the 10 s wait, and a breaker that
+      # then read its deadline left BUSY beside the mutex it had just freed -- all three smoke takers did, nobody
+      # holding. Bounded: only a STALE mutex or break lock can be removed, and a fresh one ends the loop as before.
       if [ -n "$tok" ]; then
         e=$(mx_token_epoch "$tok")
-        mx_stale "$e" && mx_try_break "$tok"
+        mx_stale "$e" && mx_try_break "$tok" && continue
       elif [ -d "$MX" ]; then
         m=$(stat -c %Y "$MX" 2>/dev/null)
-        mx_stale "$m" && mx_try_break ""
+        mx_stale "$m" && mx_try_break "" && continue
       fi
     fi
     [ "$(now)" -ge "$deadline" ] && return 1
