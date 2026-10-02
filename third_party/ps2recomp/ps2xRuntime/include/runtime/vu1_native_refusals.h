@@ -10,6 +10,9 @@
 //
 //   [vu1-refuse] elapsed=1002ms entry=0x1b50 reason=unknown_command cmd=0x52 n=37 cycles=412345 host_us=5120
 //
+// no_native_entry at entry 0 is split by the entry-0 program's path (research/83 section 3.1), `cmd=kick`, `matrix`,
+// `fade`, `list`, `fade+list` or `none` (Entry0Path below); every other no_native_entry key keeps `cmd=-`.
+//
 // one line per key with a count in the interval, once a second from the VU1 thread, sorted by n (the [gs-loop]
 // instrument's pattern: atomic accumulators, the interval taken by one printer). vu1_replay prints the same
 // fields as totals, `[vu1-refuse-total] ...`, at its end. tools_py/parity/vu1_refusals.py reads either into a
@@ -26,6 +29,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -63,8 +67,19 @@ namespace Vu1Refusals
         SkinPass,          // vi5 bit 2 clear: the microcode's `B 0x3100`, another 0x52 bone pass (no native 0x52)
         RepackRange,       // vi9 outside 1..256, or the repack's records wrap VU memory or overlap the command list
         ResumeIndex,       // the live-in vi14 the dispatcher resumes at is outside the list's 64 qwords
-        WriteRange,        // cmd='s stores would wrap VU memory or land on the list, TOP+2 or q329 (0x66, 0x08, 0x40)
-        ResumeCommand,     // the resumed list holds a command outside 0x66 0x08 0x40 (write ranges unproven): cmd=
+        WriteRange,        // cmd='s stores would wrap VU memory or land on the list, TOP+2 or q329.x/.y
+        ResumeCommand,     // the resumed list holds a command whose write range is not derived (research/82): cmd=
+        // Sprint 17 F N1c, the real shapes (research/82 section 9.7): entry 0x33c8's 0x02 loop, whole-program.
+        LoopShape,         // the 0x02 loop is not one the proof can follow (cmd= where it stopped): a second 0x02, no
+                           // 0x4c after it, a vi10 reader before it or another command in its body, or a loop target
+                           // (y after the 0x4c) outside the body or not the y a skipped primitive reads
+        ClipCeiling,       // PS2X_VU1_NATIVE_TEST_CLIP_CEILING lowered, and the list reads the clipper's vi10
+        // Sprint 17 F N2 (research/82 section 10): the skinning pass 0x52 under PS2X_VU1_NATIVE_SKIN, whole-program, at
+        // 0x1b50 (the list's first command) and at 0x33c8 (vi5 bit 2 clear, the microcode's B 0x3100).
+        SkinCount,         // TOP+4.w, the pass's vertex count, outside 1..the vertex ceiling (0 is 65536 passes)
+        SkinRange,         // the bone chunk TOP..TOP+6+2n wraps VU memory, or a store (a vertex's staging pair, the first
+                           // pass's q37.x) would wrap it or land on that chunk or on q37
+        SkinNotFirst,      // at 0x1b50, a 0x52 after another command: only a list that starts with it is taken
         kCount
     };
 
@@ -97,6 +112,11 @@ namespace Vu1Refusals
         case Reason::ResumeIndex: return "resume_index";
         case Reason::WriteRange: return "write_range";
         case Reason::ResumeCommand: return "resume_command";
+        case Reason::LoopShape: return "loop_shape";
+        case Reason::ClipCeiling: return "clip_ceiling";
+        case Reason::SkinCount: return "skin_count";
+        case Reason::SkinRange: return "skin_range";
+        case Reason::SkinNotFirst: return "skin_not_first";
         default: return "unknown";
         }
     }
@@ -107,7 +127,80 @@ namespace Vu1Refusals
         return r == Reason::UnknownCommand || r == Reason::ClipBeforeWorld || r == Reason::ZeroBlockCount ||
                r == Reason::SphereBlockCount || r == Reason::BlockPastList || r == Reason::BlockNotOnePacket ||
                r == Reason::HandlerClamp || r == Reason::MidUnknownCommand || r == Reason::WriteRange ||
-               r == Reason::ResumeCommand;
+               r == Reason::ResumeCommand || r == Reason::LoopShape;
+    }
+
+    // ---- the entry-0 split (Sprint 17 F, docs/research/83 section 3.1) --------------------------------------------
+    // no_native_entry at entry 0 is the SOCOM II image's per-object setup program (research/83 section 1.1): it reads
+    // the header at TOP and takes one path. The key carries the path in its command field, so the reading is one row
+    // per path (`cmd=kick`), not one for the whole swarm. The microcode's own tests, in order: w bit 1 -> kick (0x40,
+    // two XGKICKs, and nothing else); else w bit 0 -> matrix (the test at 0x118, the block from 0x140; a matrix
+    // program with y != 0 also runs the verts loop at 0x380 and may fall into the fade/list test -- no captured dump
+    // does, so it is labelled matrix alone); else w bit 3 -> fade (0x3f0), then, as without
+    // it, z != 0 -> list (0x458) -- so fade+list is one program. w and z are what ILW reads, the low 16 bits. The same
+    // rule as tools_py/parity/vu1_entry0_shapes.py's trace (every entry-0 dump of vu1dump4/vu1dump5 agrees).
+    enum class Entry0Path : uint32_t
+    {
+        Unsplit = 0, // not an entry-0 no_native_entry: cmd= stays `-`
+        Kick,
+        Matrix,
+        Fade,
+        List,
+        FadeList,
+        None,        // w and z both clear: straight to the end
+        kCount
+    };
+
+    inline Entry0Path entry0Path(uint32_t headerZ, uint32_t headerW)
+    {
+        const uint32_t w = headerW & 0xFFFFu;
+        if (w & 2u)
+            return Entry0Path::Kick;
+        if (w & 1u)
+            return Entry0Path::Matrix;
+        const bool fade = (w & 8u) != 0u;
+        const bool list = (headerZ & 0xFFFFu) != 0u;
+        return fade ? (list ? Entry0Path::FadeList : Entry0Path::Fade) : (list ? Entry0Path::List : Entry0Path::None);
+    }
+
+    // The path from VU data memory and TOP (qword index), as run() reads it; Unsplit when TOP's qword is out of range.
+    inline Entry0Path entry0Path(const uint8_t *vuData, uint32_t dataSize, uint32_t top)
+    {
+        const uint32_t off = (top & 0x3FFu) * 16u;
+        if (vuData == nullptr || off + 16u > dataSize)
+            return Entry0Path::Unsplit;
+        uint32_t z = 0u, w = 0u;
+        std::memcpy(&z, vuData + off + 8u, 4u);
+        std::memcpy(&w, vuData + off + 12u, 4u);
+        return entry0Path(z, w);
+    }
+
+    inline const char *pathName(Entry0Path p)
+    {
+        switch (p)
+        {
+        case Entry0Path::Kick: return "kick";
+        case Entry0Path::Matrix: return "matrix";
+        case Entry0Path::Fade: return "fade";
+        case Entry0Path::List: return "list";
+        case Entry0Path::FadeList: return "fade+list";
+        case Entry0Path::None: return "none";
+        default: return "-";
+        }
+    }
+
+    // Whether (reason, command) is an entry-0 path key: no_native_entry with a path code in its command field.
+    inline bool isPathKey(Reason r, uint32_t command)
+    {
+        return r == Reason::NoNativeEntry && command > static_cast<uint32_t>(Entry0Path::Unsplit) &&
+               command < static_cast<uint32_t>(Entry0Path::kCount);
+    }
+
+    // The command field a key keeps: the command word for a reason that names one, the path for an entry-0 split,
+    // else 0 (the command is not keyed).
+    inline uint32_t keyCommand(Reason r, uint32_t command)
+    {
+        return hasCommand(r) || isPathKey(r, command) ? (command & 0xFFFFu) : 0u;
     }
 
     // A refusal as a site reports it.
@@ -123,7 +216,7 @@ namespace Vu1Refusals
     inline uint64_t packKey(uint32_t entryPc, Reason reason, uint32_t command)
     {
         return (static_cast<uint64_t>(entryPc & 0xFFFFu) << 24) | (static_cast<uint64_t>(reason) << 16) |
-               (hasCommand(reason) ? (command & 0xFFFFu) : 0u);
+               keyCommand(reason, command);
     }
 
     struct Row
@@ -281,6 +374,8 @@ namespace Vu1Refusals
         char cmd[16];
         if (hasCommand(r.reason))
             std::snprintf(cmd, sizeof(cmd), "0x%x", r.command);
+        else if (isPathKey(r.reason, r.command))
+            std::snprintf(cmd, sizeof(cmd), "%s", pathName(static_cast<Entry0Path>(r.command)));
         else
             std::snprintf(cmd, sizeof(cmd), "-");
         char elapsed[32] = "";
@@ -352,6 +447,43 @@ namespace Vu1Refusals
         const int slot = live().note(entryPc, reason, command);
         lastNotedSlot() = slot;
         return slot;
+    }
+
+    // ---- the whole-program refusal, for PS2X_VU1_DUMP_REFUSED (runtime/vu1_dump_refused.h) ----------------------
+    // A whole-program refusal site (pc left at the entry, nothing touched) remembers (entry, reason, command) here
+    // whether or not the count above is on, but only while a listener asked for it: with nobody listening the site
+    // pays one relaxed load on its already-cold path. run() takes it after the hand-back.
+    struct WholeRefusal
+    {
+        uint32_t entryPc = 0u;
+        Reason reason = Reason::None;
+        uint32_t command = 0u;
+    };
+
+    inline std::atomic<bool> &wholeListening()
+    {
+        static std::atomic<bool> s_on{false};
+        return s_on;
+    }
+
+    inline WholeRefusal &lastWhole()
+    {
+        static thread_local WholeRefusal t_last;
+        return t_last;
+    }
+
+    inline void rememberWhole(uint32_t entryPc, const Refusal &refusal)
+    {
+        if (wholeListening().load(std::memory_order_relaxed))
+            lastWhole() = WholeRefusal{entryPc, refusal.reason, refusal.command};
+    }
+
+    // The last whole-program refusal on this thread (reason None when there was none), forgotten as it is taken.
+    inline WholeRefusal takeWhole()
+    {
+        const WholeRefusal last = lastWhole();
+        lastWhole() = WholeRefusal{};
+        return last;
     }
 
     // run(), after a native program handed back: the slot its refusal site noted (and forget it), or -1.

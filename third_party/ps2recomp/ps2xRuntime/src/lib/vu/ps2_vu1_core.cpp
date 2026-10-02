@@ -10,6 +10,7 @@ extern std::atomic<uint64_t> g_vuProgramsKickBit;
 #include "runtime/ps2_guest_clock.h"
 #include "runtime/vu1_native_warning.h"
 #include "runtime/vu1_native_refusals.h"
+#include "runtime/vu1_dump_refused.h"
 #include "ps2_vu1_detail.h"
 #include "ps2x/knobs.h"
 
@@ -2203,6 +2204,7 @@ void VU1Interpreter::setNativeProgramsOverride(const Vu1NativeProgram *table, ui
     m_nativeTable = table;
     m_nativeCount = count;
     m_knownGeneration = ~0ull; // force the image hash to be recomputed on the next run
+    m_nativeCacheValid = false; // ... and the native lookup against the new table (S17 F b2)
 }
 
 void VU1Interpreter::runFast(uint8_t *vuCode, uint32_t codeSize,
@@ -2439,15 +2441,10 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
             if (s_dumped < s_dumpMax)
             {
                 const std::string path = s_dumpDir + "/vu1_prog_" + std::to_string(s_dumped) + ".bin";
-                if (FILE *fp = std::fopen(path.c_str(), "wb"))
+                // The one writer of the format, shared with PS2X_VU1_DUMP_REFUSED (runtime/vu1_dump_refused.h).
+                const uint32_t hdr[4] = {m_state.pc, m_state.top, m_state.itop, codeSize};
+                if (Vu1DumpRefused::writeProgram(path, hdr, vuCode, codeSize, vuData, dataSize, m_state.vi, m_state.vf))
                 {
-                    const uint32_t hdr[4] = {m_state.pc, m_state.top, m_state.itop, codeSize};
-                    std::fwrite(hdr, sizeof(hdr), 1, fp);
-                    std::fwrite(vuCode, 1, std::min<uint32_t>(codeSize, 0x4000u), fp);
-                    std::fwrite(vuData, 1, std::min<uint32_t>(dataSize, 0x4000u), fp);
-                    std::fwrite(m_state.vi, sizeof(m_state.vi), 1, fp);
-                    std::fwrite(m_state.vf, sizeof(m_state.vf), 1, fp);
-                    std::fclose(fp);
                     if (s_dumped < 3 || s_dumped + 1 == s_dumpMax)
                         std::fprintf(stderr, "[vu1-dump] #%d pc=0x%x top=0x%x itop=0x%x -> %s\n", s_dumped, m_state.pc, m_state.top, m_state.itop, path.c_str());
                 }
@@ -2602,6 +2599,7 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
                 if (g_vu1KnownPrograms[i].hash == hash)
                     m_knownFn = g_vu1KnownPrograms[i].fn;
             m_knownHash = hash;
+            m_nativeCacheValid = false; // S17 F b2: the native answers were for the old hash
         }
     }
     // PS2X_VU1_NATIVE_REFUSALS (runtime/vu1_native_refusals.h): the refusal this run's fallback is charged to.
@@ -2620,33 +2618,50 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
     m_nativeFn = nullptr;
     if (s_nativeEnv && hashableImage)
     {
-        const Vu1NativeProgram *table = m_nativeTable ? m_nativeTable : g_vu1NativePrograms;
-        const uint32_t count = m_nativeTable ? m_nativeCount : g_vu1NativeProgramCount;
-        for (uint32_t i = 0; i < count; ++i)
-            if (table[i].hash == m_knownHash && table[i].entryPc == m_state.pc && table[i].fn &&
-                (!table[i].enabled || table[i].enabled()))
-                m_nativeFn = table[i].fn;
-        // A fresh program in an image with a native program, entered where it has none (0x0000, 0x33c8).
-        if (refusalsOn && !m_nativeFn && !m_programPending &&
-            Vu1NativeWarning::hashHasNativeEntry(table, count, m_knownHash))
-            refusalSlot = Vu1Refusals::note(m_state.pc, Vu1Refusals::Reason::NoNativeEntry);
+        // S17 F b2 (docs/research/83 section 3.2): the table's answers for this image are kept until it is rehashed
+        // or the table overridden (m_nativeCacheValid), so a run does one slot probe, not a scan and two walks.
+        if (!m_nativeCacheValid)
+        {
+            const Vu1NativeProgram *table = m_nativeTable ? m_nativeTable : g_vu1NativePrograms;
+            const uint32_t count = m_nativeTable ? m_nativeCount : g_vu1NativeProgramCount;
+            m_nativeHashHas = Vu1NativeWarning::hashHasNativeEntry(table, count, m_knownHash);
+            for (NativeSlot &slot : m_nativeSlots)
+                slot = NativeSlot{};
+            m_nativeCacheValid = true;
+        }
+        NativeSlot &slot = m_nativeSlots[(m_state.pc >> 3) & (kNativeSlots - 1u)];
+        if (slot.pc != m_state.pc)
+        {
+            // The scan, as every run did before b2: the last row with (hash, pc), a fn and an open gate.
+            const Vu1NativeProgram *table = m_nativeTable ? m_nativeTable : g_vu1NativePrograms;
+            const uint32_t count = m_nativeTable ? m_nativeCount : g_vu1NativeProgramCount;
+            KnownProgramFn fn = nullptr;
+            for (uint32_t i = 0; i < count; ++i)
+                if (table[i].hash == m_knownHash && table[i].entryPc == m_state.pc && table[i].fn &&
+                    (!table[i].enabled || table[i].enabled()))
+                    fn = table[i].fn;
+            slot.pc = m_state.pc;
+            slot.fn = fn;
+        }
+        m_nativeFn = slot.fn;
+        // A fresh program in an image with a native program, entered where it has none (0x0000, 0x33c8). Entry 0's
+        // key carries its program's path, read from the header at TOP (research/83 section 3.1): the knob's cost.
+        if (refusalsOn && !m_nativeFn && !m_programPending && m_nativeHashHas)
+            refusalSlot = Vu1Refusals::note(
+                m_state.pc, Vu1Refusals::Reason::NoNativeEntry,
+                m_state.pc == 0u ? static_cast<uint32_t>(Vu1Refusals::entry0Path(vuData, dataSize, m_state.top)) : 0u);
         // Audit 2026-09-17 section 2.2 F7: the table is keyed to one disc's microcode hash, so
         // another revision ran the interpreter with nothing to say why. One line, once, and only
         // after a second of uninterrupted misses -- a boot whose gameplay microcode has not been
         // uploaded yet is all misses by design and must stay quiet. PS2X_VU1_NATIVE=0 is a
         // deliberate choice and never reaches here.
-        static Vu1NativeWarning::State s_warn;
-        const uint64_t nativeNowNs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                                               std::chrono::steady_clock::now().time_since_epoch())
-                                                               .count());
         // s7_gl_gate: keyed on the (hash, pc) match this fired on the supported disc at entry 0x0000, which the
         // table leaves to generated code on purpose. The question is whether the hash is known at all.
-        if (s_warn.shouldWarn(Vu1NativeWarning::hashHasNativeEntry(table, count, m_knownHash), nativeNowNs))
+        // S17 F b1: a known hash throws the window away without reading the time, so only a miss reads the clock.
+        Vu1NativeWarning::State &s_warn = Vu1NativeWarning::live();
+        if (s_warn.shouldWarn(m_nativeHashHas, m_nativeHashHas ? 0ull : Vu1NativeWarning::nowNs()))
         {
-            // Unsynchronized on purpose: VU1 runs on one thread, and the worst a second one could
-            // do is print the same line twice.
-            std::fprintf(stderr, "%s\n", Vu1NativeWarning::line(m_knownHash, m_state.pc).c_str());
-            std::fflush(stderr);
+            Vu1NativeWarning::print(m_knownHash, m_state.pc);
             s_warn.warned();
         }
     }
@@ -2659,12 +2674,29 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
         // never charged to a stale key.
         if (refusalsOn)
             Vu1Refusals::takeNoted();
+        // PS2X_VU1_DUMP_REFUSED (runtime/vu1_dump_refused.h): one relaxed load when off. On, forget any whole-program
+        // refusal remembered before this call, so the one taken after the hand-back is this program's.
+        const bool dumpRefused = m_unit == Unit::VU1 && Vu1DumpRefused::enabled();
+        if (dumpRefused)
+            Vu1Refusals::takeWhole();
         programEnded = m_nativeFn(*this, budgetEnd);
         if (programEnded)
             g_vu1NativeEnded.fetch_add(1, std::memory_order_relaxed);
         else
         {
             g_vu1NativeHandBacks.fetch_add(1, std::memory_order_relaxed);
+            if (dumpRefused)
+            {
+                // A whole-program refusal leaves pc at the entry and the register file and VU data memory untouched
+                // (the dispatcher's contract), so this is the entry state PS2X_VU1_DUMP would have saved -- written
+                // before the fallback runs, and only for a refusal the capture asks for.
+                const Vu1Refusals::WholeRefusal whole = Vu1Refusals::takeWhole();
+                if (whole.reason != Vu1Refusals::Reason::None && m_state.pc == nativeEntryPc)
+                {
+                    const uint32_t hdr[4] = {m_state.pc, m_state.top, m_state.itop, codeSize};
+                    Vu1DumpRefused::live().offer(whole, hdr, vuCode, codeSize, vuData, dataSize, m_state.vi, m_state.vf);
+                }
+            }
             if (refusalsOn)
             {
                 // The native program noted its reason; everything from here on is the fallback's.

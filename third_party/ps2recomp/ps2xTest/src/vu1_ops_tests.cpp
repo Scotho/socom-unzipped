@@ -13,12 +13,16 @@
 #include "runtime/ps2_memory.h"
 #include "runtime/ps2_vu1.h"
 #include "runtime/vu1_native_refusals.h"   // Sprint 17 F: the native dispatcher's refusal count
+#include "runtime/vu1_dump_refused.h"      // Sprint 17 F N1c: PS2X_VU1_DUMP_REFUSED
+#include "runtime/vu1_native_warning.h"    // Sprint 17 F b1: the foreign-disc warning's clock
 
+#include <algorithm>
 #include <cfloat>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <emmintrin.h>
 #include <limits>
 #include <memory>
@@ -423,6 +427,11 @@ namespace
         }
         uint32_t below(uint32_t n) { return next() % n; }
     };
+
+    // Sprint 17 F N1c, the real shapes: RealDump, and last-bone 0x33c8 entry states from the walk's refused capture.
+#include "vu1_33c8_real_dumps.inc"
+    // Sprint 17 F N2: 0x52 bone passes, 0x52 lists and one mesh's MSCAL chain from logs/vu1dump3.
+#include "vu1_52_real_dumps.inc"
 }
 
 void register_vu1_ops_tests()
@@ -771,6 +780,11 @@ void register_vu1_ops_tests()
                 void vu1native_socom2_forceVertexCeilingForTest(int32_t ceiling);
                 vu1native_socom2_forceVertexCeilingForTest(ceiling);
             }
+            static void forceClipCeiling(int32_t ceiling)   // -1 = the knob (PS2X_VU1_NATIVE_TEST_CLIP_CEILING)
+            {
+                void vu1native_socom2_forceClipCeilingForTest(int32_t ceiling);
+                vu1native_socom2_forceClipCeilingForTest(ceiling);
+            }
             RefusalRig()
             {
                 forceXgkickImmediate(1);
@@ -849,7 +863,7 @@ void register_vu1_ops_tests()
             static Vu1Refusals::Row row(uint32_t entry, Vu1Refusals::Reason reason, uint32_t command)
             {
                 for (const Vu1Refusals::Row &r : Vu1Refusals::live().totals())
-                    if (r.entryPc == entry && r.reason == reason && (!Vu1Refusals::hasCommand(reason) || r.command == command))
+                    if (r.entryPc == entry && r.reason == reason && r.command == Vu1Refusals::keyCommand(reason, command))
                         return r;
                 return Vu1Refusals::Row{};
             }
@@ -939,9 +953,11 @@ void register_vu1_ops_tests()
             RefusalRig rig;
             t.IsTrue(rig.init(), "rig should initialize");
             Vu1Refusals::setEnabledForTest(true);
-            const Vu1Refusals::Row before = RefusalRig::row(0u, Vu1Refusals::Reason::NoNativeEntry, 0u);
+            // research/83 section 3.1: entry 0's key carries its path; the rig's header at TOP 0 is all zero, `none`.
+            const uint32_t none = static_cast<uint32_t>(Vu1Refusals::Entry0Path::None);
+            const Vu1Refusals::Row before = RefusalRig::row(0u, Vu1Refusals::Reason::NoNativeEntry, none);
             rig.run(8u);              // native registered at pc 8 only; the program is entered at 0
-            const Vu1Refusals::Row after = RefusalRig::row(0u, Vu1Refusals::Reason::NoNativeEntry, 0u);
+            const Vu1Refusals::Row after = RefusalRig::row(0u, Vu1Refusals::Reason::NoNativeEntry, none);
             Vu1Refusals::setEnabledForTest(false);
             t.Equals(after.n - before.n, 1ull, "no_native_entry at entry 0x0 +1");
             t.IsTrue(after.cycles > before.cycles, "the whole program's cycles are charged to it");
@@ -1080,6 +1096,292 @@ void register_vu1_ops_tests()
             t.IsTrue(after.cycles > before.cycles, "the microcode that resumed at 0x1b60 is charged to it");
         });
 
+        // ---- Sprint 17 F (docs/research/83 section 3): run()'s head, paid by every VU1 program ------------------
+        // b1: the foreign-disc warning's clock is read only when the image's hash has no native entry at all (a
+        // matched hash makes shouldWarn throw the window away without looking at the time). b2: the native lookup's
+        // answers -- the program at (hash, pc), whether the hash has one anywhere -- are kept per image generation
+        // and table override, so a run does one probe: the same program taken and the same refusals noted as the
+        // scan, the registry's gate asked once per (generation, pc). The split: no_native_entry at entry 0 keyed by
+        // the entry-0 program's path. Every case drives VU1Interpreter::execute over RefusalRig's NOP image.
+        struct HeadRig
+        {
+            static int &calls(int which)   // 0..2: fnA..fnC entered; 3: the closed gate asked
+            {
+                static int s_calls[4] = {};
+                return s_calls[which];
+            }
+            static void resetCalls()
+            {
+                for (int i = 0; i < 4; ++i)
+                    calls(i) = 0;
+            }
+            static bool fnA(VU1Interpreter &, uint64_t) { ++calls(0); return true; }
+            static bool fnB(VU1Interpreter &, uint64_t) { ++calls(1); return true; }
+            static bool fnC(VU1Interpreter &, uint64_t) { ++calls(2); return true; }
+            static bool gateClosed() { ++calls(3); return false; }
+            static uint64_t &fakeNs()
+            {
+                static uint64_t s_ns = 0u;
+                return s_ns;
+            }
+            static uint64_t fakeClock() { return fakeNs(); }
+            // The scan run() did on every run before b2, uncached: the last row with (hash, pc), a fn and an open
+            // gate (the oracle; it asks no gate, so it does not move calls(3)).
+            static VU1Interpreter::KnownProgramFn scan(const Vu1NativeProgram *t, uint32_t n, uint64_t h, uint32_t pc,
+                                                       bool gateOpen)
+            {
+                VU1Interpreter::KnownProgramFn fn = nullptr;
+                for (uint32_t i = 0; i < n; ++i)
+                    if (t[i].hash == h && t[i].entryPc == pc && t[i].fn && (!t[i].enabled || gateOpen))
+                        fn = t[i].fn;
+                return fn;
+            }
+            static int which(VU1Interpreter::KnownProgramFn fn)
+            {
+                return fn == &fnA ? 0 : fn == &fnB ? 1 : fn == &fnC ? 2 : -1;
+            }
+            static void execute(VU1Interpreter &vu, RefusalRig &rig, uint32_t pc, uint32_t top = 0u)
+            {
+                vu.execute(rig.code, PS2_VU1_CODE_SIZE, rig.data, PS2_VU1_DATA_SIZE, rig.gs, &rig.mem, pc, top, 0u, 4096u);
+            }
+            // NOP+E programs at 0x20 and 0x40 besides the rig's at 0 and 8.
+            static void morePrograms(RefusalRig &rig)
+            {
+                const uint32_t lowerNop = 0x8000033Cu, upperNop = 0x000002FFu, eBit = 1u << 30;
+                rig.pair(0x20u, lowerNop, upperNop | eBit);
+                rig.pair(0x28u, lowerNop, upperNop);
+                rig.pair(0x40u, lowerNop, upperNop | eBit);
+                rig.pair(0x48u, lowerNop, upperNop);
+            }
+        };
+
+        tc.Run("run() head b1: a matched image reads no clock for the foreign-disc warning; an unmatched one reads one a run",
+               [](TestCase &t)
+        {
+            RefusalRig rig;
+            t.IsTrue(rig.init(), "rig should initialize");
+            const uint64_t h = rig.hash();
+            // The supported disc: the hash has a native entry (at 8), none at the entry run (0) -- research/83's
+            // entry-0 swarm. Another disc: no entry carries its hash.
+            const Vu1NativeProgram matched[] = {{h, 8u, &HeadRig::fnB}};
+            const Vu1NativeProgram foreign[] = {{h ^ 1u, 8u, &HeadRig::fnB}};
+            Vu1NativeWarning::live() = Vu1NativeWarning::State{};
+            Vu1NativeWarning::clockForTest() = &HeadRig::fakeClock;
+            const uint64_t printedBefore = Vu1NativeWarning::printedCount();
+            VU1Interpreter vu;
+            vu.setNativeProgramsOverride(matched, 1u);
+            uint64_t reads = Vu1NativeWarning::clockReads().load();
+            for (int i = 0; i < 5; ++i)
+                HeadRig::execute(vu, rig, 0u);
+            t.Equals(Vu1NativeWarning::clockReads().load() - reads, 0ull, "five matched runs read no clock (one each before b1)");
+            t.Equals(Vu1NativeWarning::printedCount() - printedBefore, 0ull, "and the supported disc never warns");
+
+            // The cadence, unchanged: armed on the first miss, quiet at half a second, out once past a full second.
+            vu.setNativeProgramsOverride(foreign, 1u);
+            reads = Vu1NativeWarning::clockReads().load();
+            HeadRig::fakeNs() = 0u;
+            HeadRig::execute(vu, rig, 0u);
+            HeadRig::fakeNs() = 500000000u;
+            HeadRig::execute(vu, rig, 0u);
+            t.Equals(Vu1NativeWarning::printedCount() - printedBefore, 0ull, "half a second of misses: quiet");
+            HeadRig::fakeNs() = 1000000001u;
+            HeadRig::execute(vu, rig, 0u);
+            t.Equals(Vu1NativeWarning::printedCount() - printedBefore, 1ull, "past a second of misses: one line");
+            t.Equals(Vu1NativeWarning::lastPrinted(),
+                     std::string("[vu1] no native program for code hash 0x") + [&] {
+                         char hex[17];
+                         std::snprintf(hex, sizeof(hex), "%016llx", static_cast<unsigned long long>(h));
+                         return std::string(hex);
+                     }() + " entry 0x0000 -- running the interpreter (supported disc: SOCOM II NTSC r0001, SCUS_972.75)",
+                     "the line's text, unchanged");
+            HeadRig::fakeNs() = 5000000000u;
+            HeadRig::execute(vu, rig, 0u);
+            t.Equals(Vu1NativeWarning::printedCount() - printedBefore, 1ull, "never a second line");
+            t.Equals(Vu1NativeWarning::clockReads().load() - reads, 4ull, "four unmatched runs, one clock read each");
+
+            // A match between misses still throws the window away, though it reads no clock.
+            Vu1NativeWarning::live() = Vu1NativeWarning::State{};
+            HeadRig::fakeNs() = 10000000000u;
+            HeadRig::execute(vu, rig, 0u);                 // arms at 10 s
+            vu.setNativeProgramsOverride(matched, 1u);
+            reads = Vu1NativeWarning::clockReads().load();
+            HeadRig::execute(vu, rig, 0u);                 // a match: the window is gone
+            t.Equals(Vu1NativeWarning::clockReads().load() - reads, 0ull, "the match reads no clock");
+            vu.setNativeProgramsOverride(foreign, 1u);
+            HeadRig::fakeNs() = 11500000000u;
+            HeadRig::execute(vu, rig, 0u);                 // a new window opens at 11.5 s
+            t.Equals(Vu1NativeWarning::printedCount() - printedBefore, 1ull, "1.5 s after the first miss, but a match between: quiet");
+            HeadRig::fakeNs() = 12600000000u;
+            HeadRig::execute(vu, rig, 0u);
+            t.Equals(Vu1NativeWarning::printedCount() - printedBefore, 2ull, "a full second of the new window: the line");
+            vu.setNativeProgramsOverride(nullptr, 0u);
+            Vu1NativeWarning::clockForTest() = nullptr;
+            Vu1NativeWarning::live() = Vu1NativeWarning::State{};
+        });
+
+        tc.Run("run() head b2: the cached lookup takes the scan's program and notes its refusals, the gate asked once",
+               [](TestCase &t)
+        {
+            extern std::atomic<uint64_t> g_vu1NativeEntered;
+            RefusalRig rig;
+            t.IsTrue(rig.init(), "rig should initialize");
+            HeadRig::morePrograms(rig);
+            const uint64_t h = rig.hash();
+            // Two rows taken (0, 0x20), one behind a closed gate (8, the 0x33c8 row's form); 0x40 has none.
+            const Vu1NativeProgram rows[] = {{h, 0u, &HeadRig::fnA}, {h, 0x20u, &HeadRig::fnC}, {h, 8u, &HeadRig::fnB, &HeadRig::gateClosed}};
+            const uint32_t pcs[] = {0u, 8u, 0x20u, 0x40u, 0u, 8u, 0u, 8u, 0x40u};
+            VU1Interpreter vu;
+            vu.setNativeProgramsOverride(rows, 3u);
+            Vu1Refusals::setEnabledForTest(true);
+            HeadRig::resetCalls();
+            int expected[3] = {};
+            uint64_t expectedRefused[2] = {};   // pc 8, pc 0x40
+            for (uint32_t pc : pcs)
+            {
+                const int w = HeadRig::which(HeadRig::scan(rows, 3u, h, pc, false));
+                if (w >= 0)
+                    ++expected[w];
+                else
+                    ++expectedRefused[pc == 8u ? 0 : 1];
+            }
+            const Vu1Refusals::Row r8 = RefusalRig::row(8u, Vu1Refusals::Reason::NoNativeEntry, 0u);
+            const Vu1Refusals::Row r40 = RefusalRig::row(0x40u, Vu1Refusals::Reason::NoNativeEntry, 0u);
+            const uint64_t entered = g_vu1NativeEntered.load();
+            const uint64_t total = Vu1Refusals::live().totalCount();
+            for (uint32_t pc : pcs)
+                HeadRig::execute(vu, rig, pc);
+            t.IsTrue(HeadRig::calls(0) == expected[0] && HeadRig::calls(1) == expected[1] && HeadRig::calls(2) == expected[2],
+                     "the scan's program each run: fnA x" + std::to_string(HeadRig::calls(0)) + " (scan " +
+                         std::to_string(expected[0]) + "), fnB x" + std::to_string(HeadRig::calls(1)) + " (" +
+                         std::to_string(expected[1]) + "), fnC x" + std::to_string(HeadRig::calls(2)) + " (" +
+                         std::to_string(expected[2]) + ")");
+            t.Equals(g_vu1NativeEntered.load() - entered, 4ull, "native-entered counts the four runs taken");
+            t.Equals(RefusalRig::row(8u, Vu1Refusals::Reason::NoNativeEntry, 0u).n - r8.n, expectedRefused[0],
+                     "the gated row's pc: no_native_entry each run, as the scan");
+            t.Equals(RefusalRig::row(0x40u, Vu1Refusals::Reason::NoNativeEntry, 0u).n - r40.n, expectedRefused[1],
+                     "a pc with no row: no_native_entry each run");
+            t.Equals(Vu1Refusals::live().totalCount() - total, expectedRefused[0] + expectedRefused[1], "and no other refusal");
+            t.Equals(HeadRig::calls(3), 1, "the gate is asked once for the image's pc 8, not once a run (3)");
+
+            // A table override is a new generation: the next run scans the new table.
+            const Vu1NativeProgram bumped[] = {{h, 8u, &HeadRig::fnB}};
+            vu.setNativeProgramsOverride(bumped, 1u);
+            const uint32_t none = static_cast<uint32_t>(Vu1Refusals::Entry0Path::None);
+            const Vu1Refusals::Row r0 = RefusalRig::row(0u, Vu1Refusals::Reason::NoNativeEntry, none);
+            HeadRig::execute(vu, rig, 8u);
+            HeadRig::execute(vu, rig, 0u);
+            t.Equals(HeadRig::calls(1), 1, "after the override, pc 8 takes the new table's fnB");
+            t.Equals(HeadRig::calls(0), expected[0], "and pc 0 no longer takes fnA");
+            t.Equals(RefusalRig::row(0u, Vu1Refusals::Reason::NoNativeEntry, none).n - r0.n, 1ull,
+                     "pc 0 is no_native_entry against the new table");
+
+            // New microcode (the VIF's MPG): the hash moves, the table no longer matches, nothing is taken or noted.
+            const uint32_t lowerNop = 0x8000033Cu, upperNop = 0x000002FFu;
+            rig.pair(0x80u, lowerNop, upperNop);
+            const uint64_t afterImage = Vu1Refusals::live().totalCount();
+            HeadRig::execute(vu, rig, 8u);
+            t.Equals(HeadRig::calls(1), 1, "a new image: fnB is not taken");
+            t.Equals(Vu1Refusals::live().totalCount() - afterImage, 0ull, "and nothing is noted (the hash has no entry)");
+            vu.setNativeProgramsOverride(nullptr, 0u);
+            Vu1Refusals::setEnabledForTest(false);
+            Vu1Refusals::takeNoted();   // leave no slot for the next case
+            Vu1NativeWarning::live() = Vu1NativeWarning::State{};
+        });
+
+        // The real entry-0 headers: the qword at TOP of five mission programs (logs/vu1dump5, the n1b capture of
+        // research/82 section 8.4), one per path vu1_entry0_shapes' trace names. The split reads only this qword,
+        // so the rest of each dump is not carried. Each is the x, y, z, w words.
+        struct Entry0Header
+        {
+            const char *dump;
+            uint32_t top;
+            uint32_t words[4];
+            Vu1Refusals::Entry0Path path;
+            const char *name;
+        };
+        static const Entry0Header kEntry0Headers[] = {
+            {"vu1_prog_1", 724u, {0u, 0u, 0u, 2u}, Vu1Refusals::Entry0Path::Kick, "kick"},
+            {"vu1_prog_0", 424u, {0u, 0u, 8u, 0u}, Vu1Refusals::Entry0Path::List, "list"},
+            {"vu1_prog_9", 724u, {0u, 0u, 0u, 1u}, Vu1Refusals::Entry0Path::Matrix, "matrix"},
+            {"vu1_prog_10", 424u, {0u, 0u, 0u, 8u}, Vu1Refusals::Entry0Path::Fade, "fade"},
+            {"vu1_prog_413", 724u, {0u, 0u, 5u, 8u}, Vu1Refusals::Entry0Path::FadeList, "fade+list"},
+        };
+
+        for (const Entry0Header &hdr : kEntry0Headers)
+        {
+            tc.Run(std::string("native refusals: entry 0's no_native_entry is split by path, vu1dump5/") + hdr.dump +
+                       " counts cmd=" + hdr.name,
+                   [&hdr](TestCase &t)
+            {
+                RefusalRig rig;
+                t.IsTrue(rig.init(), "rig should initialize");
+                std::memcpy(rig.data + hdr.top * 16u, hdr.words, sizeof(hdr.words));
+                const Vu1NativeProgram table[] = {{rig.hash(), 0x1b50u, &RefusalRig::dispatcher}};
+                const uint32_t code = static_cast<uint32_t>(hdr.path);
+                Vu1Refusals::setEnabledForTest(true);
+                const Vu1Refusals::Row before = RefusalRig::row(0u, Vu1Refusals::Reason::NoNativeEntry, code);
+                const uint64_t total = Vu1Refusals::live().totalCount();
+                VU1Interpreter vu;
+                vu.setNativeProgramsOverride(table, 1u);
+                HeadRig::execute(vu, rig, 0u, hdr.top);
+                vu.setNativeProgramsOverride(nullptr, 0u);
+                const Vu1Refusals::Row after = RefusalRig::row(0u, Vu1Refusals::Reason::NoNativeEntry, code);
+                Vu1Refusals::setEnabledForTest(false);
+                Vu1Refusals::takeNoted();   // leave no slot for the next case
+                t.Equals(after.n - before.n, 1ull, std::string("no_native_entry at entry 0x0, path ") + hdr.name + " +1");
+                t.Equals(Vu1Refusals::live().totalCount() - total, 1ull, "and under no other key");
+                t.IsTrue(after.cycles > before.cycles, "the program's cycles are charged to its path");
+                const std::string line = Vu1Refusals::formatRow("[vu1-refuse]", after, 1000.0);
+                t.IsTrue(line.find(std::string(" reason=no_native_entry cmd=") + hdr.name + " n=") != std::string::npos,
+                         "the line names the path: " + line);
+            });
+        }
+
+        tc.Run("native refusals: the entry-0 path rule -- the microcode's order, ILW's 16 bits; other entries stay cmd=-",
+               [](TestCase &t)
+        {
+            using P = Vu1Refusals::Entry0Path;
+            t.IsTrue(Vu1Refusals::entry0Path(0u, 3u) == P::Kick, "w bit 1 is kick, whatever else is set");
+            t.IsTrue(Vu1Refusals::entry0Path(7u, 0xBu) == P::Kick, "kick takes no list and no fade");
+            t.IsTrue(Vu1Refusals::entry0Path(7u, 9u) == P::Matrix, "w bit 0 (bit 1 clear) is matrix, its z unread");
+            t.IsTrue(Vu1Refusals::entry0Path(0u, 8u) == P::Fade, "w bit 3 alone is fade");
+            t.IsTrue(Vu1Refusals::entry0Path(5u, 8u) == P::FadeList, "fade falls into the list test: fade+list");
+            t.IsTrue(Vu1Refusals::entry0Path(0xFFFFu, 0u) == P::List, "a negative 16-bit z is non-zero: list");
+            t.IsTrue(Vu1Refusals::entry0Path(0x10000u, 0x20000u) == P::None, "bits above ILW's 16 are not read: none");
+            t.Equals(std::string(Vu1Refusals::pathName(P::FadeList)), std::string("fade+list"), "the printed name");
+            uint8_t data[64] = {};
+            t.IsTrue(Vu1Refusals::entry0Path(data, 64u, 4u) == P::Unsplit, "TOP past the data memory: unsplit");
+
+            // Entered at 8 (not 0) with a kick header at TOP: no_native_entry, but its key is not split.
+            RefusalRig rig;
+            t.IsTrue(rig.init(), "rig should initialize");
+            rig.header(0u, 3u, 2);
+            Vu1Refusals::setEnabledForTest(true);
+            const Vu1Refusals::Row before = RefusalRig::row(8u, Vu1Refusals::Reason::NoNativeEntry, 0u);
+            const Vu1NativeProgram table[] = {{rig.hash(), 0x1b50u, &RefusalRig::dispatcher}};
+            VU1Interpreter vu;
+            vu.setNativeProgramsOverride(table, 1u);
+            HeadRig::execute(vu, rig, 8u);
+            vu.setNativeProgramsOverride(nullptr, 0u);
+            const Vu1Refusals::Row after = RefusalRig::row(8u, Vu1Refusals::Reason::NoNativeEntry, 0u);
+            Vu1Refusals::setEnabledForTest(false);
+            Vu1Refusals::takeNoted();   // leave no slot for the next case
+            t.Equals(after.n - before.n, 1ull, "no_native_entry at entry 0x8 +1, unsplit");
+            t.IsTrue(Vu1Refusals::formatRow("[vu1-refuse]", after, 1000.0).find(" cmd=- ") != std::string::npos,
+                     "its line keeps cmd=-");
+            Vu1Refusals::Table table2;
+            const int slot = table2.note(0u, Vu1Refusals::Reason::NoNativeEntry, static_cast<uint32_t>(P::Kick));
+            table2.note(0u, Vu1Refusals::Reason::NoNativeEntry, static_cast<uint32_t>(P::Matrix));
+            table2.addCost(slot, 37u, 650u);
+            const std::vector<Vu1Refusals::Row> rows = table2.totals();
+            t.Equals(rows.size(), size_t{2}, "kick and matrix are two keys");
+            bool kickLine = false;
+            for (const Vu1Refusals::Row &r : rows)
+                kickLine |= Vu1Refusals::formatRow("[vu1-refuse-total]", r, -1.0) ==
+                            "[vu1-refuse-total] entry=0x0 reason=no_native_entry cmd=kick n=1 cycles=37 host_us=0";
+            t.IsTrue(kickLine, "vu1_replay's total line for the kick path");
+        });
+
         // ---- Sprint 17 F N1 (docs/research/82): the native program at entry 0x33c8 ------------------------------
         // The EE MSCALs 0x33c8 after every 0x52 bone pass. With the previous chunk's flags (vi5, live-in) marking the
         // last bone, the microcode repacks the skinned staging array into the vertex block and resumes the dispatcher
@@ -1106,8 +1408,12 @@ void register_vu1_ops_tests()
 
             bool load()
             {
-                const std::string path = std::string(PS2X_TEST_FIXTURES_DIR) +
-                                         "/../../../../tests/fixtures/vu1/dispatch_0x1b50/vu1dump3_prog_31.bin";
+                return loadFrom(std::string(PS2X_TEST_FIXTURES_DIR) +
+                                "/../../../../tests/fixtures/vu1/dispatch_0x1b50/vu1dump3_prog_31.bin");
+            }
+            // Any PS2X_VU1_DUMP-format file (vu1_replay's loadDump layout): the fixture, or a dump this suite wrote.
+            bool loadFrom(const std::string &path)
+            {
                 FILE *f = std::fopen(path.c_str(), "rb");
                 if (!f)
                     return false;
@@ -1124,6 +1430,36 @@ void register_vu1_ops_tests()
                 std::memcpy(vi, blob.data() + 16 + PS2_VU1_CODE_SIZE + PS2_VU1_DATA_SIZE, sizeof(vi));
                 std::memcpy(vf, blob.data() + 16 + PS2_VU1_CODE_SIZE + PS2_VU1_DATA_SIZE + sizeof(vi), sizeof(vf));
                 return true;
+            }
+            // A real refused capture (vu1_33c8_real_dumps.inc): its TOP, register file and the qwords its program
+            // reads, written over the fixture image.
+            bool loadReal(const RealDump &d)
+            {
+                if (!load())
+                    return false;
+                top = d.top;
+                std::memcpy(vi, d.vi, sizeof(vi));
+                std::memcpy(vf, d.vf, sizeof(vf));
+                for (size_t s = 0; s < d.spanCount; ++s)
+                {
+                    const std::string hex = d.spans[s].hex;
+                    for (size_t w = 0; w + 8u <= hex.size(); w += 8u)
+                        setWord(d.spans[s].first + static_cast<uint32_t>(w / 32u), static_cast<uint32_t>((w / 8u) % 4u),
+                                static_cast<int32_t>(std::stoul(hex.substr(w, 8u), nullptr, 16)));
+                }
+                return true;
+            }
+            // The list the dispatcher resumes: the command words from vi14 through the first 0x42.
+            std::vector<uint32_t> resumedList() const
+            {
+                std::vector<uint32_t> list;
+                for (int32_t k = vi[14]; k >= 0 && k < 64; ++k)
+                {
+                    list.push_back(static_cast<uint32_t>(word(340u + static_cast<uint32_t>(k), 0u)) & 0xFFFFu);
+                    if (list.back() == 0x42u)
+                        break;
+                }
+                return list;
             }
             int32_t word(uint32_t qword, uint32_t lane) const
             {
@@ -1162,6 +1498,28 @@ void register_vu1_ops_tests()
                     setFloat(41u + 2u * k, 2u, 0.75f - 0.002f * static_cast<float>(k));
                     setFloat(41u + 2u * k, 3u, 0.0f);
                 }
+            }
+            // The list at qword 340 as `52 <resumed...>`, vi14 = 1 still naming the first resumed command.
+            void setResumedList(const std::vector<uint32_t> &resumed)
+            {
+                setWord(340u, 0u, 0x52);
+                uint32_t k = 1u;
+                for (uint32_t command : resumed)
+                    setWord(340u + k++, 0u, static_cast<int32_t>(command));
+            }
+            // Triangles whose index record [0].w has bit 0 (0x40's draw gate, 0x06's output) set.
+            uint32_t visibleTriangles(const std::vector<uint8_t> &mem) const
+            {
+                const int32_t base = static_cast<int32_t>(top) + static_cast<int16_t>(word(top + 2u, 0u) & 0xFFFF);
+                const int32_t n = static_cast<int16_t>(word(top + 2u, 3u) & 0xFFFF);
+                uint32_t visible = 0u;
+                for (int32_t k = 0; k < n; ++k)
+                {
+                    int32_t w;
+                    std::memcpy(&w, mem.data() + (((base + 2 * k) * 16) & 0x3FFF) + 12, 4u);
+                    visible += (w & 1) != 0 ? 1u : 0u;
+                }
+                return visible;
             }
 
             struct End
@@ -1203,7 +1561,29 @@ void register_vu1_ops_tests()
                 }
                 return current().nativeEnded;
             }
-            static bool dispatcher(VU1Interpreter &vu, uint64_t budgetEnd) { return RefusalRig::dispatcher(vu, budgetEnd); }
+            static bool dispatcher(VU1Interpreter &vu, uint64_t budgetEnd)
+            {
+                current().nativeRan = true;
+                current().nativeEnded = RefusalRig::dispatcher(vu, budgetEnd);
+                return current().nativeEnded;
+            }
+            // The 0x1b50 dispatcher with entry()'s snapshot: a refusal must leave the entry's state untouched.
+            static bool dispatcherChecked(VU1Interpreter &vu, uint64_t budgetEnd)
+            {
+                End before;
+                before.s = vu.state();
+                before.data.assign(activeData(), activeData() + PS2_VU1_DATA_SIZE);
+                current().nativeRan = true;
+                current().nativeEnded = RefusalRig::dispatcher(vu, budgetEnd);
+                if (!current().nativeEnded)
+                {
+                    End after;
+                    after.s = vu.state();
+                    after.data.assign(activeData(), activeData() + PS2_VU1_DATA_SIZE);
+                    current().touchedBeforeHandBack = diff(before, after, false);
+                }
+                return current().nativeEnded;
+            }
             // Runs the program from `startPc` with the native table {hash, nativePc, fn}; fn == nullptr runs the
             // interpreter alone (a table whose one row matches nothing).
             End run(uint32_t startPc, uint32_t nativePc, VU1Interpreter::KnownProgramFn fn, uint32_t budget = 1u << 28) const
@@ -1285,14 +1665,27 @@ void register_vu1_ops_tests()
                 return why;
             }
             static bool packetsComparable() { return !ps2x::knobOn("PS2X_VU1_XGKICK_CYCLE_EXACT"); }
+            // The XGKICKs a run's GIF callback saw (each record is a u32 length, then that many bytes).
+            static size_t kicks(const std::vector<uint8_t> &packets)
+            {
+                size_t n = 0u;
+                for (size_t o = 0u; o + 4u <= packets.size(); ++n)
+                {
+                    uint32_t len = 0u;
+                    std::memcpy(&len, packets.data() + o, 4u);
+                    o += 4u + len;
+                }
+                return n;
+            }
         };
 
-        tc.Run("PS2X_VU1_NATIVE_33C8 is a Dev Flag defaulting to 0; off, the registry's 0x33c8 entry is as if absent", [](TestCase &t)
+        tc.Run("PS2X_VU1_NATIVE_33C8 is a Dev Flag defaulting to 1 (N1c adopted): unset, the registry's 0x33c8 entry is present; 0, absent", [](TestCase &t)
         {
             const ps2x::knobs::Entry *e = ps2x::knobs::find("PS2X_VU1_NATIVE_33C8");
             t.IsTrue(e != nullptr && e->cls == ps2x::knobs::Class::Dev && e->kind == ps2x::knobs::Kind::Flag &&
-                         std::string(e->dflt) == "0",
-                     "a Dev Flag, default 0 (the generated code keeps entry 0x33c8 unless asked)");
+                         std::string(e->dflt) == "1",
+                     "a Dev Flag, default 1 (N1c picked 2026-10-01, the native entry adopted; 0 = the generated code)");
+            t.IsTrue(e != nullptr && std::string(e->meaning).size() <= 110u, "its meaning fits the registry's 110 characters");
             extern const Vu1NativeProgram g_vu1NativePrograms[];
             extern const uint32_t g_vu1NativeProgramCount;
             const Vu1NativeProgram *row = nullptr;
@@ -1301,8 +1694,13 @@ void register_vu1_ops_tests()
                     row = &g_vu1NativePrograms[i];
             t.IsTrue(row != nullptr && row->fn != nullptr && row->enabled != nullptr,
                      "the SOCOM II image registers entry 0x33c8, gated");
-            if (row && row->enabled && ps2x::knob("PS2X_VU1_NATIVE_33C8") == nullptr)
-                t.IsTrue(!row->enabled(), "unset: the gate is closed, run() does not take the entry");
+            // The gate reads once per process, so a run covers the environment it was started with:
+            // ps2x_tests unset (the default), and PS2X_VU1_NATIVE_33C8=0 (the developer's fallback).
+            const char *v = ps2x::knob("PS2X_VU1_NATIVE_33C8");
+            if (row && row->enabled && v == nullptr)
+                t.IsTrue(row->enabled(), "unset: the gate is open (the registry's default), run() takes the entry");
+            if (row && row->enabled && v != nullptr && !ps2x::knobs::flagValue(v, true))
+                t.IsTrue(!row->enabled(), "=0: the gate is closed, run() does not take the entry");
         });
 
         tc.Run("native 0x33c8: a last-bone entry repacks, resumes at vi14 and ends bit-exact with the interpreter", [](TestCase &t)
@@ -1368,13 +1766,372 @@ void register_vu1_ops_tests()
             t.IsTrue(why.empty(), "the fallback is the microcode's own run:" + why);
         });
 
+        // ---- Sprint 17 F N1b (docs/research/82 "N1b"): the backface cull 0x06 in the resumed list ---------------------
+        // The walk's last-bone lists hold 0x06 (1.78 M `resume_command cmd=0x6` refusals with N1 on). Its only stores are
+        // the flag words, record [0].w of every triangle; its one flag read, `FMAND vi13, vi5` at 0x1718, reads the
+        // MADDz.w four pairs before it in its own loop, whatever ran before 0x1638. Each shape runs natively against the
+        // interpreter on the real image, and the cull must have split the triangles (some drawn, some not) so both
+        // outcomes of that FMAND are compared.
+        {
+            struct Shape
+            {
+                const char *what;
+                std::vector<uint32_t> resumed;
+                int32_t triangles; // -1: the fixture's 38
+            };
+            static const Shape shapes[] = {
+                {"06 08 40 42 (the cull on the fixture's normals)", {0x06u, 0x08u, 0x40u, 0x42u}, -1},
+                {"66 06 08 40 42 (normals rebuilt from the skinned positions, then culled)", {0x66u, 0x06u, 0x08u, 0x40u, 0x42u}, -1},
+                {"66 06 08 40 42 with a zero triangle count (0x66 and 0x06 each run their body once)",
+                 {0x66u, 0x06u, 0x08u, 0x40u, 0x42u}, 0},
+            };
+            for (const Shape &shape : shapes)
+            {
+                tc.Run(std::string("native 0x33c8: a last-bone ") + shape.what + " is taken natively, bit-exact", [&shape](TestCase &t)
+                {
+                    Entry33c8Rig rig;
+                    t.IsTrue(rig.load(), "fixture present");
+                    if (rig.code.empty())
+                        return;
+                    rig.makeLastBone();
+                    rig.setResumedList(shape.resumed);
+                    if (shape.triangles >= 0)
+                        rig.setWord(rig.top + 2u, 3u, shape.triangles);
+                    const Entry33c8Rig::End oracle = rig.run(0x33c8u, 0x33c8u, nullptr);
+                    t.Equals(oracle.s.pc, 0x1b50u, "the oracle took the last-bone path and ended through 0x42 (pc 0x1b50)");
+                    const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry);
+                    t.IsTrue(native.nativeRan && native.nativeEnded, "the native program ran the whole list and ended it");
+                    const std::string why = Entry33c8Rig::diff(oracle, native, Entry33c8Rig::packetsComparable());
+                    t.IsTrue(why.empty(), "native = interpreter, register file and VU data memory:" + why);
+                    if (shape.triangles < 0)
+                    {
+                        const uint32_t visible = rig.visibleTriangles(oracle.data);
+                        const uint32_t all = static_cast<uint32_t>(static_cast<int16_t>(rig.word(rig.top + 2u, 3u) & 0xFFFF));
+                        t.IsTrue(visible > 0u && visible < all,
+                                 "the cull split the triangles (" + std::to_string(visible) + " of " + std::to_string(all) +
+                                     " drawn): both outcomes of the FMAND at 0x1718 are compared");
+                        if (Entry33c8Rig::packetsComparable())
+                            t.IsTrue(!native.packets.empty(), "the list drew (0x40 kicks one packet per drawn triangle)");
+                    }
+                });
+            }
+        }
+
+        // ---- Sprint 17 F N1c, the linear half (docs/research/82 section 9.6): 0x54 and 0x10 in the resumed list --------
+        // 0x54 (0x05d8) broadcasts q327 into slot +1 of the staging triples from q40, three vertices an iteration with the
+        // body before its IBGTZ: stores 41 + 3j for j < 3 max(ceil(V/3), 1), proven as [41, 40 + 9 max(ceil(V/3), 1) - 2].
+        // 0x10 (0x0f90) writes only the fog lane .w of slot +2, 42 + 3k for k < max(V, 1), proven as [42, 39 + 3 max(V, 1)].
+        // V is TOP+2.z. Neither reads a flag, and neither's addresses depend on what another command wrote, so the proof
+        // takes them in any order. Each shape runs natively against the interpreter on the real image; where the list
+        // leaves it visible, 0x54's last store (past 0x08's triples) must hold q327, and 0x10's fog lanes must differ
+        // from the same list run without its 0x10.
+        {
+            struct Shape
+            {
+                const char *what;
+                std::vector<uint32_t> resumed;
+                int32_t vertices; // TOP+2.z; the repack's vi9 stays the fixture's 42
+                bool fillVisible; // 0x54's last store lies past 0x08's triples
+            };
+            static const Shape linearShapes[] = {
+                {"66 06 08 10 40 42, V = 41 (odd: 0x10's last pass stores vertex a only)",
+                 {0x66u, 0x06u, 0x08u, 0x10u, 0x40u, 0x42u}, 41, false},
+                {"66 06 08 10 40 42, V = 42", {0x66u, 0x06u, 0x08u, 0x10u, 0x40u, 0x42u}, 42, false},
+                {"54 66 06 08 40 42, V = 40 (0x54 overshoots to vertices 40 and 41)",
+                 {0x54u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u}, 40, true},
+                {"54 66 06 08 10 40 42, V = 40", {0x54u, 0x66u, 0x06u, 0x08u, 0x10u, 0x40u, 0x42u}, 40, true},
+                {"54 66 06 08 10 40 42, V = 0 (every body runs once)", {0x54u, 0x66u, 0x06u, 0x08u, 0x10u, 0x40u, 0x42u}, 0, true},
+                {"54 66 06 08 40 42, V = 96 (0x54's last store q326: the largest V clear of q329)",
+                 {0x54u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u}, 96, false},
+                // N1c, the real shapes: shape A on the fixture's mesh, at the edges of 0x18's range.
+                {"66 06 08 54 18 28 42, V = 41 (odd: 0x18's last pass lights vertex 41 as well)",
+                 {0x66u, 0x06u, 0x08u, 0x54u, 0x18u, 0x28u, 0x42u}, 41, false},
+                {"66 06 08 54 18 28 42, V = 96 (0x18's last store q326: the largest V clear of q329)",
+                 {0x66u, 0x06u, 0x08u, 0x54u, 0x18u, 0x28u, 0x42u}, 96, false},
+            };
+            for (const Shape &shape : linearShapes)
+            {
+                tc.Run(std::string("native 0x33c8: a last-bone ") + shape.what + " is taken natively, bit-exact", [&shape](TestCase &t)
+                {
+                    Entry33c8Rig rig;
+                    t.IsTrue(rig.load(), "fixture present");
+                    if (rig.code.empty())
+                        return;
+                    rig.makeLastBone();
+                    rig.setResumedList(shape.resumed);
+                    rig.setWord(rig.top + 2u, 2u, shape.vertices);
+                    const float fill[4] = {0.5f, 0.25f, 0.125f, 64.0f}; // q327, so 0x54's stores are recognisable
+                    for (uint32_t lane = 0; lane < 4u; ++lane)
+                        rig.setFloat(327u, lane, fill[lane]);
+                    const Entry33c8Rig::End oracle = rig.run(0x33c8u, 0x33c8u, nullptr);
+                    t.Equals(oracle.s.pc, 0x1b50u, "the oracle took the last-bone path and ended through 0x42 (pc 0x1b50)");
+                    const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry);
+                    t.IsTrue(native.nativeRan && native.nativeEnded, "the native program ran the whole list and ended it");
+                    const std::string why = Entry33c8Rig::diff(oracle, native, Entry33c8Rig::packetsComparable());
+                    t.IsTrue(why.empty(), "native = interpreter, register file and VU data memory:" + why);
+                    auto qword = [](const std::vector<uint8_t> &mem, int32_t q) { return mem.data() + ((q * 16) & 0x3FFF); };
+                    const int32_t passes = shape.vertices > 0 ? shape.vertices : 1;
+                    if (shape.fillVisible)
+                    {
+                        const int32_t last = 40 + 9 * ((passes + 2) / 3) - 2;
+                        t.IsTrue(std::memcmp(qword(rig.data, last), qword(rig.data, 327), 16u) != 0 &&
+                                     std::memcmp(qword(native.data, last), qword(rig.data, 327), 16u) == 0,
+                                 "0x54 filled its last slot, q" + std::to_string(last) + ", with q327");
+                    }
+                    const bool fades = std::find(shape.resumed.begin(), shape.resumed.end(), 0x10u) != shape.resumed.end();
+                    if (fades)
+                    {
+                        std::vector<uint32_t> without;
+                        for (uint32_t command : shape.resumed)
+                            if (command != 0x10u)
+                                without.push_back(command);
+                        rig.setResumedList(without);
+                        const Entry33c8Rig::End plain = rig.run(0x33c8u, 0x33c8u, nullptr);
+                        int32_t changed = 0;
+                        for (int32_t k = 0; k < passes; ++k)
+                            changed += std::memcmp(qword(oracle.data, 42 + 3 * k) + 12, qword(plain.data, 42 + 3 * k) + 12, 4u) != 0 ? 1 : 0;
+                        t.IsTrue(changed > 0, "0x10 wrote the fog lane: " + std::to_string(changed) + " of " +
+                                                  std::to_string(passes) + " differ from the list without it");
+                    }
+                });
+            }
+        }
+
+        // ---- Sprint 17 F N1c, the real shapes (docs/research/82 section 9.7): shape A --------------------------------
+        // The walk's refused capture (logs/vu1refused1, 2,000 last-bone lists) holds two shapes. Shape A (816) is
+        // `66 06 08 54 18 28 42` from index 1: the transform, the template fill, then 0x18's lighting (0x1440, SQ.xyzw
+        // at -11(vi4) and -8(vi4): slot +1 of two staging triples a pass from q40, the body before its IBGTZ, so qwords
+        // 41 + 3j for j < 2 max(ceil(V/2), 1), proven as [41, 38 + 6 max(ceil(V/2), 1)]) and 0x28's triangle assembly
+        // (0x1780, 0x40's body from 0x1790 behind two loads: the tags at 290/300, nine packet qwords after each of
+        // q329.x/.y, q329.x/.y rewritten with the same pair, one XGKICK per drawn triangle). Neither reads a flag. Three
+        // real captures, their entry state written over the fixture image, run natively against the interpreter.
+        {
+            struct RealCase
+            {
+                const char *what;
+                const RealDump *dump;
+            };
+            static const RealCase shapeA[] = {
+                {"1 triangle, 3 vertices, TOP 424 (vu1_refused_1078)", &kA1},
+                {"5 triangles, 9 vertices, TOP 724 (vu1_refused_1076)", &kA5},
+                {"19 triangles, 24 vertices, TOP 724 (vu1_refused_104)", &kA19},
+            };
+            for (const RealCase &real : shapeA)
+            {
+                tc.Run(std::string("native 0x33c8: the walk's shape A, 66 06 08 54 18 28 42, ") + real.what +
+                           ": taken natively, bit-exact",
+                       [&real](TestCase &t)
+                {
+                    Entry33c8Rig rig;
+                    t.IsTrue(rig.loadReal(*real.dump), "fixture present");
+                    if (rig.code.empty())
+                        return;
+                    const std::vector<uint32_t> shape = {0x66u, 0x06u, 0x08u, 0x54u, 0x18u, 0x28u, 0x42u};
+                    t.IsTrue(rig.resumedList() == shape, "the capture resumes 66 06 08 54 18 28 42 at vi14 = 1");
+                    const Entry33c8Rig::End oracle = rig.run(0x33c8u, 0x33c8u, nullptr);
+                    t.Equals(oracle.s.pc, 0x1b50u, "the oracle took the last-bone path and ended through 0x42 (pc 0x1b50)");
+                    const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry);
+                    t.IsTrue(native.nativeRan && native.nativeEnded, "the native program ran the whole list and ended it");
+                    const std::string why = Entry33c8Rig::diff(oracle, native, Entry33c8Rig::packetsComparable());
+                    t.IsTrue(why.empty(), "native = interpreter, register file, VU data memory and packets:" + why);
+                    if (Entry33c8Rig::packetsComparable())
+                        t.IsTrue(!native.packets.empty(), "the list drew (0x28 kicks one packet per drawn triangle)");
+                });
+            }
+        }
+
+        // ---- Sprint 17 F N1c, the real shapes: shape L, the 0x02 loop (docs/research/82 section 9.7) -------------------
+        // Shape L (1,184 of the capture) is `66 06 02 [0a 56 1a 2a 4c]` from index 1, the world-object loop. Every store
+        // of the 0x02 family lands at a fixed address -- q329.z and q112 (0x02), the clipper's buffers (q40-138: its
+        // output count is at most 20, kClipperOutputBound), the 150 staging (0x0a, 0x12, 0x56, 0x1a) and q113.. (0x2a)
+        // -- so their union, [40, 211] and q329.z, is proven once at the 0x02 and holds for every primitive, q329 lane
+        // by lane (0x02 stores .z, the proof reads .x/.y). The loop target, the y after the 0x4c, must lie in the body
+        // and be the y a skipped primitive reads (the qword after the 0x02's, and its own). Three real captures and a
+        // fourth whose only primitive is culled -- its program ends through 0x20c8's fall-in, nothing dispatched after
+        // the 0x02 -- run natively against the interpreter, three XGKICKs per drawn primitive (q423 from 0x0a, q423
+        // and q112 from 0x2a).
+        {
+            struct RealCase
+            {
+                const char *what;
+                const RealDump *dump;
+                size_t kicks; // under the immediate model, three per drawn primitive
+            };
+            static const RealCase shapeL[] = {
+                {"1 primitive, drawn, 3 vertices, TOP 424 (vu1_refused_1032)", &kL1, 3u},
+                {"7 primitives, 4 culled, 2 clipped away, 1 drawn, 18 vertices, TOP 424 (vu1_refused_1060)", &kL7, 3u},
+                {"8 primitives, 1 culled, 7 drawn, 15 vertices, TOP 724 (vu1_refused_174)", &kL8, 21u},
+                {"1 primitive, culled: the loop exits through the fall-in (vu1_refused_1064)", &kS1, 0u},
+            };
+            for (const RealCase &real : shapeL)
+            {
+                tc.Run(std::string("native 0x33c8: the walk's shape L, 66 06 02 [0a 56 1a 2a 4c], ") + real.what +
+                           ": taken natively, bit-exact",
+                       [&real](TestCase &t)
+                {
+                    Entry33c8Rig rig;
+                    t.IsTrue(rig.loadReal(*real.dump), "fixture present");
+                    if (rig.code.empty())
+                        return;
+                    const std::vector<uint32_t> shape = {0x66u, 0x06u, 0x02u, 0x0au, 0x56u, 0x1au, 0x2au, 0x4cu, 0x42u};
+                    t.IsTrue(rig.resumedList() == shape, "the capture resumes 66 06 02 0a 56 1a 2a 4c 42 at vi14 = 1");
+                    const Entry33c8Rig::End oracle = rig.run(0x33c8u, 0x33c8u, nullptr);
+                    t.Equals(oracle.s.pc, 0x1b50u, "the oracle ended through 0x4c's E bit (pc 0x1b50)");
+                    const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry);
+                    t.IsTrue(native.nativeRan && native.nativeEnded, "the native program ran the whole loop and ended it");
+                    const std::string why = Entry33c8Rig::diff(oracle, native, Entry33c8Rig::packetsComparable());
+                    t.IsTrue(why.empty(), "native = interpreter, register file, VU data memory and packets:" + why);
+                    if (Entry33c8Rig::packetsComparable())
+                        t.Equals(Entry33c8Rig::kicks(native.packets), real.kicks,
+                                 "three XGKICKs per drawn primitive, none for a skipped one");
+                });
+            }
+
+            tc.Run("native 0x33c8: shape L with research/13's fade, 66 06 02 [0a 12 56 1a 2a 4c], is taken natively, bit-exact",
+                   [](TestCase &t)
+            {
+                // vu1_refused_174's list with 0x12 (0x10's fade on the 150 base, the fog lanes of [152, 149 + 3n]) inserted
+                // after the 0x0a, every loop word's y still 4: the target, the qword after the 0x02 and the target's own.
+                Entry33c8Rig rig;
+                t.IsTrue(rig.loadReal(kL8), "fixture present");
+                if (rig.code.empty())
+                    return;
+                const uint32_t body[6] = {0x12u, 0x56u, 0x1au, 0x2au, 0x4cu, 0x42u};
+                for (uint32_t k = 0; k < 6u; ++k)
+                {
+                    rig.setWord(345u + k, 0u, static_cast<int32_t>(body[k]));
+                    rig.setWord(345u + k, 1u, 4);
+                }
+                const Entry33c8Rig::End oracle = rig.run(0x33c8u, 0x33c8u, nullptr);
+                t.Equals(oracle.s.pc, 0x1b50u, "the oracle ended through 0x4c's E bit");
+                const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry);
+                t.IsTrue(native.nativeRan && native.nativeEnded, "taken natively");
+                const std::string why = Entry33c8Rig::diff(oracle, native, Entry33c8Rig::packetsComparable());
+                t.IsTrue(why.empty(), "native = interpreter:" + why);
+                rig.setWord(345u, 0u, 0x56); // the same list without the 0x12, for the fog lanes it wrote
+                for (uint32_t k = 1; k < 6u; ++k)
+                    rig.setWord(345u + k - 1u, 0u, static_cast<int32_t>(body[k]));
+                const Entry33c8Rig::End plain = rig.run(0x33c8u, 0x33c8u, nullptr);
+                t.IsTrue(std::memcmp(oracle.data.data() + 152u * 16u, plain.data.data() + 152u * 16u, 16u * 60u) != 0,
+                         "0x12 changed the 150 staging");
+            });
+
+            tc.Run("native 0x33c8: a loop the proof cannot follow is refused before anything is touched", [](TestCase &t)
+            {
+                // Each case edits vu1_refused_1060's list (index 3 the 0x02, index 8 the 0x4c, y = 4 from index 4 on) or
+                // its state; each is refused whole, under its reason, with the register file and VU data memory as the
+                // entry found them.
+                using R = Vu1Refusals::Reason;
+                struct Case
+                {
+                    const char *what;
+                    R reason;
+                    uint32_t cmd;
+                    void (*setup)(Entry33c8Rig &);
+                    int32_t clipCeiling;
+                };
+                const Case cases[] = {
+                    {"mixed y: the qword after the 0x02 carries y = 5, where a culled first primitive would resume",
+                     R::LoopShape, 0x4cu, [](Entry33c8Rig &r) { r.setWord(344u, 1u, 5); }, -1},
+                    {"the loop target (the y after the 0x4c) is 2, before the 0x02", R::LoopShape, 0x4cu,
+                     [](Entry33c8Rig &r) { r.setWord(349u, 1u, 2); }, -1},
+                    {"the loop target is 5 and the qword after the 0x02 agrees, but the target's own y is 4",
+                     R::LoopShape, 0x4cu, [](Entry33c8Rig &r) { r.setWord(349u, 1u, 5); r.setWord(344u, 1u, 5); }, -1},
+                    {"the loop target is 5 and its own y agrees, but the qword after the 0x02 says 4",
+                     R::LoopShape, 0x4cu, [](Entry33c8Rig &r) { r.setWord(349u, 1u, 5); r.setWord(345u, 1u, 5); }, -1},
+                    {"a 0x06 in the loop body (it rewrites vi12, the primitive counter)", R::LoopShape, 0x06u,
+                     [](Entry33c8Rig &r) { r.setWord(345u, 0u, 0x06); }, -1},
+                    {"a 0x0a before the 0x02 (its vi10 is the live-in, unbounded)", R::LoopShape, 0x0au,
+                     [](Entry33c8Rig &r) { r.setWord(342u, 0u, 0x0a); }, -1},
+                    {"no 0x4c: the 0x2a is followed by the 0x42", R::LoopShape, 0x42u,
+                     [](Entry33c8Rig &r) { r.setWord(348u, 0u, 0x42); }, -1},
+                    {"a second 0x02 in the body", R::LoopShape, 0x02u, [](Entry33c8Rig &r) { r.setWord(345u, 0u, 0x02); }, -1},
+                    {"TOP 100 (the header copied to q102): the family's stores [40, 211] would overwrite TOP+2",
+                     R::WriteRange, 0x02u,
+                     [](Entry33c8Rig &r) {
+                         for (uint32_t lane = 0; lane < 4u; ++lane)
+                             r.setWord(102u, lane, r.word(r.top + 2u, lane));
+                         r.top = 100u;
+                     }, -1},
+                    {"the test clip ceiling lowered to 8 (PS2X_VU1_NATIVE_TEST_CLIP_CEILING): refused whole, not clamped",
+                     R::ClipCeiling, 0u, [](Entry33c8Rig &) {}, 8},
+                };
+                for (const Case &k : cases)
+                {
+                    Entry33c8Rig rig;
+                    t.IsTrue(rig.loadReal(kL7), "fixture present");
+                    if (rig.code.empty())
+                        return;
+                    k.setup(rig);
+                    if (k.clipCeiling >= 0)
+                        RefusalRig::forceClipCeiling(k.clipCeiling);
+                    Vu1Refusals::setEnabledForTest(true);
+                    const Vu1Refusals::Row before = RefusalRig::row(0x33c8u, k.reason, k.cmd);
+                    const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry, 64u);
+                    const Vu1Refusals::Row after = RefusalRig::row(0x33c8u, k.reason, k.cmd);
+                    Vu1Refusals::setEnabledForTest(false);
+                    RefusalRig::forceClipCeiling(-1);
+                    t.IsTrue(native.nativeRan && !native.nativeEnded, std::string(k.what) + ": handed back");
+                    t.Equals(after.n - before.n, 1ull, std::string(k.what) + ": counted under its reason");
+                    t.IsTrue(native.touchedBeforeHandBack.empty(),
+                             std::string(k.what) + ": nothing touched before the hand-back:" + native.touchedBeforeHandBack);
+                }
+            });
+        }
+
+        tc.Run("native 0x1b50 is unchanged: vu1dump4_prog_134's own 68 06 02 0a 12 56 1a 2a 4c 42 runs natively, bit-exact",
+               [](TestCase &t)
+        {
+            Entry33c8Rig rig;
+            t.IsTrue(rig.loadFrom(std::string(PS2X_TEST_FIXTURES_DIR) +
+                                  "/../../../../tests/fixtures/vu1/dispatch_0x1b50/vu1dump4_prog_134.bin"),
+                     "the fixture tests/fixtures/vu1/dispatch_0x1b50/vu1dump4_prog_134.bin is present");
+            if (rig.code.empty())
+                return;
+            const Entry33c8Rig::End oracle = rig.run(0x1b50u, 0x1b50u, nullptr);
+            const Entry33c8Rig::End native = rig.run(0x1b50u, 0x1b50u, &Entry33c8Rig::dispatcher);
+            t.IsTrue(native.nativeRan && native.nativeEnded, "the 0x1b50 dispatcher took the list whole");
+            const std::string why = Entry33c8Rig::diff(oracle, native, Entry33c8Rig::packetsComparable());
+            t.IsTrue(why.empty(), "native = interpreter:" + why);
+        });
+
+        tc.Run("native 0x1b50 is unchanged: vu1dump4_prog_11's own 68 08 10 54 18 28 42 runs natively, bit-exact", [](TestCase &t)
+        {
+            Entry33c8Rig rig;
+            t.IsTrue(rig.loadFrom(std::string(PS2X_TEST_FIXTURES_DIR) +
+                                  "/../../../../tests/fixtures/vu1/dispatch_0x1b50/vu1dump4_prog_11.bin"),
+                     "the fixture tests/fixtures/vu1/dispatch_0x1b50/vu1dump4_prog_11.bin is present");
+            if (rig.code.empty())
+                return;
+            const Entry33c8Rig::End oracle = rig.run(0x1b50u, 0x1b50u, nullptr);
+            const Entry33c8Rig::End native = rig.run(0x1b50u, 0x1b50u, &Entry33c8Rig::dispatcher);
+            t.IsTrue(native.nativeRan && native.nativeEnded, "the 0x1b50 dispatcher took the list whole");
+            const std::string why = Entry33c8Rig::diff(oracle, native, Entry33c8Rig::packetsComparable());
+            t.IsTrue(why.empty(), "native = interpreter:" + why);
+        });
+
+        tc.Run("native 0x1b50 is unchanged: the fixture's own 70 06 08 40 42 runs natively, bit-exact", [](TestCase &t)
+        {
+            Entry33c8Rig rig;
+            t.IsTrue(rig.load(), "fixture present");
+            if (rig.code.empty())
+                return;
+            const Entry33c8Rig::End oracle = rig.run(0x1b50u, 0x1b50u, nullptr);
+            const Entry33c8Rig::End native = rig.run(0x1b50u, 0x1b50u, &Entry33c8Rig::dispatcher);
+            t.IsTrue(native.nativeRan && native.nativeEnded, "the 0x1b50 dispatcher took the list whole");
+            const std::string why = Entry33c8Rig::diff(oracle, native, Entry33c8Rig::packetsComparable());
+            t.IsTrue(why.empty(), "native = interpreter:" + why);
+        });
+
         tc.Run("native 0x33c8: a state whose writes it cannot bound is refused before anything is touched", [](TestCase &t)
         {
             // Every write range of the program is proven before the repack's first store: the repack's records, 0x66's
             // index records, 0x08's staging triples and 0x40's packets must not wrap VU memory or land on what the
             // proof itself read (the list's 64 qwords, the header TOP+2, the packet pointers at q329); the resumed
-            // list may hold only 0x66, 0x08, 0x40 and its 0x42; and no handler clamp may be able to fire after the
-            // repack. Each refusal leaves the register file and VU data memory exactly as the entry found them.
+            // list may hold only 0x66, 0x06, 0x08, 0x10, 0x40, 0x54 and its 0x42 (0x06's flag words, record [0] of
+            // every triangle, proven like 0x66's record [1]: N1b; 0x54's fill and 0x10's fog lanes, from q41 and q42
+            // on TOP+2.z: N1c); and no handler clamp may be able to fire after the repack. Each refusal leaves the
+            // register file and VU data memory exactly as the entry found them.
             using R = Vu1Refusals::Reason;
             struct Case
             {
@@ -1401,11 +2158,65 @@ void register_vu1_ops_tests()
                  [](Entry33c8Rig &r) { r.setWord(r.top + 2u, 2u, 101); }, -1},
                 {"q329.x = 335: 0x40's packet would overwrite the list", R::WriteRange, 0x40u,
                  [](Entry33c8Rig &r) { r.setWord(329u, 0u, 335); }, -1},
-                {"a 0x06 in the resumed list", R::ResumeCommand, 0x06u,
+                {"a 0x64 in the resumed list (no store range derived for it)", R::ResumeCommand, 0x64u,
+                 [](Entry33c8Rig &r) { r.setResumedList({0x66u, 0x06u, 0x08u, 0x64u, 0x42u}); }, -1},
+                // N1c, the real shapes: shape A's 0x18 and 0x28.
+                {"18 66 06 08 40 42, TOP+2.z = 97: 0x18's lit colours [41, 332] would overwrite the packet pointers at q329",
+                 R::WriteRange, 0x18u,
+                 [](Entry33c8Rig &r) { r.setResumedList({0x18u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u}); r.setWord(r.top + 2u, 2u, 97); }, -1},
+                {"18 66 06 08 40 42, TOP 100 (the header copied to q102): 0x18's lit colours [41, 164] would overwrite TOP+2",
+                 R::WriteRange, 0x18u,
                  [](Entry33c8Rig &r) {
-                     const uint32_t list[6] = {0x52u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u};
-                     for (uint32_t k = 0; k < 6u; ++k)
-                         r.setWord(340u + k, 0u, static_cast<int32_t>(list[k]));
+                     r.setResumedList({0x18u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u});
+                     for (uint32_t lane = 0; lane < 4u; ++lane)
+                         r.setWord(102u, lane, r.word(r.top + 2u, lane));
+                     r.top = 100u;
+                 }, -1},
+                {"66 06 08 54 18 28 42, q329.x = 335: 0x28's packet would overwrite the list", R::WriteRange, 0x28u,
+                 [](Entry33c8Rig &r) {
+                     r.setResumedList({0x66u, 0x06u, 0x08u, 0x54u, 0x18u, 0x28u, 0x42u});
+                     r.setWord(329u, 0u, 335);
+                 }, -1},
+                {"66 06 08 54 18 28 42, q329.y = 1020: 0x28's packet would wrap past the end of VU memory", R::WriteRange, 0x28u,
+                 [](Entry33c8Rig &r) {
+                     r.setResumedList({0x66u, 0x06u, 0x08u, 0x54u, 0x18u, 0x28u, 0x42u});
+                     r.setWord(329u, 1u, 1020);
+                 }, -1},
+                {"06 08 40 42, TOP+2.x = -84: 0x06's flag words from q340 would overwrite the list", R::WriteRange, 0x06u,
+                 [](Entry33c8Rig &r) { r.setResumedList({0x06u, 0x08u, 0x40u, 0x42u}); r.setWord(r.top + 2u, 0u, -84); }, -1},
+                {"06 08 40 42, TOP+2.x = -10: 0x06's seventh flag word (q426) would overwrite the header TOP+2", R::WriteRange, 0x06u,
+                 [](Entry33c8Rig &r) { r.setResumedList({0x06u, 0x08u, 0x40u, 0x42u}); r.setWord(r.top + 2u, 0u, -10); }, -1},
+                {"06 08 40 42, TOP+2.x = 600: 0x06's flag words would wrap past the end of VU memory", R::WriteRange, 0x06u,
+                 [](Entry33c8Rig &r) { r.setResumedList({0x06u, 0x08u, 0x40u, 0x42u}); r.setWord(r.top + 2u, 0u, 600); }, -1},
+                {"06 08 40 42, one triangle, TOP+2.x = -21: 0x06's one flag word is q403, the list's last qword", R::WriteRange, 0x06u,
+                 [](Entry33c8Rig &r) {
+                     r.setResumedList({0x06u, 0x08u, 0x40u, 0x42u});
+                     r.setWord(r.top + 2u, 0u, -21);
+                     r.setWord(r.top + 2u, 3u, 1);
+                 }, -1},
+                {"54 66 06 08 40 42, TOP+2.z = 97: 0x54's fill [41, 335] would overwrite the packet pointers at q329",
+                 R::WriteRange, 0x54u,
+                 [](Entry33c8Rig &r) { r.setResumedList({0x54u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u}); r.setWord(r.top + 2u, 2u, 97); }, -1},
+                {"54 66 06 08 40 42, TOP+2.z = 101: 0x54's fill [41, 344] would overwrite the list", R::WriteRange, 0x54u,
+                 [](Entry33c8Rig &r) { r.setResumedList({0x54u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u}); r.setWord(r.top + 2u, 2u, 101); }, -1},
+                {"54 66 06 08 40 42, TOP 100 (the header copied to q102): 0x54's fill [41, 164] would overwrite TOP+2",
+                 R::WriteRange, 0x54u,
+                 [](Entry33c8Rig &r) {
+                     r.setResumedList({0x54u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u});
+                     for (uint32_t lane = 0; lane < 4u; ++lane)
+                         r.setWord(102u, lane, r.word(r.top + 2u, lane));
+                     r.top = 100u;
+                 }, -1},
+                {"10 66 06 08 40 42, TOP+2.z = 97: 0x10's fog lanes [42, 330], proven as whole qwords, cover q329",
+                 R::WriteRange, 0x10u,
+                 [](Entry33c8Rig &r) { r.setResumedList({0x10u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u}); r.setWord(r.top + 2u, 2u, 97); }, -1},
+                {"10 66 06 08 40 42, TOP 100 (the header copied to q102): 0x10's fog lanes [42, 165] would overwrite TOP+2",
+                 R::WriteRange, 0x10u,
+                 [](Entry33c8Rig &r) {
+                     r.setResumedList({0x10u, 0x66u, 0x06u, 0x08u, 0x40u, 0x42u});
+                     for (uint32_t lane = 0; lane < 4u; ++lane)
+                         r.setWord(102u, lane, r.word(r.top + 2u, lane));
+                     r.top = 100u;
                  }, -1},
                 {"the handler vertex ceiling at 10 (0x08's clamp would fire after the repack)", R::HeaderVertices, 0u,
                  [](Entry33c8Rig &) {}, 10},
@@ -1450,6 +2261,578 @@ void register_vu1_ops_tests()
             const Vu1Refusals::Row after = RefusalRig::row(0x1b50u, Vu1Refusals::Reason::UnknownCommand, 0x66u);
             Vu1Refusals::setEnabledForTest(false);
             t.Equals(after.n - before.n, 1ull, "unknown_command cmd=0x66 at entry 0x1b50 +1: 0x66 is admitted only at 0x33c8");
+        });
+
+        // ---- Sprint 17 F N2 (docs/research/82 section 10): the skinning pass 0x52 (0x3100-0x33c0) --------------------
+        // Both of 0x52's entries run the same pass: at 0x1b50 as the list's first command (`52 66 08 40 42`: the pass
+        // ends the program at its E bit, pc 0x33c8, and the rest of the list runs in a later MSCAL), and at 0x33c8 when
+        // the live-in vi5 (the previous chunk's flags) has bit 2 clear, the microcode's `B 0x3100` -- (A), another bone.
+        // Behind PS2X_VU1_NATIVE_SKIN (Dev, default 0), forced here through vu1native_socom2_forceSkinForTest. The pass
+        // emits nothing, so what is compared is the register file and VU data memory whole. Its stores -- q37.x on the
+        // first pass, then xyz of the staging pair base + dst, base + dst + 1 of each vertex -- are proven before the
+        // first write: inside VU memory without wrapping, clear of the bone chunk it reads (TOP .. TOP + 6 + 2n, the
+        // read-ahead vertex included) and of q37. The states are real dumps (vu1_52_real_dumps.inc).
+        struct SkinScope
+        {
+            static void force(int state)   // -1 = PS2X_VU1_NATIVE_SKIN as latched, 0 = off, 1 = on
+            {
+                void vu1native_socom2_forceSkinForTest(int state);
+                vu1native_socom2_forceSkinForTest(state);
+            }
+            explicit SkinScope(int state) { force(state); }
+            ~SkinScope() { force(-1); }
+            SkinScope(const SkinScope &) = delete;
+            SkinScope &operator=(const SkinScope &) = delete;
+        };
+
+        tc.Run("PS2X_VU1_NATIVE_SKIN is a Dev Flag defaulting to 0 (off: both 0x52 entries as before)", [](TestCase &t)
+        {
+            const ps2x::knobs::Entry *e = ps2x::knobs::find("PS2X_VU1_NATIVE_SKIN");
+            t.IsTrue(e != nullptr && e->cls == ps2x::knobs::Class::Dev && e->kind == ps2x::knobs::Kind::Flag &&
+                         std::string(e->dflt) == "0",
+                     "a Dev Flag, default 0 (measured apart from PS2X_VU1_NATIVE_33C8)");
+            t.IsTrue(e != nullptr && std::string(e->meaning).size() <= 110u, "its meaning fits the registry's 110 characters");
+        });
+
+        {
+            struct SkinCase
+            {
+                const char *what;
+                const RealDump *dump;
+                uint32_t entry;
+            };
+            static const SkinCase skinCases[] = {
+                {"a bone pass at 0x33c8, vi5 2, flags 1 (accumulate), 12 vertices, TOP 724 (vu1dump3 prog 122)", &kB122, 0x33c8u},
+                {"a bone pass at 0x33c8, vi5 1, flags 5 (accumulate, last), 1 vertex, TOP 424 (vu1dump3 prog 127)", &kB127, 0x33c8u},
+                {"a bone pass at 0x33c8, vi5 1, flags 1, 9 vertices, destinations 44-90, TOP 424 (vu1dump3 prog 135)", &kB135, 0x33c8u},
+                {"52 66 08 40 42 at 0x1b50, flags 2 (the first pass), 29 vertices (vu1dump3 prog 121)", &kS121, 0x1b50u},
+                {"52 66 08 40 42 at 0x1b50, flags 2, 46 vertices (vu1dump3 prog 129)", &kS129, 0x1b50u},
+                {"52 66 08 40 42 at 0x1b50, flags 2, 49 vertices, destinations to 96 (vu1dump3 prog 145)", &kS145, 0x1b50u},
+            };
+            for (const SkinCase &k : skinCases)
+            {
+                tc.Run(std::string("native 0x52: ") + k.what + ": taken natively, bit-exact", [&k](TestCase &t)
+                {
+                    SkinScope on(1);
+                    Entry33c8Rig rig;
+                    t.IsTrue(rig.loadReal(*k.dump), "fixture present");
+                    if (rig.code.empty())
+                        return;
+                    if (k.entry == 0x33c8u)
+                        t.Equals(rig.vi[5] & 4, 0, "the live-in vi5 has bit 2 clear: the microcode's B 0x3100");
+                    else
+                        t.Equals(rig.word(340u, 0u) & 0xFFFF, 0x52, "the list starts with 0x52");
+                    const Entry33c8Rig::End oracle = rig.run(k.entry, k.entry, nullptr);
+                    t.Equals(oracle.s.pc, 0x33c8u, "the oracle ended at 0x52's E bit (pc 0x33c8)");
+                    const Entry33c8Rig::End native =
+                        rig.run(k.entry, k.entry, k.entry == 0x33c8u ? &Entry33c8Rig::entry : &Entry33c8Rig::dispatcherChecked);
+                    t.IsTrue(native.nativeRan && native.nativeEnded, "the native pass ran and ended the program");
+                    const std::string why = Entry33c8Rig::diff(oracle, native, true);
+                    t.IsTrue(why.empty(), "native = interpreter, register file and VU data memory (and no packet):" + why);
+                });
+            }
+        }
+
+        tc.Run("native 0x52: one mesh's three MSCALs -- 0x1b50's first pass, a bone pass, the last bone's list -- bit-exact end to end",
+               [](TestCase &t)
+        {
+            // vu1dump3 prog 142, 143 and 144: `52 66 08 40 42` at 0x1b50 (the first bone, TOP 724), then 0x33c8 with vi5 =
+            // 2 (another bone, TOP 424, flags 5), then 0x33c8 with vi5 = 5 (the repack and `66 08 40 42`, TOP 724). One
+            // interpreter and one VU data memory across the three, the VIF's uploads written between them, as the game
+            // runs them: the register file each program leaves is the next one's live-in (vi5, vi9, vi14, q37, the
+            // staging array), so every step is compared, the oracle's chain against the native one.
+            SkinScope on(1);
+            Entry33c8Rig rig;
+            t.IsTrue(rig.loadReal(kChain142), "fixture present");
+            if (rig.code.empty())
+                return;
+            struct Step
+            {
+                uint32_t startPc, top;
+                const RealDumpSpan *uploads;
+                size_t uploadCount;
+                uint32_t endPc;
+            };
+            const Step steps[] = {
+                {0x1b50u, 724u, nullptr, 0u, 0x33c8u},
+                {0x33c8u, 424u, kChain143UploadsSpans, sizeof(kChain143UploadsSpans) / sizeof(kChain143UploadsSpans[0]), 0x33c8u},
+                {0x33c8u, 724u, kChain144UploadsSpans, sizeof(kChain144UploadsSpans) / sizeof(kChain144UploadsSpans[0]), 0x1b50u},
+            };
+            struct Chain
+            {
+                std::vector<Entry33c8Rig::End> ends;
+                uint32_t nativeEnded = 0u;
+            };
+            static uint32_t s_nativeEnded = 0u;
+            auto runChain = [&](bool native) {
+                Chain chain;
+                s_nativeEnded = 0u;
+                PS2Memory mem;
+                GS gs;
+                if (!mem.initialize())
+                    return chain;
+                gs.init(mem.getGSVRAM(), static_cast<uint32_t>(PS2_GS_VRAM_SIZE), &mem.gs());
+                uint8_t *vuCode = mem.getVU1Code();
+                uint8_t *vuData = mem.getVU1Data();
+                std::memcpy(vuCode, rig.code.data(), PS2_VU1_CODE_SIZE);
+                mem.markVU1CodeModified();
+                std::memcpy(vuData, rig.data.data(), PS2_VU1_DATA_SIZE);
+                std::vector<uint8_t> packets;
+                mem.setGifPacketCallback([&packets](const uint8_t *p, uint32_t n) {
+                    const uint32_t len = n;
+                    packets.insert(packets.end(), reinterpret_cast<const uint8_t *>(&len), reinterpret_cast<const uint8_t *>(&len) + 4);
+                    packets.insert(packets.end(), p, p + n);
+                });
+                uint64_t h = 1469598103934665603ull;
+                for (uint32_t i = 0; i < PS2_VU1_CODE_SIZE; ++i)
+                {
+                    h ^= rig.code[i];
+                    h *= 1099511628211ull;
+                }
+                const auto at1b50 = +[](VU1Interpreter &vu, uint64_t b) {
+                    bool vu1native_socom2_dispatch(VU1Interpreter &vu, uint64_t budgetEnd);
+                    const bool ended = vu1native_socom2_dispatch(vu, b);
+                    s_nativeEnded += ended ? 1u : 0u;
+                    return ended;
+                };
+                const auto at33c8 = +[](VU1Interpreter &vu, uint64_t b) {
+                    bool vu1native_socom2_entry_0x33c8(VU1Interpreter &vu, uint64_t budgetEnd);
+                    const bool ended = vu1native_socom2_entry_0x33c8(vu, b);
+                    s_nativeEnded += ended ? 1u : 0u;
+                    return ended;
+                };
+                const Vu1NativeProgram table[] = {{native ? h : 0u, 0x1b50u, at1b50}, {native ? h : 0u, 0x33c8u, at33c8}};
+                VU1Interpreter vu;
+                vu.reset();
+                std::memcpy(vu.state().vi, rig.vi, sizeof(rig.vi));
+                std::memcpy(vu.state().vf, rig.vf, sizeof(rig.vf));
+                vu.setNativeProgramsOverride(table, 2u);
+                for (const Step &s : steps)
+                {
+                    for (size_t k = 0; k < s.uploadCount; ++k)
+                    {
+                        const std::string hex = s.uploads[k].hex;
+                        for (size_t w = 0; w + 8u <= hex.size(); w += 8u)
+                        {
+                            const uint32_t q = s.uploads[k].first + static_cast<uint32_t>(w / 32u);
+                            const uint32_t v = static_cast<uint32_t>(std::stoul(hex.substr(w, 8u), nullptr, 16));
+                            std::memcpy(vuData + ((q * 16u) & 0x3FFFu) + ((w / 8u) % 4u) * 4u, &v, 4u);
+                        }
+                    }
+                    packets.clear();
+                    vu.execute(vuCode, PS2_VU1_CODE_SIZE, vuData, PS2_VU1_DATA_SIZE, gs, &mem, s.startPc, s.top, 0u, 1u << 28);
+                    Entry33c8Rig::End end;
+                    end.s = vu.state();
+                    end.data.assign(vuData, vuData + PS2_VU1_DATA_SIZE);
+                    end.packets = packets;
+                    chain.ends.push_back(end);
+                }
+                vu.setNativeProgramsOverride(nullptr, 0u);
+                mem.setGifPacketCallback(nullptr);
+                chain.nativeEnded = s_nativeEnded;
+                return chain;
+            };
+            t.Equals(rig.top, 724u, "the chain starts at prog 142's TOP");
+            const Chain oracle = runChain(false);
+            const Chain native = runChain(true);
+            t.IsTrue(oracle.ends.size() == 3u && native.ends.size() == 3u, "three MSCALs each");
+            if (oracle.ends.size() != 3u || native.ends.size() != 3u)
+                return;
+            t.Equals(native.nativeEnded, 3u, "all three taken natively (0x1b50's 0x52, the bone pass, the last bone's list)");
+            for (size_t k = 0; k < 3u; ++k)
+            {
+                t.Equals(oracle.ends[k].s.pc, steps[k].endPc, "MSCAL " + std::to_string(k + 1) + ": the oracle's end pc");
+                const std::string why = Entry33c8Rig::diff(oracle.ends[k], native.ends[k], Entry33c8Rig::packetsComparable());
+                t.IsTrue(why.empty(), "MSCAL " + std::to_string(k + 1) + ": native = interpreter:" + why);
+            }
+            if (Entry33c8Rig::packetsComparable())
+                t.IsTrue(!native.ends[2].packets.empty(), "the last bone's list drew");
+        });
+
+        tc.Run("native 0x52: pairs at the edge of the proof are taken, bit-exact", [](TestCase &t)
+        {
+            // kB122 (TOP 724, 12 vertices: the chunk q724-754, the staging base q37.x = 40): vertex 3 to q722-723, just
+            // below the chunk, and the last vertex to q755-756, just past its read-ahead qword -- each clear, so taken.
+            SkinScope on(1);
+            Entry33c8Rig rig;
+            t.IsTrue(rig.loadReal(kB122), "fixture present");
+            if (rig.code.empty())
+                return;
+            rig.setWord(rig.top + 5u + 6u, 3u, 682);
+            rig.setWord(rig.top + 5u + 22u, 3u, 715);
+            const Entry33c8Rig::End oracle = rig.run(0x33c8u, 0x33c8u, nullptr);
+            const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry);
+            t.IsTrue(native.nativeRan && native.nativeEnded, "taken natively");
+            const std::string why = Entry33c8Rig::diff(oracle, native, true);
+            t.IsTrue(why.empty(), "native = interpreter:" + why);
+        });
+
+        tc.Run("native 0x52: at 0x1b50 the first pass persists the staging base, q37.x = 40, bit-exact", [](TestCase &t)
+        {
+            // Every dump already holds q37.x = 40 from the mesh before; cleared, the first pass's ISW.x at 0x3178 is seen.
+            SkinScope on(1);
+            Entry33c8Rig rig;
+            t.IsTrue(rig.loadReal(kS121), "fixture present");
+            if (rig.code.empty())
+                return;
+            for (uint32_t lane = 0; lane < 4u; ++lane)
+                rig.setWord(37u, lane, 0);
+            const Entry33c8Rig::End oracle = rig.run(0x1b50u, 0x1b50u, nullptr);
+            const Entry33c8Rig::End native = rig.run(0x1b50u, 0x1b50u, &Entry33c8Rig::dispatcherChecked);
+            t.IsTrue(native.nativeRan && native.nativeEnded, "taken natively");
+            int32_t base = 0;
+            std::memcpy(&base, oracle.data.data() + 37u * 16u, 4u);
+            t.Equals(base, 40, "the oracle's q37.x is 40");
+            const std::string why = Entry33c8Rig::diff(oracle, native, true);
+            t.IsTrue(why.empty(), "native = interpreter:" + why);
+        });
+
+        tc.Run("native 0x52: knob off, a bone pass is still skin_pass and a 0x52 list still unknown_command 0x52", [](TestCase &t)
+        {
+            SkinScope off(0);
+            {
+                Entry33c8Rig rig;
+                t.IsTrue(rig.loadReal(kB122), "fixture present");
+                if (rig.code.empty())
+                    return;
+                Vu1Refusals::setEnabledForTest(true);
+                const Vu1Refusals::Row before = RefusalRig::row(0x33c8u, Vu1Refusals::Reason::SkinPass, 0u);
+                const uint64_t total = Vu1Refusals::live().totalCount();
+                const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry);
+                const Vu1Refusals::Row after = RefusalRig::row(0x33c8u, Vu1Refusals::Reason::SkinPass, 0u);
+                const uint64_t totalAfter = Vu1Refusals::live().totalCount();
+                Vu1Refusals::setEnabledForTest(false);
+                const Entry33c8Rig::End oracle = rig.run(0x33c8u, 0x33c8u, nullptr);
+                t.IsTrue(native.nativeRan && !native.nativeEnded, "0x33c8: handed back");
+                t.IsTrue(native.touchedBeforeHandBack.empty(), "0x33c8: nothing touched:" + native.touchedBeforeHandBack);
+                t.Equals(after.n - before.n, 1ull, "skin_pass at entry 0x33c8 +1");
+                t.Equals(totalAfter - total, 1ull, "and nothing else");
+                const std::string why = Entry33c8Rig::diff(oracle, native, true);
+                t.IsTrue(why.empty(), "0x33c8: the fallback is the microcode's own run:" + why);
+            }
+            {
+                Entry33c8Rig rig;
+                t.IsTrue(rig.loadReal(kS121), "fixture present");
+                if (rig.code.empty())
+                    return;
+                Vu1Refusals::setEnabledForTest(true);
+                const Vu1Refusals::Row before = RefusalRig::row(0x1b50u, Vu1Refusals::Reason::UnknownCommand, 0x52u);
+                const uint64_t total = Vu1Refusals::live().totalCount();
+                const Entry33c8Rig::End native = rig.run(0x1b50u, 0x1b50u, &Entry33c8Rig::dispatcherChecked);
+                const Vu1Refusals::Row after = RefusalRig::row(0x1b50u, Vu1Refusals::Reason::UnknownCommand, 0x52u);
+                const uint64_t totalAfter = Vu1Refusals::live().totalCount();
+                Vu1Refusals::setEnabledForTest(false);
+                const Entry33c8Rig::End oracle = rig.run(0x1b50u, 0x1b50u, nullptr);
+                t.IsTrue(native.nativeRan && !native.nativeEnded, "0x1b50: handed back");
+                t.IsTrue(native.touchedBeforeHandBack.empty(), "0x1b50: nothing touched:" + native.touchedBeforeHandBack);
+                t.Equals(after.n - before.n, 1ull, "unknown_command cmd=0x52 at entry 0x1b50 +1");
+                t.Equals(totalAfter - total, 1ull, "and nothing else");
+                const std::string why = Entry33c8Rig::diff(oracle, native, true);
+                t.IsTrue(why.empty(), "0x1b50: the fallback is the microcode's own run:" + why);
+            }
+        });
+
+        tc.Run("native 0x52: a pass whose stores it cannot bound is refused before anything is touched", [](TestCase &t)
+        {
+            // Before the first write: the vertex count TOP+4.w in 1..the vertex ceiling (the loop is an IBNE after a
+            // decrement: 0 is 65536 passes), the bone chunk TOP .. TOP + 6 + 2n inside VU memory, and each vertex's pair
+            // base + dst, base + dst + 1 inside VU memory without wrapping and clear of that chunk and of q37 (base = 40 on
+            // the first pass, q37.x on an accumulate one). At 0x1b50 the 0x52 must be the list's first command. Each
+            // refusal leaves the register file and VU data memory exactly as the entry found them.
+            using R = Vu1Refusals::Reason;
+            struct Case
+            {
+                const char *what;
+                const RealDump *dump;
+                uint32_t entry;
+                R reason;
+                uint32_t cmd;
+                void (*setup)(Entry33c8Rig &);
+                int32_t vertexCeiling;
+            };
+            // kB122: TOP 724, accumulate, 12 vertices, destinations 0-46 on base q37.x = 40. kS121: TOP 424, first pass,
+            // 29 vertices.
+            const Case cases[] = {
+                {"0x33c8, TOP+4.w = 0 (65536 passes)", &kB122, 0x33c8u, R::SkinCount, 0u,
+                 [](Entry33c8Rig &r) { r.setWord(r.top + 4u, 3u, 0); }, -1},
+                {"0x33c8, TOP+4.w = 257 (over the vertex ceiling)", &kB122, 0x33c8u, R::SkinCount, 0u,
+                 [](Entry33c8Rig &r) { r.setWord(r.top + 4u, 3u, 257); }, -1},
+                {"0x33c8, TOP+4.w = -3 (a 16-bit count the loop reads as 65533 passes)", &kB122, 0x33c8u, R::SkinCount, 0u,
+                 [](Entry33c8Rig &r) { r.setWord(r.top + 4u, 3u, 0xFFFD); }, -1},
+                {"0x33c8, 12 vertices over a vertex ceiling lowered to 8", &kB122, 0x33c8u, R::SkinCount, 0u,
+                 [](Entry33c8Rig &) {}, 8},
+                {"0x33c8, vertex 3's destination 683: its pair q723-724 reaches the chunk's first qword", &kB122, 0x33c8u,
+                 R::SkinRange, 0u, [](Entry33c8Rig &r) { r.setWord(r.top + 5u + 6u, 3u, 683); }, -1},
+                {"0x33c8, the last vertex's destination 714: its pair starts on q754, the read-ahead vertex's normal", &kB122,
+                 0x33c8u, R::SkinRange, 0u, [](Entry33c8Rig &r) { r.setWord(r.top + 5u + 22u, 3u, 714); }, -1},
+                {"0x33c8, vertex 1's destination -4: its pair q36-37 would overwrite the staging base q37", &kB122, 0x33c8u,
+                 R::SkinRange, 0u, [](Entry33c8Rig &r) { r.setWord(r.top + 5u + 2u, 3u, 0xFFFC); }, -1},
+                {"0x33c8, vertex 0's destination -41: its pair would wrap below q0", &kB122, 0x33c8u, R::SkinRange, 0u,
+                 [](Entry33c8Rig &r) { r.setWord(r.top + 5u, 3u, 0xFFD7); }, -1},
+                {"0x33c8, vertex 5's destination 983: its pair q1023-1024 would wrap past the end", &kB122, 0x33c8u,
+                 R::SkinRange, 0u, [](Entry33c8Rig &r) { r.setWord(r.top + 5u + 10u, 3u, 983); }, -1},
+                {"0x33c8, the accumulate base q37.x = 1000: the pairs would wrap past the end", &kB122, 0x33c8u, R::SkinRange,
+                 0u, [](Entry33c8Rig &r) { r.setWord(37u, 0u, 1000); }, -1},
+                {"0x33c8, the accumulate base q37.x = 700: vertex pairs from q700 reach the chunk at q724", &kB122, 0x33c8u,
+                 R::SkinRange, 0u, [](Entry33c8Rig &r) { r.setWord(37u, 0u, 700); }, -1},
+                {"0x33c8, TOP 1010 with 12 vertices: the chunk q1010-1040 wraps past the end", &kB122, 0x33c8u, R::SkinRange,
+                 0u,
+                 [](Entry33c8Rig &r) {
+                     r.top = 1010u;
+                     r.setWord(1014u, 0u, 1);
+                     r.setWord(1014u, 3u, 12);
+                 }, -1},
+                {"0x1b50, TOP+4.w = 0", &kS121, 0x1b50u, R::SkinCount, 0u, [](Entry33c8Rig &r) { r.setWord(r.top + 4u, 3u, 0); }, -1},
+                {"0x1b50, vertex 2's destination 384: its pair q424-425 is the bone matrix", &kS121, 0x1b50u, R::SkinRange, 0u,
+                 [](Entry33c8Rig &r) { r.setWord(r.top + 5u + 4u, 3u, 384); }, -1},
+                {"0x1b50, TOP 30 with one vertex: the first pass's ISW.x of q37 lands inside the chunk q30-38", &kS121, 0x1b50u,
+                 R::SkinRange, 0u,
+                 [](Entry33c8Rig &r) {
+                     r.top = 30u;
+                     r.setWord(34u, 0u, 2);
+                     r.setWord(34u, 3u, 1);
+                     r.setWord(35u, 3u, 60);
+                 }, -1},
+                {"0x1b50, 70 52 42: the 0x52 after another command", &kS121, 0x1b50u, R::SkinNotFirst, 0x52u,
+                 [](Entry33c8Rig &r) {
+                     r.setWord(340u, 0u, 0x70);
+                     r.setWord(341u, 0u, 0x52);
+                     r.setWord(342u, 0u, 0x42);
+                 }, -1},
+            };
+            for (const Case &k : cases)
+            {
+                SkinScope on(1);
+                Entry33c8Rig rig;
+                t.IsTrue(rig.loadReal(*k.dump), "fixture present");
+                if (rig.code.empty())
+                    return;
+                k.setup(rig);
+                if (k.vertexCeiling >= 0)
+                    RefusalRig::forceVertexCeiling(k.vertexCeiling);
+                Vu1Refusals::setEnabledForTest(true);
+                const Vu1Refusals::Row before = RefusalRig::row(k.entry, k.reason, k.cmd);
+                const uint64_t total = Vu1Refusals::live().totalCount();
+                // Budget-bounded: the fallback is the microcode on a state it was never meant to see (a zero count is its
+                // own 65536 passes); the refusal and the untouched state are what is checked.
+                const Entry33c8Rig::End native =
+                    rig.run(k.entry, k.entry, k.entry == 0x33c8u ? &Entry33c8Rig::entry : &Entry33c8Rig::dispatcherChecked, 64u);
+                const Vu1Refusals::Row after = RefusalRig::row(k.entry, k.reason, k.cmd);
+                const uint64_t totalAfter = Vu1Refusals::live().totalCount();
+                Vu1Refusals::setEnabledForTest(false);
+                RefusalRig::forceVertexCeiling(-1);
+                t.IsTrue(native.nativeRan && !native.nativeEnded, std::string(k.what) + ": handed back");
+                t.Equals(after.n - before.n, 1ull, std::string(k.what) + ": counted under its reason");
+                t.Equals(totalAfter - total, 1ull, std::string(k.what) + ": and under no other");
+                t.IsTrue(native.touchedBeforeHandBack.empty(),
+                         std::string(k.what) + ": nothing touched before the hand-back:" + native.touchedBeforeHandBack);
+            }
+        });
+
+        // ---- Sprint 17 F N1c (docs/research/82 section 9): PS2X_VU1_DUMP_REFUSED -------------------------------------
+        // The walk's last-bone lists entry 0x33c8 still refuses (resume_command 0x02, 0x54, 0x10) were never on disk:
+        // 4,000 dumps at one instant held none. The capture writes a refused program's entry state -- a refused one's
+        // only -- in PS2X_VU1_DUMP's format, and an index line naming the reason, the command and the resumed list.
+        struct DumpDir
+        {
+            std::filesystem::path path;
+            explicit DumpDir(const char *name)
+            {
+                path = std::filesystem::temp_directory_path() / (std::string("ps2x_dump_refused_") + name);
+                std::error_code ec;
+                std::filesystem::remove_all(path, ec);
+            }
+            ~DumpDir()
+            {
+                Vu1DumpRefused::resetForTest();
+                std::error_code ec;
+                std::filesystem::remove_all(path, ec);
+            }
+            DumpDir(const DumpDir &) = delete;
+            DumpDir &operator=(const DumpDir &) = delete;
+            std::string knob(const char *suffix) const { return path.generic_string() + suffix; }
+            std::vector<std::string> bins() const
+            {
+                std::vector<std::string> names;
+                std::error_code ec;
+                for (const auto &e : std::filesystem::directory_iterator(path, ec))
+                    if (e.path().extension() == ".bin")
+                        names.push_back(e.path().filename().string());
+                std::sort(names.begin(), names.end());
+                return names;
+            }
+            std::vector<std::string> indexLines() const
+            {
+                std::vector<std::string> lines;
+                FILE *f = std::fopen((path / "refused.txt").string().c_str(), "rb");
+                if (!f)
+                    return lines;
+                std::string text;
+                char buf[512];
+                size_t got;
+                while ((got = std::fread(buf, 1, sizeof(buf), f)) > 0)
+                    text.append(buf, got);
+                std::fclose(f);
+                size_t start = 0;
+                for (size_t i = 0; i < text.size(); ++i)
+                    if (text[i] == '\n')
+                    {
+                        lines.push_back(text.substr(start, i - start));
+                        start = i + 1;
+                    }
+                return lines;
+            }
+        };
+        // A last-bone entry whose resumed list holds a 0x64 (no store range derived: refused as resume_command 0x64).
+        // It held a 0x28 until N1c's real shapes admitted that one.
+        static const std::vector<uint32_t> kRefusedList = {0x66u, 0x06u, 0x08u, 0x64u, 0x42u};
+
+        tc.Run("PS2X_VU1_DUMP_REFUSED is a Dev Path defaulting to empty (off)", [](TestCase &t)
+        {
+            const ps2x::knobs::Entry *e = ps2x::knobs::find("PS2X_VU1_DUMP_REFUSED");
+            t.IsTrue(e != nullptr && e->cls == ps2x::knobs::Class::Dev && e->kind == ps2x::knobs::Kind::Path &&
+                         std::string(e->dflt).empty(),
+                     "a Dev Path, default empty (a capture instrument, off unless asked for)");
+            if (ps2x::knob("PS2X_VU1_DUMP_REFUSED") == nullptr)
+            {
+                Vu1DumpRefused::resetForTest();
+                t.IsTrue(!Vu1DumpRefused::enabled(), "unset: the capture is off");
+                t.IsTrue(!Vu1Refusals::wholeListening().load(), "unset: no refusal site remembers anything");
+            }
+        });
+
+        tc.Run("PS2X_VU1_DUMP_REFUSED's value: <dir>[:<count>[:<entrypc>]], a drive letter is not a separator", [](TestCase &t)
+        {
+            const Vu1DumpRefused::Config bare = Vu1DumpRefused::parse("C:/logs/refused");
+            t.IsTrue(bare.on() && bare.dir == "C:/logs/refused" && bare.maxFiles == 150 && bare.anyEntry,
+                     "a bare dir: 150 files, any entry");
+            const Vu1DumpRefused::Config counted = Vu1DumpRefused::parse("logs/refused:40");
+            t.IsTrue(counted.dir == "logs/refused" && counted.maxFiles == 40 && counted.anyEntry, "dir:count");
+            const Vu1DumpRefused::Config narrowed = Vu1DumpRefused::parse("C:/r:5:0x33c8");
+            t.IsTrue(narrowed.dir == "C:/r" && narrowed.maxFiles == 5 && !narrowed.anyEntry && narrowed.entryPc == 0x33c8u,
+                     "dir:count:entrypc narrows to one entry");
+            t.IsTrue(!Vu1DumpRefused::parse("").on() && !Vu1DumpRefused::parse(nullptr).on(), "empty: off");
+            t.IsTrue(!Vu1DumpRefused::parse("logs/r:0").on(), "a zero count: off");
+        });
+
+        tc.Run("dump refused: knob off, a refused last-bone list writes nothing", [](TestCase &t)
+        {
+            DumpDir dir("off");
+            Entry33c8Rig rig;
+            t.IsTrue(rig.load(), "fixture present");
+            if (rig.code.empty())
+                return;
+            rig.makeLastBone();
+            rig.setResumedList(kRefusedList);
+            Vu1DumpRefused::setForTest(nullptr);
+            const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry, 64u);
+            t.IsTrue(native.nativeRan && !native.nativeEnded, "the list was refused (handed back)");
+            t.IsTrue(!std::filesystem::exists(dir.path), "off: no directory, no file");
+        });
+
+        tc.Run("dump refused: a refused last-bone list writes one entry-state .bin that replays, and one index line", [](TestCase &t)
+        {
+            DumpDir dir("one");
+            Entry33c8Rig rig;
+            t.IsTrue(rig.load(), "fixture present");
+            if (rig.code.empty())
+                return;
+            rig.makeLastBone();
+            rig.setResumedList(kRefusedList);
+            Vu1DumpRefused::setForTest(dir.knob(":10").c_str());
+            const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry, 64u);
+            t.IsTrue(native.nativeRan && !native.nativeEnded, "the list was refused (handed back)");
+            const std::vector<std::string> bins = dir.bins();
+            t.Equals(bins.size(), static_cast<size_t>(1), "one file");
+            if (bins.size() != 1u)
+                return;
+            t.IsTrue(bins[0] == "vu1_refused_0_resume_command_0x64.bin", "named by reason and command: " + bins[0]);
+            const std::vector<std::string> lines = dir.indexLines();
+            t.Equals(lines.size(), static_cast<size_t>(1), "one index line");
+            if (!lines.empty())
+                t.IsTrue(lines[0] == "vu1_refused_0_resume_command_0x64.bin entry=0x33c8 reason=resume_command cmd=0x64 "
+                                     "resume=1 list=66,06,08,64,42",
+                         "the index line: " + lines[0]);
+
+            // The dump reader's layout: the header, then the entry state exactly as the rig handed it to execute().
+            const std::string path = (dir.path / bins[0]).string();
+            uint32_t hdr[4] = {};
+            if (FILE *f = std::fopen(path.c_str(), "rb"))
+            {
+                t.IsTrue(std::fread(hdr, sizeof(hdr), 1, f) == 1, "header read");
+                std::fclose(f);
+            }
+            t.Equals(hdr[0], 0x33c8u, "header startPc = the entry");
+            t.Equals(hdr[1], rig.top, "header top");
+            t.Equals(hdr[3], static_cast<uint32_t>(PS2_VU1_CODE_SIZE), "header codeSize");
+            Entry33c8Rig back;
+            t.IsTrue(back.loadFrom(path), "the dump reads back whole (PS2X_VU1_DUMP's size)");
+            t.IsTrue(back.code == rig.code, "code = the entry's");
+            t.IsTrue(back.data == rig.data, "VU data memory = the entry's (nothing touched before the write)");
+            t.IsTrue(std::memcmp(back.vi, rig.vi, sizeof(rig.vi)) == 0, "vi[16] = the entry's (vi5, vi9, vi14 live-in)");
+            t.IsTrue(std::memcmp(back.vf, rig.vf, sizeof(rig.vf)) == 0, "vf[32] = the entry's");
+
+            // And it replays: the interpreter over the dump ends where it ends over the rig's own state.
+            Vu1DumpRefused::setForTest(nullptr);
+            const Entry33c8Rig::End fromRig = rig.run(0x33c8u, 0x33c8u, nullptr);
+            const Entry33c8Rig::End fromDump = back.run(0x33c8u, 0x33c8u, nullptr);
+            const std::string why = Entry33c8Rig::diff(fromRig, fromDump, true);
+            t.IsTrue(why.empty(), "the dumped state replays to the same end:" + why);
+        });
+
+        tc.Run("dump refused: an accepted list and a skin pass write nothing", [](TestCase &t)
+        {
+            DumpDir dir("accepted");
+            Entry33c8Rig rig;
+            t.IsTrue(rig.load(), "fixture present");
+            if (rig.code.empty())
+                return;
+            rig.makeLastBone();
+            rig.setResumedList({0x66u, 0x06u, 0x08u, 0x40u, 0x42u});
+            Vu1DumpRefused::setForTest(dir.knob(":10").c_str());
+            const Entry33c8Rig::End native = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry);
+            t.IsTrue(native.nativeRan && native.nativeEnded, "66 06 08 40 42 is taken natively");
+            rig.vi[5] = 1; // bit 2 clear: another bone pass, refused whole as skin_pass -- not a list shape
+            const Entry33c8Rig::End skin = rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry, 64u);
+            t.IsTrue(skin.nativeRan && !skin.nativeEnded, "the skin pass was refused");
+            t.IsTrue(dir.bins().empty() && dir.indexLines().empty(), "nothing written for either");
+        });
+
+        tc.Run("dump refused: at most <count> files, <entrypc> narrows the capture, PS2X_VU1_DUMP_AFTER arms it", [](TestCase &t)
+        {
+            Entry33c8Rig rig;
+            t.IsTrue(rig.load(), "fixture present");
+            if (rig.code.empty())
+                return;
+            rig.makeLastBone();
+            rig.setResumedList(kRefusedList);
+            {
+                DumpDir dir("cap");
+                Vu1DumpRefused::setForTest(dir.knob(":2").c_str());
+                for (int i = 0; i < 3; ++i)
+                    rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry, 64u);
+                t.Equals(dir.bins().size(), static_cast<size_t>(2), "three refusals, a count of 2: two files");
+                t.Equals(dir.indexLines().size(), static_cast<size_t>(2), "and two index lines");
+                t.Equals(Vu1DumpRefused::live().written(), 2, "the capture counts two");
+            }
+            {
+                DumpDir dir("other_entry");
+                Vu1DumpRefused::setForTest(dir.knob(":10:0x1b50").c_str());
+                rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry, 64u);
+                t.IsTrue(dir.bins().empty(), "narrowed to 0x1b50: a 0x33c8 refusal is not written");
+            }
+            {
+                DumpDir dir("this_entry");
+                Vu1DumpRefused::setForTest(dir.knob(":10:0x33c8").c_str());
+                rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry, 64u);
+                t.Equals(dir.bins().size(), static_cast<size_t>(1), "narrowed to 0x33c8: written");
+            }
+            {
+                DumpDir dir("armed_later");
+                Vu1DumpRefused::setForTest(dir.knob(":10").c_str(), 3600.0); // PS2X_VU1_DUMP_AFTER=3600
+                rig.run(0x33c8u, 0x33c8u, &Entry33c8Rig::entry, 64u);
+                t.IsTrue(dir.bins().empty(), "PS2X_VU1_DUMP_AFTER not yet reached: not written");
+            }
         });
     });
 }

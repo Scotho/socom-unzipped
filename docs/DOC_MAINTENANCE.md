@@ -143,6 +143,7 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/archive/CURRENT_SPRINT-closed-sprints-11-12.md` | **A** | — | Cut 2026-09-26 (the Sprint 14 close, §5 step 5): the Sprint 12 and Sprint 11 CLOSED blocks with Sprint 11's rulings ledger R245-R263 and the `S12-Rn` table, verbatim. The ruling counter and check 10 read it |
 | `docs/archive/CURRENT_SPRINT-closed-sprint-13.md` | **A** | — | Cut 2026-09-27 (the Sprint 15 close, §5 step 5): the Sprint 13 CLOSED block, verbatim, so the live file keeps two CLOSED blocks under its ceiling. The ruling counter and check 10 read it |
 | `docs/archive/CURRENT_SPRINT-closed-sprint-14.md` | **A** | — | Cut 2026-09-28 (the Sprint 16 close, §5 step 5): the Sprint 14 CLOSED block, verbatim, so the live file keeps two CLOSED blocks under its ceiling. The ruling counter and check 10 read it |
+| `docs/archive/CURRENT_SPRINT-closed-sprint-15.md` | **A** | — | Cut 2026-10-01 (the Sprint 18 open; §5 step 5, the ceiling rule): the Sprint 15 CLOSED block, verbatim, moved when the live file passed its 33,000-byte ceiling with the second open branch in its header; the live file keeps one CLOSED block (Sprint 16). The rulings R282-R297 stay in their plans. |
 | `docs/archive/HANDOFF-reference-to-2026-09-13.md` | **A** | — | |
 | `docs/archive/HANDOFF-2026-09-08.md` | **A** | — | Banded 2026-09-22 |
 | `docs/archive/HANDOFF-AUDIT-2026-09-14.md` | **A** | — | Banded 2026-09-22 |
@@ -150,6 +151,8 @@ document gets a class, and an unclassified document is one nobody has decided th
 | `docs/archive/2026-09-27-sprint-16-log-to-2026-09-27.md` | **A** | — | Cut 2026-09-27 (`python -m tools_py.docmaint archive-log`, check 7): the oldest 13 entries of `docs/superpowers/plans/2026-09-27-sprint-16.md`'s Log, verbatim; the Log points here; from 2026-09-28 also the F2, L1b and R1b state cells as they stood at the close, verbatim (the rows rewritten to their outcomes) |
 | `docs/archive/HUMAN_TASKS-answered-to-2026-09-27.md` | **A** | — | Cut 2026-09-27 when `docs/HUMAN_TASKS.md`'s ceiling fired (check 7): its ten struck rows (O1, O3, O6, O11–O14, O16, O18, O19), verbatim; the live file points here. Reopenable by number |
 | `docs/archive/2026-09-27-sprint-17-log-to-2026-09-29.md` | **A** | — | Cut 2026-09-29 (`python -m tools_py.docmaint archive-log`, check 7): the oldest 19 entries of `docs/superpowers/plans/2026-09-27-sprint-17.md`'s Log, verbatim; the Log points here |
+| `docs/archive/2026-09-27-sprint-17-log-to-2026-09-30.md` | **A** | — | Cut 2026-09-30 (`python -m tools_py.docmaint archive-log`, check 7): the oldest 9 entries of `docs/superpowers/plans/2026-09-27-sprint-17.md`'s Log, verbatim; the Log points here |
+| `docs/archive/2026-09-27-sprint-17-log-to-2026-10-01.md` | **A** | — | Cut 2026-10-01 (`python -m tools_py.docmaint archive-log`, check 7): the oldest 5 entries of `docs/superpowers/plans/2026-09-27-sprint-17.md`'s Log, verbatim; the Log points here |
 
 ## 4. What is enforced mechanically
 

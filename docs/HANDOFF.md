@@ -10,9 +10,10 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 2. Where it stands
 
-- **Where the loop is now (2026-09-30 08:54Z, LATEST) -- Sprint 17, `sprint-17` at 1fd3cfdb: batch 4 PROVED; Q2, F3, A1 (#94), #111, #112 done on our side; C1 adopted (default 1) and PROVED by the batch-5 chain on 1fd3cfdb with everything merged before it. No close date (R338); one controller in the main tree (owner).**
-  Now: batch 5 PROVED (chain s17_b5 ALL GREEN on 1fd3cfdb, C1 adopted: SYNCV 23.3, FRAME 16.72); N1 and C2 NOT picked; next the slice to main, the refusal count with N1 on, N2 sized; #110 parked (O27).
-- **Next free ruling number: R339** (R322-R338 Sprint 17's; R299-R321 Sprint 16's; R298 superseded).**
+- **Where the loop is now (2026-09-30 08:54Z, LATEST) -- Sprint 17, `sprint-17` at 1fd3cfdb: batches 4 and 5 PROVED (C1 adopted); Q2, F3, A1 (#94), #111, #112 done on our side; N1c adopted (default 1), its chain owed. No close date (R338); one controller in the main tree (owner).**
+  Now: batch 6 unproven; the lock fix (wt-s17-lock-smoke-flake, uncommitted) lands after a green slow run on a quiet host (tonight): then merge, the chain, slice 2, the entry-0 reading.
+- **Sprint 18 OPEN 2026-10-01 02:40Z** (`sprint-18` off `sprint-17`; CURRENT_SPRINT's `branch (2):`; its plan's Log).
+- **Next free ruling number: R346** (R345 Sprint 17's; R339-R344 Sprint 18's open; R322-R338 Sprint 17's; R299-R321 Sprint 16's; R298 superseded).**
 
 ## 3. Your first hour (lock-free; start nothing heavy)
 
@@ -53,8 +54,8 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 - **The main-tree controller from 2026-09-28 02:52Z is `socom-pc-e0`** (seated by the owner under the ruling above); the
   Sprint 16 desktop seat (`.claude/worktrees/sprint-16-cronjob-setup-76e59d`) ended after the close. **Keep** `wt-s16-r1b` (`agent/s16-r1b` at `3d17f192`, unmerged; its `logs/` hold research/76's patch and script).
-- **Other sessions' trees, never edit:** the site/web session's `wt-doc-surfaces`, `wt-domain-socomunzipped`, `wt-web-*`,
-  `socom_pc_web`; the Sprint 17 seat's `.claude/worktrees/mission-frame-drops-7e50ea`; `wt-pad-focus`, `wt-cherry`, `wt-ci-fix`.
+- **Other sessions' trees, never edit:** the web seat's `wt-web-play`, `wt-web-teaser`, `wt-domain-socomunzipped`, `socom_pc_web`
+  (the web code lives in the repo `Scotho/redotcom` since 2026-10-01); `.claude/worktrees/*`; `wt-pad-focus`, `wt-cherry`, `wt-ci-fix`.
 - **The hosted-server / site session** owns `server/`, the Lightsail box and `../scotho`; never edit those.
 
 ## 6. What is owed

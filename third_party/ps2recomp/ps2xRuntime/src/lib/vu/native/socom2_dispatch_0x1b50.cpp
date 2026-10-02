@@ -33,6 +33,11 @@
 //   * 0x52 (0x3100) and 0x66 (0x2e28), the skinning half of the fourth family, four programs.
 //     Both are scope decisions with reasons, not gaps waiting to be filled -- see
 //     isFamilyDCommand.
+// Sprint 17 F N2 (docs/research/82 section 10) lifts the first: under PS2X_VU1_NATIVE_SKIN (Dev, default 0) a list
+// whose first command is 0x52 runs that skinning pass here (cmdSkin), which ends the program at its own E bit (pc
+// 0x33c8) with the rest of the list left to the next MSCAL, and entry 0x33c8 runs the same pass for a bone that is not
+// the last. Off, both are refused as before (unknown_command 0x52, skin_pass). The pass's stores are proven before
+// its first (skinPassProvable); the other handlers at 0x1b50 still have no write proof (research/82 section 7).
 //
 // Sprint 17 F N1 (docs/research/82): a second entry, 0x33c8, the MSCAL the EE issues after every
 // 0x52 bone pass. With the previous chunk's flags (live-in vi5) marking the last bone it repacks
@@ -40,7 +45,10 @@
 // live-in vi14 -- the `66 08 40 42` tail of the `52 66 08 40 42` list -- so 0x66 has a handler
 // here, admitted by that entry's pre-scan only (cmdFaceNormals). Otherwise the microcode branches
 // to 0x3100 for another bone pass, which is refused whole as skin_pass. Behind
-// PS2X_VU1_NATIVE_33C8 (Dev, default 0): off, the registry leaves the entry to the generated code.
+// PS2X_VU1_NATIVE_33C8 (Dev, default 1 since N1c was adopted): 0, the registry leaves the entry to the generated code.
+// The resumed list may hold only commands whose stores that entry proves before its first write
+// (proveResumedWrites): the walk's two last-bone shapes, `66 06 08 54 18 28 42` and the 0x02 loop
+// `66 06 02 [0a 56 1a 2a 4c]`, are among them (research/82 section 9.7).
 //
 // Within a family-A list the handlers are mutually independent (each re-derives its pointers from
 // vi1). Family B is not: vi8 and vi10 (the clipped polygon and its vertex count, set inside
@@ -204,7 +212,8 @@ namespace
     // words reads matrix floats (research/15 4.1). They are refused on their first command word,
     // before any header check runs, so no list in the corpus is refused *by* these ceilings --
     // and if 0x52 is ever implemented, this ceiling has to be skipped for lists that start with
-    // it or it will refuse every one of them. Re-run the scan if the corpus grows.
+    // it or it will refuse every one of them. Re-run the scan if the corpus grows. N2 implements it (research/82
+    // section 10) and skips the ceiling for exactly those lists (isNativeRun, ListFacts::skinFirst).
     constexpr int32_t kMaxVertices = 256;
     constexpr int32_t kMaxTriangles = 256;
 
@@ -218,6 +227,19 @@ namespace
     // 0x1a, 0x2a and 0x32 (research/13 6.2).
     constexpr int32_t kMaxClippedVertices = 12;
 
+    // ... but twelve is the convex, exact-arithmetic reading, not a bound on this code (research/82 section 9.7).
+    // The clipper does not stop at its buffers: a stage emits, per edge P->C, P when P is inside and the crossing
+    // when the sides differ. Each vertex's side is taken from the same bits twice -- as C (the sign of 0 + dC,
+    // 0x3b40) and as the next edge's P (the sign of dP, 0x3b58, over an ADDx copy that can only turn -0 lanes to
+    // +0) -- and "outside as C" implies "outside as P" (a strictly negative dot is bit-identical either way). An
+    // edge whose C is inside emits one vertex; one whose C is outside emits two if its P -- the previous edge's C
+    // -- is inside, else none. So a stage over n edges emits at most n + floor(n/2) when the first edge's P is the
+    // last edge's C (the wrap copy), n + ceil(n/2) when it is not (stage 5 from n >= 12: its outputs from q76
+    // overwrite the tail of its input, q40 + 3n + 2 >= 76, before the last edges read it): 3 -> 4 -> 6 -> 9 -> 13
+    // -> 20, stage 5 storing up to q76 + 3 * 21 - 1 = 138. Entry 0x33c8 uses this bound for its vi10 clamps, so
+    // none can fire after its repack; 0x1b50 keeps twelve, where a count over it is a clean hand-back at 0x1b60.
+    constexpr int32_t kClipperOutputBound = 20;
+
     // What running one command left behind. Most handlers only ever reach their own `B 0x1b60`,
     // but command 0x4c ends the program itself -- a family-B list's trailing 0x42 is never
     // dispatched -- so "the command ran" and "the program is over" have to be told apart.
@@ -226,6 +248,7 @@ namespace
         NotImplemented, // hand the command back to the microcode at 0x1b60
         NextCommand,    // the handler reached its `B 0x1b60`
         ProgramEnd,     // the handler reached the E bit at 0x1b40
+        SkinEnd,        // 0x52 reached its own E bit at 0x33b8: the program ends at pc 0x33c8
     };
 
     enum Command : uint32_t
@@ -253,6 +276,8 @@ namespace
                                     //        same triangles again, untextured and unfogged
         kCmdFaceNormals = 0x66u,    // 0x2e28 per-triangle face normal (v2-v1) x (v0-v1), FTOI15,
                                     //        into index record [1]; run from entry 0x33c8 only
+        kCmdSkin = 0x52u,           // 0x3100 the skinning pass: one bone into the staging array, then the E
+                                    //        bit at 0x33b8 (pc 0x33c8); a list's first command only (N2)
 
         // Family C.
         kCmdKickRenderState = 0x64u, // 0x04a8 XGKICK the render-state packet at data qword 330
@@ -345,7 +370,9 @@ namespace
     // a documented residual of 4 dumps.
     // Sprint 17 F N1 lifts the second half for the 0x33c8 entry: its last-bone path resumes the list
     // at the 0x66 and runs 0x66 here (cmdFaceNormals, admitted by that entry's pre-scan and Ctx flag
-    // only); the corpus's three such programs are its fence (docs/research/82). 0x52 stays out.
+    // only); the corpus's three such programs are its fence (docs/research/82). N2 (research/82 section 10) runs 0x52 as a
+    // list's first command under PS2X_VU1_NATIVE_SKIN (Ctx::skin), outside this family's switch: it is not linear -- it
+    // ends the program -- and nothing after it runs in the same MSCAL.
     bool isFamilyDCommand(uint32_t command)
     {
         switch (command)
@@ -365,6 +392,13 @@ namespace
         // Entry 0x33c8's run: command 0x66 has a handler (research/82). False at 0x1b50, where a 0x66
         // stays the microcode's.
         bool faceNormals = false;
+        // Entry 0x33c8's run: the vi10 clamps use the clipper's arithmetic bound (kClipperOutputBound), which no
+        // clipper output can exceed, instead of the 0x1b50 ceiling -- so none can fire after the repack has stored
+        // (research/82 section 9.7). False at 0x1b50, whose clamps are unchanged.
+        bool clipBoundProven = false;
+        // Entry 0x1b50's run under PS2X_VU1_NATIVE_SKIN: command 0x52 has a handler (cmdSkin) when it is the list's
+        // first command (research/82 section 10). False at 0x33c8, whose own bone pass calls cmdSkin directly.
+        bool skin = false;
 
         int32_t &vi(uint32_t r) { return vu.m_state.vi[r]; }
         // VU1 data memory is 16 KB and every access wraps inside it, exactly like the microcode's
@@ -688,12 +722,14 @@ namespace
         return parsed > fallback ? fallback : parsed;
     }
 
-    // ps2x_tests' hooks over the two process-wide inputs below (vu1native_socom2_force*ForTest, at the end of
+    // ps2x_tests' hooks over the three process-wide inputs below (vu1native_socom2_force*ForTest, at the end of
     // this file). -1, the only value the game ever has, reads the latched knob exactly as before; a test sets a
     // value for one case and puts -1 back, so its result does not hang on the environment or on which case
     // latched the knob first.
     std::atomic<int> s_testXgkickImmediate{-1};
     std::atomic<int32_t> s_testVertexCeiling{-1};
+    std::atomic<int32_t> s_testClipCeiling{-1};
+    std::atomic<int> s_testSkin{-1};
 
     int32_t vertexCeiling()
     {
@@ -714,8 +750,15 @@ namespace
     {
         static const int32_t value =
             envCeiling("PS2X_VU1_NATIVE_TEST_CLIP_CEILING", kMaxClippedVertices);
+        const int32_t forced = s_testClipCeiling.load(std::memory_order_relaxed);
+        if (forced >= 0)
+            return forced > kMaxClippedVertices ? kMaxClippedVertices : forced;   // narrows only, as envCeiling does
         return value;
     }
+
+    // The ceiling a vi10 clamp checks: 0x1b50's (lowered only by the test knob), or at entry 0x33c8 the clipper's
+    // arithmetic bound, which that entry refuses whole instead of lowering (research/82 section 9.7).
+    int32_t clipCeiling(const Ctx &c) { return c.clipBoundProven ? kClipperOutputBound : clippedVertexCeiling(); }
 
     // The single hand-back at 0x1b60, used by the clamps AND by the dispatcher's NotImplemented
     // path, so there is one place that decides what a hand-back leaves behind. vi14 has to name
@@ -805,6 +848,7 @@ namespace
         bool hasFamilyB = false;     // any of 0x02 0x0a 0x12 0x56 0x1a 0x2a 0x4c
         bool hasInlineOverA = false; // 0x30 -- its vertex count is TOP+2.z
         bool hasSphereMap = false;   // 0x34 -- likewise, and its loop also ends on `!= 0`
+        bool skinFirst = false;      // 0x52 first (Ctx::skin): TOP+0..TOP+3 are a bone matrix, not a header
         Vu1Refusals::Refusal refusal; // why the answer is "no" (PS2X_VU1_NATIVE_REFUSALS counts it)
     };
 
@@ -866,6 +910,16 @@ namespace
             const uint32_t command = peekCommand(c, index);
             if (command == kCmdEnd)
                 return true;
+            // N2: 0x52 ends the program at its own E bit (0x33b8), so nothing after it runs in this MSCAL and the walk
+            // stops there. Taken only as the list's first command: after another one the chunk would be read as a
+            // header by that command and a bone matrix by this one, and no list in the corpus has that shape.
+            if (c.skin && command == kCmdSkin)
+            {
+                if (step != 0u || index != 0u)
+                    return refuse(facts.refusal, Vu1Refusals::Reason::SkinNotFirst);
+                facts.skinFirst = true;
+                return true;
+            }
             if (!isFamilyACommand(command) && !isFamilyBCommand(command) &&
                 !isFamilyCCommand(command) && !isFamilyDCommand(command) &&
                 !(c.faceNormals && command == kCmdFaceNormals))
@@ -921,6 +975,8 @@ namespace
         return refuse(facts.refusal, Vu1Refusals::Reason::NoEnd); // no 0x42 inside the dispatch bound
     }
 
+    bool skinPassProvable(Ctx &c, int32_t top, Vu1Refusals::Refusal &refusal);
+
     // True when this run is one this file may take over: a list scanCommandList accepts, plus a
     // header whose counts keep the work inside kMaxVertices / kMaxTriangles.
     bool isNativeRun(Ctx &c, int32_t top, Vu1Refusals::Refusal &refusal, uint32_t startIndex = 0u)
@@ -931,6 +987,11 @@ namespace
             refusal = facts.refusal;
             return false;
         }
+        // N2: a list that starts with 0x52 has no header -- TOP+0..TOP+3 are the bone matrix and TOP+4 the chunk's flags
+        // and count (research/15 4.1, 7 note 1) -- so the ceilings below do not apply; the pass's own count and its
+        // stores are proven instead, before anything is written (the only write proof at this entry: research/82 7).
+        if (facts.skinFirst)
+            return skinPassProvable(c, top, refusal);
 
         // The two header words the handlers read as their loop counts: TOP+2.z is the vertex
         // count (0x68, 0x08, 0x10, 0x54, 0x18, 0x30) and TOP+2.w the primitive count (0x06, 0x28,
@@ -973,6 +1034,17 @@ namespace
         static const bool immediate = !ps2x::knobOn("PS2X_VU1_XGKICK_CYCLE_EXACT");
         const int forced = s_testXgkickImmediate.load(std::memory_order_relaxed);
         return forced < 0 ? immediate : forced != 0;
+    }
+
+    // Sprint 17 F N2 (research/82 section 10): PS2X_VU1_NATIVE_SKIN (Dev, default 0) runs the skinning pass 0x52 here,
+    // at both of its entries -- 0x1b50's list that starts with it, and 0x33c8's bone pass, which also needs the
+    // registry's PS2X_VU1_NATIVE_33C8 gate -- so the two are measured apart. Read once, on the first native entry
+    // (after developer mode); ps2x_tests forces it (vu1native_socom2_forceSkinForTest).
+    bool skinEnabled()
+    {
+        static const bool on = ps2x::knobOn("PS2X_VU1_NATIVE_SKIN");
+        const int forced = s_testSkin.load(std::memory_order_relaxed);
+        return forced < 0 ? on : forced != 0;
     }
 
     // ---- command 0x68 -> 0x0b20: int -> float vertex unpack --------------------------------
@@ -1405,7 +1477,7 @@ namespace
         // Clamp: 0x0f38's count is the clipper's vi10, which the pre-scan cannot see. Checked
         // here, ahead of the microcode's own first instruction, because 0x0f10's XGKICK would
         // otherwise have happened twice once the microcode re-ran the command.
-        if (!withinCeiling(vi16(c.vi(10)), clippedVertexCeiling()))
+        if (!withinCeiling(vi16(c.vi(10)), clipCeiling(c)))
             return handBackAtNextCommand(c);
 
         c.vi(4) = 423;                                         // 0x0f08
@@ -1575,7 +1647,7 @@ namespace
     {
         using namespace fade;
         // Clamp: 0x1120's count is vi10.
-        if (!withinCeiling(vi16(c.vi(10)), clippedVertexCeiling()))
+        if (!withinCeiling(vi16(c.vi(10)), clipCeiling(c)))
             return handBackAtNextCommand(c);
         c.vi(kSrcCursor) = vi16(c.vi(8));                        // 0x1108: vi3 = vi8
         c.vi(kStageCursor) = 150;                                // 0x1110
@@ -1641,7 +1713,7 @@ namespace
         // Clamp: 0x0650's count is vi10. The loop decrements by three and tests `> 0`, so it also
         // overshoots to the next multiple of three -- 150 + 3*12 = 186 is inside the array's
         // headroom only because vi10 is bounded here.
-        if (!withinCeiling(vi16(c.vi(10)), clippedVertexCeiling()))
+        if (!withinCeiling(vi16(c.vi(10)), clipCeiling(c)))
             return handBackAtNextCommand(c);
         c.vi(kStageCursor) = 150;                                // 0x0640
         c.vi(kRemaining) = vi16(c.vi(10));                       // 0x0650: the B 0x5e8 delay slot
@@ -1807,7 +1879,7 @@ namespace
     {
         using namespace lighting;
         // Clamp: 0x15d0's count is vi10.
-        if (!withinCeiling(vi16(c.vi(10)), clippedVertexCeiling()))
+        if (!withinCeiling(vi16(c.vi(10)), clipCeiling(c)))
             return handBackAtNextCommand(c);
         loadQword<kParams, kXYZW>(c, 27);                        // 0x15b0
         c.vi(kSrcCursor) = vi16(c.vi(8));                        // 0x15b8: vi3 = vi8
@@ -2349,7 +2421,7 @@ namespace
     // 0x32 makes the same check at its own entry and tail-jumps to the unwrapped body.
     bool cmdFlushPacketDispatched(Ctx &c)
     {
-        if (!withinCeiling(vi16(c.vi(10)), clippedVertexCeiling()))
+        if (!withinCeiling(vi16(c.vi(10)), clipCeiling(c)))
             return handBackAtNextCommand(c);
         return cmdFlushPacket(c);
     }
@@ -2366,6 +2438,15 @@ namespace
     // earlier produced. Four pairs is exactly the FMAC latency, so the interpreter has that entry
     // committed at the FMAND and no other FMAC is in flight -- this file's immediate flag commit
     // reads the same value.
+    // That holds whatever ran before 0x1638 (entry 0x33c8's repack or 0x66, research/82 "N1b", as
+    // well as 0x1b50's 0x70), because it depends on nothing outside this loop: the pairs between the
+    // MADDz.w at 0x16f8 and the FMAND at 0x1718 are a NOP, an ITOF15 and a NOP, none of which queues
+    // a flag entry (the interpreter pushes one only for an FMAC with a dest; ITOF/FTOI/MR32 push
+    // none); every pair advances m_cycle by at least one, so the FMAND issues at least kFmacLatency
+    // (4) cycles after the MADDz.w, whose entry is then ready; and flag entries land in issue order,
+    // so every older one -- the previous command's last FMAC is 20+ pairs back, behind the
+    // dispatcher and this prologue -- has landed before it. MAC at the FMAND is therefore the
+    // MADDz.w's in both models, on the first pass and every later one.
     namespace cull
     {
         constexpr uint8_t kEye = 26;     // data qword 30
@@ -3125,7 +3206,7 @@ namespace
         // `y` landing on a 0x32 would arrive here with whatever vi10 the last clipper call left --
         // including the zero the "clipped away entirely" path at 0x2080 leaves. So 0x32 requires
         // at least one, here, where the hand-back is still clean.
-        if (!withinBounds(vi16(c.vi(10)), 1, clippedVertexCeiling()))
+        if (!withinBounds(vi16(c.vi(10)), 1, clipCeiling(c)))
             return handBackAtNextCommand(c);
         c.vi(kSrcCursor) = 150;                                  // 0x23b0
         c.vi(kDstCursor) = 150;                                  // 0x23b8
@@ -3569,16 +3650,113 @@ namespace
         return writeRangeClear(top, top + 4, 3 * count);
     }
 
+    // One store to `lanes` (the VU dest bits) of `qword`: writeRangeClear's test, except that at q329 only the lanes
+    // the proof reads -- x and y, 0x28/0x40's packet pointers -- are refused. 0x02 saves its cursor to q329.z.
+    bool laneStoreClear(int32_t top, int32_t qword, uint8_t lanes)
+    {
+        if (qword != kPacketPointerQword)
+            return writeRangeClear(top, qword, 1);
+        return (lanes & kXY) == 0u && top + 2 != qword;
+    }
+
+    // ---- entry 0x33c8's 0x02 loop (research/82 section 9.7, the walk's shape L, `66 06 02 [0a 56 1a 2a 4c]`) ------
+    //
+    // Every store the 0x02 family makes lands at a FIXED address, whatever the primitive count, so their union is
+    // proven once and holds for every pass of the loop; the primitive count (TOP+2.w, 1..triangleCeiling() by the
+    // entry's header checks) bounds only the time. With n = vi10 <= kClipperOutputBound:
+    //   0x02   (0x1f70-0x20b8) ISW.z of the cursor to q329.z on both paths (0x1fe0, the IBEQ's delay slot), ISW.w of
+    //          flag bit 1 to q112 (0x1ff8), then ISW.x and SQ.yz of the GIFtag to q112 (0x20a8, 0x20b0);
+    //   0x3618 the clipper, BAL'd from 0x2070: buffer A from q40 (the triangle and its wrap copy, q40-51), then each
+    //          stage's polygon and wrap copy (SQI from vi6) at q76 / q40 alternately: within q40-138;
+    //   0x0a   (0x0f08) XGKICK q423, then 0x08's kernel from vi4 = 150: [150, 149 + 3 max(n, 1)];
+    //   0x12   (0x1108) 0x10's kernel from 150: the fog lanes of [152, 149 + 3 max(n, 1)];
+    //   0x56   (0x0640) 0x54's kernel from 150: [151, 150 + 9 max(ceil(n/3), 1) - 2], at n = 20 q211, the highest;
+    //   0x1a   (0x15b0) 0x18's kernel from 150: [151, 148 + 6 max(ceil(n/2), 1)];
+    //   0x2a   (0x1a78) the flush tail from vi4 = 113: [113, 112 + 3 max(n, 1)], then XGKICK q423 and q112;
+    //   0x4c   (0x20c8) no store: ILW.z of q329.z, ILW.y of the list, then B 0x1f98 or the E bit's B 0x1b40.
+    // The union is [40, 211] and q329.z. Their loads (the planes q30-36, q27, q28/29, q38, q327, TOP+0, the index
+    // records, the vertex block, the buffers, one staging triple past the end) write nothing, and their XGKICKs
+    // copy under the immediate model the entry requires, as 0x28's do.
+    constexpr int32_t kFamilyBStoreFirst = 40;
+    constexpr int32_t kFamilyBStoreLast = 150 + 9 * ((kClipperOutputBound + 2) / 3) - 2; // 0x56's overshoot
+    static_assert(76 + 3 * (kClipperOutputBound + 1) - 1 <= kFamilyBStoreLast, "the clipper's stage 5");
+    static_assert(112 + 3 * kClipperOutputBound <= kFamilyBStoreLast, "0x2a's flush");
+    static_assert(149 + 3 * kClipperOutputBound <= kFamilyBStoreLast, "0x0a's and 0x12's staging");
+    static_assert(148 + 6 * ((kClipperOutputBound + 1) / 2) <= kFamilyBStoreLast, "0x1a's lit colours");
+    static_assert(kFamilyBStoreLast < kPacketPointerQword, "the union lies below q329 and the list");
+
+    // The loop's shape, fixed by list words the proof keeps unwritten (every family-B store lies below q329). The
+    // dispatcher reaches the body three ways: 0x02's own B 0x1b60 on the first primitive, at vi14 = i02 + 1; 0x4c's
+    // re-entry at 0x1f98 after `ILW.y vi14, 340(vi14)` (0x20e8) with vi14 = b + 1, the qword after the 0x4c; and a
+    // skipped primitive -- culled (0x1fd8) or clipped away (0x2080) -- falling into 0x20c8 undispatched, which
+    // reads the y of whatever vi14 the last dispatch or re-entry left: i02 + 1 on the first primitive, t after a
+    // re-entry. So with t = y(b + 1), requiring i02 < t <= b, y(i02 + 1) = t and y(t) = t lands every path on t or
+    // runs i02 + 1 .. b in order, all of which the walk has proven. Research/13 4.7's uniform y is guest data; this
+    // checks it instead of trusting it (vu1_refused_shapes prints `y=mixed` for the lists it refuses).
+    bool loopShapeHolds(Ctx &c, int32_t worldIndex, int32_t backEdge)
+    {
+        if (backEdge + 1 >= static_cast<int32_t>(kMaxListQwords))
+            return false;
+        auto y = [&](int32_t k) { return c.loadWord(kCommandListQword + k, 1); };
+        const int32_t target = y(backEdge + 1);
+        return target > worldIndex && target <= backEdge && y(worldIndex + 1) == target && y(target) == target;
+    }
+
     // The resumed list's commands, walked from vi14 to its 0x42 as the dispatcher will run them (the pre-scan has
-    // already proved the walk ends), each one's stores proven by writeRangeClear. Only the three commands the
-    // corpus's 0x33c8 lists hold are admitted, because only their store ranges are derived here:
+    // already proved the walk ends), each one's stores proven by writeRangeClear. Only the commands whose store
+    // ranges are derived here are admitted -- the corpus's three, the walk's 0x06 (research/82 N1b), the walk's 0x54
+    // and 0x10 (research/82 section 9.6, N1c's linear half), shape A's 0x18 and 0x28 (research/82 section 9.7,
+    // `66 06 08 54 18 28 42`, 816 of the refused capture's 2,000) and shape L's 0x02 loop (section 9.7,
+    // `66 06 02 [0a 56 1a 2a 4c]`, the other 1,184, with 0x12): the 0x02 once, its union proven there (above), the
+    // loop family after it and nothing else, a vi10 reader never before it, and the walk ends at the 0x4c, whose
+    // loop shape loopShapeHolds checks -- the linear ones before the 0x02 as below:
     //   0x66  index record [1] of every triangle, TOP+TOP+2.x+1+2k for k < max(TOP+2.w, 1) (the body runs once
     //         before its IBGTZ);
+    //   0x06  index record [0] of every triangle, TOP+TOP+2.x+2k for k < max(TOP+2.w, 1): its one store, the
+    //         ISW.w of the flag word at 0x1738 (proven as the whole qword), also once before its IBGTZ at 0x1750.
+    //         Its loads (the eye q30, the records' .x and .w, the normals, the vertices) write nothing;
     //   0x08  the staging triples from q40, three a vertex, max(TOP+2.z, 1) of them (likewise);
+    //   0x10  (0x0f90-0x1100) the fog lane .w of slot +2 of each staging triple, SQ.w at 0x10c8 (vertex a, -4(vi4))
+    //         and 0x10e0 (vertex b, -1(vi4)) after vi4 += 6 from 40: qwords 42 + 3k for k < max(TOP+2.z, 1) -- two a
+    //         pass, IADDI vi9 -2 then IBLTZ at 0x10d0 leaving after vertex a on an odd count or a zero one, IBGTZ
+    //         at 0x10e8 looping. Proven as the whole qwords [42, 39 + 3 max(V, 1)], inside 0x08's range. Its loads
+    //         (q28, q29, the vertex block, the staging ST and XYZF2 quads, one pair past the end) write nothing;
+    //   0x54  (0x05d8-0x0638) slot +1 of each staging triple, SQ.xyzw of q327 at 1(vi4), 4(vi4) and 7(vi4) from
+    //         vi4 = 40, vi4 += 9 in the IBGTZ's delay slot, the body before the test: qwords 41 + 3j for
+    //         j < 3 max(ceil(V/3), 1), overshooting to a multiple of three. Proven as
+    //         [41, 40 + 9 max(ceil(V/3), 1) - 2];
+    //   0x18  (0x1440-0x15a0) slot +1 of two staging triples a pass, SQ.xyzw at -11(vi4) (vertex a, 0x1580) and
+    //         -8(vi4) (vertex b, 0x1588) after vi4 = 40 (0x1450) += 6 before the loop (0x14b8) and += 6 in it (0x1530),
+    //         IADDI vi9 -2 (0x14e0) with the body before its IBGTZ (0x1590): qwords 41 + 3j for j < 2 max(ceil(V/2), 1),
+    //         an odd count lighting vertex V as well. Proven as [41, 38 + 6 max(ceil(V/2), 1)]; q329 from V = 97, as
+    //         0x08. Its loads (q27, the records from TOP+4 and the staging RGBA, one pair past the end) write nothing;
+    //         it leaves vi3/vi4/vi9, vf13-vf31, ACC and the MAC/STATUS of its last FMAC (0x1578's MADDw; the MAXx
+    //         after it set none), and reads no flag;
+    //   0x28  (0x1780) two loads (vf20 = q38, vf19 = TOP+1) and 0x40's body from 0x1790 unchanged, so 0x40's range;
     //   0x40  (0x28's body from 0x1790) the tag qwords 290 and 300, the packets' nine qwords after each of the
     //         two pointers at q329.x and q329.y, and q329 itself -- rewritten with the same pair, swapped, so the
-    //         proof's reading of it holds for a later 0x40 too.
+    //         proof's reading of it holds for a later 0x28 or 0x40 too. Its XGKICKs (0x1920, one per drawn triangle)
+    //         store nothing: under the immediate model the entry requires, each copies its packet to the GIF at
+    //         kick time, before the next triangle is built over the other buffer.
     // TOP+2 and q329 are proven unwritten, so the counts and pointers read here are the ones the handlers read.
+    // Order: every range above is a function of TOP, TOP+2 and q329 alone, never of data another command wrote --
+    // 0x10 reads the ST.w 0x08 left and 0x40 the flag words 0x06 left, but as values, not addresses -- so the walk
+    // proves them in any order and count. Registers: 0x54 leaves vi4 = 40 + 9n, vi9 = V - 3n and vf28 = q327; 0x10
+    // leaves vi3/vi4/vi9, vf14/15, vf17/18, vf20-31, ACC.w, I = 1.0 and the MAC/STATUS of its last FMAC. No admitted
+    // command takes any of them as an input it has not rewritten first but through the data path the native handler
+    // reproduces bit for bit (0x40's inherited vf20 included: native keeps it, as the microcode does). Flags: neither
+    // 0x54 (no FMAC) nor 0x10 (MINI/MAX set none; no FMAND/FSAND/FCAND) reads a flag, nor do 0x18 and 0x28 -- the
+    // image's six flag reads are all FMAND, at 0x1718 (0x06), 0x2858 (0x34's sphere map, not 0x28's), 0x2fa8/0x2fd8
+    // and the clipper's 0x3b60/0x3b78 -- and the one among the admitted, 0x06's FMAND at 0x1718, reads its own
+    // MADDz.w four pairs back (research/82 8.2): 0x10's last FMAC (0x10f0, or 0x10b0 on the odd exit), 0x18's
+    // (0x1578) and 0x28's (the RGBAQ MADD of its last drawn triangle, or 0x1798's SUBAw.w) issue 20 or more pairs
+    // before that FMAND and before the MADDz.w -- the dispatcher's eight and 0x06's prologue between -- so they have
+    // landed and are older, as the repack's ADDy.z is. The loop's flag reads are the clipper's two FMANDs, 0x3b60
+    // and 0x3b78 in the edge helper 0x3ad0, which read the MACs of 0x3b40's ADDw.z and 0x3b58's MADDz.w four pairs
+    // back (primSubroutine3618 captures those two): the helper's own FMACs, in straight-line code whose timing
+    // depends only on its own hazards, so what has landed at each FMAND is what it is at 0x1b50 (bit-exact there on
+    // the corpus's 1,224 primitives), whatever ran before -- the repack, 0x66 and 0x06 are dozens of pairs back.
+    // 0x02, the shims, 0x2a and 0x4c read no flag.
     bool proveResumedWrites(Ctx &c, int32_t top, uint32_t startIndex, Vu1Refusals::Refusal &refusal)
     {
         const int32_t indexBase = vi16(top + c.loadWord(top + 2, 0)); // 0x2e38: vi4 = TOP+2.x + vi1
@@ -3586,24 +3764,74 @@ namespace
         const int32_t triangles = c.loadWord(top + 2, 3);
         const int32_t facePasses = triangles > 1 ? triangles : 1;
         const int32_t stagePasses = vertices > 1 ? vertices : 1;
+        const int32_t fillPasses = vertices > 3 ? (vertices + 2) / 3 : 1; // 0x54: three vertices a pass
+        const int32_t lightPasses = vertices > 2 ? (vertices + 1) / 2 : 1; // 0x18: two vertices a pass
         const int32_t packetA = c.loadWord(kPacketPointerQword, 0);
         const int32_t packetB = c.loadWord(kPacketPointerQword, 1);
+        int32_t worldIndex = -1; // the 0x02's list index, once the walk has passed it
         uint32_t index = startIndex;
         for (uint32_t step = 0; step < kMaxCommands && index < kMaxListQwords; ++step, ++index)
         {
             const uint32_t command = peekCommand(c, index);
+            // Past the 0x02 only its loop family runs: the linear commands 0x06 and 0x28/0x40 rewrite vi12, the
+            // primitive counter 0x4c tests, and a 0x42 before any 0x4c would leave skipped primitives looping on
+            // y words no 0x4c fixes.
+            if (worldIndex >= 0 && !isFamilyBCommand(command))
+                return refuse(refusal, Vu1Refusals::Reason::LoopShape, command);
             switch (command)
             {
             case kCmdEnd:
                 return true;
+            case kCmdWorldObject:
+                if (worldIndex >= 0)
+                    return refuse(refusal, Vu1Refusals::Reason::LoopShape, command);
+                if (!writeRangeClear(top, kFamilyBStoreFirst, kFamilyBStoreLast - kFamilyBStoreFirst + 1) ||
+                    !laneStoreClear(top, kPacketPointerQword, kZ))
+                    return refuse(refusal, Vu1Refusals::Reason::WriteRange, command);
+                // The vi10 clamps run at kClipperOutputBound here (clipCeiling); the test knob that lowers 0x1b50's
+                // narrows this entry by refusing whole instead, as HeaderVertices does for the vertex ceiling.
+                if (clippedVertexCeiling() < kMaxClippedVertices)
+                    return refuse(refusal, Vu1Refusals::Reason::ClipCeiling);
+                worldIndex = static_cast<int32_t>(index);
+                break;
+            case kCmdClippedTransform:
+            case kCmdClippedFade:
+            case kCmdClippedTemplateFill:
+            case kCmdClippedLight:
+            case kCmdFlushPacket:
+                // vi10 is the clipper's only after the 0x02: before it, it is the live-in, unbounded.
+                if (worldIndex < 0)
+                    return refuse(refusal, Vu1Refusals::Reason::LoopShape, command);
+                break; // their stores lie in the union proven at the 0x02
+            case kCmdLoopBack:
+                if (worldIndex < 0 || !loopShapeHolds(c, worldIndex, static_cast<int32_t>(index)))
+                    return refuse(refusal, Vu1Refusals::Reason::LoopShape, command);
+                return true; // 0x4c loops back into the proven body or ends the program: nothing past it runs
             case kCmdFaceNormals:
                 if (!writeRangeClear(top, indexBase + 1, 2 * facePasses - 1))
+                    return refuse(refusal, Vu1Refusals::Reason::WriteRange, command);
+                break;
+            case kCmdCull:
+                if (!writeRangeClear(top, indexBase, 2 * facePasses - 1))
                     return refuse(refusal, Vu1Refusals::Reason::WriteRange, command);
                 break;
             case kCmdTransform:
                 if (!writeRangeClear(top, 40, 3 * stagePasses))
                     return refuse(refusal, Vu1Refusals::Reason::WriteRange, command);
                 break;
+            case kCmdFade:
+                if (!writeRangeClear(top, 42, 3 * stagePasses - 2))
+                    return refuse(refusal, Vu1Refusals::Reason::WriteRange, command);
+                break;
+            case kCmdTemplateFill:
+                if (!writeRangeClear(top, 41, 9 * fillPasses - 2))
+                    return refuse(refusal, Vu1Refusals::Reason::WriteRange, command);
+                break;
+            case kCmdLight:
+                if (!writeRangeClear(top, 41, 6 * lightPasses - 2))
+                    return refuse(refusal, Vu1Refusals::Reason::WriteRange, command);
+                break;
+            case kCmdBuildPacket:
             case kCmdDrawUntextured:
                 if (!writeRangeClear(top, 290, 1) || !writeRangeClear(top, 300, 1) ||
                     !writeRangeClear(top, packetA + 1, 9) || !writeRangeClear(top, packetB + 1, 9))
@@ -3614,6 +3842,223 @@ namespace
             }
         }
         return refuse(refusal, Vu1Refusals::Reason::NoEnd);
+    }
+
+    // ---- command 0x52 -> 0x3100: the skinning pass (research/15 4, research/82 section 10, N2) ------------------------
+    //
+    // One bone's contribution to every vertex it moves, accumulated into the staging array. Run at 0x1b50 as a list's
+    // first command (the jump-table slot 0x1e30 is `B 0x3100`) and at 0x33c8 when the live-in vi5 has bit 2 clear
+    // (0x33e8 `IBEQ vi7, vi0, 0x3100`, (A)); both end at the E bit at 0x33b8, pc 0x33c8, without a packet, and the EE's
+    // next MSCAL for the mesh starts there. Behind PS2X_VU1_NATIVE_SKIN (skinEnabled). The microcode, pair by pair
+    // (python tools_py/vu1dis.py --start 0x3100 --count 100 over the fixture image):
+    //   0x3100-0x3128  vi4 = vi1 = TOP, vi2 = TOP + 5, LQI vf23..vf26 = TOP+0..TOP+3 (the bone matrix: three rows and the
+    //                  translation), vi4 -> TOP + 4;
+    //   0x3130-0x3140  vi5 = TOP+4.x (the chunk's flags: bit 0 accumulate, bit 1 first, bit 2 last bone), vi10 = TOP+4.w
+    //                  (the vertex count n), vi4 = (TOP+5).w (vertex 0's destination offset dst0);
+    //   0x3148-0x3160  vi7 = vi5 & 1; IBGTZ vi7 -> 0x3288, the accumulate pass;
+    //   first pass     0x3170 vi3 = 40, 0x3178 ISW.x vi3 -> q37.x (the staging base, persisted for the accumulate passes
+    //                  and the repack), vi6 = vi3 + vi4, vi9 = vi10 (the count the repack at 0x33c8 loops on), vertex 0
+    //                  loaded (vf19, vf20), ITOF15, LOI 10.0, MULi; then per vertex k, the loop head 0x31d8:
+    //                    position vf19 * w and normal vf20 * w (w = vf20.w, the weight), vi2 += 2, vi10 -= 1, vi4 = the
+    //                    next vertex's destination (read ahead), vf27.xyz = vf23 x + vf24 y + vf25 z + vf26 w (MULAx,
+    //                    MADDAy, MADDAz, MADDw), vertex k+1 loaded into vf19, vf28.xyz = vf23 x + vf24 y + vf25 z of the
+    //                    normal (MULAx, MADDAy, MADDz), ITOF15 of vf19 and vertex k+1's second qword into vf20,
+    //                    SQ.xyz vf27 -> vi6, SQ.xyz vf28 -> vi6 + 1, MULi of vf19, IBNE vi10 with the delay slot
+    //                    ITOF15.xyzw vf20 and vi6 = vi3 + vi4;  then 0x3278 `B 0x33b8`;
+    //   accumulate     0x3288 vi3 = q37.x, vertex 0 and the staging pair at vi6 = vi3 + vi4 loaded (vf29, vf30); per
+    //                  vertex, the loop head 0x32c8: ITOF15 and LOI 10.0, MULi, ACC = vf29 (MULAw by vf0.w = 1), the
+    //                  weighted position MADDed on (MADDAx/y/z, MADDw -> vf27), vi4 = the next destination, ACC = vf30,
+    //                  the weighted normal MADDed on (MADDAx/y, MADDz -> vf28), vi12 = vi3 + vi4, vi10 -= 1, SQ.xyz vf27
+    //                  -> vi6, vertex k+1 and its staging pair at vi12 loaded (vf19, vf29, vf20, vf30), SQ.xyz vf28 ->
+    //                  vi6 + 1, IBNE vi10 with vi6 = vi12 in the delay slot; falls into 0x33b8.
+    // STORES: q37.x (first pass, ISW: the 16-bit value zero-extended), and SQ.xyz at base + dst_k and base + dst_k + 1
+    // for k < n (base 40 or q37.x, dst_k = (TOP+5+2k).w; the 16-bit IADD, then VU memory's wrap). Nothing else.
+    // LOADS: TOP .. TOP+6+2n (the read-ahead reaches vertex n: its destination and both qwords), q37 (accumulate) and,
+    // accumulating, the staging pairs at base + dst_k for k <= n (read-modify-write; the pair for k + 1 is loaded after
+    // vertex k's position is stored and before its normal is, which this reproduces in order).
+    // LEAVES: vi1 = TOP, vi2 = TOP+5+2n, vi3 = base, vi4 = dst_n, vi5 = the flags, vi6 = base + dst_n, vi7 = flags & 1,
+    // vi9 = n (first pass; else the live-in), vi10 = 0, vi12 = base + dst_n (accumulate; else the live-in), vf19/vf20 =
+    // vertex n as the pipeline left it, vf23-vf26 the matrix, vf27/vf28 vertex n-1's results, vf29/vf30 (accumulate) the
+    // pair at base + dst_n, ACC (the last MADDAy), I = 10.0, and the MAC/STATUS of the last FMAC (0x3268's MULi, or
+    // 0x3380's MADDz). Q, P, CLIP untouched. The next MSCAL reads vi5 (bit 2: 0x33d8), vi9 and vi14 (the repack and its
+    // resume index), q37 and the staging array (research/15 4.5).
+    // FLAGS: the pass reads none: no FMAND/FSAND/FCAND in 0x3100-0x33c0 (the image's six FMANDs, 0x1718, 0x2858, 0x2fa8,
+    // 0x2fd8 in the subroutine 0x2f30-0x30f8 that returns by JR vi2, and the clipper's 0x3b60/0x3b78, are all outside
+    // it). It leaves its flags to the next program through the E bit, where the interpreter lands its FMAC pipeline in
+    // issue order, so the MAC and STATUS this file's immediate commit leaves are the interpreter's: whatever the next
+    // MSCAL reads first is the same. And the next one reads nothing before an FMAC of its own: another pass writes I, ACC
+    // and vf19-vf30 before it reads them; the repack's MULz.w/ADDy.z come first at 0x33c8 and 0x66/0x06 after it, whose
+    // one FMAND (0x1718) reads its own MADDz.w four pairs back (research/82 8.2) -- the 0x1718 argument, now across an
+    // MSCAL boundary as well as a command one. At 0x1b50 nothing follows 0x52 in the same program: its E bit ends it.
+    // The operands' normalisation follows the generated translation's per-site choice (a register an ITOF or an FMAC just
+    // wrote is normal already; one loaded from memory is normalized), which is the interpreter's result bit for bit.
+    constexpr uint32_t kSkinEndPc = 0x33c8u;   // 0x33b8's E bit, one more pair, then pc = 0x33c8
+    constexpr int32_t kSkinBaseQword = 37;      // q37.x: the staging base the first pass persists
+    constexpr int32_t kSkinFirstBase = 40;      // 0x3170 IADDIU vi3, vi0, 40
+    constexpr uint32_t kLoadImmediateTen = 0x41200000u; // LOI 10.0 (0x31b0, 0x32c8): the position scale
+
+    void cmdSkin(Ctx &c)
+    {
+        using vu1ops::ArithMadd;
+        using vu1ops::ArithMul;
+        __m128 up;
+        c.vi(4) = vi16(c.vi(1));                                                // 0x3100 IADDI vi4, vi1, 0
+        c.vi(2) = vi16(c.vi(1) + 5);                                            // 0x3108 IADDIU vi2, vi1, 5
+        loadQword<23, kXYZW>(c, c.vi(4));                                       // 0x3110 LQI vf23, (vi4++)
+        c.vi(4) = vi16(c.vi(4) + 1);
+        loadQword<24, kXYZW>(c, c.vi(4));                                       // 0x3118 LQI vf24, (vi4++)
+        c.vi(4) = vi16(c.vi(4) + 1);
+        loadQword<25, kXYZW>(c, c.vi(4));                                       // 0x3120 LQI vf25, (vi4++)
+        c.vi(4) = vi16(c.vi(4) + 1);
+        loadQword<26, kXYZW>(c, c.vi(4));                                       // 0x3128 LQI vf26, (vi4++)
+        c.vi(4) = vi16(c.vi(4) + 1);
+        c.vi(5) = c.loadWord(c.vi(4), 0);                                       // 0x3130 ILWR.x vi5, (vi4): the flags
+        c.vi(10) = c.loadWord(c.vi(4), 3);                                      // 0x3138 ILWR.w vi10, (vi4): the count
+        c.vi(4) = c.loadWord(c.vi(2), 3);                                       // 0x3140 ILWR.w vi4, (vi2): dst0
+        c.vi(7) = 1;                                                            // 0x3148 IADDIU vi7, vi0, 1
+        c.vi(7) = c.vi(5) & c.vi(7);                                            // 0x3150 IAND vi7, vi5, vi7
+        if (static_cast<int16_t>(c.vi(7)) <= 0)                                 // 0x3160 IBGTZ vi7, 0x3288 not taken
+        {
+            // ---- the first pass, 0x3170-0x3278 ----
+            c.vi(3) = kSkinFirstBase;                                           // 0x3170 IADDIU vi3, vi0, 40
+            storeIntWord<kX>(c, kSkinBaseQword, c.vi(3));                       // 0x3178 ISW.x vi3, 37(vi0)
+            c.vi(6) = vi16(c.vi(3) + c.vi(4));                                  // 0x3180 IADD vi6, vi3, vi4
+            c.vi(9) = vi16(c.vi(10));                                           // 0x3188 IADD vi9, vi0, vi10
+            loadQword<19, kXYZW>(c, c.vi(2));                                   // 0x3190 LQ vf19, 0(vi2)
+            loadQword<20, kXYZW>(c, c.vi(2) + 1);                               // 0x3198 LQ vf20, 1(vi2)
+            up = itof<15, 19>(c);                                               // 0x31b0 ITOF15.xyz vf19, vf19
+            writeVf<19, kXYZ>(c, up);
+            loadImmediate(c, kLoadImmediateTen);                                //        LOI 10.0
+            up = itof<15, 20>(c);                                               // 0x31b8 ITOF15.xyzw vf20, vf20
+            writeVf<20, kXYZW>(c, up);
+            up = fmac<ArithMul, Vu1Gen::SrcI, 0, kXYZ, 19, 0, false, false, false>(c); // 0x31d0 MULi.xyz vf19, vf19, I
+            writeVf<19, kXYZ>(c, up);
+            for (;;)                                                            // 0x31d8
+            {
+                up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kXYZ, 19, 20, false, false, false>(c); // 0x31f0 MULw.xyz vf19, vf19, vf20w
+                c.vi(2) = vi16(c.vi(2) + 2);                                    //        IADDIU vi2, vi2, 2
+                writeVf<19, kXYZ>(c, up);
+                up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kXYZ, 20, 20, false, false, false>(c); // 0x31f8 MULw.xyz vf20, vf20, vf20w
+                c.vi(10) = vi16(c.vi(10) - 1);                                  //        ISUBIU vi10, vi10, 1
+                writeVf<20, kXYZ>(c, up);
+                c.vi(4) = c.loadWord(c.vi(2), 3);                               // 0x3200 ILWR.w vi4, (vi2)
+                up = fmac<ArithMul, Vu1Gen::SrcBc, 0, kXYZ, 23, 19, false, true, false>(c); // 0x3210 MULAx.xyz ACC, vf23, vf19x
+                writeAcc<kXYZ>(c, up);
+                up = fmac<ArithMadd, Vu1Gen::SrcBc, 1, kXYZ, 24, 19, false, true, false>(c); // 0x3218 MADDAy.xyz ACC, vf24, vf19y
+                writeAcc<kXYZ>(c, up);
+                up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kXYZ, 25, 19, false, true, false>(c); // 0x3220 MADDAz.xyz ACC, vf25, vf19z
+                writeAcc<kXYZ>(c, up);
+                up = fmac<ArithMadd, Vu1Gen::SrcBc, 3, kXYZ, 26, 20, false, true, false>(c); // 0x3228 MADDw.xyz vf27, vf26, vf20w
+                loadQword<19, kXYZW>(c, c.vi(2));                               //        LQ vf19, 0(vi2)
+                writeVf<27, kXYZ>(c, up);
+                up = fmac<ArithMul, Vu1Gen::SrcBc, 0, kXYZ, 23, 20, false, true, false>(c); // 0x3230 MULAx.xyz ACC, vf23, vf20x
+                writeAcc<kXYZ>(c, up);
+                up = fmac<ArithMadd, Vu1Gen::SrcBc, 1, kXYZ, 24, 20, false, true, false>(c); // 0x3238 MADDAy.xyz ACC, vf24, vf20y
+                writeAcc<kXYZ>(c, up);
+                up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kXYZ, 25, 20, false, true, false>(c); // 0x3240 MADDz.xyz vf28, vf25, vf20z
+                writeVf<28, kXYZ>(c, up);
+                up = itof<15, 19>(c);                                           // 0x3248 ITOF15.xyz vf19, vf19
+                loadQword<20, kXYZW>(c, c.vi(2) + 1);                           //        LQ vf20, 1(vi2)
+                writeVf<19, kXYZ>(c, up);
+                storeQword<27, kXYZ>(c, c.vi(6));                               // 0x3258 SQ.xyz vf27, 0(vi6)
+                storeQword<28, kXYZ>(c, c.vi(6) + 1);                           // 0x3260 SQ.xyz vf28, 1(vi6)
+                up = fmac<ArithMul, Vu1Gen::SrcI, 0, kXYZ, 19, 0, false, false, false>(c); // 0x3268 MULi.xyz vf19, vf19, I
+                const bool again = static_cast<int16_t>(c.vi(10)) != 0;         //        IBNE vi10, vi0, 0x31d8
+                writeVf<19, kXYZ>(c, up);
+                up = itof<15, 20>(c);                                           // 0x3270 (delay slot) ITOF15.xyzw vf20, vf20
+                c.vi(6) = vi16(c.vi(3) + c.vi(4));                              //        IADD vi6, vi3, vi4
+                writeVf<20, kXYZW>(c, up);
+                if (!again)
+                    break;
+            }
+            return;                                                             // 0x3278 B 0x33b8 -> the E bit
+        }
+
+        // ---- the accumulate pass, 0x3288-0x33b0 ----
+        c.vi(3) = c.loadWord(kSkinBaseQword, 0);                                // 0x3288 ILW.x vi3, 37(vi0)
+        loadQword<19, kXYZW>(c, c.vi(2));                                       // 0x3298 LQ vf19, 0(vi2)
+        loadQword<20, kXYZW>(c, c.vi(2) + 1);                                   // 0x32a0 LQ vf20, 1(vi2)
+        c.vi(6) = vi16(c.vi(3) + c.vi(4));                                      // 0x32a8 IADD vi6, vi3, vi4
+        loadQword<29, kXYZW>(c, c.vi(6));                                       // 0x32b8 LQ vf29, 0(vi6)
+        loadQword<30, kXYZW>(c, c.vi(6) + 1);                                   // 0x32c0 LQ vf30, 1(vi6)
+        for (;;)                                                                // 0x32c8
+        {
+            up = itof<15, 19>(c);                                               // 0x32c8 ITOF15.xyz vf19, vf19
+            writeVf<19, kXYZ>(c, up);
+            loadImmediate(c, kLoadImmediateTen);                                //        LOI 10.0
+            up = itof<15, 20>(c);                                               // 0x32d0 ITOF15.xyzw vf20, vf20
+            writeVf<20, kXYZW>(c, up);
+            up = fmac<ArithMul, Vu1Gen::SrcI, 0, kXYZ, 19, 0, false, false, false>(c); // 0x32e8 MULi.xyz vf19, vf19, I
+            writeVf<19, kXYZ>(c, up);
+            up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kXYZ, 29, 0, false, true, false>(c); // 0x3300 MULAw.xyz ACC, vf29, vf0w
+            writeAcc<kXYZ>(c, up);
+            up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kXYZ, 19, 20, false, false, false>(c); // 0x3308 MULw.xyz vf19, vf19, vf20w
+            writeVf<19, kXYZ>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 0, kXYZ, 23, 19, false, true, false>(c); // 0x3328 MADDAx.xyz ACC, vf23, vf19x
+            writeAcc<kXYZ>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 1, kXYZ, 24, 19, false, true, false>(c); // 0x3330 MADDAy.xyz ACC, vf24, vf19y
+            c.vi(2) = vi16(c.vi(2) + 2);                                        //        IADDIU vi2, vi2, 2
+            writeAcc<kXYZ>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kXYZ, 25, 19, false, true, false>(c); // 0x3338 MADDAz.xyz ACC, vf25, vf19z
+            writeAcc<kXYZ>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 3, kXYZ, 26, 20, false, true, false>(c); // 0x3340 MADDw.xyz vf27, vf26, vf20w
+            c.vi(4) = c.loadWord(c.vi(2), 3);                                   //        ILWR.w vi4, (vi2)
+            writeVf<27, kXYZ>(c, up);
+            up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kXYZ, 30, 0, false, true, false>(c); // 0x3348 MULAw.xyz ACC, vf30, vf0w
+            writeAcc<kXYZ>(c, up);
+            up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kXYZ, 20, 20, false, false, false>(c); // 0x3350 MULw.xyz vf20, vf20, vf20w
+            writeVf<20, kXYZ>(c, up);
+            c.vi(12) = vi16(c.vi(3) + c.vi(4));                                 // 0x3360 IADD vi12, vi3, vi4
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 0, kXYZ, 23, 20, false, true, false>(c); // 0x3370 MADDAx.xyz ACC, vf23, vf20x
+            c.vi(10) = vi16(c.vi(10) - 1);                                      //        ISUBIU vi10, vi10, 1
+            writeAcc<kXYZ>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 1, kXYZ, 24, 20, false, true, false>(c); // 0x3378 MADDAy.xyz ACC, vf24, vf20y
+            storeQword<27, kXYZ>(c, c.vi(6));                                   //        SQ.xyz vf27, 0(vi6)
+            writeAcc<kXYZ>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kXYZ, 25, 20, false, true, false>(c); // 0x3380 MADDz.xyz vf28, vf25, vf20z
+            loadQword<19, kXYZW>(c, c.vi(2));                                   //        LQ vf19, 0(vi2)
+            writeVf<28, kXYZ>(c, up);
+            loadQword<29, kXYZW>(c, c.vi(12));                                  // 0x3388 LQ vf29, 0(vi12)
+            loadQword<20, kXYZW>(c, c.vi(2) + 1);                               // 0x3390 LQ vf20, 1(vi2)
+            loadQword<30, kXYZW>(c, c.vi(12) + 1);                              // 0x3398 LQ vf30, 1(vi12)
+            storeQword<28, kXYZ>(c, c.vi(6) + 1);                               // 0x33a0 SQ.xyz vf28, 1(vi6)
+            const bool again = static_cast<int16_t>(c.vi(10)) != 0;             // 0x33a8 IBNE vi10, vi0, 0x32c8
+            c.vi(6) = vi16(c.vi(12));                                           // 0x33b0 (delay slot) IADD vi6, vi0, vi12
+            if (!again)
+                break;
+        }
+        // falls into 0x33b8, the E bit
+    }
+
+    // The pass's stores, proven before its first, so the counts and destinations read here are the ones the microcode
+    // reads (N2; the whole-program refusal every other proof in this file makes): the vertex count TOP+4.w in 1..the
+    // handler vertex ceiling (the loop is an IBNE after a decrement: 0 is 65536 passes, and nothing may run
+    // uninterruptibly without a bound); the chunk the pass reads, TOP .. TOP+6+2n, inside VU memory without wrapping;
+    // q37 outside it (the first pass's ISW.x rewrites q37 before the loop reads the vertices); and each vertex's pair
+    // base + dst_k, base + dst_k + 1 inside VU memory without wrapping and clear of the chunk and of q37. Then no store
+    // touches anything the pass reads after its first store but the staging pairs themselves -- whose read-modify-write
+    // cmdSkin reproduces in the microcode's order -- so every dst_k read here by induction is the one 0x3200/0x3340 read.
+    // The corpus's pairs lie in q40-137 (research/15 7) and its chunks at TOP 424 and 724: clear of all of it. The read
+    // ahead (vertex n's destination, and on an accumulate pass its pair) is only loaded, wherever it points.
+    bool skinPassProvable(Ctx &c, int32_t top, Vu1Refusals::Refusal &refusal)
+    {
+        const int32_t count = c.loadWord(top + 4, 3);                           // 0x3138's vi10
+        if (count < 1 || count > vertexCeiling())
+            return refuse(refusal, Vu1Refusals::Reason::SkinCount);
+        const int32_t chunkLast = top + 6 + 2 * count;                          // vertex n's second qword, read ahead
+        if (chunkLast >= kVuDataQwords || (kSkinBaseQword >= top && kSkinBaseQword <= chunkLast))
+            return refuse(refusal, Vu1Refusals::Reason::SkinRange);
+        const bool accumulate = (c.loadWord(top + 4, 0) & 1) != 0;              // 0x3150's vi7
+        const int32_t base = accumulate ? c.loadWord(kSkinBaseQword, 0) : kSkinFirstBase;
+        for (int32_t k = 0; k < count; ++k)
+        {
+            const int32_t pair = vi16(base + c.loadWord(top + 5 + 2 * k, 3));   // 0x3180/0x3270 or 0x32a8/0x3360
+            const bool onChunk = pair <= chunkLast && pair + 1 >= top;
+            const bool onBase = pair <= kSkinBaseQword && pair + 1 >= kSkinBaseQword;
+            if (pair < 0 || pair + 1 >= kVuDataQwords || onChunk || onBase)
+                return refuse(refusal, Vu1Refusals::Reason::SkinRange);
+        }
+        return true;
     }
 
     Outcome fromHandler(bool reachedNextCommand)
@@ -3676,6 +4121,11 @@ namespace
             if (!c.faceNormals)
                 return Outcome::NotImplemented; // at 0x1b50 a 0x66 stays the microcode's
             return fromHandler(cmdFaceNormals(c));
+        case kCmdSkin:
+            if (!c.skin)
+                return Outcome::NotImplemented; // PS2X_VU1_NATIVE_SKIN off (or entry 0x33c8's resumed list)
+            cmdSkin(c);                         // the slot 0x1e30 `B 0x3100`, a NOP in its delay slot
+            return Outcome::SkinEnd;
         default:
             return Outcome::NotImplemented;
         }
@@ -3713,6 +4163,14 @@ namespace
             }
 
             const Outcome outcome = runCommand(c, command);
+            if (outcome == Outcome::SkinEnd)
+            {
+                // 0x52's E bit at 0x33b8: one more pair, then the program ends leaving pc = 0x33c8, where the EE's next
+                // MSCAL for this mesh starts (another bone pass or the last bone's repack).
+                c.vu.m_viBranchBackupValid = false;
+                c.vu.m_state.pc = kSkinEndPc;
+                return true;
+            }
             if (outcome == Outcome::ProgramEnd)
             {
                 // Command 0x4c's `B 0x1b40`: a family-B list ends here, with its trailing 0x42 never
@@ -3749,6 +4207,7 @@ namespace
 bool vu1native_socom2_dispatch(VU1Interpreter &vu, uint64_t /*budgetEnd*/)
 {
     Ctx c{vu};
+    c.skin = skinEnabled(); // N2: 0x52 as the list's first command (research/82 section 10)
     // 0x1b50's XTOP result: the VIF double-buffered input base. Needed by the pre-scan (the header
     // counts live at TOP+2) before it is committed to vi1.
     const int32_t top = static_cast<int32_t>(vu.m_state.top & 0x3FFu);
@@ -3765,6 +4224,7 @@ bool vu1native_socom2_dispatch(VU1Interpreter &vu, uint64_t /*budgetEnd*/)
     {
         if (Vu1Refusals::enabled())
             Vu1Refusals::note(entryPc, refusal.reason, refusal.command);
+        Vu1Refusals::rememberWhole(entryPc, refusal); // PS2X_VU1_DUMP_REFUSED (one relaxed load when off)
         return false; // whole-program hand-back: pc is still 0x1b50 and nothing has been touched
     }
 
@@ -3789,17 +4249,32 @@ void vu1native_socom2_forceVertexCeilingForTest(int32_t ceiling)
     s_testVertexCeiling.store(ceiling < 0 ? -1 : ceiling, std::memory_order_relaxed);
 }
 
+// ... and the handler-side clipped-vertex ceiling (-1 = PS2X_VU1_NATIVE_TEST_CLIP_CEILING as latched, else clamped
+// into [0, kMaxClippedVertices]): entry 0x33c8 refuses a loop list whole under a lowered one (research/82 9.7).
+void vu1native_socom2_forceClipCeilingForTest(int32_t ceiling)
+{
+    s_testClipCeiling.store(ceiling < 0 ? -1 : ceiling, std::memory_order_relaxed);
+}
+
+// ... and PS2X_VU1_NATIVE_SKIN's decision (-1 = the knob as latched, 0 = off, 1 = on): both 0x52 entries (N2).
+void vu1native_socom2_forceSkinForTest(int state)
+{
+    s_testSkin.store(state < 0 ? -1 : (state != 0 ? 1 : 0), std::memory_order_relaxed);
+}
+
 // Sprint 17 F N1 (docs/research/82): registered for (image d418194495c25213, entry pc 0x33c8) behind
 // PS2X_VU1_NATIVE_33C8 (the registry asks this gate after the (hash, pc) match; read once, after developer mode).
+// Default 1 since N1c was adopted (2026-10-01): the registry row's default is honoured (knobOrDefault), so a
+// player -- the Dev knob hidden -- runs the native entry; a developer's =0 is the generated fallback.
 bool vu1native_socom2_entry_0x33c8_enabled()
 {
-    static const bool s_on = ps2x::knobOn("PS2X_VU1_NATIVE_33C8");
+    static const bool s_on = ps2x::knobs::flagValue(ps2x::knobOrDefault("PS2X_VU1_NATIVE_33C8"), false);
     return s_on;
 }
 
 // The EE's MSCAL after a 0x52 bone pass. 0x33c8 XTOP vi1; 0x33d0/0x33d8 vi7 = vi5 & 4 -- vi5 is LIVE-IN, the
 // previous chunk's flags word; 0x33e8 IBEQ vi7, vi0, 0x3100: not the last bone -> another bone pass, which
-// ends at 0x33c8 again (the 0x52 body, no native handler: refused whole as skin_pass). The last bone falls
+// ends at 0x33c8 again (the 0x52 body: cmdSkin under PS2X_VU1_NATIVE_SKIN, else refused whole as skin_pass). The last bone falls
 // through into the repack (repackSkinnedVertices) and `B 0x1b60`, the dispatcher resumed at the LIVE-IN vi14
 // (1 in the corpus: q341 = 0x66 of `52 66 08 40 42`). Every refusal is whole-program, before anything is
 // written: pc stays 0x33c8 and the generated code runs it. Contract as 0x1b50's: packets, register file and
@@ -3808,6 +4283,7 @@ bool vu1native_socom2_entry_0x33c8(VU1Interpreter &vu, uint64_t /*budgetEnd*/)
 {
     Ctx c{vu};
     c.faceNormals = true;
+    c.clipBoundProven = true; // the vi10 clamps at kClipperOutputBound: unreachable (research/82 section 9.7)
     const int32_t top = static_cast<int32_t>(vu.m_state.top & 0x3FFu);
     const uint32_t entryPc = vu.m_state.pc;
     // The repack's count (IBNE on a 16-bit register) and the dispatcher's resume index, both live-in.
@@ -3819,7 +4295,21 @@ bool vu1native_socom2_entry_0x33c8(VU1Interpreter &vu, uint64_t /*budgetEnd*/)
     else if (!xgkickIsImmediate())
         refuse(refusal, Vu1Refusals::Reason::XgkickCycleExact);
     else if ((c.vi(5) & 4) == 0)
-        refuse(refusal, Vu1Refusals::Reason::SkinPass);
+    {
+        // (A), not the last bone. Without PS2X_VU1_NATIVE_SKIN refused whole as skin_pass, as before; with it the pass
+        // runs here once its stores are proven (N2, research/82 section 10).
+        if (!skinEnabled())
+            refuse(refusal, Vu1Refusals::Reason::SkinPass);
+        else if (skinPassProvable(c, top, refusal))
+        {
+            c.vi(1) = top;                          // 0x33c8 XTOP vi1
+            c.vi(7) = vi16(c.vi(5) & 4);            // 0x33d0 IADDIU vi7, vi0, 4; 0x33d8 IAND vi7, vi5, vi7 (= 0)
+            cmdSkin(c);                             // 0x33e8 IBEQ vi7, vi0, 0x3100 taken; 0x3100-0x33b0
+            c.vu.m_viBranchBackupValid = false;
+            c.vu.m_state.pc = kSkinEndPc;           // 0x33b8's E bit: the next MSCAL starts here again
+            return true;
+        }
+    }
     else if (!repackFits(top, repackCount))
         refuse(refusal, Vu1Refusals::Reason::RepackRange);
     else if (resumeIndex < 0 || resumeIndex >= static_cast<int32_t>(kMaxListQwords))
@@ -3827,8 +4317,12 @@ bool vu1native_socom2_entry_0x33c8(VU1Interpreter &vu, uint64_t /*budgetEnd*/)
     else if (isNativeRun(c, top, refusal, static_cast<uint32_t>(resumeIndex)))
     {
         // No handler clamp may fire after the repack has stored: the handler-side ceilings (lowered only by the
-        // test knobs) are checked here, whole-program, against the header the scan read. 0x66, 0x08 and 0x40 --
-        // all proveResumedWrites admits -- loop on these two counts and nothing else.
+        // test knobs) are checked here, whole-program, against the header the scan read. 0x66, 0x06, 0x08, 0x10, 0x18,
+        // 0x28, 0x40 and 0x54 -- all proveResumedWrites admits -- loop on these two counts and nothing else (0x10's,
+        // 0x54's and 0x18's clamps, at 0x0f90, 0x05e0 and 0x1458, are TOP+2.z against vertexCeiling(), as 0x08's;
+        // 0x28's, at 0x17d0, is TOP+2.w against triangleCeiling(), as 0x40's and 0x02's at 0x1f78). The loop
+        // family's vi10 clamps run at kClipperOutputBound here, which the clipper cannot exceed, and a lowered test
+        // clip ceiling is refused whole in proveResumedWrites.
         if (c.loadWord(top + 2, 2) > vertexCeiling())
             refuse(refusal, Vu1Refusals::Reason::HeaderVertices);
         else if (c.loadWord(top + 2, 3) > triangleCeiling())
@@ -3841,6 +4335,7 @@ bool vu1native_socom2_entry_0x33c8(VU1Interpreter &vu, uint64_t /*budgetEnd*/)
     {
         if (Vu1Refusals::enabled())
             Vu1Refusals::note(entryPc, refusal.reason, refusal.command);
+        Vu1Refusals::rememberWhole(entryPc, refusal); // PS2X_VU1_DUMP_REFUSED: the state is still the entry's
         return false; // whole-program hand-back: pc is still 0x33c8 and nothing has been touched
     }
 
