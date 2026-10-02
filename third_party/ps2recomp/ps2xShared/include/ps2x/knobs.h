@@ -132,6 +132,7 @@
     X("PS2X_JALR_TRACE", Dev, Spec, "", "0xSRC[,...]: log the resolved target of indirect calls issued from these pcs.") \
     X("PS2X_LAUNCHER_API_BASE", Dev, Text, "https://socomunzipped.com", "Launcher tests only: a loopback base URL for the bug-report and stats calls.") \
     X("PS2X_LAUNCHER_PATCH_BASE", Dev, Text, "http://patch.psrewired.com", "Launcher tests only: a loopback base URL for the r0004 package download (#71).") \
+    X("PS2X_LAUNCHER_PCSX2_API", Dev, Text, "https://api.github.com/repos/PCSX2/pcsx2/releases/latest", "Launcher tests only: a loopback URL for the PCSX2 release JSON that INSTALL reads (S18 T4).") \
     X("PS2X_LAUNCHER_SHOT", Dev, Path, "", "Launcher: after 120 frames save the real window to this PNG and quit.") \
     X("PS2X_LOD_SCALE", Dev, Float, "0", "Experiment: force both LOD scale floats of the camera (writes guest memory).") \
     X("PS2X_MC_DIR", Shipping, Path, "", "Memory-card folder for slot 0; unset = mc0 beside the ELF.") /* read: ps2xRuntime/src/main.cpp:main ps2xRuntime/src/lib/ps2_runtime.cpp:setIoPaths ps2xRuntime/src/lib/ps2_runtime.cpp:configureIoPathsFromElf */ \

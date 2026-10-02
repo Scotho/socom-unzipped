@@ -18,6 +18,9 @@
 //   socom_unzipped_launcher.exe --server-status                  print the hosted server's status line, no window
 //   socom_unzipped_launcher.exe --fetch-patch <dest> <bytes> <sha256>   download the r0004 package and check it,
 //                                                                no window (loopback tests only until R2: R293)
+//   socom_unzipped_launcher.exe --install-pcsx2 <dir>           Sprint 18 T4: INSTALL without the window -- the official
+//                                                                PCSX2 release, verified, extracted into <dir>/pcsx2/
+//   socom_unzipped_launcher.exe --pcsx2-status <exe>            the PCSX2 version line, data root and BIOS folder, no window
 //
 // This file is setup, the loop and the page dispatch. Everything drawn lives in src/ui/.
 #include "launcher/bug_report.h"
@@ -28,6 +31,8 @@
 #include "launcher/menu_sounds.h"
 #include "launcher/mic_devices.h"
 #include "launcher/patch_fetch.h"
+#include "launcher/pcsx2_files.h"     // Sprint 18 T4: --pcsx2-status reads PCSX2's data root
+#include "launcher/pcsx2_install.h"   // Sprint 18 T4: --install-pcsx2
 #include "launcher/personas.h"   // Sprint 16 L1b (#73): the ledgers beside the cards
 #include "launcher/sha256.h"
 #include "ps2x/app_icon_embedded.h"   // Sprint 10 Q4: the window icon both executables wear
@@ -489,6 +494,166 @@ namespace
             return 2;
         }
         std::printf("FETCHED %llu bytes, sha256 %s\n", static_cast<unsigned long long>(got.bytes), verdict.sha256.c_str());
+        return 0;
+    }
+
+    // --install-pcsx2 <dir>: Sprint 18 T4 (R341), INSTALL without the window, for tools_py/tests/
+    // test_launcher_pcsx2_install.py (against a loopback stand-in release) and for T5's button to call the same
+    // steps: the latest-release JSON -> the -windows-x64-Qt.7z asset -> the download (redirects only github.com ->
+    // *.githubusercontent.com) -> its size and the API's sha256 (patchfetch::verifyPackage) -> the system tar.exe
+    // into <dir>/pcsx2/ -> portable.txt and the version marker. Every refusal is one sentence after "NOT INSTALLED.",
+    // exit 1, and leaves nothing of PCSX2 half-written: the archive and its .part are deleted, and the pcsx2 folder
+    // is removed when INSTALL made it (an existing one keeps its files).
+    int installPcsx2Headless(const fs::path &home)
+    {
+        namespace pi = launcher::pcsx2install;
+        namespace pf = launcher::patchfetch;
+        const char *userAgent = "SOCOM-Unzipped-Launcher/1.0";   // httpRequest's own; GitHub's API requires one
+        const std::string api = pi::releasesApi(ps2x::knob(pi::kReleasesApiEnv));
+        std::printf("asking %s for the latest PCSX2 release\n", api.c_str());
+        std::fflush(stdout);
+        const win32glue::HttpResult answer = win32glue::httpRequest("GET", api, "", 20000);
+        if (answer.status == 0)
+        {
+            std::printf("NOT INSTALLED. The release query failed: %s\n", answer.error.c_str());
+            return 1;
+        }
+        pi::Release release;
+        std::string why;
+        if (!pi::parseLatestRelease(answer.body, release, why))
+        {
+            // An error body names its own reason (the API's "message": a rate limit); the status says the rest.
+            std::printf("NOT INSTALLED. %s%s\n", why.c_str(),
+                        answer.status != 200 ? (" (HTTP " + std::to_string(answer.status) + ")").c_str() : "");
+            return 1;
+        }
+        if (answer.status != 200)
+        {
+            std::printf("NOT INSTALLED. GitHub answered HTTP %d to the release query\n", answer.status);
+            return 1;
+        }
+
+        const fs::path target = pi::installDir(home);
+        const fs::path archive = target / "pcsx2.7z.new";
+        std::error_code ec;
+        const bool existed = fs::exists(target, ec);
+        auto refuse = [&](const std::string &sentence)
+        {
+            std::error_code rm;
+            fs::remove(archive, rm);
+            fs::remove(win32glue::downloadTempPath(archive), rm);
+            if (!existed)
+                fs::remove_all(target, rm);
+            std::printf("NOT INSTALLED. %s\n", sentence.c_str());
+            return 1;
+        };
+        fs::create_directories(target, ec);
+        if (ec)
+            return refuse("could not create " + target.string() + " (" + ec.message() + ")");
+
+        std::printf("downloading %s (%llu bytes) from %s\n", release.assetName.c_str(),
+                    static_cast<unsigned long long>(release.bytes), release.url.c_str());
+        std::fflush(stdout);
+        int lastPercent = -1;
+        const auto progress = [&](uint64_t soFar, int64_t contentLength)
+        {
+            const uint64_t total = contentLength > 0 ? static_cast<uint64_t>(contentLength) : release.bytes;
+            if (total == 0)
+                return;
+            const int percent = static_cast<int>(std::min<uint64_t>(100, soFar * 100 / total));
+            if (percent / 5 > lastPercent / 5 || lastPercent < 0)
+            {
+                lastPercent = percent;
+                std::printf("  %d%%\n", percent - percent % 5);
+                std::fflush(stdout);
+            }
+        };
+        const win32glue::DownloadResult got =
+            win32glue::httpDownloadFollowing(release.url, archive, userAgent, 600000, progress, pi::redirectAllowed);
+        if (!got.error.empty())
+            return refuse("The download failed: " + got.error);
+        const pf::Verdict verdict = pf::verifyPackage(archive, release.bytes, release.sha256);   // a refusal deletes it
+        if (!verdict.ok)
+            return refuse("The download is not the release GitHub described: " + verdict.reason);
+
+        // What was there before the extract, so a top-level folder the archive brings can be told apart.
+        std::vector<fs::path> before;
+        for (fs::directory_iterator it(target, ec), end; !ec && it != end; it.increment(ec))
+            before.push_back(it->path().filename());
+        const char *systemRoot = std::getenv("SystemRoot");
+        const fs::path extractLog = target / "extract.log";
+        std::string runError;
+        const int rc = win32glue::runAndWait(pi::extractArgv(systemRoot != nullptr ? systemRoot : "", archive, target),
+                                             extractLog, 300000, runError);
+        if (rc != 0)
+        {
+            // The log outlives the folder a refusal removes: it is kept beside the launcher.
+            std::error_code cp;
+            fs::copy_file(extractLog, home / "pcsx2_extract.log", fs::copy_options::overwrite_existing, cp);
+            return refuse(rc < 0 ? runError : "tar.exe exited " + std::to_string(rc) + "; see pcsx2_extract.log");
+        }
+        fs::remove(extractLog, ec);
+        fs::remove(archive, ec);
+        if (!fs::is_regular_file(target / pi::kExeName, ec))
+        {
+            // The release has carried its files at the top level; should one ever wrap them in a folder, the one
+            // new folder holding pcsx2-qt.exe is moved up.
+            for (fs::directory_iterator it(target, ec), end; !ec && it != end; it.increment(ec))
+            {
+                const fs::path sub = it->path();
+                if (std::find(before.begin(), before.end(), sub.filename()) != before.end() || !it->is_directory(ec) ||
+                    !fs::is_regular_file(sub / pi::kExeName, ec))
+                    continue;
+                std::vector<fs::path> children;
+                for (fs::directory_iterator c(sub, ec), cend; !ec && c != cend; c.increment(ec))
+                    children.push_back(c->path());
+                for (const fs::path &child : children)
+                {
+                    std::error_code mv;
+                    fs::remove_all(target / child.filename(), mv);
+                    fs::rename(child, target / child.filename(), mv);
+                }
+                fs::remove_all(sub, ec);
+                break;
+            }
+        }
+        if (!fs::is_regular_file(target / pi::kExeName, ec))
+            return refuse(std::string("the archive held no ") + pi::kExeName);
+        {
+            if (!fs::exists(target / "portable.txt", ec))
+                std::ofstream(target / "portable.txt", std::ios::binary);
+            std::ofstream marker(target / pi::kVersionMarker, std::ios::binary | std::ios::trunc);
+            marker << release.tag << "\n";
+            if (!marker)
+                return refuse(std::string("could not write ") + pi::kVersionMarker);
+        }
+        std::printf("installed PCSX2 %s at %s\n", release.tag.c_str(), target.string().c_str());
+        return 0;
+    }
+
+    // --pcsx2-status <exe>: the version line (the marker INSTALL wrote, or "your own copy"), PCSX2's data root (beside
+    // a portable exe, else <Documents>/PCSX2 -- read here as %USERPROFILE%\Documents) and its BIOS folder's file count.
+    int pcsx2StatusHeadless(const fs::path &exe)
+    {
+        namespace pi = launcher::pcsx2install;
+        std::error_code ec;
+        if (!fs::is_regular_file(exe, ec))
+        {
+            std::printf("no PCSX2 at %s\n", exe.string().c_str());
+            return 1;
+        }
+        const fs::path exeDir = exe.parent_path();
+        std::printf("%s\n", pi::versionLine(exe.string(), readText(exeDir / pi::kVersionMarker)).c_str());
+        const bool portable = fs::exists(exeDir / "portable.txt", ec) || fs::exists(exeDir / "portable.ini", ec);
+        const char *profile = std::getenv("USERPROFILE");
+        const fs::path documents = profile != nullptr ? fs::path(profile) / "Documents" : fs::path();
+        const fs::path root = launcher::pcsx2files::dataRoot(exeDir, portable, documents);
+        std::printf("data root: %s%s\n", root.string().c_str(), portable ? " (portable)" : "");
+        const fs::path bios = root / "bios";
+        int files = 0;
+        for (fs::directory_iterator it(bios, ec), end; !ec && it != end; it.increment(ec))
+            files += it->is_regular_file(ec) ? 1 : 0;
+        std::printf("BIOS folder: %s (%d file%s)\n", bios.string().c_str(), files, files == 1 ? "" : "s");
         return 0;
     }
 
@@ -1118,6 +1283,10 @@ int main(int argc, char **argv)
         return createPersonaHeadless(argv[2], argv[3], argc > 4 ? argv[4] : nullptr, argc > 5 ? fs::path(argv[5]) : dir);
     if (argc > 4 && std::strcmp(argv[1], "--fetch-patch") == 0)
         return fetchPatchHeadless(fs::path(argv[2]), argv[3], argv[4]);
+    if (argc > 2 && std::strcmp(argv[1], "--install-pcsx2") == 0)
+        return installPcsx2Headless(fs::path(argv[2]));
+    if (argc > 2 && std::strcmp(argv[1], "--pcsx2-status") == 0)
+        return pcsx2StatusHeadless(fs::path(argv[2]));
     if (argc > 1 && std::strcmp(argv[1], "--server-status") == 0)
     {
         const std::string line = br::statusLine(fetchStats());

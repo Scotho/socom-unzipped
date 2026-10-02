@@ -41,6 +41,7 @@ void register_bug_report_tests();
 void register_patch_fetch_tests();
 void register_pcsx2_config_tests();   // Sprint 18 T2
 void register_pcsx2_files_tests();    // Sprint 18 T3
+void register_pcsx2_install_tests();  // Sprint 18 T4
 void register_mapping_tests();
 void register_socom2_osk_prefill_tests();
 void register_knobs_tests();
@@ -140,6 +141,7 @@ int main()
     register_patch_fetch_tests();
     register_pcsx2_config_tests();
     register_pcsx2_files_tests();
+    register_pcsx2_install_tests();
     register_mapping_tests();
     register_socom2_osk_prefill_tests();
     register_knobs_tests();

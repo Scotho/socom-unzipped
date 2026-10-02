@@ -27,10 +27,14 @@
 #include <string>
 #include <vector>
 
+#include <arpa/inet.h>  // Sprint 18 T4: resolveIpv4
 #include <dlfcn.h>      // Sprint 10 Q4: libX11 by hand, for the window switch
 #include <fcntl.h>
+#include <netdb.h>      // Sprint 18 T4: resolveIpv4 (getaddrinfo)
+#include <netinet/in.h>
 #include <signal.h>
 #include <spawn.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -651,6 +655,15 @@ namespace win32glue
     DownloadResult httpDownload(const std::string &url, const std::filesystem::path &dest, const std::string &userAgent,
                                 int timeoutMs, const DownloadProgress &progress)
     {
+        return httpDownloadFollowing(url, dest, userAgent, timeoutMs, progress, nullptr);
+    }
+
+    // Sprint 18 T4: with a policy, curl follows on its own (--location --max-redirs 3, https only after the first
+    // hop) -- the policy itself cannot be put to each hop through curl, which the header says; the Linux client
+    // is out of scope (spec 2.4). Without one, exactly the Sprint 16 refusal above.
+    DownloadResult httpDownloadFollowing(const std::string &url, const std::filesystem::path &dest, const std::string &userAgent,
+                                         int timeoutMs, const DownloadProgress &progress, const RedirectPolicy &follow)
+    {
         DownloadResult out;
         if (url.rfind("https://", 0) != 0 && url.rfind("http://", 0) != 0)
         {
@@ -675,7 +688,10 @@ namespace win32glue
         const int seconds = timeoutMs > 0 ? (timeoutMs + 999) / 1000 : 300;
         std::vector<std::string> args = {"curl", "--silent", "--show-error", "--fail", "--max-time", std::to_string(seconds),
                                          "--proto", "=http,https", "--user-agent", userAgent,
-                                         "--output", temp.string(), "--write-out", "%{http_code}", "--", url};
+                                         "--output", temp.string(), "--write-out", "%{http_code}"};
+        if (follow)
+            args.insert(args.end(), {"--location", "--max-redirs", "3", "--proto-redir", "=https"});
+        args.insert(args.end(), {"--", url});
         std::vector<char *> argv;
         for (std::string &a : args)
             argv.push_back(a.data());
@@ -732,6 +748,8 @@ namespace win32glue
             fs::remove(temp, ec);
             if (exitCode == 0 && out.status >= 300 && out.status < 400)   // no --location: a 3xx is never followed
                 out.error = redirectRefusal(out.status);
+            else if (follow && (exitCode == 47 || exitCode == 1))   // too many redirects, or a redirect off https
+                out.error = "curl refused the redirect (exit " + std::to_string(exitCode) + "), HTTP " + std::to_string(out.status);
             else if (out.status >= 400 || exitCode == 22)
                 out.error = "the server answered HTTP " + std::to_string(out.status);
             else if (exitCode == 18)
@@ -758,6 +776,156 @@ namespace win32glue
         if (progress)
             progress(out.bytes, static_cast<int64_t>(out.bytes));
         return out;
+    }
+
+    // ---- Sprint 18 T4: INSTALL's glue on POSIX -- the same four signatures; PCSX2's install is Windows-only ----
+    int runAndWait(const std::vector<std::string> &argvIn, const std::filesystem::path &log, int timeoutMs, std::string &error)
+    {
+        error.clear();
+        if (argvIn.empty() || argvIn[0].empty())
+        {
+            error = "nothing to run";
+            return -1;
+        }
+        std::error_code ec;
+        if (log.has_parent_path())
+            fs::create_directories(log.parent_path(), ec);
+        const int logFd = ::open(log.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+        if (logFd < 0)
+        {
+            error = "cannot create " + log.string() + " (" + std::string(std::strerror(errno)) + ")";
+            return -1;
+        }
+        std::vector<std::string> args = argvIn;
+        std::vector<char *> argv;
+        for (std::string &a : args)
+            argv.push_back(a.data());
+        argv.push_back(nullptr);
+        posix_spawn_file_actions_t actions;
+        ::posix_spawn_file_actions_init(&actions);
+        ::posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
+        ::posix_spawn_file_actions_adddup2(&actions, logFd, STDOUT_FILENO);
+        ::posix_spawn_file_actions_adddup2(&actions, logFd, STDERR_FILENO);
+        pid_t child = 0;
+        const int rc = ::posix_spawnp(&child, argv[0], &actions, nullptr, argv.data(), environ);
+        ::posix_spawn_file_actions_destroy(&actions);
+        ::close(logFd);
+        const std::string name = fs::path(argvIn[0]).filename().string();
+        if (rc != 0)
+        {
+            error = name + " could not be started (" + std::string(std::strerror(rc)) + ")";
+            return -1;
+        }
+        int status = 0;
+        long waited = 0;
+        for (;;)
+        {
+            const pid_t done = ::waitpid(child, &status, WNOHANG);
+            if (done == child)
+                break;
+            if (done < 0 && errno != EINTR)
+            {
+                error = name + " could not be waited for (" + std::string(std::strerror(errno)) + ")";
+                return -1;
+            }
+            if (timeoutMs > 0 && waited >= timeoutMs)
+            {
+                ::kill(child, SIGKILL);
+                while (::waitpid(child, &status, 0) < 0 && errno == EINTR)
+                {
+                }
+                error = name + " did not finish within " + std::to_string(timeoutMs / 1000) + " s and was stopped";
+                return -1;
+            }
+            sleepMs(20);
+            waited += 20;
+        }
+        if (WIFEXITED(status))
+            return WEXITSTATUS(status);
+        error = name + " was ended by signal " + std::to_string(WIFSIGNALED(status) ? WTERMSIG(status) : 0);
+        return -1;
+    }
+
+    std::string resolveIpv4(const std::string &host)
+    {
+        if (host.empty())
+            return {};
+        addrinfo hints{};
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+        addrinfo *res = nullptr;
+        if (::getaddrinfo(host.c_str(), nullptr, &hints, &res) != 0 || res == nullptr)
+            return {};
+        std::string out;
+        for (addrinfo *a = res; a != nullptr && out.empty(); a = a->ai_next)
+        {
+            if (a->ai_family != AF_INET || a->ai_addr == nullptr)
+                continue;
+            char buf[INET_ADDRSTRLEN] = {};
+            const auto *in = reinterpret_cast<const sockaddr_in *>(a->ai_addr);
+            if (::inet_ntop(AF_INET, &in->sin_addr, buf, sizeof(buf)) != nullptr)
+                out = buf;
+        }
+        ::freeaddrinfo(res);
+        return out;
+    }
+
+    // Not on this platform: the adapter list is PCSX2's Windows EthDevice (a {GUID}); the Linux client is out of
+    // scope (spec 2.4).
+    std::vector<launcher::pcsx2install::Adapter> listAdapters()
+    {
+        return {};
+    }
+
+    bool startProcess(const std::string &exe, const std::vector<std::string> &argsIn, const std::string &workingDir,
+                      const std::string &logDir, GameProcess &out)
+    {
+        out.error.clear();
+        std::error_code ec;
+        if (exe.empty() || !fs::is_regular_file(fs::path(exe), ec))
+        {
+            out.error = (exe.empty() ? std::string("no program") : fs::path(exe).filename().string()) + " is not there";
+            return false;
+        }
+        fs::create_directories(fs::path(logDir), ec);
+        out.logPath = (fs::path(logDir) / ("pcsx2_" + stamp() + ".log")).string();
+        const int logFd = ::open(out.logPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+        if (logFd < 0)
+        {
+            out.error = "cannot create the log file (" + std::string(std::strerror(errno)) + ")";
+            return false;
+        }
+        std::vector<std::string> args;
+        args.push_back(exe);
+        args.insert(args.end(), argsIn.begin(), argsIn.end());
+        std::vector<char *> argv;
+        for (std::string &a : args)
+            argv.push_back(a.data());
+        argv.push_back(nullptr);
+        const std::string cwd = workingDir.empty() ? fs::path(exe).parent_path().string() : workingDir;
+        posix_spawn_file_actions_t actions;
+        ::posix_spawn_file_actions_init(&actions);
+        ::posix_spawn_file_actions_adddup2(&actions, logFd, STDOUT_FILENO);
+        ::posix_spawn_file_actions_adddup2(&actions, logFd, STDERR_FILENO);
+        if (!cwd.empty())
+            ::posix_spawn_file_actions_addchdir_np(&actions, cwd.c_str());
+        pid_t child = 0;
+        const int rc = ::posix_spawn(&child, exe.c_str(), &actions, nullptr, argv.data(), environ);
+        ::posix_spawn_file_actions_destroy(&actions);
+        if (rc != 0)
+        {
+            ::close(logFd);
+            out.error = "posix_spawn failed (" + std::string(std::strerror(rc)) + ")";
+            return false;
+        }
+        out.pid = static_cast<int>(child);
+        out.logFd = logFd;
+        out.exited = false;
+        out.status = 0;
+        // main.cpp reads `process` as "a process was started"; on POSIX the pid carries that, as startGame's does.
+        out.process = reinterpret_cast<void *>(static_cast<std::intptr_t>(child));
+        out.log = reinterpret_cast<void *>(static_cast<std::intptr_t>(logFd + 1));
+        return true;
     }
 }
 

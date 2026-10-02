@@ -3,11 +3,13 @@
 // DrawText): the executable's directory, the file dialog, starting socom2.exe with an environment and a log,
 // opening a folder in Explorer.
 #include "launcher/launcher_config.h"
+#include "launcher/pcsx2_install.h"   // Sprint 18 T4: listAdapters answers pcsx2install::Adapter
 
 #include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <string>
+#include <vector>
 
 namespace win32glue
 {
@@ -121,6 +123,31 @@ namespace win32glue
     {
         return "the server answered HTTP " + std::to_string(status) + ": redirects are refused";
     }
+    // Sprint 18 T4 (R341): the PCSX2 download follows redirects, each one decided by `follow` (from, to) -- for
+    // INSTALL, launcher::pcsx2install::redirectAllowed: github.com to a *.githubusercontent.com host, https, one hop.
+    // At most 3 hops; a 301/302/303/307/308 the policy refuses (or a 4th) fails with `error` naming it, and nothing
+    // is written. A null policy refuses every 3xx exactly as httpDownload does (httpDownload IS this with a null
+    // policy). Windows: WinHTTP with its own redirects disabled, each hop a fresh request this code checks. POSIX:
+    // curl --location --max-redirs 3 --proto-redir =https when `follow` is non-null -- curl follows on its own, so
+    // the policy cannot be applied per hop there (the Linux client is out of scope, spec 2.4); null = no --location.
+    using RedirectPolicy = std::function<bool(const std::string &from, const std::string &to)>;
+    DownloadResult httpDownloadFollowing(const std::string &url, const std::filesystem::path &dest, const std::string &userAgent,
+                                         int timeoutMs, const DownloadProgress &progress, const RedirectPolicy &follow);
+
+    // argv[0] run with argv[1..], no shell, stdout+stderr to `log` (created or truncated), waited at most timeoutMs.
+    // The exit code; -1 and `error` set when it could not start or timed out (then killed). Windows: CreateProcessW
+    // with each argument quoted as CommandLineToArgvW reads it, no window. POSIX: posix_spawnp.
+    int runAndWait(const std::vector<std::string> &argv, const std::filesystem::path &log, int timeoutMs, std::string &error);
+    // The first IPv4 address `host` resolves to, dotted; "" when it does not resolve (getaddrinfo, AF_INET).
+    std::string resolveIpv4(const std::string &host);
+    // GetAdaptersAddresses: the GUID as PCSX2 names it ("{...}", its EthDevice), the friendly name, a gateway present;
+    // loopback and tunnel adapters skipped. POSIX: none ("not on this platform": PCSX2's Windows client only).
+    std::vector<launcher::pcsx2install::Adapter> listAdapters();
+    // The generalised startGame: `exe` with `args`, in `workingDir`, inheriting the environment, stdout+stderr to
+    // <logDir>/pcsx2_<stamp>.log (logDir created). False with out.error set when it cannot.
+    bool startProcess(const std::string &exe, const std::vector<std::string> &args, const std::string &workingDir,
+                      const std::string &logDir, GameProcess &out);
+
     // "<dest>.part", beside dest: the name the body is written under until it is complete.
     inline std::filesystem::path downloadTempPath(const std::filesystem::path &dest)
     {

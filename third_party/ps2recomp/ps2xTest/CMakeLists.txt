@@ -82,6 +82,7 @@ add_library(ps2_test_lib STATIC
     src/patch_fetch_tests.cpp   # Sprint 16 R2a (#71)
     src/pcsx2_config_tests.cpp   # Sprint 18 T2: the client mode and config.pcsx2.json
     src/pcsx2_files_tests.cpp    # Sprint 18 T3: the ini merge, the embedded pnach, the data root, the DNS pick
+    src/pcsx2_install_tests.cpp  # Sprint 18 T4: INSTALL's pure half -- the release parse, redirects, the adapter pick
     src/mapping_tests.cpp
     src/socom2_osk_prefill_tests.cpp
     src/knobs_tests.cpp
