@@ -220,5 +220,47 @@ class ClientBKeepsItsPortShift(unittest.TestCase):
             self.assertNotIn(PORT_SITE_R0004, written)
 
 
+# Sprint 18 T3: the launcher embeds MASTER_A at configure time (ps2xShared/CMakeLists.txt, pcsx2_pnach_embedded.h.in)
+# and writes it into the player's PCSX2 patches/ folder. The embed is the master's tracked bytes: git stores LF, a
+# Windows checkout may hold CRLF, and the compiler reads a raw string's line endings as LF either way, so CMake writes
+# the LF form and this compares against the LF form.
+SHARED = os.path.join(ROOT, "third_party", "ps2recomp", "ps2xShared")
+EMBED_TEMPLATE = os.path.join(SHARED, "pcsx2_pnach_embedded.h.in")
+EMBED_GENERATED = os.path.join(ROOT, "third_party", "ps2recomp", "build-clang", "ps2xShared", "generated", "launcher",
+                               "pcsx2_pnach_embedded.h")
+RAW_OPEN, RAW_CLOSE = b'R"pnach(', b')pnach"'
+
+
+def master_lf():
+    with open(MASTER_A, "rb") as fh:
+        return fh.read().replace(b"\r\n", b"\n")
+
+
+class TheLauncherEmbedsTheGuardedMaster(unittest.TestCase):
+    def test_the_master_fits_the_raw_string_and_configure_file(self):
+        data = master_lf()
+        self.assertNotIn(RAW_CLOSE, data, "the master would close the raw string early")
+        self.assertNotIn(b"@", data, "configure_file @ONLY would substitute inside the master")
+        self.assertIn(b"E00327BD", data, "the embed carries the guarded bypass (#112)")
+
+    def test_the_template_and_the_cmake_embed_the_master(self):
+        with open(EMBED_TEMPLATE, "rb") as fh:
+            self.assertIn(RAW_OPEN + b"@PNACH_MASTER@" + RAW_CLOSE, fh.read())
+        with open(os.path.join(SHARED, "CMakeLists.txt"), encoding="utf-8") as fh:
+            cmake = fh.read()
+        self.assertIn("scripts/parity/pcsx2/0F6FC6CF.pnach", cmake)
+        self.assertIn("pcsx2_pnach_embedded.h.in", cmake)
+        self.assertIn("CMAKE_CONFIGURE_DEPENDS", cmake, "an edited master must reconfigure")
+
+    def test_the_generated_header_holds_the_master_bytes(self):
+        if not os.path.isfile(EMBED_GENERATED):
+            self.skipTest("no configured build-clang/ (./build.sh runtime generates %s)" % os.path.basename(EMBED_GENERATED))
+        with open(EMBED_GENERATED, "rb") as fh:
+            header = fh.read()
+        start = header.index(RAW_OPEN) + len(RAW_OPEN)
+        end = header.index(RAW_CLOSE, start)
+        self.assertEqual(header[start:end], master_lf())
+
+
 if __name__ == "__main__":
     unittest.main()
