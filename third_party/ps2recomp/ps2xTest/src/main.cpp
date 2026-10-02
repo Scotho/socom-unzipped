@@ -39,6 +39,7 @@ void register_zip_store_tests();
 void register_diagnostics_tests();
 void register_bug_report_tests();
 void register_patch_fetch_tests();
+void register_pcsx2_config_tests();   // Sprint 18 T2
 void register_mapping_tests();
 void register_socom2_osk_prefill_tests();
 void register_knobs_tests();
@@ -136,6 +137,7 @@ int main()
     register_diagnostics_tests();
     register_bug_report_tests();
     register_patch_fetch_tests();
+    register_pcsx2_config_tests();
     register_mapping_tests();
     register_socom2_osk_prefill_tests();
     register_knobs_tests();
