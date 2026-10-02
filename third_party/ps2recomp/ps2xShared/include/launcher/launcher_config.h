@@ -55,9 +55,12 @@ namespace launcher
     };
     constexpr size_t kGameRevisionCount = sizeof(kGameRevisions) / sizeof(kGameRevisions[0]);
     static_assert(kGameRevisionCount <= 32, "the installed-revision mask is a uint32_t: one bit per table row");
-    // What the greyed cell says when the build it names is not installed. The ONLINE page already drew this
-    // sentence on the community preset's row; it is one string now, so the two places cannot drift apart.
+    // What the greyed cell says when the build it names is not installed. The ONLINE page drew this sentence on
+    // the community preset's row too until Sprint 18 T2 gave that row its own note (kPresetComingSoonNote, below).
     constexpr const char *kRevisionMissingNote = "needs the r0004 game update -- planned";
+    // Sprint 18 T2 (R340 = R-B): what the greyed community preset row says, in both clients' views. Its own string,
+    // not the revision cell's: the server is "coming soon" whatever game version is installed.
+    constexpr const char *kPresetComingSoonNote = "coming soon";
 
     const GameRevision *findGameRevision(const std::string &id);
     // The ROW `id` names, or kGameRevisionCount when it is not one of ours.
@@ -289,6 +292,11 @@ namespace launcher
     // address until its server exists -- the community one still does, because PSRewired runs game revision
     // r0004 and this client cannot play that yet. Custom is always available: the player types the address.
     bool presetAvailable(const ServerPreset &preset);
+
+    // Sprint 18 T2: a stored serverPreset as both configs read it (config.json and config.pcsx2.json -- one rule,
+    // two callers). A retired id is read as the preset it meant (kRetiredPresets); an unknown id is "custom", so the
+    // typed address is kept; a known but unplayable one heals to the server that exists.
+    std::string normalizeServerPreset(const std::string &value);
 
     // The preset with that id, or nullptr when the id is not one of ours.
     const ServerPreset *findServerPreset(const std::string &id);

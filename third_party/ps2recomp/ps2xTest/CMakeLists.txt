@@ -80,6 +80,7 @@ add_library(ps2_test_lib STATIC
     src/diagnostics_tests.cpp
     src/bug_report_tests.cpp
     src/patch_fetch_tests.cpp   # Sprint 16 R2a (#71)
+    src/pcsx2_config_tests.cpp   # Sprint 18 T2: the client mode and config.pcsx2.json
     src/mapping_tests.cpp
     src/socom2_osk_prefill_tests.cpp
     src/knobs_tests.cpp

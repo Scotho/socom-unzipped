@@ -184,6 +184,21 @@ namespace launcher
         }
     }
 
+    std::string normalizeServerPreset(const std::string &value)
+    {
+        // An unknown id means an older or hand-edited file: keep the typed address. A KNOWN but unplayable one
+        // heals to the server that exists, so the picker opens on it. A retired id (a preset a shipped build
+        // wrote and this one no longer offers) is read as the preset it meant, so a player keeps their server
+        // across the change.
+        std::string v = value;
+        for (const RetiredPreset &r : kRetiredPresets)
+            if (v == r.id)
+                v = r.now;
+        const ServerPreset *saved = findServerPreset(v);
+        return saved == nullptr ? std::string("custom")
+                                : (presetAvailable(*saved) ? v : std::string(playableFallback().id));
+    }
+
     std::string effectiveServer(const Config &c)
     {
         const ServerPreset *preset = findServerPreset(c.serverPreset);
@@ -314,16 +329,7 @@ namespace launcher
                     // a preset we do not know (an older or newer build's) falls back to the typed address
                     else if (key == "serverPreset")
                     {
-                        // An unknown id means an older or hand-edited file: keep the typed address. A KNOWN
-                        // but unplayable one heals to the server that exists, so the picker opens on it.
-                        // A retired id (a preset a shipped build wrote and this one no longer offers) is
-                        // read as the preset it meant, so a player keeps their server across the change.
-                        for (const RetiredPreset &r : kRetiredPresets)
-                            if (v == r.id)
-                                v = r.now;
-                        const ServerPreset *saved = findServerPreset(v);
-                        c.serverPreset = saved == nullptr ? std::string("custom")
-                                                          : (presetAvailable(*saved) ? v : std::string(playableFallback().id));
+                        c.serverPreset = normalizeServerPreset(v);   // Sprint 18 T2: shared with config.pcsx2.json
                         sawPreset = true;
                     }
                     else if (key == "micDevice") c.micDevice = v;

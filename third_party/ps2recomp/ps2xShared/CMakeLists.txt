@@ -6,6 +6,8 @@ add_library(ps2x_shared STATIC
     src/iso9660.cpp
     src/sha256.cpp
     src/launcher_config.cpp
+    src/client_mode.cpp     # Sprint 18 T2 (R-A): launcher.json, the NATIVE/PCSX2 mode
+    src/pcsx2_config.cpp    # Sprint 18 T2 (R-A): config.pcsx2.json, the PCSX2 client's own settings
     src/preflight.cpp
     src/exe_dir.cpp
     src/bare_run.cpp

@@ -57,13 +57,13 @@ namespace ui
             const Rect r = available ? rectOf(nodes, id) : onlinePresetRow(app.frame.window, i);
             if (!available)
             {
-                // Drawn, but not on offer: the community server runs a game revision this client cannot
-                // play, and a preset the player cannot use must say so rather than fail at launch.
+                // Drawn, but not on offer: the community server is not playable yet, and a preset the player
+                // cannot use must say so rather than fail at launch -- "coming soon" (Sprint 18 T2, R-B).
                 const Rgba off = theme::mix(theme::dim, theme::ground, 0.45f);
                 strokeRect(ctx, Rect{r.x + 6.0f, r.cy() - 5.0f, 10.0f, 10.0f}, off, 2.0f);
                 text(ctx, launcher::kServerPresets[i].label, Vec2{r.x + 34.0f, r.cy() - metrics::bodySize * 0.58f},
                      metrics::bodySize - 1.0f, off);
-                textRightIn(ctx, launcher::kRevisionMissingNote, Rect{r.x, r.y, r.w - 12.0f, r.h},
+                textRightIn(ctx, launcher::kPresetComingSoonNote, Rect{r.x, r.y, r.w - 12.0f, r.h},
                             metrics::captionSize - 1.0f, off);
                 continue;
             }
