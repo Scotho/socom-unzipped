@@ -1267,6 +1267,13 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
 
     m_ioRegisters[address] = value;
 
+    // D_ENABLEW (0x1000F590) and D_ENABLER (0x1000F520) are the write and read ports of the same DMAC suspend
+    // register; PCSX2's dmacWrite32 stores both (upstream PS2Recomp issue #257).
+    if (address == 0x1000F590u)
+    {
+        m_ioRegisters[0x1000F520u] = value;
+    }
+
     if (address >= 0x10003C00u && address < 0x10003E00u)
     {
         m_vifWriteCount.fetch_add(1, std::memory_order_relaxed);
