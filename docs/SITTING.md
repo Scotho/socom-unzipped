@@ -2,26 +2,26 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.sitting` from `docs/HUMAN_TASKS.md` (the O rows and the stamp of the sittings), the rulings `docs/RULINGS.md` shows (`tools_py.rulings.rows()`), `docs/BACKLOG.md` (the `Carried` column) and `docs/PLAYTEST.md` (its build block). Change a source and regenerate; `python -m tools_py.sitting --check` exits 1 when this file is stale.
 
-The page as of 2026-10-02, for the sitting after the one of 2026-09-27: 10 open O rows (0 answered or struck); 48 active rulings since 2026-09-27 (47 dated, 1 placed by number or home, 200 undated and unplaceable, not listed); 5 issues carried twice; the build: built.
+The page as of 2026-10-03, for the sitting after the one of 2026-09-27: 10 open O rows (0 answered or struck); 48 active rulings since 2026-09-27 (47 dated, 1 placed by number or home, 200 undated and unplaceable, not listed); 5 issues carried twice; the build: built.
 
 **How to answer.** One line per item, by number -- "O5: acceptable for v1", "R271: overturn", "#25: close" -- in the next session's prompt or as a line in the open plan's Log.
 
 ## 1. The O rows
 
-10 open, 0 answered or struck. Each stands on its default until you answer; days waited are to 2026-10-02.
+10 open, 0 answered or struck. Each stands on its default until you answer; days waited are to 2026-10-03.
 
 | O | the hand needed | the default the loop is on | first asked | days waited |
 |---|---|---|---|---|
-| O33 | Open 53/udp on the hosted box | the DNS leg waits on the rule | 2026-10-02 | 0 |
-| O22 | A second shipped binary of recompiled Sony code | it ships under R290's position | 2026-09-27 | 5 |
-| O25 | The persona viewer's full human pass | the ledger is proven by L1b's Step 0b on a real login against our box; the viewer's look, the CONNECT flow, CREATE ON CARD and the second persona are yours to… | 2026-09-28 | 4 |
-| O21 | The `ci` label | the line stays; the warning is noise; Dependabot PRs merge under R294 (#10 merged 2026-09-27) | 2026-09-27 | 5 |
-| O23 | The two outside surfaces | unposted; the wiki stays empty; the loop drafts and never publishes | 2026-09-27 | 5 |
-| O27 | A quiet hour for the slow lock suite, or the second machine | the fix stays uncommitted on its branch; #110 stands in HAZARDS | 2026-09-29 | 3 |
+| O33 | The PCSX2 door, your hands | T0/T7 wait; T8 proceeds | 2026-10-02 | 1 |
+| O22 | A second shipped binary of recompiled Sony code | it ships under R290's position | 2026-09-27 | 6 |
+| O25 | The persona viewer's full human pass | the ledger is proven by L1b's Step 0b on a real login against our box; the viewer's look, the CONNECT flow, CREATE ON CARD and the second persona are yours to… | 2026-09-28 | 5 |
+| O21 | The `ci` label | the line stays; the warning is noise; Dependabot PRs merge under R294 (#10 merged 2026-09-27) | 2026-09-27 | 6 |
+| O23 | The two outside surfaces | unposted; the wiki stays empty; the loop drafts and never publishes | 2026-09-27 | 6 |
+| O27 | A quiet hour for the slow lock suite, or the second machine | the fix stays uncommitted on its branch; #110 stands in HAZARDS | 2026-09-29 | 4 |
 | O29 | The PCSX2 client's first real round | the proof stops at this host's lobby; nothing in the loop waits on it | -- | -- |
 | O30 | The PCSX2 guide on the site | the guide lives in the repository only | -- | -- |
-| O26 | The design system's two branches | the branches stay local; the live site already runs them | 2026-09-28 | 4 |
-| O28 | socomunzipped.com after the launch fixes | the live site runs the pre-fix config until you deploy; the maps stay served | 2026-09-29 | 3 |
+| O26 | The design system's two branches | the branches stay local; the live site already runs them | 2026-09-28 | 5 |
+| O28 | socomunzipped.com after the launch fixes | the live site runs the pre-fix config until you deploy; the maps stay served | 2026-09-29 | 4 |
 
 Answered or struck since the last sitting (struck rows live in the archive, `docs/archive/HUMAN_TASKS-to-2026-09-25.md`, its "Struck rows moved from the live table" section; reopenable by number):
 
@@ -95,8 +95,8 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 The build `docs/PLAYTEST.md` names, to play and to check against:
 
 ```
-build:    2026-09-30T08:37:52Z   commit 1fd3cfdb373a (sprint-17)
+build:    2026-10-02T21:09:31Z   commit 368afa8c9e91 (sprint-17)
 archive:  socom2-portable.zip   [player]   (dist-release/portable/socom2-portable.zip)
-sha256: 12a9cfb6120a8ee09e49ba0d13f1df3fdaeb7c8de9bc3b261b6bb316b46a179c
-exe:      socom2.exe sha256: af538928edb9d0864a908317a81c5102985ebf965e3e20b659dcd599a2732ee8
+sha256: 7f99afec16e203bbccd02666a9d114f1e3c1b051a8b55dc709dcb4ad1fac776a
+exe:      socom2.exe sha256: e34a43e5eb8101afd57079a138822a59493f5495dc85521616712af158a98db9
 ```
