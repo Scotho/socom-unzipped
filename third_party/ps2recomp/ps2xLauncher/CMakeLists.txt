@@ -113,6 +113,24 @@ if(WIN32)
     # glue starts curl instead, so the Linux build links nothing new.
     # iphlpapi: Sprint 18 T4's adapter list for PCSX2 (win32glue::listAdapters, GetAdaptersAddresses).
     target_link_libraries(socom_unzipped_launcher PRIVATE comdlg32 shell32 winhttp iphlpapi)
+    # Sprint 18 T9: the exe's own icon (Explorer, shortcuts), a resource made from assets/logo/socom_unzipped.ico
+    # (scripts/make_launcher_icon.py; tools_py/tests/test_launcher_icon.py reads it back out of the built exe).
+    # With clang's GNU front end CMake already enables RC and finds llvm-mingw's windres beside the compiler; when
+    # nothing chose one, the resource compiler is taken from the compiler's own directory, as build.sh's PATH
+    # puts tools/llvm-mingw/bin first.
+    if(NOT CMAKE_RC_COMPILER)
+        get_filename_component(PS2X_COMPILER_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+        find_program(PS2X_LAUNCHER_WINDRES NAMES windres llvm-windres HINTS "${PS2X_COMPILER_DIR}")
+        if(PS2X_LAUNCHER_WINDRES)
+            set(CMAKE_RC_COMPILER "${PS2X_LAUNCHER_WINDRES}")
+        endif()
+    endif()
+    enable_language(RC)
+    target_sources(socom_unzipped_launcher PRIVATE launcher.rc)
+    # launcher.rc names the .ico relative to this directory; windres resolves it through the include path.
+    target_include_directories(socom_unzipped_launcher PRIVATE $<$<COMPILE_LANGUAGE:RC>:${CMAKE_CURRENT_SOURCE_DIR}>)
+    set_source_files_properties(launcher.rc PROPERTIES
+        OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/logo/socom_unzipped.ico")
 endif()
 if(UNIX AND NOT APPLE)
     # The portable folder keeps its non-system .so files in lib/ next to the binary.

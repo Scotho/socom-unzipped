@@ -1,0 +1,7 @@
+// Sprint 18 T9: the launcher executable's icon (Explorer, the taskbar before the window opens, shortcuts).
+// socom_unzipped.ico is the project's own crest, made by scripts/make_launcher_icon.py from
+// assets/logo/socom_unzipped_icon.png; nothing from the disc. The path resolves against this directory, which
+// ps2xLauncher/CMakeLists.txt also puts on the resource compiler's include path.
+// The window's own icon at run time is set separately by main.cpp (SetWindowIcon, the same crest).
+// The first ICON in the file is the one Explorer shows.
+IDI_SOCOM_UNZIPPED ICON "assets/logo/socom_unzipped.ico"
