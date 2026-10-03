@@ -12,7 +12,7 @@ The page as of 2026-10-03, for the sitting after the one of 2026-09-27: 10 open 
 
 | O | the hand needed | the default the loop is on | first asked | days waited |
 |---|---|---|---|---|
-| O33 | The PCSX2 door, your hands | T0/T7 wait; T8 proceeds | 2026-10-02 | 1 |
+| O33 | The PCSX2 door, your hands | T0/T7 and the chain wait; T8 proceeds | 2026-10-02 | 1 |
 | O22 | A second shipped binary of recompiled Sony code | it ships under R290's position | 2026-09-27 | 6 |
 | O25 | The persona viewer's full human pass | the ledger is proven by L1b's Step 0b on a real login against our box; the viewer's look, the CONNECT flow, CREATE ON CARD and the second persona are yours to… | 2026-09-28 | 5 |
 | O21 | The `ci` label | the line stays; the warning is noise; Dependabot PRs merge under R294 (#10 merged 2026-09-27) | 2026-09-27 | 6 |
