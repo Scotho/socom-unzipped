@@ -238,6 +238,23 @@ void register_ps2_memory_tests()
             t.Equals(resetCount, 1u, "timer reset should restart the deterministic count window");
         });
 
+        // Upstream PS2Recomp issue #257: D_ENABLEW (0x1000F590) and D_ENABLER (0x1000F520) are the write and read
+        // ports of one DMAC suspend register (PCSX2 dmacWrite32 writes both). A suspend loop that writes F590 and
+        // polls F520 spins forever when the two are independent slots.
+        tc.Run("a write to D_ENABLEW reads back at D_ENABLER", [](TestCase &t)
+        {
+            PS2Memory mem;
+            t.IsTrue(mem.initialize(), "PS2Memory initialize should succeed");
+
+            constexpr uint32_t kDEnableR = 0x1000F520u;
+            constexpr uint32_t kDEnableW = 0x1000F590u;
+
+            mem.write32(kDEnableW, 0x00010000u);   // suspend
+            t.Equals(mem.read32(kDEnableR), 0x00010000u, "D_ENABLER should report the suspend bit written to D_ENABLEW");
+            mem.write32(kDEnableW, 0u);            // resume
+            t.Equals(mem.read32(kDEnableR), 0u, "D_ENABLER should report the resume written to D_ENABLEW");
+        });
+
         tc.Run("EE timers 0 through 3 expose independent COUNT MODE and COMP registers", [](TestCase &t)
         {
             PS2Memory mem;
