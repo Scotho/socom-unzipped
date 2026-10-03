@@ -2,6 +2,7 @@
 #include "focus.h"
 
 #include "bind_flow.h"                   // Sprint 10 Q4: the window switch's cell ids
+#include "chrome.h"                      // Sprint 18 T5: where the top bar puts the client toggle
 #include "launcher/launcher_config.h"   // which server presets can be played at all
 
 #include <algorithm>
@@ -29,6 +30,7 @@ namespace ui
             {"ONLINE", "ONLINE -- the server, your personas, a second instance", "rail.online"},
             {"REPORT A BUG", "REPORT A BUG -- tell us what went wrong; nothing is sent until you press SEND", "rail.report"},
             {"ABOUT", "ABOUT -- what this is, where it keeps things", "rail.about"},
+            {"PCSX2", "PCSX2 -- the emulator that plays your disc, and where it keeps its own settings", "rail.pcsx2"},
         };
 
         void add(std::vector<Node> &out, Page page, const std::string &id, Rect r)
@@ -137,18 +139,85 @@ namespace ui
         return f;
     }
 
-    std::vector<Node> railLayout(Rect window)
+    std::vector<Page> pagesFor(launcher::ClientMode mode)
+    {
+        if (mode == launcher::ClientMode::Pcsx2)
+            return {Page::Play, Page::Disc, Page::Pcsx2, Page::Online, Page::Report, Page::About};
+        return {Page::Play, Page::Disc, Page::Video, Page::Audio, Page::Controller,
+                Page::Microphone, Page::Online, Page::Report, Page::About};
+    }
+
+    Page pageBeside(launcher::ClientMode mode, Page page, int step)
+    {
+        const std::vector<Page> order = pagesFor(mode);
+        int at = -1;
+        for (size_t i = 0; i < order.size(); ++i)
+            if (order[i] == page)
+                at = static_cast<int>(i);
+        if (at < 0)
+            return order.front();
+        at += step;
+        if (at < 0)
+            at = 0;
+        if (at >= static_cast<int>(order.size()))
+            at = static_cast<int>(order.size()) - 1;
+        return order[static_cast<size_t>(at)];
+    }
+
+    std::string clientCellId(launcher::ClientMode mode) { return std::string("bar.client.") + launcher::clientModeId(mode); }
+
+    bool clientCellMode(const std::string &id, launcher::ClientMode &mode)
+    {
+        if (id == clientCellId(launcher::ClientMode::Native))
+            mode = launcher::ClientMode::Native;
+        else if (id == clientCellId(launcher::ClientMode::Pcsx2))
+            mode = launcher::ClientMode::Pcsx2;
+        else
+            return false;
+        return true;
+    }
+
+    std::vector<Node> railLayout(Rect window, launcher::ClientMode mode)
     {
         const Frame f = frameFor(window);
         std::vector<Node> out;
-        for (int i = 0; i < kPageCount; ++i)
+        const std::vector<Page> order = pagesFor(mode);
+        for (size_t i = 0; i < order.size(); ++i)
         {
-            const Page p = pageAt(i);
+            const Page p = order[i];
             const Rect r{12.0f, f.rail.y + metrics::railTop + static_cast<float>(i) * (metrics::railRowH + metrics::railGap),
                          metrics::railW - 24.0f, metrics::railRowH};
             out.push_back(Node{railId(p), r, p, true});
         }
+        // Sprint 18 T5: the toggle's cells, where the top bar draws them (one ChromeLayout, so the drawn, the focused
+        // and the system's hit test cannot disagree). PLAY is their page: the toggle is reached from PLAY's rail entry.
+        const ChromeLayout chrome = chromeLayout(window.w);
+        out.push_back(Node{clientCellId(launcher::ClientMode::Native), chrome.clientNative, Page::Play, true});
+        out.push_back(Node{clientCellId(launcher::ClientMode::Pcsx2), chrome.clientPcsx2, Page::Play, true});
         return out;
+    }
+
+    Pcsx2Rows pcsx2Rows(Rect window)
+    {
+        const Frame f = frameFor(window);
+        const Rect b = f.body;
+        const float x = b.x + metrics::labelW;
+        const float w = b.w - metrics::labelW;
+        Pcsx2Rows r;
+        const float top = b.y + 8.0f;
+        r.install = Rect{b.right() - 140.0f, top, 140.0f, 40.0f};
+        r.select = Rect{r.install.x - 150.0f, top, 140.0f, 40.0f};
+        r.path = Rect{x, top, b.w - metrics::labelW - 2.0f * 150.0f - 24.0f, 40.0f};
+        r.progress = Rect{x, top + 48.0f, w, 36.0f};
+        r.version = Rect{x, top + 92.0f, w, 32.0f};
+        r.biosOpen = Rect{b.right() - 160.0f, top + 134.0f, 160.0f, 40.0f};
+        r.bios = Rect{x, top + 134.0f, r.biosOpen.x - 12.0f - x, 40.0f};
+        // ONLINE's ADVANCED y and its second-instance row under it, so the two pages' disclosures sit at one height.
+        const float advancedY = onlineAddressRow(window).y + 188.0f;
+        r.captions = Rect{b.x, top + 190.0f, b.w, advancedY - 16.0f - (top + 190.0f)};
+        r.advanced = Rect{b.x, advancedY, b.w, 28.0f};
+        r.adapter = Rect{x, advancedY + 36.0f, 460.0f, 34.0f};
+        return r;
     }
 
     std::vector<Node> layoutFor(Page page, Rect window, const LayoutInputs &in)
@@ -327,6 +396,21 @@ namespace ui
         case Page::About:
         {
             add(out, page, "about.logs", Rect{b.x, b.bottom() - 48.0f, 200.0f, 40.0f});
+            break;
+        }
+        case Page::Pcsx2:
+        {
+            // Sprint 18 T5: INSTANCE (the path is read-only; SELECT, and INSTALL unless a download is running --
+            // nothing may start a second one), VERSION and the sentences are text, BIOS's OPEN FOLDER, then ADVANCED
+            // and, open, the network adapter.
+            const Pcsx2Rows r = pcsx2Rows(window);
+            add(out, page, "pcsx2.select", r.select);
+            if (!in.pcsx2Installing)
+                add(out, page, "pcsx2.install", r.install);
+            add(out, page, "pcsx2.bios.open", r.biosOpen);
+            add(out, page, "pcsx2.advanced", r.advanced);
+            if (in.advancedOpen)
+                add(out, page, "pcsx2.adapter", r.adapter);
             break;
         }
         }
@@ -606,10 +690,11 @@ namespace ui
     FocusGraph FocusGraph::build(Rect window, const LayoutInputs &in)
     {
         FocusGraph g;
-        g.m_nodes = railLayout(window);
-        for (int i = 0; i < kPageCount; ++i)
+        g.m_mode = in.mode;
+        g.m_nodes = railLayout(window, in.mode);
+        for (const Page p : pagesFor(in.mode))
         {
-            const std::vector<Node> page = layoutFor(pageAt(i), window, in);
+            const std::vector<Node> page = layoutFor(p, window, in);
             g.m_nodes.insert(g.m_nodes.end(), page.begin(), page.end());
         }
         return g;
@@ -646,15 +731,39 @@ namespace ui
         if (f == nullptr)
             return from;
 
+        // Sprint 18 T5: the client toggle. Left and right cross between its cells, down returns to the rail's top.
+        launcher::ClientMode cellMode;
+        if (clientCellMode(from, cellMode))
+        {
+            switch (dir)
+            {
+            case Dir::Left:
+                return clientCellId(launcher::ClientMode::Native);
+            case Dir::Right:
+                return clientCellId(launcher::ClientMode::Pcsx2);
+            case Dir::Down:
+                return railId(pagesFor(m_mode).front());
+            case Dir::Up:
+                return from;
+            }
+            return from;
+        }
+
         if (f->rail)
         {
-            const int i = pageIndex(f->page);
+            // The rail walks this client's own order; above its first entry is the toggle's cell for this client.
+            const std::vector<Page> order = pagesFor(m_mode);
+            int i = 0;
+            for (size_t k = 0; k < order.size(); ++k)
+                if (order[k] == f->page)
+                    i = static_cast<int>(k);
+            const int last = static_cast<int>(order.size()) - 1;
             switch (dir)
             {
             case Dir::Up:
-                return railId(pageAt(i - 1 < 0 ? 0 : i - 1));
+                return i == 0 ? clientCellId(m_mode) : railId(order[static_cast<size_t>(i - 1)]);
             case Dir::Down:
-                return railId(pageAt(i + 1 >= kPageCount ? kPageCount - 1 : i + 1));
+                return railId(order[static_cast<size_t>(i + 1 > last ? last : i + 1)]);
             case Dir::Right:
                 return firstOn(f->page);
             case Dir::Left:
@@ -751,7 +860,8 @@ namespace ui
         const std::string next = g.move(focus, d);
         focus = next;
         const Node *n = g.find(next);
-        if (n != nullptr)
+        launcher::ClientMode cell;
+        if (n != nullptr && !clientCellMode(next, cell))   // Sprint 18 T5: the toggle is chrome; the page stays
             page = n->page;   // a rail entry IS its page: the highlight and the pane never disagree
     }
 

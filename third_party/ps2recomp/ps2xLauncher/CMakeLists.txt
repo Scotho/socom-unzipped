@@ -17,6 +17,8 @@ add_library(ps2x_launcher_core STATIC
     # focus list and holds every control to a line.
     src/ui/tips.cpp
     src/ui/page_controller_tips.cpp
+    # Sprint 18 T5: the PCSX2 page's lines, pure like CONTROLLER's.
+    src/ui/page_pcsx2_tips.cpp
     # Sprint 10 Q4: the menu cues out of the player's own disc -- the HUDUI bank read through iso9660::Reader,
     # rendered by the runtime's 989snd mixer (ps2x_snd989), cached as WAV. Pure; main.cpp plays the files.
     src/menu_sounds.cpp
@@ -94,6 +96,8 @@ add_executable(socom_unzipped_launcher ${PS2X_LAUNCHER_EXE_TYPE}
     src/ui/page_online.cpp
     src/ui/page_report.cpp
     src/ui/page_about.cpp
+    # Sprint 18 T5: the PCSX2 page (INSTANCE, VERSION, BIOS, the adapter).
+    src/ui/page_pcsx2.cpp
 )
 if(UNIX)
     target_sources(socom_unzipped_launcher PRIVATE src/posix_glue.cpp)

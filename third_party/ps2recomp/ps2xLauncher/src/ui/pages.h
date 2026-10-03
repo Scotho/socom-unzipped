@@ -6,11 +6,15 @@
 #include "bind_flow.h"
 #include "focus.h"
 #include "launcher/bug_report.h"
+#include "launcher/client_mode.h"     // Sprint 18 T5: which client the launcher drives
 #include "launcher/launcher_config.h"
+#include "launcher/pcsx2_config.h"    // Sprint 18 T5: config.pcsx2.json
+#include "launcher/pcsx2_install.h"   // Sprint 18 T5: the adapters the PCSX2 page cycles
 #include "launcher/personas.h"   // Sprint 16 L1b (#73): the ONLINE page's PERSONAS list
 #include "pad_render.h"
 #include "widgets.h"
 
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
@@ -41,10 +45,51 @@ namespace ui
         bool requestSend = false;
     };
 
+    // Sprint 18 T5: what the PCSX2 page says about the PCSX2 the launcher drives. main.cpp's probePcsx2 fills it (at
+    // start, after SELECT and after INSTALL); a page never touches the disk.
+    struct Pcsx2Status
+    {
+        bool exeFound = false;
+        std::string versionLine;   // pcsx2install::versionLine: "PCSX2 v2.8.2 (installed by the launcher)"
+        std::string dataRoot;      // pcsx2files::dataRoot: beside a portable exe, else <Documents>/PCSX2
+        std::string biosDir;       // <dataRoot>/bios
+        int biosFiles = 0;         // regular files of 1 MiB or more there
+        std::string adapterName;   // the friendly name of the adapter PCSX2 will bind (pickAdapter)
+        std::vector<launcher::pcsx2install::Adapter> adapters;   // what the adapter button cycles through
+    };
+
+    // Sprint 18 T5: INSTALL's progress. The worker thread (main.cpp) writes it under its mutex; the loop copies it
+    // here once a frame, and the page only reads it.
+    struct Pcsx2InstallUi
+    {
+        enum class State
+        {
+            Idle,
+            Fetching,      // the release list
+            Downloading,   // `bytes` of `total` (-1: unknown)
+            Extracting,
+            Done,
+            Failed         // `message` is the refusal's sentence
+        };
+        State state = State::Idle;
+        std::string message;   // the state's sentence, as the page shows it
+        uint64_t bytes = 0;
+        int64_t total = -1;
+        bool running() const { return state == State::Fetching || state == State::Downloading || state == State::Extracting; }
+    };
+
     struct App
     {
         launcher::Config config;
         bool dirty = false;   // the unsaved-changes hint (saved on Launch and on close)
+
+        // Sprint 18 T5 (R339 = R-A): the client the launcher drives, saved in launcher.json; the PCSX2 client's own
+        // settings (config.pcsx2.json), never a key of config.json's; and what the PCSX2 page shows.
+        launcher::ClientMode mode = launcher::ClientMode::Native;
+        launcher::Pcsx2Config pcsx2;
+        bool pcsx2Dirty = false;   // config.pcsx2.json has unsaved changes (the UNSAVED pill lights for either file)
+        Pcsx2Status pcsx2Status;
+        Pcsx2InstallUi install;
 
         // the disc check
         bool discChecked = false;
@@ -101,6 +146,12 @@ namespace ui
         // it is the loop's word on where the cues stand ("from your disc", "no disc set: silent", "off").
         bool requestMenuSounds = false;
         std::string menuSoundsStatus;
+        // Sprint 18 T5: the top bar's toggle asked for a client; the PCSX2 page's SELECT, INSTALL and OPEN FOLDER.
+        launcher::ClientMode requestClientMode = launcher::ClientMode::Native;
+        bool requestClientModeSet = false;
+        bool requestInstallPcsx2 = false;
+        bool requestBrowsePcsx2 = false;
+        bool requestOpenBios = false;
 
         // Sprint 16 L1b (#73, R295): the personas every card's ledger holds (read by main.cpp at start and after each
         // run -- a page never touches the disk), the list's scroll, and the clock the rows' ages are measured by.
@@ -280,4 +331,5 @@ namespace ui
     void drawOnlinePage(const Ctx &ctx, App &app, const std::vector<Node> &nodes);
     void drawReportPage(const Ctx &ctx, App &app, const std::vector<Node> &nodes);
     void drawAboutPage(const Ctx &ctx, App &app, const std::vector<Node> &nodes);
+    void drawPcsx2Page(const Ctx &ctx, App &app, const std::vector<Node> &nodes);   // Sprint 18 T5
 }

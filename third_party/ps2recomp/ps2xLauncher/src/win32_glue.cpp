@@ -56,6 +56,23 @@ namespace win32glue
         return {};
     }
 
+    std::string browseForPcsx2()
+    {
+#ifdef _WIN32
+        char file[MAX_PATH] = {};
+        OPENFILENAMEA ofn{};
+        ofn.lStructSize = sizeof(ofn);
+        ofn.lpstrFilter = "PCSX2 (pcsx2-qt.exe)\0pcsx2-qt.exe\0Programs (*.exe)\0*.exe\0";
+        ofn.lpstrFile = file;
+        ofn.nMaxFile = MAX_PATH;
+        ofn.lpstrTitle = "Choose your pcsx2-qt.exe";
+        ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+        if (GetOpenFileNameA(&ofn))
+            return file;
+#endif
+        return {};
+    }
+
     void openFolder(const std::string &path)
     {
 #ifdef _WIN32

@@ -19,6 +19,7 @@
 #include "ui/pad_render.h"
 #include "ui/theme.h"
 #include "ui/tips.h"   // issue #74: the tooltips
+#include "launcher/client_mode.h"   // Sprint 18 T5: the rail per client
 #include "font_advances.h"   // issue #74: the footer tip, measured in the launcher's face
 #include "ps2x/host_window.h"   // Sprint 10 Q4: the game window's chrome holds the launcher's palette
 #ifndef _WIN32
@@ -875,12 +876,12 @@ void register_launcher_tests()
             // The rail itself walks up and down and stops at its ends.
             t.Equals(g.move("rail.play", ui::Dir::Down), std::string("rail.disc"), "the rail walks down");
             t.Equals(g.move("rail.disc", ui::Dir::Up), std::string("rail.play"), "and up");
-            t.Equals(g.move("rail.play", ui::Dir::Up), std::string("rail.play"), "the top of the rail stays put");
+            t.Equals(g.move("rail.play", ui::Dir::Up), std::string("bar.client.native"), "above the rail's top is the client toggle (S18 T5)");
             t.Equals(g.move("rail.about", ui::Dir::Down), std::string("rail.about"), "and so does the bottom");
 
             // Sprint 9 Goal 8: REPORT A BUG sits after ONLINE and before ABOUT, and is a column of the site's
             // own fields -- TITLE, WHAT HAPPENED, CONTACT (OPTIONAL), the log checkbox, SEND REPORT.
-            t.Equals(ui::kPageCount, 9, "nine pages");
+            t.Equals(ui::pagesFor(launcher::ClientMode::Native).size(), static_cast<size_t>(9), "nine native pages");
             t.Equals(std::string(ui::pageName(ui::Page::Report)), std::string("REPORT A BUG"), "the rail's label");
             t.Equals(ui::pageSlug(ui::Page::Report), std::string("report"), "the page's short name: screenshots and ids");
             t.Equals(ui::pageSlug(ui::Page::Play), std::string("play"), "as every other page's already was");
@@ -903,9 +904,8 @@ void register_launcher_tests()
             }
 
             // Nothing is stranded: from its rail entry, every control on every page is reachable by moving.
-            for (int i = 0; i < ui::kPageCount; ++i)
+            for (const ui::Page page : ui::pagesFor(launcher::ClientMode::Native))
             {
-                const ui::Page page = ui::pageAt(i);
                 std::vector<std::string> seen = {ui::railId(page)};
                 for (size_t head = 0; head < seen.size(); ++head)
                 {
@@ -948,6 +948,134 @@ void register_launcher_tests()
                         t.IsTrue(n.r.inside(f.content) || n.r.inside(f.bar),
                                  std::string("inside the content pane or the bottom bar: ") + n.id);
             }
+        });
+
+        // Sprint 18 T5 (R339 = R-A): the client toggle in the top bar and a rail per client. The native rail is the nine
+        // pages it always was; the PCSX2 rail is six, PCSX2 third (VIDEO, AUDIO, CONTROLLER and MICROPHONE are PCSX2's
+        // own pages, R344 = R-F).
+        tc.Run("S18: the native rail is the nine pages as before; the PCSX2 rail is six, PCSX2 third", [](TestCase &t)
+        {
+            using ui::Page;
+            const auto native = ui::pagesFor(launcher::ClientMode::Native);
+            t.Equals(native.size(), static_cast<size_t>(9), "nine native pages");
+            t.IsTrue(native.size() == 9 && native[0] == Page::Play && native[8] == Page::About, "PLAY first, ABOUT last");
+            for (Page p : native)
+                t.IsTrue(p != Page::Pcsx2, "no PCSX2 page in the native rail");
+            const auto pcsx2 = ui::pagesFor(launcher::ClientMode::Pcsx2);
+            t.IsTrue(pcsx2 == std::vector<Page>{Page::Play, Page::Disc, Page::Pcsx2, Page::Online, Page::Report, Page::About},
+                     "the PCSX2 rail: PLAY, DISC, PCSX2, ONLINE, REPORT A BUG, ABOUT");
+            t.Equals(ui::kPageCount, 10, "ten pages in all; the existing indices unchanged");
+            t.Equals(ui::pageIndex(Page::About), 8, "ABOUT keeps its index");
+            t.Equals(ui::railId(Page::Pcsx2), std::string("rail.pcsx2"), "the PCSX2 page's rail id");
+        });
+
+        tc.Run("S18: the rail layout carries the toggle's two cells in the header, and only that mode's pages", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            const auto nodes = ui::railLayout(window, launcher::ClientMode::Pcsx2);
+            int rails = 0;
+            bool nat = false, pc = false;
+            const ui::Frame f = ui::frameFor(window);
+            const ui::ChromeLayout chrome = ui::chromeLayout(window.w);
+            for (const ui::Node &n : nodes)
+            {
+                if (n.id == "bar.client.native" || n.id == "bar.client.pcsx2")
+                {
+                    (n.id == "bar.client.native" ? nat : pc) = true;
+                    t.IsTrue(n.r.y >= f.header.y && n.r.bottom() <= f.header.bottom(), "the toggle is in the header band: " + n.id);
+                    t.IsTrue(n.r.right() <= chrome.pill.x && n.r.right() <= chrome.status.x,
+                             "clear of the UNSAVED pill and the state lamp: " + n.id);
+                    t.IsTrue(n.r.x >= chrome.mark.right(), "right of the mark: " + n.id);
+                    t.IsTrue(n.rail, "a toggle cell is chrome, never a page's control: " + n.id);
+                }
+                else
+                {
+                    ++rails;
+                    t.IsTrue(n.id != ui::railId(ui::Page::Video), "no VIDEO entry in the PCSX2 rail");
+                }
+            }
+            t.IsTrue(nat && pc, "both toggle cells");
+            t.Equals(rails, 6, "six rail entries");
+            // The system's hit test must not take the toggle for the drag region: a click on it is the launcher's.
+            for (const ui::Node &n : nodes)
+                if (n.id.rfind("bar.client.", 0) == 0)
+                    t.IsTrue(ui::chromeHitTest(static_cast<int>(n.r.cx()), static_cast<int>(n.r.cy()), 1100, 700, 1.0f, false) ==
+                                 ui::ChromeHit::Client,
+                             "the toggle is client area, not the caption: " + n.id);
+        });
+
+        tc.Run("S18: the PCSX2 page's controls sit inside the body and every one has a tooltip", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.mode = launcher::ClientMode::Pcsx2;
+            in.advancedOpen = true;
+            const auto nodes = ui::layoutFor(ui::Page::Pcsx2, window, in);
+            const ui::Frame f = ui::frameFor(window);
+            bool select = false, install = false, bios = false, adapter = false, advanced = false;
+            for (const ui::Node &n : nodes)
+            {
+                if (n.id != ui::barLaunchId(ui::Page::Pcsx2))
+                    t.IsTrue(n.r.y >= f.body.y && n.r.bottom() <= f.body.bottom() + 0.5f, "inside the body: " + n.id);
+                t.IsTrue(!ui::tipFor(ui::Page::Pcsx2, n.id, ui::TipState{}).empty(), "a tooltip for " + n.id);
+                select |= n.id == "pcsx2.select";
+                install |= n.id == "pcsx2.install";
+                bios |= n.id == "pcsx2.bios.open";
+                adapter |= n.id == "pcsx2.adapter";
+                advanced |= n.id == "pcsx2.advanced";
+            }
+            t.IsTrue(select && install && bios && adapter && advanced, "SELECT, INSTALL, OPEN FOLDER, ADVANCED and the adapter");
+            in.pcsx2Installing = true;
+            for (const ui::Node &n : ui::layoutFor(ui::Page::Pcsx2, window, in))
+                t.IsTrue(n.id != "pcsx2.install", "no INSTALL node while a download runs");
+            in.pcsx2Installing = false;
+            in.advancedOpen = false;
+            t.IsFalse(ui::hasNode(ui::layoutFor(ui::Page::Pcsx2, window, in), "pcsx2.adapter"), "the adapter only with ADVANCED open");
+            t.IsTrue(!ui::tipFor(ui::Page::Play, "bar.client.native", ui::TipState{}).empty() &&
+                         !ui::tipFor(ui::Page::Pcsx2, "bar.client.pcsx2", ui::TipState{}).empty(),
+                     "the toggle's two cells have their lines on every page");
+        });
+
+        tc.Run("S18: the graph for the native mode has no PCSX2 page and the PCSX2 mode no VIDEO page", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            t.IsTrue(ui::FocusGraph::build(window, in).find("pcsx2.install") == nullptr, "native: no PCSX2 page");
+            t.IsTrue(ui::FocusGraph::build(window, in).find(ui::railId(ui::Page::Video)) != nullptr, "native: VIDEO");
+            in.mode = launcher::ClientMode::Pcsx2;
+            t.IsTrue(ui::FocusGraph::build(window, in).find("pcsx2.install") != nullptr, "PCSX2: the PCSX2 page");
+            t.IsTrue(ui::FocusGraph::build(window, in).find(ui::railId(ui::Page::Video)) == nullptr, "PCSX2: no VIDEO");
+            // From the first rail entry, Up lands on the toggle; from the toggle, Down returns to the rail.
+            const ui::FocusGraph g = ui::FocusGraph::build(window, in);
+            t.Equals(g.move(ui::railId(ui::Page::Play), ui::Dir::Up), std::string("bar.client.pcsx2"), "Up from PLAY is the current mode's cell");
+            t.Equals(g.move("bar.client.pcsx2", ui::Dir::Down), ui::railId(ui::Page::Play), "Down from the toggle is the first rail entry");
+            t.Equals(g.move("bar.client.pcsx2", ui::Dir::Left), std::string("bar.client.native"), "Left crosses to NATIVE");
+            t.Equals(g.move("bar.client.native", ui::Dir::Right), std::string("bar.client.pcsx2"), "Right crosses back");
+            t.Equals(g.move(ui::railId(ui::Page::Disc), ui::Dir::Down), ui::railId(ui::Page::Pcsx2), "the rail walks the PCSX2 order");
+            t.Equals(g.move(ui::railId(ui::Page::Pcsx2), ui::Dir::Down), ui::railId(ui::Page::Online), "PCSX2, then ONLINE");
+            t.Equals(g.move(ui::railId(ui::Page::About), ui::Dir::Down), ui::railId(ui::Page::About), "the bottom stays put");
+            // A focus on the toggle does not change the page under it.
+            ui::Nav nav;
+            nav.goTo(g, ui::Page::Play);
+            nav.focus = ui::railId(ui::Page::Play);
+            nav.move(g, ui::Dir::Up);
+            t.Equals(nav.focus, std::string("bar.client.pcsx2"), "the Nav reaches the toggle");
+            t.IsTrue(nav.page == ui::Page::Play, "and the page stays PLAY");
+            // The shoulder tabs walk the mode's own order.
+            t.IsTrue(ui::pageBeside(launcher::ClientMode::Pcsx2, ui::Page::Disc, 1) == ui::Page::Pcsx2, "next after DISC is PCSX2");
+            t.IsTrue(ui::pageBeside(launcher::ClientMode::Native, ui::Page::Disc, 1) == ui::Page::Video, "natively, VIDEO");
+            t.IsTrue(ui::pageBeside(launcher::ClientMode::Pcsx2, ui::Page::Play, -1) == ui::Page::Play, "clamped at the ends");
+            // Nothing on the PCSX2 page is stranded.
+            std::vector<std::string> seen = {ui::railId(ui::Page::Pcsx2)};
+            for (size_t head = 0; head < seen.size(); ++head)
+                for (ui::Dir d : {ui::Dir::Up, ui::Dir::Down, ui::Dir::Left, ui::Dir::Right})
+                {
+                    const std::string to = g.move(seen[head], d);
+                    if (std::find(seen.begin(), seen.end(), to) == seen.end())
+                        seen.push_back(to);
+                }
+            for (const std::string &id : g.idsOn(ui::Page::Pcsx2))
+                t.IsTrue(std::find(seen.begin(), seen.end(), id) != seen.end(), "reachable from the rail: " + id);
         });
 
         // Sprint 8, owner feedback: "the yellow circle ... takes too long to adjust and awkwardly flys with a

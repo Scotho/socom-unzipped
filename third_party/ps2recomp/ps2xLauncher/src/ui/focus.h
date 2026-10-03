@@ -4,6 +4,7 @@
 // PURE ON PURPOSE: no raylib in this header or in focus.cpp. The rects here are the rects the pages draw --
 // page_*.cpp looks its controls up by id rather than computing them again -- so a test that asserts where a
 // direction lands is asserting about the layout the player sees.
+#include "launcher/client_mode.h"       // Sprint 18 T5: a rail per client
 #include "launcher/launcher_config.h"   // Sprint 9 P4: what forces an ADVANCED section open
 #include "theme.h"
 
@@ -22,9 +23,21 @@ namespace ui
         Microphone,
         Online,
         Report,   // Sprint 9 Goal 8: REPORT A BUG
-        About
+        About,
+        Pcsx2     // Sprint 18 T5: appended, so every existing index is unchanged
     };
-    constexpr int kPageCount = 9;
+    constexpr int kPageCount = 10;
+
+    // Sprint 18 T5 (R339 = R-A, R344 = R-F): the rail per client, in rail order. NATIVE: the nine pages as before.
+    // PCSX2: PLAY, DISC, PCSX2, ONLINE, REPORT A BUG, ABOUT -- video, audio, the pad and the microphone are PCSX2's own.
+    std::vector<Page> pagesFor(launcher::ClientMode mode);
+    // The page `step` places along that client's rail from `page` (the pad's shoulder tabs), clamped at the ends; a
+    // page the client has not got answers its first page.
+    Page pageBeside(launcher::ClientMode mode, Page page, int step);
+    // The client toggle's two cells in the top bar (chrome.h's ChromeLayout places them): "bar.client.native" and
+    // "bar.client.pcsx2". The id of a mode's cell, and the mode a cell's id names (false: not a cell).
+    std::string clientCellId(launcher::ClientMode mode);
+    bool clientCellMode(const std::string &id, launcher::ClientMode &mode);
 
     Page pageAt(int index);
     int pageIndex(Page page);
@@ -88,6 +101,12 @@ namespace ui
         int personaScroll = 0;
         int personaSelected = 0;
         bool personaPasswordShown = true;
+        // Sprint 18 T5: which client's rail and pages the graph is built from; and on the PCSX2 page, whether INSTALL
+        // is running (its button is then not a node: nothing may start a second download) and whether a pcsx2-qt.exe
+        // is known.
+        launcher::ClientMode mode = launcher::ClientMode::Native;
+        bool pcsx2Installing = false;
+        bool pcsx2HasExe = false;
     };
 
     // Whether an ADVANCED section MUST be open whatever the player last chose, because something inside it
@@ -106,8 +125,9 @@ namespace ui
     // the window's origin for one frame (Sprint 9 P4, the owner's "weird graphical bug ... around the top
     // left"). Unchanged page: the list it was handed, so the rebuild costs a page change, not every frame.
     std::vector<Node> nodesForFrame(std::vector<Node> computed, Page page, Rect window, const LayoutInputs &in);
-    // The rail's entries, one per page.
-    std::vector<Node> railLayout(Rect window);
+    // The rail's entries, one per page of that client (pagesFor), plus the client toggle's two cells in the header band
+    // (rail = true, page = PLAY: chrome, never a page's control).
+    std::vector<Node> railLayout(Rect window, launcher::ClientMode mode);
 
     // The ONLINE page's preset rows, by index: a row exists for every preset, but only the ones that can
     // actually be played get a focusable node (see launcher::presetAvailable).
@@ -144,6 +164,25 @@ namespace ui
     // `scroll` that shows it; false off either end, where the layout's geometry takes over (ADDRESS, ADVANCED).
     bool personaMove(const LayoutInputs &in, const std::string &from, Dir dir, std::string &to, int &scroll);
 
+    // Sprint 18 T5: the PCSX2 page's rows, shared as onlinePresetRow is -- layoutFor emits the nodes from these rects
+    // and page_pcsx2.cpp draws the rest (the read-only path, the greyed INSTALL while a download runs, the text rows)
+    // from the same ones. The ONLINE page's pitch: 40-unit controls, ADVANCED at ONLINE's own ADVANCED y and the
+    // adapter under it where ONLINE's second-instance toggle sits.
+    struct Pcsx2Rows
+    {
+        Rect path;       // INSTANCE: the exe's path, read-only (not a node)
+        Rect select;     // "pcsx2.select", 140 wide
+        Rect install;    // "pcsx2.install", 140 wide; not a node while INSTALL runs
+        Rect progress;   // INSTALL's meter and its sentence, under INSTANCE
+        Rect version;    // VERSION, text only
+        Rect bios;       // BIOS: the folder's sentence, text only
+        Rect biosOpen;   // "pcsx2.bios.open", 160 wide
+        Rect captions;   // the two sentences: PCSX2's own settings, and the license line
+        Rect advanced;   // "pcsx2.advanced"
+        Rect adapter;    // "pcsx2.adapter", only while ADVANCED is open
+    };
+    Pcsx2Rows pcsx2Rows(Rect window);
+
     // Task 11: the GAME VERSION selector's cells, by index, on the page that carries it (PLAY or ONLINE).
     // Shared the way onlinePresetRow is: layoutFor emits a node for the cells that can be chosen, and the
     // page draws the greyed one from this same rect -- so what is drawn and what can be focused cannot
@@ -166,6 +205,7 @@ namespace ui
     class FocusGraph
     {
     public:
+        // Sprint 18 T5: the rail and the pages of in.mode only (pagesFor), and the client toggle.
         static FocusGraph build(Rect window, const LayoutInputs &in);
 
         const std::vector<Node> &nodes() const { return m_nodes; }
@@ -176,10 +216,13 @@ namespace ui
         // The id `dir` lands on, by the layout's rects: the nearest node that way on the same page (one whose
         // band overlaps for preference), the page's rail entry when there is nothing further left, and the
         // same id when there is nowhere to go. From the rail, up/down walks the rail and right enters the page.
+        // Sprint 18 T5: up from the rail's first entry is the toggle's cell for the current mode; left and right cross
+        // between the two cells; down from either is the rail's first entry.
         std::string move(const std::string &from, Dir dir) const;
 
     private:
         std::vector<Node> m_nodes;
+        launcher::ClientMode m_mode = launcher::ClientMode::Native;
     };
 
     // Where the player is. The rail highlight is `page`, so a move onto a rail entry changes the page with it.

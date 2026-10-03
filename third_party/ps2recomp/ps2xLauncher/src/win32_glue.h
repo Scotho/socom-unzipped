@@ -15,6 +15,9 @@ namespace win32glue
 {
     std::string exeDirectory();
     std::string browseForIso();
+    // Sprint 18 T5: the PCSX2 page's SELECT -- the open dialog filtered to pcsx2-qt.exe (any .exe on its second filter).
+    // "" on Cancel, and on a desktop with no dialog (POSIX without zenity).
+    std::string browseForPcsx2();
     void openFolder(const std::string &path);
 
     struct GameProcess
