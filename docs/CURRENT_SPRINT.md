@@ -76,7 +76,7 @@ firewall rule owed: `docs/HUMAN_TASKS.md` O33), T2 (`launcher.json`, `config.pcs
 pnach), T4 (INSTALL), T5 and T6 (the toggle, the PCSX2 page, PLAY/DISC/ONLINE in the PCSX2 view, LAUNCH) and T9 (the
 launcher's icon) DONE (code), merged into `sprint-18`. T8 the documents: `docs/PCSX2_PLAY.md`, DEVELOPING's launcher
 and box lines, LATER rows 73-81. **Owed, in windows (O20, O33):** T0 the spike (five PCSX2 questions on a fresh
-release, `docs/research/83-pcsx2-door-spike.md`) and T7 the proof (INSTALL, BIOS, LAUNCH, the wizard, our lobby from <!-- docmaint: future -->
+release; T0's note takes the next free research number, 85 or later: 84 is taken on `agent/wizard-harry`) and T7 the proof (INSTALL, BIOS, LAUNCH, the wizard, our lobby from <!-- docmaint: future -->
 a clean home; the KNOWN row). Then the close, by PR to `main` with or after Sprint 17.
 
 ---

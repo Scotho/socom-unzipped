@@ -860,7 +860,7 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
   Its fifth unit, `socom-dns` (Sprint 18, R342), answers SOCOM II's six retail host names on 53/udp with
   `muis.json`'s `Endpoint` and NXDOMAIN for every other name, so the launcher's PCSX2 client (which gives PCSX2 the
   server's address as its DNS) finds the lobby from any home; installed by `server/linux/install.sh`, one journal
-  line a minute (`journalctl -u socom-dns`), tests `tools_py/tests/test_socom_dns.py`. The unit, the firewall rule
+  line a minute, none in a silent minute (`journalctl -u socom-dns`), tests `tools_py/tests/test_socom_dns.py`. The unit, the firewall rule
   and the checks: `server/README.md` "Hosting it on Linux".
 
 ## Measuring a change without a chain
@@ -1412,7 +1412,9 @@ the player folders present (`bios`, `memcards`, `inis`, `sstates`, `snaps`, `che
 `gamesettings`, `cache`, `textures`, `logs`, `videos`), each moved whole into `pcsx2.new`, `pcsx2.new` -> `pcsx2`,
 `pcsx2.old` removed with its manifest last. A swap that stopped is put right by the manifest at the next start or
 INSTALL; one INSTALL per folder, held by `pcsx2.install.lock` opened with no sharing ("another INSTALL is running in
-this folder; wait for it to finish"). LAUNCH (`launchPcsx2`, R344) writes `config.pcsx2.json`, merges `[DEV9/Eth]`
+this folder; wait for it to finish"); closing the window mid-INSTALL keeps the process alive, window-less, until the
+query, download and extract finish (up to about 15 minutes: 20 s + 600 s + 300 s), holding the lock, so a relaunched
+launcher's INSTALL reads that sentence with no window to wait for. LAUNCH (`launchPcsx2`, R344) writes `config.pcsx2.json`, merges `[DEV9/Eth]`
 into `inis/PCSX2.ini` and writes `patches/0F6FC6CF.pnach` (embedded from `scripts/parity/pcsx2/0F6FC6CF.pnach`), each
 through `writeIfDifferent` with the old file kept once as `.bak-<stamp>` (`pcsx2_files.h`), creates a managed
 install's `memcards/` and `bios/`, and starts `pcsx2-qt.exe -batch <iso>`; PCSX2's data root is beside a portable
