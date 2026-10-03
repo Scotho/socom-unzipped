@@ -31,6 +31,12 @@ in batches, when the owner chooses; the loop drafts and verifies, and never post
 - **Local status words.** "applied in our tree at X"; "applied in a spike only (where), not in the tree";
   "not applicable to our tree (why)"; "not applied (why)". Each was checked against `git log` and `git ls-files` on
   2026-09-26, not taken from the drafts' README.
+- **Taking code from other projects (the owner, 2026-10-03: "where applicable, take other commits that share our
+  license ensuring the creators retain credit").** GPL-3.0, GPL-2.0-or-later, LGPL and the permissive licences (MIT,
+  BSD, ISC, Apache-2.0, zlib, CC0) are takeable with credit -- `cherry-pick -x` or a `Co-authored-by` with the source
+  URL and hash, the notice kept in the file header, a row in README's "License and credits" -- while unlicensed,
+  GPL-2.0-only and README-forbidden repositories are facts only. The full rule and every surveyed project's verdict are
+  `docs/research/85-ps2-recomp-projects-audit.md` "Licence baseline" and §10.
 
 ## 1. ran-j/PS2Recomp
 
