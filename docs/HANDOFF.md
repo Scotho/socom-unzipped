@@ -11,7 +11,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 ## 2. Where it stands
 
 - **Where the loop is now (2026-10-02 21:35Z, LATEST) -- Sprint 17, `sprint-17` at 368afa8c: batches 4-6 PROVED (C1, N1c adopted; the launcher guard, the gate and lock fixes in); slice 2 = PR #131. No close date (R338); one controller in the main tree (owner).**
-  Now: Sprint 17 PAUSED after slice 2 (main = a519c9bf) and the reading (research/83 §7); 98/99 at the owner's call. Sprint 18: T1-T6, T8-T10 done; T0/T7 are the owner's window (O33).
+  Now: Sprint 17 PAUSED after slice 2 (main = a519c9bf); research/85's LATER 83/84 landed on sprint-17, unproven until a chain (owner window); 98/99 at the owner's call. Sprint 18: T1-T6, T8-T10 done; T0/T7 are the owner's window (O33).
 - **Sprint 18 OPEN 2026-10-01 02:40Z** (`sprint-18` off `sprint-17`; CURRENT_SPRINT's `branch (2):`; its plan's Log).
 - **Next free ruling number: R346** (R345 Sprint 17's; R339-R344 Sprint 18's open; R322-R338 Sprint 17's; R299-R321 Sprint 16's; R298 superseded).**
 
