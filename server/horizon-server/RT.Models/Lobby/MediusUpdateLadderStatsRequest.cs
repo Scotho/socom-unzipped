@@ -6,7 +6,7 @@ namespace RT.Models
 {
     /// <summary>
     /// Medius 1.50 (SOCOM II) ladder stats post, Lobby 0xCE: 0x58 bytes, MessageID[21], 3 pad, LadderType,
-    /// Stats[15] (the client's sender FUN_0064b1b8).
+    /// Stats[15] (the client's sender FUN_0064b248).
     /// </summary>
     [MediusMessage(NetMessageTypes.MessageClassLobby, MediusLobbyMessageIds.UpdateLadderStats)]
     public class MediusUpdateLadderStatsRequest : BaseLobbyMessage, IMediusRequest

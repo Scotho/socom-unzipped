@@ -2,7 +2,7 @@
 // server left unanswered -- Lobby 0x86 VersionServer, 0xB2 FileListFiles, 0xCE UpdateLadderStats,
 // 0xEF LadderList_ExtraInfo0 and LobbyExt 0x08 GetBuddyInvitations. The models are ported from PSHome-MultiServer
 // (GPL-3.0); the byte counts below are the client's own: each request's size is the length its sender passes
-// (FUN_00647548 0x26, FUN_0064b7c8 0xB0, FUN_0064b1b8 0x58, FUN_0064b128 0x28, the LobbyExt 0x08 sender 0x15),
+// (FUN_00647548 0x26, FUN_0064b7c8 0xB0, FUN_0064b248 0x58, FUN_0064b128 0x28, the LobbyExt 0x08 sender 0x15),
 // each response's the count its handler returns (FUN_0064cbf8 0x4D, FUN_0064d6c8 200, FUN_0064d250 0x1C,
 // FUN_0064d210 0x1D4, FUN_0064dad0 0x48), read from the r0001 decomp at handler registration FUN_0064db00.
 using System.IO;
