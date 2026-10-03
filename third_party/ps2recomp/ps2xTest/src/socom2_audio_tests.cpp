@@ -2368,7 +2368,7 @@ void register_socom2_audio_tests()
         // with word 2 = 0x800, word 3 = 0xb000, channels 2 -- and the two channels are interleaved per streaming
         // BUFFER (word 3: the IRX's FUN_00013334 requires it to equal its stream buffer, and its per-channel stride
         // is `puVar12[3] >> 1`): each 0xb000-byte buffer holds 0x5800 bytes of L then 0x5800 of R, the last, partial
-        // buffer split in halves. Word 2 is where the data starts (LATER 97: Ziemas/989snd's VPKFileHead names it
+        // buffer keeping that layout (L, padding to the half, R at the half). Word 2 is where the data starts (LATER 97: Ziemas/989snd's VPKFileHead names it
         // data_offset, and the disc's members are 0x800 + k x 0xb000 bytes), so this file's data starts at 0x800,
         // not at word 3: a reader starting at 0xb000 crosses channels in every chunk. Ours read alternating 0x800 chunks as
         // L, R, L, R -- different music in the two channels (run 10: L/R correlation 0.05 at lag 0 against the
@@ -2378,7 +2378,7 @@ void register_socom2_audio_tests()
         {
             constexpr uint32_t kBuffer = 0xb000u, kHalf = kBuffer / 2u;
             const int fullBuffers = 6;                 // 7 chunk pairs with the tail: more than the ring's 4, so an underrun can be forced
-            const uint32_t tailPerChannel = 0x1000u;   // a partial last buffer, split in halves
+            const uint32_t tailPerChannel = 0x1000u;   // a partial last buffer: L, padding, R at the half
             std::vector<uint8_t> file(0x800u, 0u);     // the header sector, as on the disc: the data at word 2 = 0x800
             auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
             std::memcpy(file.data(), " KPV", 4);
@@ -2401,13 +2401,22 @@ void register_socom2_audio_tests()
                         const std::vector<uint8_t> blk = block(4, 0, 0x00, nib);   // shift 4: samples of +-1792
                         file.insert(file.end(), blk.begin(), blk.end());
                     }
+            // The tail buffer as the disc lays it out (MUUI0003.VPK, the sector-0x11ec92 stem): L's remainder, padding
+            // blocks (C0 00 ...) up to the half, R's remainder AT the half, padding to the buffer's end. No end flag:
+            // the disc's VPKs carry none, the header's length ends them.
+            std::vector<uint8_t> pad(16, 0u);
+            pad[0] = 0xC0;
             for (int ch = 0; ch < 2; ++ch)
+            {
                 for (uint32_t k = 0; k < tailPerChannel / 16u; ++k)
                 {
                     pattern(static_cast<uint32_t>(fullBuffers) * (kHalf / 16u) + k, nib);
-                    const std::vector<uint8_t> blk = block(4, 0, k == tailPerChannel / 16u - 1u ? 0x01 : 0x00, nib);
+                    const std::vector<uint8_t> blk = block(4, 0, 0x00, nib);
                     file.insert(file.end(), blk.begin(), blk.end());
                 }
+                for (uint32_t k = tailPerChannel / 16u; k < kHalf / 16u; ++k)
+                    file.insert(file.end(), pad.begin(), pad.end());
+            }
             const std::string path = tmpPath("socom2_audio_test_buffer_layout.vpk");
             if (FILE *fp = std::fopen(path.c_str(), "wb"))
             {
@@ -2450,6 +2459,21 @@ void register_socom2_audio_tests()
                             first = f;
                     }
                 t.Equals(mismatches, static_cast<size_t>(0u), "L and R are sample-aligned for the whole stream (first mismatch at frame " + std::to_string(first) + ")");
+                // The tail buffer itself: R is read at the half-buffer, so its samples are the tail's (loud), not the
+                // padding behind L's remainder, and they land on the same frames as L's.
+                const size_t tailFrom = static_cast<size_t>(static_cast<uint64_t>(fullBuffers) * kHalf / 16u * 28u * 3u / 2u) + 600u;
+                const size_t tailTo = static_cast<size_t>(expectFrames) - 600u;
+                int32_t tailPeakR = 0;
+                size_t tailMismatches = 0;
+                for (size_t f = tailFrom; f < tailTo && f < out.size() / 2; ++f)
+                {
+                    tailPeakR = std::max(tailPeakR, std::abs(static_cast<int32_t>(out[f * 2 + 1])));
+                    if (std::abs(static_cast<int32_t>(out[f * 2]) - static_cast<int32_t>(out[f * 2 + 1])) > 1)
+                        ++tailMismatches;
+                }
+                t.IsTrue(tailTo > tailFrom + 1000u && tailPeakR > 500,
+                         "the tail's R is the tail's data, read at the half-buffer, not the padding (peak " + std::to_string(tailPeakR) + ")");
+                t.Equals(tailMismatches, static_cast<size_t>(0u), "and the tail's R is sample-aligned with its L");
             }
             {
                 // A forced underrun: the worker is off in the tests, so after the pre-fill and one pump the ring holds
