@@ -133,7 +133,8 @@ not contain. Security problems go through GitHub's private vulnerability reporti
 ## License and credits
 
 The port -- the runtime fork and everything that generates or drives it -- is **GPL-3.0**, because PS2Recomp is
-(`LICENSE`). The Horizon server is MIT (`server/horizon-server/LICENSE`). Every third-party component in the tree and
+(`LICENSE`). The Horizon server is MIT (`server/horizon-server/LICENSE`), with GPL-3.0 files from PSHome-MultiServer,
+so the server as built is GPL-3.0 too (`server/README.md`, "Licence"). Every third-party component in the tree and
 in the download, with its licence, is in `THIRD_PARTY_NOTICES.md` and `LICENSES/` (a test keeps that list complete).
 No game data is distributed and none is licensed here; SOCOM II remains the property of its rights holders.
 
@@ -145,3 +146,5 @@ knowledge the SOCOM community has kept alive for twenty years.
 Ported with credit: [PCSX2](https://github.com/PCSX2/pcsx2) (GPL-3.0-or-later) -- the GS depth rules in the GL
 backend (`gs_gl_backend.cpp`, `gs_gl_depth.h`, issue #104): the fragment z floor of PCSX2 #13795, narrowed by #13851,
 and the saturation of z to the ZBUF format's maximum from `GSRendererHW::EmulateZbuffer`.
+[PSHome-MultiServer](https://github.com/GitHubProUser67/PSHome-MultiServer) (GPL-3.0, GitHubProUser67) -- the five
+Medius 1.50 message models and their MLS answers in the Horizon server (issue #72; `server/README.md`, "Licence").

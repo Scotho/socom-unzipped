@@ -315,6 +315,7 @@ No build fixes were needed.
 | `Server.Medius/Medius/ChatClamp.cs` (new, **the project's own**), its call sites in `Medius/MLS.cs` and `Medius/Models/Channel.cs`, `Server.Test/ChatClampTests.cs` (new) | The server clamps the chat fields it forwards | A security fix (SECURITY.md, "Known: the game's own network code"); details are deliberately not written up here. Carry it across every vendor bump. | `5b7d20e7`, `4d7e4816` |
 | `Server.Medius/Program.cs`, `Server.Dme/Program.cs` | The initial `SERVER_IP` is the RFC 5737 placeholder `192.0.2.1` | Upstream's was a LAN address; replaced as soon as the config loads (Sprint 13 S6). | `eda61d3a` |
 | `Server.Test/Server.Test.csproj`, `Server.Test/BuildIdTests.cs` (new) | xunit added (the harness's own `Main` stays the entry point); the build-id tests | Somewhere for the project's unit tests: `dotnet test server/horizon-server/Server.Test`. | `5b7d20e7`, O3 |
+| `RT.Models/Lobby/`: `MediusVersionServerRequest.cs`, `MediusVersionServerResponse.cs`, `MediusFileListRequest.cs`, `MediusFileListResponse.cs`, `MediusUpdateLadderStatsRequest.cs`, `MediusUpdateLadderStatsResponse.cs`, `MediusLadderList_ExtraInfoRequest0.cs`, `MediusGetBuddyInvitationsRequest.cs`, `MediusGetBuddyInvitationsResponse.cs` (new, **GPL-3.0, from PSHome-MultiServer**: see "Licence"), `MediusLadderList_ExtraInfoResponse0.cs` (new, the project's own); `RT.Common/Constants.cs`, `RT.Common/Types.cs`; `Server.Medius/Medius/Medius150Replies.cs` (new) and its case block in `Medius/MLS.cs`; `Server.Test/Medius150MessagesTests.cs` (new) | Lobby 0x86 VersionServer, 0xB2 FileListFiles, 0xCE UpdateLadderStats, 0xEF LadderList_ExtraInfo0 and LobbyExt 0x08 GetBuddyInvitations are modelled and answered: the version string, an empty NoResult file list, Success for a stats post that is dropped, an empty NoResult ladder page, no invitations (issue #72). No file store, ladder table or invitations behind them | The Medius 1.50 client (both revisions) sends them, and they did not parse. Every size is the client's own (its senders' lengths, its handlers' byte counts); the 0xEF answer needs the 1.50 entry (0x1D4 bytes, no AccountID), not Horizon's 0x1D8-byte `MediusLadderList_ExtraInfoResponse` | `0833b5ec`, `ee336e52` |
 
 Known upstream issues found (not fixed, worked around by the script):
 * **Unified launcher race**: `LogSettings.Singleton` is one static shared by all four components in the process and
@@ -326,6 +327,24 @@ Known upstream issues found (not fixed, worked around by the script):
   therefore named `console-<component>.log`.
 * Simulated `GetAppIds()` returns 0..99999, so Medius and DME allocate 100 000 `AppSettings` objects and re-walk them
   every 5 s. Harmless locally.
+
+## Licence
+
+`horizon-server/` is Horizon's, under the MIT licence (`horizon-server/LICENSE`, 2020 Daniel Gerendasy), and so is
+every change in the table above except the files below. Since issue #72 the folder also holds code from
+[PSHome-MultiServer](https://github.com/GitHubProUser67/PSHome-MultiServer) by GitHubProUser67, under **GPL-3.0**,
+at commit `8778e985e4`: in `RT.Models/Lobby/`, `MediusVersionServerRequest.cs`, `MediusVersionServerResponse.cs`,
+`MediusFileListRequest.cs`, `MediusFileListResponse.cs`, `MediusUpdateLadderStatsRequest.cs`,
+`MediusUpdateLadderStatsResponse.cs`, `MediusLadderList_ExtraInfoRequest0.cs`, `MediusGetBuddyInvitationsRequest.cs`
+and `MediusGetBuddyInvitationsResponse.cs`; `VERSIONSERVER_MAXLEN`, `LADDERSTATS_MAXLEN` (`RT.Common/Constants.cs`)
+and `MediusBuddyAddType` (`RT.Common/Types.cs`); and the answers in `Server.Medius/Medius/Medius150Replies.cs` and
+their case block in `Medius/MLS.cs`, which follow MultiServer's `Servers/Horizon/SERVER/Medius/MLS.cs`. Each says so
+at the change. The MIT files stay MIT, but the server as a whole -- what we build, package and run on the hosted box
+-- is now a combination with GPL-3.0 code and so is **GPL-3.0**, like the rest of the repository (`LICENSE`); the
+MIT licence allows that. The GPL text is `LICENSES/GPL-3.0-only.txt`; MultiServer's files carry no notice of their own.
+
+Credits: Horizon Private Server (Daniel Gerendasy and contributors) for the server; PSHome-MultiServer
+(GitHubProUser67) for the five Medius 1.50 models and their MLS answers (issue #72).
 
 ## What remains / risks for SOCOM II (Medius 1.50 client)
 
