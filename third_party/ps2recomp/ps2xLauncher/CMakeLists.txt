@@ -111,7 +111,8 @@ target_include_directories(socom_unzipped_launcher PRIVATE ${PS2X_LAUNCHER_FONTS
 if(WIN32)
     # winhttp: Sprint 9 Goal 8's bug report and status line (win32glue::httpRequest). Windows only -- the POSIX
     # glue starts curl instead, so the Linux build links nothing new.
-    target_link_libraries(socom_unzipped_launcher PRIVATE comdlg32 shell32 winhttp)
+    # iphlpapi: Sprint 18 T4's adapter list for PCSX2 (win32glue::listAdapters, GetAdaptersAddresses).
+    target_link_libraries(socom_unzipped_launcher PRIVATE comdlg32 shell32 winhttp iphlpapi)
 endif()
 if(UNIX AND NOT APPLE)
     # The portable folder keeps its non-system .so files in lib/ next to the binary.

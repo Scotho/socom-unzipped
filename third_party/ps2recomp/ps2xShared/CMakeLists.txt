@@ -9,6 +9,7 @@ add_library(ps2x_shared STATIC
     src/client_mode.cpp     # Sprint 18 T2 (R-A): launcher.json, the NATIVE/PCSX2 mode
     src/pcsx2_config.cpp    # Sprint 18 T2 (R-A): config.pcsx2.json, the PCSX2 client's own settings
     src/pcsx2_files.cpp     # Sprint 18 T3: the ini merge, the embedded pnach, the data root, the DNS pick
+    src/pcsx2_install.cpp   # Sprint 18 T4 (R-C): INSTALL -- the release parse, the redirect rule, the adapter pick
     src/preflight.cpp
     src/exe_dir.cpp
     src/bare_run.cpp
