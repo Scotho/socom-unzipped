@@ -11,7 +11,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 ## 2. Where it stands
 
 - **Where the loop is now (2026-10-02 21:35Z, LATEST) -- Sprint 17, `sprint-17` at 368afa8c: batches 4-6 PROVED (C1, N1c adopted; the launcher guard, the gate and lock fixes in); slice 2 = PR #131. No close date (R338); one controller in the main tree (owner).**
-  Now: Sprint 17 PAUSED after slice 2 (main = a519c9bf) and the reading (research/83 §7); 98/99 at the owner's call. Sprint 18: T1-T6, T9 done; T0/T7 windows (O33); T8 docs.
+  Now: Sprint 17 PAUSED after slice 2 (main = a519c9bf) and the reading (research/83 §7); 98/99 at the owner's call. Sprint 18: T1-T6, T8, T9 done; T0/T7 are the owner's window (O33).
 - **Sprint 18 OPEN 2026-10-01 02:40Z** (`sprint-18` off `sprint-17`; CURRENT_SPRINT's `branch (2):`; its plan's Log).
 - **Next free ruling number: R346** (R345 Sprint 17's; R339-R344 Sprint 18's open; R322-R338 Sprint 17's; R299-R321 Sprint 16's; R298 superseded).**
 
@@ -57,12 +57,10 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 - **Other sessions' trees, never edit:** the web seat's `wt-web-play`, `wt-web-teaser`, `wt-domain-socomunzipped`, `socom_pc_web`
   (the web code lives in the repo `Scotho/redotcom` since 2026-10-01); `.claude/worktrees/*`; `wt-pad-focus`, `wt-cherry`, `wt-ci-fix`.
 - **The hosted-server / site session** owns `server/`, the Lightsail box and `../scotho`; never edit those.
+- **`wt-s18-docs` (`agent/s18-docs`) is the controller's sprint-18 seat:** merges and Log edits there, then `update-ref sprint-18` from the main tree and a push.
 
 ## 6. What is owed
 
 - **The owner's rows** (`docs/SITTING.md`): O22 the helper as a shipped binary; O25 the persona viewer's human pass.
-- **After this close:** `main` (`d77b58c5`) merged back into `sprint-16` and pushed -- the main-tree seat's; tonight's collisions audit (the guards) is Sprint 17's Task 0 material, its seat holds the draft.
-- **Carried to Sprint 17's Task 0:** R1b (#70), R2 (#71), #57's r0004 leg, #59's fence, R3b, R3a's developer build, F1, F3
-  (#32, backlog), X2, X4 (#41, backlog).
 - 2026-09-28: the story generator `tools_py/story/site.py` emits the s2u design system's classes (scotho branch s2u-design-system, spec section 8); the story session regenerates with `--ds-dir` pointing at `web/shared/ds` (the default since 2026-09-29).
 
