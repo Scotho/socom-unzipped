@@ -67,9 +67,17 @@ saved settings; in the PCSX2 client, SELECT your PCSX2 or INSTALL the official r
 server or a custom address, the community server still "coming soon"; the hosted box answers SOCOM II's host names on
 53/udp (the owner granted the DNS changes on the Lightsail box; an agent without a live AWS session asks for the
 firewall rule). Spec `docs/superpowers/specs/2026-10-01-sprint-18-the-pcsx2-door-design.md`; plan
-`docs/superpowers/plans/2026-10-01-sprint-18-the-pcsx2-door.md` (the table, rulings R-A…R-F to be numbered, the Log);
-task book `docs/superpowers/plans/2026-10-01-sprint-18-tasks.md` (T0 the spike and T1 the box first). Launcher-only
-on our side: no runtime, recomp or parity change; its builds take the lock, its PCSX2 boots a window (O20).
+`docs/superpowers/plans/2026-10-01-sprint-18-the-pcsx2-door.md` (the table, R339-R344 and R346, the Log); task book
+`docs/superpowers/plans/2026-10-01-sprint-18-tasks.md`. Launcher, server/linux and docs only: no runtime, recomp or
+parity change.
+
+**State (2026-10-03):** the door is complete in code. T1 (the box's `socom-dns` on 53/udp; deployed 2026-10-02, the
+firewall rule owed: `docs/HUMAN_TASKS.md` O33), T2 (`launcher.json`, `config.pcsx2.json`), T3 (the ini merge, the
+pnach), T4 (INSTALL), T5 and T6 (the toggle, the PCSX2 page, PLAY/DISC/ONLINE in the PCSX2 view, LAUNCH) and T9 (the
+launcher's icon) DONE (code), merged into `sprint-18`. T8 the documents: `docs/PCSX2_PLAY.md`, DEVELOPING's launcher
+and box lines, LATER rows 73-81. **Owed, in windows (O20, O33):** T0 the spike (five PCSX2 questions on a fresh
+release, `docs/research/83-pcsx2-door-spike.md`) and T7 the proof (INSTALL, BIOS, LAUNCH, the wizard, our lobby from <!-- docmaint: future -->
+a clean home; the KNOWN row). Then the close, by PR to `main` with or after Sprint 17.
 
 ---
 
