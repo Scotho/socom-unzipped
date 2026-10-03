@@ -1,4 +1,5 @@
 #include "socom2_host_input.h"
+#include "socom2_mouse.h"
 
 #include "raylib.h"
 #include "runtime/host_crouch_shortcut.h"
@@ -348,7 +349,7 @@ namespace ps2_stubs
         }
     }
 
-    void socom2HostInputPoll(Socom2PadState &pad)
+    void socom2HostInputPoll(Socom2PadState &pad, const uint8_t *rdram)
     {
         if (!IsWindowReady())
         {
@@ -388,6 +389,7 @@ namespace ps2_stubs
         // R210: the key table and the WASD/IJKL sticks, under the scope decided once in initialise() -- the whole
         // table in developer mode (the harness's path), the menu-and-typing buttons alone for a player.
         socom2ApplyKeyboard(g_config.mapping, g_config.keyboardScope, IsKeyDown, next);
+        socom2MouseApply(rdram, g_config.keyboardScope, next);   // macOS fork: the mouse (socom2_mouse.h)
         // R139: a full Triangle from any source outranks the crouch shortcut's light one (tracked stage by stage).
         bool fullTriangle = next.button[kPadTriangle] != 0;
         bool lightTriangle = false;

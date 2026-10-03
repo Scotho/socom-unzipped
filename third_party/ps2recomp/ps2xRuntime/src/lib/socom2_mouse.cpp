@@ -1,0 +1,185 @@
+// Mouse look and right-click aim-hold -- the macOS fork's glue. See socom2_mouse.h.
+#include "socom2_mouse.h"
+
+#include "ps2x/knobs.h"
+#include "runtime/socom2_addresses.h"
+#include "raylib.h"
+
+#include <atomic>
+#include <chrono>
+#include <cstdlib>
+#include <cstring>
+#include <iostream>
+
+namespace ps2_stubs
+{
+    namespace
+    {
+        using namespace socom2_mouse;
+
+        // Main thread -> game thread.
+        std::atomic<bool> g_captured{false};
+        std::atomic<bool> g_left{false};        // left button, already gated by Capture::buttonsLive
+        std::atomic<bool> g_right{false};       // right button, likewise
+        std::atomic<bool> g_resetLook{false};   // a release cleared the motion; the game thread drops its carry
+        std::atomic<bool> g_probeKey{false};    // O pressed with PS2X_MOUSE_PROBE
+        // Game thread -> main thread.
+        std::atomic<bool> g_inMission{false};
+        std::atomic<bool> g_active{false};      // enabled and Full scope, as of the last pad read
+
+        Accumulator g_acc;
+        std::atomic<bool> g_rawSource{false};   // GCMouse delivered at least one event
+
+        const Config &config()
+        {
+            static const Config cfg = socom2MouseConfigFrom(ps2x::knob);
+            return cfg;
+        }
+
+        // Game thread only.
+        LookState g_look;
+        PulseQueue g_probeQueue;
+        uint8_t g_lastMode = 0xFF;
+    }
+
+    socom2_mouse::Config socom2MouseConfigFrom(const char *(*knob)(const char *))
+    {
+        Config c;
+        c.enabled = ps2x::knobs::flagValue(knob("PS2X_MOUSE"), true);
+        c.invertY = ps2x::knobs::flagValue(knob("PS2X_MOUSE_INVERT_Y"), false);
+        if (const char *v = knob("PS2X_MOUSE_SENS"))
+        {
+            char *end = nullptr;
+            const float f = std::strtof(v, &end);
+            if (end != v && *end == '\0' && f > 0.0f && f < 1000.0f)
+                c.sens = f;
+        }
+        if (const char *v = knob("PS2X_MOUSE_DEADZONE"))
+        {
+            char *end = nullptr;
+            const long n = std::strtol(v, &end, 0);
+            if (end != v && *end == '\0' && n >= 0 && n < kStickSpan)
+                c.deadzone = static_cast<int>(n);
+        }
+        c.trace = knob("PS2X_MOUSE_TRACE") != nullptr;
+        c.probe = knob("PS2X_MOUSE_PROBE") != nullptr;
+        return c;
+    }
+
+    void socom2MouseAddRaw(double dx, double dy)
+    {
+        g_rawSource.store(true, std::memory_order_relaxed);
+        if (g_captured.load(std::memory_order_relaxed))
+            g_acc.add(dx, dy);
+    }
+
+    void socom2MouseApply(const uint8_t *rdram, KeyboardScope scope, Socom2PadState &next)
+    {
+        const Config &cfg = config();
+        const bool active = cfg.enabled && scope == KeyboardScope::Full;
+        g_active.store(active, std::memory_order_relaxed);
+        if (!active)
+            return;
+
+        const ModeRead mode = readMode(rdram, revisionFor(socom2_addresses::current().revision));
+        g_inMission.store(mode.ok, std::memory_order_relaxed);
+
+        if (g_resetLook.exchange(false, std::memory_order_relaxed))
+            g_look = LookState{};
+        double dx = 0.0, dy = 0.0;
+        g_acc.drain(dx, dy);
+        const LookOut look = socom2_mouse::look(cfg, dx, dy, g_look);
+        if (look.moved)
+        {
+            next.axis[0] = look.rx;
+            next.axis[1] = look.ry;
+        }
+        if (g_left.load(std::memory_order_relaxed))
+            next.button[kPadR1] = 1u;
+
+        if (cfg.probe && g_probeKey.exchange(false, std::memory_order_relaxed))
+        {
+            for (int i = 0; i < 50; ++i)
+            {
+                g_probeQueue.push(Pulse::Up);
+                g_probeQueue.push(Pulse::Down);
+            }
+            std::cout << "[mouse] probe: 50 UP/DOWN pairs queued, mode " << (mode.ok ? int(mode.mode) : -1) << std::endl;
+        }
+        const Pulse probe = g_probeQueue.tick();
+        if (probe == Pulse::Up)
+            next.button[kPadUp] = 1u;
+        else if (probe == Pulse::Down)
+            next.button[kPadDown] = 1u;
+
+        if (cfg.trace)
+        {
+            const uint8_t m = mode.ok ? mode.mode : 0xFFu;
+            if (look.moved || m != g_lastMode || probe != Pulse::None || next.button[kPadUp] || next.button[kPadDown])
+                std::cout << "[mouse] dx=" << dx << " dy=" << dy << " carry=" << g_look.carryX << "," << g_look.carryY
+                          << " rx=" << int(next.axis[0]) << " ry=" << int(next.axis[1])
+                          << " up=" << int(next.button[kPadUp]) << " down=" << int(next.button[kPadDown])
+                          << " mode=" << (mode.ok ? int(mode.mode) : -1) << " actor=0x" << std::hex << mode.actor
+                          << std::dec << std::endl;
+            g_lastMode = m;
+        }
+    }
+
+    void socom2MouseFrame()
+    {
+        static Capture capture;
+        static bool started = false;
+        static std::chrono::steady_clock::time_point startedAt;
+        static bool fallbackLogged = false;
+        if (!started)
+        {
+            started = true;
+            startedAt = std::chrono::steady_clock::now();
+            socom2MouseGcStart();
+        }
+
+        const bool left = IsMouseButtonDown(MOUSE_BUTTON_LEFT);
+        const bool right = IsMouseButtonDown(MOUSE_BUTTON_RIGHT);
+        CaptureInputs in;
+        in.enabled = g_active.load(std::memory_order_relaxed);
+        in.focused = IsWindowFocused();
+        in.inMission = g_inMission.load(std::memory_order_relaxed);
+        in.clickPressed = IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
+        in.escPressed = IsKeyPressed(KEY_ESCAPE);
+        in.buttonsDown = left || right;
+        switch (capture.step(in))
+        {
+        case CaptureAction::Capture:
+            DisableCursor();
+            break;
+        case CaptureAction::Release:
+            EnableCursor();
+            g_acc.clear();
+            g_resetLook.store(true, std::memory_order_relaxed);
+            break;
+        case CaptureAction::None:
+            break;
+        }
+        g_captured.store(capture.captured(), std::memory_order_relaxed);
+        g_left.store(capture.buttonsLive() && left, std::memory_order_relaxed);
+        g_right.store(capture.buttonsLive() && right, std::memory_order_relaxed);
+        if (config().probe && IsKeyPressed(KEY_O))
+            g_probeKey.store(true, std::memory_order_relaxed);
+
+        // No GCMouse events 2 s after start: raylib's (accelerated) deltas instead, once said.
+        if (!g_rawSource.load(std::memory_order_relaxed) &&
+            std::chrono::steady_clock::now() - startedAt > std::chrono::seconds(2))
+        {
+            if (!fallbackLogged)
+            {
+                fallbackLogged = true;
+                std::cout << "[mouse] raw deltas unavailable, using GetMouseDelta" << std::endl;
+            }
+            if (capture.captured())
+            {
+                const Vector2 d = GetMouseDelta();
+                g_acc.add(d.x, d.y);
+            }
+        }
+    }
+}

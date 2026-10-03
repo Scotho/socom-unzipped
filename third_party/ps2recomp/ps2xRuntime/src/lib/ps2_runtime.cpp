@@ -6,6 +6,7 @@
 #include "runtime/shot_queue.h"           // Sprint 17 F0 Step 5b
 #include <optional>                       // Sprint 17 Q2: the shot queue re-made across an in-process restart
 #include "socom2_host_input.h"
+#include "socom2_mouse.h"               // macOS fork: the mouse
 #include "runtime/ps2_window_size.h"
 #include "ps2_log.h"
 #include "ps2_stubs.h"
@@ -3078,6 +3079,7 @@ void PS2Runtime::run()
         }
 
         const LoopClock::time_point drawStart = s_loopPhases ? LoopClock::now() : LoopClock::time_point{};
+        ps2_stubs::socom2MouseFrame();   // macOS fork: cursor capture and the mouse buttons (socom2_mouse.h)
         BeginDrawing();
         ClearBackground(BLACK);
         const float srcWidth = static_cast<float>(std::max<uint32_t>(1u, presentWidth));

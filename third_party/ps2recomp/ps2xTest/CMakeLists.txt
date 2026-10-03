@@ -176,6 +176,8 @@ target_sources(ps2x_tests PRIVATE
 # now calls its socom2HostInputShutdown(); pad_input_tests.cpp drives that shutdown directly.
 target_sources(ps2x_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/ps2xRuntime/src/lib/socom2_host_input.cpp
+    ${CMAKE_SOURCE_DIR}/ps2xRuntime/src/lib/socom2_mouse.cpp
+    ${CMAKE_SOURCE_DIR}/ps2xRuntime/src/lib/socom2_mouse_gc_stub.cpp
 )
 target_include_directories(ps2x_tests PRIVATE ${CMAKE_SOURCE_DIR}/ps2xRuntime/src/lib)
 if(WIN32)

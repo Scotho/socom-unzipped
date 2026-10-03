@@ -41,7 +41,10 @@ class RegistryShapeTest(unittest.TestCase):
         # unconditionally, which needs no knob at all.
         rows = knobs.table()
         self.assertEqual(sum(1 for r in rows if r["cls"] == "Shipping"), 18)
-        self.assertFalse([r["name"] for r in rows if "MOUSE" in r["name"]], "no mouse knob survives Q3")
+        # macOS fork (docs/superpowers/specs/2026-10-03-mouse-look-design.md): the mouse is back, in the fork only,
+        # and its knobs are developer-mode ones. R210 still holds for the player-facing surface: no Shipping mouse knob.
+        self.assertFalse([r["name"] for r in rows if "MOUSE" in r["name"] and r["cls"] != "Dev"],
+                         "the fork's mouse knobs are Dev, none Shipping (R210 for players)")
         self.assertEqual([r["name"] for r in rows if r["cls"] == "Switch"], ["PS2X_DEV"])
 
 

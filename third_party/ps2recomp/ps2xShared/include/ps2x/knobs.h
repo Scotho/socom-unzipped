@@ -145,6 +145,12 @@
     X("PS2X_MIC_DUMP_PLAYBACK", Dev, Path, "", "WAV of what lgaud 0x09 asked the headset to play ({title} expands to the window tag).") \
     X("PS2X_MIC_FAKE", Dev, Path, "", "Feed this WAV as the microphone; beats MIC_DEVICE (R115).") \
     X("PS2X_MIC_GAMEREAD_DUMP", Dev, Path, "", "WAV of what lgaud 0x08 served the game.") \
+    X("PS2X_MOUSE", Dev, Flag, "1", "macOS fork: mouse look (right stick), left click R1, right click aim-hold; 0 = off, byte-identical.") \
+    X("PS2X_MOUSE_DEADZONE", Dev, Int, "24", "macOS fork: stick units (0-126) added to any non-zero mouse output, past the game's dead zone.") \
+    X("PS2X_MOUSE_INVERT_Y", Dev, Flag, "0", "macOS fork: 1 inverts the mouse's vertical look.") \
+    X("PS2X_MOUSE_PROBE", Dev, Presence, "", "macOS fork: the O key queues 50 D-pad UP/DOWN pairs at the aim-hold timing (the ratchet probe).") \
+    X("PS2X_MOUSE_SENS", Dev, Float, "1.0", "macOS fork: right-stick units per raw mouse count.") \
+    X("PS2X_MOUSE_TRACE", Dev, Presence, "", "macOS fork: [mouse] lines -- deltas, carry, axes, aim-hold state, the view mode -- when any changes.") \
     X("PS2X_MPEG_TRACE", Dev, Presence, "", "Log the sceMpeg HLE lifecycle and the IOP stream opens.") \
     X("PS2X_PACK_TRACE", Dev, Path, "", "Trace the terrain pack function 0x25a5d0 to this file (research/31 s17).") \
     X("PS2X_PAD_CROUCH_SHORTCUT", Shipping, Text, "l3", "l3 | touchpad | l2 | off (unset is l3, O12): the host control that sends a light Triangle (R139).") /* read: ps2xRuntime/src/lib/socom2_host_input.cpp:socom2HostInputPoll */ \

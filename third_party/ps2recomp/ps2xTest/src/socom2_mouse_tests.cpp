@@ -1,7 +1,9 @@
 // Mouse look and right-click aim-hold (macOS fork, spec docs/superpowers/specs/2026-10-03-mouse-look-design.md).
 #include "MiniTest.h"
 #include "runtime/socom2_mouse_core.h"
+#include "socom2_mouse.h"
 
+#include <cstring>
 #include <string>
 #include <thread>
 #include <vector>
@@ -263,6 +265,51 @@ void register_socom2_mouse_tests()
             off.enabled = false;
             t.Equals(static_cast<int>(c.step(off)), static_cast<int>(CaptureAction::Release), "release");
             t.Equals(static_cast<int>(c.step(off)), static_cast<int>(CaptureAction::None), "stays off");
+        });
+    });
+
+    MiniTest::Case("Socom2MouseConfig", [](TestCase &tc)
+    {
+        tc.Run("unset knobs give the defaults", [](TestCase &t)
+        {
+            const Config c = ps2_stubs::socom2MouseConfigFrom([](const char *) -> const char * { return nullptr; });
+            t.IsTrue(c.enabled, "on by default");
+            t.Equals(c.sens, 1.0f, "sens 1");
+            t.IsFalse(c.invertY, "not inverted");
+            t.Equals(c.deadzone, 0x18, "dead zone 0x18");
+            t.IsFalse(c.trace, "no trace");
+            t.IsFalse(c.probe, "no probe");
+        });
+
+        tc.Run("set knobs are honoured, and nonsense falls back to the default", [](TestCase &t)
+        {
+            const Config c = ps2_stubs::socom2MouseConfigFrom([](const char *n) -> const char * {
+                if (std::strcmp(n, "PS2X_MOUSE") == 0) return "0";
+                if (std::strcmp(n, "PS2X_MOUSE_SENS") == 0) return "2.5";
+                if (std::strcmp(n, "PS2X_MOUSE_INVERT_Y") == 0) return "1";
+                if (std::strcmp(n, "PS2X_MOUSE_DEADZONE") == 0) return "200";   // out of 0..126: default
+                if (std::strcmp(n, "PS2X_MOUSE_TRACE") == 0) return "1";
+                return nullptr;
+            });
+            t.IsFalse(c.enabled, "off");
+            t.Equals(c.sens, 2.5f, "sens");
+            t.IsTrue(c.invertY, "inverted");
+            t.Equals(c.deadzone, 0x18, "bad dead zone ignored");
+            t.IsTrue(c.trace, "trace");
+            const Config bad = ps2_stubs::socom2MouseConfigFrom([](const char *n) -> const char * {
+                return std::strcmp(n, "PS2X_MOUSE_SENS") == 0 ? "fast" : nullptr;
+            });
+            t.Equals(bad.sens, 1.0f, "unparseable sens ignored");
+        });
+
+        tc.Run("Menus scope or PS2X_MOUSE=0: the pad state is left byte for byte", [](TestCase &t)
+        {
+            ps2_stubs::Socom2PadState before;
+            before.axis[0] = 0x33; before.button[ps2_stubs::kPadR1] = 0; before.button[ps2_stubs::kPadUp] = 1;
+            ps2_stubs::Socom2PadState after = before;
+            ps2_stubs::socom2MouseAddRaw(500.0, 500.0);
+            ps2_stubs::socom2MouseApply(nullptr, ps2_stubs::KeyboardScope::Menus, after);
+            t.IsTrue(std::memcmp(&before, &after, sizeof(before)) == 0, "Menus scope: untouched");
         });
     });
 }

@@ -526,6 +526,7 @@ if(PS2X_BUILD_RUNNER)
 # executable (not the static runtime library) or the linker drops them.
 target_sources(ps2EntryRunner PRIVATE src/lib/game_overrides_socom2.cpp)
 target_sources(ps2EntryRunner PRIVATE src/lib/socom2_host_input.cpp)
+target_sources(ps2EntryRunner PRIVATE src/lib/socom2_mouse.cpp src/lib/socom2_mouse_gc_stub.cpp)   # macOS fork: the mouse
 target_sources(ps2EntryRunner PRIVATE src/lib/socom2_hostnet.cpp)
 target_sources(ps2EntryRunner PRIVATE src/lib/socom2_libnetb.cpp)
 target_sources(ps2EntryRunner PRIVATE src/lib/socom2_crypto.cpp)
