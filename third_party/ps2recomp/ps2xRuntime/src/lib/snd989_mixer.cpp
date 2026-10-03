@@ -473,7 +473,11 @@ namespace snd989
                 const uint32_t remaining = dataSize > consumed ? dataSize - consumed : 0u;
                 // research/36 item 10: `interleave` is the per-channel stride (a two-channel file: header word 3 /
                 // channels, half a streaming buffer -- see playStream). One buffer holds that many bytes of the left
-                // channel and then of the right; the last, partial buffer is split in equal halves (block-aligned).
+                // channel and then of the right. The last, partial buffer keeps that layout: L's remainder, then
+                // padding blocks (C0 00 ...) up to the half, then R's remainder at the half (the disc, 2026-10-03:
+                // MUUI0003.VPK's remainder 0x55E0 then 34 padding blocks, R at +0x5800; the stem at sector 0x11ec92,
+                // remainder 0x1C60, R at +0x5800). So channel `ch` is always at ch x chunkBytes; perChannel is only
+                // how much of it to read, and `consumed` counts data bytes, not the padding.
                 const size_t chunkBytes = static_cast<size_t>(interleave);
                 const size_t perChannel = channels > 1
                                               ? std::min<size_t>(chunkBytes, (static_cast<size_t>(remaining) / channels) & ~static_cast<size_t>(15))
@@ -491,7 +495,7 @@ namespace snd989
                         ended.store(true, std::memory_order_release);
                         continue;
                     }
-                    if (seek64(file, dataStart + chunkPairStart + static_cast<uint64_t>(ch) * perChannel) != 0)
+                    if (seek64(file, dataStart + chunkPairStart + static_cast<uint64_t>(ch) * chunkBytes) != 0)
                     {
                         ended.store(true, std::memory_order_release);
                         continue;
