@@ -152,6 +152,14 @@ namespace RT.Common
         MediusLadderTypeClan = 1,
     }
 
+    // LOCAL (socom_pc), #72: from PSHome-MultiServer's RT.Common/Types.cs (GPL-3.0) at 8778e985e4, for
+    // MediusGetBuddyInvitationsResponse. AddSingle: one-way; AddSymmetric: each appears on the other's list.
+    public enum MediusBuddyAddType : int
+    {
+        AddSingle,
+        AddSymmetric,
+    }
+
     public enum MediusPlayerStatus : int
     {
         MediusPlayerDisconnected = 0,
