@@ -21,6 +21,7 @@ ICO = os.path.join(LOGO_DIR, "socom_unzipped.ico")
 SOURCE_PNG = os.path.join(LOGO_DIR, "socom_unzipped_icon.png")
 SCRIPT = os.path.join(ROOT, "scripts", "make_launcher_icon.py")
 EXE = os.path.join(ROOT, "dist", "socom_unzipped_launcher.exe")
+RC = os.path.join(ROOT, "third_party", "ps2recomp", "ps2xLauncher", "launcher.rc")
 EXPECTED_SIZES = [16, 24, 32, 48, 64]
 
 RT_ICON = 3
@@ -123,8 +124,18 @@ class PeParser(unittest.TestCase):
             pe_resource_types(b"not a pe file at all" * 8)
 
 
+def _exe_is_current():
+    """The built launcher, and newer than the icon and its resource script: an exe built before this change has no
+    icon resource and would read as a red of the .rc rather than of the stale build (the T9 review's finding)."""
+    if not os.path.isfile(EXE):
+        return False
+    built = os.path.getmtime(EXE)
+    return all(built >= os.path.getmtime(p) for p in (ICO, RC) if os.path.isfile(p))
+
+
 class BuiltExe(unittest.TestCase):
-    @unittest.skipUnless(os.path.isfile(EXE), "no dist/socom_unzipped_launcher.exe built (./build.sh runtime)")
+    @unittest.skipUnless(_exe_is_current(),
+                         "no dist/socom_unzipped_launcher.exe newer than launcher.rc and the .ico (./build.sh runtime)")
     def test_exe_carries_the_icon_resources(self):
         with open(EXE, "rb") as f:
             types = pe_resource_types(f.read())
