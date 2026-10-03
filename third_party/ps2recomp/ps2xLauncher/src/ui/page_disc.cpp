@@ -1,4 +1,5 @@
-// Sprint 8 Goal 9, the DISC page: the image, the check, the verdict.
+// Sprint 8 Goal 9, the DISC page: the image, the check, the verdict. Sprint 18 T6 (R339 = R-A): the active client's
+// image -- config.json's natively, config.pcsx2.json's in PCSX2 mode -- through one accessor, activeIsoPath.
 #include "pages.h"
 
 namespace ui
@@ -10,10 +11,11 @@ namespace ui
         const Rect verify = rectOf(nodes, "disc.verify");
         rowLabel(ctx, field, "DISC IMAGE");
         bool changed = false;
-        textField(ctx, field, app.config.isoPath, "disc.path", changed);
+        std::string &iso = activeIsoPath(app);
+        textField(ctx, field, iso, "disc.path", changed);
         if (changed)
         {
-            app.dirty = true;
+            markActiveDirty(app);
             app.requestVerify = true;
         }
         if (button(ctx, browse, "BROWSE...", "disc.browse"))
@@ -23,7 +25,7 @@ namespace ui
         const Rect verdict{field.x - metrics::labelW, field.bottom() + 24.0f,
                            browse.right() - (field.x - metrics::labelW), 74.0f};
         panel(ctx, verdict);
-        const Rgba lamp = app.discOk ? theme::lampGreen : (app.config.isoPath.empty() ? theme::warn : theme::bad);
+        const Rgba lamp = app.discOk ? theme::lampGreen : (iso.empty() ? theme::warn : theme::bad);
         fillCircle(ctx, Vec2{verdict.x + 30.0f, verdict.cy()}, 9.0f, lamp);
         strokeCircle(ctx, Vec2{verdict.x + 30.0f, verdict.cy()}, 15.0f, theme::alpha(lamp, 110), 2.0f);
         const std::string message = app.discMessage.empty() ? std::string(kDiscNotChecked) : app.discMessage;

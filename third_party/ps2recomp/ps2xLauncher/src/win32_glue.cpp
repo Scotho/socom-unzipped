@@ -62,7 +62,9 @@ namespace win32glue
         char file[MAX_PATH] = {};
         OPENFILENAMEA ofn{};
         ofn.lStructSize = sizeof(ofn);
-        ofn.lpstrFilter = "PCSX2 (pcsx2-qt.exe)\0pcsx2-qt.exe\0Programs (*.exe)\0*.exe\0";
+        // Sprint 18 T6 (the T5 review's item 4): pcsx2-qt.exe and nothing else -- no "Programs" or "All files" entry; a
+        // name typed past the filter is refused by the caller (main.cpp).
+        ofn.lpstrFilter = "PCSX2 (pcsx2-qt.exe)\0pcsx2-qt.exe\0";
         ofn.lpstrFile = file;
         ofn.nMaxFile = MAX_PATH;
         ofn.lpstrTitle = "Choose your pcsx2-qt.exe";

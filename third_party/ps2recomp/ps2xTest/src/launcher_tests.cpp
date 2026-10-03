@@ -20,6 +20,7 @@
 #include "ui/theme.h"
 #include "ui/tips.h"   // issue #74: the tooltips
 #include "launcher/client_mode.h"   // Sprint 18 T5: the rail per client
+#include "launcher/pcsx2_config.h"  // Sprint 18 T6: kPcsx2RevisionNote, the greyed r0004 cell in PCSX2 mode
 #include "font_advances.h"   // issue #74: the footer tip, measured in the launcher's face
 #include "ps2x/host_window.h"   // Sprint 10 Q4: the game window's chrome holds the launcher's palette
 #ifndef _WIN32
@@ -1076,6 +1077,145 @@ void register_launcher_tests()
                 }
             for (const std::string &id : g.idsOn(ui::Page::Pcsx2))
                 t.IsTrue(std::find(seen.begin(), seen.end(), id) != seen.end(), "reachable from the rail: " + id);
+        });
+
+        // Sprint 18 T6: the PCSX2 view of PLAY, DISC and ONLINE, and its LAUNCH. The task book's four cases (Step 1), in
+        // MiniTest form, then the T5 review's items (the plan's Log, 2026-10-03): the rail guard on a requested page,
+        // the greyed revision cell's reason on ONLINE in both modes, and the client toggle held during an INSTALL or a run.
+        tc.Run("S18: the PCSX2 launch is refused for the right reason, in order", [](TestCase &t)
+        {
+            using launcher::launchBlockedReasonPcsx2;
+            t.IsTrue(launchBlockedReasonPcsx2(true, true, true, "", true, 1, "").find("running") != std::string::npos, "running first");
+            t.IsTrue(launchBlockedReasonPcsx2(false, false, false, "", true, 1, "").find("DISC") != std::string::npos, "no disc: the DISC page");
+            t.Equals(launchBlockedReasonPcsx2(false, true, false, "not SOCOM II r0001", true, 1, ""), std::string("not SOCOM II r0001"),
+                     "a disc that failed its check: the DISC page's own sentence");
+            t.IsTrue(launchBlockedReasonPcsx2(false, true, true, "", false, 1, "").find("PCSX2") != std::string::npos, "no PCSX2");
+            t.IsTrue(launchBlockedReasonPcsx2(false, true, true, "", true, 0, "").find("BIOS") != std::string::npos, "no BIOS");
+            t.Equals(launchBlockedReasonPcsx2(false, true, true, "", true, 1, "cannot resolve x -- check your connection"),
+                     std::string("cannot resolve x -- check your connection"), "a name that does not resolve: its own sentence");
+            t.IsTrue(launchBlockedReasonPcsx2(false, true, true, "", true, 1, "").empty(), "nothing in the way: \"\"");
+            // The precedence, pinned where two blockers meet: the disc before PCSX2, PCSX2 before the BIOS, the BIOS
+            // before the name.
+            t.IsTrue(launchBlockedReasonPcsx2(false, false, false, "", false, 0, "x").find("DISC") != std::string::npos, "disc before PCSX2");
+            t.IsTrue(launchBlockedReasonPcsx2(false, true, true, "", false, 0, "x").find("PCSX2") != std::string::npos, "PCSX2 before BIOS");
+            t.IsTrue(launchBlockedReasonPcsx2(false, true, true, "", true, 0, "x").find("BIOS") != std::string::npos, "BIOS before the name");
+        });
+
+        tc.Run("S18: PCSX2's exit line and argv", [](TestCase &t)
+        {
+            t.Equals(launcher::pcsx2ExitLine(0, "C:/x/logs/emulog.txt"), std::string("PCSX2 closed"), "a clean exit");
+            t.Equals(launcher::pcsx2ExitLine(3, "C:/x/logs/emulog.txt"),
+                     std::string("PCSX2 exited with code 3 -- its log is C:/x/logs/emulog.txt"), "a failed exit names its log");
+            t.IsTrue(launcher::pcsx2Args("D:/s2.iso") == std::vector<std::string>{"-batch", "D:/s2.iso"}, "-batch, then the ISO");
+        });
+
+        tc.Run("S18: the ONLINE layout in PCSX2 mode has the presets, the version row and ADDRESS, and none of the native-only rows",
+               [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.mode = launcher::ClientMode::Pcsx2;
+            in.customServer = true;
+            in.advancedOpen = true;
+            in.personaRows = 2;
+            in.gameRevisionsInstalled = 3u;   // r0004's exe beside the launcher: still no node in PCSX2 mode (R-E)
+            const auto nodes = ui::layoutFor(ui::Page::Online, window, in);
+            bool preset = false, server = false, revision = false;
+            for (const ui::Node &n : nodes)
+            {
+                t.IsTrue(n.id.rfind("online.persona", 0) != 0, "no persona rows: " + n.id);
+                t.IsTrue(n.id != "online.second" && n.id != "online.advanced", "no second instance, no ADVANCED: " + n.id);
+                preset |= n.id == "online.preset.1";
+                server |= n.id == "online.server";
+                revision |= n.id == "online.revision.0";
+                t.IsTrue(n.id != "online.revision.1", "R-E: r0004 is drawn greyed, no node");
+            }
+            t.IsTrue(preset && server && revision, "our server's preset, ADDRESS and r0001's cell");
+            in.customServer = false;
+            t.IsFalse(ui::hasNode(ui::layoutFor(ui::Page::Online, window, in), "online.server"), "ADDRESS is a node only for Custom");
+            // The native ONLINE page is what it was.
+            in.mode = launcher::ClientMode::Native;
+            const auto native = ui::layoutFor(ui::Page::Online, window, in);
+            t.IsTrue(ui::hasNode(native, "online.persona.0") && ui::hasNode(native, "online.second") &&
+                         ui::hasNode(native, "online.revision.1"),
+                     "native: the personas, the second instance, and r0004 when its exe is there");
+        });
+
+        tc.Run("S18: the PLAY layout in PCSX2 mode has four jump rows, the last to the PCSX2 page", [](TestCase &t)
+        {
+            // The rows have no shared id prefix (play.disc, play.video, ...): playRows is the one table the layout and
+            // the page both read, ids and targets.
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.mode = launcher::ClientMode::Pcsx2;
+            const auto nodes = ui::layoutFor(ui::Page::Play, window, in);
+            const auto rows = ui::playRows(launcher::ClientMode::Pcsx2);
+            t.Equals(rows.size(), static_cast<size_t>(4), "four rows");
+            int found = 0;
+            for (const auto &row : rows)
+                found += ui::hasNode(nodes, row.first) ? 1 : 0;
+            t.Equals(found, 4, "each row is a node");
+            t.IsTrue(rows.size() == 4 && rows[0].first == "play.disc" && rows[1].first == "play.server" &&
+                         rows[2].first == "play.version" && rows[3].first == "play.pcsx2",
+                     "DISC, SERVER, GAME VERSION, PCSX2");
+            t.IsTrue(!rows.empty() && rows.back().second == ui::Page::Pcsx2, "the last jumps to the PCSX2 page");
+            t.IsFalse(ui::hasNode(nodes, "play.video") || ui::hasNode(nodes, "play.pad"), "no VIDEO or CONTROLLER row");
+            // Item 1 of the T5 review: every row of either view jumps to a page of that view's rail.
+            for (launcher::ClientMode mode : {launcher::ClientMode::Native, launcher::ClientMode::Pcsx2})
+            {
+                const auto pages = ui::pagesFor(mode);
+                for (const auto &row : ui::playRows(mode))
+                    t.IsTrue(std::find(pages.begin(), pages.end(), row.second) != pages.end(), "a jump inside the rail: " + row.first);
+            }
+            const auto native = ui::playRows(launcher::ClientMode::Native);
+            t.IsTrue(native.size() == 4 && native[1].first == "play.video" && native[1].second == ui::Page::Video,
+                     "the native rows are as they were");
+        });
+
+        tc.Run("S18: a requested page outside the client's rail is ignored, in either mode", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.mode = launcher::ClientMode::Pcsx2;
+            const ui::FocusGraph pcsx2 = ui::FocusGraph::build(window, in);
+            ui::Nav nav;
+            nav.goTo(pcsx2, ui::Page::Play);
+            nav.request(ui::Page::Video);
+            t.IsFalse(nav.applyRequest(pcsx2), "PCSX2: VIDEO is not applied");
+            t.IsTrue(nav.page == ui::Page::Play && nav.requested == -1, "the page stays PLAY and the request is spent");
+            nav.request(ui::Page::Pcsx2);
+            t.IsTrue(nav.applyRequest(pcsx2) && nav.page == ui::Page::Pcsx2, "PCSX2: its own page is applied");
+            in.mode = launcher::ClientMode::Native;
+            const ui::FocusGraph native = ui::FocusGraph::build(window, in);
+            nav.goTo(native, ui::Page::Play);
+            nav.request(ui::Page::Pcsx2);
+            t.IsFalse(nav.applyRequest(native), "native: the PCSX2 page is not applied");
+            t.IsTrue(nav.page == ui::Page::Play, "the page stays PLAY");
+            nav.request(ui::Page::Video);
+            t.IsTrue(nav.applyRequest(native) && nav.page == ui::Page::Video, "native: VIDEO is applied");
+        });
+
+        tc.Run("S18: the greyed r0004 cell's reason is shown on ONLINE in both modes", [](TestCase &t)
+        {
+            // Item 2 of the T5 review: the preset row says "coming soon" since T2, so nothing else on ONLINE carries the
+            // cell's reason; gameVersionRow draws revisionGreyedNote, with no 'already on the page' exception.
+            using launcher::ClientMode;
+            t.Equals(std::string(ui::revisionGreyedNote(ClientMode::Native, 1u)), std::string(launcher::kRevisionMissingNote),
+                     "native, r0004 not installed: its reason");
+            t.Equals(std::string(ui::revisionGreyedNote(ClientMode::Native, 3u)), std::string(), "native, both installed: none");
+            t.Equals(std::string(ui::revisionGreyedNote(ClientMode::Pcsx2, 3u)), std::string(launcher::kPcsx2RevisionNote),
+                     "PCSX2: r0004 greyed whatever is installed (R-E)");
+            t.Equals(ui::revisionsOffered(ClientMode::Pcsx2, 3u), 1u, "PCSX2 offers r0001 only");
+            t.Equals(ui::revisionsOffered(ClientMode::Native, 3u), 3u, "native offers what is installed");
+            t.IsTrue(std::string(launcher::kRevisionMissingNote) != launcher::kPresetComingSoonNote,
+                     "the preset row's note is not the cell's reason");
+        });
+
+        tc.Run("S18: the client toggle is held while an INSTALL or a game runs, with the reason", [](TestCase &t)
+        {
+            t.IsTrue(ui::clientSwitchRefusal(false, false).empty(), "free to switch");
+            t.IsTrue(ui::clientSwitchRefusal(true, false).find("INSTALL") != std::string::npos, "an INSTALL holds it");
+            t.IsTrue(ui::clientSwitchRefusal(false, true).find("running") != std::string::npos, "a running game holds it");
         });
 
         // Sprint 8, owner feedback: "the yellow circle ... takes too long to adjust and awkwardly flys with a

@@ -4,6 +4,7 @@
 #include "bind_flow.h"                   // Sprint 10 Q4: the window switch's cell ids
 #include "chrome.h"                      // Sprint 18 T5: where the top bar puts the client toggle
 #include "launcher/launcher_config.h"   // which server presets can be played at all
+#include "launcher/pcsx2_config.h"      // Sprint 18 T6: kPcsx2RevisionNote (R-E)
 
 #include <algorithm>
 #include <cmath>
@@ -71,10 +72,12 @@ namespace ui
         // that nothing paints (review, Minor 9).
         void addRevisionCells(std::vector<Node> &out, Page page, Rect window, const LayoutInputs &in)
         {
+            // Sprint 18 T6: by the client -- in PCSX2 mode r0001 alone (R-E), whatever is installed beside the launcher.
+            const uint32_t offered = revisionsOffered(in.mode, in.gameRevisionsInstalled);
             for (size_t i = 0; i < launcher::kGameRevisionCount; ++i)
             {
                 const Rect r = revisionCell(window, page, static_cast<int>(i));
-                if (launcher::gameRevisionAvailable(i, in.gameRevisionsInstalled) && drawable(r))
+                if (launcher::gameRevisionAvailable(i, offered) && drawable(r))
                     add(out, page, pageSlug(page) + ".revision." + std::to_string(i), r);
             }
         }
@@ -220,6 +223,36 @@ namespace ui
         return r;
     }
 
+    std::vector<std::pair<std::string, Page>> playRows(launcher::ClientMode mode)
+    {
+        if (mode == launcher::ClientMode::Pcsx2)
+            return {{"play.disc", Page::Disc}, {"play.server", Page::Online}, {"play.version", Page::Online}, {"play.pcsx2", Page::Pcsx2}};
+        return {{"play.disc", Page::Disc}, {"play.video", Page::Video}, {"play.pad", Page::Controller}, {"play.server", Page::Online}};
+    }
+
+    uint32_t revisionsOffered(launcher::ClientMode mode, uint32_t installed)
+    {
+        return mode == launcher::ClientMode::Pcsx2 ? 1u : installed;
+    }
+
+    const char *revisionGreyedNote(launcher::ClientMode mode, uint32_t installed)
+    {
+        const uint32_t offered = revisionsOffered(mode, installed);
+        for (size_t i = 0; i < launcher::kGameRevisionCount; ++i)
+            if (!launcher::gameRevisionAvailable(i, offered))
+                return mode == launcher::ClientMode::Pcsx2 ? launcher::kPcsx2RevisionNote : launcher::kRevisionMissingNote;
+        return "";
+    }
+
+    std::string clientSwitchRefusal(bool installing, bool running)
+    {
+        if (installing)
+            return "an INSTALL is running: the client can change when it finishes";
+        if (running)
+            return "the game is running: close it, then change the client";
+        return std::string();
+    }
+
     std::vector<Node> layoutFor(Page page, Rect window, const LayoutInputs &in)
     {
         const Frame f = frameFor(window);
@@ -230,14 +263,15 @@ namespace ui
         {
         case Page::Play:
         {
-            // Four rows that say what the game is about to do, each one a jump to the page that changes it.
-            for (int i = 0; i < 4; ++i)
-            {
-                static const char *ids[] = {"play.disc", "play.video", "play.pad", "play.server"};
-                add(out, page, ids[i], Rect{b.x, b.y + 4.0f + static_cast<float>(i) * 66.0f, b.w, 56.0f});
-            }
-            // Task 11: what LAUNCH will start, just above the button that starts it.
-            addRevisionCells(out, page, window, in);
+            // Four rows that say what the game is about to do, each one a jump to the page that changes it (Sprint 18
+            // T6: the client's own four, playRows).
+            const std::vector<std::pair<std::string, Page>> rows = playRows(in.mode);
+            for (size_t i = 0; i < rows.size(); ++i)
+                add(out, page, rows[i].first, Rect{b.x, b.y + 4.0f + static_cast<float>(i) * 66.0f, b.w, 56.0f});
+            // Task 11: what LAUNCH will start, just above the button that starts it. Sprint 18 T6: not in the PCSX2 view,
+            // where GAME VERSION is one of the rows and r0001 the one version on offer (R-E).
+            if (in.mode != launcher::ClientMode::Pcsx2)
+                addRevisionCells(out, page, window, in);
             const float y = b.bottom() - 64.0f;
             add(out, page, "play.launch", Rect{b.x, y, 300.0f, 64.0f});
             add(out, page, "play.diagnostics", Rect{b.x + 320.0f, y + 12.0f, 200.0f, 40.0f});
@@ -336,6 +370,15 @@ namespace ui
             for (size_t i = 0; i < launcher::kServerPresetCount; ++i)
                 if (launcher::presetAvailable(launcher::kServerPresets[i]))
                     add(out, page, "online.preset." + std::to_string(i), onlinePresetRow(window, static_cast<int>(i)));
+            // Sprint 18 T6: the PCSX2 view -- SERVER, GAME VERSION (r0001's cell; r0004 drawn greyed, R-E) and ADDRESS
+            // when Custom, and nothing else: personas are made in the game, PCSX2 has no second instance from here.
+            if (in.mode == launcher::ClientMode::Pcsx2)
+            {
+                addRevisionCells(out, page, window, in);
+                if (in.customServer)
+                    add(out, page, "online.server", onlineAddressRow(window));
+                break;
+            }
             // Below the LAST row, whatever the count is -- the literal 3 here is what a fourth preset
             // would have been drawn on top of (Sprint 9 P6).
             // Sprint 10 Goal 9: five rows under the presets now (address, profile, name, password, ADVANCED),
@@ -851,6 +894,8 @@ namespace ui
             return false;
         const Page p = pageAt(requested);
         requested = -1;
+        if (g.find(railId(p)) == nullptr)
+            return false;   // Sprint 18 T6: not a page of this client's rail -- never strand the pad off the rail
         goTo(g, p);
         return true;
     }
