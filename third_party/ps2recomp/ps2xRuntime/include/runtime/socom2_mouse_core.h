@@ -198,4 +198,59 @@ namespace socom2_mouse
         Pulse m_current = Pulse::None;
         int m_phase = 0;   // reads left in the pulse in flight (held reads, then gap reads)
     };
+
+    // ---- Cursor capture (spec section 3.2, step 3) ----------------------------------------------------------
+    struct CaptureInputs
+    {
+        bool enabled = false;       // the mouse is on (knob and keyboard scope)
+        bool focused = false;       // the game window has focus
+        bool inMission = false;     // the player actor is readable (readMode().ok)
+        bool clickPressed = false;  // a mouse button went down this frame
+        bool escPressed = false;    // Esc went down this frame
+        bool buttonsDown = false;   // any mouse button is down now
+    };
+
+    enum class CaptureAction : uint8_t { None, Capture, Release };
+
+    class Capture
+    {
+    public:
+        CaptureAction step(const CaptureInputs &in)
+        {
+            CaptureAction action = CaptureAction::None;
+            if (!in.enabled || !in.inMission || !in.focused)
+            {
+                if (!in.focused && in.inMission)
+                    m_userReleased = true;   // focus loss: a click must recapture
+                if (!in.inMission)
+                    m_userReleased = false;  // a new mission starts fresh
+                if (m_captured)
+                    action = CaptureAction::Release;
+                m_captured = false;
+            }
+            else if (m_captured && in.escPressed)
+            {
+                m_userReleased = true;
+                m_captured = false;
+                action = CaptureAction::Release;
+            }
+            else if (!m_captured && (in.clickPressed || !m_userReleased))
+            {
+                m_captured = true;
+                m_swallow = in.clickPressed;
+                m_userReleased = false;
+                action = CaptureAction::Capture;
+            }
+            if (m_swallow && !in.buttonsDown)
+                m_swallow = false;
+            return action;
+        }
+        bool captured() const { return m_captured; }
+        bool buttonsLive() const { return m_captured && !m_swallow; }
+
+    private:
+        bool m_captured = false;
+        bool m_userReleased = false;
+        bool m_swallow = false;
+    };
 }

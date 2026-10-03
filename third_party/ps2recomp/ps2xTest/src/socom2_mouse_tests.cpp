@@ -195,4 +195,74 @@ void register_socom2_mouse_tests()
             t.Equals(static_cast<int>(q.tick()), static_cast<int>(Pulse::None), "nothing sent");
         });
     });
+
+    MiniTest::Case("Socom2MouseCapture", [](TestCase &tc)
+    {
+        auto in = [](bool focused, bool inMission, bool click = false, bool esc = false, bool down = false)
+        {
+            return CaptureInputs{true, focused, inMission, click, esc, down};
+        };
+
+        tc.Run("entering a mission focused captures; leaving it releases", [=](TestCase &t)
+        {
+            Capture c;
+            t.Equals(static_cast<int>(c.step(in(true, false))), static_cast<int>(CaptureAction::None), "menus: nothing");
+            t.Equals(static_cast<int>(c.step(in(true, true))), static_cast<int>(CaptureAction::Capture), "mission: capture");
+            t.IsTrue(c.buttonsLive(), "buttons reach the game");
+            t.Equals(static_cast<int>(c.step(in(true, true))), static_cast<int>(CaptureAction::None), "steady");
+            t.Equals(static_cast<int>(c.step(in(true, false))), static_cast<int>(CaptureAction::Release), "menus: release");
+            t.IsFalse(c.buttonsLive(), "no buttons while released");
+        });
+
+        tc.Run("focus loss releases, and only a click recaptures", [=](TestCase &t)
+        {
+            Capture c;
+            c.step(in(true, true));
+            t.Equals(static_cast<int>(c.step(in(false, true))), static_cast<int>(CaptureAction::Release), "focus lost");
+            t.Equals(static_cast<int>(c.step(in(true, true))), static_cast<int>(CaptureAction::None), "focus back: still released");
+            t.Equals(static_cast<int>(c.step(in(true, true, true, false, true))), static_cast<int>(CaptureAction::Capture), "click");
+        });
+
+        tc.Run("the recapturing click is swallowed until every button is up", [=](TestCase &t)
+        {
+            Capture c;
+            c.step(in(true, true));
+            c.step(in(false, true));
+            c.step(in(true, true, true, false, true));
+            t.IsTrue(c.captured(), "captured");
+            t.IsFalse(c.buttonsLive(), "the click does not fire");
+            c.step(in(true, true, false, false, true));
+            t.IsFalse(c.buttonsLive(), "still held: still swallowed");
+            c.step(in(true, true, false, false, false));
+            t.IsTrue(c.buttonsLive(), "released: live again");
+        });
+
+        tc.Run("Esc releases; a click recaptures", [=](TestCase &t)
+        {
+            Capture c;
+            c.step(in(true, true));
+            t.Equals(static_cast<int>(c.step(in(true, true, false, true))), static_cast<int>(CaptureAction::Release), "esc");
+            t.Equals(static_cast<int>(c.step(in(true, true))), static_cast<int>(CaptureAction::None), "stays released");
+            t.Equals(static_cast<int>(c.step(in(true, true, true, false, true))), static_cast<int>(CaptureAction::Capture), "click");
+        });
+
+        tc.Run("a new mission auto-captures again after an Esc in the last one", [=](TestCase &t)
+        {
+            Capture c;
+            c.step(in(true, true));
+            c.step(in(true, true, false, true));   // esc
+            c.step(in(true, false));               // back to menus
+            t.Equals(static_cast<int>(c.step(in(true, true))), static_cast<int>(CaptureAction::Capture), "next mission");
+        });
+
+        tc.Run("disabled never captures and releases a capture", [=](TestCase &t)
+        {
+            Capture c;
+            c.step(in(true, true));
+            CaptureInputs off = in(true, true);
+            off.enabled = false;
+            t.Equals(static_cast<int>(c.step(off)), static_cast<int>(CaptureAction::Release), "release");
+            t.Equals(static_cast<int>(c.step(off)), static_cast<int>(CaptureAction::None), "stays off");
+        });
+    });
 }
