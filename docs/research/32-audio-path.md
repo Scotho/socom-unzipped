@@ -155,7 +155,13 @@ register tests, not audio output.
 
 - **Two file shapes on the disc.** The music streams are VPK files: the magic is the little-endian word `"VPK "`, so the bytes
   read `" KPV"` (0x20 4B 50 56); then data size, interleave (0x800), header size (0xB0), sample rate (32000), channels (2), all
-  little-endian; the data is 0x800-byte ADPCM chunks alternating L, R. The mission voice-overs are plain `VAGp` files
+  little-endian; the data is 0x800-byte ADPCM chunks alternating L, R.
+
+  > Superseded 2026-10-03 (research/85 §1, the review of `agent/s17-audio-scale`, the disc bytes and the IRX's `FUN_00013334`): the
+  > VPK header words are `size` (PER-CHANNEL bytes), `data_offset` (0x800), `buff_size` (0xB000, the streaming buffer), `sample_rate`,
+  > `num_channels` (Ziemas/989snd `iop/types.h` `VPKFileHead`); the data starts at `data_offset` on the grid 0x800 + k x 0xB000, each
+  > buffer half left then half right, and in the LAST buffer L's remainder is followed by `C0 00` padding up to the half, R at the half.
+  > The reading above ("interleave 0x800, header size 0xB0") was the code's, not the disc's; KNOWN's lobby-music row has the measurement. The mission voice-overs are plain `VAGp` files
   (48-byte big-endian header: data size at 0x0c, rate at 0x10 — 22050 Hz, mono; the name at 0x20: `M51_140`…). Both
   read straight from the disc image at `sector * 2048 + offset` as they play (`Mixer::playStream`, resampled to 48 kHz;
   the image is over 2 GB, so the seeks are 64-bit — a 32-bit `fseek` failed silently on every mission stream first).
