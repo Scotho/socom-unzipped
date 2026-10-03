@@ -75,10 +75,12 @@ does not write yet; until it does, GAME VERSION keeps r0004 greyed.
 
 At every LAUNCH, and only when the bytes differ:
 
-- `inis/PCSX2.ini`, its `[DEV9/Eth]` section only, merged key by key: `EthEnable = true`, `EthApi = Sockets`,
-  `EthDevice` (the adapter with your internet connection, or the one chosen under ADVANCED on the PCSX2 page),
-  `InterceptDHCP = true`, `DNS1` and `DNS2` = the server's address, `AutoMask = true`, `AutoGateway = true`,
-  `ModeDNS1 = Manual`, `ModeDNS2 = Manual`. Every other key and section, your comments and your line endings stay.
+- `inis/PCSX2.ini`, its `[DEV9/Eth]` section and two `[UI]` keys only, merged key by key: `EthEnable = true`,
+  `EthApi = Sockets`, `EthDevice` (the adapter with your internet connection, or the one chosen under ADVANCED on the
+  PCSX2 page), `InterceptDHCP = true`, `DNS1` and `DNS2` = the server's address (PCSX2 reads `DNS1` alone),
+  `AutoMask = true`, `AutoGateway = true`, `ModeDNS1 = Manual`, `ModeDNS2 = Manual`; in `[UI]`, `SettingsVersion = 1`
+  and `SetupWizardIncomplete = false`, so PCSX2's first-run wizard, which would rewrite the whole file, does not run.
+  Every other key and section, your comments and your line endings stay.
 - `patches/0F6FC6CF.pnach`, the SOCOM II patch that answers the console's online check (guarded: it changes nothing
   on any other disc).
 - For a PCSX2 the launcher installed, also the `memcards/` and `bios/` folders, created empty when missing.

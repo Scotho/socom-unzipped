@@ -140,6 +140,38 @@ void register_pcsx2_files_tests()
                      "a longer name is another section");
         });
 
+        tc.Run("pcsx2_files: the [UI] keys skip PCSX2's first-run wizard, merged beside [DEV9/Eth] (T10, R347)", [](TestCase &t)
+        {
+            const auto keys = pf::uiKeys();
+            t.IsTrue(keys.size() == 2, "exactly two [UI] keys");
+            t.IsTrue(keys.size() == 2 && keys[0] == std::make_pair(std::string("SettingsVersion"), std::string("1")),
+                     "SettingsVersion = 1 first");
+            t.IsTrue(keys.size() == 2 && keys[1] == std::make_pair(std::string("SetupWizardIncomplete"), std::string("false")),
+                     "SetupWizardIncomplete = false second");
+
+            t.IsTrue(pf::mergeIniSection("", "UI", pf::uiKeys()) == "[UI]\nSettingsVersion = 1\nSetupWizardIncomplete = false\n",
+                     "an empty ini becomes the [UI] section with both keys");
+
+            const std::string player =
+                "[UI]\r\nMainWindowGeometry = abc\r\nSettingsVersion = 1\r\nSetupWizardIncomplete = true\r\nTheme = darkfusion\r\n"
+                "\r\n[EmuCore]\r\nEnableCheats = false\r\n";
+            const std::string out = pf::mergeIniSection(player, "UI", pf::uiKeys());
+            t.IsTrue(out == "[UI]\r\nMainWindowGeometry = abc\r\nSettingsVersion = 1\r\nSetupWizardIncomplete = false\r\nTheme = darkfusion\r\n"
+                            "\r\n[EmuCore]\r\nEnableCheats = false\r\n",
+                     "a player's [UI]: only SetupWizardIncomplete flips, every other key and section kept");
+
+            // The call site's order: [UI] first, then [DEV9/Eth], on the same text, one write.
+            const std::string both = pf::mergeIniSection(pf::mergeIniSection("", "UI", pf::uiKeys()), "DEV9/Eth",
+                                                         pf::dev9Keys("3.143.65.100", ""));
+            t.IsTrue(both.find("[UI]\nSettingsVersion = 1\nSetupWizardIncomplete = false\n\n[DEV9/Eth]\nEthEnable = true\n") == 0,
+                     "a fresh ini: [UI] then [DEV9/Eth]");
+            const std::string again = pf::mergeIniSection(pf::mergeIniSection(both, "UI", pf::uiKeys()), "DEV9/Eth",
+                                                          pf::dev9Keys("3.143.65.100", ""));
+            t.IsTrue(again == both, "merging twice is byte-identical (fresh ini)");
+            const std::string outAgain = pf::mergeIniSection(out, "UI", pf::uiKeys());
+            t.IsTrue(outAgain == out, "merging twice is byte-identical (a player's ini)");
+        });
+
         tc.Run("pcsx2_files: the embedded pnach is the master, byte for byte", [](TestCase &t)
         {
             const std::string master = readFile(PS2X_PNACH_MASTER_PATH);

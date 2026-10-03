@@ -26,6 +26,9 @@ namespace launcher::pcsx2files {
     std::filesystem::path documentsDirRule(const std::filesystem::path &knownFolder, const std::filesystem::path &profileOrHome);
     // The [DEV9/Eth] keys the launcher owns, in order. ethDevice "" leaves EthDevice out (T4 fills it when known).
     std::vector<std::pair<std::string, std::string>> dev9Keys(const std::string &dnsIp, const std::string &ethDevice);
+    // The [UI] keys the launcher owns (T10, R347), in order: SettingsVersion = 1, SetupWizardIncomplete = false. PCSX2
+    // 2.8.2 runs its first-run wizard even under -batch and the wizard rewrites the whole ini, [DEV9/Eth] included.
+    std::vector<std::pair<std::string, std::string>> uiKeys();
     // `text` with `keys` set inside `[section]`: an existing key's line replaced in place, a missing key appended at
     // the section's end, the section appended at the end of the file when absent; every other byte kept. CRLF kept.
     std::string mergeIniSection(const std::string &text, const std::string &section,
