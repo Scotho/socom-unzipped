@@ -104,7 +104,7 @@ Probes, traces, dumps and A/B switches. **Ignored unless the process is in devel
 | `PS2X_GS_TRACE_PRESENT` | Int | `-1` | Presents to skip (or trig), then trace uploads, downloads and the present path. |
 | `PS2X_GS_UPLOAD_SKIP` | Flag | `0` | Skip an upload whose bytes are already in the shadow and every target (#32); see the reasons line. |
 | `PS2X_GS_UPLOAD_TRACE` | Presence | unset | Per-call timing of the tile upload path on the [gs-gl stats] cadence. |
-| `PS2X_GS_ZFLOOR` | Flag | `1` | #104: 1 floors interpolated z, saturates z to the ZBUF format (PCSX2 #13795/#13851); 0 = the old path. |
+| `PS2X_GS_ZFLOOR` | Flag | `1` | #104 (PCSX2 #13795/#13851): 1 floors+clamps z, 0 = old; DEPTH_LEGACY: floored z exact, flat z on 128-grid. |
 | `PS2X_HLE_STATS` | Flag | `0` | Count calls per bound HLE stub and print the table periodically. |
 | `PS2X_HLE_STATS_PERIOD` | Int | `30` | With HLE_STATS: seconds between tables. |
 | `PS2X_HLE_STATS_TOML` | Path | `recomp/socom2.toml` | With HLE_STATS: the recompiler config naming the stubs. |
