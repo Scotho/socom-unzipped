@@ -35,6 +35,7 @@ namespace ui
         switch (page)
         {
         case Page::Controller: return controllerTips();
+        case Page::Pcsx2: return pcsx2Tips();   // Sprint 18 T5
         default: return TipTable{};
         }
     }
@@ -49,6 +50,11 @@ namespace ui
         // The bottom bar's LAUNCH is on every page but PLAY; main.cpp draws it, so its line is the bar's own.
         if (id.rfind("bar.launch.", 0) == 0)
             return "LAUNCH: starts the game with these settings. Greyed until your disc image is verified.";
+        // Sprint 18 T5: the top bar's client toggle, on every page like the bar's LAUNCH.
+        if (id == "bar.client.native")
+            return kTipClientNative;
+        if (id == "bar.client.pcsx2")
+            return kTipClientPcsx2;
         return std::string();
     }
 

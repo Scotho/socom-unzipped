@@ -387,6 +387,45 @@ class LauncherPcsx2InstallTest(unittest.TestCase):
         self.assertEqual(self.server.requests, ["/release.json"])
         self.assertFalse(os.path.exists(self.pcsx2))
 
+    # Sprint 18 T5, the two T4 leftovers: the recovery runs before the release query (offline, an interrupted install
+    # would otherwise stay in pcsx2.old), and one INSTALL at a time per folder.
+    def test_an_interrupted_swap_is_recovered_even_when_the_release_query_fails(self):
+        aside = os.path.join(self.home, "pcsx2.old")
+        staging = os.path.join(self.home, "pcsx2.new")
+        for path, data in ((os.path.join(aside, "pcsx2-qt.exe"), b"old exe"),
+                           (os.path.join(aside, "bios", "scph.bin"), b"the bios"),
+                           (os.path.join(aside, ".carry"), b"memcards\nbios\n"),
+                           (os.path.join(staging, "pcsx2-qt.exe"), STAND_IN),
+                           (os.path.join(staging, "memcards", "Mcd001.ps2"), b"the card")):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as fh:
+                fh.write(data)
+        self.server.mode = "rate-limit"
+        r = self.install()
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("rate limit", r.stdout)
+        self.assertFalse(os.path.exists(aside), "the earlier install is back under its own name")
+        after = snapshot(self.pcsx2)
+        self.assertEqual(after["pcsx2-qt.exe"], b"old exe")
+        self.assertEqual(after[os.path.join("memcards", "Mcd001.ps2")], b"the card", "the card came back first")
+        self.assertEqual(after[os.path.join("bios", "scph.bin")], b"the bios")
+        self.assertFalse(os.path.exists(os.path.join(staging, "memcards")), "nothing of the player's left in pcsx2.new")
+
+    def test_a_second_install_in_the_same_folder_is_refused_and_the_lock_goes_with_the_first(self):
+        lock = os.path.join(self.home, "pcsx2.install.lock")
+        held = open(lock, "wb")   # stands in for an INSTALL that is running: its handle is open
+        try:
+            r = self.install()
+        finally:
+            held.close()
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("another INSTALL is running", r.stdout)
+        self.assertEqual(self.server.requests, [], "a refused INSTALL asks nothing of the network")
+        self.assertFalse(os.path.exists(self.pcsx2))
+        r = self.install()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(lock), "a finished INSTALL removes its lock file")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -24,6 +24,7 @@
 //
 // This file is setup, the loop and the page dispatch. Everything drawn lives in src/ui/.
 #include "launcher/bug_report.h"
+#include "launcher/client_mode.h"     // Sprint 18 T5: launcher.json, the client the window drives
 #include "launcher/diagnostics.h"
 #include "launcher/iso9660.h"
 #include "launcher/launcher_config.h"
@@ -31,6 +32,7 @@
 #include "launcher/menu_sounds.h"
 #include "launcher/mic_devices.h"
 #include "launcher/patch_fetch.h"
+#include "launcher/pcsx2_config.h"    // Sprint 18 T5: config.pcsx2.json
 #include "launcher/pcsx2_files.h"     // Sprint 18 T4: --pcsx2-status reads PCSX2's data root
 #include "launcher/pcsx2_install.h"   // Sprint 18 T4: --install-pcsx2
 #include "launcher/personas.h"   // Sprint 16 L1b (#73): the ledgers beside the cards
@@ -72,6 +74,14 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+#ifdef _WIN32
+#include <share.h>       // Sprint 18 T5: _wfsopen's _SH_DENYRW, the INSTALL lock
+#else
+#include <fcntl.h>
+#include <sys/file.h>    // Sprint 18 T5: flock, the INSTALL lock
+#include <unistd.h>
+#endif
 
 namespace fs = std::filesystem;
 
@@ -654,41 +664,129 @@ namespace
     // (pcsx2swap::kPlayerFolders: memcards, bios, inis, ...) move across in the swap by manifest; anything else of the
     // old release does not. Every refusal is one sentence after "NOT INSTALLED.", exit 1: an existing pcsx2 is left
     // exactly as it was, and pcsx2.new is removed only when it holds nothing of the player's.
-    int installPcsx2Headless(const fs::path &home)
+    // Sprint 18 T5 (the T4 leftover): one INSTALL at a time per folder -- the window's worker and the headless form
+    // alike. The lock is an open handle on <dir>/pcsx2.install.lock that nothing else may open (Windows: no sharing;
+    // POSIX: flock), so a crashed run leaves no stale lock behind: the system closes the handle with the process.
+    constexpr const char *kInstallLockName = "pcsx2.install.lock";
+
+    class InstallLock
+    {
+    public:
+        InstallLock() = default;
+        InstallLock(const InstallLock &) = delete;
+        InstallLock &operator=(const InstallLock &) = delete;
+        ~InstallLock() { release(); }
+
+        bool acquire(const fs::path &home)
+        {
+            release();
+            std::error_code ec;
+            fs::create_directories(home, ec);
+            m_path = home / kInstallLockName;
+#ifdef _WIN32
+            m_file = _wfsopen(m_path.wstring().c_str(), L"wb", _SH_DENYRW);
+            return m_file != nullptr;
+#else
+            m_fd = ::open(m_path.c_str(), O_CREAT | O_RDWR | O_CLOEXEC, 0644);
+            if (m_fd < 0)
+                return false;
+            if (::flock(m_fd, LOCK_EX | LOCK_NB) != 0)
+            {
+                ::close(m_fd);
+                m_fd = -1;
+                return false;
+            }
+            return true;
+#endif
+        }
+
+        void release()
+        {
+#ifdef _WIN32
+            if (m_file != nullptr)
+            {
+                std::fclose(m_file);
+                m_file = nullptr;
+                // Another INSTALL that opened it since holds it unshared, and then this removal simply fails.
+                std::error_code ec;
+                fs::remove(m_path, ec);
+            }
+#else
+            // Never unlinked on POSIX: a waiter's flock on the old inode would no longer exclude a new opener.
+            if (m_fd >= 0)
+            {
+                ::close(m_fd);
+                m_fd = -1;
+            }
+#endif
+        }
+
+    private:
+        fs::path m_path;
+#ifdef _WIN32
+        FILE *m_file = nullptr;
+#else
+        int m_fd = -1;
+#endif
+    };
+
+    constexpr const char *kInstallBusy = "another INSTALL is running in this folder; wait for it to finish";
+
+    // Sprint 18 T5 (the T4 leftover): an INSTALL interrupted inside its swap is put right when the launcher starts, not
+    // only after the next successful release query -- offline, the earlier install would otherwise stay in pcsx2.old.
+    // Under the lock, so it never runs beneath a live INSTALL. "" when there was nothing to do or it is done.
+    std::string recoverPcsx2Install(const fs::path &home, bool &busy)
+    {
+        busy = false;
+        namespace pi = launcher::pcsx2install;
+        const fs::path target = pi::installDir(home);
+        fs::path staging = target;
+        staging += ".new";
+        fs::path aside = target;
+        aside += ".old";
+        std::error_code ec;
+        if (!fs::is_directory(aside, ec))
+            return {};
+        InstallLock lock;
+        if (!lock.acquire(home))
+        {
+            busy = true;
+            return {};
+        }
+        return pcsx2swap::recover(target, staging, aside);
+    }
+
+    // What INSTALL tells whoever runs it: the headless form prints every line; the window's worker turns the phases
+    // and the byte count into the PCSX2 page's progress (ui::Pcsx2InstallUi).
+    struct InstallSink
+    {
+        enum class Phase
+        {
+            Fetching,
+            Downloading,   // `what` is the asset's name, `total` its size from the release
+            Extracting,
+            Done           // `what` is the tag
+        };
+        std::function<void(const std::string &line)> say;
+        std::function<void(Phase phase, const std::string &what, uint64_t total)> phase;
+        std::function<void(uint64_t soFar, uint64_t total)> bytes;
+    };
+
+    int installPcsx2(const fs::path &home, const InstallSink &sink)
     {
         namespace pi = launcher::pcsx2install;
         namespace pf = launcher::patchfetch;
+        auto say = [&](const std::string &line)
+        {
+            if (sink.say)
+                sink.say(line);
+        };
+        auto phase = [&](InstallSink::Phase p, const std::string &what, uint64_t total)
+        {
+            if (sink.phase)
+                sink.phase(p, what, total);
+        };
         const char *userAgent = "SOCOM-Unzipped-Launcher/1.0";   // httpRequest's own; GitHub's API requires one
-        const std::string api = pi::releasesApi(ps2x::knob(pi::kReleasesApiEnv));
-        std::printf("asking %s for the latest PCSX2 release\n", api.c_str());
-        std::fflush(stdout);
-        const win32glue::HttpResult answer = win32glue::httpRequest("GET", api, "", 20000);
-        if (answer.status == 0)
-        {
-            std::printf("NOT INSTALLED. The release query failed: %s\n", answer.error.c_str());
-            return 1;
-        }
-        pi::Release release;
-        std::string why;
-        if (!pi::parseLatestRelease(answer.body, release, why))
-        {
-            // An error body names its own reason (the API's "message": a rate limit); the status says the rest.
-            std::printf("NOT INSTALLED. %s%s\n", why.c_str(),
-                        answer.status != 200 ? (" (HTTP " + std::to_string(answer.status) + ")").c_str() : "");
-            return 1;
-        }
-        if (answer.status != 200)
-        {
-            std::printf("NOT INSTALLED. GitHub answered HTTP %d to the release query\n", answer.status);
-            return 1;
-        }
-        if (!pi::assetUrlAllowed(api, release.url))
-        {
-            std::printf("NOT INSTALLED. The release names its download at %s, which is not where %s may come from\n",
-                        release.url.c_str(), release.assetName.c_str());
-            return 1;
-        }
-
         const fs::path target = pi::installDir(home);
         fs::path staging = target;
         staging += ".new";
@@ -696,21 +794,52 @@ namespace
         aside += ".old";
         std::error_code ec;
         // An earlier run stopped inside its swap: its manifest says which player folders are in pcsx2.new, and they go
-        // back before anything is deleted. A move that fails is a refusal, never a deletion.
+        // back before anything is deleted. A move that fails is a refusal, never a deletion. Sprint 18 T5: before the
+        // release query, so an interrupted install is put right even when GitHub cannot be reached.
         {
             const std::string stuck = pcsx2swap::recover(target, staging, aside);
             if (!stuck.empty())
             {
-                std::printf("NOT INSTALLED. %s\n", stuck.c_str());
+                say("NOT INSTALLED. " + stuck);
                 return 1;
             }
         }
+
+        const std::string api = pi::releasesApi(ps2x::knob(pi::kReleasesApiEnv));
+        phase(InstallSink::Phase::Fetching, api, 0);
+        say("asking " + api + " for the latest PCSX2 release");
+        const win32glue::HttpResult answer = win32glue::httpRequest("GET", api, "", 20000);
+        if (answer.status == 0)
+        {
+            say("NOT INSTALLED. The release query failed: " + answer.error);
+            return 1;
+        }
+        pi::Release release;
+        std::string why;
+        if (!pi::parseLatestRelease(answer.body, release, why))
+        {
+            // An error body names its own reason (the API's "message": a rate limit); the status says the rest.
+            say("NOT INSTALLED. " + why + (answer.status != 200 ? " (HTTP " + std::to_string(answer.status) + ")" : std::string()));
+            return 1;
+        }
+        if (answer.status != 200)
+        {
+            say("NOT INSTALLED. GitHub answered HTTP " + std::to_string(answer.status) + " to the release query");
+            return 1;
+        }
+        if (!pi::assetUrlAllowed(api, release.url))
+        {
+            say("NOT INSTALLED. The release names its download at " + release.url + ", which is not where " +
+                release.assetName + " may come from");
+            return 1;
+        }
+
         const fs::path archive = staging / "pcsx2.7z.new";
         auto refuse = [&](const std::string &sentence)
         {
             std::error_code rm;
             fs::remove_all(staging, rm);
-            std::printf("NOT INSTALLED. %s\n", sentence.c_str());
+            say("NOT INSTALLED. " + sentence);
             return 1;
         };
         fs::remove_all(staging, ec);   // recover() above has emptied it of anything of the player's
@@ -719,21 +848,22 @@ namespace
         if (ec)
             return refuse("could not create " + staging.string() + " (" + ec.message() + ")");
 
-        std::printf("downloading %s (%llu bytes) from %s\n", release.assetName.c_str(),
-                    static_cast<unsigned long long>(release.bytes), release.url.c_str());
-        std::fflush(stdout);
+        phase(InstallSink::Phase::Downloading, release.assetName, release.bytes);
+        say("downloading " + release.assetName + " (" + std::to_string(static_cast<unsigned long long>(release.bytes)) +
+            " bytes) from " + release.url);
         int lastPercent = -1;
         const auto progress = [&](uint64_t soFar, int64_t contentLength)
         {
             const uint64_t total = contentLength > 0 ? static_cast<uint64_t>(contentLength) : release.bytes;
+            if (sink.bytes)
+                sink.bytes(soFar, total);
             if (total == 0)
                 return;
             const int percent = static_cast<int>(std::min<uint64_t>(100, soFar * 100 / total));
             if (percent / 5 > lastPercent / 5 || lastPercent < 0)
             {
                 lastPercent = percent;
-                std::printf("  %d%%\n", percent - percent % 5);
-                std::fflush(stdout);
+                say("  " + std::to_string(percent - percent % 5) + "%");
             }
         };
         const win32glue::DownloadResult got =
@@ -744,6 +874,7 @@ namespace
         if (!verdict.ok)
             return refuse("The download is not the release GitHub described: " + verdict.reason);
 
+        phase(InstallSink::Phase::Extracting, release.assetName, release.bytes);
         const char *systemRoot = std::getenv("SystemRoot");
         const fs::path extractLog = staging / "extract.log";
         std::string runError;
@@ -809,7 +940,7 @@ namespace
             const std::string stuck = pcsx2swap::recover(target, staging, aside);
             if (!stuck.empty())
             {
-                std::printf("NOT INSTALLED. %s; %s\n", sentence.c_str(), stuck.c_str());
+                say("NOT INSTALLED. " + sentence + "; " + stuck);
                 return 1;
             }
             return refuse(sentence + "; the earlier install is untouched");
@@ -848,8 +979,27 @@ namespace
         }
         if (hadOld)
             pcsx2swap::removeAside(aside);
-        std::printf("installed PCSX2 %s at %s\n", release.tag.c_str(), target.string().c_str());
+        phase(InstallSink::Phase::Done, release.tag, release.bytes);
+        say("installed PCSX2 " + release.tag + " at " + target.string());
         return 0;
+    }
+
+    // --install-pcsx2 <dir>: installPcsx2 with every line on stdout, under the folder's INSTALL lock.
+    int installPcsx2Headless(const fs::path &home)
+    {
+        InstallLock lock;
+        if (!lock.acquire(home))
+        {
+            std::printf("NOT INSTALLED. %s\n", kInstallBusy);
+            return 1;
+        }
+        InstallSink sink;
+        sink.say = [](const std::string &line)
+        {
+            std::printf("%s\n", line.c_str());
+            std::fflush(stdout);
+        };
+        return installPcsx2(home, sink);
     }
 
     // --pcsx2-status <exe>: the version line (the marker INSTALL wrote, or "your own copy"), PCSX2's data root (beside
@@ -876,6 +1026,72 @@ namespace
             files += it->is_regular_file(ec) ? 1 : 0;
         std::printf("BIOS folder: %s (%d file%s)\n", bios.string().c_str(), files, files == 1 ? "" : "s");
         return 0;
+    }
+
+    // Sprint 18 T5: what the PCSX2 page shows about app.pcsx2.pcsx2Exe -- asked of the disk at start, after SELECT and
+    // after INSTALL, never by the page. The BIOS count is the regular files of 1 MiB or more in <dataRoot>/bios (a PS2
+    // BIOS dump is 4 MiB; PCSX2's own .nvm and .mec beside it are not counted). The adapter is the one PCSX2 will bind.
+    void probePcsx2(ui::App &app)
+    {
+        namespace pi = launcher::pcsx2install;
+        ui::Pcsx2Status s;
+        std::error_code ec;
+        const fs::path exe = app.pcsx2.pcsx2Exe;
+        if (!app.pcsx2.pcsx2Exe.empty() && fs::is_regular_file(exe, ec))
+        {
+            s.exeFound = true;
+            const fs::path exeDir = exe.parent_path();
+            s.versionLine = pi::versionLine(exe.string(), readText(exeDir / pi::kVersionMarker));
+            const bool portable = fs::exists(exeDir / "portable.txt", ec) || fs::exists(exeDir / "portable.ini", ec);
+            const char *profile = std::getenv("USERPROFILE");
+            const fs::path documents = profile != nullptr ? fs::path(profile) / "Documents" : fs::path();
+            const fs::path root = launcher::pcsx2files::dataRoot(exeDir, portable, documents);
+            s.dataRoot = root.string();
+            s.biosDir = (root / "bios").string();
+            for (fs::directory_iterator it(root / "bios", ec), end; !ec && it != end; it.increment(ec))
+            {
+                std::error_code fe;
+                if (it->is_regular_file(fe) && it->file_size(fe) >= 1024u * 1024u)
+                    ++s.biosFiles;
+            }
+        }
+        s.adapters = win32glue::listAdapters();
+        const std::string picked = pi::pickAdapter(s.adapters, app.pcsx2.ethDevice);
+        for (const pi::Adapter &a : s.adapters)
+            if (a.guid == picked)
+                s.adapterName = a.name;
+        app.pcsx2Status = s;
+    }
+
+    // Sprint 18 T5: the PCSX2 page's INSTALL, on a worker thread (the REPORT page's pattern): the worker writes the
+    // page's progress here under the mutex, and the loop copies it into App once a frame.
+    struct InstallShared
+    {
+        std::mutex mutex;
+        ui::Pcsx2InstallUi ui;
+        std::string lastLine;   // the last thing INSTALL said: a refusal's sentence when it fails
+    };
+
+    std::string megabytes(uint64_t bytes)
+    {
+        char out[32];
+        std::snprintf(out, sizeof(out), "%.1f", static_cast<double>(bytes) / 1.0e6);   // decimal MB: 25,670,075 bytes is "25.7"
+        return out;
+    }
+
+    // The sentence a phase shows on the PCSX2 page.
+    std::string installSentence(const ui::Pcsx2InstallUi &u, const std::string &asset)
+    {
+        using S = ui::Pcsx2InstallUi::State;
+        switch (u.state)
+        {
+        case S::Fetching: return "fetching the release list";
+        case S::Downloading:
+            return "downloading " + asset + (u.total > 0 ? ": " + megabytes(u.bytes) + " of " + megabytes(static_cast<uint64_t>(u.total)) + " MB"
+                                                         : ": " + megabytes(u.bytes) + " MB");
+        case S::Extracting: return "extracting";
+        default: return u.message;
+        }
     }
 
     // ---- the chrome around the pages ----------------------------------------------------------------------
@@ -935,9 +1151,10 @@ namespace
         const char *state = app.running ? "RUNNING" : (app.discOk ? "READY" : "NOT READY");
         const char *name = pageName(app.nav.page);
         TopBarText measured;
-        measured.markRight = subX + textWidth(ctx, "UNZIPPED", 13.0f, Face::Bold, 0.10f);
+        // Sprint 18 T5: the client toggle sits right of the mark, so the page tab is centred clear of it too.
+        measured.markRight = std::max(subX + textWidth(ctx, "UNZIPPED", 13.0f, Face::Bold, 0.10f), l.clientPcsx2.right());
         measured.statusW = textWidth(ctx, state, 14.0f, Face::Bold, 0.06f);
-        measured.showPill = app.dirty;
+        measured.showPill = app.dirty || app.pcsx2Dirty;   // either client's file
         measured.tabW.push_back(textWidth(ctx, name, 13.0f, Face::Bold, 0.12f));
         // The ink, not the line box: what a reader lines up is the capitals, and the face's ascent above
         // them is not its descender space below (Sprint 9 P4). The bar hands the measurements over exactly
@@ -957,6 +1174,20 @@ namespace
         text(ctx, "SOCOM II", Vec2{markX, markY}, 15.0f, theme::gold, Face::Bold, 0.08f);
         text(ctx, "UNZIPPED", Vec2{subX, places.markSubY}, 13.0f, theme::dim, Face::Bold, 0.10f);
 
+        // Sprint 18 T5 (R339 = R-A): the client toggle, NATIVE | PCSX2, on every page. Its cells are the rail nodes
+        // railLayout adds (focus.cpp), on ChromeLayout's rects; a click or an activation asks the loop to switch.
+        {
+            const launcher::ClientMode modes[2] = {launcher::ClientMode::Native, launcher::ClientMode::Pcsx2};
+            const Rect cells[2] = {l.clientNative, l.clientPcsx2};
+            const char *labels[2] = {"NATIVE", "PCSX2"};
+            for (int i = 0; i < 2; ++i)
+                if (radioCell(ctx, cells[i], labels[i], clientCellId(modes[i]), app.mode == modes[i]) && app.mode != modes[i])
+                {
+                    app.requestClientMode = modes[i];
+                    app.requestClientModeSet = true;
+                }
+        }
+
         // The page tab: where you are, without taking a click.
         if (!places.tab.empty())
             textCenteredIn(ctx, name, places.tab[0], 13.0f, theme::alpha(theme::caption, 150), Face::Bold, 0.12f);
@@ -971,8 +1202,8 @@ namespace
         // exactly the measured width, so its left edge IS the centred position.
         text(ctx, state, Vec2{places.status.x, places.statusY}, 14.0f, theme::text, Face::Bold, 0.06f);
 
-        // UNSAVED: only when there is something to save, and clicking it saves.
-        if (app.dirty)
+        // UNSAVED: only when there is something to save, and clicking it saves (Sprint 18 T5: either client's file).
+        if (app.dirty || app.pcsx2Dirty)
         {
             const bool over = hover == ChromeHit::UnsavedPill;
             fillRound(ctx, l.pill, l.pill.h * 0.5f, over ? theme::mix(theme::panelHi, theme::gold, 0.25f) : theme::panel);
@@ -998,6 +1229,9 @@ namespace
         drawImage(ctx, g_logo, Rect{head.x + 8.0f, head.y + 8.0f, head.w - 16.0f, head.h - 16.0f}, Rgba{0xFF, 0xFF, 0xFF, 0xFF});
         for (const Node &n : rail)
         {
+            launcher::ClientMode cell;
+            if (clientCellMode(n.id, cell))
+                continue;   // Sprint 18 T5: the client toggle is in the list, and drawTopBar draws it
             const bool current = n.page == app.nav.page;
             const bool live = hovered(ctx, n.r) || focused(ctx, n.id);
             if (current)
@@ -1108,7 +1342,9 @@ namespace
         // the pad is being listened to (the prompts are the whole story then).
         const bool quiet = app.nav.onRail() || !app.activeField.empty() || app.bind.state == BindFlow::State::Listening;
         const std::string tip =
-            quiet ? std::string() : tipFor(app.nav.page, app.nav.focus, TipState{&app.config, glyphFamilyFor(app.pad.name), &app.bind});
+            quiet ? std::string()
+                  : tipFor(app.nav.page, app.nav.focus,
+                           TipState{&app.config, glyphFamilyFor(app.pad.name), &app.bind, &app.pcsx2Status.adapterName});
         // The columns come from the slot, so the slot the test measures is the one drawn (tips.h, kBar*).
         const Rect slot = footerTipSlot(app.frame);
         const float statusX = slot.x;
@@ -1165,7 +1401,8 @@ namespace
         using namespace ui;
         if (!hover.shows(ctx.time))
             return;
-        const std::string line = tipFor(app.nav.page, hover.id, TipState{&app.config, glyphFamilyFor(app.pad.name), &app.bind});
+        const std::string line =
+            tipFor(app.nav.page, hover.id, TipState{&app.config, glyphFamilyFor(app.pad.name), &app.bind, &app.pcsx2Status.adapterName});
         const Rect control = rectOf(nodes, hover.id);
         if (line.empty() || !drawable(control))
             return;
@@ -1258,6 +1495,7 @@ namespace
         case ui::Page::Online: ui::drawOnlinePage(ctx, app, nodes); break;
         case ui::Page::Report: ui::drawReportPage(ctx, app, nodes); break;
         case ui::Page::About: ui::drawAboutPage(ctx, app, nodes); break;
+        case ui::Page::Pcsx2: ui::drawPcsx2Page(ctx, app, nodes); break;   // Sprint 18 T5
         }
     }
 
@@ -1382,6 +1620,20 @@ namespace
         app.layout.customServer = false;   // the default preset owns the address
         // Sprint 10 Q4: the AUDIO page's line under the sounds toggle, as a first run with a verified disc shows it.
         app.menuSoundsStatus = "from your disc: cache/menu_sounds/8c1f2a9b4d3e7f60";
+        // Sprint 18 T5: a PCSX2 INSTALL put beside the launcher, one BIOS dump in its folder, two adapters (invented
+        // values; the walk never probes the disk or the network).
+        app.pcsx2 = launcher::Pcsx2Config{};
+        app.pcsx2.pcsx2Exe = "C:\\games\\socom2\\pcsx2\\pcsx2-qt.exe";
+        app.pcsx2Status = ui::Pcsx2Status{};
+        app.pcsx2Status.exeFound = true;
+        app.pcsx2Status.versionLine = "PCSX2 v2.8.2 (installed by the launcher)";
+        app.pcsx2Status.dataRoot = "C:\\games\\socom2\\pcsx2";
+        app.pcsx2Status.biosDir = "C:\\games\\socom2\\pcsx2\\bios";
+        app.pcsx2Status.biosFiles = 1;
+        app.pcsx2Status.adapters = {{"{95852BA5-54B5-4A50-A84D-8ED1B927EDD9}", "Ethernet", true},
+                                    {"{1C3E7A2B-0D4F-4E6A-9B8C-2F5D6E7A8B9C}", "Wi-Fi", true}};
+        app.pcsx2Status.adapterName = "Ethernet";
+        app.install = ui::Pcsx2InstallUi{};
     }
 
     // ---- Sprint 10 Q4: the launcher's own cues, out of the player's disc -------------------------------------
@@ -1697,11 +1949,47 @@ int main(int argc, char **argv)
         app.meterOn = meterOn;
         refreshMenuSounds(menu, app, dir);
         readPersonas(app, dir);
+        // Sprint 18 T5 (R339 = R-A): the client (launcher.json) and the PCSX2 client's own settings (config.pcsx2.json).
+        // Neither is written here: a file is written when its own settings change, never because the other's did.
+        app.mode = launcher::parseClientMode(readText(dir / launcher::kClientModeFile));
+        {
+            const std::string text = readText(dir / launcher::kPcsx2ConfigFile);
+            if (!text.empty() && !launcher::pcsx2FromJson(text, app.pcsx2))
+                std::fprintf(stderr, "%s is malformed; using the defaults\n", launcher::kPcsx2ConfigFile);
+        }
+        // The T4 leftover: an INSTALL that stopped inside its swap is put right now, online or not.
+        {
+            bool busy = false;
+            const std::string stuck = recoverPcsx2Install(dir, busy);
+            if (!stuck.empty())
+            {
+                app.install.state = ui::Pcsx2InstallUi::State::Failed;
+                app.install.message = "NOT INSTALLED. " + stuck;
+                std::fprintf(stderr, "[launcher] pcsx2: %s\n", stuck.c_str());
+            }
+            else if (busy)
+                std::fprintf(stderr, "[launcher] pcsx2: an INSTALL is running in this folder; its recovery is its own\n");
+        }
+        probePcsx2(app);
     }
 
     // Sprint 9 Goal 8: the two requests this window ever makes, each on its own worker.
     Worker<ReportOutcome> reportJob;
     Worker<std::string> statsJob;
+    // Sprint 18 T5: INSTALL, on its own worker, holding the folder's lock while it runs.
+    Worker<int> installJob;
+    auto installShared = std::make_shared<InstallShared>();
+    auto installLock = std::make_shared<InstallLock>();
+    // Sprint 18 T5: config.pcsx2.json is written where config.json is (LAUNCH, the UNSAVED pill, close, a client switch)
+    // -- only when its own settings changed (R339 = R-A: one client's change never writes the other's file).
+    auto savePcsx2 = [&]()
+    {
+        if (!app.pcsx2Dirty)
+            return;
+        if (!writeText(dir / launcher::kPcsx2ConfigFile, launcher::pcsx2ToJson(app.pcsx2)))
+            std::fprintf(stderr, "[launcher] could not write %s\n", launcher::kPcsx2ConfigFile);
+        app.pcsx2Dirty = false;
+    };
     br::Inputs reportIn;
     double statsAskedAt = -1000.0;
     ui::Page previousPage = ui::Page::Play;
@@ -1733,8 +2021,14 @@ int main(int argc, char **argv)
     {
         const int sizes[2][2] = {{1100, 700}, {800, 520}};
         for (const auto &size : sizes)
-            for (int i = 0; i < ui::kPageCount; ++i)
-                shots.push_back(Shot{ui::pageAt(i), size[0], size[1], ""});
+            for (const ui::Page page : ui::pagesFor(launcher::ClientMode::Native))
+                shots.push_back(Shot{page, size[0], size[1], ""});
+        // Sprint 18 T5: the PCSX2 client -- its page at both sizes, INSTALL half way through its download, and PLAY
+        // under the PCSX2 rail with the toggle on PCSX2.
+        shots.push_back(Shot{ui::Page::Pcsx2, 1100, 700, ""});
+        shots.push_back(Shot{ui::Page::Pcsx2, 800, 520, ""});
+        shots.push_back(Shot{ui::Page::Pcsx2, 1100, 700, "_installing"});
+        shots.push_back(Shot{ui::Page::Play, 1100, 700, "_pcsx2"});
         shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_playstation"});
         // R139: the crouch shortcut on each control -- the row, the trade's line, and the mark on the drawing.
         shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_crouch_l3"});
@@ -1867,6 +2161,16 @@ int main(int argc, char **argv)
         // ADVANCED capture would show a section that says "in use" over nothing at all.
         app.layout.advancedOpen = app.advancedOpen || ui::advancedForced(app.config);
         app.layout.gameRevisionsInstalled = app.gameRevisionsInstalled;   // Task 11: a greyed cell is drawn, never focusable
+        // Sprint 18 T5: the client's rail and pages; INSTALL's button is no node while it runs.
+        if (!app.fake)
+        {
+            std::lock_guard<std::mutex> lock(installShared->mutex);
+            if (installJob.busy())
+                app.install = installShared->ui;
+        }
+        app.layout.mode = app.mode;
+        app.layout.pcsx2Installing = app.install.running();
+        app.layout.pcsx2HasExe = app.pcsx2Status.exeFound;
         // Sprint 10 Goal 8: the CONTROLLER page's section, and whether a bind dialog has replaced its controls.
         app.layout.padButtons = app.padSection == 1;
         app.layout.padDialogButtons = ui::dialogButtonCount(app.bind);
@@ -1887,7 +2191,7 @@ int main(int argc, char **argv)
         // A page the last frame's draw asked for (a rail click, a PLAY row's CHANGE) lands here, before
         // the frame's list is built, so the list and the page never disagree (focus.h, Nav::request).
         nav.applyRequest(graph);
-        const std::vector<ui::Node> rail = ui::railLayout(window);
+        const std::vector<ui::Node> rail = ui::railLayout(window, app.mode);
         std::vector<ui::Node> nodes = ui::layoutFor(nav.page, window, app.layout);
         if (graph.find(nav.focus) == nullptr)
             nav.focus = ui::railId(nav.page);   // the list under the focus changed (a pad was unplugged)
@@ -1948,7 +2252,7 @@ int main(int argc, char **argv)
                 ctx.click = false;
                 break;
             case ui::ChromeHit::UnsavedPill:
-                if (app.dirty)
+                if (app.dirty || app.pcsx2Dirty)
                     app.requestSave = true;
                 ctx.click = false;
                 break;
@@ -2213,10 +2517,11 @@ int main(int argc, char **argv)
                     nav.back(graph);
                     cueBack = true;
                 }
+                // Sprint 18 T5: the shoulder tabs walk this client's rail, not the page enum.
                 if (padWants.pagePrev)
-                    nav.goTo(graph, ui::pageAt(ui::pageIndex(nav.page) - 1));
+                    nav.goTo(graph, ui::pageBeside(app.mode, nav.page, -1));
                 if (padWants.pageNext)
-                    nav.goTo(graph, ui::pageAt(ui::pageIndex(nav.page) + 1));
+                    nav.goTo(graph, ui::pageBeside(app.mode, nav.page, 1));
                 if (padWants.launch)
                     app.requestLaunch = true;
                 if (IsKeyPressed(KEY_F5))
@@ -2289,10 +2594,18 @@ int main(int argc, char **argv)
         // (a focus the input moved, an activation, an adjust, back) until the mouse moves again, so a box never
         // sits over the pad's focus ring. Never under --screenshot, and not while the pad is being listened to.
         const bool steered = (nav.focus != focusBefore && !ctx.click) || ctx.activate || ctx.adjust != 0 || cueBack;
+        // Sprint 18 T5: the client toggle's two cells carry their lines on hover too.
+        std::vector<ui::Node> hoverNodes = nodes;
+        for (const ui::Node &n : rail)
+        {
+            launcher::ClientMode cell;
+            if (ui::clientCellMode(n.id, cell))
+                hoverNodes.push_back(n);
+        }
         hoverTip.frame(mouseMovedNow, steered,
-                       !app.fake && app.bind.state != ui::BindFlow::State::Listening ? ui::nodeAt(nodes, ctx.mouse) : std::string(),
+                       !app.fake && app.bind.state != ui::BindFlow::State::Listening ? ui::nodeAt(hoverNodes, ctx.mouse) : std::string(),
                        ctx.time);
-        drawHoverTip(ctx, app, nodes, hoverTip);
+        drawHoverTip(ctx, app, hoverNodes, hoverTip);
         EndDrawing();
 
         // ---- Sprint 10 Q4: the cues, from what the frame did. One per frame, in this order: a refused LAUNCH
@@ -2415,9 +2728,144 @@ int main(int argc, char **argv)
             }
             if (app.requestSave)
             {
-                writeText(configPath, launcher::toJson(app.config, app.personas.rows));
+                // Sprint 18 T5: the pill lights for either file and saves the one (or two) that changed.
+                if (app.dirty || !app.pcsx2Dirty)
+                    writeText(configPath, launcher::toJson(app.config, app.personas.rows));
                 app.dirty = false;
+                savePcsx2();
                 app.setStatus("settings saved");
+            }
+
+            // ---- Sprint 18 T5 (R339 = R-A): the client toggle, and the PCSX2 page's SELECT, OPEN FOLDER and INSTALL ----
+            if (app.requestClientModeSet && app.requestClientMode != app.mode)
+            {
+                // Review Focus 5: a dirty file is saved first, and the other file is never written.
+                if (app.dirty)
+                {
+                    writeText(configPath, launcher::toJson(app.config, app.personas.rows));
+                    app.dirty = false;
+                }
+                savePcsx2();
+                app.mode = app.requestClientMode;
+                if (!writeText(dir / launcher::kClientModeFile, launcher::clientModeJson(app.mode)))
+                    std::fprintf(stderr, "[launcher] could not write %s\n", launcher::kClientModeFile);
+                app.activeField.clear();
+                app.layout.mode = app.mode;
+                graph = ui::FocusGraph::build(window, app.layout);
+                nav.goTo(graph, ui::Page::Play);
+                app.setStatus(app.mode == launcher::ClientMode::Pcsx2 ? "PCSX2 client: your disc in PCSX2"
+                                                                      : "native client: the PC build of SOCOM II");
+            }
+            if (app.requestBrowsePcsx2)
+            {
+                const std::string chosen = win32glue::browseForPcsx2();
+                if (!chosen.empty())
+                {
+                    app.pcsx2.pcsx2Exe = chosen;
+                    app.pcsx2Dirty = true;
+                    probePcsx2(app);
+                    app.setStatus(app.pcsx2Status.exeFound ? app.pcsx2Status.versionLine : "that file cannot be read");
+                }
+            }
+            if (app.requestOpenBios && !app.pcsx2Status.biosDir.empty())
+            {
+                // PCSX2 makes the folder on its first boot; the player needs it before that, to put the dump in.
+                std::error_code ec;
+                fs::create_directories(fs::path(app.pcsx2Status.biosDir), ec);
+                if (ec)
+                    app.setStatus("could not create " + app.pcsx2Status.biosDir + " (" + ec.message() + ")");
+                else
+                    win32glue::openFolder(app.pcsx2Status.biosDir);
+            }
+            if (app.requestInstallPcsx2 && !installJob.busy() && !app.install.running())
+            {
+                if (!installLock->acquire(dir))
+                {
+                    app.install = ui::Pcsx2InstallUi{};
+                    app.install.state = ui::Pcsx2InstallUi::State::Failed;
+                    app.install.message = std::string("NOT INSTALLED. ") + kInstallBusy;
+                }
+                else
+                {
+                    {
+                        std::lock_guard<std::mutex> lock(installShared->mutex);
+                        installShared->ui = ui::Pcsx2InstallUi{};
+                        installShared->ui.state = ui::Pcsx2InstallUi::State::Fetching;
+                        installShared->ui.message = installSentence(installShared->ui, "");
+                        installShared->lastLine.clear();
+                        app.install = installShared->ui;
+                    }
+                    const std::shared_ptr<InstallShared> shared = installShared;
+                    const fs::path home = dir;
+                    installJob.start([shared, home]()
+                    {
+                        using S = ui::Pcsx2InstallUi::State;
+                        std::string asset;
+                        InstallSink sink;
+                        sink.say = [shared](const std::string &line)
+                        {
+                            std::fprintf(stderr, "[launcher] pcsx2: %s\n", line.c_str());
+                            std::lock_guard<std::mutex> lock(shared->mutex);
+                            shared->lastLine = line;
+                        };
+                        sink.phase = [shared, &asset](InstallSink::Phase p, const std::string &what, uint64_t total)
+                        {
+                            std::lock_guard<std::mutex> lock(shared->mutex);
+                            ui::Pcsx2InstallUi &u = shared->ui;
+                            switch (p)
+                            {
+                            case InstallSink::Phase::Fetching: u.state = S::Fetching; break;
+                            case InstallSink::Phase::Downloading:
+                                u.state = S::Downloading;
+                                asset = what;
+                                u.bytes = 0;
+                                u.total = total > 0 ? static_cast<int64_t>(total) : -1;
+                                break;
+                            case InstallSink::Phase::Extracting: u.state = S::Extracting; break;
+                            case InstallSink::Phase::Done:
+                                u.state = S::Done;
+                                u.message = "installed PCSX2 " + what;
+                                break;
+                            }
+                            u.message = installSentence(u, asset);
+                        };
+                        sink.bytes = [shared, &asset](uint64_t soFar, uint64_t total)
+                        {
+                            std::lock_guard<std::mutex> lock(shared->mutex);
+                            ui::Pcsx2InstallUi &u = shared->ui;
+                            u.bytes = soFar;
+                            if (total > 0)
+                                u.total = static_cast<int64_t>(total);
+                            u.message = installSentence(u, asset);
+                        };
+                        const int rc = installPcsx2(home, sink);
+                        if (rc != 0)
+                        {
+                            std::lock_guard<std::mutex> lock(shared->mutex);
+                            shared->ui.state = S::Failed;
+                            shared->ui.message = shared->lastLine.empty() ? std::string("NOT INSTALLED.") : shared->lastLine;
+                        }
+                        return rc;
+                    });
+                }
+            }
+            {
+                int installRc = 0;
+                if (installJob.poll(installRc))
+                {
+                    installLock->release();
+                    {
+                        std::lock_guard<std::mutex> lock(installShared->mutex);
+                        app.install = installShared->ui;
+                    }
+                    if (installRc == 0)
+                    {
+                        app.pcsx2.pcsx2Exe = (launcher::pcsx2install::installDir(dir) / launcher::pcsx2install::kExeName).string();
+                        app.pcsx2Dirty = true;
+                        probePcsx2(app);
+                    }
+                    app.setStatus(app.install.message);
+                }
             }
             if (app.requestDiagnostics)
             {
@@ -2528,6 +2976,13 @@ int main(int argc, char **argv)
                     break;
                 }
             }
+            // Sprint 18 T5: the PCSX2 view's LAUNCH starts PCSX2, and that is T6's; until then it never starts the native
+            // game from the PCSX2 view.
+            if (app.requestLaunch && app.mode == launcher::ClientMode::Pcsx2)
+            {
+                app.setStatus("LAUNCH for PCSX2 is not ready in this build");
+                app.requestLaunch = false;
+            }
             if (app.requestLaunch && !app.running && app.discOk)
             {
                 // The review, finding 4: a pick made while the last game ran goes first on its card now, before this
@@ -2541,6 +2996,7 @@ int main(int argc, char **argv)
                 }
                 writeText(configPath, launcher::toJson(app.config, app.personas.rows));
                 app.dirty = false;
+                savePcsx2();   // Sprint 18 T5: and the PCSX2 client's file, when it changed
                 mic->stopMeter();   // Review F8: two processes must not hold the same microphone
                 meterOn = false;
                 // Sprint 16 L1b (#73): the environment from the selection -- no PS2X_SOCOM2_LOGIN_PASS for a persona
@@ -2581,6 +3037,7 @@ int main(int argc, char **argv)
         app.requestMicChanged = app.requestMicRescan = false;
         app.requestCreatePersona = false;
         app.requestPersonaFirst = -1;
+        app.requestClientModeSet = app.requestInstallPcsx2 = app.requestBrowsePcsx2 = app.requestOpenBios = false;
 
         // PS2X_LAUNCHER_SHOT=<file>: the REAL window, with its own chrome, at whatever size it opened at --
         // a GDI or BitBlt grab of a GL window comes back white on this machine, so the launcher takes it.
@@ -2610,6 +3067,18 @@ int main(int argc, char **argv)
                 resizeWaits = 0;
                 shotPendingPage = ui::pageIndex(shot.page);
                 shotPendingFocus.clear();
+                // Sprint 18 T5: the client each shot is in, and INSTALL's fixed progress for the one that shows it. Set on
+                // every shot, as the walk reuses one App.
+                app.mode = (shot.page == ui::Page::Pcsx2 || std::strcmp(shot.suffix, "_pcsx2") == 0) ? launcher::ClientMode::Pcsx2
+                                                                                                     : launcher::ClientMode::Native;
+                app.install = ui::Pcsx2InstallUi{};
+                if (std::strcmp(shot.suffix, "_installing") == 0)
+                {
+                    app.install.state = ui::Pcsx2InstallUi::State::Downloading;
+                    app.install.bytes = 12400000u;
+                    app.install.total = 25670075;
+                    app.install.message = installSentence(app.install, "pcsx2-v2.8.2-windows-x64-Qt.7z");
+                }
                 {
                     // Sprint 9 Goal 8: canned states, no request made.
                     const std::string suffix = shot.suffix;
@@ -2780,7 +3249,10 @@ int main(int argc, char **argv)
     }
 
     if (!app.fake)
+    {
         writeText(configPath, launcher::toJson(app.config, app.personas.rows));
+        savePcsx2();   // Sprint 18 T5: only when the PCSX2 client's settings changed
+    }
     if (mic)
         mic->stopMeter();
     game.close();
@@ -2794,5 +3266,23 @@ int main(int argc, char **argv)
     // A request still in flight: the window is gone already, and each join is bounded by its request's timeout.
     reportJob.join();
     statsJob.join();
+    // Sprint 18 T5: an INSTALL still running is waited for (its download's own timeout bounds it): stopping it mid-swap
+    // would leave the work to the next start's recovery. A success still lands in config.pcsx2.json.
+    while (installJob.busy())
+    {
+        int rc = 1;
+        if (installJob.poll(rc))
+        {
+            if (rc == 0)
+            {
+                app.pcsx2.pcsx2Exe = (launcher::pcsx2install::installDir(dir) / launcher::pcsx2install::kExeName).string();
+                app.pcsx2Dirty = true;
+                savePcsx2();
+            }
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    installLock->release();
     return 0;
 }

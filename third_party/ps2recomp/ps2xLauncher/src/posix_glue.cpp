@@ -152,6 +152,10 @@ namespace win32glue
         return trimmed(line);
     }
 
+    // Sprint 18 T5: SELECT on the PCSX2 page. The Linux PCSX2 client is out of scope (spec 2.4), so there is no dialog
+    // to offer; an empty answer leaves the page as it was.
+    std::string browseForPcsx2() { return {}; }
+
     void openFolder(const std::string &path)
     {
         if (path.empty())

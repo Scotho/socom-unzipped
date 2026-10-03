@@ -32,6 +32,8 @@ namespace ui
         const launcher::Config *config = nullptr;
         GlyphFamily family = GlyphFamily::Xbox;
         const BindFlow *bind = nullptr;
+        // Sprint 18 T5: the network adapter the PCSX2 page shows (its friendly name), for pcsx2.adapter's live line.
+        const std::string *pcsx2Adapter = nullptr;
     };
 
     // One row: a control's id, or a prefix ending in '.' for a family of them ("pad.crouch." is the four crouch
@@ -52,6 +54,11 @@ namespace ui
     // Each page's own table (page_controller_tips.cpp for CONTROLLER); an empty one for a page that has none yet.
     TipTable tipTable(Page page);
     TipTable controllerTips();
+    TipTable pcsx2Tips();   // Sprint 18 T5: page_pcsx2_tips.cpp
+
+    // Sprint 18 T5: the client toggle's two lines -- the top bar is on every page, so they answer on every page.
+    constexpr const char *kTipClientNative = "Play the native PC build of SOCOM II (its own settings and pages).";
+    constexpr const char *kTipClientPcsx2 = "Play your disc in PCSX2 against the same servers (its own settings and pages).";
 
     // The line for `id` on `page`: the page's table first, then the bottom bar's (LAUNCH is on every page).
     // "" when nothing answers -- the footer and the hover then show nothing, never a placeholder.

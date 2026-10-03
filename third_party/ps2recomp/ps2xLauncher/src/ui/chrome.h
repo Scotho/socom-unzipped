@@ -40,6 +40,9 @@ namespace ui
         Rect status;     // the lamp and its one-line state
         Rect pill;       // "UNSAVED", only drawn when there are unsaved changes
         Rect minimize, maximize, close;
+        // Sprint 18 T5 (R339 = R-A): the client toggle, NATIVE | PCSX2, right of the mark and inside the drag region's
+        // span -- the hit test answers Client over it, so a click is the launcher's and never starts a window drag.
+        Rect clientNative, clientPcsx2;
     };
 
     namespace chrome
@@ -55,6 +58,12 @@ namespace ui
         constexpr float lampGap = 20.0f;      // the lamp's centre to the state word
         constexpr float lampR = 9.0f;         // the lamp's outer ring
         constexpr float tabGap = 18.0f;       // between the tabs of the group
+        // Sprint 18 T5: the client toggle's two cells. Right of the mark, so the UNSAVED pill and the state cluster on
+        // the right never meet them (the task book's header.right() - 300 sat on the pill at 1100 wide).
+        constexpr float toggleGap = 8.0f;     // the mark's right edge to the first cell
+        constexpr float toggleCellW = 84.0f;     // "NATIVE" at 13 bold with air; x = 400 stays the drag region (the bar test)
+        constexpr float toggleCellGap = 6.0f;
+        constexpr float toggleInset = 6.0f;   // above and below the cells, inside the bar
     }
 
     inline ChromeLayout chromeLayout(float designW)
@@ -71,6 +80,8 @@ namespace ui
         l.caption = Rect{l.mark.right(), 0.0f, l.status.x - l.mark.right(), h};
         if (l.caption.w < 0.0f)
             l.caption.w = 0.0f;
+        l.clientNative = Rect{l.mark.right() + chrome::toggleGap, chrome::toggleInset, chrome::toggleCellW, h - 2.0f * chrome::toggleInset};
+        l.clientPcsx2 = Rect{l.clientNative.right() + chrome::toggleCellGap, l.clientNative.y, chrome::toggleCellW, l.clientNative.h};
         return l;
     }
 
@@ -203,6 +214,9 @@ namespace ui
                 return ChromeHit::Right;
         }
 
+        // Sprint 18 T5: the client toggle is the launcher's own control, not the drag region it sits in.
+        if (in(l.clientNative) || in(l.clientPcsx2))
+            return ChromeHit::Client;
         if (in(l.caption))
             return ChromeHit::Caption;
         return ChromeHit::Client;
