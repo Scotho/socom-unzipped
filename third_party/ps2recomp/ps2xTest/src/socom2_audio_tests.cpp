@@ -156,8 +156,8 @@ namespace
         return b;
     }
 
-    // A stereo VPK on disk: 0xB0-byte header {"VPK ", dataSize, interleave 0x800, headerSize 0xB0, rate 32000,
-    // channels 2}, then `chunkPairs` pairs of 0x800-byte chunks (left ramp up, right ramp down); the very last
+    // A stereo VPK on disk: a 0x1000-byte header {"VPK ", per-channel data size, data_offset 0x1000, buff_size 0x1000,
+    // rate 32000, channels 2}, then `chunkPairs` pairs of 0x800-byte chunks (left ramp up, right ramp down); the very last
     // block carries the data's end flag. Task 1e's ring cases need a file longer than the ring holds.
     // `shift` is the ADPCM block shift: the decoder scales a nibble by 1 << (12 - shift), so 12 is the quietest
     // (the level cases want a loud file, the ring cases only care about the sign of each channel).
@@ -170,12 +170,12 @@ namespace
             down[i] = static_cast<int8_t>(-(i % 8));
         }
         // research/36 item 10: a two-channel VPK's per-channel stride is header word 3 / 2 (the streaming buffer's
-        // half), so a file of alternating 0x800-byte channel chunks declares word 3 = 0x1000 (data at 0x1000).
+        // half), so a file of alternating 0x800-byte channel chunks declares word 3 = 0x1000; word 2 = 0x1000 puts the data there.
         std::vector<uint8_t> file(0x1000, 0u);
         auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
         std::memcpy(file.data(), " KPV", 4);
-        put32(4, static_cast<uint32_t>(chunkPairs * 2 * 0x800));
-        put32(8, 0x800);
+        put32(4, static_cast<uint32_t>(chunkPairs * 0x800));   // LATER 97: word 1 is the per-channel byte count
+        put32(8, 0x1000);   // LATER 97: word 2 is data_offset
         put32(12, 0x1000);
         put32(16, 32000);
         put32(20, 2);
@@ -194,6 +194,39 @@ namespace
         std::fclose(fp);
         return true;
     }
+
+    // LATER 97: a VPK whose header word 1 is the PER-CHANNEL byte count, as on the disc (MUUI0003.VPK: 0x3495E0
+    // per channel, two channels). `quietChunks` then `loudChunks` 0x800-byte chunks per channel (the quiet ones at
+    // shift 12, the loud ones at shift 2), interleaved left/right per 0x800 for two channels; no block carries an
+    // end flag, so the header's length alone decides where the data ends.
+    bool writeVpkQuietLoud(const std::string &path, uint32_t channels, int quietChunks, int loudChunks)
+    {
+        int8_t up[28];
+        for (int i = 0; i < 28; ++i)
+            up[i] = static_cast<int8_t>(i % 8);
+        std::vector<uint8_t> file(0x800, 0u);
+        auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
+        std::memcpy(file.data(), " KPV", 4);
+        put32(4, static_cast<uint32_t>((quietChunks + loudChunks) * 0x800));   // per channel
+        put32(8, 0x800);      // data_offset: the data right behind the header sector, as on the disc
+        put32(12, 0x1000u);   // buff_size; two channels: a per-channel stride of word 3 / 2 = 0x800
+        put32(16, 32000);
+        put32(20, channels);
+        for (int c = 0; c < quietChunks + loudChunks; ++c)
+            for (uint32_t ch = 0; ch < channels; ++ch)
+                for (int b = 0; b < 0x800 / 16; ++b)
+                {
+                    const std::vector<uint8_t> blk = block(c < quietChunks ? 12 : 2, 0, 0x00, up);
+                    file.insert(file.end(), blk.begin(), blk.end());
+                }
+        FILE *fp = std::fopen(path.c_str(), "wb");
+        if (!fp)
+            return false;
+        std::fwrite(file.data(), 1, file.size(), fp);
+        std::fclose(fp);
+        return true;
+    }
+
     // ---- the 989snd IOP module (modules/snd989.cpp) --------------------------------------------
     // Its model -- bank table, sound slots, VAG stream slots -- is only reachable over its RPC
     // server (SID 0x00123456, one command per call), so the cases below drive it the way the game
@@ -388,7 +421,7 @@ namespace
         auto put32 = [&](size_t at, uint32_t v) { vpk[at] = static_cast<uint8_t>(v); vpk[at + 1] = static_cast<uint8_t>(v >> 8); vpk[at + 2] = static_cast<uint8_t>(v >> 16); vpk[at + 3] = static_cast<uint8_t>(v >> 24); };
         std::memcpy(vpk.data(), " KPV", 4);
         put32(4, 0x800u);
-        put32(8, 0x800u);
+        put32(8, 0xB0u);   // LATER 97: word 2 is data_offset
         put32(12, 0xB0u);
         put32(16, 32000u);
         put32(20, 1u);
@@ -1292,7 +1325,7 @@ void register_socom2_audio_tests()
             auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
             std::memcpy(file.data(), " KPV", 4);
             put32(4, 2u * 0x800u);
-            put32(8, 0x800u);
+            put32(8, 0xB0u);   // LATER 97: word 2 is data_offset
             put32(12, 0xB0u);
             put32(16, 32000u);
             put32(20, 1u);
@@ -1367,8 +1400,8 @@ void register_socom2_audio_tests()
             std::vector<uint8_t> file(0x1000, 0u);   // research/36 item 10: word 3 = 0x1000 -> a per-channel stride of 0x800
             auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
             std::memcpy(file.data(), " KPV", 4);   // the disc stores the magic as the little-endian word "VPK "
-            put32(4, static_cast<uint32_t>(chunksPerChannel * 2 * 0x800));
-            put32(8, 0x800);
+            put32(4, static_cast<uint32_t>(chunksPerChannel * 0x800));   // LATER 97: per channel
+            put32(8, 0x1000);   // LATER 97: word 2 is data_offset
             put32(12, 0x1000);
             put32(16, 32000);
             put32(20, 2);
@@ -1923,7 +1956,7 @@ void register_socom2_audio_tests()
             auto put32 = [&](size_t at, uint32_t v) { vpk[at] = static_cast<uint8_t>(v); vpk[at + 1] = static_cast<uint8_t>(v >> 8); vpk[at + 2] = static_cast<uint8_t>(v >> 16); vpk[at + 3] = static_cast<uint8_t>(v >> 24); };
             std::memcpy(vpk.data(), " KPV", 4);
             put32(4, 0x800u);
-            put32(8, 0x800u);
+            put32(8, 0xB0u);   // LATER 97: word 2 is data_offset
             put32(12, 0xB0u);
             put32(16, 32000u);
             put32(20, 1u);
@@ -2001,6 +2034,109 @@ void register_socom2_audio_tests()
             std::remove(path.c_str());
         });
 
+        // LATER 97 (2026-10-03): the lobby music wrapped at 94.2 s of its 188.5 s. The disc's MUUI0003.VPK header
+        // (RUN/SOUNDS/VAGSTORE.ZAR, KNOWN's lobby-music row) is ' KPV', 0x3495E0, 0x800, 0xB000, 0x7D00, 2: word 1
+        // is the PER-CHANNEL byte count (the file is 0x800 + 2 x 0x3495E0 + padding), and the reader counted both
+        // channels' bytes against it, so a two-channel stream ended -- or, looping, went back to the top -- at half
+        // its data. Each file below is two quiet chunks then two loud ones per channel (5376 output frames a chunk
+        // at 32 kHz -> 48 kHz), with no end flag: only the header's length can end it.
+        tc.Run("Mixer: a VPK's data size is per channel -- a two-channel stream plays both halves before it ends or loops (LATER 97)", [](TestCase &t)
+        {
+            constexpr size_t kChunkFrames = 5376;                       // 3584 samples at 32 kHz, at 48 kHz
+            auto peakIn = [](const std::vector<int16_t> &all, size_t from, size_t to) {
+                int32_t peak = 0;
+                for (size_t f = from; f < to && f * 2 + 1 < all.size(); ++f)
+                    for (int c = 0; c < 2; ++c)
+                    {
+                        const int32_t v = all[f * 2 + c];
+                        peak = std::max<int32_t>(peak, v < 0 ? -v : v);
+                    }
+                return peak;
+            };
+            auto run = [&](uint32_t channels, bool loop, size_t frames, std::vector<int16_t> &all, std::vector<snd989::StreamEvent> &events, bool &playingAtEnd) {
+                const std::string path = tmpPath(channels > 1 ? "socom2_audio_later97_stereo.vpk" : "socom2_audio_later97_mono.vpk");
+                t.IsTrue(writeVpkQuietLoud(path, channels, 2, 2), "the quiet-then-loud VPK is written");
+                {
+                    snd989::Mixer mixer;
+                    mixer.setStreamEventSink([&events](const snd989::StreamEvent &e) { events.push_back(e); });
+                    const uint32_t h = 0x84000097u;
+                    t.IsTrue(mixer.playStream(h, path, 0u, 0x400, -1, 1u, false, loop), "the stream plays");
+                    std::vector<int16_t> buf(2 * 1200);
+                    for (size_t done = 0; done < frames; done += 1200)
+                    {
+                        mixer.pumpStreams();
+                        mixer.render(buf.data(), 1200);
+                        all.insert(all.end(), buf.begin(), buf.end());
+                    }
+                    playingAtEnd = mixer.isPlaying(h);
+                    const size_t before = events.size();
+                    mixer.stop(h);
+                    events.resize(before);   // the explicit stop's own Done is not the data's end
+                }
+                std::remove(path.c_str());
+            };
+            auto doneFrame = [](const std::vector<snd989::StreamEvent> &events, int64_t &frame) {
+                size_t n = 0;
+                for (const snd989::StreamEvent &e : events)
+                    if (e.handle == 0x84000097u && e.kind == snd989::StreamEvent::Done)
+                    {
+                        if (n++ == 0)
+                            frame = static_cast<int64_t>(e.frame);
+                    }
+                return n;
+            };
+
+            // Two channels, not looping: N = 4 chunks per channel, 2N bytes of data -> 4 chunks of output, then Done.
+            {
+                std::vector<int16_t> all;
+                std::vector<snd989::StreamEvent> events;
+                bool playing = true;
+                run(2u, false, 6 * kChunkFrames, all, events, playing);
+                const int32_t loud = peakIn(all, 2 * kChunkFrames + 1200, 4 * kChunkFrames - 1200);
+                t.IsTrue(loud > 200, "two channels: the second half of the data (the loud chunks) plays (peak " + std::to_string(loud) + ")");
+                int64_t at = -1;
+                const size_t dones = doneFrame(events, at);
+                t.Equals(dones, static_cast<size_t>(1u), "two channels: one Done");
+                t.IsTrue(at >= static_cast<int64_t>(4 * kChunkFrames - 1200),
+                         "two channels: Done after all 2N bytes, near frame 21504, not at N (10752): frame " + std::to_string(at));
+                t.IsTrue(!playing, "two channels: over once its data is");
+            }
+            // Two channels, looping: the top comes back after 2N bytes, not after N.
+            {
+                std::vector<int16_t> all;
+                std::vector<snd989::StreamEvent> events;
+                bool playing = false;
+                run(2u, true, 8 * kChunkFrames, all, events, playing);
+                const int32_t loud1 = peakIn(all, 2 * kChunkFrames + 1200, 4 * kChunkFrames - 1200);
+                const int32_t quiet2 = peakIn(all, 4 * kChunkFrames + 1200, 6 * kChunkFrames - 1200);
+                const int32_t loud2 = peakIn(all, 6 * kChunkFrames + 1200, 8 * kChunkFrames - 1200);
+                t.IsTrue(loud1 > 200, "looping two channels: the loud second half plays before the wrap (peak " + std::to_string(loud1) + ")");
+                t.IsTrue(quiet2 < 50, "looping two channels: then the quiet top again -- it wrapped at 2N (peak " + std::to_string(quiet2) + ")");
+                t.IsTrue(loud2 > 200, "looping two channels: and the loud half on the second pass (peak " + std::to_string(loud2) + ")");
+                int64_t at = -1;
+                t.Equals(doneFrame(events, at), static_cast<size_t>(0u), "looping two channels: no Done");
+                t.IsTrue(playing, "looping two channels: still playing");
+            }
+            // One channel: word 1 is the whole data, N bytes -> 4 chunks of output, then Done (unchanged by the fix).
+            {
+                std::vector<int16_t> all;
+                std::vector<snd989::StreamEvent> events;
+                bool playing = true;
+                run(1u, false, 6 * kChunkFrames, all, events, playing);
+                const int32_t quiet = peakIn(all, 1200, 2 * kChunkFrames - 1200);
+                const int32_t loud = peakIn(all, 2 * kChunkFrames + 1200, 4 * kChunkFrames - 1200);
+                const int32_t after = peakIn(all, 4 * kChunkFrames + 1200, 6 * kChunkFrames - 1200);
+                t.IsTrue(quiet < 50 && loud > 200 && after == 0,
+                         "one channel: quiet, loud, then silence (peaks " + std::to_string(quiet) + ", " + std::to_string(loud) + ", " + std::to_string(after) + ")");
+                int64_t at = -1;
+                t.Equals(doneFrame(events, at), static_cast<size_t>(1u), "one channel: one Done");
+                t.IsTrue(at >= static_cast<int64_t>(4 * kChunkFrames - 1200) && at <= static_cast<int64_t>(4 * kChunkFrames + 1200),
+                         "one channel: Done at N bytes, near frame 21504: frame " + std::to_string(at));
+                t.IsTrue(!playing, "one channel: over once its data is");
+            }
+        });
+
+
         tc.Run("PS2AudioBackend: snd_PlayVAGStreamByLoc flags 4 (the lobby music's request) loops the file and keeps answering snd_SoundIsStillPlaying", [](TestCase &t)
         {
             // A one-channel VPK of one 0x800 chunk (3584 samples at 32 kHz = 5376 frames out) whose last block
@@ -2013,7 +2149,7 @@ void register_socom2_audio_tests()
             auto put32 = [&](size_t at, uint32_t v) { vpk[at] = static_cast<uint8_t>(v); vpk[at + 1] = static_cast<uint8_t>(v >> 8); vpk[at + 2] = static_cast<uint8_t>(v >> 16); vpk[at + 3] = static_cast<uint8_t>(v >> 24); };
             std::memcpy(vpk.data(), " KPV", 4);
             put32(4, 0x800u);
-            put32(8, 0x800u);
+            put32(8, 0xB0u);   // LATER 97: word 2 is data_offset
             put32(12, 0xB0u);
             put32(16, 32000u);
             put32(20, 1u);
@@ -2177,8 +2313,8 @@ void register_socom2_audio_tests()
             auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
             std::memcpy(file.data(), " KPV", 4);
             const int chunkPairs = 4;
-            put32(4, static_cast<uint32_t>(chunkPairs * 2 * 0x800));
-            put32(8, 0x800);
+            put32(4, static_cast<uint32_t>(chunkPairs * 0x800));   // LATER 97: per channel
+            put32(8, 0x1000);   // LATER 97: word 2 is data_offset
             put32(12, 0x1000);
             put32(16, 48000);
             put32(20, 2);
@@ -2232,7 +2368,9 @@ void register_socom2_audio_tests()
         // with word 2 = 0x800, word 3 = 0xb000, channels 2 -- and the two channels are interleaved per streaming
         // BUFFER (word 3: the IRX's FUN_00013334 requires it to equal its stream buffer, and its per-channel stride
         // is `puVar12[3] >> 1`): each 0xb000-byte buffer holds 0x5800 bytes of L then 0x5800 of R, the last, partial
-        // buffer split in halves; 0x800 is only the streamer's refill grain. Ours read alternating 0x800 chunks as
+        // buffer split in halves. Word 2 is where the data starts (LATER 97: Ziemas/989snd's VPKFileHead names it
+        // data_offset, and the disc's members are 0x800 + k x 0xb000 bytes), so this file's data starts at 0x800,
+        // not at word 3: a reader starting at 0xb000 crosses channels in every chunk. Ours read alternating 0x800 chunks as
         // L, R, L, R -- different music in the two channels (run 10: L/R correlation 0.05 at lag 0 against the
         // console's 0.3-0.6, "best" lags scattered at 61/136/674 ms). This file is authored in the real layout with
         // IDENTICAL data in both halves, so a correct decode renders L == R for every frame.
@@ -2241,12 +2379,12 @@ void register_socom2_audio_tests()
             constexpr uint32_t kBuffer = 0xb000u, kHalf = kBuffer / 2u;
             const int fullBuffers = 6;                 // 7 chunk pairs with the tail: more than the ring's 4, so an underrun can be forced
             const uint32_t tailPerChannel = 0x1000u;   // a partial last buffer, split in halves
-            std::vector<uint8_t> file(kBuffer, 0u);    // the header block: 24 bytes of header, zero to word 3
+            std::vector<uint8_t> file(0x800u, 0u);     // the header sector, as on the disc: the data at word 2 = 0x800
             auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
             std::memcpy(file.data(), " KPV", 4);
-            put32(4, static_cast<uint32_t>(fullBuffers) * kBuffer + 2u * tailPerChannel);
-            put32(8, 0x800);
-            put32(12, kBuffer);
+            put32(4, static_cast<uint32_t>(fullBuffers) * kHalf + tailPerChannel);   // LATER 97: per channel
+            put32(8, 0x800);       // data_offset
+            put32(12, kBuffer);    // buff_size
             put32(16, 32000);
             put32(20, 2);
             // A block pattern that changes from block to block, so a channel reading the wrong bytes cannot match.
@@ -2380,7 +2518,8 @@ void register_socom2_audio_tests()
             }
             snd989::Mixer mixer;
             const uint32_t h = 0x0400000Eu;
-            // Sector 0x11ec92: a 3.9 s stereo stem (VPK size 0x22c60, word 3 0xb000) the driven mission plays twice.
+            // Sector 0x11ec92: a stereo stem the driven mission plays twice (VPK word 1 0x22c60 per channel -- 7.8 s at
+            // 32 kHz, LATER 97 -- word 3 0xb000).
             t.IsTrue(mixer.playStream(h, iso, 0x11ec92ull * 2048ull, 0x400, -1, 1u), "the stem opens from the disc image");
             std::vector<int16_t> buf(2 * 2400);
             std::vector<double> L, R;
