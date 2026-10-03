@@ -8,6 +8,8 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
+#include <deque>
 
 namespace socom2_mouse
 {
@@ -94,4 +96,106 @@ namespace socom2_mouse
         out.ry = detail::axis(wantY, cfg.deadzone, state.carryY, out.moved);
         return out;
     }
+
+    // ---- Reading the view mode (read-only; spec section 4.2) ------------------------------------------------
+    // From tools_py/parity/guest_addresses.py (player_actor, actor_vtable), kept here rather than in upstream's
+    // socom2_addresses.h to keep the fork's diff of upstream files small. The mode byte is A+0x200
+    // (docs/research/30-scope-at-spawn.md); r0004's inserted actor word is at +0x1334, above it.
+    struct Revision
+    {
+        const char *name;
+        uint32_t playerActor;   // the global holding the local player actor's pointer
+        uint32_t actorVtable;   // word 0 of a live actor
+    };
+
+    inline constexpr Revision kRevisions[] = {
+        {"r0001", 0x00408C58u, 0x006691A0u},
+        {"r0004", 0x00435618u, 0x00668B20u},
+    };
+
+    inline const Revision *revisionFor(const char *name)
+    {
+        if (name == nullptr)
+            return nullptr;
+        for (const Revision &r : kRevisions)
+            if (std::strcmp(r.name, name) == 0)
+                return &r;
+        return nullptr;
+    }
+
+    constexpr uint32_t kModeOffset = 0x200u;
+    constexpr uint32_t kRamSize = 32u * 1024u * 1024u;   // == PS2_RAM_SIZE (ps2_memory.h)
+
+    struct ModeRead
+    {
+        bool ok = false;
+        uint32_t actor = 0;
+        uint8_t mode = 0;
+    };
+
+    namespace detail
+    {
+        inline uint32_t read32(const uint8_t *ram, uint32_t addr)
+        {
+            uint32_t v;
+            std::memcpy(&v, ram + addr, sizeof(v));   // little-endian host and guest
+            return v;
+        }
+    }
+
+    inline ModeRead readMode(const uint8_t *rdram, const Revision *rev)
+    {
+        ModeRead m;
+        if (rdram == nullptr || rev == nullptr)
+            return m;
+        const uint32_t pointer = detail::read32(rdram, rev->playerActor & 0x1FFFFFFFu);
+        const uint32_t actor = pointer & 0x1FFFFFFFu;   // KSEG0/KSEG1 and the uncached alias fold onto RAM
+        if (actor == 0u || actor + kModeOffset >= kRamSize || (actor & 3u) != 0u)
+            return m;
+        if (detail::read32(rdram, actor) != rev->actorVtable)
+            return m;
+        m.ok = true;
+        m.actor = actor;
+        m.mode = rdram[actor + kModeOffset];
+        return m;
+    }
+
+    // ---- Synthesized D-pad presses (spec section 4.3) -------------------------------------------------------
+    // The game's per-frame reader turns a button into 0 -> 1 (press edge) -> 2 (held) -> 3 (release) -> 0, so a
+    // press is only a press if it was seen released first. Each pulse: held 2 reads, released 2 reads.
+    enum class Pulse : uint8_t { None, Up, Down };
+
+    constexpr int kPulseHeldReads = 2;
+    constexpr int kPulseGapReads = 2;
+
+    class PulseQueue
+    {
+    public:
+        void push(Pulse p) { m_queue.push_back(p); }
+        Pulse tick()
+        {
+            if (m_phase == 0)
+            {
+                if (m_queue.empty())
+                    return Pulse::None;
+                m_current = m_queue.front();
+                m_queue.pop_front();
+                m_phase = kPulseHeldReads + kPulseGapReads;
+            }
+            const Pulse out = m_phase > kPulseGapReads ? m_current : Pulse::None;
+            --m_phase;
+            return out;
+        }
+        bool idle() const { return m_phase == 0 && m_queue.empty(); }
+        void clear()
+        {
+            m_queue.clear();
+            m_phase = 0;
+        }
+
+    private:
+        std::deque<Pulse> m_queue;
+        Pulse m_current = Pulse::None;
+        int m_phase = 0;   // reads left in the pulse in flight (held reads, then gap reads)
+    };
 }
