@@ -3370,6 +3370,26 @@ namespace Server.Medius
                             break;
                         }
 
+                    // LOCAL (socom_pc), #72: the five requests of the Medius 1.50 client (SOCOM II r0001 and r0004) the
+                    // server left unanswered -- Lobby 0x86 VersionServer, 0xB2 FileListFiles, 0xCE UpdateLadderStats,
+                    // 0xEF LadderList_ExtraInfo0, LobbyExt 0x08 GetBuddyInvitations. Answered as PSHome-MultiServer's
+                    // Servers/Horizon/SERVER/Medius/MLS.cs (GPL-3.0, 8778e985e4) answers them, with no file store, ladder
+                    // table or invitations behind the answers: Medius150Replies. VersionServer needs a session only.
+                    case MediusVersionServerRequest:
+                    case MediusFileListRequest:
+                    case MediusUpdateLadderStatsRequest:
+                    case MediusLadderList_ExtraInfoRequest0:
+                    case MediusGetBuddyInvitationsRequest:
+                        {
+                            if (data.ClientObject == null)
+                                throw new InvalidOperationException($"INVALID OPERATION: {clientChannel} sent {message} without a session.");
+
+                            if (message is not MediusVersionServerRequest && !data.ClientObject.IsLoggedIn)
+                                throw new InvalidOperationException($"INVALID OPERATION: {clientChannel} sent {message} without a being logged in.");
+
+                            data.ClientObject.Queue(Medius150Replies.Answer(message));
+                            break;
+                        }
                     case MediusChannelList_ExtraInfoRequest0 channelListRequest0:
                         {
                             // Medius 1.50 (SOCOM II): Lobby/0xEC request, Lobby/0xED 0x70-byte entries.

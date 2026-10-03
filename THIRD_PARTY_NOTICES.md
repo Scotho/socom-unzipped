@@ -171,6 +171,13 @@ last measured tarball had); the notices test checks it both ways, and against a 
   `third_party/ps2recomp/ps2xRuntime/include/runtime/gs/gs_gl_depth.h` and
   `third_party/ps2recomp/ps2xRuntime/src/lib/gs/gs_gl_backend.cpp`. PCSX2 is still not part of the build or the
   download; it remains the console reference every parity measurement compares against.
+- **PSHome-MultiServer** (GitHubProUser67/PSHome-MultiServer, GPL-3.0; text in `LICENSES/GPL-3.0-only.txt`; its files
+  carry no notice of their own), commit `8778e985e4`, by GitHubProUser67: the Medius 1.50 models for Lobby 0x86/0x87
+  VersionServer, 0xB2/0xB3 FileListFiles, 0xCE/0xCF UpdateLadderStats, 0xEF LadderList_ExtraInfo0 and LobbyExt 0x08/0x09
+  GetBuddyInvitations from `AuxiliaryServices/HorizonService/RT.Models/Lobby/`, two constants and an enum from its
+  `RT.Common/`, and the answers of `Servers/Horizon/SERVER/Medius/MLS.cs` (issue #72). Ours: the files listed in
+  `server/README.md`, "Licence". They make the Horizon server, MIT above, a GPL-3.0 combination; it does not ship
+  in the download.
 
 ## References this project was modelled on (no code copied)
 

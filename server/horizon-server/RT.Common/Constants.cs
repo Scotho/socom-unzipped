@@ -46,6 +46,10 @@ namespace RT.Common
         public const int UNIVERSE_SVO_URL_MAXLEN = 128;
 
         public const int LADDERSTATSWIDE_MAXLEN = 100;
+        // LOCAL (socom_pc), #72: from PSHome-MultiServer's RT.Common/Constants.cs (GPL-3.0) at 8778e985e4; the Medius
+        // 1.50 client's VersionServerResponse is MessageID + 56 bytes (0x4D), its UpdateLadderStats request 15 stats (0x58).
+        public const int VERSIONSERVER_MAXLEN = 56;
+        public const int LADDERSTATS_MAXLEN = 15;
 
         public const int NET_SESSION_KEY_LEN = 17;
         public const int NET_ACCESS_KEY_LEN = 17;
