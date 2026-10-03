@@ -122,6 +122,9 @@ namespace snd989
         // The handle's 7-bit volume in force (0..127: a stream's play volume, a bank sound's current volume), -1
         // when nothing carries it: what the AutoVol step-schedule test reads tick by tick (Sprint 15 T1b).
         int32_t autoVolLevelForTest(uint32_t handle) const;
+        // Issue #91: the gain a voice or stream register value carries, reg / divisor -- 0x7FFE by default (0x3FFF
+        // is half scale), 0x4000 under PS2X_SND_VOICE_FULLSCALE=1 (0x3FFF is full scale). Read at construction.
+        double registerGainForTest(int32_t reg) const;
 
         // The PCM stream (snd_PcmStreamOpen/Start/Position/Stop, research/32 section 7): the EE DMAs 16-bit PCM into a
         // ring the IRX plays through sceSdBlockTrans; stereo data is 512 bytes of left then 512 of right (the movie

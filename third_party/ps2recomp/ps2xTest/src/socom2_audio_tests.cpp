@@ -2136,6 +2136,91 @@ void register_socom2_audio_tests()
             }
         });
 
+        // Issue #91 (research/85 section 1.1): the IRX writes snd_AdjustVolToGroup(...) >> 1 to a voice's VOLL/VOLR,
+        // so its largest register value is 0x3FFF, and the hardware doubles it (psx-spx "Voice volume/2"; PCSX2
+        // SPU2 ADSR.cpp's SignExtend16(src << 1) then >> 15): 0x3FFF is full scale. Ours divides by 0x7FFE -- half.
+        // PS2X_SND_VOICE_FULLSCALE=1 divides voices and streams by 0x4000 instead, for the owner's A/B; off by
+        // default. The PCM ring (BVOL, unshifted, matched to the console within +0.47 dB) is not on that path.
+        tc.Run("Mixer: PS2X_SND_VOICE_FULLSCALE=1 makes register 0x3FFF full scale on voices and streams, never on the PCM ring (#91)", [](TestCase &t)
+        {
+            auto setKnob = [](const char *value) {
+#ifdef _WIN32
+                _putenv_s("PS2X_SND_VOICE_FULLSCALE", value);
+#else
+                if (*value)
+                    setenv("PS2X_SND_VOICE_FULLSCALE", value, 1);
+                else
+                    unsetenv("PS2X_SND_VOICE_FULLSCALE");
+#endif
+            };
+            const std::vector<uint8_t> blk = readFixture("hudui_block.bin");
+            const std::vector<uint8_t> vag = readFixture("hudui_vag.bin");
+            const std::string path = tmpPath("socom2_audio_fullscale.vpk");
+            t.IsTrue(writeVpk(path, 4, 2), "a loud four-chunk-pair VPK");
+            struct Levels { double gain3fff = 0.0, gain7ffe = 0.0, voice = 0.0, stream = 0.0, ring = 0.0; };
+            auto sumAbs = [](const std::vector<int16_t> &b) {
+                double s = 0.0;
+                for (int16_t v : b)
+                    s += v < 0 ? -static_cast<double>(v) : static_cast<double>(v);
+                return s;
+            };
+            auto measure = [&](const char *knobValue) {
+                setKnob(knobValue);
+                Levels lv;
+                std::vector<int16_t> buf(2 * 4096);
+                {
+                    snd989::Mixer mixer;   // reads the knob at construction
+                    lv.gain3fff = mixer.registerGainForTest(0x3FFF);
+                    lv.gain7ffe = mixer.registerGainForTest(0x7FFE);
+                    // A voice: the HUD click at full volume, the global master at 0x200 so neither setting clips.
+                    mixer.setMasterVolume(16u, 0x200);
+                    t.IsTrue(mixer.loadBank(0x00a00000u, blk.data(), blk.size(), vag.data(), vag.size()), "HUDUI loads");
+                    const uint32_t h = mixer.play(0x00a00000u, 8u, 0x400, -1, 0, 0);
+                    t.IsTrue(h != 0u, "the click plays");
+                    mixer.render(buf.data(), 4096);
+                    lv.voice = sumAbs(buf);
+                    mixer.stopAll();
+                }
+                {
+                    snd989::Mixer mixer;
+                    t.IsTrue(mixer.playStream(0x04000091u, path, 0u, 0x400, -1, 1u), "the stream plays");
+                    mixer.pumpStreams();
+                    mixer.render(buf.data(), 4096);
+                    lv.stream = sumAbs(buf);
+                    mixer.stop(0x04000091u);
+                }
+                {
+                    snd989::Mixer mixer;
+                    std::vector<uint8_t> ring(0x6000u);
+                    for (size_t i = 0; i + 1 < ring.size(); i += 2)
+                    {
+                        ring[i] = static_cast<uint8_t>(10000 & 0xFF);
+                        ring[i + 1] = static_cast<uint8_t>(10000 >> 8);
+                    }
+                    mixer.pcmStreamOpen(0x6000u, 2u);
+                    mixer.pcmStreamWrite(0u, ring.data(), ring.size());
+                    mixer.pcmStreamStart(0x6000u, 48000u, 2u, 0x400);
+                    mixer.render(buf.data(), 2048);
+                    lv.ring = sumAbs(std::vector<int16_t>(buf.begin(), buf.begin() + 2 * 2048));
+                    mixer.pcmStreamStop();
+                }
+                setKnob("");
+                return lv;
+            };
+            const Levels off = measure("");
+            const Levels on = measure("1");
+            t.IsTrue(std::fabs(off.gain3fff - 0.5) < 1e-6, "off: register 0x3FFF carries 0.5 (" + std::to_string(off.gain3fff) + ")");
+            t.IsTrue(std::fabs(off.gain7ffe - 1.0) < 1e-6, "off: 0x7FFE is unity, as before");
+            t.IsTrue(std::fabs(on.gain3fff - 16383.0 / 16384.0) < 1e-9,
+                     "on: register 0x3FFF carries 0x3FFF/0x4000 = 0.99994 (-0.0005 dB, as PCSX2's (0x3FFF << 1) >> 15): " + std::to_string(on.gain3fff));
+            t.IsTrue(off.voice > 0.0 && off.stream > 0.0 && off.ring > 0.0, "every path is in the mix with the knob off");
+            const double vr = on.voice / off.voice, sr = on.stream / off.stream, rr = on.ring / off.ring;
+            // The voice's samples are small and each is truncated to an integer, so its ratio carries ~1 % of rounding.
+            t.IsTrue(std::fabs(vr - 2.0) < 0.03, "a voice is 6.02 dB louder with the knob on (ratio " + std::to_string(vr) + ")");
+            t.IsTrue(std::fabs(sr - 2.0) < 0.01, "a stream is 6.02 dB louder with the knob on (ratio " + std::to_string(sr) + ")");
+            t.IsTrue(rr == 1.0, "the PCM ring is untouched by the knob (ratio " + std::to_string(rr) + ")");
+            std::remove(path.c_str());
+        });
 
         tc.Run("PS2AudioBackend: snd_PlayVAGStreamByLoc flags 4 (the lobby music's request) loops the file and keeps answering snd_SoundIsStillPlaying", [](TestCase &t)
         {

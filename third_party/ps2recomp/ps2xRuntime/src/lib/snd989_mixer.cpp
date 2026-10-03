@@ -651,6 +651,13 @@ namespace snd989
         bool workerStop = false;
         bool workerStarted = false;
         const bool workerEnabled;
+        // Issue #91 (research/85 section 1.1): what a voice or stream register value is divided by. The IRX writes
+        // snd_AdjustVolToGroup(...) >> 1 to VOLL/VOLR, so the largest register value is 0x3FFF; the hardware
+        // doubles it (psx-spx: "Voice volume/2"; PCSX2 SPU2 ADSR.cpp reads SignExtend16(src << 1) and applies
+        // >> 15), so 0x3FFF is full scale. We divide by 0x7FFE by default -- voices and streams 6.02 dB low --
+        // until the owner's listen (Sprint 17 A0) rules; PS2X_SND_VOICE_FULLSCALE=1 divides by 0x4000 for the A/B.
+        // The PCM ring is not on this path: its gain is BVOL's, unshifted, and matches the console.
+        const double registerDivisor;
         // The PCM ring (research/32 section 7): 16-bit PCM the EE DMAs in, played from offset 0 at `rate`;
         // stereo is 512 bytes of left then 512 of right (the movie audio's SShd interleave 0x200; a first cut read the
         // capture as sample-interleaved and was wrong -- research/32 section 7).
@@ -724,7 +731,7 @@ namespace snd989
         uint32_t nextSlot = 0;
         double tickAccumulator = 0.0;
 
-        Impl() : workerEnabled(streamWorkerEnabled())
+        Impl() : workerEnabled(streamWorkerEnabled()), registerDivisor(voiceRegisterDivisor())
         {
             for (int32_t &v : masterVol)
                 v = 0x400;
@@ -734,6 +741,12 @@ namespace snd989
         {
             const char *env = ps2x::knob("PS2X_SND_STREAM_WORKER");
             return !(env && env[0] == '0');
+        }
+
+        static double voiceRegisterDivisor()
+        {
+            const char *env = ps2x::knob("PS2X_SND_VOICE_FULLSCALE");
+            return (env && std::strtol(env, nullptr, 0) != 0) ? 16384.0 : 32766.0;   // 0x4000 : 0x7FFE
         }
 
         // render()'s only contact with a stream's chunks: the ring, in memory.
@@ -1942,6 +1955,11 @@ namespace snd989
         return m_impl->handleLevel7(handle);
     }
 
+    double Mixer::registerGainForTest(int32_t reg) const
+    {
+        return static_cast<double>(reg) / m_impl->registerDivisor;
+    }
+
     void Mixer::setMasterVolume(uint32_t group, int32_t vol)
     {
         std::lock_guard<std::mutex> lock(m_impl->mutex);
@@ -2013,7 +2031,7 @@ namespace snd989
                     const size_t i1 = std::min(i0 + 1, pcm.size() - 1);
                     const double frac = v.pos - static_cast<double>(i0);
                     const double s = pcm[i0] * (1.0 - frac) + pcm[i1] * frac;
-                    const double g = static_cast<double>(v.env.level) / 32767.0 / 0x7FFE;
+                    const double g = static_cast<double>(v.env.level) / 32767.0 / m_impl->registerDivisor;   // #91
                     mix[(frame + i) * 2] += static_cast<int32_t>(s * g * left);
                     mix[(frame + i) * 2 + 1] += static_cast<int32_t>(s * g * right);
                     v.pos += v.step;
@@ -2094,17 +2112,18 @@ namespace snd989
                     const double frac = cur->pos - static_cast<double>(i0);
                     const double sl = l[i0] * (1.0 - frac) + l[i1] * frac;
                     const double sr = (i0 < r.size() ? r[i0] : 0) * (1.0 - frac) + (i1 < r.size() ? r[i1] : 0) * frac;
+                    const double div = m_impl->registerDivisor;   // #91: 0x7FFE, or 0x4000 with the knob
                     if (cur->channels > 1)
                     {
                         // The IRX's voice pair (streamBase): the main voice plays the left data at (left, right), the
                         // doubling voice the right data at the SAME volumes swapped (FUN_000152fc, FUN_00016898).
-                        mix[(frame + i) * 2] += static_cast<int32_t>((sl * left + sr * right) / 0x7FFE);
-                        mix[(frame + i) * 2 + 1] += static_cast<int32_t>((sl * right + sr * left) / 0x7FFE);
+                        mix[(frame + i) * 2] += static_cast<int32_t>((sl * left + sr * right) / div);
+                        mix[(frame + i) * 2 + 1] += static_cast<int32_t>((sl * right + sr * left) / div);
                     }
                     else
                     {
-                        mix[(frame + i) * 2] += static_cast<int32_t>(sl / 0x7FFE * left);
-                        mix[(frame + i) * 2 + 1] += static_cast<int32_t>(sr / 0x7FFE * right);
+                        mix[(frame + i) * 2] += static_cast<int32_t>(sl / div * left);
+                        mix[(frame + i) * 2 + 1] += static_cast<int32_t>(sr / div * right);
                     }
                     cur->pos += cur->step;
                 }
