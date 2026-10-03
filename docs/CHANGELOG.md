@@ -2,12 +2,13 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.changelog` from `git log` (R272): every merge commit on the first-parent line of the history it was rendered from, and on the first-parent line of each branch those merges brought in, grouped by the oldest `v*` tag that contains it. `python -m tools_py.changelog --check` exits 1 when this file is stale; regenerate at every merge to a sprint branch (in the merge's follow-up commit) and at the close. The rules are the module's docstring. The reasoning behind a merge is its commit message and the sprint plan's Log; the hand-written log this page replaced is `docs/archive/STATUS-log-to-2026-09-26.md`.
 
-433 merges (68 on the first-parent line, 365 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
+434 merges (69 on the first-parent line, 365 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
 
 ## Since v0.16.0
 
-208 merges.
+209 merges.
 
+- 2026-10-03 `bbf2a702` #72 the five r0004 requests answered [agent/s17-mls-models]
 - 2026-10-03 `bfba8a98` #104 fragment Z floor + ZBUF format clamp from PCSX2 (LATER 84, knob PS2X_GS_ZFLOOR) [agent/s17-zfloor]
 - 2026-10-03 `4a63e7dd` upstream #265 pad bytes, #257 D_ENABLER mirror, #268 VCALLMSR (LATER 83) [agent/s17-upstream-ports]
 - 2026-10-03 `99d66e06` research/85 the PS2 recomp projects audit, LATER 82-95, the licence rule (Sprint 17) [agent/s17-research85]

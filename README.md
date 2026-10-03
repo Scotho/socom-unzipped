@@ -147,4 +147,4 @@ Ported with credit: [PCSX2](https://github.com/PCSX2/pcsx2) (GPL-3.0-or-later) -
 backend (`gs_gl_backend.cpp`, `gs_gl_depth.h`, #104): the fragment z floor of PCSX2 #13795, narrowed by #13851,
 and the saturation of z to the ZBUF format's maximum from `GSRendererHW::EmulateZbuffer`.
 [PSHome-MultiServer](https://github.com/GitHubProUser67/PSHome-MultiServer) (GPL-3.0, GitHubProUser67) -- the five
-Medius 1.50 message models and their MLS answers in the Horizon server (issue #72; `server/README.md`, "Licence").
+Medius 1.50 message models and their MLS answers in the Horizon server (#72; `server/README.md`, "Licence").
