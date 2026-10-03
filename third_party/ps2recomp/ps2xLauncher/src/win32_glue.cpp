@@ -3,6 +3,7 @@
 // "#else" arms below are unreachable now and their behaviour lives in posix_glue.cpp.
 #ifdef _WIN32
 #include "win32_glue.h"
+#include "launcher/pcsx2_files.h"   // Sprint 18 T6 review: documentsDirRule
 #include "ps2x/knobs.h"
 
 #include <ctime>
@@ -19,6 +20,7 @@
 #include <commdlg.h>
 #include <iphlpapi.h>   // Sprint 18 T4: GetAdaptersAddresses, for the PCSX2 adapter (EthDevice)
 #include <shellapi.h>
+#include <shlobj.h>     // Sprint 18 T6 review: SHGetKnownFolderPath, PCSX2's Documents (CoTaskMemFree: ole32)
 #include <tlhelp32.h>   // the persona-card review, finding 5: the headless creator looks for a running game
 #include <winhttp.h>
 #include <xinput.h>   // Sprint 10 Q4: XINPUT_STATE for the guide button (the DLL is loaded by hand, never linked)
@@ -39,38 +41,50 @@ namespace win32glue
         return fs::current_path().string();
     }
 
+    namespace
+    {
+        // Sprint 18 T6 review: the open dialog in its wide form, the answer narrowed to UTF-8 (launcher::utf8Of) -- the
+        // ANSI form could not name a file outside the code page, and its bytes were not the UTF-8 startProcess takes.
+        std::string openDialogUtf8(const wchar_t *filter, const wchar_t *title)
+        {
+            wchar_t file[MAX_PATH] = {};
+            OPENFILENAMEW ofn{};
+            ofn.lStructSize = sizeof(ofn);
+            ofn.lpstrFilter = filter;
+            ofn.lpstrFile = file;
+            ofn.nMaxFile = MAX_PATH;
+            ofn.lpstrTitle = title;
+            ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+            if (!GetOpenFileNameW(&ofn))
+                return {};
+            return launcher::utf8Of(fs::path(file));
+        }
+    }
+
     std::string browseForIso()
     {
-#ifdef _WIN32
-        char file[MAX_PATH] = {};
-        OPENFILENAMEA ofn{};
-        ofn.lStructSize = sizeof(ofn);
-        ofn.lpstrFilter = "Disc images (*.iso;*.bin)\0*.iso;*.bin\0All files\0*.*\0";
-        ofn.lpstrFile = file;
-        ofn.nMaxFile = MAX_PATH;
-        ofn.lpstrTitle = "Choose the SOCOM II ISO";
-        ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
-        if (GetOpenFileNameA(&ofn))
-            return file;
-#endif
-        return {};
+        return openDialogUtf8(L"Disc images (*.iso;*.bin)\0*.iso;*.bin\0All files\0*.*\0", L"Choose the SOCOM II ISO");
     }
 
     std::string browseForPcsx2()
     {
-#ifdef _WIN32
-        char file[MAX_PATH] = {};
-        OPENFILENAMEA ofn{};
-        ofn.lStructSize = sizeof(ofn);
-        ofn.lpstrFilter = "PCSX2 (pcsx2-qt.exe)\0pcsx2-qt.exe\0Programs (*.exe)\0*.exe\0";
-        ofn.lpstrFile = file;
-        ofn.nMaxFile = MAX_PATH;
-        ofn.lpstrTitle = "Choose your pcsx2-qt.exe";
-        ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
-        if (GetOpenFileNameA(&ofn))
-            return file;
-#endif
-        return {};
+        // Sprint 18 T6 (the T5 review's item 4): pcsx2-qt.exe and nothing else -- no "Programs" or "All files" entry; a
+        // name typed past the filter is refused by the caller (main.cpp).
+        return openDialogUtf8(L"PCSX2 (pcsx2-qt.exe)\0pcsx2-qt.exe\0", L"Choose your pcsx2-qt.exe");
+    }
+
+    fs::path documentsDir()
+    {
+        // FOLDERID_Documents, {FDD39AD0-238F-46AF-ADB4-6C85480369C7}, spelled here so no uuid library is needed.
+        static const GUID kDocuments = {0xFDD39AD0, 0x238F, 0x46AF, {0xAD, 0xB4, 0x6C, 0x85, 0x48, 0x03, 0x69, 0xC7}};
+        fs::path known;
+        PWSTR p = nullptr;
+        if (SHGetKnownFolderPath(kDocuments, 0, nullptr, &p) == S_OK && p != nullptr)
+            known = fs::path(p);
+        if (p != nullptr)
+            CoTaskMemFree(p);
+        const wchar_t *profile = _wgetenv(L"USERPROFILE");
+        return launcher::pcsx2files::documentsDirRule(known, profile != nullptr ? fs::path(profile) : fs::path());
     }
 
     void openFolder(const std::string &path)

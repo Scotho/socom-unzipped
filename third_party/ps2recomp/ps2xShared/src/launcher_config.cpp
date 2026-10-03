@@ -434,6 +434,47 @@ namespace launcher
         return lines;
     }
 
+    // Sprint 18 T6: the PCSX2 client's LAUNCH, refused with one sentence. The running game first (the blocker the player
+    // just made), then the disc (the DISC page's sentences), then PCSX2 and its BIOS (the PCSX2 page), then the name.
+    std::string launchBlockedReasonPcsx2(bool running, bool isoSet, bool discOk, const std::string &discMessage,
+                                         bool exeFound, int biosFiles, const std::string &dnsError)
+    {
+        if (running)
+            return "the game is running";
+        if (!isoSet)
+            return "no disc set yet: pick your SOCOM II image on the DISC page";
+        if (!discOk)
+            return discMessage.empty() ? std::string("not checked yet") : discMessage;
+        if (!exeFound)
+            return "no PCSX2 yet: SELECT or INSTALL one on the PCSX2 page";
+        if (biosFiles <= 0)
+            return "no BIOS yet: put your PS2 BIOS dump in PCSX2's bios folder (the PCSX2 page)";
+        return dnsError;
+    }
+
+    std::string pcsx2ExitLine(int exitCode, const std::string &emulogPath)
+    {
+        if (exitCode == 0)
+            return "PCSX2 closed";
+        return "PCSX2 exited with code " + std::to_string(exitCode) + " -- its log is " + emulogPath;
+    }
+
+    std::vector<std::string> pcsx2Args(const std::string &isoPath)
+    {
+        return {"-batch", isoPath};
+    }
+
+    std::string utf8Of(const std::filesystem::path &p)
+    {
+        const std::u8string u = p.u8string();
+        return std::string(reinterpret_cast<const char *>(u.data()), u.size());
+    }
+
+    std::filesystem::path pathFromUtf8(const std::string &utf8)
+    {
+        return std::filesystem::path(std::u8string(reinterpret_cast<const char8_t *>(utf8.data()), utf8.size()));
+    }
+
 
     bool isKnobKey(const std::string &key)
     {

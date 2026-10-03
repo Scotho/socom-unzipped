@@ -20,6 +20,10 @@ namespace launcher::pcsx2files {
     // portable.ini beside it), else <documents>/PCSX2 (PCSX2's own rule).
     std::filesystem::path dataRoot(const std::filesystem::path &exeDir, bool portableMarkerBesideExe,
                                    const std::filesystem::path &documentsDir);
+    // Sprint 18 T6 review: the Documents folder dataRoot's non-portable case reads. `knownFolder` is the system's answer
+    // (Windows: SHGetKnownFolderPath(FOLDERID_Documents), which follows OneDrive's Known Folder Move; POSIX:
+    // $XDG_DOCUMENTS_DIR) and wins when it is absolute; else <profileOrHome>/Documents; else empty.
+    std::filesystem::path documentsDirRule(const std::filesystem::path &knownFolder, const std::filesystem::path &profileOrHome);
     // The [DEV9/Eth] keys the launcher owns, in order. ethDevice "" leaves EthDevice out (T4 fills it when known).
     std::vector<std::pair<std::string, std::string>> dev9Keys(const std::string &dnsIp, const std::string &ethDevice);
     // `text` with `keys` set inside `[section]`: an existing key's line replaced in place, a missing key appended at

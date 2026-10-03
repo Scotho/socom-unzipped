@@ -15,10 +15,10 @@ namespace ui
         }
     }
 
-    void drawOnlinePage(const Ctx &ctx, App &app, const std::vector<Node> &nodes)
+    // Sprint 18 T6: SERVER, GAME VERSION and ADDRESS -- the part of ONLINE both clients draw, bound to the active client's
+    // preset and typed address (config.json's natively, config.pcsx2.json's in PCSX2 mode: R-A). True when a field typed.
+    static bool drawServerBlock(const Ctx &ctx, App &app, const std::vector<Node> &nodes, std::string &presetId, std::string &server)
     {
-        launcher::Config &c = app.config;
-
         // The first ROW, not the first node: a preset that cannot be played has a row but no node, and the
         // community one is first -- rectOf() answered an empty rect and this heading was drawn off the window.
         const Rect preset0 = onlinePresetRow(app.frame.window, 0);
@@ -48,7 +48,7 @@ namespace ui
         // "Custom" -- the one with no address -- unless one of the ids matches.
         int presetSel = static_cast<int>(launcher::kServerPresetCount) - 1;
         for (size_t i = 0; i < launcher::kServerPresetCount; ++i)
-            if (c.serverPreset == launcher::kServerPresets[i].id && launcher::presetAvailable(launcher::kServerPresets[i]))
+            if (presetId == launcher::kServerPresets[i].id && launcher::presetAvailable(launcher::kServerPresets[i]))
                 presetSel = static_cast<int>(i);
         for (int i = 0; i < static_cast<int>(launcher::kServerPresetCount); ++i)
         {
@@ -69,8 +69,8 @@ namespace ui
             }
             if (listRow(ctx, r, launcher::kServerPresets[i].label, id, i == presetSel) && i != presetSel)
             {
-                c.serverPreset = launcher::kServerPresets[i].id;
-                app.dirty = true;
+                presetId = launcher::kServerPresets[i].id;
+                markActiveDirty(app);
                 if (app.activeField == "online.server")
                     app.activeField.clear();   // the preset took the field away mid-edit
             }
@@ -83,7 +83,7 @@ namespace ui
         // revision, and the warning above says so when they are not.
         gameVersionRow(ctx, app, nodes, Page::Online);
 
-        const launcher::ServerPreset *preset = launcher::findServerPreset(c.serverPreset);
+        const launcher::ServerPreset *preset = launcher::findServerPreset(presetId);
         const bool ownAddress = preset == nullptr || preset->address[0] == '\0';
 
         // Sprint 16 L1b (#73, R295): ADDRESS on its own shared row (it was anchored on PROFILE's rect, now gone).
@@ -92,13 +92,42 @@ namespace ui
         bool changed = false;
         if (ownAddress)
         {
-            textField(ctx, address, c.server, "online.server", changed);
+            textField(ctx, address, server, "online.server", changed);
         }
         else
         {
             std::string shown = preset->address;
             textField(ctx, address, shown, "online.server", changed, false);
         }
+        return changed;
+    }
+
+    void drawOnlinePage(const Ctx &ctx, App &app, const std::vector<Node> &nodes)
+    {
+        // Sprint 18 T6: the PCSX2 view, decided once here. SERVER (the community row "coming soon", R-B), GAME VERSION
+        // (r0004 greyed, R-E) and ADDRESS, bound to config.pcsx2.json; in the personas' place one caption, and nothing
+        // below it -- no personas list, no password, no second instance (spec 2.3 item 4).
+        if (app.mode == launcher::ClientMode::Pcsx2)
+        {
+            if (drawServerBlock(ctx, app, nodes, app.pcsx2.serverPreset, app.pcsx2.server))
+                app.pcsx2Dirty = true;
+            const Rect slot = onlinePersonaRow(app.frame.window, 0, 0);
+            text(ctx, "PERSONAS", Vec2{slot.x, slot.y - 26.0f}, metrics::labelSize, theme::dim, Face::Bold, 0.06f);
+            float y = slot.y + 4.0f;
+            for (const std::string &line :
+                 wrapText(ctx,
+                          "Personas are made in the game: CONNECT TO SOCOM II, then CREATE NEW on its own screen. PCSX2 keeps "
+                          "them on its memory card.",
+                          slot.w - 24.0f, metrics::captionSize))
+            {
+                text(ctx, line.c_str(), Vec2{slot.x, y}, metrics::captionSize, theme::caption);
+                y += metrics::captionSize * 1.3f;
+            }
+            return;
+        }
+
+        launcher::Config &c = app.config;
+        bool changed = drawServerBlock(ctx, app, nodes, c.serverPreset, c.server);
 
         // Sprint 16 L1b (#73, R295; the L1 design note, section 2): the PERSONAS list replaces the PROFILE, PLAYER NAME
         // and PASSWORD fields -- one row per persona the cards hold (the persona-card plan, R-A), each card in its own

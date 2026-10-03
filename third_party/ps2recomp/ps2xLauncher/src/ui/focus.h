@@ -8,7 +8,9 @@
 #include "launcher/launcher_config.h"   // Sprint 9 P4: what forces an ADVANCED section open
 #include "theme.h"
 
+#include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace ui
@@ -102,11 +104,10 @@ namespace ui
         int personaSelected = 0;
         bool personaPasswordShown = true;
         // Sprint 18 T5: which client's rail and pages the graph is built from; and on the PCSX2 page, whether INSTALL
-        // is running (its button is then not a node: nothing may start a second download) and whether a pcsx2-qt.exe
-        // is known.
+        // is running (its button is then not a node: nothing may start a second download). (T6: pcsx2HasExe, set and
+        // never read, is gone -- the PLAY row and LAUNCH's reason read App's Pcsx2Status, which is where it was set from.)
         launcher::ClientMode mode = launcher::ClientMode::Native;
         bool pcsx2Installing = false;
-        bool pcsx2HasExe = false;
     };
 
     // Whether an ADVANCED section MUST be open whatever the player last chose, because something inside it
@@ -116,7 +117,24 @@ namespace ui
     bool advancedForced(const launcher::Config &c);
 
     // Every focusable control on `page`, in reading order, plus the bottom bar's LAUNCH (id "bar.launch").
+    // Sprint 18 T6: PLAY and ONLINE under in.mode == Pcsx2 are the PCSX2 view -- PLAY's rows are playRows(Pcsx2), ONLINE
+    // is the presets, r0001's cell (revisionsOffered) and ADDRESS when Custom, nothing else (no personas, no ADVANCED).
     std::vector<Node> layoutFor(Page page, Rect window, const LayoutInputs &in);
+
+    // Sprint 18 T6: PLAY's four jump rows, id and the page each one's CHANGE goes to, in order -- one table the layout
+    // and page_play.cpp both read, so a row can never jump to a page outside its client's rail (the T5 review's item 1).
+    // NATIVE: DISC, VIDEO, CONTROLLER, ONLINE. PCSX2: DISC, SERVER (ONLINE), GAME VERSION (ONLINE), PCSX2.
+    std::vector<std::pair<std::string, Page>> playRows(launcher::ClientMode mode);
+    // Sprint 18 T6 (R343 = R-E): the game versions the GAME VERSION row offers as nodes -- natively the installed mask,
+    // in PCSX2 mode r0001 alone (bit 0) whatever is installed; and the note drawn beside the greyed cells ("" when none
+    // is greyed): kRevisionMissingNote natively, kPcsx2RevisionNote in PCSX2 mode. Drawn on ONLINE too since T6 -- the
+    // preset row's note is "coming soon" (R-B), so the cell's reason is no longer said elsewhere on the page.
+    uint32_t revisionsOffered(launcher::ClientMode mode, uint32_t installed);
+    const char *revisionGreyedNote(launcher::ClientMode mode, uint32_t installed);
+    // Sprint 18 T6 (the T5 review's item 3): why the client toggle will not switch now, or "" when it will. An INSTALL
+    // writes the PCSX2 page's state and a running game keeps its own client's LAST RUN line (Review Focus 5), so both
+    // hold the toggle; the sentence is the toggle's tip and the status line a refused press leaves.
+    std::string clientSwitchRefusal(bool installing, bool running);
 
     // The node list THIS FRAME must draw from. `computed` is the list built at the top of the frame, from
     // the page that was current then; `page` is where the frame's input left the player. The two differ on
@@ -249,7 +267,10 @@ namespace ui
         bool onRail() const;
 
         void request(Page p);                     // from inside a draw: the page, next frame
-        bool applyRequest(const FocusGraph &g);   // the input phase: goTo the request, if there is one
+        // The input phase: goTo the request, if there is one. Sprint 18 T6: a page with no rail entry in `g` (not in
+        // pagesFor(mode): VIDEO from the PCSX2 view, PCSX2 from the native one) is dropped, the page unchanged, false --
+        // no request can leave the rail's pages and strand the pad.
+        bool applyRequest(const FocusGraph &g);
     };
 
     // Where the gold focus ring is drawn, frame by frame. Pure, so a test asserts on the very rect the

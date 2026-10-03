@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -327,6 +328,24 @@ namespace launcher
 
     // What --selftest prints: "exit <code> <slug>: <sentence>" for every row of ExitCodes::kTable.
     std::vector<std::string> selftestExitLines();
+
+    // Sprint 18 T6: the PCSX2 client's LAUNCH. "" when LAUNCH may start PCSX2; else the one sentence the bar shows, in
+    // this order of precedence: the game is running; no disc set; the disc failed its check (`discMessage`, the DISC
+    // page's own sentence); no PCSX2; no BIOS; the server's name does not resolve (`dnsError`, pcsx2files::dnsServerFor's
+    // sentence -- Review Focus 3: never a PCSX2 started with DNS1 empty).
+    std::string launchBlockedReasonPcsx2(bool running, bool isoSet, bool discOk, const std::string &discMessage,
+                                         bool exeFound, int biosFiles, const std::string &dnsError);
+    // PCSX2's exit for the PLAY page's LAST RUN: 0 -> "PCSX2 closed"; else "PCSX2 exited with code N -- its log is <emulog>".
+    std::string pcsx2ExitLine(int exitCode, const std::string &emulogPath);
+    // The argv after pcsx2-qt.exe: {"-batch", iso} -- boot the disc, exit when the game stops. One place, so T0's answer
+    // on the command line (the spec's question 2) changes one line.
+    std::vector<std::string> pcsx2Args(const std::string &isoPath);
+
+    // Sprint 18 T6 review: the UTF-8 form of a path and back. The file dialogs answer UTF-8 (OPENFILENAMEW narrowed with
+    // utf8Of), the PCSX2 client keeps its paths in UTF-8 (config.pcsx2.json, startProcess's argv), and a UTF-8 path
+    // becomes a file through pathFromUtf8 -- never path(std::string), which reads the bytes in the ANSI code page.
+    std::string utf8Of(const std::filesystem::path &p);
+    std::filesystem::path pathFromUtf8(const std::string &utf8);
 
 
     // The environment socom2.exe is started with, as KEY=VALUE strings (PS2X_SOCOM2_PAD=1 always;
