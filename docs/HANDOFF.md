@@ -61,7 +61,6 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 6. What is owed
 
-- Owed on `sprint-17` at c407fa6b: the full Python suite (the 07:00Z run was killed by the harness under memory pressure; research/85's merge is docs-only, CI's docs job green) -- run it in the foreground at 5 GB free.
 - **The owner's rows** (`docs/SITTING.md`): O22 the helper as a shipped binary; O25 the persona viewer's human pass.
 - 2026-09-28: the story generator `tools_py/story/site.py` emits the s2u design system's classes (scotho branch s2u-design-system, spec section 8); the story session regenerates with `--ds-dir` pointing at `web/shared/ds` (the default since 2026-09-29).
 
