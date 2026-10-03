@@ -2,7 +2,7 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.sitting` from `docs/HUMAN_TASKS.md` (the O rows and the stamp of the sittings), the rulings `docs/RULINGS.md` shows (`tools_py.rulings.rows()`), `docs/BACKLOG.md` (the `Carried` column) and `docs/PLAYTEST.md` (its build block). Change a source and regenerate; `python -m tools_py.sitting --check` exits 1 when this file is stale.
 
-The page as of 2026-10-03, for the sitting after the one of 2026-09-27: 10 open O rows (0 answered or struck); 49 active rulings since 2026-09-27 (48 dated, 1 placed by number or home, 200 undated and unplaceable, not listed); 5 issues carried twice; the build: built.
+The page as of 2026-10-03, for the sitting after the one of 2026-09-27: 10 open O rows (0 answered or struck); 50 active rulings since 2026-09-27 (49 dated, 1 placed by number or home, 200 undated and unplaceable, not listed); 5 issues carried twice; the build: built.
 
 **How to answer.** One line per item, by number -- "O5: acceptable for v1", "R271: overturn", "#25: close" -- in the next session's prompt or as a line in the open plan's Log.
 
@@ -29,7 +29,7 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 
 ## 2. The rulings since the last sitting
 
-49 active rulings on or after 2026-09-27, in the counter's order (the sprint-local names last, by date): 48 dated on or after it, and 1 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-09-27 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 200 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
+50 active rulings on or after 2026-09-27, in the counter's order (the sprint-local names last, by date): 49 dated on or after it, and 1 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-09-27 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 200 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
 
 - **R298** (2026-09-27) the owner's word of 05:57Z ("if you finish the task set before I check in at morn, proceed…") and of ~06:12Z ("grant that agent my authority to close and assum… -- overturn by number
 - **R299** (2026-09-27) the loop builds and gates the release archives and writes the exact `gh release upload` and verify-half commands into the Log and O2, and stops short of the up… -- overturn by number
@@ -80,6 +80,7 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 - **R344** (2026-10-01) PCSX2 owns what PCSX2 owns: the launcher writes `[DEV9/Eth]` (merged key by key) and `patches/0F6FC6CF.pnach` (the guarded master, replaced only when different… -- overturn by number
 - **R345** (2026-10-01) when `SYNCV` itself is higher with the knob on in BOTH orders of a rung-two pair, the candidate is PICKED on `SYNCV` (R334's metric and the stack's adoption ba… -- overturn by number
 - **R346** (2026-10-03) the launcher carries the project's icon. -- overturn by number
+- **R347** (2026-10-03) the launcher also writes two `[UI]` keys, `SettingsVersion = 1` and `SetupWizardIncomplete = false`, merged key by key like `[DEV9/Eth]`, in any PCSX2 it launc… -- overturn by number
 
 ## 3. The issues carried twice
 
