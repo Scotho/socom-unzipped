@@ -61,7 +61,6 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 6. What is owed
 
-- Owed: `agent/s17-audio-scale` bd336f9d (LATER 97, the #91 knob; reviewed) needs one locked build at 5 GB free, then merge, suite, push.
 - **The owner's rows** (`docs/SITTING.md`): O22 the helper as a shipped binary; O25 the persona viewer's human pass.
 - 2026-09-28: the story generator `tools_py/story/site.py` emits the s2u design system's classes (scotho branch s2u-design-system, spec section 8); the story session regenerates with `--ds-dir` pointing at `web/shared/ds` (the default since 2026-09-29).
 
