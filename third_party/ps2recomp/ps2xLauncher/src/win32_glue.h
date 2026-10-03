@@ -136,7 +136,8 @@ namespace win32glue
 
     // argv[0] run with argv[1..], no shell, stdout+stderr to `log` (created or truncated), waited at most timeoutMs.
     // The exit code; -1 and `error` set when it could not start or timed out (then killed). Windows: CreateProcessW
-    // with each argument quoted as CommandLineToArgvW reads it, no window. POSIX: posix_spawnp.
+    // with each argument quoted as CommandLineToArgvW reads it, no window, only the log and NUL inherited (the start
+    // fails if that cannot be arranged). POSIX: posix_spawnp. Every argv string is UTF-8 (a path: path::u8string()).
     int runAndWait(const std::vector<std::string> &argv, const std::filesystem::path &log, int timeoutMs, std::string &error);
     // The first IPv4 address `host` resolves to, dotted; "" when it does not resolve (getaddrinfo, AF_INET).
     std::string resolveIpv4(const std::string &host);
@@ -144,7 +145,7 @@ namespace win32glue
     // loopback and tunnel adapters skipped. POSIX: none ("not on this platform": PCSX2's Windows client only).
     std::vector<launcher::pcsx2install::Adapter> listAdapters();
     // The generalised startGame: `exe` with `args`, in `workingDir`, inheriting the environment, stdout+stderr to
-    // <logDir>/pcsx2_<stamp>.log (logDir created). False with out.error set when it cannot.
+    // <logDir>/pcsx2_<stamp>.log (logDir created). Every string UTF-8. False with out.error set when it cannot.
     bool startProcess(const std::string &exe, const std::vector<std::string> &args, const std::string &workingDir,
                       const std::string &logDir, GameProcess &out);
 

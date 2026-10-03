@@ -932,23 +932,34 @@ namespace win32glue
             InitializeProcThreadAttributeList(nullptr, 1, 0, &attrSize);
             std::vector<unsigned char> attrBuf(attrSize);
             auto *attrs = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attrBuf.data());
-            const bool haveAttrs = attrSize > 0 && InitializeProcThreadAttributeList(attrs, 1, 0, &attrSize) &&
-                                   UpdateProcThreadAttribute(attrs, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherit,
-                                                             inheritCount * sizeof(HANDLE), nullptr, nullptr);
+            const bool listMade = attrSize > 0 && InitializeProcThreadAttributeList(attrs, 1, 0, &attrSize);
+            const bool listSet = listMade && UpdateProcThreadAttribute(attrs, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inherit,
+                                                                       inheritCount * sizeof(HANDLE), nullptr, nullptr);
+            if (!listSet)
+            {
+                // T4 review 5: without the list, inheritance on would hand the child every inheritable handle this
+                // process holds -- so the start fails instead.
+                const DWORD why = GetLastError();
+                if (listMade)
+                    DeleteProcThreadAttributeList(attrs);
+                if (nul != INVALID_HANDLE_VALUE)
+                    CloseHandle(nul);
+                error = "the handles the child may inherit could not be restricted (error " + std::to_string(why) + ")";
+                return false;
+            }
             STARTUPINFOEXW si{};
             si.StartupInfo.cb = sizeof(si);
             si.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
             si.StartupInfo.hStdOutput = log;
             si.StartupInfo.hStdError = log;
             si.StartupInfo.hStdInput = nul != INVALID_HANDLE_VALUE ? nul : nullptr;
-            si.lpAttributeList = haveAttrs ? attrs : nullptr;
+            si.lpAttributeList = attrs;
             commandLine.push_back(L'\0');
             const BOOL ok = CreateProcessW(app != nullptr ? app->c_str() : nullptr, commandLine.data(), nullptr, nullptr, TRUE,
-                                           CREATE_NO_WINDOW | (haveAttrs ? EXTENDED_STARTUPINFO_PRESENT : 0),
+                                           CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT,
                                            nullptr, cwd != nullptr ? cwd->c_str() : nullptr, &si.StartupInfo, &pi);
             const DWORD lastError = GetLastError();
-            if (haveAttrs)
-                DeleteProcThreadAttributeList(attrs);
+            DeleteProcThreadAttributeList(attrs);
             if (nul != INVALID_HANDLE_VALUE)
                 CloseHandle(nul);
             if (!ok)
@@ -957,6 +968,13 @@ namespace win32glue
                 return false;
             }
             return true;
+        }
+
+        // The last component of a UTF-8 path, bytes as given (no round trip through the ANSI code page).
+        std::string leafOf(const std::string &utf8Path)
+        {
+            const size_t slash = utf8Path.find_last_of("\\/");
+            return slash == std::string::npos ? utf8Path : utf8Path.substr(slash + 1);
         }
 
         std::wstring commandLineOf(const std::wstring &exe, const std::vector<std::string> &args)
@@ -1047,7 +1065,7 @@ namespace win32glue
         CloseHandle(logHandle);   // the child holds its own copy
         if (!started)
         {
-            error = fs::path(argv[0]).filename().string() + " could not be started: " + error;
+            error = leafOf(argv[0]) + " could not be started: " + error;
             return -1;
         }
         CloseHandle(pi.hThread);
@@ -1057,7 +1075,7 @@ namespace win32glue
             TerminateProcess(pi.hProcess, 1);
             WaitForSingleObject(pi.hProcess, 5000);
             CloseHandle(pi.hProcess);
-            error = fs::path(argv[0]).filename().string() + " did not finish within " + std::to_string(timeoutMs / 1000) +
+            error = leafOf(argv[0]) + " did not finish within " + std::to_string(timeoutMs / 1000) +
                     " s and was stopped";
             return -1;
         }
@@ -1129,23 +1147,27 @@ namespace win32glue
                       const std::string &logDir, GameProcess &out)
     {
         out.error.clear();
-        const fs::path exePath(exe);
+        // T4 review 3: every string here is UTF-8 (as runAndWait's argv is), so each path is widened from UTF-8 and
+        // never narrowed through the ANSI code page.
+        const fs::path exePath(widen(exe));
         std::error_code ec;
         if (exe.empty() || !fs::is_regular_file(exePath, ec))
         {
-            out.error = (exe.empty() ? std::string("no program") : exePath.filename().string()) + " is not there";
+            out.error = (exe.empty() ? std::string("no program") : leafOf(exe)) + " is not there";
             return false;
         }
-        fs::create_directories(fs::path(logDir), ec);
-        out.logPath = (fs::path(logDir) / ("pcsx2_" + stamp() + ".log")).string();
-        HANDLE logHandle = createLog(fs::path(out.logPath));
+        const fs::path logFolder(widen(logDir));
+        fs::create_directories(logFolder, ec);
+        const fs::path logFile = logFolder / ("pcsx2_" + stamp() + ".log");
+        out.logPath = narrow(logFile.wstring().c_str());
+        HANDLE logHandle = createLog(logFile);
         if (logHandle == INVALID_HANDLE_VALUE)
         {
             out.error = "cannot create the log file";
             return false;
         }
         const std::wstring app = exePath.wstring();
-        const std::wstring cwd = fs::path(workingDir.empty() ? exePath.parent_path().string() : workingDir).wstring();
+        const std::wstring cwd = workingDir.empty() ? exePath.parent_path().wstring() : widen(workingDir);
         PROCESS_INFORMATION pi{};
         if (!spawnLogged(&app, commandLineOf(app, args), &cwd, logHandle, pi, out.error))
         {

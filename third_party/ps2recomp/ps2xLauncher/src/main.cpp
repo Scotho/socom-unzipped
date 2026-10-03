@@ -499,11 +499,14 @@ namespace
 
     // --install-pcsx2 <dir>: Sprint 18 T4 (R341), INSTALL without the window, for tools_py/tests/
     // test_launcher_pcsx2_install.py (against a loopback stand-in release) and for T5's button to call the same
-    // steps: the latest-release JSON -> the -windows-x64-Qt.7z asset -> the download (redirects only github.com ->
-    // *.githubusercontent.com) -> its size and the API's sha256 (patchfetch::verifyPackage) -> the system tar.exe
-    // into <dir>/pcsx2/ -> portable.txt and the version marker. Every refusal is one sentence after "NOT INSTALLED.",
-    // exit 1, and leaves nothing of PCSX2 half-written: the archive and its .part are deleted, and the pcsx2 folder
-    // is removed when INSTALL made it (an existing one keeps its files).
+    // steps: the latest-release JSON -> the -windows-x64-Qt.7z asset (on github.com: assetUrlAllowed) -> the download
+    // (redirects only github.com -> *.githubusercontent.com) -> its size and the API's sha256
+    // (patchfetch::verifyPackage) -> the system tar.exe -> portable.txt and the version marker.
+    // T4 review 1, atomic: all of that happens in a fresh sibling <dir>/pcsx2.new; only a complete, marked release is
+    // swapped in (pcsx2 -> pcsx2.old, pcsx2.new -> pcsx2, pcsx2.old removed). The player's folders of an earlier install
+    // (memcards, bios, inis, ... -- every folder the new release does not bring) move across in the swap; files the new
+    // release dropped do not. Every refusal is one sentence after "NOT INSTALLED.", exit 1: pcsx2.new is removed and
+    // an existing pcsx2 is left exactly as it was.
     int installPcsx2Headless(const fs::path &home)
     {
         namespace pi = launcher::pcsx2install;
@@ -532,24 +535,35 @@ namespace
             std::printf("NOT INSTALLED. GitHub answered HTTP %d to the release query\n", answer.status);
             return 1;
         }
+        if (!pi::assetUrlAllowed(api, release.url))
+        {
+            std::printf("NOT INSTALLED. The release names its download at %s, which is not where %s may come from\n",
+                        release.url.c_str(), release.assetName.c_str());
+            return 1;
+        }
 
         const fs::path target = pi::installDir(home);
-        const fs::path archive = target / "pcsx2.7z.new";
+        fs::path staging = target;
+        staging += ".new";
+        fs::path aside = target;
+        aside += ".old";
         std::error_code ec;
-        const bool existed = fs::exists(target, ec);
+        // An earlier run stopped between the two renames of its swap: the old install is still in pcsx2.old.
+        if (!fs::exists(target, ec) && fs::is_directory(aside, ec))
+            fs::rename(aside, target, ec);
+        const fs::path archive = staging / "pcsx2.7z.new";
         auto refuse = [&](const std::string &sentence)
         {
             std::error_code rm;
-            fs::remove(archive, rm);
-            fs::remove(win32glue::downloadTempPath(archive), rm);
-            if (!existed)
-                fs::remove_all(target, rm);
+            fs::remove_all(staging, rm);
             std::printf("NOT INSTALLED. %s\n", sentence.c_str());
             return 1;
         };
-        fs::create_directories(target, ec);
+        fs::remove_all(staging, ec);
+        ec.clear();
+        fs::create_directories(staging, ec);
         if (ec)
-            return refuse("could not create " + target.string() + " (" + ec.message() + ")");
+            return refuse("could not create " + staging.string() + " (" + ec.message() + ")");
 
         std::printf("downloading %s (%llu bytes) from %s\n", release.assetName.c_str(),
                     static_cast<unsigned long long>(release.bytes), release.url.c_str());
@@ -576,57 +590,104 @@ namespace
         if (!verdict.ok)
             return refuse("The download is not the release GitHub described: " + verdict.reason);
 
-        // What was there before the extract, so a top-level folder the archive brings can be told apart.
-        std::vector<fs::path> before;
-        for (fs::directory_iterator it(target, ec), end; !ec && it != end; it.increment(ec))
-            before.push_back(it->path().filename());
         const char *systemRoot = std::getenv("SystemRoot");
-        const fs::path extractLog = target / "extract.log";
+        const fs::path extractLog = staging / "extract.log";
         std::string runError;
-        const int rc = win32glue::runAndWait(pi::extractArgv(systemRoot != nullptr ? systemRoot : "", archive, target),
+        const int rc = win32glue::runAndWait(pi::extractArgv(systemRoot != nullptr ? systemRoot : "", archive, staging),
                                              extractLog, 300000, runError);
         if (rc != 0)
         {
-            // The log outlives the folder a refusal removes: it is kept beside the launcher.
+            // The log outlives pcsx2.new, which a refusal removes: it is kept beside the launcher.
             std::error_code cp;
             fs::copy_file(extractLog, home / "pcsx2_extract.log", fs::copy_options::overwrite_existing, cp);
             return refuse(rc < 0 ? runError : "tar.exe exited " + std::to_string(rc) + "; see pcsx2_extract.log");
         }
         fs::remove(extractLog, ec);
         fs::remove(archive, ec);
-        if (!fs::is_regular_file(target / pi::kExeName, ec))
+        if (!fs::is_regular_file(staging / pi::kExeName, ec))
         {
             // The release has carried its files at the top level; should one ever wrap them in a folder, the one
-            // new folder holding pcsx2-qt.exe is moved up.
-            for (fs::directory_iterator it(target, ec), end; !ec && it != end; it.increment(ec))
+            // folder holding pcsx2-qt.exe is moved up -- unless it holds a folder of its own name (T4 review 4): moving
+            // that child up would land on the wrapper itself.
+            for (fs::directory_iterator it(staging, ec), end; !ec && it != end; it.increment(ec))
             {
                 const fs::path sub = it->path();
-                if (std::find(before.begin(), before.end(), sub.filename()) != before.end() || !it->is_directory(ec) ||
-                    !fs::is_regular_file(sub / pi::kExeName, ec))
+                if (!it->is_directory(ec) || !fs::is_regular_file(sub / pi::kExeName, ec))
                     continue;
+                if (fs::exists(sub / sub.filename(), ec))
+                    return refuse("the archive wraps its files in " + sub.filename().string() +
+                                  ", which holds a folder of its own name; it is not moved up");
                 std::vector<fs::path> children;
                 for (fs::directory_iterator c(sub, ec), cend; !ec && c != cend; c.increment(ec))
                     children.push_back(c->path());
                 for (const fs::path &child : children)
                 {
                     std::error_code mv;
-                    fs::remove_all(target / child.filename(), mv);
-                    fs::rename(child, target / child.filename(), mv);
+                    fs::rename(child, staging / child.filename(), mv);
+                    if (mv)
+                        return refuse("could not move " + child.filename().string() + " out of the archive's folder (" +
+                                      mv.message() + ")");
                 }
                 fs::remove_all(sub, ec);
                 break;
             }
         }
-        if (!fs::is_regular_file(target / pi::kExeName, ec))
+        if (!fs::is_regular_file(staging / pi::kExeName, ec))
             return refuse(std::string("the archive held no ") + pi::kExeName);
         {
-            if (!fs::exists(target / "portable.txt", ec))
-                std::ofstream(target / "portable.txt", std::ios::binary);
-            std::ofstream marker(target / pi::kVersionMarker, std::ios::binary | std::ios::trunc);
+            std::ofstream(staging / "portable.txt", std::ios::binary);
+            std::ofstream marker(staging / pi::kVersionMarker, std::ios::binary | std::ios::trunc);
             marker << release.tag << "\n";
             if (!marker)
                 return refuse(std::string("could not write ") + pi::kVersionMarker);
         }
+
+        // The swap. Until pcsx2.new becomes pcsx2, every failure puts the old install back exactly as it was.
+        std::vector<fs::path> carried;   // the old install's folders moved into pcsx2.new
+        const bool hadOld = fs::exists(target, ec);
+        auto rollBack = [&](const std::string &sentence)
+        {
+            std::error_code mv;
+            for (const fs::path &name : carried)
+                fs::rename(staging / name, aside / name, mv);
+            mv.clear();
+            fs::rename(aside, target, mv);
+            if (mv)
+                return refuse(sentence + "; the earlier install is in " + aside.string() +
+                              " and the next INSTALL puts it back");
+            return refuse(sentence + "; the earlier install is untouched");
+        };
+        if (hadOld)
+        {
+            fs::remove_all(aside, ec);   // a leftover of an earlier swap (pcsx2 itself is present)
+            ec.clear();
+            fs::rename(target, aside, ec);
+            if (ec)
+                return refuse("the PCSX2 at " + target.string() + " could not be moved aside (" + ec.message() +
+                              "): is PCSX2 running? Close it and INSTALL again; the earlier install is untouched");
+            std::vector<fs::path> names;
+            for (fs::directory_iterator it(aside, ec), end; !ec && it != end; it.increment(ec))
+                if (it->is_directory(ec) && !fs::exists(staging / it->path().filename(), ec))
+                    names.push_back(it->path().filename());
+            for (const fs::path &name : names)
+            {
+                std::error_code mv;
+                fs::rename(aside / name, staging / name, mv);
+                if (mv)
+                    return rollBack("could not carry " + name.string() + " into the new install (" + mv.message() + ")");
+                carried.push_back(name);
+            }
+        }
+        ec.clear();
+        fs::rename(staging, target, ec);
+        if (ec)
+        {
+            if (!hadOld)
+                return refuse("could not move the new install to " + target.string() + " (" + ec.message() + ")");
+            return rollBack("could not move the new install to " + target.string() + " (" + ec.message() + ")");
+        }
+        if (hadOld)
+            fs::remove_all(aside, ec);
         std::printf("installed PCSX2 %s at %s\n", release.tag.c_str(), target.string().c_str());
         return 0;
     }

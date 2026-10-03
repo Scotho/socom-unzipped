@@ -32,6 +32,12 @@ namespace launcher::pcsx2install
             return s.substr(first, s.find_last_not_of(ws) - first + 1);
         }
 
+        std::string utf8(const std::filesystem::path &p)
+        {
+            const std::u8string u = p.u8string();
+            return std::string(reinterpret_cast<const char *>(u.data()), u.size());
+        }
+
         bool isLowerHex64(const std::string &s)
         {
             if (s.size() != 64)
@@ -102,6 +108,21 @@ namespace launcher::pcsx2install
                 if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '-'))
                     return false;
             return true;
+        }
+
+        // https on exactly github.com: where a release's browser_download_url points.
+        bool isGithubAssetUrl(const std::string &url)
+        {
+            std::string scheme, host;
+            return schemeAndHost(url, scheme, host) && scheme == "https" && host == "github.com";
+        }
+
+        // A loopback asset for the tests' stand-in release: http or https to 127.0.0.1/localhost, a port, a path.
+        bool isLoopbackAssetUrl(const std::string &url)
+        {
+            if (url.rfind("https://", 0) == 0)
+                return isLoopbackUrl("http://" + url.substr(8));
+            return isLoopbackUrl(url);
         }
 
         struct AssetFields
@@ -255,8 +276,10 @@ namespace launcher::pcsx2install
                               ": the download could not be verified, so it is refused");
             if (a.size == 0)
                 return refuse(a.name + " has no size in the release answer, so the download could not be checked");
-            if (a.url.rfind("https://", 0) != 0 && !isLoopbackUrl(a.url))
-                return refuse(a.name + " has no https download URL in the release answer");
+            // T4 review 2, fail closed: github.com (or the tests' loopback, which assetUrlAllowed further ties to a
+            // loopback API) -- never another host, even over https.
+            if (!isGithubAssetUrl(a.url) && !isLoopbackAssetUrl(a.url))
+                return refuse(a.name + "'s download URL is not on https://github.com, so it is refused");
             out.tag = tag;
             out.assetName = a.name;
             out.url = a.url;
@@ -265,6 +288,13 @@ namespace launcher::pcsx2install
             return true;
         }
         return refuse(std::string("the PCSX2 release ") + tag + " has no *" + kAssetSuffix + " asset for Windows");
+    }
+
+    bool assetUrlAllowed(const std::string &apiUrl, const std::string &assetUrl)
+    {
+        if (isGithubAssetUrl(assetUrl))
+            return true;
+        return isLoopbackUrl(apiUrl) && isLoopbackAssetUrl(assetUrl);
     }
 
     std::filesystem::path installDir(const std::filesystem::path &launcherDir)
@@ -295,7 +325,9 @@ namespace launcher::pcsx2install
         std::string root = systemRoot.empty() ? std::string("C:\\Windows") : systemRoot;
         while (root.size() > 1 && (root.back() == '\\' || root.back() == '/'))
             root.pop_back();
-        return {root + "\\System32\\tar.exe", "-xf", archive.string(), "-C", dest.string()};
+        // T4 review 3: the paths as UTF-8 (u8string), the form runAndWait decodes -- path::string() narrows to the
+        // ANSI code page under llvm-mingw, which garbles a non-ASCII user folder on the way to tar.
+        return {root + "\\System32\\tar.exe", "-xf", utf8(archive), "-C", utf8(dest)};
     }
 
     std::string pickAdapter(const std::vector<Adapter> &adapters, const std::string &preferred)

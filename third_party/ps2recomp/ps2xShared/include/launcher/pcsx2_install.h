@@ -37,6 +37,12 @@ namespace launcher::pcsx2install
     // no tag, no Windows asset, no sha256 digest, no size, no usable URL.
     bool parseLatestRelease(const std::string &json, Release &out, std::string &why);
 
+    // T4 review 2, fail closed: the asset may be fetched from `assetUrl` only when it is https on exactly github.com
+    // (a *.githubusercontent.com host is reached only through redirectAllowed), or a loopback http/https URL when
+    // `apiUrl` -- what releasesApi answered -- is itself the loopback override. GitHub's answer never sends INSTALL
+    // to loopback, nor anywhere else.
+    bool assetUrlAllowed(const std::string &apiUrl, const std::string &assetUrl);
+
     // <launcherDir>/pcsx2
     std::filesystem::path installDir(const std::filesystem::path &launcherDir);
 

@@ -126,6 +126,36 @@ void register_pcsx2_install_tests()
             t.IsTrue(pi::installDir("C:\\s2u") == std::filesystem::path("C:\\s2u") / "pcsx2", "<launcherDir>/pcsx2");
         });
 
+        tc.Run("pcsx2_install: the extract argv carries a non-ASCII path as UTF-8, the form runAndWait decodes (T4 review 3)", [](TestCase &t)
+        {
+            const std::filesystem::path dest(u8"D:\\Jeux\\H\u00e9l\u00e8ne\\s2u\\pcsx2.new");
+            const auto argv = pi::extractArgv("C:\\Windows", dest / "pcsx2.7z.new", dest);
+            const std::string utf8 = "D:\\Jeux\\H" "\xc3\xa9" "l" "\xc3\xa8" "ne\\s2u\\pcsx2.new";
+            t.IsTrue(argv.size() == 5 && argv[4] == utf8, "the destination's UTF-8 bytes");
+            t.IsTrue(argv.size() == 5 && argv[2] == utf8 + "\\pcsx2.7z.new", "the archive's UTF-8 bytes");
+        });
+
+        tc.Run("pcsx2_install: the asset URL fails closed -- github.com only, loopback only behind a loopback API (T4 review 2)", [](TestCase &t)
+        {
+            pi::Release r;
+            std::string why;
+            t.IsTrue(!pi::parseLatestRelease(R"({"tag_name":"v9","assets":[{"name":"pcsx2-v9-windows-x64-Qt.7z","size":1,"digest":"sha256:7dfc829ca1994cc1045ac49f05e39b6cf968b72e6a374c40e05c2a2b4ac200b4","browser_download_url":"https://evil.example/pcsx2-v9-windows-x64-Qt.7z"}]})", r, why),
+                     "an https URL on another host is refused by the parse");
+            t.IsTrue(why.find("github.com") != std::string::npos, "the sentence names github.com: " + why);
+            const std::string gh = "https://github.com/PCSX2/pcsx2/releases/download/v9/pcsx2-v9-windows-x64-Qt.7z";
+            const std::string loop = "http://127.0.0.1:8765/pcsx2.7z";
+            t.IsTrue(pi::assetUrlAllowed(pi::kReleasesApi, gh), "GitHub's API, a github.com asset");
+            t.IsTrue(!pi::assetUrlAllowed(pi::kReleasesApi, loop), "GitHub's API never sends INSTALL to loopback");
+            t.IsTrue(!pi::assetUrlAllowed(pi::kReleasesApi, "https://objects.githubusercontent.com/x.7z"),
+                     "githubusercontent is reached only through the redirect policy");
+            t.IsTrue(!pi::assetUrlAllowed(pi::kReleasesApi, "https://evil.example/x.7z"), "another host");
+            t.IsTrue(!pi::assetUrlAllowed(pi::kReleasesApi, "http://github.com/x.7z"), "plain http to github.com");
+            t.IsTrue(pi::assetUrlAllowed("http://127.0.0.1:8765/release.json", loop), "a loopback API, a loopback asset");
+            t.IsTrue(pi::assetUrlAllowed("http://127.0.0.1:8765/release.json", "https://localhost:8443/pcsx2.7z"), "https loopback too");
+            t.IsTrue(pi::assetUrlAllowed("http://127.0.0.1:8765/release.json", gh), "a loopback API may still name github.com");
+            t.IsTrue(!pi::assetUrlAllowed("http://127.0.0.1:8765/release.json", "https://evil.example/x.7z"), "but nothing else");
+        });
+
         tc.Run("pcsx2_install: the adapter pick prefers the saved one, then a gateway, then the first", [](TestCase &t)
         {
             const std::vector<pi::Adapter> a{{"{1}", "Bluetooth", false}, {"{2}", "Ethernet", true}, {"{3}", "Wi-Fi", true}};
