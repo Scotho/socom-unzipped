@@ -141,3 +141,7 @@ Built on [PS2Recomp](https://github.com/ran-j/PS2Recomp) and
 [Horizon Private Server](https://github.com/Horizon-Private-Server/horizon-server), with
 [Ziemas's 989snd decompilation](https://github.com/Ziemas/989snd) as the reference for the sound driver, and the
 knowledge the SOCOM community has kept alive for twenty years.
+
+Ported with credit: [PCSX2](https://github.com/PCSX2/pcsx2) (GPL-3.0-or-later) -- the GS depth rules in the GL
+backend (`gs_gl_backend.cpp`, `gs_gl_depth.h`, issue #104): the fragment z floor of PCSX2 #13795, narrowed by #13851,
+and the saturation of z to the ZBUF format's maximum from `GSRendererHW::EmulateZbuffer`.

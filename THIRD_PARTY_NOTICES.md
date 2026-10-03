@@ -161,6 +161,17 @@ last measured tarball had); the notices test checks it both ways, and against a 
 | libc++, libunwind (llvm-mingw) | `tools/llvm-mingw/bin/` (`scripts/bootstrap_windows.sh`) | LLVM 23.1.0, llvm-mingw 20260826 | Apache-2.0 WITH LLVM-exception | the LLVM Project | yes (`libc++.dll`, `libunwind.dll`) |
 | winpthreads (mingw-w64) | `tools/llvm-mingw/bin/` | llvm-mingw 20260826 | MIT | 2011 mingw-w64 project | when the closure needs it (`libwinpthread-1.dll`) |
 
+## Ported with credit (code adapted into our files)
+
+- **PCSX2** (PCSX2/pcsx2, GPL-3.0-or-later), commit `81526d4dc7`: the GS depth rules of issue #104. The fragment z
+  floor of PR #13795 by refractionpcsx2 (https://github.com/PCSX2/pcsx2/pull/13795), narrowed to draws that write z or
+  read it under ZTST GREATER by PR #13851 by TJnotJT (https://github.com/PCSX2/pcsx2/pull/13851), from
+  `bin/resources/shaders/opengl/tfx_fs.glsl`; and the saturation of z to the ZBUF format's maximum from
+  `pcsx2/GS/Renderers/HW/GSRendererHW.cpp` (`GSRendererHW::EmulateZbuffer`). Ours:
+  `third_party/ps2recomp/ps2xRuntime/include/runtime/gs/gs_gl_depth.h` and
+  `third_party/ps2recomp/ps2xRuntime/src/lib/gs/gs_gl_backend.cpp`. PCSX2 is still not part of the build or the
+  download; it remains the console reference every parity measurement compares against.
+
 ## References this project was modelled on (no code copied)
 
 - **OpenGOAL** (open-goal/jak-project, ISC): its 989snd re-implementation is the public-API reference the mixer's
@@ -168,4 +179,3 @@ last measured tarball had); the notices test checks it both ways, and against a 
 - **Ziemas/989snd**: the decompiled IOP driver, the reference the audio model was audited against (research note 36).
 - **PSRewired**: the community's server documentation and Medius app-id list (research note 02). Nothing here implies
   their endorsement.
-- **PCSX2**: the console reference every parity measurement compares against; not part of the build or the download.

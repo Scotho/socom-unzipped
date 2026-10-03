@@ -314,9 +314,7 @@ uniform vec2 uRtSize;
 out vec4 vColor;
 out vec3 vTex;
 out float vFog;
-#if PS2X_DEPTH_MODE == 2
-noperspective out float vDepth;
-#endif
+noperspective out float vDepth;   // read by the FragDepth mode and by the #104 z floor program
 void main()
 {
     // aPos.z = GS z / 2^32 (GsGlDepth::attribute). research/26: `* 2.0 - 1.0` rounds window depth
@@ -327,9 +325,7 @@ void main()
     float zNdc = aPos.z * 2.0 - 1.0;
 #endif
     gl_Position = vec4(aPos.x / uRtSize.x * 2.0 - 1.0, aPos.y / uRtSize.y * 2.0 - 1.0, zNdc, 1.0);
-#if PS2X_DEPTH_MODE == 2
     vDepth = aPos.z;
-#endif
     vColor = aColor;
     vTex = aTex;
     vFog = aFog;
@@ -353,9 +349,8 @@ uniform int uSrcMode;       // 1: emit uSrcConst; 2: emit the fragment's PS2 alp
 uniform vec4 uSrcConst;     // whose source term has to carry Cd*C (executeSubmit, "Cd*C + Cd")
 layout(location = 0, index = 0) out vec4 oColor;
 layout(location = 0, index = 1) out vec4 oBlendAlpha;
-#if PS2X_DEPTH_MODE == 2
 noperspective in float vDepth;
-#endif
+uniform float uZMax;        // #104: the ZBUF format's maximum z / 2^32 (1.0 when no clamp applies)
 
 float wrapCoord(float c, int mode, float size, float mn, float mx)
 {
@@ -367,9 +362,7 @@ float wrapCoord(float c, int mode, float size, float mn, float mx)
 
 void main()
 {
-#if PS2X_DEPTH_MODE == 2
-    gl_FragDepth = vDepth;
-#endif
+//@PS2X_FRAG_DEPTH@
     vec4 c = vColor;
     if (uTme == 1)
     {
@@ -499,6 +492,26 @@ void main()
             return define + s;
         s.insert(at + version.size(), define);
         return s;
+    }
+
+    // #104: the marker line in kFragmentShader becomes the program's depth statements (GsGlDepth::fragmentDepthGlsl).
+    std::string withFragDepth(std::string s, GsGlDepth::Mode mode, bool floorProgram)
+    {
+        const size_t at = s.find("//@PS2X_FRAG_DEPTH@");
+        if (at == std::string::npos)
+            return s;
+        const size_t eol = s.find('\n', at);
+        const size_t end = eol == std::string::npos ? s.size() : eol + 1;
+        s.replace(at, end - at, GsGlDepth::fragmentDepthGlsl(mode, floorProgram));
+        return s;
+    }
+
+    // PS2X_GS_ZFLOOR (default 1): #104's z floor and ZBUF format clamp, ported from PCSX2 #13795/#13851; 0 = the
+    // old path, for the A/B. Read once.
+    bool zfloorKnob()
+    {
+        static const bool s_on = ps2x::knobOn("PS2X_GS_ZFLOOR", GsGlDepth::zfloorDefault());
+        return s_on;
     }
 
     // PS2X_GS_SCALE_FILTER=point|box -- how a host-scale render target is resolved down to its
@@ -1323,6 +1336,16 @@ void GSGlBackend::latchGlUnsupported(const GsGlCaps::Report &report)
                  m_glCapsLatch.report().missing.c_str());
 }
 
+std::vector<std::string> GSGlBackend::fragmentShaderSources(GsGlDepth::Mode mode, bool zfloorKnob)
+{
+    std::vector<std::string> out;
+    const std::string base = withDepthMode(kFragmentShader, mode);
+    out.push_back(withFragDepth(base, mode, false));
+    if (zfloorKnob)
+        out.push_back(withFragDepth(base, mode, true));   // PCSX2 #13795/#13851, see GsGlDepth::fragmentDepthGlsl
+    return out;
+}
+
 bool GSGlBackend::ensureGl()
 {
     if (m_program != 0u)
@@ -1362,9 +1385,9 @@ bool GSGlBackend::ensureGl()
             std::fprintf(stderr, "[gs-gl] note: %s\n", report.note.c_str());
     }
     const std::string vsSource = withDepthMode(kVertexShader, g_depthMode);
-    const std::string fsSource = withDepthMode(kFragmentShader, g_depthMode);
+    const std::vector<std::string> fsSources = fragmentShaderSources(g_depthMode, zfloorKnob());
     const uint32_t vs = compileShader(GL_VERTEX_SHADER, vsSource.c_str());
-    const uint32_t fs = compileShader(GL_FRAGMENT_SHADER, fsSource.c_str());
+    const uint32_t fs = compileShader(GL_FRAGMENT_SHADER, fsSources[0].c_str());
     if (!vs || !fs)
     {
         GsGlCaps::Report shaders;
@@ -1381,6 +1404,31 @@ bool GSGlBackend::ensureGl()
     glLinkProgram(m_program);
     GLint ok = 0;
     glGetProgramiv(m_program, GL_LINK_STATUS, &ok);
+    // #104: the z floor program (PCSX2 #13795/#13851) shares the vertex shader. A failure here is not fatal: the
+    // backend draws every batch with the base program, the old path.
+    m_programZFloor = 0u;
+    if (ok && fsSources.size() > 1u)
+    {
+        const uint32_t fsFloor = compileShader(GL_FRAGMENT_SHADER, fsSources[1].c_str());
+        if (fsFloor)
+        {
+            m_programZFloor = glCreateProgram();
+            glAttachShader(m_programZFloor, vs);
+            glAttachShader(m_programZFloor, fsFloor);
+            glBindFragDataLocationIndexed(m_programZFloor, 0, 0, "oColor");
+            glBindFragDataLocationIndexed(m_programZFloor, 0, 1, "oBlendAlpha");
+            glLinkProgram(m_programZFloor);
+            GLint floorOk = 0;
+            glGetProgramiv(m_programZFloor, GL_LINK_STATUS, &floorOk);
+            glDeleteShader(fsFloor);
+            if (!floorOk)
+            {
+                glDeleteProgram(m_programZFloor);
+                m_programZFloor = 0u;
+            }
+        }
+        std::fprintf(stderr, "[gs-gl] z floor (PS2X_GS_ZFLOOR): %s\n", m_programZFloor ? "on" : "FAILED, old path");
+    }
     glDeleteShader(vs);
     glDeleteShader(fs);
     if (!ok)
@@ -1396,26 +1444,35 @@ bool GSGlBackend::ensureGl()
         latchGlUnsupported(link);
         return false;
     }
-    auto uni = [&](const char *name) { return glGetUniformLocation(m_program, name); };
-    m_u.rtSize = uni("uRtSize");
-    m_u.tex = uni("uTex");
-    m_u.texSize = uni("uTexSize");
-    m_u.tme = uni("uTme");
-    m_u.tfx = uni("uTfx");
-    m_u.tcc = uni("uTcc");
-    m_u.fst = uni("uFst");
-    m_u.wrapU = uni("uWrapU");
-    m_u.wrapV = uni("uWrapV");
-    m_u.region = uni("uRegion");
-    m_u.ate = uni("uAte");
-    m_u.atst = uni("uAtst");
-    m_u.afail = uni("uAfail");
-    m_u.aref = uni("uAref");
-    m_u.fge = uni("uFge");
-    m_u.fogColor = uni("uFogColor");
-    m_u.fba = uni("uFba");
-    m_u.srcMode = uni("uSrcMode");
-    m_u.srcConst = uni("uSrcConst");
+    auto uniformsOf = [](uint32_t program)
+    {
+        auto uni = [&](const char *name) { return glGetUniformLocation(program, name); };
+        Uniforms u;
+        u.rtSize = uni("uRtSize");
+        u.tex = uni("uTex");
+        u.texSize = uni("uTexSize");
+        u.tme = uni("uTme");
+        u.tfx = uni("uTfx");
+        u.tcc = uni("uTcc");
+        u.fst = uni("uFst");
+        u.wrapU = uni("uWrapU");
+        u.wrapV = uni("uWrapV");
+        u.region = uni("uRegion");
+        u.ate = uni("uAte");
+        u.atst = uni("uAtst");
+        u.afail = uni("uAfail");
+        u.aref = uni("uAref");
+        u.fge = uni("uFge");
+        u.fogColor = uni("uFogColor");
+        u.fba = uni("uFba");
+        u.srcMode = uni("uSrcMode");
+        u.srcConst = uni("uSrcConst");
+        u.zMax = uni("uZMax");
+        return u;
+    };
+    m_uBase = uniformsOf(m_program);
+    m_uZFloor = m_programZFloor ? uniformsOf(m_programZFloor) : m_uBase;
+    m_u = m_uBase;
 
     glGenVertexArrays(1, &m_vao);
     glGenBuffers(1, &m_vbo);
@@ -4539,7 +4596,32 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
         glDisable(GL_BLEND);
     }
 
-    glUseProgram(m_program);
+    // #104: PCSX2's z handling (GSRendererHW::EmulateZbuffer, PR #13795/#13851): flat z (points, sprites, equal
+    // vertex z) is never floored; the format clamp goes into the vertices for flat z and into the floor program's
+    // uZMax for interpolated z, only when the draw writes z past the ZBUF format's maximum.
+    bool flatZ = state.prim.type == GS_PRIM_POINT || state.prim.type == GS_PRIM_SPRITE;
+    float maxVertexAttr = 0.0f;
+    if (!m_vertices.empty())
+    {
+        const float z0 = m_vertices.front().z;
+        bool equal = true;
+        for (const GlVertex &v : m_vertices)
+        {
+            equal = equal && v.z == z0;
+            maxVertexAttr = std::max(maxVertexAttr, v.z);
+        }
+        flatZ = flatZ || equal;
+    }
+    const bool aa1Line = state.prim.aa1 && (state.prim.type == GS_PRIM_LINE || state.prim.type == GS_PRIM_LINESTRIP);
+    const GsGlDepth::ZPlan zplan = GsGlDepth::plan(zfloorKnob() && m_programZFloor != 0u, ctx.test, ctx.zbuf.zmask,
+                                                   ctx.zbuf.psm, flatZ, aa1Line, maxVertexAttr);
+    if (zplan.vertexClamp)
+        for (GlVertex &v : m_vertices)
+            v.z = std::min(v.z, zplan.maxAttr);
+    glUseProgram(zplan.floor ? m_programZFloor : m_program);
+    m_u = zplan.floor ? m_uZFloor : m_uBase;
+    if (zplan.floor)
+        glUniform1f(m_u.zMax, zplan.fragmentClamp ? zplan.maxAttr : 1.0f);
     // HOST, and that is not a free choice: aPos arrives premultiplied by S from appendVertex, so
     // gl_Position = aPos / uRtSize * 2 - 1 needs the host extent (research/14 section 8.1 item 5).
     glUniform2f(m_u.rtSize, static_cast<float>(rt->hostWidth), static_cast<float>(rt->hostHeight));

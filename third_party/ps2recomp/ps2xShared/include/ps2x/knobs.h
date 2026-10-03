@@ -116,6 +116,7 @@
     X("PS2X_GS_TRACE_PRESENT", Dev, Int, "-1", "Presents to skip (or trig), then trace uploads, downloads and the present path.") \
     X("PS2X_GS_UPLOAD_SKIP", Dev, Flag, "0", "Skip an upload whose bytes are already in the shadow and every target (#32); see the reasons line.") \
     X("PS2X_GS_UPLOAD_TRACE", Dev, Presence, "", "Per-call timing of the tile upload path on the [gs-gl stats] cadence.") \
+    X("PS2X_GS_ZFLOOR", Dev, Flag, "1", "#104 (PCSX2 #13795/#13851): 1 floors+clamps z, 0 = old; DEPTH_LEGACY: floored z exact, flat z on 128-grid.") \
     X("PS2X_HLE_STATS", Dev, Flag, "0", "Count calls per bound HLE stub and print the table periodically.") \
     X("PS2X_HLE_STATS_PERIOD", Dev, Int, "30", "With HLE_STATS: seconds between tables.") \
     X("PS2X_HLE_STATS_TOML", Dev, Path, "recomp/socom2.toml", "With HLE_STATS: the recompiler config naming the stubs.") \

@@ -10,6 +10,7 @@
 #include "runtime/gs/gs_frame_backpressure.h"
 #include "runtime/gs/gs_stall_coalescer.h"
 #include "runtime/gs/gs_gl_caps.h"
+#include "runtime/gs/gs_gl_depth.h"
 
 #include <array>
 #include <atomic>
@@ -36,6 +37,10 @@ class GSGlBackend final : public GSRasterBackend
 public:
     GSGlBackend();
     ~GSGlBackend() override;
+
+    // #104: the fragment shader sources ensureGl compiles -- [0] the base program, [1] the z floor program
+    // (PCSX2 #13795/#13851) when PS2X_GS_ZFLOOR is on. Pure text, no GL context.
+    static std::vector<std::string> fragmentShaderSources(GsGlDepth::Mode mode, bool zfloorKnob);
 
     void Initialize(uint8_t *vram, uint32_t vramSize) override;
     void Reset() override;
@@ -454,6 +459,7 @@ private:
     long traceSkip(const char *env) const;
 
     uint32_t m_program = 0;
+    uint32_t m_programZFloor = 0;   // #104: the z floor program; 0 under PS2X_GS_ZFLOOR=0 or a failed link
     uint32_t m_vao = 0;
     uint32_t m_vbo = 0;
     // PS2X_GS_SCALE_FILTER=box only: fullscreen-triangle box-average resolve (host -> native
@@ -471,7 +477,9 @@ private:
         int srcMode = -1, srcConst = -1;   // blend modes whose source term must carry Cd*C (see executeSubmit)
         int rtSize = -1, tex = -1, texSize = -1, tme = -1, tfx = -1, tcc = -1, fst = -1, wrapU = -1, wrapV = -1;
         int region = -1, ate = -1, atst = -1, afail = -1, aref = -1, fge = -1, fogColor = -1, fba = -1;
+        int zMax = -1;   // #104: the floor program's ZBUF format clamp
     } m_u;
+    Uniforms m_uBase, m_uZFloor;   // per program; setupDrawState copies the bound one into m_u
 
     std::vector<GlVertex> m_vertices;
     bool m_hasBatch = false;

@@ -6028,6 +6028,109 @@ void register_ps2_gs_tests()
             t.IsTrue(choose(false, true) == Mode::ClipZeroToOne, "clip control is the default when available");
             t.IsTrue(choose(false, false) == Mode::FragDepth, "gl_FragDepth when clip control is unavailable");
         });
+
+        // #104 (PCSX2 #13795/#13851, GSRendererHW::EmulateZbuffer): the GS saturates z to its ZBUF format's maximum
+        // (never truncates bits) and holds integer z only, so the interpolated z is floored to the 2^-32 grid.
+        tc.Run("ZBUF format clamp saturates to the format maximum: Z24 0x01000000 -> 0x00FFFFFF, Z16 -> 0xFFFF, Z32 unchanged", [](TestCase &t)
+        {
+            using namespace GsGlDepth;
+            t.IsTrue(formatMaxZ(0x30) == 0xFFFFFFFFu, "PSMZ32 max is 0xFFFFFFFF");
+            t.IsTrue(formatMaxZ(0x31) == 0x00FFFFFFu, "PSMZ24 max is 0x00FFFFFF");
+            t.IsTrue(formatMaxZ(0x32) == 0x0000FFFFu, "PSMZ16 max is 0xFFFF");
+            t.IsTrue(formatMaxZ(0x3A) == 0x0000FFFFu, "PSMZ16S max is 0xFFFF");
+            t.IsTrue(saturateToFormat(0x01000000u, 0x31) == 0x00FFFFFFu, "Z24 saturates 0x01000000 to 0x00FFFFFF");
+            t.IsTrue(saturateToFormat(0x01000000u, 0x32) == 0x0000FFFFu, "Z16 saturates 0x01000000 to 0xFFFF");
+            t.IsTrue(saturateToFormat(0x01000000u, 0x3A) == 0x0000FFFFu, "Z16S saturates 0x01000000 to 0xFFFF");
+            t.IsTrue(saturateToFormat(0x01000000u, 0x30) == 0x01000000u, "Z32 leaves 0x01000000 unchanged");
+            t.IsTrue(saturateToFormat(0x01000100u, 0x31) == 0x00FFFFFFu, "saturation, not truncation: Z24 of 0x01000100 is not 0x000100");
+            t.IsTrue(saturateToFormat(0x00ABCDEFu, 0x31) == 0x00ABCDEFu, "a Z24 value in range is untouched");
+            t.IsTrue(exactScale(0xFFFFFFFFu) == 1.0 - std::ldexp(1.0, -32), "0xFFFFFFFF maps to 1 - 2^-32 (double)");
+            t.IsTrue(exactScale(0x00FFFFFFu) * 4294967296.0 == 16777215.0, "Z24 max * 2^-32 round-trips");
+            t.IsTrue(attribute(static_cast<double>(saturateToFormat(0x01000000u, 0x31))) == static_cast<float>(16777215.0 / 4294967296.0),
+                     "the saturated Z24 max is exact in the float32 attribute");
+            t.IsTrue(attribute(4294967295.0) == 1.0f, "float32 rounds 1 - 2^-32 to 1.0 (as PCSX2's float(z) * 2^-32 does)");
+        });
+
+        tc.Run("the fragment z floor drops the sub-integer part of an interpolated z and keeps integer z", [](TestCase &t)
+        {
+            using namespace GsGlDepth;
+            const float z1152 = static_cast<float>(1152.0 / 4294967296.0);
+            const float between = static_cast<float>(1152.75 / 4294967296.0);
+            t.IsTrue(floorToGrid(between) == z1152, "1152.75 floors to 1152");
+            t.IsTrue(floorToGrid(z1152) == z1152, "integer 1152 is unchanged");
+            const float z24 = static_cast<float>(16777215.0 / 4294967296.0);
+            t.IsTrue(floorToGrid(z24) == z24, "Z24 max is unchanged");
+            t.IsTrue(floorToGrid(0.0f) == 0.0f, "0 is unchanged");
+        });
+
+        tc.Run("the floor is narrowed as PCSX2 #13851: interpolated z that writes, or reads under GREATER", [](TestCase &t)
+        {
+            using namespace GsGlDepth;
+            const uint64_t zte = 1ull << 16;
+            auto ztst = [](uint64_t m) { return m << 17; };
+            const uint64_t gequal = zte | ztst(2), greater = zte | ztst(3), always = zte | ztst(1), never = zte | ztst(0);
+            // knob, test, zmask, flat, aa1Line
+            t.IsTrue(floorApplies(true, gequal, false, false, false), "GEQUAL writing interpolated z: floored");
+            t.IsTrue(floorApplies(true, always, false, false, false), "ALWAYS writing interpolated z: floored");
+            t.IsTrue(!floorApplies(true, gequal, true, false, false), "GEQUAL read-only: not floored");
+            t.IsTrue(floorApplies(true, greater, true, false, false), "GREATER read-only: floored (PCSX2 #13851)");
+            t.IsTrue(!floorApplies(true, gequal, false, true, false), "flat z: not floored");
+            t.IsTrue(!floorApplies(true, 0ull, false, false, false), "ZTE off: no write, no read, not floored");
+            t.IsTrue(!floorApplies(true, never, false, false, false), "ZTST NEVER: not floored");
+            t.IsTrue(!floorApplies(true, gequal, false, false, true), "AA1 line: no z write, not floored");
+            const uint64_t ateNeverKeep = 1ull | (0ull << 1) | (0ull << 12);
+            const uint64_t ateNeverZbOnly = 1ull | (0ull << 1) | (2ull << 12);
+            t.IsTrue(!floorApplies(true, gequal | ateNeverKeep, false, false, false), "ATST NEVER, AFAIL KEEP: no write, not floored");
+            t.IsTrue(floorApplies(true, gequal | ateNeverZbOnly, false, false, false), "ATST NEVER, AFAIL ZB_ONLY: writes, floored");
+            t.IsTrue(!floorApplies(false, greater, false, false, false), "PS2X_GS_ZFLOOR=0: never floored");
+            t.IsTrue(zfloorDefault(), "PS2X_GS_ZFLOOR defaults on");
+        });
+
+        tc.Run("the format clamp: flat z saturates per vertex, interpolated z in the fragment, only when it writes past the max", [](TestCase &t)
+        {
+            using namespace GsGlDepth;
+            const uint64_t gequal = (1ull << 16) | (2ull << 17);
+            const float big = attribute(static_cast<double>(0x01000000u));
+            const float small = attribute(1152.0);
+            const float z24max = static_cast<float>(16777215.0 / 4294967296.0);
+            ZPlan p = plan(true, gequal, false, 0x31, true, false, big);
+            t.IsTrue(!p.floor && p.vertexClamp && !p.fragmentClamp && p.maxAttr == z24max, "flat Z24 past the max: vertex clamp at 0x00FFFFFF");
+            p = plan(true, gequal, false, 0x31, false, false, big);
+            t.IsTrue(p.floor && !p.vertexClamp && p.fragmentClamp && p.maxAttr == z24max, "interpolated Z24 past the max: floored, fragment clamp");
+            p = plan(true, gequal, false, 0x31, false, false, small);
+            t.IsTrue(p.floor && !p.vertexClamp && !p.fragmentClamp && p.maxAttr == 1.0f, "interpolated Z24 in range: floored, no clamp");
+            p = plan(true, gequal, true, 0x31, true, false, big);
+            t.IsTrue(!p.vertexClamp && !p.fragmentClamp, "read-only: no clamp");
+            p = plan(true, gequal, false, 0x30, false, false, attribute(4294967295.0));
+            t.IsTrue(!p.vertexClamp && !p.fragmentClamp, "Z32 never exceeds its max");
+            p = plan(false, gequal, false, 0x31, false, false, big);
+            t.IsTrue(!p.floor && !p.vertexClamp && !p.fragmentClamp, "PS2X_GS_ZFLOOR=0: the old path, no floor and no clamp");
+        });
+
+        tc.Run("the GL program set carries the floor expression once with PS2X_GS_ZFLOOR on and never with it off", [](TestCase &t)
+        {
+            using namespace GsGlDepth;
+            auto count = [](const std::vector<std::string> &sources)
+            {
+                size_t n = 0;
+                for (const std::string &s : sources)
+                    for (size_t at = s.find(kFloorGlsl); at != std::string::npos; at = s.find(kFloorGlsl, at + 1))
+                        ++n;
+                return n;
+            };
+            for (Mode mode : {Mode::Legacy, Mode::ClipZeroToOne, Mode::FragDepth})
+            {
+                const std::string tag = name(mode);
+                const std::vector<std::string> on = GSGlBackend::fragmentShaderSources(mode, true);
+                const std::vector<std::string> off = GSGlBackend::fragmentShaderSources(mode, false);
+                t.IsTrue(on.size() == 2u && off.size() == 1u, tag + ": the floor is a second program, the base stays");
+                t.IsTrue(count(on) == 1u, tag + ": knob on, the floor expression appears exactly once");
+                t.IsTrue(count(off) == 0u, tag + ": knob off, the floor expression appears nowhere");
+                t.IsTrue(off[0] == on[0], tag + ": the base program is the same source either way");
+                const bool baseWrites = on[0].find("gl_FragDepth") != std::string::npos;
+                t.IsTrue(baseWrites == (mode == Mode::FragDepth), tag + ": the base program writes gl_FragDepth only in the FragDepth mode");
+            }
+        });
     });
 
     // Sprint 7 Task 1a: the GL capability probe and its latch, pure and context-free.
