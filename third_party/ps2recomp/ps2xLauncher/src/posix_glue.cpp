@@ -13,6 +13,7 @@
 #ifndef _WIN32
 
 #include "win32_glue.h"
+#include "launcher/pcsx2_files.h"   // Sprint 18 T6 review: documentsDirRule
 #include "ps2x/knobs.h"
 
 #include <algorithm>
@@ -155,6 +156,15 @@ namespace win32glue
     // Sprint 18 T5: SELECT on the PCSX2 page. The Linux PCSX2 client is out of scope (spec 2.4), so there is no dialog
     // to offer; an empty answer leaves the page as it was.
     std::string browseForPcsx2() { return {}; }
+
+    // Sprint 18 T6 review: $XDG_DOCUMENTS_DIR when it is set and absolute, else $HOME/Documents (documentsDirRule).
+    fs::path documentsDir()
+    {
+        const char *xdg = std::getenv("XDG_DOCUMENTS_DIR");
+        const char *home = std::getenv("HOME");
+        return launcher::pcsx2files::documentsDirRule(xdg != nullptr ? fs::path(xdg) : fs::path(),
+                                                      home != nullptr ? fs::path(home) : fs::path());
+    }
 
     void openFolder(const std::string &path)
     {

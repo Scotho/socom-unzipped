@@ -464,6 +464,17 @@ namespace launcher
         return {"-batch", isoPath};
     }
 
+    std::string utf8Of(const std::filesystem::path &p)
+    {
+        const std::u8string u = p.u8string();
+        return std::string(reinterpret_cast<const char *>(u.data()), u.size());
+    }
+
+    std::filesystem::path pathFromUtf8(const std::string &utf8)
+    {
+        return std::filesystem::path(std::u8string(reinterpret_cast<const char8_t *>(utf8.data()), utf8.size()));
+    }
+
 
     bool isKnobKey(const std::string &key)
     {

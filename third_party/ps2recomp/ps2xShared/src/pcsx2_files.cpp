@@ -101,6 +101,15 @@ namespace launcher::pcsx2files {
         return portableMarkerBesideExe ? exeDir : documentsDir / "PCSX2";
     }
 
+    fs::path documentsDirRule(const fs::path &knownFolder, const fs::path &profileOrHome)
+    {
+        if (!knownFolder.empty() && knownFolder.is_absolute())
+            return knownFolder;
+        if (profileOrHome.empty())
+            return fs::path();
+        return profileOrHome / "Documents";
+    }
+
     std::vector<std::pair<std::string, std::string>> dev9Keys(const std::string &dnsIp, const std::string &ethDevice)
     {
         // scripts/parity/pcsx2/PCSX2.ini.dev9-section, the harness's template, in its order, minus EthLogDHCP and

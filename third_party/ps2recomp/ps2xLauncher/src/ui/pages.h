@@ -90,6 +90,9 @@ namespace ui
         bool pcsx2Dirty = false;   // config.pcsx2.json has unsaved changes (the UNSAVED pill lights for either file)
         Pcsx2Status pcsx2Status;
         Pcsx2InstallUi install;
+        // Sprint 18 T6 review: INSTALL's worker thread is still busy (main.cpp sets it each frame). It can outlive the
+        // last state copied into `install` by a frame or more, so the client toggle asks both (clientSwitchRefusalFor).
+        bool installJobBusy = false;
 
         // the disc check
         bool discChecked = false;
@@ -211,6 +214,27 @@ namespace ui
             app.pcsx2Dirty = true;
         else
             app.dirty = true;
+    }
+
+    // Sprint 18 T6 review, item 4: the one question the toggle's veil, its tip and the loop's refusal all ask -- an INSTALL
+    // (its page state or its worker) or a run holds the client toggle.
+    inline std::string clientSwitchRefusalFor(const App &app)
+    {
+        return clientSwitchRefusal(app.install.running() || app.installJobBusy, app.running);
+    }
+
+    // Sprint 18 T6 review, item 3: the App half of a client switch (main.cpp saves the dirty file first and writes
+    // launcher.json). LAST RUN is cleared -- one client's exit line must not read as the other's -- and the disc verdict
+    // is dropped: it belongs to the other client's ISO until the loop checks the new one.
+    inline void switchClientState(App &app, launcher::ClientMode to)
+    {
+        app.mode = to;
+        app.activeField.clear();
+        app.exitLine.clear();
+        app.discChecked = false;
+        app.discOk = false;
+        app.discMessage.clear();
+        app.layout.mode = to;
     }
 
     // Sprint 18 T6: why LAUNCH is greyed for the active client, as PLAY and the bottom bar draw it. In PCSX2 mode the

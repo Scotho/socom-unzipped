@@ -116,7 +116,8 @@ if(WIN32)
     # winhttp: Sprint 9 Goal 8's bug report and status line (win32glue::httpRequest). Windows only -- the POSIX
     # glue starts curl instead, so the Linux build links nothing new.
     # iphlpapi: Sprint 18 T4's adapter list for PCSX2 (win32glue::listAdapters, GetAdaptersAddresses).
-    target_link_libraries(socom_unzipped_launcher PRIVATE comdlg32 shell32 winhttp iphlpapi)
+    # ole32: Sprint 18 T6 review, CoTaskMemFree after SHGetKnownFolderPath (win32glue::documentsDir).
+    target_link_libraries(socom_unzipped_launcher PRIVATE comdlg32 shell32 winhttp iphlpapi ole32)
     # Sprint 18 T9: the exe's own icon (Explorer, shortcuts), a resource made from assets/logo/socom_unzipped.ico
     # (scripts/make_launcher_icon.py; tools_py/tests/test_launcher_icon.py reads it back out of the built exe).
     # With clang's GNU front end CMake already enables RC and finds llvm-mingw's windres beside the compiler; when

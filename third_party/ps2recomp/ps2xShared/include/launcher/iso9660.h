@@ -3,6 +3,7 @@
 // volume descriptor at sector 16, its root directory record, the directory's entries) and read it.
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <string>
 #include <vector>
@@ -29,4 +30,8 @@ namespace iso9660
 
     // A Reader over a file on disk (64-bit offsets).
     Reader fileReader(const std::string &path);
+    // Sprint 18 T6 review: the same, opened by the path's own (wide, on Windows) name -- a UTF-8 path from the launcher's
+    // dialog goes through launcher::pathFromUtf8 to here, so a non-ASCII folder is readable. A separate name, not an
+    // overload: fileReader("x.iso") would be ambiguous between the two.
+    Reader fileReaderAt(const std::filesystem::path &path);
 }

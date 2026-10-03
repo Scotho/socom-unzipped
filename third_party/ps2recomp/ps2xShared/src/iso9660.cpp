@@ -97,9 +97,29 @@ namespace iso9660
         return read(static_cast<uint64_t>(entry.extent) * kSectorBytes, out.data(), out.size());
     }
 
+    namespace
+    {
+        Reader readerOver(FILE *fp);
+    }
+
     Reader fileReader(const std::string &path)
     {
-        FILE *fp = std::fopen(path.c_str(), "rb");
+        return readerOver(std::fopen(path.c_str(), "rb"));
+    }
+
+    Reader fileReaderAt(const std::filesystem::path &path)
+    {
+#ifdef _WIN32
+        return readerOver(_wfopen(path.c_str(), L"rb"));
+#else
+        return readerOver(std::fopen(path.c_str(), "rb"));
+#endif
+    }
+
+    namespace
+    {
+    Reader readerOver(FILE *fp)
+    {
         if (!fp)
             return {};
         std::shared_ptr<FILE> file(fp, [](FILE *f) { if (f) std::fclose(f); });
@@ -115,4 +135,5 @@ namespace iso9660
             return std::fread(dst, 1, size, file.get()) == size;
         };
     }
+    }   // namespace (readerOver: one FILE-backed reader for both entry points)
 }

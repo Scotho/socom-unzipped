@@ -21,6 +21,8 @@
 #include "ui/tips.h"   // issue #74: the tooltips
 #include "launcher/client_mode.h"   // Sprint 18 T5: the rail per client
 #include "launcher/pcsx2_config.h"  // Sprint 18 T6: kPcsx2RevisionNote, the greyed r0004 cell in PCSX2 mode
+#include "launcher/pcsx2_files.h"   // Sprint 18 T6 review: documentsDirRule, PCSX2's Documents
+#include "ui/pages.h"   // Sprint 18 T6 review: App's client-switch state (inline, nothing drawn by the tests)
 #include "font_advances.h"   // issue #74: the footer tip, measured in the launcher's face
 #include "ps2x/host_window.h"   // Sprint 10 Q4: the game window's chrome holds the launcher's palette
 #ifndef _WIN32
@@ -1216,6 +1218,87 @@ void register_launcher_tests()
             t.IsTrue(ui::clientSwitchRefusal(false, false).empty(), "free to switch");
             t.IsTrue(ui::clientSwitchRefusal(true, false).find("INSTALL") != std::string::npos, "an INSTALL holds it");
             t.IsTrue(ui::clientSwitchRefusal(false, true).find("running") != std::string::npos, "a running game holds it");
+            // The T6 review, item 4: the veil, the tip and the refusal ask one question of App -- the INSTALL's page state
+            // or its worker still busy (the worker outlives the last state copy by a frame or more), or a run.
+            ui::App app;
+            t.IsTrue(ui::clientSwitchRefusalFor(app).empty(), "App: free to switch");
+            app.installJobBusy = true;
+            t.IsTrue(ui::clientSwitchRefusalFor(app).find("INSTALL") != std::string::npos, "App: the INSTALL worker holds it");
+            app.installJobBusy = false;
+            app.install.state = ui::Pcsx2InstallUi::State::Downloading;
+            t.IsTrue(ui::clientSwitchRefusalFor(app).find("INSTALL") != std::string::npos, "App: a download holds it");
+            app.install.state = ui::Pcsx2InstallUi::State::Idle;
+            app.running = true;
+            t.IsTrue(ui::clientSwitchRefusalFor(app).find("running") != std::string::npos, "App: a run holds it");
+        });
+
+        // The T6 review, item 3: a switch clears LAST RUN -- a PCSX2 exit line must not read as the native game's, or the
+        // other way round -- and drops the disc verdict, which belongs to the other client's ISO until it is checked again.
+        tc.Run("S18: a client switch clears the LAST RUN line and the disc verdict, and sets the mode", [](TestCase &t)
+        {
+            ui::App app;
+            app.exitLine = "PCSX2 closed";
+            app.discOk = true;
+            app.discMessage = "SOCOM II U.S. Navy SEALs NTSC r0001";
+            app.activeField = "disc.path";
+            ui::switchClientState(app, launcher::ClientMode::Pcsx2);
+            t.IsTrue(app.mode == launcher::ClientMode::Pcsx2, "the mode is PCSX2");
+            t.IsTrue(app.exitLine.empty(), "LAST RUN is cleared");
+            t.IsFalse(app.discOk, "the verdict is dropped until the PCSX2 disc is checked");
+            t.IsTrue(app.discMessage.empty() && app.activeField.empty(), "no stale sentence, no field holding the keyboard");
+            app.exitLine = "the game exited normally";
+            ui::switchClientState(app, launcher::ClientMode::Native);
+            t.IsTrue(app.mode == launcher::ClientMode::Native && app.exitLine.empty(), "and back: cleared again");
+        });
+
+        // The T6 review, item 1: PCSX2's non-portable data root is <Documents>/PCSX2, Documents being the known folder
+        // (OneDrive's Known Folder Move puts it under the profile's OneDrive), %USERPROFILE%/Documents only when the known
+        // folder cannot be read (POSIX: $XDG_DOCUMENTS_DIR, else $HOME/Documents).
+        tc.Run("S18: the Documents folder is the known folder, the profile's Documents only as the fallback", [](TestCase &t)
+        {
+            namespace fs = std::filesystem;
+            using launcher::pcsx2files::documentsDirRule;
+#ifdef _WIN32
+            const fs::path known = "D:/Profiles/J/OneDrive/Documents";   // invented folders, nobody's real profile
+            const std::string profile = "D:/Profiles/J";
+#else
+            const fs::path known = "/srv/profiles/j/Dokumente";
+            const std::string profile = "/srv/profiles/j";
+#endif
+            t.IsTrue(documentsDirRule(known, profile) == known, "the known folder wins (OneDrive's Documents)");
+            t.IsTrue(documentsDirRule(fs::path(), profile) == fs::path(profile) / "Documents", "no known folder: the profile's Documents");
+            t.IsTrue(documentsDirRule(fs::path("Documents"), profile) == fs::path(profile) / "Documents",
+                     "a relative answer is not a folder: the fallback");
+            t.IsTrue(documentsDirRule(fs::path(), std::string()).empty(), "nothing to go on: empty, never the working directory");
+        });
+
+        // The T6 review, item 2: the file dialogs answer UTF-8 (OPENFILENAMEW, narrowed with this helper), and the PCSX2
+        // client's paths are UTF-8 from the dialog to startProcess -- a player named Jérôme launches an ISO under their
+        // profile. utf8Of narrows a wide path; pathFromUtf8 widens it back; the ISO reader opens it by its wide name.
+        tc.Run("S18: a non-ASCII path survives UTF-8 from the dialog to the disc reader", [](TestCase &t)
+        {
+            namespace fs = std::filesystem;
+            const std::string utf8 = "J\xC3\xA9r\xC3\xB4me";   // "Jérôme"
+#ifdef _WIN32
+            t.Equals(launcher::utf8Of(fs::path(L"J\u00E9r\u00F4me")), utf8, "a wide name narrows to UTF-8");
+            t.IsTrue(launcher::pathFromUtf8(utf8).wstring() == std::wstring(L"J\u00E9r\u00F4me"), "and widens back to the same name");
+#endif
+            t.Equals(launcher::utf8Of(launcher::pathFromUtf8(utf8)), utf8, "the round trip is the identity");
+            const fs::path dir = fs::temp_directory_path() / ("ps2x_s18_utf8_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+            std::error_code ec;
+            fs::create_directories(dir, ec);
+            const fs::path iso = dir / launcher::pathFromUtf8(utf8 + ".iso");
+            {
+                const std::vector<uint8_t> img = syntheticImage();
+                std::ofstream out(iso, std::ios::binary);
+                out.write(reinterpret_cast<const char *>(img.data()), static_cast<std::streamsize>(img.size()));
+            }
+            t.IsTrue(fs::exists(iso, ec), "the image is written under its non-ASCII name");
+            const iso9660::Reader read = iso9660::fileReaderAt(launcher::pathFromUtf8(launcher::utf8Of(iso)));
+            iso9660::FileEntry e;
+            t.IsTrue(read && iso9660::findRootFile(read, "SCUS_972.75", e), "the reader opens it from its UTF-8 path");
+            t.IsTrue(!iso9660::fileReaderAt(dir / "no_such_file_here.iso"), "a missing file gives no reader");
+            fs::remove_all(dir, ec);
         });
 
         // Sprint 8, owner feedback: "the yellow circle ... takes too long to adjust and awkwardly flys with a

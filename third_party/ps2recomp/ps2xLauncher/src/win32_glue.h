@@ -14,10 +14,16 @@
 namespace win32glue
 {
     std::string exeDirectory();
+    // Sprint 18 T6 review: both dialogs answer a UTF-8 path (OPENFILENAMEW, narrowed by launcher::utf8Of; zenity's
+    // output is UTF-8 already). The caller turns it into a file with launcher::pathFromUtf8.
     std::string browseForIso();
-    // Sprint 18 T5: the PCSX2 page's SELECT -- the open dialog filtered to pcsx2-qt.exe (any .exe on its second filter).
+    // Sprint 18 T5: the PCSX2 page's SELECT -- the open dialog filtered to pcsx2-qt.exe and nothing else (T6).
     // "" on Cancel, and on a desktop with no dialog (POSIX without zenity).
     std::string browseForPcsx2();
+    // Sprint 18 T6 review: the Documents folder PCSX2 itself uses for its non-portable data root. Windows:
+    // SHGetKnownFolderPath(FOLDERID_Documents) -- OneDrive's Known Folder Move puts it under the profile's OneDrive --
+    // else %USERPROFILE%\Documents; POSIX: $XDG_DOCUMENTS_DIR, else $HOME/Documents (launcher::pcsx2files::documentsDirRule).
+    std::filesystem::path documentsDir();
     void openFolder(const std::string &path);
 
     struct GameProcess
