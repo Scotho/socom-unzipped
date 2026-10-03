@@ -136,8 +136,9 @@ database is not involved) and copy `config/simulated.db` up. On a cloud box the 
 
 53/udp is the one step the scripts cannot do: the provider's firewall must admit it from anywhere, or `socom-dns`
 answers nobody outside the box. On Lightsail that is `aws lightsail open-instance-public-ports --region us-east-2 --instance-name <name>
---port-info fromPort=53,toPort=53,protocol=udp` (`open-` adds a rule; never `put-`, which replaces them all). It is
-optional for players: only those who point their console's or PCSX2's DNS at the box use it.
+--port-info fromPort=53,toPort=53,protocol=udp` (`open-` adds a rule; never `put-`, which replaces them all). The
+native client does not use it; the launcher's PCSX2 client does (LAUNCH gives PCSX2 the server's address as `DNS1`
+and `DNS2`, `docs/PCSX2_PLAY.md`), as would a console pointed at the box.
 Check it, on the box, then from anywhere:
 
 ```
@@ -154,7 +155,8 @@ nslookup -type=A socom2-prod.pdonline.scea.com 3.143.65.100                  # f
 new server address is a create-persona login: the game saves personas per server address, so moving the address
 orphans them), hosted and joined on Frostfire, played a full five-minute control round (`s8_hosted_control2`) and a
 four-round ladder with two kills (`s8_hosted_kill`); two 50000+ sockets bound per round, 537 MB resident after it.
-Ubuntu's `needrestart` restarted the units during an unattended upgrade once; `install.sh` now excludes them.
+Ubuntu's `needrestart` restarted the units during an unattended upgrade once; `install.sh` now excludes the
+`horizon-*` units (`socom-dns` holds no state, so a restart of it costs a second of lookups).
 
 ### Message of the day, channel name, live stats (Sprint 8 Goal 13, 2026-09-19)
 

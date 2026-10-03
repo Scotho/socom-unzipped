@@ -857,6 +857,11 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
   over the repository's issues labelled `known-issue`, one milestone per sprint. `audit` exits 0 or names the row,
   citation, label or body that is wrong; `--json FILE` replays a saved `gh issue list` listing offline.
 - **The hosted box:** agent instructions are git-ignored in `vm/lightsail/README.md`. It is the server session's.
+  Its fifth unit, `socom-dns` (Sprint 18, R342), answers SOCOM II's six retail host names on 53/udp with
+  `muis.json`'s `Endpoint` and NXDOMAIN for every other name, so the launcher's PCSX2 client (which gives PCSX2 the
+  server's address as its DNS) finds the lobby from any home; installed by `server/linux/install.sh`, one journal
+  line a minute, none in a silent minute (`journalctl -u socom-dns`), tests `tools_py/tests/test_socom_dns.py`. The unit, the firewall rule
+  and the checks: `server/README.md` "Hosting it on Linux".
 
 ## Measuring a change without a chain
 
@@ -995,7 +1000,9 @@ sprint). **Gap:** nothing refuses a second chain in a day.
 own; a worktree keeps its `third_party/ps2recomp/build-clang/` for its whole life (a re-recomp rebuilds only what
 changed, issue #57). **Gap:** there is no compiler cache and no shared build directory, so a fresh worktree's first
 `./build.sh runtime` is a full build (624-983 s from an empty tree, 2026-09-21; about an hour with the recomp and a
-loaded host).
+loaded host). **When memory is tight, fewer jobs:** a worktree build at 4 GB free with four sessions up died at the
+memory floor (`0xC0000142` on 18 runtime objects, 2026-10-02, Sprint 18 T3); the retry with `OMP_NUM_THREADS=8`
+(`build.sh` runs that many jobs, 28 by default on this host) passed.
 
 **When a second machine exists.** It takes the builds and the CPU-side suites (`./build.sh recomp|runtime`, the
 module tests, `./build.sh test`); game runs, the gate and the chain's gate step stay on the machine that holds the
@@ -1391,6 +1398,34 @@ shift 2, key b, `cards/<profile>_b`). LAUNCH writes `logs/run_<stamp>.log`; SAVE
 versions, the home directory scrubbed). `--diagnostics <out.zip>` writes the same zip with no window; `--selftest`
 prints the verified disc and the environment and exits; `--launch-test [seconds]` starts the game the way the button
 does and reports whether it is still running after that long.
+
+**The PCSX2 client (Sprint 18, R339-R344).** The top bar's NATIVE | PCSX2 toggle is saved in `launcher.json` beside
+the launcher, `{"client": "native"}` or `{"client": "pcsx2"}` (anything else reads as native; `client_mode.h`). The
+PCSX2 client's rail is PLAY, DISC, PCSX2, ONLINE, REPORT A BUG, ABOUT (`pagesFor`), and its settings are
+`config.pcsx2.json`'s six keys -- `isoPath`, `pcsx2Exe`, `gameRevision`, `serverPreset`, `server`, `ethDevice` -- none
+shared with `config.json`, malformed read as the defaults (`pcsx2_config.h`); the toggle saves the dirty file only.
+INSTALL (`pcsx2_install.h`, R341): the latest release from `api.github.com`, its `*-windows-x64-Qt.7z` asset checked
+against the API's sha256 and size, redirects only from github.com to a `*.githubusercontent.com` host, unpacked by
+`%SystemRoot%\System32\tar.exe` into `<launcher>/pcsx2.new` with `portable.txt` and `socom_unzipped_pcsx2.txt` (the
+tag), then swapped in: `pcsx2` -> `pcsx2.old`, the manifest `pcsx2.old/.carry` written before the first move names
+the player folders present (`bios`, `memcards`, `inis`, `sstates`, `snaps`, `cheats`, `patches`, `covers`,
+`gamesettings`, `cache`, `textures`, `logs`, `videos`), each moved whole into `pcsx2.new`, `pcsx2.new` -> `pcsx2`,
+`pcsx2.old` removed with its manifest last. A swap that stopped is put right by the manifest at the next start or
+INSTALL; one INSTALL per folder, held by `pcsx2.install.lock` opened with no sharing ("another INSTALL is running in
+this folder; wait for it to finish"); closing the window mid-INSTALL keeps the process alive, window-less, until the
+query, download and extract finish (up to about 15 minutes: 20 s + 600 s + 300 s), holding the lock, so a relaunched
+launcher's INSTALL reads that sentence with no window to wait for. LAUNCH (`launchPcsx2`, R344) writes `config.pcsx2.json`, merges `[DEV9/Eth]`
+into `inis/PCSX2.ini` and writes `patches/0F6FC6CF.pnach` (embedded from `scripts/parity/pcsx2/0F6FC6CF.pnach`), each
+through `writeIfDifferent` with the old file kept once as `.bak-<stamp>` (`pcsx2_files.h`), creates a managed
+install's `memcards/` and `bios/`, and starts `pcsx2-qt.exe -batch <iso>`; PCSX2's data root is beside a portable
+exe, else `PCSX2` under the Documents known folder. Without the window: `--install-pcsx2 <dir>` (INSTALL into
+`<dir>/pcsx2`, every line on stdout, exit 1 on a refusal, `NOT INSTALLED. <sentence>`), `--pcsx2-status <exe>` (the
+version line, `data root: ...`, `BIOS folder: ... (N files)`; exit 1 `no PCSX2 at <exe>`), and `--selftest`'s four
+added lines `client:`, `pcsx2 config:`, `pcsx2 exe:`, `pcsx2 documents:`. The Dev knobs `PS2X_LAUNCHER_PCSX2_API`
+(a loopback stand-in for the release JSON) and `PS2X_LAUNCHER_PCSX2_TEST_FAIL` (`carry` | `final-rename`, the
+roll-back's fault injection) are in `docs/KNOBS.md`. Tests: `ps2x_tests` suites `pcsx2_config`, `pcsx2_files`,
+`pcsx2_install`; `tools_py/tests/test_launcher_pcsx2_install.py`, `test_pcsx2_masters.py`. The player's page is
+`docs/PCSX2_PLAY.md`.
 
 `socom2.exe` takes the ELF path as argv[1]; it mounts `PS2X_CD_IMAGE` when set, else the first `.iso` next to the
 ELF or one directory up (`configureCdImage`, `game_overrides_socom2.cpp`); the memory card is `PS2X_MC_DIR` when set (the launcher always sets it, to `cards/<profile>`), else
