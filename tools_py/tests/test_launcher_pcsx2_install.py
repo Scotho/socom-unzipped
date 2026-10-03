@@ -40,7 +40,10 @@ def build_archive(folder, files=None, name="stand"):
     files = files or {"pcsx2-qt.exe": STAND_IN}
     src = os.path.join(folder, name + "_src")
     for rel, data in files.items():
-        path = os.path.join(src, *rel.split("/"))
+        path = os.path.join(src, *rel.rstrip("/").split("/"))
+        if rel.endswith("/"):   # an empty folder
+            os.makedirs(path, exist_ok=True)
+            continue
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "wb") as fh:
             fh.write(data)
@@ -149,15 +152,19 @@ class LauncherPcsx2InstallTest(unittest.TestCase):
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
 
-    def run_launcher(self, *args):
+    def run_launcher(self, *args, fail=None):
         # PS2X_LAUNCHER_PCSX2_API is a Dev knob: honoured only in developer mode, and only for a loopback URL.
         # NO_PROXY keeps a proxy in the environment from carrying the loopback request anywhere.
+        # PS2X_LAUNCHER_PCSX2_TEST_FAIL (a Dev knob) makes one step of the swap fail, for the roll-back cases.
         env = {**os.environ, "PS2X_DEV": "1", "PS2X_LAUNCHER_PCSX2_API": self.server.base + "/release.json",
                "NO_PROXY": "127.0.0.1,localhost", "no_proxy": "127.0.0.1,localhost"}
+        env.pop("PS2X_LAUNCHER_PCSX2_TEST_FAIL", None)
+        if fail:
+            env["PS2X_LAUNCHER_PCSX2_TEST_FAIL"] = fail
         return subprocess.run([LAUNCHER, *args], capture_output=True, text=True, timeout=180, env=env)
 
-    def install(self):
-        return self.run_launcher("--install-pcsx2", self.home)
+    def install(self, fail=None):
+        return self.run_launcher("--install-pcsx2", self.home, fail=fail)
 
     def leftovers(self):
         found = []
@@ -249,6 +256,99 @@ class LauncherPcsx2InstallTest(unittest.TestCase):
         r = self.install()
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("tar.exe exited", r.stdout)
+        self.assertEqual(snapshot(self.pcsx2), before)
+        self.assertEqual(self.leftovers(), [])
+
+    # The re-review: the swap carries a FIXED set of player folders, by a manifest written before the first move,
+    # and no INSTALL ever deletes one -- not after a crash mid-carry, not in a roll-back, not when a release ships
+    # the same folder name.
+    def test_a_crash_mid_carry_is_recovered_and_the_card_comes_back(self):
+        # The state a run killed mid-carry leaves: pcsx2 renamed aside with its manifest, memcards already moved
+        # into pcsx2.new, no pcsx2.
+        aside = os.path.join(self.home, "pcsx2.old")
+        staging = os.path.join(self.home, "pcsx2.new")
+        for path, data in ((os.path.join(aside, "pcsx2-qt.exe"), b"old exe"),
+                           (os.path.join(aside, "socom_unzipped_pcsx2.txt"), b"v-old\n"),
+                           (os.path.join(aside, "bios", "scph.bin"), b"the bios"),
+                           (os.path.join(aside, ".carry"), b"memcards\nbios\n"),
+                           (os.path.join(staging, "pcsx2-qt.exe"), STAND_IN),
+                           (os.path.join(staging, "memcards", "Mcd001.ps2"), b"the card")):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as fh:
+                fh.write(data)
+        r = self.install()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        after = snapshot(self.pcsx2)
+        self.assertEqual(after[os.path.join("memcards", "Mcd001.ps2")], b"the card")
+        self.assertEqual(after[os.path.join("bios", "scph.bin")], b"the bios")
+        self.assertEqual(after["socom_unzipped_pcsx2.txt"].strip(), TAG.encode())
+        self.assertEqual(self.leftovers(), [])
+
+    def test_a_release_shipping_player_folders_merges_and_the_players_files_win(self):
+        self.server.archive = build_archive(self.work, {"pcsx2-qt.exe": STAND_IN, "memcards/Mcd001.ps2": b"a blank card",
+                                                       "memcards/readme.txt": b"from the release", "inis/": b"",
+                                                       "sstates/": b""}, "withfolders")
+        self.make_old_install()
+        with open(os.path.join(self.pcsx2, "memcards", "Mcd002.ps2"), "wb") as fh:
+            fh.write(b"card two")
+        os.makedirs(os.path.join(self.pcsx2, "inis"))
+        with open(os.path.join(self.pcsx2, "inis", "PCSX2.ini"), "wb") as fh:
+            fh.write(b"mine")
+        r = self.install()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        after = snapshot(self.pcsx2)
+        self.assertEqual(after[os.path.join("memcards", "Mcd001.ps2")], b"the card", "the player's file wins a clash")
+        self.assertEqual(after[os.path.join("memcards", "Mcd002.ps2")], b"card two")
+        self.assertEqual(after[os.path.join("memcards", "readme.txt")], b"from the release", "the release's own file joins")
+        self.assertEqual(after[os.path.join("inis", "PCSX2.ini")], b"mine", "an empty release folder takes nothing away")
+        self.assertEqual(after[os.path.join("bios", "scph.bin")], b"the bios")
+        self.assertEqual(self.leftovers(), [])
+
+    def test_a_folder_outside_the_fixed_set_is_not_carried(self):
+        self.make_old_install()
+        os.makedirs(os.path.join(self.pcsx2, "old_release_dir"))
+        with open(os.path.join(self.pcsx2, "old_release_dir", "x.dat"), "wb") as fh:
+            fh.write(b"x")
+        r = self.install()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.pcsx2, "old_release_dir")))
+        self.assertEqual(snapshot(self.pcsx2)[os.path.join("memcards", "Mcd001.ps2")], b"the card")
+
+    def test_pcsx2_held_open_is_a_refusal_that_touches_nothing(self):
+        self.make_old_install()
+        before = snapshot(self.pcsx2)
+        held = open(os.path.join(self.pcsx2, "pcsx2-qt.exe"), "rb")
+        try:
+            probe = self.pcsx2 + ".probe"
+            try:
+                os.rename(self.pcsx2, probe)
+            except OSError:
+                pass   # the open file pins the folder: the case this test needs
+            else:
+                os.rename(probe, self.pcsx2)
+                self.skipTest("an open file does not pin its folder against a rename on this host")
+            r = self.install()
+        finally:
+            held.close()
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("is PCSX2 running", r.stdout)
+        self.assertEqual(snapshot(self.pcsx2), before)
+        self.assertEqual(self.leftovers(), [])
+
+    def test_a_failed_final_rename_rolls_back_with_the_cards(self):
+        self.make_old_install()
+        before = snapshot(self.pcsx2)
+        r = self.install(fail="final-rename")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("the earlier install is untouched", r.stdout)
+        self.assertEqual(snapshot(self.pcsx2), before)
+        self.assertEqual(self.leftovers(), [])
+
+    def test_a_failed_carry_rolls_back_with_the_cards(self):
+        self.make_old_install()
+        before = snapshot(self.pcsx2)
+        r = self.install(fail="carry")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertEqual(snapshot(self.pcsx2), before)
         self.assertEqual(self.leftovers(), [])
 

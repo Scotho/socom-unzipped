@@ -497,6 +497,153 @@ namespace
         return 0;
     }
 
+    // INSTALL's swap (the T4 re-review). An update must not cost the player a memory card or a BIOS: PCSX2 keeps them
+    // inside its own folder in a portable install, the spec's R-C keeps "their updates intact" and R-F makes the
+    // BIOS, the cards and the settings PCSX2's own pages -- so the launcher keeps the player's data by default (the
+    // reviewer's judgement; no owner ruling needed). A FIXED set of folders is carried, by a manifest written before
+    // the first move, and no path in here deletes one of them.
+    namespace pcsx2swap
+    {
+        // PCSX2's player-data folders (its portable layout). A release that brings one of these names has its files
+        // merged into the player's folder, the player's files winning on a name clash.
+        constexpr const char *kPlayerFolders[] = {"bios",     "memcards", "inis",         "sstates", "snaps",
+                                                  "cheats",   "patches",  "covers",       "gamesettings",
+                                                  "cache",    "textures", "logs",         "videos"};
+        constexpr const char *kManifest = ".carry";   // in pcsx2.old: the folders the swap is moving into pcsx2.new
+
+        bool isPlayerFolder(const std::string &name)
+        {
+            for (const char *p : kPlayerFolders)
+                if (name == p)
+                    return true;
+            return false;
+        }
+
+        bool writeManifest(const fs::path &aside, const std::vector<std::string> &names)
+        {
+            std::ofstream out(aside / kManifest, std::ios::binary | std::ios::trunc);
+            for (const std::string &n : names)
+                out << n << "\n";
+            out.flush();
+            return static_cast<bool>(out);
+        }
+
+        // The manifest's names -- only names of the fixed set, so a damaged file can never point anywhere else.
+        std::vector<std::string> readManifest(const fs::path &aside)
+        {
+            std::vector<std::string> names;
+            std::ifstream in(aside / kManifest, std::ios::binary);
+            for (std::string line; std::getline(in, line);)
+            {
+                while (!line.empty() && (line.back() == '\r' || line.back() == ' '))
+                    line.pop_back();
+                if (isPlayerFolder(line))
+                    names.push_back(line);
+            }
+            return names;
+        }
+
+        // pcsx2.old/<name> moved whole into pcsx2.new/<name>. A release copy of that name is renamed out of the way
+        // first and its files then merged in where the player has none of that name. False with `why` set; what was
+        // moved is where recover() looks for it.
+        bool carry(const fs::path &aside, const fs::path &staging, const std::string &name, std::string &why)
+        {
+            const fs::path from = aside / name;
+            const fs::path to = staging / name;
+            const fs::path release = staging / (name + ".release-copy");
+            std::error_code ec;
+            const bool releaseHasIt = fs::exists(to, ec);
+            if (releaseHasIt)
+            {
+                fs::remove_all(release, ec);   // the release's own files only (pcsx2.new holds nothing of the player's yet)
+                ec.clear();
+                fs::rename(to, release, ec);
+                if (ec)
+                {
+                    why = "could not make room for the player's " + name + " in the new install (" + ec.message() + ")";
+                    return false;
+                }
+            }
+            fs::rename(from, to, ec);
+            if (ec)
+            {
+                why = "could not carry " + name + " from " + from.string() + " into the new install (" + ec.message() + ")";
+                return false;
+            }
+            if (releaseHasIt)
+            {
+                std::vector<fs::path> entries;
+                for (fs::directory_iterator it(release, ec), end; !ec && it != end; it.increment(ec))
+                    entries.push_back(it->path());
+                for (const fs::path &e : entries)
+                {
+                    std::error_code mv;
+                    if (!fs::exists(to / e.filename(), mv))
+                        fs::rename(e, to / e.filename(), mv);   // the player's file of the same name wins
+                }
+                fs::remove_all(release, ec);
+            }
+            return true;
+        }
+
+        // pcsx2.old after a complete swap: everything but the manifest, then the manifest, then the folder -- so a
+        // clean-up that stops half-way still has its manifest for recover() to read.
+        void removeAside(const fs::path &aside)
+        {
+            std::error_code ec;
+            std::vector<fs::path> entries;
+            for (fs::directory_iterator it(aside, ec), end; !ec && it != end; it.increment(ec))
+                if (it->path().filename() != kManifest)
+                    entries.push_back(it->path());
+            for (const fs::path &e : entries)
+                fs::remove_all(e, ec);
+            fs::remove(aside / kManifest, ec);
+            fs::remove(aside, ec);
+        }
+
+        // An interrupted swap put right, before INSTALL deletes anything. "" when there was nothing to do or it is done;
+        // otherwise the refusal, naming the folder and the path, and nothing deleted.
+        //  - pcsx2 absent, pcsx2.old present: every manifest folder in pcsx2.new goes back into pcsx2.old, then
+        //    pcsx2.old becomes pcsx2 again (the run died, or rolled back, mid-swap).
+        //  - both present: the swap finished and its clean-up stopped; pcsx2.old is removed only when it holds none of
+        //    the player folders.
+        std::string recover(const fs::path &target, const fs::path &staging, const fs::path &aside)
+        {
+            std::error_code ec;
+            if (!fs::is_directory(aside, ec))
+                return {};
+            if (!fs::exists(target, ec))
+            {
+                for (const std::string &name : readManifest(aside))
+                {
+                    const fs::path back = aside / name;
+                    const fs::path held = staging / name;
+                    if (fs::exists(back, ec) || !fs::exists(held, ec))
+                        continue;
+                    ec.clear();
+                    fs::rename(held, back, ec);
+                    if (ec)
+                        return "the player folder " + name + " is in " + held.string() + " and could not be moved back into " +
+                               aside.string() + " (" + ec.message() + "); nothing was deleted -- move it there, then INSTALL again";
+                }
+                fs::remove(aside / kManifest, ec);
+                ec.clear();
+                fs::rename(aside, target, ec);
+                if (ec)
+                    return "the earlier install is in " + aside.string() + " and could not be renamed back to " +
+                           target.string() + " (" + ec.message() + "); nothing was deleted";
+                return {};
+            }
+            for (const char *name : kPlayerFolders)
+                if (fs::exists(aside / name, ec))
+                    return std::string("the earlier install's ") + name + " folder is still in " + aside.string() +
+                           " beside a complete " + target.string() + "; nothing was deleted -- move what you need out of " +
+                           aside.string() + " and remove it, then INSTALL again";
+            removeAside(aside);
+            return {};
+        }
+    }
+
     // --install-pcsx2 <dir>: Sprint 18 T4 (R341), INSTALL without the window, for tools_py/tests/
     // test_launcher_pcsx2_install.py (against a loopback stand-in release) and for T5's button to call the same
     // steps: the latest-release JSON -> the -windows-x64-Qt.7z asset (on github.com: assetUrlAllowed) -> the download
@@ -504,9 +651,9 @@ namespace
     // (patchfetch::verifyPackage) -> the system tar.exe -> portable.txt and the version marker.
     // T4 review 1, atomic: all of that happens in a fresh sibling <dir>/pcsx2.new; only a complete, marked release is
     // swapped in (pcsx2 -> pcsx2.old, pcsx2.new -> pcsx2, pcsx2.old removed). The player's folders of an earlier install
-    // (memcards, bios, inis, ... -- every folder the new release does not bring) move across in the swap; files the new
-    // release dropped do not. Every refusal is one sentence after "NOT INSTALLED.", exit 1: pcsx2.new is removed and
-    // an existing pcsx2 is left exactly as it was.
+    // (pcsx2swap::kPlayerFolders: memcards, bios, inis, ...) move across in the swap by manifest; anything else of the
+    // old release does not. Every refusal is one sentence after "NOT INSTALLED.", exit 1: an existing pcsx2 is left
+    // exactly as it was, and pcsx2.new is removed only when it holds nothing of the player's.
     int installPcsx2Headless(const fs::path &home)
     {
         namespace pi = launcher::pcsx2install;
@@ -548,9 +695,16 @@ namespace
         fs::path aside = target;
         aside += ".old";
         std::error_code ec;
-        // An earlier run stopped between the two renames of its swap: the old install is still in pcsx2.old.
-        if (!fs::exists(target, ec) && fs::is_directory(aside, ec))
-            fs::rename(aside, target, ec);
+        // An earlier run stopped inside its swap: its manifest says which player folders are in pcsx2.new, and they go
+        // back before anything is deleted. A move that fails is a refusal, never a deletion.
+        {
+            const std::string stuck = pcsx2swap::recover(target, staging, aside);
+            if (!stuck.empty())
+            {
+                std::printf("NOT INSTALLED. %s\n", stuck.c_str());
+                return 1;
+            }
+        }
         const fs::path archive = staging / "pcsx2.7z.new";
         auto refuse = [&](const std::string &sentence)
         {
@@ -559,7 +713,7 @@ namespace
             std::printf("NOT INSTALLED. %s\n", sentence.c_str());
             return 1;
         };
-        fs::remove_all(staging, ec);
+        fs::remove_all(staging, ec);   // recover() above has emptied it of anything of the player's
         ec.clear();
         fs::create_directories(staging, ec);
         if (ec)
@@ -642,52 +796,58 @@ namespace
                 return refuse(std::string("could not write ") + pi::kVersionMarker);
         }
 
-        // The swap. Until pcsx2.new becomes pcsx2, every failure puts the old install back exactly as it was.
-        std::vector<fs::path> carried;   // the old install's folders moved into pcsx2.new
+        // The swap. pcsx2 -> pcsx2.old; the manifest pcsx2.old/.carry names the player folders present, written BEFORE
+        // the first one moves; each is moved whole into pcsx2.new (the release's own copy of that name merged into it,
+        // the player's files winning); pcsx2.new -> pcsx2; pcsx2.old removed, its manifest last. Until pcsx2.new
+        // becomes pcsx2, a failure is rolled back by the manifest (pcsx2swap::recover); a folder that cannot be moved
+        // back is a refusal naming it, and pcsx2.new is then left alone -- never deleted with a player folder inside.
+        const char *testFail = ps2x::knob("PS2X_LAUNCHER_PCSX2_TEST_FAIL");   // the roll-back tests' fault injection
+        const std::string failAt = testFail != nullptr ? testFail : "";
         const bool hadOld = fs::exists(target, ec);
         auto rollBack = [&](const std::string &sentence)
         {
-            std::error_code mv;
-            for (const fs::path &name : carried)
-                fs::rename(staging / name, aside / name, mv);
-            mv.clear();
-            fs::rename(aside, target, mv);
-            if (mv)
-                return refuse(sentence + "; the earlier install is in " + aside.string() +
-                              " and the next INSTALL puts it back");
+            const std::string stuck = pcsx2swap::recover(target, staging, aside);
+            if (!stuck.empty())
+            {
+                std::printf("NOT INSTALLED. %s; %s\n", sentence.c_str(), stuck.c_str());
+                return 1;
+            }
             return refuse(sentence + "; the earlier install is untouched");
         };
         if (hadOld)
         {
-            fs::remove_all(aside, ec);   // a leftover of an earlier swap (pcsx2 itself is present)
             ec.clear();
             fs::rename(target, aside, ec);
             if (ec)
                 return refuse("the PCSX2 at " + target.string() + " could not be moved aside (" + ec.message() +
                               "): is PCSX2 running? Close it and INSTALL again; the earlier install is untouched");
-            std::vector<fs::path> names;
-            for (fs::directory_iterator it(aside, ec), end; !ec && it != end; it.increment(ec))
-                if (it->is_directory(ec) && !fs::exists(staging / it->path().filename(), ec))
-                    names.push_back(it->path().filename());
-            for (const fs::path &name : names)
+            std::vector<std::string> names;
+            for (const char *name : pcsx2swap::kPlayerFolders)
+                if (fs::is_directory(aside / name, ec))
+                    names.push_back(name);
+            if (!pcsx2swap::writeManifest(aside, names))
+                return rollBack("could not write the carry list in " + aside.string());
+            for (size_t i = 0; i < names.size(); ++i)
             {
-                std::error_code mv;
-                fs::rename(aside / name, staging / name, mv);
-                if (mv)
-                    return rollBack("could not carry " + name.string() + " into the new install (" + mv.message() + ")");
-                carried.push_back(name);
+                std::string why;
+                if (failAt == "carry" && i == 1)
+                    return rollBack("the carry of " + names[i] + " failed (test)");
+                if (!pcsx2swap::carry(aside, staging, names[i], why))
+                    return rollBack(why);
             }
         }
         ec.clear();
-        fs::rename(staging, target, ec);
+        if (failAt == "final-rename")
+            ec = std::make_error_code(std::errc::permission_denied);
+        else
+            fs::rename(staging, target, ec);
         if (ec)
         {
-            if (!hadOld)
-                return refuse("could not move the new install to " + target.string() + " (" + ec.message() + ")");
-            return rollBack("could not move the new install to " + target.string() + " (" + ec.message() + ")");
+            const std::string sentence = "could not move the new install to " + target.string() + " (" + ec.message() + ")";
+            return hadOld ? rollBack(sentence) : refuse(sentence);
         }
         if (hadOld)
-            fs::remove_all(aside, ec);
+            pcsx2swap::removeAside(aside);
         std::printf("installed PCSX2 %s at %s\n", release.tag.c_str(), target.string().c_str());
         return 0;
     }
