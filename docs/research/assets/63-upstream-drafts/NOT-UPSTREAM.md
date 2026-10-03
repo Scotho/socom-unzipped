@@ -65,6 +65,10 @@ Feedback, not a bug: the draft PR's LLE kernel binds the libsd side of a 989snd-
 whose sound runs through 989SND.IRX cannot load a bank from the disc on it as the PR stands; a `cdvdman` provider (read, sync,
 the callback form) would be the missing piece. Status: not sent (R284; the owner's row O10). `OPEN-PRS.md`'s #254 row points here.
 
+### 1.4 A note on issue #260 (2026-10-03, LATER 83; no draft)
+
+Feedback, not a bug of ours: `emitResumeFromDelaySlotEntry`'s block is reached only by a transfer to the delay-slot address (an internal goto or the entry switch; an exception there sets EPC to the branch), and the R5900 then executes the slot with no branch pending and continues at branch+8, so the emitter's fall-through is right and the issue's "continue at the target" is wrong. SOCOM II's output shows it: GCC's rotated loops in `FUN_006296a0` (`0x629754 b 0x629818`, slot `0x629758`, back edge `0x629818 bnez $t6, 0x629758`) and `sub_00629868` never run their body again under the fix, and 213 `b . + 4` sites would goto themselves (ported as `43f26f60`, dropped on review). Status: not sent (O10).
+
 ## 2. A draft where upstream is right: the export-table walk
 
 | item | what it is | draft / patch | local status | confidence | recommendation | status |
