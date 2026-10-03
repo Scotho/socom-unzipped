@@ -132,7 +132,9 @@ void register_pcsx2_install_tests()
             const auto argv = pi::extractArgv("C:\\Windows", dest / "pcsx2.7z.new", dest);
             const std::string utf8 = "D:\\Jeux\\H" "\xc3\xa9" "l" "\xc3\xa8" "ne\\s2u\\pcsx2.new";
             t.IsTrue(argv.size() == 5 && argv[4] == utf8, "the destination's UTF-8 bytes");
-            t.IsTrue(argv.size() == 5 && argv[2] == utf8 + "\\pcsx2.7z.new", "the archive's UTF-8 bytes");
+            // operator/ joins with the platform's separator: '\\' on Windows, '/' on POSIX (Linux CI).
+            const std::string sep(1, static_cast<char>(std::filesystem::path::preferred_separator));
+            t.IsTrue(argv.size() == 5 && argv[2] == utf8 + sep + "pcsx2.7z.new", "the archive's UTF-8 bytes");
         });
 
         tc.Run("pcsx2_install: the asset URL fails closed -- github.com only, loopback only behind a loopback API (T4 review 2)", [](TestCase &t)
