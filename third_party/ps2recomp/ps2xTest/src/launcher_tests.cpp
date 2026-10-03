@@ -1301,6 +1301,67 @@ void register_launcher_tests()
             fs::remove_all(dir, ec);
         });
 
+        // LATER 79 (the T6 review): a hand-edited config.pcsx2.json can hold bytes that are not UTF-8, and libc++'s
+        // path(u8string) throws on them ("locale not supported") at start-up's checkDisc and in probePcsx2. pathFromUtf8
+        // answers an empty path instead -- the call sites read empty as "no path" (the disc's "no disc set", the probe's
+        // none). activeIsoFile lives in main.cpp's anonymous namespace, so the helper is what is tested here.
+        tc.Run("S18: pathFromUtf8 answers an empty path for bytes that are not UTF-8, and throws nothing", [](TestCase &t)
+        {
+            const std::string bad[] = {
+                std::string("C:/games/SOCOM\xFF.iso"),       // 0xFF is never UTF-8
+                std::string("J\xE9r\xF4me.iso"),             // Latin-1 bytes, the likeliest hand edit
+                std::string("\xC3"),                         // a lead byte with no continuation
+                std::string("a\x80" "b"),                    // a lone continuation byte
+                std::string("\xC0\xAF"),                     // an overlong '/'
+                std::string("\xED\xA0\x80"),                 // a UTF-16 surrogate, U+D800
+                std::string("\xF4\x90\x80\x80"),             // past U+10FFFF
+            };
+            for (const std::string &s : bad)
+            {
+                bool threw = false;
+                std::filesystem::path p;
+                try
+                {
+                    p = launcher::pathFromUtf8(s);
+                }
+                catch (...)
+                {
+                    threw = true;
+                }
+                t.IsFalse(threw, "pathFromUtf8 throws nothing on invalid UTF-8");
+                t.IsTrue(p.empty(), "and answers an empty path, which the call sites read as no path");
+            }
+            t.IsTrue(launcher::pathFromUtf8(std::string()).empty(), "an empty string is an empty path");
+            t.Equals(launcher::utf8Of(launcher::pathFromUtf8("C:/games/SOCOM II.iso")), std::string("C:/games/SOCOM II.iso"),
+                     "plain ASCII is unchanged");
+            t.Equals(launcher::utf8Of(launcher::pathFromUtf8("\xF0\x9F\x8E\xAE.iso")), std::string("\xF0\x9F\x8E\xAE.iso"),
+                     "a four-byte sequence (U+1F3AE) is valid and kept");
+        });
+
+        // LATER 80 (the T6 review): the content band's line is per client. The PCSX2 view's ONLINE has no personas list
+        // and no second instance, so its line does not promise them; every other page reads the same in both clients.
+        tc.Run("S18: the page title is per client -- ONLINE differs, every other page is the same", [](TestCase &t)
+        {
+            using launcher::ClientMode;
+            for (int i = 0; i < ui::kPageCount; ++i)
+            {
+                const ui::Page page = ui::pageAt(i);
+                const std::string native = ui::pageTitle(page, ClientMode::Native);
+                const std::string pcsx2 = ui::pageTitle(page, ClientMode::Pcsx2);
+                t.IsFalse(native.empty(), "no native title is empty");
+                t.IsFalse(pcsx2.empty(), "no PCSX2 title is empty");
+                t.IsTrue(pcsx2.rfind(std::string(ui::pageName(page)) + " -- ", 0) == 0, "the PCSX2 title opens with the page's name");
+                if (page == ui::Page::Online)
+                    t.IsTrue(native != pcsx2, "ONLINE's title differs between the clients");
+                else
+                    t.Equals(pcsx2, native, "every other page's title is the same in both clients");
+            }
+            const std::string online = ui::pageTitle(ui::Page::Online, ClientMode::Pcsx2);
+            t.IsTrue(online.find("second instance") == std::string::npos, "the PCSX2 ONLINE title promises no second instance");
+            t.Equals(std::string(ui::pageTitle(ui::Page::Online, ClientMode::Native)),
+                     std::string("ONLINE -- the server, your personas, a second instance"), "the native title is unchanged");
+        });
+
         // Sprint 8, owner feedback: "the yellow circle ... takes too long to adjust and awkwardly flys with a
         // delay". There is no travel left to see: the ring is at the focused control's rect on the very frame
         // the focus changes, inside a page and across a page change alike, whatever the frame time was.

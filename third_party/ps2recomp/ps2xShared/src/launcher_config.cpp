@@ -5,9 +5,11 @@
 #include "json_reader.h"
 
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <exception>
 #include <map>
 
 // config.json is a flat object of strings, numbers and booleans; a hand-rolled reader/writer covers it (no
@@ -470,9 +472,76 @@ namespace launcher
         return std::string(reinterpret_cast<const char *>(u.data()), u.size());
     }
 
+    namespace
+    {
+        // LATER 79: well-formed UTF-8 (RFC 3629) -- no stray continuation byte, no truncated sequence, no overlong
+        // form, no UTF-16 surrogate, nothing past U+10FFFF.
+        bool isValidUtf8(const std::string &s)
+        {
+            const size_t n = s.size();
+            size_t i = 0;
+            while (i < n)
+            {
+                const unsigned char c = static_cast<unsigned char>(s[i]);
+                size_t len = 0;
+                uint32_t cp = 0;
+                uint32_t least = 0;
+                if (c < 0x80)
+                {
+                    ++i;
+                    continue;
+                }
+                if ((c & 0xE0) == 0xC0)
+                {
+                    len = 2;
+                    cp = c & 0x1F;
+                    least = 0x80;
+                }
+                else if ((c & 0xF0) == 0xE0)
+                {
+                    len = 3;
+                    cp = c & 0x0F;
+                    least = 0x800;
+                }
+                else if ((c & 0xF8) == 0xF0)
+                {
+                    len = 4;
+                    cp = c & 0x07;
+                    least = 0x10000;
+                }
+                else
+                    return false;
+                if (i + len > n)
+                    return false;
+                for (size_t k = 1; k < len; ++k)
+                {
+                    const unsigned char cc = static_cast<unsigned char>(s[i + k]);
+                    if ((cc & 0xC0) != 0x80)
+                        return false;
+                    cp = (cp << 6) | (cc & 0x3F);
+                }
+                if (cp < least || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF))
+                    return false;
+                i += len;
+            }
+            return true;
+        }
+    }
+
     std::filesystem::path pathFromUtf8(const std::string &utf8)
     {
-        return std::filesystem::path(std::u8string(reinterpret_cast<const char8_t *>(utf8.data()), utf8.size()));
+        // LATER 79: libc++'s path(u8string) throws "locale not supported" on bytes that are not UTF-8 (a hand-edited
+        // config.pcsx2.json); an empty path instead, which checkDisc reads as "no disc set" and probePcsx2 as none.
+        if (!isValidUtf8(utf8))
+            return std::filesystem::path();
+        try
+        {
+            return std::filesystem::path(std::u8string(reinterpret_cast<const char8_t *>(utf8.data()), utf8.size()));
+        }
+        catch (const std::exception &)
+        {
+            return std::filesystem::path();
+        }
     }
 
 

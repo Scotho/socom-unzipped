@@ -150,7 +150,8 @@ namespace
     };
 
     // Sprint 18 T6 review: the active client's ISO as a file -- the PCSX2 client's UTF-8 string through pathFromUtf8, the
-    // native client's as path(std::string) reads it (the form its config.json and the game's environment have).
+    // native client's as path(std::string) reads it (the form its config.json and the game's environment have). LATER 79:
+    // a PCSX2 string that is not UTF-8 is an empty path, so checkDisc answers "no disc set" instead of the launcher dying.
     fs::path activeIsoFile(const ui::App &app)
     {
         if (app.mode == launcher::ClientMode::Pcsx2)
@@ -1048,7 +1049,8 @@ namespace
         ui::Pcsx2Status s;
         std::error_code ec;
         const fs::path exe = launcher::pathFromUtf8(app.pcsx2.pcsx2Exe);   // T6 review: the PCSX2 client's paths are UTF-8
-        if (!app.pcsx2.pcsx2Exe.empty() && fs::is_regular_file(exe, ec))
+        // LATER 79: an exe string that is not UTF-8 is an empty path -- no PCSX2 found, the page's none.
+        if (!app.pcsx2.pcsx2Exe.empty() && !exe.empty() && fs::is_regular_file(exe, ec))
         {
             s.exeFound = true;
             const fs::path exeDir = exe.parent_path();
@@ -1556,7 +1558,7 @@ namespace
         const std::string help = helpFor(app.nav.focus);
         if (help.empty())
         {
-            const char *title = pageTitle(app.nav.page);
+            const char *title = pageTitle(app.nav.page, app.mode);   // LATER 80: the line per client
             const char *dash = std::strstr(title, "-- ");
             const std::string sub = dash != nullptr ? std::string(dash + 3) : std::string(title);
             const float room = band.right() - 30.0f - afterName;
