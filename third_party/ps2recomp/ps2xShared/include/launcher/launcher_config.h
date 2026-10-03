@@ -345,6 +345,8 @@ namespace launcher
     // utf8Of), the PCSX2 client keeps its paths in UTF-8 (config.pcsx2.json, startProcess's argv), and a UTF-8 path
     // becomes a file through pathFromUtf8 -- never path(std::string), which reads the bytes in the ANSI code page.
     std::string utf8Of(const std::filesystem::path &p);
+    // LATER 79: bytes that are not well-formed UTF-8 (a hand-edited config.pcsx2.json) give an empty path, never a
+    // throw; the callers read empty as no path.
     std::filesystem::path pathFromUtf8(const std::string &utf8);
 
 

@@ -61,8 +61,9 @@ UNVERIFIED = "(unverified)"
 # A log line a meaning names, e.g. "[gs-gl stats]": the tag must be printed somewhere in the shipped trees.
 _LOG_TAG = re.compile(r'\[([a-z][a-z0-9 _-]*)\]')
 _LITERAL = re.compile(r'"(PS2X_[A-Z0-9_]+)(?=["=])')
-_RAW_GETENV = re.compile(r'getenv\s*\(\s*"PS2X_')
-_HELPER_GETENV = re.compile(r'getenv\s*\(\s*(?!["\s])')   # getenv(name), getenv(env), getenv(br::kApiBaseEnv) ...
+# A wide literal (_wgetenv(L"USERPROFILE"), the Sprint 18 T6 review's documentsDir) is a literal for both checks.
+_RAW_GETENV = re.compile(r'getenv\s*\(\s*L?"PS2X_')
+_HELPER_GETENV = re.compile(r'getenv\s*\(\s*(?!["\s]|L")')   # getenv(name), getenv(env), getenv(br::kApiBaseEnv) ...
 _TEST_READ = re.compile(r'getenv\s*\(\s*"(PS2X_[A-Z0-9_]+)"')
 _TOKEN = re.compile(r'PS2X_[A-Z0-9_]*')
 _ACCESSOR = re.compile(r'ps2x::(knobOn|knob)\s*\(\s*"(PS2X_[A-Z0-9_]+)"')

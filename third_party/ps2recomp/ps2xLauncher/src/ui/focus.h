@@ -44,7 +44,9 @@ namespace ui
     Page pageAt(int index);
     int pageIndex(Page page);
     const char *pageName(Page page);    // the rail's label: "PLAY"
-    const char *pageTitle(Page page);   // the content band's line: "PLAY -- everything at a glance"
+    // The content band's line: "PLAY -- the state of the game and ...". LATER 80: per client -- ONLINE's in the PCSX2
+    // view names what that view shows (no personas list, no second instance); every other page reads the same in both.
+    const char *pageTitle(Page page, launcher::ClientMode mode);
     std::string railId(Page page);        // "rail.play"
     std::string pageSlug(Page page);      // "play", "report": the rail id without "rail." -- ids and screenshot names
     std::string barLaunchId(Page page);   // "bar.launch.play" -- the bar is on every page, its node is per page

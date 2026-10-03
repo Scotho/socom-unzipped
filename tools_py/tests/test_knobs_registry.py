@@ -89,6 +89,24 @@ class SourceAgainstRegistryTest(unittest.TestCase):
             self.assertEqual(len(sites), 1, sites)
             self.assertTrue(sites[0].endswith("h.cpp:3"))
 
+    def test_a_wide_literal_is_a_literal_for_both_getenv_checks(self):
+        # Sprint 18 T6 review: documentsDir reads _wgetenv(L"USERPROFILE") -- the wide form, so a non-ASCII profile
+        # survives. A wide literal names its variable as plainly as a narrow one: not a handed name, and a wide
+        # PS2X_* literal is still a raw knob read. A wide getenv of a variable stays a helper site.
+        with tempfile.TemporaryDirectory() as root:
+            la = os.path.join(root, "third_party", "ps2recomp", "ps2xLauncher", "src")
+            os.makedirs(la)
+            with open(os.path.join(la, "w.cpp"), "w") as fh:
+                fh.write('const wchar_t *p = _wgetenv(L"USERPROFILE");\n'
+                         'const wchar_t *k = _wgetenv(L"PS2X_GS_SCALE");\n'
+                         'const wchar_t *h = _wgetenv(name);\n')
+            helpers = knobs.helper_getenv_sites(root)
+            self.assertEqual(len(helpers), 1, helpers)
+            self.assertTrue(helpers[0].endswith("w.cpp:3"), helpers)
+            raw = knobs.raw_getenv_sites(root)
+            self.assertEqual(len(raw), 1, raw)
+            self.assertTrue(raw[0].endswith("w.cpp:2"), raw)
+
     def test_a_read_before_main_is_found(self):
         with tempfile.TemporaryDirectory() as root:
             rt = os.path.join(root, "third_party", "ps2recomp", "ps2xRuntime", "src")

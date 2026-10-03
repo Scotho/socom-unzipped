@@ -114,7 +114,14 @@ namespace ui
 
     int pageIndex(Page page) { return static_cast<int>(page); }
     const char *pageName(Page page) { return kPages[pageIndex(page)].name; }
-    const char *pageTitle(Page page) { return kPages[pageIndex(page)].title; }
+    const char *pageTitle(Page page, launcher::ClientMode mode)
+    {
+        // LATER 80: the PCSX2 view's ONLINE is SERVER, GAME VERSION, ADDRESS and the caption saying personas are made in
+        // the game (page_online.cpp) -- the native line's personas and second instance are not there.
+        if (mode == launcher::ClientMode::Pcsx2 && page == Page::Online)
+            return "ONLINE -- the server and the game version; your personas are made in the game";
+        return kPages[pageIndex(page)].title;
+    }
     std::string railId(Page page) { return kPages[pageIndex(page)].id; }
 
     std::string pageSlug(Page page) { return railId(page).substr(5); }
