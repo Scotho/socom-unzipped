@@ -23,6 +23,8 @@
     <ProjectReference Include="..\RT.Cryptography\RT.Cryptography.csproj" />
     <ProjectReference Include="..\Server.Common\Server.Common.csproj" />
     <ProjectReference Include="..\Server.Medius\Server.Medius.csproj" />
+    <!-- LOCAL (socom_pc), LATER 86: Horizon38Tests reads Server.Dme's UdpServer (upstream #38's shared group). -->
+    <ProjectReference Include="..\Server.Dme\Server.Dme.csproj" />
     <ProjectReference Include="..\Server.Pipeline\Server.Pipeline.csproj" />
   </ItemGroup>
 
