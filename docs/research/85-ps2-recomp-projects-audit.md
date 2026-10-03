@@ -3,7 +3,7 @@
 The owner's ask, 2026-10-03: "proceed to do another research audit on every relevant ps2recomp project to our issues
 ... prioritize the repo but also check at least 20ish ps2 recomp projects", with the same day's rule on taking code,
 "where applicable, take other commits that share our license ensuring the creators retain credit" (the closing
-section). This note is the record of that audit; it replaces the coordinator's report of the same day. Inputs: six
+section). This note is the record of that audit; it replaces the coordinator's report of the same day. Inputs: seven
 researcher notes written 2026-10-03 against our tree at `sprint-17` `e9535f7f` (00 our needs, N1-N40; 01 upstream
 ran-j/PS2Recomp since 2026-09-26 and 191 non-default fork branches, read through the GitHub API; 02 the other
 recompilation and decompilation projects, about 70 repositories; 03 the emulators PCSX2 `81526d4dc7`/v2.8.2, Play!
@@ -93,17 +93,17 @@ The hardware documentation says "Voice volume/2 (-4000h..+3FFFh = Volume -8000h.
 (`applyVoiceVolume`, `third_party/ps2recomp/ps2xRuntime/src/lib/snd989_mixer.cpp:1026-1033`, whose comment at `:1030`
 records the belief "full volume is half of full scale") and then divides by 0x7FFE: voices at `:2016`
 (`g = env.level / 32767.0 / 0x7FFE`) and streams at `:2101-2107` **[verified]** in this worktree (the report's
-"1027-1033" is `:1026-1033`; `adjustVolToGroup` itself is `:1015-1023`).
+"1027-1033" is `:1026-1033`; `adjustVolToGroup` itself is `:1020-1024`, under its comment block `:1013-1019`).
 
 That also explains why the menu PCM path matches the console within +0.47 dB. The PCM ring enters as SPU2 core input,
 and **BVOL, EVOL and AVOL are not shifted**: their raw register value 0x7FFF is unity **[verified]**
 [spu2sys.cpp#L1254-L1275](https://github.com/PCSX2/pcsx2/blob/master/pcsx2/SPU2/spu2sys.cpp#L1254-L1275). The trial is
 therefore one divisor: change the voice and stream divisor from 0x7FFE to 0x4000 in `snd989_mixer.cpp`, leave the PCM
-ring alone, and re-score s32-s47 plus a music window. One caveat from this worktree's re-check: the PCM ring's own gain
-at `snd989_mixer.cpp:2465-2466` also takes a `>> 1` ("0..0x7ffe ... then the SPU's >> 1: 0..0x3fff") and is scaled by
-group 16 at `:2115`; its divisor in the mix loop was not read in this pass, so "leave the ring alone" rests on the
-+0.47 dB parity score, not on a reading of that line **[unconfirmed]**. If the music then reads loud, the console puts
-the stream on a group whose master the game sets below unity.
+ring alone, and re-score s32-s47 plus a music window. This worktree's re-check supports "leave the ring alone": the PCM
+ring's gain at `snd989_mixer.cpp:2465-2466` takes the `>> 1` ("0..0x7ffe ... then the SPU's >> 1: 0..0x3fff"), is
+scaled by group 16 at `:2115`, and the mix loop at `:2153-2154` applies it as `(l * gain) / 0x7fff` -- so the ring plays
+0x3fff as half scale, which is BVOL's unshifted semantics, consistent with the +0.47 dB parity score **[verified]**. If
+the music then reads loud, the console puts the stream on a group whose master the game sets below unity.
 
 Two more contributors sit beside it. First, **our mixer squares the global master (group 16)**:
 `groupModifier = masterVol[g] * masterVol[16] / 0x400` at `snd989_mixer.cpp:1007-1011` goes into the square
@@ -147,8 +147,8 @@ ico-recomp's reverb is explicitly "NOT a model of the SPU2 reverb DSP" **[verifi
 [reverb.cpp:1-13](https://github.com/nathanialf/ico-recomp/blob/main/src/runtime/snd/reverb.cpp).
 
 Gaussian interpolation is a timbre item, not a level lever: the table is normalised to 255/256, about 0.03 dB. Ours is
-linear for voices (`snd989_mixer.cpp:2012-2015`) and streams (`:2096-2098`) **[verified]** in this worktree (the report's
-"2011-2014, 2096-2099"). Both PCSX2's `interpolate_table.h` and OpenGOAL's `interp_table.inc` (256x4, first row
+linear for voices (`snd989_mixer.cpp:2012-2015`) and streams (`:2095-2096`, `frac` at `:2094`) **[verified]** in this
+worktree (the report's "2011-2014, 2096-2099"). Both PCSX2's `interpolate_table.h` and OpenGOAL's `interp_table.inc` (256x4, first row
 `0x12C7, 0x59B3, 0x1307, -0x0001`) are takeable; OpenGOAL's ISC notice is the lighter burden **[verified]**
 [interp_table.inc](https://github.com/open-goal/jak-project/blob/master/game/sound/common/interp_table.inc),
 [Mixer.cpp#L280-L298](https://github.com/PCSX2/pcsx2/blob/master/pcsx2/SPU2/Mixer.cpp#L280-L298). Index it as
@@ -600,8 +600,11 @@ shares Horizon's `RT.Models` shape, so the models port almost verbatim into `ser
 minimal handlers in `server/horizon-server/Server.Medius/Medius/MLS.cs`. Our upstream already declares the ids but has no
 models for them **[verified]** in this worktree: `server/horizon-server/RT.Common/Types.cs:708` (0x86), `:752` (0xB2),
 `:780` (0xCE), `:813` (0xEF), `:839` (0x08). Our own notes disagree on the count -- four in #72 against five in the status
-log (`docs/archive/STATUS-log-to-2026-09-26.md:2117,2124-2125` **[verified]**); **this note takes the five-id list as
-complete**, because the status log names each id and #72's "four" is `MediusVersionServer` plus three (§8 item 4). Two
+log; the five-id set (0x86, 0xB2, 0xCE, 0xEF, LobbyExt 0x08) is `docs/archive/STATUS-log-to-2026-09-26.md:2090`
+**[verified]**, while `:2123-2125` names a different five (0xB2, 0xEC, 0xEF, 0x08, 0x86): that list predates the 0xEC
+model (`ChannelList_ExtraInfo0`, handled at `server/horizon-server/Server.Medius/Medius/MLS.cs:3373`) and lacks 0xCE.
+**This note takes `:2090`'s five as the open set**, because the log names each id and #72's "four" is
+`MediusVersionServer` plus three (§8 item 4). Two
 checks come before the port: which class the 0xEF response must use, and the 0xB2 field layout against the 1.50
 client's request size (MultiServer notes the `StartPosition` of `MediusLadderListRequest` as "Socom: 8, Others 4"
 **[verified]** `RT.Models/Lobby/MediusLadderListRequest.cs:19`). Adding GPL-3.0 files to our MIT `server/` copy makes the
@@ -676,8 +679,10 @@ This lands in `third_party/ps2recomp/ps2xLauncher/src`. The facts are PCSX2 beha
 3. **The duck default.** Ziemas/989snd's init sets `gGroupDuckMult[] = 0x1000`; OpenGOAL's default is 0x10000, under
    the same `/ 0x10000` formula. **Unresolved**: a factor of 16 in `m_vol`; whichever value our mixer feeds is checked
    before the divisor trial, because the two cannot both be the console's (§1.1).
-4. **#72's message count.** The issue says four; the status log says five. **Five**: the log names each id, and the
-   issue's "four" is `MediusVersionServer` plus three others, so the lists are the same set counted differently (§6.1).
+4. **#72's message count.** The issue says four; the status log says five, and the log holds two five-id lists:
+   `STATUS-log-to-2026-09-26.md:2090` (0x86, 0xB2, 0xCE, 0xEF, LobbyExt 0x08) and `:2123-2125` (0xB2, 0xEC, 0xEF, 0x08,
+   0x86), the second written before 0xEC was modelled (`MLS.cs:3373`). **The `:2090` five**: 0xEC is handled, 0xCE is
+   not, and #72's "four" is `MediusVersionServer` plus three others, the same set counted differently (§6.1).
 5. **Windows `tar.exe` and `.7z`.** One report says a 25H2 build extracted a 7z; another says the System32 build has no
    LZMA. **Both are taken as true of different builds** **[inferred]**; this host's is 3.8.8 with liblzma, and the
    launcher keeps a fallback (§7).
@@ -719,7 +724,7 @@ The licence comes from the GitHub API or the LICENSE file as the notes record it
 cherry-pick `-x` or a `Co-authored-by` with the source URL and hash, the notice kept, a README credits row (the Licence
 baseline below). **FACTS ONLY** means the code is not copied; what it proves may be re-derived and cited. **LICENCE
 UNCONFIRMED** means check before use. AGPL is combinable under GPLv3 section 13, but its network clause would bind our
-hosted server, so it is marked with that caveat.
+hosted server, so AGPL sources are reference only unless the owner accepts that clause (the Licence baseline).
 
 | Project | Licence | Verdict | What it offers us |
 |---|---|---|---|
@@ -746,13 +751,13 @@ hosted server, so it is marked with that caveat.
 | LabronFox/vulcan4 | GPL-3.0 | TAKEABLE WITH CREDIT | VU1 prior-art survey |
 | noahbaxter/ghpc | GPL-3.0 | TAKEABLE WITH CREDIT | not diffed |
 | z3xox/BT3-Recomp | GPL-3.0 | TAKEABLE WITH CREDIT | not diffed |
-| Red-tv141/DC2-PS2RECOMP | AGPL-3.0 | TAKEABLE WITH CREDIT, AGPL caveat | not diffed |
+| Red-tv141/DC2-PS2RECOMP | AGPL-3.0 | reference only unless the owner accepts the AGPL clause | not diffed |
 | GTTeancum/Timesplitters | none | FACTS ONLY | not read |
 | BlackLineInteractive/SHO-GTA-VCS-PS2Recomp | GPL-3.0 | TAKEABLE WITH CREDIT | not read |
 | brad-richardson/ps2xGS | GPL-3.0-or-later | TAKEABLE WITH CREDIT | `.gscap` capture/replay/census (N14) |
 | open-goal/jak-project | ISC | TAKEABLE WITH CREDIT | volume law, Gaussian table, stream double buffer |
 | theclub654/ProjectCane | none | FACTS ONLY | low |
-| Mikompilation/MikuPan | AGPL-3.0 | TAKEABLE WITH CREDIT, AGPL caveat | low |
+| Mikompilation/MikuPan | AGPL-3.0 | reference only unless the owner accepts the AGPL clause | low |
 | Pedroj-64/DownHill-Port-PC | GPL-3.0 | TAKEABLE WITH CREDIT | low |
 | nathanialf/ico-pc | NOASSERTION (README says MIT) | LICENCE UNCONFIRMED | future library decomps |
 | Ziemas/dec989snd | none | FACTS ONLY | complete VAG streamer, vol/reverb/autovol |
@@ -762,7 +767,7 @@ hosted server, so it is marked with that caveat.
 | parappadev/parappa2 | none | FACTS ONLY | IOP BGM streamer design |
 | ethteck/kh1 | none | FACTS ONLY | none |
 | Fantaskink/SOTC | MIT | TAKEABLE WITH CREDIT | none |
-| crowded-street/3s-decomp | AGPL-3.0 | TAKEABLE WITH CREDIT, AGPL caveat | none |
+| crowded-street/3s-decomp | AGPL-3.0 | reference only unless the owner accepts the AGPL clause | none |
 | AshfordFamily/recvx-decomp | MIT | TAKEABLE WITH CREDIT | none |
 | Lynder063/rac1-decomp; mateuszklysz/Lombyte; bordplate/RC1; ProjectRYNO | NOASSERTION; MIT; none; none | FACTS ONLY except Lombyte (TAKEABLE WITH CREDIT) | confirm `snd_PlayVAGStreamByLoc` is 989snd |
 | Other matching decomps (god-hand, mh1j, Bullseye, Himuro, dds, P3/P4, Chronicle, ICO-decomp) | MIT, CC0 or none | per licence | nothing for the runtime |
