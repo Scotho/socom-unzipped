@@ -110,6 +110,9 @@ class LockTestBase(unittest.TestCase):
         # run_detached's memory guard (Sprint 14 G5) reads the host's free RAM, which a busy host can drop below
         # its 3 GB floor; the suite pins it unless a test sets it (the memory-guard tests do).
         env["RUN_FREE_MEM_GB_OVERRIDE"] = "64"
+        # ... and its launcher guard (Sprint 17) reads the host's processes, where the owner's launcher may be open:
+        # pinned to "none running" unless a test plants one (TestRunDetachedLauncherFast)
+        env["RUN_LAUNCHER_CHECK_CMD"] = "true"
         env.update({k: str(v) for k, v in extra.items()})
         return env
 
@@ -616,6 +619,38 @@ class TestInterleavings(LockTestBase):
         self.assertEqual(self.history().count("MUTEX-BROKEN"), 1, self.history())
         self.assertFalse(os.path.exists(mx))
         self.assertEqual(self.strays(), [])
+
+    def test_a_taker_whose_wait_ran_out_during_its_break_still_tries_the_mutex_it_freed(self):
+        # 2026-10-02: with ~5 s process starts (70 bash.exe on the host) breaking a stale mutex outlasted the whole
+        # 10 s LOOP_LOCK_MUTEX_WAIT_SEC; the breaker then read its deadline and gave up BUSY without the mkdir its own
+        # break had freed, so all three smoke takers left BUSY with the mutex gone and nobody holding (history: one
+        # MUTEX-BROKEN, no REAPED). A wait of 0 s runs out in every iteration, so the break always outlasts it.
+        mx = self.make_mutex(token_age_s=60)
+        rc, out = self.sh("take", "bob", env=self.env(LOOP_LOCK_MUTEX_WAIT_SEC=0))
+        self.assertEqual(rc, 0, out)
+        self.assertTrue(out.startswith("TAKEN by bob"), out)
+        self.assertEqual(self.history().count("MUTEX-BROKEN"), 1, self.history())
+        self.assertFalse(os.path.exists(mx))
+        self.assertEqual(self.strays(), [])
+
+    def test_a_reaper_whose_wait_ran_out_during_its_break_still_reaps(self):
+        # The same on the reap path (the smoke's shape: a stale ghost behind a stale mutex).
+        self.write_record("ghost", 3600, hb_age_s=50 * 60)
+        self.make_mutex(token_age_s=60)
+        rc, out = self.sh("take", "bob", env=self.env(LOOP_LOCK_MUTEX_WAIT_SEC=0), timeout=180)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("REAPED ghost", out)
+        self.assertEqual((self.history().count("MUTEX-BROKEN"), self.history().count("REAPED")), (1, 1), self.history())
+        self.assertEqual(self.strays(), [])
+
+    def test_a_fresh_mutex_still_ends_a_zero_wait_busy(self):
+        # The retry after a break is not a way past the deadline: nothing stale, nothing broken, BUSY at once.
+        mx = self.make_mutex(token_age_s=0)
+        rc, out = self.sh("take", "bob", env=self.env(LOOP_LOCK_MUTEX_WAIT_SEC=0))
+        self.assertEqual(rc, 1, out)
+        self.assertIn("mutex", out)
+        self.assertTrue(os.path.exists(mx))
+        self.assertEqual(self.history(), "")
 
     def test_stale_token_named_mutex_is_broken_exactly_once_by_three_takers(self):
         self.make_mutex(token_age_s=60)
@@ -1351,6 +1386,58 @@ class TestVersion(unittest.TestCase):
         p = subprocess.run([BASH, LOCK_SH, "version"], capture_output=True, text=True, timeout=60)
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         self.assertIn("blob " + blob, p.stdout)
+
+
+class TestRunDetachedLauncherFast(LockTestBase):
+    """Sprint 17 (three reds on 2026-09-30/10-01): a build copies dist/socom_unzipped_launcher.exe, which fails
+    'Device or resource busy' while the owner's launcher runs. run_detached refuses a job whose --purpose starts
+    with `merged chain` or `build` while it runs -- exit 3, before the lock, the memory guard's shape;
+    RUN_LAUNCHER_CHECK_CMD plants the process query (its output names the pids)."""
+    FAST = True
+
+    def detached(self, purpose, check):
+        ran = os.path.join(self.tmp, "ran")
+        script = os.path.join(self.tmp, "job.sh")
+        with open(script, "w", newline="\n") as f:
+            f.write("touch '%s'\nexit 0\n" % fwd(ran))
+        marker = os.path.join(self.tmp, "job.done")
+        env = self.env(RUN_FREE_GB_CMD="echo 500", RUN_CPU_SAMPLER=0, RUN_LAUNCHER_CHECK_CMD=check)
+        p = subprocess.run([BASH, DETACHED_SH, "--owner", "det", "--purpose", purpose, fwd(script), fwd(marker)],
+                           capture_output=True, text=True, env=env, timeout=60)
+        return p.returncode, p.stdout + p.stderr, marker, ran
+
+    def wait_marker(self, marker, seconds=60):
+        deadline = time.time() + seconds
+        while time.time() < deadline:
+            if os.path.exists(marker):
+                return _read(marker)
+            time.sleep(0.25)
+        self.fail("marker %s never appeared" % marker)
+
+    def test_a_running_launcher_refuses_a_chain_or_a_build(self):
+        for purpose in ("merged chain", "build runtime"):
+            rc, out, marker, ran = self.detached(purpose, "echo 4242")
+            self.assertEqual(rc, 3, "%s: %s" % (purpose, out))
+            self.assertIn("run_detached: REFUSED -- the launcher is running (pid 4242): close the launcher window",
+                          out)
+            self.assertTrue(_read(marker).startswith("exit=3 REFUSED: the launcher is running (pid 4242)"),
+                            _read(marker))
+            time.sleep(0.5)
+            self.assertFalse(os.path.exists(ran), "the job must not launch while the launcher runs")
+            self.assertTrue(self.is_free(), "a refused run must never take the lock")
+
+    def test_a_launch_purpose_is_not_refused(self):
+        rc, out, marker, ran = self.detached("launch: rung 0", "echo 4242")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.wait_marker(marker).strip(), "exit=0")
+        self.assertTrue(os.path.exists(ran))
+
+    def test_no_launcher_launches_a_build_as_before(self):
+        rc, out, marker, ran = self.detached("build runtime", "true")
+        self.assertEqual(rc, 0, out)
+        self.assertNotIn("launcher is running", out)
+        self.assertEqual(self.wait_marker(marker).strip(), "exit=0")
+        self.assertTrue(os.path.exists(ran))
 
 
 class TestRunDetached(LockTestBase):
