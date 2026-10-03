@@ -1079,8 +1079,8 @@ namespace
     // Sprint 18 T6 (R344 = R-F): the PCSX2 view's LAUNCH. The disk is asked again (an exe moved, a BIOS dropped in since
     // the last probe); the refusal is launchBlockedReasonPcsx2's one sentence, the server's name resolved only when
     // nothing before it refuses (it is last in the precedence, so the answer is the same and a missing disc costs no
-    // lookup). Then config.pcsx2.json -- never config.json (R-A) -- and the two writes R-F allows: [DEV9/Eth] merged key
-    // by key into PCSX2.ini, and the guarded pnach, each only when its bytes differ (the old file kept once as
+    // lookup). Then config.pcsx2.json -- never config.json (R-A) -- and the two writes R-F allows: PCSX2.ini's [UI]
+    // wizard keys (R347) and [DEV9/Eth], merged key by key, and the guarded pnach, each only when its bytes differ (the old file kept once as
     // .bak-<stamp>); a PCSX2 the launcher installed also gets its memcards/ and bios/ folders. True when PCSX2 started;
     // `emulog` is where PCSX2 writes its own log, for the LAST RUN line when it exits.
     bool launchPcsx2(ui::App &app, const fs::path &dir, win32glue::GameProcess &game, std::string &emulog)
@@ -1120,10 +1120,13 @@ namespace
         std::string err;
         const fs::path ini = root / "inis" / pf::kIniName;
         const std::string adapter = pi::pickAdapter(win32glue::listAdapters(), app.pcsx2.ethDevice);
-        // The T6 review's reading, unverified: a PCSX2 that has never run may write its defaults over our [DEV9/Eth] on
-        // its first start (its SetDefaultConfig pass). T0/T7 check the emulog's DEV9 lines on the first boot; the merge
-        // reruns on every LAUNCH, so a second LAUNCH would carry the keys in any case.
-        pf::writeIfDifferent(ini, pf::mergeIniSection(readText(ini), "DEV9/Eth", pf::dev9Keys(dns.ip, adapter)), stamp, err);
+        // T10 (R347): PCSX2 2.8.2 runs its first-run wizard even under -batch, and the wizard rewrites the whole ini,
+        // our [DEV9/Eth] included (research/85 section 7). So [UI] SettingsVersion = 1 and SetupWizardIncomplete = false
+        // are merged first, then [DEV9/Eth], on the same text: one write, one .bak. T0/T7 check the emulog's DEV9 lines
+        // on the first boot; the merge reruns on every LAUNCH in any case.
+        const std::string merged = pf::mergeIniSection(pf::mergeIniSection(readText(ini), "UI", pf::uiKeys()), "DEV9/Eth",
+                                                       pf::dev9Keys(dns.ip, adapter));
+        pf::writeIfDifferent(ini, merged, stamp, err);
         if (err.empty())
             pf::writeIfDifferent(root / "patches" / pf::kPnachName, pf::kPnachMaster, stamp, err);
         if (!err.empty())
@@ -3182,7 +3185,7 @@ int main(int argc, char **argv)
                 }
             }
             // Sprint 18 T6: the PCSX2 view's LAUNCH starts PCSX2 (launchPcsx2: the refusal's sentence, config.pcsx2.json,
-            // [DEV9/Eth], the pnach, the managed folders, the process) -- never the native game, never config.json.
+            // [UI] and [DEV9/Eth], the pnach, the managed folders, the process) -- never the native game, never config.json.
             if (app.requestLaunch && app.mode == launcher::ClientMode::Pcsx2)
             {
                 if (app.install.running() || installJob.busy())

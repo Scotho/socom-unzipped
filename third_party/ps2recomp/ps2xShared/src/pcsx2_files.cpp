@@ -118,6 +118,8 @@ namespace launcher::pcsx2files {
         if (!ethDevice.empty())
             keys.emplace_back("EthDevice", ethDevice);
         keys.emplace_back("InterceptDHCP", "true");
+        // DNS1 alone carries the box address: PCSX2 never reads DNS2 from the ini (research/85 section 7). DNS2 stays
+        // written, to match the harness template.
         keys.emplace_back("DNS1", dnsIp);
         keys.emplace_back("DNS2", dnsIp);
         keys.emplace_back("AutoMask", "true");
@@ -125,6 +127,12 @@ namespace launcher::pcsx2files {
         keys.emplace_back("ModeDNS1", "Manual");
         keys.emplace_back("ModeDNS2", "Manual");
         return keys;
+    }
+
+    std::vector<std::pair<std::string, std::string>> uiKeys()
+    {
+        // T10 (R347): the wizard skip. A PCSX2 that has run before already holds both, so the merge is a no-op there.
+        return {{"SettingsVersion", "1"}, {"SetupWizardIncomplete", "false"}};
     }
 
     std::string mergeIniSection(const std::string &text, const std::string &section,

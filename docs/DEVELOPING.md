@@ -1415,7 +1415,7 @@ INSTALL; one INSTALL per folder, held by `pcsx2.install.lock` opened with no sha
 this folder; wait for it to finish"); closing the window mid-INSTALL keeps the process alive, window-less, until the
 query, download and extract finish (up to about 15 minutes: 20 s + 600 s + 300 s), holding the lock, so a relaunched
 launcher's INSTALL reads that sentence with no window to wait for. LAUNCH (`launchPcsx2`, R344) writes `config.pcsx2.json`, merges `[DEV9/Eth]`
-into `inis/PCSX2.ini` and writes `patches/0F6FC6CF.pnach` (embedded from `scripts/parity/pcsx2/0F6FC6CF.pnach`), each
+and `[UI]`'s `SettingsVersion = 1` and `SetupWizardIncomplete = false` (the first-run wizard skip, R347) into `inis/PCSX2.ini` and writes `patches/0F6FC6CF.pnach` (embedded from `scripts/parity/pcsx2/0F6FC6CF.pnach`), each
 through `writeIfDifferent` with the old file kept once as `.bak-<stamp>` (`pcsx2_files.h`), creates a managed
 install's `memcards/` and `bios/`, and starts `pcsx2-qt.exe -batch <iso>`; PCSX2's data root is beside a portable
 exe, else `PCSX2` under the Documents known folder. Without the window: `--install-pcsx2 <dir>` (INSTALL into
