@@ -2,12 +2,13 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.changelog` from `git log` (R272): every merge commit on the first-parent line of the history it was rendered from, and on the first-parent line of each branch those merges brought in, grouped by the oldest `v*` tag that contains it. `python -m tools_py.changelog --check` exits 1 when this file is stale; regenerate at every merge to a sprint branch (in the merge's follow-up commit) and at the close. The rules are the module's docstring. The reasoning behind a merge is its commit message and the sprint plan's Log; the hand-written log this page replaced is `docs/archive/STATUS-log-to-2026-09-26.md`.
 
-436 merges (71 on the first-parent line, 365 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
+437 merges (72 on the first-parent line, 365 from the branches they merged) in 13 sections: 12 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
 
 ## Since v0.16.0
 
-211 merges.
+212 merges.
 
+- 2026-10-04 `279fd33c` the invocation-stack pool stops above the main stack; reset clears its cache (LATER 82) [agent/s17-sched-stacks]
 - 2026-10-03 `05365bf6` Horizon upstream #38 [agent/s17-horizon-38]
 - 2026-10-03 `ff270d65` the VPK reader's three layout fixes (LATER 97) and the #91 voice-scale knob [agent/s17-audio-scale]
 - 2026-10-03 `bbf2a702` #72 the five r0004 requests answered [agent/s17-mls-models]
