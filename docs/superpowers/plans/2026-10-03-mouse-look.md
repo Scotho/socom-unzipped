@@ -1754,3 +1754,47 @@ Run as its own session under the brainstorming skill's spike path:
 
 - [ ] **Step 1:** `bash scripts/build_macos.sh test`. Expected: `tests: Python  : ok`, `tests: C++    : ok`, `tests: VU1    : ok`. Paste the three lines into the merge message body.
 - [ ] **Step 2:** Use superpowers:finishing-a-development-branch. The merge subject must be <= 120 chars (it becomes the changelog line), e.g. `merge feat-mouse-look: mouse look with raw deltas and a carried overflow, left-click fire, right-click aim-hold`. Push to `fork` only after the owner's go.
+
+---
+
+## Revision 2026-10-04 — direct look (spec "Revision 2026-10-04")
+
+Owner approved spike B's recommendation. Order from here: **5a, 5b, 5c, 6, 7 (or 7-FALLBACK), 8, 11.** Task 9 is dropped
+(no stick curve in the path). Global Constraints change: "No guest memory writes" now reads "guest writes for look only:
+actor+0x70, actor+0x50 and controller+0x130, from the game thread in `scePad2Read`".
+
+### Task 5a: The direct-look core (pure, TDD)
+
+**Files:** `socom2_mouse_core.h`, `socom2_mouse_tests.cpp`.
+
+**Produces:** `constexpr float kRadPerCount = 0.002f;` `struct PitchLimits { float lo = -1.2f; float hi = 1.2f; };`
+`uint32_t controlOf(const uint8_t *ram, uint32_t actor);` (0 unless actor+0xc0 points at an object whose +4 points back)
+`bool directLook(uint8_t *ram, uint32_t actor, double dx, double dy, const Config &cfg, const PitchLimits &lim);`
+(false and nothing written when the controller does not validate; true otherwise, writing only when there is motion).
+Yaw: q' = r ⊗ q, r = rotation about +Y by −dx·k (k = sens × kRadPerCount), written to +0x70 and +0x50 from +0x70's value.
+Pitch: m_aimPitch − dy·k (invert Y negates), clamped to `lim`.
+
+Tests (suite `Socom2MouseDirectLook`): yaw turns by exactly −dx·k and both copies match; the quaternion stays unit length
+after 10 000 small turns; sensitivity scales both axes equally; pitch moves by −dy·k, inverts, clamps at both ends; a
+controller whose back-pointer is wrong (or a null controller) writes nothing and returns false; no motion writes nothing
+(RAM `memcmp`-equal).
+
+### Task 5b: Glue — direct look first, stick as fallback; the pitch limits measured
+
+**Files:** `socom2_mouse.cpp`, `socom2_mouse.h`, `socom2_host_input.{h,cpp}` (`rdram` becomes `uint8_t *`), tests.
+In `socom2MouseApply`: on r0001 with the mode readable, `directLook(...)`; when it returns true the stick look is skipped,
+else the Task 4 stick path runs. The trace adds `pitch=<m_aimPitch>`. Then one owner session: hold I fully up and K fully
+down with the keyboard; the trace's `pitch=` extremes are the game's limits; match them to the tuning table's aim limits
+(+0x54..0x70, printed by the trace's tuning line, extended to those eight floats). If one pair matches, `PitchLimits` is
+read from the table each mission; if none does, the measured constants are written into `PitchLimits`' defaults with the
+measurement cited.
+
+### Task 5c: Mouse delivery off the main queue, measured
+
+**Files:** `socom2_mouse_gc.mm`, `socom2_mouse_gc_stub.cpp`, `socom2_mouse.{h,cpp}`, `knobs.h` (+`PS2X_MOUSE_GC_MAINQ`,
+Dev Flag, default 0), `docs/KNOBS.md`.
+`mouse.handlerQueue` = a serial `dispatch_queue_create("socom2.mouse", ...)` unless `PS2X_MOUSE_GC_MAINQ=1`. The .mm counts
+events, events delivered on the main thread, and the largest gap between successive events while moving;
+`socom2MouseGcReport()` prints `[mouse] gc events=<n>/s main=<pct> maxgap=<ms>` every 5 s under the trace. One owner session
+per setting (main queue, then own queue): moving the mouse continuously for 10 s each. Expected with the own queue:
+main=0%, maxgap near the mouse's report interval (1-8 ms) instead of a frame (16-33 ms).
