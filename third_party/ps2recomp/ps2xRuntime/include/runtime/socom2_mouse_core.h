@@ -253,4 +253,86 @@ namespace socom2_mouse
         bool m_userReleased = false;
         bool m_swallow = false;
     };
+
+    // ---- Direct look (spec "Revision 2026-10-04") -----------------------------------------------------------
+    // The game turns the stick into a turn RATE with a dead zone and an acceleration ramp, so no stick mapping is 1:1.
+    // Spike B found the state it integrates into, and look writes it directly (r0001; the CEntity offsets are the SOCOM
+    // demo's, reCOM PR #4 gamez_types.h, and match the live image):
+    //   yaw   CEntity::m_next_quat at actor+0x70 and m_quat at actor+0x50, a unit quaternion (x, y, z, w)
+    //   pitch CSealCtrl::m_aimPitch at controller+0x130, controller = CEntity::m_control (actor+0xc0), whose
+    //         CEntityCtrl::m_entity (+4) points back at the actor
+    constexpr uint32_t kQuatNext = 0x70u;
+    constexpr uint32_t kQuatNow = 0x50u;
+    constexpr uint32_t kControlPtr = 0xC0u;
+    constexpr uint32_t kControlEntity = 0x04u;
+    constexpr uint32_t kAimPitch = 0x130u;
+    constexpr float kRadPerCount = 0.002f;   // at PS2X_MOUSE_SENS 1 (the owner's spike B setting)
+
+    struct PitchLimits
+    {
+        float lo = -1.2f;
+        float hi = 1.2f;
+    };
+
+    namespace detail
+    {
+        inline float readF(const uint8_t *ram, uint32_t addr)
+        {
+            float v;
+            std::memcpy(&v, ram + addr, sizeof(v));
+            return v;
+        }
+        inline void writeF(uint8_t *ram, uint32_t addr, float v) { std::memcpy(ram + addr, &v, sizeof(v)); }
+    }
+
+    // The actor's controller, or 0 when it does not validate.
+    inline uint32_t controlOf(const uint8_t *ram, uint32_t actor)
+    {
+        if (ram == nullptr || actor == 0u || actor + kControlPtr + 4u > kRamSize)
+            return 0u;
+        const uint32_t ctrl = detail::read32(ram, actor + kControlPtr) & 0x1FFFFFFFu;
+        if (ctrl == 0u || (ctrl & 3u) != 0u || ctrl + kAimPitch + 4u > kRamSize)
+            return 0u;
+        return (detail::read32(ram, ctrl + kControlEntity) & 0x1FFFFFFFu) == actor ? ctrl : 0u;
+    }
+
+    // One pad read's look, written. False (nothing written) when the controller does not validate: the caller then
+    // uses the stick. True otherwise, writing only when there is motion.
+    inline bool directLook(uint8_t *ram, uint32_t actor, double dx, double dy, const Config &cfg, const PitchLimits &lim)
+    {
+        const uint32_t ctrl = controlOf(ram, actor);
+        if (ctrl == 0u)
+            return false;
+        const double k = static_cast<double>(cfg.sens) * kRadPerCount;
+        if (dx != 0.0)
+        {
+            // q' = r * q, r = rotation about +Y by -dx*k: exact for the pure-yaw body, and correct for any other.
+            const double half = -dx * k * 0.5;
+            const double ry = std::sin(half), rw = std::cos(half);
+            const uint32_t q = actor + kQuatNext;
+            const double x = detail::readF(ram, q), y = detail::readF(ram, q + 4), z = detail::readF(ram, q + 8),
+                         w = detail::readF(ram, q + 12);
+            double nx = rw * x + ry * z, ny = rw * y + ry * w, nz = rw * z - ry * x, nw = rw * w - ry * y;
+            const double n = std::sqrt(nx * nx + ny * ny + nz * nz + nw * nw);
+            if (n > 0.0)
+            {
+                nx /= n; ny /= n; nz /= n; nw /= n;
+            }
+            for (uint32_t base : {kQuatNext, kQuatNow})
+            {
+                detail::writeF(ram, actor + base, static_cast<float>(nx));
+                detail::writeF(ram, actor + base + 4, static_cast<float>(ny));
+                detail::writeF(ram, actor + base + 8, static_cast<float>(nz));
+                detail::writeF(ram, actor + base + 12, static_cast<float>(nw));
+            }
+        }
+        if (dy != 0.0)
+        {
+            const double sign = cfg.invertY ? -1.0 : 1.0;
+            double pitch = detail::readF(ram, ctrl + kAimPitch) - dy * k * sign;
+            pitch = std::max<double>(lim.lo, std::min<double>(lim.hi, pitch));
+            detail::writeF(ram, ctrl + kAimPitch, static_cast<float>(pitch));
+        }
+        return true;
+    }
 }

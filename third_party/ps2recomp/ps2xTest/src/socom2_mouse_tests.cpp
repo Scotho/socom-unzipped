@@ -3,12 +3,19 @@
 #include "runtime/socom2_mouse_core.h"
 #include "socom2_mouse.h"
 
+#include <cmath>
 #include <cstring>
 #include <string>
 #include <thread>
 #include <vector>
 
 using namespace socom2_mouse;
+
+namespace
+{
+    constexpr uint32_t kTestActor = 0x00D00000u;   // Socom2MouseDirectLook: a live actor
+    constexpr uint32_t kTestCtrl = 0x00E00000u;    // and its controller
+}
 
 void register_socom2_mouse_tests()
 {
@@ -310,6 +317,97 @@ void register_socom2_mouse_tests()
             ps2_stubs::socom2MouseAddRaw(500.0, 500.0);
             ps2_stubs::socom2MouseApply(nullptr, ps2_stubs::KeyboardScope::Menus, after);
             t.IsTrue(std::memcmp(&before, &after, sizeof(before)) == 0, "Menus scope: untouched");
+        });
+    });
+
+    MiniTest::Case("Socom2MouseDirectLook", [](TestCase &tc)
+    {
+        // A live actor at 0x00D00000 (identity-yaw quaternion in both copies) with its controller at 0x00E00000.
+        struct World
+        {
+            std::vector<uint8_t> ram = std::vector<uint8_t>(kRamSize, 0);
+            void f(uint32_t a, float v) { std::memcpy(ram.data() + a, &v, 4); }
+            float f(uint32_t a) const { float v; std::memcpy(&v, ram.data() + a, 4); return v; }
+            void u(uint32_t a, uint32_t v) { std::memcpy(ram.data() + a, &v, 4); }
+            World()
+            {
+                for (uint32_t q : {0x50u, 0x70u}) { f(kTestActor + q + 12, 1.0f); }   // (0,0,0,1)
+                u(kTestActor + 0xC0, kTestCtrl);
+                u(kTestCtrl + 4, kTestActor);
+                f(kTestCtrl + 0x130, 0.1f);
+            }
+            float yaw(uint32_t q = 0x70u) const { return 2.0f * std::atan2(f(kTestActor + q + 4), f(kTestActor + q + 12)); }
+        };
+        auto near = [](double a, double b, double eps = 1e-5) { return std::fabs(a - b) < eps; };
+
+        tc.Run("the controller validates by its back-pointer", [](TestCase &t)
+        {
+            World w;
+            t.Equals(controlOf(w.ram.data(), kTestActor), kTestCtrl, "valid");
+            w.u(kTestCtrl + 4, 0x1234u);
+            t.Equals(controlOf(w.ram.data(), kTestActor), 0u, "wrong back-pointer");
+            w.u(kTestActor + 0xC0, 0u);
+            t.Equals(controlOf(w.ram.data(), kTestActor), 0u, "null controller");
+            w.u(kTestActor + 0xC0, kRamSize - 2u);
+            t.Equals(controlOf(w.ram.data(), kTestActor), 0u, "out of RAM");
+        });
+
+        tc.Run("yaw turns by exactly -dx*k and both copies match", [=](TestCase &t)
+        {
+            World w; Config cfg;
+            t.IsTrue(directLook(w.ram.data(), kTestActor, 100.0, 0.0, cfg, PitchLimits{}), "written");
+            t.IsTrue(near(w.yaw(), -100.0 * kRadPerCount), "turned -0.2 rad");
+            t.IsTrue(near(w.yaw(0x50u), w.yaw(0x70u)), "m_quat follows m_next_quat");
+            t.IsTrue(near(w.f(kTestCtrl + 0x130), 0.1), "pitch untouched by x");
+        });
+
+        tc.Run("the quaternion stays unit length over many small turns", [=](TestCase &t)
+        {
+            World w; Config cfg;
+            for (int i = 0; i < 10000; ++i) directLook(w.ram.data(), kTestActor, 3.0, 0.0, cfg, PitchLimits{});
+            double n = 0; for (int i = 0; i < 4; ++i) n += double(w.f(kTestActor + 0x70 + 4 * i)) * w.f(kTestActor + 0x70 + 4 * i);
+            t.IsTrue(near(std::sqrt(n), 1.0, 1e-4), "unit");
+            t.IsTrue(near(w.f(kTestActor + 0x70), 0.0) && near(w.f(kTestActor + 0x78), 0.0), "still a pure yaw");
+        });
+
+        tc.Run("sensitivity scales both axes equally", [=](TestCase &t)
+        {
+            World w; Config cfg; cfg.sens = 2.0f;
+            directLook(w.ram.data(), kTestActor, 10.0, 10.0, cfg, PitchLimits{});
+            t.IsTrue(near(w.yaw(), -20.0 * kRadPerCount), "yaw doubled");
+            t.IsTrue(near(w.f(kTestCtrl + 0x130), 0.1 - 20.0 * kRadPerCount), "pitch doubled");
+        });
+
+        tc.Run("pitch moves by -dy*k, inverts, and clamps at both ends", [=](TestCase &t)
+        {
+            World w; Config cfg;
+            directLook(w.ram.data(), kTestActor, 0.0, 25.0, cfg, PitchLimits{});
+            t.IsTrue(near(w.f(kTestCtrl + 0x130), 0.05), "0.1 - 0.05");
+            cfg.invertY = true;
+            directLook(w.ram.data(), kTestActor, 0.0, 25.0, cfg, PitchLimits{});
+            t.IsTrue(near(w.f(kTestCtrl + 0x130), 0.1), "inverted back up");
+            const PitchLimits lim{-0.3f, 0.4f};
+            directLook(w.ram.data(), kTestActor, 0.0, 100000.0, cfg, lim);
+            t.IsTrue(near(w.f(kTestCtrl + 0x130), 0.4), "clamped high");
+            directLook(w.ram.data(), kTestActor, 0.0, -100000.0, cfg, lim);
+            t.IsTrue(near(w.f(kTestCtrl + 0x130), -0.3), "clamped low");
+        });
+
+        tc.Run("an invalid controller writes nothing and says so", [](TestCase &t)
+        {
+            World w; Config cfg;
+            w.u(kTestCtrl + 4, 0u);
+            const std::vector<uint8_t> before = w.ram;
+            t.IsFalse(directLook(w.ram.data(), kTestActor, 50.0, 50.0, cfg, PitchLimits{}), "falls back");
+            t.IsTrue(w.ram == before, "RAM untouched");
+        });
+
+        tc.Run("no motion writes nothing", [](TestCase &t)
+        {
+            World w; Config cfg;
+            const std::vector<uint8_t> before = w.ram;
+            t.IsTrue(directLook(w.ram.data(), kTestActor, 0.0, 0.0, cfg, PitchLimits{}), "valid");
+            t.IsTrue(w.ram == before, "RAM untouched");
         });
     });
 }
