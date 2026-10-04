@@ -397,6 +397,9 @@ public:
     uint32_t guestHeapEnd() const;
     uint32_t guestHeapLimit() const;
     uint32_t reserveAsyncCallbackStack(uint32_t size, uint32_t alignment = 16u);
+    // Raises (never lowers) the floor reserveAsyncCallbackStack refuses to carve below. SetupThread calls it with
+    // the main stack's top when it places that stack at the end of RAM (LATER 82); a reload resets the floor.
+    void raiseAsyncCallbackStackFloor(uint32_t floor);
 
     void drainCompletedDmacHandlers(uint8_t *rdram);
 

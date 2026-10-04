@@ -1626,6 +1626,75 @@ void register_ps2_runtime_kernel_tests()
                      "main thread status must never expose a live stack-pointer snapshot");
         });
 
+        // LATER 82 (docs/research/assets/85-ps2-recomp-audit/n258-stack-check.md section 4): SOCOM II's crt0 calls
+        // SetupThread(gp, -1, 0x80000) (recomp/output/entry_0x180008.cpp), so its main stack grows down from
+        // 0x01F80000; the invocation-stack pool carves 16 KB stacks down from the end of RAM. Upstream
+        // ran-j/PS2Recomp #258 is the related report: there the main sp sat inside the first invocation stack.
+        tc.Run("the invocation-stack pool stops above the main stack SetupThread placed (LATER 82)", [](TestCase &t)
+        {
+            TestEnv env;
+            constexpr uint32_t kMainStackSize = 0x00080000u;      // SOCOM II's crt0 request
+            constexpr uint32_t kInvocationStackSize = 0x4000u;    // EeScheduler::invocationStackTop's carve
+            env.ctx.pc = 0x00180008u;
+            setRegU32(env.ctx, 29, PS2_RAM_SIZE - 0x10u);
+            setRegU32(env.ctx, 4, 0x0036A7F0u);
+            setRegU32(env.ctx, 5, 0xFFFFFFFFu);
+            setRegU32(env.ctx, 6, kMainStackSize);
+            t.IsTrue(callSyscall(0x3Cu, env.rdram.data(), &env.ctx, &env.runtime),
+                     "SetupThread syscall should dispatch");
+            const uint32_t mainSp = ::getRegU32(&env.ctx, 2);
+            t.Equals(mainSp, PS2_RAM_SIZE - kMainStackSize, "SetupThread(-1, 0x80000) answers 0x01F80000");
+
+            uint32_t carved = 0u;
+            uint32_t firstTop = 0u;
+            uint32_t firstBelow = 0u;
+            for (;;)
+            {
+                const uint32_t top = env.runtime.reserveAsyncCallbackStack(kInvocationStackSize, 16u);
+                if (top == 0u || carved > 0x200u)
+                {
+                    break;
+                }
+                ++carved;
+                if (carved == 1u)
+                {
+                    firstTop = top;
+                }
+                const uint32_t base = top + 0x10u - kInvocationStackSize;
+                if (base < mainSp && firstBelow == 0u)
+                {
+                    firstBelow = carved;
+                }
+            }
+            t.Equals(firstBelow, 0u,
+                     "no carved invocation stack may reach below the main stack's top (stack number " +
+                         std::to_string(firstBelow) + " did)");
+            t.Equals(carved, (PS2_RAM_SIZE - mainSp) / kInvocationStackSize,
+                     "the pool holds exactly the stacks between the main stack's top and the end of RAM");
+            t.IsTrue(firstTop < PS2_RAM_SIZE, "the first invocation stack's top lies inside guest RAM");
+            t.IsTrue(firstTop != mainSp, "the first invocation stack is not the main stack (#258's shape)");
+        });
+
+        tc.Run("SetupThread with an explicit stack leaves the invocation-stack pool's floor alone (LATER 82)", [](TestCase &t)
+        {
+            TestEnv env;
+            constexpr uint32_t kInvocationStackSize = 0x4000u;
+            env.ctx.pc = 0x00180008u;
+            setRegU32(env.ctx, 29, PS2_RAM_SIZE - 0x10u);
+            setRegU32(env.ctx, 4, 0x0036A7F0u);
+            setRegU32(env.ctx, 5, 0x00800000u);
+            setRegU32(env.ctx, 6, 0x00010000u);
+            t.IsTrue(callSyscall(0x3Cu, env.rdram.data(), &env.ctx, &env.runtime),
+                     "SetupThread syscall should dispatch");
+            uint32_t carved = 0u;
+            while (carved <= 0x200u && env.runtime.reserveAsyncCallbackStack(kInvocationStackSize, 16u) != 0u)
+            {
+                ++carved;
+            }
+            t.Equals(carved, (PS2_RAM_SIZE - 0x01F00000u) / kInvocationStackSize,
+                     "a main stack the guest placed itself keeps the pool's 0x01F00000 floor (64 stacks)");
+        });
+
         tc.Run("OSD config2 syscalls round-trip extended config", [](TestCase &t)
         {
             TestEnv env;
