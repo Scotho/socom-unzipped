@@ -437,4 +437,179 @@ void register_socom2_mouse_tests()
             t.Equals(pitchLimitsFrom(nullptr).lo, kPitchDownLimit, "no RAM");
         });
     });
+    MiniTest::Case("Socom2MouseAimHold", [](TestCase &tc)
+    {
+        // The game's side, as research/30 describes it: a press edge (seen up, then down) on UP zooms in one mode,
+        // on DOWN out one. Configurable ends, dropped edges and a game that ignores input (paused).
+        struct Cycler
+        {
+            uint8_t mode = 0;
+            uint8_t top = 6;          // highest mode
+            bool wrapTop = false, wrapBottom = false;
+            int dropEvery = 0;        // drop every Nth edge (0 = none)
+            bool responsive = true;
+            uint32_t actor = 0x00D00000u;
+            bool live = true;
+            bool prevUp = false, prevDown = false;
+            int edges = 0;
+            ModeRead read() const { ModeRead m; m.ok = live; m.actor = actor; m.mode = mode; return m; }
+            void see(bool up, bool down)
+            {
+                const bool upEdge = up && !prevUp, downEdge = down && !prevDown;
+                prevUp = up; prevDown = down;
+                if (!responsive || (!upEdge && !downEdge)) return;
+                if (dropEvery && (++edges % dropEvery) == 0) return;
+                if (upEdge) mode = mode < top ? mode + 1 : (wrapTop ? 0 : top);
+                if (downEdge) mode = mode > 0 ? mode - 1 : (wrapBottom ? top : 0);
+            }
+        };
+
+        // One pad read: the game reads what we sent last read, then we decide this read.
+        struct Rig
+        {
+            Cycler game;
+            AimHold aim;
+            int ups = 0, downs = 0;
+            void read(bool right, bool start = false, bool kbZoom = false)
+            {
+                const Pulse p = aim.tick(AimInputs{right, game.read(), start, kbZoom});
+                if (p == Pulse::Up) ++ups;
+                if (p == Pulse::Down) ++downs;
+                game.see(p == Pulse::Up, p == Pulse::Down);
+            }
+            void reads(int n, bool right) { for (int i = 0; i < n; ++i) read(right); }
+        };
+
+        tc.Run("hold zooms in one mode, release returns to the stored mode", [](TestCase &t)
+        {
+            Rig r;
+            r.reads(10, true);
+            t.Equals(int(r.game.mode), 1, "one UP: mode 1");
+            t.Equals(int(r.aim.state()), int(AimState::Holding), "holding");
+            r.reads(20, false);
+            t.Equals(int(r.game.mode), 0, "back to 0");
+            t.Equals(int(r.aim.state()), int(AimState::Idle), "idle");
+            t.Equals(r.ups, 2, "UP held two reads");
+            t.Equals(r.downs, 2, "DOWN held two reads");
+        });
+
+        tc.Run("a dropped restore press is re-sent once and the view still returns", [](TestCase &t)
+        {
+            Rig r;
+            r.game.mode = 2;
+            r.game.dropEvery = 2;   // the UP lands, the first DOWN is dropped
+            r.reads(10, true);
+            t.Equals(int(r.game.mode), 3, "zoomed");
+            r.reads(40, false);
+            t.Equals(int(r.game.mode), 2, "restored by the re-send");
+        });
+
+        tc.Run("two unanswered presses in a row abort", [](TestCase &t)
+        {
+            Rig r;
+            r.reads(10, true);
+            r.game.responsive = false;
+            r.reads(60, false);
+            t.Equals(int(r.aim.state()), int(AimState::Idle), "gave up");
+            t.Equals(std::string(r.aim.lastEvent()), std::string("unanswered"), "said why");
+            t.Equals(r.downs, 4, "two DOWN pulses, two reads each, and no more");
+        });
+
+        tc.Run("pause aborts and sends nothing more", [](TestCase &t)
+        {
+            Rig r;
+            r.reads(10, true);
+            r.read(true, true);   // START while holding
+            const int before = r.ups + r.downs;
+            r.reads(40, false);
+            t.Equals(r.ups + r.downs, before, "no press after START");
+            t.Equals(std::string(r.aim.lastEvent()), std::string("pause"), "said why");
+        });
+
+        tc.Run("START during the restore stops it at once", [](TestCase &t)
+        {
+            Rig r;
+            r.game.mode = 0;
+            r.reads(10, true);
+            r.read(false);         // release: restore begins
+            r.read(false, true);   // START
+            const int before = r.downs;
+            r.reads(40, false);
+            t.Equals(r.downs, before, "no press after START");
+        });
+
+        tc.Run("actor change aborts (death, respawn)", [](TestCase &t)
+        {
+            Rig r;
+            r.reads(10, true);
+            r.game.actor = 0x00E00000u;
+            r.game.mode = 0;
+            r.reads(30, false);
+            t.Equals(r.downs, 0, "nothing sent to the new actor");
+            t.Equals(std::string(r.aim.lastEvent()), std::string("actor"), "said why");
+        });
+
+        tc.Run("unreadable mode means right click does nothing", [](TestCase &t)
+        {
+            Rig r;
+            r.game.live = false;
+            r.reads(10, true);
+            r.reads(10, false);
+            t.Equals(r.ups + r.downs, 0, "no presses in menus");
+            t.Equals(int(r.aim.state()), int(AimState::Idle), "idle");
+        });
+
+        tc.Run("keyboard zoom while holding hands the zoom to the player: no restore", [](TestCase &t)
+        {
+            Rig r;
+            r.reads(10, true);
+            r.read(true, false, true);
+            r.reads(30, false);
+            t.Equals(r.downs, 0, "no restore");
+            t.Equals(std::string(r.aim.lastEvent()), std::string("takeover"), "said why");
+        });
+
+        tc.Run("the restore stops at the cap", [](TestCase &t)
+        {
+            Rig r;
+            r.game.mode = 0;
+            r.reads(10, true);
+            r.game.mode = 6;   // something (a weapon swap) moved the view far away
+            r.reads(80, false);
+            t.Equals(r.downs, 2 * kRestoreCap, "four DOWN pulses, no more");
+            t.Equals(int(r.game.mode), 2, "6 - 4");
+            t.Equals(std::string(r.aim.lastEvent()), std::string("cap"), "said why");
+        });
+
+        tc.Run("a re-press during the restore keeps the stored mode", [](TestCase &t)
+        {
+            Rig r;
+            r.game.mode = 0;
+            r.reads(10, true);     // mode 1
+            r.read(false);         // restore starts
+            r.reads(3, true);      // clicked again before the DOWN landed
+            r.reads(10, true);
+            r.reads(40, false);
+            t.Equals(int(r.game.mode), 0, "back to the first hold's mode");
+        });
+
+        tc.Run("down at the bottom wrapping does not loop forever", [](TestCase &t)
+        {
+            Rig r;
+            r.game.mode = 0; r.game.wrapBottom = true; r.game.top = 6;
+            r.reads(10, true);
+            r.reads(100, false);
+            t.Equals(int(r.game.mode), 0, "returns to 0 in one DOWN");
+            t.IsTrue(r.downs <= 2 * kRestoreCap, "bounded");
+        });
+
+        tc.Run("fifty hold-release cycles end where they started (the ratchet)", [](TestCase &t)
+        {
+            Rig r;
+            r.game.mode = 0;
+            r.game.dropEvery = 20;   // the measured 1-in-20
+            for (int i = 0; i < 50; ++i) { r.reads(10, true); r.reads(30, false); }
+            t.Equals(int(r.game.mode), 0, "no drift");
+        });
+    });
 }

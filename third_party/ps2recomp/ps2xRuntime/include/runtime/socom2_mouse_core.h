@@ -357,4 +357,153 @@ namespace socom2_mouse
         }
         return l;
     }
+
+    // ---- Right-click aim-hold, closed loop (spec section 4.3) -----------------------------------------------
+    constexpr int kRestoreCap = 4;    // restore presses at most
+    constexpr int kAnswerReads = 6;   // reads after a pulse ends for the mode to move
+
+    // The match rule: exact (docs/research/83 -- DOWN from a zoom level lands on the first-person mode a hold starts from).
+    inline bool modesMatch(uint8_t now, uint8_t stored) { return now == stored; }
+
+    struct AimInputs
+    {
+        bool right = false;   // right button down (already gated by capture)
+        ModeRead mode;        // this read's view mode
+        bool start = false;   // START pressed by the keyboard this read
+        bool kbZoom = false;  // the keyboard's D-pad UP or DOWN down this read
+    };
+
+    enum class AimState : uint8_t { Idle, Holding, Restoring };
+
+    class AimHold
+    {
+    public:
+        Pulse tick(const AimInputs &in)
+        {
+            // Edge first, before any early return: a hold that aborted (pause) must not re-arm on the same
+            // still-held button the moment START is let go.
+            const bool pressed = in.right && !m_rightWas;
+            m_rightWas = in.right;
+            if (m_state != AimState::Idle)
+            {
+                if (in.start)
+                    return abort("pause");
+                if (!in.mode.ok || in.mode.actor != m_actor)
+                    return abort("actor");
+                if (in.kbZoom)
+                    return abort("takeover");
+            }
+            switch (m_state)
+            {
+            case AimState::Idle:
+                if (pressed && in.mode.ok)
+                {
+                    m_stored = in.mode.mode;
+                    m_actor = in.mode.actor;
+                    m_queue.push(Pulse::Up);
+                    m_state = AimState::Holding;
+                    m_event = "hold";
+                }
+                break;
+            case AimState::Holding:
+                if (!in.right)
+                    beginRestore();
+                break;
+            case AimState::Restoring:
+                if (pressed)
+                {
+                    m_queue.clear();
+                    m_queue.push(Pulse::Up);   // the stored mode is kept: the view never got back
+                    m_state = AimState::Holding;
+                    m_event = "rehold";
+                    break;
+                }
+                restoreStep(in.mode.mode);
+                break;
+            }
+            return m_queue.tick();
+        }
+        AimState state() const { return m_state; }
+        const char *lastEvent() const { return m_event; }
+
+    private:
+        void beginRestore()
+        {
+            m_state = AimState::Restoring;
+            m_sent = 0;
+            m_unanswered = 0;
+            m_waiting = false;
+            m_event = "release";
+        }
+        void restoreStep(uint8_t mode)
+        {
+            if (!m_queue.idle())
+                return;   // the pulse in flight finishes first
+            if (m_waiting)
+            {
+                if (mode != m_modeAtSend)
+                {
+                    m_waiting = false;
+                    m_unanswered = 0;
+                }
+                else if (++m_waitReads < kAnswerReads)
+                    return;
+                else
+                {
+                    m_waiting = false;
+                    if (++m_unanswered >= 2)
+                    {
+                        idle("unanswered");
+                        return;
+                    }
+                    send(m_lastPulse, mode);   // re-send once: an edge can be dropped (HAZARDS, 1 in 20)
+                    return;
+                }
+            }
+            if (modesMatch(mode, m_stored))
+            {
+                idle("restored");
+                return;
+            }
+            send(mode > m_stored ? Pulse::Down : Pulse::Up, mode);
+        }
+        void send(Pulse p, uint8_t mode)
+        {
+            if (m_sent >= kRestoreCap)
+            {
+                idle("cap");
+                return;
+            }
+            ++m_sent;
+            m_lastPulse = p;
+            m_modeAtSend = mode;
+            m_waiting = true;
+            m_waitReads = 0;
+            m_queue.push(p);
+        }
+        void idle(const char *why)
+        {
+            m_queue.clear();
+            m_state = AimState::Idle;
+            m_event = why;
+        }
+        Pulse abort(const char *why)
+        {
+            idle(why);
+            return Pulse::None;
+        }
+
+        AimState m_state = AimState::Idle;
+        PulseQueue m_queue;
+        uint8_t m_stored = 0;
+        uint32_t m_actor = 0;
+        bool m_rightWas = false;
+        int m_sent = 0;
+        int m_unanswered = 0;
+        bool m_waiting = false;
+        int m_waitReads = 0;
+        uint8_t m_modeAtSend = 0;
+        Pulse m_lastPulse = Pulse::None;
+        const char *m_event = "idle";
+    };
 }

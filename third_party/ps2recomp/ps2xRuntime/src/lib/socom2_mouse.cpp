@@ -39,6 +39,7 @@ namespace ps2_stubs
         // Game thread only.
         LookState g_look;
         PulseQueue g_probeQueue;
+        AimHold g_aim;
         uint8_t g_lastMode = 0xFF;
     }
 
@@ -100,6 +101,15 @@ namespace ps2_stubs
         }
         if (g_left.load(std::memory_order_relaxed))
             next.button[kPadR1] = 1u;
+
+        // Right click: aim-hold (spec 4.3, research/83). START, and the keyboard's own zoom, are read from `next` as the
+        // keyboard left it -- this runs before the pad is OR-ed in and before the probe's pulses.
+        const bool kbZoom = next.button[kPadUp] != 0 || next.button[kPadDown] != 0;
+        const Pulse aim = g_aim.tick(AimInputs{g_right.load(std::memory_order_relaxed), mode, next.button[kPadStart] != 0, kbZoom});
+        if (aim == Pulse::Up)
+            next.button[kPadUp] = 1u;
+        else if (aim == Pulse::Down)
+            next.button[kPadDown] = 1u;
 
         if (cfg.probe && g_probeKey.exchange(false, std::memory_order_relaxed) && g_probeQueue.idle())
         {
@@ -165,13 +175,14 @@ namespace ps2_stubs
             }
             // While probe pulses are queued, every read is logged (the probe counts answered pulses read by read).
             const bool probing = !g_probeQueue.idle();
-            if (probing || dx != 0.0 || dy != 0.0 || pitched || look.moved || stick || turning || m != g_lastMode || probe != Pulse::None || next.button[kPadUp] ||
+            if (probing || aim != Pulse::None || dx != 0.0 || dy != 0.0 || pitched || look.moved || stick || turning || m != g_lastMode || probe != Pulse::None || next.button[kPadUp] ||
                 next.button[kPadDown])
                 std::cout << "[mouse] dx=" << dx << " dy=" << dy << " carry=" << g_look.carryX << "," << g_look.carryY
                           << " rx=" << int(next.axis[0]) << " ry=" << int(next.axis[1])
                           << " up=" << int(next.button[kPadUp]) << " down=" << int(next.button[kPadDown])
                           << " mode=" << (mode.ok ? int(mode.mode) : -1) << " actor=0x" << std::hex << mode.actor
                           << std::dec << " angvel=" << av[0] << "," << av[1] << "," << av[2] << " direct=" << direct
+                          << " aim=" << int(g_aim.state()) << " ev=" << g_aim.lastEvent()
                           << " pitch=" << pitch << std::endl;
             g_lastMode = m;
         }
