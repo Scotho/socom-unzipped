@@ -1188,6 +1188,19 @@ class PowerShellToolTest(unittest.TestCase):
         self.assertEqual(pretool.decide("Bash", {"command": "git add -- a\\ b.txt"}, ROOT, False), (0, ""))
         self.assertEqual(pretool.decide("Bash", {"command": "git add -A"}, ROOT, False)[0], 2)
 
+    def test_a_here_string_message_is_one_word(self):
+        # LATER 101: a here-string body (apostrophe, $literal, newlines) used to break the parse and read as an
+        # unparseable git write; it is one placeholder word, so the rest of the command is still judged
+        for q in ("'", '"'):
+            body = "fix: the owner's call\n\n$literal and git add -A text\n"
+            hs = "@%s\n%s%s@" % (q, body, q)
+            self.assertEqual(self.ps("git commit -m %s -- a.txt" % hs), (0, ""), q)
+            self.assertEqual(self.ps("git commit -m %s -- a.txt" % hs.replace("\n", "\r\n")), (0, ""), q)
+            code, why = self.ps("git commit -m %s" % hs)           # the placeholder must not hide the missing --
+            self.assertEqual(code, 2, q)
+            self.assertNotIn("cannot be parsed", why)
+            self.assertEqual(self.ps("git add -A; git commit -m %s -- a.txt" % hs)[0], 2, q)   # outer still judged
+
     def test_the_hook_refuses_bulk_add_and_a_pathless_commit(self):
         p = self.hook("git add -A")
         self.assertEqual(p.returncode, 2, p.stderr)
