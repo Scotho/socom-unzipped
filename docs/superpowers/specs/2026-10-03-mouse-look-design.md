@@ -3,6 +3,34 @@
 Date: 2026-10-03. Branch: `feat-mouse-look`. Scope: the macOS fork (Grswld/socom-unzipped-macos) only.
 Upstream removed the mouse on purpose (Sprint 10 Q3, ruling R210, `8ff45e7c`); this is not an upstream PR.
 
+## Revision 2026-10-04 — look by direct writes (supersedes 3.2 step 2, 3.4 and the "no guest memory writes" rule for look)
+
+The owner's play test of A (2026-10-03): "it works, but it's not raw input" — acceleration. Measured (`PS2X_MOUSE_TRACE`):
+GCMouse deltas are raw integer HID counts, but the game has a ~50/127 stick dead zone and ramps the turn rate 0.222 rad/s
+per pad read at full stick (the Seal tuning table's accel limits; `throt_exp` = 1). No stick mapping can be 1:1. Spike B
+(owner: "That raw input was great", then "It works great. Some slight input lag") found the fields and passed:
+
+| Axis | Field | Write |
+|---|---|---|
+| Yaw | `CEntity::m_next_quat` actor+0x70 and `m_quat` actor+0x50 — a pure Y-axis unit quaternion `(0, y, 0, w)` | yaw = 2·atan2(y, w) − dx·k |
+| Pitch | `CSealCtrl::m_aimPitch` at controller+0x130; controller = `CEntity::m_control` (actor+0xc0), valid when its `m_entity` (+4) points back at the actor | pitch − dy·k, clamped to the game's limits |
+
+The quaternion at actor+0x1070 is the game's aim rotation rebuilt from `m_aimPitch` each frame (writing it does nothing).
+Both axes use one scale, k = `PS2X_MOUSE_SENS` × 0.002 rad per count, so their sensitivity matches.
+
+What changes:
+
+- **Look is written, not emulated**, on r0001, when the actor and its controller validate. Otherwise (unknown revision, no
+  controller) the stick path of section 3 stays as the fallback. `PS2X_MOUSE_DEADZONE` now applies to the fallback only.
+- **Guest writes are allowed for look only** (the two quaternion copies and `m_aimPitch`), from the game thread inside
+  `scePad2Read`. Aim-hold (section 4) stays read-only.
+- **Pitch limits** come from the game: measured by holding the keyboard's look keys to each end and reading `m_aimPitch`,
+  then matched to the tuning table's aim limits (+0x54..0x70) so the clamp reads the live value.
+- **Lag:** GCMouse's handler runs on the main queue by default, which the render loop drains once per frame. The mouse gets
+  its own serial queue, so counts reach the atomic accumulator as they arrive. Delivery cadence is measured before and after.
+- **Linearisation (3.4) is dropped**: there is no stick curve in the path any more.
+- **First person and scoped** must steer like third person: checked in the next play test.
+
 ## 1. Intent
 
 The owner plays SOCOM II on the Mac with keyboard and mouse and no pad. The mouse aims and turns like a PC
