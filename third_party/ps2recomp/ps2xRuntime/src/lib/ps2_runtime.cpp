@@ -2239,6 +2239,23 @@ uint32_t PS2Runtime::reserveAsyncCallbackStack(uint32_t size, uint32_t alignment
     return top - 0x10u;
 }
 
+// LATER 82 (docs/research/assets/85-ps2-recomp-audit/n258-stack-check.md): SetupThread(gp, -1, size) answers
+// sp = PS2_RAM_SIZE - size, so the main stack grows down from sp while the pool carves down from PS2_RAM_SIZE to a
+// floor of 0x01F00000 -- below sp. The 33rd stack of SOCOM II's SetupThread(-1, 0x80000) would cover the main
+// stack's top. The floor goes up to sp so the pool holds only [sp, PS2_RAM_SIZE) and refuses past it.
+void PS2Runtime::raiseAsyncCallbackStackFloor(uint32_t floor)
+{
+    if (floor > PS2_RAM_SIZE)
+    {
+        floor = PS2_RAM_SIZE;
+    }
+    std::lock_guard<std::mutex> lock(m_asyncCallbackStackMutex);
+    if (floor > m_asyncCallbackStackFloor)
+    {
+        m_asyncCallbackStackFloor = floor;
+    }
+}
+
 namespace
 {
     // Guest memory faults (TLB miss / unaligned access) are turned into a COP0 address error and

@@ -573,6 +573,12 @@ namespace ps2_syscalls
         if (stack == 0xFFFFFFFFu)
         {
             initialStack = sp;
+            // LATER 82: the main stack now grows down from sp; the invocation-stack pool keeps to [sp, end of RAM).
+            // A size of 0 puts sp at the very end, where no pool is left to keep: the old floor stays.
+            if (runtime && sp < PS2_RAM_SIZE)
+            {
+                runtime->raiseAsyncCallbackStackFloor(sp);
+            }
         }
         else if (stack != 0u)
         {
