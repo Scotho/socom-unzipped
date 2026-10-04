@@ -101,7 +101,7 @@ namespace ps2_stubs
         if (g_left.load(std::memory_order_relaxed))
             next.button[kPadR1] = 1u;
 
-        if (cfg.probe && g_probeKey.exchange(false, std::memory_order_relaxed))
+        if (cfg.probe && g_probeKey.exchange(false, std::memory_order_relaxed) && g_probeQueue.idle())
         {
             for (int i = 0; i < 50; ++i)
             {
@@ -151,7 +151,21 @@ namespace ps2_stubs
             static float lastPitch = 0.0f;
             const bool pitched = pitch != lastPitch;
             lastPitch = pitch;
-            if (dx != 0.0 || dy != 0.0 || pitched || look.moved || stick || turning || m != g_lastMode || probe != Pulse::None || next.button[kPadUp] ||
+            // Reads per second (does the game read the pad more than once a frame?), every 5 s.
+            static auto readsSince = std::chrono::steady_clock::now();
+            static uint64_t reads = 0;
+            ++reads;
+            const auto nowT = std::chrono::steady_clock::now();
+            if (nowT - readsSince >= std::chrono::seconds(5))
+            {
+                std::cout << "[mouse] reads=" << double(reads) / std::chrono::duration<double>(nowT - readsSince).count()
+                          << "/s" << std::endl;
+                reads = 0;
+                readsSince = nowT;
+            }
+            // While probe pulses are queued, every read is logged (the probe counts answered pulses read by read).
+            const bool probing = !g_probeQueue.idle();
+            if (probing || dx != 0.0 || dy != 0.0 || pitched || look.moved || stick || turning || m != g_lastMode || probe != Pulse::None || next.button[kPadUp] ||
                 next.button[kPadDown])
                 std::cout << "[mouse] dx=" << dx << " dy=" << dy << " carry=" << g_look.carryX << "," << g_look.carryY
                           << " rx=" << int(next.axis[0]) << " ry=" << int(next.axis[1])
