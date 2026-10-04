@@ -596,6 +596,10 @@ SHELL_TOOLS = ("Bash", "PowerShell")
 _LOCATION = {"set-location": "cd", "sl": "cd", "chdir": "cd", "push-location": "pushd", "pop-location": "popd"}
 _PS_CONTINUATION = re.compile(r"`[ \t]*\r?\n")
 _PS_GIT_WRITE = re.compile(r"\bgit(\.exe)?\s+(add|commit|push)\b", re.I)
+# LATER 101: a here-string (`@'`/`@"` ending its line ... `'@`/`"@` starting a line) is one word to the parse -- its
+# apostrophes and its text (even a `git add -A`) are message, not command. Ported from redotcom
+# workflow/hooks/pretool.py, 2026-10-04 (same owner and licence family).
+_PS_HERESTRING = re.compile(r"@(['\"])[ \t]*\r?\n.*?\r?\n\1@", re.S)
 
 
 def powershell_command(command):
@@ -603,6 +607,7 @@ def powershell_command(command):
     continuation joins its two lines, and every backslash becomes a slash -- in PowerShell `\\` is a path separator,
     never an escape (the backtick is), so `Set-Location C:\\x\\wt` stays a path and `git add .\\` stays `./`. The
     Bash path never comes through here: its rules read the command exactly as before."""
+    command = _PS_HERESTRING.sub("HERESTRING", command)
     return _PS_CONTINUATION.sub(" ", command).replace("\\", "/")
 
 
