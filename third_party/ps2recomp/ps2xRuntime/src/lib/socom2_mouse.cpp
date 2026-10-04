@@ -91,7 +91,7 @@ namespace ps2_stubs
         // Look: written directly on r0001 when the actor's controller validates (spec revision 2026-10-04); the stick
         // otherwise -- an unknown revision, or no controller.
         const bool r0001 = std::strcmp(socom2_addresses::current().revision, "r0001") == 0;
-        const bool direct = r0001 && mode.ok && directLook(rdram, mode.actor, dx, dy, cfg, PitchLimits{});
+        const bool direct = r0001 && mode.ok && directLook(rdram, mode.actor, dx, dy, cfg, pitchLimitsFrom(rdram));
         const LookOut look = direct ? LookOut{} : socom2_mouse::look(cfg, dx, dy, g_look);
         if (look.moved)
         {
@@ -129,7 +129,7 @@ namespace ps2_stubs
             if (mode.ok && r0001 && tunedFor != mode.actor)
             {
                 tunedFor = mode.actor;
-                const uint32_t t = 0x0044C250u;
+                const uint32_t t = kTuningTable;
                 std::cout << "[mouse] tuning stand_turn_factor=" << f32(t + 0x3c) << " turn_maxrate=" << f32(t + 0x40)
                           << " accel=" << f32(t + 0x44) << "," << f32(t + 0x48) << "," << f32(t + 0x4c) << "," << f32(t + 0x50)
                           << " throttle=" << f32(t + 0xf4) << "," << f32(t + 0xf8) << "," << f32(t + 0xfc) << ","

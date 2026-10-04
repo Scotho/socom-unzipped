@@ -335,4 +335,26 @@ namespace socom2_mouse
         }
         return true;
     }
+
+    // ---- The game's pitch limits (docs/research/83) ---------------------------------------------------------
+    // The game clamps m_aimPitch only on its own (stick) path; a written value is not clamped, so direct look clamps
+    // to the limits the stick reaches: the Seal tuning table's +0x5c (down) and +0x58 (up), r0001 0x44c250
+    // (research/17). Standing stance; crouched and prone were not measured.
+    constexpr uint32_t kTuningTable = 0x0044C250u;
+    constexpr float kPitchDownLimit = -1.22173f;   // measured, research/83
+    constexpr float kPitchUpLimit = 1.04719f;
+
+    inline PitchLimits pitchLimitsFrom(const uint8_t *ram)
+    {
+        PitchLimits l{kPitchDownLimit, kPitchUpLimit};
+        if (ram == nullptr)
+            return l;
+        const float lo = detail::readF(ram, kTuningTable + 0x5c), hi = detail::readF(ram, kTuningTable + 0x58);
+        if (std::isfinite(lo) && std::isfinite(hi) && lo < 0.0f && hi > 0.0f && lo > -1.6f && hi < 1.6f)
+        {
+            l.lo = lo;
+            l.hi = hi;
+        }
+        return l;
+    }
 }

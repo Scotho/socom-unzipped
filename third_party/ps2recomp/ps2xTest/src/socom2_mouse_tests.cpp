@@ -410,4 +410,31 @@ void register_socom2_mouse_tests()
             t.IsTrue(w.ram == before, "RAM untouched");
         });
     });
+
+    MiniTest::Case("Socom2MousePitchLimits", [](TestCase &tc)
+    {
+        tc.Run("the tuning table's +0x5c/+0x58 are the limits (research/83)", [](TestCase &t)
+        {
+            std::vector<uint8_t> ram(kRamSize, 0);
+            const float lo = -1.22173f, hi = 1.04719f;
+            std::memcpy(ram.data() + kTuningTable + 0x5c, &lo, 4);
+            std::memcpy(ram.data() + kTuningTable + 0x58, &hi, 4);
+            const PitchLimits l = pitchLimitsFrom(ram.data());
+            t.Equals(l.lo, lo, "down limit");
+            t.Equals(l.hi, hi, "up limit");
+        });
+
+        tc.Run("an implausible table (not loaded, garbage) gives the measured constants", [](TestCase &t)
+        {
+            std::vector<uint8_t> ram(kRamSize, 0);   // zeros: lo == hi
+            PitchLimits l = pitchLimitsFrom(ram.data());
+            t.Equals(l.lo, kPitchDownLimit, "zeros: measured down");
+            t.Equals(l.hi, kPitchUpLimit, "zeros: measured up");
+            const float bad = 50.0f;
+            std::memcpy(ram.data() + kTuningTable + 0x58, &bad, 4);
+            l = pitchLimitsFrom(ram.data());
+            t.Equals(l.hi, kPitchUpLimit, "out of range: measured up");
+            t.Equals(pitchLimitsFrom(nullptr).lo, kPitchDownLimit, "no RAM");
+        });
+    });
 }
