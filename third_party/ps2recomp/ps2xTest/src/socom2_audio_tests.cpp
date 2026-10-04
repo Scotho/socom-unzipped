@@ -2139,8 +2139,8 @@ void register_socom2_audio_tests()
         // Issue #91 (research/85 section 1.1): the IRX writes snd_AdjustVolToGroup(...) >> 1 to a voice's VOLL/VOLR,
         // so its largest register value is 0x3FFF, and the hardware doubles it (psx-spx "Voice volume/2"; PCSX2
         // SPU2 ADSR.cpp's SignExtend16(src << 1) then >> 15): 0x3FFF is full scale. Ours divides by 0x7FFE -- half.
-        // PS2X_SND_VOICE_FULLSCALE=1 divides voices and streams by 0x4000 instead, for the owner's A/B; off by
-        // default. The PCM ring (BVOL, unshifted, matched to the console within +0.47 dB) is not on that path.
+        // PS2X_SND_VOICE_FULLSCALE: 0x4000 by default (R348, 2026-10-04); "0" restores the old 0x7FFE for an A/B.
+        // The PCM ring (BVOL, unshifted, matched to the console within +0.47 dB) is not on that path.
         tc.Run("Mixer: PS2X_SND_VOICE_FULLSCALE=1 makes register 0x3FFF full scale on voices and streams, never on the PCM ring (#91)", [](TestCase &t)
         {
             auto setKnob = [](const char *value) {
@@ -2204,7 +2204,7 @@ void register_socom2_audio_tests()
                     lv.ring = sumAbs(std::vector<int16_t>(buf.begin(), buf.begin() + 2 * 2048));
                     mixer.pcmStreamStop();
                 }
-                setKnob("");
+                setKnob("0");   // the off arm asks for the old divisor explicitly: unset is on (R348)
                 return lv;
             };
             const Levels off = measure("");

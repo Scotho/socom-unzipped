@@ -161,7 +161,7 @@
     X("PS2X_SCHED_TRACE_TOML", Dev, Path, "recomp/socom2.toml", "With SCHED_TRACE: the recompiler config naming the stubs.") \
     X("PS2X_SND_MUTE_BANK", Dev, Spec, "", "0xHANDLE[,...]: play nothing from these 989snd banks (which sound is the stray one).") \
     X("PS2X_SND_STREAM_WORKER", Dev, Int, "1", "0 reads audio streams on the mixer thread instead of the worker (A/B).") \
-    X("PS2X_SND_VOICE_FULLSCALE", Dev, Int, "0", "1 divides voice and stream registers by 0x4000 (0x3FFF = full scale), not 0x7FFE (#91 A/B).") \
+    X("PS2X_SND_VOICE_FULLSCALE", Dev, Int, "1", "0 restores the old 0x7FFE register divisor; 1 (default, R348) 0x4000: 0x3FFF = full scale (#91).") \
     X("PS2X_SOCOM2_HOSTS", Dev, Spec, "", "name=ip[,...]: extra host-name answers for the resolver the game uses.") \
     X("PS2X_SOCOM2_INPUT_FILE", Dev, Path, "", "Pad-state injection file polled by a sampler thread; how the harness presses buttons.") \
     X("PS2X_SOCOM2_INPUT_SCRIPT", Dev, Spec, "", "t:BTN[+BTN][:hold],...: press buttons at those seconds.") \

@@ -658,8 +658,9 @@ namespace snd989
         // Issue #91 (research/85 section 1.1): what a voice or stream register value is divided by. The IRX writes
         // snd_AdjustVolToGroup(...) >> 1 to VOLL/VOLR, so the largest register value is 0x3FFF; the hardware
         // doubles it (psx-spx: "Voice volume/2"; PCSX2 SPU2 ADSR.cpp reads SignExtend16(src << 1) and applies
-        // >> 15), so 0x3FFF is full scale. We divide by 0x7FFE by default -- voices and streams 6.02 dB low --
-        // until the owner's listen (Sprint 17 A0) rules; PS2X_SND_VOICE_FULLSCALE=1 divides by 0x4000 for the A/B.
+        // >> 15), so 0x3FFF is full scale. We divide by 0x4000 (R348, the owner's word of 2026-10-04 after the
+        // listen capture: the bed +6 dB, into the console's band); PS2X_SND_VOICE_FULLSCALE=0 restores the old
+        // 0x7FFE (voices and streams 6.02 dB low) for an A/B. A Dev knob is null outside dev mode: unset = 0x4000.
         // The PCM ring is not on this path: its gain is BVOL's, unshifted, and matches the console.
         const double registerDivisor;
         // The PCM ring (research/32 section 7): 16-bit PCM the EE DMAs in, played from offset 0 at `rate`;
@@ -750,7 +751,7 @@ namespace snd989
         static double voiceRegisterDivisor()
         {
             const char *env = ps2x::knob("PS2X_SND_VOICE_FULLSCALE");
-            return (env && std::strtol(env, nullptr, 0) != 0) ? 16384.0 : 32766.0;   // 0x4000 : 0x7FFE
+            return (env && std::strtol(env, nullptr, 0) == 0) ? 32766.0 : 16384.0;   // "0": 0x7FFE; else 0x4000 (R348)
         }
 
         // render()'s only contact with a stream's chunks: the ring, in memory.
