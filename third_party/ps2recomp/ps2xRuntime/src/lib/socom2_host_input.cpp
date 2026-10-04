@@ -349,7 +349,7 @@ namespace ps2_stubs
         }
     }
 
-    void socom2HostInputPoll(Socom2PadState &pad, const uint8_t *rdram)
+    void socom2HostInputPoll(Socom2PadState &pad, uint8_t *rdram)
     {
         if (!IsWindowReady())
         {

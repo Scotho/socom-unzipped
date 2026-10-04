@@ -10,7 +10,7 @@
 namespace ps2_stubs
 {
     socom2_mouse::Config socom2MouseConfigFrom(const char *(*knob)(const char *));
-    void socom2MouseApply(const uint8_t *rdram, KeyboardScope scope, Socom2PadState &next);
+    void socom2MouseApply(uint8_t *rdram, KeyboardScope scope, Socom2PadState &next);   // writes look (spec revision 2026-10-04)
     void socom2MouseFrame();
     void socom2MouseAddRaw(double dx, double dy);
     bool socom2MouseGcStart();   // socom2_mouse_gc.mm on Apple; socom2_mouse_gc_stub.cpp elsewhere

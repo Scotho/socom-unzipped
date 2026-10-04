@@ -73,7 +73,7 @@ namespace ps2_stubs
             g_acc.add(dx, dy);
     }
 
-    void socom2MouseApply(const uint8_t *rdram, KeyboardScope scope, Socom2PadState &next)
+    void socom2MouseApply(uint8_t *rdram, KeyboardScope scope, Socom2PadState &next)
     {
         const Config &cfg = config();
         const bool active = cfg.enabled && scope == KeyboardScope::Full;
@@ -88,7 +88,11 @@ namespace ps2_stubs
             g_look = LookState{};
         double dx = 0.0, dy = 0.0;
         g_acc.drain(dx, dy);
-        const LookOut look = socom2_mouse::look(cfg, dx, dy, g_look);
+        // Look: written directly on r0001 when the actor's controller validates (spec revision 2026-10-04); the stick
+        // otherwise -- an unknown revision, or no controller.
+        const bool r0001 = std::strcmp(socom2_addresses::current().revision, "r0001") == 0;
+        const bool direct = r0001 && mode.ok && directLook(rdram, mode.actor, dx, dy, cfg, PitchLimits{});
+        const LookOut look = direct ? LookOut{} : socom2_mouse::look(cfg, dx, dy, g_look);
         if (look.moved)
         {
             next.axis[0] = look.rx;
@@ -122,7 +126,6 @@ namespace ps2_stubs
                 return v;
             };
             static uint32_t tunedFor = 0;
-            const bool r0001 = std::strcmp(socom2_addresses::current().revision, "r0001") == 0;
             if (mode.ok && r0001 && tunedFor != mode.actor)
             {
                 tunedFor = mode.actor;
@@ -131,7 +134,10 @@ namespace ps2_stubs
                           << " accel=" << f32(t + 0x44) << "," << f32(t + 0x48) << "," << f32(t + 0x4c) << "," << f32(t + 0x50)
                           << " throttle=" << f32(t + 0xf4) << "," << f32(t + 0xf8) << "," << f32(t + 0xfc) << ","
                           << f32(t + 0x100) << "," << f32(t + 0x104) << " throt_exp=" << f32(t + 0x118)
-                          << " fb_accel=" << f32(t + 0x110) << " lr_accel=" << f32(t + 0x114) << std::endl;
+                          << " fb_accel=" << f32(t + 0x110) << " lr_accel=" << f32(t + 0x114) << " aim=";
+                for (uint32_t o = 0x54; o <= 0x70; o += 4)
+                    std::cout << f32(t + o) << (o < 0x70 ? "," : "");
+                std::cout << std::endl;
             }
             float av[3] = {0.0f, 0.0f, 0.0f};
             if (mode.ok)
@@ -140,13 +146,19 @@ namespace ps2_stubs
             const bool turning = av[0] != 0.0f || av[1] != 0.0f || av[2] != 0.0f;
             const bool stick = next.axis[0] != 0x80u || next.axis[1] != 0x80u;
             const uint8_t m = mode.ok ? mode.mode : 0xFFu;
-            if (look.moved || stick || turning || m != g_lastMode || probe != Pulse::None || next.button[kPadUp] ||
+            const uint32_t ctrl = mode.ok ? controlOf(rdram, mode.actor) : 0u;
+            const float pitch = ctrl ? f32(ctrl + kAimPitch) : 0.0f;
+            static float lastPitch = 0.0f;
+            const bool pitched = pitch != lastPitch;
+            lastPitch = pitch;
+            if (dx != 0.0 || dy != 0.0 || pitched || look.moved || stick || turning || m != g_lastMode || probe != Pulse::None || next.button[kPadUp] ||
                 next.button[kPadDown])
                 std::cout << "[mouse] dx=" << dx << " dy=" << dy << " carry=" << g_look.carryX << "," << g_look.carryY
                           << " rx=" << int(next.axis[0]) << " ry=" << int(next.axis[1])
                           << " up=" << int(next.button[kPadUp]) << " down=" << int(next.button[kPadDown])
                           << " mode=" << (mode.ok ? int(mode.mode) : -1) << " actor=0x" << std::hex << mode.actor
-                          << std::dec << " angvel=" << av[0] << "," << av[1] << "," << av[2] << std::endl;
+                          << std::dec << " angvel=" << av[0] << "," << av[1] << "," << av[2] << " direct=" << direct
+                          << " pitch=" << pitch << std::endl;
             g_lastMode = m;
         }
     }
