@@ -6,6 +6,7 @@
 #include "runtime/shot_queue.h"           // Sprint 17 F0 Step 5b
 #include <optional>                       // Sprint 17 Q2: the shot queue re-made across an in-process restart
 #include "socom2_host_input.h"
+#include "runtime/host_thread_qos.h"   // macOS fork: the game thread on the performance cores
 #include "runtime/ps2_window_size.h"
 #include "ps2_log.h"
 #include "ps2_stubs.h"
@@ -2930,6 +2931,10 @@ void PS2Runtime::run()
         return std::thread([&]()
                            {
         ThreadNaming::SetCurrentThreadName("GameThread");
+        // macOS fork: PS2X_GAME_THREAD_QOS=1 asks for the performance cores (runtime/host_thread_qos.h).
+        if (ps2x::knobOn("PS2X_GAME_THREAD_QOS", false))
+            hostThreadSetInteractive();
+        std::cout << "[thread] game thread QoS " << hostThreadQosName() << std::endl;
         // The EE FPU and VU0 truncate every result (PCSX2's default "Chop/Zero" rounding for EE
         // and VU); host float math rounds to nearest. Run the game thread with the host FPU/SSE
         // rounding toward zero (2026-09-08: SOCOM II's title-screen labels are composed from an

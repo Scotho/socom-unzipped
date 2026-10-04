@@ -74,6 +74,7 @@
     X("PS2X_FPS_OVERLAY", Shipping, Int, "0", "Any value but 0 draws host fps, guest vsync Hz and frame ms in the window (never in exported frames).") /* read: ps2xRuntime/src/lib/ps2_runtime.cpp:run */ \
     X("PS2X_FPU_TRAP", Dev, Float, "-1", "Seconds after which EE divisions by zero and saturated square roots are reported with their pc.") \
     X("PS2X_FRAME_DUMP", Dev, Path, "", "Directory: a PPM every 60 presents plus the VU1 trace dumps; forces a pixel readback per present.") \
+    X("PS2X_GAME_THREAD_QOS", Dev, Flag, "0", "macOS fork: 1 runs the game thread at QoS user-interactive (the performance cores).") \
     X("PS2X_GIF_DUMP", Dev, Spec, "", "<file>[:<seconds>]: record the GIF stream and a VRAM snapshot in PCSX2-dump shape.") \
     X("PS2X_GIF_PRIORITY_SORT", Dev, Flag, "0", "Restore the GIF arbiter priority sort (A/B of the 2026-09-08 change).") \
     X("PS2X_GIF_TRACE", Dev, Int, "0", "Print the first n GIF submissions with their path and BITBLTBUF.") \
