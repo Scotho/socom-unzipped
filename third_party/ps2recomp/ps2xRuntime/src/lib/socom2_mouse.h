@@ -13,5 +13,8 @@ namespace ps2_stubs
     void socom2MouseApply(uint8_t *rdram, KeyboardScope scope, Socom2PadState &next);   // writes look (spec revision 2026-10-04)
     void socom2MouseFrame();
     void socom2MouseAddRaw(double dx, double dy);
-    bool socom2MouseGcStart();   // socom2_mouse_gc.mm on Apple; socom2_mouse_gc_stub.cpp elsewhere
+    // socom2_mouse_gc.mm on Apple, socom2_mouse_gc_stub.cpp elsewhere. mainQueue: deliver on the main queue (the
+    // PS2X_MOUSE_GC_MAINQ baseline) instead of the mouse's own.
+    bool socom2MouseGcStart(bool mainQueue);
+    void socom2MouseGcReport();  // the trace's delivery line: events/s, share on the main thread, largest gap
 }

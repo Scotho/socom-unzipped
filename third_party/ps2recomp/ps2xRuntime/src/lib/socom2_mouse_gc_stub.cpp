@@ -3,5 +3,6 @@
 
 namespace ps2_stubs
 {
-    bool socom2MouseGcStart() { return false; }
+    bool socom2MouseGcStart(bool) { return false; }
+    void socom2MouseGcReport() {}
 }

@@ -173,7 +173,7 @@ namespace ps2_stubs
         {
             started = true;
             startedAt = std::chrono::steady_clock::now();
-            socom2MouseGcStart();
+            socom2MouseGcStart(ps2x::knobOn("PS2X_MOUSE_GC_MAINQ", false));
         }
 
         const bool left = IsMouseButtonDown(MOUSE_BUTTON_LEFT);
@@ -201,6 +201,8 @@ namespace ps2_stubs
         g_captured.store(capture.captured(), std::memory_order_relaxed);
         g_left.store(capture.buttonsLive() && left, std::memory_order_relaxed);
         g_right.store(capture.buttonsLive() && right, std::memory_order_relaxed);
+        if (config().trace)
+            socom2MouseGcReport();
         if (config().probe && IsKeyPressed(KEY_O))
             g_probeKey.store(true, std::memory_order_relaxed);
 

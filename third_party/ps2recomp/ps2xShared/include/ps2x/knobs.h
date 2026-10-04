@@ -147,6 +147,7 @@
     X("PS2X_MIC_GAMEREAD_DUMP", Dev, Path, "", "WAV of what lgaud 0x08 served the game.") \
     X("PS2X_MOUSE", Dev, Flag, "1", "macOS fork: mouse look (right stick), left click R1, right click aim-hold; 0 = off, byte-identical.") \
     X("PS2X_MOUSE_DEADZONE", Dev, Int, "24", "macOS fork: stick units (0-126) added to any non-zero mouse output, past the game's dead zone.") \
+    X("PS2X_MOUSE_GC_MAINQ", Dev, Flag, "0", "macOS fork: 1 delivers GCMouse events on the main queue (batched per frame) instead of the mouse's own queue.") \
     X("PS2X_MOUSE_INVERT_Y", Dev, Flag, "0", "macOS fork: 1 inverts the mouse's vertical look.") \
     X("PS2X_MOUSE_PROBE", Dev, Presence, "", "macOS fork: the O key queues 50 D-pad UP/DOWN pairs at the aim-hold timing (the ratchet probe).") \
     X("PS2X_MOUSE_SENS", Dev, Float, "1.0", "macOS fork: right-stick units per raw mouse count.") \
