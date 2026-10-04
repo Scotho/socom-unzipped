@@ -632,4 +632,18 @@ void register_socom2_mouse_tests()
                          return std::strcmp(n, "PS2X_MOUSE_AIM_SENS") == 0 ? "-1" : nullptr; }).aimSens, 0.6f, "nonsense");
         });
     });
+
+    MiniTest::Case("Socom2MouseScriptedRuns", [](TestCase &tc)
+    {
+        tc.Run("an input script or input file turns the mouse off unless PS2X_MOUSE says otherwise", [](TestCase &t)
+        {
+            t.IsFalse(ps2_stubs::socom2MouseConfigFrom([](const char *n) -> const char * {
+                          return std::strcmp(n, "PS2X_SOCOM2_INPUT_SCRIPT") == 0 ? "6:START" : nullptr; }).enabled, "script: off");
+            t.IsFalse(ps2_stubs::socom2MouseConfigFrom([](const char *n) -> const char * {
+                          return std::strcmp(n, "PS2X_SOCOM2_INPUT_FILE") == 0 ? "logs/pad.txt" : nullptr; }).enabled, "file: off");
+            t.IsTrue(ps2_stubs::socom2MouseConfigFrom([](const char *n) -> const char * {
+                         if (std::strcmp(n, "PS2X_SOCOM2_INPUT_SCRIPT") == 0) return "6:START";
+                         return std::strcmp(n, "PS2X_MOUSE") == 0 ? "1" : nullptr; }).enabled, "script + PS2X_MOUSE=1: on");
+        });
+    });
 }

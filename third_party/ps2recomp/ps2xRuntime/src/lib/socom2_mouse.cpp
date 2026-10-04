@@ -46,7 +46,10 @@ namespace ps2_stubs
     socom2_mouse::Config socom2MouseConfigFrom(const char *(*knob)(const char *))
     {
         Config c;
-        c.enabled = ps2x::knobs::flagValue(knob("PS2X_MOUSE"), true);
+        // A scripted or replayed run (the harness's input script or pad file) does not get the mouse unless PS2X_MOUSE
+        // says so: a developer's hand on the desk must not move a parity run (final review, 2026-10-04).
+        const bool scripted = knob("PS2X_SOCOM2_INPUT_SCRIPT") != nullptr || knob("PS2X_SOCOM2_INPUT_FILE") != nullptr;
+        c.enabled = ps2x::knobs::flagValue(knob("PS2X_MOUSE"), !scripted);
         c.invertY = ps2x::knobs::flagValue(knob("PS2X_MOUSE_INVERT_Y"), false);
         if (const char *v = knob("PS2X_MOUSE_SENS"))
         {
