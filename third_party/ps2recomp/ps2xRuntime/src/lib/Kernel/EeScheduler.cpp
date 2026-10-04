@@ -105,6 +105,9 @@ void EeScheduler::reset(uint8_t *rdram, const R5900Context &mainContext)
     m_alarms.clear();
     m_intcHandlers.clear();
     m_dmacHandlers.clear();
+    // The invocation stacks go with the threads that keyed them: a restart's ELF reload carves from the end of RAM
+    // again, and a kept entry would answer a stack a new key is handed too (n258-stack-check.md section 6).
+    m_invocationStackTops.clear();
     m_nextThreadId = kFirstThreadId;
     m_nextInvocationThreadId = -1;
     m_nextSemaphoreId = 1;

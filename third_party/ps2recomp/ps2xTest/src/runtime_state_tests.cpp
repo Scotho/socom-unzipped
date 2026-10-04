@@ -879,5 +879,44 @@ void register_runtime_state_tests()
             runtime.registerFunction(kQ2ClearLoopPc, nullptr);
             q2RemoveTestElf(elf);
         });
+
+        // docs/research/assets/85-ps2-recomp-audit/n258-stack-check.md section 6: the invocation-stack memo outlived
+        // EeScheduler::reset while the ELF reload put the carve back at the end of RAM, so after a restart a new
+        // (thread, depth) key carved 0x01FFFFF0 again while an old key still held it -- two contexts on one stack.
+        tc.Run("a restart's scheduler reset forgets the invocation-stack cache: no two keys share a stack", [](TestCase &t)
+        {
+            PS2Runtime runtime;
+            std::vector<uint8_t> rdram(PS2_RAM_SIZE, 0u);
+            R5900Context boot{};
+            boot.pc = 0x00180008u;
+            EeScheduler &sched = runtime.eeScheduler();
+
+            sched.reset(rdram.data(), boot);
+            sched.bindMainContextForSyscall(boot, rdram.data());
+            const uint32_t oldTop = sched.invocationStackTop();   // key (main, depth 0)
+            t.Equals(oldTop, PS2_RAM_SIZE - 0x10u, "the first boot's first invocation stack is at the end of RAM");
+            t.Equals(static_cast<uint32_t>(sched.invocationStackCacheSize()), 1u, "one key cached");
+
+            // The restart's order: the ELF reload resets the carve to the end of RAM, then the scheduler resets.
+            runtime.noteLoadedImageEnd(0x00400000u);
+            sched.reset(rdram.data(), boot);
+            t.Equals(static_cast<uint32_t>(sched.invocationStackCacheSize()), 0u,
+                     "reset forgets every cached invocation stack");
+
+            sched.bindMainContextForSyscall(boot, rdram.data());
+            GuestThread *main = sched.currentThread();
+            t.IsTrue(main != nullptr, "the main thread runs after the restart");
+            if (!main)
+            {
+                return;
+            }
+            main->invocations.emplace_back();   // a key the old guest never used: (main, depth 1)
+            const uint32_t newKeyTop = sched.invocationStackTop();
+            main->invocations.clear();
+            const uint32_t oldKeyTop = sched.invocationStackTop();   // (main, depth 0) again
+            t.Equals(newKeyTop, PS2_RAM_SIZE - 0x10u, "after the reload a new key carves from the end of RAM");
+            t.IsTrue(oldKeyTop != newKeyTop, "the old key re-carves instead of answering the stack the new key now holds");
+            t.Equals(oldKeyTop, PS2_RAM_SIZE - 0x4000u - 0x10u, "the old key gets the next stack down");
+        });
     });
 }

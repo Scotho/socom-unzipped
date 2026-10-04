@@ -364,6 +364,8 @@ public:
     [[noreturn]] void invokeCurrentSequence(std::vector<GuestInvocation> invocations);
     [[nodiscard]] bool hasInvocation(GuestInvocationKind kind, uint64_t tag) const;
     [[nodiscard]] uint32_t invocationStackTop();
+    // How many (thread, depth) keys hold a carved invocation stack; ps2xTest pins that reset forgets them all.
+    [[nodiscard]] size_t invocationStackCacheSize() const noexcept { return m_invocationStackTops.size(); }
 
     int addIrqHandler(bool dmac,
                       uint32_t cause,
