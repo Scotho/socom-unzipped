@@ -16,7 +16,8 @@ namespace socom2_mouse
     struct Config
     {
         bool enabled = true;     // PS2X_MOUSE
-        float sens = 1.0f;       // PS2X_MOUSE_SENS: stick units per raw count
+        float sens = 1.0f;       // PS2X_MOUSE_SENS: stick units per raw count (direct look: x kRadPerCount)
+        float aimSens = 0.6f;    // PS2X_MOUSE_AIM_SENS: direct look's multiplier while zoomed in (view mode 1 and up)
         bool invertY = false;    // PS2X_MOUSE_INVERT_Y
         int deadzone = 0x18;     // PS2X_MOUSE_DEADZONE: stick units added to any non-zero output (to be measured)
         bool trace = false;      // PS2X_MOUSE_TRACE
@@ -296,14 +297,22 @@ namespace socom2_mouse
         return (detail::read32(ram, ctrl + kControlEntity) & 0x1FFFFFFFu) == actor ? ctrl : 0u;
     }
 
+    // Radians per raw count for the view mode: the owner found aiming "a little sensitive" at the third-person scale
+    // (2026-10-04), so first person and the scope levels turn by aimSens of it.
+    inline float lookScale(const Config &cfg, uint8_t mode)
+    {
+        return cfg.sens * (mode >= 1 ? cfg.aimSens : 1.0f) * kRadPerCount;
+    }
+
     // One pad read's look, written. False (nothing written) when the controller does not validate: the caller then
     // uses the stick. True otherwise, writing only when there is motion.
-    inline bool directLook(uint8_t *ram, uint32_t actor, double dx, double dy, const Config &cfg, const PitchLimits &lim)
+    inline bool directLook(uint8_t *ram, uint32_t actor, double dx, double dy, const Config &cfg, const PitchLimits &lim,
+                           uint8_t mode = 0)
     {
         const uint32_t ctrl = controlOf(ram, actor);
         if (ctrl == 0u)
             return false;
-        const double k = static_cast<double>(cfg.sens) * kRadPerCount;
+        const double k = static_cast<double>(lookScale(cfg, mode));
         if (dx != 0.0)
         {
             // q' = r * q, r = rotation about +Y by -dx*k: exact for the pure-yaw body, and correct for any other.

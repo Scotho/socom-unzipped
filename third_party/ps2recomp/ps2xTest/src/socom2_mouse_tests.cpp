@@ -612,4 +612,24 @@ void register_socom2_mouse_tests()
             t.Equals(int(r.game.mode), 0, "no drift");
         });
     });
+
+    MiniTest::Case("Socom2MouseAimSens", [](TestCase &tc)
+    {
+        tc.Run("zoomed in (mode 1 and up) both axes turn by aimSens times the normal amount", [](TestCase &t)
+        {
+            Config cfg; cfg.aimSens = 0.5f;
+            t.Equals(lookScale(cfg, 0), cfg.sens * kRadPerCount, "third person: normal");
+            t.Equals(lookScale(cfg, 1), cfg.sens * 0.5f * kRadPerCount, "first person: aim");
+            t.Equals(lookScale(cfg, 5), cfg.sens * 0.5f * kRadPerCount, "scoped: aim");
+        });
+
+        tc.Run("the knob sets it, the default is 0.6, nonsense falls back", [](TestCase &t)
+        {
+            t.Equals(ps2_stubs::socom2MouseConfigFrom([](const char *) -> const char * { return nullptr; }).aimSens, 0.6f, "default");
+            t.Equals(ps2_stubs::socom2MouseConfigFrom([](const char *n) -> const char * {
+                         return std::strcmp(n, "PS2X_MOUSE_AIM_SENS") == 0 ? "0.4" : nullptr; }).aimSens, 0.4f, "set");
+            t.Equals(ps2_stubs::socom2MouseConfigFrom([](const char *n) -> const char * {
+                         return std::strcmp(n, "PS2X_MOUSE_AIM_SENS") == 0 ? "-1" : nullptr; }).aimSens, 0.6f, "nonsense");
+        });
+    });
 }
