@@ -114,13 +114,39 @@ namespace ps2_stubs
 
         if (cfg.trace)
         {
+            // Diagnostic (read-only): the game's turn response. The actor's angular velocity (+0x48, research/50)
+            // per read, and once per actor the r0001 Seal tuning table's turn fields (0x44c250, research/17).
+            auto f32 = [&](uint32_t addr) {
+                float v;
+                std::memcpy(&v, rdram + (addr & 0x1FFFFFFFu), sizeof(v));
+                return v;
+            };
+            static uint32_t tunedFor = 0;
+            const bool r0001 = std::strcmp(socom2_addresses::current().revision, "r0001") == 0;
+            if (mode.ok && r0001 && tunedFor != mode.actor)
+            {
+                tunedFor = mode.actor;
+                const uint32_t t = 0x0044C250u;
+                std::cout << "[mouse] tuning stand_turn_factor=" << f32(t + 0x3c) << " turn_maxrate=" << f32(t + 0x40)
+                          << " accel=" << f32(t + 0x44) << "," << f32(t + 0x48) << "," << f32(t + 0x4c) << "," << f32(t + 0x50)
+                          << " throttle=" << f32(t + 0xf4) << "," << f32(t + 0xf8) << "," << f32(t + 0xfc) << ","
+                          << f32(t + 0x100) << "," << f32(t + 0x104) << " throt_exp=" << f32(t + 0x118)
+                          << " fb_accel=" << f32(t + 0x110) << " lr_accel=" << f32(t + 0x114) << std::endl;
+            }
+            float av[3] = {0.0f, 0.0f, 0.0f};
+            if (mode.ok)
+                for (int i = 0; i < 3; ++i)
+                    av[i] = f32(mode.actor + 0x48u + 4u * i);
+            const bool turning = av[0] != 0.0f || av[1] != 0.0f || av[2] != 0.0f;
+            const bool stick = next.axis[0] != 0x80u || next.axis[1] != 0x80u;
             const uint8_t m = mode.ok ? mode.mode : 0xFFu;
-            if (look.moved || m != g_lastMode || probe != Pulse::None || next.button[kPadUp] || next.button[kPadDown])
+            if (look.moved || stick || turning || m != g_lastMode || probe != Pulse::None || next.button[kPadUp] ||
+                next.button[kPadDown])
                 std::cout << "[mouse] dx=" << dx << " dy=" << dy << " carry=" << g_look.carryX << "," << g_look.carryY
                           << " rx=" << int(next.axis[0]) << " ry=" << int(next.axis[1])
                           << " up=" << int(next.button[kPadUp]) << " down=" << int(next.button[kPadDown])
                           << " mode=" << (mode.ok ? int(mode.mode) : -1) << " actor=0x" << std::hex << mode.actor
-                          << std::dec << std::endl;
+                          << std::dec << " angvel=" << av[0] << "," << av[1] << "," << av[2] << std::endl;
             g_lastMode = m;
         }
     }
