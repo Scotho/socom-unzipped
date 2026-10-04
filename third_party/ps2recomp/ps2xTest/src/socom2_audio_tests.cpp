@@ -2204,10 +2204,10 @@ void register_socom2_audio_tests()
                     lv.ring = sumAbs(std::vector<int16_t>(buf.begin(), buf.begin() + 2 * 2048));
                     mixer.pcmStreamStop();
                 }
-                setKnob("0");   // the off arm asks for the old divisor explicitly: unset is on (R348)
+                setKnob("");
                 return lv;
             };
-            const Levels off = measure("");
+            const Levels off = measure("0");   // "0" asks for the old 0x7FFE: unset is on since R348
             const Levels on = measure("1");
             t.IsTrue(std::fabs(off.gain3fff - 0.5) < 1e-6, "off: register 0x3FFF carries 0.5 (" + std::to_string(off.gain3fff) + ")");
             t.IsTrue(std::fabs(off.gain7ffe - 1.0) < 1e-6, "off: 0x7FFE is unity, as before");
