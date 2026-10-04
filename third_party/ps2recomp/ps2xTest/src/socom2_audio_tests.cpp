@@ -2338,12 +2338,12 @@ void register_socom2_audio_tests()
             std::remove(path.c_str());
         });
 
-        tc.Run("Mixer: a full-scale stream at full volume sits at the SPU's half scale (voice volume >> 1), not at clipping", [](TestCase &t)
+        tc.Run("Mixer: a full-scale stream at full volume sits at the square law's half, not at clipping (R348: the halved register is full scale)", [](TestCase &t)
         {
             // shift 0: a nibble of 7 decodes to 7 << 12 = 28672. At vol 0x400 and centre pan the 14-bit voice volume
             // is 0x7ffe * cos(45 deg); the group stage then SQUARES it (vol.c:434-455, research/36 Q6 item 1: the IRX
-            // applies the pan table BEFORE FUN_00019b7c, so the pan's 0.707 is squared to 0.5), then the SPU's >> 1:
-            // about 28672 * 0.5 * 0.5 = 7168 per channel.
+            // applies the pan table BEFORE FUN_00019b7c, so the pan's 0.707 is squared to 0.5); the IRX's >> 1 into the
+            // register is undone by the hardware's << 1 (R348, research/85 section 1.1): about 28672 * 0.5 = 14336 per channel.
             int8_t sevens[28];
             for (int i = 0; i < 28; ++i)
                 sevens[i] = 7;
@@ -2372,7 +2372,7 @@ void register_socom2_audio_tests()
                 int32_t peak = 0;
                 for (int16_t v : buf)
                     peak = std::max<int32_t>(peak, v < 0 ? -v : v);
-                t.IsTrue(peak >= 6400 && peak <= 8000, "peak " + std::to_string(peak) + " (about 7168: 28672 x 0.707^2 x 1/2, the square law)");
+                t.IsTrue(peak >= 12800 && peak <= 16000, "peak " + std::to_string(peak) + " (about 14336: 28672 x 0.707^2, the square law at full scale, R348)");
                 mixer.stopAll();
             }
             std::remove(path.c_str());
@@ -2434,7 +2434,7 @@ void register_socom2_audio_tests()
                 int32_t l = 0, r = 0;
                 peaks(l, r);
                 // Main voice at pan 270: table (0x3fff, 0) -> 32766, the square law's identity, >> 1: 28672 / 2 = 14336.
-                t.IsTrue(l >= 12900 && l <= 15800, "left data on the left at the table's full entry (peak " + std::to_string(l) + ", about 14336 = 28672 x 1 x 1/2)");
+                t.IsTrue(l >= 25800 && l <= 28700, "left data on the left at the table's full entry (peak " + std::to_string(l) + ", about 28672 = 28672 x 1, full scale under R348)");
                 t.IsTrue(r <= 8, "nothing of it on the right (peak " + std::to_string(r) + ")");
 
                 // The pair rotates with the handler pan: at 90 both voices sit on the centre entry, 0.707 squared = half.
@@ -2442,8 +2442,8 @@ void register_socom2_audio_tests()
                 mixer.pumpStreams();
                 mixer.render(buf.data(), 512);
                 peaks(l, r);
-                t.IsTrue(l >= 6400 && l <= 8000 && r >= 6400 && r <= 8000,
-                         "pan 90: the left data on both sides at the centre entry squared (L " + std::to_string(l) + ", R " + std::to_string(r) + ", about 7168)");
+                t.IsTrue(l >= 12800 && l <= 16000 && r >= 12800 && r <= 16000,
+                         "pan 90: the left data on both sides at the centre entry squared (L " + std::to_string(l) + ", R " + std::to_string(r) + ", about 14336 under R348)");
                 mixer.stopAll();
             }
             std::remove(path.c_str());
