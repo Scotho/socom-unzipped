@@ -36,6 +36,8 @@
 // GL (the bench needs a desktop session: a hidden window and OpenGL 3.3, as the console-replay case with
 // PS2X_CONSOLE_REPLAY_GL); 4 a recording shorter than the warm-up.
 #include "raylib.h"
+#include "runtime/host_display.h"
+#include "runtime/ps2_window_size.h"
 
 #include "runtime/gs/gs_gl_backend.h"
 #include "runtime/gs/gs_gl_replay_file.h"
@@ -153,6 +155,13 @@ int main(int argc, char **argv)
 
     SetTraceLogLevel(LOG_WARNING);
     SetConfigFlags(FLAG_WINDOW_HIDDEN);
+    // macOS fork: with every display asleep GLFW finds no monitor and InitWindow calls a GL that was never loaded (a
+    // segfault, not the exit 3 below) -- the game refuses the same way (ps2_window_size.h noDisplayToOpen).
+    if (ps2_window::noDisplayToOpen(ps2x_host::awakeDisplayCount()))
+    {
+        std::fprintf(stderr, "[gs-replay-bench] no awake display: wake one (caffeinate -u) and run again\n");
+        return 3;
+    }
     InitWindow(640, 448, "gs_replay_bench");
     if (!IsWindowReady())
     {
