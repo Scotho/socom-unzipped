@@ -93,7 +93,11 @@ namespace ps2_stubs
             return;
 
         const ModeRead mode = readMode(rdram, revisionFor(socom2_addresses::current().revision));
-        g_inMission.store(mode.ok, std::memory_order_relaxed);
+        // A menu (pause, or any other) counts as out of the mission: capture releases, nothing is sent or written, and the
+        // cursor comes back by itself when the menu closes. Only a controller that validates can say a menu is open.
+        const uint32_t ctrlNow = mode.ok ? controlOf(rdram, mode.actor) : 0u;
+        const bool menuOpen = ctrlNow != 0u && rdram[ctrlNow + kMenuState] != 0u;
+        g_inMission.store(mode.ok && !menuOpen, std::memory_order_relaxed);
 
         if (g_resetLook.exchange(false, std::memory_order_relaxed))
             g_look = LookState{};
@@ -102,20 +106,21 @@ namespace ps2_stubs
         // Look: written directly on r0001 when the actor's controller validates (spec revision 2026-10-04); the stick
         // otherwise -- an unknown revision, or no controller.
         const bool r0001 = std::strcmp(socom2_addresses::current().revision, "r0001") == 0;
-        const bool direct = r0001 && mode.ok && directLook(rdram, mode.actor, dx, dy, cfg, pitchLimitsFrom(rdram), mode.mode);
+        const bool direct = r0001 && mode.ok && !menuOpen && directLook(rdram, mode.actor, dx, dy, cfg, pitchLimitsFrom(rdram), mode.mode);
         const LookOut look = direct ? LookOut{} : socom2_mouse::look(cfg, dx, dy, g_look);
         if (look.moved)
         {
             next.axis[0] = look.rx;
             next.axis[1] = look.ry;
         }
-        if (g_left.load(std::memory_order_relaxed))
+        if (g_left.load(std::memory_order_relaxed) && !menuOpen)
             next.button[kPadR1] = 1u;
 
         // Right click: aim-hold (spec 4.3, research/83). START, and the keyboard's own zoom, are read from `next` as the
         // keyboard left it -- this runs before the pad is OR-ed in and before the probe's pulses.
         const bool kbZoom = next.button[kPadUp] != 0 || next.button[kPadDown] != 0;
-        const Pulse aim = g_aim.tick(AimInputs{g_right.load(std::memory_order_relaxed), mode, next.button[kPadStart] != 0, kbZoom});
+        const Pulse aim = g_aim.tick(AimInputs{g_right.load(std::memory_order_relaxed) && !menuOpen, mode,
+                                               next.button[kPadStart] != 0 || menuOpen, kbZoom});
         if (aim == Pulse::Up)
             next.button[kPadUp] = 1u;
         else if (aim == Pulse::Down)

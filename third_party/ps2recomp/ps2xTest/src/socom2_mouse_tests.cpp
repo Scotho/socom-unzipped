@@ -646,4 +646,24 @@ void register_socom2_mouse_tests()
                          return std::strcmp(n, "PS2X_MOUSE") == 0 ? "1" : nullptr; }).enabled, "script + PS2X_MOUSE=1: on");
         });
     });
+
+    MiniTest::Case("Socom2MouseMenuState", [](TestCase &tc)
+    {
+        tc.Run("the game is interactive only with a valid controller whose m_menustate is 0", [](TestCase &t)
+        {
+            std::vector<uint8_t> ram(kRamSize, 0);
+            auto u = [&](uint32_t a, uint32_t v) { std::memcpy(ram.data() + a, &v, 4); };
+            u(kTestActor + 0xC0, kTestCtrl);
+            u(kTestCtrl + 4, kTestActor);
+            t.IsTrue(interactive(ram.data(), kTestActor), "playing (0)");
+            ram[kTestCtrl + kMenuState] = 3;
+            t.IsFalse(interactive(ram.data(), kTestActor), "pause menu (3)");
+            ram[kTestCtrl + kMenuState] = 5;
+            t.IsFalse(interactive(ram.data(), kTestActor), "another menu (5)");
+            ram[kTestCtrl + kMenuState] = 0;
+            u(kTestCtrl + 4, 0u);
+            t.IsFalse(interactive(ram.data(), kTestActor), "no valid controller");
+            t.IsFalse(interactive(nullptr, kTestActor), "no RAM");
+        });
+    });
 }

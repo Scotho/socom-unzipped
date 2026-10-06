@@ -267,6 +267,7 @@ namespace socom2_mouse
     constexpr uint32_t kControlPtr = 0xC0u;
     constexpr uint32_t kControlEntity = 0x04u;
     constexpr uint32_t kAimPitch = 0x130u;
+    constexpr uint32_t kMenuState = 0x221u;   // CSealCtrl::m_menustate: 0 playing, 3 the pause menu, 5 another menu
     constexpr float kRadPerCount = 0.002f;   // at PS2X_MOUSE_SENS 1 (the owner's spike B setting)
 
     struct PitchLimits
@@ -292,7 +293,7 @@ namespace socom2_mouse
         if (ram == nullptr || actor == 0u || actor + kControlPtr + 4u > kRamSize)
             return 0u;
         const uint32_t ctrl = detail::read32(ram, actor + kControlPtr) & 0x1FFFFFFFu;
-        if (ctrl == 0u || (ctrl & 3u) != 0u || ctrl + kAimPitch + 4u > kRamSize)
+        if (ctrl == 0u || (ctrl & 3u) != 0u || ctrl + kMenuState + 1u > kRamSize)
             return 0u;
         return (detail::read32(ram, ctrl + kControlEntity) & 0x1FFFFFFFu) == actor ? ctrl : 0u;
     }
@@ -302,6 +303,14 @@ namespace socom2_mouse
     inline float lookScale(const Config &cfg, uint8_t mode)
     {
         return cfg.sens * (mode >= 1 ? cfg.aimSens : 1.0f) * kRadPerCount;
+    }
+
+    // Whether the player is in play: the controller validates and no menu is open (m_menustate, measured 2026-10-04 --
+    // the final review found right click, R1 and look reaching the pause menu when it was opened with Enter or the pad).
+    inline bool interactive(const uint8_t *ram, uint32_t actor)
+    {
+        const uint32_t ctrl = controlOf(ram, actor);
+        return ctrl != 0u && ram[ctrl + kMenuState] == 0u;
     }
 
     // One pad read's look, written. False (nothing written) when the controller does not validate: the caller then
