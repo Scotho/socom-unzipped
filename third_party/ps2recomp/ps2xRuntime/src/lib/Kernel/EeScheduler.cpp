@@ -1,3 +1,4 @@
+#include "runtime/vblank_period.h"   // macOS fork
 #include <cstdlib>
 #include <cstdio>
 #include <string>
@@ -40,7 +41,12 @@ namespace
     constexpr uint32_t WEF_OR = 0x01u;
     constexpr uint32_t WEF_CLEAR = 0x10u;
     constexpr uint32_t WEF_CLEAR_ALL = 0x20u;
-    constexpr auto kVBlankPeriod = std::chrono::microseconds(16667);
+    // macOS fork: PS2X_VBLANK_NTSC=1 puts the VBlanks on NTSC's 59.94 Hz (runtime/vblank_period.h); read once.
+    bool vblankNtsc()
+    {
+        static const bool s_ntsc = ps2x::knobOn("PS2X_VBLANK_NTSC", false);
+        return s_ntsc;
+    }
     constexpr auto kVBlankDuration = std::chrono::microseconds(500);
     constexpr uint64_t kAlarmTickMicroseconds = 64u;
     constexpr uint32_t kDebugPublishDispatchInterval = 4096u;
@@ -59,7 +65,7 @@ namespace
         return std::chrono::seconds(wholeSeconds) + std::chrono::nanoseconds(remainingNanoseconds);
     }
 
-    constexpr uint64_t kVBlankPeriodCycles = microsecondsToEeCycles(16667u);
+    uint64_t vblankPeriodCycles() { return ps2x_vblank::periodCycles(vblankNtsc(), EeScheduler::kEeClockHz); }
     constexpr uint64_t kVBlankDurationCycles = microsecondsToEeCycles(500u);
     constexpr uint64_t kAlarmTickCycles = microsecondsToEeCycles(kAlarmTickMicroseconds);
 
@@ -179,8 +185,8 @@ void EeScheduler::reset(uint8_t *rdram, const R5900Context &mainContext)
     m_threads.emplace(main.id, std::move(main));
     m_readyQueues[0].push_back(kMainThreadId);
     ++m_readyTotal;
-    scheduleEvent(m_eeCycle + kVBlankPeriodCycles,
-                  std::chrono::steady_clock::now() + kVBlankPeriod,
+    scheduleEvent(m_eeCycle + vblankPeriodCycles(),
+                  std::chrono::steady_clock::now() + ps2x_vblank::period(vblankNtsc()),
                   EeEvent{EeEventType::VBlankStart, 0, 0});
     publishSnapshot();
 }
@@ -2236,8 +2242,8 @@ void EeScheduler::processDueDeadlines()
                 scheduleEvent(cycleAnchor + kVBlankDurationCycles,
                               anchor + kVBlankDuration,
                               EeEvent{EeEventType::VBlankEnd, 0, m_vsyncTick + 1u});
-                scheduleEvent(cycleAnchor + kVBlankPeriodCycles,
-                              anchor + kVBlankPeriod,
+                scheduleEvent(cycleAnchor + vblankPeriodCycles(),
+                              anchor + ps2x_vblank::period(vblankNtsc()),
                               EeEvent{EeEventType::VBlankStart, 0, 0});
             }
             processEvent(scheduled.event);

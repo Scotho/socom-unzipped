@@ -62,6 +62,7 @@ void register_socom2_net_bounds_tests();     // runtime/socom2_net_bounds.h
 void register_socom2_msg_bounds_tests();     // runtime/socom2_msg_bounds.h
 void register_socom2_mouse_tests();          // macOS fork: mouse look and aim-hold
 void register_host_thread_qos_tests();       // macOS fork: runtime/host_thread_qos.h
+void register_vblank_period_tests();        // macOS fork: PS2X_VBLANK_NTSC
 void reset_ps2_test_function_table();
 
 namespace
@@ -162,6 +163,7 @@ int main()
     register_socom2_msg_bounds_tests();
     register_socom2_mouse_tests();
     register_host_thread_qos_tests();
+    register_vblank_period_tests();
     int res = MiniTest::Run();
     std::cout.flush();
     std::cerr.flush();

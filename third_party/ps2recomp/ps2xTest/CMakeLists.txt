@@ -56,6 +56,7 @@ add_library(ps2_test_lib STATIC
     src/vu1_native_tests.cpp
     src/vu1_ops_tests.cpp   # Sprint 17 F C1: the product-sum fast path against its slow classifier
     src/gs_gl_flush_reasons_tests.cpp   # macOS perf step 1: flush reasons, pipeline states, frame percentiles
+    src/vblank_period_tests.cpp   # macOS fork: PS2X_VBLANK_NTSC
     src/socom2_mouse_tests.cpp   # macOS fork: mouse look and aim-hold
     src/host_thread_qos_tests.cpp   # macOS fork: the game thread on the performance cores
     src/ps2_vu_tests.cpp

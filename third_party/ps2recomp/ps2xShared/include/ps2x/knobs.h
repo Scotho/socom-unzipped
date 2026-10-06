@@ -197,6 +197,7 @@
     X("PS2X_TRACE_VU_FLAGS", Dev, Presence, "", "Log what the VU flag readers see.") \
     X("PS2X_TRACE_VU_STEPS", Dev, Int, "1200", "With TRACE_VU: instruction budget per traced program.") \
     X("PS2X_TRIGGER", Dev, Spec, "", "lo:hi: arm the trig trace modes when the first PEEK word, as a float, lies in the range.") \
+    X("PS2X_VBLANK_NTSC", Dev, Flag, "0", "macOS fork: 1 puts VBlanks on NTSC 59.94 Hz, the rate T0 and the CD/MPEG timing assume (60.00 today).") \
     X("PS2X_VIF1_NO_IRQ_STALL", Dev, Flag, "0", "Restore VIF1 without the i-bit stall (A/B).") \
     X("PS2X_VU0_FAST", Dev, Int, "1", "0 keeps VU0 micro programs on the cycle-exact scheduler.") \
     X("PS2X_VU1_BAILHIST", Dev, Presence, "", "Histogram of where generated VU1 code bails to the interpreter.") \
