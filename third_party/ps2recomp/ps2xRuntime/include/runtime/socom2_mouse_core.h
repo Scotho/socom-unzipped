@@ -354,12 +354,12 @@ namespace socom2_mouse
         return true;
     }
 
-    // ---- The game's pitch limits (docs/research/83) ---------------------------------------------------------
+    // ---- The game's pitch limits (docs/research/86) ---------------------------------------------------------
     // The game clamps m_aimPitch only on its own (stick) path; a written value is not clamped, so direct look clamps
     // to the limits the stick reaches: the Seal tuning table's +0x5c (down) and +0x58 (up), r0001 0x44c250
     // (research/17). Standing stance; crouched and prone were not measured.
     constexpr uint32_t kTuningTable = 0x0044C250u;
-    constexpr float kPitchDownLimit = -1.22173f;   // measured, research/83
+    constexpr float kPitchDownLimit = -1.22173f;   // measured, research/86
     constexpr float kPitchUpLimit = 1.04719f;
 
     inline PitchLimits pitchLimitsFrom(const uint8_t *ram)
@@ -380,7 +380,7 @@ namespace socom2_mouse
     constexpr int kRestoreCap = 4;    // restore presses at most
     constexpr int kAnswerReads = 6;   // reads after a pulse ends for the mode to move
 
-    // The match rule: exact (docs/research/83 -- DOWN from a zoom level lands on the first-person mode a hold starts from).
+    // The match rule: exact (docs/research/86 -- DOWN from a zoom level lands on the first-person mode a hold starts from).
     inline bool modesMatch(uint8_t now, uint8_t stored) { return now == stored; }
 
     struct AimInputs

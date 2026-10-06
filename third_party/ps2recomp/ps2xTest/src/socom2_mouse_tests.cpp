@@ -413,7 +413,7 @@ void register_socom2_mouse_tests()
 
     MiniTest::Case("Socom2MousePitchLimits", [](TestCase &tc)
     {
-        tc.Run("the tuning table's +0x5c/+0x58 are the limits (research/83)", [](TestCase &t)
+        tc.Run("the tuning table's +0x5c/+0x58 are the limits (research/86)", [](TestCase &t)
         {
             std::vector<uint8_t> ram(kRamSize, 0);
             const float lo = -1.22173f, hi = 1.04719f;

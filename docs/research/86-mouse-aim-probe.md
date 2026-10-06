@@ -1,4 +1,4 @@
-# 83 — The mouse aim probe: the view mode under D-pad pulses, and the game's pitch limits (2026-10-04, macOS fork)
+# 86 — The mouse aim probe: the view mode under D-pad pulses, and the game's pitch limits (2026-10-04, macOS fork)
 
 Context: `docs/superpowers/specs/2026-10-03-mouse-look-design.md` section 4.4 (the probe that decides right-click
 aim-hold) and its revision of 2026-10-04 (look by direct writes; pitch limits from the game). r0001, single-player

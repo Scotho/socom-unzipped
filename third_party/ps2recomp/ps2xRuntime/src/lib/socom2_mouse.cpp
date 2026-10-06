@@ -116,7 +116,7 @@ namespace ps2_stubs
         if (g_left.load(std::memory_order_relaxed) && !menuOpen)
             next.button[kPadR1] = 1u;
 
-        // Right click: aim-hold (spec 4.3, research/83). START, and the keyboard's own zoom, are read from `next` as the
+        // Right click: aim-hold (spec 4.3, research/86). START, and the keyboard's own zoom, are read from `next` as the
         // keyboard left it -- this runs before the pad is OR-ed in and before the probe's pulses.
         const bool kbZoom = next.button[kPadUp] != 0 || next.button[kPadDown] != 0;
         const Pulse aim = g_aim.tick(AimInputs{g_right.load(std::memory_order_relaxed) && !menuOpen, mode,

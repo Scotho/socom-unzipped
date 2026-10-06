@@ -54,7 +54,7 @@
 | `third_party/ps2recomp/ps2xTest/src/main.cpp` | Modify | `register_socom2_mouse_tests()` |
 | `third_party/ps2recomp/ps2xShared/include/ps2x/knobs.h` | Modify | Six Dev rows |
 | `docs/KNOBS.md` | Regenerate | `python -m tools_py.knobs write` |
-| `docs/research/83-mouse-aim-probe.md` | Create (Task 6) | Probe findings and the pass/fail decision |
+| `docs/research/86-mouse-aim-probe.md` | Create (Task 6) | Probe findings and the pass/fail decision |
 
 Commands used throughout (from the repo root, `$HOME/socom-unzipped`):
 
@@ -1226,7 +1226,7 @@ git commit -m "feat(mouse): raw unaccelerated deltas from GCMouse on macOS; GLFW
 ### Task 6: The aim probe (in game; decides Task 7)
 
 **Files:**
-- Create: `docs/research/83-mouse-aim-probe.md` (check `ls docs/research | tail -3` first and take the next free number if 70 is used)
+- Create: `docs/research/86-mouse-aim-probe.md` (check `ls docs/research | tail -3` first and take the next free number if 70 is used)
 
 The owner plays and Claude reads the trace. Launch: `caffeinate -u -t 5; PS2X_MOUSE_TRACE=1 PS2X_MOUSE_PROBE=1 PS2X_HOST_SCREENSHOT=logs/probe_shots:1 bash logs/playtest.sh` (background), then filter with `grep '\[mouse\]' logs/playtest.log`. The arrow keys are the D-pad and work in every scope.
 
@@ -1241,7 +1241,7 @@ The owner plays and Claude reads the trace. Launch: `caffeinate -u -t 5; PS2X_MO
   8. While zoomed, press the arrow Up/Down: the mode follows the presses (baseline for the takeover rule).
   9. Stand still at mode 0, press **O**: 50 UP/DOWN pairs run at the aim-hold timing (about 7 s). Read the final mode and count the UP/DOWN pulses that did not change the mode.
 
-- [ ] **Step 2: Write the findings** into `docs/research/83-mouse-aim-probe.md`, one section per case: the mode sequence, the screenshot names, and a one-line conclusion. End with:
+- [ ] **Step 2: Write the findings** into `docs/research/86-mouse-aim-probe.md`, one section per case: the mode sequence, the screenshot names, and a one-line conclusion. End with:
   - **Verdict:** PASS or FAIL against the spec's 4.4 criterion. "Every case returns or aborts by rule, no press reaches the pause menu, case 9 ends where it started."
   - **Match rule:** exact mode, or modes 1-3 as one class (from cases 1-2: does Down from a zoom level ever land on the stored first-person mode?).
   - **Drop rate:** case 9's unanswered pulses / 100.
@@ -1250,7 +1250,7 @@ The owner plays and Claude reads the trace. Launch: `caffeinate -u -t 5; PS2X_MO
 - [ ] **Step 3: Commit**
 
 ```bash
-git commit -m "docs(research): the aim probe -- the view mode under D-pad pulses, at the ends, across swap, death and pause" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -- docs/research/83-mouse-aim-probe.md
+git commit -m "docs(research): the aim probe -- the view mode under D-pad pulses, at the ends, across swap, death and pause" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -- docs/research/86-mouse-aim-probe.md
 ```
 
 - [ ] **Step 4: Decide.** PASS: do Task 7. FAIL: do Task 7-FALLBACK instead, and add the direct mode write ("C") to Spike B's brief in Task 10. Tell the owner which one and why, in one line.
@@ -1468,7 +1468,7 @@ Append to `socom2_mouse_core.h` inside the namespace. Set `modesMatch` per Task 
     constexpr int kRestoreCap = 4;    // restore presses at most
     constexpr int kAnswerReads = 6;   // reads after a pulse ends for the mode to move
 
-    // Task 6's match rule (docs/research/83-mouse-aim-probe.md).
+    // Task 6's match rule (docs/research/86-mouse-aim-probe.md).
     inline bool modesMatch(uint8_t now, uint8_t stored) { return now == stored; }
 
     struct AimInputs
