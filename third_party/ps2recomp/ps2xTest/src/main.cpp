@@ -59,6 +59,7 @@ void register_personas_card_tests();         // the persona-card plan Task 2
 void register_runtime_seams_tests();         // Sprint 13 Task C8 (audit F22)
 void register_socom2_net_bounds_tests();     // runtime/socom2_net_bounds.h
 void register_socom2_msg_bounds_tests();     // runtime/socom2_msg_bounds.h
+void register_host_thread_qos_tests();       // macOS fork: runtime/host_thread_qos.h
 void reset_ps2_test_function_table();
 
 namespace
@@ -156,6 +157,7 @@ int main()
     register_runtime_seams_tests();
     register_socom2_net_bounds_tests();
     register_socom2_msg_bounds_tests();
+    register_host_thread_qos_tests();
     int res = MiniTest::Run();
     std::cout.flush();
     std::cerr.flush();
