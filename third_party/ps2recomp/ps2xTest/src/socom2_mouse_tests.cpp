@@ -317,6 +317,11 @@ void register_socom2_mouse_tests()
             ps2_stubs::socom2MouseAddRaw(500.0, 500.0);
             ps2_stubs::socom2MouseApply(nullptr, ps2_stubs::KeyboardScope::Menus, after);
             t.IsTrue(std::memcmp(&before, &after, sizeof(before)) == 0, "Menus scope: untouched");
+            // R349: with PS2X_MOUSE unset the mouse is off, so Full scope leaves the pad alone too.
+            ps2_stubs::Socom2PadState full = before;
+            ps2_stubs::socom2MouseAddRaw(500.0, 500.0);
+            ps2_stubs::socom2MouseApply(nullptr, ps2_stubs::KeyboardScope::Full, full);
+            t.IsTrue(std::memcmp(&before, &full, sizeof(before)) == 0, "Full scope, PS2X_MOUSE unset: untouched");
         });
     });
 

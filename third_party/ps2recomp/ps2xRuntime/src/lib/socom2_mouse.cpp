@@ -250,7 +250,7 @@ namespace ps2_stubs
         if (!g_rawSource.load(std::memory_order_relaxed) &&
             std::chrono::steady_clock::now() - startedAt > std::chrono::seconds(2))
         {
-            if (!fallbackLogged)
+            if (!fallbackLogged && config().enabled)   // off (R349's default), the log stays as it was
             {
                 fallbackLogged = true;
                 std::cout << "[mouse] raw deltas unavailable, using GetMouseDelta" << std::endl;
