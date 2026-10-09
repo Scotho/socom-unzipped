@@ -21,7 +21,7 @@ marked **[fork]**. Everything checked here is marked **[here]**, with the date. 
   frame statistics (`PS2X_GS_FLUSH_REASONS`, `PS2X_GS_SLOW_FRAME_MS`), batch-by-value behind
   `PS2X_GS_BATCH_BY_VALUE` (unset = the byte compare, as before), the P-key start for `PS2X_GS_RECORD=<file>:key`,
   NTSC VBlanks (`PS2X_VBLANK_NTSC`), and the game thread on the performance cores (`PS2X_GAME_THREAD_QOS`, macOS).
-  On `main` his VPK music fix is taken as well (§5).
+  His VPK music finding reaches `main` as upstream's gated fix of the same three errors (§5).
 - **Not on macOS yet:** the launcher flow, online play, the microphone, an `.app` bundle, signing or notarization,
   macOS CI, the parity gate's capture side, the Sprint 18 PCSX2 door (Windows asset names and paths, research/86
   §5), the Linux-only crash handler and host sampler. An Intel Mac or Rosetta is not a target: the fork rejected it
@@ -92,8 +92,8 @@ marked **[fork]**. Everything checked here is marked **[here]**, with the date. 
   and VBlank files also compile for aarch64 (llvm-mingw's `aarch64-w64-mingw32`) with `-DUSE_SSE2NEON` and sse2neon
   at CMake's pinned commit `92f6de17`. That proves the include guards and the x87 fence on an ARM target; it does not
   prove the Darwin branches, and the Objective-C++ `socom2_mouse_gc.mm` (GCMouse) is compiled only on a Mac.
-- The Python suite passes on the merged trees; `python -m tools_py.knobs check` is clean, and `bash -n` passes on
-  `build_macos.sh`, `vu1_goldens.sh` and `run.sh`. The C++ suite (`ps2x_tests`) first runs in CI's `windows` and
+- The Python suite passes on `sprint-17` and on the topic branch's last commit; `python -m tools_py.knobs check` is
+  clean, and `bash -n` passes on `build_macos.sh`, `vu1_goldens.sh` and `run.sh`. The C++ suite (`ps2x_tests`) first runs in CI's `windows` and
   `linux` jobs, including R349's assertions and the new VBlank, QoS, mouse and frame-statistics tests.
 
 **Not validated here:** anything Darwin-only (`_NSGetExecutablePath`, `host_display.cpp`'s CoreGraphics scan, QoS,
@@ -109,11 +109,16 @@ Mac). The Windows game build and the gate have not run on these branches (R350).
   scaling settles it (KNOWN §2).
 - **The game-thread QoS hook (`e3364893`)** does nothing off Apple, but it logs one new line everywhere:
   `[thread] game thread QoS n/a`. Nothing in `tools_py/parity` or `scripts/parity` reads it.
-- **The VPK music fix on `main` (`56f4adce`, `b4ef5156`)** changes what every platform plays, deliberately: the
-  music cues play whole and from the right offset. `sprint-17` carries upstream's own fix of the same three errors
-  (`bc6984da`, `bd336f9d`), which a gate measured; where the two meet, `sprint-17`'s version is kept.
+- **The VPK music fix on `main`** (upstream's `bc6984da`, `bd336f9d`, from `sprint-17`, where a gate measured it)
+  changes what every platform plays, deliberately: the music cues play whole and from the right offset. His own
+  fix of the same errors (`56f4adce`, `b4ef5156`) was left out because it reads a mono file in header-word-3
+  chunks (0xB000) where upstream keeps 0x800, so a short looping mono file would play once (the review of
+  2026-10-09).
 - **Small always-on costs:** `if (m_fsOn)` checks in the GS backend's batch and present paths, and the frame-stats
-  logger's exit summary (silent unless a statistics knob created it).
+  logger's exit summary (silent unless a statistics knob created it). On macOS the GCMouse observer starts with
+  the mouse off; it only counts while the cursor is captured, which never happens off.
+- **`PS2X_GS_RECORD` (Dev)** now compares draw state by value when it decides a repeat, so a recording marks some
+  draws `S` (same) that `main` marked `T` (new state): replay streams differ, the drawing does not.
 - **A new C++ test** in `vu1_ops_tests.cpp` ("`_mm_setcsr`'s round-toward-zero bits chop...") runs on every
   platform. The exit-code table grows by one row (76 cannot fire off macOS: `awakeDisplayCount()` answers -1 there).
 - **`vu1_replay --vram-diff`** on Linux (`vu1_replay.cpp`) now runs its command directly; before the port it
@@ -132,7 +137,7 @@ names. It is not a git range: the fork's branches interleave the threads.
 | `09c4492a` | Batch-by-value adopted: `PS2X_GS_BATCH_BY_VALUE` default 1 | **Not taken**: it changes the Windows render path by default; the gate and a chain decide (LATER 105) |
 | `946f7808`-`6475bf6b`, `dfe95bc9` (mouse) | Mouse look by direct yaw/pitch writes, left-click fire, right-click aim-hold, GCMouse raw deltas on macOS, the menu guard, the probe note; eight knobs | **Taken** (main) with **`PS2X_MOUSE` default 0** in upstream's own commit (R349, the owner 2026-10-09); the probe note is research/87 |
 | `075fbd79` | `PS2X_VBLANK_NTSC`: VBlanks at 59.94 Hz (default 0, the 16,667 us period unchanged) | **Taken** (main); `EeScheduler.cpp` took the NTSC include only, not the VU1 worker's beside it in the fork |
-| `56f4adce`, `b4ef5156` (2026-10-02; copies `7f12b05b`, `b98035c5`) | The VPK header: data at word 2, size per channel, the last buffer's right channel at its stride | **Taken** on `main`, which lacked any fix. `sprint-17` fixed the same three errors independently on 2026-10-03 (`bc6984da`, `bd336f9d`); his came first |
+| `56f4adce`, `b4ef5156` (2026-10-02; copies `7f12b05b`, `b98035c5`) | The VPK header: data at word 2, size per channel, the last buffer's right channel at its stride | **Equivalent, his first.** Upstream fixed the same three errors independently on 2026-10-03 (`bc6984da`, `bd336f9d`, gated on `sprint-17`); `main` takes upstream's, because his reads mono files in 0xB000 chunks (a short looping mono file would play once). README credits his finding |
 | `0d657be5`-`fe07602b`, `963d71cf` (VU1 worker) | VIF1/VU1/GS front end on a worker core behind `PS2X_VU1_THREAD` (default 0): the overlap trace, queue, SPSC ring, drains, replay, latency stats | **Deferred**: hooks in the VIF1 and GS hot paths even when off, a lost-wake-up freeze fixed on its last day, and an overlap with Sprint 17's own VU1 work; measured on the replay bench first (LATER 105) |
 | `79daeb7b`, `f19790e3`, `86919e92` | FPCR writes skipped when already toward zero; guest-heap binary search; readbacks attributed per site with one lock per row | **Deferred**: each changes a Windows code path by default; each a pick for a performance chain (LATER 105) |
 | `d57fbeba`, `6f6b671f`, `443777f5`, `a4f39e47`, `cc4a1052`, the merges | The fork's changelog, README and merges | **Not taken** (fork-only, §2.4) |

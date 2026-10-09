@@ -10,7 +10,9 @@ work to `main`.
 - **R349 (2026-10-09, the owner's word) — mouse look stays in, off by default.** Grswld's mouse look (direct yaw and
   pitch writes, left-click fire, right-click aim-hold, raw GCMouse deltas on macOS) is taken with `PS2X_MOUSE`
   defaulting to 0, where his fork defaults to 1; `PS2X_MOUSE=1` (a Dev knob: `PS2X_DEV=1` or dev mode) turns it on.
-  Off, the pad state is left byte for byte (his test "Menus scope or PS2X_MOUSE=0"). Contacting him is the owner's.
+  Off, `socom2MouseApply` returns before it reads or writes anything; the test "Menus scope or PS2X_MOUSE=0" now
+  also applies the mouse in Full scope with the knob unset and asserts the pad byte for byte. Contacting him is the
+  owner's.
 - **R350 (2026-10-09, the owner's word) — the macOS work goes to `main` as experimental, ahead of a chain.** The
   topic branch `feat/macos-experimental` off `main` carries the phase-1 port and the fork's default-off, diagnostic
   and Mac-only work; it merges on the required checks (`build`, `build-windows`, `leakcheck`) and the Python suite,
@@ -33,3 +35,8 @@ work to `main`.
   credit" paragraph, whose ports are not on `main`; LATER 102, ~~103~~ and 105 only). Then his VPK music fix
   (`56f4adce`, `b4ef5156`): `main` had no fix for the three errors, and sprint-17's own (`bc6984da`, gated) is kept
   wherever the two meet at the merge back. `docs/MACOS.md` rewritten for what `main` carries.
+- **2026-10-09** -- the fresh review (FAIL on one item): the `PS2X_MOUSE` description was 122 characters, over
+  `test_knobs_registry`'s 110 (now 92); the `[mouse] raw deltas unavailable` line printed with the mouse off (now
+  only on); the Full-scope off case pinned by a test. His VPK fix reads mono files in 0xB000 chunks where upstream
+  keeps 0x800, so the branch was rebuilt (unpushed) without his two VPK commits and takes upstream's gated
+  `bc6984da`/`bd336f9d` instead; his finding stays credited.
