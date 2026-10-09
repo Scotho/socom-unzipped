@@ -23,7 +23,7 @@ SCRIPT = os.path.join(ROOT, "scripts", "github_labels.sh")
 # other way round) fails: the two lists are meant to be read together.
 EXPECTED = [
     "bug", "from-launcher", "feature", "needs-repro", "needs-disc-gate",
-    "audio", "render", "online", "launcher", "input", "linux", "packaging", "docs",
+    "audio", "render", "online", "launcher", "input", "linux", "macos", "packaging", "docs",
     "harness", "server", "build", "recomp",
     "known-issue", "carried",
 ]
