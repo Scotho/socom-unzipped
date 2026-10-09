@@ -157,6 +157,7 @@ knowledge the SOCOM community has kept alive for twenty years.
   kept (2026-10-08; `docs/MACOS.md` has the ledger). That covers the Apple Silicon build (`scripts/build_macos.sh`,
   FFmpeg from pinned source), the arm64 SIMD and VU rounding path through sse2neon, the Darwin glue (executable
   path, launcher pipes and signals), the Retina viewport fix, the no-display refusal (exit 76),
-  `scripts/vu1_goldens.sh`, the `run.sh` timeout fallback, and the Python suite on macOS. He also found the three VPK
-  music-header errors a day before the project's own fix. His GS frame statistics, mouse look and VU1 worker thread
-  are under review for a later sprint.
+  `scripts/vu1_goldens.sh`, the `run.sh` timeout fallback, and the Python suite on macOS. Also his, all off by
+  default: **mouse look** with right-click aim-hold (`PS2X_MOUSE=1`, experimental), the GS frame statistics and
+  batch-by-value, NTSC VBlank timing, and the game thread on the Mac's performance cores. He found and fixed the
+  three VPK music-header errors a day before the project's own fix. His VU1 worker thread is under review.

@@ -28,3 +28,8 @@ work to `main`.
   Conflicts, each kept both sides or narrowed to the picked commit: `.gitignore`, `vu1_ops_tests.cpp`'s includes, the
   test lists in `ps2xTest/CMakeLists.txt` and `main.cpp`, `ps2_runtime.cpp`'s includes, `EeScheduler.cpp` (the NTSC
   include only, not the VU1 worker's), `docs/KNOBS.md` regenerated.
+- **2026-10-09** -- the docs: research/86 and LATER 102/103 (`ef16241d`), `docs/MACOS.md`, README's status note and
+  Contributors, the review's fixes, by `cherry-pick -x` from `sprint-17` (README without sprint-17's "Ported with
+  credit" paragraph, whose ports are not on `main`; LATER 102, ~~103~~ and 105 only). Then his VPK music fix
+  (`56f4adce`, `b4ef5156`): `main` had no fix for the three errors, and sprint-17's own (`bc6984da`, gated) is kept
+  wherever the two meet at the merge back. `docs/MACOS.md` rewritten for what `main` carries.
