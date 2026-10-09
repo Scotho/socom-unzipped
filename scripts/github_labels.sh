@@ -43,6 +43,7 @@ LABELS=(
   "launcher|c5def5|The launcher application: its pages, its settings, the disc check, REPORT A BUG."
   "input|c5def5|Controllers and the keyboard: mapping, dead zones, the on-screen keyboard."
   "linux|c5def5|The Linux build and anything specific to it, including the Steam Deck."
+  "macos|c5def5|The macOS (Apple Silicon) build, experimental: build_macos.sh, the Darwin glue, docs/MACOS.md."
   "packaging|c5def5|The portable build, the release artefacts, installation and first run."
   "docs|c5def5|Documentation: the README, the guides, the site's pages."
   "harness|c5def5|The parity harness, the gate, the ladder, the loop lock, CI and the VM ring."

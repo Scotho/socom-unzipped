@@ -9,6 +9,7 @@
 
 [![linux](https://github.com/Scotho/socom-unzipped/actions/workflows/linux.yml/badge.svg)](https://github.com/Scotho/socom-unzipped/actions/workflows/linux.yml)
 [![windows](https://github.com/Scotho/socom-unzipped/actions/workflows/windows.yml/badge.svg)](https://github.com/Scotho/socom-unzipped/actions/workflows/windows.yml)
+[![macos](https://github.com/Scotho/socom-unzipped/actions/workflows/macos.yml/badge.svg)](https://github.com/Scotho/socom-unzipped/actions/workflows/macos.yml)
 [![secrets](https://github.com/Scotho/socom-unzipped/actions/workflows/secrets.yml/badge.svg)](https://github.com/Scotho/socom-unzipped/actions/workflows/secrets.yml)
 
 A green badge means everything that builds without the game built and passed its tests on a clean machine. The game

@@ -22,8 +22,11 @@ marked **[fork]**. Everything checked here is marked **[here]**, with the date. 
   `PS2X_GS_BATCH_BY_VALUE` (unset = the byte compare, as before), the P-key start for `PS2X_GS_RECORD=<file>:key`,
   NTSC VBlanks (`PS2X_VBLANK_NTSC`), and the game thread on the performance cores (`PS2X_GAME_THREAD_QOS`, macOS).
   His VPK music finding reaches `main` as upstream's gated fix of the same three errors (§5).
+- **CI:** `.github/workflows/macos.yml` (the README's `macos` badge) builds the runtime library, the launcher,
+  `vu1_replay` and `ps2x_tests` on GitHub's arm64 macOS runner with no generated code, and runs the Python suite,
+  the C++ suite and the VU1 replay goldens. Not a required check. Issues about the Mac carry the `macos` label.
 - **Not on macOS yet:** the launcher flow, online play, the microphone, an `.app` bundle, signing or notarization,
-  macOS CI, the parity gate's capture side, the Sprint 18 PCSX2 door (Windows asset names and paths, research/86
+  the parity gate's capture side, the Sprint 18 PCSX2 door (Windows asset names and paths, research/86
   §5), the Linux-only crash handler and host sampler. An Intel Mac or Rosetta is not a target: the fork rejected it
   as slow and a dead end, and LATER 103 (that tier) is struck for it.
 - How to build and run it: `docs/DEVELOPING.md`, "macOS (Apple Silicon)". The player-facing exit code it adds is

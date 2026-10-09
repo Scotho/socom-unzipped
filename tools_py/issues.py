@@ -66,7 +66,7 @@ REPO = os.environ.get("GITHUB_ISSUES_REPO", "Scotho/socom-unzipped")
 STACK_LABEL = "known-issue"
 CARRIED_LABEL = "carried"
 # One per issue. The names are scripts/github_labels.sh's area block; test_issues.py holds the two together.
-AREAS = ("audio", "render", "online", "launcher", "input", "linux", "packaging", "docs",
+AREAS = ("audio", "render", "online", "launcher", "input", "linux", "macos", "packaging", "docs",
          "harness", "server", "build", "recomp")
 
 KNOWN = "docs/KNOWN.md"
