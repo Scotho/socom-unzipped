@@ -2,6 +2,11 @@
 
 **SOCOM II: U.S. Navy SEALs, statically recompiled from your own disc into a native PC program, with online play.**
 
+> **Where the project is heading (October 2026).** Three threads lead the work now: running the game's VU1 vector
+> programs natively instead of through recompiled microcode; hardening the network code, on the client and on the
+> server; and moving, step by step, from recompilation toward decompilation -- readable, named functions in place of
+> generated code.
+
 [![linux](https://github.com/Scotho/socom-unzipped/actions/workflows/linux.yml/badge.svg)](https://github.com/Scotho/socom-unzipped/actions/workflows/linux.yml)
 [![windows](https://github.com/Scotho/socom-unzipped/actions/workflows/windows.yml/badge.svg)](https://github.com/Scotho/socom-unzipped/actions/workflows/windows.yml)
 [![secrets](https://github.com/Scotho/socom-unzipped/actions/workflows/secrets.yml/badge.svg)](https://github.com/Scotho/socom-unzipped/actions/workflows/secrets.yml)
@@ -52,7 +57,9 @@ The launcher lists the personas that have logged in from this launcher, from a r
 your disc on first run, the launcher installing the community's r0004 update itself, and a frame-rate bar. Not yet:
 playing on a community server (the launcher's community preset stays greyed until the update installs), the console's
 full frame rate in missions (about 27 ms a frame on a quiet machine against the console's 16.7), a finished Linux
-client (it boots in a virtual machine, never yet on a real GPU), and any disc other than the NTSC r0001 release. The
+client (it boots in a virtual machine, never yet on a real GPU), and any disc other than the NTSC r0001 release.
+**macOS (Apple Silicon) is experimental:** a community port by Grswld boots the game offline to a mission on an M2
+Pro, built from your own disc on the Mac; no launcher, online or download there yet (`docs/MACOS.md`). The
 mission's ambient sound bed plays about 11 dB too quiet and the music still drops out in the menus. The game does not send your voice yet.
 
 The audited version of this, with the evidence for each claim, is `docs/KNOWN.md`.
@@ -148,3 +155,14 @@ backend (`gs_gl_backend.cpp`, `gs_gl_depth.h`, #104): the fragment z floor of PC
 and the saturation of z to the ZBUF format's maximum from `GSRendererHW::EmulateZbuffer`.
 [PSHome-MultiServer](https://github.com/GitHubProUser67/PSHome-MultiServer) (GPL-3.0, GitHubProUser67) -- the five
 Medius 1.50 message models and their MLS answers in the Horizon server (#72; `server/README.md`, "Licence").
+
+### Contributors
+
+- **[Grswld](https://github.com/Grswld)** (Tanner A.) -- the **macOS port**, from his fork
+  [socom-unzipped-macos](https://github.com/Grswld/socom-unzipped-macos), taken by cherry-pick with his authorship
+  kept (2026-10-08; `docs/MACOS.md` has the ledger). That covers the Apple Silicon build (`scripts/build_macos.sh`,
+  FFmpeg from pinned source), the arm64 SIMD and VU rounding path through sse2neon, the Darwin glue (executable
+  path, launcher pipes and signals), the Retina viewport fix, the no-display refusal (exit 76),
+  `scripts/vu1_goldens.sh`, the `run.sh` timeout fallback, and the Python suite on macOS. He also found the three VPK
+  music-header errors a day before the project's own fix. His GS frame statistics, mouse look and VU1 worker thread
+  are under review for a later sprint.
