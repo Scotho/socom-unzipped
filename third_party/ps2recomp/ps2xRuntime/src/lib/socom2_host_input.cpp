@@ -1,4 +1,5 @@
 #include "socom2_host_input.h"
+#include "socom2_mouse.h"
 
 #include "raylib.h"
 #include "runtime/host_crouch_shortcut.h"
@@ -14,6 +15,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <type_traits>
 #include <iostream>
 #include <string>
 #include <thread>
@@ -347,7 +349,7 @@ namespace ps2_stubs
         }
     }
 
-    void socom2HostInputPoll(Socom2PadState &pad)
+    void socom2HostInputPoll(Socom2PadState &pad, uint8_t *rdram)
     {
         if (!IsWindowReady())
         {
@@ -387,6 +389,7 @@ namespace ps2_stubs
         // R210: the key table and the WASD/IJKL sticks, under the scope decided once in initialise() -- the whole
         // table in developer mode (the harness's path), the menu-and-typing buttons alone for a player.
         socom2ApplyKeyboard(g_config.mapping, g_config.keyboardScope, IsKeyDown, next);
+        socom2MouseApply(rdram, g_config.keyboardScope, next);   // macOS fork: the mouse (socom2_mouse.h)
         // R139: a full Triangle from any source outranks the crouch shortcut's light one (tracked stage by stage).
         bool fullTriangle = next.button[kPadTriangle] != 0;
         bool lightTriangle = false;
@@ -529,6 +532,9 @@ namespace ps2_stubs
             if (s_trace)
             {
                 static Socom2PadState s_last;
+                // A byte compare is only sound on a struct without padding; this fails the build if one appears.
+                static_assert(std::has_unique_object_representations_v<Socom2PadState>,
+                              "Socom2PadState gained padding: compare it field by field, not with memcmp");
                 if (std::memcmp(&s_last, &next, sizeof(next)) != 0)
                 {
                     unsigned mask = 0;

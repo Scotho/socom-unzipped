@@ -79,6 +79,7 @@
     X("PS2X_GIF_PRIORITY_SORT", Dev, Flag, "0", "Restore the GIF arbiter priority sort (A/B of the 2026-09-08 change).") \
     X("PS2X_GIF_TRACE", Dev, Int, "0", "Print the first n GIF submissions with their path and BITBLTBUF.") \
     X("PS2X_GS_BACKEND", Dev, Text, "gpu", "cpu selects the CPU rasteriser; the GL probe falls back to it by itself (exit 65).") \
+    X("PS2X_GS_BATCH_BY_VALUE", Dev, Flag, "", "Join GL draw batches whose DrawKeys are equal in value (padding is not state); unset = byte compare.") \
     X("PS2X_GS_DEPTH_LEGACY", Dev, Int, "0", "1 forces the legacy depth mapping instead of clip control.") \
     X("PS2X_GS_DISABLE_EARLY_DEPTH", Dev, Presence, "", "CPU raster: restore shading before the depth test, the behaviour upstream #246 replaced (A/B).") \
     X("PS2X_GS_DOUBLE_SWIZZLE", Dev, Flag, "1", "1 (default): tiles swizzled again into the shadow; 0: S17 F1 attempt 3's one swizzle, which froze the intro.") \
@@ -88,6 +89,7 @@
     X("PS2X_GS_DUMP_TEX_FROM", Dev, Int, "", "With GS_DUMP_TEX: start at this frame, or trig.") \
     X("PS2X_GS_DUMP_TEX_MAX", Dev, Int, "6", "With GS_DUMP_TEX: files per texture.") \
     X("PS2X_GS_DUMP_TEX_TBP0", Dev, Spec, "", "With GS_DUMP_TEX: only these texture base blocks.") \
+    X("PS2X_GS_FLUSH_REASONS", Dev, Presence, "", "[gs-flush]/[gs-frame] per second: why GL batches end, verts per batch, frame p50/p95/p99.") \
     X("PS2X_GS_GL_DEBUG_AFTER", Dev, Int, "0", "Presents to wait before GS_GL_DEBUG_PSM and GS_DUMP_TEX act.") \
     X("PS2X_GS_GL_DEBUG_PSM", Dev, Int, "-1", "Print the first batches drawn with this texture format (native coordinates; wrong above scale 1).") \
     X("PS2X_GS_GL_FORCE_FAIL", Dev, Text, "", "Make the GL capability probe fail (the only way to reach exit 65 on a machine that works).") \
@@ -97,13 +99,14 @@
     X("PS2X_GS_NO_ZTEST", Dev, Flag, "0", "Every draw passes the depth test (A/B).") \
     X("PS2X_GS_PENDING_CAP_MB", Dev, Int, "64", "Soft ceiling on pending render bytes.") \
     X("PS2X_GS_PENDING_HARD_CAP_MB", Dev, Int, "1024", "Hard ceiling on pending render bytes (R124).") \
-    X("PS2X_GS_RECORD", Dev, Spec, "", "<file>[:<present>|t<sec>|trig[:<presents>]]: record the GL replay stream for gs_replay_bench.") \
+    X("PS2X_GS_RECORD", Dev, Spec, "", "<file>[:<present>|t<sec>|trig|key[:<presents>]]: record the GL replay stream for gs_replay_bench.") \
     X("PS2X_GS_RT_TEXTURE", Dev, Int, "1", "0 restores the readback + decode for render targets used as textures.") \
     X("PS2X_GS_SCALE", Shipping, Int, "1", "The GL backend's internal render scale, clamped to 1-4 (the CPU rasteriser ignores it).") /* read: ps2xRuntime/src/lib/gs/gs_gl_backend.cpp:renderScale */ \
     X("PS2X_GS_SCALE_FILTER", Dev, Text, "", "box = box-filter the resolve of a scaled target.") \
     X("PS2X_GS_SCALE_SELFTEST", Dev, Int, "0", "1 checks the native mirror of a scaled target against a fresh resolve each frame.") \
     X("PS2X_GS_SETUP_FORMAT", Dev, Flag, "", "S17 F1 attempt 2 A/B: 1 formats the stats tags every draw, 0 never; unset = only with PS2X_GS_STATS.") \
     X("PS2X_GS_SKIP_TBP0", Dev, Spec, "", "Drop every textured draw binding one of these texture blocks (a bisect).") \
+    X("PS2X_GS_SLOW_FRAME_MS", Dev, Float, "", "[gs-slow-frame] for each present interval past this many ms: draws, uploads, palettes, readbacks.") \
     X("PS2X_GS_STATS", Dev, Presence, "", "The [gs-gl stats] line every 60 command buffers, and the [gs-loop] frame hand-off split (S17 F3) with it.") \
     X("PS2X_GS_TRACE_CMDS", Dev, Int, "", "Presents to skip (or trig), then print the replayed GS commands.") \
     X("PS2X_GS_TRACE_CMDS_BOX", Dev, Spec, "", "With GS_TRACE_CMDS: only draws touching this screen box.") \
@@ -144,6 +147,14 @@
     X("PS2X_MIC_DUMP_PLAYBACK", Dev, Path, "", "WAV of what lgaud 0x09 asked the headset to play ({title} expands to the window tag).") \
     X("PS2X_MIC_FAKE", Dev, Path, "", "Feed this WAV as the microphone; beats MIC_DEVICE (R115).") \
     X("PS2X_MIC_GAMEREAD_DUMP", Dev, Path, "", "WAV of what lgaud 0x08 served the game.") \
+    X("PS2X_MOUSE", Dev, Flag, "0", "Experimental (R349): 1 = mouse look, left click R1, right click aim-hold; 0 (default) = off.") \
+    X("PS2X_MOUSE_AIM_SENS", Dev, Float, "0.6", "macOS fork: mouse-look sensitivity multiplier while zoomed in (first person and the scope).") \
+    X("PS2X_MOUSE_DEADZONE", Dev, Int, "24", "macOS fork: stick units (0-126) added to any non-zero mouse output, past the game's dead zone.") \
+    X("PS2X_MOUSE_GC_MAINQ", Dev, Flag, "0", "macOS fork: 1 delivers GCMouse events on the main queue (batched per frame) instead of the mouse's own queue.") \
+    X("PS2X_MOUSE_INVERT_Y", Dev, Flag, "0", "macOS fork: 1 inverts the mouse's vertical look.") \
+    X("PS2X_MOUSE_PROBE", Dev, Presence, "", "macOS fork: the O key queues 50 D-pad UP/DOWN pairs at the aim-hold timing (the ratchet probe).") \
+    X("PS2X_MOUSE_SENS", Dev, Float, "1.0", "macOS fork: right-stick units per raw mouse count.") \
+    X("PS2X_MOUSE_TRACE", Dev, Presence, "", "macOS fork: [mouse] lines -- deltas, carry, axes, aim-hold state, the view mode -- when any changes.") \
     X("PS2X_MPEG_TRACE", Dev, Presence, "", "Log the sceMpeg HLE lifecycle and the IOP stream opens.") \
     X("PS2X_PACK_TRACE", Dev, Path, "", "Trace the terrain pack function 0x25a5d0 to this file (research/31 s17).") \
     X("PS2X_PAD_CROUCH_SHORTCUT", Shipping, Text, "l3", "l3 | touchpad | l2 | off (unset is l3, O12): the host control that sends a light Triangle (R139).") /* read: ps2xRuntime/src/lib/socom2_host_input.cpp:socom2HostInputPoll */ \
@@ -188,6 +199,7 @@
     X("PS2X_TRACE_VU_FLAGS", Dev, Presence, "", "Log what the VU flag readers see.") \
     X("PS2X_TRACE_VU_STEPS", Dev, Int, "1200", "With TRACE_VU: instruction budget per traced program.") \
     X("PS2X_TRIGGER", Dev, Spec, "", "lo:hi: arm the trig trace modes when the first PEEK word, as a float, lies in the range.") \
+    X("PS2X_VBLANK_NTSC", Dev, Flag, "0", "macOS fork: 1 puts VBlanks on NTSC 59.94 Hz, the rate T0 and the CD/MPEG timing assume (60.00 today).") \
     X("PS2X_VIF1_NO_IRQ_STALL", Dev, Flag, "0", "Restore VIF1 without the i-bit stall (A/B).") \
     X("PS2X_VU0_FAST", Dev, Int, "1", "0 keeps VU0 micro programs on the cycle-exact scheduler.") \
     X("PS2X_VU1_BAILHIST", Dev, Presence, "", "Histogram of where generated VU1 code bails to the interpreter.") \

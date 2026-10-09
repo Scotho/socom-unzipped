@@ -15,6 +15,7 @@ void register_ps2_memory_tests();
 void register_ps2_vu1_tests();
 void register_vu1_native_tests();
 void register_vu1_ops_tests();   // Sprint 17 F C1
+void register_gs_gl_flush_reasons_tests();   // macOS perf step 1
 void register_ps2_vu_tests();
 void register_ps2_gs_tests();
 void register_gs_frame_backpressure_tests();
@@ -59,7 +60,9 @@ void register_personas_card_tests();         // the persona-card plan Task 2
 void register_runtime_seams_tests();         // Sprint 13 Task C8 (audit F22)
 void register_socom2_net_bounds_tests();     // runtime/socom2_net_bounds.h
 void register_socom2_msg_bounds_tests();     // runtime/socom2_msg_bounds.h
+void register_socom2_mouse_tests();          // macOS fork: mouse look and aim-hold
 void register_host_thread_qos_tests();       // macOS fork: runtime/host_thread_qos.h
+void register_vblank_period_tests();        // macOS fork: PS2X_VBLANK_NTSC
 void reset_ps2_test_function_table();
 
 namespace
@@ -113,6 +116,7 @@ int main()
     register_ps2_vu1_tests();
     register_vu1_native_tests();
     register_vu1_ops_tests();
+    register_gs_gl_flush_reasons_tests();
     register_ps2_vu_tests();
     register_ps2_gs_tests();
     register_gs_frame_backpressure_tests();
@@ -157,7 +161,9 @@ int main()
     register_runtime_seams_tests();
     register_socom2_net_bounds_tests();
     register_socom2_msg_bounds_tests();
+    register_socom2_mouse_tests();
     register_host_thread_qos_tests();
+    register_vblank_period_tests();
     int res = MiniTest::Run();
     std::cout.flush();
     std::cerr.flush();

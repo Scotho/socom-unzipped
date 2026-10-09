@@ -356,6 +356,7 @@ add_library(ps2_runtime STATIC
     src/lib/gs/gs_frontend.cpp
     src/lib/gs/gs_cpu_backend.cpp
     src/lib/gs/gs_gl_backend.cpp
+    src/lib/gs/gs_gl_frame_stats.cpp   # macOS perf step 1: the logger behind PS2X_GS_FLUSH_REASONS / _SLOW_FRAME_MS
     src/lib/gs/gs_frame_backpressure.cpp
     src/lib/gs/gs_stall_coalescer.cpp
     src/lib/ps2_iop_host.cpp
@@ -525,6 +526,17 @@ if(PS2X_BUILD_RUNNER)
 # executable (not the static runtime library) or the linker drops them.
 target_sources(ps2EntryRunner PRIVATE src/lib/game_overrides_socom2.cpp)
 target_sources(ps2EntryRunner PRIVATE src/lib/socom2_host_input.cpp)
+if(APPLE)
+    # macOS fork: the mouse, with GCMouse's raw deltas (socom2_mouse_gc.mm); elsewhere a stub and raylib's deltas.
+    target_sources(ps2EntryRunner PRIVATE src/lib/socom2_mouse.cpp src/lib/socom2_mouse_gc.mm)
+    # Compiled as C++ with -x objective-c++ rather than enable_language(OBJCXX): enabling the language project-wide
+    # recompiles raylib's bundled GLFW .m files as Objective-C++, which they are not written for.
+    set_source_files_properties(src/lib/socom2_mouse_gc.mm PROPERTIES LANGUAGE CXX SKIP_UNITY_BUILD_INCLUSION TRUE SKIP_PRECOMPILE_HEADERS TRUE
+                                COMPILE_OPTIONS "-x;objective-c++;-fobjc-arc")
+    target_link_libraries(ps2EntryRunner PRIVATE "-framework GameController" "-framework Foundation")
+else()
+    target_sources(ps2EntryRunner PRIVATE src/lib/socom2_mouse.cpp src/lib/socom2_mouse_gc_stub.cpp)   # macOS fork: the mouse
+endif()
 target_sources(ps2EntryRunner PRIVATE src/lib/socom2_hostnet.cpp)
 target_sources(ps2EntryRunner PRIVATE src/lib/socom2_libnetb.cpp)
 target_sources(ps2EntryRunner PRIVATE src/lib/socom2_crypto.cpp)
