@@ -10,13 +10,16 @@ is marked **[here]**, with the date. KNOWN wins on any disagreement.
 ## 1. What runs, and what does not
 
 - **[fork, M2 Pro, macOS 15, 2026-10-01]** The game from your own r0001 disc, native arm64, offline: it boots,
-  walks the menus by keyboard, plays the intro movie and a mission with sound and a pad. A mission frame takes
-  about 30 ms (Windows ~27, the console 16.7), so it is choppy. The VU1 replay goldens match bit for bit. The
+  walks the menus by keyboard, plays the intro movie and a mission with sound. A mission frame takes about
+  30 ms (Windows ~27, the console 16.7), so it is choppy. The VU1 replay goldens match bit for bit. The
   recompiler's output on the Mac equals Windows's (same file count, the same unhandled count and names).
+- **[fork] Not verified even there:** a gamepad (his README: "a gamepad has not been tested on macOS"; the
+  plan's result: "Not verified: a pad") and a Retina display (the viewport fix `65916568` was checked on a 1x
+  display).
 - **Not on macOS yet:** the launcher flow, online play, the microphone, an `.app` bundle, signing or notarization,
   macOS CI, the parity gate's capture side, the Sprint 18 PCSX2 door (Windows asset names and paths, research/86
   §5), the Linux-only crash handler and host sampler. An Intel Mac or Rosetta is not a target: the fork rejected it
-  as slow and a dead end, and upstream agrees (§6).
+  as slow and a dead end, and LATER 103 (that tier) is struck for it.
 - How to build and run it: `docs/DEVELOPING.md`, "macOS (Apple Silicon)". The player-facing exit code it adds is
   76, `no-display` (`docs/FAQ.md`).
 
@@ -54,7 +57,8 @@ is marked **[here]**, with the date. KNOWN wins on any disagreement.
 - **Retina.** Anything that targets the default framebuffer (viewport, scissor, blit, readback) uses
   `GetRenderWidth/Height` (pixels), never `GetScreenWidth/Height` (points) (`65916568`).
 - **GL.** macOS stops at 4.1: no `glClipControl`, so depth runs `GsGlDepth`'s Legacy path, the one the Linux VM
-  already proved. Build with `GL_SILENCE_DEPRECATION`.
+  already proved. (Neither the tree nor the fork defines `GL_SILENCE_DEPRECATION`, which the spec planned;
+  the deprecation warnings are cosmetic.)
 - **Build.** `scripts/build_macos.sh [tools|recomp|runtime|test|all] [--no-runner]`. It uses the arm64 Homebrew at
   `/opt/homebrew` only, AppleClang, deployment target 13.0, trees `build-macos*`, output `dist-macos/`, and no
   `.exe` suffix. It caps generated-code jobs with `PS2X_MACOS_RUNNER_JOBS` (default 6). FFmpeg 7.1.5 is built from
@@ -64,8 +68,9 @@ is marked **[here]**, with the date. KNOWN wins on any disagreement.
   does not.
 - **Knobs.** A macOS-only knob is Dev, defaults to the byte-identical behaviour, and its description starts
   "macOS" (`PS2X_GAME_THREAD_QOS`). `docs/KNOBS.md` is regenerated, never hand-edited.
-- **Tests.** A macOS-only Python test skips elsewhere with a reason (`test_build_macos`). A POSIX one runs on the
-  Linux CI runner (`test_run_sh`'s timeout fallback). A test that reads `/proc` skips on macOS.
+- **Tests.** A macOS-only Python test skips elsewhere with a reason (`test_build_macos`, and `test_run_sh`'s
+  timeout fallback, which skips wherever `timeout` exists, so on Linux too). A test that reads `/proc` skips on
+  macOS.
 - **Data.** Nothing disc-derived goes on public CI or into the tree, the same as on every platform. The generated
   set is built only on a Mac that holds the owner's disc.
 
@@ -73,7 +78,8 @@ is marked **[here]**, with the date. KNOWN wins on any disagreement.
 
 **[here, 2026-10-08, Windows 11, branch `agent/macos-port` at the ledger's last commit]**
 - Every changed C++ file compiles syntax-only with the tree's own flags (clang, x86_64, from
-  `build-clang/compile_commands.json`). Five of them (`ps2_vu1_core.cpp`, `ps2_vu1_upper.cpp`,
+  `build-clang/compile_commands.json`), except in effect `posix_glue.cpp`: it is `#ifndef _WIN32`, so on Windows
+  it compiles to nothing, and CI's Linux job is its first upstream compile. Five of them (`ps2_vu1_core.cpp`, `ps2_vu1_upper.cpp`,
   `vu1_ops_tests.cpp`, `exe_dir.cpp`, `host_thread_qos_tests.cpp`) also compile for aarch64
   (llvm-mingw's `aarch64-w64-mingw32`) with `-DUSE_SSE2NEON` and sse2neon at CMake's pinned commit `92f6de17`.
   That proves the include guards and the x87 fence on an ARM target; it does not prove the Darwin branches.
@@ -81,33 +87,44 @@ is marked **[here]**, with the date. KNOWN wins on any disagreement.
   `test_exit_codes_table`, `test_knobs_registry`, `test_knob_read_sites`, `test_server_ops`, `test_build_sh_lock`.
   Four skip on Windows by design (the macOS script, the POSIX `run.sh` fallback). `python -m tools_py.knobs check`
   is clean, and `bash -n` passes on `build_macos.sh`, `vu1_goldens.sh` and `run.sh`.
-- A trial merge into `origin/sprint-18` (`git merge-tree`): every code file merges, `posix_glue.cpp` included. The
-  only conflicts are the generated documents sprint-17 and sprint-18 already disagree on.
+- A trial merge into `origin/sprint-18` (`git merge-tree`): every code file merges, `posix_glue.cpp` included.
+  The conflicts are documents: the generated ones sprint-17 and sprint-18 already disagree on, plus two from this
+  branch, both one-line (`docs/DOC_MAINTENANCE.md`'s new row beside sprint-18's, the `docs/KNOBS.md` count).
 
 **Not validated here:** anything Darwin-only (`_NSGetExecutablePath`, `host_display.cpp`'s CoreGraphics scan, QoS,
-the libproc and `sigwait` paths), since there is no macOS SDK on the host. Also not run: `build_macos.sh`, the
+the `sigpending`/`sigwait` drain), since there is no macOS SDK on the host. (The libproc process scan research/86
+names is not in the port: the launcher is phase 2.) Also not run: `build_macos.sh`, the
 FFmpeg source build, `vu1_goldens.sh`, the game. The Windows build and gate have not run on this branch. The Mac
-changes are behind `__APPLE__`, `USE_SSE2NEON` or a knob that defaults off, with two exceptions that reach Windows:
+changes are behind `__APPLE__`, `USE_SSE2NEON` or a knob that defaults off, with these exceptions:
 - **The viewport restore (`65916568`)** now uses `GetRenderWidth/Height`. At 100% scaling that equals the old
   `GetScreenWidth/Height`. On a scaled Windows desktop the runtime's `FLAG_WINDOW_HIGHDPI` (`ps2_runtime.cpp`) makes
   the two differ, and the new value is the one raylib itself sets. That is believed to be a fix for scaled
-  desktops too, but it is unproven on Windows: the merge's gate decides (KNOWN §2).
+  desktops too, but it is unproven on Windows. The gate runs at 100%, so it may not see it; a run at 150%
+  scaling settles it (KNOWN §2).
 - **The game-thread QoS hook (`a5b6e67a`)** does nothing off Apple, but it logs one new line everywhere:
-  `[thread] game thread QoS n/a`.
+  `[thread] game thread QoS n/a`. Nothing in `tools_py/parity` or `scripts/parity` reads it.
+- **A new C++ test** in `vu1_ops_tests.cpp` ("`_mm_setcsr`'s round-toward-zero bits chop...") runs on every
+  platform; CI is its first run. The exit-code table grows by one row (76 cannot fire off macOS:
+  `awakeDisplayCount()` answers -1 there).
+- **`vu1_replay --vram-diff`** on Linux (`vu1_replay.cpp`) now runs its command directly; before the branch it
+  passed the whole quoted line to `/bin/sh` and was broken there. Not run on Linux upstream.
 
 CI's `windows` and `linux` jobs build the branch when it is pushed.
 
 ## 5. Ledger of the fork's commits (as of the fork's `main` 50b36a98 and `perf-vu1-worker` 075fbd79)
 
+`a`-`b` below means the fork's commits by Grswld from `a` to `b` inclusive, in date order, on the subject the row
+names. It is not a git range: the fork's branches interleave the threads.
+
 | Fork commits | What | Verdict |
 |---|---|---|
-| `a3d4585f`..`1e92995c` (17) | Phase 1: spec, plan, `build_macos.sh`, FFmpeg, sse2neon and rounding, Darwin glue, ExeDir, `vu1_goldens.sh`, the Python suite on macOS, recomp step, `run.sh`, Retina, docs, exit 76, the up-front refusals | **Taken** as `c6d09110`..`77458d11`. Two conflicts, both sides kept: `.gitignore` (ours added web paths) and the `vu1_ops_tests.cpp` includes (ours added `<filesystem>`) |
+| `a3d4585f`-`1e92995c` (17) | Phase 1: spec, plan, `build_macos.sh`, FFmpeg, sse2neon and rounding, Darwin glue, ExeDir, `vu1_goldens.sh`, the Python suite on macOS, recomp step, `run.sh`, Retina, docs, exit 76, the up-front refusals | **Taken** as `c6d09110`-`77458d11`. Two conflicts, both sides kept: `.gitignore` (ours added web paths) and the `vu1_ops_tests.cpp` includes (ours added `<filesystem>`) |
 | `faa07054`, `e3364893` | `gs_replay_bench` refuses with exit 3 when no display is awake; `PS2X_GAME_THREAD_QOS` | **Taken** as `ae85fab5`, `a5b6e67a`. In `a5b6e67a` the test list dropped the fork's `gs_gl_flush_reasons_tests.cpp` line (not taken), `main.cpp`'s misplaced comment was fixed, and `docs/KNOBS.md` was regenerated |
 | `56f4adce`/`7f12b05b`, `b4ef5156`/`b98035c5` (2026-10-02) | The VPK header: data at word 2, size per channel, the last buffer's right channel at its stride | **Already equivalent.** Upstream fixed the same three errors independently on 2026-10-03 (`bc6984da`, `bd336f9d`). His finding came first and README credits it |
-| `499bb68b`..`09c4492a` | GS flush-reason counter, frame-drop breakdown, P-key recording, **batch-by-value adopted (`PS2X_GS_BATCH_BY_VALUE` default 1)** | **Deferred.** It changes the Windows render path by default: that needs the parity gate and a chain window. The counters alone are a clean first pick (LATER 103) |
-| `946f7808`..`6475bf6b` (mouse) | Mouse look by direct yaw/pitch writes, left-click fire, right-click aim-hold, GCMouse raw deltas, menu guard; nine knobs, **`PS2X_MOUSE` default 1** | **Deferred.** On by default it changes Windows input and writes game memory. Mouse controls on PC are the owner's ruling (§7). Its probe note needs a new research number (§2.5) |
-| `0d657be5`..`fe07602b`, `963d71cf` (VU1 worker) | VIF1/VU1/GS front end on a worker core behind `PS2X_VU1_THREAD` (default 0): queue, SPSC ring, drains, replay, latency stats | **Deferred.** It overlaps Sprint 17's own VU1 performance threads and must be measured against them on the replay bench (LATER 103). Default off, so it is byte-identical until adopted |
-| `79daeb7b`, `f19790e3`, `86919e92`, `075fbd79` | FPCR writes skipped when already toward zero; guest-heap binary search; readbacks attributed per site; `PS2X_VBLANK_NTSC` (59.94 Hz, default 0) | **Deferred**, each a separate pick for the next Sprint 17 performance chain (LATER 103) |
+| `499bb68b`-`09c4492a` | GS flush-reason counter, frame-drop breakdown, P-key recording, **batch-by-value adopted (`PS2X_GS_BATCH_BY_VALUE` default 1)** | **Deferred.** It changes the Windows render path by default: that needs the parity gate and a chain window. The counters alone are a clean first pick (LATER 105) |
+| `946f7808`-`6475bf6b`, `dfe95bc9` (mouse) | Mouse look by direct yaw/pitch writes, left-click fire, right-click aim-hold, GCMouse raw deltas, menu guard, the probe note renumbered 86 in the fork; eight knobs, **`PS2X_MOUSE` default 1** | **Deferred.** On by default it changes Windows input and writes game memory. Mouse controls on PC are the owner's ruling (§7). Its probe note needs a new research number (§2.5) |
+| `0d657be5`-`fe07602b`, `963d71cf` (VU1 worker) | VIF1/VU1/GS front end on a worker core behind `PS2X_VU1_THREAD` (default 0): queue, SPSC ring, drains, replay, latency stats | **Deferred.** It overlaps Sprint 17's own VU1 performance threads and must be measured against them on the replay bench (LATER 105). Default off, so it is byte-identical until adopted |
+| `79daeb7b`, `f19790e3`, `86919e92`, `075fbd79` | FPCR writes skipped when already toward zero; guest-heap binary search; readbacks attributed per site; `PS2X_VBLANK_NTSC` (59.94 Hz, default 0) | **Deferred**, each a separate pick for the next Sprint 17 performance chain (LATER 105) |
 | `d57fbeba`, `6f6b671f`, `443777f5`, `a4f39e47`, `cc4a1052`, the merges | The fork's changelog, README and merges | **Not taken** (fork-only, §2.4) |
 
 ## 6. What the fork changed in what we believed
@@ -124,7 +141,9 @@ CI's `windows` and `linux` jobs build the branch when it is pushed.
   the socket.
 - **Exit 76** is new (`no-display`); 75 stays retired by S13-R9.
 
-## 7. The owner's calls (asked 2026-10-08; `docs/HUMAN_TASKS.md` was at its ceiling, so they are here)
+## 7. The owner's calls (asked 2026-10-08)
+
+`docs/HUMAN_TASKS.md` was at its ceiling with no answered row to archive, so the calls live here until it has room.
 
 | Call | The default the loop is on |
 |---|---|

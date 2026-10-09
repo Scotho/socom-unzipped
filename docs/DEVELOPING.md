@@ -777,7 +777,8 @@ Needs Xcode Command Line Tools (AppleClang) and the **arm64** Homebrew at `/opt/
 - **The recompiler's output** does not depend on the host: the Mac's recomp matches the Windows numbers above
   (14882 files, `unhandled=114399`, 1871 names).
 - **Rendering** is OpenGL 4.1, macOS's ceiling: `glClipControl` (4.5) is absent, so depth runs `GsGlDepth`'s
-  `Legacy` path. raylib's viewport is restored in framebuffer pixels, so a Retina window is not a quarter frame.
+  `Legacy` path. raylib's viewport is restored in framebuffer pixels, so a Retina window should not show a quarter frame
+  (checked on a 1x display only).
 - **Arithmetic:** sse2neon stands in for SSE. On arm64 `long double` is `double`; the VU's round-toward-zero scope
   sets FPCR through `_mm_setcsr`, and chopping to double then float equals chopping to float, so the VU1 goldens
   match bit for bit.
