@@ -28,7 +28,8 @@ marked **[fork]**. Everything checked here is marked **[here]**, with the date. 
   **[here, CI run 37885295297, 2026-10-09, macos-15 arm64]** The build linked; the Python suite passed; the VU1
   replay goldens passed on arm64 (bit for bit, through sse2neon); `ps2x_tests` passed but for four wall-clock
   tests -- the R41 VBlank re-anchor pair ("20 wakes after the stall take about 333 ms, took 1699 ms"), the PSS
-  demux's two packets per tick, and the parked recv's ticker count -- which the job now skips by name
+  demux's two packets per tick, and the parked recv's ticker count -- which the job now skips by name, with
+  `accountCycles` (it failed a run and its rerun)
   (`PS2X_TEST_SKIP`). They pass on the Windows and Linux runners; whether they pass on a real Mac is open. The
   VM's timers also flake run to run (later runs failed `accountCycles`, then the Python wall-clock simulation
   `test_aim_loop`, each green on the other runs), so when the goldens pass and a suite fails, the job reruns each
