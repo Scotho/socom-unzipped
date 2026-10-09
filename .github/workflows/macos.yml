@@ -96,9 +96,10 @@ jobs:
       # the PSS demux's two-packets-per-tick, and the parked recv's ticker count. They pass on the Windows and Linux
       # runners; whether a real Mac passes them is open (docs/MACOS.md section 4, KNOWN section 2, LATER 105).
       # The VM's timers also flake run to run: the second run (37886448208) failed a different one, accountCycles
-      # ("about 20 ms of guest time, got 100"), which the first had passed. So when the Python suite and the goldens
-      # passed and only the C++ suite failed, ps2x_tests runs ONCE more and its second verdict stands, said in the log;
-      # a failure that is the Mac's and not the VM's fails both times.
+      # ("about 20 ms of guest time, got 100"), which the first had passed; the third (37888073503) failed a Python
+      # wall-clock simulation instead (test_aim_loop, "~30-60 s each"), green on both earlier runs. So when the goldens
+      # passed and a suite failed, each failure runs ONCE more -- the failed Python tests by name, ps2x_tests whole --
+      # and the second verdict stands, said in the log; a failure that is the Mac's and not the VM's fails both times.
       - name: Test
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         env:
@@ -109,13 +110,27 @@ jobs:
           rc=0
           bash scripts/build_macos.sh test --no-runner > "$log" 2>&1 || rc=$?
           cat "$log"
-          if [ "$rc" -ne 0 ] && grep -q '^tests: Python : ok' "$log" && grep -q '^tests: VU1    : ok' "$log" \
-             && grep -q '^tests: C++    : FAILED' "$log"; then
-            echo "::warning::ps2x_tests failed once with the Python suite and the goldens green; rerunning it once (the VM's wall-clock tests flake)"
-            grep -B1 -A3 'Failed\]' "$log" | sed 's/\x1b\[[0-9;]*m//g' || true
-            (cd third_party/ps2recomp/build-macos/ps2xTest && ./ps2x_tests) > logs/ci/ps2x_tests_rerun.log 2>&1 && rc=0 || rc=$?
-            tail -5 logs/ci/ps2x_tests_rerun.log
-            echo "ps2x_tests rerun: exit $rc"
+          if [ "$rc" -ne 0 ] && grep -q '^tests: VU1    : ok' "$log"; then
+            # build_macos.sh's test-step PATH: the venv, GNU coreutils, the arm64 Homebrew.
+            export PATH="$PWD/.venv/bin:/opt/homebrew/opt/coreutils/libexec/gnubin:/opt/homebrew/bin:$PATH"
+            rc=0
+            if grep -q '^tests: Python : FAILED' "$log"; then
+              failed=$(grep -E '^(FAIL|ERROR): ' "$log" | sed -E 's/^[A-Z]+: [^ ]+ \(([^)]+)\).*/\1/' | sort -u)
+              if [ -z "$failed" ]; then
+                echo "the Python suite failed without a FAIL/ERROR line to rerun"; rc=1
+              else
+                echo "::warning::rerunning the failed Python tests once (the VM's wall-clock tests flake): $(echo $failed)"
+                python -m unittest $failed > logs/ci/python_rerun.log 2>&1 || rc=1
+                tail -5 logs/ci/python_rerun.log
+              fi
+            fi
+            if grep -q '^tests: C++    : FAILED' "$log"; then
+              echo "::warning::ps2x_tests failed once; rerunning it once (the VM's wall-clock tests flake)"
+              grep -B1 -A3 'Failed\]' "$log" | sed 's/\x1b\[[0-9;]*m//g' || true
+              (cd third_party/ps2recomp/build-macos/ps2xTest && ./ps2x_tests) > logs/ci/ps2x_tests_rerun.log 2>&1 || rc=1
+              tail -5 logs/ci/ps2x_tests_rerun.log
+            fi
+            echo "after the reruns: exit $rc"
           fi
           exit "$rc"
 
