@@ -29,7 +29,9 @@ marked **[fork]**. Everything checked here is marked **[here]**, with the date. 
   replay goldens passed on arm64 (bit for bit, through sse2neon); `ps2x_tests` passed but for four wall-clock
   tests -- the R41 VBlank re-anchor pair ("20 wakes after the stall take about 333 ms, took 1699 ms"), the PSS
   demux's two packets per tick, and the parked recv's ticker count -- which the job now skips by name
-  (`PS2X_TEST_SKIP`). They pass on the Windows and Linux runners; whether they pass on a real Mac is open.
+  (`PS2X_TEST_SKIP`). They pass on the Windows and Linux runners; whether they pass on a real Mac is open. The
+  VM's timers also flake run to run (a second run failed `accountCycles` instead), so when only `ps2x_tests`
+  failed the job reruns it once, with a warning, and the rerun's verdict stands.
 - **Not on macOS yet:** the launcher flow, online play, the microphone, an `.app` bundle, signing or notarization,
   the parity gate's capture side, the Sprint 18 PCSX2 door (Windows asset names and paths, research/86
   §5), the Linux-only crash handler and host sampler. An Intel Mac or Rosetta is not a target: the fork rejected it
