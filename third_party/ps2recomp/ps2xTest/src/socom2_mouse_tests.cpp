@@ -280,7 +280,7 @@ void register_socom2_mouse_tests()
         tc.Run("unset knobs give the defaults", [](TestCase &t)
         {
             const Config c = ps2_stubs::socom2MouseConfigFrom([](const char *) -> const char * { return nullptr; });
-            t.IsTrue(c.enabled, "on by default");
+            t.IsFalse(c.enabled, "off by default (R349: experimental, PS2X_MOUSE=1 turns it on)");
             t.Equals(c.sens, 1.0f, "sens 1");
             t.IsFalse(c.invertY, "not inverted");
             t.Equals(c.deadzone, 0x18, "dead zone 0x18");
@@ -413,7 +413,7 @@ void register_socom2_mouse_tests()
 
     MiniTest::Case("Socom2MousePitchLimits", [](TestCase &tc)
     {
-        tc.Run("the tuning table's +0x5c/+0x58 are the limits (research/86)", [](TestCase &t)
+        tc.Run("the tuning table's +0x5c/+0x58 are the limits (research/87)", [](TestCase &t)
         {
             std::vector<uint8_t> ram(kRamSize, 0);
             const float lo = -1.22173f, hi = 1.04719f;
@@ -644,6 +644,8 @@ void register_socom2_mouse_tests()
             t.IsTrue(ps2_stubs::socom2MouseConfigFrom([](const char *n) -> const char * {
                          if (std::strcmp(n, "PS2X_SOCOM2_INPUT_SCRIPT") == 0) return "6:START";
                          return std::strcmp(n, "PS2X_MOUSE") == 0 ? "1" : nullptr; }).enabled, "script + PS2X_MOUSE=1: on");
+            t.IsTrue(ps2_stubs::socom2MouseConfigFrom([](const char *n) -> const char * {
+                         return std::strcmp(n, "PS2X_MOUSE") == 0 ? "1" : nullptr; }).enabled, "PS2X_MOUSE=1 alone: on");
         });
     });
 

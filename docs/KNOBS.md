@@ -130,7 +130,7 @@ Probes, traces, dumps and A/B switches. **Ignored unless the process is in devel
 | `PS2X_MIC_DUMP_PLAYBACK` | Path | unset | WAV of what lgaud 0x09 asked the headset to play ({title} expands to the window tag). |
 | `PS2X_MIC_FAKE` | Path | unset | Feed this WAV as the microphone; beats MIC_DEVICE (R115). |
 | `PS2X_MIC_GAMEREAD_DUMP` | Path | unset | WAV of what lgaud 0x08 served the game. |
-| `PS2X_MOUSE` | Flag | `1` | macOS fork: mouse look (right stick), left click R1, right click aim-hold; 0 = off, byte-identical. |
+| `PS2X_MOUSE` | Flag | `0` | Experimental (R349): 1 = mouse look (right stick), left click R1, right click aim-hold; 0 (default) = off, byte-identical. |
 | `PS2X_MOUSE_AIM_SENS` | Float | `0.6` | macOS fork: mouse-look sensitivity multiplier while zoomed in (first person and the scope). |
 | `PS2X_MOUSE_DEADZONE` | Int | `24` | macOS fork: stick units (0-126) added to any non-zero mouse output, past the game's dead zone. |
 | `PS2X_MOUSE_GC_MAINQ` | Flag | `0` | macOS fork: 1 delivers GCMouse events on the main queue (batched per frame) instead of the mouse's own queue. |

@@ -46,10 +46,10 @@ namespace ps2_stubs
     socom2_mouse::Config socom2MouseConfigFrom(const char *(*knob)(const char *))
     {
         Config c;
-        // A scripted or replayed run (the harness's input script or pad file) does not get the mouse unless PS2X_MOUSE
-        // says so: a developer's hand on the desk must not move a parity run (final review, 2026-10-04).
-        const bool scripted = knob("PS2X_SOCOM2_INPUT_SCRIPT") != nullptr || knob("PS2X_SOCOM2_INPUT_FILE") != nullptr;
-        c.enabled = ps2x::knobs::flagValue(knob("PS2X_MOUSE"), !scripted);
+        // Off unless PS2X_MOUSE=1 (R349, 2026-10-09: upstream keeps mouse look experimental and off by default). A
+        // scripted or replayed run (the harness's input script or pad file) therefore never gets the mouse unless
+        // PS2X_MOUSE says so: a developer's hand on the desk must not move a parity run (final review, 2026-10-04).
+        c.enabled = ps2x::knobs::flagValue(knob("PS2X_MOUSE"), false);
         c.invertY = ps2x::knobs::flagValue(knob("PS2X_MOUSE_INVERT_Y"), false);
         if (const char *v = knob("PS2X_MOUSE_SENS"))
         {
@@ -116,7 +116,7 @@ namespace ps2_stubs
         if (g_left.load(std::memory_order_relaxed) && !menuOpen)
             next.button[kPadR1] = 1u;
 
-        // Right click: aim-hold (spec 4.3, research/86). START, and the keyboard's own zoom, are read from `next` as the
+        // Right click: aim-hold (spec 4.3, research/87). START, and the keyboard's own zoom, are read from `next` as the
         // keyboard left it -- this runs before the pad is OR-ed in and before the probe's pulses.
         const bool kbZoom = next.button[kPadUp] != 0 || next.button[kPadDown] != 0;
         const Pulse aim = g_aim.tick(AimInputs{g_right.load(std::memory_order_relaxed) && !menuOpen, mode,
