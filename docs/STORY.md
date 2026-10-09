@@ -884,6 +884,150 @@ The site moved from a subdomain to a name of its own, socomunzipped.com; the old
 
 `Cited:` `14b1ef61` the experimental browser map viewer, walled off under web/ -- SOCOM II's maps decoded from your own disc · `b8525708` research notes 71 (scoping) and 72 (map-archive anatomy) move under web/docs/research · `80b48e8c` the panel and chrome take the s2u site's design language · web/README.md · tools_py/story/site.py
 
+## 2026-09-28 .. 2026-10-01 - Sixty, and the way back
+
+*Four days of one sprint, named for its two promises: the mission at the console's sixty ticks a second, and a way back to the main menu instead of a closed window. The clock reached sixty on the first day; the game's own frame rate is the gap that stayed. Logging off online now lands on the main menu. The network code was bounded at both ends, a bench replays the game's drawing without the game, and the programs that fit each soldier's body to its skeleton began running as compiled code, the first of them on by default. A second sprint opened beside it, to let the launcher start the game in an emulator instead. Still nobody outside this house has played online.*
+
+### 2026-09-28 - Sprint 17 opens, and the clock reaches the console's sixty
+
+**The program now ticks at the console's own rate in a mission, sixteen and two-thirds milliseconds a tick. The game itself still draws about 23 new pictures a second, where the console draws thirty.**
+
+Sprint 16 went to the main branch overnight as version 0.16.0, and at three in the morning Sprint 17 opened under the name "sixty, and the way back", the owner's four milestones in his order: the mission's frame rate; leaving online play without the program closing; the online lobby's sound; and a scope for testing the online menus. The bar was written first: sixty means a tick under 17.0 milliseconds on average and no second worse than 20, on three quiet gates of one program, with the game's own frame rate close behind. The owner went to sleep at twenty past three and left the machine to the loop for twelve hours. The first change was instruments: the gate now prints the game's own frame rate beside the clock, and a histogram of how long each picture took. The first merged chain read 21.95 milliseconds a tick and the game at 18.7 frames a second. Then the test harness's own screenshots, which had been encoded on the thread that draws, were moved to a queue of their own, and the afternoon's chain read 16.67 milliseconds, its worst second 16.95, the game at 23.2. In the afternoon the owner listened and played. The lobby music was "genuinely much better", with short hangs every few seconds in some songs. And after a match: "online FPS was fantastic. multiplayer guest frame was near 60 but only about 40 to render so it felt a little sluggish. that's the last real gap to fill."
+
+*How:* `FRAME mean=21.95 worst1s=27.03`, `SYNCV mean=18.7/s` (gate s17_b1, 06:14Z) to `FRAME mean=16.67 worst1s=16.95`, `SYNCV mean=23.2/s` (gate s17_b2, 13:22Z, F0 Step 5b: the PNG encode off the GL thread); the bar is R322, and FRAME is host milliseconds per guest VBlank.
+
+*But:* one gate is not the bar, which asks for three quiet gates on one program. And the tick is not the picture: the game's frame spans two ticks or three, so a clock at sixty can still feel slow, which is exactly what the owner felt.
+
+`Cited:` `12625d8c` Sprint 17 OPEN on sprint-17 · `d77b58c5` (2026-09-27) Merge pull request #97 from Scotho/sprint-16 · `6e4236ba` the three instruments -- frame histogram, SYNCV · `9df70d17` the screenshot encode off the GL thread, a shot queue · gate s17_b1 · gate s17_b2 · docs/superpowers/specs/2026-09-27-sprint-17-sixty-and-the-way-back-design.md · docs/KNOWN.md
+
+### 2026-09-28 - The network code, bounded at both ends
+
+**Every place the game on your PC takes a length or a position from a network message now checks it before it copies, and so does every place the server decodes one.**
+
+The game's original network code trusts what it receives, and this project runs that code recompiled, as a native program on your machine: a message that lies about its own size is a way in. One chat hole had been closed on 2026-09-23, and two server messages refused on 2026-09-25. On the 28th three reviewed branches went further. On the client, the receive path: each message's length checked against what its type allows, every index into a table checked against the table, the chat bounded, and no copy allowed to reach outside the game's own memory. Then the copies the game's own message handlers make, bounded where they happen. On the server, the frame decoder, the relay's limits and the text fields, with 82 tests of their own. The work is defensive only: nothing here was aimed at anyone else's server.
+
+*How:* the client's receive path bounds the RAM span, the frame length per message type, indexes and chat; the handlers' copies and indexes are bounded at the handler; the Horizon server's frame decode, relay caps and text fields carry 82 xUnit tests.
+
+*But:* bounded is not audited. These are the places that were checked, not proof that nothing else is open, and the site's advice stands: play online only with people you trust, on a build you compiled or verified yourself.
+
+`Cited:` `862cec03` the network receive path bounded -- RAM span, frame length per type, indexes, chat · `da44affb` the message-driven copies and indexes bounded at their handlers · `cd242581` the server's frame decode, relay caps and text fields bounded (reviewed, 82 xUnit)
+
+### 2026-09-29 - Logging off online lands on the main menu
+
+**Leaving SOCOM Online used to close the game. Now the game restarts inside the same window and comes back to the main menu, as the console does.**
+
+The first day's reading had found that the exit was not a crash. When you log off, the game asks the console to start the game afresh, with a note telling it to open on an after-reboot screen; our program could not restart itself, so it quit with code 74. The fix was to make that request a restart inside the running program. Its first try, on the 28th, restarted the game and drew nothing: the "very bright pink screen" the owner had seen was the empty-frame fill over a game that had stalled, because the restarted game inherited its clock's starting point from the first boot. With the clock re-anchored, on the morning of the 29th, a scripted logoff on the project's server went through the prompt, YES, the teardown and the restart, and landed on the main menu below. Code 74 now means only "a game program this build cannot run". The same day the lobby music stopped stopping: it had played once, 94 seconds, then silence for the rest of the lobby, because the game's request to loop the track was being dropped; with it honoured the track ran on for ten minutes. And the launcher learned to write a new persona straight onto your memory card, which the game then read from a card holding nothing else.
+
+![The main menu after a logoff, the morning of the 29th: the scripted run logged in on the project's server, pressed TRIANGLE in the lobby, chose YES, and the game restarted inside its own window and came back here instead of closing.](docs/story/img/2026-09-29-the-main-menu-after-the-logoff.png)
+
+*How:* the logoff calls `LoadExecPS2` from 0x22ED54 with `--menu_state dlgAfterErrorReboot.rdr`; the runtime restarts the guest at 0x180008 in-process, and `EeScheduler::reset` re-anchors the host clock; the lobby's 989snd stream carries the loop request, flag 4.
+
+*But:* the console's own after-reboot screen was never compared with ours, and the file the game names for it is not on the disc (harmless here). An earlier report of the game closing from an offline briefing was never reproduced. The lobby music now loops, and still hitches.
+
+`Cited:` `bca50477` (2026-09-28) LoadExecPS2 of the game's own ELF restarts the guest in-process · `6243c9d4` (2026-09-28) the scheduler's reset restarts its host-clock anchor · `f870d133` exit 74 means a foreign ELF this build cannot run; own-ELF restarts in-process · `567b127c` the 989snd stream loop request (flag 4) honoured -- the lobby music no longer stops · `31aaa9fd` the card codec and the persona creator on the ONLINE page · run s17_q2_logoff · docs/research/78-back-to-the-main-menu.md · docs/KNOWN.md
+
+### 2026-09-29 - A bench that replays the drawing, and the first speed-up adopted
+
+**A recording of everything the game asks the screen to draw can now be replayed without the game, so a drawing change is measured in seconds instead of a ten-minute run. And the first change measured on the game's own work went in on by default.**
+
+The night before, the controller had estimated five to six more loop days for the frame rate, and the owner answered with rules rather than patience: "proceed with your suggestions and make these options known to future testers and the environment such that these decisions happen autonomously". So every attempt became a switch that defaults to the old behaviour, measured on one program by flipping it: the replay bench first, then one mission walk with the switch off and on, the full gate only for adoption, and one merged chain a day. The bench landed on the 29th. The profiles that followed overturned the expectation: the thread that draws was not the limit. The game's own thread was, busy about four-fifths of the time, and about two-fifths of all its time inside the interpreter that runs the game's small vector programs. The first candidate there was a shortcut for multiplications where one side is exactly zero, which turned out to be almost all of the slow ones: 6.3 % faster on the mission's recorded vector work, and the game thread's work down from 880 to 789 milliseconds a second on a quiet walk. It went in on by default that evening. The same evening the owner set the sprint's length: no close date; keep it open for the performance threads and find new ones.
+
+*How:* the recorder is `PS2X_GS_RECORD`, replayed headless by `gs_replay_bench`; C1 is `PS2X_VU1_FMAC_ZERO_FAST=1`, the zero lanes of the product-sum on the fast path, bit-exact against the slow classifier; a game-thread candidate is picked on `[gs-loop] ee: work=` (R337), the ladder is R334.
+
+*But:* the game's own frame rate did not move: 23.4 against 23.3 with the shortcut on and off. A game frame is two ticks or three, so one saving cannot shift it alone; the savings have to stack before a player sees them.
+
+`Cited:` `abb3d1cc` the GS recorder (PS2X_GS_RECORD) and the headless gs_replay_bench · `98460fb5` adopt C1 -- PS2X_VU1_FMAC_ZERO_FAST defaults to 1 (R337) · `52d55c65` C1 adopted · `3389cf12` R338 Sprint 17 has no close date (owner) · docs/research/81-vu1-program-d418-cost.md · docs/DEVELOPING.md
+
+### 2026-09-30 - The programs that pose the soldiers start running as compiled code
+
+**The small programs that fit each soldier's body to its skeleton, every frame, had always run through an interpreter. One shape at a time, each proven bit for bit first, they began to run as compiled code instead.**
+
+The bench's reading had named one entry point as the biggest single cost the interpreter still carried, about seven-tenths of its time. It turned out to be two programs behind one door: one more pass over a bone, or the last bone of a body and the hand-back to the next job. The first compiled version took almost nothing on a real walk, because the real lists carried a step it refused. The next admitted that step, and still was not enough. So the program was taught to save every list it refused, and a capture of a walk showed the refused lists came in exactly two shapes. The version that admitted both was checked against all 2,000 captured lists, and on the walk every one of those lists ran compiled: the interpreter's time fell from 146 to 61 milliseconds a second. Just after midnight the other half, the bone pass itself, followed, identical on 3,448 recorded runs and worth four or five milliseconds a second. Each sat behind its own switch, off by default. That morning Sprint 17's first slice, the batches proved so far with the zero shortcut adopted, went to the main branch.
+
+*How:* entry 0x33c8 (research/82): N1 the last-bone repack, N1b the `0x06` cull, N1c the `0x54`/`0x10` linear forms and the two captured shapes (A and the `0x02` loop) behind `PS2X_VU1_NATIVE_33C8`; N2 the `0x52` skinning body behind `PS2X_VU1_NATIVE_SKIN`; `PS2X_VU1_DUMP_REFUSED` saves the refused programs.
+
+*But:* none of it was on for a player that day. The compiled versions had passed their checks, not yet the walks on a quiet machine that decide a pick, and the bone pass was later not picked.
+
+`Cited:` `44fb2d90` (2026-09-29) N1, a native VU1 program at entry 0x33c8 · `4a4cf5b4` N1b, the 0x33c8 entry admits 0x06 (the cull) · `07a2f64a` the 0x33c8 entry admits the walk's two last-bone shapes · `ad754f3a` N1c on the walk -- every 0x33c8 last-bone row gone, the fallback 146 to 61 ms/s · `88b5f818` N2, the native 0x52 skinning pass · `411585f7` N2 merged -- the native 0x52 pass, bit-exact on 3,448 dumps · `8248809e` Merge pull request #119: Sprint 17 to main (1) -- batches 4 and 5 proved, C1 adopted · docs/research/82-native-entry-0x33c8.md
+
+### 2026-10-01 - The compiled code goes on by default, and the browser game leaves home
+
+**For the first time a piece of the game's vector work runs as compiled code for every player. And the browser version of SOCOM II moved to a repository of its own.**
+
+Before dawn, eight mission walks on a quiet machine, each of the two compiled programs switched off and on in both orders: with the last-bone program on, the game's own frame rate rose both times, 24.4 to 25.5 and 22.5 to 25.3. That was ruled enough to pick it, and by half past six it was on by default; the bone pass, which moved nothing measurable, was not picked. The next reading looked at the other big program, the one that sets up every object before it is drawn, 25,000 times a second. Less than half of each run is the program's own work, so compiling it would buy a few milliseconds a second for a large, risky rewrite, and it was ruled out; a cheaper way of calling every one of these programs, estimated at one and a half to three milliseconds a second, went in instead. The same day the browser work, the map viewer that had grown into a playable SEAL in a match of your own, moved into its own private repository. The copy on the main branch became a local demo, single player, with no connection to a match server, on the owner's word.
+
+*How:* R345 picks on `SYNCV` when it rises with the knob on in both orders of a pair; `PS2X_VU1_NATIVE_33C8` defaults to 1; research/83 reads entry 0 as the per-object setup program, four paths and four MSCALs an object, 0.23-0.30 of its 0.66 µs a run VU work: a native pc 0 NO-GO (1.5-5 of 17 ms/s), the cheaper dispatch GO (~1.5-3 ms/s).
+
+*But:* a rise of about one frame a second on one quiet pair can still be chance, which is why the next chain's gate had the last word on it. The browser game's new home is private, so its work from here is not in this repository and not on this page.
+
+`Cited:` `c77ac122` R345 -- N1c PICKED (SYNCV up in both orders), N2 not picked · `65a1cda0` PS2X_VU1_NATIVE_33C8 defaults to 1, N1c adopted · `9083afd0` research/83 the entry-0 swarm and 0x3e · `8a5b8b87` no warning clock on a matched image, the native lookup cached, entry-0 split by path · `be557831` the web teaser as a local demo replaces web/ on main (the owner's word) · `24788586` the web trees after the move to the redotcom repo · docs/research/83-vu1-entry0-and-0x3e.md
+
+### 2026-10-01 - A second door: the launcher learns to start the game in PCSX2
+
+**A switch at the top of the launcher, NATIVE or PCSX2. In PCSX2 the launcher sets up the reference emulator for you, points it at the project's server, and starts it on your disc.**
+
+At about two in the morning the owner described it and, half an hour later, approved the write-up as Sprint 18, a second sprint beside the open one: a global NATIVE / PCSX2 switch with entirely separate saved settings; in the PCSX2 view, SELECT your own PCSX2 or INSTALL the official release with one button; the project's server or an address of your own, the community's server still "coming soon". For the emulated console to find the server, the project's box has to answer the game's own server names, so it gained a small name service of its own, deployed on the 2nd. The code came in over two days: the second settings file, the emulator's network settings and the game's patch written for you, the install from the official release with its checksum, the switch and the PCSX2 pages, a player's guide. On the 3rd the owner asked for the launcher to wear the project's crest as its icon, and it does. And the audit of other projects (the 2026-10-03 entry) read PCSX2's own source and found that its first-run setup wizard would rewrite every network setting the launcher had written, so the launcher now marks the wizard done.
+
+*How:* the box's `socom-dns` answers SOCOM II's host names on 53/udp beside the four Horizon units; the launcher writes `[DEV9/Eth]` and the `[UI]` wizard keys into PCSX2.ini, the SOCOM II pnach embedded from the masters, and a `.bak` before every write; the icon is a reproducible `.ico` from our own crest in the exe's resources.
+
+*But:* this work lives on the `sprint-18` branch, which this page's checker cannot follow until it merges (the name service b08937c0, the settings 9ee48ba4, the files 74eac5ca, the install 641b61de, the switch a0cce785 and e39f640b, the icon fcedc692, the guide c34777cc, the wizard 7f1dd777; all sprint-18). Nobody has yet gone from INSTALL to the lobby through it: that proof run, and opening the name service's port on the box, are the owner's.
+
+`Cited:` `b7397b9c` (2026-09-30) the PCSX2 door -- spec, plan and task book · `6fccc50e` (2026-09-30) OPEN -- spec APPROVED, R339-R344 · `59f96d9d` (2026-10-03) O33 is the PCSX2 door's owner row -- 53/udp, one real INSTALL from GitHub · docs/superpowers/specs/2026-10-01-sprint-18-the-pcsx2-door-design.md
+
+## 2026-10-02 .. 2026-10-08 - Borrowed fixes, a quiet bed turned up, and a Mac
+
+*A week that ends quietly. The frame-rate chain went green and a second slice reached the main branch; the reading that could have opened the next big program closed it instead. An audit of about seventy other projects brought their fixes home with their authors' credit, and the game's music files were read right at last. The mission's ambient sound, too quiet for two weeks, was turned up by the owner's word, and the loop paused on the 4th. Then a community developer's port to the Mac, built in his own fork, started coming home. Still nobody outside this house has played online.*
+
+### 2026-10-02 - The chain goes green at 16.99, and a second map of the code's names
+
+**The frame-rate batch passed its chain, every pin and every held-out picture matching, and went to the main branch. And a community reverse-engineer's hand-written map of the game's functions was proposed as the next sprint.**
+
+It took two days of reruns. The chain went red on a copy of the launcher that was still open, then on a new guard that refused the release for the same reason, then on the harness mixing two runs' screenshots under one name, then on a test of the build lock that fails under load. None of them was the code, and each became a fix. The run that went green went green from end to end: the parity gate three of three, all thirteen pins, twelve of twelve held-out captures, 16.99 milliseconds a tick with the worst second at 17.86, the game at 23.1 frames a second. That evening the second slice of Sprint 17 reached the main branch. The night's reading closed a door rather than opening one: the program that sets up every object spends 1,600 nanoseconds a run handing over its picture against 185 of its own work, so the remaining lever is the hand-over, not the program. With the owner's three asks done, the chain, the slice and the reading, Sprint 17 paused. And a proposal was written for Sprint 19, "two cartographers": a community reverse-engineer, Harry62, had given the owner 5,956 hand-written labels on the later edition's memory, 512 of them naming functions our code still calls by address. Joining his names to ours, each with where it came from, is a step from a recompiled program toward a readable one.
+
+![A frame from the mission stage of the green chain, the evening of the 2nd: the first mission's autumn trees, four teammates FOLLOWING. The gate scored this run three of three, and its clock read 16.99 milliseconds a tick over the walk.](docs/story/img/2026-10-02-the-green-chain-frame.png)
+
+*How:* chain s17_b6r3 on 368afa8c, 19:02-21:08Z: Python suite 3976 OK, gate PASS 3/3, PINS MATCH (13), HELDOUT 12/12, `FRAME mean=16.99 worst1s=17.86`, `SYNCV mean=23.1/s`; research/83 §7: entry 0's kick path is 63.8 % of its host time, so a native pc 0 saves 0.25-0.7 ms/s.
+
+*But:* 16.99 is one gate, not the three quiet ones the bar asks for, and the game's own frame rate, 23 a second against the console's 30, is still the gap the owner felt. Sprint 19 is a proposal waiting on the owner's word, and the labels are a community member's reading, not yet checked against ours.
+
+`Cited:` `d9a2f974` batch 6 PROVED by chain s17_b6r3 (ALL GREEN); slice 2 = PR #131 · `a519c9bf` Merge pull request #131 from Scotho/slice2-s17-to-main · `3ff16398` research/83 §7 the entry-0 split reading -- the kick path carries the host time · `a013861a` the entry-0 reading recorded (research/83 §7); the owner's three asks done, Sprint 17 pauses · `9286db04` Sprint 19 PROPOSED -- two cartographers: Harry62's names joined to ours · gate s17_b6r3 · docs/superpowers/specs/2026-10-02-sprint-19-two-cartographers-design.md
+
+### 2026-10-03 - Other people's fixes, taken with their credit
+
+**An audit of about seventy other projects that recompile or emulate the PlayStation 2, read for the problems this one still has. Their fixes came home the same day with their authors' credit, and the game's music files were read right at last.**
+
+The owner's ask was "another research audit on every relevant ps2recomp project to our issues", with a rule for what to take: "take other commits that share our license ensuring the creators retain credit". Researchers read the upstream recompiler and its 191 fork branches, about seventy other recompilation and decompilation projects, three emulators, the sound and network stacks the project leans on, and named a licence verdict for each. Then the fixes, each in its own reviewed branch: three from the upstream recompiler (the pad's bytes, a mirrored register, a vector call); a depth floor from PCSX2 for a band drawn across one map; the upstream server's own concurrency fix; and five requests the later edition of the game makes that our server had never answered. The largest fix of the day was the project's own. Reading the disc's music files again, beside the field names an open re-implementation of the sound driver gives them, showed that the reader had three of their layout rules wrong: the size in the header counts one channel, not both, so the lobby's 188-second track wrapped at its halfway point; the sound starts at a different header word, so every chunk carried a sliver of the other channel; and the last block's right channel sits at its half, after padding. All three were fixed. The community Mac port's author had committed the same three readings in his fork the day before (the 2026-10-08 entry).
+
+*How:* research/85 marks every hit verified, claimed or inferred; the ports are upstream PS2Recomp #265, #257 and #268, the fragment Z floor and ZBUF format clamp from PCSX2 behind `PS2X_GS_ZFLOOR`, Horizon upstream #38, and the five r0004 MLS models; the VPK reader takes header word 1 as the per-channel size and word 2 as the data start.
+
+*But:* every verdict in the audit is a reading: nothing it found was built or run before it was ported, and each port waited for the next chain's gate. The map's band itself needs the owner's eyes on that map with the floor off and on.
+
+`Cited:` `99d66e06` research/85 the PS2 recomp projects audit, LATER 82-95, the licence rule · `4a63e7dd` upstream #265 pad bytes, #257 D_ENABLER mirror, #268 VCALLMSR · `bfba8a98` #104 fragment Z floor + ZBUF format clamp from PCSX2 · `05365bf6` Horizon upstream #38 -- concurrent cipher table, one shared DME event loop · `bbf2a702` #72 the five r0004 requests answered · `ff270d65` the VPK reader's three layout fixes (LATER 97) and the #91 voice-scale knob · `dc5e69c4` the lobby music wraps at half its data · docs/research/85-ps2-recomp-projects-audit.md · docs/LATER.md
+
+### 2026-10-04 - Proven at the gate, the quiet mission turned up, and a pause
+
+**The day's borrowed fixes passed the parity gate together, with the game's frame rate at its best reading yet. And the mission's ambient sound, too quiet for two weeks, was turned up on the owner's word.**
+
+The chain with all of the audit's fixes in went green on its second try: three of three, every pin, twelve of twelve, the game at 25.3 frames a second. A ten-minute lobby showed the music now repeats every 188.5 seconds, its whole length. The sound bed under the missions had played about 11 decibels below the console's since 20 September. One cause was a single divisor: the program played a voice at its loudest setting at half of full volume, where every reference reads that setting as full. A switch to read it the reference's way, and a four-minute capture with it on, put the mission's bed six decibels up, into the console's range. In the afternoon a research note, asked for by the owner, sized what macOS support would take, in three tiers, without a Mac on hand, and a draft of the sprint's lessons tabulated the frame-rate numbers from the open to now. At 20:40 UTC the controller's seat paused until its weekly usage allowance reset. Two hours later the owner answered the volume recommendation with one word, "agreed", and the louder reading became the default.
+
+*How:* gate s17_adopt_chain2_20261004_173456 on b1b3f023: PINS MATCH (13), HELDOUT 12/12, `FRAME mean=17.06 worst1s=17.86`, `SYNCV mean=25.3/s`; R348: the voice and stream register divisor is 0x4000, so 0x3FFF is full scale, and `PS2X_SND_VOICE_FULLSCALE=0` restores 0x7FFE.
+
+*But:* the default is not yet proven by its own bar. The 48-window comparison against the console was spoiled twice that day, once by the game being closed mid-capture and once by a walk that ran at half speed on a busy machine, and waits for a quiet one.
+
+`Cited:` `cbc7a4ab` chain 2 all-green on b1b3f023 -- the research/85 adoptions proven at the gate (3/3, pins, 12/12) · `f1a3e979` the lobby music repeats every 188.5 s · `1a70d4e5` the voice-scale listen capture -- the mission bed up 6 dB with the knob, into the console's band · `9efdcaa3` R348 -- the voice register divisor is 0x4000 by default (#91) · `ef16241d` 86 macOS support sized in three tiers · `df6ad05a` Sprint 17 task 98 drafted -- the F table · `898e08eb` the seat paused 2026-10-04 20:40Z until the usage reset · gate s17_adopt_chain2_20261004_173456 · docs/superpowers/plans/2026-09-27-sprint-17.md
+
+### 2026-10-08 - SOCOM II on a Mac, from someone outside the house
+
+**A community developer ported the project to Apple Silicon Macs in his own fork, and by his own account played a mission on it, built from his own disc. On the 8th the project began taking his work home.**
+
+Between the 1st and the 6th of October, Grswld (Tanner A.) built SOCOM Unzipped for the Mac in a fork of his own, github.com/Grswld/socom-unzipped-macos. By the night of the 1st, on an M2 Pro, it booted to the title, played the intro movie, walked the menus by keyboard and played a mission with sound, offline, at about 30 milliseconds a frame against Windows' 27: "very choppy", in his words. The recompiler, run on his Mac, produced exactly what it produces on Windows, and the project's own tests passed there, the vector programs' recorded runs bit for bit. Over the next days his fork added a breakdown of where the frames go and a drawing change it adopted by default, the music's three layout fixes a day before this project's own, and raw mouse movement, and on the 4th it merged this project's Sprint 17 work back in; its front page gives the credit for everything else to this project. The project's own sizing note of the 4th had been written from the code alone. Its sprint branches have taken no commit since the pause on the evening of the 4th; on the 8th the main seat began taking his commits by cherry-pick, his name on each, onto a branch of their own.
+
+*How:* scripts/build_macos.sh builds arm64 with AppleClang, sse2neon for the SSE intrinsics and FFmpeg 7.1.5 from pinned source; rendering is OpenGL 4.1, so depth runs `GsGlDepth`'s Legacy path; ps2x_tests 1161/1161, Python 3939 OK, the VU1 goldens 9/9.
+
+*But:* none of it is on the published branch yet, so none of it can be cited by hash here: his fork's phase-1 merge is 03da0170 and its result bd6379c9, the music fixes b4ef5156 and 56f4adce (all in the fork); the project's copies are on `agent/macos-port`, nineteen commits from c6d09110 to a5b6e67a, not built or run on a Mac by this project. Online play, the launcher, an app bundle and macOS CI are not done.
+
+`Cited:` `ef16241d` (2026-10-04) 86 macOS support sized in three tiers; LATER 102 SIGPIPE on POSIX, 103 the tier-a port · docs/research/86-macos-support-sizing.md · docs/LATER.md
+
 ---
 
 ## Where it stands tonight, 2026-09-22 — and what the night answered

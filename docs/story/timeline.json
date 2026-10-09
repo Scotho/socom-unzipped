@@ -1,7 +1,7 @@
 {
  "schema": 1,
- "generated": "2026-09-27",
- "head": "3bd0d8a4",
+ "generated": "2026-10-08",
+ "head": "60d2dad6",
  "about": "Machine-readable form of docs/STORY.md. Built by reading the document; the citation test asserts the two agree.",
  "entries": [
   {
@@ -3893,6 +3893,562 @@
     "path": "docs/story/img/2026-09-27-the-design-system-gallery.png",
     "caption": "The design system's gallery, its tokens page, on a local build the afternoon of the 27th: every colour the site and the map viewer may use, and the contrast each pair holds, computed from the stylesheet on the page. Not deployed yet."
    }
+  },
+  {
+   "id": "2026-09-28-sprint-17-opens-and-the-clock-reaches-the-console-s-sixty",
+   "date": "2026-09-28",
+   "title": "Sprint 17 opens, and the clock reaches the console's sixty",
+   "era": "2026-09-28 .. 2026-10-01 - Sixty, and the way back",
+   "hook": "The program now ticks at the console's own rate in a mission, sixteen and two-thirds milliseconds a tick. The game itself still draws about 23 new pictures a second, where the console draws thirty.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "12625d8c",
+     "sha": "12625d8c8e130c373dcf7fa23d29b321c895280c",
+     "date": "2026-09-28",
+     "subject": "docs: Sprint 17 OPEN on sprint-17 -- the header, HANDOFF now, R322-R330 minted (Task 0 Steps 3 and 6), RULINGS/SITTING"
+    },
+    {
+     "kind": "commit",
+     "ref": "d77b58c5",
+     "sha": "d77b58c5359a619ca395094bb0f68e8a1c42c8f1",
+     "date": "2026-09-27",
+     "subject": "Merge pull request #97 from Scotho/sprint-16"
+    },
+    {
+     "kind": "commit",
+     "ref": "6e4236ba",
+     "sha": "6e4236ba25e156cd21c241c97724f18b96f12898",
+     "date": "2026-09-28",
+     "subject": "merge agent/s17-f0: the three instruments -- frame histogram, SYNCV, no-frame-file drive (Sprint 17 F0)"
+    },
+    {
+     "kind": "commit",
+     "ref": "9df70d17",
+     "sha": "9df70d17649432909424ce1261113d07cf492b84",
+     "date": "2026-09-28",
+     "subject": "merge agent/s17-f0b: the screenshot encode off the GL thread, a shot queue (Sprint 17 F0 Step 5b, PASS)"
+    },
+    {
+     "kind": "gate",
+     "ref": "s17_b1",
+     "path": "logs/parity/gate/s17_b1"
+    },
+    {
+     "kind": "gate",
+     "ref": "s17_b2",
+     "path": "logs/parity/gate/s17_b2"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/superpowers/specs/2026-09-27-sprint-17-sixty-and-the-way-back-design.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/KNOWN.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-28-the-network-code-bounded-at-both-ends",
+   "date": "2026-09-28",
+   "title": "The network code, bounded at both ends",
+   "era": "2026-09-28 .. 2026-10-01 - Sixty, and the way back",
+   "hook": "Every place the game on your PC takes a length or a position from a network message now checks it before it copies, and so does every place the server decodes one.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "862cec03",
+     "sha": "862cec0360677ddb96190dd62c1454ebcb98e040",
+     "date": "2026-09-28",
+     "subject": "merge agent/medusa-rt: the network receive path bounded -- RAM span, frame length per type, indexes, chat"
+    },
+    {
+     "kind": "commit",
+     "ref": "da44affb",
+     "sha": "da44affb875490990a888b301409b6300fc549fd",
+     "date": "2026-09-28",
+     "subject": "merge agent/medusa-rt2: the message-driven copies and indexes bounded at their handlers (reviewed PASS)"
+    },
+    {
+     "kind": "commit",
+     "ref": "cd242581",
+     "sha": "cd2425813035a7735d7beca41383750bdfbaecfe",
+     "date": "2026-09-28",
+     "subject": "merge agent/medusa-srv: the server's frame decode, relay caps and text fields bounded (reviewed, 82 xUnit)"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-29-logging-off-online-lands-on-the-main-menu",
+   "date": "2026-09-29",
+   "title": "Logging off online lands on the main menu",
+   "era": "2026-09-28 .. 2026-10-01 - Sixty, and the way back",
+   "hook": "Leaving SOCOM Online used to close the game. Now the game restarts inside the same window and comes back to the main menu, as the console does.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "bca50477",
+     "sha": "bca5047771b407f4735058805e76bbfbfc400daa",
+     "date": "2026-09-28",
+     "subject": "merge agent/s17-q2: LoadExecPS2 of the game's own ELF restarts the guest in-process (Sprint 17 Q2 Steps 1-2, reviewed)"
+    },
+    {
+     "kind": "commit",
+     "ref": "6243c9d4",
+     "sha": "6243c9d4b6df371b4e1ff053b9e09993d0083d10",
+     "date": "2026-09-28",
+     "subject": "merge agent/s17-q2b: the scheduler's reset restarts its host-clock anchor (Q2's display round, PASS)"
+    },
+    {
+     "kind": "commit",
+     "ref": "f870d133",
+     "sha": "f870d1330fef7bc6adda58ac647ffd6add7549de",
+     "date": "2026-09-29",
+     "subject": "merge agent/s17-q2-step5: exit 74 means a foreign ELF this build cannot run; own-ELF restarts in-process (Q2 Step 5)"
+    },
+    {
+     "kind": "commit",
+     "ref": "567b127c",
+     "sha": "567b127c30dd8f6245057b7bdc8bbfb4684a76f7",
+     "date": "2026-09-29",
+     "subject": "merge agent/s17-a1-loop: the 989snd stream loop request (flag 4) honoured -- the lobby music no longer stops (#94, A1)"
+    },
+    {
+     "kind": "commit",
+     "ref": "31aaa9fd",
+     "sha": "31aaa9fdb385f0f8ea223a25b229afa932aacdfe",
+     "date": "2026-09-29",
+     "subject": "merge agent/persona-card: the card codec and the persona creator on the ONLINE page (#111, O25)"
+    },
+    {
+     "kind": "run",
+     "ref": "s17_q2_logoff",
+     "path": "logs/parity/s17_q2_logoff"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/78-back-to-the-main-menu.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/KNOWN.md"
+    }
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-29-the-main-menu-after-the-logoff.png",
+    "caption": "The main menu after a logoff, the morning of the 29th: the scripted run logged in on the project's server, pressed TRIANGLE in the lobby, chose YES, and the game restarted inside its own window and came back here instead of closing."
+   }
+  },
+  {
+   "id": "2026-09-29-a-bench-that-replays-the-drawing-and-the-first-speed-up-adopted",
+   "date": "2026-09-29",
+   "title": "A bench that replays the drawing, and the first speed-up adopted",
+   "era": "2026-09-28 .. 2026-10-01 - Sixty, and the way back",
+   "hook": "A recording of everything the game asks the screen to draw can now be replayed without the game, so a drawing change is measured in seconds instead of a ten-minute run. And the first change measured on the game's own work went in on by default.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "abb3d1cc",
+     "sha": "abb3d1ccca602230ecb10ec1827ac2301a2ba642",
+     "date": "2026-09-29",
+     "subject": "merge agent/s17-replay-bench: the GS recorder (PS2X_GS_RECORD) and the headless gs_replay_bench (R334 rung one)"
+    },
+    {
+     "kind": "commit",
+     "ref": "98460fb5",
+     "sha": "98460fb503b477e776c8ca4ec8965fb3b3c7abac",
+     "date": "2026-09-29",
+     "subject": "feat(vu1): adopt C1 -- PS2X_VU1_FMAC_ZERO_FAST defaults to 1 (R337), 0 keeps the old slow path"
+    },
+    {
+     "kind": "commit",
+     "ref": "52d55c65",
+     "sha": "52d55c6576d387857af3815452789297783e8b55",
+     "date": "2026-09-29",
+     "subject": "merge agent/s17-c1-default: PS2X_VU1_FMAC_ZERO_FAST defaults to 1, C1 adopted (Sprint 17 F1)"
+    },
+    {
+     "kind": "commit",
+     "ref": "3389cf12",
+     "sha": "3389cf124114ee92c12bba9455c948f0936a5df4",
+     "date": "2026-09-29",
+     "subject": "docs: R338 Sprint 17 has no close date (owner); the changelog after the C1 default merge"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/81-vu1-program-d418-cost.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/DEVELOPING.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-30-the-programs-that-pose-the-soldiers-start-running-as-compiled-code",
+   "date": "2026-09-30",
+   "title": "The programs that pose the soldiers start running as compiled code",
+   "era": "2026-09-28 .. 2026-10-01 - Sixty, and the way back",
+   "hook": "The small programs that fit each soldier's body to its skeleton, every frame, had always run through an interpreter. One shape at a time, each proven bit for bit first, they began to run as compiled code instead.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "44fb2d90",
+     "sha": "44fb2d903d7f86710ad4b0ca9feb380223fb9bbe",
+     "date": "2026-09-29",
+     "subject": "merge agent/s17-n1-33c8: N1, a native VU1 program at entry 0x33c8 behind PS2X_VU1_NATIVE_33C8 (Sprint 17 F)"
+    },
+    {
+     "kind": "commit",
+     "ref": "4a4cf5b4",
+     "sha": "4a4cf5b49f3539d2e2168448f9060fe6008d6040",
+     "date": "2026-09-30",
+     "subject": "merge agent/s17-n1b-cull: N1b, the 0x33c8 entry admits 0x06 (the cull) with its stores proven (Sprint 17 F)"
+    },
+    {
+     "kind": "commit",
+     "ref": "07a2f64a",
+     "sha": "07a2f64a0350df923cc56992d95c5bc4784c5dd9",
+     "date": "2026-09-30",
+     "subject": "merge agent/s17-n1c-shapes: the 0x33c8 entry admits the walk's two last-bone shapes, A and the 0x02 loop (S17 F)"
+    },
+    {
+     "kind": "commit",
+     "ref": "ad754f3a",
+     "sha": "ad754f3a0b7b453efd81920284dbfad4c2b83139",
+     "date": "2026-09-30",
+     "subject": "docs: N1c on the walk -- every 0x33c8 last-bone row gone, the fallback 146 to 61 ms/s; the Log, KNOWN, HANDOFF"
+    },
+    {
+     "kind": "commit",
+     "ref": "88b5f818",
+     "sha": "88b5f818d2c3a41037b0c90b3f0425aa4529baae",
+     "date": "2026-09-30",
+     "subject": "merge agent/s17-n2-skin: N2, the native 0x52 skinning pass behind PS2X_VU1_NATIVE_SKIN (Sprint 17 F)"
+    },
+    {
+     "kind": "commit",
+     "ref": "411585f7",
+     "sha": "411585f72b60d8a0dfe5c350e0b8ec610a77b248",
+     "date": "2026-09-30",
+     "subject": "docs: N2 merged -- the native 0x52 pass, bit-exact on 3,448 dumps, ~4-5 ms/s; the Log, HANDOFF"
+    },
+    {
+     "kind": "commit",
+     "ref": "8248809e",
+     "sha": "8248809e7bbb1d222bdb32b78cae97a827c51831",
+     "date": "2026-09-30",
+     "subject": "Merge pull request #119: Sprint 17 to main (1) -- batches 4 and 5 proved, C1 adopted"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/82-native-entry-0x33c8.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-10-01-the-compiled-code-goes-on-by-default-and-the-browser-game-leaves-home",
+   "date": "2026-10-01",
+   "title": "The compiled code goes on by default, and the browser game leaves home",
+   "era": "2026-09-28 .. 2026-10-01 - Sixty, and the way back",
+   "hook": "For the first time a piece of the game's vector work runs as compiled code for every player. And the browser version of SOCOM II moved to a repository of its own.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "c77ac122",
+     "sha": "c77ac122bd074d73905abb3015310f827f805fab",
+     "date": "2026-10-01",
+     "subject": "docs: R345 -- N1c PICKED (SYNCV up in both orders), N2 not picked; the Log archived to 2026-10-01; HANDOFF, RULINGS"
+    },
+    {
+     "kind": "commit",
+     "ref": "65a1cda0",
+     "sha": "65a1cda005ccd723d66829959d67685d96373264",
+     "date": "2026-10-01",
+     "subject": "merge agent/s17-n1c-default: PS2X_VU1_NATIVE_33C8 defaults to 1, N1c adopted (Sprint 17 F, R345)"
+    },
+    {
+     "kind": "commit",
+     "ref": "9083afd0",
+     "sha": "9083afd09125420f0bb6ca7aa04e2eec793c5a1c",
+     "date": "2026-10-01",
+     "subject": "merge agent/s17-entry0-swarm: research/83 the entry-0 swarm and 0x3e; the entry-0 shape scorer (Sprint 17 F)"
+    },
+    {
+     "kind": "commit",
+     "ref": "8a5b8b87",
+     "sha": "8a5b8b872e482b4ece9d979c0d5156e55562547a",
+     "date": "2026-10-01",
+     "subject": "merge agent/s17-vu1-dispatch: no warning clock on a matched image, the native lookup cached, entry-0 split by path"
+    },
+    {
+     "kind": "commit",
+     "ref": "be557831",
+     "sha": "be5578311ff2dd33a814d39e7d6d4f2255da4da3",
+     "date": "2026-10-01",
+     "subject": "Merge pull request #130: the web teaser as a local demo replaces web/ on main (the owner's word)"
+    },
+    {
+     "kind": "commit",
+     "ref": "24788586",
+     "sha": "24788586ff85b8db4138b4e6a7b0f1e1f4d48b9f",
+     "date": "2026-10-01",
+     "subject": "docs(handoff): section 5 -- the web trees after the move to the redotcom repo (39 wt-web-* removed)"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/83-vu1-entry0-and-0x3e.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-10-01-a-second-door-the-launcher-learns-to-start-the-game-in-pcsx2",
+   "date": "2026-10-01",
+   "title": "A second door: the launcher learns to start the game in PCSX2",
+   "era": "2026-09-28 .. 2026-10-01 - Sixty, and the way back",
+   "hook": "A switch at the top of the launcher, NATIVE or PCSX2. In PCSX2 the launcher sets up the reference emulator for you, points it at the project's server, and starts it on your disc.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "b7397b9c",
+     "sha": "b7397b9c5cd0e4f12087394519eb1b60cdff8d61",
+     "date": "2026-09-30",
+     "subject": "docs(sprint-18): the PCSX2 door -- spec, plan and task book; CURRENT_SPRINT block; owner rows O29, O30"
+    },
+    {
+     "kind": "commit",
+     "ref": "6fccc50e",
+     "sha": "6fccc50e5269603010e8b35271472882631cd8d5",
+     "date": "2026-09-30",
+     "subject": "docs(sprint-18): OPEN -- spec APPROVED, R339-R344, counter R345, milestone 8 (#121-#129), Sprint 15 block archived"
+    },
+    {
+     "kind": "commit",
+     "ref": "59f96d9d",
+     "sha": "59f96d9db9df0e2cb38b4063e52d13804d1f62cc",
+     "date": "2026-10-03",
+     "subject": "docs(human): O33 is the PCSX2 door's owner row -- 53/udp, one real INSTALL from GitHub, the T0/T7 window"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/superpowers/specs/2026-10-01-sprint-18-the-pcsx2-door-design.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-10-02-the-chain-goes-green-at-16-99-and-a-second-map-of-the-code-s-names",
+   "date": "2026-10-02",
+   "title": "The chain goes green at 16.99, and a second map of the code's names",
+   "era": "2026-10-02 .. 2026-10-08 - Borrowed fixes, a quiet bed turned up, and a Mac",
+   "hook": "The frame-rate batch passed its chain, every pin and every held-out picture matching, and went to the main branch. And a community reverse-engineer's hand-written map of the game's functions was proposed as the next sprint.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "d9a2f974",
+     "sha": "d9a2f974d3644114691f5eb0b4a5980667b7325f",
+     "date": "2026-10-02",
+     "subject": "docs: batch 6 PROVED by chain s17_b6r3 (ALL GREEN); slice 2 = PR #131; PLAYTEST's block; the Sprint 19 D2 evidence"
+    },
+    {
+     "kind": "commit",
+     "ref": "a519c9bf",
+     "sha": "a519c9bf0bdf94f5a7ba39037c942b970bfa1031",
+     "date": "2026-10-02",
+     "subject": "Merge pull request #131 from Scotho/slice2-s17-to-main"
+    },
+    {
+     "kind": "commit",
+     "ref": "3ff16398",
+     "sha": "3ff16398731c7b223849dfa8d634d4f2f8083f01",
+     "date": "2026-10-02",
+     "subject": "merge agent/s17-entry0-record: research/83 §7 the entry-0 split reading -- the kick path carries the host time (S17)"
+    },
+    {
+     "kind": "commit",
+     "ref": "a013861a",
+     "sha": "a013861abd96e13ac8f62d7e3753b2c78f75a8d5",
+     "date": "2026-10-02",
+     "subject": "docs: the entry-0 reading recorded (research/83 §7); the owner's three asks done, Sprint 17 pauses; changelog"
+    },
+    {
+     "kind": "commit",
+     "ref": "9286db04",
+     "sha": "9286db040d2c2442cc670fa68437da9afe9e6b56",
+     "date": "2026-10-02",
+     "subject": "docs(spec): Sprint 19 PROPOSED -- two cartographers: Harry62's names joined to ours with provenance, tests, a way back"
+    },
+    {
+     "kind": "gate",
+     "ref": "s17_b6r3",
+     "path": "logs/parity/gate/s17_b6r3"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/superpowers/specs/2026-10-02-sprint-19-two-cartographers-design.md"
+    }
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-10-02-the-green-chain-frame.png",
+    "caption": "A frame from the mission stage of the green chain, the evening of the 2nd: the first mission's autumn trees, four teammates FOLLOWING. The gate scored this run three of three, and its clock read 16.99 milliseconds a tick over the walk."
+   }
+  },
+  {
+   "id": "2026-10-03-other-people-s-fixes-taken-with-their-credit",
+   "date": "2026-10-03",
+   "title": "Other people's fixes, taken with their credit",
+   "era": "2026-10-02 .. 2026-10-08 - Borrowed fixes, a quiet bed turned up, and a Mac",
+   "hook": "An audit of about seventy other projects that recompile or emulate the PlayStation 2, read for the problems this one still has. Their fixes came home the same day with their authors' credit, and the game's music files were read right at last.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "99d66e06",
+     "sha": "99d66e06959276bbe2021d0025c32b79a0ac9e5f",
+     "date": "2026-10-03",
+     "subject": "merge agent/s17-research85: research/85 the PS2 recomp projects audit, LATER 82-95, the licence rule (Sprint 17)"
+    },
+    {
+     "kind": "commit",
+     "ref": "4a63e7dd",
+     "sha": "4a63e7ddfee59a1d6583b4a5f47a03d76f793121",
+     "date": "2026-10-03",
+     "subject": "merge agent/s17-upstream-ports: upstream #265 pad bytes, #257 D_ENABLER mirror, #268 VCALLMSR (LATER 83)"
+    },
+    {
+     "kind": "commit",
+     "ref": "bfba8a98",
+     "sha": "bfba8a986dd3dc42a38ed76b277a778faf6e11f0",
+     "date": "2026-10-03",
+     "subject": "merge agent/s17-zfloor: #104 fragment Z floor + ZBUF format clamp from PCSX2 (LATER 84, knob PS2X_GS_ZFLOOR)"
+    },
+    {
+     "kind": "commit",
+     "ref": "05365bf6",
+     "sha": "05365bf6fe070255ef8d57426460a38ae232f979",
+     "date": "2026-10-03",
+     "subject": "merge agent/s17-horizon-38: Horizon upstream #38 -- concurrent cipher table, one shared DME event loop (LATER 86)"
+    },
+    {
+     "kind": "commit",
+     "ref": "bbf2a702",
+     "sha": "bbf2a7029fd1fabf8ae35a2f3bc23ea814c86960",
+     "date": "2026-10-03",
+     "subject": "merge agent/s17-mls-models: #72 the five r0004 requests answered -- models, stub MLS handlers (LATER 85)"
+    },
+    {
+     "kind": "commit",
+     "ref": "ff270d65",
+     "sha": "ff270d653a0772ab8b6a1db7f4902edf51a7bf24",
+     "date": "2026-10-03",
+     "subject": "merge agent/s17-audio-scale: the VPK reader's three layout fixes (LATER 97) and the #91 voice-scale knob"
+    },
+    {
+     "kind": "commit",
+     "ref": "dc5e69c4",
+     "sha": "dc5e69c4026e5d4bcde121d110d19358f21e57c3",
+     "date": "2026-10-03",
+     "subject": "docs(known): the lobby music wraps at half its data (VPK word 4 is per channel); LATER 97"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/85-ps2-recomp-projects-audit.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/LATER.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-10-04-proven-at-the-gate-the-quiet-mission-turned-up-and-a-pause",
+   "date": "2026-10-04",
+   "title": "Proven at the gate, the quiet mission turned up, and a pause",
+   "era": "2026-10-02 .. 2026-10-08 - Borrowed fixes, a quiet bed turned up, and a Mac",
+   "hook": "The day's borrowed fixes passed the parity gate together, with the game's frame rate at its best reading yet. And the mission's ambient sound, too quiet for two weeks, was turned up on the owner's word.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "cbc7a4ab",
+     "sha": "cbc7a4ab75963efe0de89e19575b5fdfb136634d",
+     "date": "2026-10-04",
+     "subject": "docs: chain 2 all-green on b1b3f023 -- the research/85 adoptions proven at the gate (3/3, pins, 12/12); PLAYTEST block"
+    },
+    {
+     "kind": "commit",
+     "ref": "f1a3e979",
+     "sha": "f1a3e979723ac5f092e09fa0e9c1de1f917365eb",
+     "date": "2026-10-04",
+     "subject": "docs: LATER 97 proven in a run -- the lobby music repeats every 188.5 s; KNOWN, LATER, Log"
+    },
+    {
+     "kind": "commit",
+     "ref": "1a70d4e5",
+     "sha": "1a70d4e569244e671fdbebf02bd7017fb1bd5b82",
+     "date": "2026-10-04",
+     "subject": "docs: the voice-scale listen capture -- the mission bed up 6 dB with the knob, into the console's band (LATER 67)"
+    },
+    {
+     "kind": "commit",
+     "ref": "9efdcaa3",
+     "sha": "9efdcaa3f76aad333d522434093e58c0dce6bd83",
+     "date": "2026-10-04",
+     "subject": "feat(snd989): R348 -- the voice register divisor is 0x4000 by default (#91); =0 restores 0x7FFE"
+    },
+    {
+     "kind": "commit",
+     "ref": "ef16241d",
+     "sha": "ef16241d144019a023da5bb4eb97daa7ca13a5eb",
+     "date": "2026-10-04",
+     "subject": "docs(research): 86 macOS support sized in three tiers; LATER 102 SIGPIPE on POSIX, 103 the tier-a port"
+    },
+    {
+     "kind": "commit",
+     "ref": "df6ad05a",
+     "sha": "df6ad05a7b50b4ee7a137cc0aba0139a5f602619",
+     "date": "2026-10-04",
+     "subject": "merge agent/s17-lessons: Sprint 17 task 98 drafted -- the F table, Q0, the VU1 reading, research/85, LATER's order"
+    },
+    {
+     "kind": "commit",
+     "ref": "898e08eb",
+     "sha": "898e08eb3583a7676a7d1b4f98db739b9f3e70f1",
+     "date": "2026-10-04",
+     "subject": "docs(handoff): the seat paused 2026-10-04 20:40Z until the usage reset; the pick-up line"
+    },
+    {
+     "kind": "gate",
+     "ref": "s17_adopt_chain2_20261004_173456",
+     "path": "logs/parity/gate/s17_adopt_chain2_20261004_173456"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/superpowers/plans/2026-09-27-sprint-17.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-10-08-socom-ii-on-a-mac-from-someone-outside-the-house",
+   "date": "2026-10-08",
+   "title": "SOCOM II on a Mac, from someone outside the house",
+   "era": "2026-10-02 .. 2026-10-08 - Borrowed fixes, a quiet bed turned up, and a Mac",
+   "hook": "A community developer ported the project to Apple Silicon Macs in his own fork, and by his own account played a mission on it, built from his own disc. On the 8th the project began taking his work home.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "ef16241d",
+     "sha": "ef16241d144019a023da5bb4eb97daa7ca13a5eb",
+     "date": "2026-10-04",
+     "subject": "docs(research): 86 macOS support sized in three tiers; LATER 102 SIGPIPE on POSIX, 103 the tier-a port"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/86-macos-support-sizing.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/LATER.md"
+    }
+   ]
   }
  ]
 }
