@@ -752,7 +752,9 @@ the plan's Log why, `docs/KNOWN.md` what is proven and what is believed, `docs/H
 
 ### macOS (Apple Silicon)
 
-Phase 1 of the macOS port (2026-10-01): the game from your own disc, offline, native arm64 -- boots, walks the menus by keyboard, plays
+Experimental, written by Grswld in his fork and taken upstream by cherry-pick on 2026-10-08. The conventions, what
+upstream has validated and the ledger of the fork's commits are in `docs/MACOS.md`; the numbers below are his, from
+his Mac. Phase 1 of the macOS port (2026-10-01): the game from your own disc, offline, native arm64 -- boots, walks the menus by keyboard, plays
 the intro movie and a mission with sound. A mission runs at about 30 ms a frame on an M2 Pro (Windows: ~27; the
 console 16.7), so it is choppy. Not yet on macOS: the launcher flow, online, the microphone, an app bundle, macOS CI.
 

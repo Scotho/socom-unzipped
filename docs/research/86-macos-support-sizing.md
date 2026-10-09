@@ -1,5 +1,12 @@
 # 86 — macOS support: what the tree needs, sized in three tiers (2026-10-04)
 
+> Superseded in part 2026-10-08 by Grswld's macOS port, taken by cherry-pick (`docs/MACOS.md`). His fork skipped
+> tier (a) and did tier (b) first: native arm64, booting offline to a mission on 2026-10-01, about a day of work on
+> a Mac. So this note's tier order and its tier (b) estimate are history. Confirmed by the port: `sigtimedwait` is
+> absent, there is no `/proc`, sse2neon carries the runtime, the x87 rounding scope is x86-only, and GL 4.1 runs
+> without clip control. Still open: FTOI and min/max NaN semantics under NEON (section 1, items 4-5), SIGPIPE on the
+> sockets (LATER 102), and all of tier (c).
+
 The owner's ask of 2026-10-04 ~14:40Z ("see what would be required for mac osx support"); one Opus research agent, read-only over sprint-17 at 7613eb8b and sprint-18 at f4c8435c, no build, no run, no Mac on hand. Markings: **[verified: file:line]** against this tree; **[inferred]** from memory, to confirm (Apple's OpenGL status, PCSX2's macOS layout). The headline: the Linux port did most of the work (every `_WIN32` site has a POSIX fallback; CMake already fetches sse2neon for arm64); tier (a) an x86-64 build for Intel or Rosetta is 4-6 loop-days of glue; tier (b) native Apple Silicon adds 4-8 (five direct x86 SIMD includes, x87 inline asm in `VuRoundingScope`, FTOI/min-max/long-double semantics to match); tier (c) a signed app bundle adds 5-8 plus the owner's Apple Developer steps. The gate on every tier: compiling the disc-derived generated code on a Mac, which no public CI runner may do. Found on the way: `send` without `MSG_NOSIGNAL` and no SIGPIPE handling (LATER 102).
 
 
