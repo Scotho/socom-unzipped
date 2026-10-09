@@ -25,6 +25,11 @@ marked **[fork]**. Everything checked here is marked **[here]**, with the date. 
 - **CI:** `.github/workflows/macos.yml` (the README's `macos` badge) builds the runtime library, the launcher,
   `vu1_replay` and `ps2x_tests` on GitHub's arm64 macOS runner with no generated code, and runs the Python suite,
   the C++ suite and the VU1 replay goldens. Not a required check. Issues about the Mac carry the `macos` label.
+  **[here, CI run 37885295297, 2026-10-09, macos-15 arm64]** The build linked; the Python suite passed; the VU1
+  replay goldens passed on arm64 (bit for bit, through sse2neon); `ps2x_tests` passed but for four wall-clock
+  tests -- the R41 VBlank re-anchor pair ("20 wakes after the stall take about 333 ms, took 1699 ms"), the PSS
+  demux's two packets per tick, and the parked recv's ticker count -- which the job now skips by name
+  (`PS2X_TEST_SKIP`). They pass on the Windows and Linux runners; whether they pass on a real Mac is open.
 - **Not on macOS yet:** the launcher flow, online play, the microphone, an `.app` bundle, signing or notarization,
   the parity gate's capture side, the Sprint 18 PCSX2 door (Windows asset names and paths, research/86
   §5), the Linux-only crash handler and host sampler. An Intel Mac or Rosetta is not a target: the fork rejected it
