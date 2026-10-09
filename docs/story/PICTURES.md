@@ -37,8 +37,10 @@ the owner's** (spec §9 Q1); `tools_py/story/cite.py` only keeps this list and t
 | `2026-09-27-the-first-sprint-16-chain-frame.png` | 2026-09-27 — Version 0.15.0 without its play test, and a sprint called "ten minutes to the server" | 392,142 | `logs/parity/gate/s16_v0/mission/w46_001.png` | our program's window, gate s16_v0 (the first Sprint 16 chain, the tree at 39bff922), mission stage step 46 |
 | `2026-09-27-the-form-the-ledger-was-written-from.png` | 2026-09-27 — The game remembers who you are, and the update has an address | 161,125 | `logs/parity/s16_l1b_step0b/launch3/02_persona.png` | our program's window on the relaunch of run s16_l1b_step0b (launch 3, nothing typed); frame inspected, carries the test persona only |
 | `2026-09-27-the-design-system-gallery.png` | 2026-09-27 — The site gets its name, the map viewer comes home, and the look is written down | 94,497 | a Playwright screenshot of `http://localhost:5181/ds/` (the scotho repository's dev server, branch s2u-design-system at 3487276), 1280x900, not full page | the site's own design-system gallery, not a frame of the game and nothing from the disc; the one picture here that is not the program's window (the owner's ask, 2026-09-27) |
+| `2026-09-29-the-main-menu-after-the-logoff.png` | 2026-09-29 — Logging off online lands on the main menu | 249,984 | `logs/parity/s17_q2_logoff/online1/final.png` | our program's window, run s17_q2_logoff (the scripted logoff on the project's server, the batch-4 exe 881c5a18, 2026-09-29 11:42Z); the main menu after the in-process restart, no persona or address on screen |
+| `2026-10-02-the-green-chain-frame.png` | 2026-10-02 — The chain goes green at 16.99, and a second map of the code's names | 394,858 | `logs/parity/gate/s17_b6r3/mission/w40_000.png` | our program's window, gate s17_b6r3 (the batch-6 chain on 368afa8c, ALL GREEN), mission stage |
 
-Total: 27 pictures and 1 video with its poster, 16,854,542 bytes.
+Total: 29 pictures and 1 video with its poster, 17,499,384 bytes.
 
 *(2026-09-25: `2026-09-14-grey-hill-before.png` was an **orphan row** — a row for a picture `docs/STORY.md` no
 longer showed, which `tools_py/story/cite.py` cannot catch because it only checks the other direction. It is the
