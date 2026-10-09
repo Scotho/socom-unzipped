@@ -398,7 +398,7 @@ namespace snd989
             // --- producer side: pumpStreams() only, under Impl::ioMutex ---
             FILE *file = nullptr;
             uint64_t dataStart = 0;      // file offset of the first chunk
-            uint32_t dataSize = 0;       // bytes of chunk data
+            uint32_t dataSize = 0;       // bytes of chunk data, ALL channels (a VPK header gives one channel's: LATER 97)
             uint32_t interleave = 0x800;
             uint32_t consumed = 0;       // chunk bytes read so far
             // Sprint 9 Goal 10 (R171): the VAG flags, as the bank decoder has always read them. Bit 2 marks the
@@ -473,7 +473,11 @@ namespace snd989
                 const uint32_t remaining = dataSize > consumed ? dataSize - consumed : 0u;
                 // research/36 item 10: `interleave` is the per-channel stride (a two-channel file: header word 3 /
                 // channels, half a streaming buffer -- see playStream). One buffer holds that many bytes of the left
-                // channel and then of the right; the last, partial buffer is split in equal halves (block-aligned).
+                // channel and then of the right. The last, partial buffer keeps that layout: L's remainder, then
+                // padding blocks (C0 00 ...) up to the half, then R's remainder at the half (the disc, 2026-10-03:
+                // MUUI0003.VPK's remainder 0x55E0 then 34 padding blocks, R at +0x5800; the stem at sector 0x11ec92,
+                // remainder 0x1C60, R at +0x5800). So channel `ch` is always at ch x chunkBytes; perChannel is only
+                // how much of it to read, and `consumed` counts data bytes, not the padding.
                 const size_t chunkBytes = static_cast<size_t>(interleave);
                 const size_t perChannel = channels > 1
                                               ? std::min<size_t>(chunkBytes, (static_cast<size_t>(remaining) / channels) & ~static_cast<size_t>(15))
@@ -491,7 +495,7 @@ namespace snd989
                         ended.store(true, std::memory_order_release);
                         continue;
                     }
-                    if (seek64(file, dataStart + chunkPairStart + static_cast<uint64_t>(ch) * perChannel) != 0)
+                    if (seek64(file, dataStart + chunkPairStart + static_cast<uint64_t>(ch) * chunkBytes) != 0)
                     {
                         ended.store(true, std::memory_order_release);
                         continue;
@@ -2213,7 +2217,8 @@ namespace snd989
         if (!fp)
             return false;
         // Two file shapes on the disc (research/32 section 5): a VPK (magic stored as the little-endian word "VPK ",
-        // so the bytes read " KPV"; data size, interleave, header size, rate, channels as little-endian words) for the
+        // so the bytes read " KPV"; per-channel data size, data offset, buffer size, rate, channels as little-endian
+        // words -- Ziemas/989snd's VPKFileHead: size, data_offset, buff_size, sample_rate, num_channels) for the
         // music, and a "VAGp" (48-byte big-endian header: data size at 0x0c, rate at 0x10; mono) for the voice-overs.
         uint8_t header[0x30] = {};
         if (seek64(fp, byteOffset) != 0 || std::fread(header, 1, sizeof(header), fp) != sizeof(header))
@@ -2232,19 +2237,29 @@ namespace snd989
         }
         if (std::memcmp(header, " KPV", 4) == 0)
         {
-            st.dataSize = u32(4);
             st.rate = u32(16) ? u32(16) : 32000u;
             st.channels = std::clamp<uint32_t>(u32(20), 1u, 2u);
+            // LATER 97 (2026-10-03): header word 1 is ONE channel's byte count. The disc's MUUI0003.VPK (the lobby
+            // music; KNOWN's lobby-music row) reads ' KPV', 0x3495E0, 0x800, 0xB000, 0x7D00, 2 in a file of
+            // 0x800 + 2 x 0x3495E0 bytes plus padding. The reader counts every channel's bytes against dataSize, so
+            // the total is word 1 x channels; taking word 1 as the total ended (or, looping, wrapped) a two-channel
+            // stream at half its data -- the lobby music's 94.2 s of 188.5 s. One channel: the same number as before.
+            st.dataSize = static_cast<uint32_t>(std::min<uint64_t>(static_cast<uint64_t>(u32(4)) * st.channels, 0xFFFFFFFFull));
             // research/36 item 10 (2026-09-20): header word 3 is the streaming BUFFER the file was authored for
             // (0xb000 on every SOCOM stem; the IRX's FUN_00013334 refuses a file whose word 3 differs from its
-            // stream buffer) and the data starts there. A two-channel file is interleaved per buffer -- half of
-            // each buffer is the left channel, then half the right (the IRX's per-channel stride is
-            // `puVar12[3] >> 1`) -- so the per-channel stride is word 3 / channels, NOT word 2 (0x800, the
-            // streamer's refill grain). Reading 0x800 chunks as alternating channels put different music in the
-            // two channels: run 10's L/R correlation of 0.05 at lag 0 against the console's 0.3-0.6.
-            st.interleave = st.channels > 1 ? std::max<uint32_t>(16u, (u32(12) / st.channels) & ~15u)
-                                            : std::max<uint32_t>(16u, u32(8));
-            st.dataStart = byteOffset + u32(12);
+            // stream buffer). A two-channel file is interleaved per buffer -- half of each buffer is the left
+            // channel, then half the right (the IRX's per-channel stride is `puVar12[3] >> 1`) -- so the
+            // per-channel stride is word 3 / channels. Reading 0x800 chunks as alternating channels put different
+            // music in the two channels: run 10's L/R correlation of 0.05 at lag 0 against the console's 0.3-0.6.
+            // LATER 97 (2026-10-03): the data starts at word 2, data_offset (0x800 on the disc), not at word 3.
+            // The disc's members are 0x800 + k x 0xb000 bytes with audio from 0x800 on: MUUI0003.VPK is
+            // 0x800 + 153 x 0xb000, the stem at sector 0x11ec92 0x800 + 7 x 0xb000, the next member's ' KPV'
+            // exactly there. Started at word 3, every chunk began with 0x800 bytes of the other channel (a
+            // wrong-channel splice every 0x5800 bytes per channel, 1.23 s at 32 kHz), the first buffer never
+            // played, and -- with the per-channel size above -- the last read ran into the next member's header,
+            // whose ' K' byte reads as the end-and-repeat flags (an endless loop on the real stem).
+            st.interleave = st.channels > 1 ? std::max<uint32_t>(16u, (u32(12) / st.channels) & ~15u) : 0x800u;
+            st.dataStart = byteOffset + u32(8);
         }
         else if (std::memcmp(header, "VAGp", 4) == 0)
         {
@@ -2266,6 +2281,7 @@ namespace snd989
         st.group = group;
         // Issue #94: before the pre-fill below, the first decode of the file. A file under one chunk per channel
         // plays once instead: looped, each pump yields a sliver and the ring starves (an underrun every render).
+        // dataSize is all channels' bytes (LATER 97), so this is "at least one whole chunk per channel".
         st.loopFile = loopFile && st.dataSize >= st.interleave * st.channels;
         st.step = static_cast<double>(st.rate) / static_cast<double>(kSampleRate);
         st.s1.assign(st.channels, 0);

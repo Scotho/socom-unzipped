@@ -55,6 +55,10 @@ add_library(ps2_test_lib STATIC
     src/ps2_vu1_tests.cpp
     src/vu1_native_tests.cpp
     src/vu1_ops_tests.cpp   # Sprint 17 F C1: the product-sum fast path against its slow classifier
+    src/gs_gl_flush_reasons_tests.cpp   # macOS perf step 1: flush reasons, pipeline states, frame percentiles
+    src/vblank_period_tests.cpp   # macOS fork: PS2X_VBLANK_NTSC
+    src/socom2_mouse_tests.cpp   # macOS fork: mouse look and aim-hold
+    src/host_thread_qos_tests.cpp   # macOS fork: the game thread on the performance cores
     src/ps2_vu_tests.cpp
     src/ps2_gs_tests.cpp
     src/gs_frame_backpressure_tests.cpp
@@ -174,6 +178,8 @@ target_sources(ps2x_tests PRIVATE
 # now calls its socom2HostInputShutdown(); pad_input_tests.cpp drives that shutdown directly.
 target_sources(ps2x_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/ps2xRuntime/src/lib/socom2_host_input.cpp
+    ${CMAKE_SOURCE_DIR}/ps2xRuntime/src/lib/socom2_mouse.cpp
+    ${CMAKE_SOURCE_DIR}/ps2xRuntime/src/lib/socom2_mouse_gc_stub.cpp
 )
 target_include_directories(ps2x_tests PRIVATE ${CMAKE_SOURCE_DIR}/ps2xRuntime/src/lib)
 if(WIN32)

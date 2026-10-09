@@ -93,8 +93,9 @@ namespace ps2_stubs
     void socom2ApplyKeyboard(const launcher::mapping::Mapping &mapping, KeyboardScope scope, bool (*isKeyDown)(int key),
                              Socom2PadState &next);
 
-    // Refresh `pad` from the host. Safe to call before the window exists (does nothing then).
-    void socom2HostInputPoll(Socom2PadState &pad);
+    // Refresh `pad` from the host. Safe to call before the window exists (does nothing then). `rdram` is the
+    // guest's RAM (scePad2Read passes it): the mouse reads the view mode and writes look (socom2_mouse.h); nullptr: neither.
+    void socom2HostInputPoll(Socom2PadState &pad, uint8_t *rdram = nullptr);
 
     // Sprint 7 review finding F12: the PS2X_SOCOM2_INPUT_FILE sampler is a thread, and it used to be joined
     // only by the destructor of a namespace-scope static -- which main never reaches, because it leaves through

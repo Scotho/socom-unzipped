@@ -78,7 +78,7 @@ namespace ps2_stubs
         // reads it raw, and return a positive data length so FUN_002da930 proceeds.
         const uint32_t buf = GPR_U32(ctx, 5) & PS2_RAM_MASK;
         if (socom2PadEnabled())
-            socom2HostInputPoll(g_socom2Pad);
+            socom2HostInputPoll(g_socom2Pad, rdram);
         uint8_t report[32] = {0};
         report[0] = 0x00;
         report[1] = 0x79;                   // DS2 analog + pressure mode
