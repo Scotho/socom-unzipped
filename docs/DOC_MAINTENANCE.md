@@ -84,6 +84,9 @@ Everything else is classified **by location**, and needs no row:
   `tools_py/tests/test_doc_maintenance.py` holds each to its filename date and its `**Publish:** the owner` line.
 - `docs/templates/**` — **C**. The templates (an announcement, a wiki page); `docs/story/release-entry.template.md`
   predates the directory and keeps its row.
+- `docs/status/**` — **G**. `detail.md` and `map.svg` (the README's status map) are written by
+  `python -m tools_py.status_map` from `docs/status/status.toml`; edit the toml, regenerate, and `--check` (held by
+  `tools_py/tests/test_status_map.py`) refuses a stale output. Statuses follow `docs/KNOWN.md`.
 - `third_party/**`, `server/horizon-server/**` — vendored. Not ours to maintain; do not edit to match our tree.
 - `tools_py/**/README.md`, `tests/fixtures/**/README.md` — **S**, owned by the fixture or tool beside them.
 

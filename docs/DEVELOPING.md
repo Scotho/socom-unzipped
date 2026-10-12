@@ -895,6 +895,10 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
 - **The known-issue stack** (2026-09-23): `python -m tools_py.issues skeleton | check-body | open | close | audit`
   over the repository's issues labelled `known-issue`, one milestone per sprint. `audit` exits 0 or names the row,
   citation, label or body that is wrong; `--json FILE` replays a saved `gh issue list` listing offline.
+- **The README status map** (2026-10-12): `python -m tools_py.status_map [--check]` regenerates
+  `docs/status/map.svg` and `docs/status/detail.md` from `docs/status/status.toml` (the Sony SDK libraries of
+  SCUS_972.75, the PS2 hardware, and the recomp and server badges; the web side is out of scope by the owner's
+  ruling). The status rule is in the toml's header; when a KNOWN row moves a status, edit the toml and regenerate.
 - **The hosted box:** agent instructions are git-ignored in `vm/lightsail/README.md`. It is the server session's.
   Its fifth unit, `socom-dns` (Sprint 18, R342), answers SOCOM II's six retail host names on 53/udp with
   `muis.json`'s `Endpoint` and NXDOMAIN for every other name, so the launcher's PCSX2 client (which gives PCSX2 the
