@@ -1,0 +1,1453 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="534" viewBox="0 0 960 534" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" role="img" aria-labelledby="status-title">
+<title id="status-title">SOCOM Unzipped: status: Sony SDK libraries 88.6%, PS2 hardware 58.1%</title>
+<style>
+  .bg { fill: #0d1117; } .edge { stroke: #30363d; } .panel { fill: #161b22; }
+  .t1 { fill: #e6edf3; } .t2 { fill: #9198a1; } .dark { fill: #0d1117; }
+  .ok { fill: #2ea043; } .partial { fill: #d29922; } .pending { fill: #484f58; }
+  .hatch { stroke: #6e4b00; } .chip { fill: #0d1117; fill-opacity: .82; } .key { fill: #30363d; }
+  .pct { fill: #1f6feb; } .pct-t { fill: #ffffff; }
+</style>
+<defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line class="hatch" x1="0" y1="0" x2="0" y2="6" stroke-width="1.6" stroke-opacity=".6"/></pattern></defs>
+<rect class="bg" x="0" y="0" width="960" height="534" rx="8"/>
+<text class="t1" x="20" y="36" font-size="22" font-weight="600">SOCOM Unzipped: status</text>
+<line class="edge" x1="20" y1="46" x2="940" y2="46" stroke-width="1"/>
+<rect class="key" x="20" y="58" width="193.3" height="22" rx="3"/>
+<rect class="pct" x="163.7" y="58" width="49.6" height="22" rx="3"/>
+<rect class="pct" x="163.7" y="58" width="4" height="22"/>
+<text class="t1" x="91.8" y="73" font-size="12" text-anchor="middle">Sony SDK libraries*</text>
+<text class="pct-t" x="188.5" y="73" font-size="12" font-weight="600" text-anchor="middle">88.6%</text>
+<rect class="key" x="223.3" y="58" width="146.2" height="22" rx="3"/>
+<rect class="pct" x="319.9" y="58" width="49.6" height="22" rx="3"/>
+<rect class="pct" x="319.9" y="58" width="4" height="22"/>
+<text class="t1" x="271.6" y="73" font-size="12" text-anchor="middle">PS2 hardware</text>
+<text class="pct-t" x="344.7" y="73" font-size="12" font-weight="600" text-anchor="middle">58.1%</text>
+<line class="edge" x1="381.5" y1="58" x2="381.5" y2="80" stroke-width="1"/>
+<rect class="key" x="393.5" y="58" width="146.2" height="22" rx="3"/>
+<rect class="pct" x="503.6" y="58" width="36.2" height="22" rx="3"/>
+<rect class="pct" x="503.6" y="58" width="4" height="22"/>
+<text class="t1" x="448.6" y="73" font-size="12" text-anchor="middle">recomp + game†</text>
+<text class="pct-t" x="521.7" y="73" font-size="12" font-weight="600" text-anchor="middle">58%</text>
+<rect class="key" x="549.8" y="58" width="99.2" height="22" rx="3"/>
+<rect class="pct" x="612.8" y="58" width="36.2" height="22" rx="3"/>
+<rect class="pct" x="612.8" y="58" width="4" height="22"/>
+<text class="t1" x="581.3" y="73" font-size="12" text-anchor="middle">server†</text>
+<text class="pct-t" x="630.9" y="73" font-size="12" font-weight="600" text-anchor="middle">55%</text>
+<text class="t1" x="20" y="108" font-size="14" font-weight="600">Sony SDK libraries*: 88.6% (1021/1152 functions)</text>
+<rect class="panel" x="20" y="118" width="450" height="320"/>
+<g><title>MSL C++ std: 169 functions -- Working. Metrowerks Standard Library (iostreams, locale, ctype, codecvt, string), recompiled as is. No defect or divergence in KNOWN or LATER, and no KNOWN row exercises it -- unverified, which by this map&#x27;s rule is not partial.</title>
+<rect class="ok" x="22" y="120" width="8.8" height="11.2"/>
+<rect class="ok" x="31.8" y="120" width="8.8" height="11.2"/>
+<rect class="ok" x="41.6" y="120" width="8.8" height="11.2"/>
+<rect class="ok" x="51.4" y="120" width="8.8" height="11.2"/>
+<rect class="ok" x="61.2" y="120" width="8.8" height="11.2"/>
+<rect class="ok" x="71" y="120" width="8.8" height="11.2"/>
+<rect class="ok" x="80.8" y="120" width="8.8" height="11.2"/>
+<rect class="ok" x="90.6" y="120" width="8.8" height="11.2"/>
+<rect class="ok" x="100.4" y="120" width="8.8" height="11.2"/>
+<rect class="ok" x="110.2" y="120" width="8.8" height="11.2"/>
+<rect class="ok" x="120.1" y="120" width="8.8" height="11.2"/>
+<rect class="ok" x="129.9" y="120" width="8.8" height="11.2"/>
+<rect class="ok" x="139.7" y="120" width="8.8" height="11.2"/>
+<rect class="ok" x="22" y="132.2" width="8.8" height="11.2"/>
+<rect class="ok" x="31.8" y="132.2" width="8.8" height="11.2"/>
+<rect class="ok" x="41.6" y="132.2" width="8.8" height="11.2"/>
+<rect class="ok" x="51.4" y="132.2" width="8.8" height="11.2"/>
+<rect class="ok" x="61.2" y="132.2" width="8.8" height="11.2"/>
+<rect class="ok" x="71" y="132.2" width="8.8" height="11.2"/>
+<rect class="ok" x="80.8" y="132.2" width="8.8" height="11.2"/>
+<rect class="ok" x="90.6" y="132.2" width="8.8" height="11.2"/>
+<rect class="ok" x="100.4" y="132.2" width="8.8" height="11.2"/>
+<rect class="ok" x="110.2" y="132.2" width="8.8" height="11.2"/>
+<rect class="ok" x="120.1" y="132.2" width="8.8" height="11.2"/>
+<rect class="ok" x="129.9" y="132.2" width="8.8" height="11.2"/>
+<rect class="ok" x="139.7" y="132.2" width="8.8" height="11.2"/>
+<rect class="ok" x="22" y="144.4" width="8.8" height="11.2"/>
+<rect class="ok" x="31.8" y="144.4" width="8.8" height="11.2"/>
+<rect class="ok" x="41.6" y="144.4" width="8.8" height="11.2"/>
+<rect class="ok" x="51.4" y="144.4" width="8.8" height="11.2"/>
+<rect class="ok" x="61.2" y="144.4" width="8.8" height="11.2"/>
+<rect class="ok" x="71" y="144.4" width="8.8" height="11.2"/>
+<rect class="ok" x="80.8" y="144.4" width="8.8" height="11.2"/>
+<rect class="ok" x="90.6" y="144.4" width="8.8" height="11.2"/>
+<rect class="ok" x="100.4" y="144.4" width="8.8" height="11.2"/>
+<rect class="ok" x="110.2" y="144.4" width="8.8" height="11.2"/>
+<rect class="ok" x="120.1" y="144.4" width="8.8" height="11.2"/>
+<rect class="ok" x="129.9" y="144.4" width="8.8" height="11.2"/>
+<rect class="ok" x="139.7" y="144.4" width="8.8" height="11.2"/>
+<rect class="ok" x="22" y="156.7" width="8.8" height="11.2"/>
+<rect class="ok" x="31.8" y="156.7" width="8.8" height="11.2"/>
+<rect class="ok" x="41.6" y="156.7" width="8.8" height="11.2"/>
+<rect class="ok" x="51.4" y="156.7" width="8.8" height="11.2"/>
+<rect class="ok" x="61.2" y="156.7" width="8.8" height="11.2"/>
+<rect class="ok" x="71" y="156.7" width="8.8" height="11.2"/>
+<rect class="ok" x="80.8" y="156.7" width="8.8" height="11.2"/>
+<rect class="ok" x="90.6" y="156.7" width="8.8" height="11.2"/>
+<rect class="ok" x="100.4" y="156.7" width="8.8" height="11.2"/>
+<rect class="ok" x="110.2" y="156.7" width="8.8" height="11.2"/>
+<rect class="ok" x="120.1" y="156.7" width="8.8" height="11.2"/>
+<rect class="ok" x="129.9" y="156.7" width="8.8" height="11.2"/>
+<rect class="ok" x="139.7" y="156.7" width="8.8" height="11.2"/>
+<rect class="ok" x="22" y="168.9" width="8.8" height="11.2"/>
+<rect class="ok" x="31.8" y="168.9" width="8.8" height="11.2"/>
+<rect class="ok" x="41.6" y="168.9" width="8.8" height="11.2"/>
+<rect class="ok" x="51.4" y="168.9" width="8.8" height="11.2"/>
+<rect class="ok" x="61.2" y="168.9" width="8.8" height="11.2"/>
+<rect class="ok" x="71" y="168.9" width="8.8" height="11.2"/>
+<rect class="ok" x="80.8" y="168.9" width="8.8" height="11.2"/>
+<rect class="ok" x="90.6" y="168.9" width="8.8" height="11.2"/>
+<rect class="ok" x="100.4" y="168.9" width="8.8" height="11.2"/>
+<rect class="ok" x="110.2" y="168.9" width="8.8" height="11.2"/>
+<rect class="ok" x="120.1" y="168.9" width="8.8" height="11.2"/>
+<rect class="ok" x="129.9" y="168.9" width="8.8" height="11.2"/>
+<rect class="ok" x="139.7" y="168.9" width="8.8" height="11.2"/>
+<rect class="ok" x="22" y="181.1" width="8.8" height="11.2"/>
+<rect class="ok" x="31.8" y="181.1" width="8.8" height="11.2"/>
+<rect class="ok" x="41.6" y="181.1" width="8.8" height="11.2"/>
+<rect class="ok" x="51.4" y="181.1" width="8.8" height="11.2"/>
+<rect class="ok" x="61.2" y="181.1" width="8.8" height="11.2"/>
+<rect class="ok" x="71" y="181.1" width="8.8" height="11.2"/>
+<rect class="ok" x="80.8" y="181.1" width="8.8" height="11.2"/>
+<rect class="ok" x="90.6" y="181.1" width="8.8" height="11.2"/>
+<rect class="ok" x="100.4" y="181.1" width="8.8" height="11.2"/>
+<rect class="ok" x="110.2" y="181.1" width="8.8" height="11.2"/>
+<rect class="ok" x="120.1" y="181.1" width="8.8" height="11.2"/>
+<rect class="ok" x="129.9" y="181.1" width="8.8" height="11.2"/>
+<rect class="ok" x="139.7" y="181.1" width="8.8" height="11.2"/>
+<rect class="ok" x="22" y="193.3" width="8.8" height="11.2"/>
+<rect class="ok" x="31.8" y="193.3" width="8.8" height="11.2"/>
+<rect class="ok" x="41.6" y="193.3" width="8.8" height="11.2"/>
+<rect class="ok" x="51.4" y="193.3" width="8.8" height="11.2"/>
+<rect class="ok" x="61.2" y="193.3" width="8.8" height="11.2"/>
+<rect class="ok" x="71" y="193.3" width="8.8" height="11.2"/>
+<rect class="ok" x="80.8" y="193.3" width="8.8" height="11.2"/>
+<rect class="ok" x="90.6" y="193.3" width="8.8" height="11.2"/>
+<rect class="ok" x="100.4" y="193.3" width="8.8" height="11.2"/>
+<rect class="ok" x="110.2" y="193.3" width="8.8" height="11.2"/>
+<rect class="ok" x="120.1" y="193.3" width="8.8" height="11.2"/>
+<rect class="ok" x="129.9" y="193.3" width="8.8" height="11.2"/>
+<rect class="ok" x="139.7" y="193.3" width="8.8" height="11.2"/>
+<rect class="ok" x="22" y="205.6" width="8.8" height="11.2"/>
+<rect class="ok" x="31.8" y="205.6" width="8.8" height="11.2"/>
+<rect class="ok" x="41.6" y="205.6" width="8.8" height="11.2"/>
+<rect class="ok" x="51.4" y="205.6" width="8.8" height="11.2"/>
+<rect class="ok" x="61.2" y="205.6" width="8.8" height="11.2"/>
+<rect class="ok" x="71" y="205.6" width="8.8" height="11.2"/>
+<rect class="ok" x="80.8" y="205.6" width="8.8" height="11.2"/>
+<rect class="ok" x="90.6" y="205.6" width="8.8" height="11.2"/>
+<rect class="ok" x="100.4" y="205.6" width="8.8" height="11.2"/>
+<rect class="ok" x="110.2" y="205.6" width="8.8" height="11.2"/>
+<rect class="ok" x="120.1" y="205.6" width="8.8" height="11.2"/>
+<rect class="ok" x="129.9" y="205.6" width="8.8" height="11.2"/>
+<rect class="ok" x="139.7" y="205.6" width="8.8" height="11.2"/>
+<rect class="ok" x="22" y="217.8" width="8.8" height="11.2"/>
+<rect class="ok" x="31.8" y="217.8" width="8.8" height="11.2"/>
+<rect class="ok" x="41.6" y="217.8" width="8.8" height="11.2"/>
+<rect class="ok" x="51.4" y="217.8" width="8.8" height="11.2"/>
+<rect class="ok" x="61.2" y="217.8" width="8.8" height="11.2"/>
+<rect class="ok" x="71" y="217.8" width="8.8" height="11.2"/>
+<rect class="ok" x="80.8" y="217.8" width="8.8" height="11.2"/>
+<rect class="ok" x="90.6" y="217.8" width="8.8" height="11.2"/>
+<rect class="ok" x="100.4" y="217.8" width="8.8" height="11.2"/>
+<rect class="ok" x="110.2" y="217.8" width="8.8" height="11.2"/>
+<rect class="ok" x="120.1" y="217.8" width="8.8" height="11.2"/>
+<rect class="ok" x="129.9" y="217.8" width="8.8" height="11.2"/>
+<rect class="ok" x="139.7" y="217.8" width="8.8" height="11.2"/>
+<rect class="ok" x="22" y="230" width="8.8" height="11.2"/>
+<rect class="ok" x="31.8" y="230" width="8.8" height="11.2"/>
+<rect class="ok" x="41.6" y="230" width="8.8" height="11.2"/>
+<rect class="ok" x="51.4" y="230" width="8.8" height="11.2"/>
+<rect class="ok" x="61.2" y="230" width="8.8" height="11.2"/>
+<rect class="ok" x="71" y="230" width="8.8" height="11.2"/>
+<rect class="ok" x="80.8" y="230" width="8.8" height="11.2"/>
+<rect class="ok" x="90.6" y="230" width="8.8" height="11.2"/>
+<rect class="ok" x="100.4" y="230" width="8.8" height="11.2"/>
+<rect class="ok" x="110.2" y="230" width="8.8" height="11.2"/>
+<rect class="ok" x="120.1" y="230" width="8.8" height="11.2"/>
+<rect class="ok" x="129.9" y="230" width="8.8" height="11.2"/>
+<rect class="ok" x="139.7" y="230" width="8.8" height="11.2"/>
+<rect class="ok" x="22" y="242.2" width="8.8" height="11.2"/>
+<rect class="ok" x="31.8" y="242.2" width="8.8" height="11.2"/>
+<rect class="ok" x="41.6" y="242.2" width="8.8" height="11.2"/>
+<rect class="ok" x="51.4" y="242.2" width="8.8" height="11.2"/>
+<rect class="ok" x="61.2" y="242.2" width="8.8" height="11.2"/>
+<rect class="ok" x="71" y="242.2" width="8.8" height="11.2"/>
+<rect class="ok" x="80.8" y="242.2" width="8.8" height="11.2"/>
+<rect class="ok" x="90.6" y="242.2" width="8.8" height="11.2"/>
+<rect class="ok" x="100.4" y="242.2" width="8.8" height="11.2"/>
+<rect class="ok" x="110.2" y="242.2" width="8.8" height="11.2"/>
+<rect class="ok" x="120.1" y="242.2" width="8.8" height="11.2"/>
+<rect class="ok" x="129.9" y="242.2" width="8.8" height="11.2"/>
+<rect class="ok" x="139.7" y="242.2" width="8.8" height="11.2"/>
+<rect class="ok" x="22" y="254.5" width="8.8" height="11.2"/>
+<rect class="ok" x="31.8" y="254.5" width="8.8" height="11.2"/>
+<rect class="ok" x="41.6" y="254.5" width="8.8" height="11.2"/>
+<rect class="ok" x="51.4" y="254.5" width="8.8" height="11.2"/>
+<rect class="ok" x="61.2" y="254.5" width="8.8" height="11.2"/>
+<rect class="ok" x="71" y="254.5" width="8.8" height="11.2"/>
+<rect class="ok" x="80.8" y="254.5" width="8.8" height="11.2"/>
+<rect class="ok" x="90.6" y="254.5" width="8.8" height="11.2"/>
+<rect class="ok" x="100.4" y="254.5" width="8.8" height="11.2"/>
+<rect class="ok" x="110.2" y="254.5" width="8.8" height="11.2"/>
+<rect class="ok" x="120.1" y="254.5" width="8.8" height="11.2"/>
+<rect class="ok" x="129.9" y="254.5" width="8.8" height="11.2"/>
+<rect class="ok" x="139.7" y="254.5" width="8.8" height="11.2"/>
+<rect class="ok" x="22" y="266.7" width="8.8" height="11.2"/>
+<rect class="ok" x="31.8" y="266.7" width="8.8" height="11.2"/>
+<rect class="ok" x="41.6" y="266.7" width="8.8" height="11.2"/>
+<rect class="ok" x="51.4" y="266.7" width="8.8" height="11.2"/>
+<rect class="ok" x="61.2" y="266.7" width="8.8" height="11.2"/>
+<rect class="ok" x="71" y="266.7" width="8.8" height="11.2"/>
+<rect class="ok" x="80.8" y="266.7" width="8.8" height="11.2"/>
+<rect class="ok" x="90.6" y="266.7" width="8.8" height="11.2"/>
+<rect class="ok" x="100.4" y="266.7" width="8.8" height="11.2"/>
+<rect class="ok" x="110.2" y="266.7" width="8.8" height="11.2"/>
+<rect class="ok" x="120.1" y="266.7" width="8.8" height="11.2"/>
+<rect class="ok" x="129.9" y="266.7" width="8.8" height="11.2"/>
+<rect class="ok" x="139.7" y="266.7" width="8.8" height="11.2"/>
+</g>
+<g><title>libc (newlib): 165 functions -- Working. Recompiled newlib. KNOWN section 1: &#x27;rand() returned 15 bits over a _rand_next frozen at 41&#x27; -- fixed (ede2096).</title>
+<rect class="ok" x="22" y="281.9" width="10.6" height="9.3"/>
+<rect class="ok" x="33.6" y="281.9" width="10.6" height="9.3"/>
+<rect class="ok" x="45.2" y="281.9" width="10.6" height="9.3"/>
+<rect class="ok" x="56.8" y="281.9" width="10.6" height="9.3"/>
+<rect class="ok" x="68.4" y="281.9" width="10.6" height="9.3"/>
+<rect class="ok" x="79.9" y="281.9" width="10.6" height="9.3"/>
+<rect class="ok" x="91.5" y="281.9" width="10.6" height="9.3"/>
+<rect class="ok" x="103.1" y="281.9" width="10.6" height="9.3"/>
+<rect class="ok" x="114.7" y="281.9" width="10.6" height="9.3"/>
+<rect class="ok" x="126.3" y="281.9" width="10.6" height="9.3"/>
+<rect class="ok" x="137.9" y="281.9" width="10.6" height="9.3"/>
+<rect class="ok" x="22" y="292.3" width="10.6" height="9.3"/>
+<rect class="ok" x="33.6" y="292.3" width="10.6" height="9.3"/>
+<rect class="ok" x="45.2" y="292.3" width="10.6" height="9.3"/>
+<rect class="ok" x="56.8" y="292.3" width="10.6" height="9.3"/>
+<rect class="ok" x="68.4" y="292.3" width="10.6" height="9.3"/>
+<rect class="ok" x="79.9" y="292.3" width="10.6" height="9.3"/>
+<rect class="ok" x="91.5" y="292.3" width="10.6" height="9.3"/>
+<rect class="ok" x="103.1" y="292.3" width="10.6" height="9.3"/>
+<rect class="ok" x="114.7" y="292.3" width="10.6" height="9.3"/>
+<rect class="ok" x="126.3" y="292.3" width="10.6" height="9.3"/>
+<rect class="ok" x="137.9" y="292.3" width="10.6" height="9.3"/>
+<rect class="ok" x="22" y="302.6" width="10.6" height="9.3"/>
+<rect class="ok" x="33.6" y="302.6" width="10.6" height="9.3"/>
+<rect class="ok" x="45.2" y="302.6" width="10.6" height="9.3"/>
+<rect class="ok" x="56.8" y="302.6" width="10.6" height="9.3"/>
+<rect class="ok" x="68.4" y="302.6" width="10.6" height="9.3"/>
+<rect class="ok" x="79.9" y="302.6" width="10.6" height="9.3"/>
+<rect class="ok" x="91.5" y="302.6" width="10.6" height="9.3"/>
+<rect class="ok" x="103.1" y="302.6" width="10.6" height="9.3"/>
+<rect class="ok" x="114.7" y="302.6" width="10.6" height="9.3"/>
+<rect class="ok" x="126.3" y="302.6" width="10.6" height="9.3"/>
+<rect class="ok" x="137.9" y="302.6" width="10.6" height="9.3"/>
+<rect class="ok" x="22" y="312.9" width="10.6" height="9.3"/>
+<rect class="ok" x="33.6" y="312.9" width="10.6" height="9.3"/>
+<rect class="ok" x="45.2" y="312.9" width="10.6" height="9.3"/>
+<rect class="ok" x="56.8" y="312.9" width="10.6" height="9.3"/>
+<rect class="ok" x="68.4" y="312.9" width="10.6" height="9.3"/>
+<rect class="ok" x="79.9" y="312.9" width="10.6" height="9.3"/>
+<rect class="ok" x="91.5" y="312.9" width="10.6" height="9.3"/>
+<rect class="ok" x="103.1" y="312.9" width="10.6" height="9.3"/>
+<rect class="ok" x="114.7" y="312.9" width="10.6" height="9.3"/>
+<rect class="ok" x="126.3" y="312.9" width="10.6" height="9.3"/>
+<rect class="ok" x="137.9" y="312.9" width="10.6" height="9.3"/>
+<rect class="ok" x="22" y="323.3" width="10.6" height="9.3"/>
+<rect class="ok" x="33.6" y="323.3" width="10.6" height="9.3"/>
+<rect class="ok" x="45.2" y="323.3" width="10.6" height="9.3"/>
+<rect class="ok" x="56.8" y="323.3" width="10.6" height="9.3"/>
+<rect class="ok" x="68.4" y="323.3" width="10.6" height="9.3"/>
+<rect class="ok" x="79.9" y="323.3" width="10.6" height="9.3"/>
+<rect class="ok" x="91.5" y="323.3" width="10.6" height="9.3"/>
+<rect class="ok" x="103.1" y="323.3" width="10.6" height="9.3"/>
+<rect class="ok" x="114.7" y="323.3" width="10.6" height="9.3"/>
+<rect class="ok" x="126.3" y="323.3" width="10.6" height="9.3"/>
+<rect class="ok" x="137.9" y="323.3" width="10.6" height="9.3"/>
+<rect class="ok" x="22" y="333.6" width="10.6" height="9.3"/>
+<rect class="ok" x="33.6" y="333.6" width="10.6" height="9.3"/>
+<rect class="ok" x="45.2" y="333.6" width="10.6" height="9.3"/>
+<rect class="ok" x="56.8" y="333.6" width="10.6" height="9.3"/>
+<rect class="ok" x="68.4" y="333.6" width="10.6" height="9.3"/>
+<rect class="ok" x="79.9" y="333.6" width="10.6" height="9.3"/>
+<rect class="ok" x="91.5" y="333.6" width="10.6" height="9.3"/>
+<rect class="ok" x="103.1" y="333.6" width="10.6" height="9.3"/>
+<rect class="ok" x="114.7" y="333.6" width="10.6" height="9.3"/>
+<rect class="ok" x="126.3" y="333.6" width="10.6" height="9.3"/>
+<rect class="ok" x="137.9" y="333.6" width="10.6" height="9.3"/>
+<rect class="ok" x="22" y="343.9" width="10.6" height="9.3"/>
+<rect class="ok" x="33.6" y="343.9" width="10.6" height="9.3"/>
+<rect class="ok" x="45.2" y="343.9" width="10.6" height="9.3"/>
+<rect class="ok" x="56.8" y="343.9" width="10.6" height="9.3"/>
+<rect class="ok" x="68.4" y="343.9" width="10.6" height="9.3"/>
+<rect class="ok" x="79.9" y="343.9" width="10.6" height="9.3"/>
+<rect class="ok" x="91.5" y="343.9" width="10.6" height="9.3"/>
+<rect class="ok" x="103.1" y="343.9" width="10.6" height="9.3"/>
+<rect class="ok" x="114.7" y="343.9" width="10.6" height="9.3"/>
+<rect class="ok" x="126.3" y="343.9" width="10.6" height="9.3"/>
+<rect class="ok" x="137.9" y="343.9" width="10.6" height="9.3"/>
+<rect class="ok" x="22" y="354.3" width="10.6" height="9.3"/>
+<rect class="ok" x="33.6" y="354.3" width="10.6" height="9.3"/>
+<rect class="ok" x="45.2" y="354.3" width="10.6" height="9.3"/>
+<rect class="ok" x="56.8" y="354.3" width="10.6" height="9.3"/>
+<rect class="ok" x="68.4" y="354.3" width="10.6" height="9.3"/>
+<rect class="ok" x="79.9" y="354.3" width="10.6" height="9.3"/>
+<rect class="ok" x="91.5" y="354.3" width="10.6" height="9.3"/>
+<rect class="ok" x="103.1" y="354.3" width="10.6" height="9.3"/>
+<rect class="ok" x="114.7" y="354.3" width="10.6" height="9.3"/>
+<rect class="ok" x="126.3" y="354.3" width="10.6" height="9.3"/>
+<rect class="ok" x="137.9" y="354.3" width="10.6" height="9.3"/>
+<rect class="ok" x="22" y="364.6" width="10.6" height="9.3"/>
+<rect class="ok" x="33.6" y="364.6" width="10.6" height="9.3"/>
+<rect class="ok" x="45.2" y="364.6" width="10.6" height="9.3"/>
+<rect class="ok" x="56.8" y="364.6" width="10.6" height="9.3"/>
+<rect class="ok" x="68.4" y="364.6" width="10.6" height="9.3"/>
+<rect class="ok" x="79.9" y="364.6" width="10.6" height="9.3"/>
+<rect class="ok" x="91.5" y="364.6" width="10.6" height="9.3"/>
+<rect class="ok" x="103.1" y="364.6" width="10.6" height="9.3"/>
+<rect class="ok" x="114.7" y="364.6" width="10.6" height="9.3"/>
+<rect class="ok" x="126.3" y="364.6" width="10.6" height="9.3"/>
+<rect class="ok" x="137.9" y="364.6" width="10.6" height="9.3"/>
+<rect class="ok" x="22" y="375" width="10.6" height="9.3"/>
+<rect class="ok" x="33.6" y="375" width="10.6" height="9.3"/>
+<rect class="ok" x="45.2" y="375" width="10.6" height="9.3"/>
+<rect class="ok" x="56.8" y="375" width="10.6" height="9.3"/>
+<rect class="ok" x="68.4" y="375" width="10.6" height="9.3"/>
+<rect class="ok" x="79.9" y="375" width="10.6" height="9.3"/>
+<rect class="ok" x="91.5" y="375" width="10.6" height="9.3"/>
+<rect class="ok" x="103.1" y="375" width="10.6" height="9.3"/>
+<rect class="ok" x="114.7" y="375" width="10.6" height="9.3"/>
+<rect class="ok" x="126.3" y="375" width="10.6" height="9.3"/>
+<rect class="ok" x="137.9" y="375" width="10.6" height="9.3"/>
+<rect class="ok" x="22" y="385.3" width="10.6" height="9.3"/>
+<rect class="ok" x="33.6" y="385.3" width="10.6" height="9.3"/>
+<rect class="ok" x="45.2" y="385.3" width="10.6" height="9.3"/>
+<rect class="ok" x="56.8" y="385.3" width="10.6" height="9.3"/>
+<rect class="ok" x="68.4" y="385.3" width="10.6" height="9.3"/>
+<rect class="ok" x="79.9" y="385.3" width="10.6" height="9.3"/>
+<rect class="ok" x="91.5" y="385.3" width="10.6" height="9.3"/>
+<rect class="ok" x="103.1" y="385.3" width="10.6" height="9.3"/>
+<rect class="ok" x="114.7" y="385.3" width="10.6" height="9.3"/>
+<rect class="ok" x="126.3" y="385.3" width="10.6" height="9.3"/>
+<rect class="ok" x="137.9" y="385.3" width="10.6" height="9.3"/>
+<rect class="ok" x="22" y="395.6" width="10.6" height="9.3"/>
+<rect class="ok" x="33.6" y="395.6" width="10.6" height="9.3"/>
+<rect class="ok" x="45.2" y="395.6" width="10.6" height="9.3"/>
+<rect class="ok" x="56.8" y="395.6" width="10.6" height="9.3"/>
+<rect class="ok" x="68.4" y="395.6" width="10.6" height="9.3"/>
+<rect class="ok" x="79.9" y="395.6" width="10.6" height="9.3"/>
+<rect class="ok" x="91.5" y="395.6" width="10.6" height="9.3"/>
+<rect class="ok" x="103.1" y="395.6" width="10.6" height="9.3"/>
+<rect class="ok" x="114.7" y="395.6" width="10.6" height="9.3"/>
+<rect class="ok" x="126.3" y="395.6" width="10.6" height="9.3"/>
+<rect class="ok" x="137.9" y="395.6" width="10.6" height="9.3"/>
+<rect class="ok" x="22" y="406" width="10.6" height="9.3"/>
+<rect class="ok" x="33.6" y="406" width="10.6" height="9.3"/>
+<rect class="ok" x="45.2" y="406" width="10.6" height="9.3"/>
+<rect class="ok" x="56.8" y="406" width="10.6" height="9.3"/>
+<rect class="ok" x="68.4" y="406" width="10.6" height="9.3"/>
+<rect class="ok" x="79.9" y="406" width="10.6" height="9.3"/>
+<rect class="ok" x="91.5" y="406" width="10.6" height="9.3"/>
+<rect class="ok" x="103.1" y="406" width="10.6" height="9.3"/>
+<rect class="ok" x="114.7" y="406" width="10.6" height="9.3"/>
+<rect class="ok" x="126.3" y="406" width="10.6" height="9.3"/>
+<rect class="ok" x="137.9" y="406" width="10.6" height="9.3"/>
+<rect class="ok" x="22" y="416.3" width="10.6" height="9.3"/>
+<rect class="ok" x="33.6" y="416.3" width="10.6" height="9.3"/>
+<rect class="ok" x="45.2" y="416.3" width="10.6" height="9.3"/>
+<rect class="ok" x="56.8" y="416.3" width="10.6" height="9.3"/>
+<rect class="ok" x="68.4" y="416.3" width="10.6" height="9.3"/>
+<rect class="ok" x="79.9" y="416.3" width="10.6" height="9.3"/>
+<rect class="ok" x="91.5" y="416.3" width="10.6" height="9.3"/>
+<rect class="ok" x="103.1" y="416.3" width="10.6" height="9.3"/>
+<rect class="ok" x="114.7" y="416.3" width="10.6" height="9.3"/>
+<rect class="ok" x="126.3" y="416.3" width="10.6" height="9.3"/>
+<rect class="ok" x="137.9" y="416.3" width="10.6" height="9.3"/>
+<rect class="ok" x="22" y="426.7" width="10.6" height="9.3"/>
+<rect class="ok" x="33.6" y="426.7" width="10.6" height="9.3"/>
+<rect class="ok" x="45.2" y="426.7" width="10.6" height="9.3"/>
+<rect class="ok" x="56.8" y="426.7" width="10.6" height="9.3"/>
+<rect class="ok" x="68.4" y="426.7" width="10.6" height="9.3"/>
+<rect class="ok" x="79.9" y="426.7" width="10.6" height="9.3"/>
+<rect class="ok" x="91.5" y="426.7" width="10.6" height="9.3"/>
+<rect class="ok" x="103.1" y="426.7" width="10.6" height="9.3"/>
+<rect class="ok" x="114.7" y="426.7" width="10.6" height="9.3"/>
+<rect class="ok" x="126.3" y="426.7" width="10.6" height="9.3"/>
+<rect class="ok" x="137.9" y="426.7" width="10.6" height="9.3"/>
+</g>
+<g><title>libkernel: 160 functions -- Working. Syscalls, threads, semaphores, alarms, TLB, ExecPS2. KNOWN section 1: &#x27;Equal-priority time slicing was an ours-only semantic; removed&#x27; and &#x27;The online logoff restarts the game in-process&#x27; (LoadExecPS2).</title>
+<rect class="ok" x="152.5" y="120" width="10.2" height="9.7"/>
+<rect class="ok" x="163.7" y="120" width="10.2" height="9.7"/>
+<rect class="ok" x="174.8" y="120" width="10.2" height="9.7"/>
+<rect class="ok" x="186" y="120" width="10.2" height="9.7"/>
+<rect class="ok" x="197.2" y="120" width="10.2" height="9.7"/>
+<rect class="ok" x="208.4" y="120" width="10.2" height="9.7"/>
+<rect class="ok" x="219.6" y="120" width="10.2" height="9.7"/>
+<rect class="ok" x="230.8" y="120" width="10.2" height="9.7"/>
+<rect class="ok" x="241.9" y="120" width="10.2" height="9.7"/>
+<rect class="ok" x="253.1" y="120" width="10.2" height="9.7"/>
+<rect class="ok" x="264.3" y="120" width="10.2" height="9.7"/>
+<rect class="ok" x="275.5" y="120" width="10.2" height="9.7"/>
+<rect class="ok" x="286.7" y="120" width="10.2" height="9.7"/>
+<rect class="ok" x="297.9" y="120" width="10.2" height="9.7"/>
+<rect class="ok" x="309" y="120" width="10.2" height="9.7"/>
+<rect class="ok" x="320.2" y="120" width="10.2" height="9.7"/>
+<rect class="ok" x="152.5" y="130.7" width="10.2" height="9.7"/>
+<rect class="ok" x="163.7" y="130.7" width="10.2" height="9.7"/>
+<rect class="ok" x="174.8" y="130.7" width="10.2" height="9.7"/>
+<rect class="ok" x="186" y="130.7" width="10.2" height="9.7"/>
+<rect class="ok" x="197.2" y="130.7" width="10.2" height="9.7"/>
+<rect class="ok" x="208.4" y="130.7" width="10.2" height="9.7"/>
+<rect class="ok" x="219.6" y="130.7" width="10.2" height="9.7"/>
+<rect class="ok" x="230.8" y="130.7" width="10.2" height="9.7"/>
+<rect class="ok" x="241.9" y="130.7" width="10.2" height="9.7"/>
+<rect class="ok" x="253.1" y="130.7" width="10.2" height="9.7"/>
+<rect class="ok" x="264.3" y="130.7" width="10.2" height="9.7"/>
+<rect class="ok" x="275.5" y="130.7" width="10.2" height="9.7"/>
+<rect class="ok" x="286.7" y="130.7" width="10.2" height="9.7"/>
+<rect class="ok" x="297.9" y="130.7" width="10.2" height="9.7"/>
+<rect class="ok" x="309" y="130.7" width="10.2" height="9.7"/>
+<rect class="ok" x="320.2" y="130.7" width="10.2" height="9.7"/>
+<rect class="ok" x="152.5" y="141.4" width="10.2" height="9.7"/>
+<rect class="ok" x="163.7" y="141.4" width="10.2" height="9.7"/>
+<rect class="ok" x="174.8" y="141.4" width="10.2" height="9.7"/>
+<rect class="ok" x="186" y="141.4" width="10.2" height="9.7"/>
+<rect class="ok" x="197.2" y="141.4" width="10.2" height="9.7"/>
+<rect class="ok" x="208.4" y="141.4" width="10.2" height="9.7"/>
+<rect class="ok" x="219.6" y="141.4" width="10.2" height="9.7"/>
+<rect class="ok" x="230.8" y="141.4" width="10.2" height="9.7"/>
+<rect class="ok" x="241.9" y="141.4" width="10.2" height="9.7"/>
+<rect class="ok" x="253.1" y="141.4" width="10.2" height="9.7"/>
+<rect class="ok" x="264.3" y="141.4" width="10.2" height="9.7"/>
+<rect class="ok" x="275.5" y="141.4" width="10.2" height="9.7"/>
+<rect class="ok" x="286.7" y="141.4" width="10.2" height="9.7"/>
+<rect class="ok" x="297.9" y="141.4" width="10.2" height="9.7"/>
+<rect class="ok" x="309" y="141.4" width="10.2" height="9.7"/>
+<rect class="ok" x="320.2" y="141.4" width="10.2" height="9.7"/>
+<rect class="ok" x="152.5" y="152.1" width="10.2" height="9.7"/>
+<rect class="ok" x="163.7" y="152.1" width="10.2" height="9.7"/>
+<rect class="ok" x="174.8" y="152.1" width="10.2" height="9.7"/>
+<rect class="ok" x="186" y="152.1" width="10.2" height="9.7"/>
+<rect class="ok" x="197.2" y="152.1" width="10.2" height="9.7"/>
+<rect class="ok" x="208.4" y="152.1" width="10.2" height="9.7"/>
+<rect class="ok" x="219.6" y="152.1" width="10.2" height="9.7"/>
+<rect class="ok" x="230.8" y="152.1" width="10.2" height="9.7"/>
+<rect class="ok" x="241.9" y="152.1" width="10.2" height="9.7"/>
+<rect class="ok" x="253.1" y="152.1" width="10.2" height="9.7"/>
+<rect class="ok" x="264.3" y="152.1" width="10.2" height="9.7"/>
+<rect class="ok" x="275.5" y="152.1" width="10.2" height="9.7"/>
+<rect class="ok" x="286.7" y="152.1" width="10.2" height="9.7"/>
+<rect class="ok" x="297.9" y="152.1" width="10.2" height="9.7"/>
+<rect class="ok" x="309" y="152.1" width="10.2" height="9.7"/>
+<rect class="ok" x="320.2" y="152.1" width="10.2" height="9.7"/>
+<rect class="ok" x="152.5" y="162.8" width="10.2" height="9.7"/>
+<rect class="ok" x="163.7" y="162.8" width="10.2" height="9.7"/>
+<rect class="ok" x="174.8" y="162.8" width="10.2" height="9.7"/>
+<rect class="ok" x="186" y="162.8" width="10.2" height="9.7"/>
+<rect class="ok" x="197.2" y="162.8" width="10.2" height="9.7"/>
+<rect class="ok" x="208.4" y="162.8" width="10.2" height="9.7"/>
+<rect class="ok" x="219.6" y="162.8" width="10.2" height="9.7"/>
+<rect class="ok" x="230.8" y="162.8" width="10.2" height="9.7"/>
+<rect class="ok" x="241.9" y="162.8" width="10.2" height="9.7"/>
+<rect class="ok" x="253.1" y="162.8" width="10.2" height="9.7"/>
+<rect class="ok" x="264.3" y="162.8" width="10.2" height="9.7"/>
+<rect class="ok" x="275.5" y="162.8" width="10.2" height="9.7"/>
+<rect class="ok" x="286.7" y="162.8" width="10.2" height="9.7"/>
+<rect class="ok" x="297.9" y="162.8" width="10.2" height="9.7"/>
+<rect class="ok" x="309" y="162.8" width="10.2" height="9.7"/>
+<rect class="ok" x="320.2" y="162.8" width="10.2" height="9.7"/>
+<rect class="ok" x="152.5" y="173.5" width="10.2" height="9.7"/>
+<rect class="ok" x="163.7" y="173.5" width="10.2" height="9.7"/>
+<rect class="ok" x="174.8" y="173.5" width="10.2" height="9.7"/>
+<rect class="ok" x="186" y="173.5" width="10.2" height="9.7"/>
+<rect class="ok" x="197.2" y="173.5" width="10.2" height="9.7"/>
+<rect class="ok" x="208.4" y="173.5" width="10.2" height="9.7"/>
+<rect class="ok" x="219.6" y="173.5" width="10.2" height="9.7"/>
+<rect class="ok" x="230.8" y="173.5" width="10.2" height="9.7"/>
+<rect class="ok" x="241.9" y="173.5" width="10.2" height="9.7"/>
+<rect class="ok" x="253.1" y="173.5" width="10.2" height="9.7"/>
+<rect class="ok" x="264.3" y="173.5" width="10.2" height="9.7"/>
+<rect class="ok" x="275.5" y="173.5" width="10.2" height="9.7"/>
+<rect class="ok" x="286.7" y="173.5" width="10.2" height="9.7"/>
+<rect class="ok" x="297.9" y="173.5" width="10.2" height="9.7"/>
+<rect class="ok" x="309" y="173.5" width="10.2" height="9.7"/>
+<rect class="ok" x="320.2" y="173.5" width="10.2" height="9.7"/>
+<rect class="ok" x="152.5" y="184.2" width="10.2" height="9.7"/>
+<rect class="ok" x="163.7" y="184.2" width="10.2" height="9.7"/>
+<rect class="ok" x="174.8" y="184.2" width="10.2" height="9.7"/>
+<rect class="ok" x="186" y="184.2" width="10.2" height="9.7"/>
+<rect class="ok" x="197.2" y="184.2" width="10.2" height="9.7"/>
+<rect class="ok" x="208.4" y="184.2" width="10.2" height="9.7"/>
+<rect class="ok" x="219.6" y="184.2" width="10.2" height="9.7"/>
+<rect class="ok" x="230.8" y="184.2" width="10.2" height="9.7"/>
+<rect class="ok" x="241.9" y="184.2" width="10.2" height="9.7"/>
+<rect class="ok" x="253.1" y="184.2" width="10.2" height="9.7"/>
+<rect class="ok" x="264.3" y="184.2" width="10.2" height="9.7"/>
+<rect class="ok" x="275.5" y="184.2" width="10.2" height="9.7"/>
+<rect class="ok" x="286.7" y="184.2" width="10.2" height="9.7"/>
+<rect class="ok" x="297.9" y="184.2" width="10.2" height="9.7"/>
+<rect class="ok" x="309" y="184.2" width="10.2" height="9.7"/>
+<rect class="ok" x="320.2" y="184.2" width="10.2" height="9.7"/>
+<rect class="ok" x="152.5" y="194.8" width="10.2" height="9.7"/>
+<rect class="ok" x="163.7" y="194.8" width="10.2" height="9.7"/>
+<rect class="ok" x="174.8" y="194.8" width="10.2" height="9.7"/>
+<rect class="ok" x="186" y="194.8" width="10.2" height="9.7"/>
+<rect class="ok" x="197.2" y="194.8" width="10.2" height="9.7"/>
+<rect class="ok" x="208.4" y="194.8" width="10.2" height="9.7"/>
+<rect class="ok" x="219.6" y="194.8" width="10.2" height="9.7"/>
+<rect class="ok" x="230.8" y="194.8" width="10.2" height="9.7"/>
+<rect class="ok" x="241.9" y="194.8" width="10.2" height="9.7"/>
+<rect class="ok" x="253.1" y="194.8" width="10.2" height="9.7"/>
+<rect class="ok" x="264.3" y="194.8" width="10.2" height="9.7"/>
+<rect class="ok" x="275.5" y="194.8" width="10.2" height="9.7"/>
+<rect class="ok" x="286.7" y="194.8" width="10.2" height="9.7"/>
+<rect class="ok" x="297.9" y="194.8" width="10.2" height="9.7"/>
+<rect class="ok" x="309" y="194.8" width="10.2" height="9.7"/>
+<rect class="ok" x="320.2" y="194.8" width="10.2" height="9.7"/>
+<rect class="ok" x="152.5" y="205.5" width="10.2" height="9.7"/>
+<rect class="ok" x="163.7" y="205.5" width="10.2" height="9.7"/>
+<rect class="ok" x="174.8" y="205.5" width="10.2" height="9.7"/>
+<rect class="ok" x="186" y="205.5" width="10.2" height="9.7"/>
+<rect class="ok" x="197.2" y="205.5" width="10.2" height="9.7"/>
+<rect class="ok" x="208.4" y="205.5" width="10.2" height="9.7"/>
+<rect class="ok" x="219.6" y="205.5" width="10.2" height="9.7"/>
+<rect class="ok" x="230.8" y="205.5" width="10.2" height="9.7"/>
+<rect class="ok" x="241.9" y="205.5" width="10.2" height="9.7"/>
+<rect class="ok" x="253.1" y="205.5" width="10.2" height="9.7"/>
+<rect class="ok" x="264.3" y="205.5" width="10.2" height="9.7"/>
+<rect class="ok" x="275.5" y="205.5" width="10.2" height="9.7"/>
+<rect class="ok" x="286.7" y="205.5" width="10.2" height="9.7"/>
+<rect class="ok" x="297.9" y="205.5" width="10.2" height="9.7"/>
+<rect class="ok" x="309" y="205.5" width="10.2" height="9.7"/>
+<rect class="ok" x="320.2" y="205.5" width="10.2" height="9.7"/>
+<rect class="ok" x="152.5" y="216.2" width="10.2" height="9.7"/>
+<rect class="ok" x="163.7" y="216.2" width="10.2" height="9.7"/>
+<rect class="ok" x="174.8" y="216.2" width="10.2" height="9.7"/>
+<rect class="ok" x="186" y="216.2" width="10.2" height="9.7"/>
+<rect class="ok" x="197.2" y="216.2" width="10.2" height="9.7"/>
+<rect class="ok" x="208.4" y="216.2" width="10.2" height="9.7"/>
+<rect class="ok" x="219.6" y="216.2" width="10.2" height="9.7"/>
+<rect class="ok" x="230.8" y="216.2" width="10.2" height="9.7"/>
+<rect class="ok" x="241.9" y="216.2" width="10.2" height="9.7"/>
+<rect class="ok" x="253.1" y="216.2" width="10.2" height="9.7"/>
+<rect class="ok" x="264.3" y="216.2" width="10.2" height="9.7"/>
+<rect class="ok" x="275.5" y="216.2" width="10.2" height="9.7"/>
+<rect class="ok" x="286.7" y="216.2" width="10.2" height="9.7"/>
+<rect class="ok" x="297.9" y="216.2" width="10.2" height="9.7"/>
+<rect class="ok" x="309" y="216.2" width="10.2" height="9.7"/>
+<rect class="ok" x="320.2" y="216.2" width="10.2" height="9.7"/>
+</g>
+<g><title>libmpeg: 121 functions -- Working. FFmpeg-backed MPEG HLE; movies play on every gate. KNOWN section 1: the intro-movie macroblock race and the MPEG back-pressure gate behind the music dropouts, both fixed. A freeze seen once in Sprint 1 stays a section 2 belief.</title>
+<rect class="ok" x="334.4" y="120" width="11.2" height="8.7"/>
+<rect class="ok" x="346.6" y="120" width="11.2" height="8.7"/>
+<rect class="ok" x="358.9" y="120" width="11.2" height="8.7"/>
+<rect class="ok" x="371.1" y="120" width="11.2" height="8.7"/>
+<rect class="ok" x="383.4" y="120" width="11.2" height="8.7"/>
+<rect class="ok" x="395.6" y="120" width="11.2" height="8.7"/>
+<rect class="ok" x="407.8" y="120" width="11.2" height="8.7"/>
+<rect class="ok" x="420.1" y="120" width="11.2" height="8.7"/>
+<rect class="ok" x="432.3" y="120" width="11.2" height="8.7"/>
+<rect class="ok" x="444.5" y="120" width="11.2" height="8.7"/>
+<rect class="ok" x="456.8" y="120" width="11.2" height="8.7"/>
+<rect class="ok" x="334.4" y="129.7" width="11.2" height="8.7"/>
+<rect class="ok" x="346.6" y="129.7" width="11.2" height="8.7"/>
+<rect class="ok" x="358.9" y="129.7" width="11.2" height="8.7"/>
+<rect class="ok" x="371.1" y="129.7" width="11.2" height="8.7"/>
+<rect class="ok" x="383.4" y="129.7" width="11.2" height="8.7"/>
+<rect class="ok" x="395.6" y="129.7" width="11.2" height="8.7"/>
+<rect class="ok" x="407.8" y="129.7" width="11.2" height="8.7"/>
+<rect class="ok" x="420.1" y="129.7" width="11.2" height="8.7"/>
+<rect class="ok" x="432.3" y="129.7" width="11.2" height="8.7"/>
+<rect class="ok" x="444.5" y="129.7" width="11.2" height="8.7"/>
+<rect class="ok" x="456.8" y="129.7" width="11.2" height="8.7"/>
+<rect class="ok" x="334.4" y="139.4" width="11.2" height="8.7"/>
+<rect class="ok" x="346.6" y="139.4" width="11.2" height="8.7"/>
+<rect class="ok" x="358.9" y="139.4" width="11.2" height="8.7"/>
+<rect class="ok" x="371.1" y="139.4" width="11.2" height="8.7"/>
+<rect class="ok" x="383.4" y="139.4" width="11.2" height="8.7"/>
+<rect class="ok" x="395.6" y="139.4" width="11.2" height="8.7"/>
+<rect class="ok" x="407.8" y="139.4" width="11.2" height="8.7"/>
+<rect class="ok" x="420.1" y="139.4" width="11.2" height="8.7"/>
+<rect class="ok" x="432.3" y="139.4" width="11.2" height="8.7"/>
+<rect class="ok" x="444.5" y="139.4" width="11.2" height="8.7"/>
+<rect class="ok" x="456.8" y="139.4" width="11.2" height="8.7"/>
+<rect class="ok" x="334.4" y="149.2" width="11.2" height="8.7"/>
+<rect class="ok" x="346.6" y="149.2" width="11.2" height="8.7"/>
+<rect class="ok" x="358.9" y="149.2" width="11.2" height="8.7"/>
+<rect class="ok" x="371.1" y="149.2" width="11.2" height="8.7"/>
+<rect class="ok" x="383.4" y="149.2" width="11.2" height="8.7"/>
+<rect class="ok" x="395.6" y="149.2" width="11.2" height="8.7"/>
+<rect class="ok" x="407.8" y="149.2" width="11.2" height="8.7"/>
+<rect class="ok" x="420.1" y="149.2" width="11.2" height="8.7"/>
+<rect class="ok" x="432.3" y="149.2" width="11.2" height="8.7"/>
+<rect class="ok" x="444.5" y="149.2" width="11.2" height="8.7"/>
+<rect class="ok" x="456.8" y="149.2" width="11.2" height="8.7"/>
+<rect class="ok" x="334.4" y="158.9" width="11.2" height="8.7"/>
+<rect class="ok" x="346.6" y="158.9" width="11.2" height="8.7"/>
+<rect class="ok" x="358.9" y="158.9" width="11.2" height="8.7"/>
+<rect class="ok" x="371.1" y="158.9" width="11.2" height="8.7"/>
+<rect class="ok" x="383.4" y="158.9" width="11.2" height="8.7"/>
+<rect class="ok" x="395.6" y="158.9" width="11.2" height="8.7"/>
+<rect class="ok" x="407.8" y="158.9" width="11.2" height="8.7"/>
+<rect class="ok" x="420.1" y="158.9" width="11.2" height="8.7"/>
+<rect class="ok" x="432.3" y="158.9" width="11.2" height="8.7"/>
+<rect class="ok" x="444.5" y="158.9" width="11.2" height="8.7"/>
+<rect class="ok" x="456.8" y="158.9" width="11.2" height="8.7"/>
+<rect class="ok" x="334.4" y="168.6" width="11.2" height="8.7"/>
+<rect class="ok" x="346.6" y="168.6" width="11.2" height="8.7"/>
+<rect class="ok" x="358.9" y="168.6" width="11.2" height="8.7"/>
+<rect class="ok" x="371.1" y="168.6" width="11.2" height="8.7"/>
+<rect class="ok" x="383.4" y="168.6" width="11.2" height="8.7"/>
+<rect class="ok" x="395.6" y="168.6" width="11.2" height="8.7"/>
+<rect class="ok" x="407.8" y="168.6" width="11.2" height="8.7"/>
+<rect class="ok" x="420.1" y="168.6" width="11.2" height="8.7"/>
+<rect class="ok" x="432.3" y="168.6" width="11.2" height="8.7"/>
+<rect class="ok" x="444.5" y="168.6" width="11.2" height="8.7"/>
+<rect class="ok" x="456.8" y="168.6" width="11.2" height="8.7"/>
+<rect class="ok" x="334.4" y="178.3" width="11.2" height="8.7"/>
+<rect class="ok" x="346.6" y="178.3" width="11.2" height="8.7"/>
+<rect class="ok" x="358.9" y="178.3" width="11.2" height="8.7"/>
+<rect class="ok" x="371.1" y="178.3" width="11.2" height="8.7"/>
+<rect class="ok" x="383.4" y="178.3" width="11.2" height="8.7"/>
+<rect class="ok" x="395.6" y="178.3" width="11.2" height="8.7"/>
+<rect class="ok" x="407.8" y="178.3" width="11.2" height="8.7"/>
+<rect class="ok" x="420.1" y="178.3" width="11.2" height="8.7"/>
+<rect class="ok" x="432.3" y="178.3" width="11.2" height="8.7"/>
+<rect class="ok" x="444.5" y="178.3" width="11.2" height="8.7"/>
+<rect class="ok" x="456.8" y="178.3" width="11.2" height="8.7"/>
+<rect class="ok" x="334.4" y="188" width="11.2" height="8.7"/>
+<rect class="ok" x="346.6" y="188" width="11.2" height="8.7"/>
+<rect class="ok" x="358.9" y="188" width="11.2" height="8.7"/>
+<rect class="ok" x="371.1" y="188" width="11.2" height="8.7"/>
+<rect class="ok" x="383.4" y="188" width="11.2" height="8.7"/>
+<rect class="ok" x="395.6" y="188" width="11.2" height="8.7"/>
+<rect class="ok" x="407.8" y="188" width="11.2" height="8.7"/>
+<rect class="ok" x="420.1" y="188" width="11.2" height="8.7"/>
+<rect class="ok" x="432.3" y="188" width="11.2" height="8.7"/>
+<rect class="ok" x="444.5" y="188" width="11.2" height="8.7"/>
+<rect class="ok" x="456.8" y="188" width="11.2" height="8.7"/>
+<rect class="ok" x="334.4" y="197.8" width="11.2" height="8.7"/>
+<rect class="ok" x="346.6" y="197.8" width="11.2" height="8.7"/>
+<rect class="ok" x="358.9" y="197.8" width="11.2" height="8.7"/>
+<rect class="ok" x="371.1" y="197.8" width="11.2" height="8.7"/>
+<rect class="ok" x="383.4" y="197.8" width="11.2" height="8.7"/>
+<rect class="ok" x="395.6" y="197.8" width="11.2" height="8.7"/>
+<rect class="ok" x="407.8" y="197.8" width="11.2" height="8.7"/>
+<rect class="ok" x="420.1" y="197.8" width="11.2" height="8.7"/>
+<rect class="ok" x="432.3" y="197.8" width="11.2" height="8.7"/>
+<rect class="ok" x="444.5" y="197.8" width="11.2" height="8.7"/>
+<rect class="ok" x="456.8" y="197.8" width="11.2" height="8.7"/>
+<rect class="ok" x="334.4" y="207.5" width="11.2" height="8.7"/>
+<rect class="ok" x="346.6" y="207.5" width="11.2" height="8.7"/>
+<rect class="ok" x="358.9" y="207.5" width="11.2" height="8.7"/>
+<rect class="ok" x="371.1" y="207.5" width="11.2" height="8.7"/>
+<rect class="ok" x="383.4" y="207.5" width="11.2" height="8.7"/>
+<rect class="ok" x="395.6" y="207.5" width="11.2" height="8.7"/>
+<rect class="ok" x="407.8" y="207.5" width="11.2" height="8.7"/>
+<rect class="ok" x="420.1" y="207.5" width="11.2" height="8.7"/>
+<rect class="ok" x="432.3" y="207.5" width="11.2" height="8.7"/>
+<rect class="ok" x="444.5" y="207.5" width="11.2" height="8.7"/>
+<rect class="ok" x="456.8" y="207.5" width="11.2" height="8.7"/>
+<rect class="ok" x="334.4" y="217.2" width="11.2" height="8.7"/>
+<rect class="ok" x="346.6" y="217.2" width="11.2" height="8.7"/>
+<rect class="ok" x="358.9" y="217.2" width="11.2" height="8.7"/>
+<rect class="ok" x="371.1" y="217.2" width="11.2" height="8.7"/>
+<rect class="ok" x="383.4" y="217.2" width="11.2" height="8.7"/>
+<rect class="ok" x="395.6" y="217.2" width="11.2" height="8.7"/>
+<rect class="ok" x="407.8" y="217.2" width="11.2" height="8.7"/>
+<rect class="ok" x="420.1" y="217.2" width="11.2" height="8.7"/>
+<rect class="ok" x="432.3" y="217.2" width="11.2" height="8.7"/>
+<rect class="ok" x="444.5" y="217.2" width="11.2" height="8.7"/>
+<rect class="ok" x="456.8" y="217.2" width="11.2" height="8.7"/>
+</g>
+<g><title>libinsck + netglue: 45 functions -- Working. The socket layer under the game&#x27;s network code. Anchored by the named sceInsockInetAddr (0x1c1348) and sceEENetInetNtoa (0x1c1858); the start 0x1c0948 is inferred (the unnamed functions after libvu0&#x27;s last, whose sizes match netglue_insck&#x27;s in ps2recomp&#x27;s symbol database, third_party/ps2recomp/ps2xAnalyzer/include/ps2recomp/sce_symbol_database_data.h). KNOWN section 1: the hosted online round and &#x27;The online movement blocker was sceInetInterfaceControl(0x200) returning a constant&#x27; (fixed).</title>
+<rect class="ok" x="152.5" y="229.9" width="9.5" height="9.1"/>
+<rect class="ok" x="162.9" y="229.9" width="9.5" height="9.1"/>
+<rect class="ok" x="173.4" y="229.9" width="9.5" height="9.1"/>
+<rect class="ok" x="183.8" y="229.9" width="9.5" height="9.1"/>
+<rect class="ok" x="194.3" y="229.9" width="9.5" height="9.1"/>
+<rect class="ok" x="204.7" y="229.9" width="9.5" height="9.1"/>
+<rect class="ok" x="215.2" y="229.9" width="9.5" height="9.1"/>
+<rect class="ok" x="152.5" y="240" width="9.5" height="9.1"/>
+<rect class="ok" x="162.9" y="240" width="9.5" height="9.1"/>
+<rect class="ok" x="173.4" y="240" width="9.5" height="9.1"/>
+<rect class="ok" x="183.8" y="240" width="9.5" height="9.1"/>
+<rect class="ok" x="194.3" y="240" width="9.5" height="9.1"/>
+<rect class="ok" x="204.7" y="240" width="9.5" height="9.1"/>
+<rect class="ok" x="215.2" y="240" width="9.5" height="9.1"/>
+<rect class="ok" x="152.5" y="250.2" width="9.5" height="9.1"/>
+<rect class="ok" x="162.9" y="250.2" width="9.5" height="9.1"/>
+<rect class="ok" x="173.4" y="250.2" width="9.5" height="9.1"/>
+<rect class="ok" x="183.8" y="250.2" width="9.5" height="9.1"/>
+<rect class="ok" x="194.3" y="250.2" width="9.5" height="9.1"/>
+<rect class="ok" x="204.7" y="250.2" width="9.5" height="9.1"/>
+<rect class="ok" x="215.2" y="250.2" width="9.5" height="9.1"/>
+<rect class="ok" x="152.5" y="260.3" width="9.5" height="9.1"/>
+<rect class="ok" x="162.9" y="260.3" width="9.5" height="9.1"/>
+<rect class="ok" x="173.4" y="260.3" width="9.5" height="9.1"/>
+<rect class="ok" x="183.8" y="260.3" width="9.5" height="9.1"/>
+<rect class="ok" x="194.3" y="260.3" width="9.5" height="9.1"/>
+<rect class="ok" x="204.7" y="260.3" width="9.5" height="9.1"/>
+<rect class="ok" x="215.2" y="260.3" width="9.5" height="9.1"/>
+<rect class="ok" x="152.5" y="270.4" width="9.5" height="9.1"/>
+<rect class="ok" x="162.9" y="270.4" width="9.5" height="9.1"/>
+<rect class="ok" x="173.4" y="270.4" width="9.5" height="9.1"/>
+<rect class="ok" x="183.8" y="270.4" width="9.5" height="9.1"/>
+<rect class="ok" x="194.3" y="270.4" width="9.5" height="9.1"/>
+<rect class="ok" x="204.7" y="270.4" width="9.5" height="9.1"/>
+<rect class="ok" x="215.2" y="270.4" width="9.5" height="9.1"/>
+<rect class="ok" x="152.5" y="280.5" width="9.5" height="9.1"/>
+<rect class="ok" x="162.9" y="280.5" width="9.5" height="9.1"/>
+<rect class="ok" x="173.4" y="280.5" width="9.5" height="9.1"/>
+<rect class="ok" x="183.8" y="280.5" width="9.5" height="9.1"/>
+<rect class="ok" x="194.3" y="280.5" width="9.5" height="9.1"/>
+<rect class="ok" x="204.7" y="280.5" width="9.5" height="9.1"/>
+<rect class="ok" x="215.2" y="280.5" width="9.5" height="9.1"/>
+<rect class="ok" x="152.5" y="290.7" width="9.5" height="9.1"/>
+<rect class="ok" x="162.9" y="290.7" width="9.5" height="9.1"/>
+<rect class="ok" x="173.4" y="290.7" width="9.5" height="9.1"/>
+</g>
+<g><title>libm: 43 functions -- Working. fdlibm, recompiled. KNOWN section 2: &#x27;sin/cos have no live call sites&#x27; (believed; matters only if their binding were wrong).</title>
+<rect class="ok" x="152.5" y="303.8" width="9.5" height="8.7"/>
+<rect class="ok" x="162.9" y="303.8" width="9.5" height="8.7"/>
+<rect class="ok" x="173.4" y="303.8" width="9.5" height="8.7"/>
+<rect class="ok" x="183.8" y="303.8" width="9.5" height="8.7"/>
+<rect class="ok" x="194.3" y="303.8" width="9.5" height="8.7"/>
+<rect class="ok" x="204.7" y="303.8" width="9.5" height="8.7"/>
+<rect class="ok" x="215.2" y="303.8" width="9.5" height="8.7"/>
+<rect class="ok" x="152.5" y="313.4" width="9.5" height="8.7"/>
+<rect class="ok" x="162.9" y="313.4" width="9.5" height="8.7"/>
+<rect class="ok" x="173.4" y="313.4" width="9.5" height="8.7"/>
+<rect class="ok" x="183.8" y="313.4" width="9.5" height="8.7"/>
+<rect class="ok" x="194.3" y="313.4" width="9.5" height="8.7"/>
+<rect class="ok" x="204.7" y="313.4" width="9.5" height="8.7"/>
+<rect class="ok" x="215.2" y="313.4" width="9.5" height="8.7"/>
+<rect class="ok" x="152.5" y="323.1" width="9.5" height="8.7"/>
+<rect class="ok" x="162.9" y="323.1" width="9.5" height="8.7"/>
+<rect class="ok" x="173.4" y="323.1" width="9.5" height="8.7"/>
+<rect class="ok" x="183.8" y="323.1" width="9.5" height="8.7"/>
+<rect class="ok" x="194.3" y="323.1" width="9.5" height="8.7"/>
+<rect class="ok" x="204.7" y="323.1" width="9.5" height="8.7"/>
+<rect class="ok" x="215.2" y="323.1" width="9.5" height="8.7"/>
+<rect class="ok" x="152.5" y="332.7" width="9.5" height="8.7"/>
+<rect class="ok" x="162.9" y="332.7" width="9.5" height="8.7"/>
+<rect class="ok" x="173.4" y="332.7" width="9.5" height="8.7"/>
+<rect class="ok" x="183.8" y="332.7" width="9.5" height="8.7"/>
+<rect class="ok" x="194.3" y="332.7" width="9.5" height="8.7"/>
+<rect class="ok" x="204.7" y="332.7" width="9.5" height="8.7"/>
+<rect class="ok" x="215.2" y="332.7" width="9.5" height="8.7"/>
+<rect class="ok" x="152.5" y="342.4" width="9.5" height="8.7"/>
+<rect class="ok" x="162.9" y="342.4" width="9.5" height="8.7"/>
+<rect class="ok" x="173.4" y="342.4" width="9.5" height="8.7"/>
+<rect class="ok" x="183.8" y="342.4" width="9.5" height="8.7"/>
+<rect class="ok" x="194.3" y="342.4" width="9.5" height="8.7"/>
+<rect class="ok" x="204.7" y="342.4" width="9.5" height="8.7"/>
+<rect class="ok" x="215.2" y="342.4" width="9.5" height="8.7"/>
+<rect class="ok" x="152.5" y="352" width="9.5" height="8.7"/>
+<rect class="ok" x="162.9" y="352" width="9.5" height="8.7"/>
+<rect class="ok" x="173.4" y="352" width="9.5" height="8.7"/>
+<rect class="ok" x="183.8" y="352" width="9.5" height="8.7"/>
+<rect class="ok" x="194.3" y="352" width="9.5" height="8.7"/>
+<rect class="ok" x="204.7" y="352" width="9.5" height="8.7"/>
+<rect class="ok" x="215.2" y="352" width="9.5" height="8.7"/>
+<rect class="ok" x="152.5" y="361.7" width="9.5" height="8.7"/>
+</g>
+<g><title>libvu0: 40 functions -- Partial. Recompiled since libvu0 was un-stubbed; KNOWN section 1: &#x27;The VU0 vf0 fix restores Frostfire online control&#x27;. Partial on a known divergence: LATER 12, issue #47 open (macro-mode MAC/STATUS flags land at once, not with the hardware&#x27;s latency); the FTOI NaN rule is the fork&#x27;s (KNOWN section 2).</title>
+<rect class="partial" x="152.5" y="374.4" width="9.5" height="9.4"/>
+<rect x="152.5" y="374.4" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="162.9" y="374.4" width="9.5" height="9.4"/>
+<rect x="162.9" y="374.4" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="173.4" y="374.4" width="9.5" height="9.4"/>
+<rect x="173.4" y="374.4" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="183.8" y="374.4" width="9.5" height="9.4"/>
+<rect x="183.8" y="374.4" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="194.3" y="374.4" width="9.5" height="9.4"/>
+<rect x="194.3" y="374.4" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="204.7" y="374.4" width="9.5" height="9.4"/>
+<rect x="204.7" y="374.4" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="215.2" y="374.4" width="9.5" height="9.4"/>
+<rect x="215.2" y="374.4" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="152.5" y="384.8" width="9.5" height="9.4"/>
+<rect x="152.5" y="384.8" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="162.9" y="384.8" width="9.5" height="9.4"/>
+<rect x="162.9" y="384.8" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="173.4" y="384.8" width="9.5" height="9.4"/>
+<rect x="173.4" y="384.8" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="183.8" y="384.8" width="9.5" height="9.4"/>
+<rect x="183.8" y="384.8" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="194.3" y="384.8" width="9.5" height="9.4"/>
+<rect x="194.3" y="384.8" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="204.7" y="384.8" width="9.5" height="9.4"/>
+<rect x="204.7" y="384.8" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="215.2" y="384.8" width="9.5" height="9.4"/>
+<rect x="215.2" y="384.8" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="152.5" y="395.2" width="9.5" height="9.4"/>
+<rect x="152.5" y="395.2" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="162.9" y="395.2" width="9.5" height="9.4"/>
+<rect x="162.9" y="395.2" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="173.4" y="395.2" width="9.5" height="9.4"/>
+<rect x="173.4" y="395.2" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="183.8" y="395.2" width="9.5" height="9.4"/>
+<rect x="183.8" y="395.2" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="194.3" y="395.2" width="9.5" height="9.4"/>
+<rect x="194.3" y="395.2" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="204.7" y="395.2" width="9.5" height="9.4"/>
+<rect x="204.7" y="395.2" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="215.2" y="395.2" width="9.5" height="9.4"/>
+<rect x="215.2" y="395.2" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="152.5" y="405.7" width="9.5" height="9.4"/>
+<rect x="152.5" y="405.7" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="162.9" y="405.7" width="9.5" height="9.4"/>
+<rect x="162.9" y="405.7" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="173.4" y="405.7" width="9.5" height="9.4"/>
+<rect x="173.4" y="405.7" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="183.8" y="405.7" width="9.5" height="9.4"/>
+<rect x="183.8" y="405.7" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="194.3" y="405.7" width="9.5" height="9.4"/>
+<rect x="194.3" y="405.7" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="204.7" y="405.7" width="9.5" height="9.4"/>
+<rect x="204.7" y="405.7" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="215.2" y="405.7" width="9.5" height="9.4"/>
+<rect x="215.2" y="405.7" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="152.5" y="416.1" width="9.5" height="9.4"/>
+<rect x="152.5" y="416.1" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="162.9" y="416.1" width="9.5" height="9.4"/>
+<rect x="162.9" y="416.1" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="173.4" y="416.1" width="9.5" height="9.4"/>
+<rect x="173.4" y="416.1" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="183.8" y="416.1" width="9.5" height="9.4"/>
+<rect x="183.8" y="416.1" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="194.3" y="416.1" width="9.5" height="9.4"/>
+<rect x="194.3" y="416.1" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="204.7" y="416.1" width="9.5" height="9.4"/>
+<rect x="204.7" y="416.1" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="215.2" y="416.1" width="9.5" height="9.4"/>
+<rect x="215.2" y="416.1" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="152.5" y="426.6" width="9.5" height="9.4"/>
+<rect x="152.5" y="426.6" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="162.9" y="426.6" width="9.5" height="9.4"/>
+<rect x="162.9" y="426.6" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="173.4" y="426.6" width="9.5" height="9.4"/>
+<rect x="173.4" y="426.6" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="183.8" y="426.6" width="9.5" height="9.4"/>
+<rect x="183.8" y="426.6" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="194.3" y="426.6" width="9.5" height="9.4"/>
+<rect x="194.3" y="426.6" width="9.5" height="9.4" fill="url(#hatch)" pointer-events="none"/>
+</g>
+<g><title>fileio: 39 functions -- Working. Host and disc file I/O behind the IOP model; every boot reads through it (KNOWN section 1, the from-a-fresh-clone row).</title>
+<rect class="ok" x="228.6" y="229.9" width="9.3" height="9.3"/>
+<rect class="ok" x="238.9" y="229.9" width="9.3" height="9.3"/>
+<rect class="ok" x="249.3" y="229.9" width="9.3" height="9.3"/>
+<rect class="ok" x="259.6" y="229.9" width="9.3" height="9.3"/>
+<rect class="ok" x="269.9" y="229.9" width="9.3" height="9.3"/>
+<rect class="ok" x="280.2" y="229.9" width="9.3" height="9.3"/>
+<rect class="ok" x="228.6" y="240.2" width="9.3" height="9.3"/>
+<rect class="ok" x="238.9" y="240.2" width="9.3" height="9.3"/>
+<rect class="ok" x="249.3" y="240.2" width="9.3" height="9.3"/>
+<rect class="ok" x="259.6" y="240.2" width="9.3" height="9.3"/>
+<rect class="ok" x="269.9" y="240.2" width="9.3" height="9.3"/>
+<rect class="ok" x="280.2" y="240.2" width="9.3" height="9.3"/>
+<rect class="ok" x="228.6" y="250.5" width="9.3" height="9.3"/>
+<rect class="ok" x="238.9" y="250.5" width="9.3" height="9.3"/>
+<rect class="ok" x="249.3" y="250.5" width="9.3" height="9.3"/>
+<rect class="ok" x="259.6" y="250.5" width="9.3" height="9.3"/>
+<rect class="ok" x="269.9" y="250.5" width="9.3" height="9.3"/>
+<rect class="ok" x="280.2" y="250.5" width="9.3" height="9.3"/>
+<rect class="ok" x="228.6" y="260.9" width="9.3" height="9.3"/>
+<rect class="ok" x="238.9" y="260.9" width="9.3" height="9.3"/>
+<rect class="ok" x="249.3" y="260.9" width="9.3" height="9.3"/>
+<rect class="ok" x="259.6" y="260.9" width="9.3" height="9.3"/>
+<rect class="ok" x="269.9" y="260.9" width="9.3" height="9.3"/>
+<rect class="ok" x="280.2" y="260.9" width="9.3" height="9.3"/>
+<rect class="ok" x="228.6" y="271.2" width="9.3" height="9.3"/>
+<rect class="ok" x="238.9" y="271.2" width="9.3" height="9.3"/>
+<rect class="ok" x="249.3" y="271.2" width="9.3" height="9.3"/>
+<rect class="ok" x="259.6" y="271.2" width="9.3" height="9.3"/>
+<rect class="ok" x="269.9" y="271.2" width="9.3" height="9.3"/>
+<rect class="ok" x="280.2" y="271.2" width="9.3" height="9.3"/>
+<rect class="ok" x="228.6" y="281.5" width="9.3" height="9.3"/>
+<rect class="ok" x="238.9" y="281.5" width="9.3" height="9.3"/>
+<rect class="ok" x="249.3" y="281.5" width="9.3" height="9.3"/>
+<rect class="ok" x="259.6" y="281.5" width="9.3" height="9.3"/>
+<rect class="ok" x="269.9" y="281.5" width="9.3" height="9.3"/>
+<rect class="ok" x="280.2" y="281.5" width="9.3" height="9.3"/>
+<rect class="ok" x="228.6" y="291.8" width="9.3" height="9.3"/>
+<rect class="ok" x="238.9" y="291.8" width="9.3" height="9.3"/>
+<rect class="ok" x="249.3" y="291.8" width="9.3" height="9.3"/>
+</g>
+<g><title>libcdvd: 37 functions -- Working. HLE over your own disc image. KNOWN section 1: &#x27;sceCdRead moved the CD stream cursor; fixed&#x27; (the title loop correlates 1.000 with the disc PCM) and the from-a-fresh-clone row (ISO to the title).</title>
+<rect class="ok" x="228.6" y="305.1" width="9.3" height="8.8"/>
+<rect class="ok" x="238.9" y="305.1" width="9.3" height="8.8"/>
+<rect class="ok" x="249.3" y="305.1" width="9.3" height="8.8"/>
+<rect class="ok" x="259.6" y="305.1" width="9.3" height="8.8"/>
+<rect class="ok" x="269.9" y="305.1" width="9.3" height="8.8"/>
+<rect class="ok" x="280.2" y="305.1" width="9.3" height="8.8"/>
+<rect class="ok" x="228.6" y="314.8" width="9.3" height="8.8"/>
+<rect class="ok" x="238.9" y="314.8" width="9.3" height="8.8"/>
+<rect class="ok" x="249.3" y="314.8" width="9.3" height="8.8"/>
+<rect class="ok" x="259.6" y="314.8" width="9.3" height="8.8"/>
+<rect class="ok" x="269.9" y="314.8" width="9.3" height="8.8"/>
+<rect class="ok" x="280.2" y="314.8" width="9.3" height="8.8"/>
+<rect class="ok" x="228.6" y="324.6" width="9.3" height="8.8"/>
+<rect class="ok" x="238.9" y="324.6" width="9.3" height="8.8"/>
+<rect class="ok" x="249.3" y="324.6" width="9.3" height="8.8"/>
+<rect class="ok" x="259.6" y="324.6" width="9.3" height="8.8"/>
+<rect class="ok" x="269.9" y="324.6" width="9.3" height="8.8"/>
+<rect class="ok" x="280.2" y="324.6" width="9.3" height="8.8"/>
+<rect class="ok" x="228.6" y="334.4" width="9.3" height="8.8"/>
+<rect class="ok" x="238.9" y="334.4" width="9.3" height="8.8"/>
+<rect class="ok" x="249.3" y="334.4" width="9.3" height="8.8"/>
+<rect class="ok" x="259.6" y="334.4" width="9.3" height="8.8"/>
+<rect class="ok" x="269.9" y="334.4" width="9.3" height="8.8"/>
+<rect class="ok" x="280.2" y="334.4" width="9.3" height="8.8"/>
+<rect class="ok" x="228.6" y="344.1" width="9.3" height="8.8"/>
+<rect class="ok" x="238.9" y="344.1" width="9.3" height="8.8"/>
+<rect class="ok" x="249.3" y="344.1" width="9.3" height="8.8"/>
+<rect class="ok" x="259.6" y="344.1" width="9.3" height="8.8"/>
+<rect class="ok" x="269.9" y="344.1" width="9.3" height="8.8"/>
+<rect class="ok" x="280.2" y="344.1" width="9.3" height="8.8"/>
+<rect class="ok" x="228.6" y="353.9" width="9.3" height="8.8"/>
+<rect class="ok" x="238.9" y="353.9" width="9.3" height="8.8"/>
+<rect class="ok" x="249.3" y="353.9" width="9.3" height="8.8"/>
+<rect class="ok" x="259.6" y="353.9" width="9.3" height="8.8"/>
+<rect class="ok" x="269.9" y="353.9" width="9.3" height="8.8"/>
+<rect class="ok" x="280.2" y="353.9" width="9.3" height="8.8"/>
+<rect class="ok" x="228.6" y="363.6" width="9.3" height="8.8"/>
+</g>
+<g><title>sif: 33 functions -- Working. SIF commands and RPC, served by the runtime&#x27;s IOP model. KNOWN section 1: &#x27;sceSifInitRpc reset the whole IOP model on every call&#x27; -- fixed.</title>
+<rect class="ok" x="228.6" y="376.4" width="9.3" height="9.1"/>
+<rect class="ok" x="238.9" y="376.4" width="9.3" height="9.1"/>
+<rect class="ok" x="249.3" y="376.4" width="9.3" height="9.1"/>
+<rect class="ok" x="259.6" y="376.4" width="9.3" height="9.1"/>
+<rect class="ok" x="269.9" y="376.4" width="9.3" height="9.1"/>
+<rect class="ok" x="280.2" y="376.4" width="9.3" height="9.1"/>
+<rect class="ok" x="228.6" y="386.5" width="9.3" height="9.1"/>
+<rect class="ok" x="238.9" y="386.5" width="9.3" height="9.1"/>
+<rect class="ok" x="249.3" y="386.5" width="9.3" height="9.1"/>
+<rect class="ok" x="259.6" y="386.5" width="9.3" height="9.1"/>
+<rect class="ok" x="269.9" y="386.5" width="9.3" height="9.1"/>
+<rect class="ok" x="280.2" y="386.5" width="9.3" height="9.1"/>
+<rect class="ok" x="228.6" y="396.6" width="9.3" height="9.1"/>
+<rect class="ok" x="238.9" y="396.6" width="9.3" height="9.1"/>
+<rect class="ok" x="249.3" y="396.6" width="9.3" height="9.1"/>
+<rect class="ok" x="259.6" y="396.6" width="9.3" height="9.1"/>
+<rect class="ok" x="269.9" y="396.6" width="9.3" height="9.1"/>
+<rect class="ok" x="280.2" y="396.6" width="9.3" height="9.1"/>
+<rect class="ok" x="228.6" y="406.7" width="9.3" height="9.1"/>
+<rect class="ok" x="238.9" y="406.7" width="9.3" height="9.1"/>
+<rect class="ok" x="249.3" y="406.7" width="9.3" height="9.1"/>
+<rect class="ok" x="259.6" y="406.7" width="9.3" height="9.1"/>
+<rect class="ok" x="269.9" y="406.7" width="9.3" height="9.1"/>
+<rect class="ok" x="280.2" y="406.7" width="9.3" height="9.1"/>
+<rect class="ok" x="228.6" y="416.8" width="9.3" height="9.1"/>
+<rect class="ok" x="238.9" y="416.8" width="9.3" height="9.1"/>
+<rect class="ok" x="249.3" y="416.8" width="9.3" height="9.1"/>
+<rect class="ok" x="259.6" y="416.8" width="9.3" height="9.1"/>
+<rect class="ok" x="269.9" y="416.8" width="9.3" height="9.1"/>
+<rect class="ok" x="280.2" y="416.8" width="9.3" height="9.1"/>
+<rect class="ok" x="228.6" y="426.9" width="9.3" height="9.1"/>
+<rect class="ok" x="238.9" y="426.9" width="9.3" height="9.1"/>
+<rect class="ok" x="249.3" y="426.9" width="9.3" height="9.1"/>
+</g>
+<g><title>iopheap / loadfile: 32 functions -- Working. IOP heap and module loading, answered by the runtime&#x27;s per-revision IOP profile (KNOWN section 1, &#x27;The launcher started socom2.exe whatever GAME VERSION said&#x27;: a second IOP profile for r0004).</title>
+<rect class="ok" x="293.5" y="229.9" width="9.3" height="8.8"/>
+<rect class="ok" x="303.8" y="229.9" width="9.3" height="8.8"/>
+<rect class="ok" x="314.1" y="229.9" width="9.3" height="8.8"/>
+<rect class="ok" x="324.4" y="229.9" width="9.3" height="8.8"/>
+<rect class="ok" x="334.8" y="229.9" width="9.3" height="8.8"/>
+<rect class="ok" x="345.1" y="229.9" width="9.3" height="8.8"/>
+<rect class="ok" x="293.5" y="239.7" width="9.3" height="8.8"/>
+<rect class="ok" x="303.8" y="239.7" width="9.3" height="8.8"/>
+<rect class="ok" x="314.1" y="239.7" width="9.3" height="8.8"/>
+<rect class="ok" x="324.4" y="239.7" width="9.3" height="8.8"/>
+<rect class="ok" x="334.8" y="239.7" width="9.3" height="8.8"/>
+<rect class="ok" x="345.1" y="239.7" width="9.3" height="8.8"/>
+<rect class="ok" x="293.5" y="249.5" width="9.3" height="8.8"/>
+<rect class="ok" x="303.8" y="249.5" width="9.3" height="8.8"/>
+<rect class="ok" x="314.1" y="249.5" width="9.3" height="8.8"/>
+<rect class="ok" x="324.4" y="249.5" width="9.3" height="8.8"/>
+<rect class="ok" x="334.8" y="249.5" width="9.3" height="8.8"/>
+<rect class="ok" x="345.1" y="249.5" width="9.3" height="8.8"/>
+<rect class="ok" x="293.5" y="259.2" width="9.3" height="8.8"/>
+<rect class="ok" x="303.8" y="259.2" width="9.3" height="8.8"/>
+<rect class="ok" x="314.1" y="259.2" width="9.3" height="8.8"/>
+<rect class="ok" x="324.4" y="259.2" width="9.3" height="8.8"/>
+<rect class="ok" x="334.8" y="259.2" width="9.3" height="8.8"/>
+<rect class="ok" x="345.1" y="259.2" width="9.3" height="8.8"/>
+<rect class="ok" x="293.5" y="269" width="9.3" height="8.8"/>
+<rect class="ok" x="303.8" y="269" width="9.3" height="8.8"/>
+<rect class="ok" x="314.1" y="269" width="9.3" height="8.8"/>
+<rect class="ok" x="324.4" y="269" width="9.3" height="8.8"/>
+<rect class="ok" x="334.8" y="269" width="9.3" height="8.8"/>
+<rect class="ok" x="345.1" y="269" width="9.3" height="8.8"/>
+<rect class="ok" x="293.5" y="278.8" width="9.3" height="8.8"/>
+<rect class="ok" x="303.8" y="278.8" width="9.3" height="8.8"/>
+</g>
+<g><title>C++ runtime (MW): 28 functions -- Working. Metrowerks runtime: array new/delete, the overlay manager, dynamic_cast, member pointers. Runs on every boot; the overlays are pre-merged into socom2_game.elf (research/05). No KNOWN row of its own; the gate and the online rounds (KNOWN section 1) rest on it.</title>
+<rect class="ok" x="358.4" y="229.9" width="9.8" height="8.8"/>
+<rect class="ok" x="369.2" y="229.9" width="9.8" height="8.8"/>
+<rect class="ok" x="379.9" y="229.9" width="9.8" height="8.8"/>
+<rect class="ok" x="390.7" y="229.9" width="9.8" height="8.8"/>
+<rect class="ok" x="401.4" y="229.9" width="9.8" height="8.8"/>
+<rect class="ok" x="358.4" y="239.7" width="9.8" height="8.8"/>
+<rect class="ok" x="369.2" y="239.7" width="9.8" height="8.8"/>
+<rect class="ok" x="379.9" y="239.7" width="9.8" height="8.8"/>
+<rect class="ok" x="390.7" y="239.7" width="9.8" height="8.8"/>
+<rect class="ok" x="401.4" y="239.7" width="9.8" height="8.8"/>
+<rect class="ok" x="358.4" y="249.5" width="9.8" height="8.8"/>
+<rect class="ok" x="369.2" y="249.5" width="9.8" height="8.8"/>
+<rect class="ok" x="379.9" y="249.5" width="9.8" height="8.8"/>
+<rect class="ok" x="390.7" y="249.5" width="9.8" height="8.8"/>
+<rect class="ok" x="401.4" y="249.5" width="9.8" height="8.8"/>
+<rect class="ok" x="358.4" y="259.2" width="9.8" height="8.8"/>
+<rect class="ok" x="369.2" y="259.2" width="9.8" height="8.8"/>
+<rect class="ok" x="379.9" y="259.2" width="9.8" height="8.8"/>
+<rect class="ok" x="390.7" y="259.2" width="9.8" height="8.8"/>
+<rect class="ok" x="401.4" y="259.2" width="9.8" height="8.8"/>
+<rect class="ok" x="358.4" y="269" width="9.8" height="8.8"/>
+<rect class="ok" x="369.2" y="269" width="9.8" height="8.8"/>
+<rect class="ok" x="379.9" y="269" width="9.8" height="8.8"/>
+<rect class="ok" x="390.7" y="269" width="9.8" height="8.8"/>
+<rect class="ok" x="401.4" y="269" width="9.8" height="8.8"/>
+<rect class="ok" x="358.4" y="278.8" width="9.8" height="8.8"/>
+<rect class="ok" x="369.2" y="278.8" width="9.8" height="8.8"/>
+<rect class="ok" x="379.9" y="278.8" width="9.8" height="8.8"/>
+</g>
+<g><title>deci2 / tty: 28 functions -- Partial. libkernel&#x27;s debug channel (Deci2, TTY, kprintf). A divergence read from the runtime&#x27;s code (KNOWN and LATER are silent): the Deci2 calls are TODO stubs (Kernel/Stubs/Deci2.cpp), not a model.</title>
+<rect class="partial" x="415.2" y="229.9" width="9.8" height="8.8"/>
+<rect x="415.2" y="229.9" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="426" y="229.9" width="9.8" height="8.8"/>
+<rect x="426" y="229.9" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="436.7" y="229.9" width="9.8" height="8.8"/>
+<rect x="436.7" y="229.9" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="447.5" y="229.9" width="9.8" height="8.8"/>
+<rect x="447.5" y="229.9" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="458.2" y="229.9" width="9.8" height="8.8"/>
+<rect x="458.2" y="229.9" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="415.2" y="239.7" width="9.8" height="8.8"/>
+<rect x="415.2" y="239.7" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="426" y="239.7" width="9.8" height="8.8"/>
+<rect x="426" y="239.7" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="436.7" y="239.7" width="9.8" height="8.8"/>
+<rect x="436.7" y="239.7" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="447.5" y="239.7" width="9.8" height="8.8"/>
+<rect x="447.5" y="239.7" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="458.2" y="239.7" width="9.8" height="8.8"/>
+<rect x="458.2" y="239.7" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="415.2" y="249.5" width="9.8" height="8.8"/>
+<rect x="415.2" y="249.5" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="426" y="249.5" width="9.8" height="8.8"/>
+<rect x="426" y="249.5" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="436.7" y="249.5" width="9.8" height="8.8"/>
+<rect x="436.7" y="249.5" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="447.5" y="249.5" width="9.8" height="8.8"/>
+<rect x="447.5" y="249.5" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="458.2" y="249.5" width="9.8" height="8.8"/>
+<rect x="458.2" y="249.5" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="415.2" y="259.2" width="9.8" height="8.8"/>
+<rect x="415.2" y="259.2" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="426" y="259.2" width="9.8" height="8.8"/>
+<rect x="426" y="259.2" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="436.7" y="259.2" width="9.8" height="8.8"/>
+<rect x="436.7" y="259.2" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="447.5" y="259.2" width="9.8" height="8.8"/>
+<rect x="447.5" y="259.2" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="458.2" y="259.2" width="9.8" height="8.8"/>
+<rect x="458.2" y="259.2" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="415.2" y="269" width="9.8" height="8.8"/>
+<rect x="415.2" y="269" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="426" y="269" width="9.8" height="8.8"/>
+<rect x="426" y="269" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="436.7" y="269" width="9.8" height="8.8"/>
+<rect x="436.7" y="269" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="447.5" y="269" width="9.8" height="8.8"/>
+<rect x="447.5" y="269" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="458.2" y="269" width="9.8" height="8.8"/>
+<rect x="458.2" y="269" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="415.2" y="278.8" width="9.8" height="8.8"/>
+<rect x="415.2" y="278.8" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="426" y="278.8" width="9.8" height="8.8"/>
+<rect x="426" y="278.8" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="436.7" y="278.8" width="9.8" height="8.8"/>
+<rect x="436.7" y="278.8" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
+</g>
+<g><title>libmc: 28 functions -- Working. EE libmc HLE over a card folder. KNOWN section 1: &#x27;An empty or missing card folder is an inserted, formatted, empty PS2 card&#x27;, the first-save fix (152579a) and the persona file decoded.</title>
+<rect class="ok" x="293.5" y="291.5" width="9.7" height="8.8"/>
+<rect class="ok" x="304.2" y="291.5" width="9.7" height="8.8"/>
+<rect class="ok" x="314.9" y="291.5" width="9.7" height="8.8"/>
+<rect class="ok" x="325.7" y="291.5" width="9.7" height="8.8"/>
+<rect class="ok" x="336.4" y="291.5" width="9.7" height="8.8"/>
+<rect class="ok" x="347.1" y="291.5" width="9.7" height="8.8"/>
+<rect class="ok" x="293.5" y="301.3" width="9.7" height="8.8"/>
+<rect class="ok" x="304.2" y="301.3" width="9.7" height="8.8"/>
+<rect class="ok" x="314.9" y="301.3" width="9.7" height="8.8"/>
+<rect class="ok" x="325.7" y="301.3" width="9.7" height="8.8"/>
+<rect class="ok" x="336.4" y="301.3" width="9.7" height="8.8"/>
+<rect class="ok" x="347.1" y="301.3" width="9.7" height="8.8"/>
+<rect class="ok" x="293.5" y="311.1" width="9.7" height="8.8"/>
+<rect class="ok" x="304.2" y="311.1" width="9.7" height="8.8"/>
+<rect class="ok" x="314.9" y="311.1" width="9.7" height="8.8"/>
+<rect class="ok" x="325.7" y="311.1" width="9.7" height="8.8"/>
+<rect class="ok" x="336.4" y="311.1" width="9.7" height="8.8"/>
+<rect class="ok" x="347.1" y="311.1" width="9.7" height="8.8"/>
+<rect class="ok" x="293.5" y="320.9" width="9.7" height="8.8"/>
+<rect class="ok" x="304.2" y="320.9" width="9.7" height="8.8"/>
+<rect class="ok" x="314.9" y="320.9" width="9.7" height="8.8"/>
+<rect class="ok" x="325.7" y="320.9" width="9.7" height="8.8"/>
+<rect class="ok" x="336.4" y="320.9" width="9.7" height="8.8"/>
+<rect class="ok" x="347.1" y="320.9" width="9.7" height="8.8"/>
+<rect class="ok" x="293.5" y="330.7" width="9.7" height="8.8"/>
+<rect class="ok" x="304.2" y="330.7" width="9.7" height="8.8"/>
+<rect class="ok" x="314.9" y="330.7" width="9.7" height="8.8"/>
+<rect class="ok" x="325.7" y="330.7" width="9.7" height="8.8"/>
+</g>
+<g><title>libgcc: 26 functions -- Working. 64-bit integer and soft-double helpers. KNOWN section 1: &#x27;Five soft-double stubs were bound with the wrong ABI&#x27; -- fixed (db7a992).</title>
+<rect class="ok" x="293.5" y="343.5" width="8.2" height="10.3"/>
+<rect class="ok" x="302.7" y="343.5" width="8.2" height="10.3"/>
+<rect class="ok" x="311.9" y="343.5" width="8.2" height="10.3"/>
+<rect class="ok" x="321.1" y="343.5" width="8.2" height="10.3"/>
+<rect class="ok" x="330.3" y="343.5" width="8.2" height="10.3"/>
+<rect class="ok" x="339.5" y="343.5" width="8.2" height="10.3"/>
+<rect class="ok" x="348.7" y="343.5" width="8.2" height="10.3"/>
+<rect class="ok" x="293.5" y="354.8" width="8.2" height="10.3"/>
+<rect class="ok" x="302.7" y="354.8" width="8.2" height="10.3"/>
+<rect class="ok" x="311.9" y="354.8" width="8.2" height="10.3"/>
+<rect class="ok" x="321.1" y="354.8" width="8.2" height="10.3"/>
+<rect class="ok" x="330.3" y="354.8" width="8.2" height="10.3"/>
+<rect class="ok" x="339.5" y="354.8" width="8.2" height="10.3"/>
+<rect class="ok" x="348.7" y="354.8" width="8.2" height="10.3"/>
+<rect class="ok" x="293.5" y="366.1" width="8.2" height="10.3"/>
+<rect class="ok" x="302.7" y="366.1" width="8.2" height="10.3"/>
+<rect class="ok" x="311.9" y="366.1" width="8.2" height="10.3"/>
+<rect class="ok" x="321.1" y="366.1" width="8.2" height="10.3"/>
+<rect class="ok" x="330.3" y="366.1" width="8.2" height="10.3"/>
+<rect class="ok" x="339.5" y="366.1" width="8.2" height="10.3"/>
+<rect class="ok" x="348.7" y="366.1" width="8.2" height="10.3"/>
+<rect class="ok" x="293.5" y="377.4" width="8.2" height="10.3"/>
+<rect class="ok" x="302.7" y="377.4" width="8.2" height="10.3"/>
+<rect class="ok" x="311.9" y="377.4" width="8.2" height="10.3"/>
+<rect class="ok" x="321.1" y="377.4" width="8.2" height="10.3"/>
+<rect class="ok" x="330.3" y="377.4" width="8.2" height="10.3"/>
+</g>
+<g><title>libusbkb: 26 functions -- Pending. No PS2 USB keyboard model: the host keyboard reaches the game as pad input and the on-screen keyboard (docs/HAZARDS.md, &#x27;The harness plays the game with the keyboard&#x27;). No KNOWN row.</title>
+<rect class="pending" x="293.5" y="391.8" width="8.2" height="10.3"/>
+<rect class="pending" x="302.7" y="391.8" width="8.2" height="10.3"/>
+<rect class="pending" x="311.9" y="391.8" width="8.2" height="10.3"/>
+<rect class="pending" x="321.1" y="391.8" width="8.2" height="10.3"/>
+<rect class="pending" x="330.3" y="391.8" width="8.2" height="10.3"/>
+<rect class="pending" x="339.5" y="391.8" width="8.2" height="10.3"/>
+<rect class="pending" x="348.7" y="391.8" width="8.2" height="10.3"/>
+<rect class="pending" x="293.5" y="403.1" width="8.2" height="10.3"/>
+<rect class="pending" x="302.7" y="403.1" width="8.2" height="10.3"/>
+<rect class="pending" x="311.9" y="403.1" width="8.2" height="10.3"/>
+<rect class="pending" x="321.1" y="403.1" width="8.2" height="10.3"/>
+<rect class="pending" x="330.3" y="403.1" width="8.2" height="10.3"/>
+<rect class="pending" x="339.5" y="403.1" width="8.2" height="10.3"/>
+<rect class="pending" x="348.7" y="403.1" width="8.2" height="10.3"/>
+<rect class="pending" x="293.5" y="414.4" width="8.2" height="10.3"/>
+<rect class="pending" x="302.7" y="414.4" width="8.2" height="10.3"/>
+<rect class="pending" x="311.9" y="414.4" width="8.2" height="10.3"/>
+<rect class="pending" x="321.1" y="414.4" width="8.2" height="10.3"/>
+<rect class="pending" x="330.3" y="414.4" width="8.2" height="10.3"/>
+<rect class="pending" x="339.5" y="414.4" width="8.2" height="10.3"/>
+<rect class="pending" x="348.7" y="414.4" width="8.2" height="10.3"/>
+<rect class="pending" x="293.5" y="425.7" width="8.2" height="10.3"/>
+<rect class="pending" x="302.7" y="425.7" width="8.2" height="10.3"/>
+<rect class="pending" x="311.9" y="425.7" width="8.2" height="10.3"/>
+<rect class="pending" x="321.1" y="425.7" width="8.2" height="10.3"/>
+<rect class="pending" x="330.3" y="425.7" width="8.2" height="10.3"/>
+</g>
+<g><title>C++ EH (MW): 20 functions -- Working. Metrowerks exception unwinding, recompiled as is. No defect or divergence in KNOWN or LATER; no KNOWN row shows the game throwing either -- unverified, which by this map&#x27;s rule is not partial.</title>
+<rect class="ok" x="360.9" y="291.5" width="9.5" height="9.5"/>
+<rect class="ok" x="371.4" y="291.5" width="9.5" height="9.5"/>
+<rect class="ok" x="381.9" y="291.5" width="9.5" height="9.5"/>
+<rect class="ok" x="392.4" y="291.5" width="9.5" height="9.5"/>
+<rect class="ok" x="402.9" y="291.5" width="9.5" height="9.5"/>
+<rect class="ok" x="360.9" y="302" width="9.5" height="9.5"/>
+<rect class="ok" x="371.4" y="302" width="9.5" height="9.5"/>
+<rect class="ok" x="381.9" y="302" width="9.5" height="9.5"/>
+<rect class="ok" x="392.4" y="302" width="9.5" height="9.5"/>
+<rect class="ok" x="402.9" y="302" width="9.5" height="9.5"/>
+<rect class="ok" x="360.9" y="312.5" width="9.5" height="9.5"/>
+<rect class="ok" x="371.4" y="312.5" width="9.5" height="9.5"/>
+<rect class="ok" x="381.9" y="312.5" width="9.5" height="9.5"/>
+<rect class="ok" x="392.4" y="312.5" width="9.5" height="9.5"/>
+<rect class="ok" x="402.9" y="312.5" width="9.5" height="9.5"/>
+<rect class="ok" x="360.9" y="323" width="9.5" height="9.5"/>
+<rect class="ok" x="371.4" y="323" width="9.5" height="9.5"/>
+<rect class="ok" x="381.9" y="323" width="9.5" height="9.5"/>
+<rect class="ok" x="392.4" y="323" width="9.5" height="9.5"/>
+<rect class="ok" x="402.9" y="323" width="9.5" height="9.5"/>
+</g>
+<g><title>libgraph: 20 functions -- Working. KNOWN section 2: &#x27;sceGsSetDefDBuff reads its trailing args from the stack&#x27; -- fixed (07ffc0a); the display-environment difference that remains is believed to have no visible effect.</title>
+<rect class="ok" x="416.4" y="291.5" width="9.5" height="9.5"/>
+<rect class="ok" x="426.9" y="291.5" width="9.5" height="9.5"/>
+<rect class="ok" x="437.5" y="291.5" width="9.5" height="9.5"/>
+<rect class="ok" x="448" y="291.5" width="9.5" height="9.5"/>
+<rect class="ok" x="458.5" y="291.5" width="9.5" height="9.5"/>
+<rect class="ok" x="416.4" y="302" width="9.5" height="9.5"/>
+<rect class="ok" x="426.9" y="302" width="9.5" height="9.5"/>
+<rect class="ok" x="437.5" y="302" width="9.5" height="9.5"/>
+<rect class="ok" x="448" y="302" width="9.5" height="9.5"/>
+<rect class="ok" x="458.5" y="302" width="9.5" height="9.5"/>
+<rect class="ok" x="416.4" y="312.5" width="9.5" height="9.5"/>
+<rect class="ok" x="426.9" y="312.5" width="9.5" height="9.5"/>
+<rect class="ok" x="437.5" y="312.5" width="9.5" height="9.5"/>
+<rect class="ok" x="448" y="312.5" width="9.5" height="9.5"/>
+<rect class="ok" x="458.5" y="312.5" width="9.5" height="9.5"/>
+<rect class="ok" x="416.4" y="323" width="9.5" height="9.5"/>
+<rect class="ok" x="426.9" y="323" width="9.5" height="9.5"/>
+<rect class="ok" x="437.5" y="323" width="9.5" height="9.5"/>
+<rect class="ok" x="448" y="323" width="9.5" height="9.5"/>
+<rect class="ok" x="458.5" y="323" width="9.5" height="9.5"/>
+</g>
+<g><title>libscf: 20 functions -- Partial. System configuration (language, aspect, time zone, RTC). A divergence read from the config (KNOWN and LATER are silent): stub selectors in recomp/socom2.toml stand in for the console&#x27;s settings; the game runs in English at its defaults.</title>
+<rect class="partial" x="360.9" y="336.5" width="10" height="9"/>
+<rect x="360.9" y="336.5" width="10" height="9" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="371.9" y="336.5" width="10" height="9"/>
+<rect x="371.9" y="336.5" width="10" height="9" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="382.9" y="336.5" width="10" height="9"/>
+<rect x="382.9" y="336.5" width="10" height="9" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="393.9" y="336.5" width="10" height="9"/>
+<rect x="393.9" y="336.5" width="10" height="9" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="360.9" y="346.5" width="10" height="9"/>
+<rect x="360.9" y="346.5" width="10" height="9" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="371.9" y="346.5" width="10" height="9"/>
+<rect x="371.9" y="346.5" width="10" height="9" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="382.9" y="346.5" width="10" height="9"/>
+<rect x="382.9" y="346.5" width="10" height="9" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="393.9" y="346.5" width="10" height="9"/>
+<rect x="393.9" y="346.5" width="10" height="9" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="360.9" y="356.6" width="10" height="9"/>
+<rect x="360.9" y="356.6" width="10" height="9" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="371.9" y="356.6" width="10" height="9"/>
+<rect x="371.9" y="356.6" width="10" height="9" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="382.9" y="356.6" width="10" height="9"/>
+<rect x="382.9" y="356.6" width="10" height="9" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="393.9" y="356.6" width="10" height="9"/>
+<rect x="393.9" y="356.6" width="10" height="9" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="360.9" y="366.6" width="10" height="9"/>
+<rect x="360.9" y="366.6" width="10" height="9" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="371.9" y="366.6" width="10" height="9"/>
+<rect x="371.9" y="366.6" width="10" height="9" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="382.9" y="366.6" width="10" height="9"/>
+<rect x="382.9" y="366.6" width="10" height="9" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="393.9" y="366.6" width="10" height="9"/>
+<rect x="393.9" y="366.6" width="10" height="9" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="360.9" y="376.6" width="10" height="9"/>
+<rect x="360.9" y="376.6" width="10" height="9" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="371.9" y="376.6" width="10" height="9"/>
+<rect x="371.9" y="376.6" width="10" height="9" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="382.9" y="376.6" width="10" height="9"/>
+<rect x="382.9" y="376.6" width="10" height="9" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="393.9" y="376.6" width="10" height="9"/>
+<rect x="393.9" y="376.6" width="10" height="9" fill="url(#hatch)" pointer-events="none"/>
+</g>
+<g><title>libdma: 19 functions -- Working. Every frame&#x27;s transfers reach the GS; the gate passes 3/3 on every chain (KNOWN section 1). Never compared with a console (LATER 13, &#x27;no defect seen&#x27;) -- unverified, which by this map&#x27;s rule is not partial.</title>
+<rect class="ok" x="360.9" y="389.6" width="10" height="8.5"/>
+<rect class="ok" x="371.9" y="389.6" width="10" height="8.5"/>
+<rect class="ok" x="382.9" y="389.6" width="10" height="8.5"/>
+<rect class="ok" x="393.9" y="389.6" width="10" height="8.5"/>
+<rect class="ok" x="360.9" y="399.1" width="10" height="8.5"/>
+<rect class="ok" x="371.9" y="399.1" width="10" height="8.5"/>
+<rect class="ok" x="382.9" y="399.1" width="10" height="8.5"/>
+<rect class="ok" x="393.9" y="399.1" width="10" height="8.5"/>
+<rect class="ok" x="360.9" y="408.6" width="10" height="8.5"/>
+<rect class="ok" x="371.9" y="408.6" width="10" height="8.5"/>
+<rect class="ok" x="382.9" y="408.6" width="10" height="8.5"/>
+<rect class="ok" x="393.9" y="408.6" width="10" height="8.5"/>
+<rect class="ok" x="360.9" y="418" width="10" height="8.5"/>
+<rect class="ok" x="371.9" y="418" width="10" height="8.5"/>
+<rect class="ok" x="382.9" y="418" width="10" height="8.5"/>
+<rect class="ok" x="393.9" y="418" width="10" height="8.5"/>
+<rect class="ok" x="360.9" y="427.5" width="10" height="8.5"/>
+<rect class="ok" x="371.9" y="427.5" width="10" height="8.5"/>
+<rect class="ok" x="382.9" y="427.5" width="10" height="8.5"/>
+</g>
+<g><title>libdbc: 18 functions -- Working. Kept idle on purpose: the pads come through the libpad2 HLE, which answers the calls that would reach DBCMAN (socom2_pad2_hle.cpp). The pad drives every gate and ladder run (KNOWN section 1).</title>
+<rect class="ok" x="408" y="336.5" width="9.2" height="9.7"/>
+<rect class="ok" x="418.1" y="336.5" width="9.2" height="9.7"/>
+<rect class="ok" x="428.3" y="336.5" width="9.2" height="9.7"/>
+<rect class="ok" x="438.5" y="336.5" width="9.2" height="9.7"/>
+<rect class="ok" x="448.7" y="336.5" width="9.2" height="9.7"/>
+<rect class="ok" x="458.8" y="336.5" width="9.2" height="9.7"/>
+<rect class="ok" x="408" y="347.2" width="9.2" height="9.7"/>
+<rect class="ok" x="418.1" y="347.2" width="9.2" height="9.7"/>
+<rect class="ok" x="428.3" y="347.2" width="9.2" height="9.7"/>
+<rect class="ok" x="438.5" y="347.2" width="9.2" height="9.7"/>
+<rect class="ok" x="448.7" y="347.2" width="9.2" height="9.7"/>
+<rect class="ok" x="458.8" y="347.2" width="9.2" height="9.7"/>
+<rect class="ok" x="408" y="358" width="9.2" height="9.7"/>
+<rect class="ok" x="418.1" y="358" width="9.2" height="9.7"/>
+<rect class="ok" x="428.3" y="358" width="9.2" height="9.7"/>
+<rect class="ok" x="438.5" y="358" width="9.2" height="9.7"/>
+<rect class="ok" x="448.7" y="358" width="9.2" height="9.7"/>
+<rect class="ok" x="458.8" y="358" width="9.2" height="9.7"/>
+</g>
+<g><title>libpad2: 15 functions -- Partial. HLE of the first port. Pressure is all or nothing (0xFF), so crouch needs the launcher&#x27;s shortcut: KNOWN section 1, &#x27;Crouch was unreachable on any PC pad, and now has a shortcut (R139)&#x27;.</title>
+<rect class="partial" x="408" y="371.7" width="8.3" height="10"/>
+<rect x="408" y="371.7" width="8.3" height="10" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="417.2" y="371.7" width="8.3" height="10"/>
+<rect x="417.2" y="371.7" width="8.3" height="10" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="426.5" y="371.7" width="8.3" height="10"/>
+<rect x="426.5" y="371.7" width="8.3" height="10" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="435.7" y="371.7" width="8.3" height="10"/>
+<rect x="435.7" y="371.7" width="8.3" height="10" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="408" y="382.6" width="8.3" height="10"/>
+<rect x="408" y="382.6" width="8.3" height="10" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="417.2" y="382.6" width="8.3" height="10"/>
+<rect x="417.2" y="382.6" width="8.3" height="10" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="426.5" y="382.6" width="8.3" height="10"/>
+<rect x="426.5" y="382.6" width="8.3" height="10" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="435.7" y="382.6" width="8.3" height="10"/>
+<rect x="435.7" y="382.6" width="8.3" height="10" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="408" y="393.6" width="8.3" height="10"/>
+<rect x="408" y="393.6" width="8.3" height="10" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="417.2" y="393.6" width="8.3" height="10"/>
+<rect x="417.2" y="393.6" width="8.3" height="10" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="426.5" y="393.6" width="8.3" height="10"/>
+<rect x="426.5" y="393.6" width="8.3" height="10" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="435.7" y="393.6" width="8.3" height="10"/>
+<rect x="435.7" y="393.6" width="8.3" height="10" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="408" y="404.6" width="8.3" height="10"/>
+<rect x="408" y="404.6" width="8.3" height="10" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="417.2" y="404.6" width="8.3" height="10"/>
+<rect x="417.2" y="404.6" width="8.3" height="10" fill="url(#hatch)" pointer-events="none"/>
+<rect class="partial" x="426.5" y="404.6" width="8.3" height="10"/>
+<rect x="426.5" y="404.6" width="8.3" height="10" fill="url(#hatch)" pointer-events="none"/>
+</g>
+<g><title>libmrpc: 9 functions -- Working. msifrpc, the network library&#x27;s transport (research/10), HLE&#x27;d. KNOWN section 1: &#x27;An online round plays end to end on the project&#x27;s HOSTED Horizon server&#x27;.</title>
+<rect class="ok" x="448" y="371.7" width="9.5" height="7.8"/>
+<rect class="ok" x="458.5" y="371.7" width="9.5" height="7.8"/>
+<rect class="ok" x="448" y="380.4" width="9.5" height="7.8"/>
+<rect class="ok" x="458.5" y="380.4" width="9.5" height="7.8"/>
+<rect class="ok" x="448" y="389.2" width="9.5" height="7.8"/>
+<rect class="ok" x="458.5" y="389.2" width="9.5" height="7.8"/>
+<rect class="ok" x="448" y="398" width="9.5" height="7.8"/>
+<rect class="ok" x="458.5" y="398" width="9.5" height="7.8"/>
+<rect class="ok" x="448" y="406.8" width="9.5" height="7.8"/>
+</g>
+<g><title>libipu: 8 functions -- Working. Served by the MPEG HLE with libmpeg. KNOWN section 1: &#x27;The intro-movie macroblocks were a cross-thread race&#x27; -- fixed (4a701f1).</title>
+<rect class="ok" x="408" y="418.5" width="7.7" height="8.2"/>
+<rect class="ok" x="416.7" y="418.5" width="7.7" height="8.2"/>
+<rect class="ok" x="425.4" y="418.5" width="7.7" height="8.2"/>
+<rect class="ok" x="434.1" y="418.5" width="7.7" height="8.2"/>
+<rect class="ok" x="442.8" y="418.5" width="7.7" height="8.2"/>
+<rect class="ok" x="408" y="427.8" width="7.7" height="8.2"/>
+<rect class="ok" x="416.7" y="427.8" width="7.7" height="8.2"/>
+<rect class="ok" x="425.4" y="427.8" width="7.7" height="8.2"/>
+</g>
+<g><title>libvib: 2 functions -- Pending. No rumble: the pad HLE reports no actuators, so the game sends no vibration (socom2_pad2_hle.cpp). No KNOWN row.</title>
+<rect class="pending" x="454.5" y="418.5" width="6.2" height="10.3"/>
+<rect class="pending" x="461.8" y="418.5" width="6.2" height="10.3"/>
+</g>
+<g><title>crt0: 1 functions -- Working. The entry point; the restarted guest re-enters it in-process (KNOWN section 1, &#x27;The online logoff restarts the game in-process&#x27;: guest restarted at 0x180008, reaches the main menu).</title>
+<rect class="ok" x="454.5" y="432.8" width="13.5" height="3.2"/>
+</g>
+<rect class="chip" x="22.5" y="120.5" width="75.8" height="16" rx="2" pointer-events="none"/>
+<text class="t1" x="26.5" y="131.5" font-size="11" pointer-events="none">MSL C++ std</text>
+<rect class="chip" x="22.5" y="282.4" width="32.6" height="16" rx="2" pointer-events="none"/>
+<text class="t1" x="26.5" y="293.4" font-size="11" pointer-events="none">libc</text>
+<rect class="chip" x="153" y="120.5" width="63.4" height="16" rx="2" pointer-events="none"/>
+<text class="t1" x="157" y="131.5" font-size="11" pointer-events="none">libkernel</text>
+<rect class="chip" x="334.9" y="120.5" width="51.1" height="16" rx="2" pointer-events="none"/>
+<text class="t1" x="338.9" y="131.5" font-size="11" pointer-events="none">libmpeg</text>
+<rect class="chip" x="153" y="230.4" width="38.8" height="16" rx="2" pointer-events="none"/>
+<text class="t1" x="157" y="241.4" font-size="11" pointer-events="none">insck</text>
+<rect class="chip" x="153" y="304.3" width="32.6" height="16" rx="2" pointer-events="none"/>
+<text class="t1" x="157" y="315.3" font-size="11" pointer-events="none">libm</text>
+<rect class="chip" x="153" y="374.9" width="45" height="16" rx="2" pointer-events="none"/>
+<text class="t1" x="157" y="385.9" font-size="11" pointer-events="none">libvu0</text>
+<rect class="chip" x="229.1" y="230.4" width="45" height="16" rx="2" pointer-events="none"/>
+<text class="t1" x="233.1" y="241.4" font-size="11" pointer-events="none">fileio</text>
+<rect class="chip" x="229.1" y="305.6" width="51.1" height="16" rx="2" pointer-events="none"/>
+<text class="t1" x="233.1" y="316.6" font-size="11" pointer-events="none">libcdvd</text>
+<rect class="chip" x="229.1" y="376.9" width="26.5" height="16" rx="2" pointer-events="none"/>
+<text class="t1" x="233.1" y="387.9" font-size="11" pointer-events="none">sif</text>
+<rect class="chip" x="294" y="230.4" width="57.3" height="16" rx="2" pointer-events="none"/>
+<text class="t1" x="298" y="241.4" font-size="11" pointer-events="none">loadfile</text>
+<rect class="chip" x="358.9" y="230.4" width="51.1" height="16" rx="2" pointer-events="none"/>
+<text class="t1" x="362.9" y="241.4" font-size="11" pointer-events="none">C++ RTS</text>
+<rect class="chip" x="415.7" y="230.4" width="38.8" height="16" rx="2" pointer-events="none"/>
+<text class="t1" x="419.7" y="241.4" font-size="11" pointer-events="none">deci2</text>
+<rect class="chip" x="294" y="292" width="38.8" height="16" rx="2" pointer-events="none"/>
+<text class="t1" x="298" y="303" font-size="11" pointer-events="none">libmc</text>
+<rect class="chip" x="294" y="344" width="45" height="16" rx="2" pointer-events="none"/>
+<text class="t1" x="298" y="355" font-size="11" pointer-events="none">libgcc</text>
+<rect class="chip" x="294" y="392.3" width="57.3" height="16" rx="2" pointer-events="none"/>
+<text class="t1" x="298" y="403.3" font-size="11" pointer-events="none">libusbkb</text>
+<rect class="chip" x="361.4" y="292" width="45" height="16" rx="2" pointer-events="none"/>
+<text class="t1" x="365.4" y="303" font-size="11" pointer-events="none">C++ EH</text>
+<rect class="chip" x="416.9" y="292" width="48.3" height="14" rx="2" pointer-events="none"/>
+<text class="t1" x="420.9" y="301" font-size="9" pointer-events="none">libgraph</text>
+<rect class="chip" x="361.4" y="337" width="38.2" height="14" rx="2" pointer-events="none"/>
+<text class="t1" x="365.4" y="346" font-size="9" pointer-events="none">libscf</text>
+<rect class="chip" x="361.4" y="390.1" width="38.2" height="14" rx="2" pointer-events="none"/>
+<text class="t1" x="365.4" y="399.1" font-size="9" pointer-events="none">libdma</text>
+<rect class="chip" x="408.5" y="337" width="45" height="16" rx="2" pointer-events="none"/>
+<text class="t1" x="412.5" y="348" font-size="11" pointer-events="none">libdbc</text>
+<rect class="chip" x="408.5" y="419" width="38.2" height="14" rx="2" pointer-events="none"/>
+<text class="t1" x="412.5" y="428" font-size="9" pointer-events="none">libipu</text>
+<text class="t1" x="490" y="108" font-size="14" font-weight="600">PS2 hardware: 58.1% (by weight)</text>
+<rect class="panel" x="490" y="118" width="450" height="320"/>
+<rect class="ok" x="492.5" y="138.5" width="98.2" height="142.5"><title>R5900 CPU, recompiled to C++ -- Working: Every map row recompiles; the gate passes 3/3 on every chain, r0004 too (KNOWN section 1, &#x27;The r0004 build passes the gate 3/3&#x27;).</title></rect>
+<text class="t1" x="541.6" y="214" font-size="12" text-anchor="middle" pointer-events="none">R5900</text>
+<rect class="ok" x="592.7" y="138.5" width="98.2" height="84.7"><title>Kernel: threads, semaphores, alarms, ExecPS2 -- Working: KNOWN section 1: the priority scheduler (&#x27;Equal-priority time slicing ... removed&#x27;) and the in-process LoadExecPS2 restart.</title></rect>
+<text class="t1" x="641.7" y="185.1" font-size="12" text-anchor="middle" pointer-events="none">Kernel</text>
+<rect class="ok" x="592.7" y="225.2" width="98.2" height="55.8"><title>INTC: VBlank and GS interrupts -- Working: VBlank holds near the console&#x27;s 16.7 ms; two instances keep the guest clock at real time (KNOWN section 1, &#x27;Two instances hold the guest clock at real time&#x27;).</title></rect>
+<text class="t1" x="641.7" y="257.3" font-size="12" text-anchor="middle" pointer-events="none">INTC</text>
+<rect class="ok" x="692.8" y="138.5" width="98.2" height="55.8"><title>DMA controller -- Working: Runs every frame of every gate; never compared with a console (LATER 13, &#x27;no defect seen&#x27;) -- unverified, which by this map&#x27;s rule is not partial.</title></rect>
+<text class="t1" x="741.9" y="170.6" font-size="12" text-anchor="middle" pointer-events="none">DMAC</text>
+<rect class="ok" x="692.8" y="196.3" width="31.4" height="84.7"><title>EE timers -- Working: No defect beyond the frame-rate issues #59 and #67 (LATER 10); no console timing oracle, interrupt unit tests only -- unverified, which by this map&#x27;s rule is not partial.</title></rect>
+<text class="t1" x="708.5" y="242.9" font-size="12" text-anchor="middle" transform="rotate(-90 708.5 238.7)" pointer-events="none">Timers</text>
+<rect class="partial" x="726.2" y="196.3" width="64.8" height="84.7"><title>FPU (COP1) and MMI instructions -- Partial: A known divergence: LATER 11, the FPU translator is plain IEEE with no PS2 clamping (no defect seen from it yet). KNOWN section 2: numeric parity of the generated MMI/VU0 code under NEON (the macOS port) is unproven.</title></rect>
+<rect x="726.2" y="196.3" width="64.8" height="84.7" fill="url(#hatch)" pointer-events="none"/>
+<text class="dark" x="758.6" y="242.9" font-size="12" text-anchor="middle" pointer-events="none">FPU/MMI</text>
+<rect class="ok" x="492.5" y="304" width="83.9" height="64.7"><title>GIF (PATH1-3) -- Working: Runs every frame of every gate; never compared with a console (LATER 13, &#x27;no defect seen&#x27;) -- unverified, which by this map&#x27;s rule is not partial.</title></rect>
+<text class="t1" x="534.4" y="340.6" font-size="12" text-anchor="middle" pointer-events="none">GIF</text>
+<rect class="ok" x="492.5" y="370.8" width="83.9" height="64.7"><title>IPU: the movies -- Working: Through the FFmpeg MPEG HLE; KNOWN section 1, the intro-movie macroblock race fixed.</title></rect>
+<text class="t1" x="534.4" y="407.3" font-size="12" text-anchor="middle" pointer-events="none">IPU</text>
+<rect class="partial" x="578.4" y="304" width="126.8" height="64.7"><title>GS: primitives and framebuffer (OpenGL) -- Partial: Draws every screen, up to 4x resolution. KNOWN section 2: &#x27;The main thread&#x27;s GL replay stalls for good after a present&#x27; (intermittent, #114); LATER 55: no deinterlace, so the 480i output is not field-blended as PCSX2&#x27;s is.</title></rect>
+<rect x="578.4" y="304" width="126.8" height="64.7" fill="url(#hatch)" pointer-events="none"/>
+<text class="dark" x="641.7" y="340.6" font-size="12" text-anchor="middle" pointer-events="none">GS</text>
+<rect class="partial" x="578.4" y="370.8" width="126.8" height="64.7"><title>VIF1 and VU1 -- Partial: Correct on the gate; the cost is the open thread. KNOWN section 2: &#x27;The game thread&#x27;s own work is what limits the mission&#x27;s frame rate&#x27; (VU1 about 42 %).</title></rect>
+<rect x="578.4" y="370.8" width="126.8" height="64.7" fill="url(#hatch)" pointer-events="none"/>
+<text class="dark" x="641.7" y="407.3" font-size="12" text-anchor="middle" pointer-events="none">VIF1/VU1</text>
+<rect class="partial" x="707.1" y="304" width="83.9" height="64.7"><title>GS textures and CLUTs -- Partial: KNOWN section 1: the CLUT texture-cache explosion fixed (2026-09-16). Partial on LATER 54, a known divergence: no mipmap sampling (MIPTBP1/2, MXL, LCM and K stored, never read); and issue #32 open, textures re-decoded far more often than they change (KNOWN section 2).</title></rect>
+<rect x="707.1" y="304" width="83.9" height="64.7" fill="url(#hatch)" pointer-events="none"/>
+<text class="dark" x="749.1" y="340.6" font-size="12" text-anchor="middle" pointer-events="none">Tex/CLUT</text>
+<rect class="partial" x="707.1" y="370.8" width="83.9" height="64.7"><title>VU0 (macro and micro mode) -- Partial: KNOWN section 1: &#x27;The VU0 vf0 fix restores Frostfire online control&#x27;. Partial on a known divergence: LATER 12, issue #47 open (macro-mode flags land at once, without the hardware&#x27;s latency); the FTOI NaN rule is the fork&#x27;s, not hardware-verified (KNOWN section 2).</title></rect>
+<rect x="707.1" y="370.8" width="83.9" height="64.7" fill="url(#hatch)" pointer-events="none"/>
+<text class="dark" x="749.1" y="407.3" font-size="12" text-anchor="middle" pointer-events="none">VU0</text>
+<rect class="ok" x="796" y="138.5" width="69.8" height="83.4"><title>SIF DMA and RPC -- Working: KNOWN section 1: &#x27;sceSifInitRpc reset the whole IOP model on every call&#x27; -- fixed.</title></rect>
+<text class="t1" x="830.9" y="184.4" font-size="12" text-anchor="middle" pointer-events="none">SIF</text>
+<rect class="ok" x="867.7" y="138.5" width="69.8" height="83.4"><title>CD/DVD drive (your own disc image) -- Working: KNOWN section 1: the from-a-fresh-clone row and the sceCdRead stream-cursor fix.</title></rect>
+<text class="t1" x="902.6" y="184.4" font-size="12" text-anchor="middle" pointer-events="none">CDVD</text>
+<rect class="ok" x="796" y="223.9" width="69.8" height="83.4"><title>Memory cards -- Working: KNOWN section 1: an empty folder is a formatted card; the persona file is decoded; the launcher&#x27;s persona is one the game reads.</title></rect>
+<text class="t1" x="830.9" y="269.8" font-size="12" text-anchor="middle" pointer-events="none">MC</text>
+<rect class="ok" x="867.7" y="223.9" width="69.8" height="83.4"><title>Network adapter (DEV9) and the IOP stack -- Working: KNOWN section 1: &#x27;An online round plays end to end on the project&#x27;s HOSTED Horizon server&#x27;. Section 2: no round yet between two different networks.</title></rect>
+<text class="t1" x="902.6" y="269.8" font-size="12" text-anchor="middle" pointer-events="none">Network</text>
+<rect class="partial" x="796" y="309.4" width="69.8" height="126.1"><title>SPU2 and the 989snd driver (HLE) -- Partial: Music sample-exact (KNOWN section 1, &#x27;Missions are meant to have music&#x27;). The lobby track that played once and stopped now loops (fixed 567b127c, ff270d65; 188.5 s proven 2026-10-04). Partial on KNOWN section 2: the mission&#x27;s ambient bed 7-10 dB under the console (#91), and the login screens&#x27; unexplained dips (#94).</title></rect>
+<rect x="796" y="309.4" width="69.8" height="126.1" fill="url(#hatch)" pointer-events="none"/>
+<text class="dark" x="830.9" y="376.6" font-size="12" text-anchor="middle" pointer-events="none">SPU2</text>
+<rect class="partial" x="867.7" y="309.4" width="69.8" height="83.4"><title>Controllers -- Partial: One host pad on the first port; pressure all or nothing (KNOWN section 1, the crouch shortcut row, R139).</title></rect>
+<rect x="867.7" y="309.4" width="69.8" height="83.4" fill="url(#hatch)" pointer-events="none"/>
+<text class="dark" x="902.6" y="355.3" font-size="12" text-anchor="middle" pointer-events="none">Pad</text>
+<rect class="partial" x="867.7" y="394.8" width="69.8" height="40.7"><title>USB: the headset and the keyboard -- Partial: The lgaud headset service answers (KNOWN section 2, &#x27;Voice: the headset path, as far as it is proven&#x27;); the game does not send voice yet; no USB keyboard.</title></rect>
+<rect x="867.7" y="394.8" width="69.8" height="40.7" fill="url(#hatch)" pointer-events="none"/>
+<text class="dark" x="902.6" y="419.3" font-size="12" text-anchor="middle" pointer-events="none">USB</text>
+<rect class="chip" x="492.5" y="120.5" width="20.3" height="16" rx="2" pointer-events="none"/>
+<text class="t1" x="496.5" y="131.5" font-size="11" pointer-events="none">EE</text>
+<rect class="chip" x="492.5" y="286" width="51.1" height="16" rx="2" pointer-events="none"/>
+<text class="t1" x="496.5" y="297" font-size="11" pointer-events="none">GS / VU</text>
+<rect class="chip" x="796" y="120.5" width="63.4" height="16" rx="2" pointer-events="none"/>
+<text class="t1" x="800" y="131.5" font-size="11" pointer-events="none">IOP (HLE)</text>
+<rect class="ok" x="20" y="454" width="12" height="12" rx="2"/>
+<text class="t2" x="37" y="464" font-size="12">Working</text>
+<rect class="partial" x="104" y="454" width="12" height="12" rx="2"/>
+<rect x="104" y="454" width="12" height="12" rx="2" fill="url(#hatch)"/>
+<text class="t2" x="121" y="464" font-size="12">Partial</text>
+<rect class="pending" x="188" y="454" width="12" height="12" rx="2"/>
+<text class="t2" x="205" y="464" font-size="12">Pending</text>
+<text class="t2" x="282" y="464" font-size="11">Too small to label: libpad2, libmrpc, libvib, crt0 (in the table)</text>
+<text class="t2" x="20" y="484" font-size="11">* One cell per function of the Sony and toolchain libraries statically linked into SCUS_972.75 (the loader, r0001), from the function map ps2_recomp compiles.</text>
+<text class="t2" x="20" y="500" font-size="11">Hardware: one rectangle per component, sized by weight. Statuses from docs/KNOWN.md and docs/LATER.md; every reason is in docs/status/detail.md.</text>
+<text class="t2" x="20" y="516" font-size="11">† Plain means of the 2026-10-11 audit&#x27;s category scores, two rows re-scored from KNOWN for Sprint 18&#x27;s close: eight for the recomp and the game, one for our server.</text>
+</svg>
