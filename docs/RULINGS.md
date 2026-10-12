@@ -2,16 +2,23 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.rulings` from the ruling records `tools_py/docmaint.py` reads for checks 9 and 10 (`ruling_records()`: the definitions in the plans, the sprint file and `docs/archive/`, the ledger rows and the vacancy notes), plus the sprint-local `S12-R<n>` and `S13-R<n>` definitions in the same documents. Change the source and regenerate; `python -m tools_py.rulings --check` exits 1 when this file is stale. The status rules are the module's docstring; the conventions are `docs/DOC_MAINTENANCE.md` section 4.
 
-401 rulings (362 global, 39 sprint-local): 393 active, 5 superseded, 1 retracted, 1 withdrawn, 1 vacant.
+408 rulings (369 global, 39 sprint-local): 400 active, 5 superseded, 1 retracted, 1 withdrawn, 1 vacant.
 
 *Home* is where the ruling is written: its definition, else its ledger row, else its vacancy note. *The line* is its first sentence, cut at 160 characters.
 
 ## Global (R<n>), newest first
 
-362 rulings.
+369 rulings.
 
 | Number | Date | Status | The line | Home |
 |---|---|---|---|---|
+| R374 | -- | active | a public contract note for a small leaf says behaviour, signature, offsets and the return rule, never statement-by-statement code; the owner may tighten it. | `docs/superpowers/plans/2026-10-11-sprint-19-re-foundation.md` **R374** |
+| R373 | -- | active | README credits Harry62 and redotcom with one line each in "License and credits", drafted by K2; the owner may reword. | `docs/superpowers/plans/2026-10-11-sprint-19-re-foundation.md` **R373** |
+| R372 | -- | active | Z-a runs in one window the owner names (O20/R297); Z-b in any short window or the owner's own PCSX2 session; every lock-free task lands meanwhile. | `docs/superpowers/plans/2026-10-11-sprint-19-re-foundation.md` **R372** |
+| R371 | -- | active | the harness scripts the capture session (`PS2X_HOST_GAMEPAD`) on two of our clients, or ours plus a PCSX2; an item needing human hands becomes an owner row. | `docs/superpowers/plans/2026-10-11-sprint-19-re-foundation.md` **R371** |
+| R370 | -- | active | Harry's lever is loose: a name lands where a strict lever of ours agrees; the yield is N2's 62 hand rows plus N3's body reads. | `docs/superpowers/plans/2026-10-11-sprint-19-re-foundation.md` **R370** |
+| R369 | -- | active | no Metrowerks compiler is obtained or used; the route is functional decompilation. | `docs/superpowers/plans/2026-10-11-sprint-19-re-foundation.md` **R369** |
+| R368 | -- | active | E3's reconstructed body lives in a git-ignored folder in the main tree, read by `PS2X_PRIVATE_OVERRIDES_DIR`, until the owner creates a private repository (R35… | `docs/superpowers/plans/2026-10-11-sprint-19-re-foundation.md` **R368** |
 | R367 | 2026-10-12 | active | #59, #42, #32 and #26, each carried twice, leave milestone 7 for the backlog uncarried, so the milestone closes empty; keeping or closing each is the owner's q… | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R367** |
 | R366 | -- | active | (2026-10-11 23:09Z, the owner's word, O33(b); Sprint 18 T7) -- one real PCSX2 INSTALL from GitHub is granted: the launcher's INSTALL fetches PCSX2 v2.8.2's rel… | `docs/superpowers/plans/2026-09-27-sprint-17.md` **R366** |
 | R365 | 2026-10-11 | active | the spec is APPROVED with D-a..D-i at their defaults, D-d as R364 amends it, and D-h amended: when the redotcom export (`re/exports/`) is finished it is handed… | `docs/superpowers/plans/2026-10-11-sprint-19-re-foundation.md` **R365** |

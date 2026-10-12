@@ -1,10 +1,10 @@
-# Sprint 19 Implementation Plan — "the RE foundation" (PROPOSED 2026-10-11 22:05Z; opens on `sprint-19` off `main` after Sprints 17 and 18 close, R360)
+# Sprint 19 Implementation Plan — "the RE foundation" (OPEN 2026-10-12 10:19Z on `sprint-19` off `main` at `3ff74a11`, the v0.18.0 merge; R360; GitHub milestone 9)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: the project's `loop-iteration` skill runs this plan (one task at a time,
 > a failing test first, a fresh reviewer per task, the lock for every build and run, every lock-bound step in chain Z-a or session Z-b).
 > It is the project's form of superpowers:subagent-driven-development.
 
-> Spec: `docs/superpowers/specs/2026-10-11-sprint-19-re-foundation-design.md` (PROPOSED). Research:
+> Spec: `docs/superpowers/specs/2026-10-11-sprint-19-re-foundation-design.md` (APPROVED, R365). Research:
 > `docs/research/89-re-foundation-phase0.md`. Drafted in the worktree `agent/s19-spec` off `sprint-17` at `d5fe0d59`.
 > Task bodies are written at the open, one per task, in this file or a `-tasks` sibling as Sprint 18 did.
 
@@ -33,7 +33,7 @@ Kind: **free** = lock-free; **Z-a** = a step of the one chain; **Z-b** = the PCS
 
 | id | title | kind | depends | bar |
 |---|---|---|---|---|
-| T0 | The open: `sprint-19` off `main`, milestone, the spec's D-a..D-i numbered as rulings, CURRENT_SPRINT | free | 17 and 18 closed | docmaint OK; rulings in this file |
+| T0 | The open: `sprint-19` off `main`, milestone, the spec's D-a..D-i numbered as rulings, CURRENT_SPRINT | free | 17 and 18 closed | docmaint OK; rulings in this file -- **DONE 2026-10-12 10:19Z** (R368-R374) |
 | T1 | The twin table: `re/exports/twins.csv` generated from match.json, bogus and capsule rows flagged; its header carries the SHA-256 of match.json and the two input csvs | free | T0 | 14,879 rows; `how` counts equal the summary; the test asserts the csv hashes on every run (CI sees a stale table) and regenerates byte-identical where match.json is present |
 | L1 | `re/` README, the types and facts schemas, the validating test, the registry row | free | T0 | planted bad anchor, bad evidence kind, over-grade each fail; docmaint OK |
 | Y1 | The type master: `GameObject`, `PlayerObject`, `cAppCamera`, the replication record, aliases per source | free | L1, N-T1 | every field cited; the `+0x113` / `+0x115..+0x119` conflict held with its settling read |
@@ -75,6 +75,21 @@ Kind: **free** = lock-free; **Z-a** = a step of the one chain; **Z-b** = the PCS
 
 - **R364 (2026-10-11 22:28Z, the owner's word; amends R354 and the spec's D-d) -- all of Harry62's work comes into the project, credited as "h62": his raw work (the `.ide`, the return set, the label CSVs, his scripts and object notes) stays in the repository's tree git-ignored under `game/harry62/`; what is tracked is a digested research set, `docs/research/h62/`, that restates his findings in our words and maps them onto our names, addresses and types, outside his tooling and conventions, for future work.** The owner: "We want to bring in all of Harry's work and reference it as h62 ... a 'digested' version for future work as it maps onto ours. His work stays in the repo gitignored. He gave approval for us to include his findings; I just want to be respectful." Harry's approval covers his findings; the digest credits him on every page, carries no LAN address, and the owner alone sends anything back to him (D-d).
 - **R365 (2026-10-11 22:28Z, the owner's word) -- the spec is APPROVED with D-a..D-i at their defaults, D-d as R364 amends it, and D-h amended: when the redotcom export (`re/exports/`) is finished it is handed to redotcom's main controller as a handoff, and that seat decides what to take.** The owner: "agreed. When the export for redotcom is finished provide it to the main controller as a handoff and let it decide."
+- **R368-R374 (2026-10-12 10:19Z, the open, under R365: the spec §4's decisions at their defaults; the full text and the
+  reasons are §4's rows).** Each stands until the owner overturns it by number.
+  - **R368 (D-a):** E3's reconstructed body lives in a git-ignored folder in the main tree, read by
+    `PS2X_PRIVATE_OVERRIDES_DIR`, until the owner creates a private repository (R355); nothing public depends on it.
+  - **R369 (D-b):** no Metrowerks compiler is obtained or used; the route is functional decompilation.
+  - **R370 (D-c):** Harry's lever is loose: a name lands where a strict lever of ours agrees; the yield is N2's 62 hand
+    rows plus N3's body reads.
+  - **R371 (D-e):** the harness scripts the capture session (`PS2X_HOST_GAMEPAD`) on two of our clients, or ours plus a
+    PCSX2; an item needing human hands becomes an owner row.
+  - **R372 (D-f):** Z-a runs in one window the owner names (O20/R297); Z-b in any short window or the owner's own PCSX2
+    session; every lock-free task lands meanwhile.
+  - **R373 (D-g):** README credits Harry62 and redotcom with one line each in "License and credits", drafted by K2; the
+    owner may reword.
+  - **R374 (D-i):** a public contract note for a small leaf says behaviour, signature, offsets and the return rule, never
+    statement-by-statement code; the owner may tighten it.
 
 ## Outcome
 
@@ -83,6 +98,7 @@ owner's rows left)
 
 ## Log (newest first)
 
+- **2026-10-12 10:19Z** -- OPEN (T0): `sprint-19` cut off `main` at `3ff74a11` (PR #138, `v0.18.0`) by the main-tree controller after Sprints 17 and 18 closed in R352's window. GitHub milestone 9 (created at Sprint 18's close); the spec's seven open decisions numbered R368-R374 at their defaults (D-d and D-h were R364 and R365); CURRENT_SPRINT's header and HANDOFF's counter (past R374) rewritten. First lock-free tasks: T1 (the twin table) and L1 (`re/`'s README and schemas). Z-a waits for a window the owner names (R372).
 - **2026-10-11 22:19Z** -- The Fable review of 9d517511 (APPROVE WITH CHANGES), all eight applied: X2 names its revision
   and the counter's address (`_DAT_004a4490` is r0001 data); E2's bar catches the checkpoint return (`pc != ra`) and
   E1's sources go on `ps2EntryRunner`; Z split into Z-a (captures right after the first r0004 gate) and Z-b (the

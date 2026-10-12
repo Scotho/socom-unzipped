@@ -9,16 +9,20 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 repository another person can fork, build and contribute to.
 
 ```
-branch:       none open. Sprint 18 CLOSED 2026-10-12 (R359, full: T0 and T7 ran): see "Sprint 18 — CLOSED" below;
-              Sprint 17's block is in docs/archive/CURRENT_SPRINT-closed-sprint-17.md and Sprint 16's in
-              docs/archive/CURRENT_SPRINT-closed-sprint-16.md (both moved 2026-10-12). Next: Sprint 19, the
-              reverse-engineering sprint (R360, R365), off main after v0.18.0: spec
-              docs/superpowers/specs/2026-10-11-sprint-19-re-foundation-design.md (APPROVED), plan
-              docs/superpowers/plans/2026-10-11-sprint-19-re-foundation.md, GitHub milestone 9.
+branch:       sprint-19 -- OPEN 2026-10-12 10:19Z off main at 3ff74a11 (PR #138, v0.18.0), "the RE foundation" (R360,
+              R365), by the main-tree controller (the owner's ruling of 2026-09-28: one controller seated in
+              C:\Projects\socom_pc, every other session in its own worktree). Spec
+              docs/superpowers/specs/2026-10-11-sprint-19-re-foundation-design.md (APPROVED, R365); plan
+              docs/superpowers/plans/2026-10-11-sprint-19-re-foundation.md (the task table, R364-R365 and R368-R374, the
+              Log); research docs/research/89-re-foundation-phase0.md and docs/research/h62/; GitHub milestone 9.
+              Agents on agent/s19-* worktrees. Lock-free tasks first; chain Z-a waits for a window the owner names (R372).
+closed:       Sprint 18 CLOSED 2026-10-12 (R359, full): see "Sprint 18 — CLOSED" below; Sprint 17's block in
+              docs/archive/CURRENT_SPRINT-closed-sprint-17.md, Sprint 16's in docs/archive/CURRENT_SPRINT-closed-sprint-16.md.
 spec (18):    docs/superpowers/specs/2026-10-01-sprint-18-the-pcsx2-door-design.md (closed with v0.18.0). The Sprint 17 spec
               (docs/superpowers/specs/2026-09-27-sprint-17-sixty-and-the-way-back-design.md) closed with v0.17.0, and the
               Sprint 16, 15, 14, 13, 12 and 11 specs with v0.16.0 down to v0.11.0.
-plans:        docs/superpowers/plans/2026-10-01-sprint-18-the-pcsx2-door.md (Sprint 18, closed 2026-10-12; next to open: docs/superpowers/plans/2026-10-11-sprint-19-re-foundation.md). Closed: the Sprint 17 plan
+plans:        docs/superpowers/plans/2026-10-11-sprint-19-re-foundation.md (Sprint 19, open). Closed: the Sprint 18 plan
+              docs/superpowers/plans/2026-10-01-sprint-18-the-pcsx2-door.md (R339-R344, R346-R347), and the Sprint 17 plan
               docs/superpowers/plans/2026-09-27-sprint-17.md (the task table, the rulings R322-R338, R345, R348, R351-R363, R366-R367 from the global counter, the
               Outcome, the Log newest first -- its entries before 2026-09-29 in docs/archive/2026-09-27-sprint-17-log-to-2026-09-29.md and those to 2026-09-30 ~10Z in docs/archive/2026-09-27-sprint-17-log-to-2026-09-30.md and to 2026-10-01 ~00Z in docs/archive/2026-09-27-sprint-17-log-to-2026-10-01.md, then docs/archive/2026-09-27-sprint-17-log-to-2026-10-03.md and docs/archive/2026-09-27-sprint-17-log-to-2026-10-11.md; its task book 2026-09-27-sprint-17-tasks.md beside it; GitHub milestone 7).
               The Sprint 16 plan (R299-R321, R314 vacant; docs/superpowers/plans/2026-09-27-sprint-16.md) and the Sprint 15
@@ -54,7 +58,7 @@ named by the owner for a game run (the sitting's ruling of 2026-09-26, R297); "l
 
 ---
 
-## Sprint 18 — CLOSED 2026-10-12 (merging to `main` as `v0.18.0`; the record of the sprint is the block below)
+## Sprint 18 — CLOSED 2026-10-12 (merged to `main` as `v0.18.0` at `3ff74a11`, PR #138, 10:16Z; the record of the sprint is the block below)
 
 **Close-out (the PR body).** Opened 2026-10-01 02:40Z beside Sprint 17 ("the PCSX2 door", the owner's word of
 2026-10-01). It closed 2026-10-12 in full under R359: T0 and T7 ran in R352's window, with INSTALL granted by R366.

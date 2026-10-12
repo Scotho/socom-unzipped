@@ -2,7 +2,7 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.sitting` from `docs/HUMAN_TASKS.md` (the O rows and the stamp of the sittings), the rulings `docs/RULINGS.md` shows (`tools_py.rulings.rows()`), `docs/BACKLOG.md` (the `Carried` column) and `docs/PLAYTEST.md` (its build block). Change a source and regenerate; `python -m tools_py.sitting --check` exits 1 when this file is stale.
 
-The page as of 2026-10-12, for the sitting after the one of 2026-10-11: 3 open O rows (1 answered or struck); 17 active rulings since 2026-10-11 (16 dated, 1 placed by number or home, 201 undated and unplaceable, not listed); 10 issues carried twice; the build: built.
+The page as of 2026-10-12, for the sitting after the one of 2026-10-11: 3 open O rows (1 answered or struck); 24 active rulings since 2026-10-11 (16 dated, 8 placed by number or home, 201 undated and unplaceable, not listed); 10 issues carried twice; the build: built.
 
 **How to answer.** One line per item, by number -- "O5: acceptable for v1", "R271: overturn", "#25: close" -- in the next session's prompt or as a line in the open plan's Log.
 
@@ -22,7 +22,7 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 
 ## 2. The rulings since the last sitting
 
-17 active rulings on or after 2026-10-11, in the counter's order (the sprint-local names last, by date): 16 dated on or after it, and 1 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-10-11 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 201 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
+24 active rulings on or after 2026-10-11, in the counter's order (the sprint-local names last, by date): 16 dated on or after it, and 8 with no date in the label but *placed by number* -- above the highest-numbered active ruling dated before 2026-10-11 -- or *placed by home*, its file dated on or after it. Each stands until you overturn it; an overturn is its number and the word. Left out: 201 active rulings with no date, which neither signal places (`docs/RULINGS.md` lists every ruling).
 
 - **R351** (2026-10-11) Sprint 17 closes; R348's default stands; the `s17_voice_fullscale` 48-window compare is waived and #91 is left as KNOWN states it (7-10 dB short). -- overturn by number
 - **R352** (2026-10-11) one window tonight for the lock-bound steps, opening no earlier than 03:00-04:00 ADT on 2026-10-12 (06:00-07:00Z), coordinated with the web main controller. -- overturn by number
@@ -41,6 +41,13 @@ Answered or struck since the last sitting (struck rows live in the archive, `doc
 - **R365** (2026-10-11) the spec is APPROVED with D-a..D-i at their defaults, D-d as R364 amends it, and D-h amended: when the redotcom export (`re/exports/`) is finished it is handed… -- overturn by number
 - **R366** (placed by number) (2026-10-11 23:09Z, the owner's word, O33(b); Sprint 18 T7) -- one real PCSX2 INSTALL from GitHub is granted: the launcher's INSTALL fetches PCSX2 v2.8.2's rel… -- overturn by number
 - **R367** (2026-10-12) #59, #42, #32 and #26, each carried twice, leave milestone 7 for the backlog uncarried, so the milestone closes empty; keeping or closing each is the owner's q… -- overturn by number
+- **R368** (placed by number) E3's reconstructed body lives in a git-ignored folder in the main tree, read by `PS2X_PRIVATE_OVERRIDES_DIR`, until the owner creates a private repository (R35… -- overturn by number
+- **R369** (placed by number) no Metrowerks compiler is obtained or used; the route is functional decompilation. -- overturn by number
+- **R370** (placed by number) Harry's lever is loose: a name lands where a strict lever of ours agrees; the yield is N2's 62 hand rows plus N3's body reads. -- overturn by number
+- **R371** (placed by number) the harness scripts the capture session (`PS2X_HOST_GAMEPAD`) on two of our clients, or ours plus a PCSX2; an item needing human hands becomes an owner row. -- overturn by number
+- **R372** (placed by number) Z-a runs in one window the owner names (O20/R297); Z-b in any short window or the owner's own PCSX2 session; every lock-free task lands meanwhile. -- overturn by number
+- **R373** (placed by number) README credits Harry62 and redotcom with one line each in "License and credits", drafted by K2; the owner may reword. -- overturn by number
+- **R374** (placed by number) a public contract note for a small leaf says behaviour, signature, offsets and the return rule, never statement-by-statement code; the owner may tighten it. -- overturn by number
 
 ## 3. The issues carried twice
 

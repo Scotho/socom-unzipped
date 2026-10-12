@@ -10,8 +10,8 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 
 ## 2. Where it stands
 
-- **Now (2026-10-12 09:45Z) -- Sprint 17 CLOSED (`v0.17.0`, PR #137); Sprint 18 CLOSED in full (R359), going to main as `v0.18.0`; next, Sprint 19 off main (R360, R365).** Seat: `2026-10-11-handoff-close-17-18-and-the-re-sprint.md`.
-- **Next free ruling number: R368** (R364-R365 Sprint 19's plan; R351-R363, R366-R367 Sprint 17's; older: RULINGS.md).
+- **Now (2026-10-12 10:19Z) -- Sprint 19 OPEN (the RE foundation, R360/R365) on `sprint-19` off `v0.18.0`; Sprints 17 and 18 closed (`v0.17.0`, `v0.18.0`).** Seat: the Sprint 19 plan.
+- **Next free ruling number: R375** (R364-R365, R368-R374 Sprint 19's plan; R366-R367 Sprint 17's; older: RULINGS.md).
 
 ## 3. Your first hour (lock-free; start nothing heavy)
 
@@ -54,14 +54,13 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
   worktree `.claude/worktrees/sprint-16-cronjob-setup-76e59d` is still registered (never edit). **Keep** `wt-s16-r1b` (`agent/s16-r1b` at `3d17f192`, unmerged; its `logs/` hold research/76's patch and script).
 - **Other sessions' trees, never edit:** the web seat's `wt-web-play`, `socom_pc_web` (web code in `Scotho/redotcom`
   since 10-01); `.claude/worktrees/*`. **Keep, unmerged:** `wt-pad-focus`, `wt-wizard-harry` (Sprint 19), `wt-codex-perf-todos`.
-  **Remove now (merged; the close has happened):** `wt-i110-lock-heartbeat`, `wt-macos-ci`, `wt-readme-remodel`, `wt-s17-q0`, `wt-s17-replay-bench`; the branch `agent/s17-close-docs` (no worktree).
+  **Keep, merged but dirty:** `wt-i110-lock-heartbeat` (247 uncommitted lines of lock-script work; its owner decides). The other merged trees were removed 2026-10-12.
 - **The hosted-server / site session** owns `server/`, the Lightsail box and `../scotho`; never edit those.
-- **The main tree holds `sprint-18` since 2026-10-12 08:10Z**; `wt-s18-docs` (stale at `46d17f06`) goes after the merge -- never `update-ref sprint-18` from it.
+- **The main tree holds `sprint-19` since 2026-10-12 10:19Z**; agents work in `agent/s19-*` worktrees.
 
 ## 6. What is owed
 
-- Sprint 18's close: the PR on green, `v0.18.0` and its draft (R357); then the merged worktrees (§5, `wt-s18-docs`) removed by script.
-- Sprint 19's open off main after `v0.18.0`: the branch, the header, the plan's first tasks; remind the owner of one controller in the main tree.
+- Sprint 19: T1 and L1 first (lock-free); Z-a in a window the owner names (R372).
 - **The owner's rows** (`docs/SITTING.md`): O34 the draft releases; O35 #104 by eye, the box deploy; O36 four twice-carried issues.
 - 2026-09-28: the story generator `tools_py/story/site.py` emits the s2u design system's classes (scotho branch s2u-design-system, spec section 8); the story session regenerates with `--ds-dir` pointing at `web/shared/ds` (the default since 2026-09-29).
 
