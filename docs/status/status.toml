@@ -2,28 +2,35 @@
 # After an edit, regenerate:  python -m tools_py.status_map   (--check fails while either output is stale;
 # tools_py/tests/test_status_map.py runs it on every suite).
 #
-# THE STATUS RULE (the coordinator's ruling for this map, 2026-10-12; repeated in detail.md):
-#   "ok"      works in the game with no open defect or known divergence recorded in docs/KNOWN.md or docs/LATER.md.
-#             Unverified against a console does NOT make a row partial on its own; the note says so where it applies.
-#   "partial" an open defect or a known divergence, recorded in KNOWN or LATER (or, where both are silent, read
-#             from the runtime's own code, which the note then names).
-#   "pending" not modelled.
-# Only "ok" counts in the percentages. KNOWN wins on any disagreement: when a KNOWN row moves, move the status here
-# and say which row it rests on in the note. Rows are cited by their opening words and section (KNOWN "section 1" =
-# proven, "section 2" = believed), LATER rows by number.
+# THE STATUS RULE (the coordinator's rulings for this map, 2026-10-12; repeated in detail.md):
+#   Sources: docs/KNOWN.md, docs/LATER.md, docs/HAZARDS.md, docs/BACKLOG.md and the open GitHub issues it lists
+#   (every milestone). KNOWN wins on any disagreement.
+#   "ok"      works in the game with nothing open recorded against it. Unverified against a console does NOT make a
+#             row partial on its own; the note says so where it applies.
+#   "partial" an open defect or a recorded divergence, whatever its graded impact; or a stub that answers the game
+#             without the real behaviour (deci2/tty, libscf).
+#   "pending" not working, or not modelled.
+#   An unproven candidate (a suspected cause nobody has shown) is named in the note but does not count.
+# Only "ok" counts in the percentages. When a source row moves, move the status here and say which row it rests on
+# in the note. Rows are cited by their opening words and section (KNOWN "section 1" = proven, "section 2" =
+# believed), LATER rows by number, issues by #number (tools_py/tests/test_status_map.py refuses an ok row that
+# cites an open one).
 # The idea and the look: KIexster/god-of-war-recomp's "Current status" map (credited in README.md).
 
 [meta]
 title = "SOCOM Unzipped: status"
 footnote = [
   "* One cell per function of the Sony and toolchain libraries statically linked into SCUS_972.75 (the loader, r0001), from the function map ps2_recomp compiles.",
-  "Hardware: one rectangle per component, sized by weight. Statuses from docs/KNOWN.md and docs/LATER.md; every reason is in docs/status/detail.md.",
+  "Hardware: one rectangle per component, sized by weight. Statuses from KNOWN, LATER, HAZARDS and the open issues; every reason is in docs/status/detail.md.",
   "† Judgement scores from a 2026-10-11 audit, averaged per badge (eight categories for the recomp and the game, one for our server); two rows re-scored from KNOWN.",
 ]
 intro = """
-**The status rule.** *Working* (ok): works in the game with no open defect or known divergence recorded in
-`docs/KNOWN.md` or `docs/LATER.md`; being unverified against a console does not make a row partial on its own, and
-the note says so where it applies. *Partial*: an open defect or a known divergence. *Pending*: not modelled.
+**The status rule.** The sources are `docs/KNOWN.md`, `docs/LATER.md`, `docs/HAZARDS.md`, `docs/BACKLOG.md` and
+the open GitHub issues it lists, whatever their milestone; `docs/KNOWN.md` wins on any disagreement. *Working* (ok):
+works in the game with nothing open recorded against it; being unverified against a console does not make a row
+partial on its own, and the note says so where it applies. *Partial*: an open defect or a recorded divergence,
+whatever its graded impact, or a stub that answers the game without the real behaviour. *Pending*: not working, or
+not modelled. An unproven candidate (a suspected cause nobody has shown) is named in the note and does not count.
 
 **What the libraries panel leaves out.** Only the loader `SCUS_972.75` is counted. The Sony code linked into the
 game image itself is not: the libnet EE wrappers (0x245690-0x2484a0, research/10), the lgAud headset client, the
@@ -194,7 +201,7 @@ name = "deci2 / tty"
 short = "deci2"
 ranges = [[0x1A4B80, 0x1A5C98]]
 status = "partial"
-note = "libkernel's debug channel (Deci2, TTY, kprintf). A divergence read from the runtime's code (KNOWN and LATER are silent): the Deci2 calls are TODO stubs (Kernel/Stubs/Deci2.cpp), not a model."
+note = "libkernel's debug channel (Deci2, TTY, kprintf). Partial as a stub that answers the game without the real behaviour: the Deci2 calls are TODO stubs (Kernel/Stubs/Deci2.cpp), not a model. The sources are otherwise silent."
 
 [[library]]
 name = "sif"
@@ -230,8 +237,8 @@ note = "EE libmc HLE over a card folder. KNOWN section 1: 'An empty or missing c
 [[library]]
 name = "libmpeg"
 ranges = [[0x1B5160, 0x1BCD80]]
-status = "partial"
-note = "FFmpeg-backed MPEG HLE; movies play on every gate. KNOWN section 1: the intro-movie macroblock race and the MPEG back-pressure gate behind the music dropouts, both fixed. Partial on docs/BACKLOG.md's audio-level-residuals row: the movie audio about 18 dB low at the source. A freeze seen once in Sprint 1 stays a section 2 belief."
+status = "ok"
+note = "FFmpeg-backed MPEG HLE; movies play on every gate. KNOWN section 1: the intro-movie macroblock race and the MPEG back-pressure gate behind the music dropouts, both fixed. The HLE only demuxes and hands the packets on (Kernel/Stubs/MPEG.cpp); the movie audio's level residual is the sound path's (docs/HAZARDS.md, 'The movie audio (the PCM ring) is ~20 dB under the console'), counted under SPU2. A freeze seen once in Sprint 1 stays a section 2 belief."
 
 [[library]]
 name = "libmrpc"
@@ -249,7 +256,7 @@ note = "HLE of the first port. Pressure is all or nothing (0xFF), so crouch need
 name = "libscf"
 ranges = [[0x1BDE40, 0x1BE530]]
 status = "partial"
-note = "System configuration (language, aspect, time zone, RTC). A divergence read from the config (KNOWN and LATER are silent): stub selectors in recomp/socom2.toml stand in for the console's settings; the game runs in English at its defaults."
+note = "System configuration (language, aspect, time zone, RTC). Partial as a stub that answers the game without the real behaviour: stub selectors in recomp/socom2.toml stand in for the console's settings; the game runs in English at its defaults."
 
 [[library]]
 name = "libvib"
@@ -298,7 +305,7 @@ group = "EE"
   name = "Kernel: threads, semaphores, alarms, ExecPS2"
   status = "ok"
   weight = 3
-  note = "KNOWN section 1: the priority scheduler ('Equal-priority time slicing ... removed') and the in-process LoadExecPS2 restart."
+  note = "KNOWN section 1: the priority scheduler ('Equal-priority time slicing ... removed') and the in-process LoadExecPS2 restart. Named, not counted (an unproven candidate): LATER 96, the boot's 0xA00D0-byte stack frame spans the runtime pools; an overwrite is unproven."
 
   [[hardware.component]]
   short = "FPU/MMI"
@@ -312,7 +319,7 @@ group = "EE"
   name = "INTC: VBlank and GS interrupts"
   status = "ok"
   weight = 2
-  note = "VBlank holds near the console's 16.7 ms; two instances keep the guest clock at real time (KNOWN section 1, 'Two instances hold the guest clock at real time')."
+  note = "VBlank holds near the console's 16.7 ms; two instances keep the guest clock at real time (KNOWN section 1, 'Two instances hold the guest clock at real time'). Latent, not counted: LATER 93 (per-thread Status.EIE and the DI/EI timing are not modelled; nothing reads EIE today)."
 
   [[hardware.component]]
   short = "DMAC"
@@ -326,7 +333,7 @@ group = "EE"
   name = "EE timers"
   status = "ok"
   weight = 1
-  note = "LATER 10: no console timing oracle, interrupt unit tests only, and no defect of the timers themselves (the frame-rate thread it names is counted under VIF1/VU1, where KNOWN places it; the drag freeze is fixed) -- unverified, which by this map's rule is not partial."
+  note = "LATER 10: no console timing oracle, interrupt unit tests only, and no defect of the timers themselves (the frame-rate thread it names is counted under VIF1/VU1, where KNOWN places it; the drag freeze is fixed) -- unverified, which by this map's rule is not partial. Latent, not counted: docs/HAZARDS.md's clock residuals (a timer IRQ candidate compared on the host clock only can be one period late while the host lags; no game log registers timer causes)."
 
 [[hardware]]
 group = "GS / VU"
@@ -371,7 +378,7 @@ group = "GS / VU"
   name = "IPU: the movies"
   status = "ok"
   weight = 2
-  note = "Through the FFmpeg MPEG HLE; KNOWN section 1, the intro-movie macroblock race fixed."
+  note = "Through the FFmpeg MPEG HLE; KNOWN section 1, the intro-movie macroblock race fixed. The movie audio's level residual (LATER's 'The MPEG/IPU path' row) is the sound path's, not the IPU's (docs/HAZARDS.md, the movie-audio row); it is counted under SPU2."
 
 [[hardware]]
 group = "IOP (HLE)"
@@ -381,7 +388,7 @@ group = "IOP (HLE)"
   name = "SPU2 and the 989snd driver (HLE)"
   status = "partial"
   weight = 3
-  note = "Music sample-exact (KNOWN section 1, 'Missions are meant to have music'); the lobby track that played once and stopped now loops (fixed 567b127c, ff270d65; 188.5 s proven 2026-10-04). Partial on open issues: #91 the mission's ambient bed 7-10 dB under the console; #94 the login screens' dips; #42 about 50 ms of mission music lost between render() and the device (KNOWN section 2, nine holes on the merged tree; LATER 88); #28 the music degrades with time in a mission."
+  note = "Music sample-exact (KNOWN section 1, 'Missions are meant to have music'); the lobby track that played once and stopped now loops (fixed 567b127c, ff270d65; 188.5 s proven 2026-10-04). Partial on open issues: #91 the mission's ambient bed 7-10 dB under the console; #94 the login screens' dips; #42 about 50 ms of mission music lost between render() and the device (KNOWN section 2, nine holes on the merged tree; LATER 88); #28 the music degrades with time in a mission. Also the movie audio's level residual: about 18 dB low at the source (docs/BACKLOG.md audio-level-residuals; docs/HAZARDS.md, the movie-audio row)."
 
   [[hardware.component]]
   short = "SIF"
@@ -409,7 +416,7 @@ group = "IOP (HLE)"
   name = "Network adapter (DEV9) and the IOP stack"
   status = "partial"
   weight = 2
-  note = "KNOWN section 1: 'An online round plays end to end on the project's HOSTED Horizon server'. Partial on issue #34 (open: the online-freeze candidate, a paused console peer) and LATER 102 (POSIX builds: a peer's reset can kill the game with SIGPIPE). KNOWN section 2: no round yet between two different networks."
+  note = "KNOWN section 1: 'An online round plays end to end on the project's HOSTED Horizon server'. Partial on LATER 102 (POSIX builds: a peer's connection reset can kill the game with SIGPIPE). Named, not counted (an unproven candidate): issue #34, the online freeze's remaining candidate, a paused console peer. KNOWN section 2: no round yet between two different networks."
 
   [[hardware.component]]
   short = "Pad"

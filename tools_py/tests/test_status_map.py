@@ -273,7 +273,10 @@ class TestCommittedTree(unittest.TestCase):
         """The status rule: any open defect makes a row partial. A row marked ok whose note names an issue that
         docs/BACKLOG.md still lists as open is a contradiction in the data file."""
         with open(os.path.join(ROOT, "docs", "BACKLOG.md"), encoding="utf-8") as f:
-            open_issues = set(re.findall(r"^\| #(\d+) \|[^\n]*\| backlog \|", f.read(), re.M))
+            backlog = f.read()
+        # Every row of section 1's table is an open GitHub issue, whatever its milestone (backlog, a sprint, none).
+        section = backlog.split("## 1. Open issues", 1)[1].split("\n## ", 1)[0]
+        open_issues = set(re.findall(r"^\| #(\d+) \|", section, re.M))
         self.assertIn("60", open_issues)                     # the reader itself works
         data = status_map.load(os.path.join(ROOT, "docs", "status", "status.toml"))
         rows = [(lib["name"], lib["status"], lib.get("note", "")) for lib in data["library"]]

@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="534" viewBox="0 0 960 534" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" role="img" aria-labelledby="status-title">
-<title id="status-title">SOCOM Unzipped: status: Sony SDK libraries 55.8%, PS2 hardware 36.4%</title>
+<title id="status-title">SOCOM Unzipped: status: Sony SDK libraries 66.3%, PS2 hardware 36.4%</title>
 <style>
   .bg { fill: #0d1117; } .edge { stroke: #30363d; } .panel { fill: #161b22; }
   .t1 { fill: #e6edf3; } .t2 { fill: #9198a1; } .dark { fill: #0d1117; }
@@ -16,7 +16,7 @@
 <rect class="pct" x="163.7" y="58" width="49.6" height="22" rx="3"/>
 <rect class="pct" x="163.7" y="58" width="4" height="22"/>
 <text class="t1" x="91.8" y="73" font-size="12" text-anchor="middle">Sony SDK libraries*</text>
-<text class="pct-t" x="188.5" y="73" font-size="12" font-weight="600" text-anchor="middle">55.8%</text>
+<text class="pct-t" x="188.5" y="73" font-size="12" font-weight="600" text-anchor="middle">66.3%</text>
 <rect class="key" x="223.3" y="58" width="146.2" height="22" rx="3"/>
 <rect class="pct" x="319.9" y="58" width="49.6" height="22" rx="3"/>
 <rect class="pct" x="319.9" y="58" width="4" height="22"/>
@@ -33,7 +33,7 @@
 <rect class="pct" x="612.8" y="58" width="4" height="22"/>
 <text class="t1" x="581.3" y="73" font-size="12" text-anchor="middle">server†</text>
 <text class="pct-t" x="630.9" y="73" font-size="12" font-weight="600" text-anchor="middle">55%</text>
-<text class="t1" x="20" y="108" font-size="14" font-weight="600">Sony SDK libraries*: 55.8% (643/1152 functions)</text>
+<text class="t1" x="20" y="108" font-size="14" font-weight="600">Sony SDK libraries*: 66.3% (764/1152 functions)</text>
 <rect class="panel" x="20" y="118" width="450" height="320"/>
 <g><title>MSL C++ std: 169 functions -- Working. Metrowerks Standard Library (iostreams, locale, ctype, codecvt, string), recompiled as is. No defect or divergence in KNOWN or LATER, and no KNOWN row exercises it -- unverified, which by this map&#x27;s rule is not partial.</title>
 <rect class="ok" x="22" y="120" width="8.8" height="11.2"/>
@@ -700,249 +700,128 @@
 <rect class="ok" x="309" y="216.2" width="10.2" height="9.7"/>
 <rect class="ok" x="320.2" y="216.2" width="10.2" height="9.7"/>
 </g>
-<g><title>libmpeg: 121 functions -- Partial. FFmpeg-backed MPEG HLE; movies play on every gate. KNOWN section 1: the intro-movie macroblock race and the MPEG back-pressure gate behind the music dropouts, both fixed. Partial on docs/BACKLOG.md&#x27;s audio-level-residuals row: the movie audio about 18 dB low at the source. A freeze seen once in Sprint 1 stays a section 2 belief.</title>
-<rect class="partial" x="334.4" y="120" width="11.2" height="8.7"/>
-<rect x="334.4" y="120" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="346.6" y="120" width="11.2" height="8.7"/>
-<rect x="346.6" y="120" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="358.9" y="120" width="11.2" height="8.7"/>
-<rect x="358.9" y="120" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="371.1" y="120" width="11.2" height="8.7"/>
-<rect x="371.1" y="120" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="383.4" y="120" width="11.2" height="8.7"/>
-<rect x="383.4" y="120" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="395.6" y="120" width="11.2" height="8.7"/>
-<rect x="395.6" y="120" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="407.8" y="120" width="11.2" height="8.7"/>
-<rect x="407.8" y="120" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="420.1" y="120" width="11.2" height="8.7"/>
-<rect x="420.1" y="120" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="432.3" y="120" width="11.2" height="8.7"/>
-<rect x="432.3" y="120" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="444.5" y="120" width="11.2" height="8.7"/>
-<rect x="444.5" y="120" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="456.8" y="120" width="11.2" height="8.7"/>
-<rect x="456.8" y="120" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="334.4" y="129.7" width="11.2" height="8.7"/>
-<rect x="334.4" y="129.7" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="346.6" y="129.7" width="11.2" height="8.7"/>
-<rect x="346.6" y="129.7" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="358.9" y="129.7" width="11.2" height="8.7"/>
-<rect x="358.9" y="129.7" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="371.1" y="129.7" width="11.2" height="8.7"/>
-<rect x="371.1" y="129.7" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="383.4" y="129.7" width="11.2" height="8.7"/>
-<rect x="383.4" y="129.7" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="395.6" y="129.7" width="11.2" height="8.7"/>
-<rect x="395.6" y="129.7" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="407.8" y="129.7" width="11.2" height="8.7"/>
-<rect x="407.8" y="129.7" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="420.1" y="129.7" width="11.2" height="8.7"/>
-<rect x="420.1" y="129.7" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="432.3" y="129.7" width="11.2" height="8.7"/>
-<rect x="432.3" y="129.7" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="444.5" y="129.7" width="11.2" height="8.7"/>
-<rect x="444.5" y="129.7" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="456.8" y="129.7" width="11.2" height="8.7"/>
-<rect x="456.8" y="129.7" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="334.4" y="139.4" width="11.2" height="8.7"/>
-<rect x="334.4" y="139.4" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="346.6" y="139.4" width="11.2" height="8.7"/>
-<rect x="346.6" y="139.4" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="358.9" y="139.4" width="11.2" height="8.7"/>
-<rect x="358.9" y="139.4" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="371.1" y="139.4" width="11.2" height="8.7"/>
-<rect x="371.1" y="139.4" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="383.4" y="139.4" width="11.2" height="8.7"/>
-<rect x="383.4" y="139.4" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="395.6" y="139.4" width="11.2" height="8.7"/>
-<rect x="395.6" y="139.4" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="407.8" y="139.4" width="11.2" height="8.7"/>
-<rect x="407.8" y="139.4" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="420.1" y="139.4" width="11.2" height="8.7"/>
-<rect x="420.1" y="139.4" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="432.3" y="139.4" width="11.2" height="8.7"/>
-<rect x="432.3" y="139.4" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="444.5" y="139.4" width="11.2" height="8.7"/>
-<rect x="444.5" y="139.4" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="456.8" y="139.4" width="11.2" height="8.7"/>
-<rect x="456.8" y="139.4" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="334.4" y="149.2" width="11.2" height="8.7"/>
-<rect x="334.4" y="149.2" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="346.6" y="149.2" width="11.2" height="8.7"/>
-<rect x="346.6" y="149.2" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="358.9" y="149.2" width="11.2" height="8.7"/>
-<rect x="358.9" y="149.2" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="371.1" y="149.2" width="11.2" height="8.7"/>
-<rect x="371.1" y="149.2" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="383.4" y="149.2" width="11.2" height="8.7"/>
-<rect x="383.4" y="149.2" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="395.6" y="149.2" width="11.2" height="8.7"/>
-<rect x="395.6" y="149.2" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="407.8" y="149.2" width="11.2" height="8.7"/>
-<rect x="407.8" y="149.2" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="420.1" y="149.2" width="11.2" height="8.7"/>
-<rect x="420.1" y="149.2" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="432.3" y="149.2" width="11.2" height="8.7"/>
-<rect x="432.3" y="149.2" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="444.5" y="149.2" width="11.2" height="8.7"/>
-<rect x="444.5" y="149.2" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="456.8" y="149.2" width="11.2" height="8.7"/>
-<rect x="456.8" y="149.2" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="334.4" y="158.9" width="11.2" height="8.7"/>
-<rect x="334.4" y="158.9" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="346.6" y="158.9" width="11.2" height="8.7"/>
-<rect x="346.6" y="158.9" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="358.9" y="158.9" width="11.2" height="8.7"/>
-<rect x="358.9" y="158.9" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="371.1" y="158.9" width="11.2" height="8.7"/>
-<rect x="371.1" y="158.9" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="383.4" y="158.9" width="11.2" height="8.7"/>
-<rect x="383.4" y="158.9" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="395.6" y="158.9" width="11.2" height="8.7"/>
-<rect x="395.6" y="158.9" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="407.8" y="158.9" width="11.2" height="8.7"/>
-<rect x="407.8" y="158.9" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="420.1" y="158.9" width="11.2" height="8.7"/>
-<rect x="420.1" y="158.9" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="432.3" y="158.9" width="11.2" height="8.7"/>
-<rect x="432.3" y="158.9" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="444.5" y="158.9" width="11.2" height="8.7"/>
-<rect x="444.5" y="158.9" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="456.8" y="158.9" width="11.2" height="8.7"/>
-<rect x="456.8" y="158.9" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="334.4" y="168.6" width="11.2" height="8.7"/>
-<rect x="334.4" y="168.6" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="346.6" y="168.6" width="11.2" height="8.7"/>
-<rect x="346.6" y="168.6" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="358.9" y="168.6" width="11.2" height="8.7"/>
-<rect x="358.9" y="168.6" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="371.1" y="168.6" width="11.2" height="8.7"/>
-<rect x="371.1" y="168.6" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="383.4" y="168.6" width="11.2" height="8.7"/>
-<rect x="383.4" y="168.6" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="395.6" y="168.6" width="11.2" height="8.7"/>
-<rect x="395.6" y="168.6" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="407.8" y="168.6" width="11.2" height="8.7"/>
-<rect x="407.8" y="168.6" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="420.1" y="168.6" width="11.2" height="8.7"/>
-<rect x="420.1" y="168.6" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="432.3" y="168.6" width="11.2" height="8.7"/>
-<rect x="432.3" y="168.6" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="444.5" y="168.6" width="11.2" height="8.7"/>
-<rect x="444.5" y="168.6" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="456.8" y="168.6" width="11.2" height="8.7"/>
-<rect x="456.8" y="168.6" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="334.4" y="178.3" width="11.2" height="8.7"/>
-<rect x="334.4" y="178.3" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="346.6" y="178.3" width="11.2" height="8.7"/>
-<rect x="346.6" y="178.3" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="358.9" y="178.3" width="11.2" height="8.7"/>
-<rect x="358.9" y="178.3" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="371.1" y="178.3" width="11.2" height="8.7"/>
-<rect x="371.1" y="178.3" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="383.4" y="178.3" width="11.2" height="8.7"/>
-<rect x="383.4" y="178.3" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="395.6" y="178.3" width="11.2" height="8.7"/>
-<rect x="395.6" y="178.3" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="407.8" y="178.3" width="11.2" height="8.7"/>
-<rect x="407.8" y="178.3" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="420.1" y="178.3" width="11.2" height="8.7"/>
-<rect x="420.1" y="178.3" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="432.3" y="178.3" width="11.2" height="8.7"/>
-<rect x="432.3" y="178.3" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="444.5" y="178.3" width="11.2" height="8.7"/>
-<rect x="444.5" y="178.3" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="456.8" y="178.3" width="11.2" height="8.7"/>
-<rect x="456.8" y="178.3" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="334.4" y="188" width="11.2" height="8.7"/>
-<rect x="334.4" y="188" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="346.6" y="188" width="11.2" height="8.7"/>
-<rect x="346.6" y="188" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="358.9" y="188" width="11.2" height="8.7"/>
-<rect x="358.9" y="188" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="371.1" y="188" width="11.2" height="8.7"/>
-<rect x="371.1" y="188" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="383.4" y="188" width="11.2" height="8.7"/>
-<rect x="383.4" y="188" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="395.6" y="188" width="11.2" height="8.7"/>
-<rect x="395.6" y="188" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="407.8" y="188" width="11.2" height="8.7"/>
-<rect x="407.8" y="188" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="420.1" y="188" width="11.2" height="8.7"/>
-<rect x="420.1" y="188" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="432.3" y="188" width="11.2" height="8.7"/>
-<rect x="432.3" y="188" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="444.5" y="188" width="11.2" height="8.7"/>
-<rect x="444.5" y="188" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="456.8" y="188" width="11.2" height="8.7"/>
-<rect x="456.8" y="188" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="334.4" y="197.8" width="11.2" height="8.7"/>
-<rect x="334.4" y="197.8" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="346.6" y="197.8" width="11.2" height="8.7"/>
-<rect x="346.6" y="197.8" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="358.9" y="197.8" width="11.2" height="8.7"/>
-<rect x="358.9" y="197.8" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="371.1" y="197.8" width="11.2" height="8.7"/>
-<rect x="371.1" y="197.8" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="383.4" y="197.8" width="11.2" height="8.7"/>
-<rect x="383.4" y="197.8" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="395.6" y="197.8" width="11.2" height="8.7"/>
-<rect x="395.6" y="197.8" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="407.8" y="197.8" width="11.2" height="8.7"/>
-<rect x="407.8" y="197.8" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="420.1" y="197.8" width="11.2" height="8.7"/>
-<rect x="420.1" y="197.8" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="432.3" y="197.8" width="11.2" height="8.7"/>
-<rect x="432.3" y="197.8" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="444.5" y="197.8" width="11.2" height="8.7"/>
-<rect x="444.5" y="197.8" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="456.8" y="197.8" width="11.2" height="8.7"/>
-<rect x="456.8" y="197.8" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="334.4" y="207.5" width="11.2" height="8.7"/>
-<rect x="334.4" y="207.5" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="346.6" y="207.5" width="11.2" height="8.7"/>
-<rect x="346.6" y="207.5" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="358.9" y="207.5" width="11.2" height="8.7"/>
-<rect x="358.9" y="207.5" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="371.1" y="207.5" width="11.2" height="8.7"/>
-<rect x="371.1" y="207.5" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="383.4" y="207.5" width="11.2" height="8.7"/>
-<rect x="383.4" y="207.5" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="395.6" y="207.5" width="11.2" height="8.7"/>
-<rect x="395.6" y="207.5" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="407.8" y="207.5" width="11.2" height="8.7"/>
-<rect x="407.8" y="207.5" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="420.1" y="207.5" width="11.2" height="8.7"/>
-<rect x="420.1" y="207.5" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="432.3" y="207.5" width="11.2" height="8.7"/>
-<rect x="432.3" y="207.5" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="444.5" y="207.5" width="11.2" height="8.7"/>
-<rect x="444.5" y="207.5" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="456.8" y="207.5" width="11.2" height="8.7"/>
-<rect x="456.8" y="207.5" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="334.4" y="217.2" width="11.2" height="8.7"/>
-<rect x="334.4" y="217.2" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="346.6" y="217.2" width="11.2" height="8.7"/>
-<rect x="346.6" y="217.2" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="358.9" y="217.2" width="11.2" height="8.7"/>
-<rect x="358.9" y="217.2" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="371.1" y="217.2" width="11.2" height="8.7"/>
-<rect x="371.1" y="217.2" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="383.4" y="217.2" width="11.2" height="8.7"/>
-<rect x="383.4" y="217.2" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="395.6" y="217.2" width="11.2" height="8.7"/>
-<rect x="395.6" y="217.2" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="407.8" y="217.2" width="11.2" height="8.7"/>
-<rect x="407.8" y="217.2" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="420.1" y="217.2" width="11.2" height="8.7"/>
-<rect x="420.1" y="217.2" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="432.3" y="217.2" width="11.2" height="8.7"/>
-<rect x="432.3" y="217.2" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="444.5" y="217.2" width="11.2" height="8.7"/>
-<rect x="444.5" y="217.2" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
-<rect class="partial" x="456.8" y="217.2" width="11.2" height="8.7"/>
-<rect x="456.8" y="217.2" width="11.2" height="8.7" fill="url(#hatch)" pointer-events="none"/>
+<g><title>libmpeg: 121 functions -- Working. FFmpeg-backed MPEG HLE; movies play on every gate. KNOWN section 1: the intro-movie macroblock race and the MPEG back-pressure gate behind the music dropouts, both fixed. The HLE only demuxes and hands the packets on (Kernel/Stubs/MPEG.cpp); the movie audio&#x27;s level residual is the sound path&#x27;s (docs/HAZARDS.md, &#x27;The movie audio (the PCM ring) is ~20 dB under the console&#x27;), counted under SPU2. A freeze seen once in Sprint 1 stays a section 2 belief.</title>
+<rect class="ok" x="334.4" y="120" width="11.2" height="8.7"/>
+<rect class="ok" x="346.6" y="120" width="11.2" height="8.7"/>
+<rect class="ok" x="358.9" y="120" width="11.2" height="8.7"/>
+<rect class="ok" x="371.1" y="120" width="11.2" height="8.7"/>
+<rect class="ok" x="383.4" y="120" width="11.2" height="8.7"/>
+<rect class="ok" x="395.6" y="120" width="11.2" height="8.7"/>
+<rect class="ok" x="407.8" y="120" width="11.2" height="8.7"/>
+<rect class="ok" x="420.1" y="120" width="11.2" height="8.7"/>
+<rect class="ok" x="432.3" y="120" width="11.2" height="8.7"/>
+<rect class="ok" x="444.5" y="120" width="11.2" height="8.7"/>
+<rect class="ok" x="456.8" y="120" width="11.2" height="8.7"/>
+<rect class="ok" x="334.4" y="129.7" width="11.2" height="8.7"/>
+<rect class="ok" x="346.6" y="129.7" width="11.2" height="8.7"/>
+<rect class="ok" x="358.9" y="129.7" width="11.2" height="8.7"/>
+<rect class="ok" x="371.1" y="129.7" width="11.2" height="8.7"/>
+<rect class="ok" x="383.4" y="129.7" width="11.2" height="8.7"/>
+<rect class="ok" x="395.6" y="129.7" width="11.2" height="8.7"/>
+<rect class="ok" x="407.8" y="129.7" width="11.2" height="8.7"/>
+<rect class="ok" x="420.1" y="129.7" width="11.2" height="8.7"/>
+<rect class="ok" x="432.3" y="129.7" width="11.2" height="8.7"/>
+<rect class="ok" x="444.5" y="129.7" width="11.2" height="8.7"/>
+<rect class="ok" x="456.8" y="129.7" width="11.2" height="8.7"/>
+<rect class="ok" x="334.4" y="139.4" width="11.2" height="8.7"/>
+<rect class="ok" x="346.6" y="139.4" width="11.2" height="8.7"/>
+<rect class="ok" x="358.9" y="139.4" width="11.2" height="8.7"/>
+<rect class="ok" x="371.1" y="139.4" width="11.2" height="8.7"/>
+<rect class="ok" x="383.4" y="139.4" width="11.2" height="8.7"/>
+<rect class="ok" x="395.6" y="139.4" width="11.2" height="8.7"/>
+<rect class="ok" x="407.8" y="139.4" width="11.2" height="8.7"/>
+<rect class="ok" x="420.1" y="139.4" width="11.2" height="8.7"/>
+<rect class="ok" x="432.3" y="139.4" width="11.2" height="8.7"/>
+<rect class="ok" x="444.5" y="139.4" width="11.2" height="8.7"/>
+<rect class="ok" x="456.8" y="139.4" width="11.2" height="8.7"/>
+<rect class="ok" x="334.4" y="149.2" width="11.2" height="8.7"/>
+<rect class="ok" x="346.6" y="149.2" width="11.2" height="8.7"/>
+<rect class="ok" x="358.9" y="149.2" width="11.2" height="8.7"/>
+<rect class="ok" x="371.1" y="149.2" width="11.2" height="8.7"/>
+<rect class="ok" x="383.4" y="149.2" width="11.2" height="8.7"/>
+<rect class="ok" x="395.6" y="149.2" width="11.2" height="8.7"/>
+<rect class="ok" x="407.8" y="149.2" width="11.2" height="8.7"/>
+<rect class="ok" x="420.1" y="149.2" width="11.2" height="8.7"/>
+<rect class="ok" x="432.3" y="149.2" width="11.2" height="8.7"/>
+<rect class="ok" x="444.5" y="149.2" width="11.2" height="8.7"/>
+<rect class="ok" x="456.8" y="149.2" width="11.2" height="8.7"/>
+<rect class="ok" x="334.4" y="158.9" width="11.2" height="8.7"/>
+<rect class="ok" x="346.6" y="158.9" width="11.2" height="8.7"/>
+<rect class="ok" x="358.9" y="158.9" width="11.2" height="8.7"/>
+<rect class="ok" x="371.1" y="158.9" width="11.2" height="8.7"/>
+<rect class="ok" x="383.4" y="158.9" width="11.2" height="8.7"/>
+<rect class="ok" x="395.6" y="158.9" width="11.2" height="8.7"/>
+<rect class="ok" x="407.8" y="158.9" width="11.2" height="8.7"/>
+<rect class="ok" x="420.1" y="158.9" width="11.2" height="8.7"/>
+<rect class="ok" x="432.3" y="158.9" width="11.2" height="8.7"/>
+<rect class="ok" x="444.5" y="158.9" width="11.2" height="8.7"/>
+<rect class="ok" x="456.8" y="158.9" width="11.2" height="8.7"/>
+<rect class="ok" x="334.4" y="168.6" width="11.2" height="8.7"/>
+<rect class="ok" x="346.6" y="168.6" width="11.2" height="8.7"/>
+<rect class="ok" x="358.9" y="168.6" width="11.2" height="8.7"/>
+<rect class="ok" x="371.1" y="168.6" width="11.2" height="8.7"/>
+<rect class="ok" x="383.4" y="168.6" width="11.2" height="8.7"/>
+<rect class="ok" x="395.6" y="168.6" width="11.2" height="8.7"/>
+<rect class="ok" x="407.8" y="168.6" width="11.2" height="8.7"/>
+<rect class="ok" x="420.1" y="168.6" width="11.2" height="8.7"/>
+<rect class="ok" x="432.3" y="168.6" width="11.2" height="8.7"/>
+<rect class="ok" x="444.5" y="168.6" width="11.2" height="8.7"/>
+<rect class="ok" x="456.8" y="168.6" width="11.2" height="8.7"/>
+<rect class="ok" x="334.4" y="178.3" width="11.2" height="8.7"/>
+<rect class="ok" x="346.6" y="178.3" width="11.2" height="8.7"/>
+<rect class="ok" x="358.9" y="178.3" width="11.2" height="8.7"/>
+<rect class="ok" x="371.1" y="178.3" width="11.2" height="8.7"/>
+<rect class="ok" x="383.4" y="178.3" width="11.2" height="8.7"/>
+<rect class="ok" x="395.6" y="178.3" width="11.2" height="8.7"/>
+<rect class="ok" x="407.8" y="178.3" width="11.2" height="8.7"/>
+<rect class="ok" x="420.1" y="178.3" width="11.2" height="8.7"/>
+<rect class="ok" x="432.3" y="178.3" width="11.2" height="8.7"/>
+<rect class="ok" x="444.5" y="178.3" width="11.2" height="8.7"/>
+<rect class="ok" x="456.8" y="178.3" width="11.2" height="8.7"/>
+<rect class="ok" x="334.4" y="188" width="11.2" height="8.7"/>
+<rect class="ok" x="346.6" y="188" width="11.2" height="8.7"/>
+<rect class="ok" x="358.9" y="188" width="11.2" height="8.7"/>
+<rect class="ok" x="371.1" y="188" width="11.2" height="8.7"/>
+<rect class="ok" x="383.4" y="188" width="11.2" height="8.7"/>
+<rect class="ok" x="395.6" y="188" width="11.2" height="8.7"/>
+<rect class="ok" x="407.8" y="188" width="11.2" height="8.7"/>
+<rect class="ok" x="420.1" y="188" width="11.2" height="8.7"/>
+<rect class="ok" x="432.3" y="188" width="11.2" height="8.7"/>
+<rect class="ok" x="444.5" y="188" width="11.2" height="8.7"/>
+<rect class="ok" x="456.8" y="188" width="11.2" height="8.7"/>
+<rect class="ok" x="334.4" y="197.8" width="11.2" height="8.7"/>
+<rect class="ok" x="346.6" y="197.8" width="11.2" height="8.7"/>
+<rect class="ok" x="358.9" y="197.8" width="11.2" height="8.7"/>
+<rect class="ok" x="371.1" y="197.8" width="11.2" height="8.7"/>
+<rect class="ok" x="383.4" y="197.8" width="11.2" height="8.7"/>
+<rect class="ok" x="395.6" y="197.8" width="11.2" height="8.7"/>
+<rect class="ok" x="407.8" y="197.8" width="11.2" height="8.7"/>
+<rect class="ok" x="420.1" y="197.8" width="11.2" height="8.7"/>
+<rect class="ok" x="432.3" y="197.8" width="11.2" height="8.7"/>
+<rect class="ok" x="444.5" y="197.8" width="11.2" height="8.7"/>
+<rect class="ok" x="456.8" y="197.8" width="11.2" height="8.7"/>
+<rect class="ok" x="334.4" y="207.5" width="11.2" height="8.7"/>
+<rect class="ok" x="346.6" y="207.5" width="11.2" height="8.7"/>
+<rect class="ok" x="358.9" y="207.5" width="11.2" height="8.7"/>
+<rect class="ok" x="371.1" y="207.5" width="11.2" height="8.7"/>
+<rect class="ok" x="383.4" y="207.5" width="11.2" height="8.7"/>
+<rect class="ok" x="395.6" y="207.5" width="11.2" height="8.7"/>
+<rect class="ok" x="407.8" y="207.5" width="11.2" height="8.7"/>
+<rect class="ok" x="420.1" y="207.5" width="11.2" height="8.7"/>
+<rect class="ok" x="432.3" y="207.5" width="11.2" height="8.7"/>
+<rect class="ok" x="444.5" y="207.5" width="11.2" height="8.7"/>
+<rect class="ok" x="456.8" y="207.5" width="11.2" height="8.7"/>
+<rect class="ok" x="334.4" y="217.2" width="11.2" height="8.7"/>
+<rect class="ok" x="346.6" y="217.2" width="11.2" height="8.7"/>
+<rect class="ok" x="358.9" y="217.2" width="11.2" height="8.7"/>
+<rect class="ok" x="371.1" y="217.2" width="11.2" height="8.7"/>
+<rect class="ok" x="383.4" y="217.2" width="11.2" height="8.7"/>
+<rect class="ok" x="395.6" y="217.2" width="11.2" height="8.7"/>
+<rect class="ok" x="407.8" y="217.2" width="11.2" height="8.7"/>
+<rect class="ok" x="420.1" y="217.2" width="11.2" height="8.7"/>
+<rect class="ok" x="432.3" y="217.2" width="11.2" height="8.7"/>
+<rect class="ok" x="444.5" y="217.2" width="11.2" height="8.7"/>
+<rect class="ok" x="456.8" y="217.2" width="11.2" height="8.7"/>
 </g>
 <g><title>libinsck + netglue: 45 functions -- Working. The socket layer under the game&#x27;s network code. Anchored by the named sceInsockInetAddr (0x1c1348) and sceEENetInetNtoa (0x1c1858); the start 0x1c0948 is inferred (the unnamed functions after libvu0&#x27;s last, whose sizes match netglue_insck&#x27;s in ps2recomp&#x27;s symbol database, third_party/ps2recomp/ps2xAnalyzer/include/ps2recomp/sce_symbol_database_data.h). KNOWN section 1: the hosted online round and &#x27;The online movement blocker was sceInetInterfaceControl(0x200) returning a constant&#x27; (fixed).</title>
 <rect class="ok" x="152.5" y="229.9" width="9.5" height="9.1"/>
@@ -1369,7 +1248,7 @@
 <rect class="ok" x="369.2" y="278.8" width="9.8" height="8.8"/>
 <rect class="ok" x="379.9" y="278.8" width="9.8" height="8.8"/>
 </g>
-<g><title>deci2 / tty: 28 functions -- Partial. libkernel&#x27;s debug channel (Deci2, TTY, kprintf). A divergence read from the runtime&#x27;s code (KNOWN and LATER are silent): the Deci2 calls are TODO stubs (Kernel/Stubs/Deci2.cpp), not a model.</title>
+<g><title>deci2 / tty: 28 functions -- Partial. libkernel&#x27;s debug channel (Deci2, TTY, kprintf). Partial as a stub that answers the game without the real behaviour: the Deci2 calls are TODO stubs (Kernel/Stubs/Deci2.cpp), not a model. The sources are otherwise silent.</title>
 <rect class="partial" x="415.2" y="229.9" width="9.8" height="8.8"/>
 <rect x="415.2" y="229.9" width="9.8" height="8.8" fill="url(#hatch)" pointer-events="none"/>
 <rect class="partial" x="426" y="229.9" width="9.8" height="8.8"/>
@@ -1577,7 +1456,7 @@
 <rect class="partial" x="458.5" y="323" width="9.5" height="9.5"/>
 <rect x="458.5" y="323" width="9.5" height="9.5" fill="url(#hatch)" pointer-events="none"/>
 </g>
-<g><title>libscf: 20 functions -- Partial. System configuration (language, aspect, time zone, RTC). A divergence read from the config (KNOWN and LATER are silent): stub selectors in recomp/socom2.toml stand in for the console&#x27;s settings; the game runs in English at its defaults.</title>
+<g><title>libscf: 20 functions -- Partial. System configuration (language, aspect, time zone, RTC). Partial as a stub that answers the game without the real behaviour: stub selectors in recomp/socom2.toml stand in for the console&#x27;s settings; the game runs in English at its defaults.</title>
 <rect class="partial" x="360.9" y="336.5" width="10" height="9"/>
 <rect x="360.9" y="336.5" width="10" height="9" fill="url(#hatch)" pointer-events="none"/>
 <rect class="partial" x="371.9" y="336.5" width="10" height="9"/>
@@ -1792,13 +1671,13 @@
 <text class="t1" x="412.5" y="428" font-size="9" pointer-events="none">libipu</text>
 <text class="t1" x="490" y="108" font-size="14" font-weight="600">PS2 hardware: 36.4% (by weight)</text>
 <rect class="panel" x="490" y="118" width="450" height="320"/>
-<rect class="ok" x="492.5" y="138.5" width="99.3" height="81.4"><title>Kernel: threads, semaphores, alarms, ExecPS2 -- Working: KNOWN section 1: the priority scheduler (&#x27;Equal-priority time slicing ... removed&#x27;) and the in-process LoadExecPS2 restart.</title></rect>
+<rect class="ok" x="492.5" y="138.5" width="99.3" height="81.4"><title>Kernel: threads, semaphores, alarms, ExecPS2 -- Working: KNOWN section 1: the priority scheduler (&#x27;Equal-priority time slicing ... removed&#x27;) and the in-process LoadExecPS2 restart. Named, not counted (an unproven candidate): LATER 96, the boot&#x27;s 0xA00D0-byte stack frame spans the runtime pools; an overwrite is unproven.</title></rect>
 <text class="t1" x="542.1" y="183.4" font-size="12" text-anchor="middle" pointer-events="none">Kernel</text>
-<rect class="ok" x="492.5" y="221.9" width="99.3" height="53.6"><title>INTC: VBlank and GS interrupts -- Working: VBlank holds near the console&#x27;s 16.7 ms; two instances keep the guest clock at real time (KNOWN section 1, &#x27;Two instances hold the guest clock at real time&#x27;).</title></rect>
+<rect class="ok" x="492.5" y="221.9" width="99.3" height="53.6"><title>INTC: VBlank and GS interrupts -- Working: VBlank holds near the console&#x27;s 16.7 ms; two instances keep the guest clock at real time (KNOWN section 1, &#x27;Two instances hold the guest clock at real time&#x27;). Latent, not counted: LATER 93 (per-thread Status.EIE and the DI/EI timing are not modelled; nothing reads EIE today).</title></rect>
 <text class="t1" x="542.1" y="252.9" font-size="12" text-anchor="middle" pointer-events="none">INTC</text>
 <rect class="ok" x="593.8" y="138.5" width="58.8" height="90.7"><title>DMA controller -- Working: Runs every frame of every gate; never compared with a console (LATER 13, &#x27;no defect seen&#x27;) -- unverified, which by this map&#x27;s rule is not partial.</title></rect>
 <text class="t1" x="623.2" y="188" font-size="12" text-anchor="middle" pointer-events="none">DMAC</text>
-<rect class="ok" x="593.8" y="231.2" width="58.8" height="44.3"><title>EE timers -- Working: LATER 10: no console timing oracle, interrupt unit tests only, and no defect of the timers themselves (the frame-rate thread it names is counted under VIF1/VU1, where KNOWN places it; the drag freeze is fixed) -- unverified, which by this map&#x27;s rule is not partial.</title></rect>
+<rect class="ok" x="593.8" y="231.2" width="58.8" height="44.3"><title>EE timers -- Working: LATER 10: no console timing oracle, interrupt unit tests only, and no defect of the timers themselves (the frame-rate thread it names is counted under VIF1/VU1, where KNOWN places it; the drag freeze is fixed) -- unverified, which by this map&#x27;s rule is not partial. Latent, not counted: docs/HAZARDS.md&#x27;s clock residuals (a timer IRQ candidate compared on the host clock only can be one period late while the host lags; no game log registers timer causes).</title></rect>
 <text class="t1" x="623.2" y="257.5" font-size="12" text-anchor="middle" pointer-events="none">Timers</text>
 <rect class="partial" x="654.5" y="138.5" width="99.3" height="137"><title>R5900 CPU, recompiled to C++ -- Partial: Every map row recompiles; the gate passes 3/3 on every chain, r0004 too (KNOWN section 1, &#x27;The r0004 build passes the gate 3/3&#x27;). Partial on three open recompiler defects: #60 (a stub&#x27;s table slot holds another owner&#x27;s resume entry, LATER 14), #54 (1090 nested forced-entry rows in the map) and #55 (map bounds lose to the JAL-target carvings).</title></rect>
 <rect x="654.5" y="138.5" width="99.3" height="137" fill="url(#hatch)" pointer-events="none"/>
@@ -1810,13 +1689,13 @@
 <text class="t1" x="532" y="336.4" font-size="12" text-anchor="middle" pointer-events="none">CDVD</text>
 <rect class="ok" x="492.5" y="368" width="79" height="67.5"><title>Memory cards -- Working: KNOWN section 1: an empty folder is a formatted card; the persona file is decoded; the launcher&#x27;s persona is one the game reads. (The launcher&#x27;s multi-persona writer has an open issue of its own; it is the launcher&#x27;s, not the card model&#x27;s.)</title></rect>
 <text class="t1" x="532" y="405.9" font-size="12" text-anchor="middle" pointer-events="none">MC</text>
-<rect class="partial" x="573.5" y="298.5" width="99.3" height="81.4"><title>SPU2 and the 989snd driver (HLE) -- Partial: Music sample-exact (KNOWN section 1, &#x27;Missions are meant to have music&#x27;); the lobby track that played once and stopped now loops (fixed 567b127c, ff270d65; 188.5 s proven 2026-10-04). Partial on open issues: #91 the mission&#x27;s ambient bed 7-10 dB under the console; #94 the login screens&#x27; dips; #42 about 50 ms of mission music lost between render() and the device (KNOWN section 2, nine holes on the merged tree; LATER 88); #28 the music degrades with time in a mission.</title></rect>
+<rect class="partial" x="573.5" y="298.5" width="99.3" height="81.4"><title>SPU2 and the 989snd driver (HLE) -- Partial: Music sample-exact (KNOWN section 1, &#x27;Missions are meant to have music&#x27;); the lobby track that played once and stopped now loops (fixed 567b127c, ff270d65; 188.5 s proven 2026-10-04). Partial on open issues: #91 the mission&#x27;s ambient bed 7-10 dB under the console; #94 the login screens&#x27; dips; #42 about 50 ms of mission music lost between render() and the device (KNOWN section 2, nine holes on the merged tree; LATER 88); #28 the music degrades with time in a mission. Also the movie audio&#x27;s level residual: about 18 dB low at the source (docs/BACKLOG.md audio-level-residuals; docs/HAZARDS.md, the movie-audio row).</title></rect>
 <rect x="573.5" y="298.5" width="99.3" height="81.4" fill="url(#hatch)" pointer-events="none"/>
 <text class="dark" x="623.2" y="343.4" font-size="12" text-anchor="middle" pointer-events="none">SPU2</text>
 <rect class="partial" x="573.5" y="381.9" width="99.3" height="53.6"><title>SIF DMA and RPC -- Partial: KNOWN section 1: &#x27;sceSifInitRpc reset the whole IOP model on every call&#x27; -- fixed. Partial on issue #60 (open, LATER 14): the _sceSifCmdIntrHdlr slot at 0x1A6190 holds isceSifSendCmd, so a table dispatch there runs guest code.</title></rect>
 <rect x="573.5" y="381.9" width="99.3" height="53.6" fill="url(#hatch)" pointer-events="none"/>
 <text class="dark" x="623.2" y="412.9" font-size="12" text-anchor="middle" pointer-events="none">SIF</text>
-<rect class="partial" x="674.8" y="298.5" width="58.8" height="90.7"><title>Network adapter (DEV9) and the IOP stack -- Partial: KNOWN section 1: &#x27;An online round plays end to end on the project&#x27;s HOSTED Horizon server&#x27;. Partial on issue #34 (open: the online-freeze candidate, a paused console peer) and LATER 102 (POSIX builds: a peer&#x27;s reset can kill the game with SIGPIPE). KNOWN section 2: no round yet between two different networks.</title></rect>
+<rect class="partial" x="674.8" y="298.5" width="58.8" height="90.7"><title>Network adapter (DEV9) and the IOP stack -- Partial: KNOWN section 1: &#x27;An online round plays end to end on the project&#x27;s HOSTED Horizon server&#x27;. Partial on LATER 102 (POSIX builds: a peer&#x27;s connection reset can kill the game with SIGPIPE). Named, not counted (an unproven candidate): issue #34, the online freeze&#x27;s remaining candidate, a paused console peer. KNOWN section 2: no round yet between two different networks.</title></rect>
 <rect x="674.8" y="298.5" width="58.8" height="90.7" fill="url(#hatch)" pointer-events="none"/>
 <text class="dark" x="704.2" y="348" font-size="12" text-anchor="middle" pointer-events="none">Network</text>
 <rect class="partial" x="735.6" y="298.5" width="58.8" height="90.7"><title>Controllers -- Partial: One host pad on the first port; pressure all or nothing (KNOWN section 1, the crouch shortcut row, R139); issue #105 open, the pad is read while unfocused.</title></rect>
@@ -1829,7 +1708,7 @@
 <text class="t1" x="764.9" y="417.5" font-size="12" text-anchor="middle" pointer-events="none">HDD</text>
 <rect class="ok" x="799.3" y="138.5" width="68.1" height="83.4"><title>GIF (PATH1-3) -- Working: Runs every frame of every gate; never compared with a console (LATER 13, &#x27;no defect seen&#x27;) -- unverified, which by this map&#x27;s rule is not partial.</title></rect>
 <text class="t1" x="833.4" y="184.4" font-size="12" text-anchor="middle" pointer-events="none">GIF</text>
-<rect class="ok" x="869.4" y="138.5" width="68.1" height="83.4"><title>IPU: the movies -- Working: Through the FFmpeg MPEG HLE; KNOWN section 1, the intro-movie macroblock race fixed.</title></rect>
+<rect class="ok" x="869.4" y="138.5" width="68.1" height="83.4"><title>IPU: the movies -- Working: Through the FFmpeg MPEG HLE; KNOWN section 1, the intro-movie macroblock race fixed. The movie audio&#x27;s level residual (LATER&#x27;s &#x27;The MPEG/IPU path&#x27; row) is the sound path&#x27;s, not the IPU&#x27;s (docs/HAZARDS.md, the movie-audio row); it is counted under SPU2.</title></rect>
 <text class="t1" x="903.5" y="184.4" font-size="12" text-anchor="middle" pointer-events="none">IPU</text>
 <rect class="partial" x="799.3" y="223.9" width="68.1" height="126.1"><title>GS: primitives and framebuffer (OpenGL) -- Partial: Draws every screen, up to 4x resolution. KNOWN section 2: &#x27;The main thread&#x27;s GL replay stalls for good after a present&#x27; (intermittent, #114); open: #96 (a shadow read-back empties the gpuRows window) and #104 (Frostfire&#x27;s depth band); LATER 55: no deinterlace, so the 480i output is not field-blended as PCSX2&#x27;s is.</title></rect>
 <rect x="799.3" y="223.9" width="68.1" height="126.1" fill="url(#hatch)" pointer-events="none"/>
@@ -1858,6 +1737,6 @@
 <text class="t2" x="205" y="464" font-size="12">Pending</text>
 <text class="t2" x="282" y="464" font-size="11">Too small to label: libpad2, libmrpc, libvib, crt0 (in the table)</text>
 <text class="t2" x="20" y="484" font-size="11">* One cell per function of the Sony and toolchain libraries statically linked into SCUS_972.75 (the loader, r0001), from the function map ps2_recomp compiles.</text>
-<text class="t2" x="20" y="500" font-size="11">Hardware: one rectangle per component, sized by weight. Statuses from docs/KNOWN.md and docs/LATER.md; every reason is in docs/status/detail.md.</text>
+<text class="t2" x="20" y="500" font-size="11">Hardware: one rectangle per component, sized by weight. Statuses from KNOWN, LATER, HAZARDS and the open issues; every reason is in docs/status/detail.md.</text>
 <text class="t2" x="20" y="516" font-size="11">† Judgement scores from a 2026-10-11 audit, averaged per badge (eight categories for the recomp and the game, one for our server); two rows re-scored from KNOWN.</text>
 </svg>
