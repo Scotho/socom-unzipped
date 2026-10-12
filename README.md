@@ -77,7 +77,7 @@ game itself is checked on the maintainer's machine, with a disc.
 <p align="center">
   <a href="docs/status/detail.md"><img src="docs/status/map.svg" alt="Status map: the Sony SDK libraries linked into SCUS_972.75 (the loader), one cell per function, and the PS2's hardware components, coloured working, partial or pending" width="100%"></a>
 </p>
-<p align="center"><sub>Green works, amber is partial or unverified, grey is not modelled; every library's and component's reason is in <a href="docs/status/detail.md">the table</a>, read from <code>docs/KNOWN.md</code>. Edit <code>docs/status/status.toml</code> and regenerate with <code>python -m tools_py.status_map</code>. The idea and the look come from <a href="https://github.com/KIexster/god-of-war-recomp">KIexster/god-of-war-recomp</a>.</sub></p>
+<p align="center"><sub>Green works with nothing open recorded (it may still be unverified against a console), amber has an open defect or a known divergence, grey is not working or not modelled; every library's and component's reason is in <a href="docs/status/detail.md">the table</a>, read from <code>docs/KNOWN.md</code>. Edit <code>docs/status/status.toml</code> and regenerate with <code>python -m tools_py.status_map</code>. The idea and the look come from <a href="https://github.com/KIexster/god-of-war-recomp">KIexster/god-of-war-recomp</a>.</sub></p>
 
 Screenshots from the project's own builds (native Windows, OpenGL renderer):
 

@@ -18,7 +18,7 @@ title = "SOCOM Unzipped: status"
 footnote = [
   "* One cell per function of the Sony and toolchain libraries statically linked into SCUS_972.75 (the loader, r0001), from the function map ps2_recomp compiles.",
   "Hardware: one rectangle per component, sized by weight. Statuses from docs/KNOWN.md and docs/LATER.md; every reason is in docs/status/detail.md.",
-  "† Plain means of the 2026-10-11 audit's category scores, two rows re-scored from KNOWN for Sprint 18's close: eight for the recomp and the game, one for our server.",
+  "† Judgement scores from a 2026-10-11 audit, averaged per badge (eight categories for the recomp and the game, one for our server); two rows re-scored from KNOWN.",
 ]
 intro = """
 **The status rule.** *Working* (ok): works in the game with no open defect or known divergence recorded in
@@ -31,8 +31,9 @@ game image itself is not: the libnet EE wrappers (0x245690-0x2484a0, research/10
 BSD-socket shim of research/10) is the game's, and zlib 1.1.4 is a third-party library; both are left out too.
 
 **The hardware weights** are a rough share of the work each component asks of a PS2 recompilation and its runtime
-(the CPU 5; the kernel, GS, VIF1/VU1 and SPU2 3; most others 2; the timers and USB 1). They are judgement calls, as
-in the map this one follows, and they decide only the size of a rectangle and the hardware percentage.
+(the CPU 5; the kernel, GS, VIF1/VU1 and SPU2 3; most others 2; the timers, USB and the HDD 1). They are
+judgement calls, as in the map this one follows, and they decide only the size of a rectangle and the hardware
+percentage.
 """
 feature_intro = """
 The badges marked † are computed here from the category scores of the 2026-10-11 feature completion audit
@@ -161,8 +162,8 @@ note = "Every frame's transfers reach the GS; the gate passes 3/3 on every chain
 name = "libc (newlib)"
 short = "libc"
 ranges = [[0x191440, 0x19EB18]]
-status = "ok"
-note = "Recompiled newlib. KNOWN section 1: 'rand() returned 15 bits over a _rand_next frozen at 41' -- fixed (ede2096)."
+status = "partial"
+note = "Recompiled newlib; KNOWN section 1: 'rand() returned 15 bits over a _rand_next frozen at 41' -- fixed (ede2096). Partial on issue #60 (open, LATER 14, docs/HAZARDS.md): the function-table slot of the fwrite stub at 0x194520 holds _fwalk, so a table dispatch there runs guest code, not the HLE."
 
 [[library]]
 name = "libgcc"
@@ -173,8 +174,8 @@ note = "64-bit integer and soft-double helpers. KNOWN section 1: 'Five soft-doub
 [[library]]
 name = "libgraph"
 ranges = [[0x1A13D0, 0x1A30B8]]
-status = "ok"
-note = "KNOWN section 2: 'sceGsSetDefDBuff reads its trailing args from the stack' -- fixed (07ffc0a); the display-environment difference that remains is believed to have no visible effect."
+status = "partial"
+note = "KNOWN section 2: 'sceGsSetDefDBuff reads its trailing args from the stack' -- fixed (07ffc0a). Partial on what that row still records: the consumed display environment (MAGH, DW, DY, PMODE) and zbp differ from the console's, believed to have no visible effect."
 
 [[library]]
 name = "libipu"
@@ -198,14 +199,14 @@ note = "libkernel's debug channel (Deci2, TTY, kprintf). A divergence read from 
 [[library]]
 name = "sif"
 ranges = [[0x1A5C98, 0x1A7398]]
-status = "ok"
-note = "SIF commands and RPC, served by the runtime's IOP model. KNOWN section 1: 'sceSifInitRpc reset the whole IOP model on every call' -- fixed."
+status = "partial"
+note = "SIF commands and RPC, served by the runtime's IOP model; KNOWN section 1: 'sceSifInitRpc reset the whole IOP model on every call' -- fixed. Partial on issue #60 (open, LATER 14, docs/HAZARDS.md): the _sceSifCmdIntrHdlr slot at 0x1A6190 holds isceSifSendCmd."
 
 [[library]]
 name = "fileio"
 ranges = [[0x1A7398, 0x1AAA78]]
-status = "ok"
-note = "Host and disc file I/O behind the IOP model; every boot reads through it (KNOWN section 1, the from-a-fresh-clone row)."
+status = "partial"
+note = "Host and disc file I/O behind the IOP model; every boot reads through it (KNOWN section 1, the from-a-fresh-clone row). Partial on LATER 52: pfs0: (the HDD) is not served, so the three HDD maps (After Hours, Last Bastion, Liberation) cannot be played."
 
 [[library]]
 name = "iopheap / loadfile"
@@ -229,8 +230,8 @@ note = "EE libmc HLE over a card folder. KNOWN section 1: 'An empty or missing c
 [[library]]
 name = "libmpeg"
 ranges = [[0x1B5160, 0x1BCD80]]
-status = "ok"
-note = "FFmpeg-backed MPEG HLE; movies play on every gate. KNOWN section 1: the intro-movie macroblock race and the MPEG back-pressure gate behind the music dropouts, both fixed. A freeze seen once in Sprint 1 stays a section 2 belief."
+status = "partial"
+note = "FFmpeg-backed MPEG HLE; movies play on every gate. KNOWN section 1: the intro-movie macroblock race and the MPEG back-pressure gate behind the music dropouts, both fixed. Partial on docs/BACKLOG.md's audio-level-residuals row: the movie audio about 18 dB low at the source. A freeze seen once in Sprint 1 stays a section 2 belief."
 
 [[library]]
 name = "libmrpc"
@@ -242,7 +243,7 @@ note = "msifrpc, the network library's transport (research/10), HLE'd. KNOWN sec
 name = "libpad2"
 ranges = [[0x1BD588, 0x1BDE40]]
 status = "partial"
-note = "HLE of the first port. Pressure is all or nothing (0xFF), so crouch needs the launcher's shortcut: KNOWN section 1, 'Crouch was unreachable on any PC pad, and now has a shortcut (R139)'."
+note = "HLE of the first port. Pressure is all or nothing (0xFF), so crouch needs the launcher's shortcut (KNOWN section 1, 'Crouch was unreachable on any PC pad, and now has a shortcut (R139)'); issue #105 open: the pad is read while no window has focus."
 
 [[library]]
 name = "libscf"
@@ -279,7 +280,7 @@ note = "The socket layer under the game's network code. Anchored by the named sc
 # Panel 2: the PS2's hardware, weighted. `short` is drawn on the map; `name` and `note` are in the table and the
 # tooltip. The IOP is modelled at the RPC level (HLE), not emulated: there is no R3000A here on purpose.
 # Weights: a rough share of the work each component asks of a recompilation and its runtime (judgement calls, as in
-# the map this follows): the CPU 5; kernel, GS, VIF1/VU1 and SPU2 3; most others 2; the timers and USB 1.
+# the map this follows): the CPU 5; kernel, GS, VIF1/VU1 and SPU2 3; most others 2; the timers, USB and HDD 1.
 # ---------------------------------------------------------------------------------------------------------------
 
 [[hardware]]
@@ -288,9 +289,9 @@ group = "EE"
   [[hardware.component]]
   short = "R5900"
   name = "R5900 CPU, recompiled to C++"
-  status = "ok"
+  status = "partial"
   weight = 5
-  note = "Every map row recompiles; the gate passes 3/3 on every chain, r0004 too (KNOWN section 1, 'The r0004 build passes the gate 3/3')."
+  note = "Every map row recompiles; the gate passes 3/3 on every chain, r0004 too (KNOWN section 1, 'The r0004 build passes the gate 3/3'). Partial on three open recompiler defects: #60 (a stub's table slot holds another owner's resume entry, LATER 14), #54 (1090 nested forced-entry rows in the map) and #55 (map bounds lose to the JAL-target carvings)."
 
   [[hardware.component]]
   short = "Kernel"
@@ -325,7 +326,7 @@ group = "EE"
   name = "EE timers"
   status = "ok"
   weight = 1
-  note = "No defect beyond the frame-rate issues #59 and #67 (LATER 10); no console timing oracle, interrupt unit tests only -- unverified, which by this map's rule is not partial."
+  note = "LATER 10: no console timing oracle, interrupt unit tests only, and no defect of the timers themselves (the frame-rate thread it names is counted under VIF1/VU1, where KNOWN places it; the drag freeze is fixed) -- unverified, which by this map's rule is not partial."
 
 [[hardware]]
 group = "GS / VU"
@@ -335,14 +336,14 @@ group = "GS / VU"
   name = "GS: primitives and framebuffer (OpenGL)"
   status = "partial"
   weight = 3
-  note = "Draws every screen, up to 4x resolution. KNOWN section 2: 'The main thread's GL replay stalls for good after a present' (intermittent, #114); LATER 55: no deinterlace, so the 480i output is not field-blended as PCSX2's is."
+  note = "Draws every screen, up to 4x resolution. KNOWN section 2: 'The main thread's GL replay stalls for good after a present' (intermittent, #114); open: #96 (a shadow read-back empties the gpuRows window) and #104 (Frostfire's depth band); LATER 55: no deinterlace, so the 480i output is not field-blended as PCSX2's is."
 
   [[hardware.component]]
   short = "VIF1/VU1"
   name = "VIF1 and VU1"
   status = "partial"
   weight = 3
-  note = "Correct on the gate; the cost is the open thread. KNOWN section 2: 'The game thread's own work is what limits the mission's frame rate' (VU1 about 42 %)."
+  note = "Correct on the gate; the cost is the open thread. KNOWN section 2: 'The game thread's own work is what limits the mission's frame rate' (VU1 about 42 %); issue #59, the mission frame rate has no bar yet."
 
   [[hardware.component]]
   short = "Tex/CLUT"
@@ -380,14 +381,14 @@ group = "IOP (HLE)"
   name = "SPU2 and the 989snd driver (HLE)"
   status = "partial"
   weight = 3
-  note = "Music sample-exact (KNOWN section 1, 'Missions are meant to have music'). The lobby track that played once and stopped now loops (fixed 567b127c, ff270d65; 188.5 s proven 2026-10-04). Partial on KNOWN section 2: the mission's ambient bed 7-10 dB under the console (#91), and the login screens' unexplained dips (#94)."
+  note = "Music sample-exact (KNOWN section 1, 'Missions are meant to have music'); the lobby track that played once and stopped now loops (fixed 567b127c, ff270d65; 188.5 s proven 2026-10-04). Partial on open issues: #91 the mission's ambient bed 7-10 dB under the console; #94 the login screens' dips; #42 about 50 ms of mission music lost between render() and the device (KNOWN section 2, nine holes on the merged tree; LATER 88); #28 the music degrades with time in a mission."
 
   [[hardware.component]]
   short = "SIF"
   name = "SIF DMA and RPC"
-  status = "ok"
+  status = "partial"
   weight = 2
-  note = "KNOWN section 1: 'sceSifInitRpc reset the whole IOP model on every call' -- fixed."
+  note = "KNOWN section 1: 'sceSifInitRpc reset the whole IOP model on every call' -- fixed. Partial on issue #60 (open, LATER 14): the _sceSifCmdIntrHdlr slot at 0x1A6190 holds isceSifSendCmd, so a table dispatch there runs guest code."
 
   [[hardware.component]]
   short = "CDVD"
@@ -401,21 +402,21 @@ group = "IOP (HLE)"
   name = "Memory cards"
   status = "ok"
   weight = 2
-  note = "KNOWN section 1: an empty folder is a formatted card; the persona file is decoded; the launcher's persona is one the game reads."
+  note = "KNOWN section 1: an empty folder is a formatted card; the persona file is decoded; the launcher's persona is one the game reads. (The launcher's multi-persona writer has an open issue of its own; it is the launcher's, not the card model's.)"
 
   [[hardware.component]]
   short = "Network"
   name = "Network adapter (DEV9) and the IOP stack"
-  status = "ok"
+  status = "partial"
   weight = 2
-  note = "KNOWN section 1: 'An online round plays end to end on the project's HOSTED Horizon server'. Section 2: no round yet between two different networks."
+  note = "KNOWN section 1: 'An online round plays end to end on the project's HOSTED Horizon server'. Partial on issue #34 (open: the online-freeze candidate, a paused console peer) and LATER 102 (POSIX builds: a peer's reset can kill the game with SIGPIPE). KNOWN section 2: no round yet between two different networks."
 
   [[hardware.component]]
   short = "Pad"
   name = "Controllers"
   status = "partial"
   weight = 2
-  note = "One host pad on the first port; pressure all or nothing (KNOWN section 1, the crouch shortcut row, R139)."
+  note = "One host pad on the first port; pressure all or nothing (KNOWN section 1, the crouch shortcut row, R139); issue #105 open, the pad is read while unfocused."
 
   [[hardware.component]]
   short = "USB"
@@ -423,3 +424,10 @@ group = "IOP (HLE)"
   status = "partial"
   weight = 1
   note = "The lgaud headset service answers (KNOWN section 2, 'Voice: the headset path, as far as it is proven'); the game does not send voice yet; no USB keyboard."
+
+  [[hardware.component]]
+  short = "HDD"
+  name = "HDD (pfs0:): the three HDD maps"
+  status = "pending"
+  weight = 1
+  note = "Not modelled: LATER 52, pfs0: is not served, so After Hours, Last Bastion and Liberation cannot be played (research/77 has the mechanism and an order). Weight 1: the game uses it for three online maps only."

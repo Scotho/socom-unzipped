@@ -17,10 +17,11 @@ game image itself is not: the libnet EE wrappers (0x245690-0x2484a0, research/10
 BSD-socket shim of research/10) is the game's, and zlib 1.1.4 is a third-party library; both are left out too.
 
 **The hardware weights** are a rough share of the work each component asks of a PS2 recompilation and its runtime
-(the CPU 5; the kernel, GS, VIF1/VU1 and SPU2 3; most others 2; the timers and USB 1). They are judgement calls, as
-in the map this one follows, and they decide only the size of a rectangle and the hardware percentage.
+(the CPU 5; the kernel, GS, VIF1/VU1 and SPU2 3; most others 2; the timers, USB and the HDD 1). They are
+judgement calls, as in the map this one follows, and they decide only the size of a rectangle and the hardware
+percentage.
 
-## Sony SDK libraries: 88.6% (1021 of 1152 functions)
+## Sony SDK libraries: 55.8% (643 of 1152 functions)
 
 | Library | Functions | Status | Address ranges | Note |
 |---|---:|---|---|---|
@@ -31,50 +32,51 @@ in the map this one follows, and they decide only the size of a rectangle and th
 | `libcdvd` | 37 | Working | `0x18DBB8-0x18FCB8` | HLE over your own disc image. KNOWN section 1: 'sceCdRead moved the CD stream cursor; fixed' (the title loop correlates 1.000 with the disc PCM) and the from-a-fresh-clone row (ISO to the title). |
 | `libdbc` | 18 | Working | `0x18FCB8-0x190BC8` | Kept idle on purpose: the pads come through the libpad2 HLE, which answers the calls that would reach DBCMAN (socom2_pad2_hle.cpp). The pad drives every gate and ladder run (KNOWN section 1). |
 | `libdma` | 19 | Working | `0x190BC8-0x191440` | Every frame's transfers reach the GS; the gate passes 3/3 on every chain (KNOWN section 1). Never compared with a console (LATER 13, 'no defect seen') -- unverified, which by this map's rule is not partial. |
-| `libc (newlib)` | 165 | Working | `0x191440-0x19EB18` | Recompiled newlib. KNOWN section 1: 'rand() returned 15 bits over a _rand_next frozen at 41' -- fixed (ede2096). |
+| `libc (newlib)` | 165 | Partial | `0x191440-0x19EB18` | Recompiled newlib; KNOWN section 1: 'rand() returned 15 bits over a _rand_next frozen at 41' -- fixed (ede2096). Partial on issue #60 (open, LATER 14, docs/HAZARDS.md): the function-table slot of the fwrite stub at 0x194520 holds _fwalk, so a table dispatch there runs guest code, not the HLE. |
 | `libgcc` | 26 | Working | `0x19EB18-0x1A13D0` | 64-bit integer and soft-double helpers. KNOWN section 1: 'Five soft-double stubs were bound with the wrong ABI' -- fixed (db7a992). |
-| `libgraph` | 20 | Working | `0x1A13D0-0x1A30B8` | KNOWN section 2: 'sceGsSetDefDBuff reads its trailing args from the stack' -- fixed (07ffc0a); the display-environment difference that remains is believed to have no visible effect. |
+| `libgraph` | 20 | Partial | `0x1A13D0-0x1A30B8` | KNOWN section 2: 'sceGsSetDefDBuff reads its trailing args from the stack' -- fixed (07ffc0a). Partial on what that row still records: the consumed display environment (MAGH, DW, DY, PMODE) and zbp differ from the console's, believed to have no visible effect. |
 | `libipu` | 8 | Working | `0x1A30B8-0x1A3720` | Served by the MPEG HLE with libmpeg. KNOWN section 1: 'The intro-movie macroblocks were a cross-thread race' -- fixed (4a701f1). |
 | `libkernel` | 160 | Working | `0x1A3720-0x1A4B80`, `0x1ABFD8-0x1AD088` | Syscalls, threads, semaphores, alarms, TLB, ExecPS2. KNOWN section 1: 'Equal-priority time slicing was an ours-only semantic; removed' and 'The online logoff restarts the game in-process' (LoadExecPS2). |
 | `deci2 / tty` | 28 | Partial | `0x1A4B80-0x1A5C98` | libkernel's debug channel (Deci2, TTY, kprintf). A divergence read from the runtime's code (KNOWN and LATER are silent): the Deci2 calls are TODO stubs (Kernel/Stubs/Deci2.cpp), not a model. |
-| `sif` | 33 | Working | `0x1A5C98-0x1A7398` | SIF commands and RPC, served by the runtime's IOP model. KNOWN section 1: 'sceSifInitRpc reset the whole IOP model on every call' -- fixed. |
-| `fileio` | 39 | Working | `0x1A7398-0x1AAA78` | Host and disc file I/O behind the IOP model; every boot reads through it (KNOWN section 1, the from-a-fresh-clone row). |
+| `sif` | 33 | Partial | `0x1A5C98-0x1A7398` | SIF commands and RPC, served by the runtime's IOP model; KNOWN section 1: 'sceSifInitRpc reset the whole IOP model on every call' -- fixed. Partial on issue #60 (open, LATER 14, docs/HAZARDS.md): the _sceSifCmdIntrHdlr slot at 0x1A6190 holds isceSifSendCmd. |
+| `fileio` | 39 | Partial | `0x1A7398-0x1AAA78` | Host and disc file I/O behind the IOP model; every boot reads through it (KNOWN section 1, the from-a-fresh-clone row). Partial on LATER 52: pfs0: (the HDD) is not served, so the three HDD maps (After Hours, Last Bastion, Liberation) cannot be played. |
 | `iopheap / loadfile` | 32 | Working | `0x1AAA78-0x1ABFD8` | IOP heap and module loading, answered by the runtime's per-revision IOP profile (KNOWN section 1, 'The launcher started socom2.exe whatever GAME VERSION said': a second IOP profile for r0004). |
 | `libm` | 43 | Working | `0x1AD088-0x1B3970` | fdlibm, recompiled. KNOWN section 2: 'sin/cos have no live call sites' (believed; matters only if their binding were wrong). |
 | `libmc` | 28 | Working | `0x1B3970-0x1B5160` | EE libmc HLE over a card folder. KNOWN section 1: 'An empty or missing card folder is an inserted, formatted, empty PS2 card', the first-save fix (152579a) and the persona file decoded. |
-| `libmpeg` | 121 | Working | `0x1B5160-0x1BCD80` | FFmpeg-backed MPEG HLE; movies play on every gate. KNOWN section 1: the intro-movie macroblock race and the MPEG back-pressure gate behind the music dropouts, both fixed. A freeze seen once in Sprint 1 stays a section 2 belief. |
+| `libmpeg` | 121 | Partial | `0x1B5160-0x1BCD80` | FFmpeg-backed MPEG HLE; movies play on every gate. KNOWN section 1: the intro-movie macroblock race and the MPEG back-pressure gate behind the music dropouts, both fixed. Partial on docs/BACKLOG.md's audio-level-residuals row: the movie audio about 18 dB low at the source. A freeze seen once in Sprint 1 stays a section 2 belief. |
 | `libmrpc` | 9 | Working | `0x1BCD80-0x1BD588` | msifrpc, the network library's transport (research/10), HLE'd. KNOWN section 1: 'An online round plays end to end on the project's HOSTED Horizon server'. |
-| `libpad2` | 15 | Partial | `0x1BD588-0x1BDE40` | HLE of the first port. Pressure is all or nothing (0xFF), so crouch needs the launcher's shortcut: KNOWN section 1, 'Crouch was unreachable on any PC pad, and now has a shortcut (R139)'. |
+| `libpad2` | 15 | Partial | `0x1BD588-0x1BDE40` | HLE of the first port. Pressure is all or nothing (0xFF), so crouch needs the launcher's shortcut (KNOWN section 1, 'Crouch was unreachable on any PC pad, and now has a shortcut (R139)'); issue #105 open: the pad is read while no window has focus. |
 | `libscf` | 20 | Partial | `0x1BDE40-0x1BE530` | System configuration (language, aspect, time zone, RTC). A divergence read from the config (KNOWN and LATER are silent): stub selectors in recomp/socom2.toml stand in for the console's settings; the game runs in English at its defaults. |
 | `libvib` | 2 | Pending | `0x1BE530-0x1BE6A0` | No rumble: the pad HLE reports no actuators, so the game sends no vibration (socom2_pad2_hle.cpp). No KNOWN row. |
 | `libusbkb` | 26 | Pending | `0x1BE6A0-0x1BFC30` | No PS2 USB keyboard model: the host keyboard reaches the game as pad input and the on-screen keyboard (docs/HAZARDS.md, 'The harness plays the game with the keyboard'). No KNOWN row. |
 | `libvu0` | 40 | Partial | `0x1BFC30-0x1C0948` | Recompiled since libvu0 was un-stubbed; KNOWN section 1: 'The VU0 vf0 fix restores Frostfire online control'. Partial on a known divergence: LATER 12, issue #47 open (macro-mode MAC/STATUS flags land at once, not with the hardware's latency); the FTOI NaN rule is the fork's (KNOWN section 2). |
 | `libinsck + netglue` | 45 | Working | `0x1C0948-0x1C1CD0` | The socket layer under the game's network code. Anchored by the named sceInsockInetAddr (0x1c1348) and sceEENetInetNtoa (0x1c1858); the start 0x1c0948 is inferred (the unnamed functions after libvu0's last, whose sizes match netglue_insck's in ps2recomp's symbol database, third_party/ps2recomp/ps2xAnalyzer/include/ps2recomp/sce_symbol_database_data.h). KNOWN section 1: the hosted online round and 'The online movement blocker was sceInetInterfaceControl(0x200) returning a constant' (fixed). |
-| **Total** | **1152** | 1021 working | | |
+| **Total** | **1152** | 643 working | | |
 
-## PS2 hardware: 58.1% (by weight)
+## PS2 hardware: 36.4% (by weight)
 
 | Group | Component | What | Weight | Status | Note |
 |---|---|---|---:|---|---|
-| EE | R5900 | R5900 CPU, recompiled to C++ | 5 | Working | Every map row recompiles; the gate passes 3/3 on every chain, r0004 too (KNOWN section 1, 'The r0004 build passes the gate 3/3'). |
+| EE | R5900 | R5900 CPU, recompiled to C++ | 5 | Partial | Every map row recompiles; the gate passes 3/3 on every chain, r0004 too (KNOWN section 1, 'The r0004 build passes the gate 3/3'). Partial on three open recompiler defects: #60 (a stub's table slot holds another owner's resume entry, LATER 14), #54 (1090 nested forced-entry rows in the map) and #55 (map bounds lose to the JAL-target carvings). |
 | EE | Kernel | Kernel: threads, semaphores, alarms, ExecPS2 | 3 | Working | KNOWN section 1: the priority scheduler ('Equal-priority time slicing ... removed') and the in-process LoadExecPS2 restart. |
 | EE | FPU/MMI | FPU (COP1) and MMI instructions | 2 | Partial | A known divergence: LATER 11, the FPU translator is plain IEEE with no PS2 clamping (no defect seen from it yet). KNOWN section 2: numeric parity of the generated MMI/VU0 code under NEON (the macOS port) is unproven. |
 | EE | INTC | INTC: VBlank and GS interrupts | 2 | Working | VBlank holds near the console's 16.7 ms; two instances keep the guest clock at real time (KNOWN section 1, 'Two instances hold the guest clock at real time'). |
 | EE | DMAC | DMA controller | 2 | Working | Runs every frame of every gate; never compared with a console (LATER 13, 'no defect seen') -- unverified, which by this map's rule is not partial. |
-| EE | Timers | EE timers | 1 | Working | No defect beyond the frame-rate issues #59 and #67 (LATER 10); no console timing oracle, interrupt unit tests only -- unverified, which by this map's rule is not partial. |
-| GS / VU | GS | GS: primitives and framebuffer (OpenGL) | 3 | Partial | Draws every screen, up to 4x resolution. KNOWN section 2: 'The main thread's GL replay stalls for good after a present' (intermittent, #114); LATER 55: no deinterlace, so the 480i output is not field-blended as PCSX2's is. |
-| GS / VU | VIF1/VU1 | VIF1 and VU1 | 3 | Partial | Correct on the gate; the cost is the open thread. KNOWN section 2: 'The game thread's own work is what limits the mission's frame rate' (VU1 about 42 %). |
+| EE | Timers | EE timers | 1 | Working | LATER 10: no console timing oracle, interrupt unit tests only, and no defect of the timers themselves (the frame-rate thread it names is counted under VIF1/VU1, where KNOWN places it; the drag freeze is fixed) -- unverified, which by this map's rule is not partial. |
+| GS / VU | GS | GS: primitives and framebuffer (OpenGL) | 3 | Partial | Draws every screen, up to 4x resolution. KNOWN section 2: 'The main thread's GL replay stalls for good after a present' (intermittent, #114); open: #96 (a shadow read-back empties the gpuRows window) and #104 (Frostfire's depth band); LATER 55: no deinterlace, so the 480i output is not field-blended as PCSX2's is. |
+| GS / VU | VIF1/VU1 | VIF1 and VU1 | 3 | Partial | Correct on the gate; the cost is the open thread. KNOWN section 2: 'The game thread's own work is what limits the mission's frame rate' (VU1 about 42 %); issue #59, the mission frame rate has no bar yet. |
 | GS / VU | Tex/CLUT | GS textures and CLUTs | 2 | Partial | KNOWN section 1: the CLUT texture-cache explosion fixed (2026-09-16). Partial on LATER 54, a known divergence: no mipmap sampling (MIPTBP1/2, MXL, LCM and K stored, never read); and issue #32 open, textures re-decoded far more often than they change (KNOWN section 2). |
 | GS / VU | GIF | GIF (PATH1-3) | 2 | Working | Runs every frame of every gate; never compared with a console (LATER 13, 'no defect seen') -- unverified, which by this map's rule is not partial. |
 | GS / VU | VU0 | VU0 (macro and micro mode) | 2 | Partial | KNOWN section 1: 'The VU0 vf0 fix restores Frostfire online control'. Partial on a known divergence: LATER 12, issue #47 open (macro-mode flags land at once, without the hardware's latency); the FTOI NaN rule is the fork's, not hardware-verified (KNOWN section 2). |
 | GS / VU | IPU | IPU: the movies | 2 | Working | Through the FFmpeg MPEG HLE; KNOWN section 1, the intro-movie macroblock race fixed. |
-| IOP (HLE) | SPU2 | SPU2 and the 989snd driver (HLE) | 3 | Partial | Music sample-exact (KNOWN section 1, 'Missions are meant to have music'). The lobby track that played once and stopped now loops (fixed 567b127c, ff270d65; 188.5 s proven 2026-10-04). Partial on KNOWN section 2: the mission's ambient bed 7-10 dB under the console (#91), and the login screens' unexplained dips (#94). |
-| IOP (HLE) | SIF | SIF DMA and RPC | 2 | Working | KNOWN section 1: 'sceSifInitRpc reset the whole IOP model on every call' -- fixed. |
+| IOP (HLE) | SPU2 | SPU2 and the 989snd driver (HLE) | 3 | Partial | Music sample-exact (KNOWN section 1, 'Missions are meant to have music'); the lobby track that played once and stopped now loops (fixed 567b127c, ff270d65; 188.5 s proven 2026-10-04). Partial on open issues: #91 the mission's ambient bed 7-10 dB under the console; #94 the login screens' dips; #42 about 50 ms of mission music lost between render() and the device (KNOWN section 2, nine holes on the merged tree; LATER 88); #28 the music degrades with time in a mission. |
+| IOP (HLE) | SIF | SIF DMA and RPC | 2 | Partial | KNOWN section 1: 'sceSifInitRpc reset the whole IOP model on every call' -- fixed. Partial on issue #60 (open, LATER 14): the _sceSifCmdIntrHdlr slot at 0x1A6190 holds isceSifSendCmd, so a table dispatch there runs guest code. |
 | IOP (HLE) | CDVD | CD/DVD drive (your own disc image) | 2 | Working | KNOWN section 1: the from-a-fresh-clone row and the sceCdRead stream-cursor fix. |
-| IOP (HLE) | MC | Memory cards | 2 | Working | KNOWN section 1: an empty folder is a formatted card; the persona file is decoded; the launcher's persona is one the game reads. |
-| IOP (HLE) | Network | Network adapter (DEV9) and the IOP stack | 2 | Working | KNOWN section 1: 'An online round plays end to end on the project's HOSTED Horizon server'. Section 2: no round yet between two different networks. |
-| IOP (HLE) | Pad | Controllers | 2 | Partial | One host pad on the first port; pressure all or nothing (KNOWN section 1, the crouch shortcut row, R139). |
+| IOP (HLE) | MC | Memory cards | 2 | Working | KNOWN section 1: an empty folder is a formatted card; the persona file is decoded; the launcher's persona is one the game reads. (The launcher's multi-persona writer has an open issue of its own; it is the launcher's, not the card model's.) |
+| IOP (HLE) | Network | Network adapter (DEV9) and the IOP stack | 2 | Partial | KNOWN section 1: 'An online round plays end to end on the project's HOSTED Horizon server'. Partial on issue #34 (open: the online-freeze candidate, a paused console peer) and LATER 102 (POSIX builds: a peer's reset can kill the game with SIGPIPE). KNOWN section 2: no round yet between two different networks. |
+| IOP (HLE) | Pad | Controllers | 2 | Partial | One host pad on the first port; pressure all or nothing (KNOWN section 1, the crouch shortcut row, R139); issue #105 open, the pad is read while unfocused. |
 | IOP (HLE) | USB | USB: the headset and the keyboard | 1 | Partial | The lgaud headset service answers (KNOWN section 2, 'Voice: the headset path, as far as it is proven'); the game does not send voice yet; no USB keyboard. |
+| IOP (HLE) | HDD | HDD (pfs0:): the three HDD maps | 1 | Pending | Not modelled: LATER 52, pfs0: is not served, so After Hours, Last Bastion and Liberation cannot be played (research/77 has the mechanism and an order). Weight 1: the game uses it for three online maps only. |
 
 ## Feature completion
 
@@ -103,4 +105,4 @@ left out.
 
 \* One cell per function of the Sony and toolchain libraries statically linked into SCUS_972.75 (the loader, r0001), from the function map ps2_recomp compiles.  
 Hardware: one rectangle per component, sized by weight. Statuses from docs/KNOWN.md and docs/LATER.md; every reason is in docs/status/detail.md.  
-† Plain means of the 2026-10-11 audit's category scores, two rows re-scored from KNOWN for Sprint 18's close: eight for the recomp and the game, one for our server.
+† Judgement scores from a 2026-10-11 audit, averaged per badge (eight categories for the recomp and the game, one for our server); two rows re-scored from KNOWN.

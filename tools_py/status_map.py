@@ -216,6 +216,7 @@ STYLE = """
   .ok { fill: #2ea043; } .partial { fill: #d29922; } .pending { fill: #484f58; }
   .hatch { stroke: #6e4b00; } .chip { fill: #0d1117; fill-opacity: .82; } .key { fill: #30363d; }
   .pct { fill: #1f6feb; } .pct-t { fill: #ffffff; }
+  .lib-edge { fill: none; stroke: #c9d1d9; stroke-opacity: .55; stroke-width: 1.2; }
 """
 TEXT_ON = {"ok": "t1", "partial": "dark", "pending": "t1"}
 
@@ -271,6 +272,7 @@ def _libraries_panel(libs, x, y, w, h):
     """(svg parts, the names too small to carry a label -- the caller lists those under the map)."""
     out = [_rect("panel", x, y, w, h)]
     chips = []
+    edges = []
     unlabelled = []
     order = sorted(libs, key=lambda r: (-r["count"], r["first"]))
     for lib, (gx, gy, gw, gh) in zip(order, squarify([r["count"] for r in order], x, y, w, h)):
@@ -286,11 +288,13 @@ def _libraries_panel(libs, x, y, w, h):
             out += _cell(lib["status"], cx + CELL_GAP / 2, cy + CELL_GAP / 2,
                          max(cw - CELL_GAP, 0.5), max(ch - CELL_GAP, 0.5))
         out.append("</g>")
-        chip = _chip(lib["short"], gx, gy, gw, gh) or _chip(lib["short"], gx, gy, gw, gh, 9)
+        # Each library gets its own outline, so an unlabelled block cannot read as part of a labelled neighbour.
+        edges.append(_rect("lib-edge", gx, gy, gw, gh, ' rx="1" pointer-events="none"'))
+        chip =_chip(lib["short"], gx, gy, gw, gh) or _chip(lib["short"], gx, gy, gw, gh, 9)
         chips += chip
         if not chip:
             unlabelled.append(lib["short"])
-    return out + chips, unlabelled
+    return out + edges + chips, unlabelled
 
 
 def _hardware_panel(hw, x, y, w, h):

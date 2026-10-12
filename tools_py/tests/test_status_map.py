@@ -8,6 +8,7 @@ only thing edited by hand. These tests hold the arithmetic, the layout's determi
 import contextlib
 import io
 import os
+import re
 import shutil
 import tempfile
 import textwrap
@@ -203,6 +204,11 @@ class TestRender(PlantedTree):
         self.assertIn(">56%<", svg)                          # the game: the mean of 50 and 61, rounded
         self.assertIn(">41%<", svg)                          # server: its one category
 
+    def test_every_library_block_has_its_own_outline(self):
+        """An unlabelled block must not read as part of a labelled neighbour: each library is outlined."""
+        svg = self.outputs()["docs/status/map.svg"]
+        self.assertEqual(svg.count('class="lib-edge"'), 2)
+
     def test_percentage_badges_are_not_status_coloured(self):
         """A badge's value is a number, not a status: '41%' must not read as the legend's 'Partial'."""
         svg = self.outputs()["docs/status/map.svg"]
@@ -262,6 +268,19 @@ class TestCommittedTree(unittest.TestCase):
         for group in status_map.hardware_rows(data):
             for c in group["components"]:
                 self.assertTrue(c["note"].strip(), c["short"])
+
+    def test_an_ok_row_cites_no_open_issue(self):
+        """The status rule: any open defect makes a row partial. A row marked ok whose note names an issue that
+        docs/BACKLOG.md still lists as open is a contradiction in the data file."""
+        with open(os.path.join(ROOT, "docs", "BACKLOG.md"), encoding="utf-8") as f:
+            open_issues = set(re.findall(r"^\| #(\d+) \|[^\n]*\| backlog \|", f.read(), re.M))
+        self.assertIn("60", open_issues)                     # the reader itself works
+        data = status_map.load(os.path.join(ROOT, "docs", "status", "status.toml"))
+        rows = [(lib["name"], lib["status"], lib.get("note", "")) for lib in data["library"]]
+        rows += [(c["short"], c["status"], c.get("note", "")) for g in data["hardware"] for c in g["component"]]
+        bad = [(name, n) for name, status, note in rows if status == "ok"
+               for n in re.findall(r"#(\d+)\b", note) if n in open_issues]
+        self.assertEqual(bad, [])
 
     def test_no_web_or_infrastructure_figure(self):
         """Owner ruling 2026-10-12: the web part is not in the status map; the audit's 'around it' blends it in."""
