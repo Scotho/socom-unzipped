@@ -74,6 +74,11 @@ game itself is checked on the maintainer's machine, with a disc.
 
 ## Current status
 
+<p align="center">
+  <a href="docs/status/detail.md"><img src="docs/status/map.svg" alt="Status map: the Sony SDK libraries linked into SCUS_972.75 (the loader), one cell per function, and the PS2's hardware components, coloured working, partial or pending" width="100%"></a>
+</p>
+<p align="center"><sub>Green works with nothing open recorded against it (it may still be unverified against a console); amber has an open defect or a recorded divergence, or is a stub that answers the game without the real behaviour; grey is not working or not modelled. An unproven candidate is named but does not count. Every library's and component's reason is in <a href="docs/status/detail.md">the table</a>, read from <code>docs/KNOWN.md</code> (which wins), <code>docs/LATER.md</code>, <code>docs/HAZARDS.md</code> and the open issues. Edit <code>docs/status/status.toml</code> and regenerate with <code>python -m tools_py.status_map</code>. The idea and the look come from <a href="https://github.com/KIexster/god-of-war-recomp">KIexster/god-of-war-recomp</a>.</sub></p>
+
 Screenshots from the project's own builds (native Windows, OpenGL renderer):
 
 <p align="center">
@@ -278,6 +283,8 @@ backend (`gs_gl_backend.cpp`, `gs_gl_depth.h`, #104): the fragment z floor of PC
 and the saturation of z to the ZBUF format's maximum from `GSRendererHW::EmulateZbuffer`.
 [PSHome-MultiServer](https://github.com/GitHubProUser67/PSHome-MultiServer) (GPL-3.0, GitHubProUser67) -- the five
 Medius 1.50 message models and their MLS answers in the Horizon server (#72; `server/README.md`, "Licence").
+The status map's idea and look: [KIexster/god-of-war-recomp](https://github.com/KIexster/god-of-war-recomp)
+(GPL-3.0), whose "Current status" treemap it follows; our generator (`tools_py/status_map.py`) is written anew.
 
 ### Contributors
 
