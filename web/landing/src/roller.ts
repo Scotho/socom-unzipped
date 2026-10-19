@@ -1,7 +1,7 @@
 // The main-menu roller: a vertical list with one lit item, wrapping at both ends.
 // Pure state so it can be unit-tested; the DOM binding lives in main.ts.
 
-export const MENU_ITEMS = ['ABOUT', 'SETUP GUIDE', 'SERVER', 'REDOTCOM', 'BUG REPORT', 'GITHUB'] as const;
+export const MENU_ITEMS = ['ABOUT', 'SETUP GUIDE', 'SERVER', 'SOCOM II LEGACY', 'BUG REPORT', 'GITHUB'] as const;
 export type MenuItem = (typeof MENU_ITEMS)[number];
 
 export interface RollerState {
