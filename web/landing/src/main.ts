@@ -195,7 +195,7 @@ function select(): void {
     case 'BUG REPORT': void openReport(); break;
     case 'GITHUB': window.open(GITHUB_URL, '_blank', 'noopener'); break;
     case 'SERVER': void openStats(); break;
-    case 'REDOTCOM': window.open('/redotcom/', '_blank', 'noopener'); break;
+    case 'SOCOM II LEGACY': window.open('https://socom2legacy.com/', '_blank', 'noopener'); break;
   }
 }
 

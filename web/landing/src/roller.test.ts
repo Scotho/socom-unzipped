@@ -4,7 +4,7 @@ import { createRoller, move, lit, neighbour, pulseScale, MENU_ITEMS } from './ro
 describe('roller', () => {
   it('starts on ABOUT by default', () => {
     expect(lit(createRoller())).toBe('ABOUT');
-    expect(MENU_ITEMS).toEqual(['ABOUT', 'SETUP GUIDE', 'SERVER', 'REDOTCOM', 'BUG REPORT', 'GITHUB']);
+    expect(MENU_ITEMS).toEqual(['ABOUT', 'SETUP GUIDE', 'SERVER', 'SOCOM II LEGACY', 'BUG REPORT', 'GITHUB']);
   });
 
   it('moves down and up one row at a time', () => {
@@ -16,7 +16,7 @@ describe('roller', () => {
   it('wraps at both ends', () => {
     expect(lit(move(createRoller(MENU_ITEMS, 0), -1))).toBe('GITHUB');
     expect(lit(move(createRoller(MENU_ITEMS, MENU_ITEMS.length - 1), 1))).toBe('ABOUT');
-    expect(lit(move(createRoller(), 9))).toBe('REDOTCOM');
+    expect(lit(move(createRoller(), 9))).toBe('SOCOM II LEGACY');
   });
 
   it('shows the neighbours above and below, wrapping', () => {
