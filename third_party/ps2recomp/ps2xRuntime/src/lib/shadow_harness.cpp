@@ -39,6 +39,7 @@ namespace ps2_shadow
             std::string name;
             Fn original = nullptr;
             Fn body = nullptr;
+            Mode mode;
             std::atomic<uint64_t> calls{0}, compared{0}, matched{0}, mismatched{0}, skippedUnwound{0}, skippedIo{0},
                 passedThrough{0};
             std::mutex linesMutex;
@@ -49,6 +50,7 @@ namespace ps2_shadow
                 addr = 0;
                 name.clear();
                 original = body = nullptr;
+                mode = Mode{};
                 calls = compared = matched = mismatched = skippedUnwound = skippedIo = passedThrough = 0;
                 std::lock_guard<std::mutex> lock(linesMutex);
                 lines.clear();
@@ -104,6 +106,44 @@ namespace ps2_shadow
                 diffs.push_back("pc orig=" + hex(orig.pc) + " body=" + hex(body.pc));
             if (floatBits(orig.f[0]) != floatBits(body.f[0]))
                 diffs.push_back("f0 orig=" + hex(floatBits(orig.f[0])) + " body=" + hex(floatBits(body.f[0])));
+        }
+
+        void compareGpr(const R5900Context &orig, const R5900Context &body, int r, bool full,
+                        std::vector<std::string> &diffs)
+        {
+            if (lo64(orig.r[r]) != lo64(body.r[r]))
+                diffs.push_back(std::string(kRegNames[r]) + " orig=" + hex(lo64(orig.r[r])) + " body=" +
+                                hex(lo64(body.r[r])));
+            if (full && hi64(orig.r[r]) != hi64(body.r[r]))
+                diffs.push_back(std::string(kRegNames[r]) + "[127:64] orig=" + hex(hi64(orig.r[r])) + " body=" +
+                                hex(hi64(body.r[r])));
+        }
+
+        void compareFpr(const R5900Context &orig, const R5900Context &body, int f, std::vector<std::string> &diffs)
+        {
+            if (floatBits(orig.f[f]) != floatBits(body.f[f]))
+                diffs.push_back("f" + std::to_string(f) + " orig=" + hex(floatBits(orig.f[f])) + " body=" +
+                                hex(floatBits(body.f[f])));
+        }
+
+        // Compare::Abi: the returned registers, the callee-saved state, pc. Nothing a caller cannot observe.
+        void compareAbi(const R5900Context &orig, const R5900Context &body, uint32_t returns,
+                        std::vector<std::string> &diffs)
+        {
+            if (returns & kReturnsV0)
+                compareGpr(orig, body, 2, true, diffs);
+            if (returns & kReturnsV1)
+                compareGpr(orig, body, 3, true, diffs);
+            for (int r : {16, 17, 18, 19, 20, 21, 22, 23, 28, 29, 30, 31})
+                compareGpr(orig, body, r, false, diffs);
+            if (orig.pc != body.pc)
+                diffs.push_back("pc orig=" + hex(orig.pc) + " body=" + hex(body.pc));
+            if (returns & kReturnsF0)
+                compareFpr(orig, body, 0, diffs);
+            if (returns & kReturnsF1)
+                compareFpr(orig, body, 1, diffs);
+            for (int f = 20; f < 32; ++f)
+                compareFpr(orig, body, f, diffs);
         }
 
         bool deadStack(uint32_t key, uint32_t entrySp)
@@ -162,7 +202,10 @@ namespace ps2_shadow
             g_writeLog = nullptr;
 
             std::vector<std::string> diffs;
-            compareRegisters(afterOrig, *ctx, diffs);
+            if (s.mode.compare == Compare::Abi)
+                compareAbi(afterOrig, *ctx, s.mode.returns, diffs);
+            else
+                compareRegisters(afterOrig, *ctx, diffs);
             if (bodyLog.ioStores != 0u)
                 diffs.push_back("the body stored to an I/O address " + hex(bodyLog.firstIoAddress));
             if (!origLog.bytes.empty() || !bodyLog.bytes.empty())
@@ -274,7 +317,7 @@ namespace ps2_shadow
         }
     }
 
-    int add(PS2Runtime &runtime, uint32_t addr, const std::string &name, Fn original, Fn body)
+    int add(PS2Runtime &runtime, uint32_t addr, const std::string &name, Fn original, Fn body, Mode mode)
     {
         std::lock_guard<std::mutex> lock(g_installMutex);
         if (!original || !body || g_slotCount >= kMaxSlots || find(addr))
@@ -286,6 +329,7 @@ namespace ps2_shadow
         s.name = name;
         s.original = original;
         s.body = body;
+        s.mode = mode;
         if (!runtime.replaceFunction(addr, thunks()[static_cast<size_t>(i)]))
         {
             s.reset();
@@ -325,7 +369,8 @@ namespace ps2_shadow
             const Slot &s = g_slots[i];
             const Counts c = snapshot(s);
             o << "[shadow] " << reason << ": 0x" << std::hex << std::setw(8) << std::setfill('0') << s.addr << std::dec
-              << " " << s.name << " calls=" << c.calls << " compared=" << c.compared << " matched=" << c.matched
+              << " " << s.name << " compare=" << (s.mode.compare == Compare::Abi ? "abi" : "all")
+              << " calls=" << c.calls << " compared=" << c.compared << " matched=" << c.matched
               << " mismatched=" << c.mismatched << " skipped_unwound=" << c.skippedUnwound << " skipped_io="
               << c.skippedIo << " passed_through=" << c.passedThrough << " verified="
               << ((c.compared > 0 && c.mismatched == 0) ? "yes" : "no") << "\n";
@@ -400,6 +445,12 @@ namespace ps2_shadow
     Installed installOverride(PS2Runtime &runtime, uint32_t addr, const char *name, Fn body,
                               const std::vector<uint32_t> &shadowList, bool writeLog)
     {
+        return installOverride(runtime, addr, name, body, Mode{}, shadowList, writeLog);
+    }
+
+    Installed installOverride(PS2Runtime &runtime, uint32_t addr, const char *name, Fn body, Mode mode,
+                              const std::vector<uint32_t> &shadowList, bool writeLog)
+    {
         const bool listed = std::find(shadowList.begin(), shadowList.end(), addr) != shadowList.end();
         if (!listed)
         {
@@ -418,7 +469,7 @@ namespace ps2_shadow
             return Installed::Refused;
         }
         const Fn original = runtime.hasFunction(addr) ? runtime.lookupFunction(addr) : nullptr;
-        if (add(runtime, addr, name, original, body) < 0)
+        if (add(runtime, addr, name, original, body, mode) < 0)
         {
             std::cout << "[shadow] " << name << " 0x" << std::hex << addr << std::dec
                       << ": REFUSED (no original in the table, the address is shadowed already, or all " << kMaxSlots
@@ -426,11 +477,12 @@ namespace ps2_shadow
             return Installed::Refused;
         }
         std::cout << "[shadow] " << name << " 0x" << std::hex << addr << std::dec
-                  << ": original and body both run on every call and are compared" << std::endl;
+                  << ": original and body both run on every call and are compared ("
+                  << (mode.compare == Compare::Abi ? "ABI" : "all registers") << ")" << std::endl;
         return Installed::Shadow;
     }
 
-    Installed installOverride(PS2Runtime &runtime, uint32_t addr, const char *name, Fn body)
+    Installed installOverride(PS2Runtime &runtime, uint32_t addr, const char *name, Fn body, Mode mode)
     {
         static const std::vector<uint32_t> s_list = [] {
             std::vector<uint32_t> v;
@@ -447,7 +499,7 @@ namespace ps2_shadow
             return v;
         }();
         g_listed = s_list;
-        const Installed what = installOverride(runtime, addr, name, body, s_list, writeLogBuilt());
+        const Installed what = installOverride(runtime, addr, name, body, mode, s_list, writeLogBuilt());
         if (what == Installed::Shadow)
             startReports();
         return what;

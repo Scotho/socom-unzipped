@@ -20,6 +20,13 @@
 //      result back (context and memory), so a shadow run plays as the unmodified game.
 // hi/lo, the FPU registers other than f0 and the VU0 state are not compared.
 //
+// That is the default, Compare::AllRegisters: right for a body transcribed from the recompiled original, which can
+// reproduce every dead temporary. A body DERIVED from source cannot (C++ defines the result, not the scratch
+// registers), so its module installs it with Compare::Abi, which compares only what the EE EABI lets a caller see:
+// the return registers the function has (Mode::returns: v0 and v1 at 128 bits, f0, f1), the callee-saved s0-s7,
+// gp, sp, fp and ra (low 64 bits), the callee-saved f20-f31, pc, and memory as above. The argument registers a0-a3,
+// the temporaries at, t0-t9, k0, k1, v0/v1/f0/f1 when not returned, and f2-f19 may differ.
+//
 // Counts per address are printed every 10 s and at exit ("[shadow] ..." lines; the gate kills the game, so exit is
 // not reliable). A function is "verified" by a run when it was compared at least once and never mismatched.
 //
@@ -48,11 +55,34 @@ namespace ps2_shadow
         uint64_t passedThrough = 0;   // entered at a pc other than the entry, or inside another shadowed call
     };
 
-    constexpr int kMaxSlots = 128;
+    // A derived batch is every executed leaf of a run, so the table holds a few thousand (a slot is ~150 bytes).
+    constexpr int kMaxSlots = 4096;
+
+    enum class Compare
+    {
+        AllRegisters,   // every GPR, pc, f0 (the default)
+        Abi,            // what a caller can observe (see above)
+    };
+
+    // The EE EABI return registers a function uses: what Compare::Abi compares beyond the callee-saved state.
+    enum Returns : uint32_t
+    {
+        kReturnsNone = 0u,
+        kReturnsV0 = 1u,    // int, pointer, 64-bit
+        kReturnsV1 = 2u,    // the second half of a 128-bit pair
+        kReturnsF0 = 4u,    // float
+        kReturnsF1 = 8u,
+    };
+
+    struct Mode
+    {
+        Compare compare = Compare::AllRegisters;
+        uint32_t returns = kReturnsV0 | kReturnsV1 | kReturnsF0;   // used by Compare::Abi only
+    };
     constexpr uint32_t kDeadStackBytes = 256u * 1024u;   // below the entry sp: not compared
 
     // Core: wraps the table entry at addr. -1 when the table has no room or the address is not a table slot.
-    int add(PS2Runtime &runtime, uint32_t addr, const std::string &name, Fn original, Fn body);
+    int add(PS2Runtime &runtime, uint32_t addr, const std::string &name, Fn original, Fn body, Mode mode = {});
     Counts counts(uint32_t addr);
     bool verified(uint32_t addr);
     std::vector<std::string> mismatchLines(uint32_t addr);   // the first few, for the log and tests
@@ -74,8 +104,10 @@ namespace ps2_shadow
 
     // An override module's entry point (call it from its PS2_REGISTER_GAME_OVERRIDE apply function). Reads
     // PS2X_SHADOW once; prints one line per install; starts the periodic and exit reports with the first shadow.
-    Installed installOverride(PS2Runtime &runtime, uint32_t addr, const char *name, Fn body);
+    Installed installOverride(PS2Runtime &runtime, uint32_t addr, const char *name, Fn body, Mode mode = {});
     // The same decision with the list and the build's write-log state given (tests).
     Installed installOverride(PS2Runtime &runtime, uint32_t addr, const char *name, Fn body,
+                              const std::vector<uint32_t> &shadowList, bool writeLog);
+    Installed installOverride(PS2Runtime &runtime, uint32_t addr, const char *name, Fn body, Mode mode,
                               const std::vector<uint32_t> &shadowList, bool writeLog);
 }
