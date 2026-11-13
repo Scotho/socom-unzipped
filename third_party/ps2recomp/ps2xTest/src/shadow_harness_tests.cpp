@@ -96,6 +96,7 @@ namespace
     bool g_abiWrongV0 = false;
     bool g_abiWrongF0 = false;
     bool g_abiWrongV1 = false;
+    bool g_abiStaleV0High = false;
 
     void originalAbi(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
@@ -115,6 +116,13 @@ namespace
         ++g_bodyRuns;
         WRITE32(kOut, 0x00004321u);
         SET_GPR_U32(ctx, 2, GPR_U32(ctx, 4) + (g_abiWrongV0 ? 6u : 5u));
+        if (g_abiStaleV0High)
+        {
+            alignas(16) uint64_t parts[2];
+            std::memcpy(parts, &ctx->r[2], 16);
+            parts[1] = 0x6c07800001000101ull;   // what the register held before: a 32-bit return leaves it
+            std::memcpy(&ctx->r[2], parts, 16);
+        }
         if (g_abiWrongV1)
             SET_GPR_U32(ctx, 3, 0x98u);
         if (g_abiClobberS0)
@@ -137,7 +145,7 @@ namespace
             g_callNo = 0;
             g_wrongOnCall = -1;
             g_bodyWrongV0 = g_bodyWrongMem = g_bodyStrayWrite = g_bodyWrongV1High = g_bodyWrongF0 = false;
-            g_abiClobberS0 = g_abiMoveSp = g_abiWrongV0 = g_abiWrongF0 = g_abiWrongV1 = false;
+            g_abiClobberS0 = g_abiMoveSp = g_abiWrongV0 = g_abiWrongF0 = g_abiWrongV1 = g_abiStaleV0High = false;
             ps2_shadow::uninstall(runtime);
         }
         ~Rig()
@@ -409,6 +417,24 @@ void register_shadow_harness_tests()
             r.ctx.pc = last;
             r.runtime.lookupFunction(last)(r.rdram.data(), &r.ctx, &r.runtime);
             t.Equals(counts(last).matched, uint64_t{1}, "the last one is compared");
+        });
+
+        tc.Run("ABI mode compares v0's upper 64 bits only for a 128-bit return", [](TestCase &t)
+        {
+            using namespace ps2_shadow;
+            Rig r;
+            r.runtime.registerFunction(kFn, originalAbi);
+            add(r.runtime, kFn, "Derived", originalAbi, bodyAbi, Mode{Compare::Abi, kReturnsV0});
+            g_abiStaleV0High = true;
+            r.call();
+            t.Equals(counts(kFn).matched, uint64_t{1}, "an int or pointer result is the low 64 bits (strrchr, in the game)");
+
+            Rig wide;
+            wide.runtime.registerFunction(kFn, originalAbi);
+            add(wide.runtime, kFn, "Derived", originalAbi, bodyAbi, Mode{Compare::Abi, kReturnsV0 | kReturnsWide});
+            g_abiStaleV0High = true;
+            wide.call();
+            t.Equals(counts(kFn).mismatched, uint64_t{1}, "a 128-bit result is compared whole");
         });
     });
 }
