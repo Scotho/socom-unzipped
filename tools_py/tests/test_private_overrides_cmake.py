@@ -51,8 +51,11 @@ class PrivateOverridesConfigureTest(unittest.TestCase):
         env = {k: v for k, v in os.environ.items() if k != "PS2X_PRIVATE_OVERRIDES_DIR"}
         if env_dir is not None:
             env["PS2X_PRIVATE_OVERRIDES_DIR"] = env_dir
-        return subprocess.run([CMAKE, "-S", self.src, "-B", self.build, *defs], env=env,
-                              capture_output=True, text=True)
+        p = subprocess.run([CMAKE, "-S", self.src, "-B", self.build, *defs], env=env,
+                           capture_output=True, text=True)
+        # CMake wraps a message at the width of the paths in it: compare its words, not its lines.
+        p.stderr = " ".join(p.stderr.split())
+        return p
 
     def sources(self, target):
         with open(os.path.join(self.build, target + ".txt"), encoding="utf-8") as fh:
