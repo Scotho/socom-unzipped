@@ -107,7 +107,11 @@ add_library(ps2_test_lib STATIC
     src/runtime_seams_tests.cpp         # Sprint 13 Task C8 (audit F22)
     src/socom2_net_bounds_tests.cpp     # the network receive path's bounds (runtime/socom2_net_bounds.h)
     src/socom2_msg_bounds_tests.cpp     # the message dispatcher's bounds (runtime/socom2_msg_bounds.h)
+    src/shadow_harness_tests.cpp        # Sprint 19 E2: PS2X_SHADOW, the shadow harness
 )
+# Sprint 19 E2: the shadow cases' fake originals store through WRITE32 as generated code does, so they are built
+# with the write-log hook a shadow build gives the generated code (runtime/shadow_write_log.h).
+set_source_files_properties(src/shadow_harness_tests.cpp PROPERTIES COMPILE_DEFINITIONS PS2X_SHADOW_WRITE_LOG=1)
 
 target_include_directories(ps2_test_lib PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include

@@ -830,6 +830,21 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
   `PS2X_GS_TEX_FROM_CPU`, `PS2X_GS_PROBE`, `PS2X_GS_GL_DEBUG_NODEPTH`, `PS2X_MPEG_PIC_TRACE` and `PS2X_TIMER_*` (the plan's Task 6
   commit names them exactly), plus two ghosts the README had already lost.
 
+- **The shadow harness (Sprint 19 E2).** `PS2X_SHADOW=0xADDR[,0xADDR...]` (developer mode) makes every override
+  installed through `ps2_shadow::installOverride` run beside its recompiled original on every call: snapshot, the
+  original, restore, the body, then a comparison of every GPR (v0/v1 at 128 bits), `sp`, `pc`, `f0` and the guest
+  bytes either stored (the dead stack below the entry `sp` excepted). A call whose original leaves through a
+  scheduler checkpoint (`pc != ra`) or stores to an I/O address is skipped; a mismatch is logged
+  (`[shadow-mismatch]`) and the original's result kept. Counts per address print every 10 s and at exit
+  (`[shadow] ... calls= compared= mismatched= ... verified=`). The memory comparison needs a shadow build: configure
+  with `-DPS2X_SHADOW_WRITE_LOG=ON` (or that environment variable), which adds a branch to every guest store; a
+  default build refuses to shadow and keeps the original. A module whose body is written from source rather than
+  transcribed from the recompiled code passes `ps2_shadow::Mode{Compare::Abi, <returns>}` to `installOverride`:
+  then only what the EE EABI lets a caller observe is compared (the return registers the function has, `v0`/`v1`
+  at 128 bits only with `kReturnsWide`, the callee-saved `s0`-`s7`, `gp`, `sp`, `fp`, `ra` and `f20`-`f31`, `pc`, memory), and the report line says
+  `compare=abi`. Up to 4096 addresses per run. Reference: `runtime/shadow_harness.h`; tests:
+  `ps2xTest/src/shadow_harness_tests.cpp`.
+
 - **The leak check** (`python -m tools_py.release.leakcheck <mode>`; modes `tree`, `staged`, `ignored`, `metadata`,
   `history [range]`, `artifact <dir>`, `all`): exit 0 clean, 1 findings, **2 the scanner did not run -- never a
   pass**. Every run starts with a planted control of 28 secret shapes; `--reveal` shows a hit unmasked on the terminal;
