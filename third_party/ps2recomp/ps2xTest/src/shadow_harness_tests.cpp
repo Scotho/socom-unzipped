@@ -89,6 +89,42 @@ namespace
         original(rdram, ctx, runtime);
     }
 
+    // ABI mode (a body derived from source): the original leaves its scratch registers as its instructions do (a0
+    // advanced, t0 and a1 used, f1 a temporary); a derived body computes the same result through other registers.
+    bool g_abiClobberS0 = false;
+    bool g_abiMoveSp = false;
+    bool g_abiWrongV0 = false;
+    bool g_abiWrongF0 = false;
+    bool g_abiWrongV1 = false;
+
+    void originalAbi(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        SET_GPR_U32(ctx, 8, GPR_U32(ctx, 4) ^ 0x5au);              // t0: a temporary
+        SET_GPR_U32(ctx, 4, GPR_U32(ctx, 4) + 4u);                // a0 advanced
+        SET_GPR_U32(ctx, 5, 0x77u);                               // a1 reused
+        WRITE32(kOut, 0x00004321u);
+        SET_GPR_U32(ctx, 2, GPR_U32(ctx, 4) + 1u);                // v0 = a0 + 5
+        SET_GPR_U32(ctx, 3, 0x99u);                               // v1: a temporary unless returned
+        ctx->f[1] = 7.0f;                                         // f1: a temporary unless returned
+        ctx->f[0] = 2.0f;
+        ctx->pc = GPR_U32(ctx, 31);
+    }
+
+    void bodyAbi(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        ++g_bodyRuns;
+        WRITE32(kOut, 0x00004321u);
+        SET_GPR_U32(ctx, 2, GPR_U32(ctx, 4) + (g_abiWrongV0 ? 6u : 5u));
+        if (g_abiWrongV1)
+            SET_GPR_U32(ctx, 3, 0x98u);
+        if (g_abiClobberS0)
+            SET_GPR_U32(ctx, 16, 0xdeadu);
+        if (g_abiMoveSp)
+            SET_GPR_U32(ctx, 29, kSp - 16u);
+        ctx->f[0] = g_abiWrongF0 ? 3.0f : 2.0f;
+        ctx->pc = GPR_U32(ctx, 31);
+    }
+
     struct Rig
     {
         PS2Runtime runtime;
@@ -101,6 +137,7 @@ namespace
             g_callNo = 0;
             g_wrongOnCall = -1;
             g_bodyWrongV0 = g_bodyWrongMem = g_bodyStrayWrite = g_bodyWrongV1High = g_bodyWrongF0 = false;
+            g_abiClobberS0 = g_abiMoveSp = g_abiWrongV0 = g_abiWrongF0 = g_abiWrongV1 = false;
             ps2_shadow::uninstall(runtime);
         }
         ~Rig()
@@ -280,6 +317,98 @@ void register_shadow_harness_tests()
                      "listed: shadowed");
             r.call();
             t.Equals(ps2_shadow::counts(kFn).matched, uint64_t{1}, "and compared");
+        });
+
+        tc.Run("ABI mode: temporaries and argument registers may differ; the result, memory and pc are compared", [](TestCase &t)
+        {
+            using namespace ps2_shadow;
+            Rig r;
+            r.runtime.registerFunction(kFn, originalAbi);
+            t.IsTrue(add(r.runtime, kFn, "Derived", originalAbi, bodyAbi, Mode{Compare::Abi, kReturnsV0}) >= 0, "installed");
+            r.call();
+            Counts c = counts(kFn);
+            t.Equals(c.compared, uint64_t{1}, "compared");
+            t.Equals(c.matched, uint64_t{1}, "a0, a1, t0, v1 and f1 differ, and that is a match");
+            t.Equals(GPR_U32((&r.ctx), 2), uint32_t{0x004b5215u}, "the body's v0 stands");
+            t.IsTrue(formatReport("test").find("compare=abi") != std::string::npos, "the report names the mode");
+
+            Rig all;
+            all.runtime.registerFunction(kFn, originalAbi);
+            add(all.runtime, kFn, "Derived", originalAbi, bodyAbi);
+            all.call();
+            t.Equals(counts(kFn).mismatched, uint64_t{1}, "the same pair under the all-register default mismatches");
+            t.IsTrue(formatReport("test").find("compare=all") != std::string::npos, "and the report says all");
+        });
+
+        tc.Run("ABI mode catches a wrong v0, a clobbered s0, a moved sp and a wrong f0", [](TestCase &t)
+        {
+            using namespace ps2_shadow;
+            const auto run = [&](bool &flag, uint32_t returns, const char *what, const char *reg) {
+                Rig r;
+                r.runtime.registerFunction(kFn, originalAbi);
+                add(r.runtime, kFn, "Derived", originalAbi, bodyAbi, Mode{Compare::Abi, returns});
+                flag = true;
+                r.call();
+                t.Equals(counts(kFn).mismatched, uint64_t{1}, what);
+                const std::vector<std::string> lines = mismatchLines(kFn);
+                t.IsTrue(!lines.empty() && lines[0].find(reg) != std::string::npos, std::string(what) + ": the line names it");
+                t.Equals(GPR_U32((&r.ctx), 2), uint32_t{0x004b5215u}, std::string(what) + ": the original's v0 is back");
+                flag = false;
+            };
+            run(g_abiWrongV0, kReturnsV0, "a wrong v0", "v0");
+            run(g_abiClobberS0, kReturnsV0, "a clobbered callee-saved s0", "s0");
+            run(g_abiMoveSp, kReturnsV0, "a moved sp", "sp");
+            run(g_abiWrongF0, kReturnsF0, "a wrong f0 when the function returns a float", "f0");
+            run(g_abiWrongV1, kReturnsV0 | kReturnsV1, "a wrong v1 when the function returns in v1", "v1");
+        });
+
+        tc.Run("ABI mode compares only the return registers the function has", [](TestCase &t)
+        {
+            using namespace ps2_shadow;
+            Rig r;
+            r.runtime.registerFunction(kFn, originalAbi);
+            add(r.runtime, kFn, "Derived", originalAbi, bodyAbi, Mode{Compare::Abi, kReturnsNone});
+            g_abiWrongV0 = true;
+            g_abiWrongF0 = true;
+            r.call();
+            t.Equals(counts(kFn).matched, uint64_t{1}, "a void function: v0 and f0 are not results");
+        });
+
+        tc.Run("installOverride passes the mode on", [](TestCase &t)
+        {
+            using namespace ps2_shadow;
+            Rig r;
+            r.runtime.registerFunction(kFn, originalAbi);
+            t.IsTrue(installOverride(r.runtime, kFn, "Derived", bodyAbi, Mode{Compare::Abi, kReturnsV0}, {kFn}, true) ==
+                         Installed::Shadow, "shadowed");
+            r.call();
+            t.Equals(counts(kFn).matched, uint64_t{1}, "compared in ABI mode");
+        });
+
+        tc.Run("one run shadows more than 128 addresses (a derived batch)", [](TestCase &t)
+        {
+            using namespace ps2_shadow;
+            Rig r;
+            constexpr int kMany = 1500;
+            t.IsTrue(kMaxSlots >= kMany, "the table holds a batch of 1500");
+            for (int i = 0; i < kMany; ++i)
+            {
+                const uint32_t a = kFn + 0x10000u + static_cast<uint32_t>(i) * 8u;
+                r.runtime.registerFunction(a, original);
+                if (add(r.runtime, a, "Many", original, body) < 0)
+                {
+                    t.IsTrue(false, "slot " + std::to_string(i) + " refused");
+                    return;
+                }
+            }
+            const uint32_t last = kFn + 0x10000u + static_cast<uint32_t>(kMany - 1) * 8u;
+            setU32(r.ctx, 4, 0x004b5210u);
+            setU32(r.ctx, 5, kOut);
+            setU32(r.ctx, 29, kSp);
+            setU32(r.ctx, 31, kRa);
+            r.ctx.pc = last;
+            r.runtime.lookupFunction(last)(r.rdram.data(), &r.ctx, &r.runtime);
+            t.Equals(counts(last).matched, uint64_t{1}, "the last one is compared");
         });
     });
 }
