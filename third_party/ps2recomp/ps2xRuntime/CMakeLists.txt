@@ -364,6 +364,7 @@ add_library(ps2_runtime STATIC
     src/lib/ps2_memory.cpp
     src/lib/ps2_pad.cpp
     src/lib/ps2_runtime.cpp
+    src/lib/coverage_bitmap.cpp   # Sprint 19 B1: PS2X_COVERAGE, the function-coverage bitmap
     src/lib/ps2_trace_armed.cpp   # Sprint 13 C8: PS2X_TRIGGER's latch, the runtime's own (was the game file's)
     src/lib/ps2_save_state.cpp   # Sprint 11 Task 8c: the save-state container (no runtime dependency)
     src/lib/ps2_vif1_interpreter.cpp

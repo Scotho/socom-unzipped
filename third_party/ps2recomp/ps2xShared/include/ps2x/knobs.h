@@ -65,6 +65,7 @@
     X("PS2X_CONSOLE_REPLAY_GL", Test, Presence, "", "ps2x_tests: replay through the GL backend as well.") \
     X("PS2X_CONSOLE_REPLAY_PIXEL", Test, Text, "", "ps2x_tests: x,y of a pixel to watch during the console replay.") \
     X("PS2X_CONSOLE_REPLAY_STOP", Test, Int, "", "ps2x_tests: stop the console replay after this packet.") \
+    X("PS2X_COVERAGE", Dev, Path, "", "Write the function-coverage bitmap (a bit per table slot a call reached) here every 10 s and at exit.") \
     X("PS2X_CULL_PARTIAL_CLIP", Dev, Int, "0", "Experiment (research/31 s16): answer needs-clipping for partial boxes inside the guard band.") \
     X("PS2X_CULL_TRACE", Dev, Spec, "", "Trace the terrain cull/LOD/detail decisions to a file (research/31 tools read it).") \
     X("PS2X_CYCLE_CLOCK", Dev, Text, "", "guest = estimate-driven cycle accounting instead of wall time (not an A/B of pre-R54).") \
