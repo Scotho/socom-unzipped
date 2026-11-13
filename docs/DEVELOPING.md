@@ -840,8 +840,8 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
   with `-DPS2X_SHADOW_WRITE_LOG=ON` (or that environment variable), which adds a branch to every guest store; a
   default build refuses to shadow and keeps the original. A module whose body is written from source rather than
   transcribed from the recompiled code passes `ps2_shadow::Mode{Compare::Abi, <returns>}` to `installOverride`:
-  then only what the EE EABI lets a caller observe is compared (the return registers the function has, the
-  callee-saved `s0`-`s7`, `gp`, `sp`, `fp`, `ra` and `f20`-`f31`, `pc`, memory), and the report line says
+  then only what the EE EABI lets a caller observe is compared (the return registers the function has, `v0`/`v1`
+  at 128 bits only with `kReturnsWide`, the callee-saved `s0`-`s7`, `gp`, `sp`, `fp`, `ra` and `f20`-`f31`, `pc`, memory), and the report line says
   `compare=abi`. Up to 4096 addresses per run. Reference: `runtime/shadow_harness.h`; tests:
   `ps2xTest/src/shadow_harness_tests.cpp`.
 

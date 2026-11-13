@@ -23,7 +23,8 @@
 // That is the default, Compare::AllRegisters: right for a body transcribed from the recompiled original, which can
 // reproduce every dead temporary. A body DERIVED from source cannot (C++ defines the result, not the scratch
 // registers), so its module installs it with Compare::Abi, which compares only what the EE EABI lets a caller see:
-// the return registers the function has (Mode::returns: v0 and v1 at 128 bits, f0, f1), the callee-saved s0-s7,
+// the return registers the function has (Mode::returns: v0 and v1, at 128 bits only with kReturnsWide, f0, f1), the
+// callee-saved s0-s7,
 // gp, sp, fp and ra (low 64 bits), the callee-saved f20-f31, pc, and memory as above. The argument registers a0-a3,
 // the temporaries at, t0-t9, k0, k1, v0/v1/f0/f1 when not returned, and f2-f19 may differ.
 //
@@ -72,6 +73,7 @@ namespace ps2_shadow
         kReturnsV1 = 2u,    // the second half of a 128-bit pair
         kReturnsF0 = 4u,    // float
         kReturnsF1 = 8u,
+        kReturnsWide = 16u, // v0/v1 hold a 128-bit value: compared whole (else their low 64 bits, all a caller reads)
     };
 
     struct Mode

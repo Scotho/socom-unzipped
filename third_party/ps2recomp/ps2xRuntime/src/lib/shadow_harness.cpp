@@ -130,10 +130,11 @@ namespace ps2_shadow
         void compareAbi(const R5900Context &orig, const R5900Context &body, uint32_t returns,
                         std::vector<std::string> &diffs)
         {
+            const bool wide = (returns & kReturnsWide) != 0u;
             if (returns & kReturnsV0)
-                compareGpr(orig, body, 2, true, diffs);
+                compareGpr(orig, body, 2, wide, diffs);
             if (returns & kReturnsV1)
-                compareGpr(orig, body, 3, true, diffs);
+                compareGpr(orig, body, 3, wide, diffs);
             for (int r : {16, 17, 18, 19, 20, 21, 22, 23, 28, 29, 30, 31})
                 compareGpr(orig, body, r, false, diffs);
             if (orig.pc != body.pc)
