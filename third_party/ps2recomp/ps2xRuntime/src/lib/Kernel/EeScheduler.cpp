@@ -428,9 +428,24 @@ void EeScheduler::postEvent(EeEvent event)
     m_eventCv.notify_one();
 }
 
+EeCheckpointHold::EeCheckpointHold(EeScheduler &scheduler) : m_scheduler(scheduler)
+{
+    m_scheduler.holdCheckpoints();
+}
+
+EeCheckpointHold::~EeCheckpointHold()
+{
+    m_scheduler.releaseCheckpoints();
+}
+
 bool EeScheduler::checkpointDue(uint32_t cycles) noexcept
 {
     accountCycles(cycles);
+
+    if (m_checkpointHold > 0 && !m_stopRequested.load(std::memory_order_acquire))
+    {
+        return false;
+    }
 
     if (m_checkpointPending.load(std::memory_order_acquire) ||
         m_stopRequested.load(std::memory_order_acquire))

@@ -830,6 +830,13 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
   `PS2X_GS_TEX_FROM_CPU`, `PS2X_GS_PROBE`, `PS2X_GS_GL_DEBUG_NODEPTH`, `PS2X_MPEG_PIC_TRACE` and `PS2X_TIMER_*` (the plan's Task 6
   commit names them exactly), plus two ghosts the README had already lost.
 
+- **The checkpoint hold.** Guest code reached from a host frame that cannot be parked and resumed (an override
+  written on the host that calls a game function through `dispatchGuestBranch`) runs under an `EeCheckpointHold`
+  (`runtime/ee_scheduler.h`, RAII, nestable): `checkpointDue` and the generated code's `eeCheckpointDue` then report
+  nothing due (a stop request excepted) and the call runs to its return; a pending event or an expired slice is
+  acted on at the first checkpoint after the last release. Keep held regions short and free of blocking syscalls.
+  Tests: `ps2xTest/src/ps2_runtime_interrupt_tests.cpp`.
+
 - **The leak check** (`python -m tools_py.release.leakcheck <mode>`; modes `tree`, `staged`, `ignored`, `metadata`,
   `history [range]`, `artifact <dir>`, `all`): exit 0 clean, 1 findings, **2 the scanner did not run -- never a
   pass**. Every run starts with a planted control of 28 secret shapes; `--reveal` shows a hit unmasked on the terminal;
