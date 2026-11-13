@@ -2,8 +2,11 @@
 # Linux build (Sprint 8 Goal 1, design item 1): the same CMake tree as build.sh, with the system
 # toolchain instead of tools/llvm-mingw.
 #
-# Usage: scripts/build_linux.sh [tools|runtime|release|test|all] [--no-runner]
+# Usage: scripts/build_linux.sh [tools|recomp|runtime|release|test|all] [--no-runner]
 #   tools     configure + build ps2_recomp / ps2_analyzer in build-linux-tools
+#   recomp    build.sh's recomp step with the Linux recompiler binary: the merged ELF from the disc chain
+#             (scripts/disc_to_elf.sh first), the fixed map, then ps2_recomp -> recomp/output. Not part of
+#             `all`: CI runs `all --no-runner` on a clone with no disc.
 #   runtime   configure + build the runner (when there is generated code) and the launcher in build-linux
 #   release   the release configuration (Sprint 9 Goal 2) in build-linux-release -> dist-linux-release, stripped,
 #             symbols kept;
@@ -17,8 +20,9 @@
 #                 recompiled game is produced from the owner's disc and is not in the repository.
 #
 # What this deliberately does NOT mirror from build.sh:
-#   * the recomp step (make_overlay_elf.py / fix_ghidra_csv.py / ps2_recomp over socom2.toml): it needs
-#     the owner's disc image and overlays, which no CI machine and no fresh clone has.
+#   * the recomp step inside `all`: it needs the owner's disc image and overlays, which no CI machine and no
+#     fresh clone has, so it is its own step (`recomp`, as scripts/build_macos.sh has it) and `all` stays
+#     tools + runtime.
 #   * scripts/check_quiet_gate.sh: that is the owner's host-quiet gate (a tasklist probe for a running
 #     launch on their desk). Nothing here launches the game.
 #   * the vu1_replay verify/vram-diff runs: src/tools/vu1_replay.cpp includes <windows.h> unguarded, so
@@ -49,7 +53,7 @@ STEP=""
 for arg in "$@"; do
   case "$arg" in
     --no-runner) GEN="" ;;
-    tools|runtime|release|test|all) STEP="$arg" ;;
+    tools|recomp|runtime|release|test|all) STEP="$arg" ;;
     *) echo "unknown argument $arg" >&2; exit 2 ;;
   esac
 done
@@ -66,6 +70,23 @@ cmake_configure() {   # $1 = build dir, rest = extra -D flags
 build_tools() {
   cmake_configure "$TOOLBUILD" >/dev/null
   cmake --build "$TOOLBUILD" --target ps2_recomp ps2_analyzer -j "$JOBS"
+}
+
+recomp() {
+  # build.sh's recomp step, with this platform's recompiler binary (no .exe); the same body as build_macos.sh's.
+  local lte
+  lte="$(cat "$ROOT/recomp/loader_text_end.txt")"
+  "$PYTHON" "$ROOT/tools_py/make_overlay_elf.py" "--loader-text-end=$lte" \
+      "$ROOT/game/overlays/socom2_game.elf" "$ROOT/game/disc/SCUS_972.75" \
+      "$ROOT/game/overlays/ftscore.bin" "$ROOT/game/overlays/zsealetc.bin"
+  cp "$ROOT/game/overlays/socom2_game.elf" "$ROOT/game/disc/socom2_game.elf"
+  "$PYTHON" "$ROOT/tools_py/fix_ghidra_csv.py" "$ROOT/recomp/socom2_ghidra.csv" "$ROOT/recomp/extra_functions.txt" \
+      --out "$ROOT/recomp/build/socom2_ghidra.fixed.csv"
+  build_tools   # incremental; the recompiler embeds the runtime call list, keep it in sync
+  (cd "$ROOT/recomp" && "$TOOLBUILD/ps2xRecomp/ps2_recomp" socom2.toml > recomp_run.log 2>&1) \
+      || { tail -20 "$ROOT/recomp/recomp_run.log"; exit 1; }
+  echo "recomp: $(ls "$GEN" | wc -l | tr -d ' ') files, unhandled=$(grep -c unhandled-instruction "$ROOT/recomp/recomp_run.log" || true), unmapped=$(grep -c unmapped-continuation "$ROOT/recomp/recomp_run.log" || true)"
+  grep -E '^ *\[(info|warning)\] names - ' "$ROOT/recomp/recomp_run.log" | sed -e 's/^ *\[warning\] names - /WARNING: names: /' -e 's/^ *\[info\] names - /recomp: names: /' || true
 }
 
 configure_runtime() {
@@ -190,6 +211,7 @@ fi
 
 case "$STEP" in
   tools)   build_tools ;;
+  recomp)  recomp ;;
   runtime) runtime ;;
   release) release ;;
   test)    test_step ;;

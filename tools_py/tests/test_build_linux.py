@@ -134,3 +134,69 @@ class TheScriptText(unittest.TestCase):
     def test_the_step_is_still_the_scripts_last_word(self):
         """test_step's return has to become the script's exit status, or the non-zero is lost."""
         self.assertRegex(self.body, r"test\)\s+test_step ;;")
+
+@unittest.skipUnless(BASH, "no Git Bash on this machine (tools_py/tests/shell.py)")
+class RecompStep(unittest.TestCase):
+    """`scripts/build_linux.sh recomp`: build.sh's recomp step with the Linux recompiler binary (no .exe), as
+    scripts/build_macos.sh has it. Driven in a temp tree with the python and ps2_recomp shims, so nothing is
+    built, no disc is read and nothing in this checkout is written."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        t = self.tmp.name.replace("\\", "/")
+        self.root, self.calls = t + "/root", t + "/calls.txt"
+        for d in ("recomp/build", "game/overlays", "game/disc"):
+            os.makedirs(os.path.join(self.root, d))
+        with open(self.root + "/recomp/loader_text_end.txt", "w") as fh:
+            fh.write("0x1d5000\n")
+        with open(self.root + "/game/overlays/socom2_game.elf", "w") as fh:
+            fh.write("elf\n")
+        # a "python" that answers the interpreter probe and logs every other call
+        self.py = t + "/pyshim"
+        write_exe(self.py, '#!/bin/sh\ncase "$1" in\n  -c) exit 0 ;;\nesac\necho "$@" >> "%s"\n' % self.calls)
+        # the recompiler: one generated file, one unhandled instruction, the names line; exits with RECOMP_RC
+        self.tools = t + "/tools"
+        write_exe(self.tools + "/ps2xRecomp/ps2_recomp",
+                  '#!/bin/sh\necho "ps2_recomp $1" >> "%s"\nmkdir -p output && : > output/a.cpp\n'
+                  'echo "[error] unhandled-instruction function=f addr=0x1"\n'
+                  'echo "  [info] names - Loaded 3 display names from socom2_names.csv"\nexit ${RECOMP_RC:-0}\n'
+                  % self.calls)
+
+    def drive(self, recomp_rc=0):
+        script = (
+            'export BUILD_LINUX_SOURCE_ONLY=1\n'
+            'export PYTHON="%s"\n'
+            '. scripts/build_linux.sh recomp\n'
+            'echo "STEP=$STEP"\n'
+            'ROOT="%s"; GEN="$ROOT/recomp/output"; TOOLBUILD="%s"\n'
+            'build_tools() { echo "build_tools ran"; }\n'
+            'export RECOMP_RC=%d\n'
+            '( recomp ) || echo "recomp rc=$?"\n'
+        ) % (self.py, self.root, self.tools, recomp_rc)
+        p = subprocess.run([BASH, "-c", script], cwd=ROOT, capture_output=True, text=True)
+        calls = open(self.calls).read() if os.path.exists(self.calls) else ""
+        return p, p.stdout + p.stderr, calls
+
+    def test_recomp_is_a_step(self):
+        p, out, _ = self.drive()
+        self.assertEqual(p.returncode, 0, out)
+        self.assertNotIn("unknown argument", out)
+        self.assertIn("STEP=recomp", out)
+
+    def test_it_runs_build_sh_s_recomp_with_the_linux_binary(self):
+        _, out, calls = self.drive()
+        self.assertIn("make_overlay_elf.py --loader-text-end=0x1d5000", calls)
+        self.assertIn("fix_ghidra_csv.py", calls)
+        self.assertIn("--out %s/recomp/build/socom2_ghidra.fixed.csv" % self.root, calls,
+                      "the fixed map is a product under recomp/build, never the tracked map")
+        self.assertIn("ps2_recomp socom2.toml", calls)
+        self.assertIn("build_tools ran", out)
+        self.assertTrue(os.path.isfile(self.root + "/game/disc/socom2_game.elf"), "the merged ELF is not copied")
+        self.assertIn("recomp: 1 files, unhandled=1, unmapped=0", out)
+        self.assertIn("recomp: names: Loaded 3 display names", out)
+
+    def test_a_failing_recompiler_fails_the_step(self):
+        _, out, _ = self.drive(recomp_rc=3)
+        self.assertIn("recomp rc=1", out)
+        self.assertNotIn("recomp: 1 files", out)
