@@ -364,6 +364,7 @@ add_library(ps2_runtime STATIC
     src/lib/ps2_memory.cpp
     src/lib/ps2_pad.cpp
     src/lib/ps2_runtime.cpp
+    src/lib/shadow_harness.cpp   # Sprint 19 E2: PS2X_SHADOW, original and override compared on every call
     src/lib/ps2_trace_armed.cpp   # Sprint 13 C8: PS2X_TRIGGER's latch, the runtime's own (was the game file's)
     src/lib/ps2_save_state.cpp   # Sprint 11 Task 8c: the save-state container (no runtime dependency)
     src/lib/ps2_vif1_interpreter.cpp
@@ -396,6 +397,16 @@ else()
     target_compile_definitions(ps2_runtime PUBLIC
         PS2X_ENABLE_IOP_RPC_TRACE=0
     )
+endif()
+
+# Sprint 19 E2: PS2X_SHADOW's write log (runtime/shadow_write_log.h) needs a hook in the inline store helpers that
+# the generated code is built from. OFF by default, so the default build's stores are unchanged; ON for a shadow
+# build (-DPS2X_SHADOW_WRITE_LOG=ON, or the environment variable of the same name at configure time). PUBLIC: the
+# runtime, the runner's generated code and anything else that includes ps2_runtime_macros.h agree.
+option(PS2X_SHADOW_WRITE_LOG "Build the guest-memory write log PS2X_SHADOW compares (a branch in every guest store)" OFF)
+if(PS2X_SHADOW_WRITE_LOG OR "$ENV{PS2X_SHADOW_WRITE_LOG}" MATCHES "^(1|ON|on|TRUE|true|YES|yes)$")
+    target_compile_definitions(ps2_runtime PUBLIC PS2X_SHADOW_WRITE_LOG=1)
+    message(STATUS "PS2X_SHADOW_WRITE_LOG: the guest-store write log is built in (shadow build)")
 endif()
 
 if(PS2X_STRICT_RETURN_DIAGNOSTICS)

@@ -173,6 +173,7 @@
     X("PS2X_SCHED_TRACE_STUBS", Dev, Spec, "", "With SCHED_TRACE: name[,...] of stubs traced on every call, with arguments and return.") \
     X("PS2X_SCHED_TRACE_STUB_MS", Dev, Float, "1", "With SCHED_TRACE: a bound stub slower than this many host ms is reported.") \
     X("PS2X_SCHED_TRACE_TOML", Dev, Path, "recomp/socom2.toml", "With SCHED_TRACE: the recompiler config naming the stubs.") \
+    X("PS2X_SHADOW", Dev, Spec, "", "0xADDR[,...]: run each listed override and its original on every call and compare (needs a shadow build).") \
     X("PS2X_SND_MUTE_BANK", Dev, Spec, "", "0xHANDLE[,...]: play nothing from these 989snd banks (which sound is the stray one).") \
     X("PS2X_SND_STREAM_WORKER", Dev, Int, "1", "0 reads audio streams on the mixer thread instead of the worker (A/B).") \
     X("PS2X_SND_VOICE_FULLSCALE", Dev, Int, "1", "0 restores the old 0x7FFE register divisor; 1 (default, R348) 0x4000: 0x3FFF = full scale (#91).") \
