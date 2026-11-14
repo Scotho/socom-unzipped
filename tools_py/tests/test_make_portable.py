@@ -44,6 +44,14 @@ def fake_dist(tmp, without=(), name="dist", marker=b"", kind=None):
     return dist
 
 
+def empty_build_root(tmp):
+    """An empty stand-in for third_party/ps2recomp (MAKE_PORTABLE_BUILD_ROOT): without it a case reads this checkout's
+    real build trees, whose CMakeCache.txt may name a private overrides directory, and warns or refuses for that."""
+    root = os.path.join(tmp, "no-builds")
+    os.makedirs(root, exist_ok=True)
+    return root
+
+
 def write_kind(dist, kind):
     with open(os.path.join(dist, "RELEASE_KIND"), "w", encoding="utf-8", newline="\n") as fh:
         fh.write(kind + "\n")
@@ -53,7 +61,8 @@ def write_kind(dist, kind):
 class MakePortableTest(unittest.TestCase):
     def _run(self, dist, *args):
         return subprocess.run([BASH, SCRIPT] + list(args), capture_output=True, text=True, cwd=ROOT,
-                              env={**os.environ, "DIST": dist})
+                              env={**os.environ, "DIST": dist,
+                                   "MAKE_PORTABLE_BUILD_ROOT": empty_build_root(os.path.dirname(dist))})
 
     def test_folder_has_the_game_the_launcher_the_closure_the_readme_and_the_licences(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -126,6 +135,7 @@ class TwoReleaseKindsTest(unittest.TestCase):
 
     def _run(self, tmp, *args, dev=True, player_kind="player", dev_kind="developer"):
         env = {**os.environ, "MAKE_PORTABLE_SYSTEM": "MINGW64_NT", "PYTHON": sys.executable,
+               "MAKE_PORTABLE_BUILD_ROOT": empty_build_root(tmp),
                "DIST": fake_dist(tmp, name="dist-release", marker=b"player", kind=player_kind)}
         env["DEVDIST"] = fake_dist(tmp, name="dist-release-dev", marker=b"developer", kind=dev_kind) if dev \
             else os.path.join(tmp, "dist-release-dev")
@@ -236,6 +246,7 @@ class TwoReleaseKindsTest(unittest.TestCase):
         # the developer folder imports a DLL the player's does not (the debug UI's, say): its closure is its own
         with tempfile.TemporaryDirectory() as tmp:
             env = {**os.environ, "MAKE_PORTABLE_SYSTEM": "MINGW64_NT", "PYTHON": sys.executable,
+                   "MAKE_PORTABLE_BUILD_ROOT": empty_build_root(tmp),
                    "DIST": fake_dist(tmp, name="dist-release", kind="player"),
                    "DEVDIST": fake_dist(tmp, name="dist-release-dev", without=("swresample-5.dll",),
                                         kind="developer")}
@@ -255,7 +266,8 @@ class TwoReleaseKindsTest(unittest.TestCase):
             write_kind(ldev, "developer")
             out = os.path.join(tmp, "out")
             env = {**os.environ, "MAKE_PORTABLE_SYSTEM": "Linux", "LDD": ldd, "PYTHON": sys.executable,
-                   "LDIST": ldist, "LDEVDIST": ldev, "DIST": os.path.join(tmp, "nodist")}
+                   "LDIST": ldist, "LDEVDIST": ldev, "DIST": os.path.join(tmp, "nodist"),
+                   "MAKE_PORTABLE_BUILD_ROOT": empty_build_root(tmp)}
             r = subprocess.run([BASH, SCRIPT, "--release", out], capture_output=True, text=True, cwd=ROOT, env=env)
             self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
             with open(os.path.join(out, "SHA256SUMS")) as fh:
@@ -276,6 +288,7 @@ class PrivateOverridesTest(unittest.TestCase):
 
     def _run(self, tmp, cache, *args, release=False, dev=False):
         builds = os.path.join(tmp, "ps2recomp")
+        os.makedirs(builds, exist_ok=True)
         for build, value in cache.items():
             os.makedirs(os.path.join(builds, build))
             with open(os.path.join(builds, build, "CMakeCache.txt"), "w", encoding="utf-8", newline="\n") as fh:
@@ -324,6 +337,17 @@ class PrivateOverridesTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             r, m = self._run(tmp, {"build-release": "", "build-release-dev": ""}, release=True, dev=True)
             self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+            self.assertIs(m["private_overrides"], False)
+            for build in ("build-release", "build-release-dev"):   # each cache it read is named
+                self.assertRegex(r.stdout, r"private overrides checked: \S*/%s/CMakeCache\.txt" % build)
+
+    def test_a_release_with_no_cache_to_read_says_it_did_not_check(self):
+        """R375 round 3: a release folder copied in, or a build tree since deleted, leaves nothing to read; that must
+        be said, not passed in silence. The packaging goes on (the release build itself configures it empty)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            r, m = self._run(tmp, {}, release=True)
+            self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+            self.assertRegex(r.stderr, r"no CMake cache at \S*/build-release/CMakeCache\.txt: private overrides not checked")
             self.assertIs(m["private_overrides"], False)
 
 
