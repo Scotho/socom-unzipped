@@ -35,7 +35,7 @@ namespace ps2_coverage
         }
     }
 
-    void enable(uint32_t tableBase, uint32_t slotCount)
+    void enable(uint32_t tableBase, uint32_t slotCount, const std::string &)
     {
         disable();
         s_byteCount = (slotCount + 7u) / 8u;
@@ -112,6 +112,11 @@ namespace ps2_coverage
         }
         std::remove(path.c_str());   // Windows' rename does not replace an existing file
         return std::rename(tmp.c_str(), path.c_str()) == 0;
+    }
+
+    bool flush()
+    {
+        return false;   // test-first stub: the final write is not implemented yet
     }
 
     void installFromEnvironment(uint32_t tableBase, uint32_t slotCount)

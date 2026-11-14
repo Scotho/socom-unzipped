@@ -49,8 +49,9 @@ namespace ps2_coverage
             detail::mark(bits, slot);
     }
 
-    // Start recording over a table of slotCount slots from tableBase (clears any earlier bitmap).
-    void enable(uint32_t tableBase, uint32_t slotCount);
+    // Start recording over a table of slotCount slots from tableBase (clears any earlier bitmap). dumpPath is where
+    // flush() writes; empty, flush() writes nothing.
+    void enable(uint32_t tableBase, uint32_t slotCount, const std::string &dumpPath = {});
     // Stop recording and free the bitmap (tests).
     void disable();
     bool enabled();
@@ -62,6 +63,9 @@ namespace ps2_coverage
     std::vector<uint8_t> serialize();
     // Writes serialize() to path through a temporary file and a rename, so a reader never sees half a dump.
     bool writeDump(const std::string &path);
+    // The final write: stops the periodic writer, writes the dump to the path given to enable() and prints the
+    // "[coverage] exit:" line. False and a no-op when not recording or no path was given.
+    bool flush();
 
     // Runner entry point: PS2X_COVERAGE=<path> (developer mode) enables recording over the given table and starts
     // the periodic and exit writes. Once per process; later calls do nothing.
