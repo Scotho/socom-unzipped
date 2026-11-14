@@ -315,8 +315,15 @@ class TreeScans(unittest.TestCase):
             self.assertEqual(L.main(["artifact", os.path.join(self.tmp, "nowhere"), "--allow", os.devnull]), 2)
 
 
+# Exported identity variables outrank the fixture's `git config user.*`; drop them so its commits are Test Person's.
+_IDENTITY_VARS = ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_AUTHOR_DATE",
+                  "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "GIT_COMMITTER_DATE")
+
+
 def _git(cwd, *args, **kw):
-    return subprocess.run(["git"] + list(args), cwd=cwd, capture_output=True, text=True, check=True, **kw).stdout
+    env = {k: v for k, v in os.environ.items() if k not in _IDENTITY_VARS}
+    return subprocess.run(["git"] + list(args), cwd=cwd, capture_output=True, text=True, check=True, env=env,
+                          **kw).stdout
 
 
 class GitModes(unittest.TestCase):
@@ -420,6 +427,18 @@ class GitModes(unittest.TestCase):
         allow = [("commit-author", "<git metadata>", "Test Person <test@example.com>", "ok"),
                  ("commit-committer", "<git metadata>", "Test Person <test@example.com>", "ok")]
         self.assertEqual(L.check_metadata(self.repo, allow=allow)[0], [])
+
+    def test_fixture_commits_ignore_the_callers_git_identity(self):
+        """GIT_AUTHOR_* / GIT_COMMITTER_* outrank `git config user.*`: a shell that exports them (CI, an agent
+        box) must not put its own identity into the throwaway repository the metadata cases assert on."""
+        outside = {"GIT_AUTHOR_NAME": "Outside Person", "GIT_AUTHOR_EMAIL": "outside@example.org",
+                   "GIT_COMMITTER_NAME": "Outside Person", "GIT_COMMITTER_EMAIL": "outside@example.org"}
+        with mock.patch.dict(os.environ, outside):
+            self.write("c.txt", "c\n")
+            _git(self.repo, "add", "c.txt")
+            _git(self.repo, "commit", "-q", "-m", "under an exported identity")
+        hits, _ = L.check_metadata(self.repo, allow=[])
+        self.assertEqual({h.text for h in hits}, {"Test Person <test@example.com>"})
 
     def test_a_shallow_clone_cannot_pass_the_history_modes(self):
         self.write("b.txt", "b\n")
