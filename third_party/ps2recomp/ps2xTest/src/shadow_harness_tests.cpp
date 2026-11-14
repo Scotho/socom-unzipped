@@ -6,8 +6,8 @@
 // (ps2xTest/CMakeLists.txt), as the generated code is in a shadow build, so its stores reach the write log.
 //
 // The bar (Sprint 19 plan, E2): a planted mismatch is caught under test; an original that exits with pc != ra --
-// the eeCheckpointDue() back-edge return, which leaves pc on the resume entry (0x3c4b50 for r0001's
-// CZWeaponList_GetWeapon at 0x3c4b40) -- is detected and that call skipped, under test.
+// the eeCheckpointDue() back-edge return, which leaves pc on a loop's resume entry -- is detected and that call
+// skipped, under test. Every original and body here is synthetic: no game function's body is in this file (R355).
 #include "MiniTest.h"
 #include "ps2_runtime.h"
 #include "ps2_runtime_macros.h"
@@ -15,6 +15,8 @@
 
 #include <cstdint>
 #include <cstring>
+#include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -24,8 +26,8 @@
 
 namespace
 {
-    constexpr uint32_t kFn = 0x003c4b40u;       // the address the cases shadow (r0001 GetWeapon's, for the reader)
-    constexpr uint32_t kResume = 0x003c4b50u;   // its loop-head resume entry
+    constexpr uint32_t kFn = 0x003c4b40u;       // the address the cases shadow (any function-table address)
+    constexpr uint32_t kResume = 0x003c4b50u;   // a loop-head resume entry inside it
     constexpr uint32_t kRa = 0x0053ef04u;
     constexpr uint32_t kSp = 0x01f00000u;
     constexpr uint32_t kOut = 0x00200000u;
@@ -89,6 +91,23 @@ namespace
         original(rdram, ctx, runtime);
     }
 
+    // An original that leaves with pc != ra and WITHOUT the runtime's unwind flag: only the pc clause of the skip
+    // test sees it (a jump out of the function, or a resume pc the generated code set without unwinding).
+    void originalExitsElsewhere(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        WRITE32(GPR_U32(ctx, 5), 0x0000beefu);
+        ctx->pc = kResume;
+    }
+
+    // An original that stores to a GS privileged register through the generated code's own path: WRITE32 of a
+    // special address goes to PS2Runtime::Store32, whose hook (ps2_runtime.cpp) marks the call as an I/O store.
+    constexpr uint32_t kGsBgColor = 0x120000E0u;
+    void originalMmio(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        WRITE32(kGsBgColor, 0x00102030u);
+        original(rdram, ctx, runtime);
+    }
+
     // ABI mode (a body derived from source): the original leaves its scratch registers as its instructions do (a0
     // advanced, t0 and a1 used, f1 a temporary); a derived body computes the same result through other registers.
     bool g_abiClobberS0 = false;
@@ -97,6 +116,7 @@ namespace
     bool g_abiWrongF0 = false;
     bool g_abiWrongV1 = false;
     bool g_abiStaleV0High = false;
+    bool g_abiWrongV1High = false;
 
     void originalAbi(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
@@ -125,6 +145,15 @@ namespace
         }
         if (g_abiWrongV1)
             SET_GPR_U32(ctx, 3, 0x98u);
+        if (g_abiWrongV1High)
+        {
+            // v1 = the original's 0x99 in its low word as the original leaves it; only v1[127:64] differs.
+            SET_GPR_U32(ctx, 3, 0x99u);
+            alignas(16) uint64_t parts[2];
+            std::memcpy(parts, &ctx->r[3], 16);
+            parts[1] ^= 0x10u;
+            std::memcpy(&ctx->r[3], parts, 16);
+        }
         if (g_abiClobberS0)
             SET_GPR_U32(ctx, 16, 0xdeadu);
         if (g_abiMoveSp)
@@ -132,6 +161,16 @@ namespace
         ctx->f[0] = g_abiWrongF0 ? 3.0f : 2.0f;
         ctx->pc = GPR_U32(ctx, 31);
     }
+
+    // std::cout redirected for one scope (what the harness prints goes to std::cout).
+    struct CaptureStdout
+    {
+        std::ostringstream sink;
+        std::streambuf *old;
+        CaptureStdout() : old(std::cout.rdbuf(sink.rdbuf())) {}
+        ~CaptureStdout() { std::cout.rdbuf(old); }
+        std::string text() const { return sink.str(); }
+    };
 
     struct Rig
     {
@@ -146,6 +185,7 @@ namespace
             g_wrongOnCall = -1;
             g_bodyWrongV0 = g_bodyWrongMem = g_bodyStrayWrite = g_bodyWrongV1High = g_bodyWrongF0 = false;
             g_abiClobberS0 = g_abiMoveSp = g_abiWrongV0 = g_abiWrongF0 = g_abiWrongV1 = g_abiStaleV0High = false;
+            g_abiWrongV1High = false;
             ps2_shadow::uninstall(runtime);
         }
         ~Rig()
@@ -183,7 +223,7 @@ void register_shadow_harness_tests()
         {
             Rig r;
             r.runtime.registerFunction(kFn, original);
-            t.IsTrue(ps2_shadow::add(r.runtime, kFn, "GetWeapon", original, body) >= 0, "installed");
+            t.IsTrue(ps2_shadow::add(r.runtime, kFn, "FakeFn", original, body) >= 0, "installed");
             r.call();
             const ps2_shadow::Counts c = ps2_shadow::counts(kFn);
             t.Equals(c.calls, uint64_t{1}, "one call");
@@ -200,7 +240,7 @@ void register_shadow_harness_tests()
         {
             Rig r;
             r.runtime.registerFunction(kFn, original);
-            ps2_shadow::add(r.runtime, kFn, "GetWeapon", original, body);
+            ps2_shadow::add(r.runtime, kFn, "FakeFn", original, body);
             g_bodyWrongV0 = true;
             r.call();
             const ps2_shadow::Counts c = ps2_shadow::counts(kFn);
@@ -216,7 +256,7 @@ void register_shadow_harness_tests()
         {
             Rig r;
             r.runtime.registerFunction(kFn, original);
-            ps2_shadow::add(r.runtime, kFn, "GetWeapon", original, body);
+            ps2_shadow::add(r.runtime, kFn, "FakeFn", original, body);
             g_bodyWrongMem = true;
             g_bodyStrayWrite = true;
             r.call();
@@ -231,7 +271,7 @@ void register_shadow_harness_tests()
         {
             Rig r;
             r.runtime.registerFunction(kFn, original);
-            ps2_shadow::add(r.runtime, kFn, "GetWeapon", original, body);
+            ps2_shadow::add(r.runtime, kFn, "FakeFn", original, body);
             g_bodyWrongV1High = true;
             r.call();
             t.Equals(ps2_shadow::counts(kFn).mismatched, uint64_t{1}, "v1's upper half differs");
@@ -245,7 +285,7 @@ void register_shadow_harness_tests()
         {
             Rig r;
             r.runtime.registerFunction(kFn, originalCheckpoint);
-            ps2_shadow::add(r.runtime, kFn, "GetWeapon", originalCheckpoint, body);
+            ps2_shadow::add(r.runtime, kFn, "FakeFn", originalCheckpoint, body);
             r.call();
             const ps2_shadow::Counts c = ps2_shadow::counts(kFn);
             t.Equals(c.calls, uint64_t{1}, "the call is counted");
@@ -262,7 +302,7 @@ void register_shadow_harness_tests()
         {
             Rig r;
             r.runtime.registerFunction(kFn, original);
-            ps2_shadow::add(r.runtime, kFn, "GetWeapon", original, body);
+            ps2_shadow::add(r.runtime, kFn, "FakeFn", original, body);
             g_wrongOnCall = 500;
             for (int i = 0; i < 1000; ++i)
                 r.call(0x004b5210u + static_cast<uint32_t>(i) * 4u);
@@ -277,7 +317,7 @@ void register_shadow_harness_tests()
         {
             Rig r;
             r.runtime.registerFunction(kFn, originalIo);
-            ps2_shadow::add(r.runtime, kFn, "GetWeapon", originalIo, body);
+            ps2_shadow::add(r.runtime, kFn, "FakeFn", originalIo, body);
             r.call();
             const ps2_shadow::Counts c = ps2_shadow::counts(kFn);
             t.Equals(c.skippedIo, uint64_t{1}, "skipped for I/O");
@@ -297,7 +337,7 @@ void register_shadow_harness_tests()
             constexpr uint32_t kOther = 0x003c4c40u;
             r.runtime.registerFunction(kFn, original);
             r.runtime.registerFunction(kOther, original);
-            ps2_shadow::add(r.runtime, kFn, "GetWeapon", original, body);
+            ps2_shadow::add(r.runtime, kFn, "FakeFn", original, body);
             ps2_shadow::add(r.runtime, kOther, "Other", original, body);
             r.call();
             r.call();
@@ -314,14 +354,14 @@ void register_shadow_harness_tests()
             Rig r;
             r.runtime.registerFunction(kFn, original);
             using ps2_shadow::Installed;
-            t.IsTrue(ps2_shadow::installOverride(r.runtime, kFn, "GetWeapon", body, {}, true) == Installed::Override,
+            t.IsTrue(ps2_shadow::installOverride(r.runtime, kFn, "FakeFn", body, {}, true) == Installed::Override,
                      "not listed: a plain override");
             t.IsTrue(r.runtime.lookupFunction(kFn) == body, "the table holds the body");
             r.runtime.registerFunction(kFn, original);
-            t.IsTrue(ps2_shadow::installOverride(r.runtime, kFn, "GetWeapon", body, {kFn}, false) == Installed::Refused,
+            t.IsTrue(ps2_shadow::installOverride(r.runtime, kFn, "FakeFn", body, {kFn}, false) == Installed::Refused,
                      "listed, no write log: refused");
             t.IsTrue(r.runtime.lookupFunction(kFn) == original, "and the original stays");
-            t.IsTrue(ps2_shadow::installOverride(r.runtime, kFn, "GetWeapon", body, {kFn}, true) == Installed::Shadow,
+            t.IsTrue(ps2_shadow::installOverride(r.runtime, kFn, "FakeFn", body, {kFn}, true) == Installed::Shadow,
                      "listed: shadowed");
             r.call();
             t.Equals(ps2_shadow::counts(kFn).matched, uint64_t{1}, "and compared");
@@ -435,6 +475,91 @@ void register_shadow_harness_tests()
             g_abiStaleV0High = true;
             wide.call();
             t.Equals(counts(kFn).mismatched, uint64_t{1}, "a 128-bit result is compared whole");
+        });
+
+        tc.Run("ABI mode with kReturnsWide catches a v1 that differs only in bits 127:64", [](TestCase &t)
+        {
+            using namespace ps2_shadow;
+            Rig narrow;
+            narrow.runtime.registerFunction(kFn, originalAbi);
+            add(narrow.runtime, kFn, "Derived", originalAbi, bodyAbi, Mode{Compare::Abi, kReturnsV0 | kReturnsV1});
+            g_abiWrongV1High = true;
+            narrow.call();
+            t.Equals(counts(kFn).matched, uint64_t{1}, "without kReturnsWide only v1's low 64 bits are a result");
+
+            Rig wide;
+            wide.runtime.registerFunction(kFn, originalAbi);
+            add(wide.runtime, kFn, "Derived", originalAbi, bodyAbi,
+                Mode{Compare::Abi, kReturnsV0 | kReturnsV1 | kReturnsWide});
+            g_abiWrongV1High = true;
+            wide.call();
+            t.Equals(counts(kFn).mismatched, uint64_t{1}, "a 128-bit return compares v1 whole");
+            const std::vector<std::string> lines = mismatchLines(kFn);
+            t.IsTrue(!lines.empty() && lines[0].find("v1[127:64]") != std::string::npos, "the line names v1's upper half");
+            t.IsTrue(lines.empty() || lines[0].find("v1 orig=") == std::string::npos, "and not its low half");
+        });
+
+        tc.Run("an original that leaves with pc != ra and no unwind flag is skipped (the pc clause alone)", [](TestCase &t)
+        {
+            Rig r;
+            r.runtime.registerFunction(kFn, originalExitsElsewhere);
+            ps2_shadow::add(r.runtime, kFn, "FakeFn", originalExitsElsewhere, body);
+            r.call();
+            const ps2_shadow::Counts c = ps2_shadow::counts(kFn);
+            t.IsFalse(r.runtime.dispatchUnwinding(), "the runtime is not unwinding: only pc says the call did not return");
+            t.Equals(c.skippedUnwound, uint64_t{1}, "skipped");
+            t.Equals(c.compared, uint64_t{0}, "not compared");
+            t.Equals(g_bodyRuns, 0, "the body did not run");
+            t.Equals(r.ctx.pc, kResume, "pc is the original's");
+            t.Equals(r.word(kOut), uint32_t{0xbeefu}, "the original's store stands");
+        });
+
+        tc.Run("a store through the runtime's slow path (PS2Runtime::Store32 to a GS register) is an I/O skip", [](TestCase &t)
+        {
+            Rig r;
+            r.runtime.memory().gs().bgcolor = 0u;
+            r.runtime.registerFunction(kFn, originalMmio);
+            ps2_shadow::add(r.runtime, kFn, "FakeFn", originalMmio, body);
+            r.call();
+            const ps2_shadow::Counts c = ps2_shadow::counts(kFn);
+            t.Equals(c.skippedIo, uint64_t{1}, "skipped for I/O by the Store32 hook");
+            t.Equals(c.compared, uint64_t{0}, "not compared");
+            t.Equals(g_bodyRuns, 0, "the body did not run");
+            t.Equals(r.runtime.memory().gs().bgcolor & 0xffffffffull, uint64_t{0x00102030u}, "the store reached the register once");
+            t.Equals(r.word(kOut), uint32_t{0x1234u}, "the original's RDRAM store stands");
+        });
+
+        tc.Run("the 4097th distinct address is refused with its message", [](TestCase &t)
+        {
+            using namespace ps2_shadow;
+            Rig r;
+            for (int i = 0; i < kMaxSlots; ++i)
+            {
+                const uint32_t a = 0x00400000u + static_cast<uint32_t>(i) * 8u;
+                r.runtime.registerFunction(a, original);
+                if (add(r.runtime, a, "Many", original, body) < 0)
+                {
+                    t.IsTrue(false, "slot " + std::to_string(i) + " refused before the table was full");
+                    return;
+                }
+            }
+            const uint32_t extra = 0x00400000u + static_cast<uint32_t>(kMaxSlots) * 8u;
+            r.runtime.registerFunction(extra, original);
+            Installed what = Installed::Shadow;
+            std::string printed;
+            {
+                CaptureStdout out;
+                what = installOverride(r.runtime, extra, "FakeExtra", body, {extra}, true);
+                printed = out.text();
+            }
+            t.IsTrue(what == Installed::Refused, "refused");
+            t.IsTrue(r.runtime.lookupFunction(extra) == original, "the original stays in the table");
+            t.IsTrue(printed.find("REFUSED") != std::string::npos &&
+                         printed.find(std::to_string(kMaxSlots) + " slots are taken") != std::string::npos,
+                     "the refusal names the full table: " + printed);
+            uninstall(r.runtime);   // the shared function table: leave no fake behind for other cases
+            for (int i = 0; i <= kMaxSlots; ++i)
+                r.runtime.replaceFunction(0x00400000u + static_cast<uint32_t>(i) * 8u, nullptr);
         });
     });
 }
