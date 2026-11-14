@@ -1,5 +1,6 @@
 #include "ps2_runtime.h"
 #include "runtime/gs/gs_gl_frame_stats.h"
+#include "runtime/coverage_bitmap.h"
 #include "games_database.h"
 #if defined(PS2X_ENABLE_DEBUG_UI) && !defined(PLATFORM_VITA)
 #include "ps2_debug_panel.h"
@@ -194,6 +195,7 @@ namespace
         std::cerr << Preflight::logLine(result) << std::endl;
         std::cerr.flush();
         // _Exit flushes nothing: a bare run's stdout is a fully buffered file (BareRun::redirectOutput).
+        ps2_coverage::flush();   // PS2X_COVERAGE's final write; _Exit runs no atexit hook
         std::fflush(stdout);
         std::fflush(stderr);
         std::_Exit(code);
@@ -342,6 +344,7 @@ int main(int argc, char *argv[])
 #endif
         // macOS perf step 1: the frame-stats logger's session summary, which an atexit hook would never print here.
         GsGlFrameStats::Logger::shutdown();
+        ps2_coverage::flush();   // PS2X_COVERAGE's final write, for the same reason
         std::cout.flush();
         std::cerr.flush();
         // Task 1a: 0 normally; 65 when the GL probe fell back to the CPU rasterizer.
@@ -356,6 +359,7 @@ int main(int argc, char *argv[])
         std::cerr << "[main] fatal exception: unknown" << std::endl;
     }
 
+    ps2_coverage::flush();   // PS2X_COVERAGE's final write; _Exit runs no atexit hook
     std::cout.flush();
     std::cerr.flush();
     std::_Exit(ExitCodes::kFailed);
