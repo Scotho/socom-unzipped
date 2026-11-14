@@ -290,7 +290,9 @@ struct EeThreadCreateParams
 
 class EeScheduler;
 
-// RAII for EeScheduler::holdCheckpoints/releaseCheckpoints.
+// The checkpoint hold, the only way to take one (EeScheduler's counter is private to it): scoped, nestable, released
+// by its destructor, so an exception through the scope releases it too. EE thread only. What it does and does not
+// guarantee: EeScheduler::checkpointsHeld below and DEVELOPING "The checkpoint hold".
 class EeCheckpointHold
 {
 public:
@@ -326,12 +328,18 @@ public:
     void requestStop();
     void postEvent(EeEvent event);
     [[nodiscard]] bool checkpointDue(uint32_t cycles = kGeneratedCheckpointCycles) noexcept;
-    // A checkpoint hold (EeCheckpointHold, nestable): while held, checkpointDue still accounts the cycles but
-    // reports nothing due (a stop request excepted), so guest code called from a host frame that cannot be parked
-    // -- an override written on the host that calls a game function -- runs to its return. A pending event or an
-    // expired slice is acted on at the first checkpoint after the last release. Touched by the EE thread only.
-    void holdCheckpoints() noexcept { ++m_checkpointHold; }
-    void releaseCheckpoints() noexcept { --m_checkpointHold; }
+    // A checkpoint hold (EeCheckpointHold): while held, checkpointDue still accounts the cycles but reports nothing
+    // due unless a stop is requested, so a dispatched CALL from a host frame that cannot be parked (an override
+    // written on the host calling a game function) is not unwound by a pending event or an expired slice; those are
+    // acted on at the first checkpoint after the last release. The callee still leaves early -- and the host body
+    // must check dispatchGuestBranch's false (unwound or stop requested) -- when:
+    //  - it makes a transferring syscall: a blocking wait, or SignalSema/SetEventFlag/WakeupThread readying a
+    //    higher-priority thread (transferIfRequested throws EeDispatcherTransfer through the host frame);
+    //  - it dispatches a non-call jump (a J to an unnamed target, a jr through a register other than ra): that
+    //    always unwinds to the scheduler loop;
+    //  - a stop is requested.
+    // And a guest loop polling for an interrupt or another thread never sees it under a hold: it spins forever.
+    // reset() zeroes the count. Touched by the EE thread only.
     bool checkpointsHeld() const noexcept { return m_checkpointHold > 0; }
     void accountCycles(uint32_t cycles) noexcept;
     uint64_t eeCycleNow() const noexcept { return m_eeCycle; }   // the cycle clock accountCycles advances
@@ -444,6 +452,16 @@ public:
     [[nodiscard]] const EeCrashThreadTable &crashThreadTable() const noexcept;
 
 private:
+    // Only EeCheckpointHold takes and releases a hold, so no raw take can be leaked past its scope. A release
+    // never drives the count below zero: a hold that spans reset() (which zeroes it) must not cancel the next one.
+    friend class EeCheckpointHold;
+    void holdCheckpoints() noexcept { ++m_checkpointHold; }
+    void releaseCheckpoints() noexcept
+    {
+        if (m_checkpointHold > 0)
+            --m_checkpointHold;
+    }
+
     struct ScheduledEvent
     {
         uint64_t deadlineCycle = 0;

@@ -855,10 +855,14 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
 
 - **The checkpoint hold.** Guest code reached from a host frame that cannot be parked and resumed (an override
   written on the host that calls a game function through `dispatchGuestBranch`) runs under an `EeCheckpointHold`
-  (`runtime/ee_scheduler.h`, RAII, nestable): `checkpointDue` and the generated code's `eeCheckpointDue` then report
-  nothing due (a stop request excepted) and the call runs to its return; a pending event or an expired slice is
-  acted on at the first checkpoint after the last release. Keep held regions short and free of blocking syscalls.
-  Tests: `ps2xTest/src/ps2_runtime_interrupt_tests.cpp`.
+  (`runtime/ee_scheduler.h`, scoped, nestable, the only way to take one; `reset()` zeroes it): `checkpointDue` and
+  the generated code's `eeCheckpointDue` then report nothing due unless a stop is requested, so a pending event or
+  an expired slice does not unwind the call; they are acted on at the first checkpoint after the last release. The
+  call still leaves early on a transferring syscall (a blocking wait, or `SignalSema`/`SetEventFlag`/`WakeupThread`
+  readying a higher-priority thread throws `EeDispatcherTransfer` through the host frame), on a non-call jump (a `J`
+  to an unnamed target, a `jr` through a register other than `ra`: it unwinds) and on a stop request, so the body
+  must check `dispatchGuestBranch`'s return (false: unwound or stopping). A guest loop polling for an interrupt or
+  another thread spins forever under a hold. Tests: `ps2xTest/src/ps2_runtime_interrupt_tests.cpp`.
 
 - **The leak check** (`python -m tools_py.release.leakcheck <mode>`; modes `tree`, `staged`, `ignored`, `metadata`,
   `history [range]`, `artifact <dir>`, `all`): exit 0 clean, 1 findings, **2 the scanner did not run -- never a

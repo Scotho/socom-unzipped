@@ -148,6 +148,7 @@ void EeScheduler::reset(uint8_t *rdram, const R5900Context &mainContext)
     ps2GuestClockExcludedNs().store(0, std::memory_order_relaxed);
     m_clockTraceGapNs = m_clockTraceExcludedNs = m_clockTraceLostNs = 0;
     m_stopRequested.store(false, std::memory_order_release);
+    m_checkpointHold = 0;   // a hold whose release never ran must not outlive the guest it was taken for
     m_checkpointPending.store(false, std::memory_order_release);
     m_debugPublishCountdown = 0u;
     {
