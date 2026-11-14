@@ -19,6 +19,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #if !PS2X_SHADOW_WRITE_LOG
@@ -154,6 +155,20 @@ namespace
             return;
         }
         body(rdram, ctx, runtime);
+    }
+
+    // Round 2, item 6: while the original runs, another host thread (an IOP or DMA thread, say) looks at the write
+    // log and makes a slow-path store. The log is this thread's: the other thread must not see it.
+    bool g_ownThreadSawLog = false;
+    bool g_otherThreadSawLog = true;
+    void originalWithHelperThread(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        g_ownThreadSawLog = ps2_shadow::writeLogArmedForTest();
+        std::thread([] {
+            g_otherThreadSawLog = ps2_shadow::writeLogArmedForTest();
+            ps2_shadow::noteIoStore(0x1000f000u);   // what PS2Runtime::Store32 does, on that thread
+        }).join();
+        original(rdram, ctx, runtime);
     }
 
     // An original that leaves with pc != ra and WITHOUT the runtime's unwind flag: only the pc clause of the skip
@@ -875,6 +890,23 @@ void register_shadow_harness_tests()
             t.Equals(r.ctx.pc, kRa, "and its pc");
             t.Equals(r.word(kOut), uint32_t{0x1234u}, "and its store");
             t.IsTrue(r.runtime.dispatchUnwinding(), "the stop's unwind is left to the runtime");
+        });
+
+        tc.Run("R2.6: the write log is the arming thread's: another thread neither sees it nor notes into it", [](TestCase &t)
+        {
+            using namespace ps2_shadow;
+            Rig r;
+            r.runtime.registerFunction(kFn, originalWithHelperThread);
+            add(r.runtime, kFn, "FakeFn", originalWithHelperThread, body);
+            g_ownThreadSawLog = false;
+            g_otherThreadSawLog = true;
+            r.call();
+            t.IsTrue(g_ownThreadSawLog, "the calling thread's log is armed inside the original");
+            t.IsFalse(g_otherThreadSawLog, "another thread reads no log (g_writeLog is thread_local)");
+            const Counts c = counts(kFn);
+            t.Equals(c.skippedIo, uint64_t{0}, "the other thread's I/O store is not this call's");
+            t.Equals(c.matched, uint64_t{1}, "the call is compared and matches");
+            t.IsFalse(writeLogArmedForTest(), "disarmed after the call");
         });
     });
 }
