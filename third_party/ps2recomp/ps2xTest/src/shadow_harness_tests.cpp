@@ -127,6 +127,35 @@ namespace
         original(rdram, ctx, runtime);
     }
 
+    // Round 2, item 1: a loop function as generated code is, with an eeCheckpointDue() back edge, original and body
+    // alike. The original passes its back edge (nothing due), computes the result, then something makes a checkpoint
+    // due before the body runs: g_dueAfterOriginal 1 posts a scheduler event (a deadline arriving), 2 requests stop.
+    int g_dueAfterOriginal = 0;
+    void originalLoop(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        if (runtime->eeCheckpointDue())
+        {
+            ctx->pc = kResume;   // parks on its loop head, as generated code does
+            return;
+        }
+        original(rdram, ctx, runtime);
+        if (g_dueAfterOriginal == 1)
+            runtime->eeScheduler().postEvent(EeEvent{});
+        else if (g_dueAfterOriginal == 2)
+            runtime->requestStop();
+    }
+
+    void bodyLoop(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        if (runtime->eeCheckpointDue())
+        {
+            ++g_bodyRuns;
+            ctx->pc = kResume;
+            return;
+        }
+        body(rdram, ctx, runtime);
+    }
+
     // An original that leaves with pc != ra and WITHOUT the runtime's unwind flag: only the pc clause of the skip
     // test sees it (a jump out of the function, or a resume pc the generated code set without unwinding).
     void originalExitsElsewhere(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
@@ -225,7 +254,8 @@ namespace
             g_bodyWrongV0 = g_bodyWrongMem = g_bodyStrayWrite = g_bodyWrongV1High = g_bodyWrongF0 = false;
             g_bodyThrows = g_origThrows = false;
             g_bodyClobber = 0;
-            g_abiClobberS0 = g_abiMoveSp = g_abiWrongV0 = g_abiWrongF0 = g_abiWrongV1 = g_abiStaleV0High = false;
+            g_dueAfterOriginal = 0;
+            g_abiClobberS0 =g_abiMoveSp = g_abiWrongV0 = g_abiWrongF0 = g_abiWrongV1 = g_abiStaleV0High = false;
             g_abiWrongV1High = false;
             ps2_shadow::uninstall(runtime);
         }
@@ -792,6 +822,59 @@ void register_shadow_harness_tests()
             }
             t.Equals(lines, 0, "no lines");
             t.IsTrue(printed.empty(), "nothing printed: " + printed);
+        });
+
+        tc.Run("R2.1: the body runs under a checkpoint hold: a checkpoint due after the original does not cut it short", [](TestCase &t)
+        {
+            using namespace ps2_shadow;
+            Rig r;
+            r.runtime.registerFunction(kFn, originalLoop);
+            add(r.runtime, kFn, "FakeFn", originalLoop, bodyLoop);
+            g_dueAfterOriginal = 1;
+            r.call();
+            const Counts c = counts(kFn);
+            t.Equals(c.compared, uint64_t{1}, "compared");
+            t.Equals(c.matched, uint64_t{1}, "a correct body matches although an event became due before it ran");
+            t.Equals(c.mismatched, uint64_t{0}, "not a mismatch (pc orig=ra body=loop head)");
+            t.Equals(r.ctx.pc, kRa, "returned to ra");
+            t.IsFalse(r.runtime.dispatchUnwinding(), "the body did not unwind");
+            t.IsTrue(r.runtime.eeCheckpointDue(), "the event is still pending: the caller's next checkpoint acts on it");
+            r.runtime.clearDispatchUnwind();
+        });
+
+        tc.Run("R2.1: the original phase is not held: a due checkpoint still parks the original and skips the call", [](TestCase &t)
+        {
+            using namespace ps2_shadow;
+            Rig r;
+            r.runtime.registerFunction(kFn, originalLoop);
+            add(r.runtime, kFn, "FakeFn", originalLoop, bodyLoop);
+            r.runtime.eeScheduler().postEvent(EeEvent{});
+            r.call();
+            const Counts c = counts(kFn);
+            t.Equals(c.skippedUnwound, uint64_t{1}, "the original parked at its back edge: skipped");
+            t.Equals(c.compared, uint64_t{0}, "not compared");
+            t.Equals(g_bodyRuns, 0, "the body did not run");
+            t.Equals(r.ctx.pc, kResume, "pc on the loop head");
+            t.IsTrue(r.runtime.dispatchUnwinding(), "unwinding to the scheduler");
+        });
+
+        tc.Run("R2.1: a stop request (which a hold does not stop) cutting the body short is a skip, not a mismatch", [](TestCase &t)
+        {
+            using namespace ps2_shadow;
+            Rig r;
+            r.runtime.registerFunction(kFn, originalLoop);
+            add(r.runtime, kFn, "FakeFn", originalLoop, bodyLoop);
+            g_dueAfterOriginal = 2;
+            r.call();
+            const Counts c = counts(kFn);
+            t.Equals(c.mismatched, uint64_t{0}, "not a mismatch");
+            t.Equals(c.compared, uint64_t{0}, "not compared");
+            t.Equals(c.skippedUnwound, uint64_t{1}, "counted skipped_unwound");
+            t.Equals(g_bodyRuns, 1, "the body ran and was cut short");
+            t.Equals(GPR_U32((&r.ctx), 2), uint32_t{0x004b5211u}, "the original's v0 is back");
+            t.Equals(r.ctx.pc, kRa, "and its pc");
+            t.Equals(r.word(kOut), uint32_t{0x1234u}, "and its store");
+            t.IsTrue(r.runtime.dispatchUnwinding(), "the stop's unwind is left to the runtime");
         });
     });
 }
