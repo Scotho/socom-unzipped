@@ -288,6 +288,21 @@ struct EeThreadCreateParams
     uint32_t option = 0;
 };
 
+class EeScheduler;
+
+// RAII for EeScheduler::holdCheckpoints/releaseCheckpoints.
+class EeCheckpointHold
+{
+public:
+    explicit EeCheckpointHold(EeScheduler &scheduler);
+    ~EeCheckpointHold();
+    EeCheckpointHold(const EeCheckpointHold &) = delete;
+    EeCheckpointHold &operator=(const EeCheckpointHold &) = delete;
+
+private:
+    EeScheduler &m_scheduler;
+};
+
 class EeScheduler
 {
 public:
@@ -311,6 +326,13 @@ public:
     void requestStop();
     void postEvent(EeEvent event);
     [[nodiscard]] bool checkpointDue(uint32_t cycles = kGeneratedCheckpointCycles) noexcept;
+    // A checkpoint hold (EeCheckpointHold, nestable): while held, checkpointDue still accounts the cycles but
+    // reports nothing due (a stop request excepted), so guest code called from a host frame that cannot be parked
+    // -- an override written on the host that calls a game function -- runs to its return. A pending event or an
+    // expired slice is acted on at the first checkpoint after the last release. Touched by the EE thread only.
+    void holdCheckpoints() noexcept { ++m_checkpointHold; }
+    void releaseCheckpoints() noexcept { --m_checkpointHold; }
+    bool checkpointsHeld() const noexcept { return m_checkpointHold > 0; }
     void accountCycles(uint32_t cycles) noexcept;
     uint64_t eeCycleNow() const noexcept { return m_eeCycle; }   // the cycle clock accountCycles advances
     // Whether host time reported through ps2GuestClockExcludedNs (VU1 runs, the render back-pressure wait) is
@@ -501,6 +523,7 @@ private:
     std::atomic<bool> m_running{false};
     std::atomic<bool> m_guestExecuting{false};
     std::atomic<bool> m_stopRequested{false};
+    int m_checkpointHold = 0;
     std::atomic<bool> m_checkpointPending{false};
     uint32_t m_debugPublishCountdown = 0u;
 

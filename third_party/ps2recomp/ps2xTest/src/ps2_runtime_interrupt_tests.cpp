@@ -2,6 +2,7 @@
 #include <thread>
 #include "MiniTest.h"
 #include "ps2_runtime.h"
+#include "ps2_runtime_macros.h"
 #include "ps2_syscalls.h"
 #include "runtime/ee_scheduler.h"
 
@@ -158,6 +159,21 @@ namespace
         return pred();
     }
 
+    // The checkpoint hold: a callee a host-side body calls (a derived override's call into a game function) must
+    // run to its return, because the host frame that called it cannot be parked and resumed by the scheduler.
+    int g_heldCalleeRuns = 0;
+    void heldCallee(uint8_t *, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        ++g_heldCalleeRuns;
+        if (runtime->eeCheckpointDue())   // a loop back edge in generated code
+        {
+            return;                       // would park here; the hold says it is not due
+        }
+        SET_GPR_U32(ctx, 2, 0x1234u);
+        ctx->pc = GPR_U32(ctx, 31);
+    }
+
+    void cleanupRuntime(TestEnv &env);
     void cleanupRuntime(TestEnv &env)
     {
         env.runtime.requestStop();
@@ -511,6 +527,55 @@ void register_ps2_runtime_interrupt_tests()
             t.IsTrue(counted >= 55.0, "policy off: the guest clock advanced by the whole 60 ms of wall time (got " + std::to_string(counted) + ")");
             t.IsTrue(scheduler.excludeHostTime() == false, "the setter is observable");
             scheduler.setExcludeHostTime(true);
+            cleanupRuntime(*env);
+        });
+
+        tc.Run("a checkpoint hold: nothing is due while held, a pending event is due after release", [](TestCase &t)
+        {
+            auto env = std::make_unique<TestEnv>();
+            EeScheduler &scheduler = env->runtime.eeScheduler();
+            scheduler.postEvent(EeEvent{});
+            t.IsTrue(scheduler.checkpointDue(), "an event makes a checkpoint due");
+            {
+                EeCheckpointHold hold(scheduler);
+                t.IsTrue(scheduler.checkpointsHeld(), "held");
+                t.IsFalse(scheduler.checkpointDue(), "held: not due");
+                t.IsFalse(env->runtime.eeCheckpointDue(), "held: the generated code's back edge is not due either");
+                {
+                    EeCheckpointHold nested(scheduler);
+                    t.IsFalse(scheduler.checkpointDue(), "nested");
+                }
+                t.IsFalse(scheduler.checkpointDue(), "the outer hold still holds");
+            }
+            t.IsFalse(scheduler.checkpointsHeld(), "released");
+            t.IsTrue(scheduler.checkpointDue(), "released: the pending event is due at the first checkpoint");
+            cleanupRuntime(*env);
+        });
+
+        tc.Run("a checkpoint hold lets a dispatched call run to its return", [](TestCase &t)
+        {
+            auto env = std::make_unique<TestEnv>();
+            constexpr uint32_t kCallee = 0x00170000u;
+            constexpr uint32_t kRet = 0x00170100u;
+            env->runtime.registerFunction(kCallee, heldCallee);
+            R5900Context ctx{};
+            SET_GPR_U32((&ctx), 31, kRet);
+            env->runtime.eeScheduler().postEvent(EeEvent{});
+            g_heldCalleeRuns = 0;
+            {
+                EeCheckpointHold hold(env->runtime.eeScheduler());
+                const bool returned = env->runtime.dispatchGuestBranch(env->rdram.data(), &ctx, kCallee, kRet - 8u, kRet,
+                                                                       PS2Runtime::GuestBranchKind::DirectCall, "test");
+                t.IsTrue(returned, "the call returned");
+                t.Equals(g_heldCalleeRuns, 1, "the callee ran");
+                t.Equals(GPR_U32((&ctx), 2), uint32_t{0x1234u}, "to its end");
+                t.IsFalse(env->runtime.dispatchUnwinding(), "nothing unwound");
+            }
+            g_heldCalleeRuns = 0;
+            const bool returned = env->runtime.dispatchGuestBranch(env->rdram.data(), &ctx, kCallee, kRet - 8u, kRet,
+                                                                   PS2Runtime::GuestBranchKind::DirectCall, "test");
+            t.IsFalse(returned, "unheld, the pending event unwinds the call as before");
+            env->runtime.clearDispatchUnwind();
             cleanupRuntime(*env);
         });
 
