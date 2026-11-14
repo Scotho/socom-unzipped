@@ -509,6 +509,11 @@ namespace ps2_shadow
         return o.str();
     }
 
+    int flushReport()
+    {
+        return 0;   // S6 test commit: the stub; the fix prints the exit report
+    }
+
     void uninstall(PS2Runtime &runtime)
     {
         std::lock_guard<std::mutex> lock(g_installMutex);

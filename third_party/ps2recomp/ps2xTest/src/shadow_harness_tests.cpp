@@ -758,5 +758,40 @@ void register_shadow_harness_tests()
                 t.IsFalse(parseSpec(bad, out), std::string("'") + bad + "' is refused");
             }
         });
+
+        tc.Run("S6: flushReport prints the exit report now (the runner _Exits, so atexit never runs)", [](TestCase &t)
+        {
+            using namespace ps2_shadow;
+            Rig r;
+            r.runtime.registerFunction(kFn, original);
+            add(r.runtime, kFn, "FakeFn", original, body);
+            r.call();
+            int lines = -1;
+            std::string printed;
+            {
+                CaptureStdout out;
+                lines = flushReport();
+                printed = out.text();
+            }
+            t.Equals(lines, 2, "two lines: the address and the total");
+            t.IsTrue(printed.find("[shadow] exit: 0x003c4b40 FakeFn") != std::string::npos, "the address line: " + printed);
+            t.IsTrue(printed.find("calls=1") != std::string::npos, "with its counts: " + printed);
+            t.IsTrue(printed.find("[shadow] exit: total shadowed=1") != std::string::npos, "the total line: " + printed);
+            t.Equals(printed, formatReport("exit"), "exactly the periodic report's lines, reason 'exit'");
+        });
+
+        tc.Run("S6: flushReport is a no-op when nothing is shadowed", [](TestCase &t)
+        {
+            Rig r;
+            int lines = -1;
+            std::string printed;
+            {
+                CaptureStdout out;
+                lines = ps2_shadow::flushReport();
+                printed = out.text();
+            }
+            t.Equals(lines, 0, "no lines");
+            t.IsTrue(printed.empty(), "nothing printed: " + printed);
+        });
     });
 }

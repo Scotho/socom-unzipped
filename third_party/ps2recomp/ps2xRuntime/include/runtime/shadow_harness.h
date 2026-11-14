@@ -91,6 +91,7 @@ namespace ps2_shadow
     bool verified(uint32_t addr);
     std::vector<std::string> mismatchLines(uint32_t addr);   // the first few, for the log and tests
     std::string formatReport(const std::string &reason);
+    int flushReport();   // the exit report now, on std::cout, flushed; the lines printed (0 when nothing is shadowed)
     void uninstall(PS2Runtime &runtime);   // tests: restore the originals, forget every slot
     bool writeLogArmedForTest();           // tests: true while a write log is armed (only inside a shadowed call)
 
