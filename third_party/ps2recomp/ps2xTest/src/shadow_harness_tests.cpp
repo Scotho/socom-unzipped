@@ -188,6 +188,31 @@ namespace
         original(rdram, ctx, runtime);
     }
 
+    // Round 2, item 3: the other four widths of the slow path. PS2Memory handles byte and halfword stores to the
+    // I/O window (not to the GS privileged registers), so those two go to timer 1's COMP register, a plain latch;
+    // the 64- and 128-bit stores go to BGCOLOR (a 128-bit store to a GS register writes its low 64 bits).
+    constexpr uint32_t kTimer1Comp = 0x10000820u;
+    void originalMmio8(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        WRITE8(kTimer1Comp, 0x5au);   // PS2Runtime::Store8
+        original(rdram, ctx, runtime);
+    }
+    void originalMmio16(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        WRITE16(kTimer1Comp, 0x1234u);   // PS2Runtime::Store16
+        original(rdram, ctx, runtime);
+    }
+    void originalMmio64(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        WRITE64(kGsBgColor, 0x0102030405060708ull);   // PS2Runtime::Store64
+        original(rdram, ctx, runtime);
+    }
+    void originalMmio128(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        WRITE128(kGsBgColor, _mm_set_epi64x(0x1111222233334444ll, 0x0a0b0c0d0e0f1011ll));   // PS2Runtime::Store128
+        original(rdram, ctx, runtime);
+    }
+
     // ABI mode (a body derived from source): the original leaves its scratch registers as its instructions do (a0
     // advanced, t0 and a1 used, f1 a temporary); a derived body computes the same result through other registers.
     bool g_abiClobberS0 = false;
@@ -950,6 +975,42 @@ void register_shadow_harness_tests()
             t.IsTrue(printed.find("total shadowed=0") != std::string::npos, "nothing shadowed: " + printed);
             t.IsTrue(printed.find("without an override body") == std::string::npos,
                      "the address had a body; its REFUSED line at install says why: " + printed);
+        });
+
+        tc.Run("R2.3: stores through PS2Runtime::Store8, Store16, Store64 and Store128 are I/O skips too", [](TestCase &t)
+        {
+            using namespace ps2_shadow;
+            struct Width
+            {
+                const char *name;
+                Fn fn;
+            };
+            const Width widths[] = {{"Store8", originalMmio8},
+                                    {"Store16", originalMmio16},
+                                    {"Store64", originalMmio64},
+                                    {"Store128", originalMmio128}};
+            for (const Width &w : widths)
+            {
+                Rig r;
+                r.runtime.memory().gs().bgcolor = 0u;
+                r.runtime.registerFunction(kFn, w.fn);
+                add(r.runtime, kFn, "FakeFn", w.fn, body);
+                r.call();
+                const Counts c = counts(kFn);
+                const std::string what = w.name;
+                t.Equals(c.skippedIo, uint64_t{1}, what + ": skipped for I/O by its hook");
+                t.Equals(c.compared, uint64_t{0}, what + ": not compared");
+                t.Equals(g_bodyRuns, 0, what + ": the body did not run");
+                t.Equals(r.word(kOut), uint32_t{0x1234u}, what + ": the original's RDRAM store stands");
+                if (w.fn == originalMmio8)
+                    t.Equals(r.runtime.memory().read32(kTimer1Comp) & 0xffffu, uint32_t{0x5au}, what + ": the latch took it once");
+                else if (w.fn == originalMmio16)
+                    t.Equals(r.runtime.memory().read32(kTimer1Comp) & 0xffffu, uint32_t{0x1234u}, what + ": the latch took it once");
+                else if (w.fn == originalMmio64)
+                    t.Equals(r.runtime.memory().gs().bgcolor, uint64_t{0x0102030405060708ull}, what + ": BGCOLOR took it once");
+                else
+                    t.Equals(r.runtime.memory().gs().bgcolor, uint64_t{0x0a0b0c0d0e0f1011ull}, what + ": BGCOLOR took the low 64 bits");
+            }
         });
     });
 }
