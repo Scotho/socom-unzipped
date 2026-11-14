@@ -137,7 +137,9 @@ namespace ps2_shadow
     std::string formatReport(const std::string &reason);
     int flushReport();   // the exit report now, on std::cout, flushed; the lines printed (0 when nothing is shadowed)
     void uninstall(PS2Runtime &runtime);   // tests: restore the originals, forget every slot
-    bool writeLogArmedForTest();           // tests: true while a write log is armed (only inside a shadowed call)
+    bool writeLogArmedForTest();           // tests: true while THIS thread has a write log armed (inside a
+                                           // shadowed call's original or body on this thread; g_writeLog is
+                                           // thread_local)
 
     // "0xADDR[,0xADDR...]" (spaces and empty items allowed). Each item is 0x/0X and 1-8 hex digits, or plain
     // decimal (no sign, no leading zero) up to 4294967295; a repeated address is listed once. False on any other

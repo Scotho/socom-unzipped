@@ -22,7 +22,7 @@
 
 namespace ps2_shadow
 {
-    WriteLog *g_writeLog = nullptr;
+    thread_local WriteLog *g_writeLog = nullptr;   // per thread: runtime/shadow_write_log.h
 
     namespace
     {
@@ -171,7 +171,8 @@ namespace ps2_shadow
         // exit, or a SignalSema/SetEventFlag/WakeupThread that readies a higher-priority thread, and caught only in
         // EeScheduler::run; or std::bad_alloc -- and the WriteLog on this frame dies with it. A pointer left armed
         // would send every later guest store into a dead vector and pass every later shadowed call through.
-        // Restores the previous value, which runShadowed has checked is null (a nested call passes through).
+        // Restores the previous value, which runShadowed has checked is null (a nested call passes through). The
+        // pointer is thread_local, so arming and disarming touch the calling thread's only.
         class ArmedLog
         {
         public:
@@ -195,8 +196,9 @@ namespace ps2_shadow
         void runShadowed(Slot &s, uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
         {
             const uint64_t n = s.calls.fetch_add(1, std::memory_order_relaxed);
-            // A resume pc that reached this slot, or a call nested inside another shadowed call (its stores belong
-            // to the outer call's log): the original, untouched.
+            // A resume pc that reached this slot, or a call nested inside another shadowed call on this thread (its
+            // stores belong to the outer call's log): the original, untouched. A shadowed call on another host
+            // thread arms its own log (thread_local) and does not pass this one through.
             if (ctx->pc != s.addr || g_writeLog != nullptr)
             {
                 s.passedThrough.fetch_add(1, std::memory_order_relaxed);
@@ -551,7 +553,7 @@ namespace ps2_shadow
             g_slots[i].reset();
         }
         g_slotCount = 0;
-        g_writeLog = nullptr;
+        g_writeLog = nullptr;   // the calling thread's (thread_local)
     }
 
     bool writeLogArmedForTest()
