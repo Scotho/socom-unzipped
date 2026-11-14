@@ -128,6 +128,15 @@ class CoverageBitmapTest(unittest.TestCase):
         self.assertIn("socom2_ghidra_r0004.csv", err)
         self.assertNotIn("warning", out)
 
+    def test_a_function_below_the_table_base_does_not_warn(self):
+        # recomp/socom2_ghidra_r0004.csv lists FUN_0009f000 below r0004's own table base (0x180008): a correct
+        # pairing must stay quiet. Only starts at or past the table's END mark a list from another revision.
+        shifted = os.path.join(self.tmp.name, "shifted.bin")
+        with open(shifted, "wb") as fh:
+            fh.write(_dump(self.BASE + 0x10, 0x40, [0]))   # FUN_00100000 lies below the base; the rest inside
+        _, err = self._run_main(shifted)
+        self.assertEqual(err, "")
+
     def test_a_dump_that_covers_the_function_list_does_not_warn(self):
         _, err = self._run_main(self.dump)
         self.assertEqual(err, "")
