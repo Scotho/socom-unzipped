@@ -32,7 +32,10 @@ SWITCH_FILE = "knobs.cpp"          # the one file that may getenv("PS2X_DEV")
 HELPER_GETENV_ALLOWED = {"knobs.h", "knobs.cpp", "bare_run.cpp"}   # knobs.h: the accessor's own comment names getenv
 
 # Names the harness uses that no C++ reads.
-HARNESS_ONLY = {"PS2X_RUN_LOG", "PS2X_TEST_REPEAT", "PS2X_SOCOM2_RSA_KEY_B"}
+HARNESS_ONLY = {"PS2X_RUN_LOG", "PS2X_TEST_REPEAT", "PS2X_SOCOM2_RSA_KEY_B",
+                # Sprint 19 E1: a configure-time CMake variable the build scripts pass and the chain refuses; no
+                # executable reads it (ps2xRuntime/cmake/PrivateOverrides.cmake)
+                "PS2X_PRIVATE_OVERRIDES_DIR"}
 # PS2X_* tokens in harness files that are not environment names at all.
 NOT_KNOBS = {
     "PS2X_",

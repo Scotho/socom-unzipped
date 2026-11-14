@@ -217,4 +217,4 @@ Read by `ps2x_tests`, never by a shipped executable.
 
 ## Harness-only names
 
-Used by the scripts and the Python harness; no C++ reads them: `PS2X_RUN_LOG`, `PS2X_SOCOM2_RSA_KEY_B`, `PS2X_TEST_REPEAT`.
+Used by the scripts and the Python harness; no C++ reads them: `PS2X_PRIVATE_OVERRIDES_DIR`, `PS2X_RUN_LOG`, `PS2X_SOCOM2_RSA_KEY_B`, `PS2X_TEST_REPEAT`.
