@@ -41,7 +41,7 @@ namespace ps2_shadow
             Fn body = nullptr;
             Mode mode;
             std::atomic<uint64_t> calls{0}, compared{0}, matched{0}, mismatched{0}, skippedUnwound{0}, skippedIo{0},
-                passedThrough{0};
+                passedThrough{0}, skippedTransfer{0}, bodyThrew{0};
             std::mutex linesMutex;
             std::vector<std::string> lines;
 
@@ -51,7 +51,8 @@ namespace ps2_shadow
                 name.clear();
                 original = body = nullptr;
                 mode = Mode{};
-                calls = compared = matched = mismatched = skippedUnwound = skippedIo = passedThrough = 0;
+                calls = compared = matched = mismatched = skippedUnwound = skippedIo = passedThrough = skippedTransfer =
+                    bodyThrew = 0;
                 std::lock_guard<std::mutex> lock(linesMutex);
                 lines.clear();
             }
@@ -147,6 +148,24 @@ namespace ps2_shadow
                 compareFpr(orig, body, f, diffs);
         }
 
+        // Arms g_writeLog for one phase of a shadowed call and disarms it however the phase ends. The original or
+        // the body can leave by a C++ exception -- EeDispatcherTransfer, thrown by a blocking wait, a yield, a thread
+        // exit, or a SignalSema/SetEventFlag/WakeupThread that readies a higher-priority thread, and caught only in
+        // EeScheduler::run; or std::bad_alloc -- and the WriteLog on this frame dies with it. A pointer left armed
+        // would send every later guest store into a dead vector and pass every later shadowed call through.
+        // Restores the previous value, which runShadowed has checked is null (a nested call passes through).
+        class ArmedLog
+        {
+        public:
+            explicit ArmedLog(WriteLog &log) : m_previous(g_writeLog) { g_writeLog = &log; }
+            ~ArmedLog() { g_writeLog = m_previous; }
+            ArmedLog(const ArmedLog &) = delete;
+            ArmedLog &operator=(const ArmedLog &) = delete;
+
+        private:
+            WriteLog *m_previous;
+        };
+
         bool deadStack(uint32_t key, uint32_t entrySp)
         {
             if (key >= kRdramKeyEnd)
@@ -172,9 +191,18 @@ namespace ps2_shadow
             const uint32_t entrySp = static_cast<uint32_t>(lo64(entry.r[29]));
 
             WriteLog origLog;
-            g_writeLog = &origLog;
-            s.original(rdram, ctx, runtime);
-            g_writeLog = nullptr;
+            try
+            {
+                ArmedLog armed(origLog);
+                s.original(rdram, ctx, runtime);
+            }
+            catch (...)
+            {
+                // The original blocked or yielded (or failed): the scheduler owns the thread from here and the
+                // original's state, partial stores included, is the truth. Nothing to compare; let it go on up.
+                s.skippedTransfer.fetch_add(1, std::memory_order_relaxed);
+                throw;
+            }
 
             // The eeCheckpointDue() back-edge return (or any unwind below): the guest is parked inside the original
             // and resumes there later without this thunk. Its state is the truth; there is nothing to compare.
@@ -198,9 +226,28 @@ namespace ps2_shadow
             *ctx = entry;
 
             WriteLog bodyLog;
-            g_writeLog = &bodyLog;
-            s.body(rdram, ctx, runtime);
-            g_writeLog = nullptr;
+            try
+            {
+                ArmedLog armed(bodyLog);
+                s.body(rdram, ctx, runtime);
+            }
+            catch (...)
+            {
+                // Not recoverable: the original's result is already undone and the scheduler now holds the body's
+                // partial state. Say so loudly, once per event (the first kMaxCallsPrinted), and let it go on up.
+                const uint64_t threw = s.bodyThrew.fetch_add(1, std::memory_order_relaxed);
+                if (threw < kMaxCallsPrinted)
+                {
+                    std::ostringstream o;
+                    o << "[shadow-error] " << s.name << " 0x" << std::hex << std::setw(8) << std::setfill('0')
+                      << s.addr << std::dec << " call #" << n
+                      << ": the BODY threw (a blocking wait, a yield or an allocation failure) after the original's "
+                         "result was undone; the game now runs on the body's partial result. Shadow leaf functions "
+                         "only: remove this address from PS2X_SHADOW";
+                    std::cout << o.str() << std::endl;
+                }
+                throw;
+            }
 
             std::vector<std::string> diffs;
             if (s.mode.compare == Compare::Abi)
@@ -298,7 +345,15 @@ namespace ps2_shadow
             c.skippedUnwound = s.skippedUnwound.load();
             c.skippedIo = s.skippedIo.load();
             c.passedThrough = s.passedThrough.load();
+            c.skippedTransfer = s.skippedTransfer.load();
+            c.bodyThrew = s.bodyThrew.load();
             return c;
+        }
+
+        // Compared at least once, never mismatched, the body never threw.
+        bool isVerified(const Counts &c)
+        {
+            return c.compared > 0 && c.mismatched == 0 && c.bodyThrew == 0;
         }
 
         void startReports()
@@ -348,8 +403,7 @@ namespace ps2_shadow
 
     bool verified(uint32_t addr)
     {
-        const Counts c = counts(addr);
-        return c.compared > 0 && c.mismatched == 0;
+        return isVerified(counts(addr));
     }
 
     std::vector<std::string> mismatchLines(uint32_t addr)
@@ -373,17 +427,20 @@ namespace ps2_shadow
               << " " << s.name << " compare=" << (s.mode.compare == Compare::Abi ? "abi" : "all")
               << " calls=" << c.calls << " compared=" << c.compared << " matched=" << c.matched
               << " mismatched=" << c.mismatched << " skipped_unwound=" << c.skippedUnwound << " skipped_io="
-              << c.skippedIo << " passed_through=" << c.passedThrough << " verified="
-              << ((c.compared > 0 && c.mismatched == 0) ? "yes" : "no") << "\n";
+              << c.skippedIo << " skipped_transfer=" << c.skippedTransfer << " body_threw=" << c.bodyThrew
+              << " passed_through=" << c.passedThrough << " verified=" << (isVerified(c) ? "yes" : "no") << "\n";
             total.calls += c.calls;
             total.compared += c.compared;
             total.mismatched += c.mismatched;
             total.skippedUnwound += c.skippedUnwound;
             total.skippedIo += c.skippedIo;
+            total.skippedTransfer += c.skippedTransfer;
+            total.bodyThrew += c.bodyThrew;
         }
         o << "[shadow] " << reason << ": total shadowed=" << g_slotCount << " calls=" << total.calls << " compared="
           << total.compared << " mismatched=" << total.mismatched << " skipped_unwound=" << total.skippedUnwound
-          << " skipped_io=" << total.skippedIo;
+          << " skipped_io=" << total.skippedIo << " skipped_transfer=" << total.skippedTransfer
+          << " body_threw=" << total.bodyThrew;
         bool any = false;
         for (uint32_t a : g_listed)
             if (!find(a))
