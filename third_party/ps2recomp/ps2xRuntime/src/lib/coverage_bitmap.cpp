@@ -42,6 +42,7 @@ namespace ps2_coverage
             std::condition_variable cv;
             bool stop = false;
             std::thread thread;
+            std::mutex joinMutex;   // two flush() calls at once (the atexit hook and main's) must not both join
         };
         Writer *s_writer = nullptr;
 
@@ -65,7 +66,10 @@ namespace ps2_coverage
         void stopWriter()
         {
             Writer *w = s_writer;
-            if (!w || !w->thread.joinable() || w->thread.get_id() == std::this_thread::get_id())
+            if (!w)
+                return;
+            std::lock_guard<std::mutex> joinLock(w->joinMutex);   // the second caller waits, then finds it joined
+            if (!w->thread.joinable() || w->thread.get_id() == std::this_thread::get_id())
                 return;
             {
                 std::lock_guard<std::mutex> lock(w->mutex);

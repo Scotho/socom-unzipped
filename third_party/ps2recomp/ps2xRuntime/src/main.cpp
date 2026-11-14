@@ -359,6 +359,7 @@ int main(int argc, char *argv[])
         std::cerr << "[main] fatal exception: unknown" << std::endl;
     }
 
+    ps2_coverage::flush();   // PS2X_COVERAGE's final write; _Exit runs no atexit hook
     std::cout.flush();
     std::cerr.flush();
     std::_Exit(ExitCodes::kFailed);
