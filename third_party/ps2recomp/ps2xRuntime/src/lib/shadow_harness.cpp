@@ -91,7 +91,17 @@ namespace ps2_shadow
             return o.str();
         }
 
-        // Registers: low 64 bits of r1..r31, the upper 64 of v0 and v1, pc, f0's bits.
+        void compareWord(const char *name, uint64_t orig, uint64_t body, std::vector<std::string> &diffs)
+        {
+            if (orig != body)
+                diffs.push_back(std::string(name) + " orig=" + hex(orig) + " body=" + hex(body));
+        }
+
+        void compareFpr(const R5900Context &orig, const R5900Context &body, int f, std::vector<std::string> &diffs);
+
+        // Compare::AllRegisters: low 64 bits of r1..r31, the upper 64 of v0 and v1, pc, hi/lo, hi1/lo1, sa, every
+        // FPR f0-f31 by its bits, the FPU accumulator and fcr31. A transcribed body reproduces all of them.
+        // Not compared: the other upper GPR halves, VU0 (macro mode) and COP0.
         void compareRegisters(const R5900Context &orig, const R5900Context &body, std::vector<std::string> &diffs)
         {
             for (int r = 1; r < 32; ++r)
@@ -103,10 +113,16 @@ namespace ps2_shadow
                     diffs.push_back(std::string(kRegNames[r]) + "[127:64] orig=" + hex(hi64(orig.r[r])) + " body=" +
                                     hex(hi64(body.r[r])));
             }
-            if (orig.pc != body.pc)
-                diffs.push_back("pc orig=" + hex(orig.pc) + " body=" + hex(body.pc));
-            if (floatBits(orig.f[0]) != floatBits(body.f[0]))
-                diffs.push_back("f0 orig=" + hex(floatBits(orig.f[0])) + " body=" + hex(floatBits(body.f[0])));
+            compareWord("pc", orig.pc, body.pc, diffs);
+            compareWord("hi", orig.hi, body.hi, diffs);
+            compareWord("lo", orig.lo, body.lo, diffs);
+            compareWord("hi1", orig.hi1, body.hi1, diffs);
+            compareWord("lo1", orig.lo1, body.lo1, diffs);
+            compareWord("sa", orig.sa, body.sa, diffs);
+            for (int f = 0; f < 32; ++f)
+                compareFpr(orig, body, f, diffs);
+            compareWord("f_acc", floatBits(orig.f_acc), floatBits(body.f_acc), diffs);
+            compareWord("fcr31", orig.fcr31, body.fcr31, diffs);
         }
 
         void compareGpr(const R5900Context &orig, const R5900Context &body, int r, bool full,
