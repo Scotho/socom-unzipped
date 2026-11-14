@@ -103,7 +103,8 @@ release_kind() {   # <build dir> <the kind packaged from it> <the build script>:
 # Private function bodies (Sprint 19 E1, the R375 review): a runtime step run with PS2X_PRIVATE_OVERRIDES_DIR set links
 # them into dist/'s exe, and the build tree's CMakeCache.txt is the record of it. A plain run packages such a build but
 # warns and writes "private_overrides": true into the manifest (false otherwise); --release refuses it, exit 2, before
-# packaging anything -- build.sh release configures it empty, so this is the second line. MAKE_PORTABLE_BUILD_ROOT
+# packaging anything -- build.sh release configures it empty, so this is the second line; each cache it read is named,
+# and one that is not there is said ("private overrides not checked") and the packaging goes on. MAKE_PORTABLE_BUILD_ROOT
 # (default third_party/ps2recomp, which holds build-clang/, build-release[-dev]/ and their build-linux* twins) is for
 # tools_py/tests/test_make_portable.py.
 BUILDS="${MAKE_PORTABLE_BUILD_ROOT:-$ROOT/third_party/ps2recomp}"
@@ -114,11 +115,16 @@ private_overrides_in() {   # <build dir>: true when its CMakeCache.txt names a n
   v="$(sed -n 's/^PS2X_PRIVATE_OVERRIDES_DIR:[A-Za-z]*=//p' "$1/CMakeCache.txt" | tr -d '\r' | head -n1)" || true
   [ -n "$v" ]
 }
-refuse_private_release() {   # <build dir> <the build script>
+refuse_private_release() {   # <build dir> <the build script>; a cache that is not there is said, not passed in silence
+  if [ ! -f "$1/CMakeCache.txt" ]; then
+    echo "make_portable: no CMake cache at $1/CMakeCache.txt: private overrides not checked" >&2
+    return 0
+  fi
   if private_overrides_in "$1"; then
     echo "make_portable: --release refused -- $1/CMakeCache.txt names a PS2X_PRIVATE_OVERRIDES_DIR: a release never carries private function bodies; rebuild it with $2 release (it configures the variable empty)" >&2
     exit 2
   fi
+  echo "make_portable: private overrides checked: $1/CMakeCache.txt names none"
 }
 warn_private() {   # <build dir>: a plain run of a private build is packaged, and says so
   if private_overrides_in "$1"; then
