@@ -2,16 +2,17 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.rulings` from the ruling records `tools_py/docmaint.py` reads for checks 9 and 10 (`ruling_records()`: the definitions in the plans, the sprint file and `docs/archive/`, the ledger rows and the vacancy notes), plus the sprint-local `S12-R<n>` and `S13-R<n>` definitions in the same documents. Change the source and regenerate; `python -m tools_py.rulings --check` exits 1 when this file is stale. The status rules are the module's docstring; the conventions are `docs/DOC_MAINTENANCE.md` section 4.
 
-408 rulings (369 global, 39 sprint-local): 400 active, 5 superseded, 1 retracted, 1 withdrawn, 1 vacant.
+409 rulings (370 global, 39 sprint-local): 401 active, 5 superseded, 1 retracted, 1 withdrawn, 1 vacant.
 
 *Home* is where the ruling is written: its definition, else its ledger row, else its vacancy note. *The line* is its first sentence, cut at 160 characters.
 
 ## Global (R<n>), newest first
 
-369 rulings.
+370 rulings.
 
 | Number | Date | Status | The line | Home |
 |---|---|---|---|---|
+| R375 | 2026-11-14 | active | the gfsaaser24 roundup (task GF): his six pull requests #141-#146 land by merge with his authorship, not by squash, through one integration branch and one pull… | `docs/superpowers/plans/2026-10-11-sprint-19-re-foundation.md` **R375** |
 | R374 | -- | active | a public contract note for a small leaf says behaviour, signature, offsets and the return rule, never statement-by-statement code; the owner may tighten it. | `docs/superpowers/plans/2026-10-11-sprint-19-re-foundation.md` **R374** |
 | R373 | -- | active | README credits Harry62 and redotcom with one line each in "License and credits", drafted by K2; the owner may reword. | `docs/superpowers/plans/2026-10-11-sprint-19-re-foundation.md` **R373** |
 | R372 | -- | active | Z-a runs in one window the owner names (O20/R297); Z-b in any short window or the owner's own PCSX2 session; every lock-free task lands meanwhile. | `docs/superpowers/plans/2026-10-11-sprint-19-re-foundation.md` **R372** |

@@ -11,7 +11,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 ## 2. Where it stands
 
 - **Now (2026-10-12 10:19Z) -- Sprint 19 OPEN (the RE foundation, R360/R365) on `sprint-19` off `v0.18.0`; Sprints 17 and 18 closed (`v0.17.0`, `v0.18.0`).** Seat: the Sprint 19 plan.
-- **Next free ruling number: R375** (R364-R365, R368-R374 Sprint 19's plan; R366-R367 Sprint 17's; older: RULINGS.md).
+- **Next free ruling number: R376** (R364-R365, R368-R375 Sprint 19's plan; R366-R367 Sprint 17's; older: RULINGS.md).
 
 ## 3. Your first hour (lock-free; start nothing heavy)
 
@@ -61,6 +61,7 @@ and every rule's reason, in `docs/archive/HANDOFF-to-2026-09-26.md` (a HANDOFF s
 ## 6. What is owed
 
 - Sprint 19: T1 and L1 first (lock-free); Z-a in a window the owner names (R372).
+- Sprint 19 GF (R375, 2026-11-14): gfsaaser24's PRs #141-#146 on `agent/gf-roundup` (`wt-gf-roundup`); the plan's Log has the state; chain GF needs an owner-named window.
 - **The owner's rows** (`docs/SITTING.md`): O34 the draft releases; O35 #104 by eye, the box deploy; O36 four twice-carried issues.
 - 2026-09-28: the story generator `tools_py/story/site.py` emits the s2u design system's classes (scotho branch s2u-design-system, spec section 8); the story session regenerates with `--ds-dir` pointing at `web/shared/ds` (the default since 2026-09-29).
 
