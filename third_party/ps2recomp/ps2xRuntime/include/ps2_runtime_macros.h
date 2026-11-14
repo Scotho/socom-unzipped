@@ -19,6 +19,11 @@
 
 // Sprint 19 E2: PS2X_SHADOW's write log (runtime/shadow_write_log.h). Compiled in only by the CMake option
 // PS2X_SHADOW_WRITE_LOG; off, the store helpers below are exactly what they were.
+// The store helpers that expand PS2X_SHADOW_NOTE_* (Ps2FastWrite8..128 and anything else built on them) MUST stay
+// `static inline`: their bodies differ with PS2X_SHADOW_WRITE_LOG, and translation units disagree on it -- the
+// shadow test TU (ps2xTest/src/shadow_harness_tests.cpp) is compiled with PS2X_SHADOW_WRITE_LOG=1 while a default
+// ps2_runtime is not. A plain `inline` helper would have two definitions under one name: an ODR violation, and the
+// linker would keep either one.
 #ifndef PS2X_SHADOW_WRITE_LOG
 #define PS2X_SHADOW_WRITE_LOG 0
 #endif
@@ -397,6 +402,8 @@ static inline __m128i Ps2FastRead128(const uint8_t *rdram, uint32_t addr)
     return value;
 }
 
+// The write-log hook below differs per translation unit (PS2X_SHADOW_WRITE_LOG): keep these `static inline`
+// (the reason: the PS2X_SHADOW_NOTE_RDRAM comment at the top of this file).
 static inline void Ps2FastWrite8(uint8_t *rdram, uint32_t addr, uint8_t value)
 {
     PS2X_SHADOW_NOTE_RDRAM(rdram, addr, 1u);

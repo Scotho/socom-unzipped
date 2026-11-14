@@ -2,12 +2,14 @@
 #include "runtime/shadow_harness.h"
 
 #include "runtime/shadow_write_log.h"
+#include "runtime/ee_scheduler.h"   // EeCheckpointHold, around the body
 #include "ps2x/knobs.h"
 
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <iomanip>
@@ -20,7 +22,7 @@
 
 namespace ps2_shadow
 {
-    WriteLog *g_writeLog = nullptr;
+    thread_local WriteLog *g_writeLog = nullptr;   // per thread: runtime/shadow_write_log.h
 
     namespace
     {
@@ -41,7 +43,7 @@ namespace ps2_shadow
             Fn body = nullptr;
             Mode mode;
             std::atomic<uint64_t> calls{0}, compared{0}, matched{0}, mismatched{0}, skippedUnwound{0}, skippedIo{0},
-                passedThrough{0};
+                passedThrough{0}, skippedTransfer{0}, bodyThrew{0};
             std::mutex linesMutex;
             std::vector<std::string> lines;
 
@@ -51,7 +53,8 @@ namespace ps2_shadow
                 name.clear();
                 original = body = nullptr;
                 mode = Mode{};
-                calls = compared = matched = mismatched = skippedUnwound = skippedIo = passedThrough = 0;
+                calls = compared = matched = mismatched = skippedUnwound = skippedIo = passedThrough = skippedTransfer =
+                    bodyThrew = 0;
                 std::lock_guard<std::mutex> lock(linesMutex);
                 lines.clear();
             }
@@ -60,7 +63,9 @@ namespace ps2_shadow
         Slot g_slots[kMaxSlots];
         int g_slotCount = 0;
         std::mutex g_installMutex;
-        std::vector<uint32_t> g_listed;   // PS2X_SHADOW as read, for "listed without an override body"
+        std::mutex g_listMutex;            // guards the two below: installs write them, the reporter reads them
+        std::vector<uint32_t> g_listed;    // PS2X_SHADOW as read, for "listed without an override body"
+        std::vector<uint32_t> g_offered;   // every address a module passed to installOverride
 
         uint64_t lo64(const __m128i &v)
         {
@@ -90,7 +95,17 @@ namespace ps2_shadow
             return o.str();
         }
 
-        // Registers: low 64 bits of r1..r31, the upper 64 of v0 and v1, pc, f0's bits.
+        void compareWord(const char *name, uint64_t orig, uint64_t body, std::vector<std::string> &diffs)
+        {
+            if (orig != body)
+                diffs.push_back(std::string(name) + " orig=" + hex(orig) + " body=" + hex(body));
+        }
+
+        void compareFpr(const R5900Context &orig, const R5900Context &body, int f, std::vector<std::string> &diffs);
+
+        // Compare::AllRegisters: low 64 bits of r1..r31, the upper 64 of v0 and v1, pc, hi/lo, hi1/lo1, sa, every
+        // FPR f0-f31 by its bits, the FPU accumulator and fcr31. A transcribed body reproduces all of them.
+        // Not compared: the other upper GPR halves, VU0 (macro mode) and COP0.
         void compareRegisters(const R5900Context &orig, const R5900Context &body, std::vector<std::string> &diffs)
         {
             for (int r = 1; r < 32; ++r)
@@ -102,10 +117,16 @@ namespace ps2_shadow
                     diffs.push_back(std::string(kRegNames[r]) + "[127:64] orig=" + hex(hi64(orig.r[r])) + " body=" +
                                     hex(hi64(body.r[r])));
             }
-            if (orig.pc != body.pc)
-                diffs.push_back("pc orig=" + hex(orig.pc) + " body=" + hex(body.pc));
-            if (floatBits(orig.f[0]) != floatBits(body.f[0]))
-                diffs.push_back("f0 orig=" + hex(floatBits(orig.f[0])) + " body=" + hex(floatBits(body.f[0])));
+            compareWord("pc", orig.pc, body.pc, diffs);
+            compareWord("hi", orig.hi, body.hi, diffs);
+            compareWord("lo", orig.lo, body.lo, diffs);
+            compareWord("hi1", orig.hi1, body.hi1, diffs);
+            compareWord("lo1", orig.lo1, body.lo1, diffs);
+            compareWord("sa", orig.sa, body.sa, diffs);
+            for (int f = 0; f < 32; ++f)
+                compareFpr(orig, body, f, diffs);
+            compareWord("f_acc", floatBits(orig.f_acc), floatBits(body.f_acc), diffs);
+            compareWord("fcr31", orig.fcr31, body.fcr31, diffs);
         }
 
         void compareGpr(const R5900Context &orig, const R5900Context &body, int r, bool full,
@@ -147,6 +168,25 @@ namespace ps2_shadow
                 compareFpr(orig, body, f, diffs);
         }
 
+        // Arms g_writeLog for one phase of a shadowed call and disarms it however the phase ends. The original or
+        // the body can leave by a C++ exception -- EeDispatcherTransfer, thrown by a blocking wait, a yield, a thread
+        // exit, or a SignalSema/SetEventFlag/WakeupThread that readies a higher-priority thread, and caught only in
+        // EeScheduler::run; or std::bad_alloc -- and the WriteLog on this frame dies with it. A pointer left armed
+        // would send every later guest store into a dead vector and pass every later shadowed call through.
+        // Restores the previous value, which runShadowed has checked is null (a nested call passes through). The
+        // pointer is thread_local, so arming and disarming touch the calling thread's only.
+        class ArmedLog
+        {
+        public:
+            explicit ArmedLog(WriteLog &log) : m_previous(g_writeLog) { g_writeLog = &log; }
+            ~ArmedLog() { g_writeLog = m_previous; }
+            ArmedLog(const ArmedLog &) = delete;
+            ArmedLog &operator=(const ArmedLog &) = delete;
+
+        private:
+            WriteLog *m_previous;
+        };
+
         bool deadStack(uint32_t key, uint32_t entrySp)
         {
             if (key >= kRdramKeyEnd)
@@ -158,8 +198,9 @@ namespace ps2_shadow
         void runShadowed(Slot &s, uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
         {
             const uint64_t n = s.calls.fetch_add(1, std::memory_order_relaxed);
-            // A resume pc that reached this slot, or a call nested inside another shadowed call (its stores belong
-            // to the outer call's log): the original, untouched.
+            // A resume pc that reached this slot, or a call nested inside another shadowed call on this thread (its
+            // stores belong to the outer call's log): the original, untouched. A shadowed call on another host
+            // thread arms its own log (thread_local) and does not pass this one through.
             if (ctx->pc != s.addr || g_writeLog != nullptr)
             {
                 s.passedThrough.fetch_add(1, std::memory_order_relaxed);
@@ -172,9 +213,18 @@ namespace ps2_shadow
             const uint32_t entrySp = static_cast<uint32_t>(lo64(entry.r[29]));
 
             WriteLog origLog;
-            g_writeLog = &origLog;
-            s.original(rdram, ctx, runtime);
-            g_writeLog = nullptr;
+            try
+            {
+                ArmedLog armed(origLog);
+                s.original(rdram, ctx, runtime);
+            }
+            catch (...)
+            {
+                // The original blocked or yielded (or failed): the scheduler owns the thread from here and the
+                // original's state, partial stores included, is the truth. Nothing to compare; let it go on up.
+                s.skippedTransfer.fetch_add(1, std::memory_order_relaxed);
+                throw;
+            }
 
             // The eeCheckpointDue() back-edge return (or any unwind below): the guest is parked inside the original
             // and resumes there later without this thunk. Its state is the truth; there is nothing to compare.
@@ -198,9 +248,47 @@ namespace ps2_shadow
             *ctx = entry;
 
             WriteLog bodyLog;
-            g_writeLog = &bodyLog;
-            s.body(rdram, ctx, runtime);
-            g_writeLog = nullptr;
+            try
+            {
+                // Under a checkpoint hold: a body transcribed from generated code keeps its eeCheckpointDue() back
+                // edges, and an event or slice end that fell due after the original returned would park it on a
+                // loop head -- a correct body counted as a mismatch. Held, the checkpoints report nothing due and
+                // the pending work is acted on at the caller's first checkpoint after the release. The original
+                // phase above is NOT held: its checkpoint return is the designed skip. A hold does not stop a
+                // stop request (handled below) or a transferring syscall (it throws: body_threw).
+                EeCheckpointHold hold(runtime->eeScheduler());
+                ArmedLog armed(bodyLog);
+                s.body(rdram, ctx, runtime);
+            }
+            catch (...)
+            {
+                // Not recoverable: the original's result is already undone and the scheduler now holds the body's
+                // partial state. Say so loudly, once per event (the first kMaxCallsPrinted), and let it go on up.
+                const uint64_t threw = s.bodyThrew.fetch_add(1, std::memory_order_relaxed);
+                if (threw < kMaxCallsPrinted)
+                {
+                    std::ostringstream o;
+                    o << "[shadow-error] " << s.name << " 0x" << std::hex << std::setw(8) << std::setfill('0')
+                      << s.addr << std::dec << " call #" << n
+                      << ": the BODY threw (a blocking wait, a yield or an allocation failure) after the original's "
+                         "result was undone; the game now runs on the body's partial result. Shadow leaf functions "
+                         "only: remove this address from PS2X_SHADOW";
+                    std::cout << o.str() << std::endl;
+                }
+                throw;
+            }
+
+            // Unwinding after the held body: only a stop request makes a checkpoint due under the hold. The body was
+            // cut short, so there is nothing to compare: the original's result back, the stop's unwind left standing.
+            if (runtime->dispatchUnwinding())
+            {
+                bodyLog.undo();
+                for (const auto &hv : origFinal)
+                    *hv.first = hv.second;
+                *ctx = afterOrig;
+                s.skippedUnwound.fetch_add(1, std::memory_order_relaxed);
+                return;
+            }
 
             std::vector<std::string> diffs;
             if (s.mode.compare == Compare::Abi)
@@ -298,7 +386,56 @@ namespace ps2_shadow
             c.skippedUnwound = s.skippedUnwound.load();
             c.skippedIo = s.skippedIo.load();
             c.passedThrough = s.passedThrough.load();
+            c.skippedTransfer = s.skippedTransfer.load();
+            c.bodyThrew = s.bodyThrew.load();
             return c;
+        }
+
+        // Compared at least once, never mismatched, the body never threw.
+        bool isVerified(const Counts &c)
+        {
+            return c.compared > 0 && c.mismatched == 0 && c.bodyThrew == 0;
+        }
+
+        // One PS2X_SHADOW item: "0x"/"0X" and 1-8 hex digits, or plain decimal (no sign, no leading zero) of at most
+        // 4294967295. Anything else -- a sign, octal, a value past 32 bits -- is not an address.
+        bool parseAddress(const std::string &item, uint32_t &out)
+        {
+            uint64_t v = 0;
+            if (item.size() > 2 && item[0] == '0' && (item[1] == 'x' || item[1] == 'X'))
+            {
+                const std::string digits = item.substr(2);
+                if (digits.size() > 8)
+                    return false;
+                for (char ch : digits)
+                {
+                    uint32_t d = 0;
+                    if (ch >= '0' && ch <= '9')
+                        d = static_cast<uint32_t>(ch - '0');
+                    else if (ch >= 'a' && ch <= 'f')
+                        d = static_cast<uint32_t>(ch - 'a' + 10);
+                    else if (ch >= 'A' && ch <= 'F')
+                        d = static_cast<uint32_t>(ch - 'A' + 10);
+                    else
+                        return false;
+                    v = (v << 4) | d;
+                }
+            }
+            else
+            {
+                if (item.empty() || item.size() > 10 || (item[0] == '0' && item.size() > 1))
+                    return false;
+                for (char ch : item)
+                {
+                    if (ch < '0' || ch > '9')
+                        return false;
+                    v = v * 10u + static_cast<uint64_t>(ch - '0');
+                }
+                if (v > 0xFFFFFFFFull)
+                    return false;
+            }
+            out = static_cast<uint32_t>(v);
+            return true;
         }
 
         void startReports()
@@ -314,7 +451,7 @@ namespace ps2_shadow
                     std::cout << formatReport("periodic") << std::flush;
                 }
             }).detach();
-            std::atexit([] { std::cout << formatReport("exit") << std::flush; });
+            std::atexit([] { flushReport(); });
         }
     }
 
@@ -348,8 +485,7 @@ namespace ps2_shadow
 
     bool verified(uint32_t addr)
     {
-        const Counts c = counts(addr);
-        return c.compared > 0 && c.mismatched == 0;
+        return isVerified(counts(addr));
     }
 
     std::vector<std::string> mismatchLines(uint32_t addr)
@@ -373,26 +509,52 @@ namespace ps2_shadow
               << " " << s.name << " compare=" << (s.mode.compare == Compare::Abi ? "abi" : "all")
               << " calls=" << c.calls << " compared=" << c.compared << " matched=" << c.matched
               << " mismatched=" << c.mismatched << " skipped_unwound=" << c.skippedUnwound << " skipped_io="
-              << c.skippedIo << " passed_through=" << c.passedThrough << " verified="
-              << ((c.compared > 0 && c.mismatched == 0) ? "yes" : "no") << "\n";
+              << c.skippedIo << " skipped_transfer=" << c.skippedTransfer << " body_threw=" << c.bodyThrew
+              << " passed_through=" << c.passedThrough << " verified=" << (isVerified(c) ? "yes" : "no") << "\n";
             total.calls += c.calls;
             total.compared += c.compared;
             total.mismatched += c.mismatched;
             total.skippedUnwound += c.skippedUnwound;
             total.skippedIo += c.skippedIo;
+            total.skippedTransfer += c.skippedTransfer;
+            total.bodyThrew += c.bodyThrew;
         }
         o << "[shadow] " << reason << ": total shadowed=" << g_slotCount << " calls=" << total.calls << " compared="
           << total.compared << " mismatched=" << total.mismatched << " skipped_unwound=" << total.skippedUnwound
-          << " skipped_io=" << total.skippedIo;
+          << " skipped_io=" << total.skippedIo << " skipped_transfer=" << total.skippedTransfer
+          << " body_threw=" << total.bodyThrew;
+        // Listed, and no module ever offered a body for it (a typo, or a module not built in). A listed address that
+        // was offered and refused printed its REFUSED line at install and is not repeated here.
         bool any = false;
-        for (uint32_t a : g_listed)
-            if (!find(a))
-            {
-                o << (any ? " " : "; listed without an override body:") << " 0x" << std::hex << a << std::dec;
-                any = true;
-            }
+        {
+            std::lock_guard<std::mutex> lock(g_listMutex);
+            for (uint32_t a : g_listed)
+                if (std::find(g_offered.begin(), g_offered.end(), a) == g_offered.end())
+                {
+                    o << (any ? "" : "; listed without an override body:") << " 0x" << std::hex << a << std::dec;
+                    any = true;
+                }
+        }
         o << "\n";
         return o.str();
+    }
+
+    // The runner ends with std::_Exit (main's end and leaveWith in src/main.cpp), which runs no atexit handler: it
+    // calls this first. The atexit in startReports() stays for a std::exit path. Silent only when nothing is
+    // shadowed AND nothing is listed: a list no module installs still gets its total line.
+    int flushReport()
+    {
+        bool listed = false;
+        {
+            std::lock_guard<std::mutex> lock(g_listMutex);
+            listed = !g_listed.empty();
+        }
+        if (g_slotCount == 0 && !listed)
+            return 0;
+        const std::string report = formatReport("exit");
+        std::cout << report << std::flush;
+        std::fflush(stdout);   // a bare run's stdout is a fully buffered file and _Exit flushes nothing
+        return static_cast<int>(std::count(report.begin(), report.end(), '\n'));
     }
 
     void uninstall(PS2Runtime &runtime)
@@ -404,7 +566,15 @@ namespace ps2_shadow
             g_slots[i].reset();
         }
         g_slotCount = 0;
-        g_writeLog = nullptr;
+        g_writeLog = nullptr;   // the calling thread's (thread_local)
+        std::lock_guard<std::mutex> listLock(g_listMutex);
+        g_listed.clear();
+        g_offered.clear();
+    }
+
+    bool writeLogArmedForTest()
+    {
+        return g_writeLog != nullptr;
     }
 
     bool parseSpec(const char *spec, std::vector<uint32_t> &out)
@@ -425,11 +595,11 @@ namespace ps2_shadow
             pos = end + 1;
             if (item.empty())
                 continue;
-            char *stop = nullptr;
-            const unsigned long v = std::strtoul(item.c_str(), &stop, 0);
-            if (!stop || *stop != '\0')
+            uint32_t v = 0;
+            if (!parseAddress(item, v))
                 return false;
-            out.push_back(static_cast<uint32_t>(v));
+            if (std::find(out.begin(), out.end(), v) == out.end())
+                out.push_back(v);
         }
         return true;
     }
@@ -452,6 +622,13 @@ namespace ps2_shadow
     Installed installOverride(PS2Runtime &runtime, uint32_t addr, const char *name, Fn body, Mode mode,
                               const std::vector<uint32_t> &shadowList, bool writeLog)
     {
+        {
+            // For the report: what was listed, and which addresses a module offered a body for.
+            std::lock_guard<std::mutex> lock(g_listMutex);
+            g_listed = shadowList;
+            if (std::find(g_offered.begin(), g_offered.end(), addr) == g_offered.end())
+                g_offered.push_back(addr);
+        }
         const bool listed = std::find(shadowList.begin(), shadowList.end(), addr) != shadowList.end();
         if (!listed)
         {
@@ -499,9 +676,9 @@ namespace ps2_shadow
                           << (writeLogBuilt() ? "built in" : "NOT built in") << std::endl;
             return v;
         }();
-        g_listed = s_list;
         const Installed what = installOverride(runtime, addr, name, body, mode, s_list, writeLogBuilt());
-        if (what == Installed::Shadow)
+        // A non-empty list starts the reports even when nothing gets shadowed, so a typo shows in them.
+        if (what == Installed::Shadow || !s_list.empty())
             startReports();
         return what;
     }

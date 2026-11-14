@@ -838,18 +838,29 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
   inside the repository, stops the configure. The hook is `ps2xRuntime/cmake/PrivateOverrides.cmake`, its test
   `tools_py/tests/test_private_overrides_cmake.py`.
 
-- **The shadow harness (Sprint 19 E2).** `PS2X_SHADOW=0xADDR[,0xADDR...]` (developer mode) makes every override
-  installed through `ps2_shadow::installOverride` run beside its recompiled original on every call: snapshot, the
-  original, restore, the body, then a comparison of every GPR (v0/v1 at 128 bits), `sp`, `pc`, `f0` and the guest
-  bytes either stored (the dead stack below the entry `sp` excepted). A call whose original leaves through a
-  scheduler checkpoint (`pc != ra`) or stores to an I/O address is skipped; a mismatch is logged
-  (`[shadow-mismatch]`) and the original's result kept. Counts per address print every 10 s and at exit
-  (`[shadow] ... calls= compared= mismatched= ... verified=`). The memory comparison needs a shadow build: configure
-  with `-DPS2X_SHADOW_WRITE_LOG=ON` (or that environment variable), which adds a branch to every guest store; a
-  default build refuses to shadow and keeps the original. A module whose body is written from source rather than
-  transcribed from the recompiled code passes `ps2_shadow::Mode{Compare::Abi, <returns>}` to `installOverride`:
-  then only what the EE EABI lets a caller observe is compared (the return registers the function has, `v0`/`v1`
-  at 128 bits only with `kReturnsWide`, the callee-saved `s0`-`s7`, `gp`, `sp`, `fp`, `ra` and `f20`-`f31`, `pc`, memory), and the report line says
+- **The shadow harness (Sprint 19 E2).** `PS2X_SHADOW=0xADDR[,0xADDR...]` (developer mode; `0x` hex or plain
+  decimal) makes each LISTED override installed through `ps2_shadow::installOverride` run beside its recompiled
+  original on every call through the function table: snapshot, the original, restore, the body, then a comparison
+  of every GPR (v0/v1 at 128 bits), `pc`, `hi`/`lo`, `hi1`/`lo1`, `sa`, `f0`-`f31`, the FPU accumulator, `fcr31`
+  and the guest bytes either stored (the dead stack, 256 KB below the entry `sp`, excepted); VU0 and COP0 are not
+  compared. Shadow LEAF functions only (no calls, no syscalls): only RDRAM and scratchpad stores are logged and
+  undone, so syscalls, host stubs (`malloc`, `free`, `memcpy`, `memset`, `strcpy`... write through host pointers),
+  slow-path loads with side effects, VU0 microprograms and the GIF DMA kick run twice, uncompared and not undone,
+  and a non-leaf address may double a side effect. The harness sees only calls through the function table: a direct
+  `J` to a named function (and a jump-table case) is a plain C++ call in the generated code, so that tail jump runs
+  the original unshadowed and uncounted -- as it does past a plain override. A call whose original leaves through a
+  scheduler checkpoint (`pc != ra`), stores to an I/O address or throws (`EeDispatcherTransfer`: it blocked or
+  yielded) is skipped; a body that throws is counted `body_threw` with one `[shadow-error]` line; a mismatch is
+  logged (`[shadow-mismatch]`) and the original's result kept. Counts per address print every 10 s and at exit
+  (`[shadow] ... calls= compared= mismatched= skipped_unwound= skipped_io= skipped_transfer= body_threw=
+  passed_through= verified=`; the exact format is in the header); `passed_through` counts entries at a resume pc or
+  inside another shadowed call, where the original runs alone. The shadow needs a shadow build: configure with
+  `-DPS2X_SHADOW_WRITE_LOG=ON` (or that environment variable), which adds a branch to every guest store; a default
+  build refuses ALL shadowing -- every listed address keeps its original and the body is not used. A module whose
+  body is written from source rather than transcribed from the recompiled code passes
+  `ps2_shadow::Mode{Compare::Abi, <returns>}` to `installOverride`: then only what the EE EABI lets a caller observe
+  is compared (the return registers the function has, `v0`/`v1` at 128 bits only with `kReturnsWide`, the
+  callee-saved `s0`-`s7`, `gp`, `sp`, `fp`, `ra` and `f20`-`f31`, `pc`, memory), and the report line says
   `compare=abi`. Up to 4096 addresses per run. Reference: `runtime/shadow_harness.h`; tests:
   `ps2xTest/src/shadow_harness_tests.cpp`.
 
