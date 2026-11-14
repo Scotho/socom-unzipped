@@ -440,6 +440,24 @@ class GitModes(unittest.TestCase):
         hits, _ = L.check_metadata(self.repo, allow=[])
         self.assertEqual({h.text for h in hits}, {"Test Person <test@example.com>"})
 
+    def test_fixture_commits_ignore_the_callers_command_line_config(self):
+        """GIT_CONFIG_COUNT / GIT_CONFIG_KEY_n / GIT_CONFIG_VALUE_n (and GIT_CONFIG_PARAMETERS, what `git -c` hands a
+        child) outrank the repository's config too: the same leak of an outside identity, by another door."""
+        outside = {"GIT_CONFIG_COUNT": "2", "GIT_CONFIG_KEY_0": "user.name", "GIT_CONFIG_VALUE_0": "Outside Person",
+                   "GIT_CONFIG_KEY_1": "user.email", "GIT_CONFIG_VALUE_1": "outside@example.org",
+                   "GIT_CONFIG_PARAMETERS": "'user.name'='Outside Person' 'user.email'='outside@example.org'"}
+        with mock.patch.dict(os.environ, outside):
+            self.write("c.txt", "c\n")
+            _git(self.repo, "add", "c.txt")
+            _git(self.repo, "commit", "-q", "-m", "under an exported config")
+        hits, _ = L.check_metadata(self.repo, allow=[])
+        self.assertEqual({h.text for h in hits}, {"Test Person <test@example.com>"})
+
+    def test_git_helper_merges_a_callers_env(self):
+        """`_git(..., env=...)` adds to the filtered environment instead of raising a duplicate-keyword TypeError."""
+        out = _git(self.repo, "var", "GIT_AUTHOR_IDENT", env={"GIT_AUTHOR_NAME": "Given Person"})
+        self.assertTrue(out.startswith("Given Person <test@example.com>"), out)
+
     def test_a_shallow_clone_cannot_pass_the_history_modes(self):
         self.write("b.txt", "b\n")
         _git(self.repo, "add", "b.txt")
