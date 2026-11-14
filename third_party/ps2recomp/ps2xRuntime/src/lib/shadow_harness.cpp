@@ -372,6 +372,47 @@ namespace ps2_shadow
             return c.compared > 0 && c.mismatched == 0 && c.bodyThrew == 0;
         }
 
+        // One PS2X_SHADOW item: "0x"/"0X" and 1-8 hex digits, or plain decimal (no sign, no leading zero) of at most
+        // 4294967295. Anything else -- a sign, octal, a value past 32 bits -- is not an address.
+        bool parseAddress(const std::string &item, uint32_t &out)
+        {
+            uint64_t v = 0;
+            if (item.size() > 2 && item[0] == '0' && (item[1] == 'x' || item[1] == 'X'))
+            {
+                const std::string digits = item.substr(2);
+                if (digits.size() > 8)
+                    return false;
+                for (char ch : digits)
+                {
+                    uint32_t d = 0;
+                    if (ch >= '0' && ch <= '9')
+                        d = static_cast<uint32_t>(ch - '0');
+                    else if (ch >= 'a' && ch <= 'f')
+                        d = static_cast<uint32_t>(ch - 'a' + 10);
+                    else if (ch >= 'A' && ch <= 'F')
+                        d = static_cast<uint32_t>(ch - 'A' + 10);
+                    else
+                        return false;
+                    v = (v << 4) | d;
+                }
+            }
+            else
+            {
+                if (item.empty() || item.size() > 10 || (item[0] == '0' && item.size() > 1))
+                    return false;
+                for (char ch : item)
+                {
+                    if (ch < '0' || ch > '9')
+                        return false;
+                    v = v * 10u + static_cast<uint64_t>(ch - '0');
+                }
+                if (v > 0xFFFFFFFFull)
+                    return false;
+            }
+            out = static_cast<uint32_t>(v);
+            return true;
+        }
+
         void startReports()
         {
             static bool s_started = false;
@@ -503,11 +544,11 @@ namespace ps2_shadow
             pos = end + 1;
             if (item.empty())
                 continue;
-            char *stop = nullptr;
-            const unsigned long v = std::strtoul(item.c_str(), &stop, 0);
-            if (!stop || *stop != '\0')
+            uint32_t v = 0;
+            if (!parseAddress(item, v))
                 return false;
-            out.push_back(static_cast<uint32_t>(v));
+            if (std::find(out.begin(), out.end(), v) == out.end())
+                out.push_back(v);
         }
         return true;
     }
