@@ -839,7 +839,7 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
 
 - **Build:** `./build.sh tools | recomp | runtime | release | test | all` (Git Bash; `all` = recomp + runtime).
   Runtime about 3 minutes incremental, 10-15 for a header change or a full generated rebuild. Linux:
-  `scripts/build_linux.sh [tools|runtime|release|test|all] [--no-runner]`. macOS (Apple Silicon):
+  `scripts/build_linux.sh [tools|recomp|runtime|release|test|all] [--no-runner]`. macOS (Apple Silicon):
   `scripts/build_macos.sh [tools|recomp|runtime|test|all] [--no-runner]` (below, "macOS (Apple Silicon)"). Release kind: `PS2X_RELEASE_KIND=player`
   (default; `dist-release/`) or `developer` (`dist-release-dev/`; `dist-linux-release[-dev]/` on Linux). Packaging:
   `scripts/make_portable.sh [--release]` (both kinds' archives when both are built), `scripts/make_server_zip.sh`.
