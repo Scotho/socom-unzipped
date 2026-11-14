@@ -908,5 +908,48 @@ void register_shadow_harness_tests()
             t.Equals(c.matched, uint64_t{1}, "the call is compared and matches");
             t.IsFalse(writeLogArmedForTest(), "disarmed after the call");
         });
+
+        tc.Run("R2.4: addresses listed that no module installs (a typo) still get the total line at exit", [](TestCase &t)
+        {
+            using namespace ps2_shadow;
+            Rig r;
+            r.runtime.registerFunction(kFn, original);
+            std::string printed;
+            int lines = -1;
+            {
+                CaptureStdout out;
+                // A module installs kFn; PS2X_SHADOW lists two other addresses: kFn is a plain override.
+                t.IsTrue(installOverride(r.runtime, kFn, "FakeFn", body, {0x003c4c40u, 0x003c4d40u}, true) ==
+                             Installed::Override, "not listed: a plain override");
+                CaptureStdout report;
+                lines = flushReport();
+                printed = report.text();
+            }
+            t.Equals(lines, 1, "the total line alone: " + printed);
+            t.IsTrue(printed.find("[shadow] exit: total shadowed=0") != std::string::npos, "the total line: " + printed);
+            t.IsTrue(printed.find("; listed without an override body: 0x3c4c40 0x3c4d40\n") != std::string::npos,
+                     "both addresses, one space apart (R2.5): " + printed);
+            r.runtime.registerFunction(kFn, original);
+        });
+
+        tc.Run("R2.4: a listed address refused for want of a write log is not 'without an override body'", [](TestCase &t)
+        {
+            using namespace ps2_shadow;
+            Rig r;
+            r.runtime.registerFunction(kFn, original);
+            std::string printed;
+            int lines = -1;
+            {
+                CaptureStdout out;
+                t.IsTrue(installOverride(r.runtime, kFn, "FakeFn", body, {kFn}, false) == Installed::Refused, "refused");
+                CaptureStdout report;
+                lines = flushReport();
+                printed = report.text();
+            }
+            t.Equals(lines, 1, "the total line: " + printed);
+            t.IsTrue(printed.find("total shadowed=0") != std::string::npos, "nothing shadowed: " + printed);
+            t.IsTrue(printed.find("without an override body") == std::string::npos,
+                     "the address had a body; its REFUSED line at install says why: " + printed);
+        });
     });
 }
