@@ -69,8 +69,8 @@
 //            skipped_transfer=N body_threw=N[; listed without an override body: 0x%x[ 0x%x...]]
 // (each one line; <reason> is "periodic" or "exit"; the unpadded addresses one space apart). "Listed without an
 // override body" names a listed address no module passed to installOverride (a typo, or a module not built in); a
-// listed address refused at install printed its own REFUSED line then. passed_through counts entries at a pc other than the
-// function's (a resume pc) or inside another shadowed call: the original ran, nothing was compared. A function is
+// listed address refused at install printed its own REFUSED line then. passed_through counts entries at a pc
+// other than the function's (a resume pc) or inside another shadowed call: the original ran, nothing was compared. A function is
 // "verified" by a run when it was compared at least once, never mismatched and its body never threw.
 //
 // The write log needs the hook in the inline store helpers, compiled in only by the CMake option

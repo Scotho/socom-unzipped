@@ -359,6 +359,7 @@ int main(int argc, char *argv[])
         std::cerr << "[main] fatal exception: unknown" << std::endl;
     }
 
+    ps2_shadow::flushReport();   // PS2X_SHADOW's exit report on the fatal path too
     std::cout.flush();
     std::cerr.flush();
     std::_Exit(ExitCodes::kFailed);
