@@ -11,6 +11,8 @@
 #include <cstdint>
 #include <cstring>
 #include <exception>
+#include <new>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
@@ -173,7 +175,6 @@ namespace
         ctx->pc = GPR_U32(ctx, 31);
     }
 
-    void cleanupRuntime(TestEnv &env);
     void cleanupRuntime(TestEnv &env)
     {
         env.runtime.requestStop();
@@ -576,6 +577,97 @@ void register_ps2_runtime_interrupt_tests()
                                                                    PS2Runtime::GuestBranchKind::DirectCall, "test");
             t.IsFalse(returned, "unheld, the pending event unwinds the call as before");
             env->runtime.clearDispatchUnwind();
+            cleanupRuntime(*env);
+        });
+
+        // Review of #146, H1: the hold's count must not outlive the scope that took it.
+        tc.Run("a checkpoint hold is released when an exception leaves its scope", [](TestCase &t)
+        {
+            auto env = std::make_unique<TestEnv>();
+            EeScheduler &scheduler = env->runtime.eeScheduler();
+            bool caught = false;
+            try
+            {
+                EeCheckpointHold hold(scheduler);
+                throw std::runtime_error("through the host frame");
+            }
+            catch (const std::runtime_error &)
+            {
+                caught = true;
+            }
+            t.IsTrue(caught, "the exception passed through the hold's scope");
+            t.IsFalse(scheduler.checkpointsHeld(), "and the hold went with it");
+            cleanupRuntime(*env);
+        });
+
+        tc.Run("reset forgets a hold that was never released", [](TestCase &t)
+        {
+            auto env = std::make_unique<TestEnv>();
+            EeScheduler &scheduler = env->runtime.eeScheduler();
+            // A hold whose destructor never runs: the count a lost release (a longjmp, a thread killed under it)
+            // would leave behind. Placement new into local storage, never destroyed.
+            alignas(EeCheckpointHold) unsigned char storage[sizeof(EeCheckpointHold)];
+            new (storage) EeCheckpointHold(scheduler);
+            t.IsTrue(scheduler.checkpointsHeld(), "held by the lost hold");
+            R5900Context mainContext{};
+            scheduler.reset(env->rdram.data(), mainContext);
+            t.IsFalse(scheduler.checkpointsHeld(), "reset zeroes the hold count");
+            scheduler.postEvent(EeEvent{});
+            t.IsTrue(scheduler.checkpointDue(), "and a pending event is due again");
+            cleanupRuntime(*env);
+        });
+
+        tc.Run("a hold that spans a reset does not unbalance the next hold", [](TestCase &t)
+        {
+            auto env = std::make_unique<TestEnv>();
+            EeScheduler &scheduler = env->runtime.eeScheduler();
+            R5900Context mainContext{};
+            {
+                EeCheckpointHold spanning(scheduler);
+                scheduler.reset(env->rdram.data(), mainContext);
+            }   // released after the reset zeroed the count: must not drive it below zero
+            t.IsFalse(scheduler.checkpointsHeld(), "not held");
+            {
+                EeCheckpointHold next(scheduler);
+                t.IsTrue(scheduler.checkpointsHeld(), "the next hold holds");
+                scheduler.postEvent(EeEvent{});
+                t.IsFalse(scheduler.checkpointDue(), "and keeps the pending event from being due");
+            }
+            cleanupRuntime(*env);
+        });
+
+        // H2: what the hold does NOT stop, pinned so a change is deliberate. A non-call dispatch (a J to an
+        // unnamed target, a jr through a register other than ra) always unwinds to the scheduler loop, held or not.
+        tc.Run("under a hold, a dispatched indirect jump still unwinds", [](TestCase &t)
+        {
+            auto env = std::make_unique<TestEnv>();
+            constexpr uint32_t kTarget = 0x00170000u;
+            env->runtime.registerFunction(kTarget, heldCallee);
+            R5900Context ctx{};
+            g_heldCalleeRuns = 0;
+            {
+                EeCheckpointHold hold(env->runtime.eeScheduler());
+                const bool returned = env->runtime.dispatchGuestBranch(env->rdram.data(), &ctx, kTarget, 0x00170200u,
+                                                                       0x00170208u,
+                                                                       PS2Runtime::GuestBranchKind::IndirectJump, "test");
+                t.IsFalse(returned, "a jump does not return to the host frame");
+                t.IsTrue(env->runtime.dispatchUnwinding(), "it unwinds to the scheduler loop");
+                t.Equals(ctx.pc, kTarget, "with the target as the resume pc");
+                t.Equals(g_heldCalleeRuns, 0, "the target is not run in place");
+            }
+            env->runtime.clearDispatchUnwind();
+            env->runtime.registerFunction(kTarget, nullptr);
+            cleanupRuntime(*env);
+        });
+
+        tc.Run("under a hold, a stop request still makes a checkpoint due", [](TestCase &t)
+        {
+            auto env = std::make_unique<TestEnv>();
+            EeScheduler &scheduler = env->runtime.eeScheduler();
+            EeCheckpointHold hold(scheduler);
+            t.IsFalse(scheduler.checkpointDue(), "held, nothing pending: not due");
+            scheduler.requestStop();
+            t.IsTrue(scheduler.checkpointDue(), "a stop request is due through the hold");
             cleanupRuntime(*env);
         });
 
