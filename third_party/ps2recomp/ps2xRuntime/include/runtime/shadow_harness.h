@@ -34,7 +34,8 @@
 //   6. keeps the body's result on a match; on a mismatch counts it, logs what differed ("[shadow-mismatch]") and
 //      puts the original's result back (context and the guest memory the write log saw).
 // Not compared: the upper 64 bits of GPRs other than v0/v1, the VU0 macro-mode state (vu0_vf, vi, Q/P/I/R, ACC,
-// flags) and COP0 (cop0_status included).
+// flags, cop2_ccr), COP0 (cop0_status included), the LL/SC reservation (llbit, lladdr), the delay-slot tracking
+// (in_delay_slot, branch_pc) and insn_count.
 //
 // WHAT IT IS SAFE FOR: LEAF functions -- no calls, no syscalls -- whose stores all go to RDRAM or the scratchpad
 // through the generated code's helpers. Only those stores are logged and undone. Everything else a callee can do
@@ -59,13 +60,16 @@
 // hi1/lo1, sa, the FPU accumulator and fcr31 may differ.
 //
 // THE REPORT. Every 10 s, and at exit through flushReport() (the runner ends with std::_Exit, so src/main.cpp calls
-// it; an atexit handler covers a std::exit path; the gate kills the game, so exit is not reliable), one line per
-// shadowed address and a total:
+// it before each _Exit; an atexit handler covers a std::exit path; the gate kills the game, so exit is not
+// reliable), one line per shadowed address and a total -- the total alone when PS2X_SHADOW lists addresses but
+// nothing got shadowed (both reports run whenever the list is non-empty):
 //   [shadow] <reason>: 0x%08x <name> compare=abi|all calls=N compared=N matched=N mismatched=N skipped_unwound=N
 //            skipped_io=N skipped_transfer=N body_threw=N passed_through=N verified=yes|no
 //   [shadow] <reason>: total shadowed=N calls=N compared=N mismatched=N skipped_unwound=N skipped_io=N
-//            skipped_transfer=N body_threw=N[; listed without an override body: 0x%x ...]
-// (each one line; <reason> is "periodic" or "exit"). passed_through counts entries at a pc other than the
+//            skipped_transfer=N body_threw=N[; listed without an override body: 0x%x[ 0x%x...]]
+// (each one line; <reason> is "periodic" or "exit"; the unpadded addresses one space apart). "Listed without an
+// override body" names a listed address no module passed to installOverride (a typo, or a module not built in); a
+// listed address refused at install printed its own REFUSED line then. passed_through counts entries at a pc other than the
 // function's (a resume pc) or inside another shadowed call: the original ran, nothing was compared. A function is
 // "verified" by a run when it was compared at least once, never mismatched and its body never threw.
 //
@@ -135,7 +139,9 @@ namespace ps2_shadow
     bool verified(uint32_t addr);
     std::vector<std::string> mismatchLines(uint32_t addr);   // the first few, for the log and tests
     std::string formatReport(const std::string &reason);
-    int flushReport();   // the exit report now, on std::cout, flushed; the lines printed (0 when nothing is shadowed)
+    // The exit report now, on std::cout, flushed; returns the lines printed (0, silent, when nothing is shadowed and
+    // nothing is listed).
+    int flushReport();
     void uninstall(PS2Runtime &runtime);   // tests: restore the originals, forget every slot
     bool writeLogArmedForTest();           // tests: true while THIS thread has a write log armed (inside a
                                            // shadowed call's original or body on this thread; g_writeLog is

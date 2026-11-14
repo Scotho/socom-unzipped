@@ -63,7 +63,9 @@ namespace ps2_shadow
         Slot g_slots[kMaxSlots];
         int g_slotCount = 0;
         std::mutex g_installMutex;
-        std::vector<uint32_t> g_listed;   // PS2X_SHADOW as read, for "listed without an override body"
+        std::mutex g_listMutex;            // guards the two below: installs write them, the reporter reads them
+        std::vector<uint32_t> g_listed;    // PS2X_SHADOW as read, for "listed without an override body"
+        std::vector<uint32_t> g_offered;   // every address a module passed to installOverride
 
         uint64_t lo64(const __m128i &v)
         {
@@ -521,22 +523,33 @@ namespace ps2_shadow
           << total.compared << " mismatched=" << total.mismatched << " skipped_unwound=" << total.skippedUnwound
           << " skipped_io=" << total.skippedIo << " skipped_transfer=" << total.skippedTransfer
           << " body_threw=" << total.bodyThrew;
+        // Listed, and no module ever offered a body for it (a typo, or a module not built in). A listed address that
+        // was offered and refused printed its REFUSED line at install and is not repeated here.
         bool any = false;
-        for (uint32_t a : g_listed)
-            if (!find(a))
-            {
-                o << (any ? " " : "; listed without an override body:") << " 0x" << std::hex << a << std::dec;
-                any = true;
-            }
+        {
+            std::lock_guard<std::mutex> lock(g_listMutex);
+            for (uint32_t a : g_listed)
+                if (std::find(g_offered.begin(), g_offered.end(), a) == g_offered.end())
+                {
+                    o << (any ? "" : "; listed without an override body:") << " 0x" << std::hex << a << std::dec;
+                    any = true;
+                }
+        }
         o << "\n";
         return o.str();
     }
 
     // The runner ends with std::_Exit (main's end and leaveWith in src/main.cpp), which runs no atexit handler: it
-    // calls this first. The atexit in startReports() stays for a std::exit path.
+    // calls this first. The atexit in startReports() stays for a std::exit path. Silent only when nothing is
+    // shadowed AND nothing is listed: a list no module installs still gets its total line.
     int flushReport()
     {
-        if (g_slotCount == 0)
+        bool listed = false;
+        {
+            std::lock_guard<std::mutex> lock(g_listMutex);
+            listed = !g_listed.empty();
+        }
+        if (g_slotCount == 0 && !listed)
             return 0;
         const std::string report = formatReport("exit");
         std::cout << report << std::flush;
@@ -554,6 +567,9 @@ namespace ps2_shadow
         }
         g_slotCount = 0;
         g_writeLog = nullptr;   // the calling thread's (thread_local)
+        std::lock_guard<std::mutex> listLock(g_listMutex);
+        g_listed.clear();
+        g_offered.clear();
     }
 
     bool writeLogArmedForTest()
@@ -606,6 +622,13 @@ namespace ps2_shadow
     Installed installOverride(PS2Runtime &runtime, uint32_t addr, const char *name, Fn body, Mode mode,
                               const std::vector<uint32_t> &shadowList, bool writeLog)
     {
+        {
+            // For the report: what was listed, and which addresses a module offered a body for.
+            std::lock_guard<std::mutex> lock(g_listMutex);
+            g_listed = shadowList;
+            if (std::find(g_offered.begin(), g_offered.end(), addr) == g_offered.end())
+                g_offered.push_back(addr);
+        }
         const bool listed = std::find(shadowList.begin(), shadowList.end(), addr) != shadowList.end();
         if (!listed)
         {
@@ -653,9 +676,9 @@ namespace ps2_shadow
                           << (writeLogBuilt() ? "built in" : "NOT built in") << std::endl;
             return v;
         }();
-        g_listed = s_list;
         const Installed what = installOverride(runtime, addr, name, body, mode, s_list, writeLogBuilt());
-        if (what == Installed::Shadow)
+        // A non-empty list starts the reports even when nothing gets shadowed, so a typo shows in them.
+        if (what == Installed::Shadow || !s_list.empty())
             startReports();
         return what;
     }
