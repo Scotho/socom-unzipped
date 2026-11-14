@@ -851,7 +851,9 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
   the original unshadowed and uncounted -- as it does past a plain override. A call whose original leaves through a
   scheduler checkpoint (`pc != ra`), stores to an I/O address or throws (`EeDispatcherTransfer`: it blocked or
   yielded) is skipped; a body that throws is counted `body_threw` with one `[shadow-error]` line; a mismatch is
-  logged (`[shadow-mismatch]`) and the original's result kept. Counts per address print every 10 s and at exit
+  logged (`[shadow-mismatch]`) and the original's result kept. The body runs under an `EeCheckpointHold`, so its
+  own checkpoint back edges do not park it (a stop request still cuts it short: counted `skipped_unwound`, the
+  original's result restored); the original phase is not held. Counts per address print every 10 s and at exit
   (`[shadow] ... calls= compared= mismatched= skipped_unwound= skipped_io= skipped_transfer= body_threw=
   passed_through= verified=`; the exact format is in the header); `passed_through` counts entries at a resume pc or
   inside another shadowed call, where the original runs alone. The shadow needs a shadow build: configure with
@@ -870,7 +872,8 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
   before a reset then releases nothing): `checkpointDue` and the generated code's `eeCheckpointDue` then report
   nothing due unless a stop is requested, so a pending event or an expired slice does not unwind the call; they are
   acted on at the first checkpoint after the last release. The call still leaves early on any syscall that
-  reschedules (a blocking wait, or one readying or reordering a higher-priority thread, e.g. `SignalSema`,
+  reschedules (a blocking wait; a yield -- `RotateThreadReadyQueue` at its own priority, `SuspendThread` or
+  `ExitThread` of itself; or one readying or reordering a higher-priority thread, e.g. `SignalSema`,
   `SetEventFlag`, `WakeupThread`, `StartThread`, `ChangeThreadPriority`, `DeleteSema`: `EeDispatcherTransfer` is
   thrown through the host frame), on a non-call jump (a `J` to an unnamed target, a `jr` through a register other
   than `ra`: it unwinds) and on a stop request, so the body must check `dispatchGuestBranch`'s return (false:

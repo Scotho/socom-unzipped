@@ -94,7 +94,8 @@ namespace ps2_shadow
         uint64_t compared = 0;        // compared=         original and body both run and compared
         uint64_t matched = 0;         // matched=
         uint64_t mismatched = 0;      // mismatched=
-        uint64_t skippedUnwound = 0;  // skipped_unwound=  the original left with pc != ra (checkpoint): not comparable
+        uint64_t skippedUnwound = 0;  // skipped_unwound=  the original left with pc != ra (checkpoint), or a stop request
+                                      //                   cut the held body short: not comparable
         uint64_t skippedIo = 0;       // skipped_io=       the original stored to an I/O address: not run twice
         uint64_t passedThrough = 0;   // passed_through=   entered at a pc other than the entry, or inside another
                                       //                   shadowed call: the original ran alone

@@ -70,7 +70,7 @@ namespace ps2_shadow
     };
 
     // This thread's armed log: non-null only while this thread runs a shadowed call's original or body.
-    extern thread_local WriteLog *g_writeLog;
+    extern thread_local constinit WriteLog *g_writeLog;   // constinit: no per-access TLS init check
 
     inline void noteIoStore(uint32_t addr)
     {

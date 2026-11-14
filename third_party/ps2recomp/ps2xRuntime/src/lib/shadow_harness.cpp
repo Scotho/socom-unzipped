@@ -22,7 +22,7 @@
 
 namespace ps2_shadow
 {
-    thread_local WriteLog *g_writeLog = nullptr;   // per thread: runtime/shadow_write_log.h
+    thread_local constinit WriteLog *g_writeLog = nullptr;   // per thread: runtime/shadow_write_log.h
 
     namespace
     {

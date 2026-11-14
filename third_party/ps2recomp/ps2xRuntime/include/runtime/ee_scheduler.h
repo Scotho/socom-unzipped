@@ -334,7 +334,8 @@ public:
     // written on the host calling a game function) is not unwound by a pending event or an expired slice; those are
     // acted on at the first checkpoint after the last release. The callee still leaves early -- and the host body
     // must check dispatchGuestBranch's false (unwound or stop requested) -- when:
-    //  - it makes any syscall that reschedules: a blocking wait, or one that readies or reorders a higher-priority
+    //  - it makes any syscall that reschedules: a blocking wait; a yield (RotateThreadReadyQueue at its own
+    //    priority, SuspendThread or ExitThread of itself); or one that readies or reorders a higher-priority
     //    thread (e.g. SignalSema, SetEventFlag, WakeupThread, StartThread, ChangeThreadPriority, DeleteSema) --
     //    transferIfRequested throws EeDispatcherTransfer through the host frame;
     //  - it dispatches a non-call jump (a J to an unnamed target, a jr through a register other than ra): that
