@@ -26,6 +26,7 @@
 #include "ps2x/preflight.h"
 #include "ps2x/process_fatal.h"
 #include "launcher/launcher_config.h"   // issue #69: the revision table names every SOCOM II ELF
+#include "runtime/shadow_harness.h"     // Sprint 19 E2: the shadow report, printed before each _Exit
 
 // The revision this build's generated code was recompiled from (CMake's PS2X_GAME_REVISION, PUBLIC on
 // ps2_runtime; runtime/socom2_revision_guard.h documents it). A bare run loads that revision's ELF.
@@ -190,6 +191,7 @@ namespace
         Preflight::Result result;
         result.code = code;
         result.detail = detail;
+        ps2_shadow::flushReport();   // PS2X_SHADOW's exit report: _Exit runs no atexit handler
         std::cout.flush();
         std::cerr << Preflight::logLine(result) << std::endl;
         std::cerr.flush();
@@ -342,6 +344,7 @@ int main(int argc, char *argv[])
 #endif
         // macOS perf step 1: the frame-stats logger's session summary, which an atexit hook would never print here.
         GsGlFrameStats::Logger::shutdown();
+        ps2_shadow::flushReport();   // likewise PS2X_SHADOW's exit report
         std::cout.flush();
         std::cerr.flush();
         // Task 1a: 0 normally; 65 when the GL probe fell back to the CPU rasterizer.

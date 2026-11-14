@@ -8,6 +8,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <iomanip>
@@ -426,7 +427,7 @@ namespace ps2_shadow
                     std::cout << formatReport("periodic") << std::flush;
                 }
             }).detach();
-            std::atexit([] { std::cout << formatReport("exit") << std::flush; });
+            std::atexit([] { flushReport(); });
         }
     }
 
@@ -509,9 +510,16 @@ namespace ps2_shadow
         return o.str();
     }
 
+    // The runner ends with std::_Exit (main's end and leaveWith in src/main.cpp), which runs no atexit handler: it
+    // calls this first. The atexit in startReports() stays for a std::exit path.
     int flushReport()
     {
-        return 0;   // S6 test commit: the stub; the fix prints the exit report
+        if (g_slotCount == 0)
+            return 0;
+        const std::string report = formatReport("exit");
+        std::cout << report << std::flush;
+        std::fflush(stdout);   // a bare run's stdout is a fully buffered file and _Exit flushes nothing
+        return static_cast<int>(std::count(report.begin(), report.end(), '\n'));
     }
 
     void uninstall(PS2Runtime &runtime)
