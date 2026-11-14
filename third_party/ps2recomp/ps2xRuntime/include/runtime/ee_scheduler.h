@@ -303,6 +303,7 @@ public:
 
 private:
     EeScheduler &m_scheduler;
+    uint64_t m_epoch;   // the scheduler's reset epoch when taken: a hold from before a reset releases nothing
 };
 
 class EeScheduler
@@ -333,13 +334,15 @@ public:
     // written on the host calling a game function) is not unwound by a pending event or an expired slice; those are
     // acted on at the first checkpoint after the last release. The callee still leaves early -- and the host body
     // must check dispatchGuestBranch's false (unwound or stop requested) -- when:
-    //  - it makes a transferring syscall: a blocking wait, or SignalSema/SetEventFlag/WakeupThread readying a
-    //    higher-priority thread (transferIfRequested throws EeDispatcherTransfer through the host frame);
+    //  - it makes any syscall that reschedules: a blocking wait, or one that readies or reorders a higher-priority
+    //    thread (e.g. SignalSema, SetEventFlag, WakeupThread, StartThread, ChangeThreadPriority, DeleteSema) --
+    //    transferIfRequested throws EeDispatcherTransfer through the host frame;
     //  - it dispatches a non-call jump (a J to an unnamed target, a jr through a register other than ra): that
     //    always unwinds to the scheduler loop;
     //  - a stop is requested.
     // And a guest loop polling for an interrupt or another thread never sees it under a hold: it spins forever.
-    // reset() zeroes the count. Touched by the EE thread only.
+    // reset() zeroes the count and starts a new epoch: a hold taken before it releases nothing, so it can neither
+    // drive the count below zero nor end a hold taken after the reset. Touched by the EE thread only.
     bool checkpointsHeld() const noexcept { return m_checkpointHold > 0; }
     void accountCycles(uint32_t cycles) noexcept;
     uint64_t eeCycleNow() const noexcept { return m_eeCycle; }   // the cycle clock accountCycles advances
@@ -452,13 +455,18 @@ public:
     [[nodiscard]] const EeCrashThreadTable &crashThreadTable() const noexcept;
 
 private:
-    // Only EeCheckpointHold takes and releases a hold, so no raw take can be leaked past its scope. A release
-    // never drives the count below zero: a hold that spans reset() (which zeroes it) must not cancel the next one.
+    // Only EeCheckpointHold takes and releases a hold, so no raw take can be leaked past its scope. A take returns
+    // the reset epoch; a release counts only in the epoch it was taken in, so a hold that spans reset() (which
+    // zeroes the count) releases nothing -- not a hold taken after the reset, and never below zero.
     friend class EeCheckpointHold;
-    void holdCheckpoints() noexcept { ++m_checkpointHold; }
-    void releaseCheckpoints() noexcept
+    uint64_t holdCheckpoints() noexcept
     {
-        if (m_checkpointHold > 0)
+        ++m_checkpointHold;
+        return m_checkpointHoldEpoch;
+    }
+    void releaseCheckpoints(uint64_t epoch) noexcept
+    {
+        if (epoch == m_checkpointHoldEpoch && m_checkpointHold > 0)
             --m_checkpointHold;
     }
 
@@ -542,6 +550,7 @@ private:
     std::atomic<bool> m_guestExecuting{false};
     std::atomic<bool> m_stopRequested{false};
     int m_checkpointHold = 0;
+    uint64_t m_checkpointHoldEpoch = 0;   // advanced by reset(); see holdCheckpoints
     std::atomic<bool> m_checkpointPending{false};
     uint32_t m_debugPublishCountdown = 0u;
 

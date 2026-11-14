@@ -148,7 +148,8 @@ void EeScheduler::reset(uint8_t *rdram, const R5900Context &mainContext)
     ps2GuestClockExcludedNs().store(0, std::memory_order_relaxed);
     m_clockTraceGapNs = m_clockTraceExcludedNs = m_clockTraceLostNs = 0;
     m_stopRequested.store(false, std::memory_order_release);
-    m_checkpointHold = 0;   // a hold whose release never ran must not outlive the guest it was taken for
+    m_checkpointHold = 0;   // a hold whose release never ran must not outlive the guest it was taken for,
+    ++m_checkpointHoldEpoch;   // and one still open releases nothing when it ends (holdCheckpoints)
     m_checkpointPending.store(false, std::memory_order_release);
     m_debugPublishCountdown = 0u;
     {
@@ -429,14 +430,14 @@ void EeScheduler::postEvent(EeEvent event)
     m_eventCv.notify_one();
 }
 
-EeCheckpointHold::EeCheckpointHold(EeScheduler &scheduler) : m_scheduler(scheduler)
+EeCheckpointHold::EeCheckpointHold(EeScheduler &scheduler)
+    : m_scheduler(scheduler), m_epoch(scheduler.holdCheckpoints())
 {
-    m_scheduler.holdCheckpoints();
 }
 
 EeCheckpointHold::~EeCheckpointHold()
 {
-    m_scheduler.releaseCheckpoints();
+    m_scheduler.releaseCheckpoints(m_epoch);
 }
 
 bool EeScheduler::checkpointDue(uint32_t cycles) noexcept
