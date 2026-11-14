@@ -787,9 +787,9 @@ void register_shadow_harness_tests()
         {
             using ps2_shadow::parseSpec;
             std::vector<uint32_t> v;
-            t.IsTrue(parseSpec("0x3c4b40, 0X003C4C40 ,3951424", v), "hex either case, decimal, spaces");
+            t.IsTrue(parseSpec("0x3c4b40, 0X003C4C40 ,4000000", v), "hex either case, decimal (0x3d0900), spaces");
             t.Equals(v.size(), size_t{3}, "three addresses");
-            t.IsTrue(v.size() == 3 && v[0] == 0x003c4b40u && v[1] == 0x003c4c40u && v[2] == 3951424u, "their values");
+            t.IsTrue(v.size() == 3 && v[0] == 0x003c4b40u && v[1] == 0x003c4c40u && v[2] == 4000000u, "their values");
             t.IsTrue(parseSpec("0xFFFFFFFF,4294967295,0", v), "the 32-bit edges and zero");
             t.Equals(v.size(), size_t{2}, "0xFFFFFFFF and 4294967295 are one address");
             t.IsTrue(parseSpec("0x10,16,0x0010", v), "the same address three ways");
