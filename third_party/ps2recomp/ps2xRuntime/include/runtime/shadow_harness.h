@@ -17,7 +17,13 @@
 //      twice; if it THREW (EeDispatcherTransfer: a blocking wait, a yield, a thread exit, or a SignalSema/
 //      SetEventFlag/WakeupThread that readied a higher-priority thread; or bad_alloc) it is counted
 //      (skipped_transfer) and the exception goes on up to the scheduler, the original's partial state standing;
-//   4. otherwise reads the original's result, undoes its stores, restores the context and runs the BODY;
+//   4. otherwise reads the original's result, undoes its stores, restores the context and runs the BODY under an
+//      EeCheckpointHold (runtime/ee_scheduler.h): a transcribed body's eeCheckpointDue() back edges report nothing
+//      due, so an event or slice end that fell due after the original returned does not park a correct body on a
+//      loop head; the pending work is acted on at the caller's next checkpoint. The original is NOT held (its
+//      checkpoint return is the skip above). The hold does not stop a stop request -- a body it cuts short is
+//      skipped (skipped_unwound) with the original's result restored and the stop's unwind left standing -- nor
+//      a transferring syscall, which throws as below;
 //      a body that throws cannot be recovered (the original's result is already undone): it is counted
 //      (body_threw), one "[shadow-error]" line names the address, the exception goes on up, and the address is
 //      never verified;

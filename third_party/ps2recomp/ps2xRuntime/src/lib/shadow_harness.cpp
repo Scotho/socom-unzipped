@@ -2,6 +2,7 @@
 #include "runtime/shadow_harness.h"
 
 #include "runtime/shadow_write_log.h"
+#include "runtime/ee_scheduler.h"   // EeCheckpointHold, around the body
 #include "ps2x/knobs.h"
 
 #include <algorithm>
@@ -245,6 +246,13 @@ namespace ps2_shadow
             WriteLog bodyLog;
             try
             {
+                // Under a checkpoint hold: a body transcribed from generated code keeps its eeCheckpointDue() back
+                // edges, and an event or slice end that fell due after the original returned would park it on a
+                // loop head -- a correct body counted as a mismatch. Held, the checkpoints report nothing due and
+                // the pending work is acted on at the caller's first checkpoint after the release. The original
+                // phase above is NOT held: its checkpoint return is the designed skip. A hold does not stop a
+                // stop request (handled below) or a transferring syscall (it throws: body_threw).
+                EeCheckpointHold hold(runtime->eeScheduler());
                 ArmedLog armed(bodyLog);
                 s.body(rdram, ctx, runtime);
             }
@@ -264,6 +272,18 @@ namespace ps2_shadow
                     std::cout << o.str() << std::endl;
                 }
                 throw;
+            }
+
+            // Unwinding after the held body: only a stop request makes a checkpoint due under the hold. The body was
+            // cut short, so there is nothing to compare: the original's result back, the stop's unwind left standing.
+            if (runtime->dispatchUnwinding())
+            {
+                bodyLog.undo();
+                for (const auto &hv : origFinal)
+                    *hv.first = hv.second;
+                *ctx = afterOrig;
+                s.skippedUnwound.fetch_add(1, std::memory_order_relaxed);
+                return;
             }
 
             std::vector<std::string> diffs;
