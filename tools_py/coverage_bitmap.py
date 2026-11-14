@@ -12,8 +12,9 @@ What a bit means, printed with every report (TAIL_CALL_CAVEAT): a guest call rea
 function table. An overridden or stubbed address counts although its generated body did not run, and a function
 reached only by a direct tail jump (`j`, emitted as a C++ call that bypasses the table) reads as not reached.
 
-The dump does not name its game revision. When the function list has starts outside the dump's table (base ..
-base + slots * 4) the reader warns on stderr -- the usual cause is a dump read against the other revision's list.
+The dump does not name its game revision. When the function list has starts at or past the end of the dump's
+table (base + slots * 4) the reader warns on stderr -- the usual cause is an r0004 dump read with the default r0001
+list. Starts below the base are not counted: the r0004 list has one below its own table.
 
 Run: python -m tools_py.coverage_bitmap <dump> [--functions recomp/socom2_ghidra.csv]
      [--names recomp/socom2_names.csv] [--csv <out>] [--all]
@@ -114,15 +115,19 @@ def hit_by_size(rows):
 
 
 def range_warning(cov, funcs):
-    """A sentence when some listed functions start outside the dump's table, else None. The table ends at the last
-    table entry's start + 4, so only starts are compared: a last function's body may run past it."""
+    """A sentence when some listed functions start at or past the end of the dump's table, else None.
+
+    Only the end is checked: both revisions' tables begin at 0x180008 and the r0004 list has a function below it
+    (FUN_0009f000), so a start below the base says nothing about the pairing. A start past the end does: an r0004
+    dump (table end 0x6699b8) read with the default r0001 list has 6. The table ends at the last entry's start + 4,
+    so only starts are compared: a last function's body may run past it."""
     table_end = cov.base + cov.slot_count * 4
-    outside = [start for start, _, _ in funcs if not cov.base <= start < table_end]
-    if not outside:
+    past = [start for start, _, _ in funcs if start >= table_end]
+    if not past:
         return None
-    return ("coverage: warning: %d of %d listed functions start outside the dump's table 0x%08x..0x%08x "
+    return ("coverage: warning: %d of %d listed functions start at or past the end of the dump's table 0x%08x "
             "(first 0x%08x); the dump may come from another game revision than the function list (%s)"
-            % (len(outside), len(funcs), cov.base, table_end, min(outside), R0004_HINT))
+            % (len(past), len(funcs), table_end, min(past), R0004_HINT))
 
 
 def write_csv(rows, path):
