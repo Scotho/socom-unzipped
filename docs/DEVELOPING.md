@@ -831,12 +831,14 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
   commit names them exactly), plus two ghosts the README had already lost.
 
 - **Private function overrides (Sprint 19 E1).** A rewritten function body is decompiled game code and never enters
-  this repository (R355). Keep such files in a directory outside the tree and configure with
-  `-DPS2X_PRIVATE_OVERRIDES_DIR=<dir>` (or that environment variable at configure time, which is how
-  `scripts/build_linux.sh runtime` takes it): every `*.cpp` there joins `ps2EntryRunner`, not `ps2_runtime`, so a
-  file's `PS2_REGISTER_GAME_OVERRIDE` survives the link. Unset adds nothing; a missing or empty directory, or one
-  inside the repository, stops the configure. The hook is `ps2xRuntime/cmake/PrivateOverrides.cmake`, its test
-  `tools_py/tests/test_private_overrides_cmake.py`.
+  this repository (R355). Keep such files in a directory outside the tree and set `-DPS2X_PRIVATE_OVERRIDES_DIR=<dir>`,
+  an absolute path -- the CMake variable only; the runtime step of `build.sh`, `scripts/build_linux.sh` and
+  `scripts/build_macos.sh` passes the environment variable of that name as the `-D`, so export it and run the step, and
+  run it again with the variable unset to clear it. Every release step refuses a set one. The directory's top-level
+  `*.cpp` files join `ps2EntryRunner`, not `ps2_runtime`, so a file's `PS2_REGISTER_GAME_OVERRIDE` survives the link;
+  a file added later is picked up at the next build (`CONFIGURE_DEPENDS`). Where the runner is configured, a missing or
+  empty directory, or one inside this or another checkout of the repository, stops the configure. The hook is
+  `ps2xRuntime/cmake/PrivateOverrides.cmake`, its test `tools_py/tests/test_private_overrides_cmake.py`.
 
 - **The shadow harness (Sprint 19 E2).** `PS2X_SHADOW=0xADDR[,0xADDR...]` (developer mode) makes every override
   installed through `ps2_shadow::installOverride` run beside its recompiled original on every call: snapshot, the
