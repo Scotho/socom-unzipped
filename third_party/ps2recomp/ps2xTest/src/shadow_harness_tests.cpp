@@ -737,5 +737,26 @@ void register_shadow_harness_tests()
             t.Equals(counts(kFn).matched, uint64_t{1}, "the original's lo, hi and f5 are not results: a match");
             t.Equals(r.ctx.lo, uint64_t{0}, "and the body's lo stands");
         });
+
+        tc.Run("S7: PS2X_SHADOW takes 0x-hex or plain decimal fitting 32 bits, nothing else, and drops repeats", [](TestCase &t)
+        {
+            using ps2_shadow::parseSpec;
+            std::vector<uint32_t> v;
+            t.IsTrue(parseSpec("0x3c4b40, 0X003C4C40 ,3951424", v), "hex either case, decimal, spaces");
+            t.Equals(v.size(), size_t{3}, "three addresses");
+            t.IsTrue(v.size() == 3 && v[0] == 0x003c4b40u && v[1] == 0x003c4c40u && v[2] == 3951424u, "their values");
+            t.IsTrue(parseSpec("0xFFFFFFFF,4294967295,0", v), "the 32-bit edges and zero");
+            t.Equals(v.size(), size_t{2}, "0xFFFFFFFF and 4294967295 are one address");
+            t.IsTrue(parseSpec("0x10,16,0x0010", v), "the same address three ways");
+            t.Equals(v.size(), size_t{1}, "listed once");
+
+            const char *const refused[] = {"-1", "010", "0x100000000", "4294967296", "0x", "+5", "0x-5", "0x 10",
+                                           "1e3", "0b101", "99999999999999999999999"};
+            for (const char *bad : refused)
+            {
+                std::vector<uint32_t> out;
+                t.IsFalse(parseSpec(bad, out), std::string("'") + bad + "' is refused");
+            }
+        });
     });
 }
