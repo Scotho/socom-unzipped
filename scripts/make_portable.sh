@@ -77,6 +77,7 @@ write_manifest() {   # <manifest> <kind> <archive> <runner exe> [<kind> <archive
     printf '  "commit": "%s",\n' "$commit"
     printf '  "branch": "%s",\n' "$branch"
     printf '  "built_at": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '  "private_overrides": %s,\n' "$PRIVATE"
     printf '  "tree_dirty": %s\n' "$dirty"
     printf '}\n'
   } > "$manifest.tmp"
@@ -97,6 +98,32 @@ release_kind() {   # <build dir> <the kind packaged from it> <the build script>:
   if [ "$KIND" != "$want" ]; then
     echo "make_portable: $marker says '$KIND' where the $want kind is packaged from -- rebuild it with PS2X_RELEASE_KIND=$want $3 release" >&2
     exit 2
+  fi
+}
+# Private function bodies (Sprint 19 E1, the R375 review): a runtime step run with PS2X_PRIVATE_OVERRIDES_DIR set links
+# them into dist/'s exe, and the build tree's CMakeCache.txt is the record of it. A plain run packages such a build but
+# warns and writes "private_overrides": true into the manifest (false otherwise); --release refuses it, exit 2, before
+# packaging anything -- build.sh release configures it empty, so this is the second line. MAKE_PORTABLE_BUILD_ROOT
+# (default third_party/ps2recomp, which holds build-clang/, build-release[-dev]/ and their build-linux* twins) is for
+# tools_py/tests/test_make_portable.py.
+BUILDS="${MAKE_PORTABLE_BUILD_ROOT:-$ROOT/third_party/ps2recomp}"
+PRIVATE=false
+private_overrides_in() {   # <build dir>: true when its CMakeCache.txt names a non-empty PS2X_PRIVATE_OVERRIDES_DIR
+  local v=""
+  [ -f "$1/CMakeCache.txt" ] || return 1
+  v="$(sed -n 's/^PS2X_PRIVATE_OVERRIDES_DIR:[A-Za-z]*=//p' "$1/CMakeCache.txt" | tr -d '\r' | head -n1)" || true
+  [ -n "$v" ]
+}
+refuse_private_release() {   # <build dir> <the build script>
+  if private_overrides_in "$1"; then
+    echo "make_portable: --release refused -- $1/CMakeCache.txt names a PS2X_PRIVATE_OVERRIDES_DIR: a release never carries private function bodies; rebuild it with $2 release (it configures the variable empty)" >&2
+    exit 2
+  fi
+}
+warn_private() {   # <build dir>: a plain run of a private build is packaged, and says so
+  if private_overrides_in "$1"; then
+    PRIVATE=true
+    echo "make_portable: WARNING -- $1/CMakeCache.txt names a PS2X_PRIVATE_OVERRIDES_DIR: this package carries private function bodies (the manifest says \"private_overrides\": true); never publish it" >&2
   fi
 }
 no_developer_build() {   # <the folder that was looked for> <the build script>
@@ -235,6 +262,10 @@ case "${MAKE_PORTABLE_SYSTEM:-$(uname -s)}" in
     if [ -n "$SUFFIX" ]; then   # both markers before any packaging: a refusal leaves nothing half-made
       release_kind "$LDIST" player scripts/build_linux.sh; TOPKIND="$KIND"
       if [ -f "$LDEVDIST/socom2" ]; then release_kind "$LDEVDIST" developer scripts/build_linux.sh; DEVKIND="$KIND"; fi
+      refuse_private_release "$BUILDS/build-linux-release" scripts/build_linux.sh
+      [ -z "$DEVKIND" ] || refuse_private_release "$BUILDS/build-linux-release-dev" scripts/build_linux.sh
+    else
+      warn_private "$BUILDS/build-linux"
     fi
     package_linux "$LDIST" "$OUT" socom2-linux
     ARCHIVES=("$TOPKIND" "$OUT/socom2-linux.tar.gz" "$LDIST/socom2")
@@ -265,6 +296,10 @@ case "${MAKE_PORTABLE_SYSTEM:-$(uname -s)}" in
     if [ -n "$SUFFIX" ]; then   # both markers before any packaging: a refusal leaves nothing half-made
       release_kind "$DIST" player ./build.sh; TOPKIND="$KIND"
       if [ -f "$DEVDIST/socom2.exe" ]; then release_kind "$DEVDIST" developer ./build.sh; DEVKIND="$KIND"; fi
+      refuse_private_release "$BUILDS/build-release" ./build.sh
+      [ -z "$DEVKIND" ] || refuse_private_release "$BUILDS/build-release-dev" ./build.sh
+    else
+      warn_private "$BUILDS/build-clang"
     fi
     package_windows "$DIST" "$OUT" socom2 socom2-portable.zip
     ARCHIVES=("$TOPKIND" "$OUT/socom2-portable.zip" "$DIST/socom2.exe")
