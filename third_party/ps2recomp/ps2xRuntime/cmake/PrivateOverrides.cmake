@@ -10,8 +10,8 @@
 # so a cached value cannot be beaten or dropped by a shell's variable unseen. The runtime steps of build.sh,
 # scripts/build_linux.sh and scripts/build_macos.sh pass the environment variable of that name as the -D (unset
 # clears it); every release step refuses a set one. Unset or empty: nothing is added and nothing changes.
-# A directory that does not exist, holds no .cpp file, lies inside this repository, or lies inside another
-# checkout of it (a linked worktree or a clone sharing its git common dir) is a configure error.
+# A directory that does not exist, holds no .cpp file, or lies inside this repository or a linked worktree of it
+# (the same git common dir; a separate clone has its own and is not caught) is a configure error.
 # The files are kept out of the unity batches, so one file's statics never meet another's.
 
 set(PS2X_PRIVATE_OVERRIDES_DIR "" CACHE PATH
