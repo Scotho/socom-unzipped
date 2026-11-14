@@ -43,6 +43,7 @@ namespace
     bool g_bodyWrongF0 = false;
     bool g_bodyThrows = false;
     bool g_origThrows = false;
+    int g_bodyClobber = 0;   // S4: which non-GPR register the body changes (0: none; see body())
 
     void setU32(R5900Context &ctx, int reg, uint32_t v) { SET_GPR_U32((&ctx), reg, v); }
 
@@ -81,6 +82,20 @@ namespace
             std::memcpy(&ctx->r[3], parts, 16);
         }
         ctx->f[0] = g_bodyWrongF0 ? 3.0f : 2.0f;
+        switch (g_bodyClobber)
+        {
+        case 1: ctx->f[20] = 9.0f; break;          // callee-saved FPR
+        case 2: ctx->f[31] = -1.0f; break;
+        case 3: ctx->f[2] = 0.5f; break;           // a temporary FPR: a transcribed body reproduces it too
+        case 4: ctx->fcr31 ^= 0x00800000u; break;  // the FPU condition bit
+        case 5: ctx->hi = 0x11u; break;
+        case 6: ctx->lo = 0x22u; break;
+        case 7: ctx->hi1 = 0x33u; break;
+        case 8: ctx->lo1 = 0x44u; break;
+        case 9: ctx->f_acc = 4.0f; break;
+        case 10: ctx->sa = 8u; break;
+        default: break;
+        }
         ctx->pc = GPR_U32(ctx, 31);
     }
 
@@ -148,6 +163,9 @@ namespace
         SET_GPR_U32(ctx, 2, GPR_U32(ctx, 4) + 1u);                // v0 = a0 + 5
         SET_GPR_U32(ctx, 3, 0x99u);                               // v1: a temporary unless returned
         ctx->f[1] = 7.0f;                                         // f1: a temporary unless returned
+        ctx->f[5] = 6.0f;                                         // f5: a temporary
+        ctx->lo = 0x1234u;                                        // a mult's lo and hi: caller-saved
+        ctx->hi = 0x5678u;
         ctx->f[0] = 2.0f;
         ctx->pc = GPR_U32(ctx, 31);
     }
@@ -206,6 +224,7 @@ namespace
             g_wrongOnCall = -1;
             g_bodyWrongV0 = g_bodyWrongMem = g_bodyStrayWrite = g_bodyWrongV1High = g_bodyWrongF0 = false;
             g_bodyThrows = g_origThrows = false;
+            g_bodyClobber = 0;
             g_abiClobberS0 = g_abiMoveSp = g_abiWrongV0 = g_abiWrongF0 = g_abiWrongV1 = g_abiStaleV0High = false;
             g_abiWrongV1High = false;
             ps2_shadow::uninstall(runtime);
@@ -673,6 +692,50 @@ void register_shadow_harness_tests()
             t.Equals(c.compared, uint64_t{1}, "the next call is compared");
             t.Equals(c.matched, uint64_t{1}, "and matches");
             t.IsFalse(verified(kFn), "an address whose body threw is never verified");
+        });
+
+        tc.Run("S4: All mode compares every FPR, fcr31, f_acc, sa, hi/lo and hi1/lo1, and keeps the original's", [](TestCase &t)
+        {
+            using namespace ps2_shadow;
+            struct Clobber
+            {
+                int which;
+                const char *name;
+            };
+            const Clobber clobbers[] = {{1, "f20"}, {2, "f31"}, {3, "f2"},  {4, "fcr31"}, {5, "hi"},
+                                        {6, "lo"},  {7, "hi1"}, {8, "lo1"}, {9, "f_acc"}, {10, "sa"}};
+            for (const Clobber &k : clobbers)
+            {
+                Rig r;
+                r.runtime.registerFunction(kFn, original);
+                add(r.runtime, kFn, "FakeFn", original, body);
+                g_bodyClobber = k.which;
+                const R5900Context before = r.ctx;
+                r.call();
+                const std::string what = std::string("a body that changes ") + k.name;
+                t.Equals(counts(kFn).mismatched, uint64_t{1}, what + ": mismatched");
+                const std::vector<std::string> lines = mismatchLines(kFn);
+                t.IsTrue(!lines.empty() && lines[0].find(std::string(" ") + k.name + " orig=") != std::string::npos,
+                         what + ": the line names it");
+                t.IsTrue(std::memcmp(&r.ctx.f[20], &before.f[20], sizeof(float) * 12) == 0 && r.ctx.hi == before.hi &&
+                             r.ctx.lo == before.lo && r.ctx.hi1 == before.hi1 && r.ctx.lo1 == before.lo1 &&
+                             r.ctx.fcr31 == before.fcr31 && r.ctx.sa == before.sa &&
+                             std::memcmp(&r.ctx.f_acc, &before.f_acc, sizeof(float)) == 0 &&
+                             std::memcmp(&r.ctx.f[2], &before.f[2], sizeof(float)) == 0,
+                         what + ": the original's state is back");
+                g_bodyClobber = 0;
+            }
+        });
+
+        tc.Run("S4: ABI mode still leaves hi/lo and the temporary FPRs free", [](TestCase &t)
+        {
+            using namespace ps2_shadow;
+            Rig r;
+            r.runtime.registerFunction(kFn, originalAbi);
+            add(r.runtime, kFn, "Derived", originalAbi, bodyAbi, Mode{Compare::Abi, kReturnsV0});
+            r.call();
+            t.Equals(counts(kFn).matched, uint64_t{1}, "the original's lo, hi and f5 are not results: a match");
+            t.Equals(r.ctx.lo, uint64_t{0}, "and the body's lo stands");
         });
     });
 }
