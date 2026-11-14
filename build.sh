@@ -30,6 +30,14 @@ for arg in "$@"; do
   esac
 done
 STEP="${STEP:-all}"
+# Sprint 19 E1, the R375 review: PS2X_PRIVATE_OVERRIDES_DIR links function bodies kept outside the repository into the
+# runner (ps2xRuntime/cmake/PrivateOverrides.cmake); runtime() passes it through, and a release never carries them. So
+# `release` refuses a set one up front, before the lock consult and for --dry-run too (tools_py/tests/
+# test_private_overrides_cmake.py drives it that way), and release() configures with it empty.
+if [ "$STEP" = release ] && [ -n "${PS2X_PRIVATE_OVERRIDES_DIR:-}" ]; then
+  echo "build.sh: release refused -- PS2X_PRIVATE_OVERRIDES_DIR is set ('$PS2X_PRIVATE_OVERRIDES_DIR'): a release never carries private function bodies; unset it and run this again" >&2
+  exit 2
+fi
 # Sprint 14 G5: the loop lock is machine-wide (scripts/loop_lock.sh), and a build beside another holder's build or
 # game run is the collision it exists to stop. Every step but `tools` refuses while ANOTHER holder has the lock,
 # unless this process is that holder's child: `loop_lock.sh run` and run_detached.sh export LOOP_LOCK_HELD="<owner>
@@ -197,10 +205,13 @@ recomp() {
 }
 
 runtime() {
+  # PS2X_PRIVATE_OVERRIDES_DIR from the environment (unset clears a cached value); of the hidden configure output only
+  # the hook's own line is shown, and pipefail keeps cmake's exit status.
   cmake -S "$PS2R" -B "$RTBUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
         -DPS2X_RUNNER_GENERATED_DIR="$GEN" -DPS2X_ENABLE_LTO="${LTO:-OFF}" -DPS2X_GENERATED_OPT="${GENOPT:--O1}" \
-        -DPS2X_GAME_REVISION=r0001 >/dev/null
+        -DPS2X_GAME_REVISION=r0001 \
+        -DPS2X_PRIVATE_OVERRIDES_DIR="${PS2X_PRIVATE_OVERRIDES_DIR-}" | { grep -F 'PS2X_PRIVATE_OVERRIDES_DIR:' || true; }
   mkdir -p "$ROOT/dist"
   if [ -n "$GEN" ]; then
     cmake --build "$RTBUILD" --target ps2EntryRunner -j "$(nproc)"
@@ -247,7 +258,7 @@ release() {
         -DPS2X_RUNNER_GENERATED_DIR="$GEN" -DPS2X_GENERATED_OPT="$genopt" \
         -DPS2X_ENABLE_LTO="$lto" -DPS2X_LTO_SCOPE="$scope" \
         -DPS2X_RELEASE_LINK=ON -DPS2X_LINK_ICF="$icf" -DPS2X_GAME_REVISION=r0001 \
-        -DPS2X_ENABLE_DEBUG_UI="$debug_ui" ${fc[@]+"${fc[@]}"} >/dev/null
+        -DPS2X_ENABLE_DEBUG_UI="$debug_ui" -DPS2X_PRIVATE_OVERRIDES_DIR= ${fc[@]+"${fc[@]}"} >/dev/null
   cmake --build "$RELBUILD" --target ps2EntryRunner socom_unzipped_launcher -j "${REL_JOBS:-$(nproc)}"
   local stage="$RELDIST/.stage" tag
   tag="$(git -C "$ROOT" describe --always --dirty 2>/dev/null || echo unknown)"

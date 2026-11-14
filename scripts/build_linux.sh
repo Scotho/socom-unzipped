@@ -90,10 +90,14 @@ recomp() {
 }
 
 configure_runtime() {
+  # PS2X_PRIVATE_OVERRIDES_DIR (cmake/PrivateOverrides.cmake) is passed from the environment, so an unset one clears
+  # a stale cached value; of the hidden configure output only the hook's own line is shown (pipefail keeps cmake's
+  # exit status).
   cmake_configure "$RTBUILD" \
         -DPS2X_RUNNER_GENERATED_DIR="$GEN" \
         -DPS2X_ENABLE_LTO="${LTO:-OFF}" \
-        -DPS2X_GENERATED_OPT="${GENOPT:--O1}" >/dev/null
+        -DPS2X_GENERATED_OPT="${GENOPT:--O1}" \
+        -DPS2X_PRIVATE_OVERRIDES_DIR="${PS2X_PRIVATE_OVERRIDES_DIR-}" | { grep -F 'PS2X_PRIVATE_OVERRIDES_DIR:' || true; }
 }
 
 runtime() {
@@ -119,6 +123,10 @@ runtime() {
 release() {   # Sprint 9 Goal 2: see build.sh release(); same switches, the system toolchain, ELF strip
   local genopt="${REL_GENOPT:--O2}" lto="${REL_LTO:-OFF}" scope="${REL_LTO_SCOPE:-all}" icf="${REL_ICF:-}"
   local fc=() src name objcopy tag debug_ui
+  if [ -n "${PS2X_PRIVATE_OVERRIDES_DIR:-}" ]; then
+    echo "build_linux: release refused -- PS2X_PRIVATE_OVERRIDES_DIR is set ('$PS2X_PRIVATE_OVERRIDES_DIR'): a release never carries private function bodies; unset it and run this again" >&2
+    return 2
+  fi
   case "$REL_KIND" in
     player) debug_ui=OFF ;;
     developer) debug_ui=ON; RELBUILD="$PS2R/build-linux-release-dev"; RELDIST="$ROOT/dist-linux-release-dev" ;;
@@ -132,7 +140,7 @@ release() {   # Sprint 9 Goal 2: see build.sh release(); same switches, the syst
   cmake_configure "$RELBUILD" -DPS2X_RUNNER_GENERATED_DIR="$GEN" -DPS2X_GENERATED_OPT="$genopt" \
         -DPS2X_ENABLE_LTO="$lto" -DPS2X_LTO_SCOPE="$scope" \
         -DPS2X_RELEASE_LINK=ON -DPS2X_LINK_ICF="$icf" \
-        -DPS2X_ENABLE_DEBUG_UI="$debug_ui" ${fc[@]+"${fc[@]}"} >/dev/null
+        -DPS2X_ENABLE_DEBUG_UI="$debug_ui" -DPS2X_PRIVATE_OVERRIDES_DIR= ${fc[@]+"${fc[@]}"} >/dev/null
   objcopy="${OBJCOPY:-$(command -v llvm-objcopy || command -v objcopy)}"
   tag="$(git -C "$ROOT" describe --always --dirty 2>/dev/null || echo unknown)"
   mkdir -p "$RELDIST/symbols"

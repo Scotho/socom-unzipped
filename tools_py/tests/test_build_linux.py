@@ -135,6 +135,12 @@ class TheScriptText(unittest.TestCase):
         """test_step's return has to become the script's exit status, or the non-zero is lost."""
         self.assertRegex(self.body, r"test\)\s+test_step ;;")
 
+    def test_the_recomp_and_all_steps_are_dispatched(self):
+        """RecompStep sources the script with BUILD_LINUX_SOURCE_ONLY, which returns before the step `case`: with
+        the dispatch line gone every case there stays green while `build_linux.sh recomp` says `unknown step`."""
+        self.assertRegex(self.body, r"recomp\)\s+recomp ;;")
+        self.assertRegex(self.body, r"all\)\s+build_tools; runtime ;;")
+
 @unittest.skipUnless(BASH, "no Git Bash on this machine (tools_py/tests/shell.py)")
 class RecompStep(unittest.TestCase):
     """`scripts/build_linux.sh recomp`: build.sh's recomp step with the Linux recompiler binary (no .exe), as
@@ -175,7 +181,10 @@ class RecompStep(unittest.TestCase):
             '( recomp ) || echo "recomp rc=$?"\n'
         ) % (self.py, self.root, self.tools, recomp_rc)
         p = subprocess.run([BASH, "-c", script], cwd=ROOT, capture_output=True, text=True)
-        calls = open(self.calls).read() if os.path.exists(self.calls) else ""
+        calls = ""
+        if os.path.exists(self.calls):
+            with open(self.calls, encoding="utf-8") as fh:
+                calls = fh.read()
         return p, p.stdout + p.stderr, calls
 
     def test_recomp_is_a_step(self):
