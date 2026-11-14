@@ -33,6 +33,7 @@ if(PS2X_ENABLE_SCCACHE)
 endif()
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/ReleaseMode.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/PrivateOverrides.cmake")   # Sprint 19 E1: PS2X_PRIVATE_OVERRIDES_DIR
 
 # Sprint 13 Task C7 (audit F20): the Vita and Android backends (PS2X_IS_VITA, PS2X_IS_ANDROID, the VitaSDK
 # library list, the VPK packager, the SHARED Android runner and their two source files) are removed.
@@ -525,6 +526,9 @@ if(PS2X_BUILD_RUNNER)
 # Game-specific override modules self-register via static objects; they must live in the
 # executable (not the static runtime library) or the linker drops them.
 target_sources(ps2EntryRunner PRIVATE src/lib/game_overrides_socom2.cpp)
+# Sprint 19 E1: function bodies kept outside the repository (PS2X_PRIVATE_OVERRIDES_DIR, cmake/PrivateOverrides.cmake)
+# self-register the same way, so they join this executable too; unset adds nothing.
+ps2x_add_private_overrides(ps2EntryRunner)
 target_sources(ps2EntryRunner PRIVATE src/lib/socom2_host_input.cpp)
 if(APPLE)
     # macOS fork: the mouse, with GCMouse's raw deltas (socom2_mouse_gc.mm); elsewhere a stub and raylib's deltas.

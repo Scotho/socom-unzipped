@@ -830,6 +830,14 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
   `PS2X_GS_TEX_FROM_CPU`, `PS2X_GS_PROBE`, `PS2X_GS_GL_DEBUG_NODEPTH`, `PS2X_MPEG_PIC_TRACE` and `PS2X_TIMER_*` (the plan's Task 6
   commit names them exactly), plus two ghosts the README had already lost.
 
+- **Private function overrides (Sprint 19 E1).** A rewritten function body is decompiled game code and never enters
+  this repository (R355). Keep such files in a directory outside the tree and configure with
+  `-DPS2X_PRIVATE_OVERRIDES_DIR=<dir>` (or that environment variable at configure time, which is how
+  `scripts/build_linux.sh runtime` takes it): every `*.cpp` there joins `ps2EntryRunner`, not `ps2_runtime`, so a
+  file's `PS2_REGISTER_GAME_OVERRIDE` survives the link. Unset adds nothing; a missing or empty directory, or one
+  inside the repository, stops the configure. The hook is `ps2xRuntime/cmake/PrivateOverrides.cmake`, its test
+  `tools_py/tests/test_private_overrides_cmake.py`.
+
 - **The leak check** (`python -m tools_py.release.leakcheck <mode>`; modes `tree`, `staged`, `ignored`, `metadata`,
   `history [range]`, `artifact <dir>`, `all`): exit 0 clean, 1 findings, **2 the scanner did not run -- never a
   pass**. Every run starts with a planted control of 28 secret shapes; `--reveal` shows a hit unmasked on the terminal;
