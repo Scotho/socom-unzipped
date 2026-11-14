@@ -56,7 +56,7 @@ Probes, traces, dumps and A/B switches. **Ignored unless the process is in devel
 | `PS2X_CLOCK_CAP_MS` | Float | `100` | Longest single gap of host time the guest clock may absorb; 0 = uncapped. |
 | `PS2X_CLOCK_EXCLUDE` | Int | `0` | 1 restores the 2026-09-08 exclusion of VU1 and render waits from guest time (A/B). |
 | `PS2X_CLOCK_TRACE` | Presence | unset | Once a second: the cycle clock against host time, T0, the next deadline. |
-| `PS2X_COVERAGE` | Path | unset | Write the function-coverage bitmap (a bit per table slot a call reached) here every 10 s and at exit. |
+| `PS2X_COVERAGE` | Path | unset | Write the function-coverage bitmap here every 10 s and when the runner exits (a kill keeps the last write). |
 | `PS2X_CULL_PARTIAL_CLIP` | Int | `0` | Experiment (research/31 s16): answer needs-clipping for partial boxes inside the guard band. |
 | `PS2X_CULL_TRACE` | Spec | unset | Trace the terrain cull/LOD/detail decisions to a file (research/31 tools read it). |
 | `PS2X_CYCLE_CLOCK` | Text | unset | guest = estimate-driven cycle accounting instead of wall time (not an A/B of pre-R54). |
