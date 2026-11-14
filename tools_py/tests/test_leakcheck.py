@@ -315,13 +315,20 @@ class TreeScans(unittest.TestCase):
             self.assertEqual(L.main(["artifact", os.path.join(self.tmp, "nowhere"), "--allow", os.devnull]), 2)
 
 
-# Exported identity variables outrank the fixture's `git config user.*`; drop them so its commits are Test Person's.
+# Exported identity variables, and config handed down in the environment (GIT_CONFIG_PARAMETERS from `git -c`,
+# GIT_CONFIG_COUNT with its GIT_CONFIG_KEY_n / GIT_CONFIG_VALUE_n), outrank the fixture's `git config user.*`; drop
+# them so its commits are Test Person's. A caller's env= is laid over what is left.
 _IDENTITY_VARS = ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_AUTHOR_DATE",
-                  "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "GIT_COMMITTER_DATE")
+                  "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "GIT_COMMITTER_DATE",
+                  "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT")
+
+
+def _outranks_repo_config(name):
+    return name in _IDENTITY_VARS or name.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"))
 
 
 def _git(cwd, *args, **kw):
-    env = {k: v for k, v in os.environ.items() if k not in _IDENTITY_VARS}
+    env = {**{k: v for k, v in os.environ.items() if not _outranks_repo_config(k)}, **kw.pop("env", {})}
     return subprocess.run(["git"] + list(args), cwd=cwd, capture_output=True, text=True, check=True, env=env,
                           **kw).stdout
 
