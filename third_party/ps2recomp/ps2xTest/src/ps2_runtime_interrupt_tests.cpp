@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <cstring>
 #include <exception>
+#include <memory>
 #include <new>
 #include <stdexcept>
 #include <thread>
@@ -633,6 +634,26 @@ void register_ps2_runtime_interrupt_tests()
                 scheduler.postEvent(EeEvent{});
                 t.IsFalse(scheduler.checkpointDue(), "and keeps the pending event from being due");
             }
+            cleanupRuntime(*env);
+        });
+
+        // N4 (second review): a hold taken before a reset and released while a hold taken after it still lives must
+        // not release the later one -- the count reset() zeroed is not the old hold's to decrement.
+        tc.Run("a hold from before a reset, released late, does not release a hold taken after it", [](TestCase &t)
+        {
+            auto env = std::make_unique<TestEnv>();
+            EeScheduler &scheduler = env->runtime.eeScheduler();
+            R5900Context mainContext{};
+            auto before = std::make_unique<EeCheckpointHold>(scheduler);
+            scheduler.reset(env->rdram.data(), mainContext);
+            {
+                EeCheckpointHold after(scheduler);
+                before.reset();   // the pre-reset hold goes while the new one lives
+                t.IsTrue(scheduler.checkpointsHeld(), "the hold taken after the reset still holds");
+                scheduler.postEvent(EeEvent{});
+                t.IsFalse(scheduler.checkpointDue(), "and still keeps the pending event from being due");
+            }
+            t.IsFalse(scheduler.checkpointsHeld(), "released with its own scope");
             cleanupRuntime(*env);
         });
 
