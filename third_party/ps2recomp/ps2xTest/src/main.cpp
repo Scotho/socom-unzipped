@@ -67,6 +67,7 @@ void register_socom2_mouse_tests();          // macOS fork: mouse look and aim-h
 void register_host_thread_qos_tests();       // macOS fork: runtime/host_thread_qos.h
 void register_vblank_period_tests();        // macOS fork: PS2X_VBLANK_NTSC
 void register_coverage_bitmap_tests();      // Sprint 19 B1: PS2X_COVERAGE
+void register_shadow_harness_tests();       // Sprint 19 E2: PS2X_SHADOW
 void reset_ps2_test_function_table();
 
 namespace
@@ -172,6 +173,7 @@ int main()
     register_host_thread_qos_tests();
     register_vblank_period_tests();
     register_coverage_bitmap_tests();
+    register_shadow_harness_tests();
     int res = MiniTest::Run();
     std::cout.flush();
     std::cerr.flush();

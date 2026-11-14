@@ -17,6 +17,32 @@
 
 #include "ps2_runtime.h"
 
+// Sprint 19 E2: PS2X_SHADOW's write log (runtime/shadow_write_log.h). Compiled in only by the CMake option
+// PS2X_SHADOW_WRITE_LOG; off, the store helpers below are exactly what they were.
+#ifndef PS2X_SHADOW_WRITE_LOG
+#define PS2X_SHADOW_WRITE_LOG 0
+#endif
+#if PS2X_SHADOW_WRITE_LOG
+#include "runtime/shadow_write_log.h"
+#define PS2X_SHADOW_NOTE_RDRAM(rdram_, addr_, size_)                                       \
+    do                                                                                    \
+    {                                                                                     \
+        if (ps2_shadow::WriteLog *_log = ps2_shadow::g_writeLog)                          \
+            _log->noteRdram((rdram_), (addr_), (size_), PS2_RAM_MASK);                   \
+    } while (0)
+#define PS2X_SHADOW_NOTE_SPR(host_, addr_, size_)                                         \
+    do                                                                                    \
+    {                                                                                     \
+        if (ps2_shadow::WriteLog *_log = ps2_shadow::g_writeLog)                          \
+            _log->noteHost(ps2_shadow::kScratchpadKeyBase +                               \
+                               ((((uint32_t)(addr_)) & 0x7FFFFFFFu) - PS2_SCRATCHPAD_BASE), \
+                           (host_), (size_));                                             \
+    } while (0)
+#else
+#define PS2X_SHADOW_NOTE_RDRAM(rdram_, addr_, size_) ((void)0)
+#define PS2X_SHADOW_NOTE_SPR(host_, addr_, size_) ((void)0)
+#endif
+
 static inline int32_t Ps2ExtractEpi32(__m128i v, int index)
 {
     switch (index & 3)
@@ -373,11 +399,13 @@ static inline __m128i Ps2FastRead128(const uint8_t *rdram, uint32_t addr)
 
 static inline void Ps2FastWrite8(uint8_t *rdram, uint32_t addr, uint8_t value)
 {
+    PS2X_SHADOW_NOTE_RDRAM(rdram, addr, 1u);
     rdram[addr & PS2_RAM_MASK] = value;
 }
 
 static inline void Ps2FastWrite16(uint8_t *rdram, uint32_t addr, uint16_t value)
 {
+    PS2X_SHADOW_NOTE_RDRAM(rdram, addr, 2u);
     const uint32_t offset = addr & PS2_RAM_MASK;
     if (!Ps2FastRangeIsContiguous(offset, sizeof(uint16_t)))
     {
@@ -394,6 +422,7 @@ static inline void Ps2FastWrite16(uint8_t *rdram, uint32_t addr, uint16_t value)
 
 static inline void Ps2FastWrite32(uint8_t *rdram, uint32_t addr, uint32_t value)
 {
+    PS2X_SHADOW_NOTE_RDRAM(rdram, addr, 4u);
     const uint32_t offset = addr & PS2_RAM_MASK;
     if (!Ps2FastRangeIsContiguous(offset, sizeof(uint32_t)))
     {
@@ -410,6 +439,7 @@ static inline void Ps2FastWrite32(uint8_t *rdram, uint32_t addr, uint32_t value)
 
 static inline void Ps2FastWrite64(uint8_t *rdram, uint32_t addr, uint64_t value)
 {
+    PS2X_SHADOW_NOTE_RDRAM(rdram, addr, 8u);
     const uint32_t offset = addr & PS2_RAM_MASK;
     if (!Ps2FastRangeIsContiguous(offset, sizeof(uint64_t)))
     {
@@ -426,6 +456,7 @@ static inline void Ps2FastWrite64(uint8_t *rdram, uint32_t addr, uint64_t value)
 
 static inline void Ps2FastWrite128(uint8_t *rdram, uint32_t addr, __m128i value)
 {
+    PS2X_SHADOW_NOTE_RDRAM(rdram, addr, 16u);
     const uint32_t offset = addr & PS2_RAM_MASK;
     if (!Ps2FastRangeIsContiguous(offset, sizeof(__m128i)))
     {
@@ -596,7 +627,10 @@ static inline uint8_t *Ps2SprPtr(uint32_t addr, uint32_t size)
         uint32_t _a = (uint32_t)(addr);                                                 \
         T _v = (T)(val);                                                                \
         if (uint8_t *_spr = Ps2SprPtr(_a, (uint32_t)sizeof(T)))                         \
+        {                                                                               \
+            PS2X_SHADOW_NOTE_SPR(_spr, _a, (uint32_t)sizeof(T));                        \
             std::memcpy(_spr, &_v, sizeof(T));                                          \
+        }                                                                               \
         else                                                                            \
             slowStmt(_a, _v);                                                           \
     } while (0)
