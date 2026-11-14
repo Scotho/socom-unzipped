@@ -54,6 +54,8 @@ namespace ps2_shadow
         uint64_t skippedUnwound = 0;  // the original left with pc != ra (checkpoint): not comparable
         uint64_t skippedIo = 0;       // the original stored to an I/O address: not run twice
         uint64_t passedThrough = 0;   // entered at a pc other than the entry, or inside another shadowed call
+        uint64_t skippedTransfer = 0; // the original threw (EeDispatcherTransfer: it blocked or yielded): rethrown
+        uint64_t bodyThrew = 0;       // the BODY threw after the original's result was undone: unrecoverable
     };
 
     // A derived batch is every executed leaf of a run, so the table holds a few thousand (a slot is ~150 bytes).
@@ -90,6 +92,7 @@ namespace ps2_shadow
     std::vector<std::string> mismatchLines(uint32_t addr);   // the first few, for the log and tests
     std::string formatReport(const std::string &reason);
     void uninstall(PS2Runtime &runtime);   // tests: restore the originals, forget every slot
+    bool writeLogArmedForTest();           // tests: true while a write log is armed (only inside a shadowed call)
 
     // "0xADDR[,0xADDR...]" (spaces and empty items allowed). False on any item that is not a number.
     bool parseSpec(const char *spec, std::vector<uint32_t> &out);

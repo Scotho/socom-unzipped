@@ -407,6 +407,11 @@ namespace ps2_shadow
         g_writeLog = nullptr;
     }
 
+    bool writeLogArmedForTest()
+    {
+        return g_writeLog != nullptr;
+    }
+
     bool parseSpec(const char *spec, std::vector<uint32_t> &out)
     {
         out.clear();

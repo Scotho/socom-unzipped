@@ -12,6 +12,7 @@
 #include "ps2_runtime.h"
 #include "ps2_runtime_macros.h"
 #include "runtime/shadow_harness.h"
+#include "runtime/ee_scheduler.h"   // EeDispatcherTransfer
 
 #include <cstdint>
 #include <cstring>
@@ -40,6 +41,8 @@ namespace
     bool g_bodyStrayWrite = false;
     bool g_bodyWrongV1High = false;
     bool g_bodyWrongF0 = false;
+    bool g_bodyThrows = false;
+    bool g_origThrows = false;
 
     void setU32(R5900Context &ctx, int reg, uint32_t v) { SET_GPR_U32((&ctx), reg, v); }
 
@@ -58,6 +61,12 @@ namespace
     void body(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         ++g_bodyRuns;
+        if (g_bodyThrows)
+        {
+            // A body that blocks: a store, then the scheduler's transfer, as WaitSema does when it parks a thread.
+            WRITE32(GPR_U32(ctx, 5), 0x0000deadu);
+            throw EeDispatcherTransfer{};
+        }
         const bool wrongNow = g_wrongOnCall >= 0 && g_callNo == g_wrongOnCall;
         WRITE32(GPR_U32(ctx, 5), (g_bodyWrongMem || wrongNow) ? 0x00001235u : 0x00001234u);
         if (g_bodyStrayWrite)
@@ -88,6 +97,18 @@ namespace
     void originalIo(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         ps2_shadow::noteIoStore(0x1000f000u);   // what PS2Runtime::Store32 does for a hardware register
+        original(rdram, ctx, runtime);
+    }
+
+    // An original that may block: on g_origThrows it stores, then the scheduler parks the thread by throwing
+    // EeDispatcherTransfer (constructed as EeScheduler.cpp does), which only EeScheduler::run catches.
+    void originalMayTransfer(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        if (g_origThrows)
+        {
+            WRITE32(GPR_U32(ctx, 5), 0x0000cafeu);
+            throw EeDispatcherTransfer{};
+        }
         original(rdram, ctx, runtime);
     }
 
@@ -184,6 +205,7 @@ namespace
             g_callNo = 0;
             g_wrongOnCall = -1;
             g_bodyWrongV0 = g_bodyWrongMem = g_bodyStrayWrite = g_bodyWrongV1High = g_bodyWrongF0 = false;
+            g_bodyThrows = g_origThrows = false;
             g_abiClobberS0 = g_abiMoveSp = g_abiWrongV0 = g_abiWrongF0 = g_abiWrongV1 = g_abiStaleV0High = false;
             g_abiWrongV1High = false;
             ps2_shadow::uninstall(runtime);
@@ -560,6 +582,97 @@ void register_shadow_harness_tests()
             uninstall(r.runtime);   // the shared function table: leave no fake behind for other cases
             for (int i = 0; i <= kMaxSlots; ++i)
                 r.runtime.replaceFunction(0x00400000u + static_cast<uint32_t>(i) * 8u, nullptr);
+        });
+
+        tc.Run("S1: an original that throws EeDispatcherTransfer disarms the log, is skipped, and the next call compares", [](TestCase &t)
+        {
+            using namespace ps2_shadow;
+            Rig r;
+            r.runtime.registerFunction(kFn, originalMayTransfer);
+            add(r.runtime, kFn, "FakeFn", originalMayTransfer, body);
+            g_origThrows = true;
+            bool caught = false;
+            try
+            {
+                r.call();
+            }
+            catch (const EeDispatcherTransfer &)
+            {
+                caught = true;
+            }
+            t.IsTrue(caught, "the transfer is rethrown to the scheduler (here, the test)");
+            const bool armed = writeLogArmedForTest();
+            t.IsFalse(armed, "no write log is armed after the throw");
+            if (armed)
+            {
+                // The log pointer names the dead stack log of the call that threw: one more store would write
+                // through it. Disarm (uninstall clears it) and stop here.
+                uninstall(r.runtime);
+                return;
+            }
+            Counts c = counts(kFn);
+            t.Equals(c.skippedTransfer, uint64_t{1}, "counted as a skip (skipped_transfer)");
+            t.Equals(c.compared, uint64_t{0}, "not compared");
+            t.Equals(g_bodyRuns, 0, "the body did not run");
+            t.Equals(r.word(kOut), uint32_t{0xcafeu}, "the original's store before the transfer stands");
+            t.IsTrue(formatReport("test").find("skipped_transfer=1") != std::string::npos, "the report says so");
+
+            g_origThrows = false;
+            r.call();
+            c = counts(kFn);
+            t.Equals(c.passedThrough, uint64_t{0}, "the next call is not passed through");
+            t.Equals(c.compared, uint64_t{1}, "the next call is compared");
+            t.Equals(c.matched, uint64_t{1}, "and matches");
+            t.IsFalse(writeLogArmedForTest(), "and disarms on its return");
+        });
+
+        tc.Run("S1: a body that throws is counted, named in one [shadow-error] line, rethrown, and the log disarmed", [](TestCase &t)
+        {
+            using namespace ps2_shadow;
+            Rig r;
+            r.runtime.registerFunction(kFn, original);
+            add(r.runtime, kFn, "FakeFn", original, body);
+            g_bodyThrows = true;
+            bool caught = false;
+            std::string printed;
+            {
+                CaptureStdout out;
+                try
+                {
+                    r.call();
+                }
+                catch (const EeDispatcherTransfer &)
+                {
+                    caught = true;
+                }
+                printed = out.text();
+            }
+            t.IsTrue(caught, "the transfer is rethrown");
+            const bool armed = writeLogArmedForTest();
+            t.IsFalse(armed, "no write log is armed after the throw");
+            if (armed)
+            {
+                uninstall(r.runtime);
+                return;
+            }
+            Counts c = counts(kFn);
+            t.Equals(c.bodyThrew, uint64_t{1}, "counted as body_threw");
+            t.Equals(c.compared, uint64_t{0}, "not compared");
+            t.Equals(c.mismatched, uint64_t{0}, "not a mismatch either");
+            size_t errors = 0;
+            for (size_t at = printed.find("[shadow-error]"); at != std::string::npos; at = printed.find("[shadow-error]", at + 1))
+                ++errors;
+            t.Equals(errors, size_t{1}, "one [shadow-error] line: " + printed);
+            t.IsTrue(printed.find("0x003c4b40") != std::string::npos, "naming the address: " + printed);
+            t.IsTrue(formatReport("test").find("body_threw=1") != std::string::npos, "the report says so");
+
+            g_bodyThrows = false;
+            r.call();
+            c = counts(kFn);
+            t.Equals(c.passedThrough, uint64_t{0}, "the next call is not passed through");
+            t.Equals(c.compared, uint64_t{1}, "the next call is compared");
+            t.Equals(c.matched, uint64_t{1}, "and matches");
+            t.IsFalse(verified(kFn), "an address whose body threw is never verified");
         });
     });
 }
