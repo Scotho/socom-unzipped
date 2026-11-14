@@ -266,6 +266,67 @@ class TwoReleaseKindsTest(unittest.TestCase):
                                  [("player", "socom2-linux.tar.gz"), ("developer", "socom2-linux-developer.tar.gz")])
 
 
+@unittest.skipUnless(BASH, "bash only")
+class PrivateOverridesTest(unittest.TestCase):
+    """R375 review: a runtime step run with PS2X_PRIVATE_OVERRIDES_DIR set links private function bodies into dist/'s
+    exe, and a plain packaging of dist/ would carry them unremarked. The build tree's CMakeCache.txt says what the exe
+    was configured with: a plain run warns and writes "private_overrides": true into the manifest; --release refuses,
+    exit 2, before packaging anything (build.sh release configures it empty -- this is the second line).
+    MAKE_PORTABLE_BUILD_ROOT stands in for third_party/ps2recomp, where build-clang/ and build-release[-dev]/ live."""
+
+    def _run(self, tmp, cache, *args, release=False, dev=False):
+        builds = os.path.join(tmp, "ps2recomp")
+        for build, value in cache.items():
+            os.makedirs(os.path.join(builds, build))
+            with open(os.path.join(builds, build, "CMakeCache.txt"), "w", encoding="utf-8", newline="\n") as fh:
+                fh.write("CMAKE_BUILD_TYPE:STRING=Release\nPS2X_PRIVATE_OVERRIDES_DIR:PATH=%s\n" % value)
+        name = "dist-release" if release else "dist"
+        env = {**os.environ, "MAKE_PORTABLE_SYSTEM": "MINGW64_NT", "PYTHON": sys.executable,
+               "MAKE_PORTABLE_BUILD_ROOT": builds,
+               "DIST": fake_dist(tmp, name=name, kind="player" if release else None),
+               "DEVDIST": fake_dist(tmp, name="dist-release-dev", marker=b"d", kind="developer") if dev
+               else os.path.join(tmp, "dist-release-dev")}
+        r = subprocess.run([BASH, SCRIPT] + (["--release"] if release else []) + list(args) + [os.path.join(tmp, "out")],
+                           capture_output=True, text=True, cwd=ROOT, env=env)
+        manifest = os.path.join(tmp, name, "manifest.json")
+        m = None
+        if os.path.exists(manifest):
+            with open(manifest, encoding="utf-8") as fh:
+                m = json.load(fh)
+        return r, m
+
+    def test_a_plain_package_of_a_private_build_says_so(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r, m = self._run(tmp, {"build-clang": "/somewhere/private"})
+            self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+            self.assertIn("PS2X_PRIVATE_OVERRIDES_DIR", r.stderr)
+            self.assertIn("WARNING", r.stderr)
+            self.assertIs(m["private_overrides"], True)
+
+    def test_a_plain_package_of_a_public_build_says_that_too(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r, m = self._run(tmp, {"build-clang": ""})
+            self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+            self.assertNotIn("PS2X_PRIVATE_OVERRIDES_DIR", r.stderr)
+            self.assertIs(m["private_overrides"], False)
+
+    def test_a_release_of_a_private_build_is_refused(self):
+        for builds, dev in (({"build-release": "/somewhere/private"}, False),
+                            ({"build-release": "", "build-release-dev": "/somewhere/private"}, True)):
+            with self.subTest(builds=builds), tempfile.TemporaryDirectory() as tmp:
+                r, m = self._run(tmp, builds, release=True, dev=dev)
+                self.assertEqual(r.returncode, 2, r.stderr + r.stdout)
+                self.assertIn("PS2X_PRIVATE_OVERRIDES_DIR", r.stderr)
+                self.assertIsNone(m, "a refused release wrote a manifest")
+                self.assertFalse(os.path.exists(os.path.join(tmp, "out", "socom2-portable.zip")))
+
+    def test_a_release_of_a_public_build_packages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r, m = self._run(tmp, {"build-release": "", "build-release-dev": ""}, release=True, dev=True)
+            self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+            self.assertIs(m["private_overrides"], False)
+
+
 if __name__ == "__main__":
     unittest.main()
 
