@@ -94,11 +94,14 @@ recomp() {
 }
 
 configure_runtime() {
+  # PS2X_PRIVATE_OVERRIDES_DIR as scripts/build_linux.sh's configure_runtime: from the environment (unset clears it),
+  # and its one line let through the hidden configure output. There is no release step here to refuse it.
   cmake_configure "$RTBUILD" \
         -DPS2X_RUNNER_GENERATED_DIR="$GEN" \
         -DPS2X_ENABLE_LTO="${LTO:-OFF}" \
         -DPS2X_GENERATED_OPT="${GENOPT:--O1}" \
-        -DPS2X_GAME_REVISION=r0001 >/dev/null
+        -DPS2X_GAME_REVISION=r0001 \
+        -DPS2X_PRIVATE_OVERRIDES_DIR="${PS2X_PRIVATE_OVERRIDES_DIR-}" | { grep -F 'PS2X_PRIVATE_OVERRIDES_DIR:' || true; }
 }
 
 install_exe() {   # $1 = built file, $2 = name in dist-macos; copy then rename, so a running copy is never torn

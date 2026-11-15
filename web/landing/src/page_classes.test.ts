@@ -42,7 +42,7 @@ describe('index.html uses the design system', () => {
   });
   it('has the data and redotcom footer links', () => {
     expect(doc.querySelector('footer nav a[href$="/data.html"]')).not.toBeNull();
-    expect(doc.querySelector('footer nav a[href$="/redotcom/"]')).not.toBeNull();
+    expect(doc.querySelector('footer nav a[href="https://socom2legacy.com/"]')).not.toBeNull();
   });
 });
 
@@ -88,7 +88,7 @@ describe('story.html uses the design system', () => {
   });
   it('has the data and redotcom footer links', () => {
     expect(sdoc.querySelector('footer nav a[href$="/data.html"]')).not.toBeNull();
-    expect(sdoc.querySelector('footer nav a[href$="/redotcom/"]')).not.toBeNull();
+    expect(sdoc.querySelector('footer nav a[href="https://socom2legacy.com/"]')).not.toBeNull();
   });
 });
 
@@ -119,6 +119,6 @@ describe('data.html uses the design system', () => {
   });
   it('has the data and redotcom footer links', () => {
     expect(ddoc.querySelector('footer nav a[href$="/data.html"]')).not.toBeNull();
-    expect(ddoc.querySelector('footer nav a[href$="/redotcom/"]')).not.toBeNull();
+    expect(ddoc.querySelector('footer nav a[href="https://socom2legacy.com/"]')).not.toBeNull();
   });
 });

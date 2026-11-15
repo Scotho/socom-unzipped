@@ -65,6 +65,7 @@
     X("PS2X_CONSOLE_REPLAY_GL", Test, Presence, "", "ps2x_tests: replay through the GL backend as well.") \
     X("PS2X_CONSOLE_REPLAY_PIXEL", Test, Text, "", "ps2x_tests: x,y of a pixel to watch during the console replay.") \
     X("PS2X_CONSOLE_REPLAY_STOP", Test, Int, "", "ps2x_tests: stop the console replay after this packet.") \
+    X("PS2X_COVERAGE", Dev, Path, "", "Write the function-coverage bitmap here every 10 s and when the runner exits (a kill keeps the last write).") \
     X("PS2X_CULL_PARTIAL_CLIP", Dev, Int, "0", "Experiment (research/31 s16): answer needs-clipping for partial boxes inside the guard band.") \
     X("PS2X_CULL_TRACE", Dev, Spec, "", "Trace the terrain cull/LOD/detail decisions to a file (research/31 tools read it).") \
     X("PS2X_CYCLE_CLOCK", Dev, Text, "", "guest = estimate-driven cycle accounting instead of wall time (not an A/B of pre-R54).") \
@@ -173,6 +174,7 @@
     X("PS2X_SCHED_TRACE_STUBS", Dev, Spec, "", "With SCHED_TRACE: name[,...] of stubs traced on every call, with arguments and return.") \
     X("PS2X_SCHED_TRACE_STUB_MS", Dev, Float, "1", "With SCHED_TRACE: a bound stub slower than this many host ms is reported.") \
     X("PS2X_SCHED_TRACE_TOML", Dev, Path, "recomp/socom2.toml", "With SCHED_TRACE: the recompiler config naming the stubs.") \
+    X("PS2X_SHADOW", Dev, Spec, "", "0xADDR[,...]: run each listed override and its original on every call and compare (needs a shadow build).") \
     X("PS2X_SND_MUTE_BANK", Dev, Spec, "", "0xHANDLE[,...]: play nothing from these 989snd banks (which sound is the stray one).") \
     X("PS2X_SND_STREAM_WORKER", Dev, Int, "1", "0 reads audio streams on the mixer thread instead of the worker (A/B).") \
     X("PS2X_SND_VOICE_FULLSCALE", Dev, Int, "1", "0 restores the old 0x7FFE register divisor; 1 (default, R348) 0x4000: 0x3FFF = full scale (#91).") \

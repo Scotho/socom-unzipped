@@ -141,7 +141,7 @@ class TestMergedChainRuns(unittest.TestCase):
 
     def run_chain(self, **extra):
         env = dict(os.environ)
-        for k in ("MERGED_CHAIN_DRY_RUN", "SOCOM_EXE", "PLAYTEST_BLOCK_PRINT_DIR"):
+        for k in ("MERGED_CHAIN_DRY_RUN", "SOCOM_EXE", "PLAYTEST_BLOCK_PRINT_DIR", "PS2X_PRIVATE_OVERRIDES_DIR"):
             env.pop(k, None)
         env.update({"PYTHON": fwd(self.fake_py), "FAKE_LOG": fwd(self.log), "LOOP_LOCK_PATH": fwd(self.lock),
                     "LOOP_LOCK_HELD": "chain 100-1x1", "MERGED_CHAIN_LOCK_SH": fwd(LOCK_SH),
@@ -274,6 +274,21 @@ class TestMergedChainRuns(unittest.TestCase):
         with open(os.path.join(self.repo, "logs", "merged_chain.done")) as fh:      # logs/<script name>.done
             self.assertEqual(fh.read().strip(), "done 2 refused-launcher-running")
         self.assertFalse(os.path.exists(self.running_marker()))
+
+    def test_a_set_private_overrides_dir_is_refused_before_any_step(self):
+        # R375 review: the runtime step would build the private bodies into the exe the gate proves, and only the
+        # release step (build.sh's own refusal, exit 2) would stop it -- an hour in. Unsetting it for the release
+        # step alone would package a different exe from the one the gate proved, so the chain refuses up front.
+        rc, out = self.run_chain(PS2X_PRIVATE_OVERRIDES_DIR="/somewhere/private")
+        self.assertEqual(rc, 2, out)
+        self.assertIn("merged_chain: REFUSED -- PS2X_PRIVATE_OVERRIDES_DIR is set", out)
+        self.assertEqual(self.steps_printed(out), [])
+        self.assertEqual(self.fake_log(), [])
+        with open(os.path.join(self.repo, "logs", "merged_chain.done")) as fh:
+            self.assertEqual(fh.read().strip(), "done 2 refused-private-overrides")
+        self.assertFalse(os.path.exists(self.running_marker()))
+        rc, out = self.run_chain(PS2X_PRIVATE_OVERRIDES_DIR="")    # set but empty: nothing is added, it runs
+        self.assertEqual(rc, 0, out)
 
     def test_it_refuses_to_run_outside_the_lock(self):
         rc, out = self.run_chain(LOOP_LOCK_HELD=None)

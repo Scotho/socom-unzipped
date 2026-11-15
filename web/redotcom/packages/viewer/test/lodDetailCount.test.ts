@@ -18,7 +18,7 @@ import { loadMap } from '../src/loadMap';
  * (`worldLodDetail.test.ts`), and this pins the one prop it covers.
  * Frostfire has 9 banded props (8 fading); Night Stalker (MP73) 33 banded, none with a fade range; no
  * other map has a band. Needs the extracted maps: `SOCOM_MAPS` names the directory holding `index.json`
- * and `RUN/*.ZDB` (e.g. `web/public/maps` after `npm run extract-maps`); skipped when unset.
+ * and `RUN/*.ZDB` (e.g. `web/redotcom/public/maps` after `npm run extract-maps`); skipped when unset.
  */
 const MAPS = process.env.SOCOM_MAPS;
 

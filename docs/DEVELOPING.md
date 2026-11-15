@@ -830,6 +830,60 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
   `PS2X_GS_TEX_FROM_CPU`, `PS2X_GS_PROBE`, `PS2X_GS_GL_DEBUG_NODEPTH`, `PS2X_MPEG_PIC_TRACE` and `PS2X_TIMER_*` (the plan's Task 6
   commit names them exactly), plus two ghosts the README had already lost.
 
+- **Private function overrides (Sprint 19 E1).** A rewritten function body is decompiled game code and never enters
+  this repository (R355). Keep such files in a directory outside the tree and set `-DPS2X_PRIVATE_OVERRIDES_DIR=<dir>`,
+  an absolute path -- the CMake variable only; the runtime step of `build.sh`, `scripts/build_linux.sh` and
+  `scripts/build_macos.sh` passes the environment variable of that name as the `-D`, so export it and run the step, and
+  run it again with the variable unset to clear it. Every release step and the merged chain refuse a set one;
+  `scripts/make_portable.sh` packages such a build with a warning and `"private_overrides": true` in its manifest, and
+  refuses it with `--release`. The directory's top-level `*.cpp` files join `ps2EntryRunner`, not `ps2_runtime`, so a
+  file's `PS2_REGISTER_GAME_OVERRIDE` survives the link; a file added later is picked up at the next build
+  (`CONFIGURE_DEPENDS`). Where the runner is configured, a missing or empty directory, or one inside this repository
+  or a linked worktree of it, stops the configure. The hook is
+  `ps2xRuntime/cmake/PrivateOverrides.cmake`, its test `tools_py/tests/test_private_overrides_cmake.py`.
+
+- **The shadow harness (Sprint 19 E2).** `PS2X_SHADOW=0xADDR[,0xADDR...]` (developer mode; `0x` hex or plain
+  decimal) makes each LISTED override installed through `ps2_shadow::installOverride` run beside its recompiled
+  original on every call through the function table: snapshot, the original, restore, the body, then a comparison
+  of every GPR (v0/v1 at 128 bits), `pc`, `hi`/`lo`, `hi1`/`lo1`, `sa`, `f0`-`f31`, the FPU accumulator, `fcr31`
+  and the guest bytes either stored (the dead stack, 256 KB below the entry `sp`, excepted); VU0 and COP0 are not
+  compared. Shadow LEAF functions only (no calls, no syscalls): only RDRAM and scratchpad stores are logged and
+  undone, so syscalls, host stubs (`malloc`, `free`, `memcpy`, `memset`, `strcpy`... write through host pointers),
+  slow-path loads with side effects, VU0 microprograms and the GIF DMA kick run twice, uncompared and not undone,
+  and a non-leaf address may double a side effect. The harness sees only calls through the function table: a direct
+  `J` to a named function (and a jump-table case) is a plain C++ call in the generated code, so that tail jump runs
+  the original unshadowed and uncounted -- as it does past a plain override. A call whose original leaves through a
+  scheduler checkpoint (`pc != ra`), stores to an I/O address or throws (`EeDispatcherTransfer`: it blocked or
+  yielded) is skipped; a body that throws is counted `body_threw` with one `[shadow-error]` line; a mismatch is
+  logged (`[shadow-mismatch]`) and the original's result kept. The body runs under an `EeCheckpointHold`, so its
+  own checkpoint back edges do not park it (a stop request still cuts it short: counted `skipped_unwound`, the
+  original's result restored); the original phase is not held. Counts per address print every 10 s and at exit
+  (`[shadow] ... calls= compared= mismatched= skipped_unwound= skipped_io= skipped_transfer= body_threw=
+  passed_through= verified=`; the exact format is in the header); `passed_through` counts entries at a resume pc or
+  inside another shadowed call, where the original runs alone. The shadow needs a shadow build: configure with
+  `-DPS2X_SHADOW_WRITE_LOG=ON` (or that environment variable), which adds a branch to every guest store; a default
+  build refuses ALL shadowing -- every listed address keeps its original and the body is not used. A module whose
+  body is written from source rather than transcribed from the recompiled code passes
+  `ps2_shadow::Mode{Compare::Abi, <returns>}` to `installOverride`: then only what the EE EABI lets a caller observe
+  is compared (the return registers the function has, `v0`/`v1` at 128 bits only with `kReturnsWide`, the
+  callee-saved `s0`-`s7`, `gp`, `sp`, `fp`, `ra` and `f20`-`f31`, `pc`, memory), and the report line says
+  `compare=abi`. Up to 4096 addresses per run. Reference: `runtime/shadow_harness.h`; tests:
+  `ps2xTest/src/shadow_harness_tests.cpp`.
+
+- **The checkpoint hold.** Guest code reached from a host frame that cannot be parked and resumed (an override
+  written on the host that calls a game function through `dispatchGuestBranch`) runs under an `EeCheckpointHold`
+  (`runtime/ee_scheduler.h`, scoped, nestable, the only way to take one; `reset()` zeroes it, and a hold from
+  before a reset then releases nothing): `checkpointDue` and the generated code's `eeCheckpointDue` then report
+  nothing due unless a stop is requested, so a pending event or an expired slice does not unwind the call; they are
+  acted on at the first checkpoint after the last release. The call still leaves early on any syscall that
+  reschedules (a blocking wait; a yield -- `RotateThreadReadyQueue` at its own priority, `SuspendThread` or
+  `ExitThread` of itself; or one readying or reordering a higher-priority thread, e.g. `SignalSema`,
+  `SetEventFlag`, `WakeupThread`, `StartThread`, `ChangeThreadPriority`, `DeleteSema`: `EeDispatcherTransfer` is
+  thrown through the host frame), on a non-call jump (a `J` to an unnamed target, a `jr` through a register other
+  than `ra`: it unwinds) and on a stop request, so the body must check `dispatchGuestBranch`'s return (false:
+  unwound or stopping). A guest loop polling for an interrupt or another thread spins forever under a hold. Tests:
+  `ps2xTest/src/ps2_runtime_interrupt_tests.cpp`.
+
 - **The leak check** (`python -m tools_py.release.leakcheck <mode>`; modes `tree`, `staged`, `ignored`, `metadata`,
   `history [range]`, `artifact <dir>`, `all`): exit 0 clean, 1 findings, **2 the scanner did not run -- never a
   pass**. Every run starts with a planted control of 28 secret shapes; `--reveal` shows a hit unmasked on the terminal;
@@ -839,7 +893,7 @@ git diff --stat -- tests/fixtures/recomp_ref/expected                       # th
 
 - **Build:** `./build.sh tools | recomp | runtime | release | test | all` (Git Bash; `all` = recomp + runtime).
   Runtime about 3 minutes incremental, 10-15 for a header change or a full generated rebuild. Linux:
-  `scripts/build_linux.sh [tools|runtime|release|test|all] [--no-runner]`. macOS (Apple Silicon):
+  `scripts/build_linux.sh [tools|recomp|runtime|release|test|all] [--no-runner]`. macOS (Apple Silicon):
   `scripts/build_macos.sh [tools|recomp|runtime|test|all] [--no-runner]` (below, "macOS (Apple Silicon)"). Release kind: `PS2X_RELEASE_KIND=player`
   (default; `dist-release/`) or `developer` (`dist-release-dev/`; `dist-linux-release[-dev]/` on Linux). Packaging:
   `scripts/make_portable.sh [--release]` (both kinds' archives when both are built), `scripts/make_server_zip.sh`.
