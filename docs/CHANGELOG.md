@@ -2,12 +2,25 @@
 
 > **Generated -- do not edit.** Written by `python -m tools_py.changelog` from `git log` (R272): every merge commit on the first-parent line of the history it was rendered from, and on the first-parent line of each branch those merges brought in, grouped by the oldest `v*` tag that contains it. `python -m tools_py.changelog --check` exits 1 when this file is stale; regenerate at every merge to a sprint branch (in the merge's follow-up commit) and at the close. The rules are the module's docstring. The reasoning behind a merge is its commit message and the sprint plan's Log; the hand-written log this page replaced is `docs/archive/STATUS-log-to-2026-09-26.md`.
 
-468 merges (58 on the first-parent line, 410 from the branches they merged) in 15 sections: 14 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
+481 merges (59 on the first-parent line, 422 from the branches they merged) in 15 sections: 14 tags and the merges since the newest. Each line: the date, the merge commit, the head of its subject, [the branch it merged]. An indented line came in on the branch the line above it merged.
 
 ## Since v0.18.0
 
-1 merge.
+14 merges.
 
+- 2026-11-15 `2a343e9c` merge main into sprint-19: PR #147 (gfsaaser24's #141-#146, Sprint 19 GF) and main's October work [branch not named]
+  - 2026-11-14 `ef8b1bc2` Merge pull request #147 from Scotho/agent/gf-roundup: gfsaaser24's #141-#146 with review fixes (Sprint 19 GF) [agent/gf-roundup:]
+  - 2026-11-14 `a9d87209` review fixes for #141, #142, #144 [agent/gf-fix-build]
+  - 2026-11-14 `58be7581` the review fixes for #145 (write-log guard, held body, full All-mode compare, exit report) [agent/gf-fix-shadow]
+  - 2026-11-14 `5cef95a9` the review fixes for #143 (coverage flush, reader) and #146 (hold private, reset epoch) [agent/gf-fix-cov-hold]
+  - 2026-11-14 `28ece7bd` merge PR #146 (gfsaaser24): EeCheckpointHold, a host frame's call into the game runs to its return [branch not named]
+  - 2026-11-14 `bef4b14a` merge PR #145 (gfsaaser24): PS2X_SHADOW, an override beside its original on every call (Sprint 19 E2) [branch not named]
+  - 2026-11-14 `f032a1a8` merge PR #143 (gfsaaser24): PS2X_COVERAGE, the function-coverage bitmap and its reader (Sprint 19 B1) [branch not named]
+  - 2026-11-14 `9feac4d8` merge PR #144 (gfsaaser24): PS2X_PRIVATE_OVERRIDES_DIR adds outside sources to ps2EntryRunner (Sprint 19 E1) [branch not named]
+  - 2026-11-14 `d71b0355` merge PR #142 (gfsaaser24): build_linux.sh gets the recomp step build_macos.sh has [branch not named]
+  - 2026-11-14 `e64d96c1` merge PR #141 (gfsaaser24): test_leakcheck's git fixture ignores an exported author/committer identity [branch not named]
+  - 2026-10-19 `bbfd48da` Merge pull request #139 from Scotho/craig/socom2legacy-link [craig/socom2legacy-link]
+  - 2026-10-19 `c565663b` Merge pull request #136 from Scotho/dependabot/github_actions/actions/upload-artifact-7.0.2 [dependabot/github_actions/actions/upload-artifact-7.0.2]
 - 2026-10-12 `ab1d2674` README status map [agent/status-map]
 
 ## v0.18.0
