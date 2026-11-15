@@ -2,6 +2,7 @@
 #include <thread>
 #include "MiniTest.h"
 #include "ps2_runtime.h"
+#include "ps2_runtime_macros.h"
 #include "ps2_syscalls.h"
 #include "runtime/ee_scheduler.h"
 
@@ -10,6 +11,9 @@
 #include <cstdint>
 #include <cstring>
 #include <exception>
+#include <memory>
+#include <new>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
@@ -156,6 +160,20 @@ namespace
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
         return pred();
+    }
+
+    // The checkpoint hold: a callee a host-side body calls (a derived override's call into a game function) must
+    // run to its return, because the host frame that called it cannot be parked and resumed by the scheduler.
+    int g_heldCalleeRuns = 0;
+    void heldCallee(uint8_t *, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        ++g_heldCalleeRuns;
+        if (runtime->eeCheckpointDue())   // a loop back edge in generated code
+        {
+            return;                       // would park here; the hold says it is not due
+        }
+        SET_GPR_U32(ctx, 2, 0x1234u);
+        ctx->pc = GPR_U32(ctx, 31);
     }
 
     void cleanupRuntime(TestEnv &env)
@@ -511,6 +529,166 @@ void register_ps2_runtime_interrupt_tests()
             t.IsTrue(counted >= 55.0, "policy off: the guest clock advanced by the whole 60 ms of wall time (got " + std::to_string(counted) + ")");
             t.IsTrue(scheduler.excludeHostTime() == false, "the setter is observable");
             scheduler.setExcludeHostTime(true);
+            cleanupRuntime(*env);
+        });
+
+        tc.Run("a checkpoint hold: nothing is due while held, a pending event is due after release", [](TestCase &t)
+        {
+            auto env = std::make_unique<TestEnv>();
+            EeScheduler &scheduler = env->runtime.eeScheduler();
+            scheduler.postEvent(EeEvent{});
+            t.IsTrue(scheduler.checkpointDue(), "an event makes a checkpoint due");
+            {
+                EeCheckpointHold hold(scheduler);
+                t.IsTrue(scheduler.checkpointsHeld(), "held");
+                t.IsFalse(scheduler.checkpointDue(), "held: not due");
+                t.IsFalse(env->runtime.eeCheckpointDue(), "held: the generated code's back edge is not due either");
+                {
+                    EeCheckpointHold nested(scheduler);
+                    t.IsFalse(scheduler.checkpointDue(), "nested");
+                }
+                t.IsFalse(scheduler.checkpointDue(), "the outer hold still holds");
+            }
+            t.IsFalse(scheduler.checkpointsHeld(), "released");
+            t.IsTrue(scheduler.checkpointDue(), "released: the pending event is due at the first checkpoint");
+            cleanupRuntime(*env);
+        });
+
+        tc.Run("a checkpoint hold lets a dispatched call run to its return", [](TestCase &t)
+        {
+            auto env = std::make_unique<TestEnv>();
+            constexpr uint32_t kCallee = 0x00170000u;
+            constexpr uint32_t kRet = 0x00170100u;
+            env->runtime.registerFunction(kCallee, heldCallee);
+            R5900Context ctx{};
+            SET_GPR_U32((&ctx), 31, kRet);
+            env->runtime.eeScheduler().postEvent(EeEvent{});
+            g_heldCalleeRuns = 0;
+            {
+                EeCheckpointHold hold(env->runtime.eeScheduler());
+                const bool returned = env->runtime.dispatchGuestBranch(env->rdram.data(), &ctx, kCallee, kRet - 8u, kRet,
+                                                                       PS2Runtime::GuestBranchKind::DirectCall, "test");
+                t.IsTrue(returned, "the call returned");
+                t.Equals(g_heldCalleeRuns, 1, "the callee ran");
+                t.Equals(GPR_U32((&ctx), 2), uint32_t{0x1234u}, "to its end");
+                t.IsFalse(env->runtime.dispatchUnwinding(), "nothing unwound");
+            }
+            g_heldCalleeRuns = 0;
+            const bool returned = env->runtime.dispatchGuestBranch(env->rdram.data(), &ctx, kCallee, kRet - 8u, kRet,
+                                                                   PS2Runtime::GuestBranchKind::DirectCall, "test");
+            t.IsFalse(returned, "unheld, the pending event unwinds the call as before");
+            env->runtime.clearDispatchUnwind();
+            cleanupRuntime(*env);
+        });
+
+        // Review of #146, H1: the hold's count must not outlive the scope that took it.
+        tc.Run("a checkpoint hold is released when an exception leaves its scope", [](TestCase &t)
+        {
+            auto env = std::make_unique<TestEnv>();
+            EeScheduler &scheduler = env->runtime.eeScheduler();
+            bool caught = false;
+            try
+            {
+                EeCheckpointHold hold(scheduler);
+                throw std::runtime_error("through the host frame");
+            }
+            catch (const std::runtime_error &)
+            {
+                caught = true;
+            }
+            t.IsTrue(caught, "the exception passed through the hold's scope");
+            t.IsFalse(scheduler.checkpointsHeld(), "and the hold went with it");
+            cleanupRuntime(*env);
+        });
+
+        tc.Run("reset forgets a hold that was never released", [](TestCase &t)
+        {
+            auto env = std::make_unique<TestEnv>();
+            EeScheduler &scheduler = env->runtime.eeScheduler();
+            // A hold whose destructor never runs: the count a lost release (a longjmp, a thread killed under it)
+            // would leave behind. Placement new into local storage, never destroyed.
+            alignas(EeCheckpointHold) unsigned char storage[sizeof(EeCheckpointHold)];
+            new (storage) EeCheckpointHold(scheduler);
+            t.IsTrue(scheduler.checkpointsHeld(), "held by the lost hold");
+            R5900Context mainContext{};
+            scheduler.reset(env->rdram.data(), mainContext);
+            t.IsFalse(scheduler.checkpointsHeld(), "reset zeroes the hold count");
+            scheduler.postEvent(EeEvent{});
+            t.IsTrue(scheduler.checkpointDue(), "and a pending event is due again");
+            cleanupRuntime(*env);
+        });
+
+        tc.Run("a hold that spans a reset does not unbalance the next hold", [](TestCase &t)
+        {
+            auto env = std::make_unique<TestEnv>();
+            EeScheduler &scheduler = env->runtime.eeScheduler();
+            R5900Context mainContext{};
+            {
+                EeCheckpointHold spanning(scheduler);
+                scheduler.reset(env->rdram.data(), mainContext);
+            }   // released after the reset zeroed the count: must not drive it below zero
+            t.IsFalse(scheduler.checkpointsHeld(), "not held");
+            {
+                EeCheckpointHold next(scheduler);
+                t.IsTrue(scheduler.checkpointsHeld(), "the next hold holds");
+                scheduler.postEvent(EeEvent{});
+                t.IsFalse(scheduler.checkpointDue(), "and keeps the pending event from being due");
+            }
+            cleanupRuntime(*env);
+        });
+
+        // N4 (second review): a hold taken before a reset and released while a hold taken after it still lives must
+        // not release the later one -- the count reset() zeroed is not the old hold's to decrement.
+        tc.Run("a hold from before a reset, released late, does not release a hold taken after it", [](TestCase &t)
+        {
+            auto env = std::make_unique<TestEnv>();
+            EeScheduler &scheduler = env->runtime.eeScheduler();
+            R5900Context mainContext{};
+            auto before = std::make_unique<EeCheckpointHold>(scheduler);
+            scheduler.reset(env->rdram.data(), mainContext);
+            {
+                EeCheckpointHold after(scheduler);
+                before.reset();   // the pre-reset hold goes while the new one lives
+                t.IsTrue(scheduler.checkpointsHeld(), "the hold taken after the reset still holds");
+                scheduler.postEvent(EeEvent{});
+                t.IsFalse(scheduler.checkpointDue(), "and still keeps the pending event from being due");
+            }
+            t.IsFalse(scheduler.checkpointsHeld(), "released with its own scope");
+            cleanupRuntime(*env);
+        });
+
+        // H2: what the hold does NOT stop, pinned so a change is deliberate. A non-call dispatch (a J to an
+        // unnamed target, a jr through a register other than ra) always unwinds to the scheduler loop, held or not.
+        tc.Run("under a hold, a dispatched indirect jump still unwinds", [](TestCase &t)
+        {
+            auto env = std::make_unique<TestEnv>();
+            constexpr uint32_t kTarget = 0x00170000u;
+            env->runtime.registerFunction(kTarget, heldCallee);
+            R5900Context ctx{};
+            g_heldCalleeRuns = 0;
+            {
+                EeCheckpointHold hold(env->runtime.eeScheduler());
+                const bool returned = env->runtime.dispatchGuestBranch(env->rdram.data(), &ctx, kTarget, 0x00170200u,
+                                                                       0x00170208u,
+                                                                       PS2Runtime::GuestBranchKind::IndirectJump, "test");
+                t.IsFalse(returned, "a jump does not return to the host frame");
+                t.IsTrue(env->runtime.dispatchUnwinding(), "it unwinds to the scheduler loop");
+                t.Equals(ctx.pc, kTarget, "with the target as the resume pc");
+                t.Equals(g_heldCalleeRuns, 0, "the target is not run in place");
+            }
+            env->runtime.clearDispatchUnwind();
+            env->runtime.registerFunction(kTarget, nullptr);
+            cleanupRuntime(*env);
+        });
+
+        tc.Run("under a hold, a stop request still makes a checkpoint due", [](TestCase &t)
+        {
+            auto env = std::make_unique<TestEnv>();
+            EeScheduler &scheduler = env->runtime.eeScheduler();
+            EeCheckpointHold hold(scheduler);
+            t.IsFalse(scheduler.checkpointDue(), "held, nothing pending: not due");
+            scheduler.requestStop();
+            t.IsTrue(scheduler.checkpointDue(), "a stop request is due through the hold");
             cleanupRuntime(*env);
         });
 

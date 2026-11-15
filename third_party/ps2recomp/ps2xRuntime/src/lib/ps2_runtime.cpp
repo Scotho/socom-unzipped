@@ -4,6 +4,8 @@
 #include "runtime/host_window_chrome.h"   // Sprint 10 Q4
 #include "runtime/host_move_loop.h"       // issue #67
 #include "runtime/shot_queue.h"           // Sprint 17 F0 Step 5b
+#include "runtime/coverage_bitmap.h"      // Sprint 19 B1: PS2X_COVERAGE
+#include "runtime/shadow_write_log.h"     // Sprint 19 E2: PS2X_SHADOW
 #include <optional>                       // Sprint 17 Q2: the shot queue re-made across an in-process restart
 #include "socom2_host_input.h"
 #include "socom2_mouse.h"               // macOS fork: the mouse
@@ -1118,6 +1120,8 @@ bool PS2Runtime::loadELF(const std::string &elfPath)
                                           elfCrc32,
                                           elfCrc32Valid);
         m_overridesAppliedFor = overridesKey;
+        // PS2X_COVERAGE=<path> (Sprint 19 B1): one bit per table slot a call reaches (runtime/coverage_bitmap.h).
+        ps2_coverage::installFromEnvironment(g_ps2RecompiledFunctionTableBase, g_ps2RecompiledFunctionTableSlotCount);
     }
 
     RUNTIME_LOG("ELF file loaded successfully. Entry point: 0x" << std::hex << m_cpuContext.pc << std::dec);
@@ -1264,6 +1268,7 @@ PS2Runtime::RecompiledFunction PS2Runtime::lookupFunction(uint32_t address)
         RecompiledFunction fn = g_ps2RecompiledFunctionTable[slot];
         if (fn != nullptr)
         {
+            ps2_coverage::noteSlot(slot);   // PS2X_COVERAGE (Sprint 19 B1); one load and a branch when off
             return fn;
         }
     }
@@ -2363,6 +2368,7 @@ __m128i PS2Runtime::Load128(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr)
 void PS2Runtime::Store8(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr, uint8_t value)
 {
     ps2TraceGuestWrite(rdram, vaddr, 1u, value, 0u, "WRITE8", ctx);
+    ps2_shadow::noteIoStore(vaddr);   // Sprint 19 E2: a shadowed call that stores here is not run twice
     try
     {
         m_memory.write8(vaddr, value);
@@ -2378,6 +2384,7 @@ void PS2Runtime::Store8(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr, uint8
 void PS2Runtime::Store16(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr, uint16_t value)
 {
     ps2TraceGuestWrite(rdram, vaddr, 2u, value, 0u, "WRITE16", ctx);
+    ps2_shadow::noteIoStore(vaddr);   // Sprint 19 E2: a shadowed call that stores here is not run twice
     try
     {
         m_memory.write16(vaddr, value);
@@ -2393,6 +2400,7 @@ void PS2Runtime::Store16(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr, uint
 void PS2Runtime::Store32(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr, uint32_t value)
 {
     ps2TraceGuestWrite(rdram, vaddr, 4u, value, 0u, "WRITE32", ctx);
+    ps2_shadow::noteIoStore(vaddr);   // Sprint 19 E2: a shadowed call that stores here is not run twice
     try
     {
         m_memory.write32(vaddr, value);
@@ -2408,6 +2416,7 @@ void PS2Runtime::Store32(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr, uint
 void PS2Runtime::Store64(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr, uint64_t value)
 {
     ps2TraceGuestWrite(rdram, vaddr, 8u, value, 0u, "WRITE64", ctx);
+    ps2_shadow::noteIoStore(vaddr);   // Sprint 19 E2: a shadowed call that stores here is not run twice
     try
     {
         m_memory.write64(vaddr, value);
@@ -2425,6 +2434,7 @@ void PS2Runtime::Store128(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr, __m
     alignas(16) uint64_t _parts[2];
     _mm_storeu_si128(reinterpret_cast<__m128i *>(_parts), value);
     ps2TraceGuestWrite(rdram, vaddr, 16u, _parts[0], _parts[1], "WRITE128", ctx);
+    ps2_shadow::noteIoStore(vaddr);   // Sprint 19 E2: a shadowed call that stores here is not run twice
     try
     {
         m_memory.write128(vaddr, value);

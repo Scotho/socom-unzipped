@@ -171,6 +171,12 @@ running="$(launcher_pids)"
 if [ -n "$running" ]; then
   refuse launcher-running "the launcher is running (pid $running): close the launcher window (socom_unzipped_launcher.exe) and run this again; the step's copy of the launcher fails 'Device or resource busy' while it runs"
 fi
+# Private function bodies (Sprint 19 E1, the R375 review): with PS2X_PRIVATE_OVERRIDES_DIR set, the runtime step links
+# them into the exe the gate proves, and only the release step's own refusal (build.sh, exit 2) stops the chain -- an
+# hour in. Unsetting it for the release step alone would package another exe than the one proved, so refuse up front.
+if [ -n "${PS2X_PRIVATE_OVERRIDES_DIR:-}" ]; then
+  refuse private-overrides "PS2X_PRIVATE_OVERRIDES_DIR is set ('$PS2X_PRIVATE_OVERRIDES_DIR'): the chain proves and packages one public exe, and a release never carries private function bodies; unset it and run this again"
+fi
 HEAD0="$(git rev-parse HEAD)"
 # The chain's tree is pinned while it runs (Sprint 17 G1): the hooks read this marker -- no commit here
 # (tools_py/hooks/precommit.py), no Edit/Write of a tracked file here (tools_py/hooks/pretool.py); the format and the

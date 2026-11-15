@@ -4,6 +4,7 @@ or anything else about it. CI builds the launcher and no runner; the launcher st
 (the script asks only that the three files exist), which is enough for ldd, lib/, the tarball, version.txt,
 SHA256SUMS and the audit to be exercised on ubuntu-24.04."""
 import hashlib
+import json
 import os
 import platform
 import shutil
@@ -22,6 +23,14 @@ SCRIPT = os.path.join(ROOT, "scripts", "make_portable.sh")
 LAUNCHER = os.path.join(ROOT, "dist-linux", "socom_unzipped_launcher")
 
 
+def empty_build_root(tmp):
+    """An empty stand-in for third_party/ps2recomp (MAKE_PORTABLE_BUILD_ROOT): without it a case reads this checkout's
+    real build trees, whose CMakeCache.txt may name a private overrides directory, and warns or refuses for that."""
+    root = os.path.join(tmp, "no-builds")
+    os.makedirs(root, exist_ok=True)
+    return root
+
+
 @unittest.skipUnless(platform.system() == "Linux" and os.path.isfile(LAUNCHER) and shutil.which("ldd")
                      and BASH, "Linux with a built launcher (dist-linux/) only")
 class MakePortableLinuxTest(unittest.TestCase):
@@ -36,7 +45,8 @@ class MakePortableLinuxTest(unittest.TestCase):
             fh.write(b"x")
         self.out = os.path.join(tmp, "out")
         self.result = subprocess.run([BASH, SCRIPT, self.out], capture_output=True, text=True, cwd=ROOT,
-                                     env={**os.environ, "LDIST": self.ldist, "DIST": os.path.join(tmp, "nodist")})
+                                     env={**os.environ, "LDIST": self.ldist, "DIST": os.path.join(tmp, "nodist"),
+                                          "MAKE_PORTABLE_BUILD_ROOT": empty_build_root(tmp)})
         self.pkg = os.path.join(self.out, "socom2-linux")
         self.tarball = os.path.join(self.out, "socom2-linux.tar.gz")
 
@@ -124,10 +134,44 @@ class MakePortableLinuxSyntheticTest(unittest.TestCase):
     dist-linux/ of tiny ELFs and an ldd that answers for them drive the whole branch: the executable bits,
     lib/ from the closure walk, version.txt, the tarball, SHA256SUMS and the audit."""
 
-    def _run(self, tmp, ldist, ldd, *args):
+    def _run(self, tmp, ldist, ldd, *args, build_root=None):
         env = {**os.environ, "MAKE_PORTABLE_SYSTEM": "Linux", "LDD": ldd, "PYTHON": sys.executable,
-               "LDIST": ldist, "DIST": os.path.join(tmp, "nodist")}
+               "LDIST": ldist, "DIST": os.path.join(tmp, "nodist"), "LDEVDIST": os.path.join(tmp, "nodevdist"),
+               "MAKE_PORTABLE_BUILD_ROOT": build_root or empty_build_root(tmp)}
         return subprocess.run([BASH, SCRIPT] + list(args), capture_output=True, text=True, cwd=ROOT, env=env)
+
+    def build_root(self, tmp, build, value):
+        """A build root whose <build>/CMakeCache.txt names PS2X_PRIVATE_OVERRIDES_DIR=<value>."""
+        root = os.path.join(tmp, "ps2recomp")
+        os.makedirs(os.path.join(root, build))
+        with open(os.path.join(root, build, "CMakeCache.txt"), "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("CMAKE_BUILD_TYPE:STRING=Release\nPS2X_PRIVATE_OVERRIDES_DIR:PATH=%s\n" % value)
+        return root
+
+    def test_a_release_of_a_private_linux_build_is_refused(self):
+        """R375 review: build-linux-release's cache naming a private overrides directory stops --release, exit 2."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ldist, ldd = fake_ldist(tmp)
+            with open(os.path.join(ldist, "RELEASE_KIND"), "w", newline="\n") as fh:
+                fh.write("player\n")
+            r = self._run(tmp, ldist, ldd, "--release", os.path.join(tmp, "out"),
+                          build_root=self.build_root(tmp, "build-linux-release", "/somewhere/private"))
+            self.assertEqual(r.returncode, 2, r.stderr + r.stdout)
+            self.assertIn("--release refused", r.stderr)
+            self.assertIn("build-linux-release/CMakeCache.txt names a PS2X_PRIVATE_OVERRIDES_DIR", r.stderr)
+            self.assertFalse(os.path.exists(os.path.join(tmp, "out", "socom2-linux.tar.gz")))
+            self.assertFalse(os.path.exists(os.path.join(ldist, "manifest.json")))
+
+    def test_a_plain_package_of_a_private_linux_build_says_so(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ldist, ldd = fake_ldist(tmp)
+            r = self._run(tmp, ldist, ldd, os.path.join(tmp, "out"),
+                          build_root=self.build_root(tmp, "build-linux", "/somewhere/private"))
+            self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+            self.assertIn("WARNING", r.stderr)
+            self.assertIn("build-linux/CMakeCache.txt names a PS2X_PRIVATE_OVERRIDES_DIR", r.stderr)
+            with open(os.path.join(ldist, "manifest.json"), encoding="utf-8") as fh:
+                self.assertIs(json.load(fh)["private_overrides"], True)
 
     def test_the_tarball_carries_a_version_the_binaries_and_the_closure(self):
         with tempfile.TemporaryDirectory() as tmp:
